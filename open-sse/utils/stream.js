@@ -5,6 +5,7 @@ import { extractUsage, mergeUsage, hasValidUsage, estimateUsage, logUsage, addBu
 import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE } from "./streamHelpers.js";
 import { getOpenAIResponsesEventName, isOpenAIResponsesTerminalEvent, formatIncompleteOpenAIResponsesStreamFailure } from "./responsesStreamHelpers.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
+import { createToolCallTraceAccumulator, logToolSemantics } from "./toolSemanticsTrace.js";
 
 import { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER } from "./sseConstants.js";
 
@@ -66,7 +67,9 @@ export function createSSEStream(options = {}) {
     connectionId = null,
     body = null,
     onStreamComplete = null,
-    apiKey = null
+    apiKey = null,
+    translatedBody = null,
+    log = null
   } = options;
 
   let buffer = "";
@@ -121,6 +124,9 @@ export function createSSEStream(options = {}) {
   let thinkBuf = "";
   let inThink = false;
 
+  // Tool semantics trace accumulator — counts and HMAC digests only, never raw content
+  const toolTrace = createToolCallTraceAccumulator();
+
   return new TransformStream({
     transform(chunk, controller) {
       if (!ttftAt) ttftAt = Date.now();
@@ -154,6 +160,7 @@ export function createSSEStream(options = {}) {
           if (trimmed.startsWith("data:") && trimmed.slice(5).trim() !== "[DONE]") {
             try {
               const parsed = JSON.parse(trimmed.slice(5).trim());
+              toolTrace.push(parsed);
 
               const idFixed = fixInvalidId(parsed);
 
@@ -402,6 +409,7 @@ export function createSSEStream(options = {}) {
 
         // Translate: targetFormat -> openai -> sourceFormat
         const translated = translateResponse(targetFormat, sourceFormat, parsed, state);
+        toolTrace.push(parsed);
 
         // Log OpenAI intermediate chunks (if available)
         if (translated?._openaiIntermediate) {
@@ -476,6 +484,13 @@ export function createSSEStream(options = {}) {
             controller.enqueue(sharedEncoder.encode(doneOutput));
           }
 
+          if (onStreamComplete) {
+            onStreamComplete({
+              content: accumulatedContent,
+              thinking: accumulatedThinking
+            }, usage, ttftAt);
+          }
+          logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "stream-passthrough", requestBody: body, translatedBody, providerBody: null, clientBody: null, providerToolCalls: toolTrace.summary() });
           return;
         }
 
@@ -542,6 +557,7 @@ export function createSSEStream(options = {}) {
         }
 
         state.usage = recordStreamCompletion(state?.usage);
+        logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "stream-translate", requestBody: body, translatedBody, providerBody: null, clientBody: null, providerToolCalls: toolTrace.summary() });
       } catch (error) {
         console.log("Error in flush:", error);
       }
@@ -549,7 +565,7 @@ export function createSSEStream(options = {}) {
   });
 }
 
-export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null) {
+export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, translatedBody = null, log = null) {
   return createSSEStream({
     mode: STREAM_MODE.TRANSLATE,
     targetFormat,
@@ -561,20 +577,23 @@ export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, p
     connectionId,
     body,
     onStreamComplete,
-    apiKey
+    apiKey,
+    translatedBody,
+    log
   });
 }
 
-export function createPassthroughStreamWithLogger(provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null) {
+export function createPassthroughStreamWithLogger(provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, translatedBody = null, log = null) {
   if (toolNameMap && !(toolNameMap instanceof Map) && typeof toolNameMap === "string") {
     apiKey = onStreamComplete;
     onStreamComplete = body;
     body = connectionId;
     connectionId = model;
-    model = toolNameMap;
+    model = reqLogger;
+    reqLogger = provider;
+    provider = toolNameMap;
     toolNameMap = null;
   }
-
   return createSSEStream({
     mode: STREAM_MODE.PASSTHROUGH,
     provider,
@@ -584,6 +603,8 @@ export function createPassthroughStreamWithLogger(provider = null, reqLogger = n
     connectionId,
     body,
     onStreamComplete,
-    apiKey
+    apiKey,
+    translatedBody,
+    log
   });
 }

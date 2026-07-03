@@ -63,6 +63,28 @@ describe("Firecrawl providers", () => {
   });
 
   describe("firecrawl_custom provider", () => {
+    it("prefers providerConfig.firecrawlBaseUrl over env var", async () => {
+      process.env.FIRECRAWL_BASE_URL = "http://env-firecrawl:3002";
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, data: { markdown: "# Hi" } }),
+      });
+
+      await handleFetchCore({
+        url: "https://example.com",
+        provider: "firecrawl_custom",
+        providerConfig: { firecrawlBaseUrl: "http://db-firecrawl:3002" },
+        credentials: {}
+      });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        "http://db-firecrawl:3002/v2/scrape",
+        expect.anything()
+      );
+    });
+
     it("uses FIRECRAWL_BASE_URL and hits /v2/scrape", async () => {
       process.env.FIRECRAWL_BASE_URL = "http://my-local-firecrawl:3002";
 

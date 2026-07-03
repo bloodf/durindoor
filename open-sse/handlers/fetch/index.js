@@ -112,7 +112,7 @@ export async function handleFetchCore({ url, format, maxCharacters, provider, pr
 
   try {
     if (provider === "firecrawl" || provider === "firecrawl_custom") {
-      return await runFirecrawl({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt, provider });
+      return await runFirecrawl({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt, provider, providerConfig });
     }
     if (provider === "jina-reader") {
       return await runJina({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt });
@@ -130,16 +130,15 @@ export async function handleFetchCore({ url, format, maxCharacters, provider, pr
   }
 }
 
-async function runFirecrawl({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt, provider }) {
+async function runFirecrawl({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt, provider, providerConfig }) {
   const isCustom = provider === "firecrawl_custom";
 
   if (!isCustom && !apiKey) {
     return { success: false, status: 400, error: "FIRECRAWL_API_KEY is required for the official Firecrawl provider" };
   }
 
-  const baseUrl = isCustom
-    ? (process.env.FIRECRAWL_BASE_URL || "http://127.0.0.1:3002")
-    : (process.env.FIRECRAWL_BASE_URL || "https://api.firecrawl.dev");
+  // Priority: DB setting > env var > default
+  const baseUrl = providerConfig?.firecrawlBaseUrl || process.env.FIRECRAWL_BASE_URL || (isCustom ? "http://127.0.0.1:3002" : "https://api.firecrawl.dev");
   const endpoint = isCustom ? "/v2/scrape" : "/v1/scrape";
 
   const headers = { "content-type": "application/json" };

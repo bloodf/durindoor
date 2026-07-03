@@ -77,6 +77,19 @@ export async function PATCH(request) {
       }
     }
 
+    // Validate firecrawlBaseUrl if present
+    if (Object.prototype.hasOwnProperty.call(body, "firecrawlBaseUrl")) {
+      const raw = String(body.firecrawlBaseUrl || "").trim();
+      if (raw) {
+        try {
+          new URL(raw);
+        } catch {
+          return NextResponse.json({ error: "Invalid firecrawlBaseUrl" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+        }
+      }
+      body.firecrawlBaseUrl = raw;
+    }
+
     const settings = await updateSettings(body);
 
     // Apply outbound proxy settings immediately (no restart required)

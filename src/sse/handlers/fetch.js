@@ -139,6 +139,7 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
     log.warn("FETCH", "Provider does not support web fetch", { provider: providerId });
     return errorResponse(HTTP_STATUS.BAD_REQUEST, `Provider ${providerId} does not support web fetch`);
   }
+  const fetchConfig = { ...providerConfig, firecrawlBaseUrl: settings.firecrawlBaseUrl || "" };
 
   if (providerInput !== providerId) {
     log.info("ROUTING", `${providerInput} → ${providerId}`);
@@ -154,7 +155,7 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
       format,
       maxCharacters,
       provider: resolvedProvider.id,
-      providerConfig,
+      providerConfig: fetchConfig,
       credentials: null,
       log
     });
@@ -198,7 +199,7 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
       format,
       maxCharacters,
       provider: resolvedProvider.id,
-      providerConfig,
+      providerConfig: fetchConfig,
       credentials: refreshedCredentials,
       log,
       onCredentialsRefreshed: async (newCreds) => {

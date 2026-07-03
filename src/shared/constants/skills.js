@@ -2,7 +2,7 @@
 // Each skill = 1 raw GitHub URL the user copies and pastes to any AI agent.
 
 const REPO = "bloodf/durindoor";
-const BRANCH = "master";
+const BRANCH = "main";
 const SKILL_PATH = "skills";
 
 export const SKILLS_REPO_URL = `https://github.com/${REPO}`;

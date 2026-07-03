@@ -54,6 +54,9 @@ export default function ProfilePage() {
     outboundProxyUrl: "",
     outboundNoProxy: "",
   });
+  const [firecrawlUrl, setFirecrawlUrl] = useState("");
+  const [firecrawlUrlStatus, setFirecrawlUrlStatus] = useState({ type: "", message: "" });
+  const [firecrawlUrlLoading, setFirecrawlUrlLoading] = useState(false);
   const [proxyStatus, setProxyStatus] = useState({ type: "", message: "" });
   const [proxyLoading, setProxyLoading] = useState(false);
   const [proxyTestLoading, setProxyTestLoading] = useState(false);
@@ -81,6 +84,7 @@ export default function ProfilePage() {
           outboundProxyUrl: data?.outboundProxyUrl || "",
           outboundNoProxy: data?.outboundNoProxy || "",
         });
+        setFirecrawlUrl(data?.firecrawlBaseUrl || "");
         setLoading(false);
       })
       .catch((err) => {
@@ -94,6 +98,40 @@ export default function ProfilePage() {
       setOidcRedirectUri(`${window.location.origin}/api/auth/oidc/callback`);
     }
   }, []);
+
+  const updateFirecrawlUrl = async (e) => {
+    e.preventDefault();
+    const value = firecrawlUrl.trim();
+    if (value) {
+      try {
+        new URL(value);
+      } catch {
+        setFirecrawlUrlStatus({ type: "error", message: "Invalid URL" });
+        return;
+      }
+    }
+    setFirecrawlUrlLoading(true);
+    setFirecrawlUrlStatus({ type: "", message: "" });
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ firecrawlBaseUrl: value || "" }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSettings((prev) => ({ ...prev, firecrawlBaseUrl: data?.firecrawlBaseUrl || "" }));
+        setFirecrawlUrl(data?.firecrawlBaseUrl || "");
+        setFirecrawlUrlStatus({ type: "success", message: "Firecrawl URL saved" });
+      } else {
+        setFirecrawlUrlStatus({ type: "error", message: data.error || "Failed to save Firecrawl URL" });
+      }
+    } catch (err) {
+      setFirecrawlUrlStatus({ type: "error", message: "An error occurred" });
+    } finally {
+      setFirecrawlUrlLoading(false);
+    }
+  };
 
   const updateOutboundProxy = async (e) => {
     e.preventDefault();
@@ -1075,6 +1113,28 @@ export default function ProfilePage() {
                 {proxyStatus.message}
               </p>
             )}
+
+            {/* Firecrawl URL */}
+            <form onSubmit={updateFirecrawlUrl} className="flex flex-col gap-2 pt-2 border-t border-border/50">
+              <label className="font-medium text-sm sm:text-base">Firecrawl URL</label>
+              <Input
+                placeholder="https://api.firecrawl.dev"
+                value={firecrawlUrl}
+                onChange={(e) => setFirecrawlUrl(e.target.value)}
+                disabled={loading || firecrawlUrlLoading}
+              />
+              <p className="text-xs sm:text-sm text-text-muted">Custom Firecrawl/self-hosted endpoint. Falls back to FIRECRAWL_BASE_URL env var, then the default URL.</p>
+              <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <Button type="submit" variant="primary" loading={firecrawlUrlLoading} className="w-full sm:w-auto">
+                  Save
+                </Button>
+              </div>
+              {firecrawlUrlStatus.message && (
+                <p className={`text-xs sm:text-sm ${firecrawlUrlStatus.type === "error" ? "text-red-500" : "text-green-500"} pt-2`}>
+                  {firecrawlUrlStatus.message}
+                </p>
+              )}
+            </form>
           </div>
         </Card>
 

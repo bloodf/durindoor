@@ -1,0 +1,23 @@
+{
+  "name": "9router-tests",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Test suite for 9router (open-sse handlers, translator, executors, db, security)",
+  "scripts": {
+    "test": "vitest run --reporter=verbose",
+    "test:watch": "vitest --reporter=verbose",
+    "test:json": "vitest run --reporter=json --outputFile=./.test-results.json",
+    "gate": "node __baseline__/verify-no-regression.mjs ./.test-results.json",
+    "test:ci": "npm run test:json || true && npm run gate"
+  },
+  "devDependencies": {
+    "vitest": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "uuid": "^14.0.1"
+  }
+}

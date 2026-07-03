@@ -1,0 +1,37 @@
+name: Upstream Watch
+on:
+  schedule:
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan upstream PRs
+        run: |
+          echo "Fetching upstream PRs from decolua/9router..."
+          gh pr list --repo decolua/9router --state open \
+            --json number,title,author,additions,deletions,createdAt \
+            --limit 50 > upstream-prs.json
+          COUNT=$(jq 'length' upstream-prs.json)
+          echo "Found $COUNT open upstream PRs"
+          # Create or update a tracking issue so the Hermes agent can see it
+          # The Hermes agent (durindoor-scan.sh) is the PRIMARY scanner.
+          # This workflow is a fallback that surfaces candidates as an issue.
+          gh label create upstream-scan --force --repo bloodf/durindoor --description "Automated upstream PR scan" 2>/dev/null || true
+          EXISTING=$(gh issue list --repo bloodf/durindoor --label "upstream-scan" --state open --json number --jq '.[0].number // empty')
+          BODY=$(jq -r '.[] | "- #\(.number) +\(.additions)/-\(.deletions) @\(.author.login): \(.title)"' upstream-prs.json)
+          if [ -n "$EXISTING" ]; then
+            gh issue edit "$EXISTING" --repo bloodf/durindoor --body "$BODY"
+          else
+            gh issue create --repo bloodf/durindoor \
+              --title "Upstream PR Scan Report" \
+              --label "upstream-scan" \
+              --body "$BODY"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

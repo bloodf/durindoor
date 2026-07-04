@@ -1,0 +1,79 @@
+name: Nightly
+
+# Two-branch release model:
+#   dev   → nightly pre-releases (this workflow, daily)
+#   main  → controlled production releases (release.yml on published)
+
+on:
+  schedule:
+    - cron: '0 2 * * *'   # 02:00 UTC daily
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # Repo intentionally gitignores package-lock.json (see .gitignore line 63),
+      # so use `npm install` not `npm ci` — mirrors tests/ fixture pattern.
+      - name: Install app dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build
+        run: npm run build
+
+      - name: Install test dependencies
+        working-directory: tests
+        run: npm install --no-audit --no-fund
+
+      # Baseline-aware gate: curated known-fails tolerated, real regressions fail.
+      - name: Run vitest suite (JSON)
+        working-directory: tests
+        run: npm run test:json || true
+
+      - name: No-regression gate
+        working-directory: tests
+        run: npm run gate
+
+      - name: Check nightly tag
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="nightly-$(date -u +%Y-%m-%d)"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          if gh release view "${TAG}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Today's nightly ${TAG} already published — skipping release."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # action-gh-release creates the tag implicitly from tag_name; no `git push -f`.
+      # It only creates if missing, so today's release is idempotent.
+      - name: Publish nightly pre-release
+        if: steps.check.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.check.outputs.tag }}
+          name: "Nightly ${{ steps.check.outputs.tag }}"
+          generate_release_notes: true
+          prerelease: true
+          make_latest: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -41,6 +41,6 @@ This project uses conventional commits with a custom `port` type:
 
 ## Branch Model
 
-- `main` — releases only (protected)
-- `dev` — active development, default branch (protected)
-- `frontier` — upstream ports + experiments (protected)
+Two-branch release model:
+- `main` — controlled production releases via GitHub Releases (`release.yml`, publishes to npm on `release: published`)
+- `dev` — active development + nightly pre-releases (`nightly.yml`, runs daily at 02:00 UTC, marked `prerelease: true`)

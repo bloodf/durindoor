@@ -1,19 +1,37 @@
 name: CI
+
+# Two-branch release model: only `dev` and `main`.
+# Lane: install (no lockfile) + production build. lint + tests live in
+# separate jobs (`test.yml` is the baseline-aware vitest gate).
+
 on:
   pull_request:
     branches: [dev, main]
   push:
     branches: [dev, main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ci:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-      - run: npm ci
-      - run: npm run lint
-      - run: npm run build
-      - run: cd tests && npm ci && npx vitest run --reporter=verbose
+          # No `cache: npm` — repo gitignores package-lock.json (see .gitignore
+          # line 63), so there is no cache key to reuse.
+
+      # Repo intentionally does not commit package-lock.json — `npm ci` would
+      # fail. Use `npm install` mirroring test.yml + nightly.yml.
+      - name: Install app dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build
+        run: npm run build

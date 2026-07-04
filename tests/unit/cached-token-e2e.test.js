@@ -81,4 +81,42 @@ describe("cached-token end-to-end (persist + aggregate + cost)", () => {
     expect(hist[0].tokens.prompt_tokens).toBe(1000);
     expect(hist[0].tokens.cached_tokens).toBe(600);
   });
+
+  it("keeps same-prefix API keys separated in usage stats", async () => {
+    const keyA = "sk-sameprefix-visible-a";
+    const keyB = "sk-sameprefix-visible-b";
+
+    await db.saveRequestUsage({
+      provider: "codex",
+      model: "gpt-5.5",
+      apiKey: keyA,
+      tokens: { prompt_tokens: 10, completion_tokens: 1 },
+      endpoint: "/v1/responses",
+      status: "ok",
+    });
+    await db.saveRequestUsage({
+      provider: "codex",
+      model: "gpt-5.5",
+      apiKey: keyB,
+      tokens: { prompt_tokens: 20, completion_tokens: 2 },
+      endpoint: "/v1/responses",
+      status: "ok",
+    });
+
+    const stats = await db.getUsageStats("24h");
+    const rows = Object.entries(stats.byApiKey)
+      .filter(([, row]) => row.provider === "codex" && row.rawModel === "gpt-5.5");
+
+    expect(rows).toHaveLength(2);
+    expect(new Set(rows.map(([key]) => key)).size).toBe(2);
+    expect(new Set(rows.map(([, row]) => row.apiKeyKey)).size).toBe(2);
+    expect(new Set(rows.map(([, row]) => row.keyName)).size).toBe(2);
+    for (const [key, row] of rows) {
+      expect(key).toMatch(/^sha256:[0-9a-f]+\|gpt-5\.5\|codex$/);
+      expect(key).not.toContain(keyA);
+      expect(key).not.toContain(keyB);
+      expect(row.apiKeyMasked).toBe("sk-samep***");
+      expect(row.requests).toBe(1);
+    }
+  });
 });

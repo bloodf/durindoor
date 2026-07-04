@@ -1,7 +1,23 @@
 name: Release
+
+# Two-branch release model:
+#   main → controlled production npm publish (this workflow, on release).
+# Triggered by GitHub Releases cut on the main branch only (operator
+# discipline — `release.yml` is paired with a tag policy that prevents
+# `v*` tags from any other branch; see migration plan §2 tag policy).
+#
+# Why not `npm ci`: the repository intentionally gitignores
+# package-lock.json (`.gitignore` line 63) because the codebase is too
+# large for npm install to be deterministic enough to deserve a lockfile.
+# setup-node v4's `cache: npm` therefore also fails on the same root
+# cause — 'Dependencies lock file is not found'. We use `npm install
+# --no-audit --no-fund` plus no cache, matching `ci.yml` and `test.yml`
+# in this repo.
+
 on:
   release:
     types: [published]
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -10,12 +26,13 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          registry-url: https://registry.npmjs.org
-      - run: npm ci
+          # No `cache: npm` — repo gitignores package-lock.json.
+
+      - run: npm install --no-audit --no-fund
       - run: npm run build
       - run: npm publish --provenance
         env:

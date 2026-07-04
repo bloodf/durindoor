@@ -58,7 +58,6 @@ function queryFirst(db, keys) {
 
 /** Read Cursor auth fields from a known state.vscdb path (sync). */
 export function readCursorLocalAuthSync(dbPath) {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const Database = require("better-sqlite3");
   const db = new Database(dbPath, { readonly: true, fileMustExist: true });
   try {

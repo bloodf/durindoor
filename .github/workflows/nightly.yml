@@ -30,6 +30,17 @@ jobs:
         with:
           ref: dev
           fetch-depth: 1
+          # `persist-credentials: false` keeps the default GITHUB_TOKEN out
+          # of .git/config — `contents: write` alone is enough for
+          # softprops/action-gh-release to publish a tag/release, and we
+          # don't run any further git push from this workflow.
+          persist-credentials: false
+
+      - name: Pin target commit SHA
+        id: pin
+        run: |
+          HEAD_SHA=$(git rev-parse HEAD)
+          echo "head_sha=${HEAD_SHA}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@v4
         with:
@@ -80,15 +91,15 @@ jobs:
           fi
 
       # softprops/action-gh-release creates the tag implicitly from
-      # `tag_name` — no `git push -f`. `target_commitish: dev` pins the
-      # release's commit to the `dev` branch HEAD so daily runs don't get
-      # anchored to whatever branch the default points at.
+      # `tag_name`. `target_commitish` is set to the checked-out SHA so the
+      # release is anchored to an immutable commit (not a moving branch
+      # ref), and the tag/release survives later `dev` history rewrites.
       - name: Publish nightly pre-release
         if: steps.check.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.check.outputs.tag }}
-          target_commitish: dev
+          target_commitish: ${{ steps.pin.outputs.head_sha }}
           name: "Nightly ${{ steps.check.outputs.tag }}"
           generate_release_notes: true
           prerelease: true

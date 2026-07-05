@@ -34,6 +34,12 @@ jobs:
 
       - run: npm install --no-audit --no-fund
       - run: npm run build
+      # npm publish needs a registry auth token. We set both `NPM_TOKEN`
+      # (modern npm, v10+) and `NODE_AUTH_TOKEN` (legacy / older npm) so
+      # the publish step works regardless of which env-var name the
+      # installed npm version prefers. Verified root cause for the v1.0.0
+      # first-publish failure (ENEEDAUTH) in the 2026-07-05 release run.
       - run: npm publish --provenance
         env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

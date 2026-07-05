@@ -247,7 +247,8 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
   } else if (msg.role === ROLE.ASSISTANT) {
     // OpenAI assistant reasoning_content → Claude thinking block. Prepend so it
     // precedes the text/tool_use blocks (Claude requires thinking first).
-    if (typeof msg.reasoning_content === "string" && msg.reasoning_content) {
+    const hasThinkingBlock = Array.isArray(msg.content) && msg.content.some(part => part.type === CLAUDE_BLOCK.THINKING);
+    if (typeof msg.reasoning_content === "string" && msg.reasoning_content && !hasThinkingBlock) {
       blocks.push({ type: CLAUDE_BLOCK.THINKING, thinking: msg.reasoning_content });
     }
     if (Array.isArray(msg.content)) {

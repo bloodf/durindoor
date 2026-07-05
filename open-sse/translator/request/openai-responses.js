@@ -291,6 +291,14 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
 
     // Convert user/assistant messages to input items
     if (msg.role === ROLE.USER || msg.role === ROLE.ASSISTANT) {
+      // Preserve reasoning_content as a reasoning item (before the message)
+      if (msg.role === ROLE.ASSISTANT && msg.reasoning_content) {
+        result.input.push({
+          type: RESPONSES_ITEM.REASONING,
+          summary: [{ type: RESPONSES_ITEM.SUMMARY_TEXT, text: msg.reasoning_content }]
+        });
+      }
+
       const contentType = msg.role === ROLE.USER ? RESPONSES_ITEM.INPUT_TEXT : RESPONSES_ITEM.OUTPUT_TEXT;
       const content = typeof msg.content === "string"
         ? [{ type: contentType, text: msg.content }]

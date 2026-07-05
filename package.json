@@ -1,8 +1,8 @@
 {
   "name": "durindoor",
-  "version": "0.5.18",
+  "version": "1.0.0",
   "description": "DurinDoor AI Gateway",
-  "private": true,
+  "private": false,
   "scripts": {
     "dev": "next dev --webpack --port 20127",
     "build": "next build --webpack",

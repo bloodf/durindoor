@@ -231,8 +231,12 @@ describe("DB SQLite layer — public API parity", () => {
       expect(entries.map((entry) => entry.keyName).sort()).toEqual(["collision-one", "collision-two"]);
       expect(entries.map((entry) => entry.requests).sort()).toEqual([1, 1]);
       expect(new Set(entries.map((entry) => entry.apiKeyMasked)).size).toBe(1);
-      expect(new Set(entries.map((entry) => entry.apiKeyKey)).size).toBe(1);
-      expect(entries.every((entry) => entry.apiKeyKey === entry.apiKeyMasked)).toBe(true);
+      // After port(upstream): #2364 — keep API key stats distinct — the inner
+      // `apiKeyKey` is now derived from the sha256 fingerprint, so two
+      // different keys that share a prefix produce two distinct values
+      // (whereas the masked display `apiKeyMasked` still collides).
+      expect(new Set(entries.map((entry) => entry.apiKeyKey)).size).toBe(2);
+      expect(entries.every((entry) => entry.apiKeyKey !== entry.apiKeyMasked)).toBe(true);
       expect(Object.keys(stats.byApiKey).some((key) => key.includes("sk-c84eb11fa877e0e9"))).toBe(false);
     }
   });

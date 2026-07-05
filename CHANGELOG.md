@@ -1,3 +1,56 @@
+# v1.0.0 (2026-07-04)
+
+First DurinDoor release. Initial fork from `decolua/9router` v0.5.18;
+rebranded display + identity strings preserved for data migration
+(`sk_9router`, `[providers.9router]`, `X-Msh-Platform: 9router`,
+`~/.9router/` data dir, `STORAGE_KEY`, `CLI_TOKEN_SALT`,
+`custom:9Router-*`).
+
+## Highlights
+
+- **Two-branch release model**: `dev` is the default branch (nightly
+  pre-releases), `main` only receives human-merged controlled releases.
+  `.github/workflows/nightly.yml` cuts an idempotent
+  `nightly-YYYY-MM-DD` tag daily 02:00 UTC, marked `prerelease: true`
+  and `make_latest: false`, anchored to a pinned commit SHA so future
+  `dev` history rewrites cannot re-anchor existing releases.
+- **Rebrand**: package name `durindoor`, UI rebrand to a LOTR
+  green/gold palette, traffic-light chrome removed,
+  `NineRemoteButton` / `NineRemotePromoModal` deleted, 9Remote- and
+  9router-only upstream changes not absorbed.
+- **CI/CD reorg**: emoji-named jobs/steps (✅ CI, ✨ Lint & Build, 🧪
+  Tests). `npm run lint` (scoped to `src/`) green with documented
+  warnings. `npm run test:ci` exits 0 against
+  `tests/__baseline__/known-fails.txt`. Release workflow hardened for
+  the no-`package-lock.json` reality.
+- **Upstream ports** (auto-ported via `durindoor-port-pr.sh`):
+  #2364 usage-stats API-key collision fix (sha256 fingerprint bucket),
+  #2373 NVIDIA NIM chat-model catalog expansion.
+- **OAuth secrets scrubbed**: `GEMINI_OAUTH_CLIENT_ID`,
+  `ANTIGRAVITY_OAUTH_CLIENT_ID` moved from source to env vars.
+- **Firecrawl URL**: DB setting > env var > default priority chain
+  (`open-sse/handlers/fetch/index.js`), tests for self-hosted in
+  `tests/unit/firecrawl-selfhosted.test.js`.
+
+## Fixes
+
+- **CI (`ci.yml`, `release.yml`, `nightly.yml`, `docker-publish.yml`)**:
+  switched `npm ci` → `npm install --no-audit --no-fund` (repo gitignores
+  `package-lock.json`, line 63 of `.gitignore`); removed `cache: npm`
+  from setup-node; added `persist-credentials: false` to checkout;
+  pinned `target_commitish` to the checked-out SHA. CI scope narrowed to
+  `install + lint + build`; tests moved to `test.yml` with a
+  no-regression gate. `docker-publish.yml` dropped Docker Hub
+  (GHCR-only on `v*` tags).
+
+## Breaking Changes
+
+- **Two-branch release model**: `dev` is now the default branch; nightly
+  pre-releases tag from `dev`; `main` only receives human-merged
+  controlled releases. Self-hosted operators tracking the old default
+  branch should switch to `dev` for nightly updates and treat `main`
+  as stable-only.
+
 # v0.5.18 (2026-07-03)
 
 ## Features

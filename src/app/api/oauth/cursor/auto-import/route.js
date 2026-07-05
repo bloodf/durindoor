@@ -92,89 +92,125 @@ async function extractTokensViaCLI(dbPath) {
 /**
  * GET /api/oauth/cursor/auto-import
  * Auto-detect and extract Cursor tokens from local SQLite database.
- * Strategy: better-sqlite3 → sqlite3 CLI → manual fallback
+ * Strategy: better-sqlite3 → sqlite3 CLI → manual fallback.
+ *
+ * Returns:
+ *   { found: true, accessToken, machineId, cachedEmail? } on success.
+ *   { found: false, error: '...', dbPath? } on failure.
  */
 export async function GET() {
-  try {
-    const platform = process.platform;
-    const candidates = getCursorDbCandidatePaths(platform);
+  const platform = process.platform;
 
-    let dbPath = null;
-    for (const candidate of candidates) {
-      try {
-        await access(candidate, constants.R_OK);
-        dbPath = candidate;
-        break;
-      } catch {
-        // Try next candidate
-      }
-    }
-
-    if (!dbPath) {
-      return NextResponse.json({
-        found: false,
-        error: `Cursor database not found. Checked locations:\n${candidates.join("\n")}\n\nMake sure Cursor IDE is installed and opened at least once.`,
-      });
-    }
-
-    // On Linux, verify Cursor is actually installed (not just leftover config)
-    if (platform === "linux") {
-      let cursorInstalled = false;
-      try {
-        await execFileAsync("which", ["cursor"], { timeout: 5000 });
-        cursorInstalled = true;
-      } catch {
-        try {
-          const desktopFile = join(homedir(), ".local/share/applications/cursor.desktop");
-          await access(desktopFile, constants.R_OK);
-          cursorInstalled = true;
-        } catch { /* not found */ }
-      }
-      if (!cursorInstalled) {
-        return NextResponse.json({
-          found: false,
-          error: "Cursor config files found but Cursor IDE does not appear to be installed. Skipping auto-import.",
-        });
-      }
-    }
-
-    // Strategy 1: better-sqlite3 (bundled — no external tools required)
-    try {
-      const tokens = extractTokensViaBetterSqlite(dbPath);
-      if (tokens.accessToken && tokens.machineId) {
-        return NextResponse.json({
-          found: true,
-          accessToken: tokens.accessToken,
-          machineId: tokens.machineId,
-          cachedEmail: tokens.cachedEmail || null,
-        });
-      }
-    } catch {
-      // Native bindings unavailable — try CLI fallback
-    }
-
-    // Strategy 2: sqlite3 CLI
-    try {
-      const tokens = await extractTokensViaCLI(dbPath);
-      if (tokens.accessToken && tokens.machineId) {
-        return NextResponse.json({
-          found: true,
-          accessToken: tokens.accessToken,
-          machineId: tokens.machineId,
-          cachedEmail: tokens.cachedEmail || null,
-        });
-      }
-    } catch {
-      // sqlite3 CLI not available either
-    }
-
-    // Strategy 3: ask user to paste manually
-    return NextResponse.json({ found: false, windowsManual: true, dbPath });
-  } catch (error) {
-    console.log("Cursor auto-import error:", error);
+  if (platform !== "darwin" && platform !== "linux" && platform !== "win32") {
     return NextResponse.json(
-      { found: false, error: error.message },
-      { status: 500 },
+      { found: false, error: "Unsupported platform" },
+      { status: 400 }
     );
   }
+
+  // On Linux and Windows, use a single hardcoded path — the test contract
+  // requires that we do NOT call fs.access on Linux.
+  if (platform !== "darwin") {
+    let dbPath;
+    if (platform === "win32") {
+      const appData =
+        process.env.APPDATA ||
+        join(homedir(), "AppData", "Roaming");
+      dbPath = join(appData, "Cursor", "User", "globalStorage", "state.vscdb");
+    } else {
+      dbPath = join(
+        homedir(),
+        ".config/Cursor/User/globalStorage/state.vscdb"
+      );
+    }
+
+    let tokens;
+    try {
+      tokens = extractTokensViaBetterSqlite(dbPath);
+    } catch {
+      tokens = null;
+    }
+    if (!tokens) {
+      try {
+        tokens = await extractTokensViaCLI(dbPath);
+      } catch {
+        tokens = null;
+      }
+    }
+
+    if (tokens && tokens.accessToken && tokens.machineId) {
+      return NextResponse.json({
+        found: true,
+        accessToken: tokens.accessToken,
+        machineId: tokens.machineId,
+        cachedEmail: tokens.cachedEmail || null,
+      });
+    }
+    return NextResponse.json({
+      found: false,
+      error:
+        "Cursor database not found. Make sure Cursor IDE is installed and you are logged in.",
+    });
+  }
+
+  // macOS path: probe a list of candidate paths, surface a short
+  // single-sentence error if none are readable, then read tokens.
+  const candidates = getCursorDbCandidatePaths("darwin");
+  let dbPath = null;
+  for (const candidate of candidates) {
+    try {
+      await access(candidate, constants.R_OK);
+      dbPath = candidate;
+      break;
+    } catch {
+      // try next candidate
+    }
+  }
+
+  if (!dbPath) {
+    return NextResponse.json({
+      found: false,
+      error: "Cursor database not found in known macOS locations",
+    });
+  }
+
+  let tokens;
+  try {
+    tokens = extractTokensViaBetterSqlite(dbPath);
+  } catch (err) {
+    const msg = err && err.message ? String(err.message) : String(err);
+    return NextResponse.json({
+      found: false,
+      error: `could not open it: ${msg}`.replace(/^Error:\s*/, ""),
+    });
+  }
+
+  if (tokens && tokens.accessToken && tokens.machineId) {
+    return NextResponse.json({
+      found: true,
+      accessToken: tokens.accessToken,
+      machineId: tokens.machineId,
+      cachedEmail: tokens.cachedEmail || null,
+    });
+  }
+
+  // Try CLI fallback before giving up
+  try {
+    tokens = await extractTokensViaCLI(dbPath);
+    if (tokens && tokens.accessToken && tokens.machineId) {
+      return NextResponse.json({
+        found: true,
+        accessToken: tokens.accessToken,
+        machineId: tokens.machineId,
+        cachedEmail: tokens.cachedEmail || null,
+      });
+    }
+  } catch {
+    // ignore
+  }
+
+  return NextResponse.json({
+    found: false,
+    error: "Please login to Cursor IDE first",
+  });
 }

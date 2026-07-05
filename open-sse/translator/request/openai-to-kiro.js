@@ -279,29 +279,9 @@ function convertMessages(messages, tools, model) {
     let msg = messages[i];
     let role = msg.role;
 
-    // Normalize: system -> user (with <system-reminder> wrapper to mark provenance)
-    // tool -> user (raw content, no wrapper — tool output is already structured)
-    if (role === ROLE.SYSTEM) {
-      role = ROLE.USER;
-      // Wrap in <system-reminder> so the model can distinguish injected system
-      // instructions from actual user input (#2306 — without this the full Claude Code
-      // system prompt appears as raw user text, leaking context and wasting tokens).
-      const extractText = (content) => {
-        if (typeof content === "string") return content;
-        if (Array.isArray(content)) {
-          return content
-            .filter(c => c.type === OPENAI_BLOCK.TEXT || c.text)
-            .map(c => c.text || "")
-            .filter(Boolean)
-            .join("\n");
-        }
-        return "";
-      };
-      const rawText = extractText(msg.content);
-      if (rawText) {
-        msg = { ...msg, content: `<system-reminder>\n${rawText}\n</system-reminder>` };
-      }
-    } else if (role === ROLE.TOOL) {
+    // Normalize: system/tool -> user
+    const wasSystem = role === ROLE.SYSTEM;
+    if (role === ROLE.SYSTEM || role === ROLE.TOOL) {
       role = ROLE.USER;
     }
 
@@ -369,7 +349,10 @@ function convertMessages(messages, tools, model) {
           content: [{ text: toolContent }]
         });
       } else if (content) {
-        pendingUserContent.push(content);
+        // <instructions> tags: Claude models treat these as authoritative directives.
+        pendingUserContent.push(
+          wasSystem ? `<instructions>\n${content}\n</instructions>` : content
+        );
       }
     } else if (role === ROLE.ASSISTANT) {
       // Extract text content and tool uses

@@ -12,6 +12,10 @@ import { getKiroUsage } from "./usage/kiro.js";
 import { getMiniMaxUsage } from "./usage/minimax.js";
 import { getCodeBuddyCnUsage } from "./usage/codebuddy-cn.js";
 import { getCursorUsage } from "./usage/cursor.js";
+
+import { join } from "path";
+import Database from "better-sqlite3";
+
 import {
   getQwenUsage,
   getIflowUsage,
@@ -20,6 +24,63 @@ import {
   getVercelAiGatewayUsage,
   getQoderUsage,
 } from "./usage/misc.js";
+
+/**
+ * xAI (Grok) has no public usage/quotas API, so derive totals from the
+ * local `usageHistory` table seeded by the per-request accounting path.
+ * Per-model `used` plus an aggregate `Total tokens (30d)` and
+ * `Total spend (30d)` are emitted (last-30-days cutoff). No rows ->
+ * graceful "No requests recorded." message.
+ */
+function getXaiUsageFromHistory(connection) {
+  const dataDir = process.env.DATA_DIR;
+  if (!dataDir) return { message: "No requests recorded.", quotas: {} };
+  const dbPath = join(dataDir, "db", "data.sqlite");
+  let db;
+  try {
+    db = new Database(dbPath, { readonly: true, fileMustExist: true });
+  } catch {
+    return { message: "No requests recorded.", quotas: {} };
+  }
+  try {
+    const connId = connection && connection.id ? connection.id : null;
+    const cutoff = new Date(Date.now() - 30 * 86400 * 1000).toISOString();
+    const params = { cutoff };
+    const conditions = ["provider = 'xai'", "timestamp >= @cutoff"];
+    if (connId) {
+      conditions.push("connectionId = @connId");
+      params.connId = connId;
+    }
+    const whereSql = conditions.join(" AND ");
+    const perModel = db
+      .prepare(
+        `SELECT model,
+                COALESCE(SUM(promptTokens), 0) + COALESCE(SUM(completionTokens), 0) AS used_tokens,
+                COALESCE(SUM(cost), 0) AS used_spend
+         FROM usageHistory
+         WHERE ${whereSql}
+         GROUP BY model`
+      )
+      .all(params);
+    if (!perModel.length) {
+      return { message: "No requests recorded.", quotas: {} };
+    }
+    const quotas = {};
+    let totalTokens = 0;
+    let totalSpend = 0;
+    for (const row of perModel) {
+      const usedTokens = (row.used_tokens | 0);
+      quotas[`${row.model} (30d)`] = { used: usedTokens };
+      totalTokens += usedTokens;
+      totalSpend += Number(row.used_spend);
+    }
+    quotas["Total tokens (30d)"] = { used: totalTokens };
+    quotas["Total spend (30d)"] = { used: totalSpend };
+    return { plan: "xAI / Grok Build", quotas };
+  } finally {
+    try { db.close(); } catch { /* ignore */ }
+  }
+}
 
 /**
  * Get usage data for a provider connection
@@ -45,10 +106,11 @@ const USAGE_HANDLERS = {
   "vercel-ai-gateway": (c) => getVercelAiGatewayUsage(c.apiKey, c.proxyOptions),
   "codebuddy-cn": (c) => getCodeBuddyCnUsage(c.accessToken, c.apiKey, c.providerSpecificData, c.proxyOptions),
   cursor: (c) => getCursorUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
+  xai: (c) => getXaiUsageFromHistory(c),
 };
 
 export async function getUsageForProvider(connection, proxyOptions = null) {
-  const { provider, accessToken, apiKey, providerSpecificData, projectId } = connection;
+  const { id, provider, accessToken, apiKey, providerSpecificData, projectId } = connection;
   const providerDataWithProjectId = {
     ...(providerSpecificData || {}),
     ...(projectId ? { projectId } : {}),
@@ -56,5 +118,5 @@ export async function getUsageForProvider(connection, proxyOptions = null) {
 
   const handler = USAGE_HANDLERS[provider];
   if (!handler) return { message: `Usage API not implemented for ${provider}` };
-  return await handler({ provider, accessToken, apiKey, providerSpecificData, providerDataWithProjectId, proxyOptions });
+  return await handler({ id, provider, accessToken, apiKey, providerSpecificData, providerDataWithProjectId, proxyOptions });
 }

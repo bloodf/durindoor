@@ -14,12 +14,6 @@ tests/unit/kiro-profile-arn-regional.test.js :: fetchKiroProfileArn — regional
 tests/unit/kiro-profile-arn-regional.test.js :: fetchKiroProfileArn — regional endpoint + dispatch shape falls back to the first profile when no ARN matches the region
 tests/unit/kiro-profile-arn-regional.test.js :: fetchKiroProfileArn — regional endpoint + dispatch shape hits codewhisperer.<region>.amazonaws.com with x-amz-target dispatch
 tests/unit/kiro-profile-arn-regional.test.js :: fetchKiroProfileArn — regional endpoint + dispatch shape prefers the profile whose ARN region matches the caller region
-tests/unit/kiro-region.test.js :: KiroExecutor.buildUrl region routing routes to the regional Amazon Q endpoint for a non-default region
-tests/unit/kiro-region.test.js :: fetchKiroProfileArn region host queries the regional Amazon Q host for a non-default region
-tests/unit/kiro-region.test.js :: fetchKiroProfileArn region host queries us-east-1 codewhisperer by default
-tests/unit/kiro-region.test.js :: kiro region helpers defaults to us-east-1 and trims input
-tests/unit/kiro-region.test.js :: kiro region helpers resolves the control-plane host per region
-tests/unit/kiro-region.test.js :: kiro region helpers returns the regional Amazon Q data-plane URL for other regions
 tests/unit/openai-to-kiro.test.js :: openaiToKiroRequest basic message conversion should convert a simple text message
 tests/unit/translator-request-normalization.test.js :: request normalization claudeToOpenAIRequest flattens text-only content arrays into string
 tests/unit/translator-request-normalization.test.js :: request normalization filterToOpenAIFormat flattens text-only arrays to string

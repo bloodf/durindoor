@@ -1,3 +1,11 @@
+# v1.0.2 (2026-07-06)
+
+## Features
+
+- Port OmniRoute provider infrastructure for CLIProxyAPI routing overrides,
+  provider manifest sidecar metadata, and Cliproxy model mapping during proxy
+  dispatch.
+
 # v1.0.1 (2026-07-06)
 
 ## Features

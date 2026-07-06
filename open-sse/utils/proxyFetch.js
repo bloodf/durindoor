@@ -4,6 +4,7 @@ import { dbg } from "./debugLog.js";
 
 const originalFetch = globalThis.fetch;
 const proxyDispatchers = new Map();
+let directDispatcher = null;
 
 // ─── TLS fingerprinting via got-scraping (browser-like JA3) ───────────────
 // Disabled: not in use. Kept commented for future re-enable.
@@ -379,6 +380,27 @@ async function getDispatcher(proxyUrl) {
   return proxyDispatchers.get(normalized);
 }
 
+export function getDirectDispatcherOptionsForTest() {
+  return {
+    connect: {
+      autoSelectFamily: true,
+      autoSelectFamilyAttemptTimeout: 1000,
+    },
+  };
+}
+
+async function getDirectDispatcher() {
+  if (directDispatcher) return directDispatcher;
+  const { Agent } = await import("undici");
+  directDispatcher = new Agent(getDirectDispatcherOptionsForTest());
+  return directDispatcher;
+}
+
+async function directFetch(url, options) {
+  const dispatcher = await getDirectDispatcher();
+  return originalFetch(url, { ...options, dispatcher });
+}
+
 /**
  * Create HTTPS request with manual socket connection (bypass DNS)
  */
@@ -489,13 +511,13 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
         throw new Error(`[ProxyFetch] Proxy required but failed (strictProxy=true): ${proxyError.message}`);
       }
       console.warn(`[ProxyFetch] Proxy failed, falling back to direct: ${proxyError.message}`);
-      return originalFetch(url, options);
+      return directFetch(url, options);
     }
   }
 
-  // got-scraping disabled — use native fetch directly
+  // got-scraping disabled — use undici direct egress with Happy Eyeballs.
   // (Re-enable per-host by wrapping with tryGotScrapingFetch when needed)
-  return originalFetch(url, options);
+  return directFetch(url, options);
 }
 
 /**

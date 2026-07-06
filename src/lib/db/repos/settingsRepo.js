@@ -56,6 +56,10 @@ const DEFAULT_SETTINGS = {
   // Per-provider concurrency limits: { "umans": 4, "openai": 2 }
   // 0 or missing = unlimited. Limits concurrent in-flight upstream requests.
   providerConcurrencyLimits: {},
+  // Optional upstream routing overrides. Shape:
+  // { [providerId]: { enabled, mode: "native"|"cliproxyapi"|"fallback", cliproxyapiModelMapping } }
+  upstreamProxyConfig: {},
+  cliproxyapi_fallback_codes: "429,500,502,503,504",
 };
 
 async function readRaw() {

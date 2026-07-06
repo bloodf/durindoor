@@ -20,6 +20,7 @@ import { XiaomiTokenplanExecutor } from "./xiaomi-tokenplan.js";
 import { MimoFreeExecutor } from "./mimo-free.js";
 import { CodeBuddyExecutor } from "./codebuddy-cn.js";
 import { XaiExecutor } from "./xai.js";
+import { CliproxyapiExecutor } from "./cliproxyapi.js";
 import { DefaultExecutor } from "./default.js";
 
 const executors = {
@@ -48,6 +49,7 @@ const executors = {
   mmf: new MimoFreeExecutor(), // Alias for mimo-free
   "codebuddy-cn": new CodeBuddyExecutor(),
   xai: new XaiExecutor(),
+  cliproxyapi: new CliproxyapiExecutor(),
 };
 
 const defaultCache = new Map();
@@ -86,3 +88,4 @@ export { XiaomiTokenplanExecutor } from "./xiaomi-tokenplan.js";
 export { MimoFreeExecutor } from "./mimo-free.js";
 export { CodeBuddyExecutor } from "./codebuddy-cn.js";
 export { XaiExecutor } from "./xai.js";
+export { CliproxyapiExecutor } from "./cliproxyapi.js";

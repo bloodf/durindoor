@@ -35,6 +35,18 @@ function isBlacklisted(url) {
   return LOG_BLACKLIST_URL_PARTS.some(part => url.includes(part));
 }
 
+function maskSecret(value) {
+  if (typeof value !== "string") return value;
+  return value
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
+    .replace(/sk-[A-Za-z0-9._-]{8,}/g, "sk-[REDACTED]")
+    .replace(/[A-Za-z0-9._~+/=-]{40,}/g, "[REDACTED]");
+}
+
+function sanitizeHeadersLazy(headers) {
+  return require("./sanitizeHeaders").sanitizeHeaders(headers);
+}
+
 // Decode body buffer based on content-encoding header
 function decodeBody(buf, encoding) {
   if (!buf || buf.length === 0) return buf;
@@ -60,7 +72,7 @@ function dumpRequest(req, bodyBuffer, tag = "raw") {
       method: req.method,
       url: req.url,
       host: req.headers.host,
-      headers: req.headers,
+      headers: sanitizeHeadersLazy(req.headers),
       body: parsed ?? bodyBuffer.toString("utf8")
     }, null, 2));
     return file;
@@ -95,7 +107,7 @@ function createResponseDumper(req, tag = "raw") {
         const cleanHeaders = { ...headers };
         delete cleanHeaders["content-encoding"];
         delete cleanHeaders["Content-Encoding"];
-        const out = `STATUS: ${status}\nHEADERS: ${JSON.stringify(cleanHeaders, null, 2)}\n---BODY---\n${text}`;
+        const out = `STATUS: ${status}\nHEADERS: ${JSON.stringify(sanitizeHeadersLazy(cleanHeaders), null, 2)}\n---BODY---\n${text}`;
         fs.writeFileSync(file, out);
       } catch { /* ignore */ }
     },
@@ -103,4 +115,4 @@ function createResponseDumper(req, tag = "raw") {
   };
 }
 
-module.exports = { log, err, dumpRequest, createResponseDumper, clearDumpDir };
+module.exports = { log, err, dumpRequest, createResponseDumper, clearDumpDir, maskSecret };

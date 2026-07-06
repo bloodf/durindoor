@@ -11,11 +11,15 @@ DurinDoor is a self-hosted AI Gateway that unifies multiple LLM providers behind
 
 ## Compatibility
 
-DurinDoor preserves 9router wire-format identifiers for data migration:
-- `sk_9router` API key prefix
-- `[providers.9router]` config sections
-- `X-Msh-Platform: 9router` header
-- `~/.9router/` data directory
+Default everywhere is **DurinDoor** (display) / **durindoor** (lowercase IDs).
+
+The server accepts legacy 9router identifiers **at the runtime boundary only**, for read-only support of existing user installs:
+- API key prefix `sk_9router-*` (existing keys continue to work; new keys are minted as `sk_durindoor-*`)
+- Provider section labels `9router` in incoming CLI tool configs
+- HTTP request header `X-Msh-Platform: 9router`
+- Data directory `~/.9router/`
+
+A one-shot cutover script ships as `scripts/migrate-from-9router.mjs` (idempotent; backup-before-any-move; never rewrites API key secrets).
 
 ## Build
 

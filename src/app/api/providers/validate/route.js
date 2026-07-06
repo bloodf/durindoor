@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getProviderNodeById } from "@/models";
-import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider, AI_PROVIDERS } from "@/shared/constants/providers";
+import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider, AI_PROVIDERS, WEB_COOKIE_PROVIDERS } from "@/shared/constants/providers";
 import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, resolveXiaomiTokenplanBaseUrl, PROVIDERS } from "open-sse/config/providers.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
@@ -80,6 +80,14 @@ async function probeMediaProvider(provider, apiKey) {
     signal: AbortSignal.timeout(8000),
   });
   return res.status !== 401 && res.status !== 403;
+}
+
+function joinValidationPath(baseUrl, path) {
+  try {
+    return new URL(path, new URL(baseUrl).origin).toString();
+  } catch {
+    return "";
+  }
 }
 
 // POST /api/providers/validate - Validate API key with provider
@@ -692,6 +700,22 @@ export async function POST(request) {
           // Generic probe for OpenAI-compatible providers (config-driven from PROVIDERS)
           const cfg = PROVIDERS[provider];
           if (!cfg || cfg.format !== "openai" || !cfg.baseUrl) {
+            const cookieProvider = WEB_COOKIE_PROVIDERS[provider];
+            const fallbackBaseUrl = typeof cookieProvider?.website === "string" ? cookieProvider.website.trim() : "";
+            const testUrl = fallbackBaseUrl ? joinValidationPath(fallbackBaseUrl, "models") : "";
+            if (testUrl) {
+              const res = await fetch(testUrl, {
+                method: "GET",
+                headers: {
+                  "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+                  Cookie: apiKey,
+                },
+                signal: AbortSignal.timeout(10000),
+              });
+              isValid = res.status !== 401 && res.status !== 403;
+              error = isValid ? null : "Invalid or expired web-session cookie";
+              break;
+            }
             return NextResponse.json({ error: "Provider validation not supported" }, { status: 400 });
           }
           if (cfg.noAuth) {

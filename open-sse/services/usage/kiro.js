@@ -3,7 +3,7 @@
  */
 
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
-import { resolveDefaultProfileArn, resolveKiroRegion, resolveKiroControlPlaneHost, KIRO_DEFAULT_REGION } from "../../config/kiroConstants.js";
+import { resolveDefaultProfileArn, resolveKiroControlPlaneHost, resolveKiroRuntimeRegion, KIRO_DEFAULT_REGION } from "../../config/kiroConstants.js";
 import { U, parseResetTime } from "./shared.js";
 
 /**
@@ -75,9 +75,10 @@ export async function getKiroUsage(accessToken, providerSpecificData, proxyOptio
   // Region-aware usage hosts. us-east-1 keeps the historical codewhisperer/q
   // hosts from the registry; other regions (IdC accounts) use the regional
   // Amazon Q host so the GetUsageLimits call isn't rejected with 403.
-  const isDefaultRegion = resolveKiroRegion(providerSpecificData?.region) === KIRO_DEFAULT_REGION;
-  const cwHost = isDefaultRegion ? U("kiro").cwHost : resolveKiroControlPlaneHost(providerSpecificData?.region);
-  const qHost = isDefaultRegion ? U("kiro").qHost : resolveKiroControlPlaneHost(providerSpecificData?.region);
+  const runtimeRegion = resolveKiroRuntimeRegion({ ...providerSpecificData, profileArn });
+  const isDefaultRegion = runtimeRegion === KIRO_DEFAULT_REGION;
+  const cwHost = isDefaultRegion ? U("kiro").cwHost : resolveKiroControlPlaneHost(runtimeRegion);
+  const qHost = isDefaultRegion ? U("kiro").qHost : resolveKiroControlPlaneHost(runtimeRegion);
   const limitsPath = U("kiro").limitsPath;
 
   // For compatibility, try multiple known Kiro usage endpoints

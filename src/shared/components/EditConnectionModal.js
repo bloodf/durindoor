@@ -8,6 +8,7 @@ import Button from "@/shared/components/Button";
 import Badge from "@/shared/components/Badge";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import Select from "@/shared/components/Select";
+import { applyM365Tier, isM365TierCapableProvider, normalizeM365TierValue } from "@/shared/utils/m365Tier";
 
 export default function EditConnectionModal({ isOpen, connection, proxyPools, onSave, onClose }) {
   const [formData, setFormData] = useState({
@@ -23,6 +24,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   });
   const [cloudflareData, setCloudflareData] = useState({ accountId: "" });
   const [region, setRegion] = useState("");
+  const [m365Tier, setM365Tier] = useState("");
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [validating, setValidating] = useState(false);
@@ -54,6 +56,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         const savedRegion = connection.providerSpecificData?.region || providerCfg.defaultRegion || providerCfg.regions[0]?.id || "";
         setRegion(savedRegion);
       }
+      setM365Tier(normalizeM365TierValue(connection.providerSpecificData?.tier));
       setTestResult(null);
       setValidationResult(null);
     }
@@ -66,10 +69,16 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
     ? (isOpenAICompatibleProvider(connection.provider) || isAnthropicCompatibleProvider(connection.provider))
     : false;
   const providerRegions = connection ? (AI_PROVIDERS?.[connection.provider]?.regions || null) : null;
+  const isM365TierCapable = isM365TierCapableProvider(connection?.provider);
 
   // Build providerSpecificData for region-aware providers
   const buildRegionSpecificData = () => {
     if (providerRegions && region) return { ...((connection?.providerSpecificData) || {}), region };
+    if (isM365TierCapable) {
+      const data = { ...((connection?.providerSpecificData) || {}) };
+      applyM365Tier(data, m365Tier);
+      return data;
+    }
     return undefined;
   };
 
@@ -169,6 +178,9 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       }
       // Persist updated region for region-aware providers
       if (providerRegions && region) {
+        updates.providerSpecificData = buildRegionSpecificData();
+      }
+      if (isM365TierCapable) {
         updates.providerSpecificData = buildRegionSpecificData();
       }
       
@@ -273,6 +285,19 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
           />
         )}
 
+        {isM365TierCapable && (
+          <Select
+            label="Copilot tier"
+            value={m365Tier}
+            onChange={(e) => setM365Tier(e.target.value)}
+            options={[
+              { value: "", label: "Individual (default)" },
+              { value: "edu", label: "Education" },
+              { value: "enterprise", label: "Enterprise / Work" },
+            ]}
+          />
+        )}
+
         {!isCompatible && !isAzure && !isCloudflareAi && (
           <div className="flex items-center gap-3">
             <Button onClick={handleTest} variant="secondary" disabled={testing}>
@@ -313,4 +338,3 @@ EditConnectionModal.propTypes = {
   onSave: PropTypes.func.isRequired,
   onClose: PropTypes.func.isRequired,
 };
-

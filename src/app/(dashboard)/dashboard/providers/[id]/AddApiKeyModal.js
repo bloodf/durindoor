@@ -1,16 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import PropTypes from "prop-types";
 import { Button, Badge, Input, Modal, Select } from "@/shared/components";
-import { AI_PROVIDERS } from "@/shared/constants/providers";
+import { AI_PROVIDERS, resolveWebProviderHost } from "@/shared/constants/providers";
+import { computeDefaultConnectionName } from "@/shared/utils/connectionNames";
+import { applyM365Tier, isM365TierCapableProvider } from "@/shared/utils/m365Tier";
 
 const BULK_PLACEHOLDER = `name1|sk-key1\nname2|sk-key2\nsk-key-only-auto-named`;
 
-export default function AddApiKeyModal({ isOpen, provider, providerName, isCompatible, isAnthropic, authType, authHint, website, proxyPools, error, onSave, onBulkDone, onClose }) {
+export default function AddApiKeyModal({ isOpen, provider, providerName, existingConnectionCount = 0, isCompatible, isAnthropic, authType, authHint, website, proxyPools, error, onSave, onBulkDone, onClose }) {
   const NONE_PROXY_POOL_VALUE = "__none__";
   const isOllamaLocal = provider === "ollama-local";
   const isCookie = authType === "cookie";
+  const webProviderHostLink = isCookie
+    ? resolveWebProviderHost(provider, AI_PROVIDERS?.[provider]?.baseUrl)
+    : null;
   const isXaiApiKey = provider === "xai" && !isCookie;
   const credentialLabel = isCookie ? "Cookie Value" : "API Key";
   const credentialPlaceholder = isCookie
@@ -21,9 +26,11 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const isCloudflareAi = provider === "cloudflare-ai";
   const providerRegions = AI_PROVIDERS?.[provider]?.regions || null;
   const defaultRegion = AI_PROVIDERS?.[provider]?.defaultRegion || providerRegions?.[0]?.id || "";
+  const defaultConnectionName = computeDefaultConnectionName(existingConnectionCount);
+  const isM365TierCapable = isM365TierCapableProvider(provider);
 
   const [formData, setFormData] = useState({
-    name: "",
+    name: defaultConnectionName,
     apiKey: "",
     defaultModel: "",
     priority: 1,
@@ -38,12 +45,31 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   });
   const [cloudflareData, setCloudflareData] = useState({ accountId: "" });
   const [region, setRegion] = useState(defaultRegion);
+  const [m365Tier, setM365Tier] = useState("");
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
   const [saving, setSaving] = useState(false);
   const [mode, setMode] = useState("single"); // "single" | "bulk"
   const [bulkText, setBulkText] = useState("");
   const [bulkResult, setBulkResult] = useState(null); // { success, failed }
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setFormData({
+      name: computeDefaultConnectionName(existingConnectionCount),
+      apiKey: "",
+      defaultModel: "",
+      priority: 1,
+      proxyPoolId: NONE_PROXY_POOL_VALUE,
+      ollamaHostUrl: "",
+    });
+    setRegion(defaultRegion);
+    setM365Tier("");
+    setValidationResult(null);
+    setBulkText("");
+    setBulkResult(null);
+    setMode("single");
+  }, [isOpen, existingConnectionCount, defaultRegion]);
 
   const buildProviderSpecificData = () => {
     if (isOllamaLocal && formData.ollamaHostUrl.trim()) {
@@ -62,6 +88,11 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     }
     if (providerRegions && region) {
       return { region };
+    }
+    if (isM365TierCapable) {
+      const data = {};
+      applyM365Tier(data, m365Tier);
+      return data;
     }
     return undefined;
   };
@@ -234,10 +265,21 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
             Use a direct xAI API key from console.x.ai. This is separate from Grok Build OAuth.
           </p>
         )}
+        {webProviderHostLink && (
+          <a
+            href={webProviderHostLink.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/20"
+          >
+            <span className="material-symbols-outlined text-[18px]" aria-hidden="true">open_in_new</span>
+            Open {webProviderHostLink.host}
+          </a>
+        )}
         {isCookie && authHint && (
           <p className="text-xs text-text-muted">
             {authHint}
-            {website && (
+            {website && !webProviderHostLink && (
               <>
                 {" "}
                 <a href={website} target="_blank" rel="noopener noreferrer" className="text-primary underline">
@@ -253,6 +295,18 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
             value={region}
             onChange={(e) => setRegion(e.target.value)}
             options={providerRegions.map((r) => ({ value: r.id, label: r.label }))}
+          />
+        )}
+        {isM365TierCapable && (
+          <Select
+            label="Copilot tier"
+            value={m365Tier}
+            onChange={(e) => setM365Tier(e.target.value)}
+            options={[
+              { value: "", label: "Individual (default)" },
+              { value: "edu", label: "Education" },
+              { value: "enterprise", label: "Enterprise / Work" },
+            ]}
           />
         )}
         {isCompatible && (
@@ -373,6 +427,7 @@ AddApiKeyModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
   provider: PropTypes.string,
   providerName: PropTypes.string,
+  existingConnectionCount: PropTypes.number,
   isCompatible: PropTypes.bool,
   isAnthropic: PropTypes.bool,
   authType: PropTypes.string,

@@ -57,6 +57,12 @@ export function gitLog(text, maxLines = GIT_LOG_MAX_LINES) {
         pushLine("  " + graphStripped);
         continue;
       }
+      // file-level stat rows from `git log --stat` / `--numstat`:
+      // "src/a.js | 3 ++" or "4\t0\tsrc/a.js".
+      if (isStatFileLine(graphStripped)) {
+        pushLine("  " + graphStripped);
+        continue;
+      }
       // name-only / name-status entries: "src/a.js" or "M\tsrc/a.js"
       if (isNameOnlyPath(graphStripped) || isNameStatusLine(graphStripped)) {
         pushLine("  " + graphStripped);
@@ -105,6 +111,11 @@ export function gitLog(text, maxLines = GIT_LOG_MAX_LINES) {
 
 function isNameStatusLine(line) {
   return /^(?:[ACDMRTUXB]|\?\?|!!)(?:\d+)?\s+\S/.test(line);
+}
+
+function isStatFileLine(line) {
+  if (/^(?:\d+|-)\t(?:\d+|-)\t\S/.test(line)) return true;
+  return /^.+\s+\|\s+(?:\d+(?:\s+[+\-]+)?|Bin\s+\d+\s+->\s+\d+\s+bytes)$/.test(line);
 }
 
 function isNameOnlyPath(line) {

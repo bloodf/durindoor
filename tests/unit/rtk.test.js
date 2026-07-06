@@ -262,6 +262,55 @@ describe("gitLog filter", () => {
     expect(out).toContain("4 files changed, 20 insertions(+), 2 deletions(-)");
   });
 
+  it("keeps git log --stat file-level rows", () => {
+    const input = [
+      "commit abc1234def5678abc1234def5678abc1234def5",
+      "Author: Dev One <dev1@example.com>",
+      "Date:   Sun Jul 6 10:00:00 2026 +0700",
+      "",
+      "    Fix typo",
+      "",
+      " src/main.js | 3 ++-",
+      " assets/logo.png | Bin 0 -> 123 bytes",
+      " 2 files changed, 2 insertions(+), 1 deletion(-)",
+    ].join("\n");
+    const out = gitLog(input);
+    expect(out).toContain("src/main.js | 3 ++-");
+    expect(out).toContain("assets/logo.png | Bin 0 -> 123 bytes");
+    expect(out).toContain("2 files changed, 2 insertions(+), 1 deletion(-)");
+  });
+
+  it("keeps graph-prefixed git log --stat file-level rows", () => {
+    const input = [
+      "commit abc1234def5678abc1234def5678abc1234def5",
+      "Author: Dev One <dev1@example.com>",
+      "Date:   Sun Jul 6 10:00:00 2026 +0700",
+      "",
+      "    Fix typo",
+      "|  src/main.js | 3 ++-",
+      "|  1 file changed, 2 insertions(+), 1 deletion(-)",
+    ].join("\n");
+    const out = gitLog(input);
+    expect(out).toContain("src/main.js | 3 ++-");
+    expect(out).toContain("1 file changed, 2 insertions(+), 1 deletion(-)");
+  });
+
+  it("keeps git log --numstat file-level rows", () => {
+    const input = [
+      "commit abc1234def5678abc1234def5678abc1234def5",
+      "Author: Dev One <dev1@example.com>",
+      "Date:   Sun Jul 6 10:00:00 2026 +0700",
+      "",
+      "    Fix typo",
+      "",
+      "4\t0\tsrc/main.js",
+      "-\t-\tassets/logo.png",
+    ].join("\n");
+    const out = gitLog(input);
+    expect(out).toContain("4\t0\tsrc/main.js");
+    expect(out).toContain("-\t-\tassets/logo.png");
+  });
+
   it("keeps git log --name-only file lists", () => {
     const input = [
       "commit abc1234def5678abc1234def5678abc1234def5",

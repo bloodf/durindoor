@@ -4,6 +4,10 @@
 import { describe, it, expect } from "vitest";
 import { PROVIDERS } from "../../open-sse/config/providers.js";
 import { DefaultExecutor } from "../../open-sse/executors/default.js";
+import {
+  BLOCKED_OMNIROUTE_PROVIDERS,
+  BLOCKED_OMNIROUTE_PROVIDER_ALIASES,
+} from "../../open-sse/executors/unsupported-websession.js";
 
 // Credentials mẫu cố định (deterministic) — KHÔNG dùng Date.now/random.
 const API_KEY_CRED = { apiKey: "sk-test-APIKEY", providerSpecificData: {} };
@@ -21,6 +25,9 @@ const SPECIALIZED = new Set([
   "codex", "cursor", "vertex", "vertex-partner", "qwen", "opencode",
   "opencode-go", "grok-web", "perplexity-web", "ollama-local", "commandcode",
   "xiaomi-tokenplan", "mimo-free", "grok-cli",
+  "pollinations", "theoldllm", "gigachat", "zenmux-free",
+  ...Object.keys(BLOCKED_OMNIROUTE_PROVIDERS),
+  ...Object.keys(BLOCKED_OMNIROUTE_PROVIDER_ALIASES),
 ]);
 
 // Sanitize header: khử token + mọi giá trị phụ thuộc môi trường (app version,

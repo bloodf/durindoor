@@ -160,6 +160,18 @@ import p157 from "./vllm.js";
 import p158 from "./xinference.js";
 import p159 from "./zed.js";
 import p160 from "./zenmux-free.js";
+import p161 from "./adapta-web.js";
+import p162 from "./chatgpt-web.js";
+import p163 from "./copilot-m365-web.js";
+import p164 from "./copilot-web.js";
+import p165 from "./duckduckgo-web.js";
+import p166 from "./huggingchat.js";
+import p167 from "./muse-spark-web.js";
+import p168 from "./suno.js";
+import p169 from "./t3-web.js";
+import p170 from "./udio.js";
+import p171 from "./veoaifree-web.js";
+import p172 from "./yuanbao-web.js";
 
 export default [
   p0,
@@ -323,4 +335,16 @@ export default [
   p158,
   p159,
   p160,
+  p161,
+  p162,
+  p163,
+  p164,
+  p165,
+  p166,
+  p167,
+  p168,
+  p169,
+  p170,
+  p171,
+  p172,
 ];

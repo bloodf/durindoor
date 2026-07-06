@@ -12,23 +12,28 @@ const ownedProviders = [
   "chatgpt-web",
   "copilot-m365-web",
   "copilot-web",
-  "duckduckgo-web",
-  "huggingchat",
-  "muse-spark-web",
   "suno",
   "t3-web",
   "udio",
+];
+
+const implementedProviders = [
+  "duckduckgo-web",
+  "huggingchat",
+  "muse-spark-web",
   "veoaifree-web",
   "yuanbao-web",
 ];
 
 describe("OmniRoute PR #51 web-session provider port artifacts", () => {
   it("registers every owned provider with source catalog metadata", () => {
-    for (const provider of ownedProviders) {
+    for (const provider of [...ownedProviders, ...implementedProviders]) {
       expect(PROVIDERS[provider], `${provider} transport`).toBeTruthy();
       expect(PROVIDER_MODELS[provider] || PROVIDER_MODELS[providerAlias(provider)], `${provider} models`).toEqual(
         expect.arrayContaining([expect.objectContaining({ id: expect.any(String), name: expect.any(String) })]),
       );
+    }
+    for (const provider of ownedProviders) {
       expect(BLOCKED_OMNIROUTE_PROVIDERS[provider], `${provider} blocker`).toMatchObject({
         reason: expect.any(String),
         source: expect.any(Array),
@@ -46,6 +51,17 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
     expect(PROVIDER_MEDIA.udio).toMatchObject({ serviceKinds: ["music"], musicConfig: expect.any(Object) });
     expect(PROVIDER_MEDIA["veoaifree-web"]).toMatchObject({ serviceKinds: ["video"], videoConfig: expect.any(Object) });
     expect(PROVIDER_MEDIA["chatgpt-web"]).toMatchObject({ serviceKinds: ["llm", "image"], imageConfig: expect.any(Object) });
+  });
+
+  it("registers ported web/session/media executors without provider_port_pending", async () => {
+    for (const provider of implementedProviders) {
+      expect(BLOCKED_OMNIROUTE_PROVIDERS[provider], `${provider} no blocker`).toBeUndefined();
+      expect(hasSpecializedExecutor(provider), `${provider} specialized executor`).toBe(true);
+      const result = await getExecutor(provider).execute({});
+      expect(result.response.status, `${provider} status`).not.toBe(501);
+      const body = await result.response.json();
+      expect(body.error?.type, `${provider} error type`).not.toBe("provider_port_pending");
+    }
   });
 
   it("uses an explicit unsupported executor instead of silently falling back to default OpenAI transport", async () => {
@@ -73,6 +89,14 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
         type: "provider_port_pending",
         provider,
       });
+    }
+  });
+
+  it("routes ported aliases to concrete executors", async () => {
+    for (const alias of ["ddgw", "ms-web", "veo-free", "ybw"]) {
+      expect(hasSpecializedExecutor(alias), `${alias} specialized executor`).toBe(true);
+      const result = await getExecutor(alias).execute({});
+      expect(result.response.status, `${alias} status`).not.toBe(501);
     }
   });
 });

@@ -47,7 +47,7 @@ DurinDoor converts OpenAI chat requests to ZenMux's Anthropic-compatible message
 
 ### OmniRoute PR #51 Web-Session Port Status
 
-The following OmniRoute providers are registered in DurinDoor's catalog with aliases, models, service kinds, auth hints, and source-file blocker metadata. Runtime execution is intentionally guarded by an explicit `provider_port_pending` executor so these entries cannot accidentally fall through to the generic OpenAI-compatible HTTP path.
+The following OmniRoute providers are registered in DurinDoor's catalog with aliases, models, service kinds, auth hints, and source-file metadata. Providers whose runtime is still absent remain guarded by the explicit `provider_port_pending` executor so they cannot accidentally fall through to the generic OpenAI-compatible HTTP path.
 
 | Provider | Catalog status | Runtime blocker |
 | --- | --- | --- |
@@ -55,14 +55,21 @@ The following OmniRoute providers are registered in DurinDoor's catalog with ali
 | `chatgpt-web` | Web Cookie LLM/image provider, alias `cgpt-web`, ChatGPT model catalog. | Port ChatGPT TLS client, proof-of-work helpers, image cache route, and cookie normalization. |
 | `copilot-m365-web` | Web Cookie LLM provider, alias `m365copilot`, BizChat model. | Port Microsoft 365 Chathub WebSocket connection and frame helpers. |
 | `copilot-web` | Web Cookie LLM provider, Copilot model catalog. | Port Copilot web-session executor and browser-derived access-token flow. |
-| `duckduckgo-web` | No-auth free-tier LLM provider, alias `ddgw`, DuckDuckGo AI model catalog. | Port DuckDuckGo anti-abuse challenge solver, FE-signal generation, and optional browser-backed session pool. |
-| `huggingchat` | Web Cookie LLM provider, HuggingChat production model catalog. | Port HuggingChat cookie normalization, JSONL stream helper, and SvelteKit conversation bootstrap. |
-| `muse-spark-web` | Web Cookie LLM provider, alias `ms-web`, Muse Spark models. | Port Meta/Muse GraphQL request builder, continuation cache, and response parser. |
-| `suno` | Cookie-backed music provider with Suno model catalog. | Add `/v1/audio/music` or `/v1/music/generations` route plumbing plus Suno media executor contract. |
+| `duckduckgo-web` | No-auth free-tier LLM provider, alias `ddgw`, DuckDuckGo AI model catalog. | Runtime ported with anonymous VQD acquisition and OpenAI SSE/JSON translation. The optional browser-backed session pool and full anti-abuse challenge stack are not included in this JS branch. |
+| `huggingchat` | Web Cookie LLM provider, HuggingChat production model catalog. | Runtime ported with `hf-chat` cookie normalization, SvelteKit conversation bootstrap, and JSONL-to-OpenAI response conversion. |
+| `muse-spark-web` | Web Cookie LLM provider, alias `ms-web`, Muse Spark models. | Runtime ported with Meta/Muse GraphQL request construction, response parsing, and a bounded continuation cache. |
+| `suno` | Cookie-backed music provider with Suno model catalog. | `/v1/music/generations` route added with best-effort cookie-backed POST plumbing. The source branch did not include a complete Suno executor contract, so live payload drift may require follow-up. |
 | `t3-web` | Web Cookie LLM provider, alias `t3chat`, T3 model catalog. | Port T3 executor, Convex session id handling, and cookie validation flow. |
-| `udio` | Cookie-backed music provider with Udio model catalog. | Add music-generation route plumbing plus Udio media executor contract. |
-| `veoaifree-web` | No-auth video provider, alias `veo-free`, VEO/Seedance catalog. | Add video-generation route plumbing and WordPress AJAX workflow executor. |
-| `yuanbao-web` | Web Cookie LLM provider, alias `ybw`, Tencent Yuanbao model catalog. | Port Yuanbao cookie-session SSE executor and validation flow. |
+| `udio` | Cookie-backed music provider with Udio model catalog. | `/v1/music/generations` route added with best-effort cookie-backed POST plumbing. The source branch did not include a complete Udio executor contract, so live payload drift may require follow-up. |
+| `veoaifree-web` | No-auth video provider, alias `veo-free`, VEO/Seedance catalog. | Runtime ported with WordPress nonce fetch, video/image/TTS intent handling, polling, and `/v1/video/generations` plumbing. |
+| `yuanbao-web` | Web Cookie LLM provider, alias `ybw`, Tencent Yuanbao model catalog. | Runtime ported with `hy_user`/`hy_token` cookie parsing, conversation creation, chat SSE conversion, and `reasoning_content` support. |
+
+## Ported Runtime Endpoints
+
+- Chat completions: `duckduckgo-web`, `huggingchat`, `muse-spark-web`, and `yuanbao-web` are available through `/v1/chat/completions` with their provider-prefixed model IDs.
+- Video generation: `veoaifree-web` is available through `/v1/video/generations`.
+- Music generation: `suno` and `udio` are available through `/v1/music/generations` as best-effort cookie-backed provider POSTs.
+- Still guarded by `provider_port_pending`: `adapta-web`, `chatgpt-web`, `copilot-m365-web`, `copilot-web`, `suno` chat fallback, `t3-web`, and `udio` chat fallback.
 
 ## Connection Health
 

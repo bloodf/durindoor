@@ -21,6 +21,11 @@ import { MimoFreeExecutor } from "./mimo-free.js";
 import { CodeBuddyExecutor } from "./codebuddy-cn.js";
 import { XaiExecutor } from "./xai.js";
 import { ZenmuxFreeExecutor } from "./zenmux-free.js";
+import { DuckDuckGoWebExecutor } from "./duckduckgo-web.js";
+import { HuggingChatExecutor } from "./huggingchat.js";
+import { MuseSparkWebExecutor } from "./muse-spark-web.js";
+import { VeoAIFreeWebExecutor } from "./veoaifree-web.js";
+import { YuanbaoWebExecutor } from "./yuanbao-web.js";
 import { DefaultExecutor } from "./default.js";
 import {
   UnsupportedOmniRouteWebSessionExecutor,
@@ -55,17 +60,41 @@ const executors = {
   "codebuddy-cn": new CodeBuddyExecutor(),
   xai: new XaiExecutor(),
   "zenmux-free": new ZenmuxFreeExecutor(),
+  "duckduckgo-web": new DuckDuckGoWebExecutor(),
+  ddgw: new DuckDuckGoWebExecutor(),
+  huggingchat: new HuggingChatExecutor(),
+  "muse-spark-web": new MuseSparkWebExecutor(),
+  "ms-web": new MuseSparkWebExecutor(),
+  "veoaifree-web": new VeoAIFreeWebExecutor(),
+  "veo-free": new VeoAIFreeWebExecutor(),
+  "yuanbao-web": new YuanbaoWebExecutor(),
+  ybw: new YuanbaoWebExecutor(),
   ...Object.fromEntries(
-    Object.keys(BLOCKED_OMNIROUTE_PROVIDERS).map((provider) => [
-      provider,
-      new UnsupportedOmniRouteWebSessionExecutor(provider),
-    ]),
+    Object.keys(BLOCKED_OMNIROUTE_PROVIDERS)
+      .filter((provider) => ![
+        "duckduckgo-web",
+        "huggingchat",
+        "muse-spark-web",
+        "veoaifree-web",
+        "yuanbao-web",
+      ].includes(provider))
+      .map((provider) => [
+        provider,
+        new UnsupportedOmniRouteWebSessionExecutor(provider),
+      ]),
   ),
   ...Object.fromEntries(
-    Object.entries(BLOCKED_OMNIROUTE_PROVIDER_ALIASES).map(([alias, provider]) => [
-      alias,
-      new UnsupportedOmniRouteWebSessionExecutor(provider),
-    ]),
+    Object.entries(BLOCKED_OMNIROUTE_PROVIDER_ALIASES)
+      .filter(([, provider]) => ![
+        "duckduckgo-web",
+        "muse-spark-web",
+        "veoaifree-web",
+        "yuanbao-web",
+      ].includes(provider))
+      .map(([alias, provider]) => [
+        alias,
+        new UnsupportedOmniRouteWebSessionExecutor(provider),
+      ]),
   ),
 };
 
@@ -106,6 +135,11 @@ export { MimoFreeExecutor } from "./mimo-free.js";
 export { CodeBuddyExecutor } from "./codebuddy-cn.js";
 export { XaiExecutor } from "./xai.js";
 export { ZenmuxFreeExecutor } from "./zenmux-free.js";
+export { DuckDuckGoWebExecutor } from "./duckduckgo-web.js";
+export { HuggingChatExecutor } from "./huggingchat.js";
+export { MuseSparkWebExecutor } from "./muse-spark-web.js";
+export { VeoAIFreeWebExecutor } from "./veoaifree-web.js";
+export { YuanbaoWebExecutor } from "./yuanbao-web.js";
 export {
   UnsupportedOmniRouteWebSessionExecutor,
   BLOCKED_OMNIROUTE_PROVIDERS,

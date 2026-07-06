@@ -37,33 +37,6 @@ export const BLOCKED_OMNIROUTE_PROVIDERS = {
     ],
     reason: "requires the Copilot web-session executor and browser-derived access-token flow",
   },
-  "duckduckgo-web": {
-    aliases: ["ddgw"],
-    source: [
-      "open-sse/executors/duckduckgo-web.ts",
-      "open-sse/executors/duckduckgo-web/challenge.ts",
-      "open-sse/services/browserBackedChat.ts",
-      "open-sse/services/sessionPool/*",
-    ],
-    reason: "requires the DuckDuckGo anti-abuse challenge solver and optional browser-backed session pool",
-  },
-  huggingchat: {
-    aliases: [],
-    source: [
-      "open-sse/executors/huggingchat.ts",
-      "open-sse/executors/huggingchat/jsonlStream.ts",
-    ],
-    reason: "requires HuggingChat cookie normalization, JSONL streaming, and SvelteKit conversation bootstrap",
-  },
-  "muse-spark-web": {
-    aliases: ["ms-web"],
-    source: [
-      "open-sse/executors/muse-spark-web.ts",
-      "open-sse/executors/muse-spark-web/response-parser.ts",
-      "tests/unit/muse-spark-web-continuation.test.ts",
-    ],
-    reason: "requires Meta/Muse GraphQL request construction, continuation cache, and response parser",
-  },
   suno: {
     aliases: [],
     source: [
@@ -89,23 +62,6 @@ export const BLOCKED_OMNIROUTE_PROVIDERS = {
       "src/app/api/v1/music/generations/route.ts",
     ],
     reason: "requires OmniRoute's music-generation route and Udio media executor contract",
-  },
-  "veoaifree-web": {
-    aliases: ["veo-free"],
-    source: [
-      "open-sse/executors/veoaifree-web.ts",
-      "open-sse/config/videoRegistry.ts",
-      "open-sse/handlers/videoGeneration.ts",
-    ],
-    reason: "requires WordPress AJAX video/image workflow plumbing and video-generation routes",
-  },
-  "yuanbao-web": {
-    aliases: ["ybw"],
-    source: [
-      "open-sse/executors/yuanbao-web.ts",
-      "tests/unit/provider-validation-specialty.test.ts",
-    ],
-    reason: "requires Tencent Yuanbao cookie-session SSE executor and validation flow",
   },
 };
 

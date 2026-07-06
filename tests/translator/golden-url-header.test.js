@@ -25,6 +25,7 @@ const SPECIALIZED = new Set([
   "codex", "cursor", "vertex", "vertex-partner", "qwen", "opencode",
   "opencode-go", "grok-web", "perplexity-web", "ollama-local", "commandcode",
   "xiaomi-tokenplan", "mimo-free", "zenmux-free",
+  "duckduckgo-web", "huggingchat", "muse-spark-web", "veoaifree-web", "yuanbao-web",
   ...Object.keys(BLOCKED_OMNIROUTE_PROVIDERS),
   ...Object.keys(BLOCKED_OMNIROUTE_PROVIDER_ALIASES),
 ]);

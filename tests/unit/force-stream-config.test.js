@@ -152,4 +152,20 @@ describe("forceStream provider config", () => {
     expect(executeMock).toHaveBeenCalledTimes(1);
     expect(executeMock.mock.calls[0][0].stream).toBe(true);
   });
+
+  it("uses model targetFormat transport before sourceFormat transport", async () => {
+    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+    const opts = makeOptions(true);
+    opts.body.model = "openai-gpt-5.5";
+    opts.modelInfo = { provider: "digitalocean", model: "openai-gpt-5.5" };
+    opts.credentials = { apiKey: "dop_v1_test" };
+
+    await handleChatCore(opts);
+
+    expect(executeMock).toHaveBeenCalledTimes(1);
+    expect(executeMock.mock.calls[0][0].credentials.runtimeTransport).toMatchObject({
+      format: "openai-responses",
+      baseUrl: "https://inference.do-ai.run/v1/responses",
+    });
+  });
 });

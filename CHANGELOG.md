@@ -1,3 +1,15 @@
+# v1.0.1 (2026-07-06)
+
+## Features
+
+- Add DigitalOcean AI provider (serverless inference).
+- Add RTK git-log filter.
+
+## Fixes
+
+- Drop orphan Gemini function responses before OpenAI bridge conversion.
+- Refresh docs and remove non-English documentation set.
+
 # v1.0.0 (2026-07-04)
 
 First DurinDoor release. Initial fork from `decolua/9router` v0.5.18;

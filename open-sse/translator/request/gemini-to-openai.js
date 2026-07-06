@@ -81,8 +81,14 @@ function convertGeminiContent(content) {
 
   const parts = [];
   const toolCalls = [];
+  let reasoningContent = "";
 
   for (const part of content.parts) {
+    if (part.thought === true) {
+      if (part.text !== undefined) reasoningContent += part.text;
+      continue;
+    }
+
     if (part.text !== undefined) {
       parts.push({ type: OPENAI_BLOCK.TEXT, text: part.text });
     }
@@ -123,15 +129,22 @@ function convertGeminiContent(content) {
     if (parts.length > 0) {
       result.content = parts.length === 1 ? parts[0].text : parts;
     }
+    if (reasoningContent) {
+      result.reasoning_content = reasoningContent;
+    }
     result.tool_calls = toolCalls;
     return result;
   }
 
-  if (parts.length > 0) {
-    return {
-      role,
-      content: collapseTextParts(parts)
-    };
+  if (parts.length > 0 || reasoningContent) {
+    const result = { role };
+    if (parts.length > 0) {
+      result.content = collapseTextParts(parts);
+    }
+    if (reasoningContent) {
+      result.reasoning_content = reasoningContent;
+    }
+    return result;
   }
 
   return null;
@@ -150,3 +163,63 @@ function extractGeminiText(content) {
 register(FORMATS.GEMINI, FORMATS.OPENAI, geminiToOpenAIRequest, null);
 register(FORMATS.GEMINI_CLI, FORMATS.OPENAI, geminiToOpenAIRequest, null);
 
+// Wrapper for geminiToOpenAIRequest that pre-splits contents containing
+// functionResponse parts co-located with other content (functionCall, text, etc.).
+// The original convertGeminiContent early-returns on the first functionResponse,
+// dropping any co-located parts. By splitting each such content into separate
+// sub-contents — one per functionResponse (each early-returns cleanly as a tool
+// message) and one for the remaining non-functionResponse parts — all co-located
+// content is preserved. Tool results are emitted first to match the expected
+// message ordering (tool result before the next assistant turn).
+function geminiToOpenAIRequestFixed(model, body, stream) {
+  if (!body || !Array.isArray(body.contents)) {
+    return geminiToOpenAIRequest(model, body, stream);
+  }
+
+  const splitContents = [];
+  const seenToolCallIds = new Set();
+  for (const content of body.contents) {
+    if (!content || !Array.isArray(content.parts)) {
+      splitContents.push(content);
+      continue;
+    }
+
+    const hasFunctionResponse = content.parts.some(p => p && p.functionResponse);
+    if (!hasFunctionResponse) {
+      for (const part of content.parts) {
+        if (part?.functionCall) {
+          seenToolCallIds.add(part.functionCall.id || `call_${part.functionCall.name}`);
+        }
+      }
+      splitContents.push(content);
+      continue;
+    }
+
+    for (const part of content.parts) {
+      if (part && part.functionResponse) {
+        const toolCallId = part.functionResponse.id || `call_${part.functionResponse.name}`;
+        if (seenToolCallIds.has(toolCallId)) {
+          splitContents.push({ ...content, parts: [part] });
+        }
+      }
+    }
+    const nonFRParts = content.parts.filter(p => !(p && p.functionResponse));
+    const toolCallParts = nonFRParts.filter(p => p && p.functionCall);
+    const otherParts = nonFRParts.filter(p => !(p && p.functionCall));
+    if (otherParts.length > 0) {
+      splitContents.push({ ...content, parts: otherParts });
+    }
+    if (toolCallParts.length > 0) {
+      for (const part of toolCallParts) {
+        seenToolCallIds.add(part.functionCall.id || `call_${part.functionCall.name}`);
+      }
+      splitContents.push({ ...content, role: GEMINI_ROLE.MODEL, parts: toolCallParts });
+    }
+  }
+
+  return geminiToOpenAIRequest(model, { ...body, contents: splitContents }, stream);
+}
+
+// Override registration to use the fixed version (Map.set: last wins)
+register(FORMATS.GEMINI, FORMATS.OPENAI, geminiToOpenAIRequestFixed, null);
+register(FORMATS.GEMINI_CLI, FORMATS.OPENAI, geminiToOpenAIRequestFixed, null);

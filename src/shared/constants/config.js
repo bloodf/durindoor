@@ -10,7 +10,6 @@ export const APP_CONFIG = {
 // GitHub configuration
 export const GITHUB_CONFIG = {
   changelogUrl: "https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/main/CHANGELOG.md",
-  donateUrl: "",
 };
 
 // Updater configuration

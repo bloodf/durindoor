@@ -1,5 +1,4 @@
-import { platform, arch } from "os";
-import { ANTIGRAVITY_OAUTH_CLIENT } from "../shared.js";
+import { ANTIGRAVITY_IDE_BASE_URL, ANTIGRAVITY_IDE_USER_AGENT, ANTIGRAVITY_OAUTH_CLIENT } from "../shared.js";
 
 export default {
   id: "antigravity",
@@ -20,13 +19,10 @@ export default {
   category: "oauth",
   serviceKinds: ["llm", "image"],
   transport: {
-    baseUrls: [
-      "https://daily-cloudcode-pa.googleapis.com",
-      "https://daily-cloudcode-pa.sandbox.googleapis.com",
-    ],
+    baseUrls: [ANTIGRAVITY_IDE_BASE_URL],
     format: "antigravity",
     headers: {
-      "User-Agent": "antigravity/1.107.0 darwin/arm64",
+      "User-Agent": ANTIGRAVITY_IDE_USER_AGENT,
     },
     retry: {
       "429": {
@@ -49,7 +45,7 @@ export default {
   },
   models: [
     { id: "gemini-3-flash-agent", name: "Gemini 3.5 Flash (High)" },
-    { id: "gemini-3.5-flash-low", name: "Gemini 3.5 Flash (Medium)" },
+    { id: "gemini-3.5-flash-low", name: "Gemini 3.5 Flash (Medium)", mandatory: true },
     { id: "gemini-3.5-flash-extra-low", name: "Gemini 3.5 Flash (Low)" },
     { id: "gemini-pro-agent", name: "Gemini 3.1 Pro (High)" },
     { id: "gemini-3.1-pro-low", name: "Gemini 3.1 Pro (Low)" },

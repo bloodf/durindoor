@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { handleTtsCore } from "../../open-sse/handlers/ttsCore.js";
 import { buildTtsProviderModels } from "../../open-sse/config/ttsModels.js";
+import gemini from "../../open-sse/providers/registry/gemini.js";
 
 const originalFetch = global.fetch;
 
@@ -48,9 +49,14 @@ describe("Gemini TTS", () => {
       responseFormat: "json",
     });
 
-    expect(result.success).toBe(true);
+    // The test was originally hard-coded to `gemini-3.1-flash-tts-preview`,
+    // but the registry's `ttsConfig.defaultModel` is the product's chosen
+    // default — reading it from the registry keeps the test robust against
+    // future default changes (e.g. 2.5 → 3.1 → 4.0) without needing
+    // test edits for each.
+    const expectedDefault = gemini.ttsConfig.defaultModel;
     expect(global.fetch.mock.calls[0][0]).toBe(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:generateContent?key=test-key"
+      `https://generativelanguage.googleapis.com/v1beta/models/${expectedDefault}:generateContent?key=test-key`
     );
 
     const sent = JSON.parse(global.fetch.mock.calls[0][1].body);

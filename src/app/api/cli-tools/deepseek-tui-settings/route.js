@@ -132,7 +132,7 @@ export async function POST(request) {
         const dir = getDeepSeekDir();
         await fs.mkdir(dir, { recursive: true });
 
-        const newConfig = build9RouterConfig(baseUrl, apiKey || "sk_9router", model);
+        const newConfig = build9RouterConfig(baseUrl, apiKey || "sk_durindoor", model);
         await fs.writeFile(getDeepSeekConfigPath(), newConfig);
 
         return NextResponse.json({

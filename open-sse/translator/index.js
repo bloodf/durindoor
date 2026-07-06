@@ -70,7 +70,11 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   // folding their content into user text (reconcileOrphanedToolResults /
   // flattenClaudeToolInteractions) rather than dropping it. Stripping here
   // first would delete that content before the Kiro translator can preserve it.
-  if (targetFormat !== FORMATS.KIRO) {
+  const preservesNativeToolResults =
+    sourceFormat === FORMATS.GEMINI ||
+    sourceFormat === FORMATS.GEMINI_CLI ||
+    sourceFormat === FORMATS.ANTIGRAVITY;
+  if (targetFormat !== FORMATS.KIRO && !preservesNativeToolResults) {
     stripOrphanedToolResults(result);
   }
 
@@ -285,6 +289,7 @@ import "./response/claude-to-openai.js";
 import "./response/openai-to-claude.js";
 import "./response/gemini-to-openai.js";
 import "./response/openai-to-antigravity.js";
+import "./response/openai-to-gemini.js";
 import "./response/openai-responses.js";
 import "./response/kiro-to-openai.js";
 import "./response/cursor-to-openai.js";

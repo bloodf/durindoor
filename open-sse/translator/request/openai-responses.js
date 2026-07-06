@@ -259,7 +259,11 @@ function normalizeToolParameters(params) {
 }
 
 /**
- * Convert OpenAI Chat Completions to OpenAI Responses API format
+ * Convert OpenAI Chat Completions to OpenAI Responses API format.
+ * Generic Responses transports preserve the caller's stream mode here so
+ * non-streaming clients can receive JSON from native /responses endpoints.
+ * Callers that always parse /responses as SSE, such as GitHub escalation,
+ * must pass stream=true explicitly.
  */
 export function openaiToOpenAIResponsesRequest(model, body, stream, credentials) {
   if (body.input) {

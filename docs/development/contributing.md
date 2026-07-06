@@ -76,7 +76,8 @@ Rules:
 
 - Keep English docs as the canonical source.
 - Preserve stable filenames and heading structure where possible.
-- Do not add generated translation files.
+- Do not add non-English Markdown documentation or generated translation files.
+- Keep non-English language content in the web UI localization layer, such as `public/i18n` and `src/i18n`.
 - Do not reintroduce a docs web app in this repository.
 - Keep examples copy-pasteable.
 - Use placeholders such as `YOUR_DURINDOOR_API_KEY` instead of real secrets.
@@ -102,4 +103,3 @@ Review focuses on:
 - credential safety
 - test coverage
 - clear user-facing documentation
-

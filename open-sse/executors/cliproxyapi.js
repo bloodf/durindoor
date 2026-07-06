@@ -69,7 +69,7 @@ export class CliproxyapiExecutor extends BaseExecutor {
   buildHeaders(credentials, stream = true) {
     const headers = {
       "Content-Type": "application/json",
-      ...getProviderPluginManifestHeader(credentials?.rawHeaders?.origin || credentials?.rawHeaders?.host || null),
+      ...getProviderPluginManifestHeader(),
     };
     const key = credentials?.apiKey || credentials?.accessToken;
     if (key) headers.Authorization = `Bearer ${key}`;
@@ -77,7 +77,7 @@ export class CliproxyapiExecutor extends BaseExecutor {
     return headers;
   }
 
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
+  async execute({ model, body, stream, credentials, signal, log }) {
     const baseUrl = await resolveCliproxyapiBaseUrl();
     const url = `${baseUrl}/v1/chat/completions`;
     const transformedBody =
@@ -94,7 +94,7 @@ export class CliproxyapiExecutor extends BaseExecutor {
         headers,
         body: JSON.stringify(transformedBody),
         signal: mergedSignal,
-      }, proxyOptions);
+      });
       return { response, url, headers, transformedBody };
     } finally {
       clearTimeout(timeout);

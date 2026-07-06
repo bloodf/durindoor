@@ -15,5 +15,7 @@ custom executors, OAuth/session flows, dynamic URLs, or pool config stay on the
 JavaScript fallback path until the sidecar implements equivalent behavior.
 
 CLIProxyAPI requests receive an `X-OmniRoute-Provider-Manifest-Url` header.
-Set `OMNIROUTE_PROVIDER_MANIFEST_URL` when the sidecar needs a public URL
-instead of the local DurinDoor origin.
+The header is derived only from trusted server configuration, never from
+inbound request headers such as `Origin`. Set `OMNIROUTE_PROVIDER_MANIFEST_URL`
+or a public `BASE_URL`/`NEXT_PUBLIC_BASE_URL` when the sidecar needs a public
+URL instead of the local DurinDoor origin.

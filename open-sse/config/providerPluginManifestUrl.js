@@ -5,12 +5,26 @@ function trimTrailingSlash(value) {
   return value.replace(/\/+$/, "");
 }
 
-export function resolveProviderPluginManifestUrl(origin = null) {
+function appendManifestPath(baseUrl) {
+  return `${trimTrailingSlash(baseUrl)}${PROVIDER_PLUGIN_MANIFEST_PATH}`;
+}
+
+/**
+ * Resolve the sidecar manifest URL from trusted server configuration only.
+ * Inbound request headers such as Origin are intentionally ignored; set
+ * OMNIROUTE_PROVIDER_MANIFEST_URL or BASE_URL for public sidecar deployments.
+ */
+export function resolveProviderPluginManifestUrl() {
   const configured = process.env.OMNIROUTE_PROVIDER_MANIFEST_URL?.trim();
   if (configured) return configured;
 
-  if (origin && /^https?:\/\//i.test(origin)) {
-    return `${trimTrailingSlash(origin)}${PROVIDER_PLUGIN_MANIFEST_PATH}`;
+  const publicBaseUrl = (
+    process.env.BASE_URL ||
+    process.env.NEXT_PUBLIC_BASE_URL ||
+    ""
+  ).trim();
+  if (/^https?:\/\//i.test(publicBaseUrl)) {
+    return appendManifestPath(publicBaseUrl);
   }
 
   const host = process.env.HOST || "127.0.0.1";
@@ -19,8 +33,8 @@ export function resolveProviderPluginManifestUrl(origin = null) {
   return `${protocol}://${host}:${port}${PROVIDER_PLUGIN_MANIFEST_PATH}`;
 }
 
-export function getProviderPluginManifestHeader(origin = null) {
+export function getProviderPluginManifestHeader() {
   return {
-    [PROVIDER_PLUGIN_MANIFEST_HEADER]: resolveProviderPluginManifestUrl(origin),
+    [PROVIDER_PLUGIN_MANIFEST_HEADER]: resolveProviderPluginManifestUrl(),
   };
 }

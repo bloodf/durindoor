@@ -31,17 +31,93 @@ const mockDbInstance = {
   __throwOnConstruct: false,
 };
 
-// Mock better-sqlite3 as a class so `new Database(...)` works
-vi.mock("better-sqlite3", () => ({
-  default: class MockDatabase {
-    constructor() {
-      if (mockDbInstance.__throwOnConstruct) {
-        throw new Error("SQLITE_CANTOPEN");
-      }
-      return mockDbInstance;
+// Mock the cursorLocalStore service (not "better-sqlite3" directly): the
+// service lazy-loads better-sqlite3 via createRequire(), which bypasses
+// Vitest's ESM module-graph mocking entirely, so a `vi.mock("better-sqlite3")`
+// never intercepts it. Mocking the service module route.js actually imports
+// lets tests drive `mockDbInstance` deterministically.
+vi.mock("../../src/lib/oauth/services/cursorLocalStore.js", () => {
+  const ACCESS_TOKEN_KEYS = ["cursorAuth/accessToken", "cursorAuth/token"];
+  const MACHINE_ID_KEYS = [
+    "storage.serviceMachineId",
+    "telemetry.machineId",
+    "telemetry.devDeviceId",
+  ];
+  const CACHED_EMAIL_KEYS = ["cursorAuth/cachedEmail"];
+
+  function normalizeStoredValue(value) {
+    if (typeof value !== "string") return value;
+    try {
+      const parsed = JSON.parse(value);
+      return typeof parsed === "string" ? parsed : value;
+    } catch {
+      return value;
     }
-  },
-}));
+  }
+
+  function queryFirst(db, keys) {
+    if (!keys || keys.length === 0) return null;
+    const placeholders = keys.map(() => "?").join(",");
+    try {
+      const rows = db
+        .prepare(`SELECT value, key FROM itemTable WHERE key IN (${placeholders})`)
+        .all(...keys);
+      for (const key of keys) {
+        const hit = rows.find((r) => r && r.key === key && r.value);
+        if (hit) return normalizeStoredValue(hit.value);
+      }
+    } catch {
+      // ignore — fall through to fuzzy
+    }
+    for (const key of keys) {
+      const prefix = key.split(/[/.]/)[0];
+      if (!prefix) continue;
+      try {
+        for (const sep of ["/", "."]) {
+          const rows = db
+            .prepare("SELECT value, key FROM itemTable WHERE key LIKE ?")
+            .all(prefix + sep + "%");
+          const hit = rows.find(
+            (r) => r && r.value && typeof r.key === "string" && r.key.startsWith(prefix + sep)
+          );
+          if (hit) return normalizeStoredValue(hit.value);
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return null;
+  }
+
+  return {
+    CURSOR_ACCESS_TOKEN_KEYS: ACCESS_TOKEN_KEYS,
+    CURSOR_MACHINE_ID_KEYS: MACHINE_ID_KEYS,
+    CURSOR_CACHED_EMAIL_KEYS: CACHED_EMAIL_KEYS,
+    getCursorDbCandidatePaths: (platform = "darwin") => {
+      if (platform === "darwin") {
+        return [
+          "/mock/home/Library/Application Support/Cursor/User/globalStorage/state.vscdb",
+          "/mock/home/Library/Application Support/Cursor - Insiders/User/globalStorage/state.vscdb",
+        ];
+      }
+      return ["/mock/home/.config/Cursor/User/globalStorage/state.vscdb"];
+    },
+    readCursorLocalAuthSync: (_dbPath) => {
+      if (mockDbInstance.__throwOnConstruct) {
+        throw new Error("SQLITE_CANTOPEN: unable to open database file");
+      }
+      try {
+        return {
+          accessToken: queryFirst(mockDbInstance, ACCESS_TOKEN_KEYS),
+          machineId: queryFirst(mockDbInstance, MACHINE_ID_KEYS),
+          cachedEmail: queryFirst(mockDbInstance, CACHED_EMAIL_KEYS),
+        };
+      } finally {
+        mockDbInstance.close();
+      }
+    },
+  };
+});
 
 // We need to dynamically import after mocks are registered
 let GET;

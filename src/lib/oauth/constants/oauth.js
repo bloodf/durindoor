@@ -107,6 +107,12 @@ export const CLINEPASS_CONFIG = { ...PROVIDER_OAUTH["clinepass"] };
 
 // GitLab Duo OAuth Configuration (Authorization Code Flow with PKCE)
 export const GITLAB_CONFIG = { ...PROVIDER_OAUTH["gitlab"] };
+export const GITLAB_DUO_CONFIG = { ...PROVIDER_OAUTH["gitlab-duo"] };
+
+// Trae / Devin CLI / Windsurf import-token configurations.
+export const TRAE_CONFIG = { ...PROVIDER_OAUTH.trae };
+export const DEVIN_CLI_CONFIG = { ...PROVIDER_OAUTH["devin-cli"] };
+export const WINDSURF_CONFIG = { ...PROVIDER_OAUTH.windsurf };
 
 // CodeBuddy (Tencent) OAuth Configuration (Browser OAuth Polling Flow)
 export const CODEBUDDY_CONFIG = { ...PROVIDER_OAUTH["codebuddy-cn"] };
@@ -135,6 +141,10 @@ export const PROVIDERS = {
   CLINE: "cline",
   CLINEPASS: "clinepass",
   GITLAB: "gitlab",
+  GITLAB_DUO: "gitlab-duo",
+  TRAE: "trae",
+  DEVIN_CLI: "devin-cli",
+  WINDSURF: "windsurf",
   CODEBUDDY: "codebuddy-cn",
   KIMCHI: "kimchi",
 };

@@ -5,6 +5,7 @@ import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, resolveXiaomiTokenplanBaseUrl, PROVIDERS } from "open-sse/config/providers.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
 import { buildZenmuxAnthropicBody, extractZenmuxCtoken, normalizeZenmuxCookie, ZENMUX_FREE_CHAT_URL } from "open-sse/executors/zenmux-free.js";
+import { getExecutor } from "open-sse/executors/index.js";
 import { normalizeProviderId } from "@/lib/providerNormalization";
 
 // Probe a webSearch/webFetch provider using its searchConfig/fetchConfig.
@@ -618,6 +619,22 @@ export async function POST(request) {
           } else {
             isValid = true;
           }
+          break;
+        }
+
+        case "adapta-web":
+        case "chatgpt-web":
+        case "t3-web": {
+          const executor = getExecutor(provider);
+          if (typeof executor.testConnection !== "function") {
+            return NextResponse.json({ error: "Provider validation not supported" }, { status: 400 });
+          }
+          isValid = await executor.testConnection({
+            apiKey,
+            accessToken: apiKey,
+            providerSpecificData: providerSpecificData || {},
+          }, AbortSignal.timeout(10000));
+          error = isValid ? null : "Invalid web session credentials";
           break;
         }
 

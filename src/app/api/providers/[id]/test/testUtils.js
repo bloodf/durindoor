@@ -4,6 +4,7 @@ import { testProxyUrl } from "@/lib/network/proxyTest";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, PROVIDERS, resolveXiaomiTokenplanBaseUrl } from "open-sse/config/providers.js";
+import { getExecutor } from "open-sse/executors/index.js";
 import {
   refreshProviderCredentials,
   shouldRefreshCredentials,
@@ -686,6 +687,20 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         const data = await res.json().catch(() => null);
         const valid = !!(data && data.user);
         return { valid, error: valid ? null : "Session expired — re-paste cookie" };
+      }
+      case "adapta-web":
+      case "chatgpt-web":
+      case "t3-web": {
+        const executor = getExecutor(connection.provider);
+        if (typeof executor.testConnection !== "function") {
+          return { valid: false, error: "Provider test not supported" };
+        }
+        const valid = await executor.testConnection({
+          apiKey: connection.apiKey,
+          accessToken: connection.accessToken,
+          providerSpecificData: connection.providerSpecificData || {},
+        }, AbortSignal.timeout(10000));
+        return { valid, error: valid ? null : "Invalid web session credentials" };
       }
       case "opencode-go": {
         const res = await fetchWithConnectionProxy("https://opencode.ai/zen/go/v1/chat/completions", {

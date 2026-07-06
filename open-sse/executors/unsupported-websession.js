@@ -2,24 +2,6 @@ import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 
 export const BLOCKED_OMNIROUTE_PROVIDERS = {
-  "adapta-web": {
-    aliases: ["adp-web"],
-    source: [
-      "open-sse/executors/adapta-web.ts",
-      "tests/unit/provider-validation-specialty.test.ts",
-    ],
-    reason: "requires the Adapta web-session bearer-token executor and credential validation flow",
-  },
-  "chatgpt-web": {
-    aliases: ["cgpt-web"],
-    source: [
-      "open-sse/executors/chatgpt-web.ts",
-      "open-sse/services/chatgptTlsClient.ts",
-      "open-sse/services/chatgptImageCache.ts",
-      "src/app/api/v1/images/edits/route.ts",
-    ],
-    reason: "requires the ChatGPT web TLS client, proof-of-work helpers, image cache route, and cookie normalization",
-  },
   "copilot-m365-web": {
     aliases: ["m365copilot"],
     source: [
@@ -45,14 +27,6 @@ export const BLOCKED_OMNIROUTE_PROVIDERS = {
       "src/app/api/v1/music/generations/route.ts",
     ],
     reason: "requires OmniRoute's music-generation route and Suno media executor contract",
-  },
-  "t3-web": {
-    aliases: ["t3chat"],
-    source: [
-      "open-sse/executors/t3-chat-web.ts",
-      "tests/unit/provider-validation-specialty.test.ts",
-    ],
-    reason: "requires the T3 web-session executor, convex session id, and cookie validation flow",
   },
   udio: {
     aliases: [],

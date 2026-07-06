@@ -51,25 +51,25 @@ The following OmniRoute providers are registered in DurinDoor's catalog with ali
 
 | Provider | Catalog status | Runtime blocker |
 | --- | --- | --- |
-| `adapta-web` | Web Cookie LLM provider, alias `adp-web`, Adapta model catalog. | Port `open-sse/executors/adapta-web.ts` and Adapta credential validation. |
-| `chatgpt-web` | Web Cookie LLM/image provider, alias `cgpt-web`, ChatGPT model catalog. | Port ChatGPT TLS client, proof-of-work helpers, image cache route, and cookie normalization. |
+| `adapta-web` | Web Cookie LLM provider, alias `adp-web`, Adapta model catalog. | Ported chat executor; keep validation tests covering Clerk credential exchange and OpenAI response conversion. |
+| `chatgpt-web` | Web Cookie LLM/image provider, alias `cgpt-web`, ChatGPT model catalog. | Chat session exchange and conversion ported; remaining blocker is automatic ChatGPT Sentinel PoW/Turnstile/TLS-sidecar and image cache parity. |
 | `copilot-m365-web` | Web Cookie LLM provider, alias `m365copilot`, BizChat model. | Port Microsoft 365 Chathub WebSocket connection and frame helpers. |
 | `copilot-web` | Web Cookie LLM provider, Copilot model catalog. | Port Copilot web-session executor and browser-derived access-token flow. |
 | `duckduckgo-web` | No-auth free-tier LLM provider, alias `ddgw`, DuckDuckGo AI model catalog. | Runtime ported with anonymous VQD acquisition and OpenAI SSE/JSON translation. The optional browser-backed session pool and full anti-abuse challenge stack are not included in this JS branch. |
 | `huggingchat` | Web Cookie LLM provider, HuggingChat production model catalog. | Runtime ported with `hf-chat` cookie normalization, SvelteKit conversation bootstrap, and JSONL-to-OpenAI response conversion. |
 | `muse-spark-web` | Web Cookie LLM provider, alias `ms-web`, Muse Spark models. | Runtime ported with Meta/Muse GraphQL request construction, response parsing, and a bounded continuation cache. |
 | `suno` | Cookie-backed music provider with Suno model catalog. | `/v1/music/generations` route added with best-effort cookie-backed POST plumbing. The source branch did not include a complete Suno executor contract, so live payload drift may require follow-up. |
-| `t3-web` | Web Cookie LLM provider, alias `t3chat`, T3 model catalog. | Port T3 executor, Convex session id handling, and cookie validation flow. |
+| `t3-web` | Web Cookie LLM provider, alias `t3chat`, T3 model catalog. | Ported chat executor; keep validation tests covering `convex-session-id` parsing and OpenAI response conversion. |
 | `udio` | Cookie-backed music provider with Udio model catalog. | `/v1/music/generations` route added with best-effort cookie-backed POST plumbing. The source branch did not include a complete Udio executor contract, so live payload drift may require follow-up. |
 | `veoaifree-web` | No-auth video provider, alias `veo-free`, VEO/Seedance catalog. | Runtime ported with WordPress nonce fetch, video/image/TTS intent handling, polling, and `/v1/video/generations` plumbing. |
 | `yuanbao-web` | Web Cookie LLM provider, alias `ybw`, Tencent Yuanbao model catalog. | Runtime ported with `hy_user`/`hy_token` cookie parsing, conversation creation, chat SSE conversion, and `reasoning_content` support. |
 
 ## Ported Runtime Endpoints
 
-- Chat completions: `duckduckgo-web`, `huggingchat`, `muse-spark-web`, and `yuanbao-web` are available through `/v1/chat/completions` with their provider-prefixed model IDs.
+- Chat completions: `adapta-web`, `chatgpt-web`, `duckduckgo-web`, `huggingchat`, `muse-spark-web`, `t3-web`, and `yuanbao-web` are available through `/v1/chat/completions` with their provider-prefixed model IDs.
 - Video generation: `veoaifree-web` is available through `/v1/video/generations`.
 - Music generation: `suno` and `udio` are available through `/v1/music/generations` as best-effort cookie-backed provider POSTs.
-- Still guarded by `provider_port_pending`: `adapta-web`, `chatgpt-web`, `copilot-m365-web`, `copilot-web`, `suno` chat fallback, `t3-web`, and `udio` chat fallback.
+- Still guarded by `provider_port_pending`: `copilot-m365-web`, `copilot-web`, `suno` chat fallback, and `udio` chat fallback.
 
 ## Connection Health
 

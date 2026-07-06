@@ -21,9 +21,12 @@ import { MimoFreeExecutor } from "./mimo-free.js";
 import { CodeBuddyExecutor } from "./codebuddy-cn.js";
 import { XaiExecutor } from "./xai.js";
 import { ZenmuxFreeExecutor } from "./zenmux-free.js";
+import { AdaptaWebExecutor } from "./adapta-web.js";
+import { ChatGptWebExecutor } from "./chatgpt-web.js";
 import { DuckDuckGoWebExecutor } from "./duckduckgo-web.js";
 import { HuggingChatExecutor } from "./huggingchat.js";
 import { MuseSparkWebExecutor } from "./muse-spark-web.js";
+import { T3WebExecutor } from "./t3-web.js";
 import { VeoAIFreeWebExecutor } from "./veoaifree-web.js";
 import { YuanbaoWebExecutor } from "./yuanbao-web.js";
 import { DefaultExecutor } from "./default.js";
@@ -60,24 +63,23 @@ const executors = {
   "codebuddy-cn": new CodeBuddyExecutor(),
   xai: new XaiExecutor(),
   "zenmux-free": new ZenmuxFreeExecutor(),
+  "adapta-web": new AdaptaWebExecutor(),
+  "adp-web": new AdaptaWebExecutor(),
+  "chatgpt-web": new ChatGptWebExecutor(),
+  "cgpt-web": new ChatGptWebExecutor(),
   "duckduckgo-web": new DuckDuckGoWebExecutor(),
   ddgw: new DuckDuckGoWebExecutor(),
   huggingchat: new HuggingChatExecutor(),
   "muse-spark-web": new MuseSparkWebExecutor(),
   "ms-web": new MuseSparkWebExecutor(),
+  "t3-web": new T3WebExecutor(),
+  t3chat: new T3WebExecutor(),
   "veoaifree-web": new VeoAIFreeWebExecutor(),
   "veo-free": new VeoAIFreeWebExecutor(),
   "yuanbao-web": new YuanbaoWebExecutor(),
   ybw: new YuanbaoWebExecutor(),
   ...Object.fromEntries(
     Object.keys(BLOCKED_OMNIROUTE_PROVIDERS)
-      .filter((provider) => ![
-        "duckduckgo-web",
-        "huggingchat",
-        "muse-spark-web",
-        "veoaifree-web",
-        "yuanbao-web",
-      ].includes(provider))
       .map((provider) => [
         provider,
         new UnsupportedOmniRouteWebSessionExecutor(provider),
@@ -85,12 +87,6 @@ const executors = {
   ),
   ...Object.fromEntries(
     Object.entries(BLOCKED_OMNIROUTE_PROVIDER_ALIASES)
-      .filter(([, provider]) => ![
-        "duckduckgo-web",
-        "muse-spark-web",
-        "veoaifree-web",
-        "yuanbao-web",
-      ].includes(provider))
       .map(([alias, provider]) => [
         alias,
         new UnsupportedOmniRouteWebSessionExecutor(provider),
@@ -135,9 +131,12 @@ export { MimoFreeExecutor } from "./mimo-free.js";
 export { CodeBuddyExecutor } from "./codebuddy-cn.js";
 export { XaiExecutor } from "./xai.js";
 export { ZenmuxFreeExecutor } from "./zenmux-free.js";
+export { AdaptaWebExecutor } from "./adapta-web.js";
+export { ChatGptWebExecutor } from "./chatgpt-web.js";
 export { DuckDuckGoWebExecutor } from "./duckduckgo-web.js";
 export { HuggingChatExecutor } from "./huggingchat.js";
 export { MuseSparkWebExecutor } from "./muse-spark-web.js";
+export { T3WebExecutor } from "./t3-web.js";
 export { VeoAIFreeWebExecutor } from "./veoaifree-web.js";
 export { YuanbaoWebExecutor } from "./yuanbao-web.js";
 export {

@@ -8,19 +8,19 @@ import {
 import { FREE_PROVIDERS } from "@/shared/constants/providers.js";
 
 const ownedProviders = [
-  "adapta-web",
-  "chatgpt-web",
   "copilot-m365-web",
   "copilot-web",
   "suno",
-  "t3-web",
   "udio",
 ];
 
 const implementedProviders = [
+  "adapta-web",
+  "chatgpt-web",
   "duckduckgo-web",
   "huggingchat",
   "muse-spark-web",
+  "t3-web",
   "veoaifree-web",
   "yuanbao-web",
 ];
@@ -38,6 +38,13 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
         reason: expect.any(String),
         source: expect.any(Array),
       });
+    }
+  });
+
+  it("uses concrete executors for runtime-ported web/session providers", () => {
+    for (const provider of implementedProviders) {
+      expect(hasSpecializedExecutor(provider), `${provider} specialized executor`).toBe(true);
+      expect(BLOCKED_OMNIROUTE_PROVIDERS[provider], `${provider} no longer blocked`).toBeUndefined();
     }
   });
 
@@ -93,7 +100,7 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
   });
 
   it("routes ported aliases to concrete executors", async () => {
-    for (const alias of ["ddgw", "ms-web", "veo-free", "ybw"]) {
+    for (const alias of ["adp-web", "cgpt-web", "ddgw", "ms-web", "t3chat", "veo-free", "ybw"]) {
       expect(hasSpecializedExecutor(alias), `${alias} specialized executor`).toBe(true);
       const result = await getExecutor(alias).execute({});
       expect(result.response.status, `${alias} status`).not.toBe(501);

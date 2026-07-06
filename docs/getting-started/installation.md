@@ -51,6 +51,8 @@ The development server uses port `20127`. The production CLI and Docker runtime 
 
 Use the repository Dockerfile or the published image for server deployments. The runtime must persist `DATA_DIR`.
 
+Replace `<version>` with a published release image tag, for example `0.5.18`.
+
 ```bash
 docker run -d \
   --name durindoor \
@@ -59,7 +61,7 @@ docker run -d \
   -e HOSTNAME=0.0.0.0 \
   -e DATA_DIR=/app/data \
   -v durindoor-data:/app/data \
-  ghcr.io/bloodf/durindoor:latest
+  ghcr.io/bloodf/durindoor:<version>
 ```
 
 If your deployment still uses an upstream 9Router image or compose file, treat it as migration work and verify image names before publishing.
@@ -80,6 +82,8 @@ The table below covers the most common variables. See [Environment Variables](..
 | `NEXT_PUBLIC_BASE_URL` | local URL | Browser-visible base URL. |
 | `CLOUD_URL` | project default | Optional remote cloud endpoint. |
 | `NEXT_PUBLIC_CLOUD_URL` | project default | Browser-visible cloud endpoint. |
+| `MCP_GATEWAY_OAUTH_PUBLIC_URL` | unset | Public HTTPS origin used for MCP Gateway OAuth callbacks. Set this when a reverse proxy or tunnel does not provide the expected forwarded host and protocol. |
+| `OAUTH_PUBLIC_BASE_URL` | unset | Backward-compatible public OAuth origin fallback used by MCP Gateway OAuth. |
 | `ENABLE_REQUEST_LOGS` | `false` | Enables additional request logging. Use carefully because prompts may contain sensitive data. |
 | `DEBUG` | unset | Enables verbose runtime logs in selected modules. |
 | `HEADROOM_URL` | unset | Optional external token-saver proxy URL. |
@@ -121,7 +125,7 @@ npm start
 For Docker:
 
 ```bash
-docker pull ghcr.io/bloodf/durindoor:latest
+docker pull ghcr.io/bloodf/durindoor:<version>
 docker rm -f durindoor
 # Run the container again with the same volume and DATA_DIR.
 ```

@@ -2,6 +2,8 @@
 
 Run DurinDoor in a container with persistent storage. The container exposes the same dashboard and API as the CLI runtime.
 
+Docker images are published for versioned release tags. Replace `<version>` with a published version tag, for example `0.5.18`. Avoid using `latest` unless a maintainer has explicitly published it for the release you want.
+
 ## Quick Start
 
 ```bash
@@ -12,7 +14,7 @@ docker run -d \
   -e HOSTNAME=0.0.0.0 \
   -e DATA_DIR=/app/data \
   -v durindoor-data:/app/data \
-  ghcr.io/bloodf/durindoor:latest
+  ghcr.io/bloodf/durindoor:<version>
 ```
 
 Open:
@@ -42,7 +44,7 @@ docker run -d \
   -e API_KEY_SECRET="CHANGE_ME_LONG_RANDOM_VALUE" \
   -e INITIAL_PASSWORD="CHANGE_ME_STRONG_PASSWORD" \
   -v durindoor-data:/app/data \
-  ghcr.io/bloodf/durindoor:latest
+  ghcr.io/bloodf/durindoor:<version>
 ```
 
 ## Docker Compose
@@ -50,7 +52,7 @@ docker run -d \
 ```yaml
 services:
   durindoor:
-    image: ghcr.io/bloodf/durindoor:latest
+    image: ghcr.io/bloodf/durindoor:<version>
     container_name: durindoor
     restart: unless-stopped
     ports:
@@ -98,7 +100,7 @@ docker rm -f durindoor
 ## Upgrade
 
 ```bash
-docker pull ghcr.io/bloodf/durindoor:latest
+docker pull ghcr.io/bloodf/durindoor:<version>
 docker rm -f durindoor
 # Run the container again with the same volume and environment.
 ```
@@ -112,7 +114,7 @@ DurinDoor can point at an external Headroom service when token-saver workflows r
 ```yaml
 services:
   durindoor:
-    image: ghcr.io/bloodf/durindoor:latest
+    image: ghcr.io/bloodf/durindoor:<version>
     ports:
       - "20128:20128"
     environment:

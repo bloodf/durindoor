@@ -17,7 +17,7 @@ Provider nodes let you add endpoints that are compatible with common AI APIs eve
 2. Choose `Add Node`.
 3. Select OpenAI-compatible mode.
 4. Enter the base URL, for example `https://gateway.example.com/v1`.
-5. Add the API key or choose no-auth if the service is local and trusted.
+5. Add the API key expected by the upstream. If the upstream is local and does not validate keys, enter a harmless placeholder value such as `local-dev-key`; compatible-node setup still requires a value.
 6. Add one or more model names or enable passthrough behavior if supported.
 7. Save and test.
 
@@ -62,6 +62,8 @@ Provider nodes are useful for:
 - Temporary provider experiments.
 - Regional mirrors or proxy endpoints.
 - Self-hosted embedding, reranking, image, TTS, or STT services.
+
+For completely no-auth local models, prefer the dedicated local provider path when one exists, such as `ollama-local`. Compatible provider nodes require an API-key field even when the upstream ignores it.
 
 ## Proxy Pools
 

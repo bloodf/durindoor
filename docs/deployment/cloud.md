@@ -19,6 +19,8 @@ Read [Environment Variables](../reference/environment.md) and [Security and Prod
 
 ## Docker
 
+DurinDoor images are published for versioned release tags. Replace `<version>` with a published version tag, for example `0.5.18`. Do not assume `latest` exists or points at the newest release.
+
 ```bash
 docker run -d \
   --name durindoor \
@@ -30,7 +32,7 @@ docker run -d \
   -e API_KEY_SECRET="CHANGE_ME_LONG_RANDOM_VALUE" \
   -e INITIAL_PASSWORD="CHANGE_ME_STRONG_PASSWORD" \
   -v durindoor-data:/app/data \
-  ghcr.io/bloodf/durindoor:latest
+  ghcr.io/bloodf/durindoor:<version>
 ```
 
 Open `http://SERVER_HOST:20128/dashboard`, sign in, change the password if required, and create API keys for client tools.
@@ -40,7 +42,7 @@ Open `http://SERVER_HOST:20128/dashboard`, sign in, change the password if requi
 ```yaml
 services:
   durindoor:
-    image: ghcr.io/bloodf/durindoor:latest
+    image: ghcr.io/bloodf/durindoor:<version>
     container_name: durindoor
     restart: unless-stopped
     ports:

@@ -75,6 +75,8 @@ The development server uses port `20127`.
 
 ## Docker
 
+Replace `<version>` with a published release image tag, for example `0.5.18`.
+
 ```bash
 docker run -d \
   --name durindoor \
@@ -83,7 +85,7 @@ docker run -d \
   -e HOSTNAME=0.0.0.0 \
   -e DATA_DIR=/app/data \
   -v durindoor-data:/app/data \
-  ghcr.io/bloodf/durindoor:latest
+  ghcr.io/bloodf/durindoor:<version>
 ```
 
 Read [DOCKER.md](DOCKER.md) and [Cloud and Docker Deployment](docs/deployment/cloud.md) before exposing a deployment to a network.

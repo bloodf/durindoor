@@ -62,6 +62,8 @@ Development uses port `20127`. Production uses `PORT`, defaulting to `20128`.
 
 ## Docker Startup
 
+Replace `<version>` with a published release image tag, for example `0.5.18`.
+
 ```bash
 docker run -d \
   --name durindoor \
@@ -73,7 +75,7 @@ docker run -d \
   -e API_KEY_SECRET="CHANGE_ME_LONG_RANDOM_VALUE" \
   -e INITIAL_PASSWORD="CHANGE_ME_STRONG_PASSWORD" \
   -v durindoor-data:/app/data \
-  ghcr.io/bloodf/durindoor:latest
+  ghcr.io/bloodf/durindoor:<version>
 ```
 
 Check logs:
@@ -155,4 +157,3 @@ Dashboard settings stored in the database usually do not require a process resta
 | Data disappears after container restart | Missing persistent volume | Mount a volume and set `DATA_DIR=/app/data`. |
 | OAuth callback fails | Wrong public URL | Set `BASE_URL`, `NEXT_PUBLIC_BASE_URL`, or `MCP_GATEWAY_OAUTH_PUBLIC_URL` as needed. |
 | API keys stop validating after redeploy | `API_KEY_SECRET` changed | Keep `API_KEY_SECRET` stable. |
-

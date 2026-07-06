@@ -40,6 +40,85 @@ import {
 
 export { extractCodexAccountInfo, fetchKiroProfileArn };
 
+function decodeJwtPayload(jwt) {
+  try {
+    if (!jwt || typeof jwt !== "string") return null;
+    const parts = jwt.split(".");
+    if (parts.length !== 3) return null;
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+    return JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function extractGrokCliToken(input) {
+  if (typeof input === "string") {
+    return { accessToken: input, refreshToken: null, rawAuthJson: null, expiresAt: null };
+  }
+
+  if (input && typeof input === "object") {
+    const obj = input;
+    const inner = obj.accessToken && typeof obj.accessToken === "object" ? obj.accessToken : obj;
+
+    if (inner && typeof inner === "object") {
+      for (const entry of Object.values(inner)) {
+        if (!entry || typeof entry !== "object") continue;
+        if (typeof entry.key === "string" && entry.key.startsWith("eyJ")) {
+          return {
+            accessToken: entry.key,
+            refreshToken: typeof entry.refresh_token === "string" ? entry.refresh_token : null,
+            rawAuthJson: inner,
+            expiresAt: typeof entry.expires_at === "string" ? entry.expires_at : null,
+          };
+        }
+      }
+    }
+
+    if (typeof obj.accessToken === "string" && obj.accessToken.length > 0) {
+      return {
+        accessToken: obj.accessToken,
+        refreshToken: typeof obj.refreshToken === "string" ? obj.refreshToken : null,
+        rawAuthJson: null,
+        expiresAt: null,
+      };
+    }
+  }
+
+  return { accessToken: "", refreshToken: null, rawAuthJson: null, expiresAt: null };
+}
+
+export function mapGrokCliTokens(tokens) {
+  const { accessToken, refreshToken, rawAuthJson, expiresAt } = extractGrokCliToken(tokens);
+  const payload = decodeJwtPayload(accessToken) || {};
+  const currentSec = Math.floor(Date.now() / 1000);
+  let expiresIn = 21600;
+
+  if (expiresAt) {
+    const parsed = Date.parse(expiresAt);
+    if (Number.isFinite(parsed)) expiresIn = Math.floor(parsed / 1000) - currentSec;
+  } else if (typeof payload.exp === "number" && payload.exp > 0) {
+    expiresIn = payload.exp - currentSec;
+  }
+
+  expiresIn = Math.max(1, expiresIn);
+
+  return {
+    accessToken,
+    refreshToken,
+    expiresIn,
+    email: payload.email || null,
+    providerSpecificData: {
+      userId: payload.sub || null,
+      teamId: payload.team_id || null,
+      tier: payload.tier || 1,
+      principalType: payload.principal_type || "User",
+      rawAuthJson: rawAuthJson || undefined,
+    },
+  };
+}
+
 // Inlined from services/xai.js to keep web route bundle free of `open` (CLI-only) package
 let cachedXaiDiscovery = null;
 
@@ -253,6 +332,15 @@ const PROVIDERS = {
       }
       return mapped;
     },
+  },
+
+  "grok-cli": {
+    config: {
+      clientId: XAI_CONFIG.clientId,
+      tokenUrl: "https://auth.x.ai/oauth2/token",
+    },
+    flowType: "import_token",
+    mapTokens: mapGrokCliTokens,
   },
 
   "gemini-cli": {

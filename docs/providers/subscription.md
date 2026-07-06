@@ -70,4 +70,24 @@ If all OpenAI connections fail, combo fallback may try the next model
 
 DurinDoor uses provider identifiers internally and in model strings. Examples include `openai`, `anthropic`, `gemini`, `cc`, `cx`, `kiro`, and custom compatible prefixes. The exact list comes from the provider registry in the running version.
 
+## OmniRoute OAuth Provider Slice
+
+DurinDoor ports OAuth/session providers only when the runtime transport, credential serialization, and token refresh behavior are covered by local tests.
+
+Implemented in this slice:
+
+| Provider | Identifier | Credential path | Refresh behavior |
+| --- | --- | --- | --- |
+| Antigravity CLI | `agy` | Same Google OAuth shape as Antigravity, stored under a separate provider id so CLI credentials do not collide with IDE credentials. | Reuses the Antigravity Google refresh flow. |
+| Grok Build CLI | `grok-cli` | Import `~/.grok/auth.json` or a raw Grok JWT through the import-token flow. Auth JSON imports preserve the refresh token and non-secret account metadata. | Uses the xAI OAuth token endpoint and stores rotated refresh tokens when returned. |
+
+Blocked from runtime exposure in this slice:
+
+| Provider | Reason |
+| --- | --- |
+| `devin-cli` | Requires the official Devin CLI ACP stdio executor plus binary discovery and process lifecycle tests. DurinDoor has no matching executor subsystem in this branch. |
+| `gitlab-duo` | Requires GitLab Duo executor request/response adaptation, dynamic base URL OAuth endpoints, and token exchange tests for instance-specific client credentials. |
+| `trae` | Requires the Trae SOLO session executor, `/authorize` callback/import route, Cloud-IDE-JWT identity propagation, and MITM/session handling that is not present in this branch. |
+| `windsurf` | Requires the Windsurf gRPC-web executor and import-token UI/API flow for IDE-generated Codeium tokens. The runtime wire encoder is not present in this branch. |
+
 Use the dashboard model selector or `/v1/models` response as the source of truth for available identifiers in your instance.

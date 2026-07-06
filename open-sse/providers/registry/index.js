@@ -123,6 +123,8 @@ import p120 from "./longcat.js";
 import p121 from "./maritalk.js";
 import p122 from "./tinyfish.js";
 import p123 from "./meta-llama.js";
+import p124 from "./grok-cli.js";
+import p125 from "./agy.js";
 
 export default [
   p0,
@@ -249,4 +251,6 @@ export default [
   p121,
   p122,
   p123,
+  p124,
+  p125,
 ];

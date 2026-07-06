@@ -111,8 +111,8 @@ function buildIdeRequestId({ body, request, credentials, model, requestType }) {
 }
 
 export class AntigravityExecutor extends BaseExecutor {
-  constructor() {
-    super("antigravity", PROVIDERS.antigravity);
+  constructor(provider = "antigravity") {
+    super(provider, PROVIDERS[provider] || PROVIDERS.antigravity);
   }
 
   buildUrl(model, stream, urlIndex = 0) {

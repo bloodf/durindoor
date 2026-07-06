@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { compressMessages, setRtkEnabled, isRtkEnabled, formatRtkLog } from "../../open-sse/rtk/index.js";
+import { compressMessages, formatRtkLog } from "../../open-sse/rtk/index.js";
 import { gitDiff } from "../../open-sse/rtk/filters/gitDiff.js";
 import { gitStatus } from "../../open-sse/rtk/filters/gitStatus.js";
 import { grep } from "../../open-sse/rtk/filters/grep.js";
@@ -53,13 +53,21 @@ function makeFindOutput() {
   return lines.join("\n");
 }
 
+// The original RTK module exposed a global `setRtkEnabled` toggle
+// that wrapped the entire compressMessages call. The rebrand removed
+// the global toggle — enabled is now passed per-call to
+// compressMessages. The "flag" describe now exercises the per-call
+// switch rather than a process-wide one.
 describe("RTK flag", () => {
-  it("default off, toggle works", () => {
-    setRtkEnabled(false);
-    expect(isRtkEnabled()).toBe(false);
-    setRtkEnabled(true);
-    expect(isRtkEnabled()).toBe(true);
-    setRtkEnabled(false);
+  it("disabled: returns null when enabled=false", () => {
+    const out = compressMessages({ messages: [{ role: "user", content: "x" }] }, false);
+    expect(out).toBeNull();
+  });
+
+  it("enabled: returns stats when enabled=true and body has content", () => {
+    const out = compressMessages({ messages: [{ role: "user", content: makeLongDiff() }] }, true);
+    expect(out).not.toBeNull();
+    expect(out).toHaveProperty("bytesBefore");
   });
 });
 
@@ -244,21 +252,21 @@ describe("safeApply", () => {
   });
 });
 
+// Per the upstream rebrand (PR #7), `compressMessages` takes `enabled`
+// as a per-call parameter rather than reading a global toggle. The
+// `enabled: false` test asserts the no-op path explicitly.
 describe("compressMessages (disabled)", () => {
-  beforeEach(() => setRtkEnabled(false));
   it("returns null when disabled", () => {
     const body = { messages: [{ role: "tool", tool_call_id: "x", content: makeLongDiff() }] };
-    expect(compressMessages(body)).toBeNull();
+    expect(compressMessages(body, false)).toBeNull();
   });
 });
 
 describe("compressMessages (enabled)", () => {
-  beforeEach(() => setRtkEnabled(true));
-
   it("compresses OpenAI tool message (string content)", () => {
     const big = makeLongDiff();
     const body = { messages: [{ role: "tool", tool_call_id: "call_1", content: big }] };
-    const stats = compressMessages(body);
+    const stats = compressMessages(body, true);
     expect(stats.hits.length).toBeGreaterThan(0);
     expect(body.messages[0].content.length).toBeLessThan(big.length);
     expect(stats.bytesBefore).toBeGreaterThan(stats.bytesAfter);
@@ -272,7 +280,7 @@ describe("compressMessages (enabled)", () => {
         content: [{ type: "tool_result", tool_use_id: "toolu_1", content: big }]
       }]
     };
-    const stats = compressMessages(body);
+    const stats = compressMessages(body, true);
     expect(stats.hits.length).toBeGreaterThan(0);
     expect(body.messages[0].content[0].content.length).toBeLessThan(big.length);
   });
@@ -289,7 +297,7 @@ describe("compressMessages (enabled)", () => {
         }]
       }]
     };
-    const stats = compressMessages(body);
+    const stats = compressMessages(body, true);
     expect(stats.hits.length).toBeGreaterThan(0);
     expect(body.messages[0].content[0].content[0].text.length).toBeLessThan(big.length);
     // short part unchanged
@@ -304,7 +312,7 @@ describe("compressMessages (enabled)", () => {
         content: [{ type: "tool_result", tool_use_id: "toolu_1", content: big, is_error: true }]
       }]
     };
-    const stats = compressMessages(body);
+    const stats = compressMessages(body, true);
     expect(stats.hits.length).toBe(0);
     expect(body.messages[0].content[0].content).toBe(big);
   });
@@ -312,7 +320,7 @@ describe("compressMessages (enabled)", () => {
   it("skips below MIN_COMPRESS_SIZE (<500 bytes)", () => {
     const small = "diff --git a/x b/x\n@@ -1 +1 @@\n+a";
     const body = { messages: [{ role: "tool", tool_call_id: "x", content: small }] };
-    const stats = compressMessages(body);
+    const stats = compressMessages(body, true);
     expect(stats.hits.length).toBe(0);
     expect(body.messages[0].content).toBe(small);
   });
@@ -320,13 +328,13 @@ describe("compressMessages (enabled)", () => {
   it("never produces empty content (R14 guard)", () => {
     const input = "a".repeat(1000);
     const body = { messages: [{ role: "tool", tool_call_id: "x", content: input }] };
-    compressMessages(body);
+    compressMessages(body, true);
     expect(body.messages[0].content.length).toBeGreaterThan(0);
   });
 
   it("skips when body has no messages", () => {
-    expect(compressMessages({})).toBeNull();
-    expect(compressMessages({ messages: null })).toBeNull();
+    expect(compressMessages({}, true)).toBeNull();
+    expect(compressMessages({ messages: null }, true)).toBeNull();
   });
 
   it("handles mix of messages without crashing", () => {
@@ -339,7 +347,7 @@ describe("compressMessages (enabled)", () => {
         { role: "user", content: [{ type: "text", text: "next" }] }
       ]
     };
-    const stats = compressMessages(body);
+    const stats = compressMessages(body, true);
     expect(stats).not.toBeNull();
     expect(stats.hits.length).toBeGreaterThan(0);
   });

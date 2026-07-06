@@ -16,13 +16,33 @@
  */
 
 import { extractThinking } from "../translator/concerns/thinkingUnified.js";
+import { assertValidAwsRegion } from "../../src/lib/oauth/constants/oauth.js";
 import { effortToBudget } from "../translator/concerns/thinking.js";
-import { resolveKiroRegion, alignProfileArnRegion, KIRO_DEFAULT_REGION } from "./kiroRegions.js";
+import {
+  resolveKiroRegion as resolveKiroRegionFromCredentials,
+  alignProfileArnRegion,
+  KIRO_DEFAULT_REGION,
+} from "./kiroRegions.js";
+
+// Backwards-compat shim: legacy callers (and tests) pass the region as
+// a string. The current `resolveKiroRegion(credentials)` in kiroRegions.js
+// expects a credentials object. This wrapper accepts a string (passed
+// through, trimmed) or an object (delegates to the new function), and
+// returns the default region on null/undefined/empty.
+export function resolveKiroRegion(arg) {
+  if (typeof arg === "string") {
+    const t = arg.trim();
+    return t || KIRO_DEFAULT_REGION;
+  }
+  if (arg && typeof arg === "object") {
+    return resolveKiroRegionFromCredentials(arg);
+  }
+  return KIRO_DEFAULT_REGION;
+}
 
 // Re-export region helpers so existing importers of kiroConstants keep working
 // and there is one obvious place to find all Kiro request-shaping helpers.
 export {
-  resolveKiroRegion,
   alignProfileArnRegion,
   buildKiroBaseUrls,
   buildKiroProfileEndpoint,
@@ -68,6 +88,7 @@ export function resolveDefaultProfileArn(authMethod) {
 export function resolveKiroDataPlaneUrl(region) {
   const r = resolveKiroRegion(region);
   if (r === KIRO_DEFAULT_REGION) return null;
+  assertValidAwsRegion(r);
   return `https://q.${r}.amazonaws.com/generateAssistantResponse`;
 }
 

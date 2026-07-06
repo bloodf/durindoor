@@ -1,0 +1,12 @@
+{
+  "locale": "vi",
+  "totalPages": 36,
+  "translated": 1,
+  "reviewed": 0,
+  "lastSyncIso": "2026-07-06T06:04:48.756Z",
+  "sources": [
+    "public/i18n/literals/vi.json",
+    "i18n/README.vi.md"
+  ],
+  "notes": "i18n literals + README present; per-page review still required."
+}

@@ -1,0 +1,12 @@
+{
+  "locale": "zh-CN",
+  "totalPages": 36,
+  "translated": 1,
+  "reviewed": 0,
+  "lastSyncIso": "2026-07-06T06:04:48.756Z",
+  "sources": [
+    "public/i18n/literals/zh-CN.json",
+    "i18n/README.zh-CN.md"
+  ],
+  "notes": "i18n literals + README present; per-page review still required."
+}

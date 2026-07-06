@@ -3,6 +3,7 @@ import p0 from "./alicode-intl.js";
 import p1 from "./alicode.js";
 import p2 from "./anthropic.js";
 import p3 from "./antigravity.js";
+import p105 from "./auggie.js";
 import p4 from "./assemblyai.js";
 import p5 from "./aws-polly.js";
 import p6 from "./azure.js";
@@ -58,6 +59,7 @@ import p55 from "./kiro.js";
 import p56 from "./linkup.js";
 import p57 from "./local-device.js";
 import p58 from "./mimo-free.js";
+import p106 from "./mimocode.js";
 import p59 from "./minimax-cn.js";
 import p60 from "./minimax.js";
 import p61 from "./mistral.js";
@@ -201,6 +203,7 @@ export default [
   p1,
   p2,
   p3,
+  p105,
   p4,
   p5,
   p6,
@@ -256,6 +259,7 @@ export default [
   p56,
   p57,
   p58,
+  p106,
   p59,
   p60,
   p61,

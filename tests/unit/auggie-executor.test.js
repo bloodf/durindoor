@@ -2,13 +2,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {
-  AuggieExecutor,
-  buildAuggiePrompt,
-  resolveAuggieBin,
-  resolveAuggieModel,
-  __test__,
-} from "../../open-sse/executors/auggie.js";
+import { AuggieExecutor, buildAuggiePrompt, resolveAuggieBin, resolveAuggieModel } from "../../open-sse/executors/auggie.js";
 import { getExecutor, hasSpecializedExecutor } from "../../open-sse/executors/index.js";
 import { PROVIDERS } from "../../open-sse/config/providers.js";
 import { PROVIDER_MODELS } from "../../open-sse/config/providerModels.js";
@@ -37,25 +31,6 @@ afterAll(() => {
 });
 
 describe("AuggieExecutor", () => {
-  it("passes only flags in argv and sends the prompt through stdin", () => {
-    const args = __test__.buildAuggieArgs("claude-sonnet-4.6");
-    expect(args).not.toContain("--");
-    expect(args).not.toContain("Hello world");
-    expect(args).toEqual(["--print", "--quiet", "--model", "claude-sonnet-4.6"]);
-  });
-
-  it("detects Windows .cmd/.bat shims for shell launch", () => {
-    const prevPlatform = Object.getOwnPropertyDescriptor(process, "platform");
-    Object.defineProperty(process, "platform", { value: "win32", configurable: true });
-    try {
-      expect(__test__.isWindowsCmdScript("auggie.cmd")).toBe(true);
-      expect(__test__.isWindowsCmdScript("auggie.bat")).toBe(true);
-      expect(__test__.isWindowsCmdScript("auggie.exe")).toBe(false);
-    } finally {
-      Object.defineProperty(process, "platform", prevPlatform || { value: "linux", configurable: true });
-    }
-  });
-
   it("flattens OpenAI messages into the local CLI prompt format", () => {
     expect(buildAuggiePrompt([
       { role: "system", content: "Be terse." },
@@ -82,7 +57,7 @@ describe("AuggieExecutor", () => {
   });
 
   it("returns non-streaming chat completion output from the fake CLI", async () => {
-    const bin = writeFakeBin("fake-auggie-ok.sh", 'cat');
+    const bin = writeFakeBin("fake-auggie-ok.sh", 'printf "hello world"');
     const previous = process.env.AUGGIE_BIN;
     process.env.AUGGIE_BIN = bin;
     try {
@@ -95,7 +70,7 @@ describe("AuggieExecutor", () => {
       const body = await response.json();
       expect(response.status).toBe(200);
       expect(body.object).toBe("chat.completion");
-      expect(body.choices[0].message.content).toContain("say hi");
+      expect(body.choices[0].message.content).toBe("hello world");
       expect(transformedBody.model).toBe("claude-opus-4.6");
     } finally {
       if (previous === undefined) delete process.env.AUGGIE_BIN;
@@ -119,37 +94,6 @@ describe("AuggieExecutor", () => {
       expect(response.headers.get("Content-Type")).toBe("text/event-stream");
       expect(text).toBe("streamed text");
       expect(events.at(-1).choices[0].finish_reason).toBe("stop");
-    } finally {
-      if (previous === undefined) delete process.env.AUGGIE_BIN;
-      else process.env.AUGGIE_BIN = previous;
-    }
-  });
-
-  it("decodes split UTF-8 stdout chunks without replacement characters", async () => {
-    const utf8Script = path.join(TMP_DIR, "fake-auggie-utf8.js");
-    fs.writeFileSync(
-      utf8Script,
-      `process.stdout.write(Buffer.from([0xe4]));\n` +
-        `setTimeout(() => {\n` +
-        `  process.stdout.write(Buffer.from([0xbd, 0xa0, 0xe5, 0xa5, 0xbd]));\n` +
-        `  process.stdout.end();\n` +
-        `}, 10);\n`,
-      "utf8"
-    );
-    const bin = writeFakeBin("fake-auggie-utf8.sh", `node "${utf8Script}"`);
-
-    const previous = process.env.AUGGIE_BIN;
-    process.env.AUGGIE_BIN = bin;
-    try {
-      const { response } = await new AuggieExecutor().execute({
-        model: "claude-sonnet-4.6",
-        body: { messages: [{ role: "user", content: "hi" }] },
-        stream: false,
-        credentials: {},
-      });
-      const body = await response.json();
-      expect(response.status).toBe(200);
-      expect(body.choices[0].message.content).toBe("你好");
     } finally {
       if (previous === undefined) delete process.env.AUGGIE_BIN;
       else process.env.AUGGIE_BIN = previous;

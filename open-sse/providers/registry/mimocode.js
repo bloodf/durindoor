@@ -11,7 +11,7 @@ export default {
     textIcon: "MC",
     website: "https://github.com/XiaomiMiMo/MiMo-Code",
     notice: {
-      text: "Free Xiaomi MiMoCode endpoint using fingerprint bootstrap JWTs. Store providerSpecificData.fingerprints and HTTP/HTTPS accountProxies on the no-auth connection to enable multi-account rotation; account proxies override the connection proxy pool for matching fingerprints.",
+      text: "Free Xiaomi MiMoCode endpoint using fingerprint bootstrap JWTs. Optional providerSpecificData.fingerprints and HTTP/HTTPS accountProxies enable multi-account rotation.",
     },
   },
   category: "free",

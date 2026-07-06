@@ -72,6 +72,8 @@ const executors = {
   mimocode: new MimocodeExecutor(),
   mcode: new MimocodeExecutor(), // Alias for mimocode
   mmf: new MimoFreeExecutor(), // Alias for mimo-free
+  mimocode: new MimocodeExecutor(),
+  mcode: new MimocodeExecutor(), // Alias for mimocode
   "codebuddy-cn": new CodeBuddyExecutor(),
   xai: new XaiExecutor(),
   "grok-cli": new GrokCliExecutor(),

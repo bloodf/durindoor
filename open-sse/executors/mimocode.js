@@ -2,14 +2,12 @@ import crypto from "node:crypto";
 import os from "node:os";
 import { fetch as undiciFetch, ProxyAgent } from "undici";
 import { BaseExecutor } from "./base.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
 
 const BASE_URL = "https://api.xiaomimimo.com";
 const BOOTSTRAP_PATH = "/api/free-ai/bootstrap";
 const CHAT_PATH = "/api/free-ai/openai/chat";
 const JWT_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 const BOOTSTRAP_TIMEOUT_MS = 15_000;
-const CHAT_TIMEOUT_MS = 60_000;
 const COOLDOWN_BASE_MS = 5_000;
 const COOLDOWN_MAX_MS = 60_000;
 const MIMO_SOURCE = "mimocode-cli-free";
@@ -86,15 +84,10 @@ function createDispatcher(proxyUrl) {
   return dispatcherCache.get(proxyUrl);
 }
 
-function findAccountProxy(fingerprint, accountProxies) {
-  const entry = accountProxies.find((item) => item?.fingerprint === fingerprint);
-  return entry?.proxy ?? null;
-}
-
 function proxyConfigToUrl(entry) {
   const proxy = entry?.proxy;
   if (!entry?.fingerprint || !proxy?.host) return null;
-  const type = proxy.type || "http";
+  const type = proxy.type || "socks5";
   if (type !== "http" && type !== "https") {
     throw new Error(`Mimocode per-account proxy type "${type}" is not supported in this DurinDoor port; use http/https or add a fetch-socks dispatcher.`);
   }
@@ -105,75 +98,43 @@ function proxyConfigToUrl(entry) {
   return { fingerprint: entry.fingerprint, url: `${type}://${auth}${proxy.host}:${port}` };
 }
 
-function isAbortError(error) {
-  if (!error) return false;
-  if (error.name === "AbortError") return true;
-  if (error instanceof DOMException && error.name === "AbortError") return true;
-  return String(error.message || "").includes("AbortError");
-}
-
-async function raceWithSignal(promise, signal) {
-  if (!signal) return promise;
-  if (signal.aborted) {
-    throw signal.reason || new DOMException("Aborted", "AbortError");
-  }
-  return new Promise((resolve, reject) => {
-    const onAbort = () => reject(signal.reason || new DOMException("Aborted", "AbortError"));
-    signal.addEventListener("abort", onAbort, { once: true });
-    promise.then(
-      (value) => {
-        signal.removeEventListener("abort", onAbort);
-        resolve(value);
-      },
-      (reason) => {
-        signal.removeEventListener("abort", onAbort);
-        reject(reason);
-      }
-    );
-  });
-}
-
-async function bootstrapJwt(baseUrl, fingerprint, signal, dispatcher, proxyOptions = null) {
+async function bootstrapJwt(baseUrl, fingerprint, signal, dispatcher) {
   const existing = bootstrapInflight.get(fingerprint);
-  if (existing) return raceWithSignal(existing, signal);
+  if (existing) return existing;
 
   const controller = new AbortController();
-  let timer;
-  const abortWithTimeout = () => controller.abort(new Error(`Mimocode bootstrap timed out after ${BOOTSTRAP_TIMEOUT_MS}ms`));
-  timer = setTimeout(abortWithTimeout, BOOTSTRAP_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), BOOTSTRAP_TIMEOUT_MS);
+  const onSignal = signal ? () => controller.abort(signal.reason) : null;
+  if (signal && onSignal) signal.addEventListener("abort", onSignal, { once: true });
 
   const promise = (async () => {
     try {
       const url = `${baseUrl.replace(/\/$/, "")}${BOOTSTRAP_PATH}`;
       const init = {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "User-Agent": USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)],
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ client: fingerprint }),
         signal: controller.signal,
       };
       const response = dispatcher
         ? await undiciFetch(url, { ...init, dispatcher })
-        : await proxyAwareFetch(url, init, proxyOptions);
+        : await fetch(url, init);
       if (!response.ok) {
-        const status = response.status;
         const text = await response.text().catch(() => "");
-        const error = Object.assign(new Error(`Bootstrap failed: ${status} ${text.slice(0, 200)}`), { status });
-        throw error;
+        throw new Error(`Bootstrap failed: ${response.status} ${text.slice(0, 200)}`);
       }
       const data = await response.json();
       if (!data?.jwt) throw new Error("Bootstrap response missing jwt field");
       return { jwt: data.jwt, expiresAt: parseJwtExp(data.jwt) };
     } finally {
       clearTimeout(timer);
+      if (signal && onSignal) signal.removeEventListener("abort", onSignal);
       bootstrapInflight.delete(fingerprint);
     }
   })();
 
   bootstrapInflight.set(fingerprint, promise);
-  return raceWithSignal(promise, signal);
+  return promise;
 }
 
 export class MimocodeExecutor extends BaseExecutor {
@@ -183,106 +144,78 @@ export class MimocodeExecutor extends BaseExecutor {
     this.accounts = [this.buildAccount(generateFingerprint())];
     this.nextAccountIdx = 0;
     this.proxyUrlMap = new Map();
-    // Per-connection state cache keyed by connection id, so concurrent requests
-    // for different stored Mimocode connections do not mutate shared account lists
-    // or proxy maps.
-    this.stateCache = new Map();
-  }
-
-  getState(credentials = {}) {
-    const key = credentials.connectionId || credentials.id || "";
-    if (!key) return this;
-    if (!this.stateCache.has(key)) {
-      this.stateCache.set(key, {
-        accounts: [this.buildAccount(generateFingerprint())],
-        nextAccountIdx: 0,
-        proxyUrlMap: new Map(),
-      });
-    }
-    return this.stateCache.get(key);
   }
 
   buildAccount(fingerprint) {
     return { fingerprint, jwt: "", expiresAt: 0, cooldownUntil: 0, consecutiveFails: 0, proxy: null };
   }
 
-  _getProxyDispatcher(state, fingerprint) {
-    return createDispatcher(state.proxyUrlMap.get(fingerprint));
+  getProxyDispatcher(fingerprint) {
+    return createDispatcher(this.proxyUrlMap.get(fingerprint));
   }
 
-  _fetchWithProxy(state, url, init, fingerprint, proxyOptions = null) {
-    const dispatcher = this._getProxyDispatcher(state, fingerprint);
+  fetchWithProxy(url, init, fingerprint) {
+    const dispatcher = this.getProxyDispatcher(fingerprint);
     if (dispatcher) return undiciFetch(url, { ...init, dispatcher });
-    return proxyAwareFetch(url, init, proxyOptions);
+    return fetch(url, init);
   }
 
   syncAccountsFromCredentials(credentials = {}) {
-    return this._syncAccountsFromCredentials(this.getState(credentials), credentials);
-  }
-
-  _syncAccountsFromCredentials(state, credentials = {}) {
     const providerData = credentials?.providerSpecificData || {};
     const accountProxies = Array.isArray(providerData.accountProxies) ? providerData.accountProxies : [];
-
-    state.proxyUrlMap.clear();
+    this.proxyUrlMap.clear();
     for (const entry of accountProxies) {
       const mapped = proxyConfigToUrl(entry);
-      if (mapped) state.proxyUrlMap.set(mapped.fingerprint, mapped.url);
+      if (mapped) this.proxyUrlMap.set(mapped.fingerprint, mapped.url);
     }
 
-    const configuredFingerprints = Array.isArray(providerData.fingerprints)
-      ? providerData.fingerprints.filter((fingerprint) => typeof fingerprint === "string")
-      : [];
-
-    if (configuredFingerprints.length === 0) {
-      // No stored fingerprints: keep the default account and only update proxy metadata.
-      for (const account of state.accounts) {
-        account.proxy = findAccountProxy(account.fingerprint, accountProxies);
+    const existing = new Set(this.accounts.map((account) => account.fingerprint));
+    if (Array.isArray(providerData.fingerprints)) {
+      for (const fingerprint of providerData.fingerprints) {
+        if (typeof fingerprint === "string" && !existing.has(fingerprint)) {
+          this.accounts.push(this.buildAccount(fingerprint));
+          existing.add(fingerprint);
+        }
       }
-      return;
     }
 
-    // Rebuild the account list from the current credentials so stale or default
-    // fingerprints are dropped when the connection changes. Preserve state for
-    // fingerprints that are still configured to avoid unnecessary re-bootstraps.
-    const oldByFingerprint = new Map(state.accounts.map((account) => [account.fingerprint, account]));
-    state.accounts = configuredFingerprints.map((fingerprint) => {
-      const old = oldByFingerprint.get(fingerprint);
-      return old || this.buildAccount(fingerprint);
-    });
-
-    for (const account of state.accounts) {
-      account.proxy = findAccountProxy(account.fingerprint, accountProxies);
+    const structuredProxyMap = new Map(accountProxies.map((entry) => [entry.fingerprint, entry.proxy ?? null]));
+    for (const account of this.accounts) {
+      account.proxy = structuredProxyMap.has(account.fingerprint)
+        ? structuredProxyMap.get(account.fingerprint)
+        : null;
     }
   }
 
-  async _getJwtForAccount(state, account, signal, proxyOptions = null) {
+  async getJwtForAccount(account, signal) {
     if (isAccountReady(account)) return account.jwt;
-    const result = await bootstrapJwt(this.baseUrl, account.fingerprint, signal, this._getProxyDispatcher(state, account.fingerprint), proxyOptions);
+    const result = await bootstrapJwt(this.baseUrl, account.fingerprint, signal, this.getProxyDispatcher(account.fingerprint));
     account.jwt = result.jwt;
     account.expiresAt = result.expiresAt;
     return account.jwt;
   }
 
-  _pickAccount(state) {
-    for (let i = 0; i < state.accounts.length; i++) {
-      const idx = (state.nextAccountIdx + i) % state.accounts.length;
-      const account = state.accounts[idx];
-      if (account.cooldownUntil <= Date.now()) {
-        state.nextAccountIdx = (idx + 1) % state.accounts.length;
+  pickAccount() {
+    for (let i = 0; i < this.accounts.length; i++) {
+      const idx = (this.nextAccountIdx + i) % this.accounts.length;
+      const account = this.accounts[idx];
+      if (isAccountReady(account)) {
+        this.nextAccountIdx = (idx + 1) % this.accounts.length;
         return account;
       }
     }
-    return null;
+    const fallbackIdx = this.nextAccountIdx % this.accounts.length;
+    this.nextAccountIdx = (this.nextAccountIdx + 1) % this.accounts.length;
+    return this.accounts[fallbackIdx];
   }
 
-  _markCooldown(state, account) {
+  markCooldown(account) {
     account.consecutiveFails += 1;
     const backoff = Math.min(COOLDOWN_BASE_MS * 2 ** (account.consecutiveFails - 1), COOLDOWN_MAX_MS);
     account.cooldownUntil = Date.now() + backoff + Math.random() * 1000;
   }
 
-  _markSuccess(state, account) {
+  markSuccess(account) {
     account.consecutiveFails = 0;
   }
 
@@ -305,36 +238,12 @@ export class MimocodeExecutor extends BaseExecutor {
     return injectMimocodeSystemMarker({ ...body, model: rewriteModelName(model) });
   }
 
-  async fetchWithTimeout(state, url, init, fingerprint, proxyOptions, signal) {
-    const controller = new AbortController();
-    if (signal?.aborted) {
-      controller.abort(signal.reason);
-    }
-    const timer = setTimeout(
-      () => controller.abort(new Error(`Mimocode chat request timed out after ${CHAT_TIMEOUT_MS}ms`)),
-      CHAT_TIMEOUT_MS
-    );
-    let onSignalAbort;
-    if (signal) {
-      onSignalAbort = () => controller.abort(signal.reason);
-      signal.addEventListener("abort", onSignalAbort, { once: true });
-    }
+  async testConnection(credentials = {}, signal = null, log = null) {
     try {
-      return await this._fetchWithProxy(state, url, { ...init, signal: controller.signal }, fingerprint, proxyOptions);
-    } finally {
-      clearTimeout(timer);
-      if (signal && onSignalAbort) signal.removeEventListener("abort", onSignalAbort);
-    }
-  }
-
-    async testConnection(credentials = {}, signal = null, log = null, proxyOptions = null) {
-    try {
-      const state = this.getState(credentials);
-      this._syncAccountsFromCredentials(state, credentials);
-      const account = state.accounts[0];
-      const jwt = await this._getJwtForAccount(state, account, signal, proxyOptions);
-      const response = await this._fetchWithProxy(
-        state,
+      this.syncAccountsFromCredentials(credentials);
+      const account = this.accounts[0];
+      const jwt = await this.getJwtForAccount(account, signal);
+      const response = await this.fetchWithProxy(
         this.buildUrl(),
         {
           method: "POST",
@@ -346,8 +255,7 @@ export class MimocodeExecutor extends BaseExecutor {
           })),
           signal: signal ?? undefined,
         },
-        account.fingerprint,
-        proxyOptions
+        account.fingerprint
       );
       return response.status === 200;
     } catch {
@@ -357,7 +265,7 @@ export class MimocodeExecutor extends BaseExecutor {
   }
 
   async execute(input) {
-    const { model, stream, body, signal, log, credentials = {}, proxyOptions = null } = input;
+    const { model, stream, body, signal, log, credentials = {} } = input;
     const url = this.buildUrl(model, stream);
     const transformedBody = this.transformRequest(model, body, stream, credentials);
 
@@ -374,94 +282,46 @@ export class MimocodeExecutor extends BaseExecutor {
     }
 
     this.syncAccountsFromCredentials(credentials);
-    const state = this.getState(credentials);
-    let lastError;
-    let lastTerminalStatus = 0;
-    for (let attempt = 0; attempt < state.accounts.length; attempt++) {
-      const account = this._pickAccount(state);
-      if (!account) {
-        break;
-      }
+    for (let attempt = 0; attempt < this.accounts.length; attempt++) {
+      const account = this.pickAccount();
       try {
-        const jwt = await this._getJwtForAccount(state, account, signal, proxyOptions);
+        const jwt = await this.getJwtForAccount(account, signal);
         const headers = { ...this.buildHeaders(credentials, stream), Authorization: `Bearer ${jwt}` };
-        let response = await this.fetchWithTimeout(
-          state,
+        let response = await this.fetchWithProxy(
           url,
-          { method: "POST", headers, body: JSON.stringify(transformedBody) },
-          account.fingerprint,
-          proxyOptions,
-          signal
+          { method: "POST", headers, body: JSON.stringify(transformedBody), signal: signal ?? undefined },
+          account.fingerprint
         );
-
-        async function drainBody(r) {
-          if (r?.body?.cancel) {
-            try { await r.body.cancel(); } catch {}
-          } else if (r?.body?.getReader) {
-            try {
-              const reader = r.body.getReader();
-              while (!(await reader.read()).done) {}
-            } catch {}
-          }
-        }
 
         if (response.status === 401 || response.status === 403) {
           log?.warn?.("MIMOCODE", `Auth failed (${response.status}) on account ${account.fingerprint.slice(0, 8)}`);
-          await drainBody(response);
           account.jwt = "";
           account.expiresAt = 0;
           account.consecutiveFails = 0;
-          headers.Authorization = `Bearer ${await this._getJwtForAccount(state, account, signal, proxyOptions)}`;
-          response = await this.fetchWithTimeout(
-            state,
+          headers.Authorization = `Bearer ${await this.getJwtForAccount(account, signal)}`;
+          response = await this.fetchWithProxy(
             url,
-            { method: "POST", headers, body: JSON.stringify(transformedBody) },
-            account.fingerprint,
-            proxyOptions,
-            signal
+            { method: "POST", headers, body: JSON.stringify(transformedBody), signal: signal ?? undefined },
+            account.fingerprint
           );
-          if (response.status === 401 || response.status === 403) {
-            await drainBody(response);
-            this._markCooldown(state, account);
-            lastTerminalStatus = response.status;
-            log?.warn?.("MIMOCODE", `Account ${account.fingerprint.slice(0, 8)} still unauthorized after refresh; rotating`);
-            continue;
-          }
         }
 
         if (response.status === 429) {
-          await drainBody(response);
-          this._markCooldown(state, account);
-          lastTerminalStatus = response.status;
+          this.markCooldown(account);
           log?.warn?.("MIMOCODE", `Rate limited on account ${account.fingerprint.slice(0, 8)}, trying next`);
           continue;
         }
 
-        if ([502, 503, 504].includes(response.status)) {
-          await drainBody(response);
-          this._markCooldown(state, account);
-          lastTerminalStatus = response.status;
-          log?.warn?.("MIMOCODE", `Retryable HTTP ${response.status} on account ${account.fingerprint.slice(0, 8)}, rotating`);
-          continue;
-        }
-
-        this._markSuccess(state, account);
+        this.markSuccess(account);
         return { response, url, headers, transformedBody };
       } catch (error) {
-        if (signal?.aborted && isAbortError(error)) {
-          throw error;
-        }
-        lastError = error;
-        this._markCooldown(state, account);
-        const terminalStatus = error?.status || 0;
-        if (terminalStatus) lastTerminalStatus = terminalStatus;
-        if (attempt === state.accounts.length - 1) {
+        this.markCooldown(account);
+        if (attempt === this.accounts.length - 1) {
           const message = error instanceof Error ? error.message : String(error);
           log?.error?.("MIMOCODE", `Executor error: ${message}`);
-          const terminalStatus = lastTerminalStatus || error?.status || 502;
           return {
             response: new Response(JSON.stringify({ error: { message, type: "upstream_error", code: "EXECUTOR_ERROR" } }), {
-              status: terminalStatus,
+              status: 502,
               headers: { "Content-Type": "application/json" },
             }),
             url,
@@ -472,13 +332,10 @@ export class MimocodeExecutor extends BaseExecutor {
       }
     }
 
-    const terminalStatus = lastTerminalStatus || 502;
-    const message = lastError instanceof Error ? lastError.message : (terminalStatus === 429 ? "All accounts rate limited" : "All accounts exhausted");
     return {
-      response: new Response(JSON.stringify({ error: { message, type: "upstream_error", code: "NO_ACCOUNTS" } }), {
-        status: terminalStatus,
-        headers: { "Content-Type": "application/json" },
-      }),
+      response: new Response(JSON.stringify({
+        error: { message: "All accounts exhausted", type: "upstream_error", code: "NO_ACCOUNTS" },
+      }), { status: 502, headers: { "Content-Type": "application/json" } }),
       url,
       headers: this.buildHeaders(credentials, stream),
       transformedBody,

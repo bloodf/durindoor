@@ -81,8 +81,14 @@ function convertGeminiContent(content) {
 
   const parts = [];
   const toolCalls = [];
+  let reasoningContent = "";
 
   for (const part of content.parts) {
+    if (part.thought === true) {
+      if (part.text !== undefined) reasoningContent += part.text;
+      continue;
+    }
+
     if (part.text !== undefined) {
       parts.push({ type: OPENAI_BLOCK.TEXT, text: part.text });
     }
@@ -123,15 +129,22 @@ function convertGeminiContent(content) {
     if (parts.length > 0) {
       result.content = parts.length === 1 ? parts[0].text : parts;
     }
+    if (reasoningContent) {
+      result.reasoning_content = reasoningContent;
+    }
     result.tool_calls = toolCalls;
     return result;
   }
 
-  if (parts.length > 0) {
-    return {
-      role,
-      content: collapseTextParts(parts)
-    };
+  if (parts.length > 0 || reasoningContent) {
+    const result = { role };
+    if (parts.length > 0) {
+      result.content = collapseTextParts(parts);
+    }
+    if (reasoningContent) {
+      result.reasoning_content = reasoningContent;
+    }
+    return result;
   }
 
   return null;

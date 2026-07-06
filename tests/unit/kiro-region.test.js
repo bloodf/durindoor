@@ -73,7 +73,7 @@ describe("fetchKiroProfileArn region host", () => {
     const arn = await fetchKiroProfileArn("token");
     expect(arn).toBe("arn:aws:codewhisperer:us-east-1:1:profile/X");
     expect(fetchMock.mock.calls[0][0]).toBe(
-      "https://codewhisperer.us-east-1.amazonaws.com/ListAvailableProfiles"
+      "https://codewhisperer.us-east-1.amazonaws.com"
     );
   });
 
@@ -85,7 +85,7 @@ describe("fetchKiroProfileArn region host", () => {
     const arn = await fetchKiroProfileArn("token", "eu-central-1");
     expect(arn).toBe("arn:aws:codewhisperer:eu-central-1:2:profile/Y");
     expect(fetchMock.mock.calls[0][0]).toBe(
-      "https://q.eu-central-1.amazonaws.com/ListAvailableProfiles"
+      "https://q.eu-central-1.amazonaws.com"
     );
   });
 });

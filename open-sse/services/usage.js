@@ -13,8 +13,13 @@ import { getMiniMaxUsage } from "./usage/minimax.js";
 import { getCodeBuddyCnUsage } from "./usage/codebuddy-cn.js";
 import { getCursorUsage } from "./usage/cursor.js";
 
-// better-sqlite3 is optional, lazy-loaded inside getXaiUsageFromHistory
-import { DATA_FILE } from "@/lib/db/paths.js";
+// better-sqlite3 is optional, lazy-loaded inside getXaiUsageFromHistory.
+// DATA_FILE is intentionally NOT imported statically: it is a top-level
+// `export const` resolved once at module load, so it would freeze against
+// whatever DATA_DIR was at import time and never see a later DATA_DIR change
+// (e.g. tests setting process.env.DATA_DIR per-case). Resolve it lazily.
+import path from "node:path";
+import { getDataDir } from "@/lib/dataDir.js";
 
 import {
   getQwenUsage,
@@ -33,7 +38,7 @@ import {
  * graceful "No requests recorded." message.
  */
 async function getXaiUsageFromHistory(connection) {
-  const dbPath = DATA_FILE;
+  const dbPath = path.join(getDataDir(), "db", "data.sqlite");
   let db;
   try {
     const { default: Database } = await import("better-sqlite3");

@@ -78,14 +78,12 @@ describe("Codex reset credits", () => {
       availableCount: 2,
       credits: [
         {
+          id: null,
+          index: 0,
           status: "available",
           grantedAt: "2026-06-18T00:25:18.000Z",
           expiresAt: "2026-07-18T00:25:18.000Z",
-        },
-        {
-          status: "redeemed",
-          grantedAt: null,
-          expiresAt: null,
+          type: null,
         },
       ],
     });
@@ -193,6 +191,7 @@ describe("Codex reset credits", () => {
       "token",
       expect.any(String),
       expect.objectContaining({ strictProxy: false }),
+      {},
     );
   });
 });

@@ -4,7 +4,10 @@
  * The upstream endpoint expects a gRPC-web data frame containing a small
  * protobuf GetChatMessage request. Keep this encoder local and dependency-free:
  * it only implements the string, nested-message, and varint fields used by the
- * current LanguageServerService/GetChatMessage wire shape.
+ * current LanguageServerService/GetChatMessage wire shape. The response bridge
+ * preserves OpenAI chat-completions semantics: streaming requests emit SSE
+ * chunks, while `stream: false` requests collect gRPC-web chunks into one JSON
+ * `chat.completion` object.
  */
 import { randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
@@ -414,12 +417,81 @@ export class WindsurfExecutor extends BaseExecutor {
       return { response: upstream, url, headers, transformedBody: protoPayload };
     }
 
+    const response = stream === false
+      ? await this.transformToJSON(upstream, model)
+      : this.transformToSSE(upstream, model);
+
     return {
-      response: this.transformToSSE(upstream, model, stream),
+      response,
       url,
       headers,
       transformedBody: protoPayload,
     };
+  }
+
+  async transformToJSON(upstream, model) {
+    const responseId = `chatcmpl-ws-${Date.now()}`;
+    const created = Math.floor(Date.now() / 1000);
+    const bytes = new Uint8Array(await upstream.arrayBuffer());
+    let content = "";
+    let promptTokens = 0;
+    let completionTokens = 0;
+    let hadError = null;
+
+    for (const frame of parseGrpcWebFrames(bytes)) {
+      if (frame.flag === 0x80) {
+        const trailer = TEXT_DEC.decode(frame.payload);
+        const statusMatch = /grpc-status:\s*(\d+)/i.exec(trailer);
+        if (statusMatch && statusMatch[1] !== "0") {
+          const msgMatch = /grpc-message:\s*(.+)/i.exec(trailer);
+          hadError = msgMatch
+            ? decodeURIComponent(msgMatch[1].trim())
+            : `gRPC status ${statusMatch[1]}`;
+        }
+        continue;
+      }
+      if (frame.flag !== 0x00) continue;
+
+      const chunk = decodeCompletionChunk(frame.payload);
+      if (chunk.kind === "content" && chunk.text) {
+        content += chunk.text;
+      } else if (chunk.kind === "done") {
+        promptTokens = chunk.promptTokens;
+        completionTokens = chunk.completionTokens;
+      } else if (chunk.kind === "error") {
+        hadError = chunk.message;
+      }
+    }
+
+    if (hadError) {
+      return new Response(JSON.stringify({
+        error: { message: hadError, type: "windsurf_error", code: "upstream_error" },
+      }), { status: 502, headers: { "Content-Type": "application/json" } });
+    }
+
+    const json = {
+      id: responseId,
+      object: "chat.completion",
+      created,
+      model,
+      choices: [{
+        index: 0,
+        message: { role: "assistant", content },
+        finish_reason: "stop",
+      }],
+    };
+    if (promptTokens > 0 || completionTokens > 0) {
+      json.usage = {
+        prompt_tokens: promptTokens,
+        completion_tokens: completionTokens,
+        total_tokens: promptTokens + completionTokens,
+      };
+    }
+
+    return new Response(JSON.stringify(json), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   transformToSSE(upstream, model) {

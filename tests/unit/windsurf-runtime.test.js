@@ -181,6 +181,54 @@ describe("Windsurf executor behavior", () => {
     expect(text).toContain("data: [DONE]");
   });
 
+  it("collects gRPC-web chunks into a non-streaming OpenAI chat completion", async () => {
+    vi.doMock("../../open-sse/utils/proxyFetch.js", () => ({
+      proxyAwareFetch: vi.fn(async () => {
+        const usageStats = concatBytes([
+          encodeVarint((1 << 3) | 0),
+          encodeVarint(5),
+          encodeVarint((2 << 3) | 0),
+          encodeVarint(2),
+        ]);
+        const body = concatBytes([
+          makeFrame(0x00, encodeField(1, encodeString(1, "hel"))),
+          makeFrame(0x00, encodeField(1, encodeString(1, "lo"))),
+          makeFrame(0x00, encodeField(3, encodeField(1, usageStats))),
+          makeFrame(0x80, new TextEncoder().encode("grpc-status: 0\r\n")),
+        ]);
+        return new Response(body, {
+          status: 200,
+          headers: { "Content-Type": "application/grpc-web+proto" },
+        });
+      }),
+    }));
+
+    const { WindsurfExecutor } = await import("../../open-sse/executors/windsurf.js");
+    const result = await new WindsurfExecutor().execute({
+      model: "swe-1.6-fast",
+      body: { messages: [{ role: "user", content: "ping" }] },
+      stream: false,
+      credentials: { accessToken: "ws-token" },
+    });
+
+    expect(result.response.headers.get("content-type")).toContain("application/json");
+    const body = await result.response.json();
+    expect(body).toMatchObject({
+      object: "chat.completion",
+      model: "swe-1.6-fast",
+      choices: [{
+        index: 0,
+        message: { role: "assistant", content: "hello" },
+        finish_reason: "stop",
+      }],
+      usage: {
+        prompt_tokens: 5,
+        completion_tokens: 2,
+        total_tokens: 7,
+      },
+    });
+  });
+
   it("turns upstream error chunks into SSE error events", async () => {
     vi.doMock("../../open-sse/utils/proxyFetch.js", () => ({
       proxyAwareFetch: vi.fn(async () => {

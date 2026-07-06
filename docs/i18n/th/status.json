@@ -1,9 +1,9 @@
 {
   "locale": "th",
-  "totalPages": 36,
+  "totalPages": 3,
   "translated": 0,
   "reviewed": 0,
-  "lastSyncIso": "2026-07-06T06:04:48.756Z",
+  "lastSyncIso": "2026-07-03T21:31:32.000Z",
   "sources": [
     "public/i18n/literals/th.json"
   ],

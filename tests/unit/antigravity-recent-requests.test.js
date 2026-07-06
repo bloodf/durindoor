@@ -36,6 +36,7 @@ describe("Antigravity Recent Requests usage", () => {
     const stream = createPassthroughStreamWithLogger(
       "antigravity",
       null,
+      null,
       "claude-opus-4-6-thinking",
       "conn-1",
       { request: { contents: [{ role: "user", parts: [{ text: "hello" }] }] } },
@@ -136,6 +137,7 @@ describe("Antigravity Recent Requests usage", () => {
     let completed = null;
     const stream = createPassthroughStreamWithLogger(
       "antigravity",
+      null,
       null,
       "gemini-pro-agent",
       "conn-1",

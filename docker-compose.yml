@@ -6,7 +6,7 @@ services:
     ports:
       - "20128:20128"
     volumes:
-      - 9router-data:/app/data
+      - durindoor-data:/app/data
     env_file:
       - .env
     environment:

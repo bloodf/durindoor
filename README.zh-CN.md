@@ -976,7 +976,7 @@ codex "your prompt"
   "agents": {
     "defaults": {
       "model": {
-        "primary": "9router/kr/claude-sonnet-4.5"
+        "primary": "durindoor/kr/claude-sonnet-4.5"
       }
     }
   },
@@ -1018,7 +1018,7 @@ Model：cc/claude-opus-4-7
 
 ```bash
 # 克隆并安装
-git clone https://github.com/decolua/9router.git
+git clone https://github.com/bloodf/durindoor.git
 cd durindoor
 npm install
 npm run build

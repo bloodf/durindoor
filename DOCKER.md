@@ -1,6 +1,6 @@
 # Docker
 
-Run 9Router in a container. Published image: [`decolua/durindoor`](https://hub.docker.com/r/decolua/durindoor) — multi-platform `linux/amd64` + `linux/arm64`.
+Run DurinDoor in a container. Published image: [`ghcr.io/bloodf/durindoor`](https://github.com/bloodf/durindoor/pkgs/container/durindoor) — multi-platform `linux/amd64` + `linux/arm64`.
 
 ---
 
@@ -13,8 +13,8 @@ docker run -d \
   -p 20128:20128 \
   -v "$HOME/.9router:/app/data" \
   -e DATA_DIR=/app/data \
-  --name 9router \
-  decolua/durindoor:latest
+  --name durindoor \
+  ghcr.io/bloodf/durindoor:latest
 ```
 
 App listens on port `20128`. Open: http://localhost:20128
@@ -22,10 +22,10 @@ App listens on port `20128`. Open: http://localhost:20128
 ## Manage container
 
 ```bash
-docker logs -f 9router        # view logs
-docker stop 9router           # stop
-docker start 9router          # start again
-docker rm -f 9router          # remove
+docker logs -f durindoor        # view logs
+docker stop durindoor           # stop
+docker start durindoor          # start again
+docker rm -f durindoor          # remove
 ```
 
 ## Data persistence
@@ -60,8 +60,8 @@ docker run -d \
   -e PORT=20128 \
   -e HOSTNAME=0.0.0.0 \
   -e DEBUG=true \
-  --name 9router \
-  decolua/durindoor:latest
+  --name durindoor \
+  ghcr.io/bloodf/durindoor:latest
 ```
 
 ## Optional Headroom sidecar
@@ -70,8 +70,8 @@ The 9Router image does not bundle Python or Headroom. To use Headroom in Docker,
 
 ```yaml
 services:
-  9router:
-    image: decolua/durindoor:latest
+  durindoor:
+    image: ghcr.io/bloodf/durindoor:latest
     ports:
       - "20128:20128"
     volumes:
@@ -95,8 +95,8 @@ If Headroom runs on the Docker host instead of as a sidecar, use `http://host.do
 ## Update to latest
 
 ```bash
-docker pull decolua/durindoor:latest
-docker rm -f 9router
+docker pull ghcr.io/bloodf/durindoor:latest
+docker rm -f durindoor
 # re-run the quick start command
 ```
 
@@ -118,8 +118,7 @@ docker run --rm -p 20128:20128 \
 ## Publish (automatic via CI)
 
 Push a git tag `v*` → GitHub Actions builds multi-platform (amd64+arm64) and pushes to:
-- `ghcr.io/decolua/durindoor:v{version}` + `:latest`
-- `decolua/durindoor:v{version}` + `:latest`
+- `ghcr.io/bloodf/durindoor:v{version}` + `:latest`
 
 ```bash
 # Use scripts/release.js (recommended)

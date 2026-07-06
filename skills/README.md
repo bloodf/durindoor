@@ -21,7 +21,7 @@ Drop-in skills for any AI agent (Claude, Cursor, ChatGPT, custom SDK). Just **co
 
 Paste to your AI (Claude, Cursor, ChatGPT, …):
 
-```
+```text
 Read this skill and use it: https://raw.githubusercontent.com/decolua/durindoor/refs/heads/master/skills/durindoor/SKILL.md
 ```
 

@@ -25,10 +25,10 @@
 //   node scripts/migrate-from-9router.mjs --dry-run
 //   node scripts/migrate-from-9router.mjs
 //   node scripts/migrate-from-9router.mjs --target-dir <path> --legacy-dir <path>
-import { existsSync, statSync, mkdirSync, readdirSync, copyFileSync, writeFileSync, readFileSync, renameSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, copyFileSync, writeFileSync, readFileSync, renameSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { homedir } from 'node:os';
-import { execSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 
 function arg(name, def) {
   const i = process.argv.indexOf(name);
@@ -75,16 +75,20 @@ function backup(srcDir) {
   mkdirSync(dirname(backupRoot), { recursive: true });
   log('backup ' + srcDir + ' -> ' + backupRoot);
   if (dryRun) return;
-  execSync(`tar -cf "${backupRoot}" -C "${dirname(srcDir)}" "${basename(srcDir)}"`, { stdio: 'inherit' });
+  const result = spawnSync('tar', ['-cf', backupRoot, '-C', dirname(srcDir), '--', basename(srcDir)], { stdio: 'inherit' });
+  if (result.status !== 0) throw new Error('tar backup failed for ' + srcDir);
 }
 
+let rewriteRoot = null;
 if (!existsSync(targetDir) && existsSync(legacyDir)) {
   log('move: ' + legacyDir + ' -> ' + targetDir);
   backup(legacyDir);
   if (!dryRun) renameSync(legacyDir, targetDir);
+  rewriteRoot = dryRun ? legacyDir : targetDir;
 } else if (existsSync(legacyDir) && existsSync(targetDir)) {
   log('merge: copy unique files from ' + legacyDir + ' into ' + targetDir);
   backup(legacyDir);
+  backup(targetDir);
   walk(legacyDir, (p) => {
     const rel = p.slice(legacyDir.length + 1);
     const dest = join(targetDir, rel);
@@ -94,12 +98,15 @@ if (!existsSync(targetDir) && existsSync(legacyDir)) {
     if (!dryRun) copyFileSync(p, dest);
     log('merge ' + rel);
   });
+  rewriteRoot = targetDir;
 } else {
   log('no migration needed (one or both dirs missing)');
 }
 
 let rewrote = 0;
-walk(targetDir, (p) => { if (rewriter(p)) rewrote++; });
+if (rewriteRoot) {
+  walk(rewriteRoot, (p) => { if (rewriter(p)) rewrote++; });
+}
 log('rewrote provider-section labels in ' + rewrote + ' file(s)');
 
 if (dryRun) log('--dry-run; no files changed');

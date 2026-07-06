@@ -23,7 +23,7 @@ describe("openaiToKiroRequest", () => {
 
       const currentMsg = result.conversationState.currentMessage;
       expect(currentMsg.userInputMessage.content).toContain("Hello");
-      expect(currentMsg.userInputMessage.modelId).toBe("claude-sonnet-4.6");
+      expect(currentMsg.userInputMessage.modelId).toBe("claude-sonnet-4-6");
       expect(currentMsg.userInputMessage.origin).toBe("AI_EDITOR");
     });
 

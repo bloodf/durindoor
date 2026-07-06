@@ -195,8 +195,13 @@ function geminiToOpenAIRequestFixed(model, body, stream) {
       }
     }
     const nonFRParts = content.parts.filter(p => !(p && p.functionResponse));
-    if (nonFRParts.length > 0) {
-      splitContents.push({ ...content, parts: nonFRParts });
+    const toolCallParts = nonFRParts.filter(p => p && p.functionCall);
+    const otherParts = nonFRParts.filter(p => !(p && p.functionCall));
+    if (otherParts.length > 0) {
+      splitContents.push({ ...content, parts: otherParts });
+    }
+    if (toolCallParts.length > 0) {
+      splitContents.push({ ...content, role: GEMINI_ROLE.MODEL, parts: toolCallParts });
     }
   }
 

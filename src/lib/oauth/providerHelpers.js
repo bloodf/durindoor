@@ -1,7 +1,7 @@
 import { buildKiroProfileEndpoint } from "../../../open-sse/config/kiroRegions.js";
-import { assertValidAwsRegion } from "./constants/oauth";
 
 const BASE64_BLOCK_SIZE = 4;
+const AWS_REGION_PATTERN = /^[a-z]{2}-[a-z]+-\d{1,2}$/;
 
 function validateXaiOAuthEndpoint(rawUrl, field) {
   const value = String(rawUrl || "").trim();
@@ -55,8 +55,8 @@ function extractEmailFromAccessToken(accessToken) {
 
 export async function fetchKiroProfileArn(accessToken, region = "us-east-1") {
   if (!accessToken) return null;
-  const safeRegion = region || "us-east-1";
-  const endpoint = `${buildKiroProfileEndpoint(region)}`;
+  const safeRegion = typeof region === "string" && AWS_REGION_PATTERN.test(region) ? region : "us-east-1";
+  const endpoint = `${buildKiroProfileEndpoint(safeRegion)}`;
   try {
     const response = await fetch(endpoint, {
       method: "POST",

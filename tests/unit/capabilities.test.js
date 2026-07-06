@@ -37,7 +37,6 @@ describe("getCapabilitiesForModel", () => {
       "nvidia/nemotron-3-nano-30b-a3b",
       "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
       "nvidia/nemotron-3-ultra-550b-a55b",
-      "qwen/qwen3-next-80b-a3b-instruct",
       "qwen/qwen3.5-122b-a10b",
       "stepfun-ai/step-3.7-flash",
     ]) {
@@ -52,7 +51,7 @@ describe("getCapabilitiesForModel", () => {
     const out = translateRequest(
       "openai",
       "openai",
-      "qwen/qwen3-next-80b-a3b-instruct",
+      "mistralai/mistral-medium-3.5-128b",
       {
         messages: [{ role: "user", content: "hi" }],
         stream: false,

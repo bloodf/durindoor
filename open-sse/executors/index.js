@@ -23,6 +23,7 @@ import { XaiExecutor } from "./xai.js";
 import { CliproxyapiExecutor } from "./cliproxyapi.js";
 import { GrokCliExecutor } from "./grok-cli.js";
 import { GigaChatExecutor } from "./gigachat.js";
+import { ZenmuxFreeExecutor } from "./zenmux-free.js";
 import { DefaultExecutor } from "./default.js";
 
 const executors = {
@@ -55,6 +56,7 @@ const executors = {
   cliproxyapi: new CliproxyapiExecutor(),
   "grok-cli": new GrokCliExecutor(),
   gigachat: new GigaChatExecutor(),
+  "zenmux-free": new ZenmuxFreeExecutor(),
 };
 
 const defaultCache = new Map();
@@ -96,3 +98,4 @@ export { XaiExecutor } from "./xai.js";
 export { CliproxyapiExecutor } from "./cliproxyapi.js";
 export { GrokCliExecutor } from "./grok-cli.js";
 export { GigaChatExecutor } from "./gigachat.js";
+export { ZenmuxFreeExecutor } from "./zenmux-free.js";

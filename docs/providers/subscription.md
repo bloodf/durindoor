@@ -37,6 +37,35 @@ DurinDoor stores refresh metadata so it can renew tokens when the upstream provi
 
 Use provider labels when you keep multiple accounts for the same provider. Labels make usage logs and fallback behavior easier to audit.
 
+## Web Cookie Providers
+
+Web cookie providers bridge browser-session services that do not expose stable API-key endpoints. Paste only cookies from accounts you own, and expect sessions to expire when the upstream site rotates login state.
+
+### ZenMux Free
+
+`zenmux-free` uses the ZenMux free-tier web gateway at `https://zenmux.ai/api/anthropic/v1/messages`. Add it as a Web Cookie connection and paste the full `Cookie` header from `zenmux.ai`; the cookie string must include `ctoken=...`.
+
+DurinDoor converts OpenAI chat requests to ZenMux's Anthropic-compatible message endpoint and converts the upstream Anthropic SSE stream back to OpenAI chat completions. The provider is exposed under alias `zmf`.
+
+### Blocked OmniRoute Web-Session Providers
+
+The following OmniRoute providers were inspected for this branch but are not exposed at runtime because this JS-era DurinDoor branch does not include the required browser-session subsystems, credential helpers, or endpoint handlers:
+
+| Provider | Blocker |
+| --- | --- |
+| `adapta-web` | Requires OmniRoute web-session bearer-token executor and Adapta-specific credential validation not present in this branch. |
+| `chatgpt-web` | Requires ChatGPT web TLS client, sentinel/proof-of-work helpers, image endpoint handling, and web-cookie credential normalization. |
+| `copilot-m365-web` | Requires Microsoft 365 BizChat WebSocket framing and connection helpers. |
+| `copilot-web` | Requires Copilot web-session executor and browser-derived cookie/token flow. |
+| `duckduckgo-web` | Requires DuckDuckGo anti-abuse challenge solver, FE-signal generation, optional browser-backed session pool, and web tool shims. |
+| `huggingchat` | Requires HuggingChat cookie normalizer plus JSONL stream helper modules and SvelteKit conversation bootstrap flow. |
+| `muse-spark-web` | Requires Meta/Muse web-session request parser and cookie-backed executor helpers. |
+| `suno` | OmniRoute entry is a media/music web-session provider; this branch lacks the corresponding music-generation route and executor contract. |
+| `t3-web` | Requires T3 web-session executor and cookie validation flow. |
+| `udio` | OmniRoute entry is a media/music web-session provider; this branch lacks the corresponding Udio music endpoint executor contract. |
+| `veoaifree-web` | OmniRoute executor targets video/image/TTS tool workflows through WordPress AJAX; this branch lacks compatible video/music route plumbing for request/stream chat tests. |
+| `yuanbao-web` | Requires Tencent Yuanbao cookie-session SSE executor and Yuanbao-specific validation. |
+
 ## Connection Health
 
 A connection can be active, unavailable, locked for a model, expired, or missing required fields. DurinDoor may mark a connection unavailable after upstream errors such as authentication failure, quota exhaustion, rate limits, or provider-specific refusal.

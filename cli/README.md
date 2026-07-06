@@ -1,4 +1,4 @@
-# 9Router - FREE AI Router & Token Saver
+# DurinDoor - FREE AI Router & Token Saver
 
 **Never stop coding. Save 20-40% tokens with RTK + auto-fallback to FREE & cheap AI models.**
 
@@ -40,7 +40,7 @@
 **Option 1 — npm (recommended for desktop):**
 
 ```bash
-npm install -g 9router
+npm install -g durindoor
 9router
 
 # Or run directly with npx

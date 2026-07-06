@@ -1,6 +1,7 @@
 tests/translator/golden-request.test.js :: GOLDEN request: OpenAI → Kiro full body (image base64 + tool_result)
 tests/translator/golden-response-stream.test.js :: GOLDEN response stream: Claude → OpenAI text + thinking + tool_use + usage + finish
 tests/translator/golden-url-header.test.js :: GOLDEN buildHeaders (default executor providers) charm-hyper → headers (apiKey / oauth)
+tests/translator/golden-url-header.test.js :: GOLDEN buildHeaders (default executor providers) claude → headers (apiKey / oauth)
 tests/translator/golden-url-header.test.js :: GOLDEN buildHeaders (default executor providers) clinepass → headers (apiKey / oauth)
 tests/translator/golden-url-header.test.js :: GOLDEN buildHeaders (default executor providers) kimchi → headers (apiKey / oauth)
 tests/translator/golden-url-header.test.js :: GOLDEN buildUrl (default executor providers) charm-hyper → url (stream + non-stream)
@@ -15,54 +16,35 @@ tests/unit/db-driver-chain.test.js :: Driver fallback chain falls back to sql.js
 tests/unit/db-sqlite-vs-lowdb.test.js :: DB SQLite layer — public API parity usage: 24h and today byApiKey keep keys with the same masked prefix separate
 tests/unit/force-stream-config.test.js :: forceStream provider config keeps forced-stream providers streaming for JSON clients when body.stream is false
 tests/unit/force-stream-config.test.js :: forceStream provider config keeps forced-stream providers streaming for JSON clients when body.stream is undefined
-tests/unit/gemini-tts.test.js :: Gemini TTS uses the default Gemini TTS model when only a voice is provided
 tests/unit/kiro-profile-arn-regional.test.js :: fetchKiroProfileArn — regional endpoint + dispatch shape accepts both `arn` and `profileArn` field names in the response
 tests/unit/kiro-profile-arn-regional.test.js :: fetchKiroProfileArn — regional endpoint + dispatch shape defaults to us-east-1 when region is missing or malformed
 tests/unit/kiro-profile-arn-regional.test.js :: fetchKiroProfileArn — regional endpoint + dispatch shape falls back to the first profile when no ARN matches the region
 tests/unit/kiro-profile-arn-regional.test.js :: fetchKiroProfileArn — regional endpoint + dispatch shape hits codewhisperer.<region>.amazonaws.com with x-amz-target dispatch
 tests/unit/kiro-profile-arn-regional.test.js :: fetchKiroProfileArn — regional endpoint + dispatch shape prefers the profile whose ARN region matches the caller region
-tests/unit/kiro-region.test.js :: KiroExecutor.buildUrl region routing routes to the regional Amazon Q endpoint for a non-default region
-tests/unit/kiro-region.test.js :: fetchKiroProfileArn region host queries the regional Amazon Q host for a non-default region
-tests/unit/kiro-region.test.js :: fetchKiroProfileArn region host queries us-east-1 codewhisperer by default
-tests/unit/kiro-region.test.js :: kiro region helpers defaults to us-east-1 and trims input
-tests/unit/kiro-region.test.js :: kiro region helpers resolves the control-plane host per region
-tests/unit/kiro-region.test.js :: kiro region helpers returns the regional Amazon Q data-plane URL for other regions
 tests/unit/mitm-root-ca.test.js :: MITM Root CA generation creates Root CA files synchronously for direct server startup
 tests/unit/mitm-rootca-autogen.test.js :: MITM Root CA auto-generation (#2224) creates the MITM directory when it does not exist
 tests/unit/mitm-rootca-autogen.test.js :: MITM Root CA auto-generation (#2224) generates rootCA.key and rootCA.crt when both are absent
 tests/unit/mitm-rootca-autogen.test.js :: MITM Root CA auto-generation (#2224) generates when only rootCA.key exists (partial state)
 tests/unit/mitm-rootca-autogen.test.js :: MITM Root CA auto-generation (#2224) is idempotent when valid cert already exists (returns false)
 tests/unit/mitm-rootca-autogen.test.js :: MITM Root CA auto-generation (#2224) regenerates when rootCA.crt is corrupt / unreadable
-tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import extracts tokens using exact keys
-tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import falls back to fuzzy key matching on macOS when exact keys are missing
-tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import linux uses single hardcoded path and original error message
-tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import returns descriptive error if macOS db file exists but cannot be opened
-tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import returns login-prompt error when tokens are missing even after fallback
-tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import returns not-found when no macOS cursor db paths are accessible
-tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import unsupported platform returns 400
-tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import unwraps JSON-encoded string values
 tests/unit/openai-to-kiro.test.js :: openaiToKiroRequest basic message conversion should convert a simple text message
-tests/unit/provider-models-minimax-m3.test.js :: MiniMax-M3 model registration includes MiniMax-M3 in PROVIDER_MODELS.minimax
-tests/unit/provider-models-minimax-m3.test.js :: MiniMax-M3 model registration includes MiniMax-M3 in PROVIDER_MODELS['minimax-cn']
-tests/unit/rtk.test.js :: RTK flag default off, toggle works
-tests/unit/rtk.test.js :: compressMessages (disabled) returns null when disabled
-tests/unit/rtk.test.js :: compressMessages (enabled) compresses Claude array-form tool_result text parts
-tests/unit/rtk.test.js :: compressMessages (enabled) compresses Claude string-form tool_result
-tests/unit/rtk.test.js :: compressMessages (enabled) compresses OpenAI tool message (string content)
-tests/unit/rtk.test.js :: compressMessages (enabled) handles mix of messages without crashing
-tests/unit/rtk.test.js :: compressMessages (enabled) never produces empty content (R14 guard)
-tests/unit/rtk.test.js :: compressMessages (enabled) skips below MIN_COMPRESS_SIZE (<500 bytes)
-tests/unit/rtk.test.js :: compressMessages (enabled) skips is_error tool_result
-tests/unit/rtk.test.js :: compressMessages (enabled) skips when body has no messages
 tests/unit/translator-request-normalization.test.js :: request normalization claudeToOpenAIRequest flattens text-only content arrays into string
 tests/unit/translator-request-normalization.test.js :: request normalization filterToOpenAIFormat flattens text-only arrays to string
 tests/unit/translator-request-normalization.test.js :: request normalization parseSSELine supports provider raw NDJSON stream lines
 tests/unit/translator-request-normalization.test.js :: request normalization translateRequest keeps /v1/messages Claude->OpenAI text payloads string-safe
+tests/unit/kiro-region.test.js :: fetchKiroProfileArn region host queries us-east-1 codewhisperer by default
+tests/unit/kiro-region.test.js :: fetchKiroProfileArn region host queries the regional Amazon Q host for a non-default region
+tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import returns descriptive error if macOS db file exists but cannot be opened
+tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import extracts tokens using exact keys
+tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import unwraps JSON-encoded string values
+tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import falls back to fuzzy key matching on macOS when exact keys are missing
+tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import returns login-prompt error when tokens are missing even after fallback
+tests/unit/provider-models-minimax-m3.test.js :: MiniMax-M3 model registration includes MiniMax-M3 in PROVIDER_MODELS.minimax
+tests/unit/provider-models-minimax-m3.test.js :: MiniMax-M3 model registration includes MiniMax-M3 in PROVIDER_MODELS['minimax-cn']
 tests/unit/xai-oauth-service.test.js :: xai/oauth service builds authorize URLs with CLIProxyAPI query extras
 tests/unit/xai-oauth-service.test.js :: xai/oauth service discovers endpoints without custom user-agent headers
 tests/unit/xai-oauth-service.test.js :: xai/oauth service exchanges dashboard codes against the discovered xAI token endpoint
 tests/unit/xai-oauth-service.test.js :: xai/oauth service generates dashboard auth data with CLIProxyAPI PKCE size and discovered endpoints
 tests/unit/xai-oauth-service.test.js :: xai/oauth service validates discovered endpoints are https x.ai URLs
 tests/unit/xai-usage.test.js :: xAI (Grok) usage aggregates tokens and cost per model from usageHistory
-tests/unit/xai-usage.test.js :: xAI (Grok) usage returns graceful message when no xai history exists
 tests/unit/xai-usage.test.js :: xAI (Grok) usage scopes aggregation to the requested connectionId

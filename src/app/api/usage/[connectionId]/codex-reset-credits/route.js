@@ -135,13 +135,23 @@ export async function POST(request, { params }) {
 
     // Server-generated redeem id prevents client-controlled replay
     const redeemRequestId = crypto.randomUUID();
-    let consumeResult = await consumeCodexRateLimitResetCredit(connection.accessToken, redeemRequestId, proxyOptions);
+    let consumeResult = await consumeCodexRateLimitResetCredit(
+      connection.accessToken,
+      redeemRequestId,
+      proxyOptions,
+      connection.providerSpecificData,
+    );
 
     if (isOAuth && isAuthExpiredResult(consumeResult) && connection.refreshToken) {
       try {
         const retryResult = await refreshAndUpdateCredentials(connection, true, proxyOptions);
         connection = retryResult.connection;
-        consumeResult = await consumeCodexRateLimitResetCredit(connection.accessToken, redeemRequestId, proxyOptions);
+        consumeResult = await consumeCodexRateLimitResetCredit(
+          connection.accessToken,
+          redeemRequestId,
+          proxyOptions,
+          connection.providerSpecificData,
+        );
       } catch (retryError) {
         console.warn(`[Codex Reset Credits] force refresh failed: ${retryError.message}`);
       }

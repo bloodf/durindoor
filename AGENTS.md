@@ -174,14 +174,16 @@ DinoStack ships per-harness adapters. The `.claude/` adapter is machine-wide (re
 
 ### 6.2 Install (Hermes adapter only, project-local)
 
+The install script symlinks `~/.hermes/skills/agentic-engineering/SKILL.md` to a *real* file inside the cloned source tree, so the source tree MUST live in a persistent location. Cloning into `/tmp` and `rm -rf`-ing it after install leaves a dangling symlink and breaks the skill on the next `/tmp` cleanup.
+
 ```bash
-git clone https://github.com/Space-Dinosaurs/DinoStack.git /tmp/dinostack
-cd /tmp/dinostack
-git checkout d7055a8fc5b9f002a13a1ab5abae134672518303
+git clone https://github.com/Space-Dinosaurs/DinoStack.git ~/.local/share/dinostack
+cd ~/.local/share/dinostack
+git checkout ${DINOSTACK_SHA:-d7055a8fc5b9f002a13a1ab5abae134672518303}
 bash .hermes/install.sh --mode=opt-in --profile=default
 ```
 
-The clone is to /tmp/dinostack so the install is not entangled with this repo. After install, the source tree can be removed (`rm -rf /tmp/dinostack`); the symlinked `~/.hermes/skills/agentic-engineering/SKILL.md` and the config JSON are independent of the source tree. Always set `DINOSTACK_SHA` to the SHA recorded in §6.4 so the install is reproducible.
+The source lives at `~/.local/share/dinostack/` (XDG-aligned, per-user, survives reboots and `/tmp` cleanups). Do NOT delete it after install — it is the target of the symlink the install creates. To update DinoStack later, `git -C ~/.local/share/dinostack pull` and re-run the install. To uninstall, run the uninstall script first (it removes the symlink and the config JSON), then `rm -rf ~/.local/share/dinostack`.
 
 This writes:
 

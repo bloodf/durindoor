@@ -102,6 +102,10 @@ import p99 from "./nube.js";
 import p100 from "./kenari.js";
 import p101 from "./grok-cli.js";
 import p102 from "./agy.js";
+import p103 from "./gitlab-duo.js";
+import p104 from "./trae.js";
+import p105 from "./devin-cli.js";
+import p106 from "./windsurf.js";
 
 export default [
   p0,
@@ -205,4 +209,8 @@ export default [
   p98,
   p101,
   p102,
+  p103,
+  p104,
+  p105,
+  p106,
 ];

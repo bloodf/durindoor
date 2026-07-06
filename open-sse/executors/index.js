@@ -21,6 +21,10 @@ import { MimoFreeExecutor } from "./mimo-free.js";
 import { CodeBuddyExecutor } from "./codebuddy-cn.js";
 import { XaiExecutor } from "./xai.js";
 import { GrokCliExecutor } from "./grok-cli.js";
+import { GitlabExecutor } from "./gitlab.js";
+import { TraeExecutor } from "./trae.js";
+import { DevinCliExecutor } from "./devin-cli.js";
+import { WindsurfExecutor } from "./windsurf.js";
 import { DefaultExecutor } from "./default.js";
 
 const executors = {
@@ -51,6 +55,10 @@ const executors = {
   "codebuddy-cn": new CodeBuddyExecutor(),
   xai: new XaiExecutor(),
   "grok-cli": new GrokCliExecutor(),
+  "gitlab-duo": new GitlabExecutor("gitlab-duo"),
+  trae: new TraeExecutor(),
+  "devin-cli": new DevinCliExecutor(),
+  windsurf: new WindsurfExecutor(),
 };
 
 const defaultCache = new Map();
@@ -90,3 +98,7 @@ export { MimoFreeExecutor } from "./mimo-free.js";
 export { CodeBuddyExecutor } from "./codebuddy-cn.js";
 export { XaiExecutor } from "./xai.js";
 export { GrokCliExecutor } from "./grok-cli.js";
+export { GitlabExecutor } from "./gitlab.js";
+export { TraeExecutor } from "./trae.js";
+export { DevinCliExecutor } from "./devin-cli.js";
+export { WindsurfExecutor } from "./windsurf.js";

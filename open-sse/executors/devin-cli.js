@@ -4,8 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import { BaseExecutor } from "./base.js";
 
-const DEVIN_ACP_TIMEOUT_MS = parseInt(process.env.DEVIN_ACP_TIMEOUT_MS || "300000", 10);
-
 function resolveDevinBin() {
   const envBin = process.env.CLI_DEVIN_BIN?.trim();
   if (envBin) return envBin;
@@ -28,18 +26,6 @@ function rpc(method, params, id) {
   const message = { jsonrpc: "2.0", method, params };
   if (id !== undefined) message.id = id;
   return `${JSON.stringify(message)}\n`;
-}
-
-function buildAcpInitializeParams() {
-  return {
-    protocolVersion: 1,
-    clientInfo: { name: "durindoor", version: "1.0" },
-    clientCapabilities: {},
-  };
-}
-
-function buildAcpSessionNewParams() {
-  return { cwd: process.cwd(), mcpServers: [] };
 }
 
 function buildPromptText(messages = []) {
@@ -77,165 +63,6 @@ function extractResultText(result = {}) {
   return "";
 }
 
-export function buildAcpPromptParams(sessionId, promptText) {
-  return { sessionId, prompt: [{ type: "text", text: promptText }] };
-}
-
-export function parseAcpSessionUpdate(params = {}) {
-  const update = params.update && typeof params.update === "object" ? params.update : params;
-  const type = update.sessionUpdate || update.type || params.type;
-  if (type === "agent_message_chunk") {
-    return { kind: "delta", text: update.content?.text || update.text || "" };
-  }
-  if (type === "message_delta" || type === "text_delta" || type === "content_delta") {
-    return { kind: "delta", text: update.content || update.delta || update.text || "" };
-  }
-  if (type === "message_stop" || type === "stop" || type === "done" || update.stopReason) {
-    return { kind: "stop" };
-  }
-  if (type === "error") {
-    return { kind: "error", message: String(update.message || update.error || "Devin ACP error") };
-  }
-  return { kind: "ignore" };
-}
-
-function devinErrorResponse(status, message) {
-  return new Response(JSON.stringify({ error: { message, type: "devin_cli_error" } }), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-}
-
-function runAcpCompletion({ model, promptText, apiKey, devinBin, signal, log }) {
-  return new Promise((resolve, reject) => {
-    const env = { ...process.env };
-    if (apiKey) env.WINDSURF_API_KEY = apiKey;
-    const child = spawn(devinBin, ["acp", "--agent-type", "summarizer"], {
-      env,
-      stdio: ["pipe", "pipe", "pipe"],
-      shell: process.platform === "win32",
-    });
-
-    let stdinClosed = false;
-    let idCounter = 1;
-    let initDone = false;
-    let sessionCreated = false;
-    let promptSent = false;
-    let totalText = "";
-    let settled = false;
-
-    const cleanup = () => {
-      clearTimeout(timeout);
-      if (signal) signal.removeEventListener("abort", onAbort);
-      try {
-        if (!stdinClosed) {
-          stdinClosed = true;
-          child.stdin.end();
-        }
-      } catch {
-        // Ignore close races.
-      }
-    };
-    const settle = (fn, value) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      fn(value);
-    };
-    const fail = message => settle(reject, new Error(message));
-    const sendRpc = (method, params) => {
-      if (stdinClosed || child.stdin.destroyed) return;
-      child.stdin.write(rpc(method, params, idCounter++));
-    };
-    const onAbort = () => {
-      if (!child.killed) child.kill("SIGTERM");
-      fail("Devin ACP request aborted");
-    };
-    const timeout = setTimeout(() => {
-      if (!child.killed) child.kill("SIGTERM");
-      fail("Devin ACP request timed out");
-    }, DEVIN_ACP_TIMEOUT_MS);
-    timeout.unref?.();
-    if (signal?.aborted) onAbort();
-    else if (signal) signal.addEventListener("abort", onAbort, { once: true });
-
-    let buffer = "";
-    child.stdout.on("data", chunk => {
-      buffer += chunk.toString("utf8");
-      let newline;
-      while ((newline = buffer.indexOf("\n")) !== -1) {
-        const line = buffer.slice(0, newline).trim();
-        buffer = buffer.slice(newline + 1);
-        if (!line) continue;
-        let message;
-        try {
-          message = JSON.parse(line);
-        } catch {
-          continue;
-        }
-        if (message.error) {
-          fail(`Devin ACP error ${message.error.code}: ${message.error.message}`);
-          return;
-        }
-        if (!initDone && message.result !== undefined && !message.method) {
-          initDone = true;
-          sendRpc("session/new", buildAcpSessionNewParams());
-          continue;
-        }
-        if (initDone && !sessionCreated && message.result !== undefined && !message.method) {
-          const sessionId = message.result?.sessionId || null;
-          if (!sessionId) {
-            fail("Devin ACP: session/new returned no sessionId");
-            return;
-          }
-          sessionCreated = true;
-          promptSent = true;
-          sendRpc("session/prompt", buildAcpPromptParams(sessionId, promptText));
-          continue;
-        }
-        if (message.method === "session/update" || message.method === "$/update") {
-          const update = parseAcpSessionUpdate(message.params || {});
-          if (update.kind === "delta" && update.text) totalText += update.text;
-          if (update.kind === "stop") {
-            settle(resolve, totalText);
-            return;
-          }
-          if (update.kind === "error") {
-            fail(update.message);
-            return;
-          }
-          continue;
-        }
-        if (promptSent && message.result !== undefined && !message.method) {
-          const content = totalText ? "" : extractResultText(message.result);
-          if (content) totalText = content;
-          if (message.result?.stopReason && message.result.stopReason !== "cancelled") {
-            settle(resolve, totalText);
-            return;
-          }
-        }
-      }
-    });
-
-    child.stderr.on("data", chunk => log?.debug?.("DEVIN", `stderr: ${chunk.toString("utf8").slice(0, 200)}`));
-    child.on("error", error => {
-      const message = error.message.includes("ENOENT") || error.message.includes("not found")
-        ? `Devin CLI not found: ${devinBin}. Install https://cli.devin.ai or set CLI_DEVIN_BIN.`
-        : `Devin CLI spawn error: ${error.message}`;
-      fail(message);
-    });
-    child.on("close", code => {
-      if (!settled) {
-        if (code !== 0 && !totalText) fail(`Devin CLI exited with code ${code}`);
-        else settle(resolve, totalText);
-      }
-    });
-    sendRpc("initialize", buildAcpInitializeParams());
-  });
-}
-
-export const __test__ = { rpc, buildAcpInitializeParams, buildAcpSessionNewParams };
-
 export class DevinCliExecutor extends BaseExecutor {
   constructor() {
     super("devin-cli", { id: "devin-cli", baseUrl: "devin://acp/stdio" });
@@ -253,54 +80,12 @@ export class DevinCliExecutor extends BaseExecutor {
     return null;
   }
 
-  async execute({ model, body, stream = true, credentials = {}, signal, log }) {
+  async execute({ model, body, credentials = {}, signal, log }) {
     const messages = Array.isArray(body?.messages) ? body.messages : [];
     const promptText = buildPromptText(messages);
     const apiKey = credentials.apiKey || credentials.accessToken || process.env.WINDSURF_API_KEY || "";
     const devinBin = resolveDevinBin();
     log?.info?.("DEVIN", `devin acp model=${model || "default"} bin=${devinBin}`);
-
-    if (devinBin.includes(path.sep) && !fs.existsSync(devinBin)) {
-      const message = `Devin CLI not found: ${devinBin}. Install https://cli.devin.ai or set CLI_DEVIN_BIN.`;
-      return {
-        response: devinErrorResponse(502, message),
-        url: this.buildUrl(),
-        headers: {},
-        transformedBody: { model, promptLength: promptText.length },
-      };
-    }
-
-    if (stream === false) {
-      const created = Math.floor(Date.now() / 1000);
-      try {
-        const content = await runAcpCompletion({ model, promptText, apiKey, devinBin, signal, log });
-        return {
-          response: new Response(JSON.stringify({
-            id: `chatcmpl-devin-${Date.now()}`,
-            object: "chat.completion",
-            created,
-            model,
-            choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }],
-            usage: {
-              prompt_tokens: Math.ceil(promptText.length / 4),
-              completion_tokens: Math.ceil(content.length / 4),
-              total_tokens: Math.ceil((promptText.length + content.length) / 4),
-              estimated: true,
-            },
-          }), { status: 200, headers: { "Content-Type": "application/json" } }),
-          url: this.buildUrl(),
-          headers: {},
-          transformedBody: { model, promptLength: promptText.length },
-        };
-      } catch (error) {
-        return {
-          response: devinErrorResponse(502, error.message),
-          url: this.buildUrl(),
-          headers: {},
-          transformedBody: { model, promptLength: promptText.length },
-        };
-      }
-    }
 
     const sseStream = new ReadableStream({
       start(controller) {
@@ -405,7 +190,7 @@ export class DevinCliExecutor extends BaseExecutor {
             }
             if (!initDone && message.result !== undefined && !message.method) {
               initDone = true;
-              sendRpc("session/new", buildAcpSessionNewParams());
+              sendRpc("session/new", { cwd: process.cwd(), model: model || undefined });
               continue;
             }
             if (initDone && !sessionCreated && message.result !== undefined && !message.method) {
@@ -416,23 +201,24 @@ export class DevinCliExecutor extends BaseExecutor {
               }
               sessionCreated = true;
               promptSent = true;
-              sendRpc("session/prompt", buildAcpPromptParams(sessionId, promptText));
+              sendRpc("session/prompt", { sessionId, content: [{ type: "text", text: promptText }] });
               continue;
             }
             if (message.method === "session/update" || message.method === "$/update") {
-              const update = parseAcpSessionUpdate(message.params || {});
-              if (update.kind === "delta") {
-                const delta = update.text || "";
+              const params = message.params || {};
+              const type = params.type;
+              if (type === "message_delta" || type === "text_delta" || type === "content_delta") {
+                const delta = params.content || params.delta || params.text || "";
                 if (delta) {
                   emitRoleIfNeeded();
                   totalText += delta;
                   emit({ id: responseId, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: { content: delta }, finish_reason: null }] });
                 }
-              } else if (update.kind === "stop") {
+              } else if (type === "message_stop" || type === "stop" || type === "done") {
                 finish();
                 return;
-              } else if (update.kind === "error") {
-                finish(update.message);
+              } else if (type === "error") {
+                finish(String(params.message || params.error || "Devin ACP error"));
                 return;
               }
               continue;
@@ -464,7 +250,11 @@ export class DevinCliExecutor extends BaseExecutor {
             if (!child.killed) child.kill("SIGTERM");
           }, { once: true });
         }
-        sendRpc("initialize", buildAcpInitializeParams());
+        sendRpc("initialize", {
+          protocolVersion: "0.3",
+          clientInfo: { name: "durindoor", version: "1.0" },
+          capabilities: {},
+        });
       },
     });
 

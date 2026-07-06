@@ -26,8 +26,4 @@ export default {
     webUrl: "https://solo.trae.ai",
     tokenLifetimeDays: 14,
   },
-  models: [
-    { id: "auto", name: "Trae Auto", contextLength: 200000 },
-    { id: "work", name: "Trae SOLO Work", contextLength: 200000 },
-  ],
 };

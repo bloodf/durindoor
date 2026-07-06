@@ -80,14 +80,21 @@ Implemented in this slice:
 | --- | --- | --- | --- |
 | Antigravity CLI | `agy` | Same Google OAuth shape as Antigravity, stored under a separate provider id so CLI credentials do not collide with IDE credentials. | Reuses the Antigravity Google refresh flow. |
 | Grok Build CLI | `grok-cli` | Import `~/.grok/auth.json` or a raw Grok JWT through the import-token flow. Auth JSON imports preserve the refresh token and non-secret account metadata. | Uses the xAI OAuth token endpoint and stores rotated refresh tokens when returned. |
+| GitLab Duo | `gitlab-duo` | Browser OAuth with PKCE against `GITLAB_DUO_BASE_URL`/`GITLAB_BASE_URL`, or per-connection `baseUrl` metadata. Chat messages are adapted to GitLab Code Suggestions completions. | Refreshes through the instance `/oauth/token` endpoint and keeps base URL/client metadata with the connection. |
+| Trae | `trae` | Import a Trae SOLO `Cloud-IDE-JWT` token. Optional identity metadata (`webId`, `bizUserId`, `userUniqueId`, tenant/scope/region) is carried in provider-specific data. | Pasted Cloud-IDE-JWT tokens do not expose a public refresh flow; reconnect by importing a new token when Trae expires it. |
+| Devin CLI | `devin-cli` | Import a Devin/Windsurf token or rely on `devin auth login` credentials. Runtime calls spawn `devin acp --agent-type summarizer` over ACP stdio; set `CLI_DEVIN_BIN` to override binary discovery. | No public token refresh is available for imported tokens; reconnect or re-authenticate the official CLI when the upstream session expires. |
 
 Blocked from runtime exposure in this slice:
 
 | Provider | Reason |
 | --- | --- |
-| `devin-cli` | Requires the official Devin CLI ACP stdio executor plus binary discovery and process lifecycle tests. DurinDoor has no matching executor subsystem in this branch. |
-| `gitlab-duo` | Requires GitLab Duo executor request/response adaptation, dynamic base URL OAuth endpoints, and token exchange tests for instance-specific client credentials. |
-| `trae` | Requires the Trae SOLO session executor, `/authorize` callback/import route, Cloud-IDE-JWT identity propagation, and MITM/session handling that is not present in this branch. |
-| `windsurf` | Requires the Windsurf gRPC-web executor and import-token UI/API flow for IDE-generated Codeium tokens. The runtime wire encoder is not present in this branch. |
+| `windsurf` | Requires the Windsurf gRPC-web protobuf encoder/decoder for `LanguageServerService/GetChatMessage`, model alias normalization, and stream framing tests. The registry exposes import-token metadata, but runtime calls stay blocked until the wire encoder is ported and verified. |
+
+Windsurf implementation plan:
+
+1. Port the OmniRoute `open-sse/executors/windsurf.ts` protobuf helpers to plain JS: gRPC-web frame writer/reader, `GetChatMessage` request encoding, response chunk decoding, and model alias normalization.
+2. Add unit tests for model alias mapping, OpenAI message conversion, gRPC-web frame parsing, content/done/error chunk decoding, and the guarded executor path.
+3. Replace the current `501` guard with the real executor only after the tests cover malformed/truncated frames and upstream error chunks.
+4. No new package dependency is expected if the minimal encoder is ported directly; using generated protobufs would require adding a protobuf runtime and generated code, so the direct encoder remains the preferred small port.
 
 Use the dashboard model selector or `/v1/models` response as the source of truth for available identifiers in your instance.

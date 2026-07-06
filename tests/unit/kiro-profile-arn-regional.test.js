@@ -16,7 +16,7 @@ import { fetchKiroProfileArn } from "../../src/lib/oauth/providerHelpers.js";
  *      401 to the wrong URL shape, masking the real error.
  *
  * These tests pin the fix:
- *   - endpoint is codewhisperer.<region>.amazonaws.com
+ *   - endpoint is the regional Kiro profile-discovery host
  *   - method is POST to the service root with x-amz-target dispatch
  *   - Content-Type is application/x-amz-json-1.0
  *   - profile whose ARN region matches the caller region wins over the first
@@ -38,7 +38,7 @@ describe("fetchKiroProfileArn — regional endpoint + dispatch shape", () => {
     expect(arn).toBe(expectedArn);
 
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe("https://codewhisperer.eu-west-1.amazonaws.com");
+    expect(url).toBe("https://q.eu-west-1.amazonaws.com");
     expect(init.method).toBe("POST");
     expect(init.headers["Content-Type"]).toBe("application/x-amz-json-1.0");
     expect(init.headers["x-amz-target"]).toBe(

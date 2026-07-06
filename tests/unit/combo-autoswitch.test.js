@@ -43,14 +43,11 @@ describe("detectRequiredCapabilities", () => {
     expect(r.has("vision")).toBe(true);
   });
 
-  it("web_search tool -> search not yet auto-detected (feature disabled)", () => {
-    // Source deliberately does not scan body.tools for search capability yet
-    // (combo.js: "search: temporarily disabled in auto-switch"). Lock the
-    // shipped behavior so this stays green until the feature is wired.
+  it("web_search tool -> search", () => {
     const r = detectRequiredCapabilities({ messages: [{ role: "user", content: "q" }], tools: [
       { type: "web_search" },
     ] });
-    expect(r.has("search")).toBe(false);
+    expect(r.has("search")).toBe(true);
   });
 
   it("responses input_image -> vision", () => {

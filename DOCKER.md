@@ -2,6 +2,8 @@
 
 Run DurinDoor in a container with persistent storage. The container exposes the same dashboard and API as the CLI runtime.
 
+Published image: [`ghcr.io/bloodf/durindoor`](https://github.com/bloodf/durindoor/pkgs/container/durindoor), built for `linux/amd64` and `linux/arm64`.
+
 Docker images are published for versioned release tags. Replace `<version>` with a published version tag, for example `0.5.18`. Avoid using `latest` unless a maintainer has explicitly published it for the release you want.
 
 ## Quick Start

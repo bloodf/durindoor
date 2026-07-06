@@ -6,9 +6,10 @@ const path = require("path");
 const { spawnSync } = require("child_process");
 
 const nextBin = require.resolve("next/dist/bin/next");
+const buildArgs = ["build", "--webpack", ...process.argv.slice(2)];
 
 function runBuild(env) {
-  const result = spawnSync(process.execPath, [nextBin, "build", "--webpack"], {
+  const result = spawnSync(process.execPath, [nextBin, ...buildArgs], {
     stdio: "inherit",
     env,
   });
@@ -22,7 +23,7 @@ if (process.platform !== "win32") {
 
 // CLI packaging already calls root build with isolated env + tracing overrides.
 // Respect that caller-provided sandbox instead of silently replacing it again.
-if (process.env.NEXT_DIST_DIR || process.env.NEXT_TRACING_ROOT_MODE) {
+if (process.env.NEXT_TRACING_ROOT_MODE) {
   process.exit(runBuild(process.env));
 }
 

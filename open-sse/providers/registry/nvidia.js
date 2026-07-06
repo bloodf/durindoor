@@ -67,7 +67,6 @@ export default {
     { id: "stepfun-ai/step-3.7-flash", name: "Step 3.7 Flash" },
     { id: "stockmark/stockmark-2-100b-instruct", name: "Stockmark 2 100B Instruct" },
     { id: "upstage/solar-10.7b-instruct", name: "Solar 10.7B Instruct" },
-    { id: "nvidia/gliner-pii", name: "GLiNER PII" },
     { id: "nvidia/nv-embedqa-e5-v5", name: "NV EmbedQA E5 v5", kind: "embedding" },
     { id: "nvidia/parakeet-ctc-1.1b-asr", name: "Parakeet CTC 1.1B", params: ["language"], kind: "stt" },
     { id: "fastpitch", name: "FastPitch", kind: "tts" },

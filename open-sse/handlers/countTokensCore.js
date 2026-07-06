@@ -6,6 +6,44 @@ function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+function countValueChars(value) {
+  if (value == null) return 0;
+  if (typeof value === "string") return value.length;
+  if (typeof value === "number" || typeof value === "boolean") return String(value).length;
+  if (Array.isArray(value)) return value.reduce((total, item) => total + countValueChars(item), 0);
+  if (isRecord(value)) {
+    return Object.entries(value).reduce((total, [key, item]) => total + key.length + countValueChars(item), 0);
+  }
+  return 0;
+}
+
+function countContentBlockChars(block) {
+  if (block == null) return 0;
+  if (typeof block === "string") return block.length;
+  if (!isRecord(block)) return countValueChars(block);
+
+  switch (block.type) {
+    case "text":
+      return countValueChars(block.text);
+    case "tool_use":
+      return countValueChars(block.name) + countValueChars(block.input);
+    case "tool_result":
+      return countValueChars(block.content);
+    case "thinking":
+      return countValueChars(block.thinking);
+    default:
+      return countValueChars(block);
+  }
+}
+
+function countMessageChars(message) {
+  if (!isRecord(message)) return 0;
+  const { content } = message;
+  if (typeof content === "string") return content.length;
+  if (Array.isArray(content)) return content.reduce((total, block) => total + countContentBlockChars(block), 0);
+  return countValueChars(content);
+}
+
 // PROVIDERS[id] IS the transport object (built by buildTransport), so cfg.baseUrl
 // and cfg.format are top-level. Claude-compatible providers serve /messages; the
 // count_tokens endpoint is the sibling /messages/count_tokens. Returns null when
@@ -24,18 +62,8 @@ export function deriveCountTokensUrl(cfg) {
 export function estimateTokens(body) {
   const b = isRecord(body) ? body : {};
   const messages = Array.isArray(b.messages) ? b.messages : [];
-  let totalChars = 0;
-  if (typeof b.system === "string") totalChars += b.system.length;
-  for (const msg of messages) {
-    if (!isRecord(msg)) continue;
-    if (typeof msg.content === "string") {
-      totalChars += msg.content.length;
-    } else if (Array.isArray(msg.content)) {
-      for (const part of msg.content) {
-        if (isRecord(part) && part.type === "text" && part.text) totalChars += part.text.length;
-      }
-    }
-  }
+  let totalChars = countValueChars(b.system) + countValueChars(b.tools);
+  for (const msg of messages) totalChars += countMessageChars(msg);
   return Math.max(1, Math.ceil(totalChars / 4));
 }
 

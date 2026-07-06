@@ -16,8 +16,8 @@ import { SSE_DONE } from "../utils/sseConstants.js";
  * 9router can consume it without further format translation.
  */
 export class CommandCodeExecutor extends BaseExecutor {
-  constructor() {
-    super("commandcode", PROVIDERS.commandcode);
+  constructor(provider = "commandcode") {
+    super(provider, PROVIDERS[provider] || PROVIDERS.commandcode);
   }
 
   transformRequest(model, body, stream, credentials) {

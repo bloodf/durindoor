@@ -192,4 +192,38 @@ instead of limiting the inventory to one top-level directory per provider.
   filename, same 128x128 dimensions) so the advertised local icon format
   matches the file on disk.
 
+## Specialized Executor Slice: Faraday
+
+Source inspected at `3ddcee6369c54e1c844a6e46cbbc79870d10d30b`:
+
+- `open-sse/executors/auggie.ts`
+- `open-sse/executors/bedrock.ts`
+- `open-sse/executors/chipotle.ts`
+- `open-sse/executors/commandCode.ts`
+- `open-sse/executors/inner-ai.ts`
+- `open-sse/executors/mimocode.ts`
+- `open-sse/executors/pollinations.ts`
+- `open-sse/executors/puter.ts`
+- `open-sse/executors/theoldllm.ts`
+- Matching provider registry modules under `open-sse/config/providers/registry/<provider>/index.ts`
+
+### Implemented
+
+These providers are exposed in DurinDoor with executor/unit coverage:
+
+- `command-code`: registered as a hyphenated provider id backed by DurinDoor's existing Command Code executor path. The provider keeps OmniRoute's `command-code` id, `cmd` alias, `/alpha/generate` endpoint, stream-forcing transport, and current model seed. This avoids duplicating the existing `commandcode` translator while making the OmniRoute provider id routable.
+- `pollinations`: ported as a small specialized executor for `https://gen.pollinations.ai/v1/chat/completions`. The executor forwards optional bearer credentials and only enables `jsonMode` when the caller explicitly requests `response_format.type` of `json_object` or `json_schema`.
+- `puter`: ported as a small specialized executor for Puter's OpenAI-compatible chat REST endpoint. It forwards bearer credentials and leaves model ids untouched because Puter accepts catalog ids directly.
+- `theoldllm`: ported as a no-auth executor that maps legacy model aliases, generates the `X-Request-Token` expected by the public The Old LLM endpoint, retries once on token rejection, and wraps upstream SSE text into OpenAI JSON for non-streaming callers.
+
+### Blocked
+
+These providers remain audit-only and are not exposed as supported:
+
+- `auggie`: requires local Augment CLI process execution and provider test plumbing from OmniRoute's `open-sse/executors/auggie.ts`, including safe binary discovery, spawn lifecycle handling, stdin error handling, and a connection test that runs `auggie --version`. DurinDoor does not currently have this local CLI provider subsystem or UI/test path for a no-auth provider whose authentication is delegated to an external CLI login.
+- `bedrock`: requires `@aws-sdk/client-bedrock-runtime`, `open-sse/config/bedrock.ts`, and the Bedrock Converse/ConverseStream translation surface from OmniRoute's `open-sse/executors/bedrock.ts`. The target package does not depend on the AWS Bedrock runtime SDK, and the region/native Converse helpers are absent.
+- `chipotle`: requires the WebSocket/STOMP Amelia client from OmniRoute's `open-sse/executors/chipotle.ts` and the `ws` package. The target package does not depend on `ws`, and DurinDoor has no SockJS/STOMP session subsystem for this no-auth web endpoint.
+- `inner-ai`: requires OmniRoute's `../translator/webTools.ts` helpers (`prepareToolMessages`, `buildToolAwareResult`) plus the full Inner.ai profile/model discovery and web-tool result conversion flow in `open-sse/executors/inner-ai.ts`. The target tree has no `open-sse/translator/webTools` module, so a faithful port would require adding that translator subsystem first.
+- `mimocode`: requires OmniRoute's account fingerprint/JWT bootstrap subsystem from `open-sse/executors/mimocode.ts`, including per-account cooldown/rotation, SOCKS/HTTP proxy dispatch, `providerSpecificData.fingerprints`, and `accountProxies` handling. DurinDoor has `mimo-free` as a simpler no-auth Xiaomi path, but not Mimocode's multi-account state and proxy routing contract.
+
 Generated with `node scripts/audit-omniroute-providers.mjs --source <OmniRoute checkout> --format markdown`.

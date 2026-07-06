@@ -50,4 +50,5 @@ export default {
     { id: "deepseek_v4", name: "DeepSeek V4 (The Old LLM)", contextLength: 200000 },
     { id: "gemini_3_flash", name: "Gemini 3 Flash (The Old LLM)", contextLength: 1000000 },
   ],
+  passthroughModels: true,
 };

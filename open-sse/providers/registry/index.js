@@ -100,6 +100,7 @@ import p97 from "./xiaomi-tokenplan.js";
 import p98 from "./youcom.js";
 import p99 from "./nube.js";
 import p100 from "./kenari.js";
+<<<<<<< HEAD
 import p101 from "./grok-cli.js";
 import p102 from "./agy.js";
 import p103 from "./gitlab-duo.js";
@@ -188,6 +189,12 @@ import p185 from "./bytez.js";
 import p186 from "./codestral.js";
 import p187 from "./auggie.js";
 import p188 from "./mimocode.js";
+=======
+import p101 from "./command-code.js";
+import p102 from "./pollinations.js";
+import p103 from "./puter.js";
+import p104 from "./theoldllm.js";
+>>>>>>> 64029b26 (feat: port OmniRoute specialized providers)
 
 export default [
   p0,
@@ -295,6 +302,7 @@ export default [
   p102,
   p103,
   p104,
+<<<<<<< HEAD
   p105,
   p106,
   p107,
@@ -379,4 +387,6 @@ export default [
   p186,
   p187,
   p188,
+=======
+>>>>>>> 64029b26 (feat: port OmniRoute specialized providers)
 ];

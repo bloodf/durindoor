@@ -1,125 +1,50 @@
-# 9Router - FREE AI Router & Token Saver
+# DurinDoor CLI
 
-**Never stop coding. Save 20-40% tokens with RTK + auto-fallback to FREE & cheap AI models.**
+The DurinDoor CLI starts the local gateway, opens the dashboard, and provides helper menus for settings, providers, API keys, combos, CLI tools, and tray integration.
 
-**Connect All AI Code Tools (Claude Code, Cursor, Antigravity, Copilot, Codex, Gemini, OpenCode, Cline, OpenClaw...) to 40+ AI Providers & 100+ Models.**
-
-[![npm](https://img.shields.io/npm/v/9router.svg)](https://www.npmjs.com/package/9router)
-[![Downloads](https://img.shields.io/npm/dm/9router.svg)](https://www.npmjs.com/package/9router)
-[![Docker Pulls](https://img.shields.io/docker/pulls/decolua/9router.svg?logo=docker&label=Docker%20pulls)](https://hub.docker.com/r/decolua/9router)
-[![GHCR](https://img.shields.io/badge/GHCR-decolua%2F9router-blue?logo=github)](https://github.com/decolua/9router/pkgs/container/9router)
-[![License](https://img.shields.io/npm/l/9router.svg)](https://github.com/decolua/9router/blob/main/LICENSE)
-
-<a href="https://trendshift.io/repositories/22628" target="_blank"><img src="https://trendshift.io/api/badge/repositories/22628" alt="decolua%2F9router | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-
-[🌐 Website](https://9router.com) • [📖 Full Docs](https://github.com/decolua/9router)
-
----
-
-## 🤔 Why 9Router?
-
-**Stop wasting money, tokens and hitting limits:**
-
-- ❌ Subscription quota expires unused every month
-- ❌ Rate limits stop you mid-coding
-- ❌ Tool outputs (git diff, grep, ls...) burn tokens fast
-- ❌ Expensive APIs ($20-50/month per provider)
-
-**9Router solves this:**
-
-- ✅ **RTK Token Saver** - Auto-compress tool_result, save 20-40% tokens
-- ✅ **Maximize subscriptions** - Track quota, use every bit before reset
-- ✅ **Auto fallback** - Subscription → Cheap → Free, zero downtime
-- ✅ **Multi-account** - Round-robin between accounts per provider
-- ✅ **Universal** - Works with any OpenAI/Claude-compatible CLI
-
----
-
-## ⚡ Quick Start
-
-**Option 1 — npm (recommended for desktop):**
+## Install
 
 ```bash
-npm install -g 9router
-9router
-
-# Or run directly with npx
-npx 9router
+npm install -g durindoor
 ```
 
-**Option 2 — Docker (server/VPS):**
+## Start
 
 ```bash
-docker run -d --name 9router -p 20128:20128 \
-  -v "$HOME/.9router:/app/data" -e DATA_DIR=/app/data \
-  decolua/9router:latest
+durindoor
 ```
 
-Published images: [Docker Hub](https://hub.docker.com/r/decolua/9router) • [GHCR](https://github.com/decolua/9router/pkgs/container/9router) (multi-platform amd64/arm64).
+The legacy `9router` command is still provided for migration compatibility.
 
-🎉 Dashboard opens at `http://localhost:20128`
+Default URLs:
 
-**2. Connect a FREE provider (no signup needed):**
-
-Dashboard → Providers → Connect **Kiro AI** (free Claude unlimited) or **OpenCode Free** (no auth) → Done!
-
-**3. Use in your CLI tool:**
-
-```
-Claude Code/Codex/OpenClaw/Cursor/Cline Settings:
-  Endpoint: http://localhost:20128/v1
-  API Key:  [copy from dashboard]
-  Model:    kr/claude-sonnet-4.5
+```text
+Dashboard: http://localhost:20128/dashboard
+API base:  http://localhost:20128/v1
 ```
 
-That's it! Start coding with FREE AI models.
-
----
-
-## 🚀 CLI Options
+## Common Options
 
 ```bash
-9router                    # Start with default settings
-9router --port 8080        # Custom port
-9router --no-browser       # Don't open browser
-9router --skip-update      # Skip auto-update check
-9router --help             # Show all options
+durindoor --port 8080
+durindoor --no-browser
+durindoor --skip-update
+durindoor --help
 ```
 
-**Dashboard**: `http://localhost:20128/dashboard`
+## Data Location
 
----
+Unless `DATA_DIR` is set, the CLI uses the compatibility data directory:
 
-## 🛠️ Supported CLI Tools
+- macOS and Linux: `~/.9router`
+- Windows: `%APPDATA%\9router`
 
-Claude-Code • OpenClaw • Codex • OpenCode • Cursor • Antigravity • Cline • Continue • Droid • Roo • Copilot • Kilo Code • Gemini CLI • Qwen Code • iFlow • Crush • Crusher • Aider
+The main database is `DATA_DIR/db/data.sqlite`.
 
-Any tool supporting OpenAI/Claude-compatible API works.
+## Runtime Dependencies
 
----
+Some optional native dependencies are installed into the runtime data directory instead of being bundled directly with the CLI package. This reduces update issues on platforms that lock native modules while the process is running.
 
-## 💾 Data Location
+## Documentation
 
-- **macOS/Linux**: `~/.9router/db/data.sqlite`
-- **Windows**: `%APPDATA%/9router/db/data.sqlite`
-- **Docker**: `/app/data/db/data.sqlite` (mount `$HOME/.9router` to persist)
-
----
-
-## 📚 Documentation
-
-Full docs, advanced setup, video tutorials & development guide:
-
-- **GitHub**: https://github.com/decolua/9router
-- **Full README**: https://github.com/decolua/9router/blob/main/app/README.md
-- **Website**: https://9router.com
-
----
-
-## 🙏 Acknowledgments
-
-- **[CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)** - Original Go implementation
-
-## 📄 License
-
-MIT License - see [LICENSE](LICENSE) for details.
+Read the canonical documentation in [`../docs/README.md`](../docs/README.md).

@@ -14,7 +14,7 @@ const SAFE_FIELDS = [
 
 const SAFE_PSD_FIELDS = [
   "baseUrl", "azureEndpoint", "deployment", "apiVersion", "accountId",
-  "region", "projectId", "resourceUrl", "proxyPoolId",
+  "region", "projectId", "resourceUrl", "proxyPoolId", "cx",
   "connectionProxyEnabled", "connectionProxyUrl", "connectionNoProxy",
   "githubLogin", "githubName", "githubEmail", "githubUserId",
   "username", "firstName", "lastName", "authMethod", "authKind",
@@ -30,7 +30,7 @@ function maskName(name) {
   return name;
 }
 
-function sanitize(c) {
+export function sanitizeProviderConnectionForClient(c) {
   const safe = {};
   for (const f of SAFE_FIELDS) if (c[f] !== undefined) safe[f] = c[f];
   if (safe.name) safe.name = maskName(safe.name);
@@ -106,7 +106,7 @@ export async function GET(request) {
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
     const currentPage = Math.min(page, totalPages);
     const offset = (currentPage - 1) * pageSize;
-    const pageConnections = sortedConnections.slice(offset, offset + pageSize).map(sanitize);
+    const pageConnections = sortedConnections.slice(offset, offset + pageSize).map(sanitizeProviderConnectionForClient);
 
     return NextResponse.json({
       connections: pageConnections,

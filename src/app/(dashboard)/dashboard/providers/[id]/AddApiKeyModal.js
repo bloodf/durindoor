@@ -4,6 +4,11 @@ import { useState } from "react";
 import PropTypes from "prop-types";
 import { Button, Badge, Input, Modal, Select } from "@/shared/components";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
+import {
+  buildGooglePseProviderSpecificData,
+  isGooglePseProvider,
+  normalizeGooglePseCx,
+} from "@/shared/utils/googlePseProviderSpecificData";
 
 const BULK_PLACEHOLDER = `name1|sk-key1\nname2|sk-key2\nsk-key-only-auto-named`;
 
@@ -19,6 +24,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
 
   const isAzure = provider === "azure";
   const isCloudflareAi = provider === "cloudflare-ai";
+  const isGooglePse = isGooglePseProvider(provider);
   const providerRegions = AI_PROVIDERS?.[provider]?.regions || null;
   const defaultRegion = AI_PROVIDERS?.[provider]?.defaultRegion || providerRegions?.[0]?.id || "";
 
@@ -37,6 +43,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     organization: "",
   });
   const [cloudflareData, setCloudflareData] = useState({ accountId: "" });
+  const [googlePseData, setGooglePseData] = useState({ cx: "" });
   const [region, setRegion] = useState(defaultRegion);
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
@@ -60,13 +67,19 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     if (isCloudflareAi) {
       return { accountId: cloudflareData.accountId };
     }
+    if (isGooglePse) {
+      return buildGooglePseProviderSpecificData(googlePseData.cx);
+    }
     if (providerRegions && region) {
       return { region };
     }
     return undefined;
   };
 
+  const hasRequiredGooglePseCx = !isGooglePse || !!normalizeGooglePseCx(googlePseData.cx);
+
   const handleValidate = async () => {
+    if (!hasRequiredGooglePseCx) return;
     setValidating(true);
     try {
       const res = await fetch("/api/providers/validate", {
@@ -91,6 +104,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
       if (!formData.name) return;
     }
     if (isCompatible && !formData.defaultModel.trim()) return;
+    if (!hasRequiredGooglePseCx) return;
 
     setSaving(true);
     try {
@@ -129,6 +143,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const handleBulkSubmit = async () => {
     const lines = bulkText.split("\n").map(l => l.trim()).filter(Boolean);
     if (!lines.length) return;
+    if (!hasRequiredGooglePseCx) return;
     setSaving(true);
     setBulkResult(null);
     let success = 0;
@@ -142,7 +157,14 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         const res = await fetch("/api/providers", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ provider, apiKey, name, priority: 1, testStatus: "unknown" }),
+          body: JSON.stringify({
+            provider,
+            apiKey,
+            name,
+            priority: 1,
+            testStatus: "unknown",
+            providerSpecificData: buildProviderSpecificData(),
+          }),
         });
         if (res.ok) success++;
         else failed++;
@@ -166,6 +188,21 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
           <Button size="sm" variant={mode === "bulk" ? "primary" : "ghost"} onClick={() => { setMode("bulk"); setBulkResult(null); }}>Bulk Add</Button>
         </div>
 
+        {isGooglePse && (
+          <div className="bg-sidebar/50 p-4 rounded-lg border border-accent/20">
+            <h3 className="font-semibold mb-3 text-sm">Google Programmable Search</h3>
+            <Input
+              label="Search Engine ID (cx)"
+              value={googlePseData.cx}
+              onChange={(e) => setGooglePseData({ cx: e.target.value })}
+              placeholder="012345678901234567890:abcdefg"
+            />
+            <p className="text-xs text-text-muted mt-2">
+              Required for Google Programmable Search requests. Use the Search engine ID from your Programmable Search Engine control panel.
+            </p>
+          </div>
+        )}
+
         {mode === "bulk" && (
           <div className="flex flex-col gap-3">
             <p className="text-xs text-text-muted">One key per line. Format: <code>name|apiKey</code> or just <code>apiKey</code> (auto-named by index).</p>
@@ -181,7 +218,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
               </div>
             )}
             <div className="flex gap-2">
-              <Button onClick={handleBulkSubmit} fullWidth disabled={saving || !bulkText.trim()}>
+              <Button onClick={handleBulkSubmit} fullWidth disabled={saving || !bulkText.trim() || !hasRequiredGooglePseCx}>
                 {saving ? "Adding..." : "Add All Keys"}
               </Button>
               <Button onClick={onClose} variant="ghost" fullWidth>Cancel</Button>
@@ -223,7 +260,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
               className="flex-1"
             />
             <div className="pt-6">
-              <Button onClick={handleValidate} disabled={!formData.apiKey || validating || saving} variant="secondary">
+              <Button onClick={handleValidate} disabled={!formData.apiKey || !hasRequiredGooglePseCx || validating || saving} variant="secondary">
                 {validating ? "Checking..." : "Check"}
               </Button>
             </div>
@@ -356,7 +393,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         </p>
 
         <div className="flex gap-2">
-          <Button onClick={handleSubmit} fullWidth disabled={saving || (!isOllamaLocal && (!formData.name || !formData.apiKey)) || (isCompatible && !formData.defaultModel.trim()) || (isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization)) || (isCloudflareAi && !cloudflareData.accountId)}>
+          <Button onClick={handleSubmit} fullWidth disabled={saving || (!isOllamaLocal && (!formData.name || !formData.apiKey)) || (isCompatible && !formData.defaultModel.trim()) || (isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization)) || (isCloudflareAi && !cloudflareData.accountId) || !hasRequiredGooglePseCx}>
             {saving ? "Saving..." : "Save"}
           </Button>
           <Button onClick={onClose} variant="ghost" fullWidth>

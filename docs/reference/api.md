@@ -176,7 +176,8 @@ aliases (`serper-search`, `exa-search`, `tavily-search`,
 `google-pse-search`, `linkup-search`, `searchapi-search`,
 `youcom-search`, `searxng-search`, `ollama-search`,
 `perplexity-search`). Google Programmable Search connections must store the
-search engine ID in provider-specific `cx`; SearXNG may use
+search engine ID in provider-specific `cx`; the dashboard add/edit forms expose
+this as **Search Engine ID (cx)**. SearXNG may use
 `provider_options.baseUrl` for a self-hosted instance.
 
 Fetch:

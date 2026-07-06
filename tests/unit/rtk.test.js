@@ -227,6 +227,38 @@ describe("gitLog filter", () => {
     expect(out).toContain("4 files changed, 20 insertions(+), 2 deletions(-)");
   });
 
+  it("keeps git log --name-only file lists", () => {
+    const input = [
+      "commit abc1234def5678abc1234def5678abc1234def5",
+      "Author: Dev One <dev1@example.com>",
+      "Date:   Sun Jul 6 10:00:00 2026 +0700",
+      "",
+      "    Fix typo",
+      "",
+      "src/main.js",
+      "README.md",
+    ].join("\n");
+    const out = gitLog(input);
+    expect(out).toContain("src/main.js");
+    expect(out).toContain("README.md");
+  });
+
+  it("keeps git log --name-status file lists", () => {
+    const input = [
+      "commit abc1234def5678abc1234def5678abc1234def5",
+      "Author: Dev One <dev1@example.com>",
+      "Date:   Sun Jul 6 10:00:00 2026 +0700",
+      "",
+      "    Fix typo",
+      "",
+      "M\tsrc/main.js",
+      "A\tREADME.md",
+    ].join("\n");
+    const out = gitLog(input);
+    expect(out).toContain("M\tsrc/main.js");
+    expect(out).toContain("A\tREADME.md");
+  });
+
   it("replaces embedded diff markers with '... diff body omitted'", () => {
     const input = makeGitLogWithEmbeddedDiff();
     const out = gitLog(input);

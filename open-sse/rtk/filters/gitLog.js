@@ -57,6 +57,11 @@ export function gitLog(text, maxLines = GIT_LOG_MAX_LINES) {
         pushLine("  " + graphStripped);
         continue;
       }
+      // name-only / name-status entries: "src/a.js" or "M\tsrc/a.js"
+      if (isNameOnlyPath(graphStripped) || isNameStatusLine(graphStripped)) {
+        pushLine("  " + graphStripped);
+        continue;
+      }
       // embedded diff header — one-line marker
       if (/^diff --git /.test(trimmed)) {
         pushLine("  ... diff body omitted");
@@ -96,6 +101,16 @@ export function gitLog(text, maxLines = GIT_LOG_MAX_LINES) {
   if (!result && input) return input;
   if (result.length > input.length) return input;
   return result;
+}
+
+function isNameStatusLine(line) {
+  return /^(?:[ACDMRTUXB]|\?\?|!!)(?:\d+)?\s+\S/.test(line);
+}
+
+function isNameOnlyPath(line) {
+  if (!line || /\s/.test(line)) return false;
+  if (/^(?:commit|Author:|Date:|diff|index)$/i.test(line)) return false;
+  return line.includes("/") || /\.[^/.]+$/.test(line);
 }
 
 gitLog.filterName = "git-log";

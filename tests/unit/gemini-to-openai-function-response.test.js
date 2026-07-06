@@ -154,4 +154,16 @@ describe("gemini -> openai request translation — functionResponse co-located w
     expect(toolMsgs).toHaveLength(1);
     expect(toolMsgs[0].tool_call_id).toBe("call_a");
   });
+
+  it("strips a standalone orphan functionResponse before converting to OpenAI", () => {
+    const body = {
+      contents: [
+        { role: "user", parts: [{ functionResponse: { id: "call_missing", name: "tool_a", response: { result: "stale" } } }] }
+      ]
+    };
+
+    const result = translateRequest(FORMATS.GEMINI, FORMATS.OPENAI, "gemini-pro", body, false);
+
+    expect(result.messages.some(m => m.role === "tool")).toBe(false);
+  });
 });

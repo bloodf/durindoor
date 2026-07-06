@@ -1,12 +1,16 @@
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   buildAudit,
   classifyProvider,
   renderMarkdown,
 } from "../../scripts/audit-omniroute-providers.mjs";
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 function makeFixture() {
   const root = join(tmpdir(), `durindoor-audit-${process.pid}-${Date.now()}`);
@@ -123,6 +127,23 @@ describe("OmniRoute provider audit", () => {
     expect(markdown).toContain("Source commit: `abc123`");
     expect(markdown).toContain("| `simple` | simple-default");
     expect(markdown).toContain("Generated with `node scripts/audit-omniroute-providers.mjs");
+  });
+
+  it("prints help when invoked through a symlinked CLI path", () => {
+    const linkDir = mkdtempSync(join(tmpdir(), "durindoor-audit-cli-"));
+    const scriptPath = join(repoRoot, "scripts/audit-omniroute-providers.mjs");
+    const linkPath = join(linkDir, "audit-omniroute-providers.mjs");
+
+    try {
+      symlinkSync(scriptPath, linkPath);
+      const result = spawnSync(process.execPath, [linkPath, "--help"], { encoding: "utf8" });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("Usage: node scripts/audit-omniroute-providers.mjs");
+      expect(result.stderr).toBe("");
+    } finally {
+      rmSync(linkDir, { recursive: true, force: true });
+    }
   });
 
   it("keeps explicit classification rules stable", () => {

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -246,7 +246,21 @@ async function main() {
   else throw new Error(`Unsupported format: ${args.format}`);
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+/**
+ * Node may preserve a symlinked CLI path in process.argv[1] while resolving
+ * import.meta.url to the real script path. Canonicalize both paths so the CLI
+ * still runs when invoked via /tmp, /private/tmp, or another symlink.
+ */
+export function isCliEntrypoint(argvPath, moduleUrl) {
+  if (!argvPath) return false;
+  try {
+    return realpathSync(argvPath) === realpathSync(fileURLToPath(moduleUrl));
+  } catch {
+    return resolve(argvPath) === resolve(fileURLToPath(moduleUrl));
+  }
+}
+
+if (isCliEntrypoint(process.argv[1], import.meta.url)) {
   main().catch((error) => {
     console.error(error.message);
     process.exit(1);

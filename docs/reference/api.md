@@ -166,8 +166,18 @@ curl http://localhost:20128/v1/search \
   -d '{
     "model": "SEARCH_PROVIDER_OR_COMBO",
     "query": "DurinDoor AI gateway"
-  }'
+}'
 ```
+
+Dedicated search providers can be selected with either DurinDoor's provider
+IDs (`serper`, `exa`, `tavily`, `google-pse`, `linkup`, `searchapi`,
+`youcom`, `searxng`, `ollama`, `perplexity`) or the OmniRoute-compatible
+aliases (`serper-search`, `exa-search`, `tavily-search`,
+`google-pse-search`, `linkup-search`, `searchapi-search`,
+`youcom-search`, `searxng-search`, `ollama-search`,
+`perplexity-search`). Google Programmable Search connections must store the
+search engine ID in provider-specific `cx`; SearXNG may use
+`provider_options.baseUrl` for a self-hosted instance.
 
 Fetch:
 
@@ -203,4 +213,3 @@ Health does not require the same provider setup as model routes. Use `/v1/models
 - Tool calls, image blocks, audio, and reasoning fields are provider-format sensitive.
 - Combos should only mix models that can handle the client workflow.
 - Use request logs to see the provider and model that actually handled a request.
-

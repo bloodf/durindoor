@@ -125,6 +125,9 @@ export async function POST(request) {
     }
 
     let providerSpecificData = normalizeProviderSpecificData(provider, body, body.providerSpecificData);
+    if (provider === "google-pse" && !providerSpecificData?.cx) {
+      return NextResponse.json({ error: "Programmable Search Engine ID (cx) is required" }, { status: 400 });
+    }
 
     // Compatible/embedding nodes — no longer enforce single-connection limit.
     // Multiple API keys per node are allowed; downstream auth logic handles

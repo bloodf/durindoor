@@ -1,6 +1,7 @@
 export default {
   id: "searchapi",
   alias: "searchapi",
+  aliases: ["searchapi-search"],
   display: {
     name: "SearchAPI",
     icon: "search",

@@ -35,6 +35,7 @@ function buildProviderEntry(r) {
     ...(r.authModes ? { authModes: r.authModes } : {}),
     ...(r.authType ? { authType: r.authType } : {}),
     ...(r.authHint ? { authHint: r.authHint } : {}),
+    ...(r.aliases ? { aliases: r.aliases } : {}),
   };
 }
 
@@ -110,7 +111,7 @@ export const AUTH_METHODS = {
 // Helper: Get provider by alias
 export function getProviderByAlias(alias) {
   for (const provider of Object.values(AI_PROVIDERS)) {
-    if (provider.alias === alias || provider.id === alias) {
+    if (provider.alias === alias || provider.id === alias || provider.aliases?.includes(alias)) {
       return provider;
     }
   }
@@ -132,6 +133,9 @@ export function getProviderAlias(providerId) {
 // Alias to ID mapping (for quick lookup)
 export const ALIAS_TO_ID = Object.values(AI_PROVIDERS).reduce((acc, p) => {
   acc[p.alias] = p.id;
+  for (const alias of p.aliases || []) {
+    acc[alias] = p.id;
+  }
   return acc;
 }, {});
 

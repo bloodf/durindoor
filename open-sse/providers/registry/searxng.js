@@ -1,6 +1,7 @@
 export default {
   id: "searxng",
   alias: "searxng",
+  aliases: ["searxng-search"],
   display: {
     name: "SearXNG",
     icon: "saved_search",

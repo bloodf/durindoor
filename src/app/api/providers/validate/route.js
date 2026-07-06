@@ -8,7 +8,7 @@ import { normalizeProviderId } from "@/lib/providerNormalization";
 
 // Probe a webSearch/webFetch provider using its searchConfig/fetchConfig.
 // Returns true if API key is accepted (status !== 401 && !== 403).
-async function probeWebProvider(provider, apiKey) {
+async function probeWebProvider(provider, apiKey, providerSpecificData = {}) {
   const p = AI_PROVIDERS[provider];
   if (!p) return null;
   // Skip if provider has dual-purpose (LLM + search), let LLM validate handle it
@@ -28,7 +28,12 @@ async function probeWebProvider(provider, apiKey) {
     case "bearer":              headers["Authorization"] = `Bearer ${apiKey}`; break;
     case "x-api-key":           headers["x-api-key"] = apiKey; break;
     case "x-subscription-token":headers["x-subscription-token"] = apiKey; break;
-    case "key":                 url += `?key=${encodeURIComponent(apiKey)}&q=ping&cx=test`; break; // google-pse
+    case "key": {
+      const cx = providerSpecificData?.cx || providerSpecificData?.searchEngineId;
+      if (!cx) return false;
+      url += `?key=${encodeURIComponent(apiKey)}&q=ping&cx=${encodeURIComponent(cx)}`;
+      break;
+    }
     case "api_key":             url += `?api_key=${encodeURIComponent(apiKey)}&q=ping&engine=google`; break; // searchapi
   }
 
@@ -234,7 +239,7 @@ export async function POST(request) {
       }
 
       // Generic probe for webSearch/webFetch providers (config-driven)
-      const webResult = await probeWebProvider(provider, apiKey);
+      const webResult = await probeWebProvider(provider, apiKey, providerSpecificData);
       if (webResult !== null) {
         return NextResponse.json({
           valid: webResult,

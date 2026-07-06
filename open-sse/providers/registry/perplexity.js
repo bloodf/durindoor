@@ -4,6 +4,7 @@ export default {
   alias: "perplexity",
   aliases: [
     "pplx",
+    "perplexity-search",
   ],
   uiAlias: "pplx",
   display: {
@@ -27,6 +28,19 @@ export default {
     { id: "sonar", name: "Sonar" },
   ],
   serviceKinds: ["llm","webSearch"],
+  searchConfig: {
+    baseUrl: "https://api.perplexity.ai/search",
+    method: "POST",
+    authType: "apikey",
+    authHeader: "bearer",
+    costPerQuery: 0.005,
+    freeMonthlyQuota: 0,
+    searchTypes: ["web"],
+    defaultMaxResults: 5,
+    maxMaxResults: 20,
+    timeoutMs: 10000,
+    cacheTTLMs: 300000,
+  },
   searchViaChat: {
     defaultModel: "sonar",
     endpoint: "https://api.perplexity.ai/chat/completions",

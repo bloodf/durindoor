@@ -1,0 +1,60 @@
+export default {
+  id: "bedrock",
+  priority: 95,
+  alias: "bedrock",
+  uiAlias: "bedrock",
+  display: {
+    name: "Amazon Bedrock",
+    icon: "cloud",
+    color: "#FF9900",
+    textIcon: "BR",
+    website: "https://aws.amazon.com/bedrock",
+    notice: {
+      text: "Uses Amazon Bedrock native Converse APIs. Configure a Bedrock API key and the AWS region where your models are enabled.",
+      apiKeyUrl: "https://aws.amazon.com/bedrock",
+    },
+  },
+  category: "apikey",
+  transport: {
+    baseUrl: "https://bedrock-runtime.us-east-1.amazonaws.com",
+    format: "openai",
+  },
+  models: [
+    {
+      id: "anthropic.claude-sonnet-4-6",
+      name: "Claude Sonnet 4.6 (Bedrock)",
+      toolCalling: true,
+      supportsVision: true,
+      contextLength: 1000000,
+    },
+    {
+      id: "anthropic.claude-sonnet-4-5",
+      name: "Claude Sonnet 4.5 (Bedrock)",
+      toolCalling: true,
+      supportsVision: true,
+      contextLength: 200000,
+    },
+    {
+      id: "anthropic.claude-opus-4-6",
+      name: "Claude Opus 4.6 (Bedrock)",
+      toolCalling: true,
+      supportsVision: true,
+      contextLength: 1000000,
+    },
+    {
+      id: "anthropic.claude-opus-4-7",
+      name: "Claude Opus 4.7 (Bedrock)",
+      toolCalling: true,
+      supportsVision: true,
+      contextLength: 1000000,
+    },
+    {
+      id: "anthropic.claude-haiku-4-5",
+      name: "Claude Haiku 4.5 (Bedrock)",
+      toolCalling: true,
+      supportsVision: true,
+    },
+    { id: "openai.gpt-oss-120b-1:0", name: "GPT-OSS 120B (Bedrock)" },
+  ],
+  passthroughModels: true,
+};

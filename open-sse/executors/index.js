@@ -1,9 +1,12 @@
 import { AntigravityExecutor } from "./antigravity.js";
 import { AuggieExecutor } from "./auggie.js";
 import { AzureExecutor } from "./azure.js";
+import { BedrockExecutor } from "./bedrock.js";
+import { ChipotleExecutor } from "./chipotle.js";
 import { GeminiCLIExecutor } from "./gemini-cli.js";
 import { GithubExecutor } from "./github.js";
 import { IFlowExecutor } from "./iflow.js";
+import { InnerAiExecutor } from "./inner-ai.js";
 import { QoderExecutor } from "./qoder.js";
 import { KiroExecutor } from "./kiro.js";
 import { KimchiExecutor } from "./kimchi.js";
@@ -44,9 +47,13 @@ const executors = {
   auggie: new AuggieExecutor(),
   aug: new AuggieExecutor(), // Alias for auggie
   azure: new AzureExecutor(),
+  bedrock: new BedrockExecutor(),
+  chipotle: new ChipotleExecutor(),
   "gemini-cli": new GeminiCLIExecutor(),
   github: new GithubExecutor(),
   iflow: new IFlowExecutor(),
+  "inner-ai": new InnerAiExecutor(),
+  "in-ai": new InnerAiExecutor(), // Alias for inner-ai
   qoder: new QoderExecutor(),
   kiro: new KiroExecutor(),
   kimchi: new KimchiExecutor(),
@@ -111,9 +118,12 @@ export { BaseExecutor } from "./base.js";
 export { AntigravityExecutor } from "./antigravity.js";
 export { AuggieExecutor } from "./auggie.js";
 export { AzureExecutor } from "./azure.js";
+export { BedrockExecutor } from "./bedrock.js";
+export { ChipotleExecutor } from "./chipotle.js";
 export { GeminiCLIExecutor } from "./gemini-cli.js";
 export { GithubExecutor } from "./github.js";
 export { IFlowExecutor } from "./iflow.js";
+export { InnerAiExecutor } from "./inner-ai.js";
 export { QoderExecutor } from "./qoder.js";
 export { KiroExecutor } from "./kiro.js";
 export { KimchiExecutor } from "./kimchi.js";

@@ -4,6 +4,7 @@ import p1 from "./alicode.js";
 import p2 from "./anthropic.js";
 import p3 from "./antigravity.js";
 import p105 from "./auggie.js";
+import p107 from "./bedrock.js";
 import p4 from "./assemblyai.js";
 import p5 from "./aws-polly.js";
 import p6 from "./azure.js";
@@ -20,6 +21,7 @@ import p16 from "./cline.js";
 import p17 from "./clinepass.js";
 import p18 from "./cloudflare-ai.js";
 import p19 from "./codebuddy-cn.js";
+import p108 from "./chipotle.js";
 import p20 from "./codex.js";
 import p21 from "./cohere.js";
 import p22 from "./comfyui.js";
@@ -48,6 +50,7 @@ import p44 from "./groq.js";
 import p45 from "./huggingface.js";
 import p46 from "./hyperbolic.js";
 import p47 from "./iflow.js";
+import p109 from "./inner-ai.js";
 import p48 from "./inworld.js";
 import p49 from "./jina-ai.js";
 import p50 from "./jina-reader.js";
@@ -204,6 +207,7 @@ export default [
   p2,
   p3,
   p105,
+  p107,
   p4,
   p5,
   p6,
@@ -220,6 +224,7 @@ export default [
   p17,
   p18,
   p19,
+  p108,
   p20,
   p21,
   p22,
@@ -248,6 +253,7 @@ export default [
   p45,
   p46,
   p47,
+  p109,
   p48,
   p49,
   p50,

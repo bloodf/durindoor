@@ -1,5 +1,5 @@
 // Port of auto_detect_filter (rtk/src/cmds/system/pipe_cmd.rs:132-188) + JS extras
-// Detection order: git-log → git-diff → git-status → build-output → grep → find → tree → ls → search-list
+// Detection order: git-diff-vs-log disambiguation → git-status → build-output → grep → find → tree → ls → search-list
 //                  → read-numbered → dedup-log → smart-truncate → null
 import { DETECT_WINDOW, READ_NUMBERED_MIN_HIT_RATIO, SMART_TRUNCATE_MIN_LINES } from "./constants.js";
 import { gitDiff } from "./filters/gitDiff.js";
@@ -18,7 +18,8 @@ import { searchList, SEARCH_LIST_HEADER_RE } from "./filters/searchList.js";
 const RE_GIT_DIFF = /^diff --git /m;
 const RE_GIT_DIFF_HUNK = /^@@ /m;
 const RE_GIT_STATUS = /^On branch |^nothing to commit|^Changes (not |to be )|^Untracked files:/m;
-const RE_GIT_LOG = /^[*|/\\ ]*commit [0-9a-f]{7,40}$/m;
+const RE_GIT_LOG = /^(?:commit [0-9a-f]{7,40}(?:\s+\(.+\))?|[*|/\\][*|/\\ ]*commit [0-9a-f]{7,40}(?:\s+\(.+\))?)$/m;
+const RE_GIT_LOG_ONELINE = /^(?:[0-9a-f]{7,40}\s+\S|[*|/\\][*|/\\ ]*[0-9a-f]{7,40}\s+\S)/m;
 const RE_PORCELAIN = /^[ MADRCU?!][ MADRCU?!] \S/m;
 const RE_BUILD_OUTPUT = /^(npm (warn|error|ERR!)|yarn (warn|error)|\s*Compiling\s+\S+|\s*Downloading\s+\S+|added \d+ package|\[ERROR\]|BUILD (SUCCESS|FAILED)|\s*Finished\s+|Successfully (installed|built)|ERROR:)/im;
 const RE_TREE_GLYPH = /[├└]──|│  /;
@@ -29,8 +30,10 @@ export function autoDetectFilter(text) {
   // Rust: floor_char_boundary to avoid UTF-8 split — JS .slice() by char is safe
   const head = text.length > DETECT_WINDOW ? text.slice(0, DETECT_WINDOW) : text;
 
-  if (RE_GIT_LOG.test(head)) return gitLog;
-  if (RE_GIT_DIFF.test(head) || RE_GIT_DIFF_HUNK.test(head)) return gitDiff;
+  const gitLogIndex = firstMatchIndex(head, RE_GIT_LOG, RE_GIT_LOG_ONELINE);
+  const gitDiffIndex = firstMatchIndex(head, RE_GIT_DIFF, RE_GIT_DIFF_HUNK);
+  if (gitDiffIndex !== -1 && (gitLogIndex === -1 || gitDiffIndex < gitLogIndex)) return gitDiff;
+  if (gitLogIndex !== -1) return gitLog;
   if (RE_GIT_STATUS.test(head)) return gitStatus;
 
   // Build output BEFORE porcelain check: prevents cargo "Compiling" misdetection as git-status
@@ -111,4 +114,15 @@ function isLineNumbered(lines) {
 function countMatches(text, re) {
   const g = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
   return (text.match(g) || []).length;
+}
+
+function firstMatchIndex(text, ...patterns) {
+  let first = -1;
+  for (const pattern of patterns) {
+    const match = pattern.exec(text);
+    pattern.lastIndex = 0;
+    if (!match) continue;
+    if (first === -1 || match.index < first) first = match.index;
+  }
+  return first;
 }

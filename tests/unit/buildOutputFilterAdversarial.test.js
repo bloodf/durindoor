@@ -313,6 +313,39 @@ describe("git-log priority", () => {
     ].join("\n");
     expect(autoDetectFilter(input)).toBe(gitDiff);
   });
+
+  it("git diff with commit-looking context line still stays git-diff", () => {
+    const input = [
+      "diff --git a/src/history.txt b/src/history.txt",
+      "index abc..def 100644",
+      "--- a/src/history.txt",
+      "+++ b/src/history.txt",
+      "@@ -1,3 +1,3 @@",
+      " unchanged context",
+      " commit abc1234def5678abc1234def5678abc1234def5",
+      "-old line",
+      "+new line",
+    ].join("\n");
+    expect(autoDetectFilter(input)).toBe(gitDiff);
+  });
+
+  it("git log --patch still stays git-log when commit header comes first", () => {
+    const input = [
+      "commit abc1234def5678abc1234def5678abc1234def5 (HEAD -> main)",
+      "Author: Dev One <dev1@example.com>",
+      "Date:   Sun Jul 6 10:00:00 2026 +0700",
+      "",
+      "    Fix typo",
+      "",
+      "diff --git a/src/main.js b/src/main.js",
+      "index abc..def 100644",
+      "--- a/src/main.js",
+      "+++ b/src/main.js",
+      "@@ -1 +1 @@",
+      "+new line",
+    ].join("\n");
+    expect(autoDetectFilter(input)).toBe(gitLog);
+  });
 });
 
 // ============================================================

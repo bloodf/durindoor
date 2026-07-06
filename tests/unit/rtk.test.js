@@ -135,6 +135,18 @@ function makeGitLogWithEmbeddedDiff() {
   ].join("\n");
 }
 
+function makeGitLogDecorated() {
+  return [
+    "commit abc1234def5678abc1234def5678abc1234def5 (HEAD -> main, origin/main)",
+    "Author: Dev One <dev1@example.com>",
+    "Date:   Sun Jul 6 10:00:00 2026 +0700",
+    "",
+    "    Add auth middleware",
+    "",
+    "    Body detail should be dropped."
+  ].join("\n");
+}
+
 describe("gitLog filter", () => {
   it("compresses git log --oneline without losing commit subjects", () => {
     const input = makeGitLogOneline();
@@ -150,6 +162,14 @@ describe("gitLog filter", () => {
     expect(out).toContain("commit abc1234def5678abc1234def5678abc1234def5");
     expect(out).toContain("Add auth middleware");
     expect(out).not.toContain("More body detail should be dropped.");
+  });
+
+  it("keeps decorated commit headers and still drops body detail", () => {
+    const input = makeGitLogDecorated();
+    const out = gitLog(input);
+    expect(out).toContain("commit abc1234def5678abc1234def5678abc1234def5 (HEAD -> main, origin/main)");
+    expect(out).toContain("Add auth middleware");
+    expect(out).not.toContain("Body detail should be dropped.");
   });
 
   it("strips graph-only decoration but keeps commit subjects", () => {
@@ -300,6 +320,15 @@ describe("autoDetectFilter", () => {
   });
   it("detects find", () => {
     expect(autoDetectFilter("./a/b.js\n./a/c.js\n./a/d.js").filterName).toBe("find");
+  });
+  it("detects git log via commit header", () => {
+    expect(autoDetectFilter(makeGitLogDefault()).filterName).toBe("git-log");
+  });
+  it("detects decorated git log commit headers", () => {
+    expect(autoDetectFilter(makeGitLogDecorated()).filterName).toBe("git-log");
+  });
+  it("detects git log --oneline", () => {
+    expect(autoDetectFilter(makeGitLogOneline()).filterName).toBe("git-log");
   });
   it("falls back to dedupLog for generic text", () => {
     const txt = "line1\nline2\nline3\nline4\nline5\nline6\n";

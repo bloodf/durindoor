@@ -29,7 +29,7 @@ export function gitLog(text, maxLines = GIT_LOG_MAX_LINES) {
 
     // commit <sha> header — starts new commit entry
     // Also matched with leading graph decoration (`*   commit abc1234...` — --graph without --oneline)
-    if (/^commit [0-9a-f]{7,40}$/i.test(trimmed) || /^[*|/\\ ]+commit [0-9a-f]{7,40}/i.test(trimmed)) {
+    if (/^commit [0-9a-f]{7,40}(?:\s+\(.+\))?$/i.test(trimmed) || /^[*|/\\][*|/\\ ]*commit [0-9a-f]{7,40}(?:\s+\(.+\))?$/i.test(trimmed)) {
       inCommit = true;
       subjectSeen = false;
       pushLine(line);

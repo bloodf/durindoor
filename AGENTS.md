@@ -185,20 +185,6 @@ bash .hermes/install.sh --mode=opt-in --profile=default
 
 The source lives at `~/.local/share/dinostack/` (XDG-aligned, per-user, survives reboots and `/tmp` cleanups). Do NOT delete it after install — it is the target of the symlink the install creates. To update DinoStack later, `git -C ~/.local/share/dinostack pull` and re-run the install. To uninstall, run the uninstall script first (it removes the symlink and the config JSON), then `rm -rf ~/.local/share/dinostack`.
 
-This writes:
-
-- `~/.hermes/agentic-engineering.json` — `{"mode":"opt-in","profile":"default","set_at":"<ISO8601>"}`
-- `~/.hermes/skills/agentic-engineering/SKILL.md` — symlink to DinoStack's Hermes `SKILL.md`
-- `bin/agentic-identity` and friends into `~/.local/bin/` (only if not already present from another install)
-
-**This install does NOT touch `~/.claude/`, `~/.claude/settings.json`, OMC, or any other profile.** If you see writes outside `~/.hermes/` and `~/.local/bin/`, stop and investigate.
-
-To uninstall:
-
-```bash
-bash .hermes/uninstall.sh
-```
-
 ### 6.3 What the install actually does (so a future agent is not surprised)
 
 - Creates a 1.4 MB `SKILL.md` symlink at `~/.hermes/skills/agentic-engineering/SKILL.md`.
@@ -220,6 +206,13 @@ git ls-remote https://github.com/Space-Dinosaurs/DinoStack HEAD
 
 If the SHA has moved and you want to track latest, document the new SHA at the top of this section in the same PR that updates the install. Do not pin to a non-`main` branch and do not install from a fork without maintainer approval.
 
+#### Drift history
+
+Each entry is added by the daily cron (scripts/dinostack-daily-check.sh) when the upstream
+DinoStack `main` SHA drifts from the one recorded above. Entries are dated and reference
+both the previously-recorded and newly-observed SHAs. No entries yet — the cron will
+populate this section on the first detected drift.
+
 ### 6.5 What the Hermes cron agent should do after install
 
 After `bash .hermes/install.sh --mode=opt-in --profile=default`, the cron agent:
@@ -227,6 +220,64 @@ After `bash .hermes/install.sh --mode=opt-in --profile=default`, the cron agent:
 - Reads `~/.hermes/agentic-engineering.json` to confirm mode is `opt-in` and profile is `default`.
 - Loads the `agentic-engineering` skill content when tags match; force-loads it with `skill_view(name="agentic-engineering")` if needed.
 - Treats the skill as **advisory project memory** (conventions, workflow), not as a mandate that overrides the rules in §1–§5 of this file. Where DinoStack advice contradicts this contract, this contract wins.
+
+### 6.6 Daily SHA check (the "always update daily" requirement)
+
+Per the user requirement *"the DurinDoor Hermes Profile must always update DinoStack daily"*, a daily check runs and opens a PR when the upstream `main` SHA drifts from the one recorded in §6.4. The check does **not** auto-install, **not** auto-pull, and **not** direct-push to `dev` — those would violate §6.4 ("document the new SHA **in the same PR** that updates the install") and §7.4 ("no red CI on the merge commit").
+
+**What the daily check does:**
+
+- `git ls-remote https://github.com/Space-Dinosaurs/DinoStack HEAD` — read the current `main` SHA.
+- Compare to the SHA recorded in §6.4.
+- If equal: log `in-sync` to `~/.local/share/dinostack/var/update-check.log` and exit.
+- If different: invoke `scripts/dinostack-daily-check.py`, which creates a fresh branch `cron/dinostack-sha-bump-<date>-<sha12>` (where `<sha12>` is the first 12 chars of the new observed SHA, so two upstream drifts on the same day produce distinct branches) off `origin/dev`, updates §6.4 to the new SHA, adds a `### Drift history` entry, and opens a PR against `dev` with a one-line summary of the new SKILL.md's first 100 lines. The PR is the only state change. No symlink touch, no install re-run.
+
+**What the daily check explicitly does NOT do:**
+
+- `git pull` in `~/.local/share/dinostack` — that would change the live install without review.
+- Re-run `bash .hermes/install.sh` — same reason.
+- Direct-push to `dev` — every change is a PR (§7).
+- Modify the live symlink at `~/.hermes/skills/agentic-engineering/SKILL.md`.
+
+**How to install the cron on a new Hermes host:**
+
+```bash
+# 1. install the scripts (the cron and the drift-check helper)
+mkdir -p ~/.local/share/dinostack/var
+git -C ~/Developer/github.com/bloodf/durindoor pull  # or worktree of choice
+
+# 2. (optional) write the kill-switch env file
+mkdir -p ~/.config/cortexos
+cat > ~/.config/cortexos/dinostack.env <<'EOF'
+# Set to "disabled" to stop the daily cron from doing anything.
+DSTACK_AUTO_UPDATE=enabled
+EOF
+chmod 600 ~/.config/cortexos/dinostack.env
+
+# 3. install the user crontab (one entry, daily at 06:00 local time)
+( crontab -l 2>/dev/null | grep -v 'dinostack-daily-check.sh' ; \
+  echo '0 6 * * * /home/cortexos/Developer/github.com/bloodf/durindoor/scripts/dinostack-daily-check.sh' \
+) | crontab -
+
+# 4. verify
+crontab -l | grep dinostack
+tail -n 5 ~/.local/share/dinostack/var/update-check.log
+```
+
+**Kill switch:** `DSTACK_AUTO_UPDATE=disabled` in `~/.config/cortexos/dinostack.env` causes the cron to exit cleanly with a `skip: DSTACK_AUTO_UPDATE=disabled` log line. No crontab edit needed. Path can be overridden with `DSTACK_ENV_FILE=...` in the crontab line if the env file lives elsewhere.
+
+**What the maintainer does after the cron opens a drift PR:**
+
+1. Read the PR. The body contains the recorded SHA, the new SHA, a fetch of the first 100 lines of the new upstream SKILL.md, and the explicit "do not auto-install" notice.
+2. If the new SKILL.md is acceptable: merge the PR. Then, on the Hermes host, run the install:
+
+   ```bash
+   git -C ~/.local/share/dinostack fetch origin
+   git -C ~/.local/share/dinostack checkout <new-sha>
+   bash ~/.local/share/dinostack/.hermes/install.sh --mode=opt-in --profile=default
+   ```
+
+3. If the new SKILL.md is not acceptable: close the PR without merging. The cron will not retry until the upstream SHA moves again, so the recorded SHA in §6.4 stays accurate.
 
 ## 7. Pull request workflow
 

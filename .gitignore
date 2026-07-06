@@ -75,3 +75,6 @@ gitbook/README.md
 open-sse.old/
 .graphifyignore
 graphify-out/*
+
+# cron + drift-check scripts (added in the daily-check PR)
+scripts/__pycache__/

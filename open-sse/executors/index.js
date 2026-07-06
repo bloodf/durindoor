@@ -23,6 +23,8 @@ import { XaiExecutor } from "./xai.js";
 import { ZenmuxFreeExecutor } from "./zenmux-free.js";
 import { AdaptaWebExecutor } from "./adapta-web.js";
 import { ChatGptWebExecutor } from "./chatgpt-web.js";
+import { CopilotM365WebExecutor } from "./copilot-m365-web.js";
+import { CopilotWebExecutor } from "./copilot-web.js";
 import { DuckDuckGoWebExecutor } from "./duckduckgo-web.js";
 import { HuggingChatExecutor } from "./huggingchat.js";
 import { MuseSparkWebExecutor } from "./muse-spark-web.js";
@@ -67,6 +69,9 @@ const executors = {
   "adp-web": new AdaptaWebExecutor(),
   "chatgpt-web": new ChatGptWebExecutor(),
   "cgpt-web": new ChatGptWebExecutor(),
+  "copilot-m365-web": new CopilotM365WebExecutor(),
+  m365copilot: new CopilotM365WebExecutor(),
+  "copilot-web": new CopilotWebExecutor(),
   "duckduckgo-web": new DuckDuckGoWebExecutor(),
   ddgw: new DuckDuckGoWebExecutor(),
   huggingchat: new HuggingChatExecutor(),
@@ -133,6 +138,8 @@ export { XaiExecutor } from "./xai.js";
 export { ZenmuxFreeExecutor } from "./zenmux-free.js";
 export { AdaptaWebExecutor } from "./adapta-web.js";
 export { ChatGptWebExecutor } from "./chatgpt-web.js";
+export { CopilotM365WebExecutor } from "./copilot-m365-web.js";
+export { CopilotWebExecutor } from "./copilot-web.js";
 export { DuckDuckGoWebExecutor } from "./duckduckgo-web.js";
 export { HuggingChatExecutor } from "./huggingchat.js";
 export { MuseSparkWebExecutor } from "./muse-spark-web.js";

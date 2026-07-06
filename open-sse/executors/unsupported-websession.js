@@ -2,23 +2,6 @@ import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 
 export const BLOCKED_OMNIROUTE_PROVIDERS = {
-  "copilot-m365-web": {
-    aliases: ["m365copilot"],
-    source: [
-      "open-sse/executors/copilot-m365-web.ts",
-      "open-sse/executors/copilot-m365-connection.ts",
-      "open-sse/executors/copilot-m365-frames.ts",
-    ],
-    reason: "requires Microsoft 365 BizChat WebSocket connection and frame helpers",
-  },
-  "copilot-web": {
-    aliases: [],
-    source: [
-      "open-sse/executors/copilot-web.ts",
-      "tests/unit/copilot-web-executor.test.ts",
-    ],
-    reason: "requires the Copilot web-session executor and browser-derived access-token flow",
-  },
   suno: {
     aliases: [],
     source: [

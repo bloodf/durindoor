@@ -53,8 +53,8 @@ The following OmniRoute providers are registered in DurinDoor's catalog with ali
 | --- | --- | --- |
 | `adapta-web` | Web Cookie LLM provider, alias `adp-web`, Adapta model catalog. | Ported chat executor; keep validation tests covering Clerk credential exchange and OpenAI response conversion. |
 | `chatgpt-web` | Web Cookie LLM/image provider, alias `cgpt-web`, ChatGPT model catalog. | Chat session exchange and conversion ported; remaining blocker is automatic ChatGPT Sentinel PoW/Turnstile/TLS-sidecar and image cache parity. |
-| `copilot-m365-web` | Web Cookie LLM provider, alias `m365copilot`, BizChat model. | Port Microsoft 365 Chathub WebSocket connection and frame helpers. |
-| `copilot-web` | Web Cookie LLM provider, Copilot model catalog. | Port Copilot web-session executor and browser-derived access-token flow. |
+| `copilot-m365-web` | Web Cookie LLM provider, alias `m365copilot`, BizChat model. | Runtime ported with Chathub WebSocket URL/credential parsing, SignalR frame conversion, and OpenAI stream/non-stream conversion. |
+| `copilot-web` | Web Cookie LLM provider, Copilot model catalog. | Runtime ported with Copilot `/c/api/start` session creation, browser access-token extraction, and WebSocket stream conversion. |
 | `duckduckgo-web` | No-auth free-tier LLM provider, alias `ddgw`, DuckDuckGo AI model catalog. | Runtime ported with anonymous VQD acquisition and OpenAI SSE/JSON translation. The optional browser-backed session pool and full anti-abuse challenge stack are not included in this JS branch. |
 | `huggingchat` | Web Cookie LLM provider, HuggingChat production model catalog. | Runtime ported with `hf-chat` cookie normalization, SvelteKit conversation bootstrap, and JSONL-to-OpenAI response conversion. |
 | `muse-spark-web` | Web Cookie LLM provider, alias `ms-web`, Muse Spark models. | Runtime ported with Meta/Muse GraphQL request construction, response parsing, and a bounded continuation cache. |
@@ -66,10 +66,10 @@ The following OmniRoute providers are registered in DurinDoor's catalog with ali
 
 ## Ported Runtime Endpoints
 
-- Chat completions: `adapta-web`, `chatgpt-web`, `duckduckgo-web`, `huggingchat`, `muse-spark-web`, `t3-web`, and `yuanbao-web` are available through `/v1/chat/completions` with their provider-prefixed model IDs.
+- Chat completions: `adapta-web`, `chatgpt-web`, `copilot-m365-web`, `copilot-web`, `duckduckgo-web`, `huggingchat`, `muse-spark-web`, `t3-web`, and `yuanbao-web` are available through `/v1/chat/completions` with their provider-prefixed model IDs.
 - Video generation: `veoaifree-web` is available through `/v1/video/generations`.
 - Music generation: `suno` and `udio` are available through `/v1/music/generations` as best-effort cookie-backed provider POSTs.
-- Still guarded by `provider_port_pending`: `copilot-m365-web`, `copilot-web`, `suno` chat fallback, and `udio` chat fallback.
+- Still guarded by `provider_port_pending`: `suno` chat fallback and `udio` chat fallback.
 
 ## Connection Health
 

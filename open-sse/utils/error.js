@@ -145,3 +145,17 @@ export function formatProviderError(error, provider, model, statusCode) {
   const causeStr = causeCode || causeMsg ? ` (cause: ${[causeCode, causeMsg].filter(Boolean).join(": ")})` : "";
   return `[${code}]: ${message}${causeStr}`;
 }
+
+/**
+ * Keep provider-facing transport errors useful without leaking stack traces or
+ * local paths from WebSocket exceptions.
+ * @param {string} message
+ * @returns {string}
+ */
+export function sanitizeErrorMessage(message) {
+  const firstLine = String(message || "Upstream provider error").split(/\r?\n/)[0].trim();
+  return firstLine
+    .replace(/file:\/\/\S+/g, "[path]")
+    .replace(/\/(?:Users|home|var|tmp)\/\S+/g, "[path]")
+    .slice(0, 500) || "Upstream provider error";
+}

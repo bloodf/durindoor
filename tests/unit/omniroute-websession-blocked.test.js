@@ -7,9 +7,7 @@ import {
 } from "open-sse/executors/unsupported-websession.js";
 import { FREE_PROVIDERS } from "@/shared/constants/providers.js";
 
-const ownedProviders = [
-  "copilot-m365-web",
-  "copilot-web",
+const pendingProviders = [
   "suno",
   "udio",
 ];
@@ -17,6 +15,8 @@ const ownedProviders = [
 const implementedProviders = [
   "adapta-web",
   "chatgpt-web",
+  "copilot-m365-web",
+  "copilot-web",
   "duckduckgo-web",
   "huggingchat",
   "muse-spark-web",
@@ -27,13 +27,13 @@ const implementedProviders = [
 
 describe("OmniRoute PR #51 web-session provider port artifacts", () => {
   it("registers every owned provider with source catalog metadata", () => {
-    for (const provider of [...ownedProviders, ...implementedProviders]) {
+    for (const provider of [...pendingProviders, ...implementedProviders]) {
       expect(PROVIDERS[provider], `${provider} transport`).toBeTruthy();
       expect(PROVIDER_MODELS[provider] || PROVIDER_MODELS[providerAlias(provider)], `${provider} models`).toEqual(
         expect.arrayContaining([expect.objectContaining({ id: expect.any(String), name: expect.any(String) })]),
       );
     }
-    for (const provider of ownedProviders) {
+    for (const provider of pendingProviders) {
       expect(BLOCKED_OMNIROUTE_PROVIDERS[provider], `${provider} blocker`).toMatchObject({
         reason: expect.any(String),
         source: expect.any(Array),
@@ -46,6 +46,18 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
       expect(hasSpecializedExecutor(provider), `${provider} specialized executor`).toBe(true);
       expect(BLOCKED_OMNIROUTE_PROVIDERS[provider], `${provider} no longer blocked`).toBeUndefined();
     }
+  });
+
+  it("ports Copilot web-session providers to real executors", async () => {
+    for (const provider of ["copilot-web", "copilot-m365-web"]) {
+      expect(BLOCKED_OMNIROUTE_PROVIDERS[provider], `${provider} blocker`).toBeUndefined();
+      expect(hasSpecializedExecutor(provider), `${provider} specialized executor`).toBe(true);
+      const result = await getExecutor(provider).execute({});
+      expect(result.response.status, `${provider} missing-prompt status`).toBe(400);
+      const body = await result.response.json();
+      expect(body.error?.type).not.toBe("provider_port_pending");
+    }
+    expect(hasSpecializedExecutor("m365copilot")).toBe(true);
   });
 
   it("marks no-auth web providers and media-only providers explicitly", () => {
@@ -72,7 +84,7 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
   });
 
   it("uses an explicit unsupported executor instead of silently falling back to default OpenAI transport", async () => {
-    for (const provider of ownedProviders) {
+    for (const provider of pendingProviders) {
       expect(hasSpecializedExecutor(provider), `${provider} specialized executor`).toBe(true);
       const result = await getExecutor(provider).execute({});
       expect(result.response.status, `${provider} status`).toBe(501);
@@ -100,7 +112,7 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
   });
 
   it("routes ported aliases to concrete executors", async () => {
-    for (const alias of ["adp-web", "cgpt-web", "ddgw", "ms-web", "t3chat", "veo-free", "ybw"]) {
+    for (const alias of ["adp-web", "cgpt-web", "ddgw", "m365copilot", "ms-web", "t3chat", "veo-free", "ybw"]) {
       expect(hasSpecializedExecutor(alias), `${alias} specialized executor`).toBe(true);
       const result = await getExecutor(alias).execute({});
       expect(result.response.status, `${alias} status`).not.toBe(501);

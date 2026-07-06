@@ -106,6 +106,24 @@ import p103 from "./command-code.js";
 import p104 from "./pollinations.js";
 import p105 from "./puter.js";
 import p106 from "./theoldllm.js";
+import p107 from "./hackclub.js";
+import p108 from "./haiper.js";
+import p109 from "./heroku.js";
+import p110 from "./ideogram.js";
+import p111 from "./iflytek.js";
+import p112 from "./inclusionai.js";
+import p113 from "./inference-net.js";
+import p114 from "./kie.js";
+import p115 from "./kilo-gateway.js";
+import p116 from "./kluster.js";
+import p117 from "./lambda-ai.js";
+import p118 from "./leonardo.js";
+import p119 from "./liquid.js";
+import p120 from "./llamagate.js";
+import p121 from "./llm7.js";
+import p122 from "./longcat.js";
+import p123 from "./maritalk.js";
+import p124 from "./meta-llama.js";
 
 export default [
   p0,
@@ -215,4 +233,22 @@ export default [
   p104,
   p105,
   p106,
+  p107,
+  p108,
+  p109,
+  p110,
+  p111,
+  p112,
+  p113,
+  p114,
+  p115,
+  p116,
+  p117,
+  p118,
+  p119,
+  p120,
+  p121,
+  p122,
+  p123,
+  p124,
 ];

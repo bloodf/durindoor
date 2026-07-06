@@ -92,6 +92,8 @@ DurinDoor includes routes for chat, responses, messages, models, embeddings, ima
 - Use [API Reference](reference/api.md) when integrating SDKs, scripts, or custom clients.
 - Use [Contributing](development/contributing.md) before opening pull requests.
 
-## Translation Source Policy
+## Documentation Language Policy
 
-English files under this directory are the canonical source for future translations. Translation tooling should preserve Markdown structure, code fences, tables, links, API names, environment variables, and model identifiers exactly unless a human reviewer changes the English source first.
+Project documentation Markdown is English-only. Use the English files under this directory as the canonical source for any external or autonomous translation workflow, but do not commit generated non-English documentation back into the repository.
+
+Non-English language assets belong in the web UI localization layer, such as `public/i18n` and `src/i18n`, not in project documentation files.

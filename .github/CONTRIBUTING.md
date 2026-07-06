@@ -27,7 +27,7 @@ Use conventional commits:
 
 ## Documentation
 
-Documentation lives in `docs/` as Markdown. Keep English docs canonical, do not commit generated translations, and do not add a docs web app back into this repository.
+Documentation lives in `docs/` as English-only Markdown. Do not commit non-English Markdown documentation or generated docs translations. Non-English language assets belong in the web UI localization layer, and the docs web app must not be added back into this repository.
 
 For the full contributor guide, see `docs/development/contributing.md`.
 

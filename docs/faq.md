@@ -72,7 +72,7 @@ Back up the existing data directory, start DurinDoor with the same or copied dat
 
 ## Where should translations come from?
 
-Translations should come from `docs/`. Preserve file paths, headings, Markdown structure, code blocks, API paths, environment variables, and model identifiers.
+Documentation translations should be generated from the English Markdown in `docs/` outside this repository. Do not commit non-English Markdown documentation here. Non-English language assets that ship with the project are limited to the web UI localization layer.
 
 ## Where are all environment variables documented?
 

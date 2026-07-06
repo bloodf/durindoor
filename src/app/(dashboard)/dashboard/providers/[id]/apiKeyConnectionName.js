@@ -1,3 +1,9 @@
+export function apiKeyConnectionNames(connections = []) {
+  return connections
+    .filter((connection) => connection?.authType === "apikey")
+    .map((connection) => connection.name);
+}
+
 export function defaultApiKeyConnectionName(existingConnectionNames = []) {
   if (!Array.isArray(existingConnectionNames)) {
     const count = Number(existingConnectionNames);

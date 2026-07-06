@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { defaultApiKeyConnectionName, shouldResetAddApiKeyModal } from "../../src/app/(dashboard)/dashboard/providers/[id]/apiKeyConnectionName.js";
+import { apiKeyConnectionNames, defaultApiKeyConnectionName, shouldResetAddApiKeyModal } from "../../src/app/(dashboard)/dashboard/providers/[id]/apiKeyConnectionName.js";
 
 describe("API-key connection default names", () => {
   it("uses main for the first connection", () => {
@@ -21,6 +21,17 @@ describe("API-key connection default names", () => {
   it("keeps count fallback for older callers", () => {
     expect(defaultApiKeyConnectionName(1)).toBe("main-2");
     expect(defaultApiKeyConnectionName(undefined)).toBe("main");
+  });
+
+  it("uses global API-key names so first hcnsec add avoids another provider's main", () => {
+    const existingNames = apiKeyConnectionNames([
+      { provider: "openai", authType: "apikey", name: "main" },
+      { provider: "anthropic", authType: "oauth", name: "main-2" },
+      { provider: "hcnsec", authType: "cookie", name: "main-3" },
+    ]);
+
+    expect(existingNames).toEqual(["main"]);
+    expect(defaultApiKeyConnectionName(existingNames)).toBe("main-2");
   });
 });
 

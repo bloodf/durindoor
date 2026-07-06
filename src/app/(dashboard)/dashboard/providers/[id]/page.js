@@ -19,6 +19,7 @@ import PassthroughModelsSection from "./PassthroughModelsSection";
 import CompatibleModelsSection from "./CompatibleModelsSection";
 import ConnectionRow from "./ConnectionRow";
 import AddApiKeyModal from "./AddApiKeyModal";
+import { apiKeyConnectionNames } from "./apiKeyConnectionName";
 import EditCompatibleNodeModal from "./EditCompatibleNodeModal";
 import AddCustomModelModal from "./AddCustomModelModal";
 import BulkImportCodexModal from "./BulkImportCodexModal";
@@ -40,6 +41,7 @@ export default function ProviderDetailPage() {
   const providerId = params.id;
   const { getCaps } = useModelCaps();
   const [connections, setConnections] = useState([]);
+  const [globalApiKeyConnectionNames, setGlobalApiKeyConnectionNames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [providerNode, setProviderNode] = useState(null);
   const [proxyPools, setProxyPools] = useState([]);
@@ -280,8 +282,10 @@ export default function ProviderDetailPage() {
       const proxyPoolsData = await proxyPoolsRes.json();
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
       if (connectionsRes.ok) {
-        const filtered = (connectionsData.connections || []).filter(c => c.provider === providerId);
+        const allConnections = connectionsData.connections || [];
+        const filtered = allConnections.filter(c => c.provider === providerId);
         setConnections(filtered);
+        setGlobalApiKeyConnectionNames(apiKeyConnectionNames(allConnections));
       }
       if (proxyPoolsRes.ok) {
         setProxyPools(proxyPoolsData.proxyPools || []);
@@ -1873,7 +1877,7 @@ export default function ProviderDetailPage() {
         authHint={providerInfo?.authHint}
         website={providerInfo?.website}
         proxyPools={proxyPools}
-        existingConnectionNames={connections.map((connection) => connection.name)}
+        existingConnectionNames={globalApiKeyConnectionNames}
         existingConnectionCount={connections.length}
         error={addConnectionError}
         onSave={handleSaveApiKey}

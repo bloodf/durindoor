@@ -83,18 +83,13 @@ Implemented in this slice:
 | GitLab Duo | `gitlab-duo` | Browser OAuth with PKCE against `GITLAB_DUO_BASE_URL`/`GITLAB_BASE_URL`, or per-connection `baseUrl` metadata. Chat messages are adapted to GitLab Code Suggestions completions. | Refreshes through the instance `/oauth/token` endpoint and keeps base URL/client metadata with the connection. |
 | Trae | `trae` | Import a Trae SOLO `Cloud-IDE-JWT` token. Optional identity metadata (`webId`, `bizUserId`, `userUniqueId`, tenant/scope/region) is carried in provider-specific data. | Pasted Cloud-IDE-JWT tokens do not expose a public refresh flow; reconnect by importing a new token when Trae expires it. |
 | Devin CLI | `devin-cli` | Import a Devin/Windsurf token or rely on `devin auth login` credentials. Runtime calls spawn `devin acp --agent-type summarizer` over ACP stdio; set `CLI_DEVIN_BIN` to override binary discovery. | No public token refresh is available for imported tokens; reconnect or re-authenticate the official CLI when the upstream session expires. |
+| Windsurf | `windsurf` | Import the Windsurf/Codeium token shown by the IDE command-palette auth-token flow. Runtime calls use Windsurf's `LanguageServerService/GetChatMessage` gRPC-web endpoint with a direct protobuf request encoder and OpenAI-compatible SSE chunk output. | No public refresh flow is available for imported tokens; reconnect by importing a fresh token if Windsurf rejects the session. |
 
-Blocked from runtime exposure in this slice:
+Windsurf runtime details:
 
-| Provider | Reason |
-| --- | --- |
-| `windsurf` | Requires the Windsurf gRPC-web protobuf encoder/decoder for `LanguageServerService/GetChatMessage`, model alias normalization, and stream framing tests. The registry exposes import-token metadata, but runtime calls stay blocked until the wire encoder is ported and verified. |
-
-Windsurf implementation plan:
-
-1. Port the OmniRoute `open-sse/executors/windsurf.ts` protobuf helpers to plain JS: gRPC-web frame writer/reader, `GetChatMessage` request encoding, response chunk decoding, and model alias normalization.
-2. Add unit tests for model alias mapping, OpenAI message conversion, gRPC-web frame parsing, content/done/error chunk decoding, and the guarded executor path.
-3. Replace the current `501` guard with the real executor only after the tests cover malformed/truncated frames and upstream error chunks.
-4. No new package dependency is expected if the minimal encoder is ported directly; using generated protobufs would require adding a protobuf runtime and generated code, so the direct encoder remains the preferred small port.
+1. The executor maps DurinDoor/OmniRoute model aliases to Windsurf wire identifiers before encoding the request.
+2. The request body is a dependency-free protobuf encoder wrapped in a gRPC-web data frame; the API token is sent both as a bearer header and in protobuf metadata.
+3. The response parser accepts gRPC-web data frames and trailer frames, decodes content, done/usage, and error chunks, and emits OpenAI-compatible SSE chunks.
+4. Wire-level unit tests cover malformed/truncated frames and upstream error chunks so the runtime is no longer guarded as `501`.
 
 Use the dashboard model selector or `/v1/models` response as the source of truth for available identifiers in your instance.

@@ -38,13 +38,14 @@ describe("blocked OAuth/session provider port", () => {
     }
   });
 
-  it("exposes devin-cli and windsurf import-token metadata with windsurf guarded at runtime", async () => {
+  it("exposes devin-cli and windsurf import-token metadata with windsurf runtime enabled", async () => {
     const { PROVIDERS, PROVIDER_OAUTH } = await import("../../open-sse/providers/index.js");
     const { getProvider, generateAuthData } = await import("../../src/lib/oauth/providers.js");
 
     expect(PROVIDER_OAUTH["devin-cli"].flowType).toBe("import_token");
     expect(PROVIDER_OAUTH.windsurf.flowType).toBe("import_token");
-    expect(PROVIDERS.windsurf.blockedReason).toMatch(/gRPC-web/);
+    expect(PROVIDERS.windsurf.format).toBe("grpc-web-proto");
+    expect(PROVIDERS.windsurf.blockedReason).toBeUndefined();
     expect(getProvider("devin-cli").flowType).toBe("import_token");
     expect(getProvider("windsurf").flowType).toBe("import_token");
 
@@ -63,16 +64,18 @@ describe("blocked OAuth/session provider port", () => {
     expect(executor.transformRequest()).toBeNull();
   });
 
-  it("windsurf executor returns an explicit not-implemented response instead of defaulting", async () => {
+  it("windsurf executor exposes gRPC-web transport contract", async () => {
     const { WindsurfExecutor } = await import("../../open-sse/executors/windsurf.js");
-    const result = await new WindsurfExecutor().execute({});
+    const executor = new WindsurfExecutor();
 
-    expect(result.response.status).toBe(501);
-    await expect(result.response.json()).resolves.toMatchObject({
-      error: {
-        code: "windsurf_transport_blocked",
-      },
+    expect(executor.buildUrl()).toBe("https://server.self-serve.windsurf.com/exa.language_server_pb.LanguageServerService/GetChatMessage");
+    expect(executor.buildHeaders({ accessToken: "ws-token" })).toMatchObject({
+      "Content-Type": "application/grpc-web+proto",
+      Accept: "application/grpc-web+proto",
+      Authorization: "Bearer ws-token",
+      "X-Grpc-Web": "1",
     });
+    expect(executor.transformRequest()).toBeNull();
   });
 
   it("gitlab-duo posts code suggestion requests to configured GitLab instance", async () => {

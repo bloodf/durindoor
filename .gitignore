@@ -49,10 +49,6 @@ data/
 logs/*
 source/*
 .cursor/*
-docs/*
-!docs/ARCHITECTURE.md
-!docs/site/
-!docs/i18n/
 test/*
 open-sse/test/*
 RM.vn.md

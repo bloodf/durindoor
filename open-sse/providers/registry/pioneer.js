@@ -1,0 +1,30 @@
+export default {
+  id: "pioneer",
+  alias: "pn",
+  display: {
+    name: "Pioneer AI",
+    icon: "explore",
+    color: "#F59E0B",
+    textIcon: "PN",
+    website: "https://pioneer.ai",
+    notice: { apiKeyUrl: "https://api.pioneer.ai" },
+  },
+  category: "apikey",
+  authType: "apikey",
+  transport: {
+    baseUrl: "https://api.pioneer.ai/v1/chat/completions",
+    auth: { combined: true, header: "x-api-key", scheme: "raw" },
+  },
+  models: [
+    { id: "Qwen/Qwen3-32B", name: "Qwen3 32B" },
+    { id: "Qwen/Qwen3.6-27B", name: "Qwen3.6 27B" },
+    { id: "Qwen/Qwen3.5-9B", name: "Qwen3.5 9B" },
+    { id: "Qwen/Qwen3-8B", name: "Qwen3 8B" },
+    { id: "Qwen/Qwen3-4B-Base", name: "Qwen3 4B Base" },
+    { id: "Qwen/Qwen3-1.7B-Base", name: "Qwen3 1.7B Base" },
+    { id: "meta-llama/Llama-3.1-8B-Instruct", name: "Llama 3.1 8B Instruct" },
+    { id: "meta-llama/Llama-3.2-1B-Instruct", name: "Llama 3.2 1B Instruct" },
+    { id: "google/gemma-3-4b-pt", name: "Gemma 3 4B (Pretrained)" },
+    { id: "HuggingFaceTB/SmolLM3-3B-Base", name: "SmolLM3 3B Base" },
+  ],
+};

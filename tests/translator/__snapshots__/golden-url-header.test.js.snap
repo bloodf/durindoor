@@ -190,7 +190,7 @@ exports[`GOLDEN buildHeaders (default executor providers) > claude → headers (
     "Content-Type": "application/json",
     "User-Agent": "claude-cli/2.1.92 (external, sdk-cli)",
     "X-App": "cli",
-    "X-Stainless-Arch": "<ARCH>",
+    "X-Stainless-Arch": "arm64",
     "X-Stainless-Helper-Method": "stream",
     "X-Stainless-Lang": "js",
     "X-Stainless-Os": "MacOS",
@@ -208,7 +208,7 @@ exports[`GOLDEN buildHeaders (default executor providers) > claude → headers (
     "Content-Type": "application/json",
     "User-Agent": "claude-cli/2.1.92 (external, sdk-cli)",
     "X-App": "cli",
-    "X-Stainless-Arch": "<ARCH>",
+    "X-Stainless-Arch": "arm64",
     "X-Stainless-Helper-Method": "stream",
     "X-Stainless-Lang": "js",
     "X-Stainless-Os": "MacOS",
@@ -228,7 +228,7 @@ exports[`GOLDEN buildHeaders (default executor providers) > claude → headers (
     "Content-Type": "application/json",
     "User-Agent": "claude-cli/2.1.92 (external, sdk-cli)",
     "X-App": "cli",
-    "X-Stainless-Arch": "<ARCH>",
+    "X-Stainless-Arch": "arm64",
     "X-Stainless-Helper-Method": "stream",
     "X-Stainless-Lang": "js",
     "X-Stainless-Os": "MacOS",
@@ -858,6 +858,101 @@ exports[`GOLDEN buildHeaders (default executor providers) > mmf → headers (api
 }
 `;
 
+exports[`GOLDEN buildHeaders (default executor providers) > modal → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
+exports[`GOLDEN buildHeaders (default executor providers) > modelscope → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
+exports[`GOLDEN buildHeaders (default executor providers) > monsterapi → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
+exports[`GOLDEN buildHeaders (default executor providers) > moonshot → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
+exports[`GOLDEN buildHeaders (default executor providers) > morph → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
 exports[`GOLDEN buildHeaders (default executor providers) > nanobanana → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -877,7 +972,102 @@ exports[`GOLDEN buildHeaders (default executor providers) > nanobanana → heade
 }
 `;
 
+exports[`GOLDEN buildHeaders (default executor providers) > nanogpt → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
 exports[`GOLDEN buildHeaders (default executor providers) > nebius → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
+exports[`GOLDEN buildHeaders (default executor providers) > nlpcloud → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
+exports[`GOLDEN buildHeaders (default executor providers) > nous-research → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
+exports[`GOLDEN buildHeaders (default executor providers) > novita → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
+exports[`GOLDEN buildHeaders (default executor providers) > nscale → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
     "Accept": "text/event-stream",
@@ -953,6 +1143,44 @@ exports[`GOLDEN buildHeaders (default executor providers) > ollama → headers (
 }
 `;
 
+exports[`GOLDEN buildHeaders (default executor providers) > ollama-cloud → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
+exports[`GOLDEN buildHeaders (default executor providers) > openadapter → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
 exports[`GOLDEN buildHeaders (default executor providers) > openai → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -997,6 +1225,50 @@ exports[`GOLDEN buildHeaders (default executor providers) > openrouter → heade
 }
 `;
 
+exports[`GOLDEN buildHeaders (default executor providers) > orcarouter → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+    "HTTP-Referer": "https://endpoint-proxy.local",
+    "X-Title": "Endpoint Proxy",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+    "HTTP-Referer": "https://endpoint-proxy.local",
+    "X-Title": "Endpoint Proxy",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+    "HTTP-Referer": "https://endpoint-proxy.local",
+    "X-Title": "Endpoint Proxy",
+  },
+}
+`;
+
+exports[`GOLDEN buildHeaders (default executor providers) > ovhcloud → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
 exports[`GOLDEN buildHeaders (default executor providers) > perplexity → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -1015,6 +1287,64 @@ exports[`GOLDEN buildHeaders (default executor providers) > perplexity → heade
   },
 }
 `;
+
+exports[`GOLDEN buildHeaders (default executor providers) > pioneer → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Content-Type": "application/json",
+    "x-api-key": "<CRED>",
+  },
+  "nonStream": {
+    "Content-Type": "application/json",
+    "x-api-key": "<CRED>",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Content-Type": "application/json",
+    "x-api-key": "<CRED>",
+  },
+}
+`;
+
+exports[`GOLDEN buildHeaders (default executor providers) > predibase → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
+exports[`GOLDEN buildHeaders (default executor providers) > publicai → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
 exports[`GOLDEN buildHeaders (default executor providers) > puter → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -1052,6 +1382,7 @@ exports[`GOLDEN buildHeaders (default executor providers) > siliconflow → head
   },
 }
 `;
+
 exports[`GOLDEN buildHeaders (default executor providers) > together → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -1418,6 +1749,41 @@ exports[`GOLDEN buildUrl (default executor providers) > mmf → url (stream + no
 }
 `;
 
+exports[`GOLDEN buildUrl (default executor providers) > modal → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://api.modal.ai/v1/chat/completions",
+  "stream": "https://api.modal.ai/v1/chat/completions",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > modelscope → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://api-inference.modelscope.cn/v1/chat/completions",
+  "stream": "https://api-inference.modelscope.cn/v1/chat/completions",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > monsterapi → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://api.monsterapi.ai/v1/chat/completions",
+  "stream": "https://api.monsterapi.ai/v1/chat/completions",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > moonshot → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://api.moonshot.ai/v1/chat/completions",
+  "stream": "https://api.moonshot.ai/v1/chat/completions",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > morph → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://api.morphllm.com/v1/chat/completions",
+  "stream": "https://api.morphllm.com/v1/chat/completions",
+}
+`;
+
 exports[`GOLDEN buildUrl (default executor providers) > nanobanana → url (stream + non-stream) 1`] = `
 {
   "nonStream": "https://api.nanobananaapi.ai/v1/chat/completions",
@@ -1425,10 +1791,45 @@ exports[`GOLDEN buildUrl (default executor providers) > nanobanana → url (stre
 }
 `;
 
+exports[`GOLDEN buildUrl (default executor providers) > nanogpt → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://nano-gpt.com/api/v1/chat/completions",
+  "stream": "https://nano-gpt.com/api/v1/chat/completions",
+}
+`;
+
 exports[`GOLDEN buildUrl (default executor providers) > nebius → url (stream + non-stream) 1`] = `
 {
   "nonStream": "https://api.studio.nebius.ai/v1/chat/completions",
   "stream": "https://api.studio.nebius.ai/v1/chat/completions",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > nlpcloud → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://api.nlpcloud.io/v1/chat/completions",
+  "stream": "https://api.nlpcloud.io/v1/chat/completions",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > nous-research → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://inference-api.nousresearch.com/v1/chat/completions",
+  "stream": "https://inference-api.nousresearch.com/v1/chat/completions",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > novita → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://api.novita.ai/openai/v1/chat/completions",
+  "stream": "https://api.novita.ai/openai/v1/chat/completions",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > nscale → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://inference.api.nscale.com/v1/chat/completions",
+  "stream": "https://inference.api.nscale.com/v1/chat/completions",
 }
 `;
 
@@ -1453,6 +1854,20 @@ exports[`GOLDEN buildUrl (default executor providers) > ollama → url (stream +
 }
 `;
 
+exports[`GOLDEN buildUrl (default executor providers) > ollama-cloud → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://ollama.com/v1/chat/completions",
+  "stream": "https://ollama.com/v1/chat/completions",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > openadapter → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://api.openadapter.in/v1/chat/completions",
+  "stream": "https://api.openadapter.in/v1/chat/completions",
+}
+`;
+
 exports[`GOLDEN buildUrl (default executor providers) > openai → url (stream + non-stream) 1`] = `
 {
   "nonStream": "https://api.openai.com/v1/chat/completions",
@@ -1467,10 +1882,45 @@ exports[`GOLDEN buildUrl (default executor providers) > openrouter → url (stre
 }
 `;
 
+exports[`GOLDEN buildUrl (default executor providers) > orcarouter → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://api.orcarouter.ai/v1",
+  "stream": "https://api.orcarouter.ai/v1",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > ovhcloud → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions",
+  "stream": "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions",
+}
+`;
+
 exports[`GOLDEN buildUrl (default executor providers) > perplexity → url (stream + non-stream) 1`] = `
 {
   "nonStream": "https://api.perplexity.ai/chat/completions",
   "stream": "https://api.perplexity.ai/chat/completions",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > pioneer → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://api.pioneer.ai/v1/chat/completions",
+  "stream": "https://api.pioneer.ai/v1/chat/completions",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > predibase → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://serving.app.predibase.com/v1/chat/completions",
+  "stream": "https://serving.app.predibase.com/v1/chat/completions",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > publicai → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://api.publicai.co/v1/chat/completions",
+  "stream": "https://api.publicai.co/v1/chat/completions",
 }
 `;
 

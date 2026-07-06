@@ -106,6 +106,23 @@ import p103 from "./command-code.js";
 import p104 from "./pollinations.js";
 import p105 from "./puter.js";
 import p106 from "./theoldllm.js";
+import p107 from "./modal.js";
+import p108 from "./modelscope.js";
+import p109 from "./monsterapi.js";
+import p110 from "./moonshot.js";
+import p111 from "./morph.js";
+import p112 from "./nanogpt.js";
+import p113 from "./nlpcloud.js";
+import p114 from "./nous-research.js";
+import p115 from "./novita.js";
+import p116 from "./nscale.js";
+import p117 from "./ollama-cloud.js";
+import p118 from "./openadapter.js";
+import p119 from "./orcarouter.js";
+import p120 from "./ovhcloud.js";
+import p121 from "./pioneer.js";
+import p122 from "./predibase.js";
+import p123 from "./publicai.js";
 
 export default [
   p0,
@@ -215,4 +232,21 @@ export default [
   p104,
   p105,
   p106,
+  p107,
+  p108,
+  p109,
+  p110,
+  p111,
+  p112,
+  p113,
+  p114,
+  p115,
+  p116,
+  p117,
+  p118,
+  p119,
+  p120,
+  p121,
+  p122,
+  p123,
 ];

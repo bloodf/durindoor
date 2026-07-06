@@ -66,6 +66,8 @@ If your deployment still uses an upstream 9Router image or compose file, treat i
 
 ## Environment Variables
 
+The table below covers the most common variables. See [Environment Variables](../reference/environment.md) for the full operator reference.
+
 | Variable | Default | Description |
 | --- | --- | --- |
 | `PORT` | `20128` | HTTP port for the production gateway. |
@@ -144,3 +146,10 @@ curl http://localhost:20128/v1/models \
 ```
 
 A healthy install should return JSON from both endpoints. The model list depends on configured providers.
+
+## Related Pages
+
+- [Startup and Runtime Operations](../operations/startup.md)
+- [Security and Production Hardening](../operations/security.md)
+- [Environment Variables](../reference/environment.md)
+- [API Reference](../reference/api.md)

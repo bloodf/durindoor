@@ -15,6 +15,8 @@ Before exposing DurinDoor outside your machine:
 7. Disable request body logging unless debugging.
 8. Back up `DATA_DIR/db/data.sqlite`.
 
+Read [Environment Variables](../reference/environment.md) and [Security and Production Hardening](../operations/security.md) before publishing a public endpoint.
+
 ## Docker
 
 ```bash
@@ -116,3 +118,10 @@ Store backups securely because they can contain provider credentials and client 
 4. Check `/api/health`.
 5. Open the dashboard and verify providers, keys, combos, and usage.
 6. Send a small test request through the public endpoint.
+
+## Related Pages
+
+- [Startup and Runtime Operations](../operations/startup.md)
+- [Environment Variables](../reference/environment.md)
+- [Security and Production Hardening](../operations/security.md)
+- [Troubleshooting](../troubleshooting.md)

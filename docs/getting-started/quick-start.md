@@ -97,6 +97,8 @@ Then send requests with `"model": "coding-default"`.
 ## Next Steps
 
 - Read [Installation](installation.md) for production configuration and data paths.
+- Read [Usage Guide](../guides/usage.md) for dashboard workflow and SDK examples.
 - Read [Provider Connections](../providers/subscription.md) for credential types.
 - Read [Combos and Fallback](../features/combos.md) for routing strategy.
+- Read [API Reference](../reference/api.md) for supported endpoints.
 - Read [Troubleshooting](../troubleshooting.md) if the first request fails.

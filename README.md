@@ -29,11 +29,16 @@ The canonical English documentation is plain Markdown under [`docs/`](docs/READM
 
 - [Quick Start](docs/getting-started/quick-start.md)
 - [Installation](docs/getting-started/installation.md)
+- [Usage Guide](docs/guides/usage.md)
+- [Environment Variables](docs/reference/environment.md)
+- [API Reference](docs/reference/api.md)
 - [Provider Connections](docs/providers/subscription.md)
 - [Provider Nodes and Custom Providers](docs/providers/cheap.md)
 - [Combos and Fallback](docs/features/combos.md)
 - [Integrations](docs/integration/other-tools.md)
 - [Deployment](docs/deployment/cloud.md)
+- [Security](docs/operations/security.md)
+- [Contributing](docs/development/contributing.md)
 - [Troubleshooting](docs/troubleshooting.md)
 
 Repository-level documentation is indexed in [`docs/README.md`](docs/README.md).
@@ -102,7 +107,7 @@ Back up the existing data directory, start DurinDoor with the same or copied `DA
 
 ## Contributing
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening pull requests. Use conventional commits.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/development/contributing.md](docs/development/contributing.md) before opening pull requests. Use conventional commits and target `dev` unless a maintainer asks otherwise.
 
 ## License
 

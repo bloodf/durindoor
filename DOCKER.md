@@ -135,4 +135,7 @@ If Headroom runs on the Docker host, use a host-reachable address such as `host.
 
 - [Cloud and Docker Deployment](docs/deployment/cloud.md)
 - [Installation](docs/getting-started/installation.md)
+- [Startup and Runtime Operations](docs/operations/startup.md)
+- [Environment Variables](docs/reference/environment.md)
+- [Security and Production Hardening](docs/operations/security.md)
 - [Troubleshooting](docs/troubleshooting.md)

@@ -73,3 +73,11 @@ Back up the existing data directory, start DurinDoor with the same or copied dat
 ## Where should translations come from?
 
 Translations should come from `docs/`. Preserve file paths, headings, Markdown structure, code blocks, API paths, environment variables, and model identifiers.
+
+## Where are all environment variables documented?
+
+Use [Environment Variables](reference/environment.md). `.env.example` is the starter template; the reference page explains when and why to set each variable.
+
+## How do I contribute?
+
+Use [Contributing](development/contributing.md). Pull requests should normally target `dev`.

@@ -25,6 +25,12 @@ Use conventional commits:
 - Justify any new dependency in the PR description.
 - Target `dev` only. Pull requests targeting `main` will be closed.
 
+## Documentation
+
+Documentation lives in `docs/` as Markdown. Keep English docs canonical, do not commit generated translations, and do not add a docs web app back into this repository.
+
+For the full contributor guide, see `docs/development/contributing.md`.
+
 ## Review
 
 All pull requests require review by a maintainer and must pass automated checks.

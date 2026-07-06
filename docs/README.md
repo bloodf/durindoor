@@ -10,6 +10,7 @@ DurinDoor is a fork of 9Router. Some compatibility names remain intentionally vi
 
 - [Quick Start](getting-started/quick-start.md): install, start, create an API key, and send the first request.
 - [Installation](getting-started/installation.md): npm, source, Docker, configuration, upgrades, and data paths.
+- [Usage Guide](guides/usage.md): dashboard workflow, API keys, model selection, combos, SDK examples, and monitoring.
 
 ### Providers
 
@@ -37,8 +38,22 @@ DurinDoor is a fork of 9Router. Some compatibility names remain intentionally vi
 
 - [Local Deployment](deployment/localhost.md)
 - [Cloud and Docker Deployment](deployment/cloud.md)
+- [Startup and Runtime Operations](operations/startup.md)
+- [Security and Production Hardening](operations/security.md)
 - [Troubleshooting](troubleshooting.md)
 - [FAQ](faq.md)
+
+### Reference
+
+- [Environment Variables](reference/environment.md)
+- [API Reference](reference/api.md)
+- [Architecture](ARCHITECTURE.md)
+- [MCP Gateway Notes](pr-mcp-gateway.md)
+
+### Development
+
+- [Contributing](development/contributing.md)
+- [Local Development](development/local-development.md)
 
 ## Core Concepts
 
@@ -68,6 +83,14 @@ DurinDoor is a fork of 9Router. Some compatibility names remain intentionally vi
 ## Supported API Families
 
 DurinDoor includes routes for chat, responses, messages, models, embeddings, image generation, image edits, speech, transcription, translation, moderation, reranking, web search, web fetch, and token counting. Availability still depends on the selected upstream provider and configured credentials.
+
+## Operator Essentials
+
+- Use [Environment Variables](reference/environment.md) before deploying outside localhost.
+- Use [Startup and Runtime Operations](operations/startup.md) for process management, health checks, and smoke tests.
+- Use [Security and Production Hardening](operations/security.md) before exposing a dashboard, tunnel, or reverse proxy.
+- Use [API Reference](reference/api.md) when integrating SDKs, scripts, or custom clients.
+- Use [Contributing](development/contributing.md) before opening pull requests.
 
 ## Translation Source Policy
 

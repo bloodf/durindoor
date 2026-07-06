@@ -48,3 +48,10 @@ Some optional native dependencies are installed into the runtime data directory 
 ## Documentation
 
 Read the canonical documentation in [`../docs/README.md`](../docs/README.md).
+
+Useful CLI-focused pages:
+
+- [Quick Start](../docs/getting-started/quick-start.md)
+- [Startup and Runtime Operations](../docs/operations/startup.md)
+- [Environment Variables](../docs/reference/environment.md)
+- [Usage Guide](../docs/guides/usage.md)

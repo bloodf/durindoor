@@ -18,7 +18,7 @@ import { searchList, SEARCH_LIST_HEADER_RE } from "./filters/searchList.js";
 const RE_GIT_DIFF = /^diff --git /m;
 const RE_GIT_DIFF_HUNK = /^@@ /m;
 const RE_GIT_STATUS = /^On branch |^nothing to commit|^Changes (not |to be )|^Untracked files:/m;
-const RE_GIT_LOG = /^(?:commit [0-9a-f]{7,40}(?:\s+\(.+\))?|[*|/\\][*|/\\ ]*commit [0-9a-f]{7,40}(?:\s+\(.+\))?)$/m;
+const RE_GIT_LOG = /^(?:commit [0-9a-f]{7,40}(?:\s+[0-9a-f]{7,40})*(?:\s+\(.+\))?|[*|/\\][*|/\\ ]*commit [0-9a-f]{7,40}(?:\s+[0-9a-f]{7,40})*(?:\s+\(.+\))?)$/m;
 const RE_GIT_LOG_ONELINE = /^(?:(?=[0-9a-f]{7,40}\s)(?=[0-9a-f]*[a-f][0-9a-f]*\s)[0-9a-f]{7,40}\s+\S|[*|/\\][*|/\\ ]*(?=[0-9a-f]{7,40}\s)(?=[0-9a-f]*[a-f][0-9a-f]*\s)[0-9a-f]{7,40}\s+\S)/m;
 const RE_PORCELAIN = /^[ MADRCU?!][ MADRCU?!] \S/m;
 const RE_BUILD_OUTPUT = /^(npm (warn|error|ERR!)|yarn (warn|error)|\s*Compiling\s+\S+|\s*Downloading\s+\S+|added \d+ package|\[ERROR\]|BUILD (SUCCESS|FAILED)|\s*Finished\s+|Successfully (installed|built)|ERROR:)/im;
@@ -30,7 +30,7 @@ export function autoDetectFilter(text) {
   // Rust: floor_char_boundary to avoid UTF-8 split — JS .slice() by char is safe
   const head = text.length > DETECT_WINDOW ? text.slice(0, DETECT_WINDOW) : text;
 
-  const gitLogIndex = firstMatchIndex(head, RE_GIT_LOG, RE_GIT_LOG_ONELINE);
+  const gitLogIndex = gitLogDetectionIndex(head);
   const gitDiffIndex = firstMatchIndex(head, RE_GIT_DIFF, RE_GIT_DIFF_HUNK);
   if (gitDiffIndex !== -1 && (gitLogIndex === -1 || gitDiffIndex < gitLogIndex)) return gitDiff;
   if (gitLogIndex !== -1) return gitLog;
@@ -114,6 +114,25 @@ function isLineNumbered(lines) {
 function countMatches(text, re) {
   const g = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
   return (text.match(g) || []).length;
+}
+
+function gitLogDetectionIndex(text) {
+  const headerIndex = firstMatchIndex(text, RE_GIT_LOG);
+  if (headerIndex !== -1) return headerIndex;
+
+  let first = -1;
+  let count = 0;
+  let offset = 0;
+  for (const line of text.split("\n")) {
+    RE_GIT_LOG_ONELINE.lastIndex = 0;
+    if (RE_GIT_LOG_ONELINE.test(line)) {
+      if (first === -1) first = offset;
+      count++;
+      if (count >= 2) return first;
+    }
+    offset += line.length + 1;
+  }
+  return -1;
 }
 
 function firstMatchIndex(text, ...patterns) {

@@ -172,6 +172,41 @@ describe("gitLog filter", () => {
     expect(out).not.toContain("Body detail should be dropped.");
   });
 
+  it("handles git log --parents commit headers", () => {
+    const input = [
+      "commit abc1234def5678abc1234def5678abc1234def5 def5678abc1234def5678abc1234def5678a",
+      "Author: Dev One <dev1@example.com>",
+      "Date:   Sun Jul 6 10:00:00 2026 +0700",
+      "",
+      "    Merge branch",
+      "",
+      "    Body detail should be dropped.",
+      "    More body detail should be dropped.",
+      "    Even more body detail should be dropped.",
+      "    Padding body detail should be dropped.",
+    ].join("\n");
+    const out = gitLog(input);
+    expect(out).toContain("commit abc1234def5678abc1234def5678abc1234def5 def5678abc1234def5678abc1234def5678a");
+    expect(out).toContain("Merge branch");
+    expect(out).not.toContain("Body detail should be dropped.");
+  });
+
+  it("preserves git log --pretty=fuller metadata", () => {
+    const input = [
+      "commit abc1234def5678abc1234def5678abc1234def5",
+      "Author:     Dev One <dev1@example.com>",
+      "AuthorDate: Sun Jul 6 10:00:00 2026 +0700",
+      "Commit:     Dev Two <dev2@example.com>",
+      "CommitDate: Sun Jul 6 11:00:00 2026 +0700",
+      "",
+      "    Fix typo",
+    ].join("\n");
+    const out = gitLog(input);
+    expect(out).toContain("AuthorDate:");
+    expect(out).toContain("Commit:");
+    expect(out).toContain("CommitDate:");
+  });
+
   it("strips graph-only decoration but keeps commit subjects", () => {
     const input = makeGitLogGraph();
     const out = gitLog(input);
@@ -382,6 +417,16 @@ describe("autoDetectFilter", () => {
       "20260706 INFO event finished",
       "20260706 INFO event archived",
       "20260706 INFO event flushed",
+    ].join("\n");
+    expect(autoDetectFilter(input).filterName).toBe("dedup-log");
+  });
+  it("does not treat a single hex request id as git log --oneline", () => {
+    const input = [
+      "a1b2c3d INFO request failed",
+      "next log line",
+      "another log line",
+      "more log line",
+      "final log line",
     ].join("\n");
     expect(autoDetectFilter(input).filterName).toBe("dedup-log");
   });

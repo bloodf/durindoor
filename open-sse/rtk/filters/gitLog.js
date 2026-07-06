@@ -29,7 +29,7 @@ export function gitLog(text, maxLines = GIT_LOG_MAX_LINES) {
 
     // commit <sha> header — starts new commit entry
     // Also matched with leading graph decoration (`*   commit abc1234...` — --graph without --oneline)
-    if (/^commit [0-9a-f]{7,40}(?:\s+\(.+\))?$/i.test(trimmed) || /^[*|/\\][*|/\\ ]*commit [0-9a-f]{7,40}(?:\s+\(.+\))?$/i.test(trimmed)) {
+    if (/^commit [0-9a-f]{7,40}(?:\s+[0-9a-f]{7,40})*(?:\s+\(.+\))?$/i.test(trimmed) || /^[*|/\\][*|/\\ ]*commit [0-9a-f]{7,40}(?:\s+[0-9a-f]{7,40})*(?:\s+\(.+\))?$/i.test(trimmed)) {
       inCommit = true;
       subjectSeen = false;
       pushLine(line);
@@ -38,7 +38,7 @@ export function gitLog(text, maxLines = GIT_LOG_MAX_LINES) {
 
     if (inCommit) {
       // Author / Date — keep as-is (already column 0 in raw, or graph-prefix stripped by commit-header match)
-      if (/^[*|/\\ ]*(Author|Date):/i.test(trimmed)) {
+      if (/^[*|/\\ ]*(Author|AuthorDate|Commit|CommitDate|Date):/i.test(trimmed)) {
         pushLine(trimmed);
         continue;
       }

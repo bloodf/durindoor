@@ -1,4 +1,32 @@
-# DurinDoor
+<p align="center">
+  <img src="assets/durindoor-banner.png"
+       alt="DurinDoor - One guarded gateway for every AI provider"
+       width="100%">
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)"
+            srcset="assets/durindoor-wordmark.png">
+    <source media="(prefers-color-scheme: light)"
+            srcset="assets/durindoor-wordmark-light.png">
+    <img src="assets/durindoor-wordmark-universal.png"
+         alt="DurinDoor - Speak, friend, and enter"
+         width="720">
+  </picture>
+</p>
+
+<p align="center">
+  <em>One guarded gateway for every AI provider.</em>
+</p>
+
+<p align="center">
+  <a href="docs/getting-started/quick-start.md"><strong>Quick Start</strong></a>
+  ·
+  <a href="docs/README.md"><strong>Documentation</strong></a>
+  ·
+  <a href="https://github.com/bloodf/durindoor/issues"><strong>Issues</strong></a>
+</p>
 
 DurinDoor is a self-hosted AI gateway that gives developer tools and applications one stable API in front of many upstream AI providers. It exposes OpenAI-compatible endpoints, manages provider credentials, translates request and response formats, supports fallback combos, and records usage in a local dashboard.
 

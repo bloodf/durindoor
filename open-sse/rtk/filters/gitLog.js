@@ -10,6 +10,7 @@ export function gitLog(text, maxLines = GIT_LOG_MAX_LINES) {
   const lines = input.split("\n");
   const out = [];
   let skipped = 0;
+  let omitted = false;
   let inCommit = false;
   let subjectSeen = false;
 
@@ -43,7 +44,10 @@ export function gitLog(text, maxLines = GIT_LOG_MAX_LINES) {
         continue;
       }
       // blank — skip
-      if (trimmed === "") continue;
+      if (trimmed === "") {
+        omitted = true;
+        continue;
+      }
       // indented subject (4 spaces, optionally preceded by graph decoration) — first one is subject
       if (!subjectSeen && /^[*|/\\ ]*    \S/.test(line)) {
         pushLine("  Subject: " + trimmed);
@@ -57,6 +61,12 @@ export function gitLog(text, maxLines = GIT_LOG_MAX_LINES) {
         pushLine("  " + graphStripped);
         continue;
       }
+      // file-level stat rows from `git log --stat` / `--numstat`:
+      // "src/a.js | 3 ++" or "4\t0\tsrc/a.js".
+      if (isStatFileLine(graphStripped)) {
+        pushLine("  " + graphStripped);
+        continue;
+      }
       // name-only / name-status entries: "src/a.js" or "M\tsrc/a.js"
       if (isNameOnlyPath(graphStripped) || isNameStatusLine(graphStripped)) {
         pushLine("  " + graphStripped);
@@ -65,9 +75,11 @@ export function gitLog(text, maxLines = GIT_LOG_MAX_LINES) {
       // embedded diff header — one-line marker
       if (/^diff --git /.test(trimmed)) {
         pushLine("  ... diff body omitted");
+        omitted = true;
         continue;
       }
       // everything else in commit body — drop
+      omitted = true;
       continue;
     }
 
@@ -88,6 +100,7 @@ export function gitLog(text, maxLines = GIT_LOG_MAX_LINES) {
 
     // Pure graph decoration (no sha) — drop
     if (/^[*|/\\ ]+$/.test(trimmed) && /[*|/\\]/.test(trimmed)) {
+      omitted = true;
       continue;
     }
 
@@ -95,16 +108,24 @@ export function gitLog(text, maxLines = GIT_LOG_MAX_LINES) {
     pushLine(trimmed);
   }
 
-  if (skipped > 0) out.push(`... (${skipped} more lines)`);
+  if (skipped > 0) {
+    omitted = true;
+    out.push(`... (${skipped} more lines)`);
+  }
 
   const result = out.join("\n");
   if (!result && input) return input;
-  if (result.length > input.length) return input;
+  if (result.length > input.length && !omitted) return input;
   return result;
 }
 
 function isNameStatusLine(line) {
   return /^(?:[ACDMRTUXB]|\?\?|!!)(?:\d+)?\s+\S/.test(line);
+}
+
+function isStatFileLine(line) {
+  if (/^(?:\d+|-)\t(?:\d+|-)\t\S/.test(line)) return true;
+  return /^.+\s+\|\s+(?:\d+(?:\s+[+\-]+)?|Bin\s+\d+\s+->\s+\d+\s+bytes)$/.test(line);
 }
 
 function isNameOnlyPath(line) {

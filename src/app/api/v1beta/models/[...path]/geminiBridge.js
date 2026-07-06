@@ -49,7 +49,7 @@ export function convertGeminiToInternal(geminiBody, model, stream) {
           function: {
             name: func.name || "",
             description: func.description || "",
-            parameters: func.parameters || { type: "object", properties: {} },
+            parameters: normalizeGeminiSchemaTypes(func.parameters) || { type: "object", properties: {} },
           },
         });
       }
@@ -58,6 +58,27 @@ export function convertGeminiToInternal(geminiBody, model, stream) {
   }
 
   return result;
+}
+
+/**
+ * Gemini v1beta accepts schema type names such as OBJECT or STRING, while the
+ * OpenAI tool bridge expects lowercase JSON Schema type values at every depth.
+ */
+export function normalizeGeminiSchemaTypes(schema) {
+  if (!schema || typeof schema !== "object") return schema;
+  if (Array.isArray(schema)) return schema.map((item) => normalizeGeminiSchemaTypes(item));
+
+  const normalized = {};
+  for (const [key, value] of Object.entries(schema)) {
+    if (key === "type" && typeof value === "string") {
+      normalized[key] = value.toLowerCase();
+    } else if (key === "type" && Array.isArray(value)) {
+      normalized[key] = value.map((item) => typeof item === "string" ? item.toLowerCase() : item);
+    } else {
+      normalized[key] = normalizeGeminiSchemaTypes(value);
+    }
+  }
+  return normalized;
 }
 
 function convertGeminiContentToInternal(content) {

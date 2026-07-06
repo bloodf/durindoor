@@ -62,11 +62,28 @@ export function isAntigravityCapacityError(status, errorText = "") {
   );
 }
 
+const CLOUD_CODE_ACCOUNT_DISABLED_403_PATTERNS = [
+  /disabled in this account/i,
+  /account[^.:\n]*(?:disabled|deactivated|suspended|banned|terminated|closed)/i,
+  /verify your account/i,
+  /violation of (?:the )?terms/i,
+  /terms of service/i,
+];
+
+const CLOUD_CODE_PROJECT_403_PATTERNS = [
+  /has not been used in project/i,
+  /accessNotConfigured/i,
+  /cloud ai companion api/i,
+  /cloudcode-pa\.googleapis\.com/i,
+  /api has not been (?:used|enabled)/i,
+  /SERVICE_DISABLED/,
+];
+
 /**
- * Cloud Code / Antigravity 403s often mean a recoverable project/API setup
- * problem rather than a bad account. Do not persist a cooldown for those; the
- * next connection may carry a different project and the current one can recover
- * after the Cloud AI Companion API or project permission is fixed.
+ * Cloud Code / Antigravity 403s are recoverable only when the error identifies
+ * a project/API setup issue. Account verification, deactivation, suspension, or
+ * ToS-ban messages are real account failures and must keep normal cooldown
+ * handling, even when they come from a Cloud Code provider.
  */
 export function isRecoverableCloudCodeProject403(provider, status, errorText = "") {
   if (Number(status) !== 403) return false;
@@ -77,14 +94,12 @@ export function isRecoverableCloudCodeProject403(provider, status, errorText = "
     p.includes("cloudcode") ||
     p.includes("cloud-code");
   const text = typeof errorText === "string" ? errorText : JSON.stringify(errorText || "");
-  return (
-    isCloudCodeProvider ||
-    /has not been used in project/i.test(text) ||
-    /SERVICE_DISABLED/.test(text) ||
-    /accessNotConfigured/.test(text) ||
-    /PERMISSION_DENIED/.test(text) ||
-    /\bit is disabled\b/i.test(text)
-  );
+  if (CLOUD_CODE_ACCOUNT_DISABLED_403_PATTERNS.some((pattern) => pattern.test(text))) return false;
+
+  const hasProjectMarker = CLOUD_CODE_PROJECT_403_PATTERNS.some((pattern) => pattern.test(text)) ||
+    (/PERMISSION_DENIED/.test(text) && /\b(project|api|cloud ai companion|cloudcode-pa)\b/i.test(text));
+
+  return isCloudCodeProvider && hasProjectMarker;
 }
 
 /**

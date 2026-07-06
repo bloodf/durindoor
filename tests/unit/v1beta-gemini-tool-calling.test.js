@@ -27,6 +27,56 @@ describe("Gemini native v1beta tool calling", () => {
     expect(JSON.parse(out.messages.find((m) => m.role === "tool").content)).toEqual({ temp: 18 });
   });
 
+  it("normalizes nested uppercase Gemini functionDeclaration schema types for OpenAI tools", () => {
+    const out = convertGeminiToInternal(
+      {
+        contents: [{ role: "user", parts: [{ text: "Search docs" }] }],
+        tools: [{
+          functionDeclarations: [{
+            name: "search",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                query: { type: "STRING" },
+                filters: {
+                  type: "ARRAY",
+                  items: {
+                    type: "OBJECT",
+                    properties: {
+                      exact: { type: "BOOLEAN" },
+                      score: { type: ["NUMBER", "NULL"] },
+                    },
+                  },
+                },
+              },
+              anyOf: [{ type: "OBJECT" }, { type: "NULL" }],
+            },
+          }],
+        }],
+      },
+      "gemini-pro",
+      false,
+    );
+
+    expect(out.tools[0].function.parameters).toEqual({
+      type: "object",
+      properties: {
+        query: { type: "string" },
+        filters: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              exact: { type: "boolean" },
+              score: { type: ["number", "null"] },
+            },
+          },
+        },
+      },
+      anyOf: [{ type: "object" }, { type: "null" }],
+    });
+  });
+
   it("maps non-stream OpenAI tool_calls into Gemini functionCall parts", async () => {
     const response = Response.json({
       model: "gemini-pro",

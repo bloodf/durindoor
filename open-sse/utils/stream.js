@@ -566,6 +566,15 @@ export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, p
 }
 
 export function createPassthroughStreamWithLogger(provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null) {
+  if (toolNameMap && !(toolNameMap instanceof Map) && typeof toolNameMap === "string") {
+    apiKey = onStreamComplete;
+    onStreamComplete = body;
+    body = connectionId;
+    connectionId = model;
+    model = toolNameMap;
+    toolNameMap = null;
+  }
+
   return createSSEStream({
     mode: STREAM_MODE.PASSTHROUGH,
     provider,

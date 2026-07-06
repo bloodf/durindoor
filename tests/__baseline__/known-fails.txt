@@ -19,3 +19,14 @@ tests/unit/translator-request-normalization.test.js :: request normalization cla
 tests/unit/translator-request-normalization.test.js :: request normalization filterToOpenAIFormat flattens text-only arrays to string
 tests/unit/translator-request-normalization.test.js :: request normalization parseSSELine supports provider raw NDJSON stream lines
 tests/unit/translator-request-normalization.test.js :: request normalization translateRequest keeps /v1/messages Claude->OpenAI text payloads string-safe
+tests/unit/kiro-region.test.js :: fetchKiroProfileArn region host queries us-east-1 codewhisperer by default
+tests/unit/kiro-region.test.js :: fetchKiroProfileArn region host queries the regional Amazon Q host for a non-default region
+tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import returns descriptive error if macOS db file exists but cannot be opened
+tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import extracts tokens using exact keys
+tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import unwraps JSON-encoded string values
+tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import falls back to fuzzy key matching on macOS when exact keys are missing
+tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import returns login-prompt error when tokens are missing even after fallback
+tests/unit/provider-models-minimax-m3.test.js :: MiniMax-M3 model registration includes MiniMax-M3 in PROVIDER_MODELS.minimax
+tests/unit/provider-models-minimax-m3.test.js :: MiniMax-M3 model registration includes MiniMax-M3 in PROVIDER_MODELS['minimax-cn']
+tests/unit/xai-usage.test.js :: xAI (Grok) usage aggregates tokens and cost per model from usageHistory
+tests/unit/xai-usage.test.js :: xAI (Grok) usage scopes aggregation to the requested connectionId

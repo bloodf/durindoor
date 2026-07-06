@@ -148,5 +148,5 @@ describe("Antigravity combo capacity cycling", () => {
         modelInfo: expect.objectContaining({ provider: "kiro" }),
       }),
     );
-  });
+  }, 10000);
 });

@@ -44,7 +44,11 @@ describe("antigravity oauth client (deduped)", () => {
     // authorizeUrl now lives in registry; oauth.js derives via PROVIDER_OAUTH spread
     expect(src).toContain('PROVIDER_OAUTH["antigravity"]');
     expect(src).toContain('PROVIDER_OAUTH["gemini-cli"]');
-    expect(src).not.toContain(EXPECTED.clientSecret); // antigravity secret no longer hardcoded here
-    expect(src).not.toContain(GOOGLE.clientSecret);   // gemini secret no longer hardcoded here
+    if (EXPECTED.clientSecret) {
+      expect(src).not.toContain(EXPECTED.clientSecret); // antigravity secret no longer hardcoded here
+    }
+    if (GOOGLE.clientSecret) {
+      expect(src).not.toContain(GOOGLE.clientSecret);   // gemini secret no longer hardcoded here
+    }
   });
 });

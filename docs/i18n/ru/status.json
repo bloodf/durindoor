@@ -1,12 +1,12 @@
 {
   "locale": "ru",
-  "totalPages": 36,
+  "totalPages": 3,
   "translated": 1,
   "reviewed": 0,
-  "lastSyncIso": "2026-07-06T06:04:48.756Z",
+  "lastSyncIso": "2026-07-03T21:31:32.000Z",
   "sources": [
     "public/i18n/literals/ru.json",
     "i18n/README.ru.md"
   ],
-  "notes": "i18n literals + README present; per-page review still required."
+  "notes": "Localized source material present; per-page review still required."
 }

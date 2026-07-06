@@ -1,12 +1,13 @@
 {
   "locale": "zh-CN",
-  "totalPages": 36,
-  "translated": 1,
+  "totalPages": 3,
+  "translated": 2,
   "reviewed": 0,
-  "lastSyncIso": "2026-07-06T06:04:48.756Z",
+  "lastSyncIso": "2026-07-03T21:52:11.000Z",
   "sources": [
     "public/i18n/literals/zh-CN.json",
-    "i18n/README.zh-CN.md"
+    "i18n/README.zh-CN.md",
+    "gitbook/content/zh-CN"
   ],
-  "notes": "i18n literals + README present; per-page review still required."
+  "notes": "Localized source material present; per-page review still required."
 }

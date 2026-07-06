@@ -20,6 +20,7 @@
 import { existsSync, mkdirSync, readdirSync, writeFileSync, readFileSync, statSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, '..');
@@ -53,11 +54,40 @@ const i18nDir     = join(repoRoot, 'i18n');
 
 const locales     = listLocaleDirs(literalsDir);   // 32 locales
 const readmes     = listI18nReadmes(i18nDir);      // a subset
+const englishSources = ['README.md', 'docs/ARCHITECTURE.md', 'docs/pr-mcp-gateway.md'];
 const repoRootDocs = join(repoRoot, 'docs');
 const outI18n     = join(repoRootDocs, 'i18n');
 const outSite     = join(repoRootDocs, 'site');
 
-const totalPages = locales.length + readmes.length;
+const totalPages = englishSources.length;
+const readmeByLocale = new Map(readmes.map((loc) => [loc, `README.${loc}.md`]));
+if (readmeByLocale.has('ja-JP') && !readmeByLocale.has('ja')) {
+  readmeByLocale.set('ja', 'README.ja-JP.md');
+}
+
+function hasGitbookLocale(loc) {
+  return existsSync(join(repoRoot, 'gitbook/content', loc));
+}
+
+function stableLastSyncIso(paths) {
+  const times = paths
+    .filter((p) => existsSync(join(repoRoot, p)))
+    .map((p) => {
+      try {
+        const out = execFileSync('git', ['log', '-1', '--format=%cI', '--', p], {
+          cwd: repoRoot,
+          stdio: ['ignore', 'pipe', 'ignore'],
+          encoding: 'utf8',
+        }).trim();
+        if (out) return Date.parse(out);
+      } catch {
+        // Fall through to local mtime for untracked or non-git workspaces.
+      }
+      return statSync(join(repoRoot, p)).mtimeMs;
+    })
+    .filter((t) => Number.isFinite(t));
+  return new Date(Math.max(0, ...times)).toISOString();
+}
 
 log('discovered', { locales: locales.length, readmes: readmes.length });
 
@@ -71,19 +101,23 @@ function writeMaybe(relPath, content) {
 
 // Per-locale status files
 for (const loc of locales) {
-  const hasReadme = readmes.includes(loc) || readmes.includes(loc.replace(/-/g, '-'));
+  const readmeName = readmeByLocale.get(loc);
+  const hasReadme = Boolean(readmeName);
+  const hasGitbook = hasGitbookLocale(loc);
+  const sources = [
+    `public/i18n/literals/${loc}.json`,
+    hasReadme ? `i18n/${readmeName}` : null,
+    hasGitbook ? `gitbook/content/${loc}` : null,
+  ].filter(Boolean);
   const status = {
     locale: loc,
     totalPages,
-    translated: hasReadme ? 1 : 0,
+    translated: (hasReadme ? 1 : 0) + (hasGitbook ? 1 : 0),
     reviewed:   0,
-    lastSyncIso: new Date().toISOString(),
-    sources:    [
-      `public/i18n/literals/${loc}.json`,
-      hasReadme ? `i18n/README.${loc}.md` : null,
-    ].filter(Boolean),
-    notes: hasReadme
-      ? 'i18n literals + README present; per-page review still required.'
+    lastSyncIso: stableLastSyncIso(sources),
+    sources,
+    notes: hasReadme || hasGitbook
+      ? 'Localized source material present; per-page review still required.'
       : 'i18n literals present; README.md MISSING. Open a tracking issue for this locale.',
   };
   writeMaybe(
@@ -93,7 +127,7 @@ for (const loc of locales) {
 }
 
 // English source index (no translations produced)
-const readmesPresent = readmes.filter((l) => existsSync(join(i18nDir, `README.${l}.md`)));
+const readmesPresent = locales.filter((l) => readmeByLocale.has(l));
 
 const indexBody = [
   '# DurinDoor Documentation Index',
@@ -102,18 +136,18 @@ const indexBody = [
   '',
   '## English source',
   '',
-  '- [`README.md`](../README.md) — top-level entry point',
-  '- [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) — system architecture overview',
-  '- [`docs/pr-mcp-gateway.md`](pr-mcp-gateway.md) — MCP gateway internals',
+  '- [`README.md`](../../README.md) — top-level entry point',
+  '- [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md) — system architecture overview',
+  '- [`docs/pr-mcp-gateway.md`](../pr-mcp-gateway.md) — MCP gateway internals',
   '',
   '## Locales (snapshot from `public/i18n/literals/`)',
   '',
   'Each entry links to a `status.json` (translation progress) and any in-repo `i18n/README.<locale>.md` if present.',
   '',
   ...locales.map((loc) => {
-    const hasRm = readmesPresent.includes(loc);
-    const link = hasRm ? `[i18n/README.${loc}.md](../i18n/README.${loc}.md)` : '_(README missing)_';
-    return `- **${loc}** — ${link} · [status.json](i18n/${loc}/status.json)`;
+    const readmeName = readmeByLocale.get(loc);
+    const link = readmeName ? `[i18n/${readmeName}](../../i18n/${readmeName})` : '_(README missing)_';
+    return `- **${loc}** — ${link} · [status.json](../i18n/${loc}/status.json)`;
   }),
   '',
   '## How to add or update a locale',

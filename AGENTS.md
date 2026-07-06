@@ -37,8 +37,8 @@ The Hermes cron agent — and any other look-after-the-repo agent — MUST verif
 - Branching: one branch per independent PR; never share a worktree between PRs. Force-push only on the branch being amended.
 - Tests baseline: `tests/__baseline__/known-fails.txt` is the curated list of pre-existing test failures. Adding entries is a hard gate — reverts required if a port adds new failures.
 - Wire-format compat (read-only at server boundary):
-  - `sk_9router-*` API keys continue to work
+  - Existing stored API keys remain valid as `sk-<8 hex>` or `sk-<machineId>-<keyId>-<crc8>`
   - `[providers.9router]` section labels accepted in incoming CLI tool configs
   - `X-Msh-Platform: 9router` request headers accepted
   - `~/.9router/` data directory accepted
-  Default is `sk_durindoor-*`, `[providers.durindoor]`, `X-Msh-Platform: durindoor`, `~/.durindoor/` respectively.
+  Default generated keys use the `sk-...` format; `sk_durindoor` is only a local no-auth placeholder used in CLI setup snippets.

@@ -26,6 +26,8 @@
   /* Primary (legacy alias for backward compat with existing components) */
   --color-primary: var(--color-brand-500);
   --color-primary-hover: var(--color-brand-600);
+  --color-gold: #C9A227;
+  --color-gold-soft: rgba(201,162,39,0.18);
 
   /* Surfaces & backgrounds (light) - warm parchment */
   --color-bg: #FAF8F2;
@@ -83,6 +85,8 @@
 
   --color-primary: #2E7D32;
   --color-primary-hover: #1B5E20;
+  --color-gold: #D6B64A;
+  --color-gold-soft: rgba(214,182,74,0.22);
 
   /* Surfaces (dark) - black-green tones */
   --color-bg: #0D1117;
@@ -163,8 +167,8 @@ select {
   --color-text-main: var(--color-text-main);
   --color-text-muted: var(--color-text-muted);
   --color-text-subtle: var(--color-text-subtle);
-  --color-gold: #C9A227;
-  --color-gold-soft: rgba(201,162,39,0.18);
+  --color-gold: var(--color-gold);
+  --color-gold-soft: var(--color-gold-soft);
   --color-forest: #1F4D2A;
   --color-ink: #0B0B0B;
   --color-parchment: #F5F1E6;

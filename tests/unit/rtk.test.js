@@ -282,17 +282,21 @@ describe("gitLog filter", () => {
 
   it("keeps graph-prefixed git log --stat file-level rows", () => {
     const input = [
-      "commit abc1234def5678abc1234def5678abc1234def5",
-      "Author: Dev One <dev1@example.com>",
-      "Date:   Sun Jul 6 10:00:00 2026 +0700",
-      "",
-      "    Fix typo",
+      "* commit abc1234def5678abc1234def5678abc1234def5",
+      "| Author: Dev One <dev1@example.com>",
+      "| Date:   Sun Jul 6 10:00:00 2026 +0700",
+      "|",
+      "|     Fix typo",
+      "|",
+      "|     verbose body line omitted by RTK",
       "|  src/main.js | 3 ++-",
       "|  1 file changed, 2 insertions(+), 1 deletion(-)",
     ].join("\n");
     const out = gitLog(input);
+    expect(out).not.toBe(input);
     expect(out).toContain("src/main.js | 3 ++-");
     expect(out).toContain("1 file changed, 2 insertions(+), 1 deletion(-)");
+    expect(out).not.toContain("verbose body line omitted by RTK");
   });
 
   it("keeps git log --numstat file-level rows", () => {

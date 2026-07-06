@@ -10,6 +10,7 @@ export function gitLog(text, maxLines = GIT_LOG_MAX_LINES) {
   const lines = input.split("\n");
   const out = [];
   let skipped = 0;
+  let omitted = false;
   let inCommit = false;
   let subjectSeen = false;
 
@@ -43,7 +44,10 @@ export function gitLog(text, maxLines = GIT_LOG_MAX_LINES) {
         continue;
       }
       // blank — skip
-      if (trimmed === "") continue;
+      if (trimmed === "") {
+        omitted = true;
+        continue;
+      }
       // indented subject (4 spaces, optionally preceded by graph decoration) — first one is subject
       if (!subjectSeen && /^[*|/\\ ]*    \S/.test(line)) {
         pushLine("  Subject: " + trimmed);
@@ -71,9 +75,11 @@ export function gitLog(text, maxLines = GIT_LOG_MAX_LINES) {
       // embedded diff header — one-line marker
       if (/^diff --git /.test(trimmed)) {
         pushLine("  ... diff body omitted");
+        omitted = true;
         continue;
       }
       // everything else in commit body — drop
+      omitted = true;
       continue;
     }
 
@@ -94,6 +100,7 @@ export function gitLog(text, maxLines = GIT_LOG_MAX_LINES) {
 
     // Pure graph decoration (no sha) — drop
     if (/^[*|/\\ ]+$/.test(trimmed) && /[*|/\\]/.test(trimmed)) {
+      omitted = true;
       continue;
     }
 
@@ -101,11 +108,14 @@ export function gitLog(text, maxLines = GIT_LOG_MAX_LINES) {
     pushLine(trimmed);
   }
 
-  if (skipped > 0) out.push(`... (${skipped} more lines)`);
+  if (skipped > 0) {
+    omitted = true;
+    out.push(`... (${skipped} more lines)`);
+  }
 
   const result = out.join("\n");
   if (!result && input) return input;
-  if (result.length > input.length) return input;
+  if (result.length > input.length && !omitted) return input;
   return result;
 }
 

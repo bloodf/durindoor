@@ -147,3 +147,28 @@ describe("BaseExecutor.execute — computeRetryDelay hook veto", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("BaseExecutor.execute — reactive field strip retry", () => {
+  it("strips top-level context_management and retries once when a strict gateway names it in a 400", async () => {
+    const ex = makeExec({ baseUrl: "https://x/api" });
+    fetchMock
+      .mockResolvedValueOnce(new Response("context_management: Extra inputs are not permitted", { status: 400 }))
+      .mockResolvedValueOnce(res(200));
+
+    const out = await ex.execute({
+      model: "m",
+      body: {
+        messages: [{ role: "user", content: "hi" }],
+        context_management: { edits: [] },
+      },
+      stream: false,
+      credentials: creds,
+    });
+
+    expect(out.response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).context_management).toBeDefined();
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).context_management).toBeUndefined();
+    expect(out.transformedBody.context_management).toBeUndefined();
+  });
+});

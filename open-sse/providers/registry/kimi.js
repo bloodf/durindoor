@@ -20,6 +20,9 @@ export default {
     format: "claude",
     urlSuffix: "?beta=true",
     headers: { ...CLAUDE_API_HEADERS },
+    reasoningInject: {
+      scope: "all",
+    },
     auth: {
       combined: true,
       header: "x-api-key",

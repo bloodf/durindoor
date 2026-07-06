@@ -18,6 +18,9 @@ export default {
   transport: {
     baseUrl: "https://integrate.api.nvidia.com/v1/chat/completions",
     validateUrl: "https://integrate.api.nvidia.com/v1/models",
+    quirks: {
+      dropClientMetadata: true,
+    },
   },
   models: [
     { id: "abacusai/dracarys-llama-3.1-70b-instruct", name: "Dracarys Llama 3.1 70B Instruct" },

@@ -63,6 +63,31 @@ export function isAntigravityCapacityError(status, errorText = "") {
 }
 
 /**
+ * Cloud Code / Antigravity 403s often mean a recoverable project/API setup
+ * problem rather than a bad account. Do not persist a cooldown for those; the
+ * next connection may carry a different project and the current one can recover
+ * after the Cloud AI Companion API or project permission is fixed.
+ */
+export function isRecoverableCloudCodeProject403(provider, status, errorText = "") {
+  if (Number(status) !== 403) return false;
+  const p = String(provider || "").toLowerCase();
+  const isCloudCodeProvider =
+    p === "antigravity" ||
+    p === "gemini-cli" ||
+    p.includes("cloudcode") ||
+    p.includes("cloud-code");
+  const text = typeof errorText === "string" ? errorText : JSON.stringify(errorText || "");
+  return (
+    isCloudCodeProvider ||
+    /has not been used in project/i.test(text) ||
+    /SERVICE_DISABLED/.test(text) ||
+    /accessNotConfigured/.test(text) ||
+    /PERMISSION_DENIED/.test(text) ||
+    /\bit is disabled\b/i.test(text)
+  );
+}
+
+/**
  * Check if account is currently unavailable (cooldown not expired)
  */
 export function isAccountUnavailable(unavailableUntil) {

@@ -1,4 +1,4 @@
-// Web Fetch handler — dispatches to firecrawl, jina-reader, tavily, exa
+// Web Fetch handler — dispatches to firecrawl, jina-reader, tavily, exa, tinyfish
 // Returns normalized shape across all providers
 
 const DEFAULT_TIMEOUT_MS = 15000;
@@ -122,6 +122,9 @@ export async function handleFetchCore({ url, format, maxCharacters, provider, pr
     }
     if (provider === "exa") {
       return await runExa({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt });
+    }
+    if (provider === "tinyfish") {
+      return await runTinyfish({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt });
     }
     return { success: false, status: 400, error: `Unsupported provider: ${provider}` };
   } catch (err) {
@@ -256,6 +259,48 @@ async function runExa({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery
     success: true,
     data: buildData({
       provider: "exa", url, title: first.title || null, format: fmt, text,
+      costUsd: costPerQuery, responseMs: Date.now() - startedAt, upstreamMs
+    })
+  };
+}
+
+async function runTinyfish({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt }) {
+  if (!apiKey) {
+    return { success: false, status: 400, error: "TINYFISH_API_KEY is required for TinyFish Fetch" };
+  }
+
+  const upstreamStart = Date.now();
+  const r = await tryFetch("https://api.fetch.tinyfish.ai", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "X-API-Key": apiKey
+    },
+    body: JSON.stringify({
+      urls: [url],
+      format: fmt === "html" ? "html" : "markdown",
+      ttl: 0
+    })
+  }, timeoutMs);
+
+  if (!r.ok) {
+    return { success: false, status: r.timeout ? 504 : 502, error: r.error };
+  }
+  const upstreamMs = Date.now() - upstreamStart;
+  const { json } = await readJsonOrText(r.res);
+  if (!r.res.ok) {
+    return { success: false, status: r.res.status, error: json?.error || `TinyFish error: ${r.res.status}` };
+  }
+  const first = json?.results?.[0];
+  if (!first) {
+    const err = json?.errors?.[0];
+    return { success: false, status: 502, error: err?.message || err?.error || "TinyFish could not fetch the requested URL" };
+  }
+  const text = truncate(first.text || "", maxCharacters);
+  return {
+    success: true,
+    data: buildData({
+      provider: "tinyfish", url, title: first.title || null, format: fmt, text,
       costUsd: costPerQuery, responseMs: Date.now() - startedAt, upstreamMs
     })
   };

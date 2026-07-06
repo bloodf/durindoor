@@ -1,6 +1,6 @@
 import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings, getProxyPools } from "@/lib/localDb";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
-import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
+import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
 import * as log from "../utils/logger.js";
@@ -234,6 +234,12 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   if (provider === "antigravity" && isAntigravityCapacityError(status, errorText)) {
     const connName = conn?.displayName || conn?.name || conn?.email || connectionId.slice(0, 8);
     log.warn("AUTH", `${connName} hit Antigravity capacity for ${model || "unknown model"}; fallback without cooldown [${status}]`);
+    return { shouldFallback: true, cooldownMs: 0 };
+  }
+
+  if (isRecoverableCloudCodeProject403(provider, status, errorText)) {
+    const connName = conn?.displayName || conn?.name || conn?.email || connectionId.slice(0, 8);
+    log.warn("AUTH", `${connName} hit recoverable Cloud Code project 403 for ${model || "unknown model"}; fallback without cooldown`);
     return { shouldFallback: true, cooldownMs: 0 };
   }
 

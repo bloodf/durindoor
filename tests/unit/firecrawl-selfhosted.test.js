@@ -236,3 +236,67 @@ describe("Firecrawl providers", () => {
     });
   });
 });
+
+describe("TinyFish Fetch provider", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    global.fetch = originalFetch;
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it("rejects when API key is missing", async () => {
+    const res = await handleFetchCore({
+      url: "https://example.com",
+      provider: "tinyfish",
+      providerConfig: {},
+      credentials: {}
+    });
+
+    expect(res.success).toBe(false);
+    expect(res.status).toBe(400);
+    expect(res.error).toBe("TINYFISH_API_KEY is required for TinyFish Fetch");
+  });
+
+  it("posts urls array to TinyFish with X-API-Key auth", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Map([["content-type", "application/json"]]),
+      json: () => Promise.resolve({
+        results: [{ url: "https://example.com", title: "Example", text: "# TinyFish" }],
+        errors: []
+      })
+    });
+
+    const res = await handleFetchCore({
+      url: "https://example.com",
+      format: "html",
+      provider: "tinyfish",
+      providerConfig: {},
+      credentials: { apiKey: "tf-key" }
+    });
+
+    expect(res.success).toBe(true);
+    expect(res.data.provider).toBe("tinyfish");
+    expect(res.data.title).toBe("Example");
+    expect(global.fetch).toHaveBeenCalledWith(
+      "https://api.fetch.tinyfish.ai",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          "content-type": "application/json",
+          "X-API-Key": "tf-key"
+        })
+      })
+    );
+    const [, init] = global.fetch.mock.calls[0];
+    expect(JSON.parse(init.body)).toEqual({
+      urls: ["https://example.com"],
+      format: "html",
+      ttl: 0
+    });
+  });
+});

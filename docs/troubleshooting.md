@@ -91,6 +91,8 @@ Fixes:
 4. Add another connection for the same provider if appropriate.
 5. Add a combo fallback for important workflows.
 
+Round-robin combos advance from the model that actually served the request. If the scheduled first model fails and the second model serves, the next request starts after that served model instead of reusing it.
+
 ## Streaming Problems
 
 Symptoms:
@@ -114,6 +116,7 @@ Symptoms:
 - Coding agents fail after selecting tools.
 - Tool results disappear or appear malformed.
 - Fallback model works for chat but not for agent workflows.
+- Native Gemini `/v1beta` clients receive plain text but miss function calls.
 
 Fixes:
 
@@ -122,6 +125,33 @@ Fixes:
 3. Avoid fallback models that only support plain chat.
 4. Check translator-related errors in request details.
 5. Prefer direct provider routes for fragile formats when available.
+6. For Gemini SDK clients, use the `/v1beta/models/{model}:generateContent` or `:streamGenerateContent` route so DurinDoor preserves `functionCall` and `functionResponse` parts through the OpenAI bridge.
+
+## Web Fetch Provider Problems
+
+Symptoms:
+
+- `/v1/web/fetch` says a provider is unsupported.
+- TinyFish returns empty content or an upstream error.
+
+Fixes:
+
+1. Confirm the provider model is `tinyfish` when using TinyFish Fetch.
+2. Configure the TinyFish API key from `agent.tinyfish.ai/api-keys`; DurinDoor sends it as `X-API-Key`.
+3. Use `markdown` or `html`; TinyFish does not provide links or screenshots, so unsupported output formats are fetched as markdown.
+
+## Strict Provider Parameter Rejections
+
+Symptoms:
+
+- Upstream `400` mentions `context_management`, `client_metadata`, `thinking`, or `reasoning`.
+- Claude Code, Codex, OpenCode, or Gemini clients work with one provider but fail with a strict OpenAI-compatible gateway.
+
+Fixes:
+
+1. Retry with the same provider after DurinDoor strips known incompatible passthrough fields.
+2. If the error is from Antigravity or Gemini Code Assist and mentions a disabled project or API, fix the Google Cloud project/API permission; DurinDoor treats that `403` as recoverable and does not persist a connection cooldown.
+3. Prefer provider-native models when a gateway rejects reasoning or metadata fields that the original provider accepts.
 
 ## Docker Networking Problems
 

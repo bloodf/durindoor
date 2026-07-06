@@ -264,13 +264,13 @@ function normalizeToolParameters(params) {
 export function openaiToOpenAIResponsesRequest(model, body, stream, credentials) {
   if (body.input) {
     const cleanInput = stripOrphanedToolOutputs(body.input);
-    return cleanInput === body.input ? { ...body, model, stream: true } : { ...body, input: cleanInput, model, stream: true };
+    return cleanInput === body.input ? { ...body, model, stream } : { ...body, input: cleanInput, model, stream };
   }
 
   const result = {
     model,
     input: [],
-    stream: true,
+    stream,
     store: false
   };
 

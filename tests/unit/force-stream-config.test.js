@@ -168,4 +168,23 @@ describe("forceStream provider config", () => {
       baseUrl: "https://inference.do-ai.run/v1/responses",
     });
   });
+
+  it("keeps non-streaming mode for model-targeted Responses transports", async () => {
+    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+    const opts = makeOptions(false);
+    opts.body.model = "openai-gpt-5.4-nano";
+    opts.modelInfo = { provider: "digitalocean", model: "openai-gpt-5.4-nano" };
+    opts.credentials = { apiKey: "dop_v1_test" };
+    opts.clientRawRequest.headers.accept = "application/json";
+
+    await handleChatCore(opts);
+
+    const call = executeMock.mock.calls[0][0];
+    expect(call.stream).toBe(false);
+    expect(call.body.stream).toBe(false);
+    expect(call.credentials.runtimeTransport).toMatchObject({
+      format: "openai-responses",
+      baseUrl: "https://inference.do-ai.run/v1/responses",
+    });
+  });
 });

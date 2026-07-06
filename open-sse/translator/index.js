@@ -70,11 +70,7 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   // folding their content into user text (reconcileOrphanedToolResults /
   // flattenClaudeToolInteractions) rather than dropping it. Stripping here
   // first would delete that content before the Kiro translator can preserve it.
-  const preservesNativeToolResults =
-    sourceFormat === FORMATS.GEMINI ||
-    sourceFormat === FORMATS.GEMINI_CLI ||
-    sourceFormat === FORMATS.ANTIGRAVITY;
-  if (targetFormat !== FORMATS.KIRO && !preservesNativeToolResults) {
+  if (targetFormat !== FORMATS.KIRO) {
     stripOrphanedToolResults(result);
   }
 

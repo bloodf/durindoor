@@ -7,6 +7,7 @@
 - **ClinePass**: add provider support — sternelee
 
 ## Fixes
+- **ChatGPT Web**: replace the temporary Sentinel 501 guard with automatic Sentinel requirements + PoW headers so ordinary pasted session credentials reach the upstream conversation path.
 - **Usage**: dedupe streaming request-details log entries — Qin Li
 - **Claude**: drop foreign thinking signatures in passthrough — decolua
 - Prevent non-SSE stream pipe crash and cross-IdP account overwrites (#2244) — KunN-21

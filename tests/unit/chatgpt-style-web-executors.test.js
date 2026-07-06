@@ -155,12 +155,35 @@ describe("ChatGPT Web executor", () => {
     expect(body.history_and_training_disabled).toBe(true);
   });
 
-  it("exchanges session and returns a documented limitation when Sentinel tokens are absent", async () => {
-    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({
-      accessToken: "access-token",
-      expires: new Date(Date.now() + 60000).toISOString(),
-      user: { id: "user-1" },
-    }), { status: 200 }));
+  it("builds Sentinel tokens automatically and reaches ChatGPT conversation with ordinary session credentials", async () => {
+    const calls = [];
+    globalThis.fetch = vi.fn(async (url, opts = {}) => {
+      calls.push({ url: String(url), opts });
+      if (String(url).endsWith("/api/auth/session")) {
+        return new Response(JSON.stringify({
+          accessToken: "access-token-auto-sentinel",
+          expires: new Date(Date.now() + 60000).toISOString(),
+          user: { id: "user-1" },
+        }), { status: 200 });
+      }
+      if (String(url) === "https://chatgpt.com/") {
+        return new Response('<html data-build="prod-test"><script src="https://cdn.oaistatic.com/main.js"></script></html>', { status: 200 });
+      }
+      if (String(url).endsWith("/backend-api/sentinel/chat-requirements/prepare")) {
+        return new Response(JSON.stringify({ prepare_token: "prepare-token" }), { status: 200 });
+      }
+      if (String(url).endsWith("/backend-api/sentinel/chat-requirements")) {
+        return new Response(JSON.stringify({
+          token: "requirements-token",
+          proofofwork: { required: false },
+          turnstile: { required: true },
+        }), { status: 200 });
+      }
+      return sseResponse([
+        { message: { content: { parts: ["hello"] } } },
+        { type: "message_stream_complete" },
+      ]);
+    });
 
     const result = await new ChatGptWebExecutor().execute({
       model: "gpt-5",
@@ -169,10 +192,60 @@ describe("ChatGPT Web executor", () => {
       credentials: { apiKey: "__Secure-next-auth.session-token=session" },
     });
 
-    expect(result.response.status).toBe(501);
-    expect(result.headers.Authorization).toBe("Bearer access-token");
+    expect(result.response.status).toBe(200);
+    expect(calls.map((call) => call.url)).toEqual([
+      "https://chatgpt.com/api/auth/session",
+      "https://chatgpt.com/",
+      "https://chatgpt.com/backend-api/sentinel/chat-requirements/prepare",
+      "https://chatgpt.com/backend-api/sentinel/chat-requirements",
+      "https://chatgpt.com/backend-api/f/conversation",
+    ]);
+    expect(result.headers.Authorization).toBe("Bearer access-token-auto-sentinel");
+    expect(result.headers["openai-sentinel-chat-requirements-token"]).toBe("requirements-token");
+    expect(result.headers["openai-sentinel-chat-requirements-prepare-token"]).toBe("prepare-token");
     expect(result.transformedBody.action).toBe("next");
-    expect((await result.response.json()).error.code).toBe("CHATGPT_WEB_SENTINEL_NOT_PORTED");
+    expect((await result.response.json()).choices[0].message.content).toBe("hello");
+    expect(result.response.status).not.toBe(501);
+  });
+
+  it("sends a computed proof token when ChatGPT Sentinel requires PoW", async () => {
+    const calls = [];
+    globalThis.fetch = vi.fn(async (url, opts = {}) => {
+      calls.push({ url: String(url), opts });
+      if (String(url).endsWith("/api/auth/session")) {
+        return new Response(JSON.stringify({
+          accessToken: "access-token-pow",
+          expires: new Date(Date.now() + 60000).toISOString(),
+        }), { status: 200 });
+      }
+      if (String(url).endsWith("/backend-api/sentinel/chat-requirements/prepare")) {
+        return new Response(JSON.stringify({ prepare_token: "prepare-token-pow" }), { status: 200 });
+      }
+      if (String(url).endsWith("/backend-api/sentinel/chat-requirements")) {
+        return new Response(JSON.stringify({
+          token: "requirements-token-pow",
+          proofofwork: { required: true, seed: "deadbeef", difficulty: "fffff" },
+        }), { status: 200 });
+      }
+      return sseResponse([{ message: { status: "finished_successfully", content: { parts: ["pow ok"] } } }]);
+    });
+
+    const result = await new ChatGptWebExecutor().execute({
+      model: "gpt-5",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: {
+        apiKey: "__Secure-next-auth.session-token=session-pow",
+        providerSpecificData: { turnstileToken: "turnstile-from-browser" },
+      },
+    });
+
+    const conversation = calls.find((call) => call.url.endsWith("/backend-api/f/conversation"));
+    expect(result.response.status).toBe(200);
+    expect(conversation.opts.headers["openai-sentinel-chat-requirements-token"]).toBe("requirements-token-pow");
+    expect(conversation.opts.headers["openai-sentinel-proof-token"]).toMatch(/^gAAAAAB/);
+    expect(conversation.opts.headers["openai-sentinel-turnstile-token"]).toBe("turnstile-from-browser");
+    expect((await result.response.json()).choices[0].message.content).toBe("pow ok");
   });
 
   it("testConnection validates the ChatGPT session exchange without probing OpenAI-compatible /models", async () => {

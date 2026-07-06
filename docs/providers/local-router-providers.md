@@ -5,8 +5,9 @@ DurinDoor includes dedicated registry entries for the OmniRoute local-provider p
 `docker-model-runner`, `xinference`, `oobabooga`, and `opencode-zen`.
 
 The self-hosted providers use the default OpenAI-compatible executor. Their API key is optional
-when the upstream service does not enforce one, but saving a connection with a placeholder key
-keeps them configurable in the normal provider-connection flow. If a connection does not set
+when the upstream service does not enforce one; DurinDoor omits the `Authorization` header when
+no API key or access token is saved. Saving a connection with a placeholder key keeps them
+configurable in the normal provider-connection flow. If a connection does not set
 `providerSpecificData.baseUrl`, DurinDoor uses the provider's local default:
 
 | Provider | Default base URL |

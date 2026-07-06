@@ -55,15 +55,16 @@ const AUTH_DESCRIPTORS = Object.fromEntries(
     .map(([id, t]) => [id, t.auth])
 );
 
-// Apply a token to a header per scheme (matches legacy: combined always sets, even when undefined).
+// Apply a token to a header per scheme. Missing tokens intentionally leave the
+// header absent so optional local providers do not send "Bearer undefined".
 function setAuth(headers, spec, token) {
+  if (!token) return;
   headers[spec.header] = spec.scheme === "bearer" ? `Bearer ${token}` : token;
 }
 
 // Resolve auth onto headers from a descriptor.
 function applyAuth(headers, desc, credentials) {
   if (desc.combined) {
-    // combined providers always set the header (legacy behavior, incl. noAuth → "Bearer undefined")
     setAuth(headers, desc, credentials.apiKey || credentials.accessToken);
     if (desc.anthropicVersion && !headers["anthropic-version"]) headers["anthropic-version"] = ANTHROPIC_API_VERSION;
     return;
@@ -254,7 +255,8 @@ export class DefaultExecutor extends BaseExecutor {
     return BEARER;
   }
 
-  buildHeaders(credentials, stream = true) {
+  buildHeaders(credentials = {}, stream = true) {
+    credentials ||= {};
     const rt = credentials?.runtimeTransport;
     const headers = { "Content-Type": "application/json", ...(rt ? rt.headers : this.config.headers) };
     const desc = rt?.auth || AUTH_DESCRIPTORS[this.provider] || this.resolveAuthDescriptor();

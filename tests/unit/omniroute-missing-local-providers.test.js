@@ -24,6 +24,11 @@ const requestedProviderIds = [
   "zed",
 ];
 
+const importedRegistryProviderIds = [
+  "kenari",
+  "nube",
+];
+
 const byId = Object.fromEntries(REGISTRY.map((entry) => [entry.id, entry]));
 
 describe("OmniRoute Batch G local/router provider parity", () => {
@@ -40,6 +45,13 @@ describe("OmniRoute Batch G local/router provider parity", () => {
     expect(PROVIDER_ID_TO_ALIAS["docker-model-runner"]).toBe("dmr");
     expect(byId.zed.alias).toBe("zd");
     expect(PROVIDER_ID_TO_ALIAS["9router"]).toBe("nr");
+  });
+
+  it("exports imported registry modules that previously regressed out of the registry array", () => {
+    for (const id of importedRegistryProviderIds) {
+      expect(byId[id], `${id} should be present in registry/index.js export array`).toBeTruthy();
+      expect(byId[id].id).toBe(id);
+    }
   });
 
   it("preserves local OpenAI-compatible defaults and passthrough model behavior", () => {
@@ -63,6 +75,17 @@ describe("OmniRoute Batch G local/router provider parity", () => {
         providerSpecificData: { baseUrl: "http://host.docker.internal:9000/v1/" },
       })).toBe("http://host.docker.internal:9000/v1/chat/completions");
     }
+  });
+
+  it("omits Authorization for optional local providers when credentials are empty", () => {
+    for (const id of ["lm-studio", "vllm", "lemonade", "llamafile", "llama-cpp", "triton", "docker-model-runner", "xinference", "oobabooga", "9router"]) {
+      const headers = new DefaultExecutor(id).buildHeaders({}, true);
+      expect(headers.Authorization, `${id} should not send an empty bearer token`).toBeUndefined();
+    }
+
+    expect(new DefaultExecutor("lm-studio").buildHeaders({ apiKey: "local-key" }, true).Authorization).toBe(
+      "Bearer local-key",
+    );
   });
 
   it("ports router/system/cloud metadata without exposing fake runtime transports", () => {

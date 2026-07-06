@@ -150,3 +150,46 @@ function extractGeminiText(content) {
 register(FORMATS.GEMINI, FORMATS.OPENAI, geminiToOpenAIRequest, null);
 register(FORMATS.GEMINI_CLI, FORMATS.OPENAI, geminiToOpenAIRequest, null);
 
+// Wrapper for geminiToOpenAIRequest that pre-splits contents containing
+// functionResponse parts co-located with other content (functionCall, text, etc.).
+// The original convertGeminiContent early-returns on the first functionResponse,
+// dropping any co-located parts. By splitting each such content into separate
+// sub-contents — one per functionResponse (each early-returns cleanly as a tool
+// message) and one for the remaining non-functionResponse parts — all co-located
+// content is preserved. Tool results are emitted first to match the expected
+// message ordering (tool result before the next assistant turn).
+function geminiToOpenAIRequestFixed(model, body, stream) {
+  if (!body || !Array.isArray(body.contents)) {
+    return geminiToOpenAIRequest(model, body, stream);
+  }
+
+  const splitContents = [];
+  for (const content of body.contents) {
+    if (!content || !Array.isArray(content.parts)) {
+      splitContents.push(content);
+      continue;
+    }
+
+    const hasFunctionResponse = content.parts.some(p => p && p.functionResponse);
+    if (!hasFunctionResponse) {
+      splitContents.push(content);
+      continue;
+    }
+
+    for (const part of content.parts) {
+      if (part && part.functionResponse) {
+        splitContents.push({ ...content, parts: [part] });
+      }
+    }
+    const nonFRParts = content.parts.filter(p => !(p && p.functionResponse));
+    if (nonFRParts.length > 0) {
+      splitContents.push({ ...content, parts: nonFRParts });
+    }
+  }
+
+  return geminiToOpenAIRequest(model, { ...body, contents: splitContents }, stream);
+}
+
+// Override registration to use the fixed version (Map.set: last wins)
+register(FORMATS.GEMINI, FORMATS.OPENAI, geminiToOpenAIRequestFixed, null);
+register(FORMATS.GEMINI_CLI, FORMATS.OPENAI, geminiToOpenAIRequestFixed, null);

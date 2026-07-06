@@ -1,7 +1,17 @@
 import { access, constants } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
-import Database from "better-sqlite3";
+import { createRequire } from "module";
+
+// better-sqlite3 is optional; lazy-load via createRequire so this module
+// can be imported on hosts where the native binding fails to build.
+let Database = null;
+try {
+  const require = createRequire(import.meta.url);
+  Database = require("better-sqlite3");
+} catch {
+  Database = null;
+}
 
 export const CURSOR_ACCESS_TOKEN_KEYS = ["cursorAuth/accessToken", "cursorAuth/token"];
 export const CURSOR_MACHINE_ID_KEYS = [
@@ -100,15 +110,19 @@ function queryFirst(db, keys) {
 
 /** Read Cursor auth fields from a known state.vscdb path (sync). */
 export function readCursorLocalAuthSync(dbPath) {
-  const db = new Database(dbPath, { readonly: true, fileMustExist: true });
   try {
-    return {
-      accessToken: queryFirst(db, CURSOR_ACCESS_TOKEN_KEYS),
-      machineId: queryFirst(db, CURSOR_MACHINE_ID_KEYS),
-      cachedEmail: queryFirst(db, CURSOR_CACHED_EMAIL_KEYS),
-    };
-  } finally {
-    db.close();
+    const db = new Database(dbPath, { readonly: true, fileMustExist: true });
+    try {
+      return {
+        accessToken: queryFirst(db, CURSOR_ACCESS_TOKEN_KEYS),
+        machineId: queryFirst(db, CURSOR_MACHINE_ID_KEYS),
+        cachedEmail: queryFirst(db, CURSOR_CACHED_EMAIL_KEYS),
+      };
+    } finally {
+      db.close();
+    }
+  } catch {
+    return null;
   }
 }
 

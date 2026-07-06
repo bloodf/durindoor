@@ -54,7 +54,7 @@ export default {
     },
   ],
   models: [
-    { id: "MiniMax-M3", name: "MiniMax M3", targetFormat: "claude" },
+    { id: "MiniMax-M3", name: "MiniMax M3" },
     { id: "MiniMax-M2.7", name: "MiniMax M2.7" },
     { id: "MiniMax-M2.5", name: "MiniMax M2.5" },
     { id: "MiniMax-M2.1", name: "MiniMax M2.1" },

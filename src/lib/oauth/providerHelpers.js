@@ -56,7 +56,7 @@ function extractEmailFromAccessToken(accessToken) {
 export async function fetchKiroProfileArn(accessToken, region = "us-east-1") {
   if (!accessToken) return null;
   const safeRegion = region || "us-east-1";
-  const endpoint = `${buildKiroProfileEndpoint(region)}/ListAvailableProfiles`;
+  const endpoint = `${buildKiroProfileEndpoint(region)}`;
   try {
     const response = await fetch(endpoint, {
       method: "POST",

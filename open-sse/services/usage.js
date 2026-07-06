@@ -13,8 +13,8 @@ import { getMiniMaxUsage } from "./usage/minimax.js";
 import { getCodeBuddyCnUsage } from "./usage/codebuddy-cn.js";
 import { getCursorUsage } from "./usage/cursor.js";
 
-import { join } from "path";
-import Database from "better-sqlite3";
+// better-sqlite3 is optional, lazy-loaded inside getXaiUsageFromHistory
+import { DATA_FILE } from "@/lib/db/paths.js";
 
 import {
   getQwenUsage,
@@ -32,12 +32,11 @@ import {
  * `Total spend (30d)` are emitted (last-30-days cutoff). No rows ->
  * graceful "No requests recorded." message.
  */
-function getXaiUsageFromHistory(connection) {
-  const dataDir = process.env.DATA_DIR;
-  if (!dataDir) return { message: "No requests recorded.", quotas: {} };
-  const dbPath = join(dataDir, "db", "data.sqlite");
+async function getXaiUsageFromHistory(connection) {
+  const dbPath = DATA_FILE;
   let db;
   try {
+    const { default: Database } = await import("better-sqlite3");
     db = new Database(dbPath, { readonly: true, fileMustExist: true });
   } catch {
     return { message: "No requests recorded.", quotas: {} };
@@ -69,7 +68,7 @@ function getXaiUsageFromHistory(connection) {
     let totalTokens = 0;
     let totalSpend = 0;
     for (const row of perModel) {
-      const usedTokens = (row.used_tokens | 0);
+      const usedTokens = Number(row.used_tokens) || 0;
       quotas[`${row.model} (30d)`] = { used: usedTokens };
       totalTokens += usedTokens;
       totalSpend += Number(row.used_spend);

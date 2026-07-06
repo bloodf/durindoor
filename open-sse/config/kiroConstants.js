@@ -16,6 +16,7 @@
  */
 
 import { extractThinking } from "../translator/concerns/thinkingUnified.js";
+import { assertValidAwsRegion } from "../../src/lib/oauth/constants/oauth.js";
 import { effortToBudget } from "../translator/concerns/thinking.js";
 import {
   resolveKiroRegion as resolveKiroRegionFromCredentials,
@@ -87,6 +88,7 @@ export function resolveDefaultProfileArn(authMethod) {
 export function resolveKiroDataPlaneUrl(region) {
   const r = resolveKiroRegion(region);
   if (r === KIRO_DEFAULT_REGION) return null;
+  assertValidAwsRegion(r);
   return `https://q.${r}.amazonaws.com/generateAssistantResponse`;
 }
 

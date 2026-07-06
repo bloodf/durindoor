@@ -51,8 +51,10 @@ export function gitLog(text, maxLines = GIT_LOG_MAX_LINES) {
         continue;
       }
       // stat summary: "N file(s) changed, N insertions(+), N deletions(-)"
-      if (/^\d+ file\w* changed/.test(trimmed)) {
-        pushLine("  " + trimmed);
+      // `git log --graph --stat` prefixes this with graph columns such as "|  ".
+      const graphStripped = trimmed.replace(/^[*|/\\ ]+/, "");
+      if (/^\d+ file\w* changed/.test(graphStripped)) {
+        pushLine("  " + graphStripped);
         continue;
       }
       // embedded diff header — one-line marker

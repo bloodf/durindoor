@@ -214,6 +214,19 @@ describe("gitLog filter", () => {
     expect(out).toContain("2 files changed, 15 insertions(+), 3 deletions(-)");
   });
 
+  it("keeps graph-prefixed stat-summary lines", () => {
+    const input = [
+      "commit abc1234def5678abc1234def5678abc1234def5",
+      "Author: Dev One <dev1@example.com>",
+      "Date:   Sun Jul 6 10:00:00 2026 +0700",
+      "",
+      "    Fix typo",
+      "|  4 files changed, 20 insertions(+), 2 deletions(-)",
+    ].join("\n");
+    const out = gitLog(input);
+    expect(out).toContain("4 files changed, 20 insertions(+), 2 deletions(-)");
+  });
+
   it("replaces embedded diff markers with '... diff body omitted'", () => {
     const input = makeGitLogWithEmbeddedDiff();
     const out = gitLog(input);
@@ -329,6 +342,16 @@ describe("autoDetectFilter", () => {
   });
   it("detects git log --oneline", () => {
     expect(autoDetectFilter(makeGitLogOneline()).filterName).toBe("git-log");
+  });
+  it("does not treat date-prefixed logs as git log --oneline", () => {
+    const input = [
+      "20260706 INFO event started",
+      "20260706 INFO event continued",
+      "20260706 INFO event finished",
+      "20260706 INFO event archived",
+      "20260706 INFO event flushed",
+    ].join("\n");
+    expect(autoDetectFilter(input).filterName).toBe("dedup-log");
   });
   it("falls back to dedupLog for generic text", () => {
     const txt = "line1\nline2\nline3\nline4\nline5\nline6\n";

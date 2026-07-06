@@ -1873,6 +1873,7 @@ export default function ProviderDetailPage() {
         authHint={providerInfo?.authHint}
         website={providerInfo?.website}
         proxyPools={proxyPools}
+        existingConnectionCount={connections.length}
         error={addConnectionError}
         onSave={handleSaveApiKey}
         onBulkDone={fetchConnections}

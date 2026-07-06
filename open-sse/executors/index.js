@@ -21,6 +21,9 @@ import { MimoFreeExecutor } from "./mimo-free.js";
 import { CodeBuddyExecutor } from "./codebuddy-cn.js";
 import { XaiExecutor } from "./xai.js";
 import { ZenmuxFreeExecutor } from "./zenmux-free.js";
+import { AdaptaWebExecutor } from "./adapta-web.js";
+import { ChatGptWebExecutor } from "./chatgpt-web.js";
+import { T3WebExecutor } from "./t3-web.js";
 import { DefaultExecutor } from "./default.js";
 import {
   UnsupportedOmniRouteWebSessionExecutor,
@@ -55,14 +58,24 @@ const executors = {
   "codebuddy-cn": new CodeBuddyExecutor(),
   xai: new XaiExecutor(),
   "zenmux-free": new ZenmuxFreeExecutor(),
+  "adapta-web": new AdaptaWebExecutor(),
+  "adp-web": new AdaptaWebExecutor(),
+  "chatgpt-web": new ChatGptWebExecutor(),
+  "cgpt-web": new ChatGptWebExecutor(),
+  "t3-web": new T3WebExecutor(),
+  t3chat: new T3WebExecutor(),
   ...Object.fromEntries(
-    Object.keys(BLOCKED_OMNIROUTE_PROVIDERS).map((provider) => [
+    Object.keys(BLOCKED_OMNIROUTE_PROVIDERS)
+      .filter((provider) => !["adapta-web", "chatgpt-web", "t3-web"].includes(provider))
+      .map((provider) => [
       provider,
       new UnsupportedOmniRouteWebSessionExecutor(provider),
     ]),
   ),
   ...Object.fromEntries(
-    Object.entries(BLOCKED_OMNIROUTE_PROVIDER_ALIASES).map(([alias, provider]) => [
+    Object.entries(BLOCKED_OMNIROUTE_PROVIDER_ALIASES)
+      .filter(([, provider]) => !["adapta-web", "chatgpt-web", "t3-web"].includes(provider))
+      .map(([alias, provider]) => [
       alias,
       new UnsupportedOmniRouteWebSessionExecutor(provider),
     ]),
@@ -106,6 +119,9 @@ export { MimoFreeExecutor } from "./mimo-free.js";
 export { CodeBuddyExecutor } from "./codebuddy-cn.js";
 export { XaiExecutor } from "./xai.js";
 export { ZenmuxFreeExecutor } from "./zenmux-free.js";
+export { AdaptaWebExecutor } from "./adapta-web.js";
+export { ChatGptWebExecutor } from "./chatgpt-web.js";
+export { T3WebExecutor } from "./t3-web.js";
 export {
   UnsupportedOmniRouteWebSessionExecutor,
   BLOCKED_OMNIROUTE_PROVIDERS,

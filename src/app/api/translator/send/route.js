@@ -5,6 +5,7 @@ async function persistRefreshedCredentials(connection, newCredentials) {
   const updateData = {};
 
   if (newCredentials.accessToken) updateData.accessToken = newCredentials.accessToken;
+  if (newCredentials.apiKey) updateData.apiKey = newCredentials.apiKey;
   if (newCredentials.refreshToken) updateData.refreshToken = newCredentials.refreshToken;
   if (newCredentials.idToken) updateData.idToken = newCredentials.idToken;
   if (newCredentials.lastRefreshAt) updateData.lastRefreshAt = newCredentials.lastRefreshAt;
@@ -61,8 +62,12 @@ export async function POST(request) {
 
     const executor = getExecutor(provider);
     const stream = body.stream !== false;
+    const onCredentialsRefreshed = async (newCredentials) => {
+      Object.assign(credentials, newCredentials);
+      await persistRefreshedCredentials(connection, newCredentials);
+    };
 
-    let { response } = await executor.execute({ model, body, stream, credentials });
+    let { response } = await executor.execute({ model, body, stream, credentials, onCredentialsRefreshed });
 
     // Auto-refresh token on 401/403 and retry (same as chatCore.js)
     if (response.status === 401 || response.status === 403) {
@@ -70,7 +75,7 @@ export async function POST(request) {
       if (newCredentials?.accessToken || newCredentials?.copilotToken) {
         Object.assign(credentials, newCredentials);
         await persistRefreshedCredentials(connection, newCredentials);
-        ({ response } = await executor.execute({ model, body, stream, credentials }));
+        ({ response } = await executor.execute({ model, body, stream, credentials, onCredentialsRefreshed }));
       }
     }
 

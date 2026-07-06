@@ -47,19 +47,27 @@ DurinDoor converts OpenAI chat requests to ZenMux's Anthropic-compatible message
 
 ### OmniRoute PR #51 Web-Session Port Status
 
-The following OmniRoute providers are registered in DurinDoor's catalog with aliases, models, service kinds, auth hints, and source-file blocker metadata. Runtime execution is intentionally guarded by an explicit `provider_port_pending` executor so these entries cannot accidentally fall through to the generic OpenAI-compatible HTTP path.
+The following OmniRoute providers are registered in DurinDoor's catalog with aliases, models, service kinds, auth hints, and source-file blocker metadata. Providers that have not been ported are intentionally guarded by an explicit `provider_port_pending` executor so these entries cannot accidentally fall through to the generic OpenAI-compatible HTTP path.
+
+Worker Noether ported the chat path for these ChatGPT-style web providers:
+
+| Provider | Runtime status | Scope and limitations |
+| --- | --- | --- |
+| `adapta-web` | Ported executor. | Uses the pasted Clerk `__client` cookie, exchanges it for a short-lived session JWT, sends Adapta chat requests, and converts streaming or non-streaming text responses to OpenAI chat completions. Image/cache flows are not advertised. |
+| `chatgpt-web` | Partial chat executor. | Normalizes ChatGPT session-token cookies, exchanges `/api/auth/session` for a bearer token, builds ChatGPT `/backend-api/f/conversation` chat bodies, and can convert ChatGPT SSE when caller-supplied Sentinel tokens are present in `providerSpecificData.chatgptWebSentinel`. Automatic Sentinel proof-of-work, Turnstile solving, TLS sidecar parity, and image/cache routes are not ported in this JS branch; without Sentinel tokens the executor returns `CHATGPT_WEB_SENTINEL_NOT_PORTED` instead of using the generic pending guard. |
+| `t3-web` | Ported executor. | Parses full t3.chat Cookie headers or `convexSessionId` structured input, sends chat requests to `https://t3.chat/api/chat`, and converts JSON, SSE, NDJSON, or TSS-shaped text responses to OpenAI chat completions. Convex/browser endpoint discovery beyond the `/api/chat` path is not ported. |
 
 | Provider | Catalog status | Runtime blocker |
 | --- | --- | --- |
-| `adapta-web` | Web Cookie LLM provider, alias `adp-web`, Adapta model catalog. | Port `open-sse/executors/adapta-web.ts` and Adapta credential validation. |
-| `chatgpt-web` | Web Cookie LLM/image provider, alias `cgpt-web`, ChatGPT model catalog. | Port ChatGPT TLS client, proof-of-work helpers, image cache route, and cookie normalization. |
+| `adapta-web` | Web Cookie LLM provider, alias `adp-web`, Adapta model catalog. | Ported chat executor; keep validation tests covering Clerk credential exchange and OpenAI response conversion. |
+| `chatgpt-web` | Web Cookie LLM/image provider, alias `cgpt-web`, ChatGPT model catalog. | Chat session exchange and conversion ported; remaining blocker is automatic ChatGPT Sentinel PoW/Turnstile/TLS-sidecar and image cache parity. |
 | `copilot-m365-web` | Web Cookie LLM provider, alias `m365copilot`, BizChat model. | Port Microsoft 365 Chathub WebSocket connection and frame helpers. |
 | `copilot-web` | Web Cookie LLM provider, Copilot model catalog. | Port Copilot web-session executor and browser-derived access-token flow. |
 | `duckduckgo-web` | No-auth free-tier LLM provider, alias `ddgw`, DuckDuckGo AI model catalog. | Port DuckDuckGo anti-abuse challenge solver, FE-signal generation, and optional browser-backed session pool. |
 | `huggingchat` | Web Cookie LLM provider, HuggingChat production model catalog. | Port HuggingChat cookie normalization, JSONL stream helper, and SvelteKit conversation bootstrap. |
 | `muse-spark-web` | Web Cookie LLM provider, alias `ms-web`, Muse Spark models. | Port Meta/Muse GraphQL request builder, continuation cache, and response parser. |
 | `suno` | Cookie-backed music provider with Suno model catalog. | Add `/v1/audio/music` or `/v1/music/generations` route plumbing plus Suno media executor contract. |
-| `t3-web` | Web Cookie LLM provider, alias `t3chat`, T3 model catalog. | Port T3 executor, Convex session id handling, and cookie validation flow. |
+| `t3-web` | Web Cookie LLM provider, alias `t3chat`, T3 model catalog. | Ported chat executor; keep validation tests covering `convex-session-id` parsing and OpenAI response conversion. |
 | `udio` | Cookie-backed music provider with Udio model catalog. | Add music-generation route plumbing plus Udio media executor contract. |
 | `veoaifree-web` | No-auth video provider, alias `veo-free`, VEO/Seedance catalog. | Add video-generation route plumbing and WordPress AJAX workflow executor. |
 | `yuanbao-web` | Web Cookie LLM provider, alias `ybw`, Tencent Yuanbao model catalog. | Port Yuanbao cookie-session SSE executor and validation flow. |

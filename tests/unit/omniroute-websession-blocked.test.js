@@ -8,31 +8,43 @@ import {
 import { FREE_PROVIDERS } from "@/shared/constants/providers.js";
 
 const ownedProviders = [
-  "adapta-web",
-  "chatgpt-web",
   "copilot-m365-web",
   "copilot-web",
   "duckduckgo-web",
   "huggingchat",
   "muse-spark-web",
   "suno",
-  "t3-web",
   "udio",
   "veoaifree-web",
   "yuanbao-web",
 ];
 
+const portedProviders = [
+  "adapta-web",
+  "chatgpt-web",
+  "t3-web",
+];
+
 describe("OmniRoute PR #51 web-session provider port artifacts", () => {
   it("registers every owned provider with source catalog metadata", () => {
-    for (const provider of ownedProviders) {
+    for (const provider of [...ownedProviders, ...portedProviders]) {
       expect(PROVIDERS[provider], `${provider} transport`).toBeTruthy();
       expect(PROVIDER_MODELS[provider] || PROVIDER_MODELS[providerAlias(provider)], `${provider} models`).toEqual(
         expect.arrayContaining([expect.objectContaining({ id: expect.any(String), name: expect.any(String) })]),
       );
-      expect(BLOCKED_OMNIROUTE_PROVIDERS[provider], `${provider} blocker`).toMatchObject({
-        reason: expect.any(String),
-        source: expect.any(Array),
-      });
+      if (ownedProviders.includes(provider)) {
+        expect(BLOCKED_OMNIROUTE_PROVIDERS[provider], `${provider} blocker`).toMatchObject({
+          reason: expect.any(String),
+          source: expect.any(Array),
+        });
+      }
+    }
+  });
+
+  it("uses ported executors for Worker Noether's ChatGPT-style providers", () => {
+    for (const provider of portedProviders) {
+      expect(hasSpecializedExecutor(provider), `${provider} specialized executor`).toBe(true);
+      expect(BLOCKED_OMNIROUTE_PROVIDERS[provider], `${provider} no longer blocked`).toBeUndefined();
     }
   });
 

@@ -20,7 +20,7 @@ const SPECIALIZED = new Set([
   "antigravity", "agy", "azure", "gemini-cli", "github", "iflow", "qoder", "kiro",
   "codex", "cursor", "vertex", "vertex-partner", "qwen", "opencode",
   "opencode-go", "grok-web", "perplexity-web", "ollama-local", "commandcode",
-  "xiaomi-tokenplan", "mimo-free", "pollinations", "theoldllm", "gigachat", "zenmux-free",
+  "xiaomi-tokenplan", "mimo-free", "grok-cli",
 ]);
 
 // Sanitize header: khử token + mọi giá trị phụ thuộc môi trường (app version,

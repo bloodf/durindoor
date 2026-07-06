@@ -20,14 +20,7 @@ import { XiaomiTokenplanExecutor } from "./xiaomi-tokenplan.js";
 import { MimoFreeExecutor } from "./mimo-free.js";
 import { CodeBuddyExecutor } from "./codebuddy-cn.js";
 import { XaiExecutor } from "./xai.js";
-import { CliproxyapiExecutor } from "./cliproxyapi.js";
 import { GrokCliExecutor } from "./grok-cli.js";
-import { GigaChatExecutor } from "./gigachat.js";
-import { ZenmuxFreeExecutor } from "./zenmux-free.js";
-import { GitlabExecutor } from "./gitlab.js";
-import { TraeExecutor } from "./trae.js";
-import { DevinCliExecutor } from "./devin-cli.js";
-import { WindsurfExecutor } from "./windsurf.js";
 import { DefaultExecutor } from "./default.js";
 
 const executors = {
@@ -57,14 +50,7 @@ const executors = {
   mmf: new MimoFreeExecutor(), // Alias for mimo-free
   "codebuddy-cn": new CodeBuddyExecutor(),
   xai: new XaiExecutor(),
-  cliproxyapi: new CliproxyapiExecutor(),
   "grok-cli": new GrokCliExecutor(),
-  gigachat: new GigaChatExecutor(),
-  "zenmux-free": new ZenmuxFreeExecutor(),
-  "gitlab-duo": new GitlabExecutor("gitlab-duo"),
-  trae: new TraeExecutor(),
-  "devin-cli": new DevinCliExecutor(),
-  windsurf: new WindsurfExecutor(),
 };
 
 const defaultCache = new Map();
@@ -103,11 +89,4 @@ export { XiaomiTokenplanExecutor } from "./xiaomi-tokenplan.js";
 export { MimoFreeExecutor } from "./mimo-free.js";
 export { CodeBuddyExecutor } from "./codebuddy-cn.js";
 export { XaiExecutor } from "./xai.js";
-export { CliproxyapiExecutor } from "./cliproxyapi.js";
 export { GrokCliExecutor } from "./grok-cli.js";
-export { GigaChatExecutor } from "./gigachat.js";
-export { ZenmuxFreeExecutor } from "./zenmux-free.js";
-export { GitlabExecutor } from "./gitlab.js";
-export { TraeExecutor } from "./trae.js";
-export { DevinCliExecutor } from "./devin-cli.js";
-export { WindsurfExecutor } from "./windsurf.js";

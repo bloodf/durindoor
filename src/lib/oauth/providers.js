@@ -25,10 +25,6 @@ import {
   CLINE_CONFIG,
   CLINEPASS_CONFIG,
   GITLAB_CONFIG,
-  GITLAB_DUO_CONFIG,
-  TRAE_CONFIG,
-  DEVIN_CLI_CONFIG,
-  WINDSURF_CONFIG,
   CODEBUDDY_CONFIG,
   KIMCHI_CONFIG,
   getOAuthClientMetadata,
@@ -64,11 +60,7 @@ function extractGrokCliToken(input) {
 
   if (input && typeof input === "object") {
     const obj = input;
-    const inner = obj.authJson && typeof obj.authJson === "object"
-      ? obj.authJson
-      : obj.accessToken && typeof obj.accessToken === "object"
-        ? obj.accessToken
-        : obj;
+    const inner = obj.accessToken && typeof obj.accessToken === "object" ? obj.accessToken : obj;
 
     if (inner && typeof inner === "object") {
       for (const entry of Object.values(inner)) {
@@ -77,7 +69,7 @@ function extractGrokCliToken(input) {
           return {
             accessToken: entry.key,
             refreshToken: typeof entry.refresh_token === "string" ? entry.refresh_token : null,
-
+            rawAuthJson: inner,
             expiresAt: typeof entry.expires_at === "string" ? entry.expires_at : null,
           };
         }
@@ -98,7 +90,7 @@ function extractGrokCliToken(input) {
 }
 
 export function mapGrokCliTokens(tokens) {
-  const { accessToken, refreshToken, expiresAt } = extractGrokCliToken(tokens);
+  const { accessToken, refreshToken, rawAuthJson, expiresAt } = extractGrokCliToken(tokens);
   const payload = decodeJwtPayload(accessToken) || {};
   const currentSec = Math.floor(Date.now() / 1000);
   let expiresIn = 21600;
@@ -122,7 +114,7 @@ export function mapGrokCliTokens(tokens) {
       teamId: payload.team_id || null,
       tier: payload.tier || 1,
       principalType: payload.principal_type || "User",
-
+      rawAuthJson: rawAuthJson || undefined,
     },
   };
 }
@@ -550,17 +542,6 @@ const PROVIDERS = {
       email: extra?.userInfo?.email,
       projectId: extra?.projectId,
     }),
-  },
-
-  // `agy` intentionally uses the Antigravity OAuth lifecycle with an isolated
-  // provider id so CLI imports/connections do not collide with IDE accounts.
-  agy: {
-    config: ANTIGRAVITY_CONFIG,
-    flowType: "authorization_code",
-    buildAuthUrl: (config, redirectUri, state) => PROVIDERS.antigravity.buildAuthUrl(config, redirectUri, state),
-    exchangeToken: (config, code, redirectUri) => PROVIDERS.antigravity.exchangeToken(config, code, redirectUri),
-    postExchange: (tokens) => PROVIDERS.antigravity.postExchange(tokens),
-    mapTokens: (tokens, extra) => PROVIDERS.antigravity.mapTokens(tokens, extra),
   },
 
   iflow: {
@@ -1325,7 +1306,7 @@ const PROVIDERS = {
         headers: { Authorization: `Bearer ${tokens.access_token}` },
       });
       const user = userRes.ok ? await userRes.json() : {};
-      return { ...tokens, _user: user, _baseUrl: baseUrl, _clientId: clientId, _clientSecret: clientSecret || "" };
+      return { ...tokens, _user: user, _baseUrl: baseUrl, _clientId: clientId };
     },
     mapTokens: (tokens) => ({
       accessToken: tokens.access_token,
@@ -1340,112 +1321,6 @@ const PROVIDERS = {
         clientId: tokens._clientId,
         authKind: "oauth",
       },
-    }),
-  },
-
-  "gitlab-duo": {
-    config: GITLAB_DUO_CONFIG,
-    flowType: "authorization_code_pkce",
-    buildAuthUrl: (config, redirectUri, state, codeChallenge, meta = {}) => {
-      const baseUrl = (meta.baseUrl || config.defaultBaseUrl || "https://gitlab.com").replace(/\/$/, "");
-      const clientId = meta.clientId || config.clientId || "";
-      if (!clientId) return null;
-      const params = new URLSearchParams({
-        client_id: clientId,
-        redirect_uri: redirectUri,
-        response_type: "code",
-        state,
-        scope: config.scope,
-        code_challenge: codeChallenge,
-        code_challenge_method: config.codeChallengeMethod,
-      });
-      return `${baseUrl}${config.authorizeUrlPath}?${params.toString()}`;
-    },
-    exchangeToken: async (config, code, redirectUri, codeVerifier, state, meta = {}) => {
-      const baseUrl = (meta.baseUrl || config.defaultBaseUrl || "https://gitlab.com").replace(/\/$/, "");
-      const clientId = meta.clientId || config.clientId || "";
-      const clientSecret = meta.clientSecret || config.clientSecret || "";
-      const body = new URLSearchParams({
-        client_id: clientId,
-        grant_type: "authorization_code",
-        code,
-        redirect_uri: redirectUri,
-        code_verifier: codeVerifier,
-      });
-      if (clientSecret) body.set("client_secret", clientSecret);
-      const response = await fetch(`${baseUrl}${config.tokenUrlPath}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-        body: body.toString(),
-      });
-      if (!response.ok) throw new Error(`GitLab Duo token exchange failed: ${await response.text()}`);
-      const tokens = await response.json();
-      const userRes = await fetch(`${baseUrl}${config.userInfoUrlPath}`, {
-        headers: { Authorization: `Bearer ${tokens.access_token}` },
-      });
-      const user = userRes.ok ? await userRes.json() : {};
-      return { ...tokens, _user: user, _baseUrl: baseUrl, _clientId: clientId, _clientSecret: clientSecret || "" };
-    },
-    mapTokens: (tokens) => ({
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
-      expiresIn: tokens.expires_in,
-      scope: tokens.scope,
-      providerSpecificData: {
-        username: tokens._user?.username || "",
-        email: tokens._user?.email || tokens._user?.public_email || "",
-        name: tokens._user?.name || "",
-        baseUrl: tokens._baseUrl || GITLAB_DUO_CONFIG.defaultBaseUrl,
-        clientId: tokens._clientId || GITLAB_DUO_CONFIG.clientId,
-        ...(tokens._clientSecret ? { clientSecret: tokens._clientSecret } : {}),
-        authKind: "oauth",
-      },
-    }),
-  },
-
-  trae: {
-    config: TRAE_CONFIG,
-    flowType: "import_token",
-    buildAuthUrl: () => null,
-    mapTokens: (tokens) => {
-      const obj = tokens && typeof tokens === "object" ? tokens : {};
-      return {
-        accessToken: obj.accessToken || obj.access_token || obj.token || tokens,
-        refreshToken: null,
-        expiresIn: obj.expiresIn || TRAE_CONFIG.tokenLifetimeDays * 24 * 60 * 60,
-        providerSpecificData: {
-          webId: obj.webId || obj.web_id || "",
-          bizUserId: obj.bizUserId || obj.biz_user_id || "",
-          userUniqueId: obj.userUniqueId || obj.user_unique_id || "",
-          scope: obj.scope || "marscode-us",
-          tenant: obj.tenant || "marscode",
-          region: obj.region || "US-East",
-        },
-      };
-    },
-  },
-
-  "devin-cli": {
-    config: DEVIN_CLI_CONFIG,
-    flowType: "import_token",
-    buildAuthUrl: () => null,
-    mapTokens: (tokens) => ({
-      accessToken: tokens.accessToken || tokens.access_token || tokens.token || tokens,
-      refreshToken: null,
-      expiresIn: tokens.expiresIn || null,
-      providerSpecificData: { authKind: "import_token" },
-    }),
-  },
-
-  windsurf: {
-    config: WINDSURF_CONFIG,
-    flowType: "import_token",
-    buildAuthUrl: () => null,
-    mapTokens: (tokens) => ({
-      accessToken: tokens.accessToken || tokens.access_token || tokens.token || tokens,
-      refreshToken: null,
-      expiresIn: tokens.expiresIn || null,
-      providerSpecificData: { authKind: "import_token" },
     }),
   },
 

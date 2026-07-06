@@ -193,7 +193,7 @@ export async function POST(request, { params }) {
         return NextResponse.json({ error: `Provider ${provider} does not support import-token` }, { status: 400 });
       }
 
-      const rawToken = body && typeof body === "object" ? body : body?.accessToken ?? body?.token ?? body?.authJson ?? body;
+      const rawToken = body.accessToken ?? body.token ?? body.authJson ?? body;
       const tokenData = providerData.mapTokens(rawToken);
       if (!tokenData?.accessToken) {
         return NextResponse.json({ error: "Missing accessToken" }, { status: 400 });

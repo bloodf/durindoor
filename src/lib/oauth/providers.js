@@ -73,6 +73,7 @@ function extractGrokCliToken(input) {
           return {
             accessToken: entry.key,
             refreshToken: typeof entry.refresh_token === "string" ? entry.refresh_token : null,
+
             expiresAt: typeof entry.expires_at === "string" ? entry.expires_at : null,
           };
         }
@@ -117,6 +118,7 @@ export function mapGrokCliTokens(tokens) {
       teamId: payload.team_id || null,
       tier: payload.tier || 1,
       principalType: payload.principal_type || "User",
+
     },
   };
 }

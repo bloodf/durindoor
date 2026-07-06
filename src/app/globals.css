@@ -163,7 +163,12 @@ select {
   --color-text-main: var(--color-text-main);
   --color-text-muted: var(--color-text-muted);
   --color-text-subtle: var(--color-text-subtle);
-  --color-accent: #D4AF37;
+  --color-gold: #C9A227;
+  --color-gold-soft: rgba(201,162,39,0.18);
+  --color-forest: #1F4D2A;
+  --color-ink: #0B0B0B;
+  --color-parchment: #F5F1E6;
+  --color-accent: var(--color-gold);
   --color-danger: var(--color-danger);
   --color-success: var(--color-success);
   --color-warning: var(--color-warning);

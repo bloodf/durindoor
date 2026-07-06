@@ -101,6 +101,18 @@ import p98 from "./youcom.js";
 import p99 from "./nube.js";
 import p100 from "./kenari.js";
 import p101 from "./zenmux-free.js";
+import p102 from "./adapta-web.js";
+import p103 from "./chatgpt-web.js";
+import p104 from "./copilot-m365-web.js";
+import p105 from "./copilot-web.js";
+import p106 from "./duckduckgo-web.js";
+import p107 from "./huggingchat.js";
+import p108 from "./muse-spark-web.js";
+import p109 from "./suno.js";
+import p110 from "./t3-web.js";
+import p111 from "./udio.js";
+import p112 from "./veoaifree-web.js";
+import p113 from "./yuanbao-web.js";
 
 export default [
   p0,
@@ -203,4 +215,16 @@ export default [
   p97,
   p98,
   p101,
+  p102,
+  p103,
+  p104,
+  p105,
+  p106,
+  p107,
+  p108,
+  p109,
+  p110,
+  p111,
+  p112,
+  p113,
 ];

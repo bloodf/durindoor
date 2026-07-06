@@ -45,24 +45,24 @@ Web cookie providers bridge browser-session services that do not expose stable A
 
 DurinDoor converts OpenAI chat requests to ZenMux's Anthropic-compatible message endpoint and converts the upstream Anthropic SSE stream back to OpenAI chat completions. The provider is exposed under alias `zmf`.
 
-### Blocked OmniRoute Web-Session Providers
+### OmniRoute PR #51 Web-Session Port Status
 
-The following OmniRoute providers were inspected for this branch but are not exposed at runtime because this JS-era DurinDoor branch does not include the required browser-session subsystems, credential helpers, or endpoint handlers:
+The following OmniRoute providers are registered in DurinDoor's catalog with aliases, models, service kinds, auth hints, and source-file blocker metadata. Runtime execution is intentionally guarded by an explicit `provider_port_pending` executor so these entries cannot accidentally fall through to the generic OpenAI-compatible HTTP path.
 
-| Provider | Blocker |
-| --- | --- |
-| `adapta-web` | Requires OmniRoute web-session bearer-token executor and Adapta-specific credential validation not present in this branch. |
-| `chatgpt-web` | Requires ChatGPT web TLS client, sentinel/proof-of-work helpers, image endpoint handling, and web-cookie credential normalization. |
-| `copilot-m365-web` | Requires Microsoft 365 BizChat WebSocket framing and connection helpers. |
-| `copilot-web` | Requires Copilot web-session executor and browser-derived cookie/token flow. |
-| `duckduckgo-web` | Requires DuckDuckGo anti-abuse challenge solver, FE-signal generation, optional browser-backed session pool, and web tool shims. |
-| `huggingchat` | Requires HuggingChat cookie normalizer plus JSONL stream helper modules and SvelteKit conversation bootstrap flow. |
-| `muse-spark-web` | Requires Meta/Muse web-session request parser and cookie-backed executor helpers. |
-| `suno` | OmniRoute entry is a media/music web-session provider; this branch lacks the corresponding music-generation route and executor contract. |
-| `t3-web` | Requires T3 web-session executor and cookie validation flow. |
-| `udio` | OmniRoute entry is a media/music web-session provider; this branch lacks the corresponding Udio music endpoint executor contract. |
-| `veoaifree-web` | OmniRoute executor targets video/image/TTS tool workflows through WordPress AJAX; this branch lacks compatible video/music route plumbing for request/stream chat tests. |
-| `yuanbao-web` | Requires Tencent Yuanbao cookie-session SSE executor and Yuanbao-specific validation. |
+| Provider | Catalog status | Runtime blocker |
+| --- | --- | --- |
+| `adapta-web` | Web Cookie LLM provider, alias `adp-web`, Adapta model catalog. | Port `open-sse/executors/adapta-web.ts` and Adapta credential validation. |
+| `chatgpt-web` | Web Cookie LLM/image provider, alias `cgpt-web`, ChatGPT model catalog. | Port ChatGPT TLS client, proof-of-work helpers, image cache route, and cookie normalization. |
+| `copilot-m365-web` | Web Cookie LLM provider, alias `m365copilot`, BizChat model. | Port Microsoft 365 Chathub WebSocket connection and frame helpers. |
+| `copilot-web` | Web Cookie LLM provider, Copilot model catalog. | Port Copilot web-session executor and browser-derived access-token flow. |
+| `duckduckgo-web` | No-auth free-tier LLM provider, alias `ddgw`, DuckDuckGo AI model catalog. | Port DuckDuckGo anti-abuse challenge solver, FE-signal generation, and optional browser-backed session pool. |
+| `huggingchat` | Web Cookie LLM provider, HuggingChat production model catalog. | Port HuggingChat cookie normalization, JSONL stream helper, and SvelteKit conversation bootstrap. |
+| `muse-spark-web` | Web Cookie LLM provider, alias `ms-web`, Muse Spark models. | Port Meta/Muse GraphQL request builder, continuation cache, and response parser. |
+| `suno` | Cookie-backed music provider with Suno model catalog. | Add `/v1/audio/music` or `/v1/music/generations` route plumbing plus Suno media executor contract. |
+| `t3-web` | Web Cookie LLM provider, alias `t3chat`, T3 model catalog. | Port T3 executor, Convex session id handling, and cookie validation flow. |
+| `udio` | Cookie-backed music provider with Udio model catalog. | Add music-generation route plumbing plus Udio media executor contract. |
+| `veoaifree-web` | No-auth video provider, alias `veo-free`, VEO/Seedance catalog. | Add video-generation route plumbing and WordPress AJAX workflow executor. |
+| `yuanbao-web` | Web Cookie LLM provider, alias `ybw`, Tencent Yuanbao model catalog. | Port Yuanbao cookie-session SSE executor and validation flow. |
 
 ## Connection Health
 

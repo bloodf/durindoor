@@ -22,6 +22,11 @@ import { CodeBuddyExecutor } from "./codebuddy-cn.js";
 import { XaiExecutor } from "./xai.js";
 import { ZenmuxFreeExecutor } from "./zenmux-free.js";
 import { DefaultExecutor } from "./default.js";
+import {
+  UnsupportedOmniRouteWebSessionExecutor,
+  BLOCKED_OMNIROUTE_PROVIDERS,
+  BLOCKED_OMNIROUTE_PROVIDER_ALIASES,
+} from "./unsupported-websession.js";
 
 const executors = {
   antigravity: new AntigravityExecutor(),
@@ -50,6 +55,18 @@ const executors = {
   "codebuddy-cn": new CodeBuddyExecutor(),
   xai: new XaiExecutor(),
   "zenmux-free": new ZenmuxFreeExecutor(),
+  ...Object.fromEntries(
+    Object.keys(BLOCKED_OMNIROUTE_PROVIDERS).map((provider) => [
+      provider,
+      new UnsupportedOmniRouteWebSessionExecutor(provider),
+    ]),
+  ),
+  ...Object.fromEntries(
+    Object.entries(BLOCKED_OMNIROUTE_PROVIDER_ALIASES).map(([alias, provider]) => [
+      alias,
+      new UnsupportedOmniRouteWebSessionExecutor(provider),
+    ]),
+  ),
 };
 
 const defaultCache = new Map();
@@ -89,3 +106,8 @@ export { MimoFreeExecutor } from "./mimo-free.js";
 export { CodeBuddyExecutor } from "./codebuddy-cn.js";
 export { XaiExecutor } from "./xai.js";
 export { ZenmuxFreeExecutor } from "./zenmux-free.js";
+export {
+  UnsupportedOmniRouteWebSessionExecutor,
+  BLOCKED_OMNIROUTE_PROVIDERS,
+  BLOCKED_OMNIROUTE_PROVIDER_ALIASES,
+} from "./unsupported-websession.js";

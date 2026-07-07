@@ -459,4 +459,24 @@ describe("OmniRoute specialized provider ports", () => {
     expect(result.hasTools).toBe(false);
     expect(result.effectiveMessages).toEqual(bodyObj.messages);
   });
+
+  it("omits temperature when both temperature and top_p are supplied for Claude 4.5", () => {
+    const converted = openAIToBedrockConverse("anthropic.claude-sonnet-4-5", {
+      messages: [{ role: "user", content: "hi" }],
+      temperature: 0.7,
+      top_p: 0.95,
+    });
+    expect(converted.inferenceConfig.topP).toBe(0.95);
+    expect(converted.inferenceConfig.temperature).toBeUndefined();
+  });
+
+  it("keeps temperature and top_p when both are supplied for non-Claude-4.5 Bedrock models", () => {
+    const converted = openAIToBedrockConverse("anthropic.claude-sonnet-4-6", {
+      messages: [{ role: "user", content: "hi" }],
+      temperature: 0.7,
+      top_p: 0.95,
+    });
+    expect(converted.inferenceConfig.temperature).toBe(0.7);
+    expect(converted.inferenceConfig.topP).toBe(0.95);
+  });
 });

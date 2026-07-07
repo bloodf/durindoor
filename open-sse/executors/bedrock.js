@@ -221,6 +221,9 @@ export function openAIToBedrockConverse(model, body) {
   if (typeof maxTokens === "number") inferenceConfig.maxTokens = Math.max(1, Math.floor(maxTokens));
   if (typeof request.temperature === "number") inferenceConfig.temperature = request.temperature;
   if (typeof request.top_p === "number") inferenceConfig.topP = request.top_p;
+  if (isClaudeSonnetHaiku45(model) && typeof request.temperature === "number" && typeof request.top_p === "number") {
+    delete inferenceConfig.temperature;
+  }
   if (Array.isArray(request.stop)) inferenceConfig.stopSequences = request.stop.filter(Boolean);
   else if (typeof request.stop === "string" && request.stop) inferenceConfig.stopSequences = [request.stop];
 
@@ -245,6 +248,11 @@ function usageFromBedrock(usage) {
   const input = Number(usage?.inputTokens || 0);
   const output = Number(usage?.outputTokens || 0);
   return { prompt_tokens: input, completion_tokens: output, total_tokens: Number(usage?.totalTokens || input + output) };
+}
+
+function isClaudeSonnetHaiku45(model) {
+  if (typeof model !== "string") return false;
+  return /claude-(sonnet|haiku)-4-5/.test(model.toLowerCase());
 }
 
 function contentBlocksToOpenAIMessage(blocks) {

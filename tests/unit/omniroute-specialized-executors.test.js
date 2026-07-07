@@ -1,4 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const proxyAwareFetchMock = vi.hoisted(() => vi.fn());
+
+vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
+  proxyAwareFetch: proxyAwareFetchMock,
+}));
+
 import { getExecutor, hasSpecializedExecutor } from "../../open-sse/executors/index.js";
 import { PollinationsExecutor } from "../../open-sse/executors/pollinations.js";
 import { PuterExecutor } from "../../open-sse/executors/puter.js";
@@ -11,6 +18,7 @@ import { PROVIDERS, PROVIDER_MODELS } from "../../open-sse/providers/index.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
+  proxyAwareFetchMock.mockReset();
 });
 
 describe("OmniRoute specialized provider ports", () => {
@@ -58,23 +66,112 @@ describe("OmniRoute specialized provider ports", () => {
     expect(normal).toMatchObject({ model: "openai", stream: false });
     expect(normal.jsonMode).toBeUndefined();
     expect(json.jsonMode).toBe(true);
+    expect(PROVIDERS.pollinations.noAuth).toBe(true);
   });
 
   it("maps The Old LLM model aliases and generates request tokens", () => {
     expect(mapModel("gpt-5.3")).toBe("GPT_5_3");
     expect(mapModel("CLAUDE_4_6_OPUS")).toBe("CLAUDE_4_6_OPUS");
     expect(mapModel("claude sonnet 4")).toBe("CLAUDE_4_6_SONNET");
+    expect(mapModel("deepseek_v4")).toBe("deepseek_v4");
+    expect(mapModel("gemini_3_flash")).toBe("gemini_3_flash");
     expect(generateRequestToken()).toMatch(/^[a-z0-9]+-[a-z0-9]+-[a-f0-9]{8}$/);
     expect(PROVIDERS.theoldllm.noAuth).toBe(true);
+    expect(PROVIDERS.theoldllm.passthroughModels).toBeUndefined();
     expect(PROVIDER_MODELS.tllm.some((model) => model.id === "GPT_5_4")).toBe(true);
   });
 
-  it("wraps The Old LLM streamed upstream into non-streaming OpenAI JSON", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+  it("uses proxy-aware fetch for The Old LLM requests", async () => {
+    proxyAwareFetchMock.mockResolvedValue(
+      new Response('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n', {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      })
+    );
+    const executor = new TheOldLlmExecutor();
+    const proxyOptions = { proxyUrl: "http://127.0.0.1:18080", strictProxy: true };
+
+    const { response } = await executor.execute({
+      model: "gpt-5.3",
+      body: { messages: [{ role: "user", content: "Hi" }] },
+      stream: false,
+      credentials: {},
+      proxyOptions,
+    });
+
+    expect((await response.json()).choices[0].message.content).toBe("ok");
+    expect(proxyAwareFetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(proxyAwareFetchMock.mock.calls[0][1].body).model).toBe("GPT_5_3");
+    expect(proxyAwareFetchMock.mock.calls[0][2]).toBe(proxyOptions);
+  });
+
+  it("pipes The Old LLM streaming bodies without buffering them", async () => {
+    const upstreamBody = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"live"}}]}\n\n'));
+      },
+    });
+    proxyAwareFetchMock.mockResolvedValue(
+      new Response(upstreamBody, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      })
+    );
+    const executor = new TheOldLlmExecutor();
+
+    const result = await Promise.race([
+      executor.execute({
+        model: "GPT_5_4",
+        body: { messages: [] },
+        stream: true,
+        credentials: {},
+      }),
+      new Promise((resolve) => setTimeout(() => resolve("timeout"), 50)),
+    ]);
+
+    expect(result).not.toBe("timeout");
+    const { response } = result;
+    expect(response.headers.get("Content-Type")).toContain("text/event-stream");
+    const reader = response.body.getReader();
+    const { value, done } = await reader.read();
+    expect(done).toBe(false);
+    expect(new TextDecoder().decode(value)).toContain("live");
+    await reader.cancel();
+  });
+
+  it("keeps The Old LLM streaming requests abortable after headers return", async () => {
+    let upstreamSignal;
+    proxyAwareFetchMock.mockImplementation(async (_url, init) => {
+      upstreamSignal = init.signal;
+      return new Response(new ReadableStream(), {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    });
+    const controller = new AbortController();
+    const executor = new TheOldLlmExecutor();
+
+    const { response } = await executor.execute({
+      model: "GPT_5_4",
+      body: { messages: [] },
+      stream: true,
+      credentials: {},
+      signal: controller.signal,
+    });
+
+    expect(response.headers.get("Content-Type")).toContain("text/event-stream");
+    expect(upstreamSignal.aborted).toBe(false);
+    controller.abort(new Error("client disconnected"));
+    expect(upstreamSignal.aborted).toBe(true);
+  });
+
+  it("preserves The Old LLM non-streaming SSE metadata in OpenAI JSON", async () => {
+    proxyAwareFetchMock.mockResolvedValue(
       new Response(
         [
-          'data: {"choices":[{"delta":{"content":"hello "}}]}',
-          'data: {"choices":[{"delta":{"content":"world"}}]}',
+          'data: {"id":"chatcmpl-up","created":123,"model":"GPT_5_3","choices":[{"delta":{"reasoning_content":"think "}}]}',
+          'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{\\"q\\""}}]}}]}',
+          'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":":\\"x\\"}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}}',
           "data: [DONE]",
           "",
         ].join("\n"),
@@ -91,16 +188,32 @@ describe("OmniRoute specialized provider ports", () => {
     });
 
     const body = await response.json();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body).model).toBe("GPT_5_3");
     expect(response.headers.get("Content-Type")).toContain("application/json");
-    expect(body.model).toBe("GPT_5_3");
-    expect(body.choices[0].message.content).toBe("hello world");
+    expect(body).toMatchObject({
+      id: "chatcmpl-up",
+      created: 123,
+      model: "GPT_5_3",
+      usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 },
+      choices: [
+        {
+          finish_reason: "tool_calls",
+          message: {
+            reasoning_content: "think ",
+            tool_calls: [
+              {
+                id: "call_1",
+                type: "function",
+                function: { name: "lookup", arguments: '{"q":"x"}' },
+              },
+            ],
+          },
+        },
+      ],
+    });
   });
 
   it("retries The Old LLM once when the request token is rejected", async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
+    proxyAwareFetchMock
       .mockResolvedValueOnce(new Response('{"error":{"type":"access_denied"}}', { status: 403 }))
       .mockResolvedValueOnce(
         new Response('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n', {
@@ -117,7 +230,23 @@ describe("OmniRoute specialized provider ports", () => {
       credentials: {},
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(proxyAwareFetchMock).toHaveBeenCalledTimes(2);
     expect((await response.json()).choices[0].message.content).toBe("ok");
+  });
+
+  it("propagates The Old LLM aborts so chatCore can treat them as cancellations", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const executor = new TheOldLlmExecutor();
+
+    await expect(
+      executor.execute({
+        model: "GPT_5_4",
+        body: { messages: [] },
+        stream: false,
+        credentials: {},
+        signal: controller.signal,
+      })
+    ).rejects.toMatchObject({ name: "AbortError" });
   });
 });

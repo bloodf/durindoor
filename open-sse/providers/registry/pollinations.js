@@ -14,11 +14,13 @@ export default {
       apiKeyUrl: "https://enter.pollinations.ai",
     },
   },
-  category: "apikey",
+  category: "free",
+  noAuth: true,
   transport: {
     baseUrl: "https://gen.pollinations.ai/v1/chat/completions",
     baseUrls: ["https://gen.pollinations.ai/v1/chat/completions"],
     format: "openai",
+    noAuth: true,
   },
   models: [
     { id: "openai", name: "OpenAI (Pollinations)" },

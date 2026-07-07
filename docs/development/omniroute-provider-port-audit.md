@@ -212,9 +212,9 @@ Source inspected at `3ddcee6369c54e1c844a6e46cbbc79870d10d30b`:
 These providers are exposed in DurinDoor with executor/unit coverage:
 
 - `command-code`: registered as a hyphenated provider id backed by DurinDoor's existing Command Code executor path. The provider keeps OmniRoute's `command-code` id, `cmd` alias, `/alpha/generate` endpoint, stream-forcing transport, and current model seed. This avoids duplicating the existing `commandcode` translator while making the OmniRoute provider id routable.
-- `pollinations`: ported as a small specialized executor for `https://gen.pollinations.ai/v1/chat/completions`. The executor forwards optional bearer credentials and only enables `jsonMode` when the caller explicitly requests `response_format.type` of `json_object` or `json_schema`.
+- `pollinations`: ported as a small specialized executor for `https://gen.pollinations.ai/v1/chat/completions`. The provider is exposed as no-auth/free so the documented keyless catalog can be configured without an API key. The executor still forwards optional bearer credentials and only enables `jsonMode` when the caller explicitly requests `response_format.type` of `json_object` or `json_schema`.
 - `puter`: ported as a small specialized executor for Puter's OpenAI-compatible chat REST endpoint. It forwards bearer credentials and leaves model ids untouched because Puter accepts catalog ids directly.
-- `theoldllm`: ported as a no-auth executor that maps legacy model aliases, generates the `X-Request-Token` expected by the public The Old LLM endpoint, retries once on token rejection, and wraps upstream SSE text into OpenAI JSON for non-streaming callers.
+- `theoldllm`: ported as a no-auth executor that maps legacy model aliases, generates the `X-Request-Token` expected by the public The Old LLM endpoint, retries once on token rejection, and uses DurinDoor's proxy-aware fetch path. Successful streaming calls pipe the upstream SSE body directly; non-streaming calls use the shared SSE-to-OpenAI JSON parser so usage, reasoning, tool calls, and finish metadata survive conversion. The provider does not advertise passthrough models because unknown inputs are intentionally mapped to known upstream ids.
 
 ### Blocked
 

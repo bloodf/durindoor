@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
+import { parseSSEToOpenAIResponse } from "../handlers/chatCore/sseToJsonHandler.js";
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
 
 const API_URL = "https://theoldllm.vercel.app/api/chatgpt";
 const CHROME_UA =
@@ -59,6 +61,8 @@ export const CHATGPT_UPSTREAM_MODELS = new Set([
   "openrouter_deepseek_r1",
   "together_deepseek_v3",
   "openrouter_deepseek_v3",
+  "deepseek_v4",
+  "gemini_3_flash",
   "sonar-deep-research",
   "sonar-pro",
   "openrouter_web_search",
@@ -84,6 +88,11 @@ export function mapModel(model = "") {
   return "GPT_5_4";
 }
 
+function throwIfAborted(signal) {
+  if (!signal?.aborted) return;
+  throw new DOMException("Request aborted", "AbortError");
+}
+
 export function generateRequestToken() {
   const now = Date.now();
   const seed = `${now}-oldllm-client-2026-${CHROME_UA.slice(0, 20)}`;
@@ -97,14 +106,21 @@ export function generateRequestToken() {
 
 export const tokenCache = { value: "", expiresAt: 0 };
 
-async function directFetch(reqBody, signal) {
+async function directFetch(reqBody, signal, proxyOptions = null) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 120_000);
   const onSignal = signal ? () => controller.abort(signal.reason) : null;
   if (signal && onSignal) signal.addEventListener("abort", onSignal, { once: true });
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    clearTimeout(timer);
+    if (signal && onSignal) signal.removeEventListener("abort", onSignal);
+  };
 
   try {
-    return await fetch(API_URL, {
+    const response = await proxyAwareFetch(API_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -114,10 +130,52 @@ async function directFetch(reqBody, signal) {
       },
       body: JSON.stringify(reqBody),
       signal: controller.signal,
-    });
-  } finally {
+    }, proxyOptions);
     clearTimeout(timer);
-    if (signal && onSignal) signal.removeEventListener("abort", onSignal);
+    return { response, release };
+  } catch (error) {
+    release();
+    throw error;
+  }
+}
+
+function bindStreamLifecycle(body, release) {
+  if (!body) {
+    release();
+    return body;
+  }
+
+  const reader = body.getReader();
+  return new ReadableStream({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          release();
+          controller.close();
+          return;
+        }
+        controller.enqueue(value);
+      } catch (error) {
+        release();
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      try {
+        await reader.cancel(reason);
+      } finally {
+        release();
+      }
+    },
+  });
+}
+
+async function readUpstreamText(response, release) {
+  try {
+    return await response.text();
+  } finally {
+    release();
   }
 }
 
@@ -132,31 +190,6 @@ function isTokenRejected(status, body) {
   } catch {
     return false;
   }
-}
-
-function parseSseContent(sseText) {
-  let content = "";
-  for (const line of sseText.split("\n")) {
-    if (!line.startsWith("data: ") || line === "data: [DONE]") continue;
-    try {
-      const data = JSON.parse(line.slice(6));
-      content += data.choices?.[0]?.delta?.content || data.choices?.[0]?.delta?.text || "";
-    } catch {
-      // Ignore malformed upstream frames and preserve successfully parsed text.
-    }
-  }
-  return content;
-}
-
-function buildChatCompletion(content, model) {
-  return JSON.stringify({
-    id: `chatcmpl-${Date.now()}`,
-    object: "chat.completion",
-    created: Math.floor(Date.now() / 1000),
-    model: mapModel(model),
-    choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }],
-    usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
-  });
 }
 
 function buildErrorResponse(status, body) {
@@ -201,39 +234,60 @@ export class TheOldLlmExecutor extends BaseExecutor {
   }
 
   async execute(input) {
-    const { model, stream, body, signal, log } = input;
+    const { model, stream, body, signal, log, proxyOptions = null } = input;
     const headers = this.buildHeaders();
 
-    if (signal?.aborted) {
-      return {
-        response: new Response(
-          JSON.stringify({ error: { message: "Request aborted", type: "abort", code: "ABORTED" } }),
-          { status: 499, headers: { "Content-Type": "application/json" } }
-        ),
-        url: API_URL,
-        headers,
-        transformedBody: body,
-      };
-    }
+    throwIfAborted(signal);
 
     try {
       const reqBody = { ...(body || {}), model: mapModel(model), stream: true };
-      let upstream = await directFetch(reqBody, signal);
-      let upstreamText = await upstream.text();
+      let { response: upstream, release } = await directFetch(reqBody, signal, proxyOptions);
+      throwIfAborted(signal);
+      let upstreamText = null;
 
+      if (upstream.status !== 200) upstreamText = await readUpstreamText(upstream, release);
       if (isTokenRejected(upstream.status, upstreamText)) {
         log?.warn?.("THEOLDLLM", `Token rejected (${upstream.status}), retrying with fresh token`);
-        upstream = await directFetch(reqBody, signal);
-        upstreamText = await upstream.text();
+        ({ response: upstream, release } = await directFetch(reqBody, signal, proxyOptions));
+        throwIfAborted(signal);
+        upstreamText = upstream.status === 200 ? null : await readUpstreamText(upstream, release);
       }
 
-      if (upstream.status === 200 && upstreamText) {
-        const payload = stream ? upstreamText : buildChatCompletion(parseSseContent(upstreamText), model);
+      if (upstream.status === 200) {
+        if (stream) {
+          return {
+            response: new Response(bindStreamLifecycle(upstream.body, release), {
+              status: 200,
+              headers: {
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache",
+              },
+            }),
+            url: API_URL,
+            headers,
+            transformedBody: body,
+          };
+        }
+
+        upstreamText = upstreamText ?? await readUpstreamText(upstream, release);
+        const payload = parseSSEToOpenAIResponse(upstreamText, mapModel(model));
+        if (!payload) {
+          return {
+            response: new Response(buildErrorResponse(502, "Invalid SSE response from The Old LLM"), {
+              status: 502,
+              headers: { "Content-Type": "application/json" },
+            }),
+            url: API_URL,
+            headers,
+            transformedBody: body,
+          };
+        }
+
         return {
-          response: new Response(payload, {
+          response: new Response(JSON.stringify(payload), {
             status: 200,
             headers: {
-              "Content-Type": stream ? "text/event-stream" : "application/json",
+              "Content-Type": "application/json",
               "Cache-Control": "no-cache",
             },
           }),
@@ -253,6 +307,7 @@ export class TheOldLlmExecutor extends BaseExecutor {
         transformedBody: body,
       };
     } catch (error) {
+      if (signal?.aborted) throw error;
       const message = error instanceof Error ? error.message : String(error);
       log?.error?.("THEOLDLLM", `Executor error: ${message}`);
       return {

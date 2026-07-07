@@ -138,7 +138,9 @@ async function bootstrapJwt(baseUrl, fingerprint, signal, dispatcher, proxyOptio
   if (existing) return raceWithSignal(existing, signal);
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), BOOTSTRAP_TIMEOUT_MS);
+  let timer;
+  const abortWithTimeout = () => controller.abort(new Error(`Mimocode bootstrap timed out after ${BOOTSTRAP_TIMEOUT_MS}ms`));
+  timer = setTimeout(abortWithTimeout, BOOTSTRAP_TIMEOUT_MS);
 
   const promise = (async () => {
     try {
@@ -179,30 +181,51 @@ export class MimocodeExecutor extends BaseExecutor {
     this.accounts = [this.buildAccount(generateFingerprint())];
     this.nextAccountIdx = 0;
     this.proxyUrlMap = new Map();
+    // Per-connection state cache keyed by connection id, so concurrent requests
+    // for different stored Mimocode connections do not mutate shared account lists
+    // or proxy maps.
+    this.stateCache = new Map();
+  }
+
+  getState(credentials = {}) {
+    const key = credentials.connectionId || credentials.id || "";
+    if (!key) return this;
+    if (!this.stateCache.has(key)) {
+      this.stateCache.set(key, {
+        accounts: [this.buildAccount(generateFingerprint())],
+        nextAccountIdx: 0,
+        proxyUrlMap: new Map(),
+      });
+    }
+    return this.stateCache.get(key);
   }
 
   buildAccount(fingerprint) {
     return { fingerprint, jwt: "", expiresAt: 0, cooldownUntil: 0, consecutiveFails: 0, proxy: null };
   }
 
-  getProxyDispatcher(fingerprint) {
-    return createDispatcher(this.proxyUrlMap.get(fingerprint));
+  _getProxyDispatcher(state, fingerprint) {
+    return createDispatcher(state.proxyUrlMap.get(fingerprint));
   }
 
-  fetchWithProxy(url, init, fingerprint, proxyOptions = null) {
-    const dispatcher = this.getProxyDispatcher(fingerprint);
+  _fetchWithProxy(state, url, init, fingerprint, proxyOptions = null) {
+    const dispatcher = this._getProxyDispatcher(state, fingerprint);
     if (dispatcher) return undiciFetch(url, { ...init, dispatcher });
     return proxyAwareFetch(url, init, proxyOptions);
   }
 
   syncAccountsFromCredentials(credentials = {}) {
+    return this._syncAccountsFromCredentials(this.getState(credentials), credentials);
+  }
+
+  _syncAccountsFromCredentials(state, credentials = {}) {
     const providerData = credentials?.providerSpecificData || {};
     const accountProxies = Array.isArray(providerData.accountProxies) ? providerData.accountProxies : [];
 
-    this.proxyUrlMap.clear();
+    state.proxyUrlMap.clear();
     for (const entry of accountProxies) {
       const mapped = proxyConfigToUrl(entry);
-      if (mapped) this.proxyUrlMap.set(mapped.fingerprint, mapped.url);
+      if (mapped) state.proxyUrlMap.set(mapped.fingerprint, mapped.url);
     }
 
     const configuredFingerprints = Array.isArray(providerData.fingerprints)
@@ -211,7 +234,7 @@ export class MimocodeExecutor extends BaseExecutor {
 
     if (configuredFingerprints.length === 0) {
       // No stored fingerprints: keep the default account and only update proxy metadata.
-      for (const account of this.accounts) {
+      for (const account of state.accounts) {
         account.proxy = findAccountProxy(account.fingerprint, accountProxies);
       }
       return;
@@ -220,44 +243,44 @@ export class MimocodeExecutor extends BaseExecutor {
     // Rebuild the account list from the current credentials so stale or default
     // fingerprints are dropped when the connection changes. Preserve state for
     // fingerprints that are still configured to avoid unnecessary re-bootstraps.
-    const oldByFingerprint = new Map(this.accounts.map((account) => [account.fingerprint, account]));
-    this.accounts = configuredFingerprints.map((fingerprint) => {
+    const oldByFingerprint = new Map(state.accounts.map((account) => [account.fingerprint, account]));
+    state.accounts = configuredFingerprints.map((fingerprint) => {
       const old = oldByFingerprint.get(fingerprint);
       return old || this.buildAccount(fingerprint);
     });
 
-    for (const account of this.accounts) {
+    for (const account of state.accounts) {
       account.proxy = findAccountProxy(account.fingerprint, accountProxies);
     }
   }
 
-  async getJwtForAccount(account, signal, proxyOptions = null) {
+  async _getJwtForAccount(state, account, signal, proxyOptions = null) {
     if (isAccountReady(account)) return account.jwt;
-    const result = await bootstrapJwt(this.baseUrl, account.fingerprint, signal, this.getProxyDispatcher(account.fingerprint), proxyOptions);
+    const result = await bootstrapJwt(this.baseUrl, account.fingerprint, signal, this._getProxyDispatcher(state, account.fingerprint), proxyOptions);
     account.jwt = result.jwt;
     account.expiresAt = result.expiresAt;
     return account.jwt;
   }
 
-  pickAccount() {
-    for (let i = 0; i < this.accounts.length; i++) {
-      const idx = (this.nextAccountIdx + i) % this.accounts.length;
-      const account = this.accounts[idx];
+  _pickAccount(state) {
+    for (let i = 0; i < state.accounts.length; i++) {
+      const idx = (state.nextAccountIdx + i) % state.accounts.length;
+      const account = state.accounts[idx];
       if (account.cooldownUntil <= Date.now()) {
-        this.nextAccountIdx = (idx + 1) % this.accounts.length;
+        state.nextAccountIdx = (idx + 1) % state.accounts.length;
         return account;
       }
     }
     return null;
   }
 
-  markCooldown(account) {
+  _markCooldown(state, account) {
     account.consecutiveFails += 1;
     const backoff = Math.min(COOLDOWN_BASE_MS * 2 ** (account.consecutiveFails - 1), COOLDOWN_MAX_MS);
     account.cooldownUntil = Date.now() + backoff + Math.random() * 1000;
   }
 
-  markSuccess(account) {
+  _markSuccess(state, account) {
     account.consecutiveFails = 0;
   }
 
@@ -280,7 +303,7 @@ export class MimocodeExecutor extends BaseExecutor {
     return injectMimocodeSystemMarker({ ...body, model: rewriteModelName(model) });
   }
 
-  async fetchWithTimeout(url, init, fingerprint, proxyOptions, signal) {
+  async fetchWithTimeout(state, url, init, fingerprint, proxyOptions, signal) {
     const controller = new AbortController();
     if (signal?.aborted) {
       controller.abort(signal.reason);
@@ -295,19 +318,21 @@ export class MimocodeExecutor extends BaseExecutor {
       signal.addEventListener("abort", onSignalAbort, { once: true });
     }
     try {
-      return await this.fetchWithProxy(url, { ...init, signal: controller.signal }, fingerprint, proxyOptions);
+      return await this._fetchWithProxy(state, url, { ...init, signal: controller.signal }, fingerprint, proxyOptions);
     } finally {
       clearTimeout(timer);
       if (signal && onSignalAbort) signal.removeEventListener("abort", onSignalAbort);
     }
   }
 
-  async testConnection(credentials = {}, signal = null, log = null, proxyOptions = null) {
+    async testConnection(credentials = {}, signal = null, log = null, proxyOptions = null) {
     try {
-      this.syncAccountsFromCredentials(credentials);
-      const account = this.accounts[0];
-      const jwt = await this.getJwtForAccount(account, signal, proxyOptions);
-      const response = await this.fetchWithProxy(
+      const state = this.getState(credentials);
+      this._syncAccountsFromCredentials(state, credentials);
+      const account = state.accounts[0];
+      const jwt = await this._getJwtForAccount(state, account, signal, proxyOptions);
+      const response = await this._fetchWithProxy(
+        state,
         this.buildUrl(),
         {
           method: "POST",
@@ -347,16 +372,19 @@ export class MimocodeExecutor extends BaseExecutor {
     }
 
     this.syncAccountsFromCredentials(credentials);
+    const state = this.getState(credentials);
     let lastError;
-    for (let attempt = 0; attempt < this.accounts.length; attempt++) {
-      const account = this.pickAccount();
+    let lastTerminalStatus = 0;
+    for (let attempt = 0; attempt < state.accounts.length; attempt++) {
+      const account = this._pickAccount(state);
       if (!account) {
         break;
       }
       try {
-        const jwt = await this.getJwtForAccount(account, signal, proxyOptions);
+        const jwt = await this._getJwtForAccount(state, account, signal, proxyOptions);
         const headers = { ...this.buildHeaders(credentials, stream), Authorization: `Bearer ${jwt}` };
         let response = await this.fetchWithTimeout(
+          state,
           url,
           { method: "POST", headers, body: JSON.stringify(transformedBody) },
           account.fingerprint,
@@ -369,8 +397,9 @@ export class MimocodeExecutor extends BaseExecutor {
           account.jwt = "";
           account.expiresAt = 0;
           account.consecutiveFails = 0;
-          headers.Authorization = `Bearer ${await this.getJwtForAccount(account, signal, proxyOptions)}`;
+          headers.Authorization = `Bearer ${await this._getJwtForAccount(state, account, signal, proxyOptions)}`;
           response = await this.fetchWithTimeout(
+            state,
             url,
             { method: "POST", headers, body: JSON.stringify(transformedBody) },
             account.fingerprint,
@@ -378,27 +407,29 @@ export class MimocodeExecutor extends BaseExecutor {
             signal
           );
           if (response.status === 401 || response.status === 403) {
-            this.markCooldown(account);
+            this._markCooldown(state, account);
+            lastTerminalStatus = response.status;
             log?.warn?.("MIMOCODE", `Account ${account.fingerprint.slice(0, 8)} still unauthorized after refresh; rotating`);
             continue;
           }
         }
 
         if (response.status === 429) {
-          this.markCooldown(account);
+          this._markCooldown(state, account);
+          lastTerminalStatus = response.status;
           log?.warn?.("MIMOCODE", `Rate limited on account ${account.fingerprint.slice(0, 8)}, trying next`);
           continue;
         }
 
-        this.markSuccess(account);
+        this._markSuccess(state, account);
         return { response, url, headers, transformedBody };
       } catch (error) {
-        if (isAbortError(error)) {
+        if (signal?.aborted && isAbortError(error)) {
           throw error;
         }
         lastError = error;
-        this.markCooldown(account);
-        if (attempt === this.accounts.length - 1) {
+        this._markCooldown(state, account);
+        if (attempt === state.accounts.length - 1) {
           const message = error instanceof Error ? error.message : String(error);
           log?.error?.("MIMOCODE", `Executor error: ${message}`);
           return {
@@ -414,10 +445,11 @@ export class MimocodeExecutor extends BaseExecutor {
       }
     }
 
-    const message = lastError instanceof Error ? lastError.message : "All accounts exhausted";
+    const terminalStatus = lastTerminalStatus || 502;
+    const message = lastError instanceof Error ? lastError.message : (terminalStatus === 429 ? "All accounts rate limited" : "All accounts exhausted");
     return {
       response: new Response(JSON.stringify({ error: { message, type: "upstream_error", code: "NO_ACCOUNTS" } }), {
-        status: 502,
+        status: terminalStatus,
         headers: { "Content-Type": "application/json" },
       }),
       url,

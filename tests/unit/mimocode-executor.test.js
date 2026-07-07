@@ -324,6 +324,100 @@ describe("MimocodeExecutor", () => {
     expect(executor.accounts[0].consecutiveFails).toBe(0);
   });
 
+  it("keeps account and proxy state isolated per connection id", () => {
+    const executor = new MimocodeExecutor();
+    executor.syncAccountsFromCredentials({
+      connectionId: "conn-a",
+      providerSpecificData: {
+        fingerprints: ["fp-a"],
+        accountProxies: [{ fingerprint: "fp-a", proxy: { host: "proxy-a.test", port: 8080 } }],
+      },
+    });
+    executor.syncAccountsFromCredentials({
+      connectionId: "conn-b",
+      providerSpecificData: {
+        fingerprints: ["fp-b"],
+        accountProxies: [{ fingerprint: "fp-b", proxy: { host: "proxy-b.test", port: 8080 } }],
+      },
+    });
+
+    const stateA = executor.stateCache.get("conn-a");
+    const stateB = executor.stateCache.get("conn-b");
+    expect(stateA.accounts.map((a) => a.fingerprint)).toEqual(["fp-a"]);
+    expect(stateB.accounts.map((a) => a.fingerprint)).toEqual(["fp-b"]);
+    expect(stateA.proxyUrlMap.get("fp-a")).toBe("http://proxy-a.test:8080");
+    expect(stateB.proxyUrlMap.get("fp-b")).toBe("http://proxy-b.test:8080");
+    expect(stateA).not.toBe(stateB);
+  });
+
+  it("treats an internal bootstrap timeout as an upstream failure, not a client abort", async () => {
+    fetchMock.mockImplementation((_url, init) => new Promise((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true });
+    }));
+    vi.useFakeTimers({ shouldAdvanceTime: false });
+    const executor = new MimocodeExecutor();
+
+    try {
+      const executing = executor.execute({
+        model: "mimo-auto",
+        body: { messages: [{ role: "user", content: "hi" }] },
+        stream: false,
+        credentials: {},
+      });
+      await vi.advanceTimersByTimeAsync(15_000);
+      const { response } = await executing;
+
+      expect(response.status).toBe(502);
+      expect((await response.json()).error.code).toBe("EXECUTOR_ERROR");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("returns the terminal 429 status when all accounts are rate limited", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("rate limited", { status: 429 }))
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("rate limited", { status: 429 }));
+
+    const executor = new MimocodeExecutor();
+    executor.accounts = [executor.buildAccount("fp-a"), executor.buildAccount("fp-b")];
+
+    const { response } = await executor.execute({
+      model: "mimo-auto",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: {},
+    });
+
+    expect(response.status).toBe(429);
+    expect((await response.json()).error.code).toBe("NO_ACCOUNTS");
+  });
+
+  it("returns the terminal 403 status when all accounts are unauthorized", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("forbidden", { status: 403 }))
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("forbidden", { status: 403 }))
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("forbidden", { status: 403 }));
+
+    const executor = new MimocodeExecutor();
+    executor.accounts = [executor.buildAccount("fp-a")];
+
+    const { response } = await executor.execute({
+      model: "mimo-auto",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: {},
+    });
+
+    expect(response.status).toBe(403);
+    expect((await response.json()).error.code).toBe("NO_ACCOUNTS");
+  });
+
   it("registers Mimocode as a no-auth specialized provider and mcode alias", () => {
     expect(getExecutor("mimocode")).toBeInstanceOf(MimocodeExecutor);
     expect(getExecutor("mcode")).toBeInstanceOf(MimocodeExecutor);

@@ -3,10 +3,12 @@ import { getProviderNodeById } from "@/models";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, resolveXiaomiTokenplanBaseUrl, PROVIDERS } from "open-sse/config/providers.js";
+import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
 import { buildZenmuxAnthropicBody, extractZenmuxCtoken, normalizeZenmuxCookie, ZENMUX_FREE_CHAT_URL } from "open-sse/executors/zenmux-free.js";
 import { normalizeProviderId } from "@/lib/providerNormalization";
 import { isRedactedToken, isStructuredPathOnlyCredential, isStructuredWsUrlCredential } from "open-sse/executors/copilot-m365-connection.js";
+import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
 
 function applyConfiguredAuthHeader(headers, cfg, apiKey) {
   const auth = cfg?.auth;
@@ -63,9 +65,8 @@ async function probeWebProvider(provider, apiKey, providerSpecificData = {}) {
     case "x-api-key":           headers["x-api-key"] = apiKey; break;
     case "x-subscription-token":headers["x-subscription-token"] = apiKey; break;
     case "key": {
-      const cx = providerSpecificData?.cx || providerSpecificData?.searchEngineId;
-      if (!cx) return false;
-      url += `?key=${encodeURIComponent(apiKey)}&q=ping&cx=${encodeURIComponent(cx)}`;
+      const cx = providerSpecificData?.cx || providerSpecificData?.searchEngineId || body?.cx || body?.searchEngineId;
+      url += `?key=${encodeURIComponent(apiKey)}&q=ping&cx=${encodeURIComponent(cx || "test")}`;
       break;
     }
     case "api_key":             url += `?api_key=${encodeURIComponent(apiKey)}&q=ping&engine=google`; break; // searchapi
@@ -77,10 +78,7 @@ async function probeWebProvider(provider, apiKey, providerSpecificData = {}) {
   }
 
   const res = await fetch(url, { method: cfg.method, headers, body, signal: AbortSignal.timeout(8000) });
-  if (cfg.authHeader === "key") {
-    return res.ok;
-  }
-  return res.status !== 401 && res.status !== 403;
+  return res.ok;
 }
 
 // Probe a media provider (tts/embedding/stt/image/video) using *Config.
@@ -185,11 +183,8 @@ export async function POST(request) {
     if (!provider || (!apiKey && provider !== "ollama-local" && !isNoAuth)) {
       return NextResponse.json({ error: "Provider and API key required" }, { status: 400 });
     }
-    if (isNoAuth) {
-      return NextResponse.json(await probeNoAuthLocalProvider(
-        providerSpecificData?.baseUrl || providerInfo.defaultBaseUrl,
-        apiKey
-      ));
+    if (isNoAuth && !apiKey) {
+      return NextResponse.json({ valid: true, error: null });
     }
 
     let isValid = false;
@@ -320,6 +315,32 @@ export async function POST(request) {
         });
       }
 
+      if (provider === "snowflake") {
+        const { providerSpecificData } = body;
+        let accountId;
+        try {
+          accountId = normalizeAccountIdPlaceholder("snowflake", providerSpecificData?.accountId);
+        } catch (err) {
+          return NextResponse.json({ valid: false, error: err.message });
+        }
+        const url = `https://${accountId}.snowflakecomputing.com/api/v2/cortex/v1/chat/completions`;
+        const snowflakeRes = await fetch(url, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: getDefaultModel("snowflake") || "llama3.1-70b",
+            messages: [{ role: "user", content: "test" }],
+            max_tokens: 1,
+          }),
+          signal: AbortSignal.timeout(10000),
+        });
+        isValid = snowflakeRes.status !== 401 && snowflakeRes.status !== 403;
+        return NextResponse.json({
+          valid: isValid,
+          error: isValid ? null : "Invalid API token or Account ID",
+        });
+      }
+
       if (provider === "azure") {
         const { providerSpecificData } = body;
         const endpoint = (providerSpecificData?.azureEndpoint || "").replace(/\/$/, "");
@@ -409,13 +430,6 @@ export async function POST(request) {
             headers: { "Authorization": `Bearer ${apiKey}` },
           });
           isValid = openrouterRes.ok;
-          break;
-
-        case "hcnsec":
-          const hcnsecRes = await fetch("https://api.hcnsec.cn/v1/models", {
-            headers: { "Authorization": `Bearer ${apiKey}` },
-          });
-          isValid = hcnsecRes.ok;
           break;
 
         case "glm":
@@ -533,13 +547,10 @@ export async function POST(request) {
           break;
         }
 
-        // "command-code" (OmniRoute hyphenated id, alias "cmd") shares this
-        // validation path with "commandcode" — same upstream, same transport.
         case "commandcode":
         case "command-code": {
-          const cfg = PROVIDERS[provider];
-          // PROVIDER_MODELS is keyed by registry alias ("cmd") not the "command-code" id.
-          const model = getDefaultModel(provider) || getDefaultModel("cmd");
+          const cfg = PROVIDERS.commandcode;
+          const model = getDefaultModel("commandcode");
           const payload = openaiToCommandCodeRequest(model, {
             messages: [{ role: "user", content: "ping" }],
             max_tokens: 1,
@@ -806,11 +817,12 @@ export async function POST(request) {
         }
 
         default: {
-          const result = await probeOpenAICompatibleRegistryProvider(provider, apiKey);
-          if (result === null) {
+          // Generic registry probe covers OpenAI-compatible and Claude-format providers.
+          const registryResult = await probeRegistryProvider(provider, apiKey, fetch, providerSpecificData || {});
+          if (!registryResult) {
             return NextResponse.json({ error: "Provider validation not supported" }, { status: 400 });
           }
-          isValid = result;
+          isValid = registryResult.valid;
           break;
         }
       }

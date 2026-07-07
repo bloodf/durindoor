@@ -57,6 +57,29 @@ const AUTH_DESCRIPTORS = Object.fromEntries(
 
 // Apply a token to a header per scheme. Missing tokens intentionally leave the
 // header absent so optional local providers do not send "Bearer undefined".
+
+export function normalizeAccountIdPlaceholder(provider, accountId) {
+  const trimmed = `${accountId || ""}`.trim();
+  if (!trimmed) throw new Error(`${provider} requires accountId in providerSpecificData`);
+  // Snowflake documents a "dashed" hostname variant of the account identifier:
+  // underscores are valid in the account name but not in a DNS label, so
+  // normalize them to hyphens before validation/URL construction.
+  const normalized = trimmed.replace(/_/g, "-");
+
+  const labels = normalized.split(".");
+  const validDnsLabels = labels.every((label) => (
+    label.length > 0
+    && label.length <= 63
+    && /^[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?$/.test(label)
+  ));
+  if (!validDnsLabels || normalized.length > 253) {
+    throw new Error(`${provider} requires a valid accountId in providerSpecificData`);
+  }
+
+  return normalized;
+}
+
+// Apply a token to a header per scheme (matches legacy: combined always sets, even when undefined).
 function setAuth(headers, spec, token) {
   if (!token) return;
   headers[spec.header] = spec.scheme === "bearer" ? `Bearer ${token}` : token;
@@ -66,13 +89,24 @@ function setAuth(headers, spec, token) {
 function applyAuth(headers, desc, credentials) {
   if (desc.combined) {
     setAuth(headers, desc, credentials.apiKey || credentials.accessToken);
+    applyExtraHeaders(headers, desc.extraHeaders, credentials);
     if (desc.anthropicVersion && !headers["anthropic-version"]) headers["anthropic-version"] = ANTHROPIC_API_VERSION;
     return;
   }
   // split apiKey/oauth: set only the matching branch (legacy: anthropic-compatible skips when both absent)
   if (credentials.apiKey) setAuth(headers, desc.apiKey, credentials.apiKey);
   else if (credentials.accessToken) setAuth(headers, desc.oauth, credentials.accessToken);
+  applyExtraHeaders(headers, desc.extraHeaders, credentials);
   if (desc.anthropicVersion && !headers["anthropic-version"]) headers["anthropic-version"] = ANTHROPIC_API_VERSION;
+}
+
+function applyExtraHeaders(headers, extraHeaders, credentials) {
+  if (!Array.isArray(extraHeaders)) return;
+  for (const spec of extraHeaders) {
+    if (!spec?.header || !spec?.from) continue;
+    const value = credentials?.[spec.from];
+    if (value) headers[spec.header] = value;
+  }
 }
 
 // Provider-specific header quirks kept as small hooks (not pure auth).
@@ -237,8 +271,7 @@ export class DefaultExecutor extends BaseExecutor {
     }
     const url = this.config.baseUrl;
     if (url?.includes("{accountId}")) {
-      const accountId = credentials?.providerSpecificData?.accountId;
-      if (!accountId) throw new Error(`${this.provider} requires accountId in providerSpecificData`);
+      const accountId = normalizeAccountIdPlaceholder(this.provider, credentials?.providerSpecificData?.accountId);
       return url.replace("{accountId}", accountId);
     }
     return url;

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getProviderConnectionById } from "@/models";
-import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
-import { PROVIDER_MODELS_CONFIG, resolveQwenModelsUrl } from "./modelsConfig.js";
+import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
+import { PROVIDER_MODELS_CONFIG, resolveQwenModelsUrl, parseOpenAIStyleModels } from "./modelsConfig.js";
 
 /**
  * GET /api/providers/[id]/models - Get models list from provider
@@ -78,7 +78,45 @@ export async function GET(request, { params }) {
 
     const config = PROVIDER_MODELS_CONFIG[connection.provider];
     if (!config) {
-      return NextResponse.json({ error: "Provider not supported" }, { status: 400 });
+      // Generic fallback for registry providers that declare a modelsFetcher
+      // (e.g. Qiniu) but have no hard-coded PROVIDER_MODELS_CONFIG entry.
+      const fetcher = AI_PROVIDERS[connection.provider]?.modelsFetcher;
+      if (fetcher && typeof fetcher.url === "string") {
+        const headers = { "Content-Type": "application/json" };
+        if (connection.apiKey) {
+          headers.Authorization = `Bearer ${connection.apiKey}`;
+        }
+        try {
+          const response = await fetch(fetcher.url, {
+            method: "GET",
+            headers,
+            signal: AbortSignal.timeout(8000),
+          });
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.log(`Error fetching models from ${connection.provider}:`, errorText);
+            return NextResponse.json(
+              { error: `Failed to fetch models: ${response.status}` },
+              { status: response.status }
+            );
+          }
+          const data = await response.json();
+          const models = parseOpenAIStyleModels(data);
+          return NextResponse.json({
+            provider: connection.provider,
+            connectionId: connection.id,
+            models,
+          });
+        } catch (error) {
+          console.log(`Error fetching models from ${connection.provider}:`, error.message);
+          return NextResponse.json({ error: "Failed to fetch models" }, { status: 500 });
+        }
+      }
+
+      return NextResponse.json(
+        { error: `Provider ${connection.provider} does not support models listing` },
+        { status: 400 }
+      );
     }
 
     // Config-driven custom resolver path (OAuth refresh, non-OpenAI shape, etc.)

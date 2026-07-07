@@ -51,7 +51,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
           organization: connection.providerSpecificData.organization || "",
         });
       }
-      if (connection.provider === "cloudflare-ai" && connection.providerSpecificData) {
+      if ((connection.provider === "cloudflare-ai" || connection.provider === "snowflake") && connection.providerSpecificData) {
         setCloudflareData({ accountId: connection.providerSpecificData.accountId || "" });
       }
       if (connection.provider === "google-pse") {
@@ -70,7 +70,9 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
 
   const isOAuth = connection?.authType === "oauth";
   const isAzure = connection?.provider === "azure";
-  const isCloudflareAi = connection?.provider === "cloudflare-ai";
+  const ACCOUNT_ID_PROVIDER_DETAILS = ["cloudflare-ai", "snowflake"];
+  const requiresAccountId = ACCOUNT_ID_PROVIDER_DETAILS.includes(connection?.provider);
+  const accountIdProviderLabel = connection?.provider === "snowflake" ? "Snowflake Cortex" : "Cloudflare Workers AI";
   const isGooglePse = isGooglePseProvider(connection?.provider);
   const isCompatible = connection
     ? (isOpenAICompatibleProvider(connection.provider) || isAnthropicCompatibleProvider(connection.provider))
@@ -92,7 +94,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         organization: azureData.organization,
       };
     }
-    if (isCloudflareAi) {
+    if (requiresAccountId) {
       return { accountId: cloudflareData.accountId };
     }
     if (isGooglePse) {
@@ -306,7 +308,20 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
           />
         )}
 
-        {!isCompatible && !isAzure && !isCloudflareAi && (
+        {requiresAccountId && (
+          <div className="bg-sidebar/50 p-4 rounded-lg border border-accent/20">
+            <h3 className="font-semibold mb-3 text-sm">{accountIdProviderLabel}</h3>
+            <Input
+              label="Account ID"
+              value={cloudflareData.accountId}
+              onChange={(e) => setCloudflareData({ ...cloudflareData, accountId: e.target.value })}
+              placeholder={connection?.provider === "snowflake" ? "org-account" : "abc123def456..."}
+              hint={connection?.provider === "snowflake" ? "Your Snowflake account identifier (e.g. org-account)" : "Find your Account ID in the right sidebar of dash.cloudflare.com"}
+            />
+          </div>
+        )}
+
+        {!isCompatible && !isAzure && !requiresAccountId && (
           <div className="flex items-center gap-3">
             <Button onClick={handleTest} variant="secondary" disabled={testing}>
               {testing ? "Testing..." : "Test Connection"}

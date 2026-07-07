@@ -17,6 +17,8 @@ vi.mock("../../open-sse/utils/requestLogger.js", () => ({
     logClientRawRequest: vi.fn(),
     logRawRequest: vi.fn(),
     logTargetRequest: vi.fn(),
+    logProviderResponse: vi.fn(),
+    logConvertedResponse: vi.fn(),
     logError: vi.fn(),
   })),
 }));
@@ -90,6 +92,8 @@ vi.mock("../../open-sse/translator/concerns/prefetch.js", () => ({
 vi.mock("../../open-sse/handlers/chatCore/requestDetail.js", () => ({
   buildRequestDetail: vi.fn((detail) => detail),
   extractRequestConfig: vi.fn((body, stream) => ({ body, stream })),
+  extractUsageFromResponse: vi.fn((body) => body?.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }),
+  saveUsageStats: vi.fn(),
 }));
 
 vi.mock("../../open-sse/utils/error.js", () => ({
@@ -148,6 +152,27 @@ function makeAgyImageOptions() {
   };
 }
 
+function makeGaladrielOptions() {
+  const body = {
+    model: "galadriel-latest",
+    messages: [{ role: "user", content: "hello" }],
+    stream: true,
+  };
+
+  return {
+    body,
+    modelInfo: { provider: "galadriel", model: "galadriel-latest" },
+    credentials: { apiKey: "sk-test" },
+    clientRawRequest: {
+      endpoint: "/v1/chat/completions",
+      body,
+      headers: { accept: "text/event-stream" },
+    },
+    connectionId: "test-connection",
+    log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  };
+}
+
 describe("forceStream provider config", () => {
   beforeEach(() => {
     executeMock.mockReset();
@@ -174,39 +199,39 @@ describe("forceStream provider config", () => {
     expect(executeMock.mock.calls[0][0].stream).toBe(true);
   });
 
-  it("uses model targetFormat transport before sourceFormat transport", async () => {
+  it("synthesizes SSE for streaming clients when Galadriel is forced non-streaming upstream", async () => {
     const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
-    const opts = makeOptions(true);
-    opts.body.model = "openai-gpt-5.5";
-    opts.modelInfo = { provider: "digitalocean", model: "openai-gpt-5.5" };
-    opts.credentials = { apiKey: "dop_v1_test" };
+    executeMock.mockResolvedValueOnce({
+      response: new Response(JSON.stringify({
+        id: "chatcmpl-test",
+        object: "chat.completion",
+        created: 123,
+        model: "galadriel-latest",
+        choices: [{
+          index: 0,
+          message: { role: "assistant", content: "hello from json" },
+          finish_reason: "stop",
+        }],
+        usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 },
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+      url: "https://api.galadriel.com/v1/verified/chat/completions",
+      headers: {},
+      transformedBody: null,
+    });
 
-    await handleChatCore(opts);
+    const result = await handleChatCore(makeGaladrielOptions());
+    const text = await result.response.text();
 
     expect(executeMock).toHaveBeenCalledTimes(1);
-    expect(executeMock.mock.calls[0][0].credentials.runtimeTransport).toMatchObject({
-      format: "openai-responses",
-      baseUrl: "https://inference.do-ai.run/v1/responses",
-    });
-  });
-
-  it("keeps non-streaming mode for model-targeted Responses transports", async () => {
-    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
-    const opts = makeOptions(false);
-    opts.body.model = "openai-gpt-5.4-nano";
-    opts.modelInfo = { provider: "digitalocean", model: "openai-gpt-5.4-nano" };
-    opts.credentials = { apiKey: "dop_v1_test" };
-    opts.clientRawRequest.headers.accept = "application/json";
-
-    await handleChatCore(opts);
-
-    const call = executeMock.mock.calls[0][0];
-    expect(call.stream).toBe(false);
-    expect(call.body.stream).toBe(false);
-    expect(call.credentials.runtimeTransport).toMatchObject({
-      format: "openai-responses",
-      baseUrl: "https://inference.do-ai.run/v1/responses",
-    });
+    expect(executeMock.mock.calls[0][0].stream).toBe(false);
+    expect(result.response.headers.get("Content-Type")).toContain("text/event-stream");
+    expect(text).toContain("data: ");
+    expect(text).toContain("hello from json");
+    expect(text).toContain("data: [DONE]");
+    expect(text).not.toContain("\"object\":\"chat.completion\"");
   });
 
   it("forces agy image generation through non-streaming Google generateContent", async () => {

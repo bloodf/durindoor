@@ -63,7 +63,7 @@ Important rules:
 
 ## Response Translation
 
-For streaming requests, DurinDoor reads provider chunks and emits client-compatible chunks. For non-streaming requests, it normalizes the final JSON response.
+For streaming requests, DurinDoor reads provider chunks and emits client-compatible chunks. For non-streaming requests, it normalizes the final JSON response. Client streaming intent is tracked separately from upstream streaming capability: if a provider must be called without streaming, DurinDoor can still return client-facing SSE by converting the provider's final JSON response into chat completion chunks.
 
 The response layer is responsible for:
 

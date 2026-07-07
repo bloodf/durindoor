@@ -13,6 +13,124 @@ import { decloakToolNames } from "../../utils/claudeCloaking.js";
 import { stripThinkFromResponse } from "../../utils/thinkStripper.js";
 import { openAIResponsesBodyToClaude, openAIResponsesBodyToOpenAI } from "../../translator/response/openai-responses-nonstream.js";
 import { logToolSemantics } from "../../utils/toolSemanticsTrace.js";
+import { SSE_DONE, SSE_HEADERS_CORS } from "../../utils/sseConstants.js";
+import { sseChunk } from "../../utils/sse.js";
+
+function parseToolArguments(value) {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return {};
+  }
+}
+
+function openAICompletionToClaudeMessage(responseBody) {
+  if (!responseBody?.choices?.[0]) return responseBody;
+  const choice = responseBody.choices[0];
+  const message = choice.message || {};
+  const content = [];
+
+  const reasoning = message.reasoning_content || message.provider_specific_fields?.reasoning_content || "";
+  if (reasoning) {
+    content.push({ type: "thinking", thinking: reasoning });
+  }
+  if (typeof message.content === "string" && message.content.length > 0) {
+    content.push({ type: "text", text: message.content });
+  }
+  for (const toolCall of message.tool_calls || []) {
+    const fn = toolCall.function || {};
+    content.push({
+      type: "tool_use",
+      id: toolCall.id || `toolu_${Date.now()}_${content.length}`,
+      name: fn.name || toolCall.name || "",
+      input: parseToolArguments(fn.arguments || toolCall.arguments),
+    });
+  }
+  if (content.length === 0) content.push({ type: "text", text: "" });
+
+  const usage = responseBody.usage || {};
+  return {
+    id: String(responseBody.id || `msg_${Date.now()}`).replace(/^chatcmpl-/, ""),
+    type: "message",
+    role: "assistant",
+    model: responseBody.model || "unknown",
+    content,
+    stop_reason: fromOpenAIFinish(choice.finish_reason, FORMATS.CLAUDE),
+    stop_sequence: null,
+    usage: {
+      input_tokens: usage.prompt_tokens || usage.input_tokens || 0,
+      output_tokens: usage.completion_tokens || usage.output_tokens || 0,
+    },
+  };
+}
+
+function openAICompletionToSSE(responseBody, fallbackModel) {
+  const id = responseBody?.id || `chatcmpl-${Date.now()}`;
+  const created = responseBody?.created || Math.floor(Date.now() / 1000);
+  const model = responseBody?.model || fallbackModel;
+  const choice = responseBody?.choices?.[0] || {};
+  const message = choice.message || {};
+  const chunks = [
+    sseChunk({
+      id,
+      object: "chat.completion.chunk",
+      created,
+      model,
+      choices: [{ index: 0, delta: { role: message.role || "assistant" }, finish_reason: null }],
+    }),
+  ];
+
+  if (message.reasoning_content) {
+    chunks.push(sseChunk({
+      id,
+      object: "chat.completion.chunk",
+      created,
+      model,
+      choices: [{ index: 0, delta: { reasoning_content: message.reasoning_content }, finish_reason: null }],
+    }));
+  }
+
+  if (typeof message.content === "string" && message.content.length > 0) {
+    chunks.push(sseChunk({
+      id,
+      object: "chat.completion.chunk",
+      created,
+      model,
+      choices: [{ index: 0, delta: { content: message.content }, finish_reason: null }],
+    }));
+  }
+
+  if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
+    chunks.push(sseChunk({
+      id,
+      object: "chat.completion.chunk",
+      created,
+      model,
+      choices: [{
+        index: 0,
+        delta: {
+          tool_calls: message.tool_calls.map((toolCall, index) => ({ index, ...toolCall })),
+        },
+        finish_reason: null,
+      }],
+    }));
+  }
+
+  const finalChunk = {
+    id,
+    object: "chat.completion.chunk",
+    created,
+    model,
+    choices: [{ index: 0, delta: {}, finish_reason: choice.finish_reason || "stop" }],
+  };
+  if (responseBody?.usage) finalChunk.usage = responseBody.usage;
+
+  chunks.push(sseChunk(finalChunk));
+  chunks.push(SSE_DONE);
+  return chunks.join("");
+}
 
 /**
  * Translate non-streaming response body from upstream format → client format.
@@ -191,7 +309,7 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
 /**
  * Handle non-streaming response from provider.
  */
-export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, trackDone, appendLog, log }) {
+export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, streamToClient = false, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, trackDone, appendLog }) {
   trackDone();
   const contentType = providerResponse.headers.get("content-type") || "";
   let responseBody;
@@ -314,6 +432,13 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   }, { endpoint: clientRawRequest?.endpoint || null })).catch(err => {
     console.error("[RequestDetail] Failed to save:", err.message);
   });
+
+  if (streamToClient && isOpenAIChatResponse) {
+    return {
+      success: true,
+      response: new Response(openAICompletionToSSE(translatedResponse, model), { headers: SSE_HEADERS_CORS })
+    };
+  }
 
   return {
     success: true,

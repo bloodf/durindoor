@@ -17,14 +17,15 @@ export function getProviderPluginManifestEntry(provider) {
 export function getProviderPluginManifestEntryForModel(model) {
   if (!model) return null;
 
+  const manifest = generateProviderPluginManifest();
+  const exact = manifest.providers.find((provider) =>
+    provider.models.some((candidate) => candidate.id === model)
+  );
+  if (exact) return exact;
+
   const providerPrefix = model.includes("/") ? model.split("/", 1)[0] : "";
   if (providerPrefix) {
-    const prefixed = getProviderPluginManifestEntry(providerPrefix);
-    if (prefixed) return prefixed;
+    return getProviderPluginManifestEntry(providerPrefix);
   }
-
-  const manifest = generateProviderPluginManifest();
-  return manifest.providers.find((provider) =>
-    provider.models.some((candidate) => candidate.id === model)
-  ) || null;
+  return null;
 }

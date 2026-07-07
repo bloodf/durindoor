@@ -16,15 +16,13 @@ import { GrokWebExecutor } from "./grok-web.js";
 import { PerplexityWebExecutor } from "./perplexity-web.js";
 import { OllamaLocalExecutor } from "./ollama-local.js";
 import { CommandCodeExecutor } from "./commandcode.js";
-import { PollinationsExecutor } from "./pollinations.js";
-import { PuterExecutor } from "./puter.js";
-import { TheOldLlmExecutor } from "./theoldllm.js";
 import { XiaomiTokenplanExecutor } from "./xiaomi-tokenplan.js";
 import { MimoFreeExecutor } from "./mimo-free.js";
 import { CodeBuddyExecutor } from "./codebuddy-cn.js";
 import { XaiExecutor } from "./xai.js";
 import { CliproxyapiExecutor } from "./cliproxyapi.js";
 import { GrokCliExecutor } from "./grok-cli.js";
+import { GigaChatExecutor } from "./gigachat.js";
 import { DefaultExecutor } from "./default.js";
 
 const executors = {
@@ -49,10 +47,6 @@ const executors = {
   "perplexity-web": new PerplexityWebExecutor(),
   "ollama-local": new OllamaLocalExecutor(),
   commandcode: new CommandCodeExecutor(),
-  "command-code": new CommandCodeExecutor("command-code"),
-  pollinations: new PollinationsExecutor(),
-  puter: new PuterExecutor(),
-  theoldllm: new TheOldLlmExecutor(),
   "xiaomi-tokenplan": new XiaomiTokenplanExecutor(),
   "mimo-free": new MimoFreeExecutor(),
   mmf: new MimoFreeExecutor(), // Alias for mimo-free
@@ -60,6 +54,7 @@ const executors = {
   xai: new XaiExecutor(),
   cliproxyapi: new CliproxyapiExecutor(),
   "grok-cli": new GrokCliExecutor(),
+  gigachat: new GigaChatExecutor(),
 };
 
 const defaultCache = new Map();
@@ -94,12 +89,10 @@ export { GrokWebExecutor } from "./grok-web.js";
 export { PerplexityWebExecutor } from "./perplexity-web.js";
 export { OllamaLocalExecutor } from "./ollama-local.js";
 export { CommandCodeExecutor } from "./commandcode.js";
-export { PollinationsExecutor } from "./pollinations.js";
-export { PuterExecutor } from "./puter.js";
-export { TheOldLlmExecutor } from "./theoldllm.js";
 export { XiaomiTokenplanExecutor } from "./xiaomi-tokenplan.js";
 export { MimoFreeExecutor } from "./mimo-free.js";
 export { CodeBuddyExecutor } from "./codebuddy-cn.js";
 export { XaiExecutor } from "./xai.js";
 export { CliproxyapiExecutor } from "./cliproxyapi.js";
 export { GrokCliExecutor } from "./grok-cli.js";
+export { GigaChatExecutor } from "./gigachat.js";

@@ -11,7 +11,9 @@ export default {
   category: "apikey",
   authType: "apikey",
   transport: {
-    baseUrl: "https://gigachat.devices.sberbank.ru/api/v1",
+    baseUrl: "https://gigachat.devices.sberbank.ru/api/v1/chat/completions",
+    tokenUrl: "https://ngw.devices.sberbank.ru:9443/api/v2/oauth",
+    tokenScope: "GIGACHAT_API_PERS",
     authHeader: "bearer",
   },
   models: [

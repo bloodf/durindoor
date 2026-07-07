@@ -10,6 +10,8 @@ export default {
   },
   category: "apikey",
   authType: "apikey",
+  // Hidden until the dashboard stores the per-workspace serving endpoint URL.
+  hidden: true,
   transport: {
     baseUrl: "https://adb-0000000000000000.0.azuredatabricks.net/serving-endpoints",
     authHeader: "bearer",

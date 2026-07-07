@@ -31,7 +31,11 @@ const expectedTransports = {
     baseUrl: "https://adb-0000000000000000.0.azuredatabricks.net/serving-endpoints",
     authHeader: "bearer",
   },
-  deepinfra: { baseUrl: "https://api.deepinfra.com/v1/openai/chat/completions", authHeader: "bearer" },
+  deepinfra: {
+    baseUrl: "https://api.deepinfra.com/v1/openai/chat/completions",
+    authHeader: "bearer",
+    thinkingFormat: "openai",
+  },
   dgrid: {
     baseUrl: "https://api.dgrid.ai/v1/chat/completions",
     authHeader: "bearer",
@@ -66,7 +70,12 @@ const expectedTransports = {
     modelsUrl: "https://api.friendli.ai/serverless/v1/models",
   },
   galadriel: { baseUrl: "https://api.galadriel.ai/v1/chat/completions", authHeader: "bearer" },
-  gigachat: { baseUrl: "https://gigachat.devices.sberbank.ru/api/v1", authHeader: "bearer" },
+  gigachat: {
+    baseUrl: "https://gigachat.devices.sberbank.ru/api/v1/chat/completions",
+    tokenUrl: "https://ngw.devices.sberbank.ru:9443/api/v2/oauth",
+    tokenScope: "GIGACHAT_API_PERS",
+    authHeader: "bearer",
+  },
   gitlawb: { baseUrl: "https://opengateway.gitlawb.com/v1/xiaomi-mimo", authHeader: "bearer" },
   glhf: { baseUrl: "https://api.laf.run/v1/chat/completions", authHeader: "bearer" },
 };
@@ -102,6 +111,13 @@ describe("OmniRoute simple/default provider batch B", () => {
       expect(entry.alias).toBe(expectedAliases[id]);
       expect(entry.models.length, `${id} should keep a seed model list`).toBeGreaterThan(0);
     }
+  });
+
+  it("keeps endpoint-scoped providers hidden until connection forms collect endpoint data", () => {
+    const registryById = new Map(REGISTRY.map((entry) => [entry.id, entry]));
+
+    expect(registryById.get("databricks")?.hidden).toBe(true);
+    expect(registryById.get("dify")?.hidden).toBe(true);
   });
 
   it("preserves OmniRoute OpenAI-compatible transport fields at runtime", () => {

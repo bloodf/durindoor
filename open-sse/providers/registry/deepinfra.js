@@ -17,6 +17,7 @@ export default {
     baseUrl: "https://api.deepinfra.com/v1/openai/chat/completions",
     authHeader: "bearer",
     validateUrl: "https://api.deepinfra.com/v1/openai/models",
+    thinkingFormat: "openai",
   },
   models: [
     { id: "anthropic/claude-4-opus", name: "anthropic/claude-4-opus" },

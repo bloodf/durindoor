@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { proxyAwareFetch } from "../../open-sse/utils/proxyFetch.js";
 import { getExecutor, hasSpecializedExecutor } from "../../open-sse/executors/index.js";
 import {
   ZenmuxFreeExecutor,
@@ -19,14 +20,19 @@ import {
 } from "../../open-sse/executors/zenmux-free.js";
 import { PROVIDERS } from "../../open-sse/config/providers.js";
 import { PROVIDER_MODELS, PROVIDER_ID_TO_ALIAS } from "../../open-sse/config/providerModels.js";
+import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
 import { WEB_COOKIE_PROVIDERS } from "../../src/shared/constants/providers.js";
+
+vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
+  proxyAwareFetch: vi.fn((url, options) => global.fetch(url, options)),
+}));
 
 const originalFetch = global.fetch;
 
-function zenmuxSse(chunks) {
+function zenmuxSse(chunks, stopReason = "stop") {
   const body = chunks
     .map((chunk) => `data: ${JSON.stringify({ type: "content_block_delta", delta: { text: chunk } })}\n\n`)
-    .join("") + "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"stop\"}}\n\n";
+    .join("") + `data: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: stopReason } })}\n\n`;
   return new Response(new Blob([body]).stream(), {
     status: 200,
     headers: { "Content-Type": "text/event-stream" },
@@ -39,6 +45,7 @@ async function readText(response) {
 
 beforeEach(() => {
   global.fetch = vi.fn();
+  proxyAwareFetch.mockClear();
 });
 
 afterEach(() => {
@@ -64,6 +71,11 @@ describe("zenmux-free registry", () => {
     expect(PROVIDER_MODELS.zmf.map((model) => model.id)).toContain("deepseek/deepseek-chat");
   });
 
+  it("marks ZenMux models as text-only so clients do not expect tool calls", () => {
+    expect(getCapabilitiesForModel("zenmux-free", "deepseek/deepseek-chat").tools).toBe(false);
+    expect(getCapabilitiesForModel("zmf", "deepseek/deepseek-chat").tools).toBe(false);
+  });
+
   it("uses the specialized executor", () => {
     expect(hasSpecializedExecutor("zenmux-free")).toBe(true);
     expect(getExecutor("zenmux-free")).toBeInstanceOf(ZenmuxFreeExecutor);
@@ -85,7 +97,7 @@ describe("zenmux-free credential helpers", () => {
 });
 
 describe("buildZenmuxAnthropicBody", () => {
-  it("flattens system and last user message into ZenMux's Anthropic message shape", () => {
+  it("preserves earlier user and assistant turns in ZenMux's Anthropic message shape", () => {
     const body = buildZenmuxAnthropicBody({
       messages: [
         { role: "system", content: "Be concise." },
@@ -102,8 +114,19 @@ describe("buildZenmuxAnthropicBody", () => {
       max_tokens: 123,
       stream: true,
       temperature: 0.2,
+      system: "Be concise.",
     });
-    expect(body.messages[0].content[0].text).toBe("Be concise.\n\nnew");
+    expect(body.messages).toEqual([
+      { role: "user", content: [{ type: "text", text: "old" }] },
+      { role: "assistant", content: [{ type: "text", text: "old answer" }] },
+      { role: "user", content: [{ type: "text", text: "new" }] },
+    ]);
+  });
+
+  it("honors modern Chat Completions and Responses output cap aliases", () => {
+    expect(buildZenmuxAnthropicBody({ max_completion_tokens: 7 }).max_tokens).toBe(7);
+    expect(buildZenmuxAnthropicBody({ max_output_tokens: 8 }).max_tokens).toBe(8);
+    expect(buildZenmuxAnthropicBody({ max_tokens: 6, max_completion_tokens: 7 }).max_tokens).toBe(6);
   });
 });
 
@@ -117,6 +140,7 @@ describe("ZenmuxFreeExecutor.execute", () => {
     });
     expect(result.response.status).toBe(401);
     expect(global.fetch).not.toHaveBeenCalled();
+    expect(proxyAwareFetch).not.toHaveBeenCalled();
     expect(await result.response.json()).toMatchObject({
       error: { message: expect.stringContaining("ctoken not found") },
     });
@@ -132,11 +156,31 @@ describe("ZenmuxFreeExecutor.execute", () => {
     });
 
     const [url, options] = global.fetch.mock.calls[0];
+    expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
     expect(url).toContain(`${ZENMUX_FREE_CHAT_URL}?ctoken=tok123`);
     expect(options.headers.Cookie).toBe("foo=1; ctoken=tok123; bar=2");
     expect(options.headers["anthropic-version"]).toBe("2023-06-01");
     expect(JSON.parse(options.body).messages[0].content[0].text).toBe("hi");
     expect(result.transformedBody.model).toBe("deepseek/deepseek-chat");
+  });
+
+  it("passes configured proxy options through the proxy-aware fetch helper", async () => {
+    global.fetch.mockResolvedValueOnce(zenmuxSse(["ok"]));
+    const exec = new ZenmuxFreeExecutor();
+    const proxyOptions = { connectionProxyEnabled: true, connectionProxyUrl: "http://proxy.local:8080" };
+
+    await exec.execute({
+      body: { model: "deepseek/deepseek-chat", messages: [{ role: "user", content: "hi" }] },
+      credentials: { apiKey: "ctoken=tok123" },
+      stream: false,
+      proxyOptions,
+    });
+
+    expect(proxyAwareFetch).toHaveBeenCalledWith(
+      expect.stringContaining(`${ZENMUX_FREE_CHAT_URL}?ctoken=tok123`),
+      expect.objectContaining({ method: "POST" }),
+      proxyOptions,
+    );
   });
 
   it("converts Anthropic SSE into a non-streaming OpenAI chat response", async () => {
@@ -155,7 +199,7 @@ describe("ZenmuxFreeExecutor.execute", () => {
   });
 
   it("converts Anthropic SSE into OpenAI streaming chunks", async () => {
-    global.fetch.mockResolvedValueOnce(zenmuxSse(["hel", "lo"]));
+    global.fetch.mockResolvedValueOnce(zenmuxSse(["hel", "lo"], "max_tokens"));
     const exec = new ZenmuxFreeExecutor();
     const result = await exec.execute({
       body: { model: "deepseek/deepseek-chat", messages: [{ role: "user", content: "hi" }], stream: true },
@@ -167,6 +211,7 @@ describe("ZenmuxFreeExecutor.execute", () => {
     expect(text).toContain('"delta":{"role":"assistant"}');
     expect(text).toContain('"delta":{"content":"hel"}');
     expect(text).toContain('"delta":{"content":"lo"}');
+    expect(text).toContain('"finish_reason":"length"');
     expect(text).toContain("data: [DONE]");
   });
 });

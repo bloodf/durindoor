@@ -2,6 +2,8 @@ import { randomUUID } from "crypto";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { errorResponse } from "../utils/error.js";
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { toOpenAIFinish } from "../translator/concerns/finishReason.js";
 
 export const ZENMUX_FREE_CHAT_URL = "https://zenmux.ai/api/anthropic/v1/messages";
 const USER_AGENT =
@@ -35,6 +37,17 @@ function textFromContent(content) {
     .join("\n");
 }
 
+function messageContentFromOpenAI(content) {
+  const text = textFromContent(content);
+  return [{ type: "text", text }];
+}
+
+function resolveMaxTokens(openAiBody) {
+  const value = openAiBody.max_tokens ?? openAiBody.max_completion_tokens ?? openAiBody.max_output_tokens;
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) && numericValue > 0 ? numericValue : 4096;
+}
+
 export function buildZenmuxAnthropicBody(openAiBody = {}, modelId = "deepseek/deepseek-chat") {
   const messages = Array.isArray(openAiBody.messages) ? openAiBody.messages : [];
   const systemText = messages
@@ -43,17 +56,20 @@ export function buildZenmuxAnthropicBody(openAiBody = {}, modelId = "deepseek/de
     .filter(Boolean)
     .join("\n\n");
   const conversation = messages.filter((message) => message?.role === "user" || message?.role === "assistant");
-  const lastUser = [...conversation].reverse().find((message) => message.role === "user");
-  const userText = textFromContent(lastUser?.content) || "Hello";
-  const text = systemText ? `${systemText}\n\n${userText}` : userText;
-  const maxTokens = Number.isFinite(openAiBody.max_tokens) ? openAiBody.max_tokens : 4096;
+  const anthropicMessages = conversation.map((message) => ({
+    role: message.role,
+    content: messageContentFromOpenAI(message.content),
+  }));
 
   const body = {
     model: modelId,
-    max_tokens: maxTokens,
-    messages: [{ role: "user", content: [{ type: "text", text }] }],
+    max_tokens: resolveMaxTokens(openAiBody),
+    messages: anthropicMessages.length > 0
+      ? anthropicMessages
+      : [{ role: "user", content: [{ type: "text", text: "Hello" }] }],
     stream: true,
   };
+  if (systemText) body.system = systemText;
   if (openAiBody.temperature !== undefined) body.temperature = openAiBody.temperature;
   return body;
 }
@@ -148,7 +164,7 @@ function buildStreamingResponse(upstream, model, cid, created, signal) {
                 created,
                 model,
                 delta: {},
-                finishReason: event.delta.stop_reason,
+                finishReason: toOpenAIFinish(event.delta.stop_reason, "claude"),
               })));
             }
           }
@@ -178,7 +194,7 @@ export class ZenmuxFreeExecutor extends BaseExecutor {
     super("zenmux-free", PROVIDERS["zenmux-free"]);
   }
 
-  async execute({ body, credentials, signal, stream: wantStream }) {
+  async execute({ body, credentials, signal, stream: wantStream, proxyOptions = null }) {
     const rawCookie = normalizeZenmuxCookie(credentials?.apiKey);
     const ctoken = extractZenmuxCtoken(rawCookie);
     if (!ctoken) {
@@ -210,12 +226,12 @@ export class ZenmuxFreeExecutor extends BaseExecutor {
 
     let upstream;
     try {
-      upstream = await fetch(url.toString(), {
+      upstream = await proxyAwareFetch(url.toString(), {
         method: "POST",
         headers,
         body: JSON.stringify(transformedBody),
         signal,
-      });
+      }, proxyOptions);
     } catch (error) {
       return makeErrorResult(502, `ZenMux Free fetch failed: ${error.message || "unknown"}`, body, url.toString());
     }

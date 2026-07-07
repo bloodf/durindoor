@@ -47,6 +47,8 @@ Web cookie providers bridge browser-session services that do not expose stable A
 
 DurinDoor converts OpenAI chat requests to ZenMux's Anthropic-compatible message endpoint and converts the upstream Anthropic SSE stream back to OpenAI chat completions. The provider is exposed under alias `zmf`.
 
+ZenMux Free preserves prior user and assistant turns when translating chat history, maps `max_tokens`, `max_completion_tokens`, and `max_output_tokens` to the Anthropic `max_tokens` cap, and normalizes Anthropic streaming stop reasons back to OpenAI finish reasons. Saved ZenMux connections use the configured per-connection proxy for both chat requests and dashboard health checks. ZenMux Free models are advertised as text-only for tool calling because this web endpoint does not return structured `tool_use` responses.
+
 ### Blocked OmniRoute Web-Session Providers
 
 The following OmniRoute providers were inspected for this branch but are not exposed at runtime because this JS-era DurinDoor branch does not include the required browser-session subsystems, credential helpers, or endpoint handlers:

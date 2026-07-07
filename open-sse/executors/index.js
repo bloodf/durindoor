@@ -27,6 +27,11 @@ import { TraeExecutor } from "./trae.js";
 import { DevinCliExecutor } from "./devin-cli.js";
 import { WindsurfExecutor } from "./windsurf.js";
 import { DefaultExecutor } from "./default.js";
+import {
+  UnsupportedOmniRouteWebSessionExecutor,
+  BLOCKED_OMNIROUTE_PROVIDERS,
+  BLOCKED_OMNIROUTE_PROVIDER_ALIASES,
+} from "./unsupported-websession.js";
 
 const executors = {
   antigravity: new AntigravityExecutor(),
@@ -61,6 +66,18 @@ const executors = {
   trae: new TraeExecutor(),
   "devin-cli": new DevinCliExecutor(),
   windsurf: new WindsurfExecutor(),
+  ...Object.fromEntries(
+    Object.keys(BLOCKED_OMNIROUTE_PROVIDERS).map((provider) => [
+      provider,
+      new UnsupportedOmniRouteWebSessionExecutor(provider),
+    ]),
+  ),
+  ...Object.fromEntries(
+    Object.entries(BLOCKED_OMNIROUTE_PROVIDER_ALIASES).map(([alias, provider]) => [
+      alias,
+      new UnsupportedOmniRouteWebSessionExecutor(provider),
+    ]),
+  ),
 };
 
 const defaultCache = new Map();
@@ -105,3 +122,8 @@ export { GitlabExecutor } from "./gitlab.js";
 export { TraeExecutor } from "./trae.js";
 export { DevinCliExecutor } from "./devin-cli.js";
 export { WindsurfExecutor } from "./windsurf.js";
+export {
+  UnsupportedOmniRouteWebSessionExecutor,
+  BLOCKED_OMNIROUTE_PROVIDERS,
+  BLOCKED_OMNIROUTE_PROVIDER_ALIASES,
+} from "./unsupported-websession.js";

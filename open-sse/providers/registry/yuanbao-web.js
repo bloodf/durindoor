@@ -1,0 +1,33 @@
+export default {
+  id: "yuanbao-web",
+  priority: 246,
+  alias: "ybw",
+  uiAlias: "ybw",
+  display: {
+    name: "Tencent Yuanbao Web",
+    icon: "chat",
+    color: "#2563EB",
+    textIcon: "YB",
+    website: "https://yuanbao.tencent.com",
+  },
+  category: "webCookie",
+  authType: "cookie",
+  authHint: "Paste the Yuanbao cookie session from yuanbao.tencent.com.",
+  serviceKinds: ["llm"],
+  transport: {
+    baseUrl: "https://yuanbao.tencent.com/api/chat",
+    format: "openai",
+    executor: "yuanbao-web",
+    authType: "cookie",
+  },
+  models: [
+    { id: "deepseek-v3", name: "DeepSeek V3 (via Yuanbao)", toolCalling: false },
+    { id: "deepseek-r1", name: "DeepSeek R1 (via Yuanbao)", supportsReasoning: true },
+    { id: "hunyuan", name: "Hunyuan (via Yuanbao)" },
+    { id: "hunyuan-t1", name: "Hunyuan T1 (via Yuanbao)", supportsReasoning: true },
+    { id: "deepseek-v3-search", name: "DeepSeek V3 + Web Search (via Yuanbao)" },
+    { id: "deepseek-r1-search", name: "DeepSeek R1 + Web Search (via Yuanbao)", supportsReasoning: true },
+    { id: "hunyuan-search", name: "Hunyuan + Web Search (via Yuanbao)" },
+    { id: "hunyuan-t1-search", name: "Hunyuan T1 + Web Search (via Yuanbao)", supportsReasoning: true },
+  ],
+};

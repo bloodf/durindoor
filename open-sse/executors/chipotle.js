@@ -41,13 +41,15 @@ export function extractAmeliaText(body) {
   }
 }
 
-class AmeliaClient {
-  constructor() {
+export class AmeliaClient {
+  constructor({ webSocketFactory, connectTimeoutMs } = {}) {
     this.session = null;
     this.ws = null;
     this.stompConnected = false;
     this.messageCallbacks = new Map();
     this.connectPromise = null;
+    this.webSocketFactory = webSocketFactory;
+    this.connectTimeoutMs = Math.max(1, typeof connectTimeoutMs === "number" ? connectTimeoutMs : 15_000);
   }
 
   async init() {
@@ -84,14 +86,16 @@ class AmeliaClient {
     const { WebSocket } = await import("ws");
     const wsUrl = `wss://amelia.chipotle.com/Amelia/api/sock/${randomServerId()}/${randomSessionId()}/websocket`;
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error("WS connect timeout")), 15_000);
-      const ws = new WebSocket(wsUrl, {
-        headers: {
-          Cookie: this.session.cookieHeader,
-          Origin: BASE_URL,
-          "User-Agent": "Mozilla/5.0 AppleWebKit/537.36",
-        },
-      });
+      const headers = {
+        Cookie: this.session.cookieHeader,
+        Origin: BASE_URL,
+        "User-Agent": "Mozilla/5.0 AppleWebKit/537.36",
+      };
+      const ws = this.webSocketFactory ? this.webSocketFactory(wsUrl, { headers }) : new WebSocket(wsUrl, { headers });
+      const timeout = setTimeout(() => {
+        ws.close();
+        reject(new Error("WS connect timeout"));
+      }, this.connectTimeoutMs);
       ws.on("message", (raw) => this.handleSockJSFrame(raw.toString(), resolve, reject, timeout));
       ws.on("error", (err) => {
         clearTimeout(timeout);

@@ -487,4 +487,23 @@ describe("OmniRoute specialized provider ports", () => {
     });
     expect(converted.additionalModelRequestFields).toEqual({ thinking: { type: "enabled", budget_tokens: 4096 } });
   });
+
+  it("closes Chipotle WebSocket on connect timeout", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const close = vi.fn();
+    const ws = {
+      on: vi.fn(() => {}),
+      close,
+    };
+    const client = new AmeliaClient({ webSocketFactory: () => ws, connectTimeoutMs: 50 });
+    client.session = { cookieHeader: "session=abc", csrfToken: "token", userId: "u1" };
+    try {
+      const connectPromise = client.connect();
+      await vi.advanceTimersByTimeAsync(100);
+      await expect(connectPromise).rejects.toThrow("WS connect timeout");
+      expect(close).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

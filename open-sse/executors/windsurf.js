@@ -414,7 +414,7 @@ export class WindsurfExecutor extends BaseExecutor {
     }, proxyOptions);
 
     if (!upstream.ok) {
-      return { response: upstream, url, headers, transformedBody: protoPayload };
+      return { response: upstream, url, headers, transformedBody: null };
     }
 
     const response = stream === false
@@ -425,7 +425,7 @@ export class WindsurfExecutor extends BaseExecutor {
       response,
       url,
       headers,
-      transformedBody: protoPayload,
+      transformedBody: null,
     };
   }
 

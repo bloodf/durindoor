@@ -661,25 +661,6 @@ exports[`GOLDEN buildHeaders (default executor providers) > iflytek → headers 
 }
 `;
 
-exports[`GOLDEN buildHeaders (default executor providers) > inclusionai → headers (apiKey / oauth) 1`] = `
-{
-  "apiKey": {
-    "Accept": "text/event-stream",
-    "Authorization": "Bearer <TOK>",
-    "Content-Type": "application/json",
-  },
-  "nonStream": {
-    "Authorization": "Bearer <TOK>",
-    "Content-Type": "application/json",
-  },
-  "oauth": {
-    "Accept": "text/event-stream",
-    "Authorization": "Bearer <TOK>",
-    "Content-Type": "application/json",
-  },
-}
-`;
-
 exports[`GOLDEN buildHeaders (default executor providers) > inference-net → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -855,25 +836,6 @@ exports[`GOLDEN buildHeaders (default executor providers) > kimi-coding → head
     "X-Msh-Platform": "9router",
     "X-Msh-Version": "2.1.2",
     "x-api-key": "<CRED>",
-  },
-}
-`;
-
-exports[`GOLDEN buildHeaders (default executor providers) > kluster → headers (apiKey / oauth) 1`] = `
-{
-  "apiKey": {
-    "Accept": "text/event-stream",
-    "Authorization": "Bearer <TOK>",
-    "Content-Type": "application/json",
-  },
-  "nonStream": {
-    "Authorization": "Bearer <TOK>",
-    "Content-Type": "application/json",
-  },
-  "oauth": {
-    "Accept": "text/event-stream",
-    "Authorization": "Bearer <TOK>",
-    "Content-Type": "application/json",
   },
 }
 `;
@@ -1567,8 +1529,8 @@ exports[`GOLDEN buildUrl (default executor providers) > haiper → url (stream +
 
 exports[`GOLDEN buildUrl (default executor providers) > heroku → url (stream + non-stream) 1`] = `
 {
-  "nonStream": "https://us.inference.heroku.com/v1/chat/completions",
-  "stream": "https://us.inference.heroku.com/v1/chat/completions",
+  "nonStream": "https://custom.example.com/v1/chat/completions",
+  "stream": "https://custom.example.com/v1/chat/completions",
 }
 `;
 
@@ -1583,13 +1545,6 @@ exports[`GOLDEN buildUrl (default executor providers) > iflytek → url (stream 
 {
   "nonStream": "https://spark-api.xf-yun.com/v1/chat/completions",
   "stream": "https://spark-api.xf-yun.com/v1/chat/completions",
-}
-`;
-
-exports[`GOLDEN buildUrl (default executor providers) > inclusionai → url (stream + non-stream) 1`] = `
-{
-  "nonStream": "https://api.inclusionai.tech/v1/chat/completions",
-  "stream": "https://api.inclusionai.tech/v1/chat/completions",
 }
 `;
 
@@ -1646,13 +1601,6 @@ exports[`GOLDEN buildUrl (default executor providers) > kimi-coding → url (str
 {
   "nonStream": "https://api.kimi.com/coding/v1/messages?beta=true",
   "stream": "https://api.kimi.com/coding/v1/messages?beta=true",
-}
-`;
-
-exports[`GOLDEN buildUrl (default executor providers) > kluster → url (stream + non-stream) 1`] = `
-{
-  "nonStream": "https://api.kluster.ai/v1/chat/completions",
-  "stream": "https://api.kluster.ai/v1/chat/completions",
 }
 `;
 

@@ -9,14 +9,14 @@ export default {
     textIcon: "HC",
     website: "https://ai.hackclub.com",
   },
-  category: "free",
-  authType: "optional",
-  noAuth: true,
+  // Requires a saved Bearer API key — NOT no-auth (PR #45 review). Hack Club's
+  // proxy gates by key even though the underlying models are free to Hack Clubbers.
+  category: "apikey",
+  authType: "apikey",
   transport: {
     baseUrl: "https://ai.hackclub.com/proxy/v1/chat/completions",
     validateUrl: "https://ai.hackclub.com/proxy/v1/models",
     authHeader: "bearer",
-    noAuth: true,
   },
   models: [
     { id: "meta-llama/llama-3.3-70b-instruct", name: "Llama 3.3 70B" },

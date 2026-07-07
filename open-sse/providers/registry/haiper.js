@@ -16,10 +16,8 @@ export default {
     authHeader: "HAIPER_KEY",
     auth: { combined: true, header: "HAIPER_KEY", scheme: "raw" },
   },
-  models: [
-    { id: "gen2", name: "Gen 2 Video", kind: "video" },
-    { id: "gen2-image", name: "Gen 2 Image", kind: "image" },
-  ],
+  models: [],
+  // Video/image generation only — never expose as LLM/chat models (PR #45 review).
   // Hidden until image/video routes have Haiper adapters.
   serviceKinds: [],
   hiddenKinds: ["image", "video"],

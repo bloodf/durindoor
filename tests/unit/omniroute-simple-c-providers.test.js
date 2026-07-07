@@ -14,11 +14,9 @@ const ownedProviderIds = [
   "heroku",
   "ideogram",
   "iflytek",
-  "inclusionai",
   "inference-net",
   "kie",
   "kilo-gateway",
-  "kluster",
   "lambda-ai",
   "leonardo",
   "liquid",
@@ -29,16 +27,19 @@ const ownedProviderIds = [
   "meta-llama",
 ];
 
+// inclusionai/kluster were removed from the registry (PR #45 review): both
+// upstream endpoints are discontinued/changed (InclusionAI moved off
+// api.inclusionai.tech; Kluster sunset its inference API in 2025).
+const removedProviderIds = ["inclusionai", "kluster"];
+
 const preExistingTailProviderIds = ["nube", "kenari"];
 
 const expectedShape = {
   hackclub: {
     alias: "hc",
-    authType: "optional",
-    noAuth: true,
+    authType: "apikey",
     baseUrl: "https://ai.hackclub.com/proxy/v1/chat/completions",
     authHeader: "bearer",
-    transportNoAuth: true,
     modelsFetcher: "https://ai.hackclub.com/proxy/v1/models",
     passthroughModels: true,
     defaultContextLength: 128000,
@@ -52,7 +53,8 @@ const expectedShape = {
     runtimeAuth: { header: "HAIPER_KEY", scheme: "raw" },
     serviceKinds: [],
     hiddenKinds: ["image", "video"],
-    modelIds: ["gen2", "gen2-image"],
+    // Video/image models never expose as LLM/chat models (PR #45 review).
+    modelCount: 0,
   },
   heroku: {
     alias: "heroku",
@@ -77,13 +79,6 @@ const expectedShape = {
     authHeader: "bearer",
     modelIds: ["4.0Ultra", "pro-128k"],
   },
-  inclusionai: {
-    alias: "inclusionai",
-    authType: "apikey",
-    baseUrl: "https://api.inclusionai.tech/v1/chat/completions",
-    authHeader: "bearer",
-    modelIds: ["inclusion-model"],
-  },
   "inference-net": {
     alias: "inet",
     authType: "apikey",
@@ -107,13 +102,6 @@ const expectedShape = {
     modelsFetcher: "https://api.kilo.ai/api/gateway/models",
     passthroughModels: true,
     modelIds: ["kilo-auto/frontier", "arcee-ai/trinity-large-preview:free"],
-  },
-  kluster: {
-    alias: "kluster",
-    authType: "apikey",
-    baseUrl: "https://api.kluster.ai/v1/chat/completions",
-    authHeader: "bearer",
-    modelIds: ["auto"],
   },
   "lambda-ai": {
     alias: "lambda",
@@ -262,6 +250,9 @@ describe("OmniRoute simple/default provider batch C", () => {
       for (const modelId of expected.modelIds || []) {
         expect(modelIds, `${id} model ${modelId}`).toContain(modelId);
       }
+      if ("modelCount" in expected) {
+        expect(provider.models.length, `${id} model count`).toBe(expected.modelCount);
+      }
     }
   });
 
@@ -269,7 +260,6 @@ describe("OmniRoute simple/default provider batch C", () => {
     const copiedIcons = [
       "heroku.png",
       "iflytek.svg",
-      "inclusionai.svg",
       "kie.png",
       "kilo-gateway.svg",
       "liquid.svg",
@@ -285,10 +275,18 @@ describe("OmniRoute simple/default provider batch C", () => {
     }
   });
 
-  it("wires Hack Club into the no-auth free provider path", () => {
-    expect(FREE_PROVIDERS.hackclub?.noAuth).toBe(true);
-    expect(AI_PROVIDERS.hackclub?.authType).toBe("optional");
-    expect(PROVIDERS.hackclub?.noAuth).toBe(true);
+  it("removes discontinued providers from the registry (PR #45 review)", () => {
+    const ids = REGISTRY.map((provider) => provider.id);
+    for (const id of removedProviderIds) {
+      expect(ids, `${id} should no longer be registered`).not.toContain(id);
+      expect(PROVIDERS[id], `${id} should not build a transport`).toBeUndefined();
+    }
+  });
+
+  it("requires saved credentials for Hack Club (no longer no-auth)", () => {
+    expect(FREE_PROVIDERS.hackclub).toBeUndefined();
+    expect(AI_PROVIDERS.hackclub?.authType).toBe("apikey");
+    expect(PROVIDERS.hackclub?.noAuth).not.toBe(true);
   });
 
   it("maps transportless media provider IDs to static model aliases", () => {

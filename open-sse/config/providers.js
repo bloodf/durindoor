@@ -17,3 +17,16 @@ export function resolveXiaomiTokenplanBaseUrl(credentials) {
   const region = credentials?.providerSpecificData?.region;
   return XIAOMI_TOKENPLAN_REGIONS[region] || XIAOMI_TOKENPLAN_REGIONS[XIAOMI_TOKENPLAN_DEFAULT_REGION];
 }
+
+export const HEROKU_DEFAULT_BASE_URL = PROVIDERS.heroku?.baseUrl?.replace(/\/chat\/completions$/, "") || "https://us.inference.heroku.com/v1";
+
+// Heroku provisions both INFERENCE_KEY and INFERENCE_URL per app; users on a
+// region/model other than the default us.inference.heroku.com endpoint supply
+// their own INFERENCE_URL via providerSpecificData.baseUrl. Accept either the
+// bare API root or a full endpoint URL (strip /chat/completions, /models).
+export function resolveHerokuBaseUrl(credentials) {
+  const psd = credentials?.providerSpecificData || {};
+  const raw = (psd.inferenceUrl || psd.baseUrl)?.trim();
+  if (!raw) return HEROKU_DEFAULT_BASE_URL;
+  return raw.replace(/\/$/, "").replace(/\/(chat\/completions|models)$/, "");
+}

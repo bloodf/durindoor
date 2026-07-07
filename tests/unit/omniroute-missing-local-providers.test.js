@@ -5,6 +5,7 @@ import REGISTRY from "../../open-sse/providers/registry/index.js";
 import { DefaultExecutor } from "../../open-sse/executors/default.js";
 import { OpenCodeZenExecutor } from "../../open-sse/executors/opencode-zen.js";
 import { getModelTargetFormat, getModelStrip, PROVIDER_ID_TO_ALIAS, PROVIDER_MODELS } from "../../open-sse/config/providerModels.js";
+import { PROVIDERS } from "../../open-sse/providers/index.js";
 
 const repoRoot = resolve(import.meta.dirname, "../..");
 
@@ -73,6 +74,7 @@ describe("OmniRoute Batch G local/router provider parity", () => {
       expect(byId[id].noAuth).toBe(true);
       expect(byId[id].passthroughModels).toBe(true);
       expect(byId[id].thinkingFormat).toBe("openai");
+      expect(PROVIDERS[id].thinkingFormat).toBe("openai");
       expect(new DefaultExecutor(id).buildUrl("custom", true, 0, {})).toBe(`${baseUrl}/chat/completions`);
       expect(new DefaultExecutor(id).buildUrl("custom", true, 0, {
         providerSpecificData: { baseUrl: "http://host.docker.internal:9000/v1/" },

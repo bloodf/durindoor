@@ -9,10 +9,12 @@ import { buildTtsProviderModels } from "../config/ttsModels.js";
 const OAUTH_INJECT_FIELDS = ["clientId", "clientSecret", "tokenUrl"];
 
 // transport: re-apply shared default (format:"openai") + inject oauth-canonical fields
+// + copy registry-level thinkingFormat so applyThinking() sees it on PROVIDERS[provider].
 function buildTransport(entry, oauth) {
   const transport = entry.transport;
   const t = { ...transport };
   if (!t.format) t.format = PROVIDER_DEFAULTS.format;
+  if (entry.thinkingFormat !== undefined) t.thinkingFormat = entry.thinkingFormat;
   if (oauth) {
     for (const f of OAUTH_INJECT_FIELDS) {
       if (t[f] === undefined && oauth[f] !== undefined) t[f] = oauth[f];

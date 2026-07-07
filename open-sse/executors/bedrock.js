@@ -236,6 +236,8 @@ export function openAIToBedrockConverse(model, body) {
 function convertStopReason(reason) {
   if (reason === "tool_use") return "tool_calls";
   if (reason === "max_tokens") return "length";
+  if (reason === "content_filtered" || reason === "guardrail_intervened") return "content_filter";
+  if (reason === "model_context_window_exceeded") return "length";
   return "stop";
 }
 

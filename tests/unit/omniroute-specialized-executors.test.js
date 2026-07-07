@@ -202,6 +202,33 @@ describe("OmniRoute specialized provider ports", () => {
     expect(body.usage.total_tokens).toBe(9);
   });
 
+  it("maps Bedrock content filter and context limit stops to OpenAI finish reasons", async () => {
+    const makeExecutor = (stopReason) =>
+      new BedrockExecutor(() => ({
+        send: vi.fn(async () => ({
+          output: { message: { content: [{ text: "blocked" }] } },
+          stopReason,
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        })),
+      }));
+
+    const cases = [
+      { reason: "content_filtered", expected: "content_filter" },
+      { reason: "guardrail_intervened", expected: "content_filter" },
+      { reason: "model_context_window_exceeded", expected: "length" },
+    ];
+    for (const { reason, expected } of cases) {
+      const executor = makeExecutor(reason);
+      const { response } = await executor.execute({
+        model: "anthropic.claude-sonnet-4-6",
+        body: { messages: [{ role: "user", content: "hi" }] },
+        stream: false,
+        credentials: { apiKey: "k", providerSpecificData: { region: "us-east-1" } },
+      });
+      expect((await response.json()).choices[0].finish_reason).toBe(expected);
+    }
+  });
+
   it("parses Chipotle Amelia STOMP messages and exposes a no-auth executor", async () => {
     const frame = 'MESSAGE\ndestination:/user/queue/session\n\n{"type":"message","body":{"text":"burrito"}}\0';
     const fakeClient = { chat: vi.fn(async () => "pepper reply") };

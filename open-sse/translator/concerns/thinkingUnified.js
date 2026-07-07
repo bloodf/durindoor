@@ -20,6 +20,13 @@ const FORMAT_TO_NATIVE = {
   kiro: "kiro",
 };
 
+// Strip a trailing thinking suffix "model(value)" → "model" (no-op when absent).
+export function stripThinkingSuffix(model) {
+  if (typeof model !== "string") return model;
+  const m = model.match(/^(.*)\([^()]+\)\s*$/);
+  return m ? m[1].trim() : model;
+}
+
 // Parse model-name suffix "model(value)" → { cleanModel, override }.
 // value: level name (high) | number (8192) | auto | none. null override when absent.
 export function parseSuffix(model) {

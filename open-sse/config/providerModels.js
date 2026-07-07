@@ -63,14 +63,19 @@ export function getModelType(aliasOrId, modelId) {
 }
 
 export function getModelUpstreamId(aliasOrId, modelId) {
+  // Split off thinking suffix "(level)" so lookup hits the base id; re-append it to
+  // the result so downstream applyThinking still sees the suffix (body.model is stripped separately).
+  const sufMatch = typeof modelId === "string" ? modelId.match(/\([^()]+\)\s*$/) : null;
+  const suffix = sufMatch ? sufMatch[0] : "";
+  const baseId = suffix ? modelId.slice(0, sufMatch.index).trim() : modelId;
   const models = PROVIDER_MODELS[aliasOrId];
-  const found = findModel(models, modelId, aliasOrId);
-  if (found?.upstreamModelId) return found.upstreamModelId;
-  if (found?.id) return found.id;
-  if (aliasOrId === "cx" && typeof modelId === "string" && modelId.endsWith(CODEX_REVIEW_SUFFIX)) {
-    return modelId.slice(0, -CODEX_REVIEW_SUFFIX.length);
+  const found = findModel(models, baseId, aliasOrId);
+  if (found?.upstreamModelId) return found.upstreamModelId + suffix;
+  if (found?.id) return found.id + suffix;
+  if (aliasOrId === "cx" && typeof baseId === "string" && baseId.endsWith(CODEX_REVIEW_SUFFIX)) {
+    return baseId.slice(0, -CODEX_REVIEW_SUFFIX.length) + suffix;
   }
-  return modelId;
+  return baseId + suffix;
 }
 
 export function getModelQuotaFamily(aliasOrId, modelId) {

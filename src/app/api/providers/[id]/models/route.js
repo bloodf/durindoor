@@ -231,6 +231,7 @@ const PROVIDER_MODELS_CONFIG = {
   byteplus: createOpenAIModelsConfig("https://ark.ap-southeast.bytepluses.com/api/coding/v3/models"),
 
   // OpenAI-compatible API key providers
+  hcnsec: createOpenAIModelsConfig("https://api.hcnsec.cn/v1/models"),
   deepseek: createOpenAIModelsConfig("https://api.deepseek.com/models"),
   groq: createOpenAIModelsConfig("https://api.groq.com/openai/v1/models"),
   xai: createOpenAIModelsConfig("https://api.x.ai/v1/models"),

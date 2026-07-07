@@ -6,6 +6,9 @@ export const KNOWN_OFFENDING_FIELDS = [
   "chat_template",
   "reasoning_content",
   "context_management",
+  "client_metadata",
+  "thinking",
+  "reasoning",
 ];
 
 export function findOffendingField(errorText = "") {

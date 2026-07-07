@@ -33,7 +33,7 @@ describe("OmniRoute OAuth/session provider slice", () => {
 
   it("registers OAuth dashboard health probes before exposing agy and grok-cli", async () => {
     const { OAUTH_TEST_CONFIG } = await import("../../src/app/api/providers/[id]/test/testUtils.js");
-    const { PROVIDER_MODELS_CONFIG } = await import("../../src/app/api/providers/[id]/models/route.js");
+    const { PROVIDER_MODELS_CONFIG } = await import("../../src/app/api/providers/[id]/models/modelsConfig.js");
 
     expect(OAUTH_TEST_CONFIG.agy).toMatchObject({
       url: "https://www.googleapis.com/oauth2/v1/userinfo?alt=json",

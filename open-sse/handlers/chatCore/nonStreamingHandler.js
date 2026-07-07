@@ -166,7 +166,11 @@ function openAICompletionToClientSSE(responseBody, fallbackModel, sourceFormat) 
     const translated = translateResponse(FORMATS.OPENAI, sourceFormat, chunk, state);
     for (const item of translated) frames.push(formatSSE(item, sourceFormat));
   }
-  frames.push(formatSSE({ done: true }, sourceFormat));
+  // Anthropic Messages streaming already emits event: message_stop; a trailing
+  // OpenAI-style [DONE] sentinel can confuse strict Claude clients.
+  if (sourceFormat !== FORMATS.CLAUDE) {
+    frames.push(formatSSE({ done: true }, sourceFormat));
+  }
   return frames.join("");
 }
 
@@ -423,6 +427,13 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     openAIResponse.usage = addBufferToUsage(openAIResponse.usage);
   }
 
+  // Synthesize SSE from the OpenAI-normalized intermediate BEFORE we filter the
+  // usage shape to the client format or strip reasoning_content. Filtering
+  // usage for Claude/Responses would zero out OpenAI-style token counts, and
+  // stripping reasoning_content would drop thinking deltas in the stream.
+  const isOpenAIIntermediate = Array.isArray(openAIResponse?.choices);
+  const sseResponseBody = streamToClient && isOpenAIIntermediate ? structuredClone(openAIResponse) : null;
+
   // Strip reasoning_content only when content is non-empty AND the client
   // requested OpenAI Chat format. For non-OpenAI clients (Claude, Gemini,
   // Ollama, etc.) keep reasoning_content so projectCompletionToClientFormat
@@ -480,7 +491,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   if (streamToClient && isOpenAIChatResponse) {
     return {
       success: true,
-      response: new Response(openAICompletionToClientSSE(translatedResponse, model, sourceFormat), { headers: SSE_HEADERS_CORS })
+      response: new Response(openAICompletionToClientSSE(sseResponseBody, model, sourceFormat), { headers: SSE_HEADERS_CORS })
     };
   }
 

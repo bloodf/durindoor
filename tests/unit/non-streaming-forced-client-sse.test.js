@@ -15,10 +15,11 @@ vi.mock("@/lib/usageDb.js", () => ({
 }));
 
 function makeProviderResponse(body) {
+  const clone = JSON.parse(JSON.stringify(body));
   return {
     headers: new Map([["content-type", "application/json"]]),
-    text: () => Promise.resolve(JSON.stringify(body)),
-    json: () => Promise.resolve(body),
+    text: () => Promise.resolve(JSON.stringify(clone)),
+    json: () => Promise.resolve(clone),
     status: 200,
     statusText: "OK",
   };
@@ -77,6 +78,63 @@ describe("handleNonStreamingResponse: synthetic SSE respects client format", () 
     expect(text).toContain("event: message_stop");
     expect(text).not.toContain("chat.completion.chunk");
     expect(text).toContain("hello");
+  });
+
+  it("preserves OpenAI usage in synthesized Claude message_delta", async () => {
+    const result = await handleNonStreamingResponse(baseOptions({
+      providerResponse: makeProviderResponse(openaiCompletion),
+      sourceFormat: FORMATS.CLAUDE,
+      targetFormat: FORMATS.OPENAI,
+    }));
+    const text = await result.response.text();
+
+    const messageDelta = text.split("\n\n")
+      .map(frame => frame.replace(/^event: message_delta\ndata: /, ""))
+      .find(line => line.startsWith("{"));
+    expect(messageDelta).toBeDefined();
+    const parsed = JSON.parse(messageDelta);
+    expect(parsed.delta).toBeDefined();
+    expect(parsed.usage).toEqual({ input_tokens: 2, output_tokens: 3 });
+  });
+
+  it("omits OpenAI-style [DONE] sentinel for Claude clients", async () => {
+    const result = await handleNonStreamingResponse(baseOptions({
+      providerResponse: makeProviderResponse(openaiCompletion),
+      sourceFormat: FORMATS.CLAUDE,
+      targetFormat: FORMATS.OPENAI,
+    }));
+    const text = await result.response.text();
+
+    expect(text).toContain("event: message_stop");
+    expect(text).not.toContain("data: [DONE]");
+  });
+
+  it("preserves reasoning content when synthesizing Claude SSE", async () => {
+    const reasoningCompletion = {
+      ...openaiCompletion,
+      choices: [{
+        index: 0,
+        message: {
+          role: "assistant",
+          reasoning_content: "I think therefore I am",
+          content: "therefore I am",
+        },
+        finish_reason: "stop",
+      }],
+      usage: { prompt_tokens: 4, completion_tokens: 6, total_tokens: 10 },
+    };
+    const result = await handleNonStreamingResponse(baseOptions({
+      providerResponse: makeProviderResponse(reasoningCompletion),
+      sourceFormat: FORMATS.CLAUDE,
+      targetFormat: FORMATS.OPENAI,
+    }));
+    const text = await result.response.text();
+
+    expect(text).toContain("event: content_block_start");
+    expect(text).toContain("thinking_delta");
+    expect(text).toContain("I think therefore I am");
+    expect(text).toContain("event: content_block_delta");
+    expect(text).toContain("therefore I am");
   });
 
   it("still returns the client-shaped Claude JSON body (not SSE) for a real non-streaming request", async () => {

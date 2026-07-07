@@ -6,6 +6,7 @@ import { resolveOllamaLocalHost, resolveXiaomiTokenplanBaseUrl, PROVIDERS } from
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
 import { buildZenmuxAnthropicBody, extractZenmuxCtoken, normalizeZenmuxCookie, ZENMUX_FREE_CHAT_URL } from "open-sse/executors/zenmux-free.js";
 import { normalizeProviderId } from "@/lib/providerNormalization";
+import { isRedactedToken, isStructuredPathOnlyCredential, isStructuredWsUrlCredential } from "open-sse/executors/copilot-m365-connection.js";
 
 function applyConfiguredAuthHeader(headers, cfg, apiKey) {
   const auth = cfg?.auth;
@@ -667,6 +668,62 @@ export async function POST(request) {
           } else {
             isValid = true;
           }
+          break;
+        }
+
+        case "copilot-web": {
+          const credential = String(apiKey || "").trim();
+          const token =
+            credential.match(/access_token=([^;]+)/)?.[1] ||
+            credential.match(/[Bb]earer\s+(.+)/)?.[1] ||
+            credential;
+          if (!token) {
+            isValid = false;
+            error = "Paste your access_token from copilot.microsoft.com";
+            break;
+          }
+          const res = await fetch("https://copilot.microsoft.com/c/api/start", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+              Origin: "https://copilot.microsoft.com",
+              Referer: "https://copilot.microsoft.com/",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              timeZone: "America/New_York",
+              startNewConversation: true,
+              teenSupportEnabled: false,
+            }),
+          });
+          if (res.status === 401 || res.status === 403) {
+            isValid = false;
+            error = "Invalid or expired access_token from copilot.microsoft.com";
+          } else {
+            isValid = true;
+          }
+          break;
+        }
+
+        case "copilot-m365-web": {
+          const credential = String(apiKey || "").trim();
+          const structuredAccessTokenMatch = credential.match(/(^|[?&;\s])access_token=([^;&\s]*)/);
+          const structuredAccessToken = structuredAccessTokenMatch?.[2] ?? "";
+          const hasEmptyOrRedactedAccessToken = structuredAccessTokenMatch && (!structuredAccessToken || isRedactedToken(structuredAccessToken));
+          const hasAccessToken = (structuredAccessTokenMatch && structuredAccessToken && !isRedactedToken(structuredAccessToken)) || (
+            credential &&
+            !credential.includes("access_token=") &&
+            !isStructuredPathOnlyCredential(credential) &&
+            !isStructuredWsUrlCredential(credential)
+          );
+          const hasChathubPath =
+            /(^|[;\s])(?:chathubPath|userTenant)=([^;@\s]+@[^;\s]+)/.test(credential) ||
+            /^wss:\/\/substrate\.office\.com\/m365Copilot\/Chathub\/[^?]+(?:@|%40)[^?]+\?/i.test(credential);
+          isValid = hasAccessToken && hasChathubPath && !hasEmptyOrRedactedAccessToken;
+          error = isValid
+            ? null
+            : "Paste the M365 Copilot access_token and Chathub path from the Chathub WebSocket URL";
           break;
         }
 

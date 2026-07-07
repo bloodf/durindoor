@@ -397,7 +397,7 @@ async function getDirectDispatcher() {
 }
 
 async function directFetch(url, options) {
-  const dispatcher = await getDirectDispatcher();
+  const dispatcher = options?.dispatcher || (await getDirectDispatcher());
   return originalFetch(url, { ...options, dispatcher });
 }
 

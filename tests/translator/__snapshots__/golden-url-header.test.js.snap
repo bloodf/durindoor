@@ -247,6 +247,22 @@ exports[`GOLDEN buildHeaders (default executor providers) > assemblyai → heade
 }
 `;
 
+exports[`GOLDEN buildHeaders (default executor providers) > auggie → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
 exports[`GOLDEN buildHeaders (default executor providers) > bai → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -1802,6 +1818,22 @@ exports[`GOLDEN buildHeaders (default executor providers) > meta-llama → heade
 }
 `;
 
+exports[`GOLDEN buildHeaders (default executor providers) > mimocode → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
 exports[`GOLDEN buildHeaders (default executor providers) > minimax → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -2400,6 +2432,13 @@ exports[`GOLDEN buildUrl (default executor providers) > assemblyai → url (stre
 }
 `;
 
+exports[`GOLDEN buildUrl (default executor providers) > auggie → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "auggie://cli/stdio",
+  "stream": "auggie://cli/stdio",
+}
+`;
+
 exports[`GOLDEN buildUrl (default executor providers) > bai → url (stream + non-stream) 1`] = `
 {
   "nonStream": "https://api.b.ai/v1/chat/completions",
@@ -2908,6 +2947,13 @@ exports[`GOLDEN buildUrl (default executor providers) > meta-llama → url (stre
 {
   "nonStream": "https://api.llama.com/compat/v1/chat/completions",
   "stream": "https://api.llama.com/compat/v1/chat/completions",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > mimocode → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://api.xiaomimimo.com",
+  "stream": "https://api.xiaomimimo.com",
 }
 `;
 

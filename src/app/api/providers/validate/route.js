@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getProviderNodeById } from "@/models";
-import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider, AI_PROVIDERS } from "@/shared/constants/providers";
+import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider, AI_PROVIDERS, WEB_COOKIE_PROVIDERS } from "@/shared/constants/providers";
 import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, resolveXiaomiTokenplanBaseUrl, PROVIDERS } from "open-sse/config/providers.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
@@ -81,6 +81,42 @@ async function probeMediaProvider(provider, apiKey) {
     signal: AbortSignal.timeout(8000),
   });
   return res.status !== 401 && res.status !== 403;
+}
+
+function joinValidationPath(baseUrl, path) {
+  try {
+    return new URL(path, new URL(baseUrl).origin).toString();
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Web-cookie transports can still advertise OpenAI wire format while using
+ * browser-only WebSocket URLs. Those cannot be probed with Bearer /models, so
+ * validate the pasted cookie against the provider's browser origin instead.
+ */
+async function probeWebCookieFallback(provider, apiKey, cfg) {
+  const cookieProvider = WEB_COOKIE_PROVIDERS[provider];
+  if (!cookieProvider) return null;
+  if (cfg?.authType !== "cookie") return null;
+
+  const fallbackBaseUrl = typeof cookieProvider.website === "string" ? cookieProvider.website.trim() : "";
+  const testUrl = fallbackBaseUrl ? joinValidationPath(fallbackBaseUrl, "models") : "";
+  if (!testUrl) return null;
+
+  const res = await fetch(testUrl, {
+    method: "GET",
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+      Cookie: apiKey,
+    },
+    signal: AbortSignal.timeout(10000),
+  });
+  return {
+    valid: res.status !== 401 && res.status !== 403,
+    error: res.status === 401 || res.status === 403 ? "Invalid or expired web-session cookie" : null,
+  };
 }
 
 // POST /api/providers/validate - Validate API key with provider
@@ -703,6 +739,13 @@ export async function POST(request) {
         default: {
           // Generic probe for OpenAI-compatible providers (config-driven from PROVIDERS)
           const cfg = PROVIDERS[provider];
+          const webCookieFallback = await probeWebCookieFallback(provider, apiKey, cfg);
+          if (webCookieFallback) {
+            isValid = webCookieFallback.valid;
+            error = webCookieFallback.error;
+            break;
+          }
+
           if (!cfg || cfg.format !== "openai" || !cfg.baseUrl) {
             return NextResponse.json({ error: "Provider validation not supported" }, { status: 400 });
           }

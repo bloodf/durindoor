@@ -1,3 +1,12 @@
+# Unreleased
+
+## Fixes
+
+- Port selected OmniRoute open web-session/OAuth provider fixes: M365
+  enterprise/work tier support, web-cookie host links and fallback validation,
+  API-key default-name overwrite safety, Kiro profile-region runtime routing,
+  and GLM team quota request metadata.
+
 # v0.5.18 (2026-07-03)
 
 ## Features

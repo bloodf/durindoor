@@ -11,6 +11,55 @@ const GLM_QUOTA_URLS = {
   china: U("glm-cn").url,
 };
 
+const GLM_TEAM_QUOTA_ORGANIZATION_KEYS = [
+  "glmOrganizationId",
+  "bigmodelOrganization",
+  "glmOrganization",
+];
+const GLM_TEAM_QUOTA_PROJECT_KEYS = [
+  "glmProjectId",
+  "bigmodelProject",
+  "glmProject",
+];
+
+function pickProviderSpecificString(data, keys) {
+  if (!data || typeof data !== "object") return null;
+  for (const key of keys) {
+    const value = data[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+export function getGlmTeamQuotaConfig(providerSpecificData) {
+  const organizationId = pickProviderSpecificString(providerSpecificData, GLM_TEAM_QUOTA_ORGANIZATION_KEYS);
+  const projectId = pickProviderSpecificString(providerSpecificData, GLM_TEAM_QUOTA_PROJECT_KEYS);
+  if (!organizationId && !projectId) return { state: "none" };
+  if (organizationId && projectId) return { state: "configured", organizationId, projectId };
+  return {
+    state: "incomplete",
+    missing: organizationId ? "glmProjectId" : "glmOrganizationId",
+  };
+}
+
+export function buildGlmQuotaFetch(apiKey, provider, providerSpecificData = {}) {
+  const region = provider === "glm-cn" ? "china" : "international";
+  const baseUrl = GLM_QUOTA_URLS[region];
+  const teamConfig = getGlmTeamQuotaConfig(providerSpecificData);
+  const url = teamConfig.state === "configured"
+    ? `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}type=2`
+    : baseUrl;
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    Accept: "application/json",
+  };
+  if (teamConfig.state === "configured") {
+    headers["bigmodel-organization"] = teamConfig.organizationId;
+    headers["bigmodel-project"] = teamConfig.projectId;
+  }
+  return { url, headers };
+}
+
 // Vercel AI Gateway credits endpoint
 // Returns { balance: "95.50", total_used: "4.50" } (USD as decimal strings).
 const VERCEL_AI_GATEWAY_CREDITS_URL = U("vercel-ai-gateway").url;
@@ -69,20 +118,22 @@ export async function getOllamaUsage(accessToken, providerSpecificData) {
 /**
  * GLM Coding Plan usage (international + China regions)
  */
-export async function getGlmUsage(apiKey, provider, proxyOptions = null) {
+export async function getGlmUsage(apiKey, provider, providerSpecificData = {}, proxyOptions = null) {
   if (!apiKey) {
     return { message: "GLM API key not available." };
   }
 
-  const region = provider === "glm-cn" ? "china" : "international";
-  const quotaUrl = GLM_QUOTA_URLS[region];
+  const teamConfig = getGlmTeamQuotaConfig(providerSpecificData);
+  if (teamConfig.state === "incomplete") {
+    const fieldLabel = teamConfig.missing === "glmOrganizationId" ? "Organization ID" : "Project ID";
+    return { message: `GLM team plan quota requires both Organization ID and Project ID. Add the missing ${fieldLabel} on this connection.` };
+  }
+
+  const { url: quotaUrl, headers } = buildGlmQuotaFetch(apiKey, provider, providerSpecificData);
 
   try {
     const response = await proxyAwareFetch(quotaUrl, {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        Accept: "application/json",
-      },
+      headers,
     }, proxyOptions);
 
     if (!response.ok) {
@@ -93,6 +144,13 @@ export async function getGlmUsage(apiKey, provider, proxyOptions = null) {
     }
 
     const json = await response.json();
+    if (json?.success === false) {
+      const upstreamMsg = String(json.msg || json.message || "").trim();
+      if (teamConfig.state === "none" && /coding\s*plan|不存在.*plan|没有.*coding|团队|编码套餐/i.test(upstreamMsg)) {
+        return { message: "This API key appears to be a GLM Coding team plan. Add Organization ID and Project ID on this connection to view usage." };
+      }
+      return { message: upstreamMsg || "Unable to fetch GLM quota." };
+    }
     const data = json?.data && typeof json.data === "object" ? json.data : {};
     const limits = Array.isArray(data.limits) ? data.limits : [];
     const quotas = {};

@@ -1,4 +1,4 @@
-import { buildKiroProfileEndpoint } from "../../../open-sse/config/kiroRegions.js";
+import { buildKiroProfileEndpoint, discoverKiroProfileArnAcrossRegions } from "../../../open-sse/config/kiroRegions.js";
 
 const BASE64_BLOCK_SIZE = 4;
 const AWS_REGION_PATTERN = /^[a-z]{2}-[a-z]+-\d{1,2}$/;
@@ -56,6 +56,8 @@ function extractEmailFromAccessToken(accessToken) {
 export async function fetchKiroProfileArn(accessToken, region = "us-east-1") {
   if (!accessToken) return null;
   const safeRegion = typeof region === "string" && AWS_REGION_PATTERN.test(region) ? region : "us-east-1";
+  const discovered = await discoverKiroProfileArnAcrossRegions(accessToken, safeRegion);
+  if (discovered) return discovered;
   const endpoint = `${buildKiroProfileEndpoint(safeRegion)}`;
   try {
     const response = await fetch(endpoint, {

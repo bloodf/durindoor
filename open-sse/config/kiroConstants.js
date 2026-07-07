@@ -22,6 +22,7 @@ import {
   resolveKiroRegion as resolveKiroRegionFromCredentials,
   alignProfileArnRegion,
   KIRO_DEFAULT_REGION,
+  resolveKiroRuntimeRegion,
 } from "./kiroRegions.js";
 
 // Backwards-compat shim: legacy callers (and tests) pass the region as
@@ -47,8 +48,15 @@ export {
   buildKiroBaseUrls,
   buildKiroProfileEndpoint,
   buildKiroOidcEndpoint,
+  buildKiroProfileDiscoveryRegions,
+  discoverKiroProfileArnAcrossRegions,
+  kiroRuntimeHost,
+  listKiroProfileArnForRegion,
   regionFromProfileArn,
+  resolveKiroRuntimeRegion,
+  AWS_REGION_PATTERN,
   KIRO_DEFAULT_REGION,
+  KIRO_PROFILE_REGIONS,
 } from "./kiroRegions.js";
 
 export const KIRO_AGENTIC_SUFFIX = "-agentic";
@@ -123,7 +131,7 @@ export function resolveKiroControlPlaneHost(region) {
  */
 export function resolveKiroProfileArn(credentials, region) {
   const psd = credentials?.providerSpecificData || {};
-  const r = region || resolveKiroRegion(credentials);
+  const r = region || resolveKiroRuntimeRegion(psd);
   if (psd.profileArn) return alignProfileArnRegion(psd.profileArn, r);
   if (psd.authMethod === "api_key") return "";
   if (r === KIRO_DEFAULT_REGION) return resolveDefaultProfileArn(psd.authMethod);

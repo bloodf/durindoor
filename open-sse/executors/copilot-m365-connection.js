@@ -22,6 +22,17 @@ export const M365_EDU_OVERRIDES = {
   licenseType: "Starter",
 };
 
+/**
+ * Microsoft 365 Copilot enterprise/work tenants use the BizChat work surface.
+ * This is opt-in via providerSpecificData.tier so consumer and EDU accounts
+ * keep their existing websocket tuple.
+ */
+export const M365_ENTERPRISE_OVERRIDES = {
+  agent: "work",
+  scenario: "officeweb",
+  licenseType: "Premium",
+};
+
 export const M365_DEFAULT_VARIANTS = [
   "EnableMcpServerWidgets",
   "feature.EnableMcpServerWidgets",
@@ -113,6 +124,7 @@ function isStructuredPathOnlyCredential(value) {
 function resolveTierOverrides(psd) {
   const tier = typeof psd.tier === "string" ? psd.tier.toLowerCase() : "";
   const isEduTier = tier === "edu" || tier === "included";
+  const isEnterpriseTier = tier === "enterprise" || tier === "work";
   const psdIsEdu =
     (typeof psd.isEdu === "string" && psd.isEdu) ||
     (typeof psd.isEdu === "boolean" && String(psd.isEdu)) ||
@@ -120,11 +132,16 @@ function resolveTierOverrides(psd) {
   return {
     scenario:
       (typeof psd.scenario === "string" && psd.scenario) ||
-      (isEduTier ? M365_EDU_OVERRIDES.scenario : undefined),
+      (isEduTier ? M365_EDU_OVERRIDES.scenario : undefined) ||
+      (isEnterpriseTier ? M365_ENTERPRISE_OVERRIDES.scenario : undefined),
     isEdu: psdIsEdu || (isEduTier ? M365_EDU_OVERRIDES.isEdu : undefined),
     licenseType:
       (typeof psd.licenseType === "string" && psd.licenseType) ||
-      (isEduTier ? M365_EDU_OVERRIDES.licenseType : undefined),
+      (isEduTier ? M365_EDU_OVERRIDES.licenseType : undefined) ||
+      (isEnterpriseTier ? M365_ENTERPRISE_OVERRIDES.licenseType : undefined),
+    agent:
+      (typeof psd.agent === "string" && psd.agent) ||
+      (isEnterpriseTier ? M365_ENTERPRISE_OVERRIDES.agent : undefined),
   };
 }
 
@@ -179,7 +196,7 @@ export function buildWsUrl(params) {
     agentHost: M365_INDIVIDUAL_DEFAULTS.agentHost,
     licenseType: params.licenseType ?? M365_INDIVIDUAL_DEFAULTS.licenseType,
     isEdu: params.isEdu ?? "false",
-    agent: M365_INDIVIDUAL_DEFAULTS.agent,
+    agent: params.agent ?? M365_INDIVIDUAL_DEFAULTS.agent,
     scenario: params.scenario ?? M365_INDIVIDUAL_DEFAULTS.scenario,
   });
   return `wss://${params.host}/m365Copilot/Chathub/${params.chathubPath}?${query.toString()}`;

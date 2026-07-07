@@ -97,9 +97,9 @@ describe("alignProfileArnRegion", () => {
 });
 
 describe("resolveKiroProfileArn (integration with kiroConstants)", () => {
-  it("aligns a stored us-east-1 ARN to the EU credential region (self-heal)", () => {
+  it("keeps a stored profile ARN region ahead of the token region", () => {
     const creds = { providerSpecificData: { region: EU, authMethod: "idc", profileArn: arn(US) } };
-    expect(resolveKiroProfileArn(creds)).toBe(arn(EU));
+    expect(resolveKiroProfileArn(creds)).toBe(arn(US));
   });
   it("keeps a correct EU ARN as-is", () => {
     const creds = { providerSpecificData: { region: EU, authMethod: "idc", profileArn: arn(EU) } };

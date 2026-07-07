@@ -163,3 +163,31 @@ export const USAGE_SUPPORTED_PROVIDERS = REGISTRY
 export const USAGE_APIKEY_PROVIDERS = REGISTRY
   .filter(r => r.features?.usageApikey)
   .map(r => r.id);
+
+/**
+ * Resolve the browser site users should open to copy a web-session cookie.
+ * Prefer the display website because it may intentionally point at a specific
+ * path; fall back to a transport base URL origin for registry-only providers.
+ *
+ * @param {string|null|undefined} providerId
+ * @param {string|null|undefined} fallbackBaseUrl
+ * @returns {{url: string, host: string}|null}
+ */
+export function resolveWebProviderHost(providerId, fallbackBaseUrl = null) {
+  if (!providerId) return null;
+  const entry = WEB_COOKIE_PROVIDERS[providerId];
+  const website = typeof entry?.website === "string" ? entry.website.trim() : "";
+  const fallback = typeof fallbackBaseUrl === "string" ? fallbackBaseUrl.trim() : "";
+  const source = website || fallback;
+  if (!source) return null;
+
+  try {
+    const parsed = new URL(source);
+    return {
+      url: website ? source : parsed.origin,
+      host: parsed.host,
+    };
+  } catch {
+    return null;
+  }
+}

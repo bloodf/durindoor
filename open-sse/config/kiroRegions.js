@@ -20,6 +20,8 @@
  */
 
 export const KIRO_DEFAULT_REGION = "us-east-1";
+export const AWS_REGION_PATTERN = /^[a-z]{2}-[a-z]+-\d{1,2}$/;
+export const KIRO_PROFILE_REGIONS = ["us-east-1", "eu-central-1"];
 
 const GENERATE_PATH = "/generateAssistantResponse";
 
@@ -55,6 +57,78 @@ export function regionFromProfileArn(profileArn) {
 export function resolveKiroRegion(credentials) {
   const psd = credentials?.providerSpecificData;
   return psd?.region || regionFromProfileArn(psd?.profileArn) || KIRO_DEFAULT_REGION;
+}
+
+function normalizeRegion(region) {
+  return typeof region === "string" ? region.trim().toLowerCase() : "";
+}
+
+/**
+ * Resolve the CodeWhisperer runtime/profile region. IAM Identity Center token
+ * regions can differ from Q Developer profile regions, so a stored profileArn
+ * must win over providerSpecificData.region for runtime and quota calls.
+ */
+export function resolveKiroRuntimeRegion(providerSpecificData) {
+  const arnRegion = regionFromProfileArn(providerSpecificData?.profileArn);
+  if (arnRegion) return arnRegion;
+
+  const stored = normalizeRegion(providerSpecificData?.region);
+  if (AWS_REGION_PATTERN.test(stored)) return stored;
+
+  return KIRO_DEFAULT_REGION;
+}
+
+export function kiroRuntimeHost(region = KIRO_DEFAULT_REGION) {
+  const r = normalizeRegion(region) || KIRO_DEFAULT_REGION;
+  return r === KIRO_DEFAULT_REGION
+    ? "https://codewhisperer.us-east-1.amazonaws.com"
+    : `https://q.${r}.amazonaws.com`;
+}
+
+export function buildKiroProfileDiscoveryRegions(storedRegion = null) {
+  const stored = normalizeRegion(storedRegion);
+  const preferred = stored === "eu-central-1" || /^(eu|af|me|il)-/.test(stored)
+    ? ["eu-central-1", "us-east-1"]
+    : ["us-east-1", "eu-central-1"];
+  if (stored && AWS_REGION_PATTERN.test(stored) && !preferred.includes(stored)) {
+    preferred.push(stored);
+  }
+  return preferred;
+}
+
+export async function listKiroProfileArnForRegion(accessToken, region, fetchImpl = globalThis.fetch) {
+  const r = normalizeRegion(region);
+  if (!accessToken || !AWS_REGION_PATTERN.test(r)) return null;
+  try {
+    const response = await fetchImpl(kiroRuntimeHost(r), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-amz-json-1.0",
+        "x-amz-target": "AmazonCodeWhispererService.ListAvailableProfiles",
+        Accept: "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ maxResults: 10 }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    const profiles = Array.isArray(data?.profiles) ? data.profiles : [];
+    const arnOf = (profile) => (profile?.arn || profile?.profileArn || "").trim() || null;
+    const matched = profiles.find((profile) => regionFromProfileArn(arnOf(profile)) === r);
+    return arnOf(matched) || arnOf(profiles[0]) || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function discoverKiroProfileArnAcrossRegions(accessToken, storedRegion = null, fetchImpl = globalThis.fetch) {
+  if (!accessToken) return null;
+  for (const region of buildKiroProfileDiscoveryRegions(storedRegion)) {
+    const arn = await listKiroProfileArnForRegion(accessToken, region, fetchImpl);
+    if (arn) return arn;
+  }
+  return null;
 }
 
 /**

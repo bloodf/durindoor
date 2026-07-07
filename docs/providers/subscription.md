@@ -14,6 +14,8 @@ Provider connections are the credentials DurinDoor uses to call upstream AI serv
 
 The dashboard groups providers by category, but all successful connections become usable by the routing layer when the selected endpoint and model support the request type.
 
+Some registry providers are marked hidden because the generic connection form does not collect enough provider-specific data for them yet. Hidden providers do not appear in the legacy `Dashboard -> Providers -> Add New Provider` selector and the legacy `/api/providers` creation route rejects direct connection attempts for them. Existing visible providers and custom compatible provider nodes continue to use the same connection flow.
+
 ## Add an OAuth Connection
 
 1. Open `Dashboard -> Providers`.

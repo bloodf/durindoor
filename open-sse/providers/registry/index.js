@@ -125,6 +125,23 @@ import p122 from "./tinyfish.js";
 import p123 from "./meta-llama.js";
 import p124 from "./grok-cli.js";
 import p125 from "./agy.js";
+import p126 from "./crof.js";
+import p127 from "./databricks.js";
+import p128 from "./deepinfra.js";
+import p129 from "./dgrid.js";
+import p130 from "./dify.js";
+import p131 from "./dit.js";
+import p132 from "./doubao.js";
+import p133 from "./factory.js";
+import p134 from "./featherless-ai.js";
+import p135 from "./freeaiapikey.js";
+import p136 from "./freemodel-dev.js";
+import p137 from "./friendliai.js";
+import p138 from "./galadriel.js";
+import p139 from "./gigachat.js";
+import p140 from "./gitlawb.js";
+import p141 from "./glhf.js";
+
 
 export default [
   p0,
@@ -253,4 +270,20 @@ export default [
   p123,
   p124,
   p125,
+  p126,
+  p127,
+  p128,
+  p129,
+  p130,
+  p131,
+  p132,
+  p133,
+  p134,
+  p135,
+  p136,
+  p137,
+  p138,
+  p139,
+  p140,
+  p141,
 ];

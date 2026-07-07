@@ -104,6 +104,57 @@ async function probeMediaProvider(provider, apiKey) {
   return res.status !== 401 && res.status !== 403;
 }
 
+async function exchangeGigaChatApiKey(apiKey) {
+  const cfg = PROVIDERS.gigachat;
+  const res = await fetch(cfg.tokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/json",
+      Authorization: `Basic ${apiKey}`,
+      RqUID: crypto.randomUUID(),
+    },
+    body: new URLSearchParams({ scope: cfg.tokenScope || "GIGACHAT_API_PERS" }),
+    signal: AbortSignal.timeout(8000),
+  });
+
+  if (!res.ok) return null;
+  const token = await res.json().catch(() => null);
+  return token?.access_token || null;
+}
+
+async function probeOpenAICompatibleRegistryProvider(provider, apiKey) {
+  const cfg = PROVIDERS[provider];
+  if (!cfg || cfg.format !== "openai" || !cfg.baseUrl) return null;
+  if (cfg.noAuth) return true;
+
+  const headers = { "Content-Type": "application/json", ...(cfg.headers || {}) };
+  if (cfg.authHeader === "x-api-key") headers["X-API-Key"] = apiKey;
+  else headers["Authorization"] = `Bearer ${apiKey}`;
+
+  // Prefer explicit model-list URLs because some OpenAI-compatible providers
+  // mount chat completions under a scoped path that does not imply /models.
+  const modelsUrl = cfg.modelsUrl || cfg.baseUrl.replace(/\/chat\/completions$/, "/models").replace(/\/chatbot$/, "/models");
+  let probeOk = null;
+  try {
+    const probeRes = await fetch(modelsUrl, { headers, signal: AbortSignal.timeout(8000) });
+    if (probeRes.status === 401 || probeRes.status === 403) probeOk = false;
+    else if (probeRes.ok) probeOk = true;
+  } catch {
+    // Fall back to a minimal chat probe below.
+  }
+  if (probeOk !== null) return probeOk;
+
+  const defaultModel = getDefaultModel(provider) || "test";
+  const chatRes = await fetch(cfg.baseUrl, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ model: defaultModel, messages: [{ role: "user", content: "ping" }], max_tokens: 1, stream: false }),
+    signal: AbortSignal.timeout(10000),
+  });
+  return chatRes.status !== 401 && chatRes.status !== 403;
+}
+
 // POST /api/providers/validate - Validate API key with provider
 export async function POST(request) {
   try {
@@ -225,6 +276,22 @@ export async function POST(request) {
         return NextResponse.json({
           valid: isValid,
           error: isValid ? null : "Invalid API token or Account ID",
+        });
+      }
+
+      if (provider === "gigachat") {
+        const accessToken = await exchangeGigaChatApiKey(apiKey);
+        if (!accessToken) {
+          return NextResponse.json({ valid: false, error: "Invalid API key" });
+        }
+        const res = await fetch(PROVIDERS.gigachat.modelsUrl || "https://gigachat.devices.sberbank.ru/api/v1/models", {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          signal: AbortSignal.timeout(8000),
+        });
+        isValid = res.status !== 401 && res.status !== 403;
+        return NextResponse.json({
+          valid: isValid,
+          error: isValid ? null : "Invalid API key",
         });
       }
 
@@ -616,46 +683,11 @@ export async function POST(request) {
         }
 
         default: {
-          // Generic probe for OpenAI-compatible providers (config-driven from PROVIDERS)
-          const cfg = PROVIDERS[provider];
-          if (!cfg || cfg.format !== "openai" || !cfg.baseUrl) {
+          const result = await probeOpenAICompatibleRegistryProvider(provider, apiKey);
+          if (result === null) {
             return NextResponse.json({ error: "Provider validation not supported" }, { status: 400 });
           }
-          if (cfg.noAuth && !apiKey) {
-            // Free/keyless catalog — nothing to validate here, but only
-            // when the caller genuinely omitted a key. Pollinations
-            // advertises authModes: ["apikey"] for its premium tier, so a
-            // supplied key must still fall through to the real probe below
-            // — otherwise a mistyped premium key is saved as "valid" and
-            // only fails later at request time.
-            isValid = true;
-            break;
-          }
-          // Build auth headers from the registry descriptor so validation
-          // matches normal DefaultExecutor request auth.
-          const headers = { "Content-Type": "application/json", ...(cfg.headers || {}) };
-          applyConfiguredAuthHeader(headers, cfg, apiKey);
-          // Try /models first (fast GET), fallback to chat probe on ambiguous response
-          const modelsUrl = cfg.baseUrl.replace(/\/chat\/completions$/, "/models").replace(/\/chatbot$/, "/models");
-          let probeOk = null;
-          try {
-            const probeRes = await fetch(modelsUrl, { headers, signal: AbortSignal.timeout(8000) });
-            if (probeRes.status === 401 || probeRes.status === 403) probeOk = false;
-            else if (probeRes.ok) probeOk = true;
-          } catch { /* fallback to chat */ }
-          if (probeOk !== null) {
-            isValid = probeOk;
-            break;
-          }
-          // Fallback: minimal chat probe
-          const defaultModel = getDefaultModel(provider) || "test";
-          const chatRes = await fetch(cfg.baseUrl, {
-            method: "POST",
-            headers,
-            body: JSON.stringify({ model: defaultModel, messages: [{ role: "user", content: "ping" }], max_tokens: 1 }),
-            signal: AbortSignal.timeout(10000),
-          });
-          isValid = chatRes.status !== 401 && chatRes.status !== 403;
+          isValid = result;
           break;
         }
       }

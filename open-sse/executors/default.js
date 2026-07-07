@@ -128,6 +128,16 @@ export class DefaultExecutor extends BaseExecutor {
         delete transformed.client_metadata;
       }
       this.defaultResponsesTextFormat(transformed);
+      if (this.config.format === "openai" && stream === false) {
+        // Resolved stream mode is authoritative for upstream OpenAI-compatible
+        // payloads, including providers that explicitly reject streaming.
+        // Also drop stream_options: it's only meaningful with stream:true
+        // (include_usage controls the final SSE usage chunk) and some
+        // OpenAI-compatible upstreams 400 on stream_options when stream is
+        // false (client sent it because it originally requested streaming).
+        transformed.stream = false;
+        delete transformed.stream_options;
+      }
       injectPromptCacheKey(this.provider, transformed, credentials);
       applyParamRenames(this.provider, model, transformed);
       stripUnsupportedParams(this.provider, model, transformed);

@@ -74,6 +74,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   const clientRequestedStreaming = body.stream === true || sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI;
   const providerRequiresStreaming = PROVIDERS[provider]?.forceStream === true;
+  const providerRequiresNonStreaming = PROVIDERS[provider]?.forceNonStreaming === true;
   // Google Code Assist image generation returns JSON generateContent bodies, not SSE.
   const modelType = getModelType(alias, model);
   const isImageGenModel = modelType === "imageGen" || /image|imagen|image-generation/i.test(model);
@@ -94,8 +95,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     providerRequiresStreaming,
     bodyStream: body.stream,
     forceNonStreaming:
-      (isImageGenModel && (provider === "antigravity" || provider === "agy" || provider === "gemini-cli")) ||
-      (detectedTool === "deepseek-tui" && body.stream !== true),
+      providerRequiresNonStreaming ||
+      (isImageGenModel &&
+        (provider === "antigravity" || provider === "agy" || provider === "gemini-cli")) ||
     clientPrefersJson,
     clientPrefersSSE,
   });
@@ -103,7 +105,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const reqLogger = await createRequestLogger(sourceFormat, targetFormat, model);
   if (clientRawRequest) reqLogger.logClientRawRequest(clientRawRequest.endpoint, clientRawRequest.body, clientRawRequest.headers);
   reqLogger.logRawRequest(body);
-  log?.debug?.("FORMAT", `${sourceFormat} → ${targetFormat} | stream=${stream}`);
+  log?.debug?.("FORMAT", `${sourceFormat} → ${targetFormat} | upstreamStream=${stream} clientStream=${clientRequestedStreaming}`);
 
   // Native passthrough: CLI tool and provider are the same ecosystem
   // Skip all translation/normalization — only model and Bearer are swapped
@@ -408,9 +410,21 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     if (result) { streamController.handleComplete(); return result; }
   }
 
-  // True non-streaming response
+  // Upstream non-streaming response. For forceNonStreaming chat providers
+  // (Galadriel), keep the upstream JSON contract but synthesize client SSE
+  // when the caller explicitly requested streaming.
   if (!stream) {
-    const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, reqLogger, toolNameMap, trackDone, appendLog });
+    const result = await handleNonStreamingResponse({
+      ...sharedCtx,
+      providerResponse,
+      sourceFormat,
+      targetFormat,
+      reqLogger,
+      toolNameMap,
+      trackDone,
+      appendLog,
+      streamToClient: clientRequestedStreaming && providerRequiresNonStreaming,
+    });
     streamController.handleComplete();
     return result;
   }

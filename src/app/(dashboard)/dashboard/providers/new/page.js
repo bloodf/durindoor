@@ -37,10 +37,12 @@ export default function NewProviderPage() {
 
   // Merge built-in providers + custom provider nodes
   const providerOptions = [
-    ...Object.values(AI_PROVIDERS).map((p) => ({
-      value: p.id,
-      label: p.name,
-    })),
+    ...Object.values(AI_PROVIDERS)
+      .filter((p) => !p.hidden)
+      .map((p) => ({
+        value: p.id,
+        label: p.name,
+      })),
     ...providerNodes
       .filter(
         (node) =>

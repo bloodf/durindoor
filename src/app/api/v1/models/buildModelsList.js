@@ -8,6 +8,7 @@ import {
 import { getProviderConnections, getCombos, getCustomModels, getModelAliases } from "@/lib/localDb";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
+import { PROVIDERS } from "open-sse/config/providers.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
@@ -16,6 +17,70 @@ import { aggregateComboCapabilities, capabilitiesFromServiceKind, getCapabilitie
 
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function resolveLocalBaseUrl(conn) {
+  const provider = AI_PROVIDERS[conn.provider];
+  const psd = isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {};
+  const raw =
+    (typeof psd.baseUrl === "string" ? psd.baseUrl.trim() : "") ||
+    provider?.defaultBaseUrl ||
+    PROVIDERS[conn.provider]?.transport?.baseUrl ||
+    "";
+  if (!raw) return null;
+  return raw
+    .replace(/\/chat\/completions\/?$/, "")
+    .replace(/\/+$/, "");
+}
+
+async function fetchLocalPassthroughModelIds(connection) {
+  const provider = AI_PROVIDERS[connection.provider];
+  if (!provider?.passthroughModels) return [];
+  const staticModels = PROVIDER_MODELS[PROVIDER_ID_TO_ALIAS[connection.provider] ?? connection.provider];
+  if (Array.isArray(staticModels) && staticModels.length > 0) return [];
+
+  const baseUrl = resolveLocalBaseUrl(connection);
+  if (!baseUrl) return [];
+
+  const headers = { "Content-Type": "application/json" };
+  if (typeof connection.apiKey === "string" && connection.apiKey) {
+    headers.Authorization = `Bearer ${connection.apiKey}`;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const response = await fetch(`${baseUrl}/models`, {
+      method: "GET",
+      headers,
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    const rawModels = parseOpenAIStyleModels(data);
+
+    return Array.from(
+      new Set(
+        rawModels
+          .map((model) => {
+            if (!isRecord(model)) return "";
+            return (
+              (typeof model.id === "string" ? model.id : undefined) ||
+              (typeof model.name === "string" ? model.name : undefined) ||
+              (typeof model.model === "string" ? model.model : undefined) ||
+              ""
+            );
+          })
+          .filter((modelId) => typeof modelId === "string" && modelId.trim() !== "")
+      )
+    );
+  } catch {
+    return [];
+  }
 }
 
 // Per-provider live model resolvers. Each receives a connection record and
@@ -387,6 +452,11 @@ export async function buildModelsList(kindFilter) {
 
       if (isCompatibleProvider && rawModelIds.length === 0 && !UPSTREAM_CONNECTION_RE.test(providerId)) {
         rawModelIds = await fetchCompatibleModelIds(conn);
+      }
+
+      if (rawModelIds.length === 0 && !hasExplicitEnabledModels && !UPSTREAM_CONNECTION_RE.test(providerId)) {
+        const localIds = await fetchLocalPassthroughModelIds(conn);
+        if (localIds.length) rawModelIds = localIds;
       }
 
       // Config-driven live catalog override (e.g. Kiro returns dynamic

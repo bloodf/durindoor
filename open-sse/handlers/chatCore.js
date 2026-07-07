@@ -329,6 +329,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     providerHeaders = result.headers;
     finalBody = result.transformedBody;
     reqLogger.logTargetRequest(providerUrl, providerHeaders, finalBody);
+
+    if (result.isClientError) {
+      trackPendingRequest(model, provider, connectionId, false);
+      if (slotAcquired) releaseSlot(provider);
+      return { success: true, response: providerResponse };
+    }
   } catch (error) {
     trackPendingRequest(model, provider, connectionId, false, true);
     if (slotAcquired) releaseSlot(provider);

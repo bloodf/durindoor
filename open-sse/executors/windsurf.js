@@ -329,12 +329,29 @@ function openAIMessagesToWs(messages) {
   return out;
 }
 
-function hasToolCalling(messages, tools) {
+function hasToolCalling(messages, tools, functions, functionCall) {
   if (Array.isArray(tools) && tools.length > 0) return true;
+  if (Array.isArray(functions) && functions.length > 0) return true;
+  if (functionCall && functionCall !== "none") return true;
   for (const m of messages || []) {
     const role = String(m?.role || "").toLowerCase();
     if (role === "tool") return true;
+    if (role === "function") return true;
     if (Array.isArray(m?.tool_calls) && m.tool_calls.length > 0) return true;
+    if (m?.function_call) return true;
+  }
+  return false;
+}
+
+function hasUnsupportedMedia(messages) {
+  for (const m of messages || []) {
+    if (Array.isArray(m?.content)) {
+      for (const part of m.content) {
+        if (part && typeof part === "object" && part.type && part.type !== "text") {
+          return true;
+        }
+      }
+    }
   }
   return false;
 }
@@ -343,6 +360,59 @@ function toolCallingNotSupportedResponse() {
   return new Response(JSON.stringify({
     error: { message: "Tool calling is not supported for Windsurf", type: "invalid_request_error", code: "unsupported_parameter" },
   }), { status: 400, headers: { "Content-Type": "application/json" } });
+}
+
+function mediaNotSupportedResponse() {
+  return new Response(JSON.stringify({
+    error: { message: "Media files are not supported for Windsurf", type: "invalid_request_error", code: "unsupported_parameter" },
+  }), { status: 400, headers: { "Content-Type": "application/json" } });
+}
+
+function decodeGrpcWebCompletion(bytes) {
+  const result = {
+    ok: false,
+    error: null,
+    contentParts: [],
+    promptTokens: 0,
+    completionTokens: 0,
+  };
+  const parsed = parseGrpcWebFrames(bytes);
+  if (parsed.incomplete) {
+    result.error = "Incomplete gRPC-web frame";
+    return result;
+  }
+  for (const frame of parsed.frames) {
+    if (frame.flag === 0x80) {
+      const trailer = TEXT_DEC.decode(frame.payload);
+      const statusMatch = /grpc-status:\s*(\d+)/i.exec(trailer);
+      if (statusMatch) {
+        if (statusMatch[1] === "0") {
+          result.ok = true;
+        } else {
+          const msgMatch = /grpc-message:\s*(.+)/i.exec(trailer);
+          result.error = msgMatch
+            ? decodeURIComponent(msgMatch[1].trim())
+            : `gRPC status ${statusMatch[1]}`;
+        }
+      }
+      continue;
+    }
+    if (frame.flag !== 0x00) continue;
+
+    const chunk = decodeCompletionChunk(frame.payload);
+    if (chunk.kind === "content" && chunk.text) {
+      result.contentParts.push(chunk.text);
+    } else if (chunk.kind === "done") {
+      result.promptTokens = chunk.promptTokens;
+      result.completionTokens = chunk.completionTokens;
+    } else if (chunk.kind === "error") {
+      result.error = chunk.message;
+    }
+  }
+  if (!result.ok && !result.error) {
+    result.error = "Missing gRPC OK trailer";
+  }
+  return result;
 }
 
 function parseGrpcWebFrames(buf) {
@@ -413,8 +483,12 @@ export class WindsurfExecutor extends BaseExecutor {
     const wsModel = resolveWsModelId(model);
     const rawMessages = Array.isArray(body?.messages) ? body.messages : [];
 
-    if (hasToolCalling(rawMessages, body?.tools)) {
-      return { response: toolCallingNotSupportedResponse(), url: this.buildUrl(), headers: this.buildHeaders(credentials), transformedBody: null };
+    if (hasToolCalling(rawMessages, body?.tools, body?.functions, body?.function_call)) {
+      return { response: toolCallingNotSupportedResponse(), url: this.buildUrl(), headers: this.buildHeaders(credentials), transformedBody: null, isClientError: true };
+    }
+
+    if (hasUnsupportedMedia(rawMessages)) {
+      return { response: mediaNotSupportedResponse(), url: this.buildUrl(), headers: this.buildHeaders(credentials), transformedBody: null, isClientError: true };
     }
 
     const wsMessages = openAIMessagesToWs(rawMessages);
@@ -440,7 +514,7 @@ export class WindsurfExecutor extends BaseExecutor {
 
     const response = stream === false
       ? await this.transformToJSON(upstream, model)
-      : this.transformToSSE(upstream, model);
+      : await this.transformToSSE(upstream, model);
 
     return {
       response,
@@ -454,42 +528,21 @@ export class WindsurfExecutor extends BaseExecutor {
     const responseId = `chatcmpl-ws-${Date.now()}`;
     const created = Math.floor(Date.now() / 1000);
     const bytes = new Uint8Array(await upstream.arrayBuffer());
-    let content = "";
-    let promptTokens = 0;
-    let completionTokens = 0;
-    let hadError = null;
+    const {
+      ok,
+      error,
+      contentParts,
+      promptTokens,
+      completionTokens,
+    } = decodeGrpcWebCompletion(bytes);
 
-    for (const frame of parseGrpcWebFrames(bytes).frames) {
-      if (frame.flag === 0x80) {
-        const trailer = TEXT_DEC.decode(frame.payload);
-        const statusMatch = /grpc-status:\s*(\d+)/i.exec(trailer);
-        if (statusMatch && statusMatch[1] !== "0") {
-          const msgMatch = /grpc-message:\s*(.+)/i.exec(trailer);
-          hadError = msgMatch
-            ? decodeURIComponent(msgMatch[1].trim())
-            : `gRPC status ${statusMatch[1]}`;
-        }
-        continue;
-      }
-      if (frame.flag !== 0x00) continue;
-
-      const chunk = decodeCompletionChunk(frame.payload);
-      if (chunk.kind === "content" && chunk.text) {
-        content += chunk.text;
-      } else if (chunk.kind === "done") {
-        promptTokens = chunk.promptTokens;
-        completionTokens = chunk.completionTokens;
-      } else if (chunk.kind === "error") {
-        hadError = chunk.message;
-      }
-    }
-
-    if (hadError || parseGrpcWebFrames(bytes).incomplete) {
-      if (!hadError) hadError = "Incomplete gRPC-web frame";
+    if (!ok || error) {
       return new Response(JSON.stringify({
-        error: { message: hadError, type: "windsurf_error", code: "upstream_error" },
+        error: { message: error || "Incomplete gRPC-web frame", type: "windsurf_error", code: "upstream_error" },
       }), { status: 502, headers: { "Content-Type": "application/json" } });
     }
+
+    const content = contentParts.join("");
 
     const json = {
       id: responseId,
@@ -516,127 +569,63 @@ export class WindsurfExecutor extends BaseExecutor {
     });
   }
 
-  transformToSSE(upstream, model) {
+  async transformToSSE(upstream, model) {
     const responseId = `chatcmpl-ws-${Date.now()}`;
     const created = Math.floor(Date.now() / 1000);
+    const bytes = new Uint8Array(await upstream.arrayBuffer());
+    const {
+      ok,
+      error,
+      contentParts,
+      promptTokens,
+      completionTokens,
+    } = decodeGrpcWebCompletion(bytes);
+
+    if (!ok || error) {
+      return new Response(JSON.stringify({
+        error: { message: error || "Incomplete gRPC-web frame", type: "windsurf_error", code: "upstream_error" },
+      }), { status: 502, headers: { "Content-Type": "application/json" } });
+    }
 
     const sseStream = new ReadableStream({
-      async start(controller) {
+      start(controller) {
         const enc = new TextEncoder();
-        let pending = new Uint8Array(0);
-        let roleEmitted = false;
-        let promptTokens = 0;
-        let completionTokens = 0;
-        let hadError = null;
-
         const emit = (text) => controller.enqueue(enc.encode(text));
-        const emitRole = () => {
-          if (roleEmitted) return;
+
+        emit(sseChunk({
+          id: responseId,
+          object: "chat.completion.chunk",
+          created,
+          model,
+          choices: [{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }],
+        }));
+
+        for (const text of contentParts) {
           emit(sseChunk({
             id: responseId,
             object: "chat.completion.chunk",
             created,
             model,
-            choices: [{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }],
+            choices: [{ index: 0, delta: { content: text }, finish_reason: null }],
           }));
-          roleEmitted = true;
-        };
-
-        const handleFrame = (flag, payload) => {
-          if (flag === 0x80) {
-            const trailer = TEXT_DEC.decode(payload);
-            const statusMatch = /grpc-status:\s*(\d+)/i.exec(trailer);
-            if (statusMatch && statusMatch[1] !== "0") {
-              const msgMatch = /grpc-message:\s*(.+)/i.exec(trailer);
-              hadError = msgMatch
-                ? decodeURIComponent(msgMatch[1].trim())
-                : `gRPC status ${statusMatch[1]}`;
-            }
-            return;
-          }
-          if (flag !== 0x00) return;
-
-          const chunk = decodeCompletionChunk(payload);
-          if (chunk.kind === "content" && chunk.text) {
-            emitRole();
-            emit(sseChunk({
-              id: responseId,
-              object: "chat.completion.chunk",
-              created,
-              model,
-              choices: [{ index: 0, delta: { content: chunk.text }, finish_reason: null }],
-            }));
-          } else if (chunk.kind === "done") {
-            promptTokens = chunk.promptTokens;
-            completionTokens = chunk.completionTokens;
-          } else if (chunk.kind === "error") {
-            hadError = chunk.message;
-          }
-        };
-
-        const drainFrames = () => {
-          const { frames } = parseGrpcWebFrames(pending);
-          if (frames.length === 0) return;
-          let consumed = 0;
-          for (const frame of frames) {
-            handleFrame(frame.flag, frame.payload);
-            consumed += 5 + frame.payload.length;
-          }
-          pending = pending.slice(consumed);
-        };
-
-        try {
-          const reader = upstream.body?.getReader();
-          if (reader) {
-            try {
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                if (!value) continue;
-                pending = pending.length === 0 ? value : concatBytes([pending, value]);
-                drainFrames();
-              }
-            } finally {
-              reader.releaseLock();
-            }
-          }
-          drainFrames();
-
-          if (hadError) {
-            emit(sseChunk({ error: { message: hadError, type: "windsurf_error", code: "upstream_error" } }));
-            emit("data: [DONE]\n\n");
-            controller.close();
-            return;
-          }
-
-          if (pending.length > 0) {
-            emit(sseChunk({ error: { message: "Incomplete gRPC-web frame", type: "windsurf_error", code: "upstream_error" } }));
-            emit("data: [DONE]\n\n");
-            controller.close();
-            return;
-          }
-
-          const finishPayload = {
-            id: responseId,
-            object: "chat.completion.chunk",
-            created,
-            model,
-            choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
-          };
-          if (promptTokens > 0 || completionTokens > 0) {
-            finishPayload.usage = {
-              prompt_tokens: promptTokens,
-              completion_tokens: completionTokens,
-              total_tokens: promptTokens + completionTokens,
-            };
-          }
-          emit(sseChunk(finishPayload));
-          emit("data: [DONE]\n\n");
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          emit(sseChunk({ error: { message: `Windsurf stream error: ${msg}`, type: "windsurf_error" } }));
-          emit("data: [DONE]\n\n");
         }
+
+        const finishPayload = {
+          id: responseId,
+          object: "chat.completion.chunk",
+          created,
+          model,
+          choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+        };
+        if (promptTokens > 0 || completionTokens > 0) {
+          finishPayload.usage = {
+            prompt_tokens: promptTokens,
+            completion_tokens: completionTokens,
+            total_tokens: promptTokens + completionTokens,
+          };
+        }
+        emit(sseChunk(finishPayload));
+        emit("data: [DONE]\n\n");
         controller.close();
       },
     });

@@ -61,7 +61,6 @@ describe("Windsurf runtime wire helpers", () => {
         role: "user",
         content: [
           { type: "text", text: "Part A " },
-          { type: "image_url", image_url: { url: "https://example.com/img.png" } },
           { type: "text", text: "Part B" },
         ],
       },
@@ -150,8 +149,10 @@ describe("Windsurf executor behavior", () => {
     vi.doMock("../../open-sse/utils/proxyFetch.js", () => ({
       proxyAwareFetch: vi.fn(async (url, init, proxyOptions) => {
         calls.push({ url, init, proxyOptions });
+        const enc = new TextEncoder();
         const payload = encodeField(1, encodeString(1, "pong"));
-        return new Response(makeFrame(0x00, payload), {
+        const trailer = makeFrame(0x80, enc.encode("grpc-status: 0\r\n"));
+        return new Response(concatBytes([makeFrame(0x00, payload), trailer]), {
           status: 200,
           headers: { "Content-Type": "application/grpc-web+proto" },
         });
@@ -230,11 +231,13 @@ describe("Windsurf executor behavior", () => {
     });
   });
 
-  it("turns upstream error chunks into SSE error events", async () => {
+  it("turns upstream error chunks into 502 errors", async () => {
     vi.doMock("../../open-sse/utils/proxyFetch.js", () => ({
       proxyAwareFetch: vi.fn(async () => {
         const payload = encodeField(4, encodeString(1, "bad token"));
-        return new Response(makeFrame(0x00, payload), { status: 200 });
+        const enc = new TextEncoder();
+        const trailer = makeFrame(0x80, enc.encode("grpc-status: 0\r\n"));
+        return new Response(concatBytes([makeFrame(0x00, payload), trailer]), { status: 200 });
       }),
     }));
 
@@ -245,9 +248,10 @@ describe("Windsurf executor behavior", () => {
       credentials: { accessToken: "ws-token" },
     });
 
-    const text = await result.response.text();
-    expect(text).toContain('"message":"bad token"');
-    expect(text).toContain('"code":"upstream_error"');
+    expect(result.response.status).toBe(502);
+    const body = await result.response.json();
+    expect(body.error.message).toBe("bad token");
+    expect(body.error.code).toBe("upstream_error");
   });
 
   it("detects truncated gRPC-web frames as incomplete", async () => {
@@ -285,7 +289,7 @@ describe("Windsurf executor behavior", () => {
     expect(body.error.message).toBe("Incomplete gRPC-web frame");
   });
 
-  it("surfaces truncated final frames as SSE errors", async () => {
+  it("surfaces truncated final frames as streaming 502 errors", async () => {
     vi.doMock("../../open-sse/utils/proxyFetch.js", () => ({
       proxyAwareFetch: vi.fn(async () => {
         const truncated = new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x64, 1, 2, 3]);
@@ -298,12 +302,143 @@ describe("Windsurf executor behavior", () => {
       body: { messages: [{ role: "user", content: "ping" }] },
       credentials: { accessToken: "ws-token" },
     });
-    const text = await result.response.text();
-    expect(text).toContain("Incomplete gRPC-web frame");
-    expect(text).toContain("data: [DONE]");
+    expect(result.response.status).toBe(502);
+    const body = await result.response.json();
+    expect(body.error.message).toContain("Incomplete");
+    expect(body.error.code).toBe("upstream_error");
   });
 
-  it("rejects requests that include OpenAI tool calling", async () => {
+  it("returns 502 when streaming response lacks a gRPC OK trailer", async () => {
+    vi.doMock("../../open-sse/utils/proxyFetch.js", () => ({
+      proxyAwareFetch: vi.fn(async () => {
+        const payload = encodeField(1, encodeString(1, "pong"));
+        return new Response(makeFrame(0x00, payload), { status: 200 });
+      }),
+    }));
+    const { WindsurfExecutor } = await import("../../open-sse/executors/windsurf.js");
+    const result = await new WindsurfExecutor().execute({
+      model: "swe-1",
+      body: { messages: [{ role: "user", content: "ping" }] },
+      credentials: { accessToken: "ws-token" },
+    });
+    expect(result.response.status).toBe(502);
+    const body = await result.response.json();
+    expect(body.error.message).toContain("Missing gRPC OK trailer");
+    expect(body.error.code).toBe("upstream_error");
+  });
+
+  it("returns 502 when streaming gRPC trailer reports a non-zero status", async () => {
+    vi.doMock("../../open-sse/utils/proxyFetch.js", () => ({
+      proxyAwareFetch: vi.fn(async () => {
+        const enc = new TextEncoder();
+        const payload = encodeField(1, encodeString(1, "pong"));
+        const trailer = makeFrame(0x80, enc.encode("grpc-status: 7\r\ngrpc-message: permission denied\r\n"));
+        return new Response(concatBytes([makeFrame(0x00, payload), trailer]), { status: 200 });
+      }),
+    }));
+    const { WindsurfExecutor } = await import("../../open-sse/executors/windsurf.js");
+    const result = await new WindsurfExecutor().execute({
+      model: "swe-1",
+      body: { messages: [{ role: "user", content: "ping" }] },
+      credentials: { accessToken: "ws-token" },
+    });
+    expect(result.response.status).toBe(502);
+    const body = await result.response.json();
+    expect(body.error.message).toContain("permission denied");
+    expect(body.error.code).toBe("upstream_error");
+  });
+
+  it("returns 502 when non-streaming response lacks a gRPC OK trailer", async () => {
+    vi.doMock("../../open-sse/utils/proxyFetch.js", () => ({
+      proxyAwareFetch: vi.fn(async () => {
+        const payload = encodeField(1, encodeString(1, "pong"));
+        return new Response(makeFrame(0x00, payload), { status: 200 });
+      }),
+    }));
+    const { WindsurfExecutor } = await import("../../open-sse/executors/windsurf.js");
+    const result = await new WindsurfExecutor().execute({
+      model: "swe-1",
+      body: { messages: [{ role: "user", content: "ping" }] },
+      stream: false,
+      credentials: { accessToken: "ws-token" },
+    });
+    expect(result.response.status).toBe(502);
+    const body = await result.response.json();
+    expect(body.error.message).toContain("Missing gRPC OK trailer");
+    expect(body.error.code).toBe("upstream_error");
+  });
+
+  it("rejects requests with image or audio media parts", async () => {
+    const { WindsurfExecutor } = await import("../../open-sse/executors/windsurf.js");
+    const executor = new WindsurfExecutor();
+
+    const withImage = await executor.execute({
+      model: "swe-1",
+      body: {
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: "describe" },
+            { type: "image_url", image_url: { url: "https://example.com/img.png" } },
+          ],
+        }],
+      },
+      credentials: { accessToken: "ws-token" },
+    });
+    expect(withImage.response.status).toBe(400);
+    expect(await withImage.response.text()).toContain("Media files are not supported for Windsurf");
+    expect(withImage.isClientError).toBe(true);
+
+    const withAudio = await executor.execute({
+      model: "swe-1",
+      body: {
+        messages: [{
+          role: "user",
+          content: [
+            { type: "input_audio", input_audio: { data: "base64", format: "wav" } },
+          ],
+        }],
+      },
+      credentials: { accessToken: "ws-token" },
+    });
+    expect(withAudio.response.status).toBe(400);
+    expect(withAudio.isClientError).toBe(true);
+  });
+
+  it("rejects legacy OpenAI function-calling requests", async () => {
+    const { WindsurfExecutor } = await import("../../open-sse/executors/windsurf.js");
+    const executor = new WindsurfExecutor();
+
+    const withFunctions = await executor.execute({
+      model: "swe-1",
+      body: {
+        messages: [{ role: "user", content: "ping" }],
+        functions: [{ name: "x", parameters: { type: "object" } }],
+        function_call: "auto",
+      },
+      credentials: { accessToken: "ws-token" },
+    });
+    expect(withFunctions.response.status).toBe(400);
+    expect(withFunctions.isClientError).toBe(true);
+
+    const withFunctionResult = await executor.execute({
+      model: "swe-1",
+      body: { messages: [{ role: "function", name: "x", content: "result" }] },
+      credentials: { accessToken: "ws-token" },
+    });
+    expect(withFunctionResult.response.status).toBe(400);
+    expect(withFunctionResult.isClientError).toBe(true);
+
+    const withAssistantFunctionCall = await executor.execute({
+      model: "swe-1",
+      body: { messages: [{ role: "assistant", content: null, function_call: { name: "x", arguments: "{}" } }] },
+      credentials: { accessToken: "ws-token" },
+    });
+    expect(withAssistantFunctionCall.response.status).toBe(400);
+    expect(withAssistantFunctionCall.isClientError).toBe(true);
+  });
+
+  it("rejects modern OpenAI tool-calling requests", async () => {
     const { WindsurfExecutor } = await import("../../open-sse/executors/windsurf.js");
     const executor = new WindsurfExecutor();
 
@@ -313,6 +448,7 @@ describe("Windsurf executor behavior", () => {
       credentials: { accessToken: "ws-token" },
     });
     expect(resWithTools.response.status).toBe(400);
+    expect(resWithTools.isClientError).toBe(true);
     const toolsBody = await resWithTools.response.text();
     expect(toolsBody).toContain("Tool calling is not supported for Windsurf");
 
@@ -322,6 +458,7 @@ describe("Windsurf executor behavior", () => {
       credentials: { accessToken: "ws-token" },
     });
     expect(resWithToolResult.response.status).toBe(400);
+    expect(resWithToolResult.isClientError).toBe(true);
 
     const resWithAssistantToolCalls = await executor.execute({
       model: "swe-1",
@@ -329,5 +466,19 @@ describe("Windsurf executor behavior", () => {
       credentials: { accessToken: "ws-token" },
     });
     expect(resWithAssistantToolCalls.response.status).toBe(400);
+    expect(resWithAssistantToolCalls.isClientError).toBe(true);
+  });
+
+  it("marks tool rejections as client errors so they do not lock the account", async () => {
+    const { WindsurfExecutor } = await import("../../open-sse/executors/windsurf.js");
+    const executor = new WindsurfExecutor();
+
+    const result = await executor.execute({
+      model: "swe-1",
+      body: { messages: [{ role: "user", content: "ping" }], tools: [{ type: "function", function: { name: "x" } }] },
+      credentials: { accessToken: "ws-token" },
+    });
+    expect(result.response.status).toBe(400);
+    expect(result.isClientError).toBe(true);
   });
 });

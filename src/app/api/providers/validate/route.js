@@ -605,7 +605,13 @@ export async function POST(request) {
           if (!cfg || cfg.format !== "openai" || !cfg.baseUrl) {
             return NextResponse.json({ error: "Provider validation not supported" }, { status: 400 });
           }
-          if (cfg.noAuth) {
+          if (cfg.noAuth && !apiKey) {
+            // Free/keyless catalog — nothing to validate here, but only
+            // when the caller genuinely omitted a key. Pollinations
+            // advertises authModes: ["apikey"] for its premium tier, so a
+            // supplied key must still fall through to the real probe below
+            // — otherwise a mistyped premium key is saved as "valid" and
+            // only fails later at request time.
             isValid = true;
             break;
           }

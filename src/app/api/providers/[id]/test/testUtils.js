@@ -4,6 +4,7 @@ import { testProxyUrl } from "@/lib/network/proxyTest";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, PROVIDERS, resolveXiaomiTokenplanBaseUrl } from "open-sse/config/providers.js";
+import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
 import {
   refreshProviderCredentials,
   shouldRefreshCredentials,
@@ -627,6 +628,37 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
       case "hyperbolic": {
         const res = await fetchWithConnectionProxy("https://api.hyperbolic.xyz/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
         return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+      }
+      // "command-code" (OmniRoute hyphenated id, alias "cmd") shares this
+      // probe with "commandcode" — same upstream, same transport. Route
+      // through the same CommandCode probe used by validate/route.js:
+      // /api/providers/validate accepts both ids, but the dashboard's
+      // per-connection health-check/test action only had a "commandcode"
+      // case here, so a saved "command-code" connection fell through to
+      // the generic "Provider test not supported" default.
+      case "commandcode":
+      case "command-code": {
+        const cfg = PROVIDERS[connection.provider] || PROVIDERS.commandcode;
+        // PROVIDER_MODELS is keyed by registry alias ("commandcode"/"cmd"),
+        // not the hyphenated "command-code" id — fall back accordingly.
+        const model = getDefaultModel(connection.provider) || getDefaultModel("cmd") || getDefaultModel("commandcode");
+        const payload = openaiToCommandCodeRequest(model, {
+          messages: [{ role: "user", content: "ping" }],
+          max_tokens: 1,
+          stream: false,
+        }, false);
+        const res = await fetchWithConnectionProxy(cfg.baseUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(cfg.headers || {}),
+            "x-session-id": crypto.randomUUID(),
+            "Authorization": `Bearer ${connection.apiKey}`,
+          },
+          body: JSON.stringify(payload),
+        }, effectiveProxy);
+        const valid = res.status !== 401 && res.status !== 403;
+        return { valid, error: valid ? null : "Invalid API key" };
       }
       case "ollama": {
         const res = await fetch("https://ollama.com/api/tags", { headers: { Authorization: `Bearer ${connection.apiKey}` } });

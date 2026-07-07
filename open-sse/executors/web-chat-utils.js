@@ -28,8 +28,13 @@ export function normalizeOpenAIMessages(messages) {
   for (const msg of messages || []) {
     let role = String(msg?.role || "user");
     if (role === "developer") role = "system";
-    const content = extractText(msg?.content).trim();
+    let content = extractText(msg?.content).trim();
     if (!content) continue;
+    if (role === "tool") {
+      const toolName = msg.name || msg.tool_call_id || "tool";
+      role = "user";
+      content = `Tool result (${toolName}):\n${content}`;
+    }
     if (role === "system") systemMsg += `${systemMsg ? "\n" : ""}${content}`;
     else if (role === "user" || role === "assistant") history.push({ role, content });
   }

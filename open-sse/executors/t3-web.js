@@ -1,5 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import {
   collectTextFromEvents,
   errorJson,
@@ -11,6 +13,10 @@ import {
 export const T3_CHAT_BASE = "https://t3.chat";
 const T3_CHAT_URL = `${T3_CHAT_BASE}/api/chat`;
 const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
+
+function webFetch(url, options, proxyOptions) {
+  return proxyOptions ? proxyAwareFetch(url, options, proxyOptions) : fetch(url, options);
+}
 
 export function parseT3Credentials(credentials) {
   const raw = String(credentials?.apiKey ?? credentials?.accessToken ?? "").trim();
@@ -50,6 +56,38 @@ function buildHeaders(cookieHeader) {
   };
 }
 
+function t3Message(role, content) {
+  return {
+    id: randomUUID(),
+    role,
+    parts: [{ type: "text", text: content }],
+  };
+}
+
+export function buildT3ChatBody({ messages, model, parsed, stream }) {
+  const normalized = normalizeOpenAIMessages(messages);
+  const t3Messages = [];
+  const systemParts = [];
+  if (normalized.systemMsg) systemParts.push(normalized.systemMsg);
+  if (normalized.history.length > 0) {
+    systemParts.push(`Prior conversation:\n\n${normalized.history.map((item) => `${item.role === "assistant" ? "Assistant" : "User"}: ${item.content}`).join("\n\n")}`);
+  }
+  if (systemParts.length > 0) t3Messages.push(t3Message("system", systemParts.join("\n\n")));
+  if (normalized.currentMsg) t3Messages.push(t3Message("user", normalized.currentMsg));
+
+  return {
+    model,
+    messages: t3Messages,
+    stream: stream !== false,
+    convexSessionId: parsed.convexSessionId,
+    threadMetadata: {
+      convexSessionId: parsed.convexSessionId,
+      source: "durindoor-openai-compatible",
+    },
+    responseId: randomUUID(),
+  };
+}
+
 export function extractT3Delta(event) {
   if (event?.done === true || event?.type === "done" || event?.status === "complete" || event?.finish_reason === "stop") return "__DONE__";
   if (typeof event?.text === "string") return event.text;
@@ -78,9 +116,16 @@ export class T3WebExecutor extends BaseExecutor {
     const parsed = parseT3Credentials(credentials);
     if (!validateT3Credentials(parsed)) return false;
     try {
-      const response = await fetch(T3_CHAT_BASE, {
-        method: "HEAD",
-        headers: { Cookie: parsed.cookieHeader, "User-Agent": USER_AGENT },
+      const validationBody = buildT3ChatBody({
+        messages: [{ role: "user", content: "ping" }],
+        model: "gpt-4o",
+        parsed,
+        stream: false,
+      });
+      const response = await webFetch(T3_CHAT_URL, {
+        method: "POST",
+        headers: buildHeaders(parsed.cookieHeader),
+        body: JSON.stringify({ ...validationBody, validateOnly: true }),
         signal: signal ?? undefined,
       });
       return response.status !== 401 && response.status !== 403 && response.status < 500;
@@ -89,7 +134,7 @@ export class T3WebExecutor extends BaseExecutor {
     }
   }
 
-  async execute({ model, body, stream, credentials, signal }) {
+  async execute({ model, body, stream, credentials, signal, proxyOptions = null }) {
     const parsed = parseT3Credentials(credentials);
     if (!validateT3Credentials(parsed)) {
       return { response: errorJson(400, "t3.chat credentials invalid: paste a full Cookie header containing convex-session-id."), url: T3_CHAT_URL, headers: {}, transformedBody: body };
@@ -101,14 +146,14 @@ export class T3WebExecutor extends BaseExecutor {
       return { response: errorJson(400, "No messages provided"), url: T3_CHAT_URL, headers: {}, transformedBody: body };
     }
 
-    const transformedBody = { model, messages, stream: stream !== false };
+    const transformedBody = buildT3ChatBody({ messages, model, parsed, stream });
     const headers = buildHeaders(parsed.cookieHeader);
-    const response = await fetch(T3_CHAT_URL, {
+    const response = await webFetch(T3_CHAT_URL, {
       method: "POST",
       headers,
       body: JSON.stringify(transformedBody),
       signal: signal ?? undefined,
-    });
+    }, proxyOptions);
 
     if (!response.ok) {
       return { response: errorJson(response.status, `t3.chat upstream returned HTTP ${response.status}`), url: T3_CHAT_URL, headers, transformedBody };

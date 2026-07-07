@@ -1,6 +1,7 @@
 import { randomUUID, createHash, randomBytes } from "node:crypto";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import {
   collectTextFromEvents,
   errorJson,
@@ -21,7 +22,11 @@ const TOKEN_TTL_MS = 5 * 60 * 1000;
 const SESSION_TOKEN_FAMILY_RE = /^__Secure-next-auth\.session-token(?:\.\d+)?$/;
 const tokenCache = new Map();
 const deviceIdCache = new Map();
-let dplCache = null;
+const dplCache = new Map();
+
+function webFetch(url, options, proxyOptions) {
+  return proxyOptions ? proxyAwareFetch(url, options, proxyOptions) : fetch(url, options);
+}
 
 function browserHeaders() {
   return {
@@ -96,11 +101,11 @@ export function mergeRefreshedCookie(originalCookie, setCookieHeader) {
   return mutated ? result.join("; ") : null;
 }
 
-async function exchangeSession(cookie, signal) {
+async function exchangeSession(cookie, signal, proxyOptions = null) {
   const key = tokenKey(cookie);
   const cached = tokenCache.get(key);
   if (cached && Date.now() < cached.expiresAt) return cached;
-  const response = await fetch(SESSION_URL, {
+  const response = await webFetch(SESSION_URL, {
     method: "GET",
     headers: {
       ...browserHeaders(),
@@ -108,7 +113,7 @@ async function exchangeSession(cookie, signal) {
       Cookie: buildSessionCookieHeader(cookie),
     },
     signal: signal ?? undefined,
-  });
+  }, proxyOptions);
   if (response.status === 401 || response.status === 403) throw new Error("Invalid session cookie");
   if (!response.ok) throw new Error(`Session exchange failed (HTTP ${response.status})`);
   const refreshedCookie = mergeRefreshedCookie(cookie, response.headers.get("set-cookie"));
@@ -125,11 +130,13 @@ async function exchangeSession(cookie, signal) {
   return entry;
 }
 
-async function fetchDpl(cookie, signal) {
-  if (dplCache && Date.now() < dplCache.expiresAt) {
-    return { dpl: dplCache.dpl, scriptSrc: dplCache.scriptSrc };
+async function fetchDpl(cookie, signal, proxyOptions = null) {
+  const key = tokenKey(cookie);
+  const cached = dplCache.get(key);
+  if (cached && Date.now() < cached.expiresAt) {
+    return { dpl: cached.dpl, scriptSrc: cached.scriptSrc };
   }
-  const response = await fetch(`${CHATGPT_BASE}/`, {
+  const response = await webFetch(`${CHATGPT_BASE}/`, {
     method: "GET",
     headers: {
       ...browserHeaders(),
@@ -137,13 +144,16 @@ async function fetchDpl(cookie, signal) {
       Cookie: buildSessionCookieHeader(cookie),
     },
     signal: signal ?? undefined,
-  });
+  }, proxyOptions);
   const html = await response.text().catch(() => "");
   const dplMatch = html.match(/data-build="([^"]+)"/);
   const dpl = dplMatch ? `dpl=${dplMatch[1]}` : `dpl=${OAI_CLIENT_VERSION.replace(/^prod-/, "")}`;
-  const scriptMatch = html.match(/<script[^>]+src="(https?:\/\/[^"]*\.js[^"]*)"/);
-  const scriptSrc = scriptMatch?.[1] ?? `${CHATGPT_BASE}/_next/static/chunks/webpack-${randomHex(16)}.js`;
-  dplCache = { dpl, scriptSrc, expiresAt: Date.now() + 60 * 60 * 1000 };
+  const scriptMatch = html.match(/<script[^>]+src="([^"]*\.js[^"]*)"/);
+  const scriptSrc = scriptMatch?.[1]
+    ? new URL(scriptMatch[1], CHATGPT_BASE).toString()
+    : `${CHATGPT_BASE}/_next/static/chunks/webpack-${randomHex(16)}.js`;
+  if (dplCache.size >= 200) dplCache.delete(dplCache.keys().next().value);
+  dplCache.set(key, { dpl, scriptSrc, expiresAt: Date.now() + 60 * 60 * 1000 });
   return { dpl, scriptSrc };
 }
 
@@ -213,7 +223,7 @@ function solveProofOfWork(seed, difficulty, config, log) {
   return solvePow({ config, seed, target: difficulty, prefix: "gAAAAAB", maxIter: 500000, label: "conversation", log });
 }
 
-async function prepareChatRequirements({ accessToken, accountId, sessionId, deviceId, cookie, dplInfo, signal, log }) {
+async function prepareChatRequirements({ accessToken, accountId, sessionId, deviceId, cookie, dplInfo, signal, log, proxyOptions = null }) {
   const config = buildPrekeyConfig(USER_AGENT, dplInfo.dpl, dplInfo.scriptSrc);
   const prekey = await buildPrepareToken(config, log);
   const headers = {
@@ -226,12 +236,12 @@ async function prepareChatRequirements({ accessToken, accountId, sessionId, devi
   };
   if (accountId) headers["chatgpt-account-id"] = accountId;
 
-  const prepareResponse = await fetch(SENTINEL_PREPARE_URL, {
+  const prepareResponse = await webFetch(SENTINEL_PREPARE_URL, {
     method: "POST",
     headers,
     body: JSON.stringify({ p: prekey }),
     signal: signal ?? undefined,
-  });
+  }, proxyOptions);
   if (prepareResponse.status === 401 || prepareResponse.status === 403) {
     const err = new Error(`Sentinel /prepare blocked (HTTP ${prepareResponse.status})`);
     err.code = "SENTINEL_BLOCKED";
@@ -241,12 +251,12 @@ async function prepareChatRequirements({ accessToken, accountId, sessionId, devi
   const prepareData = await prepareResponse.json().catch(() => ({}));
   if (!prepareData?.prepare_token) return prepareData || {};
 
-  const requirementsResponse = await fetch(SENTINEL_REQUIREMENTS_URL, {
+  const requirementsResponse = await webFetch(SENTINEL_REQUIREMENTS_URL, {
     method: "POST",
     headers,
     body: JSON.stringify({ p: prekey, prepare_token: prepareData.prepare_token }),
     signal: signal ?? undefined,
-  });
+  }, proxyOptions);
   if (requirementsResponse.status === 401 || requirementsResponse.status === 403) {
     const err = new Error(`Sentinel /chat-requirements blocked (HTTP ${requirementsResponse.status})`);
     err.code = "SENTINEL_BLOCKED";
@@ -344,7 +354,7 @@ export class ChatGptWebExecutor extends BaseExecutor {
     }
   }
 
-  async execute({ model, body, stream, credentials, signal, log, onCredentialsRefreshed }) {
+  async execute({ model, body, stream, credentials, signal, log, onCredentialsRefreshed, proxyOptions = null }) {
     const messages = Array.isArray(body?.messages) ? body.messages : [];
     if (messages.length === 0) {
       return { response: errorJson(400, "Missing or empty messages array"), url: CONVERSATION_URL, headers: {}, transformedBody: body };
@@ -356,7 +366,7 @@ export class ChatGptWebExecutor extends BaseExecutor {
 
     let token;
     try {
-      token = await exchangeSession(rawCookie, signal);
+      token = await exchangeSession(rawCookie, signal, proxyOptions);
     } catch (err) {
       log?.warn?.("CGPT-WEB", err?.message || String(err));
       return { response: errorJson(401, `ChatGPT session exchange failed: ${err?.message || String(err)}`), url: SESSION_URL, headers: {}, transformedBody: body };
@@ -374,7 +384,7 @@ export class ChatGptWebExecutor extends BaseExecutor {
       try {
         let dplInfo;
         try {
-          dplInfo = await fetchDpl(token.refreshedCookie || rawCookie, signal);
+          dplInfo = await fetchDpl(token.refreshedCookie || rawCookie, signal, proxyOptions);
         } catch (err) {
           log?.warn?.("CGPT-WEB", `DPL warmup failed; using fallback (${err?.message || String(err)})`);
           dplInfo = {
@@ -391,6 +401,7 @@ export class ChatGptWebExecutor extends BaseExecutor {
           dplInfo,
           signal,
           log,
+          proxyOptions,
         });
         let proofToken = null;
         if (reqs?.proofofwork?.required && reqs.proofofwork.seed && reqs.proofofwork.difficulty) {
@@ -426,12 +437,12 @@ export class ChatGptWebExecutor extends BaseExecutor {
       sentinel,
     });
 
-    const response = await fetch(CONVERSATION_URL, {
+    const response = await webFetch(CONVERSATION_URL, {
       method: "POST",
       headers,
       body: JSON.stringify(transformedBody),
       signal: signal ?? undefined,
-    });
+    }, proxyOptions);
     if (!response.ok) {
       return { response: errorJson(response.status, `ChatGPT Web upstream returned HTTP ${response.status}`), url: CONVERSATION_URL, headers, transformedBody };
     }

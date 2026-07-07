@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import {
   collectTextFromEvents,
   errorJson,
@@ -16,18 +18,12 @@ const USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/
 
 const MODEL_ID_MAP = {
   "adapta-one": 14,
-  "adapta-gpt": 14,
-  "adapta-claude": 14,
-  "adapta-gemini": 14,
-  "adapta-grok": 14,
-  "adapta-deepseek": 14,
-  "adapta-llama": 14,
 };
 
 const sessionCache = new Map();
 
 export function extractAdaptaClientJwt(rawApiKey) {
-  const trimmed = String(rawApiKey || "").trim();
+  const trimmed = String(rawApiKey || "").trim().replace(/^cookie\s*:\s*/i, "");
   if (!trimmed) return "";
   const clientMatch = trimmed.match(/(?:^|;\s*)__client=([^;]+)/);
   if (clientMatch) return clientMatch[1].trim();
@@ -48,18 +44,22 @@ function jwtExpMs(jwt) {
 }
 
 function cacheKey(clientJwt) {
-  return clientJwt.slice(0, 32);
+  return createHash("sha256").update(clientJwt).digest("hex");
 }
 
-async function getSessionId(clientJwt, signal) {
-  const response = await fetch(`${ADAPTA_CLERK_URL}/v1/client`, {
+function webFetch(url, options, proxyOptions) {
+  return proxyOptions ? proxyAwareFetch(url, options, proxyOptions) : fetch(url, options);
+}
+
+async function getSessionId(clientJwt, signal, proxyOptions = null) {
+  const response = await webFetch(`${ADAPTA_CLERK_URL}/v1/client`, {
     headers: {
       Cookie: `__client=${clientJwt}`,
       "User-Agent": USER_AGENT,
       Origin: ADAPTA_APP_URL,
     },
     signal: signal ?? undefined,
-  });
+  }, proxyOptions);
   if (!response.ok) throw new Error(`Clerk /v1/client returned HTTP ${response.status}`);
   const body = await response.json();
   const active = body?.response?.sessions?.find?.((session) => session.status === "active");
@@ -67,8 +67,8 @@ async function getSessionId(clientJwt, signal) {
   return active.id;
 }
 
-async function refreshSessionJwt(clientJwt, sessionId, signal) {
-  const response = await fetch(`${ADAPTA_CLERK_URL}/v1/client/sessions/${sessionId}/tokens`, {
+async function refreshSessionJwt(clientJwt, sessionId, signal, proxyOptions = null) {
+  const response = await webFetch(`${ADAPTA_CLERK_URL}/v1/client/sessions/${sessionId}/tokens`, {
     method: "POST",
     headers: {
       Cookie: `__client=${clientJwt}`,
@@ -77,7 +77,7 @@ async function refreshSessionJwt(clientJwt, sessionId, signal) {
       Origin: ADAPTA_APP_URL,
     },
     signal: signal ?? undefined,
-  });
+  }, proxyOptions);
   if (!response.ok) throw new Error(`Clerk token refresh returned HTTP ${response.status}`);
   const body = await response.json();
   if (typeof body?.jwt !== "string" || !body.jwt.startsWith("eyJ")) {
@@ -86,11 +86,11 @@ async function refreshSessionJwt(clientJwt, sessionId, signal) {
   return body.jwt;
 }
 
-async function getSessionJwt(clientJwt, signal) {
+async function getSessionJwt(clientJwt, signal, proxyOptions = null) {
   const cached = sessionCache.get(cacheKey(clientJwt));
   if (cached && Date.now() < cached.expiresAt - 30_000) return cached.jwt;
-  const sessionId = await getSessionId(clientJwt, signal);
-  const jwt = await refreshSessionJwt(clientJwt, sessionId, signal);
+  const sessionId = await getSessionId(clientJwt, signal, proxyOptions);
+  const jwt = await refreshSessionJwt(clientJwt, sessionId, signal, proxyOptions);
   sessionCache.set(cacheKey(clientJwt), { jwt, expiresAt: jwtExpMs(jwt) || Date.now() + 55_000 });
   return jwt;
 }
@@ -137,7 +137,7 @@ export class AdaptaWebExecutor extends BaseExecutor {
     }
   }
 
-  async execute({ model, body, stream, credentials, signal, log }) {
+  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
     const rawKey = credentials?.apiKey || credentials?.accessToken || "";
     const clientJwt = extractAdaptaClientJwt(rawKey);
     if (!clientJwt) {
@@ -146,7 +146,7 @@ export class AdaptaWebExecutor extends BaseExecutor {
 
     let sessionJwt;
     try {
-      sessionJwt = await getSessionJwt(clientJwt, signal);
+      sessionJwt = await getSessionJwt(clientJwt, signal, proxyOptions);
     } catch (err) {
       log?.warn?.("ADAPTA-WEB", err?.message || String(err));
       return { response: errorJson(401, `Adapta auth failed: ${err?.message || String(err)}`), url: ADAPTA_STREAM_URL, headers: {}, transformedBody: body };
@@ -167,12 +167,12 @@ export class AdaptaWebExecutor extends BaseExecutor {
       Origin: ADAPTA_APP_URL,
       Referer: `${ADAPTA_APP_URL}/agentic-chat`,
     };
-    const response = await fetch(ADAPTA_STREAM_URL, {
+    const response = await webFetch(ADAPTA_STREAM_URL, {
       method: "POST",
       headers,
       body: JSON.stringify(transformedBody),
       signal: signal ?? undefined,
-    });
+    }, proxyOptions);
 
     if (!response.ok) {
       if (response.status === 401 || response.status === 403) sessionCache.delete(cacheKey(clientJwt));

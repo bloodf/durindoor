@@ -13,10 +13,11 @@ export default {
       apiKeyUrl: "https://api.hcnsec.cn",
     },
   },
-  category: "free",
+  category: "apikey",
   hasFree: true,
   authType: "apikey",
   passthroughModels: true,
+  modelsFetcher: { url: "https://api.hcnsec.cn/v1/models", type: "openai" },
   transport: {
     baseUrl: "https://api.hcnsec.cn/v1/chat/completions",
     format: "openai",
@@ -26,8 +27,6 @@ export default {
       scheme: "bearer",
     },
   },
-  models: [
-    { id: "step-image-edit-2", name: "Step Image Edit 2 (Huancheng)", type: "image", params: ["size"] },
-  ],
-  serviceKinds: ["llm", "image"],
+  models: [],
+  serviceKinds: ["llm"],
 };

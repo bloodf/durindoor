@@ -74,4 +74,39 @@ describe("provider plugin manifest client", () => {
     expect(getProviderPluginManifestEntryForModelFromManifest(manifest, "gpt-4.1").id)
       .toBe("openai");
   });
+
+  it("prefers exact model-id matches before slash-prefix routing", () => {
+    const manifest = {
+      schemaVersion: 1,
+      generatedFrom: "test",
+      providers: [
+        { id: "openai", models: [{ id: "gpt-4o-mini-tts" }] },
+        { id: "openrouter", alias: "or", models: [{ id: "openai/gpt-4o-mini-tts" }] },
+        { id: "meta", alias: "llama", models: [{ id: "meta/llama-3.1-8b-instruct" }] },
+      ],
+    };
+
+    expect(getProviderPluginManifestEntryForModelFromManifest(manifest, "openai/gpt-4o-mini-tts").id)
+      .toBe("openrouter");
+    expect(getProviderPluginManifestEntryForModelFromManifest(manifest, "meta/llama-3.1-8b-instruct").id)
+      .toBe("meta");
+    expect(getProviderPluginManifestEntryForModelFromManifest(manifest, "openai/gpt-4.1").id)
+      .toBe("openai");
+  });
+
+  it("resolves secondary aliases from manifest aliases", () => {
+    const manifest = {
+      schemaVersion: 1,
+      generatedFrom: "test",
+      providers: [
+        { id: "deepseek", alias: "deepseek", aliases: ["ds"], models: [{ id: "deepseek-chat" }] },
+        { id: "cloudflare-ai", alias: "cf", aliases: ["cloudflare-ai", "cloudflare"], models: [{ id: "llama-3.1" }] },
+      ],
+    };
+
+    expect(getProviderPluginManifestEntryForModelFromManifest(manifest, "ds/deepseek-chat").id)
+      .toBe("deepseek");
+    expect(getProviderPluginManifestEntryForModelFromManifest(manifest, "cloudflare/llama-3.1").id)
+      .toBe("cloudflare-ai");
+  });
 });

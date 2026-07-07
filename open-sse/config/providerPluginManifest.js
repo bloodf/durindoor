@@ -8,10 +8,19 @@ function compactObject(value) {
 
 function resolveAuth(entry) {
   const transportAuth = entry.transport?.auth || {};
-  const isNoAuth = entry.noAuth === true || entry.category === "freeTier";
-  const type = entry.authType || (isNoAuth ? "none" : entry.hasOAuth ? "oauth" : "apikey");
-  const header = transportAuth.header || (entry.transport?.format === "claude" ? "x-api-key" : "Authorization");
-  const prefix = transportAuth.scheme === "bearer" ? "Bearer" : transportAuth.prefix;
+  const isNoAuth = entry.noAuth === true;
+  const type =
+    entry.authType ||
+    (isNoAuth
+      ? "none"
+      : entry.hasOAuth || entry.oauth || entry.authModes?.includes("oauth")
+        ? "oauth"
+        : "apikey");
+  const header =
+    transportAuth.header ||
+    (entry.transport?.format === "claude" ? "x-api-key" : "Authorization");
+  const prefix =
+    transportAuth.scheme === "bearer" ? "Bearer" : transportAuth.prefix;
   return compactObject({ type, header, prefix });
 }
 
@@ -38,12 +47,18 @@ function sidecarEligibility(entry) {
   const reasons = [];
   const executor = resolveExecutor(entry);
   const authType = resolveAuth(entry).type;
+  const hasTemplatedUrl =
+    (entry.transport?.baseUrl && /{[^{}]+}/.test(entry.transport.baseUrl)) ||
+    (entry.transport?.baseUrls || []).some((url) => /{[^{}]+}/.test(url)) ||
+    (entry.transport?.responsesBaseUrl && /{[^{}]+}/.test(entry.transport.responsesBaseUrl)) ||
+    (entry.transport?.responsesUrl && /{[^{}]+}/.test(entry.transport.responsesUrl));
 
   if (!SIDECAR_COMPATIBLE_EXECUTORS.has(executor)) reasons.push(`custom executor: ${executor}`);
   if (!["apikey", "optional", "none"].includes(authType)) reasons.push(`auth type requires JS handling: ${authType}`);
-  if (!entry.transport?.baseUrl && !entry.transport?.baseUrls?.length && !entry.transport?.responsesBaseUrl) {
+  if (!entry.transport?.baseUrl && !entry.transport?.baseUrls?.length && !entry.transport?.responsesBaseUrl && !entry.transport?.responsesUrl) {
     reasons.push("no static upstream endpoint");
   }
+  if (hasTemplatedUrl) reasons.push("templated URL requires JS handling");
   if (typeof entry.transport?.urlBuilder === "function") reasons.push("dynamic URL builder");
   if (entry.oauth || entry.hasOAuth) reasons.push("oauth metadata");
   if (entry.poolConfig) reasons.push("session pool config");
@@ -73,6 +88,9 @@ export function createProviderPluginManifestEntry(entry) {
   return {
     id: entry.id,
     ...(entry.alias ? { alias: entry.alias } : {}),
+    ...(Array.isArray(entry.aliases) && entry.aliases.length
+      ? { aliases: entry.aliases }
+      : {}),
     format: transport.format || "openai",
     executor: resolveExecutor(entry),
     auth: resolveAuth(entry),

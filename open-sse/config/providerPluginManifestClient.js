@@ -42,17 +42,23 @@ export async function fetchProviderPluginManifest(options = {}) {
 export function getProviderPluginManifestEntryForModelFromManifest(manifest, model) {
   if (!model) return null;
 
+  const exactOwner = manifest.providers.find((provider) =>
+    provider.models.some((candidate) => candidate.id === model)
+  );
+  if (exactOwner) return exactOwner;
+
   const providerPrefix = model.includes("/") ? model.split("/", 1)[0] : "";
   if (providerPrefix) {
     const prefixed = manifest.providers.find(
-      (provider) => provider.id === providerPrefix || provider.alias === providerPrefix
+      (provider) =>
+        provider.id === providerPrefix ||
+        provider.alias === providerPrefix ||
+        provider.aliases?.includes(providerPrefix)
     );
     if (prefixed) return prefixed;
   }
 
-  return manifest.providers.find((provider) =>
-    provider.models.some((candidate) => candidate.id === model)
-  ) || null;
+  return null;
 }
 
 export async function fetchProviderPluginManifestEntryForModel(model, options = {}) {

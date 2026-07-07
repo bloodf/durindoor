@@ -27,3 +27,11 @@ configurable in the normal provider-connection flow. If a connection does not se
 provider IDs and display metadata, but they do not add a fake chat transport: auto-routing still
 uses DurinDoor combos, Codex Cloud task execution belongs to the cloud-agent subsystem, and Zed
 credentials are imported into their real upstream providers.
+
+OpenCode Zen uses a provider-specific executor because its catalog spans multiple API families:
+GPT-5 models use `/v1/responses`, Claude and Qwen Claude-format models use Anthropic-compatible
+`/v1/messages`, and other OpenAI-compatible models use `/v1/chat/completions`. Gemini-family Zen
+models are intentionally omitted from the static catalog until DurinDoor has a tested
+Google-compatible Zen executor path. Passthrough Zen model IDs with `claude-`, `gpt-5`, or
+`gemini-` prefixes are still classified by API family so they do not fall back to the default
+Chat Completions translator.

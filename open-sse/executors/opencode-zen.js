@@ -11,6 +11,18 @@ const MESSAGES_FORMAT_MODELS = new Set([
   "qwen3.6-plus-free",
 ]);
 
+function isClaudeModel(model) {
+  return typeof model === "string" && model.startsWith("claude-");
+}
+
+function isGeminiModel(model) {
+  return typeof model === "string" && model.startsWith("gemini-");
+}
+
+function isMessagesModel(model) {
+  return isClaudeModel(model) || MESSAGES_FORMAT_MODELS.has(model);
+}
+
 function isResponsesModel(model) {
   return typeof model === "string" && /^gpt-5(?:[.-]|$)/.test(model);
 }
@@ -22,7 +34,10 @@ export class OpenCodeZenExecutor extends BaseExecutor {
 
   buildUrl(model) {
     this._lastModel = model;
-    if (MESSAGES_FORMAT_MODELS.has(model)) return `${BASE}/messages`;
+    if (isGeminiModel(model)) {
+      throw new Error("OpenCode Zen Gemini models require the Google-compatible custom-provider route, which is not implemented yet");
+    }
+    if (isMessagesModel(model)) return `${BASE}/messages`;
     if (isResponsesModel(model)) return `${BASE}/responses`;
     return `${BASE}/chat/completions`;
   }
@@ -31,7 +46,7 @@ export class OpenCodeZenExecutor extends BaseExecutor {
     const key = credentials?.apiKey || credentials?.accessToken;
     const headers = { "Content-Type": "application/json" };
 
-    if (MESSAGES_FORMAT_MODELS.has(this._lastModel)) {
+    if (isMessagesModel(this._lastModel)) {
       headers["x-api-key"] = key;
       headers["anthropic-version"] = ANTHROPIC_API_VERSION;
     } else {

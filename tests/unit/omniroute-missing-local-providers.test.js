@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import REGISTRY from "../../open-sse/providers/registry/index.js";
 import { DefaultExecutor } from "../../open-sse/executors/default.js";
 import { OpenCodeZenExecutor } from "../../open-sse/executors/opencode-zen.js";
-import { PROVIDER_ID_TO_ALIAS, PROVIDER_MODELS } from "../../open-sse/config/providerModels.js";
+import { getModelTargetFormat, PROVIDER_ID_TO_ALIAS, PROVIDER_MODELS } from "../../open-sse/config/providerModels.js";
 
 const repoRoot = resolve(import.meta.dirname, "../..");
 
@@ -134,9 +134,6 @@ describe("OmniRoute Batch G local/router provider parity", () => {
       "claude-opus-4-5",
       "claude-opus-4-6",
       "claude-opus-4-7",
-      "gemini-3-flash",
-      "gemini-3.1-pro",
-      "gemini-3.5-flash",
       "grok-build-0.1",
       "glm-5",
       "glm-5.1",
@@ -154,7 +151,12 @@ describe("OmniRoute Batch G local/router provider parity", () => {
     ]);
     expect(PROVIDER_MODELS["opencode-zen"]).toHaveLength(opencodeZen.models.length);
     expect(PROVIDER_MODELS["opencode-zen"].find((model) => model.id === "gpt-5.2").targetFormat).toBe("openai-responses");
+    expect(PROVIDER_MODELS["opencode-zen"].find((model) => model.id === "claude-sonnet-4-6").targetFormat).toBe("claude");
     expect(PROVIDER_MODELS["opencode-zen"].find((model) => model.id === "qwen3.6-plus").targetFormat).toBe("claude");
+    expect(PROVIDER_MODELS["opencode-zen"].some((model) => model.id.startsWith("gemini-"))).toBe(false);
+    expect(getModelTargetFormat("opencode-zen", "claude-future-5")).toBe("claude");
+    expect(getModelTargetFormat("opencode-zen", "gpt-5.9")).toBe("openai-responses");
+    expect(getModelTargetFormat("opencode-zen", "gemini-4-pro")).toBe("gemini");
 
     for (const icon of [
       "docker-model-runner.svg",
@@ -171,11 +173,13 @@ describe("OmniRoute Batch G local/router provider parity", () => {
   it("routes OpenCode Zen models by API family", () => {
     const executor = new OpenCodeZenExecutor();
 
-    expect(executor.buildUrl("qwen3.6-plus")).toBe("https://opencode.ai/zen/v1/messages");
+    expect(executor.buildUrl("claude-sonnet-4-6")).toBe("https://opencode.ai/zen/v1/messages");
     let headers = executor.buildHeaders({ apiKey: "sk-test" }, false);
     expect(headers["x-api-key"]).toBe("sk-test");
     expect(headers["anthropic-version"]).toBeDefined();
     expect(headers.Authorization).toBeUndefined();
+
+    expect(executor.buildUrl("qwen3.6-plus")).toBe("https://opencode.ai/zen/v1/messages");
 
     expect(executor.buildUrl("gpt-5.2")).toBe("https://opencode.ai/zen/v1/responses");
     headers = executor.buildHeaders({ apiKey: "sk-test" }, false);
@@ -183,5 +187,6 @@ describe("OmniRoute Batch G local/router provider parity", () => {
     expect(headers["x-api-key"]).toBeUndefined();
 
     expect(executor.buildUrl("glm-5")).toBe("https://opencode.ai/zen/v1/chat/completions");
+    expect(() => executor.buildUrl("gemini-3.1-pro")).toThrow(/Google-compatible custom-provider route/);
   });
 });

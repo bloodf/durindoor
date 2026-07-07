@@ -60,6 +60,18 @@ describe("Adapta Web executor", () => {
     ]);
   });
 
+  it("preserves assistant and tool results as Adapta chat turns", () => {
+    expect(buildAdaptaMessages([
+      { role: "assistant", content: "Need weather." },
+      { role: "tool", tool_call_id: "call_weather", content: "72F" },
+      { role: "user", content: "Summarize it" },
+    ])).toEqual([
+      { role: "assistant", parts: [{ type: "text", text: "Need weather." }] },
+      { role: "tool", parts: [{ type: "text", text: "Tool result (call_weather):\n72F" }] },
+      { role: "user", parts: [{ type: "text", text: "Summarize it" }] },
+    ]);
+  });
+
   it("converts Adapta streaming deltas into non-streaming OpenAI completions", async () => {
     globalThis.fetch = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ response: { sessions: [{ id: "sess", status: "active" }] } }), { status: 200 }))
@@ -145,6 +157,11 @@ describe("T3 Web executor", () => {
     const structured = parseT3Credentials({ apiKey: "cookies=t3-auth=abc\nconvexSessionId=convex-2" });
     expect(validateT3Credentials(structured)).toBe(true);
     expect(structured.cookieHeader).toContain("convex-session-id=convex-2");
+
+    const hyphenated = parseT3Credentials({ apiKey: "convex-session-id=convex-3\nt3-auth=abc" });
+    expect(validateT3Credentials(hyphenated)).toBe(true);
+    expect(hyphenated.cookieHeader).toContain("convex-session-id=convex-3");
+    expect(hyphenated.convexSessionId).toBe("convex-3");
   });
 
   it("extracts T3 text from direct and TSS-shaped events", () => {
@@ -226,7 +243,13 @@ describe("T3 Web executor", () => {
 
     expect(body.convexSessionId).toBe("convex-body");
     expect(body.threadMetadata).toMatchObject({ convexSessionId: "convex-body" });
-    expect(body.messages[0].parts[0].text).toContain("Tool result (call_weather):\n72F");
+    expect(body.messages[0].role).toBe("system");
+    expect(body.messages[0].parts[0].text).toBe("Be exact.");
+    expect(body.messages[1].role).toBe("assistant");
+    expect(body.messages[1].parts[0].text).toBe("Earlier answer");
+    expect(body.messages[2].role).toBe("tool");
+    expect(body.messages[2].parts[0].text).toContain("Tool result (call_weather):\n72F");
+    expect(body.messages.at(-1).role).toBe("user");
     expect(body.messages.at(-1).parts[0].text).toBe("Now respond");
   });
 
@@ -468,9 +491,50 @@ describe("ChatGPT Web executor", () => {
       onCredentialsRefreshed,
     });
 
-    expect(onCredentialsRefreshed).toHaveBeenCalledWith(expect.objectContaining({
+    expect(onCredentialsRefreshed).toHaveBeenCalledWith({
       apiKey: "__Secure-next-auth.session-token.0=new0; __Secure-next-auth.session-token.1=new1",
-    }));
+    });
+  });
+
+  it("evicts stale ChatGPT access token on conversation auth failure", async () => {
+    let sessionCalls = 0;
+    globalThis.fetch = vi.fn(async (url, opts) => {
+      const path = String(url);
+      if (path.endsWith("/api/auth/session")) {
+        sessionCalls += 1;
+        return new Response(JSON.stringify({
+          accessToken: sessionCalls === 1 ? "stale-token" : "fresh-token",
+          expires: new Date(Date.now() + 60000).toISOString(),
+        }), { status: 200 });
+      }
+      if (path === "https://chatgpt.com/") {
+        return new Response('<html data-build="prod-test"><script src="https://cdn.oaistatic.com/main.js"></script></html>', { status: 200 });
+      }
+      if (path.endsWith("/backend-api/sentinel/chat-requirements/prepare")) {
+        return new Response(JSON.stringify({ prepare_token: "prepare-token" }), { status: 200 });
+      }
+      if (path.endsWith("/backend-api/sentinel/chat-requirements")) {
+        return new Response(JSON.stringify({ token: "requirements-token", proofofwork: { required: false } }), { status: 200 });
+      }
+      return new Response("", { status: 401 });
+    });
+
+    const first = await new ChatGptWebExecutor().execute({
+      model: "gpt-5",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: { apiKey: "__Secure-next-auth.session-token=session-evict" },
+    });
+    expect(first.response.status).toBe(401);
+
+    const second = await new ChatGptWebExecutor().execute({
+      model: "gpt-5",
+      body: { messages: [{ role: "user", content: "hi again" }] },
+      stream: false,
+      credentials: { apiKey: "__Secure-next-auth.session-token=session-evict" },
+    });
+    expect(second.response.status).toBe(401);
+    expect(sessionCalls).toBe(2);
   });
 
   it("uses supplied ChatGPT sentinel tokens to attempt and convert a non-streaming chat request", async () => {

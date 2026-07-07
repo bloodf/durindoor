@@ -100,11 +100,15 @@ export function buildAdaptaMessages(messages) {
   const adapted = [];
   for (const msg of messages || []) {
     let role = msg?.role === "developer" ? "system" : msg?.role;
-    const text = extractText(msg?.content).trim();
+    let text = extractText(msg?.content).trim();
     if (!text) continue;
+    if (role === "tool") {
+      const toolName = msg.name || msg.tool_call_id || "tool";
+      text = `Tool result (${toolName}):\n${text}`;
+    }
     if (role === "system") {
       systemText += `${systemText ? "\n" : ""}${text}`;
-    } else if (role === "user" || role === "assistant") {
+    } else if (role === "user" || role === "assistant" || role === "tool") {
       adapted.push({ role, parts: [{ type: "text", text }] });
     }
   }

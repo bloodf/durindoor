@@ -9,12 +9,14 @@ export default {
     textIcon: "HC",
     website: "https://ai.hackclub.com",
   },
-  category: "apikey",
+  category: "free",
   authType: "optional",
+  noAuth: true,
   transport: {
     baseUrl: "https://ai.hackclub.com/proxy/v1/chat/completions",
     validateUrl: "https://ai.hackclub.com/proxy/v1/models",
     authHeader: "bearer",
+    noAuth: true,
   },
   models: [
     { id: "meta-llama/llama-3.3-70b-instruct", name: "Llama 3.3 70B" },

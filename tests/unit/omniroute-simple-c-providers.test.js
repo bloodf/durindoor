@@ -2,6 +2,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import REGISTRY from "../../open-sse/providers/registry/index.js";
+import { PROVIDERS, PROVIDER_MODELS } from "../../open-sse/providers/index.js";
+import { PROVIDER_ID_TO_ALIAS, getModelsByProviderId } from "../../open-sse/config/providerModels.js";
+import { AI_PROVIDERS, FREE_PROVIDERS } from "../../src/shared/constants/providers.js";
 
 const repoRoot = resolve(import.meta.dirname, "../..");
 
@@ -32,8 +35,10 @@ const expectedShape = {
   hackclub: {
     alias: "hc",
     authType: "optional",
+    noAuth: true,
     baseUrl: "https://ai.hackclub.com/proxy/v1/chat/completions",
     authHeader: "bearer",
+    transportNoAuth: true,
     modelsFetcher: "https://ai.hackclub.com/proxy/v1/models",
     passthroughModels: true,
     defaultContextLength: 128000,
@@ -45,7 +50,8 @@ const expectedShape = {
     baseUrl: "https://api.haiper.ai/v1",
     authHeader: "HAIPER_KEY",
     runtimeAuth: { header: "HAIPER_KEY", scheme: "raw" },
-    serviceKinds: ["image", "video"],
+    serviceKinds: [],
+    hiddenKinds: ["image", "video"],
     modelIds: ["gen2", "gen2-image"],
   },
   heroku: {
@@ -60,7 +66,8 @@ const expectedShape = {
     authType: "apikey",
     imageBaseUrl: "https://api.ideogram.ai",
     imageAuthHeader: "Api-Key",
-    serviceKinds: ["image"],
+    serviceKinds: [],
+    hiddenKinds: ["image"],
     modelIds: ["V_3", "V_2A"],
   },
   iflytek: {
@@ -120,7 +127,8 @@ const expectedShape = {
     authType: "apikey",
     imageBaseUrl: "https://cloud.leonardo.ai/api/rest/v1",
     imageAuthHeader: "bearer",
-    serviceKinds: ["image"],
+    serviceKinds: [],
+    hiddenKinds: ["image"],
     modelIds: ["phoenix", "sdxl"],
   },
   liquid: {
@@ -157,7 +165,7 @@ const expectedShape = {
   maritalk: {
     alias: "maritalk",
     authType: "apikey",
-    baseUrl: "https://chat.maritaca.ai/api",
+    baseUrl: "https://chat.maritaca.ai/api/chat/completions",
     authHeader: "key",
     runtimeAuth: { header: "key", scheme: "raw" },
     modelIds: ["sabia-4", "sabiazinho-3"],
@@ -209,6 +217,9 @@ describe("OmniRoute simple/default provider batch C", () => {
       expect(provider, `${id} provider`).toBeDefined();
       expect(provider.alias, `${id} alias`).toBe(expected.alias);
       expect(provider.authType, `${id} auth type`).toBe(expected.authType);
+      if ("noAuth" in expected) {
+        expect(provider.noAuth, `${id} no-auth`).toBe(expected.noAuth);
+      }
 
       if (expected.baseUrl) {
         expect(provider.transport?.baseUrl, `${id} base URL`).toBe(expected.baseUrl);
@@ -221,6 +232,9 @@ describe("OmniRoute simple/default provider batch C", () => {
       }
       if (expected.runtimeAuth) {
         expect(provider.transport?.auth, `${id} runtime auth`).toMatchObject(expected.runtimeAuth);
+      }
+      if ("transportNoAuth" in expected) {
+        expect(provider.transport?.noAuth, `${id} transport no-auth`).toBe(expected.transportNoAuth);
       }
       if (expected.imageBaseUrl) {
         expect(provider.imageConfig?.baseUrl, `${id} image base URL`).toBe(expected.imageBaseUrl);
@@ -239,6 +253,9 @@ describe("OmniRoute simple/default provider batch C", () => {
       }
       if (expected.serviceKinds) {
         expect(provider.serviceKinds, `${id} service kinds`).toEqual(expected.serviceKinds);
+      }
+      if (expected.hiddenKinds) {
+        expect(provider.hiddenKinds, `${id} hidden kinds`).toEqual(expected.hiddenKinds);
       }
 
       const modelIds = provider.models.map((model) => model.id);
@@ -266,5 +283,27 @@ describe("OmniRoute simple/default provider batch C", () => {
         `${icon} should be served from public/providers`,
       ).toBe(true);
     }
+  });
+
+  it("wires Hack Club into the no-auth free provider path", () => {
+    expect(FREE_PROVIDERS.hackclub?.noAuth).toBe(true);
+    expect(AI_PROVIDERS.hackclub?.authType).toBe("optional");
+    expect(PROVIDERS.hackclub?.noAuth).toBe(true);
+  });
+
+  it("maps transportless media provider IDs to static model aliases", () => {
+    expect(PROVIDER_ID_TO_ALIAS.ideogram).toBe("ideo");
+    expect(PROVIDER_ID_TO_ALIAS.leonardo).toBe("leo");
+    expect(getModelsByProviderId("leonardo").map((m) => m.id)).toEqual(["phoenix", "sdxl"]);
+    expect(PROVIDER_MODELS.leo.map((m) => m.id)).toEqual(["phoenix", "sdxl"]);
+  });
+
+  it("keeps unsupported media providers hidden until adapters or routes exist", () => {
+    for (const id of ["ideogram", "haiper", "leonardo"]) {
+      expect(AI_PROVIDERS[id]?.serviceKinds, `${id} service kinds`).toEqual([]);
+    }
+    expect(AI_PROVIDERS.ideogram?.hiddenKinds).toEqual(["image"]);
+    expect(AI_PROVIDERS.haiper?.hiddenKinds).toEqual(["image", "video"]);
+    expect(AI_PROVIDERS.leonardo?.hiddenKinds).toEqual(["image"]);
   });
 });

@@ -20,5 +20,7 @@ export default {
     { id: "gen2", name: "Gen 2 Video", kind: "video" },
     { id: "gen2-image", name: "Gen 2 Image", kind: "image" },
   ],
-  serviceKinds: ["image", "video"],
+  // Hidden until image/video routes have Haiper adapters.
+  serviceKinds: [],
+  hiddenKinds: ["image", "video"],
 };

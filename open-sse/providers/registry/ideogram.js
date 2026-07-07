@@ -16,7 +16,9 @@ export default {
     { id: "V_3", name: "Ideogram V3", kind: "image" },
     { id: "V_2A", name: "Ideogram V2A", kind: "image" },
   ],
-  serviceKinds: ["image"],
+  // Hidden until an image adapter is registered in handlers/imageProviders.
+  serviceKinds: [],
+  hiddenKinds: ["image"],
   imageConfig: {
     baseUrl: "https://api.ideogram.ai",
     authType: "apikey",

@@ -12,7 +12,7 @@ export default {
   category: "apikey",
   authType: "apikey",
   transport: {
-    baseUrl: "https://chat.maritaca.ai/api",
+    baseUrl: "https://chat.maritaca.ai/api/chat/completions",
     validateUrl: "https://chat.maritaca.ai/api/models",
     authHeader: "key",
     auth: { combined: true, header: "key", scheme: "raw" },

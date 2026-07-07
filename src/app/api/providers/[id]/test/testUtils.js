@@ -871,6 +871,53 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         const valid = res.status !== 401 && res.status !== 403;
         return { valid, error: valid ? null : "Invalid SSO cookie" };
       }
+      case "copilot-web": {
+        const credential = String(connection.apiKey || "").trim();
+        const token =
+          credential.match(/access_token=([^;]+)/)?.[1] ||
+          credential.match(/[Bb]earer\s+(.+)/)?.[1] ||
+          credential;
+        if (!token) {
+          return { valid: false, error: "Paste your access_token from copilot.microsoft.com", refreshed: false, newTokens: null };
+        }
+        const res = await fetchWithConnectionProxy("https://copilot.microsoft.com/c/api/start", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+            Origin: "https://copilot.microsoft.com",
+            Referer: "https://copilot.microsoft.com/",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            timeZone: "America/New_York",
+            startNewConversation: true,
+            teenSupportEnabled: false,
+          }),
+        }, effectiveProxy);
+        if (res.status === 401 || res.status === 403) {
+          return { valid: false, error: "Invalid or expired access_token from copilot.microsoft.com", refreshed: false, newTokens: null };
+        }
+        return { valid: true, error: null, refreshed: false, newTokens: null };
+      }
+
+      case "copilot-m365-web": {
+        const credential = String(connection.apiKey || "").trim();
+        const hasAccessToken = /(^|[?&;\s])access_token=([^;&\s]+)/.test(credential) || (
+          credential &&
+          !credential.includes("access_token=") &&
+          !/^(?:chathubPath|userTenant)\s*=/i.test(credential) &&
+          !/^wss:\/\/substrate\.office\.com\/m365Copilot\/Chathub\//i.test(credential)
+        );
+        const hasChathubPath =
+          /(^|[;\s])(?:chathubPath|userTenant)=([^;@\s]+@[^;\s]+)/.test(credential) ||
+          /^wss:\/\/substrate\.office\.com\/m365Copilot\/Chathub\/[^?]+(?:@|%40)[^?]+\?/i.test(credential);
+        if (hasAccessToken && hasChathubPath) {
+          return { valid: true, error: null, refreshed: false, newTokens: null };
+        }
+        return { valid: false, error: "Paste the M365 Copilot access_token and Chathub path from the Chathub WebSocket URL", refreshed: false, newTokens: null };
+      }
+
       case "perplexity-web": {
         let sessionToken = connection.apiKey;
         if (sessionToken.startsWith("__Secure-next-auth.session-token=")) sessionToken = sessionToken.slice("__Secure-next-auth.session-token=".length);

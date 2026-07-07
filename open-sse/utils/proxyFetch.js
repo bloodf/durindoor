@@ -2,9 +2,15 @@ import { Readable } from "stream";
 import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
 import { dbg } from "./debugLog.js";
 
-const originalFetch = globalThis.fetch;
+let originalFetch = globalThis.fetch;
 const proxyDispatchers = new Map();
 let directDispatcher = null;
+
+export function __setOriginalFetchForTesting(fn) {
+  const prev = originalFetch;
+  originalFetch = fn;
+  return () => { originalFetch = prev; };
+}
 
 // ─── TLS fingerprinting via got-scraping (browser-like JA3) ───────────────
 // Disabled: not in use. Kept commented for future re-enable.

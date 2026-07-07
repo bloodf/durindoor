@@ -788,6 +788,44 @@ exports[`GOLDEN buildHeaders (default executor providers) > command-code → hea
 }
 `;
 
+exports[`GOLDEN buildHeaders (default executor providers) > copilot-m365-web → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
+exports[`GOLDEN buildHeaders (default executor providers) > copilot-web → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
 exports[`GOLDEN buildHeaders (default executor providers) > crof → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -2583,6 +2621,20 @@ exports[`GOLDEN buildUrl (default executor providers) > command-code → url (st
 {
   "nonStream": "https://api.commandcode.ai/alpha/generate",
   "stream": "https://api.commandcode.ai/alpha/generate",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > copilot-m365-web → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "wss://substrate.office.com/m365Copilot/Chathub",
+  "stream": "wss://substrate.office.com/m365Copilot/Chathub",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > copilot-web → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "wss://copilot.microsoft.com/c/api/chat?api-version=2",
+  "stream": "wss://copilot.microsoft.com/c/api/chat?api-version=2",
 }
 `;
 

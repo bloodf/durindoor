@@ -20,23 +20,6 @@ export const BLOCKED_OMNIROUTE_PROVIDERS = {
     ],
     reason: "requires the ChatGPT web TLS client, proof-of-work helpers, image cache route, and cookie normalization",
   },
-  "copilot-m365-web": {
-    aliases: ["m365copilot"],
-    source: [
-      "open-sse/executors/copilot-m365-web.ts",
-      "open-sse/executors/copilot-m365-connection.ts",
-      "open-sse/executors/copilot-m365-frames.ts",
-    ],
-    reason: "requires Microsoft 365 BizChat WebSocket connection and frame helpers",
-  },
-  "copilot-web": {
-    aliases: [],
-    source: [
-      "open-sse/executors/copilot-web.ts",
-      "tests/unit/copilot-web-executor.test.ts",
-    ],
-    reason: "requires the Copilot web-session executor and browser-derived access-token flow",
-  },
   "duckduckgo-web": {
     aliases: ["ddgw"],
     source: [

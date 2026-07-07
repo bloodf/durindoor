@@ -13,8 +13,6 @@ import { FREE_PROVIDERS, getProvidersByKind } from "@/shared/constants/providers
 const ownedProviders = [
   "adapta-web",
   "chatgpt-web",
-  "copilot-m365-web",
-  "copilot-web",
   "duckduckgo-web",
   "huggingchat",
   "muse-spark-web",
@@ -25,6 +23,8 @@ const ownedProviders = [
   "yuanbao-web",
 ];
 
+const portedProviders = ["copilot-web", "copilot-m365-web"];
+
 describe("OmniRoute PR #51 web-session provider port artifacts", () => {
   it("registers every owned provider with source catalog metadata", () => {
     for (const provider of ownedProviders) {
@@ -32,11 +32,25 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
       expect(PROVIDER_MODELS[provider] || PROVIDER_MODELS[providerAlias(provider)], `${provider} models`).toEqual(
         expect.arrayContaining([expect.objectContaining({ id: expect.any(String), name: expect.any(String) })]),
       );
-      expect(BLOCKED_OMNIROUTE_PROVIDERS[provider], `${provider} blocker`).toMatchObject({
-        reason: expect.any(String),
-        source: expect.any(Array),
-      });
+      if (!portedProviders.includes(provider)) {
+        expect(BLOCKED_OMNIROUTE_PROVIDERS[provider], `${provider} blocker`).toMatchObject({
+          reason: expect.any(String),
+          source: expect.any(Array),
+        });
+      }
     }
+  });
+
+  it("ports Copilot web-session providers to real executors", async () => {
+    for (const provider of portedProviders) {
+      expect(BLOCKED_OMNIROUTE_PROVIDERS[provider], `${provider} blocker`).toBeUndefined();
+      expect(hasSpecializedExecutor(provider), `${provider} specialized executor`).toBe(true);
+      const result = await getExecutor(provider).execute({});
+      expect(result.response.status, `${provider} missing-prompt status`).toBe(400);
+      const body = await result.response.json();
+      expect(body.error?.type).not.toBe("provider_port_pending");
+    }
+    expect(hasSpecializedExecutor("m365copilot")).toBe(true);
   });
 
   it("marks no-auth web providers and media-only providers explicitly", () => {

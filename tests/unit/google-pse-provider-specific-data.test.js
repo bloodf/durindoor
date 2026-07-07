@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildGooglePseProviderSpecificData,
   buildGooglePseValidationPayload,
+  isGooglePseReadyForSave,
   normalizeGooglePseCx,
 } from "../../src/shared/utils/googlePseProviderSpecificData.js";
 import { normalizeProviderSpecificData } from "../../src/lib/providerNormalization.js";
@@ -56,5 +57,18 @@ describe("Google PSE provider-specific dashboard data", () => {
       provider: "serper",
       apiKey: "api-key",
     });
+  });
+
+  it("reports Google PSE ready for save only when cx is non-empty", () => {
+    expect(isGooglePseReadyForSave("google-pse", "cx-1")).toBe(true);
+    expect(isGooglePseReadyForSave("google-pse", "  cx-1  ")).toBe(true);
+    expect(isGooglePseReadyForSave("google-pse", "")).toBe(false);
+    expect(isGooglePseReadyForSave("google-pse", "   ")).toBe(false);
+    expect(isGooglePseReadyForSave("google-pse", null)).toBe(false);
+  });
+
+  it("reports non-Google providers always ready for save regardless of cx", () => {
+    expect(isGooglePseReadyForSave("serper", "")).toBe(true);
+    expect(isGooglePseReadyForSave("openai", "  ")).toBe(true);
   });
 });

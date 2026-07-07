@@ -20,6 +20,10 @@ export function buildGooglePseProviderSpecificData(cx, existingProviderSpecificD
   };
 }
 
+export function isGooglePseReadyForSave(provider, cx) {
+  return !isGooglePseProvider(provider) || normalizeGooglePseCx(cx) !== "";
+}
+
 export function buildGooglePseValidationPayload(provider, apiKey, cx, existingProviderSpecificData = null) {
   const payload = { provider, apiKey };
   if (isGooglePseProvider(provider)) {
@@ -28,3 +32,4 @@ export function buildGooglePseValidationPayload(provider, apiKey, cx, existingPr
   }
   return payload;
 }
+

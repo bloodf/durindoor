@@ -135,12 +135,83 @@ describe("buildZenmuxAnthropicBody", () => {
     ]);
   });
 
+  it("applies provider-native reasoning controls for thinking models", () => {
+    const body = buildZenmuxAnthropicBody({
+      model: "deepseek/deepseek-reasoner",
+      messages: [{ role: "user", content: "hi" }],
+      reasoning_effort: "high",
+    }, "deepseek/deepseek-reasoner");
+
+    expect(body.thinking).toEqual({ type: "enabled" });
+    expect(body.reasoning_effort).toBe("high");
+  });
+
+  it("preserves OpenAI JSON response_format in the system prompt", () => {
+    const body = buildZenmuxAnthropicBody({
+      model: "deepseek/deepseek-chat",
+      messages: [{ role: "user", content: "hi" }],
+      response_format: { type: "json_object" },
+    }, "deepseek/deepseek-chat");
+
+    expect(body.system).toContain("You must respond with valid JSON");
+  });
+
+  it("preserves JSON schema response_format in the system prompt", () => {
+    const body = buildZenmuxAnthropicBody({
+      model: "deepseek/deepseek-chat",
+      messages: [{ role: "user", content: "hi" }],
+      response_format: { type: "json_schema", json_schema: { schema: { type: "object" } } },
+    }, "deepseek/deepseek-chat");
+
+    expect(body.system).toContain("JSON schema");
+    expect(body.system).toContain('"type": "object"');
+  });
+
+  it("maps OpenAI stop sequences to Anthropic stop_sequences", () => {
+    expect(buildZenmuxAnthropicBody({
+      messages: [{ role: "user", content: "hi" }],
+      stop: "END",
+    }).stop_sequences).toEqual(["END"]);
+
+    expect(buildZenmuxAnthropicBody({
+      messages: [{ role: "user", content: "hi" }],
+      stop: ["END", "STOP"],
+    }).stop_sequences).toEqual(["END", "STOP"]);
+  });
+
+  it("merges adjacent same-role messages before sending to Anthropic", () => {
+    const body = buildZenmuxAnthropicBody({
+      messages: [
+        { role: "user", content: "a" },
+        { role: "user", content: "b" },
+        { role: "assistant", content: "c" },
+        { role: "assistant", content: "d" },
+      ],
+    });
+
+    expect(body.messages).toEqual([
+      { role: "user", content: [{ type: "text", text: "a" }, { type: "text", text: "b" }] },
+      { role: "assistant", content: [{ type: "text", text: "c" }, { type: "text", text: "d" }] },
+    ]);
+  });
+
+  it("uses a default user message when no conversation messages exist", () => {
+    const body = buildZenmuxAnthropicBody({
+      messages: [{ role: "system", content: "Be helpful." }],
+    });
+
+    expect(body.messages).toEqual([{ role: "user", content: [{ type: "text", text: "Hello" }] }]);
+    expect(body.system).toBe("Be helpful.");
+  });
+
   it("honors modern Chat Completions and Responses output cap aliases", () => {
     expect(buildZenmuxAnthropicBody({ max_completion_tokens: 7 }).max_tokens).toBe(7);
     expect(buildZenmuxAnthropicBody({ max_output_tokens: 8 }).max_tokens).toBe(8);
     expect(buildZenmuxAnthropicBody({ max_tokens: 6, max_completion_tokens: 7 }).max_tokens).toBe(6);
   });
 });
+
+
 
 describe("ZenmuxFreeExecutor.execute", () => {
   it("rejects credentials that do not include ctoken before making a network request", async () => {
@@ -320,5 +391,33 @@ describe("ZenmuxFreeExecutor.execute", () => {
     expect(text).toContain('"error"');
     expect(text).toContain("quota exceeded");
     expect(text).toContain("data: [DONE]");
+  });
+
+  it("does not close an already-errored streaming controller when the reader throws", async () => {
+    const brokenBody = new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("data: ok\n\n"));
+          controller.close();
+        },
+      }),
+      { status: 200, headers: { "Content-Type": "text/event-stream" } },
+    ).body;
+
+    const error = new Error("socket reset");
+    brokenBody.getReader = () => ({
+      read: vi.fn().mockRejectedValue(error),
+      releaseLock: vi.fn(),
+    });
+
+    global.fetch.mockResolvedValueOnce(new Response(brokenBody, { status: 200 }));
+    const exec = new ZenmuxFreeExecutor();
+    const result = await exec.execute({
+      body: { model: "deepseek/deepseek-chat", messages: [{ role: "user", content: "hi" }], stream: true },
+      credentials: { apiKey: "ctoken=tok123" },
+      stream: true,
+    });
+
+    await expect(readText(result.response)).rejects.toThrow("socket reset");
   });
 });

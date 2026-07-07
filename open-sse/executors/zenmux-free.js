@@ -4,6 +4,7 @@ import { PROVIDERS } from "../config/providers.js";
 import { buildErrorBody, errorResponse } from "../utils/error.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { toOpenAIFinish } from "../translator/concerns/finishReason.js";
+import { applyThinking, captureThinking } from "../translator/concerns/thinkingUnified.js";
 
 export const ZENMUX_FREE_CHAT_URL = "https://zenmux.ai/api/anthropic/v1/messages";
 const USER_AGENT =
@@ -42,6 +43,20 @@ function messageContentFromOpenAI(content) {
   return [{ type: "text", text }];
 }
 
+function mergeAdjacentMessages(messages) {
+  const merged = [];
+  for (const message of messages) {
+    if (!message || !message.role) continue;
+    const last = merged[merged.length - 1];
+    if (last && last.role === message.role) {
+      last.content.push(...message.content);
+    } else {
+      merged.push({ role: message.role, content: [...message.content] });
+    }
+  }
+  return merged;
+}
+
 function resolveMaxTokens(openAiBody) {
   const value = openAiBody.max_tokens ?? openAiBody.max_completion_tokens ?? openAiBody.max_output_tokens;
   const numericValue = Number(value);
@@ -56,10 +71,12 @@ export function buildZenmuxAnthropicBody(openAiBody = {}, modelId = "deepseek/de
     .filter(Boolean)
     .join("\n\n");
   const conversation = messages.filter((message) => message?.role === "user" || message?.role === "assistant");
-  const anthropicMessages = conversation.map((message) => ({
+  const anthropicMessages = mergeAdjacentMessages(conversation.map((message) => ({
     role: message.role,
     content: messageContentFromOpenAI(message.content),
-  }));
+  })));
+
+  const jsonInstruction = buildJsonInstruction(openAiBody.response_format);
 
   const body = {
     model: modelId,
@@ -69,9 +86,31 @@ export function buildZenmuxAnthropicBody(openAiBody = {}, modelId = "deepseek/de
       : [{ role: "user", content: [{ type: "text", text: "Hello" }] }],
     stream: true,
   };
-  if (systemText) body.system = systemText;
+  if (systemText || jsonInstruction) {
+    body.system = [systemText, jsonInstruction].filter(Boolean).join("\n\n");
+  }
   if (openAiBody.temperature !== undefined) body.temperature = openAiBody.temperature;
+  if (openAiBody.stop != null) {
+    body.stop_sequences = Array.isArray(openAiBody.stop) ? openAiBody.stop : [openAiBody.stop];
+  }
+
+  // Capture and apply reasoning controls using the provider-native format.
+  const thinkingIntent = captureThinking(openAiBody);
+  applyThinking("anthropic", modelId, body, "zenmux-free", thinkingIntent);
+
   return body;
+}
+
+function buildJsonInstruction(responseFormat) {
+  if (!responseFormat || typeof responseFormat !== "object") return "";
+  if (responseFormat.type === "json_schema" && responseFormat.json_schema?.schema) {
+    const schemaJson = JSON.stringify(responseFormat.json_schema.schema, null, 2);
+    return `You must respond with valid JSON that strictly follows this JSON schema:\n\`\`\`json\n${schemaJson}\n\`\`\`\nRespond ONLY with the JSON object, no other text.`;
+  }
+  if (responseFormat.type === "json_object") {
+    return "You must respond with valid JSON. Respond ONLY with a JSON object, no other text.";
+  }
+  return "";
 }
 
 function openAiChunk({ id, created, model, delta, finishReason = null }) {
@@ -193,10 +232,13 @@ function buildStreamingResponse(upstream, model, cid, created, signal) {
         }
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
       } catch (error) {
+        errored = true;
         if (!signal?.aborted) controller.error(error);
       } finally {
         reader.releaseLock();
-        if (!errored && !signal?.aborted) controller.close();
+        if (signal?.aborted) return;
+        if (errored) return;
+        controller.close();
       }
     },
   });

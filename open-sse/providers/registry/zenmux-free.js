@@ -18,6 +18,7 @@ export default {
     format: "openai",
     executor: "zenmux-free",
     authType: "cookie",
+    thinkingFormat: "deepseek",
   },
   models: [
     { id: "deepseek/deepseek-chat", name: "DeepSeek V3.2 (Non-thinking)", capabilities: { tools: false } },

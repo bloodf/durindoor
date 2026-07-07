@@ -7,8 +7,8 @@ This file is a project overview. The **operational contract for any agent workin
 - Agent contract, forbidden edits, commit types → `AGENTS.md` §1–§3
 - Translator layer conventions and pitfalls → `AGENTS.md` §4
 - open-sse layout, lifecycle, conventions → `AGENTS.md` §5
-- **DinoStack (Hermes-only) install + AI-review/CI workflow rules → `AGENTS.md` §6–§7**
-- Quick commands → `AGENTS.md` §8
+- PR workflow, CI gates, and AI-review handling → `AGENTS.md` §6
+- Quick commands → `AGENTS.md` §7
 
 ## Quick Reference
 
@@ -53,4 +53,4 @@ Two-branch release model:
 - `main` — controlled production releases via GitHub Releases (`release.yml`, publishes to npm on `release: published`)
 - `dev` — active development + nightly pre-releases (`nightly.yml`, runs daily at 02:00 UTC, marked `prerelease: true`)
 
-Default PR target is `dev`. PR target rules, worktree discipline, CI gates, and AI-review handling are in `AGENTS.md` §7.
+Default PR target is `dev`. PR target rules, worktree discipline, CI gates, and AI-review handling are in `AGENTS.md` §6.

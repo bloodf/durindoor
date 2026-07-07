@@ -231,7 +231,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   const conn = connections.find(c => c.id === connectionId);
   const backoffLevel = conn?.backoffLevel || 0;
 
-  if (provider === "antigravity" && isAntigravityCapacityError(status, errorText)) {
+  if ((provider === "antigravity" || provider === "agy") && isAntigravityCapacityError(status, errorText)) {
     const connName = conn?.displayName || conn?.name || conn?.email || connectionId.slice(0, 8);
     log.warn("AUTH", `${connName} hit Antigravity capacity for ${model || "unknown model"}; fallback without cooldown [${status}]`);
     return { shouldFallback: true, cooldownMs: 0 };

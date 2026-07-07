@@ -10,6 +10,8 @@ const AUGGIE_URL = "auggie://cli/stdio";
 const MODEL_ALLOWLIST = new Set((auggieRegistry.models || []).map((model) => model.id));
 const DEFAULT_MODEL = auggieRegistry.models?.[0]?.id || "claude-sonnet-4.6";
 
+const AUGGIE_EXEC_TIMEOUT_MS = 60_000;
+
 function sanitizeErrorMessage(message) {
   return String(message || "")
     .replace(/[^\s]+(?:\.js|\.ts):\d+(?::\d+)?/g, "[source]")
@@ -34,8 +36,20 @@ export function resolveAuggieModel(model) {
   return { ok: true, model: requested };
 }
 
-function buildAuggieArgs(model) {
-  return ["--print", "--quiet", "--model", model, "--"];
+function buildAuggieArgs(model, promptText) {
+  return ["--print", "--quiet", "--model", model, "--", promptText];
+}
+
+function isWindowsCmdScript(bin) {
+  return process.platform === "win32" && /\.(cmd|bat)$/i.test(bin);
+}
+
+function spawnAuggieCli(bin, args, stdio) {
+  return spawn(bin, args, {
+    env: process.env,
+    stdio,
+    shell: isWindowsCmdScript(bin),
+  });
 }
 
 export function resolveAuggieBin() {
@@ -101,7 +115,7 @@ export function checkAuggieCliVersion(timeoutMs = 5000) {
 
     let child;
     try {
-      child = spawn(bin, ["--version"], { env: process.env, stdio: ["ignore", "pipe", "pipe"] });
+      child = spawnAuggieCli(bin, ["--version"], ["ignore", "pipe", "pipe"]);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       settle({ ok: false, error: isEnoentLike(message) ? cliNotFoundMessage(bin) : sanitizeErrorMessage(message) });
@@ -179,10 +193,7 @@ export class AuggieExecutor extends BaseExecutor {
   }
 
   spawnAuggie(auggieBin, model, promptText) {
-    const child = spawn(auggieBin, buildAuggieArgs(model), {
-      env: process.env,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+    const child = spawnAuggieCli(auggieBin, buildAuggieArgs(model, promptText), ["pipe", "pipe", "pipe"]);
     child.stdin.on("error", () => {});
     try {
       child.stdin.write(promptText);
@@ -201,10 +212,13 @@ export class AuggieExecutor extends BaseExecutor {
     const sseStream = new ReadableStream({
       start(controller) {
         const enc = new TextEncoder();
-        const emit = (data) => controller.enqueue(enc.encode(data));
         let closed = false;
         let roleEmitted = false;
         let finished = false;
+        const emit = (data) => {
+          if (finished || closed) return;
+          controller.enqueue(enc.encode(data));
+        };
         const finish = () => {
           if (finished) return;
           finished = true;
@@ -253,10 +267,7 @@ export class AuggieExecutor extends BaseExecutor {
         };
 
         try {
-          child = spawn(auggieBin, buildAuggieArgs(model), {
-            env: process.env,
-            stdio: ["pipe", "pipe", "pipe"],
-          });
+          child = spawnAuggieCli(auggieBin, buildAuggieArgs(model, promptText), ["pipe", "pipe", "pipe"]);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           emitError(isEnoentLike(message) ? cliNotFoundMessage(auggieBin) : message);
@@ -323,11 +334,18 @@ export class AuggieExecutor extends BaseExecutor {
       let stdout = "";
       let stderrTail = "";
       let settled = false;
+      let timer;
       const settle = (response) => {
         if (settled) return;
         settled = true;
+        clearTimeout(timer);
         resolve(response);
       };
+
+      timer = setTimeout(() => {
+        if (!child.killed) child.kill("SIGTERM");
+        settle(buildAuggieErrorResponse(`Auggie CLI request timed out after ${AUGGIE_EXEC_TIMEOUT_MS}ms`));
+      }, AUGGIE_EXEC_TIMEOUT_MS);
 
       signal?.addEventListener("abort", () => {
         if (!child.killed) child.kill("SIGTERM");
@@ -399,5 +417,12 @@ function buildAuggieSseError(message) {
     },
   });
 }
+
+export const __test__ = {
+  AUGGIE_EXEC_TIMEOUT_MS,
+  buildAuggieArgs,
+  isWindowsCmdScript,
+  spawnAuggieCli,
+};
 
 export default AuggieExecutor;

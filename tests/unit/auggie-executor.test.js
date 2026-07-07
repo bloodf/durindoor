@@ -2,7 +2,13 @@ import { afterAll, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { AuggieExecutor, buildAuggiePrompt, resolveAuggieBin, resolveAuggieModel } from "../../open-sse/executors/auggie.js";
+import {
+  AuggieExecutor,
+  buildAuggiePrompt,
+  resolveAuggieBin,
+  resolveAuggieModel,
+  __test__,
+} from "../../open-sse/executors/auggie.js";
 import { getExecutor, hasSpecializedExecutor } from "../../open-sse/executors/index.js";
 import { PROVIDERS } from "../../open-sse/config/providers.js";
 import { PROVIDER_MODELS } from "../../open-sse/config/providerModels.js";
@@ -31,6 +37,24 @@ afterAll(() => {
 });
 
 describe("AuggieExecutor", () => {
+  it("includes the flattened prompt as the print-mode instruction argument", () => {
+    const args = __test__.buildAuggieArgs("claude-sonnet-4.6", "Hello world");
+    expect(args).toContain("--");
+    expect(args.at(-1)).toBe("Hello world");
+  });
+
+  it("detects Windows .cmd/.bat shims for shell launch", () => {
+    const prevPlatform = Object.getOwnPropertyDescriptor(process, "platform");
+    Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    try {
+      expect(__test__.isWindowsCmdScript("auggie.cmd")).toBe(true);
+      expect(__test__.isWindowsCmdScript("auggie.bat")).toBe(true);
+      expect(__test__.isWindowsCmdScript("auggie.exe")).toBe(false);
+    } finally {
+      Object.defineProperty(process, "platform", prevPlatform || { value: "linux", configurable: true });
+    }
+  });
+
   it("flattens OpenAI messages into the local CLI prompt format", () => {
     expect(buildAuggiePrompt([
       { role: "system", content: "Be terse." },

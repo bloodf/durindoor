@@ -18,9 +18,11 @@ function resolveAuth(entry) {
         : "apikey");
   const header =
     transportAuth.header ||
+    transportAuth.apiKey?.header ||
     (entry.transport?.format === "claude" ? "x-api-key" : "Authorization");
-  const prefix =
-    transportAuth.scheme === "bearer" ? "Bearer" : transportAuth.prefix;
+  const authScheme = transportAuth.scheme ?? transportAuth.apiKey?.scheme;
+  const authPrefix = transportAuth.prefix ?? transportAuth.apiKey?.prefix;
+  const prefix = authScheme === "bearer" ? "Bearer" : authPrefix;
   return compactObject({ type, header, prefix });
 }
 
@@ -46,22 +48,26 @@ function mapModel(model) {
 function sidecarEligibility(entry) {
   const reasons = [];
   const executor = resolveExecutor(entry);
-  const authType = resolveAuth(entry).type;
+  const auth = resolveAuth(entry);
+  const authType = auth.type;
+  const transport = entry.transport || {};
   const hasTemplatedUrl =
-    (entry.transport?.baseUrl && /{[^{}]+}/.test(entry.transport.baseUrl)) ||
-    (entry.transport?.baseUrls || []).some((url) => /{[^{}]+}/.test(url)) ||
-    (entry.transport?.responsesBaseUrl && /{[^{}]+}/.test(entry.transport.responsesBaseUrl)) ||
-    (entry.transport?.responsesUrl && /{[^{}]+}/.test(entry.transport.responsesUrl));
+    (transport.baseUrl && /{[^{}]+}/.test(transport.baseUrl)) ||
+    (transport.baseUrls || []).some((url) => /{[^{}]+}/.test(url)) ||
+    (transport.responsesBaseUrl && /{[^{}]+}/.test(transport.responsesBaseUrl)) ||
+    (transport.responsesUrl && /{[^{}]+}/.test(transport.responsesUrl));
+  const isGeminiLike = transport.format === "gemini" || transport.format === "gemini-tts" || transport.format === "gemini-stt";
 
   if (!SIDECAR_COMPATIBLE_EXECUTORS.has(executor)) reasons.push(`custom executor: ${executor}`);
   if (!["apikey", "optional", "none"].includes(authType)) reasons.push(`auth type requires JS handling: ${authType}`);
-  if (!entry.transport?.baseUrl && !entry.transport?.baseUrls?.length && !entry.transport?.responsesBaseUrl && !entry.transport?.responsesUrl) {
+  if (!transport.baseUrl && !transport.baseUrls?.length && !transport.responsesBaseUrl && !transport.responsesUrl) {
     reasons.push("no static upstream endpoint");
   }
   if (hasTemplatedUrl) reasons.push("templated URL requires JS handling");
-  if (typeof entry.transport?.urlBuilder === "function") reasons.push("dynamic URL builder");
+  if (typeof transport.urlBuilder === "function") reasons.push("dynamic URL builder");
   if (entry.oauth || entry.hasOAuth) reasons.push("oauth metadata");
   if (entry.poolConfig) reasons.push("session pool config");
+  if (isGeminiLike) reasons.push("Gemini endpoint constructed at dispatch");
 
   return { eligible: reasons.length === 0, reasons };
 }
@@ -100,6 +106,8 @@ export function createProviderPluginManifestEntry(entry) {
       responsesBaseUrl: transport.responsesBaseUrl || transport.responsesUrl,
       chatPath: transport.chatPath,
       modelsUrl: transport.modelsUrl,
+      headers: transport.headers ? { ...transport.headers } : undefined,
+      urlSuffix: transport.urlSuffix,
     }),
     capabilities: capabilitiesFor(entry, sidecar.eligible),
     passthroughModels: entry.passthroughModels === true,

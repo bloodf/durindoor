@@ -327,6 +327,20 @@ function buildSearxngRequest(config, params) {
   };
 }
 
+function buildOllamaRequest(config, params) {
+  const apiKey = params.token;
+  if (!apiKey) throw new Error("Ollama Search requires an API key");
+
+  return {
+    url: resolveBaseUrl(config, params),
+    init: {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ query: params.query, max_results: params.maxResults }),
+    },
+  };
+}
+
 // ── Dispatcher ──────────────────────────────────────────────────────────
 
 const BUILDERS = {
@@ -340,6 +354,7 @@ const BUILDERS = {
   "searchapi": buildSearchApiRequest,
   "youcom": buildYouComRequest,
   "searxng": buildSearxngRequest,
+  "ollama": buildOllamaRequest,
 };
 
 /**

@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { POST } from "@/app/api/providers/validate/route.js";
 
 // Mock fetch globally
 const originalFetch = global.fetch;
@@ -20,6 +21,56 @@ describe("Provider Validation API", () => {
 
   afterEach(() => {
     global.fetch = originalFetch;
+  });
+
+  describe("Google PSE validation", () => {
+    it("should return valid:false when Google PSE responds 400", async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        statusText: "Bad Request",
+      });
+
+      const request = new Request("http://localhost/api/providers/validate", {
+        method: "POST",
+        body: JSON.stringify({
+          provider: "google-pse",
+          apiKey: "test-key",
+          providerSpecificData: { cx: "test-cx-id" },
+        }),
+      });
+
+      const response = await POST(request);
+      const json = await response.json();
+
+      expect(json).toEqual({ valid: false, error: "Invalid API key" });
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("https://www.googleapis.com/customsearch/v1"),
+        expect.objectContaining({ method: "GET" })
+      );
+    });
+
+    it("should return valid:true when Google PSE responds 200", async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+      });
+
+      const request = new Request("http://localhost/api/providers/validate", {
+        method: "POST",
+        body: JSON.stringify({
+          provider: "google-pse",
+          apiKey: "test-key",
+          providerSpecificData: { cx: "test-cx-id" },
+        }),
+      });
+
+      const response = await POST(request);
+      const json = await response.json();
+
+      expect(json).toEqual({ valid: true, error: null });
+    });
   });
 
   describe("OpenAI Compatible", () => {

@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   updateProviderConnection: vi.fn(),
   validateApiKey: vi.fn(),
   getSettings: vi.fn(),
+  getProxyPools: vi.fn(),
 }));
 
 vi.mock("@/lib/localDb", () => ({
@@ -12,6 +13,7 @@ vi.mock("@/lib/localDb", () => ({
   updateProviderConnection: mocks.updateProviderConnection,
   validateApiKey: mocks.validateApiKey,
   getSettings: mocks.getSettings,
+  getProxyPools: mocks.getProxyPools,
 }));
 
 describe("Provider port-pending guard fallback", () => {

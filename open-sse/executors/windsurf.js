@@ -343,7 +343,7 @@ function parseGrpcWebFrames(buf) {
     frames.push({ flag, payload: buf.slice(offset + 5, offset + 5 + len) });
     offset += 5 + len;
   }
-  return frames;
+  return { frames, incomplete: offset < buf.length };
 }
 
 function mergeExtraHeaders(headers, upstreamExtraHeaders) {
@@ -438,7 +438,7 @@ export class WindsurfExecutor extends BaseExecutor {
     let completionTokens = 0;
     let hadError = null;
 
-    for (const frame of parseGrpcWebFrames(bytes)) {
+    for (const frame of parseGrpcWebFrames(bytes).frames) {
       if (frame.flag === 0x80) {
         const trailer = TEXT_DEC.decode(frame.payload);
         const statusMatch = /grpc-status:\s*(\d+)/i.exec(trailer);
@@ -463,7 +463,8 @@ export class WindsurfExecutor extends BaseExecutor {
       }
     }
 
-    if (hadError) {
+    if (hadError || parseGrpcWebFrames(bytes).incomplete) {
+      if (!hadError) hadError = "Incomplete gRPC-web frame";
       return new Response(JSON.stringify({
         error: { message: hadError, type: "windsurf_error", code: "upstream_error" },
       }), { status: 502, headers: { "Content-Type": "application/json" } });
@@ -553,7 +554,7 @@ export class WindsurfExecutor extends BaseExecutor {
         };
 
         const drainFrames = () => {
-          const frames = parseGrpcWebFrames(pending);
+          const { frames } = parseGrpcWebFrames(pending);
           if (frames.length === 0) return;
           let consumed = 0;
           for (const frame of frames) {
@@ -582,6 +583,13 @@ export class WindsurfExecutor extends BaseExecutor {
 
           if (hadError) {
             emit(sseChunk({ error: { message: hadError, type: "windsurf_error", code: "upstream_error" } }));
+            emit("data: [DONE]\n\n");
+            controller.close();
+            return;
+          }
+
+          if (pending.length > 0) {
+            emit(sseChunk({ error: { message: "Incomplete gRPC-web frame", type: "windsurf_error", code: "upstream_error" } }));
             emit("data: [DONE]\n\n");
             controller.close();
             return;

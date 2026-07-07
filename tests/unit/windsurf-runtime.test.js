@@ -84,12 +84,13 @@ describe("Windsurf runtime wire helpers", () => {
     expect(first[0]).toBe(0);
     expect(new DataView(first.buffer).getUint32(1, false)).toBe(5);
 
-    const frames = __windsurfInternals.parseGrpcWebFrames(
+    const { frames, incomplete } = __windsurfInternals.parseGrpcWebFrames(
       __windsurfInternals.concatBytes([first, second, truncated])
     );
     expect(frames).toHaveLength(2);
     expect(new TextDecoder().decode(frames[0].payload)).toBe("hello");
     expect(frames[1].flag).toBe(0x80);
+    expect(incomplete).toBe(true);
   });
 
   it("decodes content, done usage, and upstream error protobuf chunks", async () => {
@@ -126,7 +127,7 @@ describe("Windsurf runtime wire helpers", () => {
     ]);
     const framed = __windsurfInternals.grpcWebFrame(request);
 
-    expect(__windsurfInternals.parseGrpcWebFrames(framed)[0].payload).toEqual(request);
+    expect(__windsurfInternals.parseGrpcWebFrames(framed).frames[0].payload).toEqual(request);
     expect(new TextDecoder().decode(request)).toContain("swe-1-6");
     expect(new TextDecoder().decode(request)).toContain("ws-token");
     expect(new TextDecoder().decode(request)).toContain("hello");
@@ -172,7 +173,7 @@ describe("Windsurf executor behavior", () => {
     expect(calls[0].init.headers.Authorization).toBe("Bearer ws-token");
     expect(calls[0].init.headers["X-Test"]).toBe("1");
     expect(calls[0].init.body[0]).toBe(0);
-    expect(new TextDecoder().decode(result.transformedBody)).toContain("swe-1-6-fast");
+    expect(result.transformedBody).toBeNull();
 
     const text = await result.response.text();
     const dataLines = text.split("\n").filter((line) => line.startsWith("data: ") && line !== "data: [DONE]");
@@ -247,5 +248,58 @@ describe("Windsurf executor behavior", () => {
     const text = await result.response.text();
     expect(text).toContain('"message":"bad token"');
     expect(text).toContain('"code":"upstream_error"');
+  });
+
+  it("detects truncated gRPC-web frames as incomplete", async () => {
+    const { __windsurfInternals } = await import("../../open-sse/executors/windsurf.js");
+    const enc = new TextEncoder();
+    const fullFrame = __windsurfInternals.grpcWebFrame(enc.encode("hi"));
+    const truncated = new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x64, 1, 2, 3]);
+    const { frames, incomplete } = __windsurfInternals.parseGrpcWebFrames(
+      __windsurfInternals.concatBytes([fullFrame, truncated])
+    );
+    expect(frames).toHaveLength(1);
+    expect(incomplete).toBe(true);
+
+    const only = __windsurfInternals.parseGrpcWebFrames(fullFrame);
+    expect(only.frames).toHaveLength(1);
+    expect(only.incomplete).toBe(false);
+  });
+
+  it("surfaces truncated final frames as non-streaming errors", async () => {
+    vi.doMock("../../open-sse/utils/proxyFetch.js", () => ({
+      proxyAwareFetch: vi.fn(async () => {
+        const truncated = new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x64, 1, 2, 3]);
+        return new Response(truncated, { status: 200 });
+      }),
+    }));
+    const { WindsurfExecutor } = await import("../../open-sse/executors/windsurf.js");
+    const result = await new WindsurfExecutor().execute({
+      model: "swe-1",
+      body: { messages: [{ role: "user", content: "ping" }] },
+      stream: false,
+      credentials: { accessToken: "ws-token" },
+    });
+    expect(result.response.status).toBe(502);
+    const body = await result.response.json();
+    expect(body.error.message).toBe("Incomplete gRPC-web frame");
+  });
+
+  it("surfaces truncated final frames as SSE errors", async () => {
+    vi.doMock("../../open-sse/utils/proxyFetch.js", () => ({
+      proxyAwareFetch: vi.fn(async () => {
+        const truncated = new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x64, 1, 2, 3]);
+        return new Response(truncated, { status: 200 });
+      }),
+    }));
+    const { WindsurfExecutor } = await import("../../open-sse/executors/windsurf.js");
+    const result = await new WindsurfExecutor().execute({
+      model: "swe-1",
+      body: { messages: [{ role: "user", content: "ping" }] },
+      credentials: { accessToken: "ws-token" },
+    });
+    const text = await result.response.text();
+    expect(text).toContain("Incomplete gRPC-web frame");
+    expect(text).toContain("data: [DONE]");
   });
 });

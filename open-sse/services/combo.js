@@ -781,7 +781,10 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
       if (result.ok) {
         if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, true, null);
         if (comboStrategy === "round-robin") {
-          advanceRoundRobinPointerPastServedModel(models, comboName, comboStickyLimit, modelStr);
+          const actuallyRotated = modelStr !== rotatedModels[0];
+          if (actuallyRotated) {
+            advanceRoundRobinPointerPastServedModel(models, comboName, comboStickyLimit, modelStr);
+          }
         }
         log.info("COMBO", `Model ${modelStr} succeeded`);
         return result;

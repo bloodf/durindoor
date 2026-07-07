@@ -27,6 +27,11 @@ describe("OmniRoute open web/OAuth provider ports", () => {
     expect(computeDefaultConnectionName(1)).toBe("main-2");
     expect(computeDefaultConnectionName(4)).toBe("main-5");
     expect(computeDefaultConnectionName(undefined)).toBe("main");
+    expect(computeDefaultConnectionName([])).toBe("main");
+    expect(computeDefaultConnectionName(["main"])).toBe("main-2");
+    expect(computeDefaultConnectionName(["main-2"])).toBe("main-3");
+    expect(computeDefaultConnectionName(["main", "main-3"])).toBe("main-4");
+    expect(computeDefaultConnectionName(["main", "main-2", "main-3", "main-4"])).toBe("main-5");
   });
 
   it("routes Kiro runtime by profileArn region before stored IdC token region", async () => {
@@ -39,6 +44,9 @@ describe("OmniRoute open web/OAuth provider ports", () => {
     const profileArn = "arn:aws:codewhisperer:eu-central-1:123456789012:profile/ABC";
 
     expect(resolveKiroRuntimeRegion({ region: "eu-north-1", profileArn })).toBe("eu-central-1");
+    expect(resolveKiroRuntimeRegion({ region: "eu-west-1" })).toBe("eu-west-1");
+    expect(resolveKiroRuntimeRegion({ region: "ap-southeast-1" })).toBe("ap-southeast-1");
+    expect(resolveKiroRuntimeRegion({ region: "invalid-region" })).toBe("us-east-1");
     expect(buildKiroProfileDiscoveryRegions("eu-north-1")).toEqual([
       "eu-central-1",
       "us-east-1",
@@ -151,16 +159,16 @@ describe("OmniRoute open web/OAuth provider ports", () => {
     }
   });
 
-  it("routes openai-format web-cookie providers with wss baseUrl through cookie fallback validation", async () => {
+  it("routes openai-format web-cookie providers with https baseUrl through cookie fallback validation", async () => {
     const { POST } = await import("../../src/app/api/providers/validate/route.js");
     const { WEB_COOKIE_PROVIDERS } = await import("../../src/shared/constants/providers.js");
     const { PROVIDERS } = await import("../../open-sse/config/providers.js");
-    const provider = "test-openai-wss-web-cookie";
+    const provider = "test-openai-https-web-cookie";
     const calls = [];
 
-    WEB_COOKIE_PROVIDERS[provider] = { name: "Test WSS Web", website: "https://web.example.test/chat" };
+    WEB_COOKIE_PROVIDERS[provider] = { name: "Test HTTPS Web", website: "https://web.example.test/chat" };
     PROVIDERS[provider] = {
-      baseUrl: "wss://socket.example.test/chat",
+      baseUrl: "https://api.example.test/v1/chat/completions",
       format: "openai",
       authType: "cookie",
     };
@@ -188,4 +196,3 @@ describe("OmniRoute open web/OAuth provider ports", () => {
       delete PROVIDERS[provider];
     }
   });
-});

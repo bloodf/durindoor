@@ -90,10 +90,6 @@ function joinValidationPath(baseUrl, path) {
   }
 }
 
-function hasHttpValidationBaseUrl(cfg) {
-  return typeof cfg?.baseUrl === "string" && /^https?:\/\//i.test(cfg.baseUrl.trim());
-}
-
 /**
  * Web-cookie transports can still advertise OpenAI wire format while using
  * browser-only WebSocket URLs. Those cannot be probed with Bearer /models, so
@@ -102,7 +98,7 @@ function hasHttpValidationBaseUrl(cfg) {
 async function probeWebCookieFallback(provider, apiKey, cfg) {
   const cookieProvider = WEB_COOKIE_PROVIDERS[provider];
   if (!cookieProvider) return null;
-  if (cfg?.format === "openai" && hasHttpValidationBaseUrl(cfg)) return null;
+  if (cfg?.authType !== "cookie") return null;
 
   const fallbackBaseUrl = typeof cookieProvider.website === "string" ? cookieProvider.website.trim() : "";
   const testUrl = fallbackBaseUrl ? joinValidationPath(fallbackBaseUrl, "models") : "";

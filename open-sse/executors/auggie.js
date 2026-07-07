@@ -1,3 +1,4 @@
+import { StringDecoder } from "node:string_decoder";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -291,13 +292,18 @@ export class AuggieExecutor extends BaseExecutor {
         });
 
         let stderrTail = "";
-        child.stdout?.on("data", (chunk) => emitDelta(chunk.toString("utf8")));
+        const stdoutDecoder = new StringDecoder("utf8");
+        child.stdout?.on("data", (chunk) => {
+          emitDelta(stdoutDecoder.write(chunk));
+        });
         child.stderr?.on("data", (chunk) => {
           stderrTail = (stderrTail + chunk.toString("utf8")).slice(-2000);
           log?.debug?.("AUGGIE", `stderr: ${chunk.toString("utf8").slice(0, 200)}`);
         });
         child.on("close", (code) => {
           if (finished) return;
+          const tail = stdoutDecoder.end();
+          if (tail) emitDelta(tail);
           if (code !== 0) {
             emitError(`Auggie CLI exited with code ${code}${stderrTail ? `: ${stderrTail}` : ""}`);
             return;
@@ -335,6 +341,7 @@ export class AuggieExecutor extends BaseExecutor {
       let stderrTail = "";
       let settled = false;
       let timer;
+      const stdoutDecoder = new StringDecoder("utf8");
       const settle = (response) => {
         if (settled) return;
         settled = true;
@@ -353,7 +360,7 @@ export class AuggieExecutor extends BaseExecutor {
       }, { once: true });
 
       child.stdout?.on("data", (chunk) => {
-        stdout += chunk.toString("utf8");
+        stdout += stdoutDecoder.write(chunk);
       });
       child.stderr?.on("data", (chunk) => {
         stderrTail = (stderrTail + chunk.toString("utf8")).slice(-2000);
@@ -368,7 +375,7 @@ export class AuggieExecutor extends BaseExecutor {
           settle(buildAuggieErrorResponse(`Auggie CLI exited with code ${code}${stderrTail ? `: ${stderrTail}` : ""}`));
           return;
         }
-        settle(buildChatCompletionResponse(model, promptText, stdout));
+        settle(buildChatCompletionResponse(model, promptText, stdout + stdoutDecoder.end()));
       });
     });
   }

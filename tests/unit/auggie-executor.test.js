@@ -125,6 +125,37 @@ describe("AuggieExecutor", () => {
     }
   });
 
+  it("decodes split UTF-8 stdout chunks without replacement characters", async () => {
+    const utf8Script = path.join(TMP_DIR, "fake-auggie-utf8.js");
+    fs.writeFileSync(
+      utf8Script,
+      `process.stdout.write(Buffer.from([0xe4]));\n` +
+        `setTimeout(() => {\n` +
+        `  process.stdout.write(Buffer.from([0xbd, 0xa0, 0xe5, 0xa5, 0xbd]));\n` +
+        `  process.stdout.end();\n` +
+        `}, 10);\n`,
+      "utf8"
+    );
+    const bin = writeFakeBin("fake-auggie-utf8.sh", `node "${utf8Script}"`);
+
+    const previous = process.env.AUGGIE_BIN;
+    process.env.AUGGIE_BIN = bin;
+    try {
+      const { response } = await new AuggieExecutor().execute({
+        model: "claude-sonnet-4.6",
+        body: { messages: [{ role: "user", content: "hi" }] },
+        stream: false,
+        credentials: {},
+      });
+      const body = await response.json();
+      expect(response.status).toBe(200);
+      expect(body.choices[0].message.content).toBe("你好");
+    } finally {
+      if (previous === undefined) delete process.env.AUGGIE_BIN;
+      else process.env.AUGGIE_BIN = previous;
+    }
+  });
+
   it("rejects unknown models without spawning the CLI", async () => {
     const marker = path.join(TMP_DIR, "should-not-spawn");
     const bin = writeFakeBin("fake-auggie-spawn-guard.sh", `touch "${marker}"\nprintf "bad"`);

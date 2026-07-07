@@ -14,8 +14,6 @@ Provider connections are the credentials DurinDoor uses to call upstream AI serv
 
 The dashboard groups providers by category, but all successful connections become usable by the routing layer when the selected endpoint and model support the request type.
 
-Some registry providers are marked hidden because the generic connection form does not collect enough provider-specific data for them yet. Hidden providers do not appear in the legacy `Dashboard -> Providers -> Add New Provider` selector and the legacy `/api/providers` creation route rejects direct connection attempts for them. Existing visible providers and custom compatible provider nodes continue to use the same connection flow.
-
 ## Add an OAuth Connection
 
 1. Open `Dashboard -> Providers`.
@@ -36,37 +34,6 @@ DurinDoor stores refresh metadata so it can renew tokens when the upstream provi
 6. Save and test.
 
 Use provider labels when you keep multiple accounts for the same provider. Labels make usage logs and fallback behavior easier to audit.
-
-## Web Cookie Providers
-
-Web cookie providers bridge browser-session services that do not expose stable API-key endpoints. Paste only cookies from accounts you own, and expect sessions to expire when the upstream site rotates login state.
-
-### ZenMux Free
-
-`zenmux-free` uses the ZenMux free-tier web gateway at `https://zenmux.ai/api/anthropic/v1/messages`. Add it as a Web Cookie connection and paste the full `Cookie` header from `zenmux.ai`; the cookie string must include `ctoken=...`.
-
-DurinDoor converts OpenAI chat requests to ZenMux's Anthropic-compatible message endpoint and converts the upstream Anthropic SSE stream back to OpenAI chat completions. The provider is exposed under alias `zmf`.
-
-ZenMux Free preserves prior user and assistant turns when translating chat history, maps `max_tokens`, `max_completion_tokens`, and `max_output_tokens` to the Anthropic `max_tokens` cap, and normalizes Anthropic streaming stop reasons back to OpenAI finish reasons. Saved ZenMux connections use the configured per-connection proxy for both chat requests and dashboard health checks. ZenMux Free models are advertised as text-only for tool calling because this web endpoint does not return structured `tool_use` responses.
-
-### Blocked OmniRoute Web-Session Providers
-
-The following OmniRoute providers were inspected for this branch but are not exposed at runtime because this JS-era DurinDoor branch does not include the required browser-session subsystems, credential helpers, or endpoint handlers:
-
-| Provider | Blocker |
-| --- | --- |
-| `adapta-web` | Requires OmniRoute web-session bearer-token executor and Adapta-specific credential validation not present in this branch. |
-| `chatgpt-web` | Requires ChatGPT web TLS client, sentinel/proof-of-work helpers, image endpoint handling, and web-cookie credential normalization. |
-| `copilot-m365-web` | Requires Microsoft 365 BizChat WebSocket framing and connection helpers. |
-| `copilot-web` | Requires Copilot web-session executor and browser-derived cookie/token flow. |
-| `duckduckgo-web` | Requires DuckDuckGo anti-abuse challenge solver, FE-signal generation, optional browser-backed session pool, and web tool shims. |
-| `huggingchat` | Requires HuggingChat cookie normalizer plus JSONL stream helper modules and SvelteKit conversation bootstrap flow. |
-| `muse-spark-web` | Requires Meta/Muse web-session request parser and cookie-backed executor helpers. |
-| `suno` | OmniRoute entry is a media/music web-session provider; this branch lacks the corresponding music-generation route and executor contract. |
-| `t3-web` | Requires T3 web-session executor and cookie validation flow. |
-| `udio` | OmniRoute entry is a media/music web-session provider; this branch lacks the corresponding Udio music endpoint executor contract. |
-| `veoaifree-web` | OmniRoute executor targets video/image/TTS tool workflows through WordPress AJAX; this branch lacks compatible video/music route plumbing for request/stream chat tests. |
-| `yuanbao-web` | Requires Tencent Yuanbao cookie-session SSE executor and Yuanbao-specific validation. |
 
 ## Connection Health
 
@@ -111,20 +78,18 @@ Implemented in this slice:
 
 | Provider | Identifier | Credential path | Refresh behavior |
 | --- | --- | --- | --- |
-| Antigravity CLI | `agy` | Same Google OAuth shape as Antigravity, stored under a separate provider id so CLI credentials do not collide with IDE credentials. OAuth authorization, proactive refresh, and image generation adapter lookup are all explicitly registered for `agy` before it is shown in the dashboard. | Reuses the Antigravity Google refresh flow. |
-| Grok Build CLI | `gb` / `grok-cli` | Import `~/.grok/auth.json`, a raw Grok JWT, or a structured `{ accessToken, refreshToken }` body through the dashboard import-token flow. The dashboard Add action opens the import dialog instead of the generic browser OAuth modal because Grok CLI credentials are captured outside DurinDoor. Auth JSON imports persist the refresh token and decoded non-secret account metadata only; raw auth JSON is never stored in public provider metadata. The short alias is `gb` so Gemini CLI keeps the existing `gc` shorthand. | Uses the xAI OAuth token endpoint and stores rotated refresh tokens when returned. |
+| Antigravity CLI | `agy` | Same Google OAuth shape as Antigravity, stored under a separate provider id so CLI credentials do not collide with IDE credentials. | Reuses the Antigravity Google refresh flow. |
+| Grok Build CLI | `grok-cli` | Import `~/.grok/auth.json` or a raw Grok JWT through the import-token flow. Auth JSON imports preserve the refresh token and non-secret account metadata. | Uses the xAI OAuth token endpoint and stores rotated refresh tokens when returned. |
+| GitLab Duo | `gitlab-duo` | Browser OAuth with PKCE against `GITLAB_DUO_BASE_URL`/`GITLAB_BASE_URL`, or per-connection `baseUrl` metadata. Chat messages are adapted to GitLab Code Suggestions completions. | Refreshes through the instance `/oauth/token` endpoint and keeps base URL/client metadata with the connection. |
+| Trae | `trae` | Import a Trae SOLO `Cloud-IDE-JWT` token. Optional identity metadata (`webId`, `bizUserId`, `userUniqueId`, tenant/scope/region) is carried in provider-specific data. | Pasted Cloud-IDE-JWT tokens do not expose a public refresh flow; reconnect by importing a new token when Trae expires it. |
+| Devin CLI | `devin-cli` | Import a Devin/Windsurf token or rely on `devin auth login` credentials. Runtime calls spawn `devin acp --agent-type summarizer` over ACP stdio; set `CLI_DEVIN_BIN` to override binary discovery. | No public token refresh is available for imported tokens; reconnect or re-authenticate the official CLI when the upstream session expires. |
+| Windsurf | `windsurf` | Import the Windsurf/Codeium token shown by the IDE command-palette auth-token flow. Runtime calls use Windsurf's `LanguageServerService/GetChatMessage` gRPC-web endpoint with a direct protobuf request encoder and OpenAI-compatible SSE chunk output. | No public refresh flow is available for imported tokens; reconnect by importing a fresh token if Windsurf rejects the session. |
 
-Blocked from runtime exposure in this slice:
+Windsurf runtime details:
 
-| Provider | Reason |
-| --- | --- |
-| `windsurf` | Requires the Windsurf gRPC-web protobuf encoder/decoder for `LanguageServerService/GetChatMessage`, model alias normalization, and stream framing tests. The registry exposes import-token metadata, but runtime calls stay blocked until the wire encoder is ported and verified. |
-
-Windsurf implementation plan:
-
-1. Port the OmniRoute `open-sse/executors/windsurf.ts` protobuf helpers to plain JS: gRPC-web frame writer/reader, `GetChatMessage` request encoding, response chunk decoding, and model alias normalization.
-2. Add unit tests for model alias mapping, OpenAI message conversion, gRPC-web frame parsing, content/done/error chunk decoding, and the guarded executor path.
-3. Replace the current `501` guard with the real executor only after the tests cover malformed/truncated frames and upstream error chunks.
-4. No new package dependency is expected if the minimal encoder is ported directly; using generated protobufs would require adding a protobuf runtime and generated code, so the direct encoder remains the preferred small port.
+1. The executor maps DurinDoor/OmniRoute model aliases to Windsurf wire identifiers before encoding the request.
+2. The request body is a dependency-free protobuf encoder wrapped in a gRPC-web data frame; the API token is sent both as a bearer header and in protobuf metadata.
+3. The response parser accepts gRPC-web data frames and trailer frames, decodes content, done/usage, and error chunks, and emits OpenAI-compatible SSE chunks.
+4. Wire-level unit tests cover malformed/truncated frames and upstream error chunks so the runtime is no longer guarded as `501`.
 
 Use the dashboard model selector or `/v1/models` response as the source of truth for available identifiers in your instance.

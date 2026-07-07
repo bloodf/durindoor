@@ -64,11 +64,7 @@ function extractGrokCliToken(input) {
 
   if (input && typeof input === "object") {
     const obj = input;
-    const inner = obj.authJson && typeof obj.authJson === "object"
-      ? obj.authJson
-      : obj.accessToken && typeof obj.accessToken === "object"
-        ? obj.accessToken
-        : obj;
+    const inner = obj.accessToken && typeof obj.accessToken === "object" ? obj.accessToken : obj;
 
     if (inner && typeof inner === "object") {
       for (const entry of Object.values(inner)) {
@@ -77,7 +73,7 @@ function extractGrokCliToken(input) {
           return {
             accessToken: entry.key,
             refreshToken: typeof entry.refresh_token === "string" ? entry.refresh_token : null,
-
+            rawAuthJson: inner,
             expiresAt: typeof entry.expires_at === "string" ? entry.expires_at : null,
           };
         }
@@ -98,7 +94,7 @@ function extractGrokCliToken(input) {
 }
 
 export function mapGrokCliTokens(tokens) {
-  const { accessToken, refreshToken, expiresAt } = extractGrokCliToken(tokens);
+  const { accessToken, refreshToken, rawAuthJson, expiresAt } = extractGrokCliToken(tokens);
   const payload = decodeJwtPayload(accessToken) || {};
   const currentSec = Math.floor(Date.now() / 1000);
   let expiresIn = 21600;
@@ -122,7 +118,7 @@ export function mapGrokCliTokens(tokens) {
       teamId: payload.team_id || null,
       tier: payload.tier || 1,
       principalType: payload.principal_type || "User",
-
+      rawAuthJson: rawAuthJson || undefined,
     },
   };
 }
@@ -550,17 +546,6 @@ const PROVIDERS = {
       email: extra?.userInfo?.email,
       projectId: extra?.projectId,
     }),
-  },
-
-  // `agy` intentionally uses the Antigravity OAuth lifecycle with an isolated
-  // provider id so CLI imports/connections do not collide with IDE accounts.
-  agy: {
-    config: ANTIGRAVITY_CONFIG,
-    flowType: "authorization_code",
-    buildAuthUrl: (config, redirectUri, state) => PROVIDERS.antigravity.buildAuthUrl(config, redirectUri, state),
-    exchangeToken: (config, code, redirectUri) => PROVIDERS.antigravity.exchangeToken(config, code, redirectUri),
-    postExchange: (tokens) => PROVIDERS.antigravity.postExchange(tokens),
-    mapTokens: (tokens, extra) => PROVIDERS.antigravity.mapTokens(tokens, extra),
   },
 
   iflow: {
@@ -1325,7 +1310,7 @@ const PROVIDERS = {
         headers: { Authorization: `Bearer ${tokens.access_token}` },
       });
       const user = userRes.ok ? await userRes.json() : {};
-      return { ...tokens, _user: user, _baseUrl: baseUrl, _clientId: clientId, _clientSecret: clientSecret || "" };
+      return { ...tokens, _user: user, _baseUrl: baseUrl, _clientId: clientId };
     },
     mapTokens: (tokens) => ({
       accessToken: tokens.access_token,
@@ -1384,7 +1369,7 @@ const PROVIDERS = {
         headers: { Authorization: `Bearer ${tokens.access_token}` },
       });
       const user = userRes.ok ? await userRes.json() : {};
-      return { ...tokens, _user: user, _baseUrl: baseUrl, _clientId: clientId, _clientSecret: clientSecret || "" };
+      return { ...tokens, _user: user, _baseUrl: baseUrl, _clientId: clientId };
     },
     mapTokens: (tokens) => ({
       accessToken: tokens.access_token,
@@ -1397,7 +1382,6 @@ const PROVIDERS = {
         name: tokens._user?.name || "",
         baseUrl: tokens._baseUrl || GITLAB_DUO_CONFIG.defaultBaseUrl,
         clientId: tokens._clientId || GITLAB_DUO_CONFIG.clientId,
-        ...(tokens._clientSecret ? { clientSecret: tokens._clientSecret } : {}),
         authKind: "oauth",
       },
     }),
@@ -1407,22 +1391,19 @@ const PROVIDERS = {
     config: TRAE_CONFIG,
     flowType: "import_token",
     buildAuthUrl: () => null,
-    mapTokens: (tokens) => {
-      const obj = tokens && typeof tokens === "object" ? tokens : {};
-      return {
-        accessToken: obj.accessToken || obj.access_token || obj.token || tokens,
-        refreshToken: null,
-        expiresIn: obj.expiresIn || TRAE_CONFIG.tokenLifetimeDays * 24 * 60 * 60,
-        providerSpecificData: {
-          webId: obj.webId || obj.web_id || "",
-          bizUserId: obj.bizUserId || obj.biz_user_id || "",
-          userUniqueId: obj.userUniqueId || obj.user_unique_id || "",
-          scope: obj.scope || "marscode-us",
-          tenant: obj.tenant || "marscode",
-          region: obj.region || "US-East",
-        },
-      };
-    },
+    mapTokens: (tokens) => ({
+      accessToken: tokens.accessToken || tokens.access_token || tokens.token || tokens,
+      refreshToken: null,
+      expiresIn: tokens.expiresIn || TRAE_CONFIG.tokenLifetimeDays * 24 * 60 * 60,
+      providerSpecificData: {
+        webId: tokens.webId || tokens.web_id || "",
+        bizUserId: tokens.bizUserId || tokens.biz_user_id || "",
+        userUniqueId: tokens.userUniqueId || tokens.user_unique_id || "",
+        scope: tokens.scope || "marscode-us",
+        tenant: tokens.tenant || "marscode",
+        region: tokens.region || "US-East",
+      },
+    }),
   },
 
   "devin-cli": {

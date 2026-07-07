@@ -11,14 +11,16 @@ export default {
   category: "oauth",
   transport: {
     baseUrl: "https://server.self-serve.windsurf.com",
-    format: "openai",
+    chatPath: "/exa.language_server_pb.LanguageServerService/GetChatMessage",
+    format: "grpc-web-proto",
+    // Windsurf speaks gRPC-web on the wire but converts responses to OpenAI chat
+    // JSON/SSE before returning them, so response handling sees "openai".
     defaultContextLength: 200000,
     auth: {
       combined: true,
       header: "Authorization",
       scheme: "bearer",
     },
-    blockedReason: "Requires verified Windsurf gRPC-web protobuf transport.",
   },
   oauth: {
     flowType: "import_token",

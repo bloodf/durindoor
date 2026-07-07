@@ -107,13 +107,12 @@ export async function refreshGitLabDuoToken(refreshToken, credentials = {}, log)
     PROVIDER_OAUTH["gitlab-duo"]?.clientId ||
     "";
   const clientSecret =
-    credentials?.providerSpecificData?.clientSecret ||
     process.env.GITLAB_DUO_OAUTH_CLIENT_SECRET ||
     process.env.GITLAB_OAUTH_CLIENT_SECRET ||
     PROVIDER_OAUTH["gitlab-duo"]?.clientSecret ||
     "";
 
-    return dedupRefresh(`gitlab-duo:${baseUrl}:${clientId}`, refreshToken, async () => {
+  return dedupRefresh(`gitlab-duo:${baseUrl}:${clientId}`, refreshToken, async () => {
     try {
       const params = new URLSearchParams({
         grant_type: "refresh_token",
@@ -121,11 +120,11 @@ export async function refreshGitLabDuoToken(refreshToken, credentials = {}, log)
         client_id: clientId,
       });
       if (clientSecret) params.set("client_secret", clientSecret);
-      const response = await proxyAwareFetch(`${baseUrl}/oauth/token`, {
+      const response = await fetch(`${baseUrl}/oauth/token`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
         body: params,
-      }, credentials?.proxyOptions || null);
+      });
       if (!response.ok) {
         const errorText = await response.text().catch(() => "");
         log?.warn?.("TOKEN_REFRESH", `GitLab Duo refresh failed: ${response.status} ${errorText}`);
@@ -138,10 +137,8 @@ export async function refreshGitLabDuoToken(refreshToken, credentials = {}, log)
         refreshToken: tokens.refresh_token || refreshToken,
         expiresIn: tokens.expires_in,
         providerSpecificData: {
-          ...(credentials?.providerSpecificData || {}),
           baseUrl,
           clientId,
-          ...(clientSecret ? { clientSecret } : {}),
           authKind: "oauth",
         },
       };

@@ -3,12 +3,12 @@ import xai from "./xai.js";
 export default {
   id: "grok-cli",
   priority: 42,
-  alias: "gb",
+  alias: "gc",
   display: {
     name: "Grok Build",
     icon: "terminal",
     color: "#111827",
-    textIcon: "GB",
+    textIcon: "GC",
     website: "https://x.ai",
     notice: {
       signupUrl: "https://x.ai",
@@ -27,13 +27,13 @@ export default {
       id: "grok-build",
       name: "Grok Build",
       contextLength: 256000,
-      unsupportedParams: ["presencePenalty", "presence_penalty", "frequencyPenalty", "frequency_penalty", "logprobs", "topLogprobs", "top_logprobs"],
+      unsupportedParams: ["presencePenalty", "frequencyPenalty", "logprobs", "topLogprobs"],
     },
     {
       id: "grok-composer-2.5-fast",
       name: "Grok Composer 2.5 Fast",
       contextLength: 200000,
-      unsupportedParams: ["presencePenalty", "presence_penalty", "frequencyPenalty", "frequency_penalty", "logprobs", "topLogprobs", "top_logprobs"],
+      unsupportedParams: ["presencePenalty", "frequencyPenalty", "logprobs", "topLogprobs"],
     },
   ],
   passthroughModels: true,

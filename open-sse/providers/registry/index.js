@@ -100,52 +100,12 @@ import p97 from "./xiaomi-tokenplan.js";
 import p98 from "./youcom.js";
 import p99 from "./nube.js";
 import p100 from "./kenari.js";
-import p101 from "./agy.js";
-import p102 from "./command-code.js";
-import p103 from "./crof.js";
-import p104 from "./databricks.js";
-import p105 from "./deepinfra.js";
-import p106 from "./devin-cli.js";
-import p107 from "./dgrid.js";
-import p108 from "./dify.js";
-import p109 from "./digitalocean.js";
-import p110 from "./dit.js";
-import p111 from "./doubao.js";
-import p112 from "./factory.js";
-import p113 from "./featherless-ai.js";
-import p114 from "./freeaiapikey.js";
-import p115 from "./freemodel-dev.js";
-import p116 from "./friendliai.js";
-import p117 from "./galadriel.js";
-import p118 from "./gigachat.js";
-import p119 from "./gitlab-duo.js";
-import p120 from "./gitlawb.js";
-import p121 from "./glhf.js";
-import p122 from "./grok-cli.js";
-import p123 from "./hackclub.js";
-import p124 from "./haiper.js";
-import p125 from "./hcnsec.js";
-import p126 from "./heroku.js";
-import p127 from "./ideogram.js";
-import p128 from "./iflytek.js";
-import p129 from "./inference-net.js";
-import p130 from "./kie.js";
-import p131 from "./kilo-gateway.js";
-import p132 from "./lambda-ai.js";
-import p133 from "./leonardo.js";
-import p134 from "./liquid.js";
-import p135 from "./llamagate.js";
-import p136 from "./llm7.js";
-import p137 from "./longcat.js";
-import p138 from "./maritalk.js";
-import p139 from "./meta-llama.js";
-import p140 from "./pollinations.js";
-import p141 from "./puter.js";
-import p142 from "./theoldllm.js";
-import p143 from "./tinyfish.js";
-import p144 from "./trae.js";
-import p145 from "./windsurf.js";
-import p146 from "./zenmux-free.js";
+import p101 from "./grok-cli.js";
+import p102 from "./agy.js";
+import p103 from "./gitlab-duo.js";
+import p104 from "./trae.js";
+import p105 from "./devin-cli.js";
+import p106 from "./windsurf.js";
 
 export default [
   p0,
@@ -247,52 +207,10 @@ export default [
   p96,
   p97,
   p98,
-  p99,
-  p100,
   p101,
   p102,
   p103,
   p104,
   p105,
   p106,
-  p107,
-  p108,
-  p109,
-  p110,
-  p111,
-  p112,
-  p113,
-  p114,
-  p115,
-  p116,
-  p117,
-  p118,
-  p119,
-  p120,
-  p121,
-  p122,
-  p123,
-  p124,
-  p125,
-  p126,
-  p127,
-  p128,
-  p129,
-  p130,
-  p131,
-  p132,
-  p133,
-  p134,
-  p135,
-  p136,
-  p137,
-  p138,
-  p139,
-  p140,
-  p141,
-  p142,
-  p143,
-  p144,
-  p145,
-  p146,
 ];

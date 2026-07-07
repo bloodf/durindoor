@@ -1,7 +1,5 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { refreshGitLabDuoToken } from "../services/tokenRefresh/providers.js";
 
 function asObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -43,9 +41,21 @@ function renderAssistant(message, text) {
 function buildPrompt(messages = []) {
   if (!Array.isArray(messages)) return "";
   const systemParts = [];
-  const conversation = [];
-  const includesToolExchange = hasToolExchange(messages);
+  const userParts = [];
 
+  if (!hasToolExchange(messages)) {
+    for (const message of messages) {
+      const role = String(message?.role || "user").toLowerCase();
+      const text = extractText(message?.content);
+      if (!text) continue;
+      if (role === "system" || role === "developer") systemParts.push(text);
+      else if (role === "user") userParts.push(text);
+    }
+    const latestUser = userParts.at(-1) || "";
+    return systemParts.length ? `System instructions:\n${systemParts.join("\n\n")}\n\n${latestUser}`.trim() : latestUser;
+  }
+
+  const conversation = [];
   for (const message of messages) {
     const role = String(message?.role || "user").toLowerCase();
     const text = extractText(message?.content);
@@ -65,8 +75,7 @@ function buildPrompt(messages = []) {
     }
   }
   const header = systemParts.length ? `System instructions:\n${systemParts.join("\n\n")}\n\n` : "";
-  const suffix = includesToolExchange ? "\n\nContinue the response using the tool result above; do not repeat the tool call." : "";
-  return `${header}${conversation.join("\n\n")}${suffix}`.trim();
+  return `${header}${conversation.join("\n\n")}\n\nContinue the response using the tool result above; do not repeat the tool call.`.trim();
 }
 
 function resolveGitLabBase(credentials) {
@@ -77,7 +86,7 @@ function buildRequestBody(model, body, credentials) {
   const providerData = asObject(credentials?.providerSpecificData);
   const prompt = buildPrompt(body?.messages || []);
   const fileName = providerData.fileName || "durindoor-chat.md";
-  const requestBody = {
+  return {
     prompt_version: 1,
     project_path: providerData.projectPath || "durindoor/session",
     project_id: providerData.projectId || undefined,
@@ -89,11 +98,8 @@ function buildRequestBody(model, body, credentials) {
     intent: providerData.intent || "generation",
     user_instruction: prompt,
     model_provider: providerData.modelProvider || undefined,
+    model_name: model,
   };
-  if (providerData.upstreamModelName) {
-    requestBody.model_name = providerData.upstreamModelName;
-  }
-  return requestBody;
 }
 
 function resolveText(payload) {
@@ -171,16 +177,16 @@ export class GitlabExecutor extends BaseExecutor {
     return buildRequestBody(model, body || {}, credentials || {});
   }
 
-  async execute({ model, body, stream, credentials, signal, proxyOptions = null }) {
+  async execute({ model, body, stream, credentials, signal }) {
     const url = this.buildUrl(model, stream, 0, credentials);
     const headers = this.buildHeaders(credentials);
     const transformedBody = this.transformRequest(model, body, stream, credentials);
-    const response = await proxyAwareFetch(url, {
+    const response = await fetch(url, {
       method: "POST",
       headers,
       body: JSON.stringify(transformedBody),
       signal: signal || undefined,
-    }, proxyOptions);
+    });
     const text = await response.text();
     let payload = null;
     try {
@@ -198,9 +204,5 @@ export class GitlabExecutor extends BaseExecutor {
       headers,
       transformedBody,
     };
-  }
-
-  async refreshCredentials(credentials, log, proxyOptions = null) {
-    return refreshGitLabDuoToken(credentials?.refreshToken, { ...credentials, proxyOptions }, log);
   }
 }

@@ -22,7 +22,4 @@ export default {
   oauth: {
     flowType: "import_token",
   },
-  models: [
-    { id: "devin-cli", name: "Devin CLI", contextLength: 200000 },
-  ],
 };

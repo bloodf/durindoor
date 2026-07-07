@@ -9,15 +9,7 @@ const GROK_CLI_HEADERS = {
   "x-grok-client-identifier": "grok_cli_rs",
   "User-Agent": "grok-cli/0.2.72 (Windows 10.0.26200; x64)",
 };
-const UNSUPPORTED_PARAMS = [
-  "presencePenalty",
-  "presence_penalty",
-  "frequencyPenalty",
-  "frequency_penalty",
-  "logprobs",
-  "topLogprobs",
-  "top_logprobs",
-];
+const UNSUPPORTED_PARAMS = ["presencePenalty", "frequencyPenalty", "logprobs", "topLogprobs"];
 
 export class GrokCliExecutor extends BaseExecutor {
   constructor() {

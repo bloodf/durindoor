@@ -17,7 +17,7 @@ export default {
   hasFree: true,
   authType: "apikey",
   passthroughModels: true,
-  modelsFetcher: { url: "https://api.hcnsec.cn/v1/models", type: "openai" },
+  modelsFetcher: { url: "https://api.hcnsec.cn/v1/models", type: "openai-compatible" },
   transport: {
     baseUrl: "https://api.hcnsec.cn/v1/chat/completions",
     format: "openai",

@@ -27,7 +27,7 @@ describe("Huancheng Public API provider", () => {
     });
     expect(hcnsec.modelsFetcher).toEqual({
       url: "https://api.hcnsec.cn/v1/models",
-      type: "openai",
+      type: "openai-compatible",
     });
   });
 

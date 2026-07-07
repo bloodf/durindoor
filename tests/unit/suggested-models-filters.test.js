@@ -5,9 +5,9 @@
 import { describe, expect, it } from "vitest";
 import { FILTERS } from "../../src/app/api/providers/suggested-models/filters.js";
 
-describe("suggested-models FILTERS.openai", () => {
+describe("suggested-models FILTERS.openai-compatible", () => {
   it("exists as a registered filter type", () => {
-    expect(typeof FILTERS.openai).toBe("function");
+    expect(typeof FILTERS["openai-compatible"]).toBe("function");
   });
 
   it("maps a plain OpenAI-compatible /v1/models list to { id, name, contextLength }", () => {
@@ -17,7 +17,7 @@ describe("suggested-models FILTERS.openai", () => {
       { id: "no-context-model" },
     ];
 
-    expect(FILTERS.openai(raw)).toEqual([
+    expect(FILTERS["openai-compatible"](raw)).toEqual([
       { id: "gpt-5.4", name: "gpt-5.4", contextLength: 400000 },
       { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6", contextLength: 200000 },
       { id: "no-context-model", name: "no-context-model" },
@@ -25,7 +25,7 @@ describe("suggested-models FILTERS.openai", () => {
   });
 
   it("drops entries without an id and tolerates non-array input", () => {
-    expect(FILTERS.openai([{ name: "no id" }, null])).toEqual([]);
-    expect(FILTERS.openai(null)).toEqual([]);
+    expect(FILTERS["openai-compatible"]([{ name: "no id" }, null])).toEqual([]);
+    expect(FILTERS["openai-compatible"](null)).toEqual([]);
   });
 });

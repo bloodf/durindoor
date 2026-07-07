@@ -58,7 +58,16 @@ export async function resolveExecutorWithProxy(providerId, log, providerSpecific
       "UPSTREAM_PROXY",
       `${providerId} routed through CLIProxyAPI (per-connection claude-native override)`
     );
-    return getExecutor(CLIPROXYAPI_PROVIDER_ID);
+    const proxyExec = getExecutor(CLIPROXYAPI_PROVIDER_ID);
+    const nativeExec = getExecutor(providerId);
+    const wrapper = Object.create(proxyExec);
+    wrapper.noAuth = nativeExec.noAuth === true;
+    wrapper.execute = (input) =>
+      executeCliproxyapiMapped(proxyExec, providerId, input, providerSpecificData?.cliproxyapiModelMapping);
+    if (typeof nativeExec.refreshCredentials === "function") {
+      wrapper.refreshCredentials = nativeExec.refreshCredentials.bind(nativeExec);
+    }
+    return wrapper;
   }
 
   const cfg = await getUpstreamProxyConfigCached(providerId);
@@ -67,9 +76,14 @@ export async function resolveExecutorWithProxy(providerId, log, providerSpecific
   const proxyExec = getExecutor(CLIPROXYAPI_PROVIDER_ID);
   if (cfg.mode === "cliproxyapi") {
     log?.info?.("UPSTREAM_PROXY", `${providerId} routed through CLIProxyAPI (passthrough)`);
+    const nativeExec = getExecutor(providerId);
     const wrapper = Object.create(proxyExec);
+    wrapper.noAuth = nativeExec.noAuth === true;
     wrapper.execute = (input) =>
       executeCliproxyapiMapped(proxyExec, providerId, input, cfg.cliproxyapiModelMapping);
+    if (typeof nativeExec.refreshCredentials === "function") {
+      wrapper.refreshCredentials = nativeExec.refreshCredentials.bind(nativeExec);
+    }
     return wrapper;
   }
 
@@ -77,7 +91,7 @@ export async function resolveExecutorWithProxy(providerId, log, providerSpecific
   const fallbackCodes = await getFallbackCodes();
   const isRetryableStatus = (status) => fallbackCodes.includes(status) || status === 0;
   const wrapper = Object.create(nativeExec);
-
+  wrapper.noAuth = nativeExec.noAuth === true;
   wrapper.execute = async (input) => {
     let result;
     try {

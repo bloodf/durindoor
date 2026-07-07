@@ -98,8 +98,8 @@ describe("provider plugin manifest", () => {
     expect(roundTripped.schemaVersion).toBe(1);
     expect(roundTripped.generatedFrom).toBe("open-sse/providers/registry");
     expect(roundTripped.providers.map((provider) => provider.id)).toEqual([
-      "cloudflare-ai",
       "claude-web",
+      "cloudflare-ai",
       "gemini",
       "no-auth",
       "oauth-only",

@@ -15,6 +15,7 @@ export default {
   },
   category: "apikey",
   authType: "apikey",
+  noAuth: true,
   authHint: "Local 9router API key. The managed service normally uses its own generated key.",
   transport: {
     baseUrl: "http://127.0.0.1:20130/v1",

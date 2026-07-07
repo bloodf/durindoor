@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import REGISTRY from "../../open-sse/providers/registry/index.js";
 import { DefaultExecutor } from "../../open-sse/executors/default.js";
+import { OpenCodeZenExecutor } from "../../open-sse/executors/opencode-zen.js";
 import { PROVIDER_ID_TO_ALIAS, PROVIDER_MODELS } from "../../open-sse/config/providerModels.js";
 
 const repoRoot = resolve(import.meta.dirname, "../..");
@@ -69,6 +70,7 @@ describe("OmniRoute Batch G local/router provider parity", () => {
 
     for (const [id, baseUrl] of Object.entries(localDefaults)) {
       expect(byId[id].transport).toMatchObject({ baseUrl, format: "openai" });
+      expect(byId[id].noAuth).toBe(true);
       expect(byId[id].passthroughModels).toBe(true);
       expect(new DefaultExecutor(id).buildUrl("custom", true, 0, {})).toBe(`${baseUrl}/chat/completions`);
       expect(new DefaultExecutor(id).buildUrl("custom", true, 0, {
@@ -90,12 +92,14 @@ describe("OmniRoute Batch G local/router provider parity", () => {
 
   it("ports router/system/cloud metadata without exposing fake runtime transports", () => {
     expect(byId["9router"].transport.baseUrl).toBe("http://127.0.0.1:20130/v1");
+    expect(byId["9router"].noAuth).toBe(true);
     expect(byId["9router"].passthroughModels).toBe(true);
     expect(new DefaultExecutor("9router").buildUrl("auto", true, 0, {})).toBe(
       "http://127.0.0.1:20130/v1/chat/completions",
     );
 
     expect(byId.auto).toMatchObject({ category: "system", transport: null });
+    expect(PROVIDER_MODELS.auto).toBeUndefined();
     expect(byId["codex-cloud"]).toMatchObject({ category: "apikey", transport: null, hidden: true });
     expect(byId.zed).toMatchObject({ category: "oauth", transport: null, hidden: true });
   });
@@ -149,6 +153,8 @@ describe("OmniRoute Batch G local/router provider parity", () => {
       "qwen3.6-plus-free",
     ]);
     expect(PROVIDER_MODELS["opencode-zen"]).toHaveLength(opencodeZen.models.length);
+    expect(PROVIDER_MODELS["opencode-zen"].find((model) => model.id === "gpt-5.2").targetFormat).toBe("openai-responses");
+    expect(PROVIDER_MODELS["opencode-zen"].find((model) => model.id === "qwen3.6-plus").targetFormat).toBe("claude");
 
     for (const icon of [
       "docker-model-runner.svg",
@@ -160,5 +166,22 @@ describe("OmniRoute Batch G local/router provider parity", () => {
     ]) {
       expect(existsSync(resolve(repoRoot, "public/providers", icon)), `${icon} should exist`).toBe(true);
     }
+  });
+
+  it("routes OpenCode Zen models by API family", () => {
+    const executor = new OpenCodeZenExecutor();
+
+    expect(executor.buildUrl("qwen3.6-plus")).toBe("https://opencode.ai/zen/v1/messages");
+    let headers = executor.buildHeaders({ apiKey: "sk-test" }, false);
+    expect(headers["x-api-key"]).toBe("sk-test");
+    expect(headers["anthropic-version"]).toBeDefined();
+    expect(headers.Authorization).toBeUndefined();
+
+    expect(executor.buildUrl("gpt-5.2")).toBe("https://opencode.ai/zen/v1/responses");
+    headers = executor.buildHeaders({ apiKey: "sk-test" }, false);
+    expect(headers.Authorization).toBe("Bearer sk-test");
+    expect(headers["x-api-key"]).toBeUndefined();
+
+    expect(executor.buildUrl("glm-5")).toBe("https://opencode.ai/zen/v1/chat/completions");
   });
 });

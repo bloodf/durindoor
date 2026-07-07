@@ -12,6 +12,7 @@ export default {
   },
   category: "apikey",
   authType: "apikey",
+  noAuth: true,
   authHint: "API key optional. Configure the llama-server OpenAI-compatible base URL (default: http://127.0.0.1:8080/v1).",
   transport: {
     baseUrl: "http://127.0.0.1:8080/v1",

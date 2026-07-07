@@ -57,5 +57,10 @@ export function normalizeProviderSpecificData(provider, body = {}, providerSpeci
     else delete next.cx;
   }
 
+  if (AI_PROVIDERS[provider]?.noAuth && AI_PROVIDERS[provider]?.defaultBaseUrl) {
+    const baseUrl = String(next.baseUrl || body.baseUrl || body.localBaseUrl || "").trim().replace(/\/+$/, "");
+    if (baseUrl) next.baseUrl = baseUrl;
+  }
+
   return Object.keys(next).length > 0 ? next : null;
 }

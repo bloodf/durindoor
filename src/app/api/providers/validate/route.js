@@ -167,6 +167,9 @@ export async function POST(request) {
     if (!provider || (!apiKey && provider !== "ollama-local" && !isNoAuth)) {
       return NextResponse.json({ error: "Provider and API key required" }, { status: 400 });
     }
+    if (isNoAuth && !apiKey) {
+      return NextResponse.json({ valid: true, error: null });
+    }
 
     let isValid = false;
     let error = null;

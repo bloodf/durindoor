@@ -9,7 +9,8 @@ import { buildTtsProviderModels } from "../config/ttsModels.js";
 const OAUTH_INJECT_FIELDS = ["clientId", "clientSecret", "tokenUrl"];
 
 // transport: re-apply shared default (format:"openai") + inject oauth-canonical fields
-function buildTransport(transport, oauth) {
+function buildTransport(entry, oauth) {
+  const transport = entry.transport;
   const t = { ...transport };
   if (!t.format) t.format = PROVIDER_DEFAULTS.format;
   if (oauth) {
@@ -33,10 +34,12 @@ export const PROVIDER_OAUTH = {};
 export const PROVIDER_MEDIA = {};
 for (const entry of REGISTRY) {
   if (entry.transport) {
-    PROVIDERS[entry.id] = buildTransport(entry.transport, entry.oauth);
+    PROVIDERS[entry.id] = buildTransport(entry, entry.oauth);
     if (entry.transports) PROVIDERS[entry.id].transports = entry.transports;
   }
-  if (entry.models !== undefined) PROVIDER_MODELS[entry.alias || entry.id] = entry.models.map(normalizeModel);
+  if (entry.models !== undefined && !(entry.category === "system" && !entry.transport)) {
+    PROVIDER_MODELS[entry.alias || entry.id] = entry.models.map(normalizeModel);
+  }
   if (entry.oauth) PROVIDER_OAUTH[entry.id] = entry.oauth;
   // Build PROVIDER_MEDIA from top-level fields (post-migration) + legacy entry.media
   const mediaFields = {};

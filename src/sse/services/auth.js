@@ -312,6 +312,8 @@ export async function clearAccountError(connectionId, currentConnection, model =
  * @returns {string | null}
  */
 export function extractApiKey(request) {
+  if (!request?.headers?.get) return null;
+
   // Check Authorization header first
   const authHeader = request.headers.get("Authorization");
   if (authHeader?.startsWith("Bearer ")) {

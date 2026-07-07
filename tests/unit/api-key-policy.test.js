@@ -156,8 +156,49 @@ describe("api-key-policy", () => {
     expect(result).toBeNull();
   });
 
+  it("allows a Gemini-style x-goog-api-key header to pass policy checks", async () => {
+    const apiKey = "key-gemini-header";
+    const model = "allowed-model";
+    extractApiKeyMock.mockReturnValue(apiKey);
+    getApiKeyByKeyMock.mockResolvedValue({
+      id: "k6",
+      name: "Gemini Header Key",
+      isActive: true,
+      policy: { allowedModels: ["allowed-model"] },
+    });
+
+    const { enforceApiKeyModelPolicy } = await load();
+    const result = await enforceApiKeyModelPolicy(
+      makeRequest({ "x-goog-api-key": apiKey }),
+      model
+    );
+
+    expect(extractApiKeyMock).toHaveBeenCalledWith(expect.anything());
+    expect(result).toBeNull();
+  });
+
+  it("allows a Gemini-style ?key= query parameter to pass policy checks", async () => {
+    const apiKey = "key-gemini-query";
+    const model = "allowed-model";
+    extractApiKeyMock.mockReturnValue(apiKey);
+    getApiKeyByKeyMock.mockResolvedValue({
+      id: "k7",
+      name: "Gemini Query Key",
+      isActive: true,
+      policy: { allowedModels: ["allowed-model"] },
+    });
+
+    const { enforceApiKeyModelPolicy } = await load();
+    const result = await enforceApiKeyModelPolicy(
+      makeRequest({}, makeQuery("http://localhost/v1/chat/completions", apiKey)),
+      model
+    );
+
+    expect(extractApiKeyMock).toHaveBeenCalledWith(expect.anything());
+    expect(result).toBeNull();
+  });
+
   it("records non-chat usage by looking up the key and incrementing its usage totals", async () => {
-    const apiKey = "key-usage";
     const { getAdapter } = vi.hoisted(() => ({ getAdapter: vi.fn() }));
     vi.doMock("@/lib/db/driver.js", () => ({ getAdapter }));
     const db = { get: vi.fn() };

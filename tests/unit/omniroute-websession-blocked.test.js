@@ -53,6 +53,7 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
     expect(getProvidersByKind("image").map((p) => p.id)).not.toContain("chatgpt-web");
     expect(getProvidersByKind("music").map((p) => p.id)).not.toContain("suno");
     expect(getProvidersByKind("music").map((p) => p.id)).not.toContain("udio");
+    expect(getProvidersByKind("video").map((p) => p.id)).not.toContain("veoaifree-web");
   });
 
   it("does not trigger account fallback for provider_port_pending errors", () => {

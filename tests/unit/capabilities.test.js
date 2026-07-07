@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
+import { PROVIDER_MODELS } from "../../open-sse/providers/index.js";
 import { translateRequest } from "../../open-sse/translator/index.js";
 
 describe("getCapabilitiesForModel", () => {
@@ -189,6 +190,33 @@ describe("getCapabilitiesForModel — DeepSeek V4 text-only", () => {
   it("deepseek/deepseek-v4-pro (vendor-prefixed) has no vision", () => {
     const caps = getCapabilitiesForModel(null, "deepseek/deepseek-v4-pro");
     expect(caps.vision).toBe(false);
+  });
+});
+
+describe("getCapabilitiesForModel — HuggingChat text-only", () => {
+  it("huggingchat registry has no models flagged with supportsVision", () => {
+    const models = PROVIDER_MODELS.huggingchat || [];
+    const visionModels = models.filter((m) => m.supportsVision);
+    expect(visionModels).toEqual([]);
+  });
+
+  it("every HuggingChat model resolves as vision:false", () => {
+    const models = PROVIDER_MODELS.huggingchat || [];
+    expect(models.length).toBeGreaterThan(0);
+    for (const model of models) {
+      const caps = getCapabilitiesForModel("huggingchat", model.id);
+      expect(caps.vision, `${model.id} should be text-only`).toBe(false);
+    }
+  });
+
+  it("huggingchat vision-named model still resolves as vision:false", () => {
+    const caps = getCapabilitiesForModel("huggingchat", "CohereLabs/command-a-vision-07-2025");
+    expect(caps.vision).toBe(false);
+  });
+
+  it("same model id without provider still has vision via pattern match", () => {
+    const caps = getCapabilitiesForModel(null, "command-a-vision-07-2025");
+    expect(caps.vision).toBe(true);
   });
 });
 

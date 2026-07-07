@@ -38,6 +38,37 @@ describe("model routing", () => {
     else process.env.DATA_DIR = originalDataDir;
   });
 
+  it("resolves ddg uiAlias to duckduckgo-web for chat completions", async () => {
+    const ctx = await setupDb();
+    cleanup = ctx.cleanup;
+
+    await expect(ctx.getModelInfo("ddg/gpt-4o-mini"))
+      .resolves.toEqual({
+        provider: "duckduckgo-web",
+        model: "gpt-4o-mini",
+      });
+  });
+
+  it("keeps ddg uiAlias ahead of a custom node with ddg prefix", async () => {
+    const ctx = await setupDb();
+    cleanup = ctx.cleanup;
+
+    await ctx.createProviderNode({
+      id: "openai-compatible-chat-ddg",
+      type: "openai-compatible",
+      name: "Custom DDG Node",
+      prefix: "ddg",
+      apiType: "chat",
+      baseUrl: "https://compatible.test/v1",
+    });
+
+    await expect(ctx.getModelInfo("ddg/gpt-4o-mini"))
+      .resolves.toEqual({
+        provider: "duckduckgo-web",
+        model: "gpt-4o-mini",
+      });
+  });
+
   it("keeps built-in provider aliases ahead of compatible node prefixes", async () => {
     const ctx = await setupDb();
     cleanup = ctx.cleanup;

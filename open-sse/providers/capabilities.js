@@ -387,25 +387,27 @@ export function aggregateComboCapabilities(comboModels, comboLookup = null, _dep
  * @returns {object} full capabilities object
  */
 export function getCapabilitiesForModel(provider, model) {
-  if (!model) return { ...DEFAULT_CAPABILITIES };
+  const finalize = (caps) => provider === "huggingchat" ? { ...caps, vision: false } : caps;
+
+  if (!model) return finalize({ ...DEFAULT_CAPABILITIES });
 
   // 1. Provider-specific override
   if (provider && PROVIDER_CAPABILITIES[provider]?.[model]) {
-    return { ...DEFAULT_CAPABILITIES, ...PROVIDER_CAPABILITIES[provider][model] };
+    return finalize({ ...DEFAULT_CAPABILITIES, ...PROVIDER_CAPABILITIES[provider][model] });
   }
 
   // 2. Canonical exact (strip vendor prefix: "anthropic/claude-opus-4.7" -> "claude-opus-4.7")
   const baseModel = model.includes("/") ? model.split("/").pop() : model;
-  if (MODEL_CAPABILITIES[baseModel]) return { ...DEFAULT_CAPABILITIES, ...MODEL_CAPABILITIES[baseModel] };
-  if (MODEL_CAPABILITIES[model]) return { ...DEFAULT_CAPABILITIES, ...MODEL_CAPABILITIES[model] };
+  if (MODEL_CAPABILITIES[baseModel]) return finalize({ ...DEFAULT_CAPABILITIES, ...MODEL_CAPABILITIES[baseModel] });
+  if (MODEL_CAPABILITIES[model]) return finalize({ ...DEFAULT_CAPABILITIES, ...MODEL_CAPABILITIES[model] });
 
   // 3. Pattern match (first match wins)
   for (const { pattern, caps } of PATTERN_CAPABILITIES) {
     if (matchPattern(pattern, baseModel) || matchPattern(pattern, model)) {
-      return { ...DEFAULT_CAPABILITIES, ...caps };
+      return finalize({ ...DEFAULT_CAPABILITIES, ...caps });
     }
   }
 
   // 4. Floor
-  return { ...DEFAULT_CAPABILITIES };
+  return finalize({ ...DEFAULT_CAPABILITIES });
 }

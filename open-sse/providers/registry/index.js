@@ -101,6 +101,7 @@ import p98 from "./xiaomi-tokenplan.js";
 import p99 from "./youcom.js";
 import p100 from "./nube.js";
 import p101 from "./kenari.js";
+import p102 from "./hcnsec.js";
 
 export default [
   p0,
@@ -205,4 +206,5 @@ export default [
   p99,
   p100,
   p101,
+  p102,
 ];

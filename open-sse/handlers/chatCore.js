@@ -27,6 +27,7 @@ import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
 import { compressMessages, formatRtkLog } from "../rtk/index.js";
 import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadroomPhantomSavings } from "../rtk/headroom.js";
+import { compressWithPxpipe, formatPxpipeLog } from "../rtk/pxpipe.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { stripUnsupportedModalities } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
@@ -38,7 +39,7 @@ import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
  * @param {object} options.credentials - Provider credentials
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, sourceFormatOverride, providerThinking, providerConcurrencyLimit }) {
+export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, pxpipeEnabled, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, sourceFormatOverride, providerThinking, providerConcurrencyLimit }) {
   const { provider, model } = modelInfo;
   const requestStartTime = Date.now();
 
@@ -220,6 +221,13 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     injectPonytail(translatedBody, finalFormat, ponytailLevel);
     log?.debug?.("PONYTAIL", `${ponytailLevel} | ${finalFormat}`);
   }
+
+  // PxPipe: optional context-as-image compression; fail open.
+  const pxpipeDiagnostics = {};
+  const pxpipeStats = await compressWithPxpipe(translatedBody, { enabled: pxpipeEnabled, model: upstreamModel, format: finalFormat, diagnostics: pxpipeDiagnostics });
+  const pxpipeLine = formatPxpipeLog(pxpipeStats);
+  if (pxpipeLine) log?.info?.("PXPIPE", pxpipeLine);
+  else if (pxpipeEnabled) log?.debug?.("PXPIPE", `skipped: ${pxpipeDiagnostics.reason || "ineligible"}`);
 
   const executor = await resolveExecutorWithProxy(provider, log, credentials?.providerSpecificData || null);
   trackPendingRequest(model, provider, connectionId, true);

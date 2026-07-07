@@ -72,6 +72,7 @@ rebranded display + identity strings preserved for data migration
 - **ClinePass**: add provider support — sternelee
 
 ## Fixes
+- **OmniRoute providers**: keep unsupported Ideogram/Haiper/Leonardo media routes hidden until adapters exist, support Hack Club keyless use, and validate MariTalk with its raw `key` header.
 - **Usage**: dedupe streaming request-details log entries — Qin Li
 - **Claude**: drop foreign thinking signatures in passthrough — decolua
 - Prevent non-SSE stream pipe crash and cross-IdP account overwrites (#2244) — KunN-21

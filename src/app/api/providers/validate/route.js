@@ -6,6 +6,22 @@ import { resolveOllamaLocalHost, resolveXiaomiTokenplanBaseUrl, PROVIDERS } from
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
 import { normalizeProviderId } from "@/lib/providerNormalization";
 
+function applyConfiguredAuthHeader(headers, cfg, apiKey) {
+  const auth = cfg?.auth;
+  if (auth?.combined && auth.header) {
+    headers[auth.header] = auth.scheme === "bearer" ? `Bearer ${apiKey}` : apiKey;
+    return headers;
+  }
+  if (cfg?.authHeader === "x-api-key") {
+    headers["X-API-Key"] = apiKey;
+  } else if (cfg?.authHeader === "key") {
+    headers.key = apiKey;
+  } else {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
+  return headers;
+}
+
 // Probe a webSearch/webFetch provider using its searchConfig/fetchConfig.
 // Returns true if API key is accepted (status !== 401 && !== 403).
 async function probeWebProvider(provider, apiKey, providerSpecificData = {}) {
@@ -615,10 +631,10 @@ export async function POST(request) {
             isValid = true;
             break;
           }
-          // Build auth headers based on cfg.authHeader (default: bearer)
+          // Build auth headers from the registry descriptor so validation
+          // matches normal DefaultExecutor request auth.
           const headers = { "Content-Type": "application/json", ...(cfg.headers || {}) };
-          if (cfg.authHeader === "x-api-key") headers["X-API-Key"] = apiKey;
-          else headers["Authorization"] = `Bearer ${apiKey}`;
+          applyConfiguredAuthHeader(headers, cfg, apiKey);
           // Try /models first (fast GET), fallback to chat probe on ambiguous response
           const modelsUrl = cfg.baseUrl.replace(/\/chat\/completions$/, "/models").replace(/\/chatbot$/, "/models");
           let probeOk = null;

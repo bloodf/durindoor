@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { BaseExecutor } from "./base.js";
-import { PROVIDERS, PROVIDER_OAUTH } from "../config/providers.js";
+import { PROVIDERS, PROVIDER_OAUTH, resolveHerokuBaseUrl } from "../config/providers.js";
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE } from "../providers/shared.js";
 import { OAUTH_ENDPOINTS, buildKimiHeaders } from "../config/appConstants.js";
 import { buildClineHeaders } from "../shared/clineAuth.js";
@@ -174,6 +174,9 @@ export class DefaultExecutor extends BaseExecutor {
     const rt = credentials?.runtimeTransport;
     if (rt?.baseUrl) {
       return rt.urlSuffix ? `${rt.baseUrl}${rt.urlSuffix}` : rt.baseUrl;
+    }
+    if (this.provider === "heroku") {
+      return `${resolveHerokuBaseUrl(credentials)}/chat/completions`;
     }
     if (this.provider?.startsWith?.("openai-compatible-")) {
       const baseUrl = credentials?.providerSpecificData?.baseUrl || OPENAI_COMPAT_BASE;

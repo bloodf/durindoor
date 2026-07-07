@@ -1,6 +1,16 @@
 import { NextResponse } from "next/server";
 import { deleteApiKey, getApiKeyById, updateApiKey } from "@/lib/localDb";
 
+function normalizeExpiresAt(value) {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string") return { error: "expiresAt must be an ISO date string or null" };
+  const date = new Date(value);
+  const time = date.getTime();
+  if (!Number.isFinite(time)) return { error: "expiresAt must be a valid date" };
+  if (time <= Date.now()) return { error: "expiresAt must be in the future" };
+  return date.toISOString();
+}
+
 // GET /api/keys/[id] - Get single key
 export async function GET(request, { params }) {
   try {
@@ -31,6 +41,13 @@ export async function PUT(request, { params }) {
     const updateData = {};
     if (isActive !== undefined) updateData.isActive = isActive;
     if (allowedCombos !== undefined) updateData.allowedCombos = allowedCombos;
+    if (body.expiresAt !== undefined) {
+      const expiresAt = normalizeExpiresAt(body.expiresAt);
+      if (expiresAt?.error) {
+        return NextResponse.json({ error: expiresAt.error }, { status: 400 });
+      }
+      updateData.expiresAt = expiresAt;
+    }
 
     const updated = await updateApiKey(id, updateData);
 

@@ -25,6 +25,12 @@ export function checkFallbackError(status, errorText, backoffLevel = 0) {
     ? (typeof errorText === "string" ? errorText : JSON.stringify(errorText)).toLowerCase()
     : "";
 
+  // Port-pending guards are explicit feature-not-implemented errors; they should not
+  // lock the user's connection or trigger the account fallback cooldown chain.
+  if (lowerError.includes("provider_port_pending")) {
+    return { shouldFallback: false, cooldownMs: 0 };
+  }
+
   for (const rule of ERROR_RULES) {
     // Text-based rule: match substring in error message
     if (rule.text && lowerError && lowerError.includes(rule.text)) {

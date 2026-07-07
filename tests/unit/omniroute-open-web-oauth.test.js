@@ -150,4 +150,42 @@ describe("OmniRoute open web/OAuth provider ports", () => {
       delete WEB_COOKIE_PROVIDERS[provider];
     }
   });
+
+  it("routes openai-format web-cookie providers with wss baseUrl through cookie fallback validation", async () => {
+    const { POST } = await import("../../src/app/api/providers/validate/route.js");
+    const { WEB_COOKIE_PROVIDERS } = await import("../../src/shared/constants/providers.js");
+    const { PROVIDERS } = await import("../../open-sse/config/providers.js");
+    const provider = "test-openai-wss-web-cookie";
+    const calls = [];
+
+    WEB_COOKIE_PROVIDERS[provider] = { name: "Test WSS Web", website: "https://web.example.test/chat" };
+    PROVIDERS[provider] = {
+      baseUrl: "wss://socket.example.test/chat",
+      format: "openai",
+      authType: "cookie",
+    };
+    globalThis.fetch = vi.fn(async (url, init) => {
+      calls.push({ url: String(url), init });
+      return new Response("", { status: 404 });
+    });
+
+    try {
+      const response = await POST(new Request("http://localhost/api/providers/validate", {
+        method: "POST",
+        body: JSON.stringify({
+          provider,
+          apiKey: "session-cookie=value",
+        }),
+      }));
+
+      await expect(response.json()).resolves.toMatchObject({ valid: true, error: null });
+      expect(calls).toHaveLength(1);
+      expect(calls[0].url).toBe("https://web.example.test/models");
+      expect(calls[0].init.method).toBe("GET");
+      expect(calls[0].init.headers.Cookie).toBe("session-cookie=value");
+    } finally {
+      delete WEB_COOKIE_PROVIDERS[provider];
+      delete PROVIDERS[provider];
+    }
+  });
 });

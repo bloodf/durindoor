@@ -10,12 +10,17 @@ export default {
     textIcon: "PO",
     website: "https://pollinations.ai",
     notice: {
-      text: "Premium Pollinations models require an API key from enter.pollinations.ai; keyless access is limited to the free catalog.",
+      text: "Free catalog needs no key. Premium Pollinations models accept an optional API key from enter.pollinations.ai — add one as a normal API-key connection to unlock them.",
       apiKeyUrl: "https://enter.pollinations.ai",
     },
   },
   category: "free",
+  // noAuth stays true (free catalog works keyless); authModes still advertises
+  // "apikey" so a premium key can be attached as a connection and forwarded
+  // by PollinationsExecutor.buildHeaders — see open-sse/executors/pollinations.js.
   noAuth: true,
+  authType: "apikey",
+  authModes: ["apikey"],
   transport: {
     baseUrl: "https://gen.pollinations.ai/v1/chat/completions",
     baseUrls: ["https://gen.pollinations.ai/v1/chat/completions"],

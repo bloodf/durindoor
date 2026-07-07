@@ -15,6 +15,7 @@ import {
   TheOldLlmExecutor,
 } from "../../open-sse/executors/theoldllm.js";
 import { PROVIDERS, PROVIDER_MODELS } from "../../open-sse/providers/index.js";
+import REGISTRY from "../../open-sse/providers/registry/index.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -67,10 +68,42 @@ describe("OmniRoute specialized provider ports", () => {
     expect(normal.jsonMode).toBeUndefined();
     expect(json.jsonMode).toBe(true);
     expect(PROVIDERS.pollinations.noAuth).toBe(true);
+    // Registry entry (not the runtime transport map) carries UI/credential
+    // metadata like authModes — keeping "apikey" here is what keeps a
+    // premium key path reachable for an otherwise no-auth provider.
+    const registryEntry = REGISTRY.find((entry) => entry.id === "pollinations");
+    expect(registryEntry.authModes).toContain("apikey");
+  });
+
+  it("omits Authorization for Pollinations no-auth placeholder credentials but forwards a real key", () => {
+    const executor = getExecutor("pollinations");
+
+    // No credentials at all (typical no-auth request path).
+    expect(executor.buildHeaders({}, true).Authorization).toBeUndefined();
+    expect(executor.buildHeaders(undefined, true).Authorization).toBeUndefined();
+
+    // "sk_durindoor" is the local placeholder DurinDoor injects for no-auth
+    // providers — it is not a real Pollinations key and must never leak upstream.
+    expect(
+      executor.buildHeaders({ apiKey: "sk_durindoor" }, true).Authorization
+    ).toBeUndefined();
+    expect(
+      executor.buildHeaders({ accessToken: "sk_durindoor" }, true).Authorization
+    ).toBeUndefined();
+
+    // A real premium key from enter.pollinations.ai must still be forwarded.
+    expect(
+      executor.buildHeaders({ apiKey: "real-premium-key" }, true).Authorization
+    ).toBe("Bearer real-premium-key");
   });
 
   it("maps The Old LLM model aliases and generates request tokens", () => {
     expect(mapModel("gpt-5.3")).toBe("GPT_5_3");
+    expect(mapModel("gpt-4o")).toBe("GPT_4o");
+    expect(mapModel("gpt_4o")).toBe("GPT_4o");
+    expect(
+      PROVIDER_MODELS.tllm.some((model) => model.id === mapModel("gpt-4o"))
+    ).toBe(true);
     expect(mapModel("CLAUDE_4_6_OPUS")).toBe("CLAUDE_4_6_OPUS");
     expect(mapModel("claude sonnet 4")).toBe("CLAUDE_4_6_SONNET");
     expect(mapModel("deepseek_v4")).toBe("deepseek_v4");

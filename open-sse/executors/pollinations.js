@@ -22,8 +22,13 @@ export class PollinationsExecutor extends BaseExecutor {
       "Content-Type": "application/json",
     };
 
-    const key = credentials.apiKey || credentials.accessToken;
-    if (key) headers.Authorization = `Bearer ${key}`;
+    // Pollinations serves a free, no-auth catalog; only forward a bearer
+    // token when the caller supplied a real premium key. `sk_durindoor` is
+    // the local placeholder DurinDoor injects for no-auth providers and
+    // must never be sent upstream (leaks a fake credential + can trip
+    // Pollinations' abuse detection for public no-auth traffic).
+    const key = credentials?.apiKey || credentials?.accessToken;
+    if (key && key !== "sk_durindoor") headers.Authorization = `Bearer ${key}`;
     if (stream) headers.Accept = "text/event-stream";
     return headers;
   }

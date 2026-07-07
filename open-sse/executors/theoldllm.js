@@ -7,6 +7,9 @@ const API_URL = "https://theoldllm.vercel.app/api/chatgpt";
 const CHROME_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
 
+// GPT-4o maps to "GPT_4o" (lowercase "o") — the exact id the upstream
+// registry advertises (providers/registry/theoldllm.js models list).
+// Previously mapped to "GPT_4O" (capital O), an id upstream never serves.
 const GPT_MODELS = {
   "gpt-5.4": "GPT_5_4",
   "gpt-5.3": "GPT_5_3",
@@ -17,8 +20,8 @@ const GPT_MODELS = {
   gpt5_3: "GPT_5_3",
   gpt5_2: "GPT_5_2",
   gpt5_1: "GPT_5_1",
-  gpt_4o: "GPT_4O",
-  "gpt-4o": "GPT_4O",
+  gpt_4o: "GPT_4o",
+  "gpt-4o": "GPT_4o",
   gpt_5_4: "GPT_5_4",
   gpt_5_3: "GPT_5_3",
   gpt_5_2: "GPT_5_2",

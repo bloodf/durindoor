@@ -1792,9 +1792,10 @@ export default function ProviderDetailPage() {
           onSuccess={handleOAuthSuccess}
           onClose={() => setShowOAuthModal(false)}
         />
-      ) : providerId === "gitlab" ? (
+      ) : providerId === "gitlab" || providerId === "gitlab-duo" ? (
         <GitLabAuthModal
           isOpen={showOAuthModal}
+          provider={providerId}
           providerInfo={providerInfo}
           onSuccess={handleOAuthSuccess}
           onClose={() => setShowOAuthModal(false)}

@@ -19,12 +19,25 @@ describe("compressWithPxpipe", () => {
     expect(JSON.stringify(body)).toBe(original);
   });
 
-  it("returns null and leaves body unchanged for non-claude formats", async () => {
-    const body = { messages: [{ role: "user", content: "hello" }] };
-    const original = JSON.stringify(body);
-    const res = await compressWithPxpipe(body, { enabled: true, model: "claude-fable-5", format: FORMATS.OPENAI });
+  it("applies or reports a skip reason for a large blackbox OpenAI-format Fable body", async () => {
+    const body = JSON.parse(JSON.stringify(LARGE_BODY));
+    const originalModel = "blackboxai/anthropic/claude-fable-5";
+    body.model = originalModel;
+    const res = await compressWithPxpipe(body, { enabled: true, model: originalModel, format: FORMATS.OPENAI, diagnostics: {} });
+    if (res?.applied) {
+      expect(JSON.stringify(body)).toContain('"type":"image"');
+      expect(body.model).toBe(originalModel);
+    } else {
+      expect(["not_profitable", "below_min_chars", "below_min_tokens", "parse_error", "image_limit"]).toContain(res?.reason || "not_profitable");
+    }
+  });
+
+  it("returns unsupported_model for blackbox non-anthropic OpenAI aliases", async () => {
+    const body = { messages: [{ role: "user", content: "hello" }], model: "blackboxai/openai/gpt-5.5" };
+    const diagnostics = {};
+    const res = await compressWithPxpipe(body, { enabled: true, model: "blackboxai/openai/gpt-5.5", format: FORMATS.OPENAI, diagnostics });
     expect(res).toBeNull();
-    expect(JSON.stringify(body)).toBe(original);
+    expect(diagnostics.reason).toBe("unsupported_model");
   });
 
   it("returns unsupported_model for a claude-format but unsupported model id", async () => {

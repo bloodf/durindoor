@@ -222,14 +222,13 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     log?.debug?.("PONYTAIL", `${ponytailLevel} | ${finalFormat}`);
   }
 
+  const executor = await resolveExecutorWithProxy(provider, log, credentials?.providerSpecificData || null);
   // PxPipe: optional context-as-image compression; fail open.
   const pxpipeDiagnostics = {};
   const pxpipeStats = await compressWithPxpipe(translatedBody, { enabled: pxpipeEnabled, model: upstreamModel, format: finalFormat, diagnostics: pxpipeDiagnostics });
   const pxpipeLine = formatPxpipeLog(pxpipeStats);
   if (pxpipeLine) log?.info?.("PXPIPE", pxpipeLine);
   else if (pxpipeEnabled) log?.debug?.("PXPIPE", `skipped: ${pxpipeDiagnostics.reason || "ineligible"}`);
-
-  const executor = await resolveExecutorWithProxy(provider, log, credentials?.providerSpecificData || null);
   trackPendingRequest(model, provider, connectionId, true);
   appendRequestLog({ model, provider, connectionId, status: "PENDING" }).catch(() => { });
 

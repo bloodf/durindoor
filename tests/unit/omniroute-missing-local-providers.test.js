@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import REGISTRY from "../../open-sse/providers/registry/index.js";
 import { DefaultExecutor } from "../../open-sse/executors/default.js";
 import { OpenCodeZenExecutor } from "../../open-sse/executors/opencode-zen.js";
-import { getModelTargetFormat, PROVIDER_ID_TO_ALIAS, PROVIDER_MODELS } from "../../open-sse/config/providerModels.js";
+import { getModelTargetFormat, getModelStrip, PROVIDER_ID_TO_ALIAS, PROVIDER_MODELS } from "../../open-sse/config/providerModels.js";
 
 const repoRoot = resolve(import.meta.dirname, "../..");
 
@@ -72,6 +72,7 @@ describe("OmniRoute Batch G local/router provider parity", () => {
       expect(byId[id].transport).toMatchObject({ baseUrl, format: "openai" });
       expect(byId[id].noAuth).toBe(true);
       expect(byId[id].passthroughModels).toBe(true);
+      expect(byId[id].thinkingFormat).toBe("openai");
       expect(new DefaultExecutor(id).buildUrl("custom", true, 0, {})).toBe(`${baseUrl}/chat/completions`);
       expect(new DefaultExecutor(id).buildUrl("custom", true, 0, {
         providerSpecificData: { baseUrl: "http://host.docker.internal:9000/v1/" },
@@ -156,7 +157,7 @@ describe("OmniRoute Batch G local/router provider parity", () => {
     expect(PROVIDER_MODELS["opencode-zen"].some((model) => model.id.startsWith("gemini-"))).toBe(false);
     expect(getModelTargetFormat("opencode-zen", "claude-future-5")).toBe("claude");
     expect(getModelTargetFormat("opencode-zen", "gpt-5.9")).toBe("openai-responses");
-    expect(getModelTargetFormat("opencode-zen", "gemini-4-pro")).toBe("gemini");
+    expect(getModelTargetFormat("opencode-zen", "gemini-4-pro")).toBe(null);
 
     for (const icon of [
       "docker-model-runner.svg",
@@ -188,5 +189,10 @@ describe("OmniRoute Batch G local/router provider parity", () => {
 
     expect(executor.buildUrl("glm-5")).toBe("https://opencode.ai/zen/v1/chat/completions");
     expect(() => executor.buildUrl("gemini-3.1-pro")).toThrow(/Google-compatible custom-provider route/);
+  });
+
+  it("strips images for text-only Zen Qwen models", () => {
+    expect(getModelStrip("opencode-zen", "qwen3.6-plus")).toContain("image");
+    expect(getModelStrip("opencode-zen", "qwen3.5-plus")).toContain("image");
   });
 });

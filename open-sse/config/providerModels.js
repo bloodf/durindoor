@@ -35,7 +35,6 @@ function getOpenCodeZenPassthroughTargetFormat(modelId) {
   if (typeof modelId !== "string") return null;
   if (modelId.startsWith("claude-")) return "claude";
   if (/^gpt-5(?:[.-]|$)/.test(modelId)) return "openai-responses";
-  if (modelId.startsWith("gemini-")) return "gemini";
   return null;
 }
 

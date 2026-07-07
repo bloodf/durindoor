@@ -17,6 +17,7 @@ import { describe, expect, it, vi } from "vitest";
 import openadapter from "../../open-sse/providers/registry/openadapter.js";
 import modelscope from "../../open-sse/providers/registry/modelscope.js";
 import { PROVIDERS } from "../../open-sse/providers/index.js";
+import ollamaCloudRegistry from "../../open-sse/providers/registry/ollama-cloud.js";
 import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
 import { FILTERS } from "../../src/app/api/providers/suggested-models/filters.js";
 
@@ -116,8 +117,7 @@ describe("PR #46 review: modelscope suggested-models filter", () => {
   });
 
   it("ollama-cloud's modelsFetcher type matches a real filter", () => {
-    const ollamaCloud = PROVIDERS["ollama-cloud"];
-    expect(FILTERS[ollamaCloud.modelsFetcher.type]).toBeDefined();
+    expect(FILTERS[ollamaCloudRegistry.modelsFetcher.type]).toBeDefined();
   });
 
   it("reshapes a raw Ollama /api/tags list into { id, name }", () => {

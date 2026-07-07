@@ -46,8 +46,11 @@ export function normalizeProviderSpecificData(provider, body = {}, providerSpeci
   }
 
   if (provider === "google-pse") {
-    const cx = (next.cx || body.cx || body.searchEngineId || "").trim();
+    const cx = [next.cx, body.cx, body.searchEngineId]
+      .map((value) => (typeof value === "string" ? value.trim() : ""))
+      .find(Boolean);
     if (cx) next.cx = cx;
+    else delete next.cx;
   }
 
   return Object.keys(next).length > 0 ? next : null;

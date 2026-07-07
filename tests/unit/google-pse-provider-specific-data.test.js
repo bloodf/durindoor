@@ -4,6 +4,7 @@ import {
   buildGooglePseValidationPayload,
   normalizeGooglePseCx,
 } from "../../src/shared/utils/googlePseProviderSpecificData.js";
+import { normalizeProviderSpecificData } from "../../src/lib/providerNormalization.js";
 
 describe("Google PSE provider-specific dashboard data", () => {
   it("builds create providerSpecificData with trimmed cx", () => {
@@ -15,6 +16,13 @@ describe("Google PSE provider-specific dashboard data", () => {
   it("omits create providerSpecificData when cx is missing", () => {
     expect(buildGooglePseProviderSpecificData("   ")).toBeUndefined();
     expect(normalizeGooglePseCx(null)).toBe("");
+  });
+
+  it("drops blank normalized cx before server-side create validation", () => {
+    expect(normalizeProviderSpecificData("google-pse", {}, { cx: "   " })).toBeNull();
+    expect(normalizeProviderSpecificData("google-pse", { searchEngineId: " cx-body " }, { cx: "   " })).toEqual({
+      cx: "cx-body",
+    });
   });
 
   it("includes cx in validate payloads for Google PSE", () => {

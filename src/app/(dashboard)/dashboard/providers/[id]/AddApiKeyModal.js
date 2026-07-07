@@ -4,11 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import { Button, Badge, Input, Modal, Select } from "@/shared/components";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
-"use client";
-import { useEffect, useState } from "react";
-import PropTypes from "prop-types";
-import { Button, Badge, Input, Modal, Select } from "@/shared/components";
-import { AI_PROVIDERS } from "@/shared/constants/providers";
 import {
   buildGooglePseProviderSpecificData,
   isGooglePseProvider,

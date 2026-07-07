@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { PROVIDERS, PROVIDER_MEDIA, PROVIDER_MODELS } from "open-sse/providers/index.js";
 import { getExecutor, hasSpecializedExecutor } from "open-sse/executors/index.js";
+import { checkFallbackError } from "open-sse/services/accountFallback.js";
 import {
   BLOCKED_OMNIROUTE_PROVIDERS,
   BLOCKED_OMNIROUTE_PROVIDER_ALIASES,
 } from "open-sse/executors/unsupported-websession.js";
-import { FREE_PROVIDERS } from "@/shared/constants/providers.js";
+import { FREE_PROVIDERS, getProvidersByKind } from "@/shared/constants/providers.js";
 
 const ownedProviders = [
   "adapta-web",
@@ -45,7 +46,20 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
     expect(PROVIDER_MEDIA.suno).toMatchObject({ serviceKinds: ["music"], musicConfig: expect.any(Object) });
     expect(PROVIDER_MEDIA.udio).toMatchObject({ serviceKinds: ["music"], musicConfig: expect.any(Object) });
     expect(PROVIDER_MEDIA["veoaifree-web"]).toMatchObject({ serviceKinds: ["video"], videoConfig: expect.any(Object) });
-    expect(PROVIDER_MEDIA["chatgpt-web"]).toMatchObject({ serviceKinds: ["llm", "image"], imageConfig: expect.any(Object) });
+    expect(PROVIDER_MEDIA["chatgpt-web"]).toMatchObject({ serviceKinds: ["llm"], imageConfig: expect.any(Object) });
+  });
+
+  it("excludes port-pending web providers from kind selectors they cannot currently serve", () => {
+    expect(getProvidersByKind("image").map((p) => p.id)).not.toContain("chatgpt-web");
+    expect(getProvidersByKind("music").map((p) => p.id)).not.toContain("suno");
+    expect(getProvidersByKind("music").map((p) => p.id)).not.toContain("udio");
+  });
+
+  it("does not trigger account fallback for provider_port_pending errors", () => {
+    expect(checkFallbackError(501, '{"error":{"type":"provider_port_pending"}}')).toEqual({
+      shouldFallback: false,
+      cooldownMs: 0,
+    });
   });
 
   it("uses an explicit unsupported executor instead of silently falling back to default OpenAI transport", async () => {

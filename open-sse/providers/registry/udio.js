@@ -10,10 +10,11 @@ export default {
     textIcon: "UD",
     website: "https://udio.com",
   },
-  category: "apikey",
+  category: "webCookie",
   authType: "cookie",
   authHint: "Paste the Udio session cookie from udio.com.",
   serviceKinds: ["music"],
+  hiddenKinds: ["music"],
   transport: {
     baseUrl: "https://www.udio.com/api/generate-proxy",
     format: "openai",

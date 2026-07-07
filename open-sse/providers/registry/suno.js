@@ -10,10 +10,11 @@ export default {
     textIcon: "SU",
     website: "https://suno.ai",
   },
-  category: "apikey",
+  category: "webCookie",
   authType: "cookie",
   authHint: "Paste the Suno session cookie from suno.ai.",
   serviceKinds: ["music"],
+  hiddenKinds: ["music"],
   transport: {
     baseUrl: "https://studio-api.suno.ai/api/generate/v2/",
     format: "openai",

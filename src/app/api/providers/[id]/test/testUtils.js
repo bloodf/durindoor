@@ -1,7 +1,7 @@
 import { getProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { testProxyUrl } from "@/lib/network/proxyTest";
-import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
+import { AI_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, PROVIDERS, resolveXiaomiTokenplanBaseUrl } from "open-sse/config/providers.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
@@ -446,6 +446,31 @@ async function fetchWithConnectionProxy(url, options = {}, effectiveProxy = null
   });
 }
 
+const LOCAL_OPENAI_COMPATIBLE_PROVIDERS = new Set([
+  "9router",
+  "lm-studio",
+  "vllm",
+  "lemonade",
+  "llamafile",
+  "llama-cpp",
+  "triton",
+  "docker-model-runner",
+  "xinference",
+  "oobabooga",
+]);
+
+export function resolveLocalOpenAICompatibleBaseUrl(connection) {
+  const { provider } = connection;
+  if (!LOCAL_OPENAI_COMPATIBLE_PROVIDERS.has(provider)) return null;
+
+  const cfg = AI_PROVIDERS[provider] || PROVIDERS[provider];
+  const registryBaseUrl = cfg?.transport?.baseUrl || cfg?.defaultBaseUrl || cfg?.baseUrl;
+  const raw = connection.providerSpecificData?.baseUrl || connection.baseUrl || registryBaseUrl;
+  if (!raw) return null;
+
+  return raw.replace(/\/chat\/completions\/?$/, "").replace(/\/+$/, "");
+}
+
 async function exchangeGigaChatApiKey(apiKey, effectiveProxy = null) {
   const cfg = PROVIDERS.gigachat;
   const res = await fetchWithConnectionProxy(cfg.tokenUrl, {
@@ -499,6 +524,7 @@ async function testRegistryOpenAIConnection(connection, effectiveProxy = null) {
   const valid = res.status !== 401 && res.status !== 403;
   return { valid, error: valid ? null : "Invalid API key" };
 }
+}
 
 async function testApiKeyConnection(connection, effectiveProxy = null) {
   if (isOpenAICompatibleProvider(connection.provider)) {
@@ -542,6 +568,43 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
     } catch (err) {
       return { valid: false, error: err.message };
     }
+  }
+
+  const localBaseUrl = resolveLocalOpenAICompatibleBaseUrl(connection);
+  if (localBaseUrl) {
+    const authHeaders = connection.apiKey ? { Authorization: `Bearer ${connection.apiKey}` } : undefined;
+
+    const modelsRes = await fetchWithConnectionProxy(`${localBaseUrl}/models`, authHeaders ? { headers: authHeaders } : {}, effectiveProxy);
+    if (modelsRes.ok) {
+      return { valid: true, error: null };
+    }
+    if (modelsRes.status === 401 || modelsRes.status === 403) {
+      return { valid: false, error: "Invalid API key" };
+    }
+
+    const chatHeaders = connection.apiKey
+      ? { Authorization: `Bearer ${connection.apiKey}`, "content-type": "application/json" }
+      : { "content-type": "application/json" };
+    const chatRes = await fetchWithConnectionProxy(
+      `${localBaseUrl}/chat/completions`,
+      {
+        method: "POST",
+        headers: chatHeaders,
+        body: JSON.stringify({
+          model: connection.defaultModel || getDefaultModel(connection.provider) || "test",
+          max_tokens: 1,
+          messages: [{ role: "user", content: "test" }],
+        }),
+      },
+      effectiveProxy
+    );
+    if (chatRes.ok) {
+      return { valid: true, error: null };
+    }
+    if (chatRes.status === 401 || chatRes.status === 403) {
+      return { valid: false, error: "Invalid API key" };
+    }
+    return { valid: false, error: "Invalid endpoint" };
   }
 
   try {

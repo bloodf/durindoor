@@ -747,6 +747,22 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         }, effectiveProxy);
         return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
       }
+      case "pollinations": {
+        const baseUrl = PROVIDERS["pollinations"]?.baseUrl?.replace(/\/chat\/completions\/?$/, "") || "https://gen.pollinations.ai/v1";
+        const headers = connection.apiKey ? { Authorization: `Bearer ${connection.apiKey}` } : {};
+        const res = await fetchWithConnectionProxy(`${baseUrl}/models`, { headers }, effectiveProxy);
+        return { valid: res.ok, error: res.ok ? null : "Pollinations test failed" };
+      }
+      case "nube":
+      case "kenari": {
+        const config = PROVIDERS[connection.provider] || {};
+        const validateUrl = config.validateUrl || config.baseUrl?.replace(/\/chat\/completions\/?$/, "/models");
+        if (!validateUrl) return { valid: false, error: "Provider test not supported" };
+        const res = await fetchWithConnectionProxy(validateUrl, {
+          headers: { Authorization: `Bearer ${connection.apiKey}` },
+        }, effectiveProxy);
+        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+      }
       case "digitalocean": {
         const res = await fetchWithConnectionProxy("https://inference.do-ai.run/v1/models", {
           headers: { Authorization: `Bearer ${connection.apiKey}` },

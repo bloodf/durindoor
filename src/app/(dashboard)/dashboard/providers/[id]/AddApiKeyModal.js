@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import { Button, Badge, Input, Modal, Select } from "@/shared/components";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
@@ -9,10 +9,11 @@ import {
   isGooglePseProvider,
   normalizeGooglePseCx,
 } from "@/shared/utils/googlePseProviderSpecificData";
+import { defaultApiKeyConnectionName, shouldResetAddApiKeyModal } from "./apiKeyConnectionName";
 
 const BULK_PLACEHOLDER = `name1|sk-key1\nname2|sk-key2\nsk-key-only-auto-named`;
 
-export default function AddApiKeyModal({ isOpen, provider, providerName, isCompatible, isAnthropic, authType, authHint, website, proxyPools, error, onSave, onBulkDone, onClose }) {
+export default function AddApiKeyModal({ isOpen, provider, providerName, isCompatible, isAnthropic, authType, authHint, website, proxyPools, existingConnectionNames = [], existingConnectionCount = 0, error, onSave, onBulkDone, onClose }) {
   const NONE_PROXY_POOL_VALUE = "__none__";
   const isOllamaLocal = provider === "ollama-local";
   const isCookie = authType === "cookie";
@@ -29,7 +30,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const defaultRegion = AI_PROVIDERS?.[provider]?.defaultRegion || providerRegions?.[0]?.id || "";
 
   const [formData, setFormData] = useState({
-    name: "",
+    name: defaultApiKeyConnectionName(existingConnectionNames.length ? existingConnectionNames : existingConnectionCount),
     apiKey: "",
     defaultModel: "",
     priority: 1,
@@ -51,6 +52,26 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const [mode, setMode] = useState("single"); // "single" | "bulk"
   const [bulkText, setBulkText] = useState("");
   const [bulkResult, setBulkResult] = useState(null); // { success, failed }
+  const wasOpenRef = useRef(false);
+
+  useEffect(() => {
+    const shouldReset = shouldResetAddApiKeyModal(wasOpenRef.current, isOpen);
+    wasOpenRef.current = isOpen;
+    if (shouldReset) {
+      setFormData({
+        name: defaultApiKeyConnectionName(existingConnectionNames.length ? existingConnectionNames : existingConnectionCount),
+        apiKey: "",
+        defaultModel: "",
+        priority: 1,
+        proxyPoolId: NONE_PROXY_POOL_VALUE,
+        ollamaHostUrl: "",
+      });
+      setValidationResult(null);
+      setMode("single");
+      setBulkText("");
+      setBulkResult(null);
+    }
+  }, [isOpen, existingConnectionNames, existingConnectionCount]);
 
   const buildProviderSpecificData = () => {
     if (isOllamaLocal && formData.ollamaHostUrl.trim()) {
@@ -419,6 +440,8 @@ AddApiKeyModal.propTypes = {
     id: PropTypes.string,
     name: PropTypes.string,
   })),
+  existingConnectionNames: PropTypes.arrayOf(PropTypes.string),
+  existingConnectionCount: PropTypes.number,
   error: PropTypes.string,
   onSave: PropTypes.func.isRequired,
   onBulkDone: PropTypes.func,

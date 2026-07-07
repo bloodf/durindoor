@@ -1,9 +1,10 @@
-import { refreshGoogleToken, updateProviderCredentials } from "@/sse/services/tokenRefresh";
-import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
 import { getModelsByProviderId } from "open-sse/config/providerModels.js";
+import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
+import { GEMINI_CONFIG } from "@/lib/oauth/constants/oauth";
+import { refreshGoogleToken, updateProviderCredentials } from "@/sse/services/tokenRefresh";
 
 const GEMINI_CLI_MODELS_URL = "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels";
 
@@ -12,7 +13,7 @@ export const parseOpenAIStyleModels = (data) => {
   return data?.data || data?.models || data?.results || [];
 };
 
-export const parseGeminiCliModels = (data) => {
+const parseGeminiCliModels = (data) => {
   if (Array.isArray(data?.models)) {
     return data.models
       .map((item) => {
@@ -35,7 +36,7 @@ export const parseGeminiCliModels = (data) => {
   return [];
 };
 
-export const appendCodexReviewModels = (models) => models.flatMap((model) => {
+const appendCodexReviewModels = (models) => models.flatMap((model) => {
   const id = model?.id || model?.slug || model?.model || model?.name;
   if (!id) return [];
   const name = model?.display_name || model?.displayName || model?.name || id;
@@ -54,7 +55,7 @@ export const appendCodexReviewModels = (models) => models.flatMap((model) => {
   ];
 });
 
-export const parseCodexModels = (data) => appendCodexReviewModels(parseOpenAIStyleModels(data));
+const parseCodexModels = (data) => appendCodexReviewModels(parseOpenAIStyleModels(data));
 
 export const createOpenAIModelsConfig = (url) => ({
   url,
@@ -84,7 +85,9 @@ export const getStaticProviderModels = (providerId) =>
     name: model.name || model.id,
   }));
 
-export const buildOAuthResolver = ({ refreshFn, fetchFn, parseFn, errorLabel }) => async (connection) => {
+// Generic custom resolver for OAuth providers that need refresh-on-401 + token persist.
+// Receives a `fetchFn(token)` and returns parsed models or throws.
+const buildOAuthResolver = ({ refreshFn, fetchFn, parseFn, errorLabel }) => async (connection) => {
   const { accessToken, refreshToken } = connection;
   if (!accessToken) {
     return { error: "No valid token found", status: 401 };
@@ -121,6 +124,7 @@ export const buildOAuthResolver = ({ refreshFn, fetchFn, parseFn, errorLabel }) 
   return { models: [], warning };
 };
 
+// Provider models endpoints configuration
 export const PROVIDER_MODELS_CONFIG = {
   claude: {
     url: "https://api.anthropic.com/v1/models",
@@ -136,7 +140,7 @@ export const PROVIDER_MODELS_CONFIG = {
     url: "https://generativelanguage.googleapis.com/v1beta/models",
     method: "GET",
     headers: { "Content-Type": "application/json" },
-    authQuery: "key",
+    authQuery: "key", // Use query param for API key
     parseResponse: (data) => data.models || []
   },
   qwen: {
@@ -178,9 +182,10 @@ export const PROVIDER_MODELS_CONFIG = {
     authPrefix: "Bearer ",
     parseResponse: (data) => {
       if (!data?.data) return [];
+      // Filter out embeddings, non-chat models, and disabled models
       return data.data
         .filter(m => m.capabilities?.type === "chat")
-        .filter(m => m.policy?.state !== "disabled")
+        .filter(m => m.policy?.state !== "disabled") // Only return explicitly enabled models
         .map(m => ({
           id: m.id,
           name: m.name || m.id,
@@ -202,6 +207,7 @@ export const PROVIDER_MODELS_CONFIG = {
     authHeader: "x-api-key",
     parseResponse: (data) => data.data || []
   },
+
   alicode: {
     url: "https://coding.dashscope.aliyuncs.com/v1/models",
     method: "GET",
@@ -220,6 +226,8 @@ export const PROVIDER_MODELS_CONFIG = {
   },
   "volcengine-ark": createOpenAIModelsConfig("https://ark.cn-beijing.volces.com/api/coding/v3/models"),
   byteplus: createOpenAIModelsConfig("https://ark.ap-southeast.bytepluses.com/api/coding/v3/models"),
+
+  // OpenAI-compatible API key providers
   deepseek: createOpenAIModelsConfig("https://api.deepseek.com/models"),
   groq: createOpenAIModelsConfig("https://api.groq.com/openai/v1/models"),
   xai: createOpenAIModelsConfig("https://api.x.ai/v1/models"),
@@ -233,6 +241,7 @@ export const PROVIDER_MODELS_CONFIG = {
   siliconflow: createOpenAIModelsConfig("https://api.siliconflow.com/v1/models"),
   hyperbolic: createOpenAIModelsConfig("https://api.hyperbolic.xyz/v1/models"),
   ollama: createOpenAIModelsConfig("https://ollama.com/api/tags"),
+  // ollama-local: url resolved dynamically below via providerSpecificData.baseUrl
   nanobanana: createOpenAIModelsConfig("https://api.nanobananaapi.ai/v1/models"),
   chutes: createOpenAIModelsConfig("https://llm.chutes.ai/v1/models"),
   nvidia: createOpenAIModelsConfig("https://integrate.api.nvidia.com/v1/models"),
@@ -255,6 +264,8 @@ export const PROVIDER_MODELS_CONFIG = {
       };
     }
   },
+
+  // Custom resolvers (non-OpenAI-shaped APIs / token-refresh flows)
   kiro: {
     customResolver: async (connection) => {
       const credentials = {
@@ -314,6 +325,8 @@ export const PROVIDER_MODELS_CONFIG = {
         if (result?.models?.length) {
           return {
             models: result.models.map((m) => ({
+              // Use the canonical "qoder/<key>" id so the dashboard
+              // surfaces the same identifier the chat router expects.
               id: `qoder/${m.id}`,
               name: m.name,
               contextLength: m.contextLength,
@@ -334,7 +347,7 @@ export const PROVIDER_MODELS_CONFIG = {
   },
   "gemini-cli": {
     customResolver: buildOAuthResolver({
-      refreshFn: (conn) => refreshGoogleToken(conn.refreshToken, process.env.GEMINI_CLIENT_ID, process.env.GEMINI_CLIENT_SECRET),
+      refreshFn: (conn) => refreshGoogleToken(conn.refreshToken, GEMINI_CONFIG.clientId, GEMINI_CONFIG.clientSecret),
       fetchFn: (token, conn) => {
         const projectId = conn.projectId || conn.providerSpecificData?.projectId;
         const body = projectId ? { project: projectId } : {};
@@ -351,27 +364,6 @@ export const PROVIDER_MODELS_CONFIG = {
       },
       parseFn: parseGeminiCliModels,
       errorLabel: "Failed to fetch Gemini CLI models"
-    })
-  },
-  agy: {
-    customResolver: buildOAuthResolver({
-      refreshFn: (conn) => refreshGoogleToken(conn.refreshToken, process.env.AGY_CLIENT_ID, process.env.AGY_CLIENT_SECRET),
-      fetchFn: (token, conn) => {
-        const projectId = conn.projectId || conn.providerSpecificData?.projectId;
-        const body = projectId ? { project: projectId } : {};
-        return fetch(GEMINI_CLI_MODELS_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`,
-            "User-Agent": "google-api-nodejs-client/9.15.1 vscode-antigravity/1.107.0",
-            "X-Goog-Api-Client": "google-cloud-sdk vscode_cloudshelleditor/0.1"
-          },
-          body: JSON.stringify(body)
-        });
-      },
-      parseFn: parseGeminiCliModels,
-      errorLabel: "Failed to fetch Antigravity CLI models"
     })
   },
   "ollama-local": {

@@ -1,6 +1,6 @@
 export default {
   id: "hcnsec",
-  priority: 70,
+  priority: 90,
   alias: "hcnsec",
   display: {
     name: "Huancheng Public API",
@@ -9,7 +9,7 @@ export default {
     textIcon: "HC",
     website: "https://api.hcnsec.cn",
     notice: {
-      text: "Xinjiang Huancheng Cybersecurity public LLM API platform: free credits with daily check-ins.",
+      text: "Xinjiang Huancheng Cybersecurity public LLM API platform with free credits from daily check-ins.",
       apiKeyUrl: "https://api.hcnsec.cn",
     },
   },
@@ -17,10 +17,11 @@ export default {
   hasFree: true,
   authType: "apikey",
   passthroughModels: true,
-  modelsFetcher: { url: "https://api.hcnsec.cn/v1/models", type: "openai" },
+  modelsFetcher: { url: "https://api.hcnsec.cn/v1/models", type: "openai-compatible" },
   transport: {
     baseUrl: "https://api.hcnsec.cn/v1/chat/completions",
     format: "openai",
+    validateUrl: "https://api.hcnsec.cn/v1/models",
     auth: {
       combined: true,
       header: "Authorization",

@@ -124,7 +124,7 @@ export default function ModelSelectModal({
 
     const loadCustomProviderModels = async () => {
       const customProviderIds = activeProviders
-        .filter(p => isOpenAICompatibleProvider(p.provider) || isAnthropicCompatibleProvider(p.provider))
+        .filter(p => isOpenAICompatibleProvider(p.provider) || isAnthropicCompatibleProvider(p.provider) || p.provider === "hcnsec")
         .map(p => p.provider);
 
       if (customProviderIds.length === 0) return;
@@ -133,7 +133,7 @@ export default function ModelSelectModal({
       await Promise.all(
         customProviderIds.map(async (providerId) => {
           const models = await fetchProviderModels(providerId);
-          if (models && models.length > 1) {
+          if (models && models.length > 0) {
             fetched[providerId] = models;
           }
         })
@@ -256,6 +256,17 @@ export default function ModelSelectModal({
             const supports = (providerInfo.serviceKinds || ["llm"]).includes(kindFilter);
             if (supports) combined = [{ id: providerId, name: providerInfo.name, value: alias }];
           }
+          // Augment with live-fetched models of the same kind when available
+          const dynamicModels = fetchedModels[providerId] || [];
+          const dynamicModelEntries = dynamicModels
+            .map((m) => ({
+              id: m.id || m.slug || m.model || m.name,
+              name: m.name || m.displayName || m.id,
+              value: `${alias}/${m.id || m.slug || m.model || m.name}`,
+              kind: getModelKind(m),
+            }))
+            .filter((m) => m.id && getModelKind(m) === kindFilter && !combined.some((existing) => existing.value === m.value));
+          combined = [...combined, ...dynamicModelEntries];
         } else {
           // LLM/null kind: merge hardcoded models (e.g. mimo-free → mimo-auto) with user-added models
           const registeredLlms = customRegisteredModels.filter((m) => !getModelKind(m) || getModelKind(m) === "llm");
@@ -265,6 +276,21 @@ export default function ModelSelectModal({
             .map((m) => ({ id: m.id, name: m.name, value: `${alias}/${m.id}`, kind: getModelKind(m) }))
             .filter((m) => !seen.has(m.value));
           combined = [...registeredLlms, ...aliasModels.filter((m) => !registeredLlms.some((registered) => registered.value === m.value)), ...hardcoded];
+          // Augment with live-fetched LLM models when available
+          const dynamicModels = fetchedModels[providerId] || [];
+          const dynamicModelEntries = dynamicModels
+            .map((m) => ({
+              id: m.id || m.slug || m.model || m.name,
+              name: m.name || m.displayName || m.id,
+              value: `${alias}/${m.id || m.slug || m.model || m.name}`,
+              kind: getModelKind(m),
+            }))
+            .filter((m) => {
+              if (!m.id) return false;
+              if (getModelKind(m) && getModelKind(m) !== "llm") return false;
+              return !combined.some((existing) => existing.value === m.value);
+            });
+          combined = [...combined, ...dynamicModelEntries];
         }
 
         if (combined.length > 0) {

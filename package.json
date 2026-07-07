@@ -4,6 +4,8 @@
   "description": "DurinDoor AI Gateway",
   "private": false,
   "scripts": {
+    "gen:agent-index": "node scripts/gen-agent-index.mjs",
+    "check:agent-index": "node scripts/check-agent-index.mjs",
     "dev": "next dev --webpack --port 20127",
     "build": "node scripts/build-app.js",
     "start": "next start",

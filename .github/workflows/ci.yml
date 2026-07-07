@@ -43,5 +43,8 @@ jobs:
       - name: "🎨 Lint"
         run: npm run lint
 
+      - name: Agent index drift gate
+        run: npm run check:agent-index
+
       - name: "🏗️ Build"
         run: npm run build

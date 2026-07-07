@@ -18,7 +18,7 @@ vi.mock("@/lib/oauth/services/cursorLocalStore.js", () => ({
   backfillCursorEmails: vi.fn(),
 }));
 
-const { sanitizeProviderConnectionForClient } = await import("../../src/app/api/providers/client/route.js");
+const { sanitizeProviderConnectionForClient } = await import("../../src/lib/providers/sanitizeProviderConnectionForClient.js");
 
 describe("/api/providers/client sanitization", () => {
   it("preserves Google PSE cx for edit forms while stripping unsafe provider data", () => {

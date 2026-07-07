@@ -158,8 +158,10 @@ async function bootstrapJwt(baseUrl, fingerprint, signal, dispatcher, proxyOptio
         ? await undiciFetch(url, { ...init, dispatcher })
         : await proxyAwareFetch(url, init, proxyOptions);
       if (!response.ok) {
+        const status = response.status;
         const text = await response.text().catch(() => "");
-        throw new Error(`Bootstrap failed: ${response.status} ${text.slice(0, 200)}`);
+        const error = Object.assign(new Error(`Bootstrap failed: ${status} ${text.slice(0, 200)}`), { status });
+        throw error;
       }
       const data = await response.json();
       if (!data?.jwt) throw new Error("Bootstrap response missing jwt field");
@@ -392,8 +394,20 @@ export class MimocodeExecutor extends BaseExecutor {
           signal
         );
 
+        async function drainBody(r) {
+          if (r?.body?.cancel) {
+            try { await r.body.cancel(); } catch {}
+          } else if (r?.body?.getReader) {
+            try {
+              const reader = r.body.getReader();
+              while (!(await reader.read()).done) {}
+            } catch {}
+          }
+        }
+
         if (response.status === 401 || response.status === 403) {
           log?.warn?.("MIMOCODE", `Auth failed (${response.status}) on account ${account.fingerprint.slice(0, 8)}`);
+          await drainBody(response);
           account.jwt = "";
           account.expiresAt = 0;
           account.consecutiveFails = 0;
@@ -407,6 +421,7 @@ export class MimocodeExecutor extends BaseExecutor {
             signal
           );
           if (response.status === 401 || response.status === 403) {
+            await drainBody(response);
             this._markCooldown(state, account);
             lastTerminalStatus = response.status;
             log?.warn?.("MIMOCODE", `Account ${account.fingerprint.slice(0, 8)} still unauthorized after refresh; rotating`);
@@ -415,9 +430,18 @@ export class MimocodeExecutor extends BaseExecutor {
         }
 
         if (response.status === 429) {
+          await drainBody(response);
           this._markCooldown(state, account);
           lastTerminalStatus = response.status;
           log?.warn?.("MIMOCODE", `Rate limited on account ${account.fingerprint.slice(0, 8)}, trying next`);
+          continue;
+        }
+
+        if ([502, 503, 504].includes(response.status)) {
+          await drainBody(response);
+          this._markCooldown(state, account);
+          lastTerminalStatus = response.status;
+          log?.warn?.("MIMOCODE", `Retryable HTTP ${response.status} on account ${account.fingerprint.slice(0, 8)}, rotating`);
           continue;
         }
 
@@ -429,12 +453,15 @@ export class MimocodeExecutor extends BaseExecutor {
         }
         lastError = error;
         this._markCooldown(state, account);
+        const terminalStatus = error?.status || 0;
+        if (terminalStatus) lastTerminalStatus = terminalStatus;
         if (attempt === state.accounts.length - 1) {
           const message = error instanceof Error ? error.message : String(error);
           log?.error?.("MIMOCODE", `Executor error: ${message}`);
+          const terminalStatus = lastTerminalStatus || error?.status || 502;
           return {
             response: new Response(JSON.stringify({ error: { message, type: "upstream_error", code: "EXECUTOR_ERROR" } }), {
-              status: 502,
+              status: terminalStatus,
               headers: { "Content-Type": "application/json" },
             }),
             url,

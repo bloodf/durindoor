@@ -418,6 +418,45 @@ describe("MimocodeExecutor", () => {
     expect((await response.json()).error.code).toBe("NO_ACCOUNTS");
   });
 
+  it("returns the bootstrap HTTP status when bootstrap fails for every account", async () => {
+    fetchMock.mockResolvedValueOnce(new Response("forbidden", { status: 403 }));
+    const executor = new MimocodeExecutor();
+
+    const { response } = await executor.execute({
+      model: "mimo-auto",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: {},
+    });
+
+    expect(response.status).toBe(403);
+    expect((await response.json()).error.code).toBe("EXECUTOR_ERROR");
+  });
+
+  it("rotates on retryable 5xx statuses and returns the terminal status when exhausted", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("bad gateway", { status: 502 }))
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("service unavailable", { status: 503 }))
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("gateway timeout", { status: 504 }));
+
+    const executor = new MimocodeExecutor();
+    executor.accounts = [executor.buildAccount("fp-a"), executor.buildAccount("fp-b"), executor.buildAccount("fp-c")];
+
+    const { response } = await executor.execute({
+      model: "mimo-auto",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: {},
+    });
+
+    expect(response.status).toBe(504);
+    expect((await response.json()).error.code).toBe("NO_ACCOUNTS");
+    expect(executor.accounts.every((a) => a.cooldownUntil > Date.now())).toBe(true);
+  });
+
   it("registers Mimocode as a no-auth specialized provider and mcode alias", () => {
     expect(getExecutor("mimocode")).toBeInstanceOf(MimocodeExecutor);
     expect(getExecutor("mcode")).toBeInstanceOf(MimocodeExecutor);

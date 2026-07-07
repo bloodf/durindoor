@@ -585,6 +585,25 @@ exports[`GOLDEN buildHeaders (default executor providers) > groq → headers (ap
 }
 `;
 
+exports[`GOLDEN buildHeaders (default executor providers) > hcnsec → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
 exports[`GOLDEN buildHeaders (default executor providers) > hyperbolic → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -1270,6 +1289,13 @@ exports[`GOLDEN buildUrl (default executor providers) > groq → url (stream + n
 {
   "nonStream": "https://api.groq.com/openai/v1/chat/completions",
   "stream": "https://api.groq.com/openai/v1/chat/completions",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > hcnsec → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://api.hcnsec.cn/v1/chat/completions",
+  "stream": "https://api.hcnsec.cn/v1/chat/completions",
 }
 `;
 

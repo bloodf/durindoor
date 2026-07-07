@@ -8,6 +8,7 @@ import {
   buildAudit,
   classifyProvider,
   renderMarkdown,
+  verifyCleanSourceCheckout,
   verifySourceCommit,
 } from "../../scripts/audit-omniroute-providers.mjs";
 
@@ -86,6 +87,20 @@ function makeFixture() {
       passthroughModels: true,
     });
   `);
+  writeProvider(omni, "nested/grouped", `
+    export const nestedProvider = {
+      id: "nested-provider",
+      format: "openai",
+      executor: "default",
+      authType: "apikey",
+      authHeader: "bearer",
+      models: [],
+    };
+  `);
+  writeFileSync(join(omni, "open-sse/config/providers/registry/nested/index.ts"), `
+    import { nestedProvider } from "./grouped/index.ts";
+    export default [nestedProvider];
+  `);
   writeFileSync(join(omni, "public/providers/simple.png"), "");
   writeFileSync(join(omni, "public/providers/requesty.png"), "");
 
@@ -105,9 +120,9 @@ describe("OmniRoute provider audit", () => {
 
     expect(audit.totals).toMatchObject({
       durindoorProviders: 1,
-      omnirouteProviders: 5,
+      omnirouteProviders: 6,
       present: 1,
-      missing: 4,
+      missing: 5,
       missingLocalIcons: 1,
     });
     expect(audit.rows.find((row) => row.id === "simple")).toMatchObject({
@@ -129,6 +144,11 @@ describe("OmniRoute provider audit", () => {
       authType: "apikey",
       hasSourceIcon: true,
       hasLocalIcon: false,
+    });
+    expect(audit.rows.find((row) => row.id === "nested-provider")).toMatchObject({
+      sourcePath: "open-sse/config/providers/registry/nested/grouped/index.ts",
+      class: "simple-default",
+      executor: "default",
     });
   });
 
@@ -156,6 +176,23 @@ describe("OmniRoute provider audit", () => {
 
       expect(verifySourceCommit(sourceRoot, head)).toBe(head);
       expect(() => verifySourceCommit(sourceRoot, "deadbeef")).toThrow(/does not match --commit/);
+    } finally {
+      rmSync(sourceRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects dirty source checkouts before CLI rendering", () => {
+    const sourceRoot = mkdtempSync(join(tmpdir(), "durindoor-audit-dirty-source-"));
+
+    try {
+      spawnSync("git", ["init"], { cwd: sourceRoot, encoding: "utf8" });
+      spawnSync("git", ["-c", "user.name=DurinDoor Test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-m", "fixture"], {
+        cwd: sourceRoot,
+        encoding: "utf8",
+      });
+      writeFileSync(join(sourceRoot, "uncommitted.txt"), "dirty\n");
+
+      expect(() => verifyCleanSourceCheckout(sourceRoot)).toThrow(/uncommitted changes/);
     } finally {
       rmSync(sourceRoot, { recursive: true, force: true });
     }

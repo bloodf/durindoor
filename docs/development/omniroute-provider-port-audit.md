@@ -12,6 +12,15 @@ node scripts/audit-omniroute-providers.mjs \
   --format markdown
 ```
 
+The source checkout must be clean when the script runs. If the OmniRoute tree
+has uncommitted or untracked files, the audit exits before rendering so a
+committed baseline cannot silently include local-only source changes.
+
+Provider discovery walks every `index.ts` below
+`open-sse/config/providers/registry/` and uses the registry entry's declared
+`id` when present. This keeps nested OmniRoute registry groups in the audit
+instead of limiting the inventory to one top-level directory per provider.
+
 ## Summary
 
 - DurinDoor providers: 99

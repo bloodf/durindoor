@@ -38,10 +38,11 @@ export function readProviderAssets(root = repoRoot) {
 export function readOmniRouteProviders(sourceRoot) {
   const registryDir = join(sourceRoot, "open-sse", "config", "providers", "registry");
   const providers = [];
-  for (const id of readdirSync(registryDir).sort()) {
-    const file = join(registryDir, id, "index.ts");
-    if (!existsSync(file)) continue;
+  for (const file of findRegistryEntryFiles(registryDir)) {
     const source = readFileSync(file, "utf8");
+    const explicitId = readStringField(source, "id");
+    if (!explicitId && !looksLikeRegistryEntry(source)) continue;
+    const id = explicitId || basename(dirname(file));
     const usesHelper = /buildOpenAiCompatibleRegistryEntry/.test(source);
     providers.push({
       id,
@@ -61,7 +62,7 @@ export function readOmniRouteProviders(sourceRoot) {
       source,
     });
   }
-  return providers;
+  return providers.sort((left, right) => left.id.localeCompare(right.id));
 }
 
 export function buildAudit({ durinRoot = repoRoot, omniRoot, omniCommit = null }) {
@@ -91,7 +92,7 @@ export function buildAudit({ durinRoot = repoRoot, omniRoot, omniCommit = null }
       hasSourceIcon,
       localIconPath,
       sourceIconPath,
-      sourcePath: `open-sse/config/providers/registry/${provider.id}/index.ts`,
+      sourcePath: provider.path ? provider.path.slice(resolve(omniRoot).length + 1) : `open-sse/config/providers/registry/${provider.id}/index.ts`,
     };
   });
 
@@ -219,6 +220,27 @@ function readExportedRegistryProviders(source) {
   return new Set(providers.sort());
 }
 
+function findRegistryEntryFiles(registryDir) {
+  const rootIndex = join(registryDir, "index.ts");
+  const files = [];
+  const visit = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name))) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        visit(path);
+      } else if (entry.isFile() && entry.name === "index.ts" && path !== rootIndex) {
+        files.push(path);
+      }
+    }
+  };
+  visit(registryDir);
+  return files;
+}
+
+function looksLikeRegistryEntry(source) {
+  return /buildOpenAiCompatibleRegistryEntry/.test(source) || /\b(format|executor|baseUrl|authType|models|passthroughModels)\s*:/.test(source);
+}
+
 function detectImportantFields(source) {
   const fields = [
     "headers",
@@ -268,6 +290,17 @@ export function verifySourceCommit(sourceRoot, expectedCommit) {
   return actualCommit;
 }
 
+export function verifyCleanSourceCheckout(sourceRoot) {
+  const status = execFileSync("git", ["-C", sourceRoot, "status", "--porcelain"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (status.trim()) {
+    throw new Error("Source checkout has uncommitted changes; commit or stash them before auditing");
+  }
+  return true;
+}
+
 function parseArgs(argv) {
   const args = { format: "json", source: process.env.OMNIROUTE_SOURCE || "" };
   for (let i = 0; i < argv.length; i += 1) {
@@ -289,6 +322,7 @@ async function main() {
   }
   const source = resolve(args.source);
   verifySourceCommit(source, args.commit || null);
+  verifyCleanSourceCheckout(source);
   const audit = buildAudit({ omniRoot: source, omniCommit: args.commit || null });
   if (args.format === "markdown") process.stdout.write(renderMarkdown(audit));
   else if (args.format === "json") process.stdout.write(`${JSON.stringify(audit, null, 2)}\n`);

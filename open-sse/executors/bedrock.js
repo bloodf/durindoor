@@ -105,9 +105,40 @@ function toolResultContentFromMessage(message) {
   return result.length > 0 ? result : [{ text: " " }];
 }
 
+function groupToolResults(messages) {
+  const groups = [];
+  for (const message of messages) {
+    if (message?.role === "tool") {
+      const lastGroup = groups[groups.length - 1];
+      if (lastGroup && lastGroup.role === "tool") {
+        lastGroup.results.push(message);
+        continue;
+      }
+      groups.push({ role: "tool", results: [message] });
+      continue;
+    }
+    groups.push(message);
+  }
+  return groups.map((group) => {
+    if (group.role === "tool") {
+      return {
+        role: "user",
+        content: group.results.map((m) => ({
+          toolResult: {
+            toolUseId: m.tool_call_id || `toolu_${randomUUID()}`,
+            content: toolResultContentFromMessage(m),
+            status: "success",
+          },
+        })),
+      };
+    }
+    return group;
+  });
+}
+
 function messagesFromOpenAI(messages) {
   const converted = [];
-  for (const message of messages) {
+  for (const message of groupToolResults(messages)) {
     if (!message || typeof message !== "object") continue;
     if (message.role === "system" || message.role === "developer") continue;
     if (message.role === "tool") {
@@ -123,6 +154,10 @@ function messagesFromOpenAI(messages) {
           },
         ],
       });
+      continue;
+    }
+    if (Array.isArray(message.content) && message.content.some((block) => block?.toolResult)) {
+      converted.push(message);
       continue;
     }
     const content = textBlocksFromContent(message.content);
@@ -164,6 +199,7 @@ function toolConfigFromOpenAI(tools, toolChoice) {
     });
   }
   if (bedrockTools.length === 0) return undefined;
+  if (toolChoice === "none") return undefined;
   const config = { tools: bedrockTools };
   if (toolChoice === "required") config.toolChoice = { any: {} };
   else if (toolChoice === "auto") config.toolChoice = { auto: {} };
@@ -265,9 +301,26 @@ function createOpenAIStreamFromBedrock(stream, model) {
     async start(controller) {
       let finishReason = "stop";
       let finalUsage = null;
+      const toolUses = new Map();
       try {
         controller.enqueue(sse(openAIChunk(model, { role: "assistant" })));
         for await (const event of stream || []) {
+          if (event.contentBlockStart?.start?.toolUse) {
+            const index = event.contentBlockIndex ?? 0;
+            const t = event.contentBlockStart.start.toolUse;
+            const toolCall = { index, id: t.toolUseId, type: "function", function: { name: t.name, arguments: "" } };
+            toolUses.set(index, toolCall);
+            controller.enqueue(sse(openAIChunk(model, { tool_calls: [toolCall] })));
+          }
+          if (event.contentBlockDelta?.delta?.toolUse?.input) {
+            const index = event.contentBlockIndex ?? 0;
+            const existing = toolUses.get(index);
+            const fragment = String(event.contentBlockDelta.delta.toolUse.input);
+            if (existing) {
+              existing.function.arguments += fragment;
+            }
+            controller.enqueue(sse(openAIChunk(model, { tool_calls: [{ index, id: existing?.id, type: "function", function: { name: existing?.function?.name, arguments: fragment } }] })));
+          }
           if (event.contentBlockDelta?.delta?.text) {
             controller.enqueue(sse(openAIChunk(model, { content: event.contentBlockDelta.delta.text })));
           }

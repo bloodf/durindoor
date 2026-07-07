@@ -1,9 +1,12 @@
 import { AntigravityExecutor } from "./antigravity.js";
 import { AuggieExecutor } from "./auggie.js";
 import { AzureExecutor } from "./azure.js";
+import { BedrockExecutor } from "./bedrock.js";
+import { ChipotleExecutor } from "./chipotle.js";
 import { GeminiCLIExecutor } from "./gemini-cli.js";
 import { GithubExecutor } from "./github.js";
 import { IFlowExecutor } from "./iflow.js";
+import { InnerAiExecutor } from "./inner-ai.js";
 import { QoderExecutor } from "./qoder.js";
 import { KiroExecutor } from "./kiro.js";
 import { KimchiExecutor } from "./kimchi.js";
@@ -18,6 +21,9 @@ import { GrokWebExecutor } from "./grok-web.js";
 import { PerplexityWebExecutor } from "./perplexity-web.js";
 import { OllamaLocalExecutor } from "./ollama-local.js";
 import { CommandCodeExecutor } from "./commandcode.js";
+import { PollinationsExecutor } from "./pollinations.js";
+import { PuterExecutor } from "./puter.js";
+import { TheOldLlmExecutor } from "./theoldllm.js";
 import { XiaomiTokenplanExecutor } from "./xiaomi-tokenplan.js";
 import { MimoFreeExecutor } from "./mimo-free.js";
 import { MimocodeExecutor } from "./mimocode.js";
@@ -41,9 +47,13 @@ const executors = {
   auggie: new AuggieExecutor(),
   aug: new AuggieExecutor(), // Alias for auggie
   azure: new AzureExecutor(),
+  bedrock: new BedrockExecutor(),
+  chipotle: new ChipotleExecutor(),
   "gemini-cli": new GeminiCLIExecutor(),
   github: new GithubExecutor(),
   iflow: new IFlowExecutor(),
+  "inner-ai": new InnerAiExecutor(),
+  "in-ai": new InnerAiExecutor(), // Alias for inner-ai
   qoder: new QoderExecutor(),
   kiro: new KiroExecutor(),
   kimchi: new KimchiExecutor(),
@@ -60,11 +70,17 @@ const executors = {
   "perplexity-web": new PerplexityWebExecutor(),
   "ollama-local": new OllamaLocalExecutor(),
   commandcode: new CommandCodeExecutor(),
+  "command-code": new CommandCodeExecutor("command-code"),
+  pollinations: new PollinationsExecutor(),
+  puter: new PuterExecutor(),
+  theoldllm: new TheOldLlmExecutor(),
   "xiaomi-tokenplan": new XiaomiTokenplanExecutor(),
   "mimo-free": new MimoFreeExecutor(),
   mimocode: new MimocodeExecutor(),
   mcode: new MimocodeExecutor(), // Alias for mimocode
   mmf: new MimoFreeExecutor(), // Alias for mimo-free
+  mimocode: new MimocodeExecutor(),
+  mcode: new MimocodeExecutor(), // Alias for mimocode
   "codebuddy-cn": new CodeBuddyExecutor(),
   xai: new XaiExecutor(),
   "grok-cli": new GrokCliExecutor(),
@@ -102,9 +118,12 @@ export { BaseExecutor } from "./base.js";
 export { AntigravityExecutor } from "./antigravity.js";
 export { AuggieExecutor } from "./auggie.js";
 export { AzureExecutor } from "./azure.js";
+export { BedrockExecutor } from "./bedrock.js";
+export { ChipotleExecutor } from "./chipotle.js";
 export { GeminiCLIExecutor } from "./gemini-cli.js";
 export { GithubExecutor } from "./github.js";
 export { IFlowExecutor } from "./iflow.js";
+export { InnerAiExecutor } from "./inner-ai.js";
 export { QoderExecutor } from "./qoder.js";
 export { KiroExecutor } from "./kiro.js";
 export { KimchiExecutor } from "./kimchi.js";
@@ -120,6 +139,9 @@ export { GrokWebExecutor } from "./grok-web.js";
 export { PerplexityWebExecutor } from "./perplexity-web.js";
 export { OllamaLocalExecutor } from "./ollama-local.js";
 export { CommandCodeExecutor } from "./commandcode.js";
+export { PollinationsExecutor } from "./pollinations.js";
+export { PuterExecutor } from "./puter.js";
+export { TheOldLlmExecutor } from "./theoldllm.js";
 export { XiaomiTokenplanExecutor } from "./xiaomi-tokenplan.js";
 export { MimoFreeExecutor } from "./mimo-free.js";
 export { MimocodeExecutor } from "./mimocode.js";

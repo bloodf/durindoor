@@ -383,6 +383,25 @@ exports[`GOLDEN buildHeaders (default executor providers) > bazaarlink → heade
 }
 `;
 
+exports[`GOLDEN buildHeaders (default executor providers) > bedrock → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
 exports[`GOLDEN buildHeaders (default executor providers) > blackbox → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -492,6 +511,22 @@ exports[`GOLDEN buildHeaders (default executor providers) > charm-hyper → head
   "oauth": {
     "Accept": "text/event-stream",
     "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
+exports[`GOLDEN buildHeaders (default executor providers) > chipotle → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
     "Content-Type": "application/json",
   },
 }
@@ -1469,6 +1504,25 @@ exports[`GOLDEN buildHeaders (default executor providers) > iflytek → headers 
 `;
 
 exports[`GOLDEN buildHeaders (default executor providers) > inference-net → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
+exports[`GOLDEN buildHeaders (default executor providers) > inner-ai → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
     "Accept": "text/event-stream",
@@ -2519,6 +2573,13 @@ exports[`GOLDEN buildUrl (default executor providers) > bazaarlink → url (stre
 }
 `;
 
+exports[`GOLDEN buildUrl (default executor providers) > bedrock → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://bedrock-runtime.us-east-1.amazonaws.com",
+  "stream": "https://bedrock-runtime.us-east-1.amazonaws.com",
+}
+`;
+
 exports[`GOLDEN buildUrl (default executor providers) > blackbox → url (stream + non-stream) 1`] = `
 {
   "nonStream": "https://api.blackbox.ai/v1/chat/completions",
@@ -2558,6 +2619,13 @@ exports[`GOLDEN buildUrl (default executor providers) > charm-hyper → url (str
 {
   "nonStream": "https://hyper.charm.land/v1/chat/completions",
   "stream": "https://hyper.charm.land/v1/chat/completions",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > chipotle → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://amelia.chipotle.com",
+  "stream": "https://amelia.chipotle.com",
 }
 `;
 
@@ -2873,6 +2941,13 @@ exports[`GOLDEN buildUrl (default executor providers) > inference-net → url (s
 {
   "nonStream": "https://api.inference.net/v1/chat/completions",
   "stream": "https://api.inference.net/v1/chat/completions",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > inner-ai → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://chatapi.innerai.com/chat",
+  "stream": "https://chatapi.innerai.com/chat",
 }
 `;
 

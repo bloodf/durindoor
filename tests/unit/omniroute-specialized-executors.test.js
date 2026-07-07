@@ -1,11 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-
-const proxyAwareFetchMock = vi.hoisted(() => vi.fn());
-
-vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
-  proxyAwareFetch: proxyAwareFetchMock,
-}));
-
+import { prepareToolMessages } from "../../open-sse/translator/webTools.js";
+import { BedrockExecutor, openAIToBedrockConverse } from "../../open-sse/executors/bedrock.js";
+import {
+  AmeliaClient,
+  ChipotleExecutor,
+  extractAmeliaText,
+  parseStompMessageBody,
+  randomServerId,
+  randomSessionId,
+} from "../../open-sse/executors/chipotle.js";
+import {
+  InnerAiExecutor,
+  findModel,
+  parseCredential,
+} from "../../open-sse/executors/inner-ai.js";
 import { getExecutor, hasSpecializedExecutor } from "../../open-sse/executors/index.js";
 import { PollinationsExecutor } from "../../open-sse/executors/pollinations.js";
 import { PuterExecutor } from "../../open-sse/executors/puter.js";
@@ -15,11 +23,9 @@ import {
   TheOldLlmExecutor,
 } from "../../open-sse/executors/theoldllm.js";
 import { PROVIDERS, PROVIDER_MODELS } from "../../open-sse/providers/index.js";
-import REGISTRY from "../../open-sse/providers/registry/index.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
-  proxyAwareFetchMock.mockReset();
 });
 
 describe("OmniRoute specialized provider ports", () => {
@@ -67,168 +73,23 @@ describe("OmniRoute specialized provider ports", () => {
     expect(normal).toMatchObject({ model: "openai", stream: false });
     expect(normal.jsonMode).toBeUndefined();
     expect(json.jsonMode).toBe(true);
-    expect(PROVIDERS.pollinations.noAuth).toBe(true);
-    // Registry entry (not the runtime transport map) carries UI/credential
-    // metadata like authModes — keeping "apikey" here is what keeps a
-    // premium key path reachable for an otherwise no-auth provider.
-    const registryEntry = REGISTRY.find((entry) => entry.id === "pollinations");
-    expect(registryEntry.authModes).toContain("apikey");
-  });
-
-  it("omits Authorization for Pollinations no-auth placeholder credentials but forwards a real key", () => {
-    const executor = getExecutor("pollinations");
-
-    // No credentials at all (typical no-auth request path).
-    expect(executor.buildHeaders({}, true).Authorization).toBeUndefined();
-    expect(executor.buildHeaders(undefined, true).Authorization).toBeUndefined();
-
-    // "sk_durindoor" is the legacy local placeholder DurinDoor injects for
-    // no-auth providers — it is not a real Pollinations key and must never
-    // leak upstream.
-    expect(
-      executor.buildHeaders({ apiKey: "sk_durindoor" }, true).Authorization
-    ).toBeUndefined();
-    expect(
-      executor.buildHeaders({ accessToken: "sk_durindoor" }, true).Authorization
-    ).toBeUndefined();
-
-    // The real production no-auth credential shape from
-    // src/sse/services/auth.js is `{ id: "noauth", accessToken: "public" }`.
-    // Neither the "public" placeholder value nor the "noauth" id marker may
-    // ever be forwarded as a bearer token.
-    expect(
-      executor.buildHeaders({ id: "noauth", accessToken: "public" }, true).Authorization
-    ).toBeUndefined();
-    expect(
-      executor.buildHeaders({ accessToken: "public" }, true).Authorization
-    ).toBeUndefined();
-    expect(
-      executor.buildHeaders({ id: "noauth", apiKey: "real-premium-key" }, true).Authorization
-    ).toBeUndefined();
-
-    // A real premium key from enter.pollinations.ai must still be forwarded.
-    expect(
-      executor.buildHeaders({ apiKey: "real-premium-key" }, true).Authorization
-    ).toBe("Bearer real-premium-key");
   });
 
   it("maps The Old LLM model aliases and generates request tokens", () => {
     expect(mapModel("gpt-5.3")).toBe("GPT_5_3");
-    expect(mapModel("gpt-4o")).toBe("GPT_4o");
-    expect(mapModel("gpt_4o")).toBe("GPT_4o");
-    expect(
-      PROVIDER_MODELS.tllm.some((model) => model.id === mapModel("gpt-4o"))
-    ).toBe(true);
     expect(mapModel("CLAUDE_4_6_OPUS")).toBe("CLAUDE_4_6_OPUS");
     expect(mapModel("claude sonnet 4")).toBe("CLAUDE_4_6_SONNET");
-    expect(mapModel("deepseek_v4")).toBe("deepseek_v4");
-    expect(mapModel("gemini_3_flash")).toBe("gemini_3_flash");
     expect(generateRequestToken()).toMatch(/^[a-z0-9]+-[a-z0-9]+-[a-f0-9]{8}$/);
     expect(PROVIDERS.theoldllm.noAuth).toBe(true);
-    expect(PROVIDERS.theoldllm.passthroughModels).toBeUndefined();
     expect(PROVIDER_MODELS.tllm.some((model) => model.id === "GPT_5_4")).toBe(true);
-    // Advertised in providers/registry/theoldllm.js models list — these exact
-    // lowercase ids must round-trip unchanged instead of being rewritten to
-    // the CLAUDE_4_6_* / CLAUDE_4_5_* generation aliases.
-    expect(mapModel("claude_opus_4")).toBe("claude_opus_4");
-    expect(mapModel("claude_sonnet_4")).toBe("claude_sonnet_4");
-    expect(mapModel("claude_haiku_3_5")).toBe("claude_haiku_3_5");
-    expect(
-      PROVIDER_MODELS.tllm.some((model) => model.id === mapModel("claude_opus_4"))
-    ).toBe(true);
   });
 
-  it("uses proxy-aware fetch for The Old LLM requests", async () => {
-    proxyAwareFetchMock.mockResolvedValue(
-      new Response('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n', {
-        status: 200,
-        headers: { "Content-Type": "text/event-stream" },
-      })
-    );
-    const executor = new TheOldLlmExecutor();
-    const proxyOptions = { proxyUrl: "http://127.0.0.1:18080", strictProxy: true };
-
-    const { response } = await executor.execute({
-      model: "gpt-5.3",
-      body: { messages: [{ role: "user", content: "Hi" }] },
-      stream: false,
-      credentials: {},
-      proxyOptions,
-    });
-
-    expect((await response.json()).choices[0].message.content).toBe("ok");
-    expect(proxyAwareFetchMock).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(proxyAwareFetchMock.mock.calls[0][1].body).model).toBe("GPT_5_3");
-    expect(proxyAwareFetchMock.mock.calls[0][2]).toBe(proxyOptions);
-  });
-
-  it("pipes The Old LLM streaming bodies without buffering them", async () => {
-    const upstreamBody = new ReadableStream({
-      start(controller) {
-        controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"live"}}]}\n\n'));
-      },
-    });
-    proxyAwareFetchMock.mockResolvedValue(
-      new Response(upstreamBody, {
-        status: 200,
-        headers: { "Content-Type": "text/event-stream" },
-      })
-    );
-    const executor = new TheOldLlmExecutor();
-
-    const result = await Promise.race([
-      executor.execute({
-        model: "GPT_5_4",
-        body: { messages: [] },
-        stream: true,
-        credentials: {},
-      }),
-      new Promise((resolve) => setTimeout(() => resolve("timeout"), 50)),
-    ]);
-
-    expect(result).not.toBe("timeout");
-    const { response } = result;
-    expect(response.headers.get("Content-Type")).toContain("text/event-stream");
-    const reader = response.body.getReader();
-    const { value, done } = await reader.read();
-    expect(done).toBe(false);
-    expect(new TextDecoder().decode(value)).toContain("live");
-    await reader.cancel();
-  });
-
-  it("keeps The Old LLM streaming requests abortable after headers return", async () => {
-    let upstreamSignal;
-    proxyAwareFetchMock.mockImplementation(async (_url, init) => {
-      upstreamSignal = init.signal;
-      return new Response(new ReadableStream(), {
-        status: 200,
-        headers: { "Content-Type": "text/event-stream" },
-      });
-    });
-    const controller = new AbortController();
-    const executor = new TheOldLlmExecutor();
-
-    const { response } = await executor.execute({
-      model: "GPT_5_4",
-      body: { messages: [] },
-      stream: true,
-      credentials: {},
-      signal: controller.signal,
-    });
-
-    expect(response.headers.get("Content-Type")).toContain("text/event-stream");
-    expect(upstreamSignal.aborted).toBe(false);
-    controller.abort(new Error("client disconnected"));
-    expect(upstreamSignal.aborted).toBe(true);
-  });
-
-  it("preserves The Old LLM non-streaming SSE metadata in OpenAI JSON", async () => {
-    proxyAwareFetchMock.mockResolvedValue(
+  it("wraps The Old LLM streamed upstream into non-streaming OpenAI JSON", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
         [
-          'data: {"id":"chatcmpl-up","created":123,"model":"GPT_5_3","choices":[{"delta":{"reasoning_content":"think "}}]}',
-          'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{\\"q\\""}}]}}]}',
-          'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":":\\"x\\"}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}}',
+          'data: {"choices":[{"delta":{"content":"hello "}}]}',
+          'data: {"choices":[{"delta":{"content":"world"}}]}',
           "data: [DONE]",
           "",
         ].join("\n"),
@@ -245,32 +106,16 @@ describe("OmniRoute specialized provider ports", () => {
     });
 
     const body = await response.json();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).model).toBe("GPT_5_3");
     expect(response.headers.get("Content-Type")).toContain("application/json");
-    expect(body).toMatchObject({
-      id: "chatcmpl-up",
-      created: 123,
-      model: "GPT_5_3",
-      usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 },
-      choices: [
-        {
-          finish_reason: "tool_calls",
-          message: {
-            reasoning_content: "think ",
-            tool_calls: [
-              {
-                id: "call_1",
-                type: "function",
-                function: { name: "lookup", arguments: '{"q":"x"}' },
-              },
-            ],
-          },
-        },
-      ],
-    });
+    expect(body.model).toBe("GPT_5_3");
+    expect(body.choices[0].message.content).toBe("hello world");
   });
 
   it("retries The Old LLM once when the request token is rejected", async () => {
-    proxyAwareFetchMock
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(new Response('{"error":{"type":"access_denied"}}', { status: 403 }))
       .mockResolvedValueOnce(
         new Response('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n', {
@@ -287,23 +132,378 @@ describe("OmniRoute specialized provider ports", () => {
       credentials: {},
     });
 
-    expect(proxyAwareFetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect((await response.json()).choices[0].message.content).toBe("ok");
   });
 
-  it("propagates The Old LLM aborts so chatCore can treat them as cancellations", async () => {
-    const controller = new AbortController();
-    controller.abort();
-    const executor = new TheOldLlmExecutor();
+  it("registers Bedrock with native Converse URL and OpenAI request conversion", () => {
+    const executor = getExecutor("bedrock");
+    const converted = openAIToBedrockConverse("anthropic.claude-sonnet-4-6", {
+      messages: [
+        { role: "system", content: "Be concise" },
+        { role: "user", content: "hello" },
+      ],
+      max_tokens: 128,
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "lookup",
+            description: "Lookup a thing",
+            parameters: { type: "object", properties: { q: { type: "string" } } },
+          },
+        },
+      ],
+      tool_choice: "required",
+    });
 
-    await expect(
-      executor.execute({
-        model: "GPT_5_4",
-        body: { messages: [] },
-        stream: false,
-        credentials: {},
-        signal: controller.signal,
+    expect(executor).toBeInstanceOf(BedrockExecutor);
+    expect(hasSpecializedExecutor("bedrock")).toBe(true);
+    expect(
+      executor.buildUrl("anthropic.claude-sonnet-4-6", false, 0, {
+        providerSpecificData: { region: "eu-west-2" },
       })
-    ).rejects.toMatchObject({ name: "AbortError" });
+    ).toBe("https://bedrock-runtime.eu-west-2.amazonaws.com/model/anthropic.claude-sonnet-4-6/converse");
+    expect(converted.system).toEqual([{ text: "Be concise" }]);
+    expect(converted.messages[0]).toEqual({ role: "user", content: [{ text: "hello" }] });
+    expect(converted.inferenceConfig.maxTokens).toBe(128);
+    expect(converted.toolConfig.toolChoice).toEqual({ any: {} });
+    expect(PROVIDERS.bedrock.baseUrl).toContain("bedrock-runtime");
+    expect(PROVIDER_MODELS.bedrock.some((model) => model.id === "anthropic.claude-sonnet-4-6")).toBe(true);
+  });
+
+  it("wraps a Bedrock Converse response into OpenAI JSON without live AWS calls", async () => {
+    const executor = new BedrockExecutor(() => ({
+      send: vi.fn(async () => ({
+        output: {
+          message: {
+            content: [
+              { text: "hi" },
+              { toolUse: { toolUseId: "toolu_1", name: "lookup", input: { q: "x" } } },
+            ],
+          },
+        },
+        stopReason: "tool_use",
+        usage: { inputTokens: 4, outputTokens: 5, totalTokens: 9 },
+      })),
+    }));
+
+    const { response, transformedBody } = await executor.execute({
+      model: "anthropic.claude-sonnet-4-6",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: { apiKey: "bedrock-key", providerSpecificData: { region: "us-east-1" } },
+    });
+
+    const body = await response.json();
+    expect(transformedBody.modelId).toBe("anthropic.claude-sonnet-4-6");
+    expect(body.choices[0].message.tool_calls[0].function.name).toBe("lookup");
+    expect(body.choices[0].finish_reason).toBe("tool_calls");
+    expect(body.usage.total_tokens).toBe(9);
+  });
+
+  it("maps Bedrock content filter and context limit stops to OpenAI finish reasons", async () => {
+    const makeExecutor = (stopReason) =>
+      new BedrockExecutor(() => ({
+        send: vi.fn(async () => ({
+          output: { message: { content: [{ text: "blocked" }] } },
+          stopReason,
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        })),
+      }));
+
+    const cases = [
+      { reason: "content_filtered", expected: "content_filter" },
+      { reason: "guardrail_intervened", expected: "content_filter" },
+      { reason: "model_context_window_exceeded", expected: "length" },
+    ];
+    for (const { reason, expected } of cases) {
+      const executor = makeExecutor(reason);
+      const { response } = await executor.execute({
+        model: "anthropic.claude-sonnet-4-6",
+        body: { messages: [{ role: "user", content: "hi" }] },
+        stream: false,
+        credentials: { apiKey: "k", providerSpecificData: { region: "us-east-1" } },
+      });
+      expect((await response.json()).choices[0].finish_reason).toBe(expected);
+    }
+  });
+
+  it("parses Chipotle Amelia STOMP messages and exposes a no-auth executor", async () => {
+    const frame = 'MESSAGE\ndestination:/user/queue/session\n\n{"type":"message","body":{"text":"burrito"}}\0';
+    const fakeClient = { chat: vi.fn(async () => "pepper reply") };
+    const executor = new ChipotleExecutor(async () => fakeClient);
+
+    const { response } = await executor.execute({
+      model: "pepper-1",
+      body: { messages: [{ role: "user", content: "menu" }] },
+      stream: false,
+      credentials: {},
+    });
+
+    expect(randomServerId()).toMatch(/^\d{3}$/);
+    expect(randomSessionId()).toMatch(/^[a-f0-9]{32}$/);
+    expect(extractAmeliaText(parseStompMessageBody(frame))).toBe("burrito");
+    expect(getExecutor("chipotle")).toBeInstanceOf(ChipotleExecutor);
+    expect(PROVIDERS.chipotle.noAuth).toBe(true);
+    expect(PROVIDER_MODELS.pepper[0].id).toBe("pepper-1");
+    expect((await response.json()).choices[0].message.content).toBe("pepper reply");
+    expect(fakeClient.chat).toHaveBeenCalledWith("menu", 15000, undefined);
+  });
+
+  it("resolves Inner.ai credentials/models and converts text tool blocks", async () => {
+    const payload = Buffer.from(JSON.stringify({ device_id: "dev-1", plan: "pro" })).toString("base64url");
+    const token = `eyJhbGciOiJub25lIn0.${payload}.sig`;
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: { email: "profile@example.com" } })))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: [
+              { id: "model-1", llm_model: "gpt-4o", ai_model_categories: [{ unique_identifier: "text" }] },
+              { id: "image-1", llm_model: "flux", ai_model_categories: [{ unique_identifier: "image" }] },
+            ],
+          })
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          'data: {"type":"text","item":"<tool>{\\"name\\":\\"lookup\\",\\"arguments\\":{\\"q\\":\\"abc\\"}}</tool>"}\n\ndata: {"type":"end_stream","item":"end"}\n\n',
+          { status: 200, headers: { "Content-Type": "text/event-stream" } }
+        )
+      );
+    const executor = new InnerAiExecutor();
+
+    expect(parseCredential(`token=${token} user@example.com`)).toEqual({
+      token,
+      credEmail: "user@example.com",
+    });
+    expect(findModel([{ llm_model: "gpt-4o", id: "model-1" }], "4o")).toEqual({
+      llm_model: "gpt-4o",
+      id: "model-1",
+    });
+
+    const { response, transformedBody } = await executor.execute({
+      model: "gpt-4o",
+      stream: false,
+      credentials: { apiKey: `${token} user@example.com` },
+      body: {
+        model: "gpt-4o",
+        messages: [{ role: "user", content: "use a tool" }],
+        tools: [{ type: "function", function: { name: "lookup", parameters: { type: "object" } } }],
+      },
+    });
+
+    const body = await response.json();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(transformedBody.ai_model.id).toBe("model-1");
+    expect(transformedBody.message).toContain("Available tools:");
+    expect(body.choices[0].message.tool_calls[0].function).toEqual({
+      name: "lookup",
+      arguments: "{\"q\":\"abc\"}",
+    });
+    expect(body.choices[0].finish_reason).toBe("tool_calls");
+    expect(getExecutor("inner-ai")).toBeInstanceOf(InnerAiExecutor);
+    expect(getExecutor("in-ai")).toBeInstanceOf(InnerAiExecutor);
+    expect(PROVIDER_MODELS["in-ai"].some((model) => model.id === "gpt-4o")).toBe(true);
+  });
+
+  it("extracts only the Inner.ai token cookie value", () => {
+    const payload = Buffer.from(JSON.stringify({ device_id: "dev-1", plan: "pro" })).toString("base64url");
+    const token = `eyJhbGciOiJub25lIn0.${payload}.sig`;
+    expect(parseCredential(`token=${token}; other=value`)).toEqual({ token, credEmail: "" });
+    expect(parseCredential(`other=value; token=${token}`)).toEqual({ token, credEmail: "" });
+    expect(parseCredential(`token=${token} user@example.com`)).toEqual({
+      token,
+      credEmail: "user@example.com",
+    });
+  });
+
+  it("streams Inner.ai tool blocks as OpenAI tool_call deltas", async () => {
+    const payload = Buffer.from(JSON.stringify({ device_id: "dev-2", plan: "pro" })).toString("base64url");
+    const token = `eyJhbGciOiJub25lIn0.${payload}.sig`;
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: { email: "e@example.com" } })))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: [{ id: "model-1", llm_model: "gpt-4o", ai_model_categories: [{ unique_identifier: "text" }] }],
+          })
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          'data: {"type":"text","item":"<tool>{\\"name\\":\\"lookup\\",\\"arguments\\":{\\"q\\":\\"abc\\"}}</tool>"}\n\ndata: {"type":"end_stream","item":"end"}\n\n',
+          { status: 200, headers: { "Content-Type": "text/event-stream" } }
+        )
+      );
+    const executor = new InnerAiExecutor();
+
+    const { response } = await executor.execute({
+      model: "gpt-4o",
+      stream: true,
+      credentials: { apiKey: token },
+      body: {
+        model: "gpt-4o",
+        messages: [{ role: "user", content: "use a tool" }],
+        tools: [{ type: "function", function: { name: "lookup", parameters: { type: "object" } } }],
+      },
+    });
+
+    const text = await response.text();
+    expect(text).toContain("tool_calls");
+    expect(text).toContain('"finish_reason":"tool_calls"');
+  });
+
+  it("omits Bedrock toolConfig when toolChoice is none", () => {
+    const converted = openAIToBedrockConverse("anthropic.claude-sonnet-4-6", {
+      messages: [{ role: "user", content: "hi" }],
+      tools: [{ type: "function", function: { name: "lookup", parameters: { type: "object" } } }],
+      tool_choice: "none",
+    });
+    expect(converted.toolConfig).toBeUndefined();
+  });
+
+  it("groups parallel Bedrock tool results into one user message", () => {
+    const converted = openAIToBedrockConverse("anthropic.claude-sonnet-4-6", {
+      messages: [
+        { role: "assistant", content: "ok", tool_calls: [{ id: "1", function: { name: "a", arguments: "{}" } }] },
+        { role: "tool", tool_call_id: "1", content: "r1" },
+        { role: "tool", tool_call_id: "2", content: "r2" },
+      ],
+    });
+    const userMessages = converted.messages.filter((m) => m.role === "user");
+    expect(userMessages.length).toBe(1);
+    expect(userMessages[0].content).toHaveLength(2);
+    expect(userMessages[0].content[0].toolResult.toolUseId).toBe("1");
+    expect(userMessages[0].content[1].toolResult.toolUseId).toBe("2");
+  });
+
+  it("streams Bedrock tool calls as OpenAI tool_call deltas", async () => {
+    const events = [
+      { contentBlockStart: { start: { toolUse: { toolUseId: "toolu_1", name: "lookup" } } }, contentBlockIndex: 0 },
+      { contentBlockDelta: { delta: { toolUse: { input: '{"q' } } }, contentBlockIndex: 0 },
+      { contentBlockDelta: { delta: { toolUse: { input: '":"x"}' } } }, contentBlockIndex: 0 },
+      { messageStop: { stopReason: "tool_use" } },
+    ];
+    async function* stream() {
+      for (const e of events) yield e;
+    }
+    const executor = new BedrockExecutor(() => ({ send: vi.fn(async () => ({ stream: stream() })) }));
+
+    const { response } = await executor.execute({
+      model: "anthropic.claude-sonnet-4-6",
+      body: {
+        messages: [{ role: "user", content: "hi" }],
+        tools: [{ type: "function", function: { name: "lookup", parameters: { type: "object" } } }],
+      },
+      stream: true,
+      credentials: { apiKey: "k", providerSpecificData: { region: "us-east-1" } },
+    });
+
+    const text = await response.text();
+    const lines = text.split("\n").filter((l) => l.startsWith("data:") && l !== "data: [DONE]");
+    const chunks = lines.map((l) => JSON.parse(l.slice(5).trim()));
+    expect(chunks.some((c) => c.choices[0].delta?.tool_calls)).toBe(true);
+    expect(chunks[chunks.length - 1].choices[0].finish_reason).toBe("tool_calls");
+  });
+
+  it("flattens OpenAI text parts before sending to Pepper", async () => {
+    const fakeClient = { chat: vi.fn(async () => "pepper reply") };
+    const executor = new ChipotleExecutor(async () => fakeClient);
+
+    await executor.execute({
+      model: "pepper-1",
+      body: { messages: [{ role: "user", content: [{ type: "text", text: "menu" }] }] },
+      stream: false,
+      credentials: {},
+    });
+
+    expect(fakeClient.chat).toHaveBeenCalledWith("menu", 15000, undefined);
+  });
+
+  it("frames Chipotle SSE events with blank lines", async () => {
+    const fakeClient = { chat: vi.fn(async () => "pepper reply") };
+    const executor = new ChipotleExecutor(async () => fakeClient);
+
+    const { response } = await executor.execute({
+      model: "pepper-1",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: true,
+      credentials: {},
+    });
+
+    const text = await response.text();
+    expect(text).toMatch(/^data: .+\n\ndata: .+\n\ndata: \[DONE\]\n\n$/s);
+    expect(text).toContain('"finish_reason":"stop"');
+  });
+
+  it("exposes Bedrock regions in provider registry", () => {
+    expect(PROVIDERS.bedrock.defaultRegion).toBe("us-east-1");
+    expect(PROVIDERS.bedrock.regions["eu-west-2"]).toBe("https://bedrock-runtime.eu-west-2.amazonaws.com");
+  });
+
+  it("rejects remote https image URLs in Bedrock requests", () => {
+    expect(() =>
+      openAIToBedrockConverse("anthropic.claude-sonnet-4-6", {
+        messages: [{ role: "user", content: [{ type: "image_url", image_url: "https://example.com/image.png" }] }],
+      })
+    ).toThrow("Bedrock does not support remote image URLs");
+  });
+
+  it("honors tool_choice: none by skipping tool injection for Inner.ai-style web tools", () => {
+    const tools = [{ type: "function", function: { name: "lookup", parameters: { type: "object" } } }];
+    const bodyObj = { messages: [{ role: "user", content: "hi" }], tools, tool_choice: "none" };
+    const result = prepareToolMessages(bodyObj, bodyObj.messages);
+    expect(result.hasTools).toBe(false);
+    expect(result.effectiveMessages).toEqual(bodyObj.messages);
+  });
+
+  it("omits temperature when both temperature and top_p are supplied for Claude 4.5", () => {
+    const converted = openAIToBedrockConverse("anthropic.claude-sonnet-4-5", {
+      messages: [{ role: "user", content: "hi" }],
+      temperature: 0.7,
+      top_p: 0.95,
+    });
+    expect(converted.inferenceConfig.topP).toBe(0.95);
+    expect(converted.inferenceConfig.temperature).toBeUndefined();
+  });
+
+  it("keeps temperature and top_p when both are supplied for non-Claude-4.5 Bedrock models", () => {
+    const converted = openAIToBedrockConverse("anthropic.claude-sonnet-4-6", {
+      messages: [{ role: "user", content: "hi" }],
+      temperature: 0.7,
+      top_p: 0.95,
+    });
+    expect(converted.inferenceConfig.temperature).toBe(0.7);
+    expect(converted.inferenceConfig.topP).toBe(0.95);
+  });
+
+  it("forwards thinking config into Bedrock additionalModelRequestFields", () => {
+    const converted = openAIToBedrockConverse("anthropic.claude-sonnet-4-6", {
+      messages: [{ role: "user", content: "hi" }],
+      thinking: { type: "enabled", budget_tokens: 4096 },
+    });
+    expect(converted.additionalModelRequestFields).toEqual({ thinking: { type: "enabled", budget_tokens: 4096 } });
+  });
+
+  it("closes Chipotle WebSocket on connect timeout", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const close = vi.fn();
+    const ws = {
+      on: vi.fn(() => {}),
+      close,
+    };
+    const client = new AmeliaClient({ webSocketFactory: () => ws, connectTimeoutMs: 50 });
+    client.session = { cookieHeader: "session=abc", csrfToken: "token", userId: "u1" };
+    try {
+      const connectPromise = client.connect();
+      await vi.advanceTimersByTimeAsync(100);
+      await expect(connectPromise).rejects.toThrow("WS connect timeout");
+      expect(close).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

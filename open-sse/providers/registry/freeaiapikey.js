@@ -15,9 +15,14 @@ export default {
     authHeader: "bearer",
     modelsUrl: "https://api.freeaiapikey.com/v1/models",
     defaultContextLength: 128000,
+    // FreeAIAPIKey re-exposes multiple vendor families (openai/, anthropic/,
+    // Alibaba/) over one plain OpenAI-compatible Chat Completions endpoint —
+    // not each vendor's native API. Force openai thinking format so
+    // reasoning controls serialize correctly for anthropic/claude-* ids too.
+    thinkingFormat: "openai",
   },
   models: [
-    { id: "openai/gpt-5", name: "GPT-5 (via FreeAIAPIKey)", contextLength: 400000 },
+    { id: "openai/gpt-5.4", name: "GPT-5.4 (via FreeAIAPIKey)", contextLength: 1000000 },
     { id: "openai/gpt-4o", name: "GPT-4o (via FreeAIAPIKey)" },
     { id: "openai/gpt-5.2-codex", name: "GPT-5.2 Codex (via FreeAIAPIKey)" },
     { id: "anthropic/claude-opus-4.6", name: "Claude Opus 4.6 (via FreeAIAPIKey)", contextLength: 1000000 },

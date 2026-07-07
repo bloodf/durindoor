@@ -1,5 +1,6 @@
 import { FORMATS } from "../../translator/formats.js";
-import { needsTranslation } from "../../translator/index.js";
+import { needsTranslation, translateResponse, initState } from "../../translator/index.js";
+import { fromOpenAIFinish } from "../../translator/concerns/finishReason.js";
 import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.js";
 import { projectCompletionToClientFormat } from "../../translator/response/completionProjector.js";
 import { addBufferToUsage, filterUsageForFormat } from "../../utils/usageTracking.js";
@@ -15,6 +16,7 @@ import { openAIResponsesBodyToClaude, openAIResponsesBodyToOpenAI } from "../../
 import { logToolSemantics } from "../../utils/toolSemanticsTrace.js";
 import { SSE_DONE, SSE_HEADERS_CORS } from "../../utils/sseConstants.js";
 import { sseChunk } from "../../utils/sse.js";
+import { formatSSE } from "../../utils/streamHelpers.js";
 
 function parseToolArguments(value) {
   if (!value) return {};
@@ -66,44 +68,48 @@ function openAICompletionToClaudeMessage(responseBody) {
   };
 }
 
-function openAICompletionToSSE(responseBody, fallbackModel) {
+// Build synthetic OpenAI chat.completion.chunk objects from a final
+// (non-streaming) OpenAI-shaped completion body. Shared by
+// openAICompletionToSSE (OpenAI clients) and openAICompletionToClientSSE
+// (any other client format, translated via the OpenAI intermediate).
+function openAICompletionToChunks(responseBody, fallbackModel) {
   const id = responseBody?.id || `chatcmpl-${Date.now()}`;
   const created = responseBody?.created || Math.floor(Date.now() / 1000);
   const model = responseBody?.model || fallbackModel;
   const choice = responseBody?.choices?.[0] || {};
   const message = choice.message || {};
   const chunks = [
-    sseChunk({
+    {
       id,
       object: "chat.completion.chunk",
       created,
       model,
       choices: [{ index: 0, delta: { role: message.role || "assistant" }, finish_reason: null }],
-    }),
+    },
   ];
 
   if (message.reasoning_content) {
-    chunks.push(sseChunk({
+    chunks.push({
       id,
       object: "chat.completion.chunk",
       created,
       model,
       choices: [{ index: 0, delta: { reasoning_content: message.reasoning_content }, finish_reason: null }],
-    }));
+    });
   }
 
   if (typeof message.content === "string" && message.content.length > 0) {
-    chunks.push(sseChunk({
+    chunks.push({
       id,
       object: "chat.completion.chunk",
       created,
       model,
       choices: [{ index: 0, delta: { content: message.content }, finish_reason: null }],
-    }));
+    });
   }
 
   if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
-    chunks.push(sseChunk({
+    chunks.push({
       id,
       object: "chat.completion.chunk",
       created,
@@ -115,7 +121,7 @@ function openAICompletionToSSE(responseBody, fallbackModel) {
         },
         finish_reason: null,
       }],
-    }));
+    });
   }
 
   const finalChunk = {
@@ -126,18 +132,50 @@ function openAICompletionToSSE(responseBody, fallbackModel) {
     choices: [{ index: 0, delta: {}, finish_reason: choice.finish_reason || "stop" }],
   };
   if (responseBody?.usage) finalChunk.usage = responseBody.usage;
+  chunks.push(finalChunk);
 
-  chunks.push(sseChunk(finalChunk));
+  return chunks;
+}
+
+function openAICompletionToSSE(responseBody, fallbackModel) {
+  const chunks = openAICompletionToChunks(responseBody, fallbackModel).map(sseChunk);
   chunks.push(SSE_DONE);
   return chunks.join("");
 }
 
 /**
+ * Synthesize an SSE stream in the CLIENT's own format from a non-streaming
+ * completion, for forced non-streaming providers whose client requested
+ * streaming (`streamToClient`). Fixes the previous OpenAI-only fallback,
+ * which fed raw OpenAI chunks to non-OpenAI clients (e.g. Claude Messages
+ * API streaming clients) and broke their SSE parsers.
+ *
+ * Builds synthetic OpenAI chat.completion.chunk objects, then runs each
+ * through the same target->openai->source pipeline `translateResponse` uses
+ * for real streaming (see utils/stream.js), so Claude/Gemini/etc. clients
+ * get their native event shapes. OpenAI clients skip translation.
+ */
+function openAICompletionToClientSSE(responseBody, fallbackModel, sourceFormat) {
+  if (sourceFormat === FORMATS.OPENAI) {
+    return openAICompletionToSSE(responseBody, fallbackModel);
+  }
+
+  const state = initState(sourceFormat);
+  const frames = [];
+  for (const chunk of openAICompletionToChunks(responseBody, fallbackModel)) {
+    const translated = translateResponse(FORMATS.OPENAI, sourceFormat, chunk, state);
+    for (const item of translated) frames.push(formatSSE(item, sourceFormat));
+  }
+  frames.push(formatSSE({ done: true }, sourceFormat));
+  return frames.join("");
+}
+
+/**
  * Translate non-streaming response body from upstream format → client format.
  *
- * `targetFormat` is what the **client** asked for (i.e. the source format the
- * client sent). `sourceFormat` is the format the upstream returned in. When
- * they differ, we convert.
+ * `sourceFormat` is what the **client** asked for (i.e. the format the
+ * client sent). `targetFormat` is the format the upstream provider returned
+ * in. When they differ, we convert.
  *
  * Most branches translate into OpenAI chat.completion shape (the legacy
  * default). The OPENAI_RESPONSES branch is an exception: it returns whichever
@@ -348,14 +386,20 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   appendLog({ tokens: usage, status: "200 OK" });
   saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint });
 
-  const preservesNativeResponse = sourceFormat === targetFormat && sourceFormat !== FORMATS.OPENAI;
-  const openAIResponse = preservesNativeResponse
-    ? translateNonStreamingResponse(responseBody, targetFormat, sourceFormat)
-    : (needsTranslation(targetFormat, FORMATS.OPENAI)
-      ? translateNonStreamingResponse(responseBody, targetFormat, sourceFormat)
-      : responseBody);
+  // When synthesizing SSE, we need an OpenAI-normalized intermediate (with
+  // .choices) to feed through the chunk pivot below — not the client's
+  // *final* JSON shape. translateNonStreamingResponse's non-OPENAI branches
+  // always normalize an upstream body toward OpenAI regardless of the source
+  // format passed in; only the CLAUDE-client special case (sourceFormat ===
+  // CLAUDE && targetFormat === OPENAI) diverts to a client-shaped Claude
+  // message. Forcing FORMATS.OPENAI here bypasses that diversion so
+  // isOpenAIChatResponse stays true and openAICompletionToClientSSE (below)
+  // can pivot to the real client format itself.
+  const normalizeSourceFormat = streamToClient ? FORMATS.OPENAI : sourceFormat;
+  const openAIResponse = needsTranslation(targetFormat, normalizeSourceFormat)
+    ? translateNonStreamingResponse(responseBody, targetFormat, normalizeSourceFormat)
+    : responseBody;
 
-  // Fix finish_reason for tool_calls: some providers return non-standard values (e.g. "other")
   if (openAIResponse?.choices?.[0]) {
     const choice = openAIResponse.choices[0];
     const msg = choice.message;
@@ -436,7 +480,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   if (streamToClient && isOpenAIChatResponse) {
     return {
       success: true,
-      response: new Response(openAICompletionToSSE(translatedResponse, model), { headers: SSE_HEADERS_CORS })
+      response: new Response(openAICompletionToClientSSE(translatedResponse, model, sourceFormat), { headers: SSE_HEADERS_CORS })
     };
   }
 

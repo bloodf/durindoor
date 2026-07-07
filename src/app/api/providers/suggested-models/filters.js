@@ -23,4 +23,15 @@ export const FILTERS = {
     (Array.isArray(models) ? models : [])
       .filter((m) => m.id?.startsWith("mimo") || m.name?.toLowerCase().includes("mimo"))
       .map((m) => ({ id: m.id, name: m.name || m.id })),
+
+  // Plain OpenAI-compatible /v1/models list (Crof, DIT, FreeAIAPIKey, …):
+  // { data: [{ id, context_length? }] } → dashboard's { id, name, contextLength? }.
+  openai: (models) =>
+    (Array.isArray(models) ? models : [])
+      .filter((m) => m?.id)
+      .map((m) => ({
+        id: m.id,
+        name: m.name || m.id,
+        ...(m.context_length != null ? { contextLength: m.context_length } : {}),
+      })),
 };

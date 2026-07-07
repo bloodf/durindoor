@@ -50,15 +50,17 @@ const expectedTransports = {
     authHeader: "bearer",
     modelsUrl: "https://api.dit.ai/v1/models",
     defaultContextLength: 200000,
+    thinkingFormat: "openai",
   },
   doubao: { baseUrl: "https://ark.cn-beijing.volces.com/api/v3/chat/completions", authHeader: "bearer" },
   factory: { baseUrl: "https://api.factory.ai/v1/chat/completions", authHeader: "bearer" },
-  "featherless-ai": { baseUrl: "https://api.featherless.ai/v1/chat/completions", authHeader: "bearer" },
+  "featherless-ai": { baseUrl: "https://api.featherless.ai/v1/chat/completions", authHeader: "bearer", thinkingFormat: "openai" },
   freeaiapikey: {
     baseUrl: "https://api.freeaiapikey.com/v1/chat/completions",
     authHeader: "bearer",
     modelsUrl: "https://api.freeaiapikey.com/v1/models",
     defaultContextLength: 128000,
+    thinkingFormat: "openai",
   },
   "freemodel-dev": {
     baseUrl: "https://api.freemodel.dev/v1/chat/completions",
@@ -152,16 +154,19 @@ describe("OmniRoute simple/default provider batch B", () => {
     });
   });
 
-  it("forces Galadriel OpenAI payloads to non-streaming", () => {
+  it("forces Galadriel OpenAI payloads to non-streaming and drops stream_options", () => {
     const executor = new DefaultExecutor("galadriel");
     const body = executor.transformRequest(
       "galadriel-latest",
-      { model: "galadriel-latest", messages: [{ role: "user", content: "ping" }], stream: true },
+      { model: "galadriel-latest", messages: [{ role: "user", content: "ping" }], stream: true, stream_options: { include_usage: true } },
       false,
       { apiKey: "test-key" },
     );
 
     expect(body.stream).toBe(false);
+    // Upstream 400s if stream_options is sent alongside a forced stream:false —
+    // it's only meaningful with stream:true (controls the final usage chunk).
+    expect(body.stream_options).toBeUndefined();
   });
 
   it("keeps model aliases and passthrough fetchers for dynamic catalogs", () => {
@@ -178,6 +183,16 @@ describe("OmniRoute simple/default provider batch B", () => {
       });
       expect(registryById.get(id)?.passthroughModels, `${id} should preserve passthrough models`).toBe(true);
     }
+  });
+
+  it("keeps FreeAIAPIKey's default (first-listed) model a currently listed one", () => {
+    const registryById = new Map(REGISTRY.map((entry) => [entry.id, entry]));
+    const freeaiapikey = registryById.get("freeaiapikey");
+
+    // Was "openai/gpt-5" — not a real FreeAIAPIKey model id (their catalog uses
+    // versioned ids like "openai/gpt-5.4"); refreshed per review PRRT_kwDOTM9Pps6OxECq.
+    expect(freeaiapikey.models[0].id).toBe("openai/gpt-5.4");
+    expect(freeaiapikey.models[0].id).not.toBe("openai/gpt-5");
   });
 
   it("uses local copied icon files only when the asset exists", () => {

@@ -15,6 +15,12 @@ export default {
     authHeader: "bearer",
     modelsUrl: "https://api.dit.ai/v1/models",
     defaultContextLength: 200000,
+    // DIT is a marketplace router: it re-exposes claude-* model ids over a
+    // plain OpenAI-compatible Chat Completions endpoint, not Anthropic's
+    // native Messages API. Force openai thinking format so reasoning
+    // controls (reasoning_effort) serialize correctly instead of the
+    // claude-adaptive shape from capabilities.js's claude-sonnet-4-6 entry.
+    thinkingFormat: "openai",
   },
   // Marketplace router: seed models are fallbacks while /v1/models is available.
   models: [

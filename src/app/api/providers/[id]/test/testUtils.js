@@ -969,7 +969,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         const res = await fetchWithConnectionProxy(`${baseUrl}/models`, { headers }, effectiveProxy);
         return { valid: res.ok, error: res.ok ? null : "Pollinations test failed" };
       }
-      case "nube"
+      case "nube":
       case "kenari": {
         const config = PROVIDERS[connection.provider] || {};
         const validateUrl = config.validateUrl || config.baseUrl?.replace(/\/chat\/completions\/?$/, "/models");

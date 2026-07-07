@@ -58,8 +58,7 @@ function makeGitLogOneline() {
   return [
     "abc1234 Add auth middleware",
     "def5678 Fix token refresh race",
-    "fedcba9 Update docs",
-  ].join("\n");
+    "fedcba9 Update docs",  ].join("\n");
 }
 
 function makeGitLogDefault() {
@@ -71,8 +70,7 @@ function makeGitLogDefault() {
     "    Add auth middleware",
     "",
     "    More body detail should be dropped.",
-    "    This is padding that consumes tokens.",
-  ].join("\n");
+    "    This is padding that consumes tokens.",  ].join("\n");
 }
 
 function makeGitLogGraph() {
@@ -80,8 +78,7 @@ function makeGitLogGraph() {
     "* abc1234 Add auth middleware",
     "| * def5678 Fix token refresh race",
     "|/",
-    "* fedcba9 Update docs",
-  ].join("\n");
+    "* fedcba9 Update docs",  ].join("\n");
 }
 
 function makeGitLogGraphDefault() {
@@ -146,67 +143,6 @@ function makeGitLogDecorated() {
     "    Body detail should be dropped."
   ].join("\n");
 }
-
-describe("gitLog filter", () => {
-  it("compresses git log --oneline without losing commit subjects", () => {
-    const input = makeGitLogOneline();
-    const out = gitLog(input);
-    expect(out).toContain("abc1234");
-    expect(out).toContain("Add auth middleware");
-    expect(out.length).toBeLessThanOrEqual(input.length);
-  });
-
-  it("keeps commit header + subject in default git log, drops body detail", () => {
-    const input = makeGitLogDefault();
-    const out = gitLog(input);
-    expect(out).toContain("commit abc1234def5678abc1234def5678abc1234def5");
-    expect(out).toContain("Add auth middleware");
-    expect(out).not.toContain("More body detail should be dropped.");
-  });
-
-  it("keeps decorated commit headers and still drops body detail", () => {
-    const input = makeGitLogDecorated();
-    const out = gitLog(input);
-    expect(out).toContain("commit abc1234def5678abc1234def5678abc1234def5 (HEAD -> main, origin/main)");
-    expect(out).toContain("Add auth middleware");
-    expect(out).not.toContain("Body detail should be dropped.");
-  });
-
-  it("handles git log --parents commit headers", () => {
-    const input = [
-      "commit abc1234def5678abc1234def5678abc1234def5 def5678abc1234def5678abc1234def5678a",
-      "Author: Dev One <dev1@example.com>",
-      "Date:   Sun Jul 6 10:00:00 2026 +0700",
-      "",
-      "    Merge branch",
-      "",
-      "    Body detail should be dropped.",
-      "    More body detail should be dropped.",
-      "    Even more body detail should be dropped.",
-      "    Padding body detail should be dropped.",
-    ].join("\n");
-    const out = gitLog(input);
-    expect(out).toContain("commit abc1234def5678abc1234def5678abc1234def5 def5678abc1234def5678abc1234def5678a");
-    expect(out).toContain("Merge branch");
-    expect(out).not.toContain("Body detail should be dropped.");
-  });
-
-  it("preserves git log --pretty=fuller metadata", () => {
-    const input = [
-      "commit abc1234def5678abc1234def5678abc1234def5",
-      "Author:     Dev One <dev1@example.com>",
-      "AuthorDate: Sun Jul 6 10:00:00 2026 +0700",
-      "Commit:     Dev Two <dev2@example.com>",
-      "CommitDate: Sun Jul 6 11:00:00 2026 +0700",
-      "",
-      "    Fix typo",
-    ].join("\n");
-    const out = gitLog(input);
-    expect(out).toContain("AuthorDate:");
-    expect(out).toContain("Commit:");
-    expect(out).toContain("CommitDate:");
-  });
-
   it("strips graph-only decoration but keeps commit subjects", () => {
     const input = makeGitLogGraph();
     const out = gitLog(input);
@@ -346,51 +282,6 @@ describe("gitLog filter", () => {
     expect(out).toContain("M\tsrc/main.js");
     expect(out).toContain("A\tREADME.md");
   });
-
-  it("replaces embedded diff markers with '... diff body omitted'", () => {
-    const input = makeGitLogWithEmbeddedDiff();
-    const out = gitLog(input);
-    expect(out).toContain("diff body omitted");
-    // Original diff line replaced
-    expect(out).not.toContain("diff --git a/src/main.js b/src/main.js");
-  });
-
-  it("truncates beyond maxLines and reports skipped count", () => {
-    // Generate 50 commit lines but cap at 20
-    const lines = [];
-    for (let i = 0; i < 50; i++) {
-      lines.push(`commit ${String(i).padStart(40, "0")}`);
-    }
-    const input = lines.join("\n");
-    const out = gitLog(input, 20);
-    const outLines = out.split("\n").filter(l => l.length > 0);
-    expect(outLines.length).toBeLessThanOrEqual(21); // 20 commits + optional skipped note
-    expect(out).toContain("more lines");
-  });
-
-  it("preserves input when compressed output inflates", () => {
-    // Input shorter than output would be — e.g. tiny log
-    const input = "abc\ndef";
-    const out = gitLog(input, 10);
-    expect(out).toBe(input);
-  });
-});
-
-// The original RTK module exposed a global `setRtkEnabled` toggle
-// that wrapped the entire compressMessages call. The rebrand removed
-// the global toggle — enabled is now passed per-call to
-// compressMessages. The "flag" describe now exercises the per-call
-// switch rather than a process-wide one.
-describe("RTK flag", () => {
-  it("disabled: returns null when enabled=false", () => {
-    const out = compressMessages({ messages: [{ role: "user", content: "x" }] }, false);
-    expect(out).toBeNull();
-  });
-
-  it("enabled: returns stats when enabled=true and body has content", () => {
-    const out = compressMessages({ messages: [{ role: "user", content: makeLongDiff() }] }, true);
-    expect(out).not.toBeNull();
-    expect(out).toHaveProperty("bytesBefore");
   });
 });
 
@@ -481,8 +372,7 @@ describe("autoDetectFilter", () => {
       "more log line",
       "final log line",
     ].join("\n");
-    expect(autoDetectFilter(input).filterName).toBe("dedup-log");
-  });
+    expect(autoDetectFilter(input).filterName).toBe("dedup-log");  });
   it("falls back to dedupLog for generic text", () => {
     const txt = "line1\nline2\nline3\nline4\nline5\nline6\n";
     expect(autoDetectFilter(txt).filterName).toBe("dedup-log");

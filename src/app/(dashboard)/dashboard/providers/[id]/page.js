@@ -13,6 +13,7 @@ import { translate } from "@/i18n/runtime";
 import { fetchSuggestedModels } from "@/shared/utils/providerModelsFetcher";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
 import { isNoAuthOnlyProvider } from "@/shared/utils/providerAuthMode";
+import { buildImportTokenPayload, isImportTokenOAuthProvider } from "@/shared/utils/importTokenProviders";
 import ModelRow from "./ModelRow";
 import PassthroughModelsSection from "./PassthroughModelsSection";
 import CompatibleModelsSection from "./CompatibleModelsSection";
@@ -44,6 +45,10 @@ export default function ProviderDetailPage() {
   const [proxyPools, setProxyPools] = useState([]);
   const [showOAuthModal, setShowOAuthModal] = useState(false);
   const [showIFlowCookieModal, setShowIFlowCookieModal] = useState(false);
+  const [showImportTokenModal, setShowImportTokenModal] = useState(false);
+  const [importTokenValue, setImportTokenValue] = useState("");
+  const [importTokenError, setImportTokenError] = useState("");
+  const [importingToken, setImportingToken] = useState(false);
   const [showAddApiKeyModal, setShowAddApiKeyModal] = useState(false);
   const [addConnectionError, setAddConnectionError] = useState("");
   const [showBulkImportCodex, setShowBulkImportCodex] = useState(false);
@@ -84,6 +89,11 @@ export default function ProviderDetailPage() {
   const AG_RISK_STORAGE_KEY = "ag_risk_confirmed";
 
   const openOAuthConnection = () => {
+    if (isImportTokenOAuthProvider(providerId)) {
+      setImportTokenError("");
+      setShowImportTokenModal(true);
+      return;
+    }
     setShowOAuthModal(true);
   };
 
@@ -724,6 +734,35 @@ export default function ProviderDetailPage() {
   const handleIFlowCookieSuccess = () => {
     fetchConnections();
     setShowIFlowCookieModal(false);
+  };
+
+  const handleImportTokenSubmit = async () => {
+    setImportTokenError("");
+    const payload = buildImportTokenPayload(importTokenValue);
+    if (!payload) {
+      setImportTokenError("Paste a Grok CLI auth.json file, raw JWT, or structured token body.");
+      return;
+    }
+
+    setImportingToken(true);
+    try {
+      const res = await fetch(`/api/oauth/${providerId}/import-token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || `Import failed (${res.status})`);
+      }
+      setImportTokenValue("");
+      setShowImportTokenModal(false);
+      await fetchConnections();
+    } catch (error) {
+      setImportTokenError(error.message || "Failed to import token");
+    } finally {
+      setImportingToken(false);
+    }
   };
 
   const handleSaveApiKey = async (formData) => {
@@ -1776,6 +1815,54 @@ export default function ProviderDetailPage() {
           onClose={() => setShowIFlowCookieModal(false)}
         />
       )}
+      <Modal
+        isOpen={showImportTokenModal}
+        title="Import Grok CLI Token"
+        size="lg"
+        onClose={() => {
+          if (importingToken) return;
+          setImportTokenError("");
+          setShowImportTokenModal(false);
+        }}
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setImportTokenError("");
+                setShowImportTokenModal(false);
+              }}
+              disabled={importingToken}
+            >
+              Cancel
+            </Button>
+            <Button
+              icon="upload"
+              loading={importingToken}
+              onClick={handleImportTokenSubmit}
+            >
+              Import
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-text-muted">
+            Paste the contents of <code className="rounded bg-surface-2 px-1 py-0.5">~/.grok/auth.json</code>, a raw Grok JWT, or a structured <code className="rounded bg-surface-2 px-1 py-0.5">{"{ accessToken, refreshToken }"}</code> body.
+          </p>
+          <textarea
+            value={importTokenValue}
+            onChange={(event) => setImportTokenValue(event.target.value)}
+            rows={10}
+            spellCheck={false}
+            className="w-full rounded-[10px] border border-border bg-background px-3 py-2 font-mono text-xs text-text-main outline-none focus:border-primary"
+            placeholder='{"https://auth.x.ai::client":{"key":"eyJ...","refresh_token":"...","expires_at":"..."}}'
+          />
+          {!!importTokenError && (
+            <p className="text-sm text-red-500">{importTokenError}</p>
+          )}
+        </div>
+      </Modal>
       <AddApiKeyModal
         isOpen={showAddApiKeyModal}
         provider={providerId}

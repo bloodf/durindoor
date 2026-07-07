@@ -22,7 +22,7 @@ import {
 import { buildClineHeaders } from "@/shared/utils/clineAuth";
 
 // OAuth provider test endpoints
-const OAUTH_TEST_CONFIG = {
+export const OAUTH_TEST_CONFIG = {
   claude: { checkExpiry: true, refreshable: true },
   codex: {
     url: "https://chatgpt.com/backend-api/codex/responses",
@@ -48,6 +48,30 @@ const OAUTH_TEST_CONFIG = {
     method: "GET",
     authHeader: "Authorization",
     authPrefix: "Bearer ",
+    refreshable: true,
+  },
+  agy: {
+    url: "https://www.googleapis.com/oauth2/v1/userinfo?alt=json",
+    method: "GET",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    refreshable: true,
+  },
+  "grok-cli": {
+    url: "https://cli-chat-proxy.grok.com/v1/chat/completions",
+    method: "POST",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    extraHeaders: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "x-grok-client-version": "0.2.72",
+      "x-grok-client-identifier": "grok_cli_rs",
+      "User-Agent": "grok-cli/0.2.72 (Windows 10.0.26200; x64)",
+    },
+    // Minimal invalid body: a 400 means auth reached the upstream service.
+    body: JSON.stringify({ model: "grok-build", messages: [] }),
+    acceptStatuses: [400],
     refreshable: true,
   },
   github: {
@@ -140,7 +164,7 @@ function parseProviderErrorMessage(bodyText, fallback) {
 }
 
 async function probeCloudCodeAssistAccess(connection, accessToken, effectiveProxy = null) {
-  const userAgent = connection.provider === "antigravity"
+  const userAgent = connection.provider === "antigravity" || connection.provider === "agy"
     ? "google-api-nodejs-client/9.15.1 vscode-antigravity/1.107.0"
     : "google-api-nodejs-client/9.15.1 gemini-cli/0.34.0";
 
@@ -170,7 +194,7 @@ async function refreshOAuthToken(connection) {
   if (!refreshToken) return null;
 
   try {
-    if (provider === "gemini-cli" || provider === "antigravity") {
+    if (provider === "gemini-cli" || provider === "antigravity" || provider === "agy") {
       const config = provider === "gemini-cli" ? GEMINI_CONFIG : ANTIGRAVITY_CONFIG;
       const response = await fetch("https://oauth2.googleapis.com/token", {
         method: "POST",
@@ -187,7 +211,7 @@ async function refreshOAuthToken(connection) {
       return { accessToken: data.access_token, expiresIn: data.expires_in, refreshToken: data.refresh_token || refreshToken };
     }
 
-    if (provider === "codex") {
+    if (provider === "codex" || provider === "grok-cli") {
       return await refreshProviderCredentials(provider, connection, console);
     }
 
@@ -313,7 +337,7 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
     return { valid: true, error: null, refreshed: false, newTokens: null };
   }
 
-  if (connection.provider === "gemini-cli" || connection.provider === "antigravity") {
+  if (connection.provider === "gemini-cli" || connection.provider === "antigravity" || connection.provider === "agy") {
     const initial = await probeCloudCodeAssistAccess(connection, accessToken, effectiveProxy);
     if (initial.valid) return { valid: true, error: null, refreshed, newTokens };
 

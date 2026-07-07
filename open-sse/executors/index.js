@@ -24,10 +24,12 @@ import { MimoFreeExecutor } from "./mimo-free.js";
 import { CodeBuddyExecutor } from "./codebuddy-cn.js";
 import { XaiExecutor } from "./xai.js";
 import { CliproxyapiExecutor } from "./cliproxyapi.js";
+import { GrokCliExecutor } from "./grok-cli.js";
 import { DefaultExecutor } from "./default.js";
 
 const executors = {
   antigravity: new AntigravityExecutor(),
+  agy: new AntigravityExecutor("agy"),
   azure: new AzureExecutor(),
   "gemini-cli": new GeminiCLIExecutor(),
   github: new GithubExecutor(),
@@ -57,6 +59,7 @@ const executors = {
   "codebuddy-cn": new CodeBuddyExecutor(),
   xai: new XaiExecutor(),
   cliproxyapi: new CliproxyapiExecutor(),
+  "grok-cli": new GrokCliExecutor(),
 };
 
 const defaultCache = new Map();
@@ -99,3 +102,4 @@ export { MimoFreeExecutor } from "./mimo-free.js";
 export { CodeBuddyExecutor } from "./codebuddy-cn.js";
 export { XaiExecutor } from "./xai.js";
 export { CliproxyapiExecutor } from "./cliproxyapi.js";
+export { GrokCliExecutor } from "./grok-cli.js";

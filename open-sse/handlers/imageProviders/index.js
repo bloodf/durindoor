@@ -27,6 +27,7 @@ const ADAPTERS = {
   huggingface,
   nanobanana,
   antigravity,
+  agy: antigravity,
   "fal-ai": falAi,
   "stability-ai": stabilityAi,
   "black-forest-labs": blackForestLabs,

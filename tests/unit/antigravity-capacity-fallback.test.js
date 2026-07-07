@@ -19,7 +19,22 @@ describe("Antigravity capacity fallback", () => {
     vi.clearAllMocks();
     mocks.getProviderConnections.mockResolvedValue([
       { id: "ag-1", provider: "antigravity", email: "ag@example.com", backoffLevel: 4 },
+      { id: "agy-1", provider: "agy", email: "agy@example.com", backoffLevel: 4 },
     ]);
+  });
+
+  it("falls back without writing model cooldown for agy capacity errors", async () => {
+    const { markAccountUnavailable } = await import("../../src/sse/services/auth.js");
+    const result = await markAccountUnavailable(
+      "agy-1",
+      503,
+      '{"reason":"MODEL_CAPACITY_EXHAUSTED","message":"No capacity available for model claude-opus-4-6-thinking on the server"}',
+      "agy",
+      "claude-opus-4-6-thinking",
+    );
+
+    expect(result).toEqual({ shouldFallback: true, cooldownMs: 0 });
+    expect(mocks.updateProviderConnection).not.toHaveBeenCalled();
   });
 
   it("falls back without writing model cooldown for MODEL_CAPACITY_EXHAUSTED", async () => {

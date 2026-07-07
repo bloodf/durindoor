@@ -127,6 +127,27 @@ function makeOptions(bodyStream) {
   };
 }
 
+function makeAgyImageOptions() {
+  const body = {
+    model: "gemini-3-flash-image",
+    stream: true,
+    messages: [{ role: "user", content: "make an icon" }],
+  };
+
+  return {
+    body,
+    modelInfo: { provider: "agy", model: "gemini-3-flash-image" },
+    credentials: { accessToken: "tok-test", refreshToken: "refresh-test" },
+    clientRawRequest: {
+      endpoint: "/v1/chat/completions",
+      body,
+      headers: { accept: "text/event-stream" },
+    },
+    connectionId: "agy-image-connection",
+    log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  };
+}
+
 describe("forceStream provider config", () => {
   beforeEach(() => {
     executeMock.mockReset();
@@ -185,6 +206,18 @@ describe("forceStream provider config", () => {
     expect(call.credentials.runtimeTransport).toMatchObject({
       format: "openai-responses",
       baseUrl: "https://inference.do-ai.run/v1/responses",
+    });
+  });
+
+  it("forces agy image generation through non-streaming Google generateContent", async () => {
+    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+
+    await handleChatCore(makeAgyImageOptions());
+
+    expect(executeMock).toHaveBeenCalledTimes(1);
+    expect(executeMock.mock.calls[0][0]).toMatchObject({
+      model: "gemini-3-flash-image",
+      stream: false,
     });
   });
 });

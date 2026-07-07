@@ -16,14 +16,37 @@ describe("OmniRoute OAuth/session provider slice", () => {
     const { getImageAdapter } = await import("../../open-sse/handlers/imageProviders/index.js");
     const { PROVIDERS, PROVIDER_OAUTH } = await import("../../open-sse/providers/index.js");
     const { getProvider } = await import("../../src/lib/oauth/providers.js");
+    const { getModelsByProviderId } = await import("../../open-sse/config/providerModels.js");
 
     expect(resolveProviderAlias("agy")).toBe("agy");
+    expect(resolveProviderAlias("gc")).toBe("gemini-cli");
+    expect(resolveProviderAlias("gb")).toBe("grok-cli");
     expect(PROVIDERS.agy.format).toBe("antigravity");
     expect(PROVIDERS.agy.clientId).toBe(PROVIDERS.antigravity.clientId);
     expect(PROVIDER_OAUTH.agy.tokenUrl).toBe(PROVIDER_OAUTH.antigravity.tokenUrl);
     expect(getProvider("agy").buildAuthUrl).toBeTypeOf("function");
     expect(getExecutor("agy").getProvider()).toBe("agy");
     expect(getImageAdapter("agy")).toBe(getImageAdapter("antigravity"));
+    expect(getModelsByProviderId("gemini-cli").map((m) => m.id)).toContain("gemini-3-flash-preview");
+    expect(getModelsByProviderId("grok-cli").map((m) => m.id)).toContain("grok-build");
+  });
+
+  it("registers OAuth dashboard health probes before exposing agy and grok-cli", async () => {
+    const { OAUTH_TEST_CONFIG } = await import("../../src/app/api/providers/[id]/test/testUtils.js");
+    const { PROVIDER_MODELS_CONFIG } = await import("../../src/app/api/providers/[id]/models/route.js");
+
+    expect(OAUTH_TEST_CONFIG.agy).toMatchObject({
+      url: "https://www.googleapis.com/oauth2/v1/userinfo?alt=json",
+      method: "GET",
+      refreshable: true,
+    });
+    expect(OAUTH_TEST_CONFIG["grok-cli"]).toMatchObject({
+      url: "https://cli-chat-proxy.grok.com/v1/chat/completions",
+      method: "POST",
+      refreshable: true,
+      acceptStatuses: [400],
+    });
+    expect(PROVIDER_MODELS_CONFIG.agy?.customResolver).toBeTypeOf("function");
   });
 
   it("maps grok-cli auth.json into serializable OAuth credentials", async () => {

@@ -31,6 +31,37 @@ async function writeAndCollect(transform, chunks) {
 }
 
 describe("Antigravity Recent Requests usage", () => {
+  it("does not append OpenAI DONE sentinels for agy native passthrough streams", async () => {
+    const stream = createPassthroughStreamWithLogger(
+      "agy",
+      null,
+      null,
+      "gemini-3.1-flash-image",
+      "conn-1",
+      { request: { contents: [{ role: "user", parts: [{ text: "draw" }] }] } },
+      null,
+      null,
+    );
+
+    const event = {
+      response: {
+        candidates: [{
+          content: {
+            role: "model",
+            parts: [{ text: "AGY_NATIVE_OK" }],
+          },
+          finishReason: "STOP",
+        }],
+      },
+    };
+
+    const chunks = await writeAndCollect(stream, [`data: ${JSON.stringify(event)}\n\n`]);
+    const output = chunks.map((chunk) => new TextDecoder().decode(chunk)).join("");
+
+    expect(output).toContain("AGY_NATIVE_OK");
+    expect(output).not.toContain("[DONE]");
+  });
+
   it("finalizes native Antigravity usage when the final chunk arrives before stream close", async () => {
     let completed = null;
     const stream = createPassthroughStreamWithLogger(

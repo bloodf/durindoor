@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getProviderConnectionById } from "@/models";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
-import { GEMINI_CONFIG } from "@/lib/oauth/constants/oauth";
+import { ANTIGRAVITY_CONFIG, GEMINI_CONFIG } from "@/lib/oauth/constants/oauth";
 import { refreshGoogleToken, updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
 import { getModelsByProviderId } from "open-sse/config/providerModels.js";
@@ -128,7 +128,7 @@ const buildOAuthResolver = ({ refreshFn, fetchFn, parseFn, errorLabel }) => asyn
 };
 
 // Provider models endpoints configuration
-const PROVIDER_MODELS_CONFIG = {
+export const PROVIDER_MODELS_CONFIG = {
   claude: {
     url: "https://api.anthropic.com/v1/models",
     method: "GET",
@@ -367,6 +367,27 @@ const PROVIDER_MODELS_CONFIG = {
       },
       parseFn: parseGeminiCliModels,
       errorLabel: "Failed to fetch Gemini CLI models"
+    })
+  },
+  agy: {
+    customResolver: buildOAuthResolver({
+      refreshFn: (conn) => refreshGoogleToken(conn.refreshToken, ANTIGRAVITY_CONFIG.clientId, ANTIGRAVITY_CONFIG.clientSecret),
+      fetchFn: (token, conn) => {
+        const projectId = conn.projectId || conn.providerSpecificData?.projectId;
+        const body = projectId ? { project: projectId } : {};
+        return fetch(GEMINI_CLI_MODELS_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+            "User-Agent": "google-api-nodejs-client/9.15.1 vscode-antigravity/1.107.0",
+            "X-Goog-Api-Client": "google-cloud-sdk vscode_cloudshelleditor/0.1"
+          },
+          body: JSON.stringify(body)
+        });
+      },
+      parseFn: parseGeminiCliModels,
+      errorLabel: "Failed to fetch Antigravity CLI models"
     })
   },
   "ollama-local": {

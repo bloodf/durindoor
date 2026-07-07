@@ -3,12 +3,12 @@ import xai from "./xai.js";
 export default {
   id: "grok-cli",
   priority: 42,
-  alias: "gc",
+  alias: "gb",
   display: {
     name: "Grok Build",
     icon: "terminal",
     color: "#111827",
-    textIcon: "GC",
+    textIcon: "GB",
     website: "https://x.ai",
     notice: {
       signupUrl: "https://x.ai",

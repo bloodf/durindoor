@@ -5,6 +5,7 @@ import { getExecutor, hasSpecializedExecutor } from "open-sse/executors/index.js
 import { AdaptaWebExecutor, buildAdaptaMessages, extractAdaptaClientJwt } from "open-sse/executors/adapta-web.js";
 import { buildChatGptConversationBody, buildSessionCookieHeader, ChatGptWebExecutor, mergeRefreshedCookie } from "open-sse/executors/chatgpt-web.js";
 import { buildT3ChatBody, extractT3Delta, parseT3Credentials, T3WebExecutor, validateT3Credentials } from "open-sse/executors/t3-web.js";
+import { readEventStream } from "open-sse/executors/web-chat-utils.js";
 
 const originalFetch = globalThis.fetch;
 
@@ -82,6 +83,23 @@ describe("Adapta Web executor", () => {
     expect(result.transformedBody).toMatchObject({ aiModelId: 14 });
   });
 
+  it("rejects unsupported Adapta non-text array content before upstream fetches", async () => {
+    globalThis.fetch = vi.fn();
+
+    const result = await new AdaptaWebExecutor().execute({
+      model: "adapta-one",
+      body: { messages: [{ role: "user", content: [{ type: "input_audio", input_audio: { data: "abc" } }] }] },
+      stream: false,
+      credentials: { apiKey: "__client=client.jwt" },
+    });
+
+    expect(result.response.status).toBe(400);
+    await expect(result.response.json()).resolves.toMatchObject({
+      error: { message: expect.stringContaining("Unsupported non-text chat message part") },
+    });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
   it("keeps Adapta session JWT cache entries separate for same-prefix client tokens", async () => {
     const calls = [];
     globalThis.fetch = vi.fn(async (url, opts) => {
@@ -135,6 +153,16 @@ describe("T3 Web executor", () => {
     expect(extractT3Delta({ done: true })).toBe("__DONE__");
   });
 
+  it("reads AI SDK numeric data-stream text frames as T3 deltas", async () => {
+    const response = rawStreamResponse('0:"Hel"\n0:"lo"\n');
+    const deltas = [];
+    for await (const event of readEventStream(response.body)) {
+      deltas.push(extractT3Delta(event));
+    }
+
+    expect(deltas.join("")).toBe("Hello");
+  });
+
   it("posts Cookie auth and converts non-streaming T3 SSE to OpenAI JSON", async () => {
     const calls = [];
     globalThis.fetch = vi.fn(async (url, opts) => {
@@ -163,6 +191,23 @@ describe("T3 Web executor", () => {
       parts: [{ type: "text", text: "hi" }],
     });
     expect((await result.response.json()).choices[0].message.content).toBe("hello t3");
+  });
+
+  it("rejects unsupported T3 non-text array content before upstream fetches", async () => {
+    globalThis.fetch = vi.fn();
+
+    const result = await new T3WebExecutor().execute({
+      model: "gpt-4o",
+      body: { messages: [{ role: "user", content: [{ type: "image_url", image_url: { url: "https://example.test/image.png" } }] }] },
+      stream: false,
+      credentials: { apiKey: "t3-auth=abc; convex-session-id=convex" },
+    });
+
+    expect(result.response.status).toBe(400);
+    await expect(result.response.json()).resolves.toMatchObject({
+      error: { message: expect.stringContaining("Unsupported non-text chat message part") },
+    });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
   it("builds T3 bodies with history context and required session fields", () => {
@@ -212,7 +257,7 @@ describe("ChatGPT Web executor", () => {
     )).toBe("cf_clearance=keep; __Secure-next-auth.session-token.0=new0; __Secure-next-auth.session-token.1=new1");
   });
 
-  it("folds OpenAI history into a single ChatGPT next-turn body", () => {
+  it("preserves OpenAI history as ChatGPT conversation turns outside the system prompt", () => {
     const body = buildChatGptConversationBody([
       { role: "system", content: "Be direct." },
       { role: "user", content: "Earlier" },
@@ -220,9 +265,12 @@ describe("ChatGPT Web executor", () => {
       { role: "user", content: "Now" },
     ], "gpt-5");
     expect(body.action).toBe("next");
-    expect(body.messages).toHaveLength(2);
+    expect(body.messages).toHaveLength(4);
     expect(body.messages[0].author.role).toBe("system");
-    expect(body.messages[1].content.parts[0]).toBe("Now");
+    expect(body.messages[0].content.parts[0]).toBe("Be direct.");
+    expect(body.messages[1]).toMatchObject({ author: { role: "user" }, content: { parts: ["Earlier"] } });
+    expect(body.messages[2]).toMatchObject({ author: { role: "assistant" }, content: { parts: ["Done"] } });
+    expect(body.messages[3].content.parts[0]).toBe("Now");
     expect(body.history_and_training_disabled).toBe(true);
   });
 
@@ -233,8 +281,27 @@ describe("ChatGPT Web executor", () => {
       { role: "user", content: "Summarize it" },
     ], "gpt-5");
 
-    expect(body.messages[0].content.parts[0]).toContain("Tool result (call_weather):\n72F and sunny");
-    expect(body.messages[1].content.parts[0]).toBe("Summarize it");
+    expect(body.messages[0]).toMatchObject({ author: { role: "assistant" }, content: { parts: ["Calling weather."] } });
+    expect(body.messages[1]).toMatchObject({ author: { role: "tool" } });
+    expect(body.messages[1].content.parts[0]).toContain("Tool result (call_weather):\n72F and sunny");
+    expect(body.messages[2].content.parts[0]).toBe("Summarize it");
+  });
+
+  it("rejects unsupported non-text array content instead of silently dropping it", async () => {
+    globalThis.fetch = vi.fn();
+
+    const result = await new ChatGptWebExecutor().execute({
+      model: "gpt-5",
+      body: { messages: [{ role: "user", content: [{ type: "image_url", image_url: { url: "https://example.test/image.png" } }] }] },
+      stream: false,
+      credentials: { apiKey: "__Secure-next-auth.session-token=session-non-text" },
+    });
+
+    expect(result.response.status).toBe(400);
+    await expect(result.response.json()).resolves.toMatchObject({
+      error: { message: expect.stringContaining("Unsupported non-text chat message part") },
+    });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
   it("builds Sentinel tokens automatically and reaches ChatGPT conversation with ordinary session credentials", async () => {
@@ -497,6 +564,7 @@ describe("provider validation and refresh integration", () => {
     expect(testUtils).toContain('case "chatgpt-web":');
     expect(testUtils).toContain('case "t3-web":');
     expect(testUtils).toContain("executor.testConnection");
+    expect(testUtils).toContain("}, AbortSignal.timeout(10000), effectiveProxy)");
 
     const chatCore = readFileSync(join(root, "open-sse/handlers/chatCore.js"), "utf8");
     expect(chatCore.match(/executor\.execute\(\{[^}]*onCredentialsRefreshed/gs)).toHaveLength(2);

@@ -128,16 +128,27 @@ export class AdaptaWebExecutor extends BaseExecutor {
     super("adapta-web", PROVIDERS["adapta-web"]);
   }
 
-  async testConnection(credentials, signal) {
+  async testConnection(credentials, signal, proxyOptions = null) {
     try {
       const clientJwt = extractAdaptaClientJwt(credentials?.apiKey || credentials?.accessToken || "");
-      return !!clientJwt && !!(await getSessionId(clientJwt, signal));
+      return !!clientJwt && !!(await getSessionId(clientJwt, signal, proxyOptions));
     } catch {
       return false;
     }
   }
 
   async execute({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
+    const messages = Array.isArray(body?.messages) ? body.messages : [];
+    let adaptaMessages;
+    try {
+      adaptaMessages = buildAdaptaMessages(messages);
+    } catch (err) {
+      return { response: errorJson(400, err?.message || String(err)), url: ADAPTA_STREAM_URL, headers: {}, transformedBody: body };
+    }
+    if (adaptaMessages.length === 0) {
+      return { response: errorJson(400, "No messages provided"), url: ADAPTA_STREAM_URL, headers: {}, transformedBody: body };
+    }
+
     const rawKey = credentials?.apiKey || credentials?.accessToken || "";
     const clientJwt = extractAdaptaClientJwt(rawKey);
     if (!clientJwt) {
@@ -150,12 +161,6 @@ export class AdaptaWebExecutor extends BaseExecutor {
     } catch (err) {
       log?.warn?.("ADAPTA-WEB", err?.message || String(err));
       return { response: errorJson(401, `Adapta auth failed: ${err?.message || String(err)}`), url: ADAPTA_STREAM_URL, headers: {}, transformedBody: body };
-    }
-
-    const messages = Array.isArray(body?.messages) ? body.messages : [];
-    const adaptaMessages = buildAdaptaMessages(messages);
-    if (adaptaMessages.length === 0) {
-      return { response: errorJson(400, "No messages provided"), url: ADAPTA_STREAM_URL, headers: {}, transformedBody: body };
     }
 
     const transformedBody = { messages: adaptaMessages, aiModelId: MODEL_ID_MAP[model] ?? DEFAULT_AI_MODEL_ID };

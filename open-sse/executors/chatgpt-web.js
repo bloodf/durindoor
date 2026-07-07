@@ -269,17 +269,19 @@ async function prepareChatRequirements({ accessToken, accountId, sessionId, devi
 
 export function buildChatGptConversationBody(messages, model) {
   const parsed = normalizeOpenAIMessages(messages);
-  const systemParts = [];
-  if (parsed.systemMsg) systemParts.push(parsed.systemMsg);
-  if (parsed.history.length > 0) {
-    systemParts.push(`Prior conversation (for context; answer only the latest user message):\n\n${parsed.history.map((item) => `${item.role === "assistant" ? "Assistant" : "User"}: ${item.content}`).join("\n\n")}`);
-  }
   const cgptMessages = [];
-  if (systemParts.length > 0) {
+  if (parsed.systemMsg) {
     cgptMessages.push({
       id: randomUUID(),
       author: { role: "system" },
-      content: { content_type: "text", parts: [systemParts.join("\n\n")] },
+      content: { content_type: "text", parts: [parsed.systemMsg] },
+    });
+  }
+  for (const item of parsed.history) {
+    cgptMessages.push({
+      id: randomUUID(),
+      author: { role: item.role === "tool" ? "tool" : item.role },
+      content: { content_type: "text", parts: [item.content] },
     });
   }
   cgptMessages.push({
@@ -343,11 +345,11 @@ export class ChatGptWebExecutor extends BaseExecutor {
     super("chatgpt-web", PROVIDERS["chatgpt-web"]);
   }
 
-  async testConnection(credentials, signal) {
+  async testConnection(credentials, signal, proxyOptions = null) {
     try {
       const rawCookie = credentials?.apiKey || credentials?.accessToken || "";
       if (!rawCookie) return false;
-      await exchangeSession(rawCookie, signal);
+      await exchangeSession(rawCookie, signal, proxyOptions);
       return true;
     } catch {
       return false;
@@ -358,6 +360,12 @@ export class ChatGptWebExecutor extends BaseExecutor {
     const messages = Array.isArray(body?.messages) ? body.messages : [];
     if (messages.length === 0) {
       return { response: errorJson(400, "Missing or empty messages array"), url: CONVERSATION_URL, headers: {}, transformedBody: body };
+    }
+    let transformedBody;
+    try {
+      transformedBody = buildChatGptConversationBody(messages, model);
+    } catch (err) {
+      return { response: errorJson(400, err?.message || String(err)), url: CONVERSATION_URL, headers: {}, transformedBody: body };
     }
     const rawCookie = credentials?.apiKey || credentials?.accessToken || "";
     if (!rawCookie) {
@@ -375,7 +383,6 @@ export class ChatGptWebExecutor extends BaseExecutor {
       await onCredentialsRefreshed?.({ ...credentials, apiKey: token.refreshedCookie });
     }
 
-    const transformedBody = buildChatGptConversationBody(messages, model);
     const suppliedSentinel = credentials?.providerSpecificData?.chatgptWebSentinel || credentials?.providerSpecificData || {};
     const sessionId = randomUUID();
     const deviceId = deviceIdFor(token.refreshedCookie || rawCookie);

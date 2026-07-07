@@ -699,7 +699,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           apiKey: connection.apiKey,
           accessToken: connection.accessToken,
           providerSpecificData: connection.providerSpecificData || {},
-        }, AbortSignal.timeout(10000));
+        }, AbortSignal.timeout(10000), effectiveProxy);
         return { valid, error: valid ? null : "Invalid web session credentials" };
       }
       case "opencode-go": {

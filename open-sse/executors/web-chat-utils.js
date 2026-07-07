@@ -11,11 +11,19 @@ export function errorJson(status, message, code = undefined) {
   }), { status, headers: { "Content-Type": "application/json" } });
 }
 
+/**
+ * Web executors currently forward text-only chat content; multimodal parts must
+ * fail closed so callers do not silently lose user-provided images/files/audio.
+ */
 export function extractText(content) {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
+    const unsupported = content.find((part) => part?.type !== "text");
+    if (unsupported) {
+      const type = unsupported?.type ? `type "${unsupported.type}"` : "missing type";
+      throw new TypeError(`Unsupported non-text chat message part (${type})`);
+    }
     return content
-      .filter((part) => part?.type === "text")
       .map((part) => String(part.text || ""))
       .join("");
   }
@@ -32,11 +40,11 @@ export function normalizeOpenAIMessages(messages) {
     if (!content) continue;
     if (role === "tool") {
       const toolName = msg.name || msg.tool_call_id || "tool";
-      role = "user";
+      role = "tool";
       content = `Tool result (${toolName}):\n${content}`;
     }
     if (role === "system") systemMsg += `${systemMsg ? "\n" : ""}${content}`;
-    else if (role === "user" || role === "assistant") history.push({ role, content });
+    else if (role === "user" || role === "assistant" || role === "tool") history.push({ role, content });
   }
 
   let currentMsg = "";
@@ -138,12 +146,25 @@ export async function* readEventStream(source, signal) {
   let buffer = "";
   let dataLines = [];
 
+  const parseStreamPayload = (payload) => {
+    try { return JSON.parse(payload); } catch { /* try AI SDK data-stream frames below */ }
+    const frame = payload.match(/^([0-9]+):([\s\S]*)$/);
+    if (!frame) return null;
+    try {
+      const value = JSON.parse(frame[2]);
+      if (frame[1] === "0" && typeof value === "string") return { text: value };
+      return { code: frame[1], value };
+    } catch {
+      return null;
+    }
+  };
+
   const flush = () => {
     if (dataLines.length === 0) return null;
     const payload = dataLines.join("\n").trim();
     dataLines = [];
     if (!payload || payload === "[DONE]") return "__DONE__";
-    try { return JSON.parse(payload); } catch { return null; }
+    return parseStreamPayload(payload);
   };
 
   try {
@@ -165,7 +186,8 @@ export async function* readEventStream(source, signal) {
         } else if (line.startsWith("data:")) {
           dataLines.push(line.slice(5).trimStart());
         } else if (line.trim() && !line.startsWith("event:")) {
-          try { yield JSON.parse(line.trim()); } catch { /* ignore non-json lines */ }
+          const event = parseStreamPayload(line.trim());
+          if (event) yield event;
         }
       }
     }
@@ -173,7 +195,8 @@ export async function* readEventStream(source, signal) {
     if (remaining.startsWith("data:")) {
       dataLines.push(remaining.slice(5).trimStart());
     } else if (remaining && !remaining.startsWith("event:")) {
-      try { yield JSON.parse(remaining); } catch { /* ignore non-json tail */ }
+      const event = parseStreamPayload(remaining);
+      if (event) yield event;
     }
     const tail = flush();
     if (tail && tail !== "__DONE__") yield tail;

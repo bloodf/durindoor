@@ -112,7 +112,7 @@ export class T3WebExecutor extends BaseExecutor {
     super("t3-web", PROVIDERS["t3-web"]);
   }
 
-  async testConnection(credentials, signal) {
+  async testConnection(credentials, signal, proxyOptions = null) {
     const parsed = parseT3Credentials(credentials);
     if (!validateT3Credentials(parsed)) return false;
     try {
@@ -127,7 +127,7 @@ export class T3WebExecutor extends BaseExecutor {
         headers: buildHeaders(parsed.cookieHeader),
         body: JSON.stringify({ ...validationBody, validateOnly: true }),
         signal: signal ?? undefined,
-      });
+      }, proxyOptions);
       return response.status !== 401 && response.status !== 403 && response.status < 500;
     } catch {
       return false;
@@ -141,12 +141,22 @@ export class T3WebExecutor extends BaseExecutor {
     }
 
     const messages = Array.isArray(body?.messages) ? body.messages : [];
-    const normalized = normalizeOpenAIMessages(messages);
+    let normalized;
+    try {
+      normalized = normalizeOpenAIMessages(messages);
+    } catch (err) {
+      return { response: errorJson(400, err?.message || String(err)), url: T3_CHAT_URL, headers: {}, transformedBody: body };
+    }
     if (!normalized.currentMsg && normalized.history.length === 0) {
       return { response: errorJson(400, "No messages provided"), url: T3_CHAT_URL, headers: {}, transformedBody: body };
     }
 
-    const transformedBody = buildT3ChatBody({ messages, model, parsed, stream });
+    let transformedBody;
+    try {
+      transformedBody = buildT3ChatBody({ messages, model, parsed, stream });
+    } catch (err) {
+      return { response: errorJson(400, err?.message || String(err)), url: T3_CHAT_URL, headers: {}, transformedBody: body };
+    }
     const headers = buildHeaders(parsed.cookieHeader);
     const response = await webFetch(T3_CHAT_URL, {
       method: "POST",

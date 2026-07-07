@@ -149,10 +149,10 @@ export class BaseExecutor {
       if (!retryAttemptsByUrl[urlIndex]) retryAttemptsByUrl[urlIndex] = 0;
 
       // Abort if upstream doesn't return response headers within connection timeout
-      const connectCtrl = new AbortController();
+      let connectCtrl = new AbortController();
       const timeoutMs = this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
-      const connectTimer = setTimeout(() => connectCtrl.abort(new Error("fetch connect timeout")), timeoutMs);
-      const mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
+      let connectTimer = setTimeout(() => connectCtrl.abort(new Error("fetch connect timeout")), timeoutMs);
+      let mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
 
       try {
         let requestBody = transformedBody;
@@ -180,6 +180,11 @@ export class BaseExecutor {
             delete requestBody[field];
             bodyStr = JSON.stringify(requestBody);
             log?.debug?.("RETRY", `400 mentioned unsupported field ${field}; stripping and retrying once`);
+            // Reset the connect timeout for the new upstream request.
+            clearTimeout(connectTimer);
+            connectCtrl = new AbortController();
+            connectTimer = setTimeout(() => connectCtrl.abort(new Error("fetch connect timeout")), timeoutMs);
+            mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
             response = await proxyAwareFetch(url, {
               method: "POST",
               headers,

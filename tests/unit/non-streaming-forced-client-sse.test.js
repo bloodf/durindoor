@@ -109,6 +109,19 @@ describe("handleNonStreamingResponse: synthetic SSE respects client format", () 
     expect(text).not.toContain("data: [DONE]");
   });
 
+  it("omits OpenAI-style [DONE] sentinel for Gemini-family clients", async () => {
+    const geminiFamily = [FORMATS.GEMINI, FORMATS.ANTIGRAVITY, FORMATS.GEMINI_CLI, FORMATS.VERTEX];
+    for (const sourceFormat of geminiFamily) {
+      const result = await handleNonStreamingResponse(baseOptions({
+        providerResponse: makeProviderResponse(openaiCompletion),
+        sourceFormat,
+        targetFormat: FORMATS.OPENAI,
+      }));
+      const text = await result.response.text();
+      expect(text, `${sourceFormat} should not emit OpenAI [DONE]`).not.toContain("data: [DONE]");
+    }
+  });
+
   it("preserves reasoning content when synthesizing Claude SSE", async () => {
     const reasoningCompletion = {
       ...openaiCompletion,

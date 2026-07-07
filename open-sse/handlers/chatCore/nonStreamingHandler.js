@@ -168,7 +168,7 @@ function openAICompletionToClientSSE(responseBody, fallbackModel, sourceFormat) 
   }
   // Anthropic Messages streaming already emits event: message_stop; a trailing
   // OpenAI-style [DONE] sentinel can confuse strict Claude clients.
-  if (sourceFormat !== FORMATS.CLAUDE) {
+  if (sourceFormat !== FORMATS.CLAUDE && sourceFormat !== FORMATS.GEMINI && sourceFormat !== FORMATS.ANTIGRAVITY && sourceFormat !== FORMATS.GEMINI_CLI && sourceFormat !== FORMATS.VERTEX) {
     frames.push(formatSSE({ done: true }, sourceFormat));
   }
   return frames.join("");

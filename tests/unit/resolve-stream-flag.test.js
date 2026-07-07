@@ -3,6 +3,7 @@
 // provider's stream and returns a normal JSON body to the client.
 import { describe, it, expect } from "vitest";
 import { resolveStreamFlag } from "../../open-sse/handlers/chatCore/streamFlag.js";
+import { PROVIDERS } from "../../open-sse/providers/index.js";
 
 describe("resolveStreamFlag (#2031)", () => {
   it("keeps streaming for a forceStream provider even when client prefers JSON and sets stream:false", () => {
@@ -52,5 +53,38 @@ describe("resolveStreamFlag (#2031)", () => {
 
   it("ordinary provider with no special flags streams by default", () => {
     expect(resolveStreamFlag({ providerRequiresStreaming: false })).toBe(true);
+  });
+
+  it("AI21 quirk forceNonStreamingWithTools downgrades to non-streaming when tools are present", () => {
+    expect(PROVIDERS["ai21"]?.quirks?.forceNonStreamingWithTools).toBe(true);
+    const body = { model: "jamba-large-1.7", messages: [], tools: [{ type: "function" }] };
+    const providerForceNonStreamingWithTools =
+      PROVIDERS["ai21"]?.quirks?.forceNonStreamingWithTools === true &&
+      Array.isArray(body.tools) &&
+      body.tools.length > 0;
+    expect(
+      resolveStreamFlag({
+        providerRequiresStreaming: false,
+        bodyStream: true,
+        forceNonStreaming: providerForceNonStreamingWithTools,
+        clientPrefersSSE: true,
+      })
+    ).toBe(false);
+  });
+
+  it("AI21 quirk does not downgrade streaming when no tools are present", () => {
+    const body = { model: "jamba-large-1.7", messages: [] };
+    const providerForceNonStreamingWithTools =
+      PROVIDERS["ai21"]?.quirks?.forceNonStreamingWithTools === true &&
+      Array.isArray(body.tools) &&
+      body.tools.length > 0;
+    expect(
+      resolveStreamFlag({
+        providerRequiresStreaming: false,
+        bodyStream: true,
+        forceNonStreaming: providerForceNonStreamingWithTools,
+        clientPrefersSSE: true,
+      })
+    ).toBe(true);
   });
 });

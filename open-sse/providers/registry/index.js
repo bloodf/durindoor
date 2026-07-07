@@ -172,6 +172,20 @@ import p169 from "./t3-web.js";
 import p170 from "./udio.js";
 import p171 from "./veoaifree-web.js";
 import p172 from "./yuanbao-web.js";
+import p173 from "./agentrouter.js";
+import p174 from "./ai21.js";
+import p175 from "./aimlapi.js";
+import p176 from "./alibaba.js";
+import p177 from "./api-airforce.js";
+import p178 from "./bai.js";
+import p179 from "./baichuan.js";
+import p180 from "./baidu.js";
+import p181 from "./bailian-coding-plan.js";
+import p182 from "./baseten.js";
+import p183 from "./bazaarlink.js";
+import p184 from "./bluesminds.js";
+import p185 from "./bytez.js";
+import p186 from "./codestral.js";
 
 export default [
   p0,
@@ -347,4 +361,18 @@ export default [
   p170,
   p171,
   p172,
+  p173,
+  p174,
+  p175,
+  p176,
+  p177,
+  p178,
+  p179,
+  p180,
+  p181,
+  p182,
+  p183,
+  p184,
+  p185,
+  p186,
 ];

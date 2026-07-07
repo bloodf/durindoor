@@ -89,15 +89,21 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const clientPrefersJson = acceptHeader.includes("application/json");
   const clientPrefersSSE = acceptHeader.includes("text/event-stream");
 
-  // Stream-only providers (forceStream) must keep streaming even when the client
-  // asked for JSON; the accumulated stream is converted to JSON downstream. (#2031)
+  // Stream-only providers (forceStream) must keep streaming even when the
+  // client asked for JSON; the accumulated stream is converted to JSON
+  // downstream. (#2031)
+  const providerForceNonStreamingWithTools =
+    PROVIDERS[provider]?.quirks?.forceNonStreamingWithTools === true &&
+    Array.isArray(body.tools) &&
+    body.tools.length > 0;
   let stream = resolveStreamFlag({
     providerRequiresStreaming,
     bodyStream: body.stream,
     forceNonStreaming:
       providerRequiresNonStreaming ||
-      (isImageGenModel &&
-        (provider === "antigravity" || provider === "agy" || provider === "gemini-cli")) ||
+      (isImageGenModel && (provider === "antigravity" || provider === "agy" || provider === "gemini-cli")) ||
+      (detectedTool === "deepseek-tui" && body.stream !== true) ||
+      providerForceNonStreamingWithTools,
     clientPrefersJson,
     clientPrefersSSE,
   });

@@ -424,6 +424,7 @@ export async function POST(request) {
         case "minimax-cn":
         case "alicode-intl":
         case "alicode":
+        case "bailian-coding-plan":
         case "agentrouter": {
           // Use baseUrl from PROVIDERS (DRY); separate openai-format vs claude-format flow
           const cfg = PROVIDERS[provider];
@@ -439,10 +440,11 @@ export async function POST(request) {
             isValid = res.status !== 401 && res.status !== 403;
           } else {
             const testModel = getDefaultModel(provider) || "claude-sonnet-4-20250514";
+            const isBearer = provider === "bailian-coding-plan";
             const res = await fetch(cfg.baseUrl, {
               method: "POST",
               headers: {
-                "x-api-key": apiKey,
+                ...(isBearer ? { "Authorization": `Bearer ${apiKey}` } : { "x-api-key": apiKey }),
                 "anthropic-version": "2023-06-01",
                 "content-type": "application/json",
                 ...(cfg.headers || {}),

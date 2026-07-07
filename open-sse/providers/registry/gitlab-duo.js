@@ -23,7 +23,7 @@ export default {
     },
   },
   oauth: {
-    defaultBaseUrl: "https://gitlab.com",
+    defaultBaseUrl: process.env.GITLAB_DUO_BASE_URL || process.env.GITLAB_BASE_URL || "https://gitlab.com",
     authorizeUrlPath: "/oauth/authorize",
     tokenUrlPath: "/oauth/token",
     userInfoUrlPath: "/api/v4/user",

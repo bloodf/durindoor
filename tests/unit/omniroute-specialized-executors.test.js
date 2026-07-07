@@ -127,6 +127,15 @@ describe("OmniRoute specialized provider ports", () => {
     expect(PROVIDERS.theoldllm.noAuth).toBe(true);
     expect(PROVIDERS.theoldllm.passthroughModels).toBeUndefined();
     expect(PROVIDER_MODELS.tllm.some((model) => model.id === "GPT_5_4")).toBe(true);
+    // Advertised in providers/registry/theoldllm.js models list — these exact
+    // lowercase ids must round-trip unchanged instead of being rewritten to
+    // the CLAUDE_4_6_* / CLAUDE_4_5_* generation aliases.
+    expect(mapModel("claude_opus_4")).toBe("claude_opus_4");
+    expect(mapModel("claude_sonnet_4")).toBe("claude_sonnet_4");
+    expect(mapModel("claude_haiku_3_5")).toBe("claude_haiku_3_5");
+    expect(
+      PROVIDER_MODELS.tllm.some((model) => model.id === mapModel("claude_opus_4"))
+    ).toBe(true);
   });
 
   it("uses proxy-aware fetch for The Old LLM requests", async () => {

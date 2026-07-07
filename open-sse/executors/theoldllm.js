@@ -41,6 +41,10 @@ const CLAUDE_NAMES = {
   "claude haiku 3.5": "CLAUDE_4_5_HAIKU",
 };
 
+// Advertised in providers/registry/theoldllm.js models list (registry still
+// lists both the legacy lowercase aliases and the newer CLAUDE_4_6_* ids) —
+// keep both spellings verbatim here so mapModel returns the exact id upstream
+// serves instead of silently rewriting it to a different generation.
 export const CHATGPT_UPSTREAM_MODELS = new Set([
   "GPT_5_4",
   "GPT_5_3",
@@ -56,6 +60,9 @@ export const CHATGPT_UPSTREAM_MODELS = new Set([
   "CLAUDE_4_6_OPUS",
   "CLAUDE_4_6_SONNET",
   "CLAUDE_4_5_HAIKU",
+  "claude_opus_4",
+  "claude_sonnet_4",
+  "claude_haiku_3_5",
   "openrouter_gpt_4_o",
   "openrouter_gpt_4_o_mini",
   "openrouter_gpt_4",

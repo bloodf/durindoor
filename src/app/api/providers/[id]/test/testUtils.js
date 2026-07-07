@@ -721,6 +721,13 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         }, effectiveProxy);
         return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
       }
+      case "puter": {
+        const baseUrl = PROVIDERS["puter"]?.baseUrl?.replace(/\/chat\/completions\/?$/, "") || "https://api.puter.com/puterai/openai/v1";
+        const res = await fetchWithConnectionProxy(`${baseUrl}/models`, {
+          headers: { Authorization: `Bearer ${connection.apiKey}` },
+        }, effectiveProxy);
+        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+      }
       default:
         return { valid: false, error: "Provider test not supported" };
     }

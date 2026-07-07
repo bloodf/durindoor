@@ -300,24 +300,37 @@ export async function buildModelsList(kindFilter) {
     models.push(entry);
   }
 
+  // Providers advertising `noAuth: true` (e.g. Pollinations, The Old LLM) serve
+  // a free keyless catalog. Previously these static entries were only added
+  // when connections.length === 0 (DB unavailable), so any user with at least
+  // one active connection for a *different* provider lost every no-auth
+  // provider from model discovery even though those providers need no
+  // connection at all. Compute the alias/provider map + helper once and
+  // reuse it below for both the no-connections path and the has-connections
+  // path so no-auth providers are always listed unless they already have an
+  // active connection of their own.
+  const aliasToProviderId = Object.fromEntries(
+    Object.entries(PROVIDER_ID_TO_ALIAS).map(([id, alias]) => [alias, id])
+  );
+  const addStaticProviderModels = (providerId, alias, providerModels) => {
+    if (!providerMatchesKinds(providerId, kindFilter)) return;
+    for (const model of providerModels) {
+      if (!kindFilter.includes(modelKind(model))) continue;
+      if (isDisabled(alias, model.id)) continue;
+      models.push({
+        id: `${alias}/${model.id}`,
+        object: "model",
+        owned_by: alias,
+        capabilities: getCapabilitiesForModel(providerId, model.id),
+      });
+    }
+  };
+
   if (connections.length === 0) {
     // DB unavailable -> return static models, filtered by per-model kind
-    const aliasToProviderId = Object.fromEntries(
-      Object.entries(PROVIDER_ID_TO_ALIAS).map(([id, alias]) => [alias, id])
-    );
     for (const [alias, providerModels] of Object.entries(PROVIDER_MODELS)) {
       const providerId = aliasToProviderId[alias] ?? alias;
-      if (!providerMatchesKinds(providerId, kindFilter)) continue;
-      for (const model of providerModels) {
-        if (!kindFilter.includes(modelKind(model))) continue;
-        if (isDisabled(alias, model.id)) continue;
-        models.push({
-          id: `${alias}/${model.id}`,
-          object: "model",
-          owned_by: alias,
-          capabilities: getCapabilitiesForModel(providerId, model.id),
-        });
-      }
+      addStaticProviderModels(providerId, alias, providerModels);
     }
 
     for (const customModel of customModels) {
@@ -488,6 +501,17 @@ export async function buildModelsList(kindFilter) {
           owned_by: outputAlias,
         });
       }
+    }
+
+    // Also surface no-auth providers (Pollinations, The Old LLM, …) even
+    // when the caller has active connections for *other* providers — these
+    // need no connection of their own and were previously dropped once any
+    // connection existed at all.
+    for (const [alias, providerModels] of Object.entries(PROVIDER_MODELS)) {
+      const providerId = aliasToProviderId[alias] ?? alias;
+      if (!AI_PROVIDERS[providerId]?.noAuth) continue;
+      if (activeConnectionByProvider.has(providerId)) continue;
+      addStaticProviderModels(providerId, alias, providerModels);
     }
   }
 

@@ -13,6 +13,7 @@ const RESERVED_PROVIDER_PREFIXES = new Set(Object.keys(LOCAL_PROVIDER_ALIASES));
 for (const entry of REGISTRY) {
   RESERVED_PROVIDER_PREFIXES.add(entry.id);
   if (entry.alias) RESERVED_PROVIDER_PREFIXES.add(entry.alias);
+  if (entry.uiAlias) RESERVED_PROVIDER_PREFIXES.add(entry.uiAlias);
   for (const alias of entry.aliases || []) RESERVED_PROVIDER_PREFIXES.add(alias);
 }
 

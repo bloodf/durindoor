@@ -404,7 +404,8 @@ async function getDirectDispatcher() {
 
 async function directFetch(url, options) {
   const dispatcher = options?.dispatcher || (await getDirectDispatcher());
-  return originalFetch(url, { ...options, dispatcher });
+  const fetchImpl = globalThis.fetch === patchedFetch ? originalFetch : globalThis.fetch;
+  return fetchImpl(url, { ...options, dispatcher });
 }
 
 /**

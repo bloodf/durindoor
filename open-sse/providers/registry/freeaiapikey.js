@@ -11,9 +11,9 @@ export default {
   category: "apikey",
   authType: "apikey",
   transport: {
-    baseUrl: "https://freeaiapikey.com/v1/chat/completions",
+    baseUrl: "https://api.freeaiapikey.com/v1/chat/completions",
     authHeader: "bearer",
-    modelsUrl: "https://freeaiapikey.com/v1/models",
+    modelsUrl: "https://api.freeaiapikey.com/v1/models",
     defaultContextLength: 128000,
   },
   models: [
@@ -25,6 +25,6 @@ export default {
     { id: "Alibaba/qwen3.5", name: "Qwen 3.5 (via FreeAIAPIKey)", contextLength: 128000 },
     { id: "Alibaba/qwen3-vl:235b", name: "Qwen 3 VL 235B (via FreeAIAPIKey)", contextLength: 128000 },
   ],
-  modelsFetcher: { url: "https://freeaiapikey.com/v1/models", type: "openai" },
+  modelsFetcher: { url: "https://api.freeaiapikey.com/v1/models", type: "openai" },
   passthroughModels: true,
 };

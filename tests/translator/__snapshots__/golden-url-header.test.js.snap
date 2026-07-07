@@ -1981,8 +1981,8 @@ exports[`GOLDEN buildUrl (default executor providers) > fireworks → url (strea
 
 exports[`GOLDEN buildUrl (default executor providers) > freeaiapikey → url (stream + non-stream) 1`] = `
 {
-  "nonStream": "https://freeaiapikey.com/v1/chat/completions",
-  "stream": "https://freeaiapikey.com/v1/chat/completions",
+  "nonStream": "https://api.freeaiapikey.com/v1/chat/completions",
+  "stream": "https://api.freeaiapikey.com/v1/chat/completions",
 }
 `;
 
@@ -2002,8 +2002,8 @@ exports[`GOLDEN buildUrl (default executor providers) > friendliai → url (stre
 
 exports[`GOLDEN buildUrl (default executor providers) > galadriel → url (stream + non-stream) 1`] = `
 {
-  "nonStream": "https://api.galadriel.ai/v1/chat/completions",
-  "stream": "https://api.galadriel.ai/v1/chat/completions",
+  "nonStream": "https://api.galadriel.com/v1/verified/chat/completions",
+  "stream": "https://api.galadriel.com/v1/verified/chat/completions",
 }
 `;
 
@@ -2023,15 +2023,15 @@ exports[`GOLDEN buildUrl (default executor providers) > gitlab → url (stream +
 
 exports[`GOLDEN buildUrl (default executor providers) > gitlawb → url (stream + non-stream) 1`] = `
 {
-  "nonStream": "https://opengateway.gitlawb.com/v1/xiaomi-mimo",
-  "stream": "https://opengateway.gitlawb.com/v1/xiaomi-mimo",
+  "nonStream": "https://opengateway.gitlawb.com/v1/xiaomi-mimo/chat/completions",
+  "stream": "https://opengateway.gitlawb.com/v1/xiaomi-mimo/chat/completions",
 }
 `;
 
 exports[`GOLDEN buildUrl (default executor providers) > glhf → url (stream + non-stream) 1`] = `
 {
-  "nonStream": "https://api.laf.run/v1/chat/completions",
-  "stream": "https://api.laf.run/v1/chat/completions",
+  "nonStream": "https://glhf.chat/api/openai/v1/chat/completions",
+  "stream": "https://glhf.chat/api/openai/v1/chat/completions",
 }
 `;
 

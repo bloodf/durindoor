@@ -74,6 +74,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   const clientRequestedStreaming = body.stream === true || sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI;
   const providerRequiresStreaming = PROVIDERS[provider]?.forceStream === true;
+  const providerRequiresNonStreaming = PROVIDERS[provider]?.forceNonStreaming === true;
   // Google Code Assist image generation returns JSON generateContent bodies, not SSE.
   const modelType = getModelType(alias, model);
   const isImageGenModel = modelType === "imageGen" || /image|imagen|image-generation/i.test(model);
@@ -94,8 +95,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     providerRequiresStreaming,
     bodyStream: body.stream,
     forceNonStreaming:
-      (isImageGenModel && (provider === "antigravity" || provider === "agy" || provider === "gemini-cli")) ||
-      (detectedTool === "deepseek-tui" && body.stream !== true),
+      providerRequiresNonStreaming ||
+      (isImageGenModel &&
+        (provider === "antigravity" || provider === "agy" || provider === "gemini-cli")) ||
     clientPrefersJson,
     clientPrefersSSE,
   });

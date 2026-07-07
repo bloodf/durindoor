@@ -13,6 +13,7 @@ export default {
   transport: {
     baseUrl: "https://crof.ai/v1/chat/completions",
     authHeader: "bearer",
+    thinkingFormat: "openai",
     validateUrl: "https://crof.ai/v1/models",
   },
   // Seed list from OmniRoute; live /v1/models discovery can refresh it.

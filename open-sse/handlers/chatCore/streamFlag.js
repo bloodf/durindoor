@@ -11,7 +11,8 @@
  * @param {boolean} opts.providerRequiresStreaming - provider has `forceStream: true`
  * @param {boolean} [opts.bodyStream] - the request body's `stream` value
  * @param {boolean} [opts.forceNonStreaming] - request must not stream regardless of
- *   client preference (e.g. image-generation models, deepseek-tui `-p` mode)
+ *   client preference or provider default (e.g. image-generation models,
+ *   providers with `forceNonStreaming: true`, deepseek-tui `-p` mode)
  * @param {boolean} [opts.clientPrefersJson] - Accept header includes `application/json`
  * @param {boolean} [opts.clientPrefersSSE] - Accept header includes `text/event-stream`
  * @returns {boolean} whether to stream to the provider

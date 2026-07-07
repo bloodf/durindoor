@@ -436,6 +436,60 @@ async function fetchWithConnectionProxy(url, options = {}, effectiveProxy = null
   });
 }
 
+async function exchangeGigaChatApiKey(apiKey, effectiveProxy = null) {
+  const cfg = PROVIDERS.gigachat;
+  const res = await fetchWithConnectionProxy(cfg.tokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/json",
+      Authorization: `Basic ${apiKey}`,
+      RqUID: crypto.randomUUID(),
+    },
+    body: new URLSearchParams({ scope: cfg.tokenScope || "GIGACHAT_API_PERS" }),
+  }, effectiveProxy);
+
+  if (!res.ok) return null;
+  const token = await res.json().catch(() => null);
+  return token?.access_token || null;
+}
+
+async function testRegistryOpenAIConnection(connection, effectiveProxy = null) {
+  const cfg = PROVIDERS[connection.provider];
+  if (!cfg || cfg.format !== "openai" || !cfg.baseUrl) return null;
+  if (cfg.noAuth) return { valid: true, error: null };
+
+  const headers = { "Content-Type": "application/json", ...(cfg.headers || {}) };
+  if (cfg.authHeader === "x-api-key") headers["X-API-Key"] = connection.apiKey;
+  else headers.Authorization = `Bearer ${connection.apiKey}`;
+
+  // Use cfg.modelsUrl when present; scoped providers may not expose /models
+  // beside their chat endpoint.
+  const modelsUrl = cfg.modelsUrl || cfg.baseUrl.replace(/\/chat\/completions$/, "/models").replace(/\/chatbot$/, "/models");
+  try {
+    const modelsRes = await fetchWithConnectionProxy(modelsUrl, { headers }, effectiveProxy);
+    if (modelsRes.status === 401 || modelsRes.status === 403) {
+      return { valid: false, error: "Invalid API key" };
+    }
+    if (modelsRes.ok) return { valid: true, error: null };
+  } catch {
+    // Fall back to chat below.
+  }
+
+  const res = await fetchWithConnectionProxy(cfg.baseUrl, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model: connection.defaultModel || getDefaultModel(connection.provider) || "test",
+      messages: [{ role: "user", content: "ping" }],
+      max_tokens: 1,
+      stream: false,
+    }),
+  }, effectiveProxy);
+  const valid = res.status !== 401 && res.status !== 403;
+  return { valid, error: valid ? null : "Invalid API key" };
+}
+
 async function testApiKeyConnection(connection, effectiveProxy = null) {
   if (isOpenAICompatibleProvider(connection.provider)) {
     const modelsBase = connection.providerSpecificData?.baseUrl;
@@ -494,6 +548,15 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         }, effectiveProxy);
         const valid = res.status !== 401 && res.status !== 403 && res.status !== 404;
         return { valid, error: valid ? null : "Invalid API token or Account ID" };
+      }
+      case "gigachat": {
+        const accessToken = await exchangeGigaChatApiKey(connection.apiKey, effectiveProxy);
+        if (!accessToken) return { valid: false, error: "Invalid API key" };
+        const res = await fetchWithConnectionProxy(PROVIDERS.gigachat.modelsUrl || "https://gigachat.devices.sberbank.ru/api/v1/models", {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }, effectiveProxy);
+        const valid = res.status !== 401 && res.status !== 403;
+        return { valid, error: valid ? null : "Invalid API key" };
       }
       case "azure": {
         const psd = connection.providerSpecificData || {};
@@ -801,7 +864,8 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
       }
       default:
-        return { valid: false, error: "Provider test not supported" };
+        return await testRegistryOpenAIConnection(connection, effectiveProxy)
+          || { valid: false, error: "Provider test not supported" };
     }
   } catch (err) {
     return { valid: false, error: err.message };

@@ -4,6 +4,17 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 
 const TOKEN_SKEW_MS = 60_000;
 
+export function normalizeGigaChatTokenExpiresAt(token, now = Date.now()) {
+  const expiresAt = Number(token?.expires_at);
+  if (Number.isFinite(expiresAt) && expiresAt > 0) {
+    // GigaChat returns Unix seconds for expires_at; internal cache uses ms.
+    return expiresAt < 10_000_000_000 ? expiresAt * 1000 : expiresAt;
+  }
+
+  const expiresIn = Number(token?.expires_in || 0);
+  return now + expiresIn * 1000;
+}
+
 export class GigaChatExecutor extends DefaultExecutor {
   constructor() {
     super("gigachat");
@@ -53,7 +64,7 @@ export class GigaChatExecutor extends DefaultExecutor {
       throw new Error("GigaChat token exchange response did not include access_token");
     }
 
-    const expiresAt = Number(token.expires_at) || (Date.now() + Number(token.expires_in || 0) * 1000);
+    const expiresAt = normalizeGigaChatTokenExpiresAt(token);
     this.tokenCache.set(apiKey, { accessToken: token.access_token, expiresAt });
     return token.access_token;
   }

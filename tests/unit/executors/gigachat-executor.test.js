@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { GigaChatExecutor } from "../../../open-sse/executors/gigachat.js";
+import { GigaChatExecutor, normalizeGigaChatTokenExpiresAt } from "../../../open-sse/executors/gigachat.js";
 import { proxyAwareFetch } from "../../../open-sse/utils/proxyFetch.js";
 
 vi.mock("../../../open-sse/utils/proxyFetch.js", () => ({
@@ -57,5 +57,23 @@ describe("GigaChatExecutor", () => {
     );
     const body = proxyAwareFetch.mock.calls[0][1].body;
     expect(body.get("scope")).toBe("GIGACHAT_API_PERS");
+  });
+
+  it("normalizes GigaChat expires_at seconds to cache milliseconds", () => {
+    expect(normalizeGigaChatTokenExpiresAt({ expires_at: 1_800_000_000 }, 1_700_000_000_000)).toBe(
+      1_800_000_000_000,
+    );
+  });
+
+  it("reuses cached expires_at tokens instead of exchanging on every request", async () => {
+    proxyAwareFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ access_token: "upstream-access", expires_at: Math.floor(Date.now() / 1000) + 1800 }),
+    });
+
+    await expect(executor.exchangeApiKeyForAccessToken("basic-secret")).resolves.toBe("upstream-access");
+    await expect(executor.exchangeApiKeyForAccessToken("basic-secret")).resolves.toBe("upstream-access");
+
+    expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
   });
 });

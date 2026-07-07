@@ -11,7 +11,7 @@ export default {
   category: "apikey",
   authType: "apikey",
   transport: {
-    baseUrl: "https://opengateway.gitlawb.com/v1/xiaomi-mimo",
+    baseUrl: "https://opengateway.gitlawb.com/v1/xiaomi-mimo/chat/completions",
     authHeader: "bearer",
     headers: {
       "User-Agent": "OpenClaude/1.0 (linux; x86_64)",

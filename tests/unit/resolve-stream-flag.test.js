@@ -39,6 +39,17 @@ describe("resolveStreamFlag (#2031)", () => {
     ).toBe(false);
   });
 
+  it("forceNonStreaming providers stay non-streaming even when the request asks for SSE", () => {
+    expect(
+      resolveStreamFlag({
+        providerRequiresStreaming: false,
+        forceNonStreaming: true,
+        bodyStream: true,
+        clientPrefersSSE: true,
+      })
+    ).toBe(false);
+  });
+
   it("ordinary provider with no special flags streams by default", () => {
     expect(resolveStreamFlag({ providerRequiresStreaming: false })).toBe(true);
   });

@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import REGISTRY from "../../open-sse/providers/registry/index.js";
+import { DefaultExecutor } from "../../open-sse/executors/default.js";
 import { PROVIDER_MEDIA, PROVIDER_MODELS, PROVIDERS } from "../../open-sse/providers/index.js";
 import { AI_PROVIDERS, isHiddenProvider } from "../../src/shared/constants/providers.js";
 
@@ -27,7 +28,7 @@ const ownedProviderIds = [
 ];
 
 const expectedTransports = {
-  crof: { baseUrl: "https://crof.ai/v1/chat/completions", authHeader: "bearer" },
+  crof: { baseUrl: "https://crof.ai/v1/chat/completions", authHeader: "bearer", thinkingFormat: "openai" },
   databricks: {
     baseUrl: "https://adb-0000000000000000.0.azuredatabricks.net/serving-endpoints",
     authHeader: "bearer",
@@ -54,9 +55,9 @@ const expectedTransports = {
   factory: { baseUrl: "https://api.factory.ai/v1/chat/completions", authHeader: "bearer" },
   "featherless-ai": { baseUrl: "https://api.featherless.ai/v1/chat/completions", authHeader: "bearer" },
   freeaiapikey: {
-    baseUrl: "https://freeaiapikey.com/v1/chat/completions",
+    baseUrl: "https://api.freeaiapikey.com/v1/chat/completions",
     authHeader: "bearer",
-    modelsUrl: "https://freeaiapikey.com/v1/models",
+    modelsUrl: "https://api.freeaiapikey.com/v1/models",
     defaultContextLength: 128000,
   },
   "freemodel-dev": {
@@ -70,15 +71,25 @@ const expectedTransports = {
     authHeader: "bearer",
     modelsUrl: "https://api.friendli.ai/serverless/v1/models",
   },
-  galadriel: { baseUrl: "https://api.galadriel.ai/v1/chat/completions", authHeader: "bearer" },
+  galadriel: {
+    baseUrl: "https://api.galadriel.com/v1/verified/chat/completions",
+    authHeader: "bearer",
+    modelsUrl: "https://api.galadriel.com/v1/verified/models",
+    forceNonStreaming: true,
+  },
   gigachat: {
     baseUrl: "https://gigachat.devices.sberbank.ru/api/v1/chat/completions",
     tokenUrl: "https://ngw.devices.sberbank.ru:9443/api/v2/oauth",
     tokenScope: "GIGACHAT_API_PERS",
+    modelsUrl: "https://gigachat.devices.sberbank.ru/api/v1/models",
     authHeader: "bearer",
   },
-  gitlawb: { baseUrl: "https://opengateway.gitlawb.com/v1/xiaomi-mimo", authHeader: "bearer" },
-  glhf: { baseUrl: "https://api.laf.run/v1/chat/completions", authHeader: "bearer" },
+  gitlawb: { baseUrl: "https://opengateway.gitlawb.com/v1/xiaomi-mimo/chat/completions", authHeader: "bearer" },
+  glhf: {
+    baseUrl: "https://glhf.chat/api/openai/v1/chat/completions",
+    authHeader: "bearer",
+    modelsUrl: "https://glhf.chat/api/openai/v1/models",
+  },
 };
 
 const expectedAliases = {
@@ -141,6 +152,18 @@ describe("OmniRoute simple/default provider batch B", () => {
     });
   });
 
+  it("forces Galadriel OpenAI payloads to non-streaming", () => {
+    const executor = new DefaultExecutor("galadriel");
+    const body = executor.transformRequest(
+      "galadriel-latest",
+      { model: "galadriel-latest", messages: [{ role: "user", content: "ping" }], stream: true },
+      false,
+      { apiKey: "test-key" },
+    );
+
+    expect(body.stream).toBe(false);
+  });
+
   it("keeps model aliases and passthrough fetchers for dynamic catalogs", () => {
     const registryById = new Map(REGISTRY.map((entry) => [entry.id, entry]));
 
@@ -148,7 +171,7 @@ describe("OmniRoute simple/default provider batch B", () => {
       expect(PROVIDER_MODELS[alias]?.length, `${id} should expose models under alias ${alias}`).toBeGreaterThan(0);
     }
 
-    const dynamicProviders = ["crof", "deepinfra", "dgrid", "dit", "featherless-ai", "freeaiapikey", "freemodel-dev", "friendliai"];
+    const dynamicProviders = ["crof", "deepinfra", "dgrid", "dit", "featherless-ai", "freeaiapikey", "freemodel-dev", "friendliai", "glhf"];
     for (const id of dynamicProviders) {
       expect(PROVIDER_MEDIA[id], `${id} should expose media/dynamic model metadata`).toMatchObject({
         modelsFetcher: { type: "openai" },

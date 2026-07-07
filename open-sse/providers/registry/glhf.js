@@ -11,10 +11,13 @@ export default {
   category: "apikey",
   authType: "apikey",
   transport: {
-    baseUrl: "https://api.laf.run/v1/chat/completions",
+    baseUrl: "https://glhf.chat/api/openai/v1/chat/completions",
     authHeader: "bearer",
+    modelsUrl: "https://glhf.chat/api/openai/v1/models",
   },
   models: [
-    { id: "deepseek-7b-chat", name: "DeepSeek 7B Chat" },
+    { id: "hf:mistralai/Mistral-7B-Instruct-v0.3", name: "Mistral 7B Instruct (HF)" },
   ],
+  modelsFetcher: { url: "https://glhf.chat/api/openai/v1/models", type: "openai" },
+  passthroughModels: true,
 };

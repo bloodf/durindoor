@@ -190,7 +190,7 @@ exports[`GOLDEN buildHeaders (default executor providers) > claude → headers (
     "Content-Type": "application/json",
     "User-Agent": "claude-cli/2.1.92 (external, sdk-cli)",
     "X-App": "cli",
-    "X-Stainless-Arch": "<ARCH>",
+    "X-Stainless-Arch": "arm64",
     "X-Stainless-Helper-Method": "stream",
     "X-Stainless-Lang": "js",
     "X-Stainless-Os": "MacOS",
@@ -208,7 +208,7 @@ exports[`GOLDEN buildHeaders (default executor providers) > claude → headers (
     "Content-Type": "application/json",
     "User-Agent": "claude-cli/2.1.92 (external, sdk-cli)",
     "X-App": "cli",
-    "X-Stainless-Arch": "<ARCH>",
+    "X-Stainless-Arch": "arm64",
     "X-Stainless-Helper-Method": "stream",
     "X-Stainless-Lang": "js",
     "X-Stainless-Os": "MacOS",
@@ -228,7 +228,7 @@ exports[`GOLDEN buildHeaders (default executor providers) > claude → headers (
     "Content-Type": "application/json",
     "User-Agent": "claude-cli/2.1.92 (external, sdk-cli)",
     "X-App": "cli",
-    "X-Stainless-Arch": "<ARCH>",
+    "X-Stainless-Arch": "arm64",
     "X-Stainless-Helper-Method": "stream",
     "X-Stainless-Lang": "js",
     "X-Stainless-Os": "MacOS",
@@ -408,6 +408,31 @@ exports[`GOLDEN buildHeaders (default executor providers) > cohere → headers (
 }
 `;
 
+exports[`GOLDEN buildHeaders (default executor providers) > command-code → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+    "x-cli-environment": "cli",
+    "x-command-code-version": "0.33.2",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+    "x-cli-environment": "cli",
+    "x-command-code-version": "0.33.2",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+    "x-cli-environment": "cli",
+    "x-command-code-version": "0.33.2",
+  },
+}
+`;
+
 exports[`GOLDEN buildHeaders (default executor providers) > deepgram → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -428,6 +453,25 @@ exports[`GOLDEN buildHeaders (default executor providers) > deepgram → headers
 `;
 
 exports[`GOLDEN buildHeaders (default executor providers) > deepseek → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
+exports[`GOLDEN buildHeaders (default executor providers) > digitalocean → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
     "Accept": "text/event-stream",
@@ -600,6 +644,25 @@ exports[`GOLDEN buildHeaders (default executor providers) > haiper → headers (
     "Accept": "text/event-stream",
     "Content-Type": "application/json",
     "HAIPER_KEY": "<CRED>",
+  },
+}
+`;
+
+exports[`GOLDEN buildHeaders (default executor providers) > hcnsec → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
   },
 }
 `;
@@ -1219,6 +1282,25 @@ exports[`GOLDEN buildHeaders (default executor providers) > perplexity → heade
 }
 `;
 
+exports[`GOLDEN buildHeaders (default executor providers) > puter → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
 exports[`GOLDEN buildHeaders (default executor providers) > siliconflow → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -1457,6 +1539,13 @@ exports[`GOLDEN buildUrl (default executor providers) > cohere → url (stream +
 }
 `;
 
+exports[`GOLDEN buildUrl (default executor providers) > command-code → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://api.commandcode.ai/alpha/generate",
+  "stream": "https://api.commandcode.ai/alpha/generate",
+}
+`;
+
 exports[`GOLDEN buildUrl (default executor providers) > deepgram → url (stream + non-stream) 1`] = `
 {
   "nonStream": "https://api.deepgram.com/v1/listen",
@@ -1468,6 +1557,13 @@ exports[`GOLDEN buildUrl (default executor providers) > deepseek → url (stream
 {
   "nonStream": "https://api.deepseek.com/chat/completions",
   "stream": "https://api.deepseek.com/chat/completions",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > digitalocean → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://inference.do-ai.run/v1/chat/completions",
+  "stream": "https://inference.do-ai.run/v1/chat/completions",
 }
 `;
 
@@ -1524,6 +1620,13 @@ exports[`GOLDEN buildUrl (default executor providers) > haiper → url (stream +
 {
   "nonStream": "https://api.haiper.ai/v1",
   "stream": "https://api.haiper.ai/v1",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > hcnsec → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://api.hcnsec.cn/v1/chat/completions",
+  "stream": "https://api.hcnsec.cn/v1/chat/completions",
 }
 `;
 
@@ -1734,6 +1837,13 @@ exports[`GOLDEN buildUrl (default executor providers) > perplexity → url (stre
 {
   "nonStream": "https://api.perplexity.ai/chat/completions",
   "stream": "https://api.perplexity.ai/chat/completions",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > puter → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://api.puter.com/puterai/openai/v1/chat/completions",
+  "stream": "https://api.puter.com/puterai/openai/v1/chat/completions",
 }
 `;
 

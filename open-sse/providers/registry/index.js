@@ -111,19 +111,17 @@ import p108 from "./haiper.js";
 import p109 from "./heroku.js";
 import p110 from "./ideogram.js";
 import p111 from "./iflytek.js";
-import p112 from "./inclusionai.js";
-import p113 from "./inference-net.js";
-import p114 from "./kie.js";
-import p115 from "./kilo-gateway.js";
-import p116 from "./kluster.js";
-import p117 from "./lambda-ai.js";
-import p118 from "./leonardo.js";
-import p119 from "./liquid.js";
-import p120 from "./llamagate.js";
-import p121 from "./llm7.js";
-import p122 from "./longcat.js";
-import p123 from "./maritalk.js";
-import p124 from "./meta-llama.js";
+import p112 from "./inference-net.js";
+import p113 from "./kie.js";
+import p114 from "./kilo-gateway.js";
+import p115 from "./lambda-ai.js";
+import p116 from "./leonardo.js";
+import p117 from "./liquid.js";
+import p118 from "./llamagate.js";
+import p119 from "./llm7.js";
+import p120 from "./longcat.js";
+import p121 from "./maritalk.js";
+import p122 from "./meta-llama.js";
 
 export default [
   p0,
@@ -249,6 +247,4 @@ export default [
   p120,
   p121,
   p122,
-  p123,
-  p124,
 ];

@@ -30,6 +30,18 @@ function rpc(method, params, id) {
   return `${JSON.stringify(message)}\n`;
 }
 
+function buildAcpInitializeParams() {
+  return {
+    protocolVersion: 1,
+    clientInfo: { name: "durindoor", version: "1.0" },
+    clientCapabilities: {},
+  };
+}
+
+function buildAcpSessionNewParams() {
+  return { cwd: process.cwd(), mcpServers: [] };
+}
+
 function buildPromptText(messages = []) {
   const lines = [];
   for (const message of messages) {
@@ -167,7 +179,7 @@ function runAcpCompletion({ model, promptText, apiKey, devinBin, signal, log }) 
         }
         if (!initDone && message.result !== undefined && !message.method) {
           initDone = true;
-          sendRpc("session/new", { cwd: process.cwd(), model: model || undefined });
+          sendRpc("session/new", buildAcpSessionNewParams());
           continue;
         }
         if (initDone && !sessionCreated && message.result !== undefined && !message.method) {
@@ -218,13 +230,11 @@ function runAcpCompletion({ model, promptText, apiKey, devinBin, signal, log }) 
         else settle(resolve, totalText);
       }
     });
-    sendRpc("initialize", {
-      protocolVersion: "0.3",
-      clientInfo: { name: "durindoor", version: "1.0" },
-      capabilities: {},
-    });
+    sendRpc("initialize", buildAcpInitializeParams());
   });
 }
+
+export const __test__ = { rpc, buildAcpInitializeParams, buildAcpSessionNewParams };
 
 export class DevinCliExecutor extends BaseExecutor {
   constructor() {
@@ -395,7 +405,7 @@ export class DevinCliExecutor extends BaseExecutor {
             }
             if (!initDone && message.result !== undefined && !message.method) {
               initDone = true;
-              sendRpc("session/new", { cwd: process.cwd(), model: model || undefined });
+              sendRpc("session/new", buildAcpSessionNewParams());
               continue;
             }
             if (initDone && !sessionCreated && message.result !== undefined && !message.method) {
@@ -454,11 +464,7 @@ export class DevinCliExecutor extends BaseExecutor {
             if (!child.killed) child.kill("SIGTERM");
           }, { once: true });
         }
-        sendRpc("initialize", {
-          protocolVersion: "0.3",
-          clientInfo: { name: "durindoor", version: "1.0" },
-          capabilities: {},
-        });
+        sendRpc("initialize", buildAcpInitializeParams());
       },
     });
 

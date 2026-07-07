@@ -36,6 +36,22 @@ describe("blocked OAuth/session provider port", () => {
     proxyAwareFetchMock.mockClear();
   });
 
+  it("devin-cli ACP handshake uses v1 protocolVersion and clientCapabilities", async () => {
+    const { __test__ } = await import("../../open-sse/executors/devin-cli.js");
+    expect(__test__.buildAcpInitializeParams()).toEqual({
+      protocolVersion: 1,
+      clientInfo: { name: "durindoor", version: "1.0" },
+      clientCapabilities: {},
+    });
+  });
+
+  it("devin-cli ACP session/new includes required mcpServers", async () => {
+    const { __test__ } = await import("../../open-sse/executors/devin-cli.js");
+    const params = __test__.buildAcpSessionNewParams();
+    expect(params.mcpServers).toEqual([]);
+    expect(typeof params.cwd).toBe("string");
+  });
+
   it("registers gitlab-duo, trae, devin-cli, and windsurf specialized executors", async () => {
     const { getExecutor, hasSpecializedExecutor } = await import("../../open-sse/executors/index.js");
 

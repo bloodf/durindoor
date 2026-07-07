@@ -154,6 +154,9 @@ export async function handleChat(request, clientRawRequest = null) {
     const comboSpecificStrategy = comboStrategies[modelStr]?.fallbackStrategy;
     const comboStrategy = comboSpecificStrategy || settings.comboStrategy || "fallback";
 
+    // Combo names are intentionally excluded from the model allowlist; the allowlist
+    // is enforced against each concrete underlying model during expansion. Combo-level
+    // combo access control above remains the gate for combo names.
     if (comboStrategy === "fusion") {
       log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: fusion)`);
       return handleFusionChat({
@@ -244,6 +247,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   }
 
   const { provider, model } = modelInfo;
+
+  // Enforce per-API-key model policy against the resolved underlying model when
+  // the request started as a combo; the top-level combo name is not a model id.
+  const policyError2 = await enforceApiKeyModelPolicy(request, `${provider}/${model}`);
+  if (policyError2) return policyError2;
 
   // Strip reasoning_content for providers that reject it (Mistral, etc.)
   // Preserve for providers that require it (DeepSeek thinking mode)

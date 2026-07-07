@@ -261,10 +261,11 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     openAIResponse.usage = addBufferToUsage(openAIResponse.usage);
   }
 
-  // Strip reasoning_content only when content is non-empty.
-  // When content is empty (e.g. thinking models that used all tokens for reasoning),
-  // reasoning_content is the only useful output and must be preserved.
-  if (openAIResponse?.choices) {
+  // Strip reasoning_content only when content is non-empty AND the client
+  // requested OpenAI Chat format. For non-OpenAI clients (Claude, Gemini,
+  // Ollama, etc.) keep reasoning_content so projectCompletionToClientFormat
+  // can map it to the target format's reasoning field.
+  if (openAIResponse?.choices && targetFormat === FORMATS.OPENAI) {
     for (const choice of openAIResponse.choices) {
       if (choice?.message?.reasoning_content && choice.message.content) {
         delete choice.message.reasoning_content;
@@ -272,13 +273,14 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     }
   }
 
+  // Strip embedded <think>...</think> tags from content before native
+  // projection so non-OpenAI clients don't receive inline thinking text.
+  stripThinkFromResponse(openAIResponse);
+
   const translatedResponse = preservesNativeResponse ? responseBody : projectCompletionToClientFormat(openAIResponse, sourceFormat);
   if (translatedResponse?.usage) {
     translatedResponse.usage = filterUsageForFormat(translatedResponse.usage, sourceFormat);
   }
-
-  // Strip embedded <think>...</think> tags from providers that inline thinking (MiniMax M3)
-  stripThinkFromResponse(translatedResponse);
 
   // Additional normalization only for OpenAI Chat-shaped responses.
   const isOpenAIChatResponse = Array.isArray(translatedResponse?.choices);

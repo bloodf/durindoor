@@ -21,6 +21,7 @@ import { isAntigravityCapacityError } from "open-sse/services/accountFallback.js
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
+import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
 
 const ANTIGRAVITY_CAPACITY_SWEEP_RETRIES = 2;
 
@@ -135,6 +136,10 @@ export async function handleChat(request, clientRawRequest = null) {
     log.warn("CHAT", "Missing model");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   }
+
+  // Enforce per-API-key model policy
+  const policyError = await enforceApiKeyModelPolicy(request, modelStr);
+  if (policyError) return policyError;
 
   // Bypass naming/warmup requests before combo rotation to avoid wasting rotation slots
   const userAgent = request?.headers?.get("user-agent") || "";

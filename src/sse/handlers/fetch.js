@@ -14,6 +14,7 @@ import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
 import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
+import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
 
 /**
  * Handle web fetch (URL extraction) request for the SSE/Next.js server.
@@ -99,6 +100,10 @@ export async function handleFetch(request) {
       }
     }
   }
+
+  // Enforce per-API-key model policy
+  const policyError = await enforceApiKeyModelPolicy(request, providerInput);
+  if (policyError) return policyError;
 
   // Combo expansion: providerInput may be a combo name → run fallback/round-robin across providers
   const combos = await getCombos();

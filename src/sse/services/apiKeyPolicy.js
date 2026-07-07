@@ -6,17 +6,11 @@ import * as log from "../utils/logger.js";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 
 const CLI_AUTH_SALT = "9r-cli-auth";
-let cachedCliToken = null;
-
-async function getCliToken() {
-  if (!cachedCliToken) cachedCliToken = await getConsistentMachineId(CLI_AUTH_SALT);
-  return cachedCliToken;
-}
 
 async function hasValidCliToken(request) {
   const token = request?.headers?.get("x-9r-cli-token");
   if (!token) return false;
-  return token === await getCliToken();
+  return token === await getConsistentMachineId(CLI_AUTH_SALT);
 }
 
 /**

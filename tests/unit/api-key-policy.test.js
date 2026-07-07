@@ -199,6 +199,7 @@ describe("api-key-policy", () => {
   });
 
   it("records non-chat usage by looking up the key and incrementing its usage totals", async () => {
+    const apiKey = "key-non-chat";
     const { getAdapter } = vi.hoisted(() => ({ getAdapter: vi.fn() }));
     vi.doMock("@/lib/db/driver.js", () => ({ getAdapter }));
     const db = { get: vi.fn() };

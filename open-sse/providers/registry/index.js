@@ -186,6 +186,8 @@ import p183 from "./bazaarlink.js";
 import p184 from "./bluesminds.js";
 import p185 from "./bytez.js";
 import p186 from "./codestral.js";
+import p187 from "./auggie.js";
+import p188 from "./mimocode.js";
 
 export default [
   p0,
@@ -375,4 +377,6 @@ export default [
   p184,
   p185,
   p186,
+  p187,
+  p188,
 ];

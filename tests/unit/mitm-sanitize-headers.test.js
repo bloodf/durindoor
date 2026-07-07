@@ -24,11 +24,19 @@ describe("MITM sanitizeHeaders", () => {
       authorization: "Basic abc",
       cookie: "sid=abc123",
       "x-api-key": "test-key",
+      "proxy-authorization": "Basic proxy",
+      "x-goog-api-key": "google-key",
+      "x-subscription-token": "sub-token",
+      "xi-api-key": "xi-key",
       "content-type": "application/json",
     });
     expect(out.authorization).toBe("[REDACTED]");
     expect(out.cookie).toBe("[REDACTED]");
     expect(out["x-api-key"]).toBe("[REDACTED]");
+    expect(out["proxy-authorization"]).toBe("[REDACTED]");
+    expect(out["x-goog-api-key"]).toBe("[REDACTED]");
+    expect(out["x-subscription-token"]).toBe("[REDACTED]");
+    expect(out["xi-api-key"]).toBe("[REDACTED]");
     expect(out["content-type"]).toBe("application/json");
   });
 });

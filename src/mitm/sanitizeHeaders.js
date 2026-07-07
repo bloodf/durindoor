@@ -5,6 +5,12 @@ const SECRET_HEADER_NAMES = new Set([
   "x-api-key",
   "api-key",
   "bearer",
+  "proxy-authorization",
+  "x-goog-api-key",
+  "x-apikey",
+  "x-subscription-token",
+  "xi-api-key",
+  "x-arcjet-key",
 ]);
 
 function isSecretHeader(name) {

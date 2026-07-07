@@ -24,8 +24,9 @@ export function convertGeminiToInternal(geminiBody, model, stream) {
   }
 
   if (geminiBody.contents) {
+    const toolCallIdState = { serialByName: new Map(), queueByName: new Map() };
     for (const content of geminiBody.contents) {
-      const converted = convertGeminiContentToInternal(content);
+      const converted = convertGeminiContentToInternal(content, toolCallIdState);
       if (Array.isArray(converted)) messages.push(...converted);
       else if (converted) messages.push(converted);
     }
@@ -55,6 +56,24 @@ export function convertGeminiToInternal(geminiBody, model, stream) {
       }
     }
     if (tools.length > 0) result.tools = tools;
+
+    const toolConfig = geminiBody.toolConfig;
+    const mode = toolConfig?.functionCallingConfig?.mode;
+    if (mode === "NONE") {
+      result.tool_choice = "none";
+    } else if (mode === "ANY") {
+      const allowed = toolConfig?.functionCallingConfig?.allowedFunctionNames;
+      if (Array.isArray(allowed) && allowed.length > 0) {
+        result.tools = tools.filter((t) => allowed.includes(t.function.name));
+      }
+      if (result.tools?.length === 1) {
+        result.tool_choice = { type: "function", function: { name: result.tools[0].function.name } };
+      } else {
+        result.tool_choice = "required";
+      }
+    } else if (mode === "ANY_MODE" || mode === "AUTO" || mode === "VALIDATED") {
+      result.tool_choice = "auto";
+    }
   }
 
   return result;
@@ -81,12 +100,13 @@ export function normalizeGeminiSchemaTypes(schema) {
   return normalized;
 }
 
-function convertGeminiContentToInternal(content) {
+function convertGeminiContentToInternal(content, toolCallIdState = { serialByName: new Map(), queueByName: new Map() }) {
   const parts = Array.isArray(content?.parts) ? content.parts : [];
   if (parts.length === 0) return null;
 
   const messages = [];
   const remainingParts = [];
+  const { serialByName, queueByName } = toolCallIdState;
 
   for (const part of parts) {
     if (part.functionResponse) {
@@ -94,9 +114,16 @@ function convertGeminiContentToInternal(content) {
       const payload = Object.prototype.hasOwnProperty.call(response, "result")
         ? response.result
         : response;
+      const name = part.functionResponse.name || "";
+      let toolCallId = part.functionResponse.id;
+      if (!toolCallId) {
+        const queue = queueByName.get(name) || [];
+        toolCallId = queue.shift();
+        queueByName.set(name, queue);
+      }
       messages.push({
         role: "tool",
-        tool_call_id: part.functionResponse.id || `call_${part.functionResponse.name || ""}`,
+        tool_call_id: toolCallId,
         content: JSON.stringify(payload ?? {}),
       });
     } else {
@@ -110,14 +137,26 @@ function convertGeminiContentToInternal(content) {
     .join("\n");
   const toolCalls = remainingParts
     .filter((part) => part.functionCall)
-    .map((part) => ({
-      id: part.functionCall.id || `call_${part.functionCall.name || ""}`,
-      type: "function",
-      function: {
-        name: part.functionCall.name || "",
-        arguments: JSON.stringify(part.functionCall.args || {}),
-      },
-    }));
+    .map((part) => {
+      const name = part.functionCall.name || "";
+      let id = part.functionCall.id;
+      if (!id) {
+        const serial = (serialByName.get(name) || 0) + 1;
+        serialByName.set(name, serial);
+        id = `call_${name}_${serial}`;
+      }
+      const queue = queueByName.get(name) || [];
+      queue.push(id);
+      queueByName.set(name, queue);
+      return {
+        id,
+        type: "function",
+        function: {
+          name: part.functionCall.name || "",
+          arguments: JSON.stringify(part.functionCall.args || {}),
+        },
+      };
+    });
 
   if (toolCalls.length > 0) {
     const assistantMessage = { role: "assistant", tool_calls: toolCalls };

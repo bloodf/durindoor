@@ -27,6 +27,65 @@ describe("Gemini native v1beta tool calling", () => {
     expect(JSON.parse(out.messages.find((m) => m.role === "tool").content)).toEqual({ temp: 18 });
   });
 
+  it("synthesizes unique per-call tool_call_id when Gemini has multiple same-name functionCalls", () => {
+    const out = convertGeminiToInternal(
+      {
+        contents: [
+          {
+            role: "model",
+            parts: [
+              { functionCall: { name: "weather", args: { city: "Paris" } } },
+              { functionCall: { name: "weather", args: { city: "London" } } },
+            ],
+          },
+          {
+            role: "user",
+            parts: [
+              { functionResponse: { name: "weather", response: { result: { temp: 18 } } } },
+              { functionResponse: { name: "weather", response: { result: { temp: 12 } } } },
+            ],
+          },
+        ],
+      },
+      "gemini-pro",
+      false,
+    );
+
+    const toolMessages = out.messages.filter((m) => m.role === "tool");
+    const ids = toolMessages.map((m) => m.tool_call_id);
+    expect(ids).toHaveLength(2);
+    expect(new Set(ids).size).toBe(2);
+    expect(ids[0]).not.toBe(ids[1]);
+    expect(ids[0]).toMatch(/^call_weather_\d+$/);
+    expect(ids[1]).toMatch(/^call_weather_\d+$/);
+  });
+
+  it("uses explicit functionCall id for idless functionResponse", () => {
+    const out = convertGeminiToInternal(
+      {
+        contents: [
+          {
+            role: "model",
+            parts: [
+              { functionCall: { id: "call_explicit", name: "weather", args: { city: "Paris" } } },
+            ],
+          },
+          {
+            role: "user",
+            parts: [
+              { functionResponse: { name: "weather", response: { result: { temp: 18 } } } },
+            ],
+          },
+        ],
+      },
+      "gemini-pro",
+      false,
+    );
+
+    const toolMessage = out.messages.find((m) => m.role === "tool");
+    expect(toolMessage.tool_call_id).toBe("call_explicit");
+  });
+
   it("normalizes nested uppercase Gemini functionDeclaration schema types for OpenAI tools", () => {
     const out = convertGeminiToInternal(
       {
@@ -76,6 +135,62 @@ describe("Gemini native v1beta tool calling", () => {
       anyOf: [{ type: "object" }, { type: "null" }],
     });
   });
+
+  it("translates Gemini toolConfig.functionCallingConfig modes into OpenAI tool_choice", () => {
+    const none = convertGeminiToInternal(
+      {
+        contents: [{ role: "user", parts: [{ text: "hi" }] }],
+        tools: [{ functionDeclarations: [{ name: "weather", description: "Weather", parameters: { type: "object" } }] }],
+        toolConfig: { functionCallingConfig: { mode: "NONE" } },
+      },
+      "gemini-pro",
+      false,
+    );
+    expect(none.tool_choice).toBe("none");
+    expect(none.tools).toBeDefined();
+
+    const anyAllowed = convertGeminiToInternal(
+      {
+        contents: [{ role: "user", parts: [{ text: "hi" }] }],
+        tools: [
+          { functionDeclarations: [{ name: "weather", parameters: { type: "object" } }] },
+          { functionDeclarations: [{ name: "news", parameters: { type: "object" } }] },
+        ],
+        toolConfig: { functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["weather"] } },
+      },
+      "gemini-pro",
+      false,
+    );
+    expect(anyAllowed.tool_choice).toEqual({ type: "function", function: { name: "weather" } });
+    expect(anyAllowed.tools.map((t) => t.function.name)).toEqual(["weather"]);
+
+    const anyAll = convertGeminiToInternal(
+      {
+        contents: [{ role: "user", parts: [{ text: "hi" }] }],
+        tools: [
+          { functionDeclarations: [{ name: "weather", parameters: { type: "object" } }] },
+          { functionDeclarations: [{ name: "news", parameters: { type: "object" } }] },
+        ],
+        toolConfig: { functionCallingConfig: { mode: "ANY" } },
+      },
+      "gemini-pro",
+      false,
+    );
+    expect(anyAll.tool_choice).toBe("required");
+    expect(anyAll.tools.map((t) => t.function.name)).toEqual(["weather", "news"]);
+
+    const auto = convertGeminiToInternal(
+      {
+        contents: [{ role: "user", parts: [{ text: "hi" }] }],
+        tools: [{ functionDeclarations: [{ name: "weather", parameters: { type: "object" } }] }],
+        toolConfig: { functionCallingConfig: { mode: "AUTO" } },
+      },
+      "gemini-pro",
+      false,
+    );
+    expect(auto.tool_choice).toBe("auto");
+    expect(auto.tools).toBeDefined();
+  });;
 
   it("maps non-stream OpenAI tool_calls into Gemini functionCall parts", async () => {
     const response = Response.json({

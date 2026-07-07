@@ -44,7 +44,7 @@ export const FILTERS = {
         if (kind.includes("embedding") || kind.includes("image") || kind.includes("tts") || kind.includes("audio") || kind.includes("speech") || kind.includes("moderation") || kind.includes("rerank")) return false;
         if (id.includes("embed") || id.includes("image") || id.includes("tts") || id.includes("audio") || id.includes("speech") || id.includes("moderation") || id.includes("rerank")) return false;
         const chatPrefixes = ["gpt-", "chat-", "deepseek-", "qwen", "claude", "llama", "mistral", "gemini", "mixtral", "yi-", "internlm", "command-r", "command", "orca", "phi", "solar", "starling", "vicuna", "wizardlm", "zephyr"];
-        const isChat = chatPrefixes.some((prefix) => id.startsWith(prefix));
+        const isChat = chatPrefixes.some((prefix) => new RegExp("(^|[/-])" + prefix).test(id));
         if (kind.includes("chat") || kind.includes("llm") || kind.includes("text-generation") || kind.includes("language-model") || isChat) return true;
         return false; // reject unknown model kinds to avoid offering non-chat ids in chat picker
       })

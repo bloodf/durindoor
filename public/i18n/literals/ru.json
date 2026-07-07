@@ -191,5 +191,21 @@
   "Click to add, click again to remove. Changes are saved automatically.": "Нажмите, чтобы добавить, нажмите ещё раз, чтобы удалить. Изменения сохраняются автоматически.",
   "⚠️ Risk Notice: This provider uses a subscription/OAuth session not officially licensed for proxy/router use. Account may be restricted or banned. Use at your own risk.": "⚠️ Уведомление о риске: Этот провайдер использует сессию подписки/OAuth, не имеющую официальной лицензии для использования через прокси/маршрутизатор. Аккаунт может быть ограничен или заблокирован. Используйте на свой страх и риск.",
   "⚠️ MITM intercepts HTTPS traffic of IDE tools (Antigravity, GitHub Copilot, Kiro) via local CA to redirect requests to your providers. May violate ToS → account ban. Use at your own risk.": "⚠️ MITM перехватывает HTTPS-трафик IDE-инструментов (Antigravity, GitHub Copilot, Kiro) через локальный CA для перенаправления запросов вашим провайдерам. Может нарушить ToS → риск блокировки аккаунта. Используйте на свой страх и риск.",
-  "Endpoint is exposed without an API key.": "Эндпоинт открыт без API-ключа."
+  "Endpoint is exposed without an API key.": "Эндпоинт открыт без API-ключа.",
+  "Never expires": "Никогда не истекает",
+  "Invalid expiry": "Недопустимый срок действия",
+  "Expired": "Истёк",
+  "Expires": "Истекает",
+  "Expiry": "Срок действия",
+  "1 day": "1 день",
+  "7 days": "7 дней",
+  "30 days": "30 дней",
+  "90 days": "90 дней",
+  "Custom date/time": "Пользовательские дата/время",
+  "Custom Expiry": "Пользовательский срок действия",
+  "Choose a custom expiry date.": "Выберите пользовательскую дату истечения срока действия.",
+  "Choose a valid expiry date.": "Выберите допустимую дату истечения срока действия.",
+  "Expiry must be in the future.": "Срок действия должен быть в будущем.",
+  "Expired keys stay visible but stop authenticating requests.": "Истёкшие ключи остаются видимыми, но перестают аутентифицировать запросы.",
+  "Failed to create key": "Не удалось создать ключ"
 }

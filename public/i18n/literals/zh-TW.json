@@ -191,5 +191,21 @@
   "Click to add, click again to remove. Changes are saved automatically.": "點擊新增，再次點擊移除。變更將自動儲存。",
   "⚠️ Risk Notice: This provider uses a subscription/OAuth session not officially licensed for proxy/router use. Account may be restricted or banned. Use at your own risk.": "⚠️ 風險提示：此提供商使用的訂閱/OAuth 工作階段未獲官方授權用於代理/路由器使用。帳戶可能被限制或封禁。使用風險自負。",
   "⚠️ MITM intercepts HTTPS traffic of IDE tools (Antigravity, GitHub Copilot, Kiro) via local CA to redirect requests to your providers. May violate ToS → account ban. Use at your own risk.": "⚠️ MITM 透過本地 CA 攔截 IDE 工具（Antigravity、GitHub Copilot、Kiro）的 HTTPS 流量，將請求重新導向到您的提供商。可能違反 ToS → 帳戶封禁風險。使用風險自負。",
-  "Endpoint is exposed without an API key.": "端點未設定 API 金鑰即對外暴露。"
+  "Endpoint is exposed without an API key.": "端點未設定 API 金鑰即對外暴露。",
+  "Never expires": "永不過期",
+  "Invalid expiry": "無效的過期時間",
+  "Expired": "已過期",
+  "Expires": "過期時間",
+  "Expiry": "過期時間",
+  "1 day": "1 天",
+  "7 days": "7 天",
+  "30 days": "30 天",
+  "90 days": "90 天",
+  "Custom date/time": "自訂日期/時間",
+  "Custom Expiry": "自訂過期時間",
+  "Choose a custom expiry date.": "請選擇自訂過期日期。",
+  "Choose a valid expiry date.": "請選擇有效的過期日期。",
+  "Expiry must be in the future.": "過期時間必須在未來。",
+  "Expired keys stay visible but stop authenticating requests.": "已過期的金鑰仍會顯示，但不再用於請求驗證。",
+  "Failed to create key": "建立金鑰失敗"
 }

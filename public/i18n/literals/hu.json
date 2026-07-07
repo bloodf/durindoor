@@ -191,5 +191,21 @@
   "Click to add, click again to remove. Changes are saved automatically.": "Kattintson a hozzáadáshoz, kattintson újra az eltávolításhoz. A változtatások automatikusan mentésre kerülnek.",
   "⚠️ Risk Notice: This provider uses a subscription/OAuth session not officially licensed for proxy/router use. Account may be restricted or banned. Use at your own risk.": "⚠️ Kockázati figyelmeztetés: Ez a szolgáltató olyan előfizetést/OAuth munkamenetet használ, amely hivatalosan nincs proxy/router használatra engedélyezve. A fiók korlátozható vagy letiltható. Saját felelősségre használja.",
   "⚠️ MITM intercepts HTTPS traffic of IDE tools (Antigravity, GitHub Copilot, Kiro) via local CA to redirect requests to your providers. May violate ToS → account ban. Use at your own risk.": "⚠️ A MITM elfogja az IDE eszközök (Antigravity, GitHub Copilot, Kiro) HTTPS forgalmát helyi CA-n keresztül, hogy átirányítsa a kéréseket a szolgáltatóidhoz. Megsértheti a ToS-t → fiók letiltási kockázat. Saját felelősségre használja.",
-  "Endpoint is exposed without an API key.": "A végpont API-kulcs nélkül van kitéve."
+  "Endpoint is exposed without an API key.": "A végpont API-kulcs nélkül van kitéve.",
+  "Never expires": "Soha nem jár le",
+  "Invalid expiry": "Érvénytelen lejárat",
+  "Expired": "Lejárt",
+  "Expires": "Lejár",
+  "Expiry": "Lejárat",
+  "1 day": "1 nap",
+  "7 days": "7 nap",
+  "30 days": "30 nap",
+  "90 days": "90 nap",
+  "Custom date/time": "Egyéni dátum/idő",
+  "Custom Expiry": "Egyéni lejárat",
+  "Choose a custom expiry date.": "Válasszon egyéni lejárati dátumot.",
+  "Choose a valid expiry date.": "Válasszon érvényes lejárati dátumot.",
+  "Expiry must be in the future.": "A lejáratnak a jövőben kell lennie.",
+  "Expired keys stay visible but stop authenticating requests.": "A lejárt kulcsok láthatók maradnak, de nem hitelesítik tovább a kéréseket.",
+  "Failed to create key": "Nem sikerült létrehozni a kulcsot"
 }

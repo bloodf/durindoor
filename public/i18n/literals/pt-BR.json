@@ -191,5 +191,21 @@
   "Click to add, click again to remove. Changes are saved automatically.": "Clique para adicionar, clique novamente para remover. As alterações são salvas automaticamente.",
   "⚠️ Risk Notice: This provider uses a subscription/OAuth session not officially licensed for proxy/router use. Account may be restricted or banned. Use at your own risk.": "⚠️ Aviso de Risco: Este provedor usa uma sessão de assinatura/OAuth não licenciada oficialmente para uso de proxy/roteador. A conta pode ser restrita ou banida. Use por sua conta e risco.",
   "⚠️ MITM intercepts HTTPS traffic of IDE tools (Antigravity, GitHub Copilot, Kiro) via local CA to redirect requests to your providers. May violate ToS → account ban. Use at your own risk.": "⚠️ MITM intercepta tráfego HTTPS de ferramentas IDE (Antigravity, GitHub Copilot, Kiro) via CA local para redirecionar solicitações aos seus provedores. Pode violar ToS → risco de banimento de conta. Use por sua conta e risco.",
-  "Endpoint is exposed without an API key.": "O endpoint está exposto sem uma chave de API."
+  "Endpoint is exposed without an API key.": "O endpoint está exposto sem uma chave de API.",
+  "Never expires": "Nunca expira",
+  "Invalid expiry": "Expiração inválida",
+  "Expired": "Expirado",
+  "Expires": "Expira",
+  "Expiry": "Expiração",
+  "1 day": "1 dia",
+  "7 days": "7 dias",
+  "30 days": "30 dias",
+  "90 days": "90 dias",
+  "Custom date/time": "Data/hora personalizada",
+  "Custom Expiry": "Expiração personalizada",
+  "Choose a custom expiry date.": "Escolha uma data de expiração personalizada.",
+  "Choose a valid expiry date.": "Escolha uma data de expiração válida.",
+  "Expiry must be in the future.": "A expiração deve estar no futuro.",
+  "Expired keys stay visible but stop authenticating requests.": "Chaves expiradas permanecem visíveis, mas deixam de autenticar solicitações.",
+  "Failed to create key": "Falha ao criar chave"
 }

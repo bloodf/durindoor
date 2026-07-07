@@ -191,5 +191,21 @@
   "Click to add, click again to remove. Changes are saved automatically.": "Eklemek için tıklayın, kaldırmak için tekrar tıklayın. Değişiklikler otomatik olarak kaydedilir.",
   "⚠️ Risk Notice: This provider uses a subscription/OAuth session not officially licensed for proxy/router use. Account may be restricted or banned. Use at your own risk.": "⚠️ Risk Bildirimi: Bu sağlayıcı, proxy/yönlendirici kullanımı için resmi olarak lisanslı olmayan bir abonelik/OAuth oturumu kullanır. Hesap kısıtlanabilir veya yasaklanabilir. Kendi sorumluluğunuzda kullanın.",
   "⚠️ MITM intercepts HTTPS traffic of IDE tools (Antigravity, GitHub Copilot, Kiro) via local CA to redirect requests to your providers. May violate ToS → account ban. Use at your own risk.": "⚠️ MITM, isteklerinizi sağlayıcılarınıza yönlendirmek için yerel CA aracılığıyla IDE araçlarının (Antigravity, GitHub Copilot, Kiro) HTTPS trafiğini engeller. ToS'u ihlal edebilir → hesap yasaklama riski. Kendi sorumluluğunuzda kullanın.",
-  "Endpoint is exposed without an API key.": "Uç nokta API anahtarı olmadan açıkta."
+  "Endpoint is exposed without an API key.": "Uç nokta API anahtarı olmadan açıkta.",
+  "Never expires": "Asla süresi dolmaz",
+  "Invalid expiry": "Geçersiz süre bitimi",
+  "Expired": "Süresi doldu",
+  "Expires": "Süresi dolar",
+  "Expiry": "Süre bitimi",
+  "1 day": "1 gün",
+  "7 days": "7 gün",
+  "30 days": "30 gün",
+  "90 days": "90 gün",
+  "Custom date/time": "Özel tarih/saat",
+  "Custom Expiry": "Özel süre bitimi",
+  "Choose a custom expiry date.": "Özel bir süre bitimi tarihi seçin.",
+  "Choose a valid expiry date.": "Geçerli bir süre bitimi tarihi seçin.",
+  "Expiry must be in the future.": "Süre bitimi gelecekte olmalıdır.",
+  "Expired keys stay visible but stop authenticating requests.": "Süresi dolmuş anahtarlar görünür kalır, ancak istekleri doğrulamayı durdurur.",
+  "Failed to create key": "Anahtar oluşturulamadı"
 }

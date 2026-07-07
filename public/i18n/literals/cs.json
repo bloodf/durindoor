@@ -191,5 +191,21 @@
   "Click to add, click again to remove. Changes are saved automatically.": "Kliknutím přidáte, dalším kliknutím odeberete. Změny se ukládají automaticky.",
   "⚠️ Risk Notice: This provider uses a subscription/OAuth session not officially licensed for proxy/router use. Account may be restricted or banned. Use at your own risk.": "⚠️ Upozornění na riziko: Tento poskytovatel používá předplatné/OAuth relaci, která není oficiálně licencována pro použití přes proxy/router. Účet může být omezen nebo zablokován. Používejte na vlastní riziko.",
   "⚠️ MITM intercepts HTTPS traffic of IDE tools (Antigravity, GitHub Copilot, Kiro) via local CA to redirect requests to your providers. May violate ToS → account ban. Use at your own risk.": "⚠️ MITM zachytává HTTPS provoz IDE nástrojů (Antigravity, GitHub Copilot, Kiro) přes místní CA pro přesměrování požadavků na vaše poskytovatele. Může porušit ToS → riziko zákazu účtu. Používejte na vlastní riziko.",
-  "Endpoint is exposed without an API key.": "Koncový bod je vystaven bez API klíče."
+  "Endpoint is exposed without an API key.": "Koncový bod je vystaven bez API klíče.",
+  "Never expires": "Nikdy nevyprší",
+  "Invalid expiry": "Neplatné vypršení",
+  "Expired": "Vypršelo",
+  "Expires": "Vyprší",
+  "Expiry": "Vypršení",
+  "1 day": "1 den",
+  "7 days": "7 dní",
+  "30 days": "30 dní",
+  "90 days": "90 dní",
+  "Custom date/time": "Vlastní datum/čas",
+  "Custom Expiry": "Vlastní vypršení",
+  "Choose a custom expiry date.": "Vyberte vlastní datum vypršení.",
+  "Choose a valid expiry date.": "Vyberte platné datum vypršení.",
+  "Expiry must be in the future.": "Vypršení musí být v budoucnosti.",
+  "Expired keys stay visible but stop authenticating requests.": "Vypršené klíče zůstanou viditelné, ale přestanou ověřovat požadavky.",
+  "Failed to create key": "Nepodařilo se vytvořit klíč"
 }

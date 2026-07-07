@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { getExecutor, hasSpecializedExecutor } from "open-sse/executors/index.js";
 import { AdaptaWebExecutor, buildAdaptaMessages, extractAdaptaClientJwt } from "open-sse/executors/adapta-web.js";
 import { buildChatGptConversationBody, buildSessionCookieHeader, ChatGptWebExecutor, mergeRefreshedCookie } from "open-sse/executors/chatgpt-web.js";
-import { extractT3Delta, parseT3Credentials, T3WebExecutor, validateT3Credentials } from "open-sse/executors/t3-web.js";
+import { buildT3ChatBody, extractT3Delta, parseT3Credentials, T3WebExecutor, validateT3Credentials } from "open-sse/executors/t3-web.js";
 
 const originalFetch = globalThis.fetch;
 
@@ -46,6 +46,7 @@ describe("Adapta Web executor", () => {
   it("extracts the Clerk __client value from bare, named, and Cookie header input", () => {
     expect(extractAdaptaClientJwt("eyJ.jwt")).toBe("eyJ.jwt");
     expect(extractAdaptaClientJwt("__client=eyJ.jwt")).toBe("eyJ.jwt");
+    expect(extractAdaptaClientJwt("Cookie: __client=eyJ.cookie; other=x")).toBe("eyJ.cookie");
     expect(extractAdaptaClientJwt("foo=bar; __client=eyJ.jwt; other=x")).toBe("eyJ.jwt");
   });
 
@@ -79,6 +80,41 @@ describe("Adapta Web executor", () => {
     const json = await result.response.json();
     expect(json.choices[0].message.content).toBe("hello world");
     expect(result.transformedBody).toMatchObject({ aiModelId: 14 });
+  });
+
+  it("keeps Adapta session JWT cache entries separate for same-prefix client tokens", async () => {
+    const calls = [];
+    globalThis.fetch = vi.fn(async (url, opts) => {
+      calls.push({ url: String(url), opts });
+      if (String(url).endsWith("/v1/client")) {
+        return new Response(JSON.stringify({ response: { sessions: [{ id: `sess-${calls.length}`, status: "active" }] } }), { status: 200 });
+      }
+      if (String(url).includes("/tokens")) {
+        return new Response(JSON.stringify({ jwt: `eyJhbGciOiJub25lIn0.eyJleHAiOjk5OTk5OTk5OTl9.${calls.length}` }), { status: 200 });
+      }
+      return sseResponse([{ type: "text-delta", delta: "ok" }, { type: "done" }]);
+    });
+
+    const prefix = "eyJ.same-prefix-token-0123456789";
+    for (const suffix of ["A", "B"]) {
+      await new AdaptaWebExecutor().execute({
+        model: "adapta-one",
+        body: { messages: [{ role: "user", content: `hi ${suffix}` }] },
+        stream: false,
+        credentials: { apiKey: `__client=${prefix}${suffix}` },
+      });
+    }
+
+    expect(calls.filter((call) => call.url.endsWith("/v1/client"))).toHaveLength(2);
+    expect(calls.filter((call) => call.url.includes("/tokens"))).toHaveLength(2);
+  });
+
+  it("only advertises the verified Adapta auto model until distinct upstream ids are known", () => {
+    const root = join(import.meta.dirname, "../..");
+    const registry = readFileSync(join(root, "open-sse/providers/registry/adapta-web.js"), "utf8");
+    expect(registry).toContain('id: "adapta-one"');
+    expect(registry).not.toContain("adapta-gpt");
+    expect(registry).not.toContain("adapta-claude");
   });
 });
 
@@ -115,15 +151,50 @@ describe("T3 Web executor", () => {
 
     expect(result.response.status).toBe(200);
     expect(calls[0].opts.headers.Cookie).toContain("convex-session-id=convex");
-    expect(result.transformedBody).toMatchObject({ model: "gpt-4o", stream: false });
+    expect(result.transformedBody).toMatchObject({
+      model: "gpt-4o",
+      stream: false,
+      convexSessionId: "convex",
+      threadMetadata: expect.objectContaining({ convexSessionId: "convex" }),
+      responseId: expect.any(String),
+    });
+    expect(result.transformedBody.messages.at(-1)).toMatchObject({
+      role: "user",
+      parts: [{ type: "text", text: "hi" }],
+    });
     expect((await result.response.json()).choices[0].message.content).toBe("hello t3");
   });
 
+  it("builds T3 bodies with history context and required session fields", () => {
+    const parsed = parseT3Credentials({ apiKey: "t3-auth=abc; convex-session-id=convex-body" });
+    const body = buildT3ChatBody({
+      model: "gpt-4o",
+      parsed,
+      stream: true,
+      messages: [
+        { role: "system", content: "Be exact." },
+        { role: "assistant", content: "Earlier answer" },
+        { role: "tool", tool_call_id: "call_weather", content: "72F" },
+        { role: "user", content: "Now respond" },
+      ],
+    });
+
+    expect(body.convexSessionId).toBe("convex-body");
+    expect(body.threadMetadata).toMatchObject({ convexSessionId: "convex-body" });
+    expect(body.messages[0].parts[0].text).toContain("Tool result (call_weather):\n72F");
+    expect(body.messages.at(-1).parts[0].text).toBe("Now respond");
+  });
+
   it("rejects authenticated T3 validation probes that return 401 or 403", async () => {
-    globalThis.fetch = vi.fn(async () => new Response("", { status: 403 }));
+    const calls = [];
+    globalThis.fetch = vi.fn(async (url) => {
+      calls.push(String(url));
+      return new Response("", { status: 403 });
+    });
     await expect(new T3WebExecutor().testConnection({
       apiKey: "t3-auth=abc; convex-session-id=convex",
     })).resolves.toBe(false);
+    expect(calls).toEqual(["https://t3.chat/api/chat"]);
   });
 });
 
@@ -153,6 +224,17 @@ describe("ChatGPT Web executor", () => {
     expect(body.messages[0].author.role).toBe("system");
     expect(body.messages[1].content.parts[0]).toBe("Now");
     expect(body.history_and_training_disabled).toBe(true);
+  });
+
+  it("preserves OpenAI tool results in ChatGPT history context", () => {
+    const body = buildChatGptConversationBody([
+      { role: "assistant", content: "Calling weather." },
+      { role: "tool", tool_call_id: "call_weather", content: "72F and sunny" },
+      { role: "user", content: "Summarize it" },
+    ], "gpt-5");
+
+    expect(body.messages[0].content.parts[0]).toContain("Tool result (call_weather):\n72F and sunny");
+    expect(body.messages[1].content.parts[0]).toBe("Summarize it");
   });
 
   it("exchanges session and returns a documented limitation when Sentinel tokens are absent", async () => {
@@ -314,5 +396,14 @@ describe("provider validation and refresh integration", () => {
     const translatorSend = readFileSync(join(root, "src/app/api/translator/send/route.js"), "utf8");
     expect(translatorSend).toContain("if (newCredentials.apiKey) updateData.apiKey = newCredentials.apiKey;");
     expect(translatorSend.match(/executor\.execute\(\{[^}]*onCredentialsRefreshed/gs)).toHaveLength(2);
+
+    const tokenRefresh = readFileSync(join(root, "src/sse/services/tokenRefresh.js"), "utf8");
+    expect(tokenRefresh).toContain("updates.apiKey = newCredentials.apiKey;");
+
+    for (const executor of ["adapta-web.js", "chatgpt-web.js", "t3-web.js"]) {
+      const source = readFileSync(join(root, "open-sse/executors", executor), "utf8");
+      expect(source).toContain("proxyAwareFetch");
+      expect(source).toContain("proxyOptions");
+    }
   });
 });

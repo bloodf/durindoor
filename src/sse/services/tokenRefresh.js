@@ -153,7 +153,8 @@ function _refreshProjectId(provider, connectionId, accessToken) {
 
 /**
  * Persist updated credentials for a connection to localDb.
- * Only fields that are present in `newCredentials` are written.
+ * Only fields that are present in `newCredentials` are written. Cookie-backed
+ * web-session providers refresh their stored cookie through `apiKey`.
  *
  * @param {string} connectionId
  * @param {object} newCredentials
@@ -163,6 +164,7 @@ export async function updateProviderCredentials(connectionId, newCredentials) {
   try {
     const updates = {};
 
+    if (newCredentials.apiKey)              updates.apiKey = newCredentials.apiKey;
     if (newCredentials.accessToken)         updates.accessToken  = newCredentials.accessToken;
     if (newCredentials.refreshToken)        updates.refreshToken = newCredentials.refreshToken;
     if (newCredentials.idToken)             updates.idToken = newCredentials.idToken;

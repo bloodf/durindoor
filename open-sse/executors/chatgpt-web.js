@@ -1,6 +1,7 @@
 import { randomUUID, createHash } from "node:crypto";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import {
   collectTextFromEvents,
   errorJson,
@@ -16,6 +17,10 @@ const USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/
 const TOKEN_TTL_MS = 5 * 60 * 1000;
 const SESSION_TOKEN_FAMILY_RE = /^__Secure-next-auth\.session-token(?:\.\d+)?$/;
 const tokenCache = new Map();
+
+function webFetch(url, options, proxyOptions) {
+  return proxyOptions ? proxyAwareFetch(url, options, proxyOptions) : fetch(url, options);
+}
 
 function tokenKey(cookie) {
   return createHash("sha256").update(buildSessionCookieHeader(cookie)).digest("hex").slice(0, 32);
@@ -53,11 +58,11 @@ export function mergeRefreshedCookie(originalCookie, setCookieHeader) {
   return mutated ? result.join("; ") : null;
 }
 
-async function exchangeSession(cookie, signal) {
+async function exchangeSession(cookie, signal, proxyOptions = null) {
   const key = tokenKey(cookie);
   const cached = tokenCache.get(key);
   if (cached && Date.now() < cached.expiresAt) return cached;
-  const response = await fetch(SESSION_URL, {
+  const response = await webFetch(SESSION_URL, {
     method: "GET",
     headers: {
       Accept: "application/json",
@@ -66,7 +71,7 @@ async function exchangeSession(cookie, signal) {
       Referer: `${CHATGPT_BASE}/`,
     },
     signal: signal ?? undefined,
-  });
+  }, proxyOptions);
   if (response.status === 401 || response.status === 403) throw new Error("Invalid session cookie");
   if (!response.ok) throw new Error(`Session exchange failed (HTTP ${response.status})`);
   const refreshedCookie = mergeRefreshedCookie(cookie, response.headers.get("set-cookie"));
@@ -173,7 +178,7 @@ export class ChatGptWebExecutor extends BaseExecutor {
     }
   }
 
-  async execute({ model, body, stream, credentials, signal, log, onCredentialsRefreshed }) {
+  async execute({ model, body, stream, credentials, signal, log, onCredentialsRefreshed, proxyOptions = null }) {
     const messages = Array.isArray(body?.messages) ? body.messages : [];
     if (messages.length === 0) {
       return { response: errorJson(400, "Missing or empty messages array"), url: CONVERSATION_URL, headers: {}, transformedBody: body };
@@ -185,7 +190,7 @@ export class ChatGptWebExecutor extends BaseExecutor {
 
     let token;
     try {
-      token = await exchangeSession(rawCookie, signal);
+      token = await exchangeSession(rawCookie, signal, proxyOptions);
     } catch (err) {
       log?.warn?.("CGPT-WEB", err?.message || String(err));
       return { response: errorJson(401, `ChatGPT session exchange failed: ${err?.message || String(err)}`), url: SESSION_URL, headers: {}, transformedBody: body };
@@ -216,12 +221,12 @@ export class ChatGptWebExecutor extends BaseExecutor {
       };
     }
 
-    const response = await fetch(CONVERSATION_URL, {
+    const response = await webFetch(CONVERSATION_URL, {
       method: "POST",
       headers,
       body: JSON.stringify(transformedBody),
       signal: signal ?? undefined,
-    });
+    }, proxyOptions);
     if (!response.ok) {
       return { response: errorJson(response.status, `ChatGPT Web upstream returned HTTP ${response.status}`), url: CONVERSATION_URL, headers, transformedBody };
     }

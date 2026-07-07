@@ -24,17 +24,18 @@ instead of limiting the inventory to one top-level directory per provider.
 ## Summary
 
 - DurinDoor providers: 99
-- OmniRoute providers: 164
-- Already present by provider id: 44
-- Missing by provider id: 120
+- OmniRoute providers: 183
+- Already present by provider id: 50
+- Missing by provider id: 133
 - OmniRoute provider icons missing locally: 0
 
 ## Missing Provider Classes
 
 - oauth-session: 6
-- simple-default: 92
-- specialized-executor: 9
-- web-session: 13
+- simple-default: 95
+- specialized-executor: 11
+- unknown: 1
+- web-session: 20
 
 ## Missing Providers
 
@@ -46,6 +47,7 @@ instead of limiting the inventory to one top-level directory per provider.
 | `ai21` | simple-default | default | openai | apikey | bearer | - | - | no | no |
 | `aimlapi` | simple-default | default | openai | apikey | bearer | - | passthroughModels | `aimlapi.png` | `aimlapi.png` |
 | `alibaba` | simple-default | default | openai | apikey | bearer | - | modelsUrl, passthroughModels | no | no |
+| `alibaba-cn` | simple-default | default | openai | apikey | bearer | - | modelsUrl, passthroughModels | no | no |
 | `api-airforce` | simple-default | default | openai | apikey | bearer | - | headers, defaultContextLength, modelsUrl | no | no |
 | `auggie` | specialized-executor | auggie | openai | none | none | - | defaultContextLength | no | no |
 | `bai` | simple-default | default | openai | apikey | bearer | - | modelsUrl, passthroughModels | no | no |
@@ -55,10 +57,12 @@ instead of limiting the inventory to one top-level directory per provider.
 | `baseten` | simple-default | default | openai | apikey | bearer | - | - | no | no |
 | `bazaarlink` | simple-default | default | openai | apikey | bearer | - | modelsUrl | `bazaarlink.svg` | `bazaarlink.svg` |
 | `bedrock` | specialized-executor | bedrock | openai | apikey | bearer | - | defaultContextLength, passthroughModels | no | no |
+| `blackbox-web` | web-session | blackbox-web | openai | apikey | cookie | - | - | `blackbox-web.png` | `blackbox-web.png` |
 | `bluesminds` | simple-default | default | openai | apikey | bearer | - | defaultContextLength, modelsUrl | no | no |
 | `bytez` | simple-default | default | openai | apikey | bearer | - | - | no | no |
 | `chatgpt-web` | web-session | chatgpt-web | openai | apikey | cookie | - | - | no | no |
 | `chipotle` | specialized-executor | chipotle | openai | none | none | - | baseUrls, passthroughModels | no | no |
+| `claude-web` | web-session | claude-web | openai | apikey | cookie | - | - | `claude-web.svg` | `claude-web.svg` |
 | `codestral` | simple-default | default | openai | apikey | bearer | - | - | no | no |
 | `command-code` | specialized-executor | command-code | openai | apikey | Authorization | Bearer  | chatPath, defaultContextLength, modelsUrl | `command-code.svg` | `command-code.svg` |
 | `copilot-m365-web` | web-session | copilot-m365-web | openai | apikey | cookie | - | - | no | no |
@@ -67,11 +71,13 @@ instead of limiting the inventory to one top-level directory per provider.
 | `crof` | simple-default | default | openai | apikey | bearer | - | - | no | no |
 | `databricks` | simple-default | default | openai | apikey | bearer | - | - | no | no |
 | `deepinfra` | simple-default | default | openai | apikey | bearer | - | - | no | no |
+| `deepseek-web` | web-session | deepseek-web | openai | apikey | bearer | - | - | no | no |
 | `devin-cli` | oauth-session | devin-cli | openai | oauth | Authorization | Bearer  | defaultContextLength | no | no |
 | `dgrid` | simple-default | default | openai | apikey | bearer | - | defaultContextLength, modelsUrl, passthroughModels | no | no |
 | `dify` | simple-default | default | openai | apikey | bearer | - | - | `dify.svg` | `dify.svg` |
 | `dit` | simple-default | default | openai | apikey | bearer | - | defaultContextLength, modelsUrl | no | no |
 | `doubao` | simple-default | default | openai | apikey | bearer | - | - | `doubao.svg` | `doubao.svg` |
+| `doubao-web` | web-session | doubao-web | openai | apikey | cookie | - | - | no | no |
 | `duckduckgo-web` | web-session | duckduckgo-web | openai | none | none | - | - | no | no |
 | `factory` | simple-default | default | openai | apikey | bearer | - | - | no | no |
 | `featherless-ai` | simple-default | default | openai | apikey | bearer | - | - | no | no |
@@ -79,10 +85,14 @@ instead of limiting the inventory to one top-level directory per provider.
 | `freemodel-dev` | simple-default | default | openai | apikey | bearer | - | defaultContextLength, modelsUrl | no | no |
 | `friendliai` | simple-default | default | openai | apikey | bearer | - | modelsUrl | no | no |
 | `galadriel` | simple-default | default | openai | apikey | bearer | - | - | no | no |
+| `gemini-web` | web-session | gemini-web | openai | apikey | cookie | - | - | no | no |
 | `gigachat` | simple-default | default | openai | apikey | bearer | - | - | `gigachat.png` | `gigachat.png` |
+| `github-models` | simple-default | default | openai | apikey | Authorization | Bearer | headers, defaultContextLength, modelsUrl | no | no |
 | `gitlab-duo` | oauth-session | gitlab | openai | oauth | bearer | - | defaultContextLength | `gitlab-duo.svg` | `gitlab-duo.svg` |
 | `gitlawb` | simple-default | default | openai | apikey | bearer | - | headers | no | no |
+| `gitlawb-gmi` | simple-default | default | openai | apikey | bearer | - | headers, passthroughModels | no | no |
 | `glhf` | simple-default | default | openai | apikey | bearer | - | - | no | no |
+| `glmt` | specialized-executor | glm | openai | apikey | bearer | - | requestDefaults, timeoutMs, defaultContextLength | no | no |
 | `grok-cli` | oauth-session | grok-cli | openai | oauth | bearer | - | passthroughModels | no | no |
 | `hackclub` | simple-default | default | openai | optional | bearer | - | defaultContextLength, modelsUrl, passthroughModels | no | no |
 | `haiper` | simple-default | default | openai | apikey | HAIPER_KEY | - | - | no | no |
@@ -96,6 +106,8 @@ instead of limiting the inventory to one top-level directory per provider.
 | `kenari` | simple-default | default | openai | apikey | bearer | - | modelsUrl, passthroughModels | no | no |
 | `kie` | simple-default | default | openai | apikey | bearer | - | defaultContextLength | `kie.png` | `kie.png` |
 | `kilo-gateway` | simple-default | default | openai | apikey | bearer | - | modelsUrl, passthroughModels | `kilo-gateway.svg` | `kilo-gateway.svg` |
+| `kimi-coding-apikey` | unknown | unknown | unknown | apikey | unknown | - | - | no | no |
+| `kimi-web` | web-session | kimi-web | openai | apikey | cookie | - | - | no | no |
 | `kluster` | simple-default | default | openai | apikey | bearer | - | - | no | no |
 | `lambda-ai` | simple-default | default | openai | apikey | bearer | - | - | no | no |
 | `leonardo` | simple-default | default | openai | apikey | bearer | - | - | no | no |
@@ -120,6 +132,7 @@ instead of limiting the inventory to one top-level directory per provider.
 | `nube` | simple-default | default | openai | apikey | bearer | - | modelsUrl, passthroughModels | no | `nube.png` |
 | `ollama-cloud` | simple-default | default | openai | apikey | bearer | - | modelsUrl, passthroughModels | no | no |
 | `openadapter` | simple-default | default | openai | apikey | bearer | - | defaultContextLength, modelsUrl | no | no |
+| `opencode-zen` | specialized-executor | opencode | openai | apikey | Authorization | Bearer | defaultContextLength, modelsUrl, passthroughModels | no | no |
 | `orcarouter` | simple-default | default | openai | apikey | bearer | - | headers, defaultContextLength | no | no |
 | `ovhcloud` | simple-default | default | openai | apikey | bearer | - | - | `ovhcloud.png` | `ovhcloud.png` |
 | `pioneer` | simple-default | default | openai | apikey | x-api-key | - | - | no | no |
@@ -129,6 +142,7 @@ instead of limiting the inventory to one top-level directory per provider.
 | `puter` | specialized-executor | puter | openai | apikey | bearer | - | passthroughModels | `puter.svg` | `puter.svg` |
 | `qianfan` | simple-default | default | openai | apikey | bearer | - | defaultContextLength, modelsUrl | `qianfan.svg` | `qianfan.svg` |
 | `qiniu` | simple-default | default | openai | apikey | bearer | - | defaultContextLength, modelsUrl, passthroughModels | no | no |
+| `qwen-web` | web-session | qwen-web | openai | apikey | bearer | - | - | no | no |
 | `reka` | simple-default | default | openai | apikey | bearer | - | - | `reka.png` | `reka.png` |
 | `requesty` | simple-default | default | openai | apikey | bearer | - | modelsUrl, passthroughModels | no | no |
 | `sambanova` | simple-default | default | openai | apikey | bearer | - | - | no | no |
@@ -170,5 +184,12 @@ instead of limiting the inventory to one top-level directory per provider.
 - `web-session`: must include credential parsing/validation tests and a subscription/session risk notice.
 - `oauth-session`: must include OAuth/token lifecycle tests and setup documentation.
 - `unknown`: inspect manually before implementation; do not expose as supported from an audit-only pass.
+
+## Asset Notes
+
+- `gigachat.png` under `public/providers/` previously contained JPEG-encoded
+  bytes despite the `.png` extension. Normalized to real PNG bytes (same
+  filename, same 128x128 dimensions) so the advertised local icon format
+  matches the file on disk.
 
 Generated with `node scripts/audit-omniroute-providers.mjs --source <OmniRoute checkout> --format markdown`.

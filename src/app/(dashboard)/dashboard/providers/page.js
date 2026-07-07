@@ -294,6 +294,13 @@ export default function ProvidersPage() {
     ),
     "freeTier",
   ).sort(([, a], [, b]) => (b.noAuth ? 1 : 0) - (a.noAuth ? 1 : 0));
+  // Web Cookie Providers: filter with search and sort by priority
+  const webCookieEntries = sortByPriority(
+    Object.entries(WEB_COOKIE_PROVIDERS).filter(
+      ([, info]) => !info.hidden && matchSearch(info.name),
+    ),
+    "apikey",
+  );
   // API Key: connected providers first, then alphabetical by name
   const apikeyEntries = Object.entries(APIKEY_PROVIDERS)
     .filter(
@@ -330,7 +337,8 @@ export default function ProvidersPage() {
     freeTierEntries.length > 0 ||
     apikeyEntries.length > 0 ||
     compatibleProviders.length > 0 ||
-    anthropicCompatibleProviders.length > 0;
+    anthropicCompatibleProviders.length > 0 ||
+    webCookieEntries.length > 0;
 
   return (
     <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
@@ -551,14 +559,15 @@ export default function ProvidersPage() {
       )}
 
       {/* Web Cookie Providers — use browser subscription cookie instead of API key */}
-      {/* <div className="flex flex-col gap-4">
+      {webCookieEntries.length > 0 && (
+      <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-semibold flex items-center gap-2">
             Web Cookie Providers{" "}
           </h2>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {Object.entries(WEB_COOKIE_PROVIDERS).map(([key, info]) => (
+          {webCookieEntries.map(([key, info]) => (
             <ApiKeyProviderCard
               key={key}
               providerId={key}
@@ -569,7 +578,8 @@ export default function ProvidersPage() {
             />
           ))}
         </div>
-      </div> */}
+      </div>
+      )}
 
       <AddCompatibleModal
         variant="openai"

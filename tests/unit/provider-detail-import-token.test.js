@@ -14,6 +14,14 @@ describe("ProviderDetailPage import-token branch", () => {
     expect(page).toContain("isImportToken ? (");
   });
 
+  it("builds OAuth provider entries with import_token flowType", async () => {
+    const { OAUTH_PROVIDERS } = await import("../../src/shared/constants/providers.js");
+    for (const id of ["trae", "devin-cli", "windsurf"]) {
+      expect(OAUTH_PROVIDERS[id]).toBeDefined();
+      expect(OAUTH_PROVIDERS[id].flowType).toBe("import_token");
+    }
+  });
+
   it("exports ImportTokenModal from shared components index", () => {
     const index = fs.readFileSync(indexPath, "utf8");
     expect(index).toContain('ImportTokenModal');

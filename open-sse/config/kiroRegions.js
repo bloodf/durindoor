@@ -73,7 +73,7 @@ export function resolveKiroRuntimeRegion(providerSpecificData) {
   if (arnRegion) return arnRegion;
 
   const stored = normalizeRegion(providerSpecificData?.region);
-  if (KIRO_PROFILE_REGIONS.includes(stored)) return stored;
+  if (AWS_REGION_PATTERN.test(stored)) return stored;
 
   return KIRO_DEFAULT_REGION;
 }

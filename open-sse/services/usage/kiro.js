@@ -62,24 +62,26 @@ export async function getKiroUsage(accessToken, providerSpecificData, proxyOptio
   // For api-key auth, never inject the shared default placeholder profileArn —
   // CodeWhisperer 403s a request whose profileArn isn't owned by the key's
   // account. Only send a profileArn actually resolved for this connection.
+  const storedProfileArn = providerSpecificData?.profileArn || "";
+
+  // Region-aware usage hosts. us-east-1 keeps the historical codewhisperer/q
+  // hosts from the registry; other regions (IdC accounts) use the regional
+  // Amazon Q host so the GetUsageLimits call isn't rejected with 403.
+  const runtimeRegion = resolveKiroRuntimeRegion(providerSpecificData || {});
+  const isDefaultRegion = runtimeRegion === KIRO_DEFAULT_REGION;
+  const cwHost = isDefaultRegion ? U("kiro").cwHost : resolveKiroControlPlaneHost(runtimeRegion);
+  const qHost = isDefaultRegion ? U("kiro").qHost : resolveKiroControlPlaneHost(runtimeRegion);
+  const limitsPath = U("kiro").limitsPath;
+
   const profileArn = isApiKey
-    ? (providerSpecificData?.profileArn || "")
-    : (providerSpecificData?.profileArn || resolveDefaultProfileArn(authMethod));
+    ? storedProfileArn
+    : (storedProfileArn || (isDefaultRegion ? resolveDefaultProfileArn(authMethod) : ""));
 
   const getUsageParams = new URLSearchParams({
     isEmailRequired: "true",
     origin: "AI_EDITOR",
     resourceType: "AGENTIC_REQUEST",
   });
-
-  // Region-aware usage hosts. us-east-1 keeps the historical codewhisperer/q
-  // hosts from the registry; other regions (IdC accounts) use the regional
-  // Amazon Q host so the GetUsageLimits call isn't rejected with 403.
-  const runtimeRegion = resolveKiroRuntimeRegion({ ...providerSpecificData, profileArn });
-  const isDefaultRegion = runtimeRegion === KIRO_DEFAULT_REGION;
-  const cwHost = isDefaultRegion ? U("kiro").cwHost : resolveKiroControlPlaneHost(runtimeRegion);
-  const qHost = isDefaultRegion ? U("kiro").qHost : resolveKiroControlPlaneHost(runtimeRegion);
-  const limitsPath = U("kiro").limitsPath;
 
   // For compatibility, try multiple known Kiro usage endpoints
   const attempts = [

@@ -117,9 +117,15 @@ function convertGeminiContentToInternal(content, toolCallIdState = { serialByNam
       const name = part.functionResponse.name || "";
       let toolCallId = part.functionResponse.id;
       if (!toolCallId) {
-        const queue = queueByName.get(name) || [];
+        let queue = queueByName.get(name);
+        if (!queue) {
+          queue = [];
+          queueByName.set(name, queue);
+        }
         toolCallId = queue.shift();
-        queueByName.set(name, queue);
+      }
+      if (!toolCallId && name) {
+        toolCallId = `call_${name}`;
       }
       messages.push({
         role: "tool",

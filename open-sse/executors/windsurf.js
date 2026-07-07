@@ -329,6 +329,22 @@ function openAIMessagesToWs(messages) {
   return out;
 }
 
+function hasToolCalling(messages, tools) {
+  if (Array.isArray(tools) && tools.length > 0) return true;
+  for (const m of messages || []) {
+    const role = String(m?.role || "").toLowerCase();
+    if (role === "tool") return true;
+    if (Array.isArray(m?.tool_calls) && m.tool_calls.length > 0) return true;
+  }
+  return false;
+}
+
+function toolCallingNotSupportedResponse() {
+  return new Response(JSON.stringify({
+    error: { message: "Tool calling is not supported for Windsurf", type: "invalid_request_error", code: "unsupported_parameter" },
+  }), { status: 400, headers: { "Content-Type": "application/json" } });
+}
+
 function parseGrpcWebFrames(buf) {
   const frames = [];
   let offset = 0;
@@ -396,6 +412,11 @@ export class WindsurfExecutor extends BaseExecutor {
     const apiKey = credentials.accessToken || credentials.apiKey || "";
     const wsModel = resolveWsModelId(model);
     const rawMessages = Array.isArray(body?.messages) ? body.messages : [];
+
+    if (hasToolCalling(rawMessages, body?.tools)) {
+      return { response: toolCallingNotSupportedResponse(), url: this.buildUrl(), headers: this.buildHeaders(credentials), transformedBody: null };
+    }
+
     const wsMessages = openAIMessagesToWs(rawMessages);
     if (wsMessages.length === 0) wsMessages.push({ role: "user", content: "" });
 

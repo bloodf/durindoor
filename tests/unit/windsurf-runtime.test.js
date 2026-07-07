@@ -302,4 +302,32 @@ describe("Windsurf executor behavior", () => {
     expect(text).toContain("Incomplete gRPC-web frame");
     expect(text).toContain("data: [DONE]");
   });
+
+  it("rejects requests that include OpenAI tool calling", async () => {
+    const { WindsurfExecutor } = await import("../../open-sse/executors/windsurf.js");
+    const executor = new WindsurfExecutor();
+
+    const resWithTools = await executor.execute({
+      model: "swe-1",
+      body: { messages: [{ role: "user", content: "ping" }], tools: [{ type: "function", function: { name: "x" } }] },
+      credentials: { accessToken: "ws-token" },
+    });
+    expect(resWithTools.response.status).toBe(400);
+    const toolsBody = await resWithTools.response.text();
+    expect(toolsBody).toContain("Tool calling is not supported for Windsurf");
+
+    const resWithToolResult = await executor.execute({
+      model: "swe-1",
+      body: { messages: [{ role: "tool", content: "result", tool_call_id: "call_1" }] },
+      credentials: { accessToken: "ws-token" },
+    });
+    expect(resWithToolResult.response.status).toBe(400);
+
+    const resWithAssistantToolCalls = await executor.execute({
+      model: "swe-1",
+      body: { messages: [{ role: "assistant", content: null, tool_calls: [{ id: "call_1", type: "function", function: { name: "x", arguments: "{}" } }] }] },
+      credentials: { accessToken: "ws-token" },
+    });
+    expect(resWithAssistantToolCalls.response.status).toBe(400);
+  });
 });

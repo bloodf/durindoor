@@ -693,11 +693,6 @@ export async function POST(request) {
       }
     } catch (err) {
       error = err.message;
-          break;
-        }
-      }
-    } catch (err) {
-      error = err.message;
       isValid = false;
     }
 

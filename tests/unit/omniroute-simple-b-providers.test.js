@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import REGISTRY from "../../open-sse/providers/registry/index.js";
 import { PROVIDER_MEDIA, PROVIDER_MODELS, PROVIDERS } from "../../open-sse/providers/index.js";
+import { AI_PROVIDERS, isHiddenProvider } from "../../src/shared/constants/providers.js";
 
 const repoRoot = resolve(import.meta.dirname, "../..");
 
@@ -118,6 +119,11 @@ describe("OmniRoute simple/default provider batch B", () => {
 
     expect(registryById.get("databricks")?.hidden).toBe(true);
     expect(registryById.get("dify")?.hidden).toBe(true);
+    expect(AI_PROVIDERS.databricks?.hidden).toBe(true);
+    expect(AI_PROVIDERS.dify?.hidden).toBe(true);
+    expect(isHiddenProvider("databricks")).toBe(true);
+    expect(isHiddenProvider("dify")).toBe(true);
+    expect(isHiddenProvider("openai")).toBe(false);
   });
 
   it("preserves OmniRoute OpenAI-compatible transport fields at runtime", () => {

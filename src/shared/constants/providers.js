@@ -146,6 +146,12 @@ export const ID_TO_ALIAS = Object.values(AI_PROVIDERS).reduce((acc, p) => {
   return acc;
 }, {});
 
+// Hidden registry entries remain routable when already configured elsewhere,
+// but they are not selectable or creatable through generic provider forms.
+export function isHiddenProvider(providerId) {
+  return AI_PROVIDERS[providerId]?.hidden === true;
+}
+
 // Helper: Get providers by service kind (e.g. "tts", "embedding", "image")
 // Providers without serviceKinds default to ["llm"]
 export function getProvidersByKind(kind) {

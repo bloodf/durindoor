@@ -165,4 +165,49 @@ describe("compatible provider connections API", () => {
     expect(stored).toHaveLength(2);
     stored.forEach(c => expectCompatibleConnection(c, ctx.node, { apiType: "chat" }));
   });
+
+  it("rejects hidden built-in API-key providers in the legacy creation API", async () => {
+    const ctx = await setupTestContext({
+      id: "openai-compatible-hidden-guard",
+      type: "openai-compatible",
+      name: "Hidden Guard Node",
+      prefix: "hgn",
+      apiType: "chat",
+      baseUrl: "https://hidden-guard.test/v1",
+    });
+    cleanup = ctx.cleanup;
+
+    const response = await ctx.POST(makeRequest("databricks"));
+    const body = await response.json();
+    const storedConnections = await ctx.getProviderConnections({ provider: "databricks" });
+
+    expect(response.status).toBe(400);
+    expect(body).toEqual({ error: "Invalid provider" });
+    expect(storedConnections).toHaveLength(0);
+  });
+
+  it("continues creating visible built-in API-key providers in the legacy creation API", async () => {
+    const ctx = await setupTestContext({
+      id: "openai-compatible-visible-guard",
+      type: "openai-compatible",
+      name: "Visible Guard Node",
+      prefix: "vgn",
+      apiType: "chat",
+      baseUrl: "https://visible-guard.test/v1",
+    });
+    cleanup = ctx.cleanup;
+
+    const response = await ctx.POST(makeRequest("openai"));
+    const body = await response.json();
+    const storedConnections = await ctx.getProviderConnections({ provider: "openai" });
+
+    expect(response.status).toBe(201);
+    expect(body.connection).toMatchObject({
+      provider: "openai",
+      authType: "apikey",
+      name: "Test Connection",
+    });
+    expect(body.connection.apiKey).toBeUndefined();
+    expect(storedConnections).toHaveLength(1);
+  });
 });

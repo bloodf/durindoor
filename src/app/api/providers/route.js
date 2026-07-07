@@ -7,7 +7,7 @@ import {
   getProxyPoolById,
 } from "@/models";
 import { APIKEY_PROVIDERS } from "@/shared/constants/config";
-import { AI_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider } from "@/shared/constants/providers";
+import { AI_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, isHiddenProvider, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider } from "@/shared/constants/providers";
 import { normalizeProviderId, normalizeProviderSpecificData } from "@/lib/providerNormalization";
 
 export const dynamic = "force-dynamic";
@@ -114,6 +114,9 @@ export async function POST(request) {
       isCustomEmbeddingProvider(provider);
 
     if (!provider || !isValidProvider) {
+      return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
+    }
+    if (isHiddenProvider(provider)) {
       return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
     }
     if (!apiKey && provider !== "ollama-local") {

@@ -1,4 +1,4 @@
-import { AI_PROVIDERS, resolveProviderId } from "../shared/constants/providers.js";
+import { AI_PROVIDERS, getProviderByAlias, resolveProviderId } from "../shared/constants/providers.js";
 
 /**
  * Detect xAI Grok models by id pattern (grok-*, Grok_*, etc).
@@ -16,6 +16,10 @@ export function normalizeProviderId(provider) {
   if (AI_PROVIDERS[trimmed]) return trimmed;
   const resolved = resolveProviderId(trimmed);
   if (AI_PROVIDERS[resolved]) return resolved;
+
+  // Registry alias (e.g. "cmd" -> "command-code", "kc" -> "kilocode")
+  const byAlias = getProviderByAlias(trimmed);
+  if (byAlias) return byAlias.id;
 
   const slug = trimmed.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   if (AI_PROVIDERS[slug]) return slug;

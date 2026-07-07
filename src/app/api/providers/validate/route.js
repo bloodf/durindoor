@@ -423,9 +423,13 @@ export async function POST(request) {
           break;
         }
 
-        case "commandcode": {
-          const cfg = PROVIDERS.commandcode;
-          const model = getDefaultModel("commandcode");
+        // "command-code" (OmniRoute hyphenated id, alias "cmd") shares this
+        // validation path with "commandcode" — same upstream, same transport.
+        case "commandcode":
+        case "command-code": {
+          const cfg = PROVIDERS[provider];
+          // PROVIDER_MODELS is keyed by registry alias ("cmd") not the "command-code" id.
+          const model = getDefaultModel(provider) || getDefaultModel("cmd");
           const payload = openaiToCommandCodeRequest(model, {
             messages: [{ role: "user", content: "ping" }],
             max_tokens: 1,

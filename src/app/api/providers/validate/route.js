@@ -4,6 +4,7 @@ import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbe
 import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, resolveXiaomiTokenplanBaseUrl, PROVIDERS } from "open-sse/config/providers.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
+import { buildZenmuxAnthropicBody, extractZenmuxCtoken, normalizeZenmuxCookie, ZENMUX_FREE_CHAT_URL } from "open-sse/executors/zenmux-free.js";
 import { normalizeProviderId } from "@/lib/providerNormalization";
 
 function applyConfiguredAuthHeader(headers, cfg, apiKey) {
@@ -676,6 +677,46 @@ export async function POST(request) {
           if (res.status === 401 || res.status === 403) {
             isValid = false;
             error = "Invalid session cookie — re-paste __Secure-next-auth.session-token from perplexity.ai";
+          } else {
+            isValid = true;
+          }
+          break;
+        }
+
+        case "zenmux-free": {
+          const cookie = normalizeZenmuxCookie(apiKey);
+          const ctoken = extractZenmuxCtoken(cookie);
+          if (!ctoken) {
+            isValid = false;
+            error = "Invalid ZenMux cookie - paste the full zenmux.ai Cookie header including ctoken";
+            break;
+          }
+          const url = new URL(ZENMUX_FREE_CHAT_URL);
+          url.searchParams.set("ctoken", ctoken);
+          const res = await fetch(url.toString(), {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+              Accept: "text/event-stream",
+              Origin: "https://zenmux.ai",
+              Referer: "https://zenmux.ai/platform/chat",
+              "anthropic-version": "2023-06-01",
+              "chat-request-id": crypto.randomUUID().replace(/-/g, ""),
+              "x-zenmux-accept-processing": "true, true",
+              "x-zenmux-apikey-source": "subscription",
+              Cookie: cookie,
+            },
+            body: JSON.stringify(buildZenmuxAnthropicBody({
+              model: getDefaultModel("zenmux-free") || "deepseek/deepseek-chat",
+              max_tokens: 1,
+              messages: [{ role: "user", content: "ping" }],
+            }, getDefaultModel("zenmux-free") || "deepseek/deepseek-chat")),
+            signal: AbortSignal.timeout(10000),
+          });
+          if (res.status === 401 || res.status === 403) {
+            isValid = false;
+            error = "Invalid ZenMux cookie - re-paste cookies from zenmux.ai";
           } else {
             isValid = true;
           }

@@ -104,6 +104,35 @@ export const MODEL_CAPABILITIES = {
  * Provider-specific capability overrides. Keyed by provider alias/id.
  */
 export const PROVIDER_CAPABILITIES = {
+  // ZenMux Free exposes text streaming through its Anthropic-compatible web
+  // endpoint but does not return structured tool_use blocks.
+  "zenmux-free": {
+    "deepseek/deepseek-chat": { tools: false },
+    "deepseek/deepseek-reasoner": { tools: false, reasoning: true, thinkingFormat: "deepseek", thinkingCanDisable: false, contextWindow: 128000 },
+    "deepseek/deepseek-v4-pro": { tools: false, reasoning: true, thinkingFormat: "deepseek", contextWindow: 1000000, maxOutput: 384000 },
+    "kuaishou/kat-coder-pro-v1-free": { tools: false },
+    "z-ai/glm-4.7-flash-free": { tools: false },
+    "stepfun/step-3.5-flash-free": { tools: false },
+    "inclusionai/ling-1t": { tools: false },
+    "inclusionai/ling-mini-2.0": { tools: false },
+    "inclusionai/ring-1t": { tools: false },
+    "sapiens-ai/agnes-1.5-lite": { tools: false },
+    "sapiens-ai/agnes-1.5-pro": { tools: false },
+  },
+  zmf: {
+    "deepseek/deepseek-chat": { tools: false },
+    "deepseek/deepseek-reasoner": { tools: false, reasoning: true, thinkingFormat: "deepseek", thinkingCanDisable: false, contextWindow: 128000 },
+    "deepseek/deepseek-v4-pro": { tools: false, reasoning: true, thinkingFormat: "deepseek", contextWindow: 1000000, maxOutput: 384000 },
+    "kuaishou/kat-coder-pro-v1-free": { tools: false },
+    "z-ai/glm-4.7-flash-free": { tools: false },
+    "stepfun/step-3.5-flash-free": { tools: false },
+    "inclusionai/ling-1t": { tools: false },
+    "inclusionai/ling-mini-2.0": { tools: false },
+    "inclusionai/ring-1t": { tools: false },
+    "sapiens-ai/agnes-1.5-lite": { tools: false },
+    "sapiens-ai/agnes-1.5-pro": { tools: false },
+  },
+
   // Fireworks AI — all models served via OpenAI-compatible API, so
   // thinkingFormat must be "openai" (overrides family-native patterns like
   // zai/deepseek/kimi/minimax/qwen that would produce wrong wire shapes).

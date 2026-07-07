@@ -5,6 +5,7 @@ import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/sha
 import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, PROVIDERS, resolveXiaomiTokenplanBaseUrl } from "open-sse/config/providers.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
+import { buildZenmuxAnthropicBody, extractZenmuxCtoken, normalizeZenmuxCookie, ZENMUX_FREE_CHAT_URL } from "open-sse/executors/zenmux-free.js";
 import {
   refreshProviderCredentials,
   shouldRefreshCredentials,
@@ -809,6 +810,37 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         const data = await res.json().catch(() => null);
         const valid = !!(data && data.user);
         return { valid, error: valid ? null : "Session expired — re-paste cookie" };
+      }
+      case "zenmux-free": {
+        const cookie = normalizeZenmuxCookie(connection.apiKey);
+        const ctoken = extractZenmuxCtoken(cookie);
+        if (!ctoken) return { valid: false, error: "Invalid ZenMux cookie - paste the full zenmux.ai Cookie header including ctoken" };
+
+        const model = connection.defaultModel || getDefaultModel("zenmux-free") || "deepseek/deepseek-chat";
+        const url = new URL(ZENMUX_FREE_CHAT_URL);
+        url.searchParams.set("ctoken", ctoken);
+        const res = await fetchWithConnectionProxy(url.toString(), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+            Accept: "text/event-stream",
+            Origin: "https://zenmux.ai",
+            Referer: "https://zenmux.ai/platform/chat",
+            "anthropic-version": "2023-06-01",
+            "chat-request-id": crypto.randomUUID().replace(/-/g, ""),
+            "x-zenmux-accept-processing": "true, true",
+            "x-zenmux-apikey-source": "subscription",
+            Cookie: cookie,
+          },
+          body: JSON.stringify(buildZenmuxAnthropicBody({
+            model,
+            max_tokens: 1,
+            messages: [{ role: "user", content: "ping" }],
+          }, model)),
+        }, effectiveProxy);
+        const valid = res.status !== 401 && res.status !== 403;
+        return { valid, error: valid ? null : "Invalid ZenMux cookie - re-paste cookies from zenmux.ai" };
       }
       case "opencode-go": {
         const res = await fetchWithConnectionProxy("https://opencode.ai/zen/go/v1/chat/completions", {

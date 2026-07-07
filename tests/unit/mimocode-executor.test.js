@@ -253,6 +253,77 @@ describe("MimocodeExecutor", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  it("rebuilds accounts from credentials and drops stale default fingerprints", () => {
+    const executor = new MimocodeExecutor();
+    executor.accounts = [executor.buildAccount("fp-a"), executor.buildAccount("fp-b")];
+    executor.nextAccountIdx = 1;
+
+    executor.syncAccountsFromCredentials({
+      providerSpecificData: {
+        fingerprints: ["fp-b", "fp-c"],
+      },
+    });
+
+    expect(executor.accounts.map((a) => a.fingerprint)).toEqual(["fp-b", "fp-c"]);
+    // fp-b state should be preserved (same object reference is not required, but cooldown stays 0).
+    expect(executor.accounts.every((a) => a.cooldownUntil === 0)).toBe(true);
+  });
+
+  it("stops when all accounts are cooling instead of returning a cooling account", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ jwt: makeJwt() }));
+
+    const executor = new MimocodeExecutor();
+    const account = executor.accounts[0];
+    account.cooldownUntil = Date.now() + 60_000;
+
+    const { response } = await executor.execute({
+      model: "mimo-auto",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: {},
+    });
+
+    expect(response.status).toBe(502);
+    expect((await response.json()).error.code).toBe("NO_ACCOUNTS");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("defaults omitted per-account proxy types to http", () => {
+    const executor = new MimocodeExecutor();
+    executor.syncAccountsFromCredentials({
+      providerSpecificData: {
+        accountProxies: [{ fingerprint: "fp-a", proxy: { host: "proxy.test", port: 8080 } }],
+      },
+    });
+
+    expect(executor.proxyUrlMap.get("fp-a")).toBe("http://proxy.test:8080");
+  });
+
+  it("propagates client abort instead of marking the account cooling", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }));
+    const executor = new MimocodeExecutor();
+    const controller = new AbortController();
+
+    const executing = executor.execute({
+      model: "mimo-auto",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: {},
+      signal: controller.signal,
+    });
+    controller.abort();
+
+    let error;
+    try {
+      await executing;
+    } catch (e) {
+      error = e;
+    }
+
+    expect(error?.name === "AbortError" || /AbortError/.test(String(error?.message))).toBe(true);
+    expect(executor.accounts[0].consecutiveFails).toBe(0);
+  });
+
   it("registers Mimocode as a no-auth specialized provider and mcode alias", () => {
     expect(getExecutor("mimocode")).toBeInstanceOf(MimocodeExecutor);
     expect(getExecutor("mcode")).toBeInstanceOf(MimocodeExecutor);

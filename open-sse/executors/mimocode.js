@@ -9,6 +9,7 @@ const BOOTSTRAP_PATH = "/api/free-ai/bootstrap";
 const CHAT_PATH = "/api/free-ai/openai/chat";
 const JWT_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 const BOOTSTRAP_TIMEOUT_MS = 15_000;
+const CHAT_TIMEOUT_MS = 60_000;
 const COOLDOWN_BASE_MS = 5_000;
 const COOLDOWN_MAX_MS = 60_000;
 const MIMO_SOURCE = "mimocode-cli-free";
@@ -85,10 +86,15 @@ function createDispatcher(proxyUrl) {
   return dispatcherCache.get(proxyUrl);
 }
 
+function findAccountProxy(fingerprint, accountProxies) {
+  const entry = accountProxies.find((item) => item?.fingerprint === fingerprint);
+  return entry?.proxy ?? null;
+}
+
 function proxyConfigToUrl(entry) {
   const proxy = entry?.proxy;
   if (!entry?.fingerprint || !proxy?.host) return null;
-  const type = proxy.type || "socks5";
+  const type = proxy.type || "http";
   if (type !== "http" && type !== "https") {
     throw new Error(`Mimocode per-account proxy type "${type}" is not supported in this DurinDoor port; use http/https or add a fetch-socks dispatcher.`);
   }
@@ -99,14 +105,40 @@ function proxyConfigToUrl(entry) {
   return { fingerprint: entry.fingerprint, url: `${type}://${auth}${proxy.host}:${port}` };
 }
 
+function isAbortError(error) {
+  if (!error) return false;
+  if (error.name === "AbortError") return true;
+  if (error instanceof DOMException && error.name === "AbortError") return true;
+  return String(error.message || "").includes("AbortError");
+}
+
+async function raceWithSignal(promise, signal) {
+  if (!signal) return promise;
+  if (signal.aborted) {
+    throw signal.reason || new DOMException("Aborted", "AbortError");
+  }
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(signal.reason || new DOMException("Aborted", "AbortError"));
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (reason) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(reason);
+      }
+    );
+  });
+}
+
 async function bootstrapJwt(baseUrl, fingerprint, signal, dispatcher, proxyOptions = null) {
   const existing = bootstrapInflight.get(fingerprint);
-  if (existing) return existing;
+  if (existing) return raceWithSignal(existing, signal);
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), BOOTSTRAP_TIMEOUT_MS);
-  const onSignal = signal ? () => controller.abort(signal.reason) : null;
-  if (signal && onSignal) signal.addEventListener("abort", onSignal, { once: true });
 
   const promise = (async () => {
     try {
@@ -132,13 +164,12 @@ async function bootstrapJwt(baseUrl, fingerprint, signal, dispatcher, proxyOptio
       return { jwt: data.jwt, expiresAt: parseJwtExp(data.jwt) };
     } finally {
       clearTimeout(timer);
-      if (signal && onSignal) signal.removeEventListener("abort", onSignal);
       bootstrapInflight.delete(fingerprint);
     }
   })();
 
   bootstrapInflight.set(fingerprint, promise);
-  return promise;
+  return raceWithSignal(promise, signal);
 }
 
 export class MimocodeExecutor extends BaseExecutor {
@@ -167,27 +198,36 @@ export class MimocodeExecutor extends BaseExecutor {
   syncAccountsFromCredentials(credentials = {}) {
     const providerData = credentials?.providerSpecificData || {};
     const accountProxies = Array.isArray(providerData.accountProxies) ? providerData.accountProxies : [];
+
     this.proxyUrlMap.clear();
     for (const entry of accountProxies) {
       const mapped = proxyConfigToUrl(entry);
       if (mapped) this.proxyUrlMap.set(mapped.fingerprint, mapped.url);
     }
 
-    const existing = new Set(this.accounts.map((account) => account.fingerprint));
-    if (Array.isArray(providerData.fingerprints)) {
-      for (const fingerprint of providerData.fingerprints) {
-        if (typeof fingerprint === "string" && !existing.has(fingerprint)) {
-          this.accounts.push(this.buildAccount(fingerprint));
-          existing.add(fingerprint);
-        }
+    const configuredFingerprints = Array.isArray(providerData.fingerprints)
+      ? providerData.fingerprints.filter((fingerprint) => typeof fingerprint === "string")
+      : [];
+
+    if (configuredFingerprints.length === 0) {
+      // No stored fingerprints: keep the default account and only update proxy metadata.
+      for (const account of this.accounts) {
+        account.proxy = findAccountProxy(account.fingerprint, accountProxies);
       }
+      return;
     }
 
-    const structuredProxyMap = new Map(accountProxies.map((entry) => [entry.fingerprint, entry.proxy ?? null]));
+    // Rebuild the account list from the current credentials so stale or default
+    // fingerprints are dropped when the connection changes. Preserve state for
+    // fingerprints that are still configured to avoid unnecessary re-bootstraps.
+    const oldByFingerprint = new Map(this.accounts.map((account) => [account.fingerprint, account]));
+    this.accounts = configuredFingerprints.map((fingerprint) => {
+      const old = oldByFingerprint.get(fingerprint);
+      return old || this.buildAccount(fingerprint);
+    });
+
     for (const account of this.accounts) {
-      account.proxy = structuredProxyMap.has(account.fingerprint)
-        ? structuredProxyMap.get(account.fingerprint)
-        : null;
+      account.proxy = findAccountProxy(account.fingerprint, accountProxies);
     }
   }
 
@@ -208,9 +248,7 @@ export class MimocodeExecutor extends BaseExecutor {
         return account;
       }
     }
-    const fallbackIdx = this.nextAccountIdx % this.accounts.length;
-    this.nextAccountIdx = (this.nextAccountIdx + 1) % this.accounts.length;
-    return this.accounts[fallbackIdx];
+    return null;
   }
 
   markCooldown(account) {
@@ -240,6 +278,28 @@ export class MimocodeExecutor extends BaseExecutor {
   transformRequest(model, body) {
     if (!body || typeof body !== "object") return body;
     return injectMimocodeSystemMarker({ ...body, model: rewriteModelName(model) });
+  }
+
+  async fetchWithTimeout(url, init, fingerprint, proxyOptions, signal) {
+    const controller = new AbortController();
+    if (signal?.aborted) {
+      controller.abort(signal.reason);
+    }
+    const timer = setTimeout(
+      () => controller.abort(new Error(`Mimocode chat request timed out after ${CHAT_TIMEOUT_MS}ms`)),
+      CHAT_TIMEOUT_MS
+    );
+    let onSignalAbort;
+    if (signal) {
+      onSignalAbort = () => controller.abort(signal.reason);
+      signal.addEventListener("abort", onSignalAbort, { once: true });
+    }
+    try {
+      return await this.fetchWithProxy(url, { ...init, signal: controller.signal }, fingerprint, proxyOptions);
+    } finally {
+      clearTimeout(timer);
+      if (signal && onSignalAbort) signal.removeEventListener("abort", onSignalAbort);
+    }
   }
 
   async testConnection(credentials = {}, signal = null, log = null, proxyOptions = null) {
@@ -287,16 +347,21 @@ export class MimocodeExecutor extends BaseExecutor {
     }
 
     this.syncAccountsFromCredentials(credentials);
+    let lastError;
     for (let attempt = 0; attempt < this.accounts.length; attempt++) {
       const account = this.pickAccount();
+      if (!account) {
+        break;
+      }
       try {
         const jwt = await this.getJwtForAccount(account, signal, proxyOptions);
         const headers = { ...this.buildHeaders(credentials, stream), Authorization: `Bearer ${jwt}` };
-        let response = await this.fetchWithProxy(
+        let response = await this.fetchWithTimeout(
           url,
-          { method: "POST", headers, body: JSON.stringify(transformedBody), signal: signal ?? undefined },
+          { method: "POST", headers, body: JSON.stringify(transformedBody) },
           account.fingerprint,
-          proxyOptions
+          proxyOptions,
+          signal
         );
 
         if (response.status === 401 || response.status === 403) {
@@ -305,16 +370,13 @@ export class MimocodeExecutor extends BaseExecutor {
           account.expiresAt = 0;
           account.consecutiveFails = 0;
           headers.Authorization = `Bearer ${await this.getJwtForAccount(account, signal, proxyOptions)}`;
-          response = await this.fetchWithProxy(
+          response = await this.fetchWithTimeout(
             url,
-            { method: "POST", headers, body: JSON.stringify(transformedBody), signal: signal ?? undefined },
+            { method: "POST", headers, body: JSON.stringify(transformedBody) },
             account.fingerprint,
-            proxyOptions
+            proxyOptions,
+            signal
           );
-          // If the forced re-bootstrap also returns 401/403, this account
-          // is invalid for the current proxy/region (e.g. banned). Cooldown
-          // it and let the outer loop try the next configured fingerprint
-          // instead of returning the auth failure to the caller.
           if (response.status === 401 || response.status === 403) {
             this.markCooldown(account);
             log?.warn?.("MIMOCODE", `Account ${account.fingerprint.slice(0, 8)} still unauthorized after refresh; rotating`);
@@ -331,6 +393,10 @@ export class MimocodeExecutor extends BaseExecutor {
         this.markSuccess(account);
         return { response, url, headers, transformedBody };
       } catch (error) {
+        if (isAbortError(error)) {
+          throw error;
+        }
+        lastError = error;
         this.markCooldown(account);
         if (attempt === this.accounts.length - 1) {
           const message = error instanceof Error ? error.message : String(error);
@@ -348,10 +414,12 @@ export class MimocodeExecutor extends BaseExecutor {
       }
     }
 
+    const message = lastError instanceof Error ? lastError.message : "All accounts exhausted";
     return {
-      response: new Response(JSON.stringify({
-        error: { message: "All accounts exhausted", type: "upstream_error", code: "NO_ACCOUNTS" },
-      }), { status: 502, headers: { "Content-Type": "application/json" } }),
+      response: new Response(JSON.stringify({ error: { message, type: "upstream_error", code: "NO_ACCOUNTS" } }), {
+        status: 502,
+        headers: { "Content-Type": "application/json" },
+      }),
       url,
       headers: this.buildHeaders(credentials, stream),
       transformedBody,

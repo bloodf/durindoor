@@ -78,7 +78,29 @@ describe("Mimocode no-auth credentials", () => {
     });
   });
 
-  it("falls back to virtual public credentials when Mimocode has no stored connection", async () => {
+  it("skips stored Mimocode connections that are model-locked", async () => {
+    const lockedConnection = {
+      id: "mimocode-locked",
+      displayName: "Locked Mimocode",
+      providerSpecificData: { fingerprints: ["fp-locked"] },
+      "modelLock_mimo-auto": new Date(Date.now() + 60_000).toISOString(),
+    };
+    const freeConnection = {
+      id: "mimocode-free",
+      displayName: "Free Mimocode",
+      providerSpecificData: { fingerprints: ["fp-free"] },
+    };
+    mocks.getProviderConnections.mockResolvedValue([lockedConnection, freeConnection]);
+    mocks.resolveConnectionProxyConfig.mockResolvedValue({ connectionProxyEnabled: false, connectionProxyUrl: "" });
+
+    const { getProviderCredentials } = await import("../../src/sse/services/auth.js");
+    const credentials = await getProviderCredentials("mimocode", null, "mimo-auto");
+
+    expect(credentials.connectionId).toBe("mimocode-free");
+    expect(credentials.providerSpecificData.fingerprints).toEqual(["fp-free"]);
+  });
+
+  it("falls back to virtual public credentials when no stored Mimocode connections are active", async () => {
     mocks.getProviderConnections.mockResolvedValue([]);
     mocks.getSettings.mockResolvedValue({
       providerStrategies: { mimocode: { proxyPoolId: "pool-public" } },

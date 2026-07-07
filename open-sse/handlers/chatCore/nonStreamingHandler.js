@@ -351,7 +351,7 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
 /**
  * Handle non-streaming response from provider.
  */
-export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, streamToClient = false, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, trackDone, appendLog }) {
+export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, streamToClient = false, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, trackDone, appendLog, log }) {
   trackDone();
   const contentType = providerResponse.headers.get("content-type") || "";
   let responseBody;
@@ -399,6 +399,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   // message. Forcing FORMATS.OPENAI here bypasses that diversion so
   // isOpenAIChatResponse stays true and openAICompletionToClientSSE (below)
   // can pivot to the real client format itself.
+  const preservesNativeResponse = !needsTranslation(targetFormat, sourceFormat);
   const normalizeSourceFormat = streamToClient ? FORMATS.OPENAI : sourceFormat;
   const openAIResponse = needsTranslation(targetFormat, normalizeSourceFormat)
     ? translateNonStreamingResponse(responseBody, targetFormat, normalizeSourceFormat)
@@ -423,16 +424,16 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     for (const choice of openAIResponse.choices) delete choice.content_filter_results;
   }
 
-  if (openAIResponse?.usage) {
-    openAIResponse.usage = addBufferToUsage(openAIResponse.usage);
-  }
-
   // Synthesize SSE from the OpenAI-normalized intermediate BEFORE we filter the
   // usage shape to the client format or strip reasoning_content. Filtering
   // usage for Claude/Responses would zero out OpenAI-style token counts, and
   // stripping reasoning_content would drop thinking deltas in the stream.
   const isOpenAIIntermediate = Array.isArray(openAIResponse?.choices);
   const sseResponseBody = streamToClient && isOpenAIIntermediate ? structuredClone(openAIResponse) : null;
+
+  if (openAIResponse?.usage) {
+    openAIResponse.usage = addBufferToUsage(openAIResponse.usage);
+  }
 
   // Strip reasoning_content only when content is non-empty AND the client
   // requested OpenAI Chat format. For non-OpenAI clients (Claude, Gemini,
@@ -488,7 +489,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     console.error("[RequestDetail] Failed to save:", err.message);
   });
 
-  if (streamToClient && isOpenAIChatResponse) {
+  if (streamToClient && isOpenAIIntermediate) {
     return {
       success: true,
       response: new Response(openAICompletionToClientSSE(sseResponseBody, model, sourceFormat), { headers: SSE_HEADERS_CORS })

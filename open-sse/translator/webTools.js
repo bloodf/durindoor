@@ -111,7 +111,7 @@ function toArgumentsString(value) {
 
 export function prepareToolMessages(bodyObj, messages) {
   const requestedTools = bodyObj?.tools;
-  const hasTools = Array.isArray(requestedTools) && requestedTools.length > 0;
+  const hasTools = Array.isArray(requestedTools) && requestedTools.length > 0 && bodyObj?.tool_choice !== "none";
   if (!hasTools) return { hasTools: false, requestedTools, effectiveMessages: messages };
   return {
     hasTools: true,

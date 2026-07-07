@@ -424,4 +424,12 @@ describe("OmniRoute specialized provider ports", () => {
       })
     ).toThrow("Bedrock does not support remote image URLs");
   });
+
+  it("honors tool_choice: none by skipping tool injection for Inner.ai-style web tools", () => {
+    const tools = [{ type: "function", function: { name: "lookup", parameters: { type: "object" } } }];
+    const bodyObj = { messages: [{ role: "user", content: "hi" }], tools, tool_choice: "none" };
+    const result = prepareToolMessages(bodyObj, bodyObj.messages);
+    expect(result.hasTools).toBe(false);
+    expect(result.effectiveMessages).toEqual(bodyObj.messages);
+  });
 });

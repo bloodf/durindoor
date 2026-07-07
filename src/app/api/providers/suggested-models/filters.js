@@ -2,6 +2,16 @@
 const KNOWN_FREE_OPENCODE_MODELS = ["big-pickle"];
 
 export const FILTERS = {
+  // Ollama Cloud / local Ollama fetch suggested models: `/api/tags` returns
+  // { models: [{ name }] } — return `name` as both id and name.
+  ollama: (models) =>
+    (Array.isArray(models) ? models : [])
+      .map((m) => {
+        const name = typeof m.name === "string" ? m.name : m.id || "";
+        return { id: name, name };
+      })
+      .filter((m) => m.id),
+
   // Plain OpenAI-compatible /v1/models list (modelscope, openadapter, kenari,
   // novita, venice, vercel-ai-gateway, ...) — no free/pricing filter, just
   // reshape { data: [{ id, ... }] } into { id, name }.

@@ -128,8 +128,6 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
       // Non-ollama providers require a name; optional local providers can save without a key.
       if (!formData.name) return;
     }
-      if (!formData.name) return;
-    }
     if (isCompatible && !formData.defaultModel.trim()) return;
     if (!hasRequiredGooglePseCx) return;
 

@@ -1,3 +1,5 @@
+import { getCapabilitiesForModel } from "../../providers/capabilities.js";
+
 // Strip request params a given provider/model rejects upstream (e.g. HTTP 400).
 // Config-driven: add a rule instead of scattering `delete body.x` across executors.
 
@@ -17,9 +19,13 @@ const STRIP_RULES = [
   // this field on assistant turns; it is only meaningful in streamed responses, not
   // in request bodies. Strip it from every message before forwarding. #1649
   { provider: "mistral", dropMessageFields: ["reasoning_content"] },
+<<<<<<< HEAD
   // NVIDIA NIM z-ai/glm-5.2 rejects both OpenAI-style `reasoning` and
   // Claude-style `thinking` request fields on its OpenAI-compatible wrapper.
   { provider: "nvidia", match: /z-ai\/glm-5\.2\b/i, drop: ["reasoning", "thinking"] },
+=======
+  { provider: "volcengine-ark", match: /glm-5/i, clampToModelMaxOutput: true },
+>>>>>>> ef15b3afd (fix(volcengine-ark): clamp GLM-5 max_tokens to model output ceiling (#2428))
 ];
 
 // Test a rule's match (regex or predicate) against the model id.
@@ -27,6 +33,12 @@ const STRIP_RULES = [
 function matches(rule, model) {
   if (!rule.match) return true;
   return typeof rule.match === "function" ? rule.match(model) : rule.match.test(model);
+}
+
+function clampNumber(body, key, ceiling) {
+  if (typeof body[key] === "number" && Number.isFinite(body[key]) && body[key] > ceiling) {
+    body[key] = ceiling;
+  }
 }
 
 // Remove unsupported params from body in place; returns body.
@@ -57,6 +69,14 @@ export function stripUnsupportedParams(provider, model, body) {
             .map(b => (b?.type === "text" && typeof b.text === "string") ? b.text : "")
             .join("");
         }
+      }
+    }
+    if (rule.clampToModelMaxOutput) {
+      const ceiling = getCapabilitiesForModel(provider, model).maxOutput;
+      if (Number.isFinite(ceiling) && ceiling > 0) {
+        clampNumber(body, "max_tokens", ceiling);
+        clampNumber(body, "max_completion_tokens", ceiling);
+        clampNumber(body, "max_output_tokens", ceiling);
       }
     }
   }

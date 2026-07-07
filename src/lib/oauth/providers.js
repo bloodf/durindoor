@@ -1384,7 +1384,7 @@ const PROVIDERS = {
         headers: { Authorization: `Bearer ${tokens.access_token}` },
       });
       const user = userRes.ok ? await userRes.json() : {};
-      return { ...tokens, _user: user, _baseUrl: baseUrl, _clientId: clientId };
+      return { ...tokens, _user: user, _baseUrl: baseUrl, _clientId: clientId, _clientSecret: clientSecret || "" };
     },
     mapTokens: (tokens) => ({
       accessToken: tokens.access_token,

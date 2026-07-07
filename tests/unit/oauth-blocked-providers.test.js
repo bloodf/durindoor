@@ -195,6 +195,104 @@ describe("blocked OAuth/session provider port", () => {
     });
   });
 
+  it("gitlab-duo preserves per-connection client secret after OAuth code exchange", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url, init = {}) => {
+      const urlString = String(url);
+      if (urlString === "https://gitlab.example.com/oauth/token") {
+        const body = new URLSearchParams(String(init.body || ""));
+        expect(body.get("client_id")).toBe("client-1");
+        expect(body.get("client_secret")).toBe("secret-1");
+        expect(body.get("code_verifier")).toBe("verifier-1");
+        return jsonResponse({
+          access_token: "new-access",
+          refresh_token: "new-refresh",
+          expires_in: 3600,
+          scope: "api",
+        });
+      }
+      expect(urlString).toBe("https://gitlab.example.com/api/v4/user");
+      expect(init.headers.Authorization).toBe("Bearer new-access");
+      return jsonResponse({
+        username: "duo-user",
+        email: "duo@example.com",
+        name: "GitLab Duo User",
+      });
+    }));
+
+    const { exchangeTokens } = await import("../../src/lib/oauth/providers.js");
+    await expect(exchangeTokens(
+      "gitlab-duo",
+      "code-1",
+      "http://localhost/callback",
+      "verifier-1",
+      "state-1",
+      { baseUrl: "https://gitlab.example.com", clientId: "client-1", clientSecret: "secret-1" }
+    )).resolves.toMatchObject({
+      accessToken: "new-access",
+      refreshToken: "new-refresh",
+      providerSpecificData: {
+        username: "duo-user",
+        baseUrl: "https://gitlab.example.com",
+        clientId: "client-1",
+        clientSecret: "secret-1",
+      },
+    });
+  });
+
+  it("redacts gitlab-duo client secrets from provider read APIs", async () => {
+    vi.resetModules();
+    vi.doMock("next/server", () => ({
+      NextResponse: {
+        json(body, init = {}) {
+          return jsonResponse(body, init.status || 200);
+        },
+      },
+    }));
+    vi.doMock("@/models", () => ({
+      getProviderConnections: vi.fn(async () => ([{
+        id: "conn-1",
+        provider: "gitlab-duo",
+        authType: "oauth",
+        name: "GitLab Duo",
+        apiKey: "api-key-secret",
+        accessToken: "access-secret",
+        refreshToken: "refresh-secret",
+        idToken: "id-secret",
+        providerSpecificData: {
+          baseUrl: "https://gitlab.example.com",
+          clientId: "client-1",
+          clientSecret: "secret-1",
+          authKind: "oauth",
+        },
+      }])),
+      createProviderConnection: vi.fn(),
+      getProviderNodeById: vi.fn(),
+      getProviderNodes: vi.fn(async () => []),
+      getProxyPoolById: vi.fn(),
+    }));
+
+    try {
+      const { GET } = await import("../../src/app/api/providers/route.js");
+      const response = await GET();
+      const body = await response.json();
+
+      expect(body.connections[0].apiKey).toBeUndefined();
+      expect(body.connections[0].accessToken).toBeUndefined();
+      expect(body.connections[0].refreshToken).toBeUndefined();
+      expect(body.connections[0].idToken).toBeUndefined();
+      expect(body.connections[0].providerSpecificData).toMatchObject({
+        baseUrl: "https://gitlab.example.com",
+        clientId: "client-1",
+        authKind: "oauth",
+      });
+      expect(body.connections[0].providerSpecificData.clientSecret).toBeUndefined();
+    } finally {
+      vi.doUnmock("next/server");
+      vi.doUnmock("@/models");
+      vi.resetModules();
+    }
+  });
+
   it("trae preserves structured import-token identity metadata", async () => {
     const { getProvider } = await import("../../src/lib/oauth/providers.js");
     const mapped = getProvider("trae").mapTokens({

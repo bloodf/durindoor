@@ -1,4 +1,5 @@
 import { Readable } from "stream";
+import { Agent, setGlobalDispatcher } from "undici";
 import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
 import { dbg } from "./debugLog.js";
 
@@ -11,6 +12,9 @@ export function __setOriginalFetchForTesting(fn) {
   originalFetch = fn;
   return () => { originalFetch = prev; };
 }
+
+// Happy Eyeballs (RFC 8305) for direct egress — avoids 30s+ stalls on broken-IPv6 hosts.
+setGlobalDispatcher(new Agent({ connect: { autoSelectFamily: true } }));
 
 // ─── TLS fingerprinting via got-scraping (browser-like JA3) ───────────────
 // Disabled: not in use. Kept commented for future re-enable.

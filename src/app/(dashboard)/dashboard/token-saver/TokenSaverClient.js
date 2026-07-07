@@ -37,6 +37,7 @@ export default function TokenSaverClient() {
   const [cavemanLevel, setCavemanLevel] = useState("full");
   const [ponytailEnabled, setPonytailEnabled] = useState(false);
   const [ponytailLevel, setPonytailLevel] = useState("full");
+  const [pxpipeEnabled, setPxpipeEnabled] = useState(false);
   const [locale, setLocale] = useState("en");
 
   const { copied, copy } = useCopyToClipboard();
@@ -87,6 +88,11 @@ export default function TokenSaverClient() {
   const handleCavemanEnabled = (value) => {
     setCavemanEnabled(value);
     patchSetting({ cavemanEnabled: value });
+  };
+
+  const handlePxpipeEnabled = (value) => {
+    setPxpipeEnabled(value);
+    patchSetting({ pxpipeEnabled: value });
   };
 
   const handleHeadroomEnabled = (value) => {
@@ -245,6 +251,7 @@ export default function TokenSaverClient() {
           setCavemanLevel(data.cavemanLevel || "full");
           setPonytailEnabled(!!data.ponytailEnabled);
           setPonytailLevel(data.ponytailLevel || "full");
+          setPxpipeEnabled(!!data.pxpipeEnabled);
           refreshHeadroomStatus();
         }
       } catch {}
@@ -401,6 +408,18 @@ export default function TokenSaverClient() {
             </p>
           </div>
         )}
+        <div className="flex items-center justify-between py-4 border-b border-border gap-4 flex-wrap">
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">PxPipe (context-as-image)</p>
+            <p className="text-sm text-text-muted">
+              Renders large text context as images on supported models (default: Claude Fable 5). Experimental.
+            </p>
+          </div>
+          <Toggle
+            checked={pxpipeEnabled}
+            onChange={() => handlePxpipeEnabled(!pxpipeEnabled)}
+          />
+        </div>
         <div className="flex items-center justify-between pt-4 gap-4 flex-wrap">
           <div className="min-w-0 flex-1">
             <p className="font-medium">

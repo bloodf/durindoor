@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildPrompt,
   buildWsUrl,
@@ -61,6 +61,40 @@ class MockM365WebSocket {
   }
 }
 
+class ErrorM365WebSocket extends MockM365WebSocket {
+  send(data) {
+    this.sent.push(String(data));
+    const parsed = JSON.parse(String(data).replace(/\x1e$/, ""));
+    if (parsed.protocol === "json") {
+      queueMicrotask(() => this.emit("message", Buffer.from(encodeFrame({}))));
+    }
+    if (parsed.type === 4 && parsed.target === "chat") {
+      queueMicrotask(() => this.emit("error", new Error("socket rejected")));
+    }
+  }
+}
+
+class LastUpdateM365WebSocket extends MockM365WebSocket {
+  send(data) {
+    this.sent.push(String(data));
+    const parsed = JSON.parse(String(data).replace(/\x1e$/, ""));
+    if (parsed.protocol === "json") {
+      queueMicrotask(() => this.emit("message", Buffer.from(encodeFrame({}))));
+    }
+    if (parsed.type === 4 && parsed.target === "chat") {
+      queueMicrotask(() => this.emit("message", Buffer.from(
+        encodeFrame({ type: 1, target: "update", arguments: [{ isLastUpdate: true, messages: [{ text: "done", author: "bot" }] }] }),
+      )));
+    }
+  }
+}
+
+const originalFetch = global.fetch;
+
+afterEach(() => {
+  global.fetch = originalFetch;
+});
+
 describe("copilot-m365 connection helpers", () => {
   it("resolves pasted credentials and redacts WebSocket URLs", () => {
     const params = resolveConnectionParams({
@@ -73,13 +107,28 @@ describe("copilot-m365 connection helpers", () => {
     expect(redactWsUrl(url)).not.toContain("SECRET123");
   });
 
-  it("flattens system and user messages", () => {
-    expect(buildPrompt({
+  it("rejects path-only pasted credentials without treating them as tokens", () => {
+    expect(resolveConnectionParams({ apiKey: "chathubPath=user@tenant" })).toMatchObject({
+      error: expect.stringContaining("access_token"),
+    });
+    expect(resolveConnectionParams({ apiKey: "userTenant=user@tenant" })).toMatchObject({
+      error: expect.stringContaining("access_token"),
+    });
+  });
+
+  it("flattens system and prior chat turns", () => {
+    const prompt = buildPrompt({
       messages: [
         { role: "system", content: "Be terse." },
+        { role: "user", content: "my name is Bob" },
+        { role: "assistant", content: "Noted." },
         { role: "user", content: "ping" },
       ],
-    })).toContain("[System Instructions]\nBe terse.\n\nping");
+    });
+    expect(prompt).toContain("[System Instructions]\nBe terse.");
+    expect(prompt).toContain("[User]\nmy name is Bob");
+    expect(prompt).toContain("[Assistant]\nNoted.");
+    expect(prompt).toContain("[User]\nping");
   });
 });
 
@@ -122,6 +171,75 @@ describe("CopilotM365WebExecutor", () => {
       expect(text).toContain('"content":"ng"');
       expect(text).toContain("data: [DONE]");
       expect(MockM365WebSocket.instances[0].sent.join("\n")).toContain('"target":"chat"');
+    } finally {
+      restore();
+    }
+  });
+
+  it("finishes streams on isLastUpdate frames", async () => {
+    MockM365WebSocket.instances = [];
+    const restore = __setCopilotM365WebSocketForTesting(LastUpdateM365WebSocket);
+    try {
+      const result = await new CopilotM365WebExecutor().execute({
+        model: "copilot-m365",
+        stream: true,
+        body: { messages: [{ role: "user", content: "reply done" }] },
+        credentials: { apiKey: "access_token=SECRET123; chathubPath=user@tenant" },
+      });
+      const text = await result.response.text();
+      expect(text).toContain('"content":"done"');
+      expect(text).toContain("data: [DONE]");
+    } finally {
+      restore();
+    }
+  });
+
+  it("returns non-stream socket aborts as failures", async () => {
+    const restore = __setCopilotM365WebSocketForTesting(ErrorM365WebSocket);
+    try {
+      const result = await new CopilotM365WebExecutor().execute({
+        model: "copilot-m365",
+        stream: false,
+        body: { messages: [{ role: "user", content: "fail" }] },
+        credentials: { apiKey: "access_token=SECRET123; chathubPath=user@tenant" },
+      });
+      expect(result.response.status).toBe(502);
+      await expect(result.response.json()).resolves.toMatchObject({
+        error: { message: "socket rejected" },
+      });
+    } finally {
+      restore();
+    }
+  });
+
+  it("tests saved M365 credentials through the Chathub negotiate probe", async () => {
+    global.fetch = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    const valid = await new CopilotM365WebExecutor().testConnection(
+      { apiKey: "access_token=SECRET123; chathubPath=user@tenant" },
+      AbortSignal.timeout(1000),
+    );
+    expect(valid).toBe(true);
+    expect(global.fetch.mock.calls[0][0]).toContain("/m365Copilot/Chathub/user@tenant/negotiate?");
+  });
+
+  it("passes HTTP connection proxies to the M365 WebSocket agent", async () => {
+    MockM365WebSocket.instances = [];
+    const restore = __setCopilotM365WebSocketForTesting(MockM365WebSocket);
+    try {
+      const wsUrl = buildWsUrl(resolveConnectionParams({
+        apiKey: "access_token=SECRET123; chathubPath=user@tenant",
+      }));
+      const stream = await new CopilotM365WebExecutor().wsChat({
+        wsUrl,
+        prompt: "reply pong",
+        model: "copilot-m365",
+        proxyOptions: {
+          connectionProxyEnabled: true,
+          connectionProxyUrl: "http://proxy.local:8080",
+        },
+      });
+      await new Response(stream).text();
+      expect(MockM365WebSocket.instances[0].options.agent).toBeTruthy();
     } finally {
       restore();
     }

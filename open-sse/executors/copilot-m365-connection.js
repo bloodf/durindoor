@@ -106,6 +106,10 @@ function parsePastedCredential(raw) {
   };
 }
 
+function isStructuredPathOnlyCredential(value) {
+  return /^(?:chathubPath|userTenant)\s*=/i.test(String(value || "").trim());
+}
+
 function resolveTierOverrides(psd) {
   const tier = typeof psd.tier === "string" ? psd.tier.toLowerCase() : "";
   const isEduTier = tier === "edu" || tier === "included";
@@ -134,6 +138,7 @@ export function resolveConnectionParams(credentials) {
     (typeof credentials?.apiKey === "string" &&
       credentials.apiKey &&
       !credentials.apiKey.includes("access_token=") &&
+      !isStructuredPathOnlyCredential(credentials.apiKey) &&
       credentials.apiKey) ||
     (typeof psd.accessToken === "string" && psd.accessToken) ||
     (typeof psd.access_token === "string" && psd.access_token) ||
@@ -186,19 +191,34 @@ export function redactWsUrl(wsUrl) {
 
 export function buildPrompt(body) {
   const messages = body?.messages || [];
-  const systemMsgs = messages.filter((m) => m.role === "system");
-  const userMsg = messages.filter((m) => m.role === "user").pop();
-  const userText = userMsg
-    ? (typeof userMsg.content === "string" ? userMsg.content : JSON.stringify(userMsg.content ?? ""))
-    : "";
-  let prompt = "";
-  if (systemMsgs.length > 0) {
-    const sysText = systemMsgs
-      .map((m) => (typeof m.content === "string" ? m.content : ""))
-      .filter(Boolean)
-      .join("\n");
-    if (sysText) prompt += `[System Instructions]\n${sysText}\n\n`;
-  }
-  prompt += userText;
-  return prompt;
+  const textOf = (content) => {
+    if (typeof content === "string") return content;
+    if (Array.isArray(content)) {
+      return content
+        .map((part) => {
+          if (typeof part === "string") return part;
+          if (part?.type === "text" && typeof part.text === "string") return part.text;
+          return JSON.stringify(part ?? "");
+        })
+        .filter(Boolean)
+        .join("\n");
+    }
+    return content == null ? "" : JSON.stringify(content);
+  };
+  const sysText = messages
+    .filter((m) => m.role === "system" || m.role === "developer")
+    .map((m) => textOf(m.content))
+    .filter(Boolean)
+    .join("\n");
+  const turns = messages
+    .filter((m) => m.role !== "system" && m.role !== "developer")
+    .map((m) => {
+      const text = textOf(m.content).trim();
+      if (!text) return "";
+      const role = m.role === "assistant" ? "Assistant" : m.role === "tool" ? "Tool" : "User";
+      return `[${role}]\n${text}`;
+    })
+    .filter(Boolean)
+    .join("\n\n");
+  return `${sysText ? `[System Instructions]\n${sysText}\n\n` : ""}${turns}`;
 }

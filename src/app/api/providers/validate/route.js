@@ -6,6 +6,7 @@ import { resolveOllamaLocalHost, resolveXiaomiTokenplanBaseUrl, PROVIDERS } from
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
 import { buildZenmuxAnthropicBody, extractZenmuxCtoken, normalizeZenmuxCookie, ZENMUX_FREE_CHAT_URL } from "open-sse/executors/zenmux-free.js";
 import { getExecutor } from "open-sse/executors/index.js";
+import { buildWsUrl, resolveConnectionParams } from "open-sse/executors/copilot-m365-connection.js";
 import { normalizeProviderId } from "@/lib/providerNormalization";
 
 // Probe a webSearch/webFetch provider using its searchConfig/fetchConfig.
@@ -580,17 +581,28 @@ export async function POST(request) {
         }
 
         case "copilot-m365-web": {
-          const credential = String(apiKey || "").trim();
-          const hasAccessToken = /(^|[?&;\s])access_token=([^;&\s]+)/.test(credential) || (
-            credential && !credential.includes("access_token=")
-          );
-          const hasChathubPath =
-            /(^|[;\s])(?:chathubPath|userTenant)=([^;@\s]+@[^;\s]+)/.test(credential) ||
-            /^wss:\/\/substrate\.office\.com\/m365Copilot\/Chathub\/[^?]+(?:@|%40)[^?]+\?/i.test(credential);
-          isValid = hasAccessToken && hasChathubPath;
-          error = isValid
-            ? null
-            : "Paste the M365 Copilot access_token and Chathub path from the Chathub WebSocket URL";
+          const connectionParams = resolveConnectionParams({ apiKey, providerSpecificData });
+          if ("error" in connectionParams) {
+            isValid = false;
+            error = "Paste the M365 Copilot access_token and Chathub path from the Chathub WebSocket URL";
+            break;
+          }
+          const wsUrl = new URL(buildWsUrl(connectionParams).replace(/^wss:/, "https:"));
+          const probeUrl = new URL(`${wsUrl.origin}${wsUrl.pathname}/negotiate`);
+          wsUrl.searchParams.forEach((value, key) => probeUrl.searchParams.set(key, value));
+          probeUrl.searchParams.set("negotiateVersion", "1");
+          const res = await fetch(probeUrl.toString(), {
+            method: "POST",
+            headers: {
+              Origin: "https://m365.cloud.microsoft",
+              Referer: "https://m365.cloud.microsoft/",
+              "User-Agent":
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+            },
+            signal: AbortSignal.timeout(8000),
+          });
+          isValid = res.status !== 401 && res.status !== 403;
+          error = isValid ? null : "Invalid or expired M365 Copilot access_token";
           break;
         }
 

@@ -92,20 +92,25 @@ async function validateCopilotWeb(apiKey) {
   return { valid: true, error: null };
 }
 
-function validateCopilotM365Web(apiKey) {
+async function validateCopilotM365Web(apiKey) {
   const credential = String(apiKey || "").trim();
-  const hasAccessToken = /(^|[?&;\s])access_token=([^;&\s]+)/.test(credential) || (
-    credential && !credential.includes("access_token=")
-  );
-  const hasChathubPath =
-    /(^|[;\s])(?:chathubPath|userTenant)=([^;@\s]+@[^;\s]+)/.test(credential) ||
-    /^wss:\/\/substrate\.office\.com\/m365Copilot\/Chathub\/[^?]+(?:@|%40)[^?]+\?/i.test(credential);
-  return {
-    valid: !!(hasAccessToken && hasChathubPath),
-    error: hasAccessToken && hasChathubPath
-      ? null
-      : "Paste the M365 Copilot access_token and Chathub path from the Chathub WebSocket URL",
-  };
+  const token = credential.match(/(^|[?&;\s])access_token=([^;&\s]+)/)?.[2];
+  const path =
+    credential.match(/(^|[;\s])(?:chathubPath|userTenant)=([^;\s]+@[^;\s]+)/)?.[2] ||
+    credential.match(/^wss:\/\/substrate\.office\.com\/m365Copilot\/Chathub\/([^?]+)\?/i)?.[1]?.replace("%40", "@");
+  if (!token || !path) {
+    return {
+      valid: false,
+      error: "Paste the M365 Copilot access_token and Chathub path from the Chathub WebSocket URL",
+    };
+  }
+  const res = await fetch(`https://substrate.office.com/m365Copilot/Chathub/${path}/negotiate?access_token=${token}&negotiateVersion=1`, {
+    method: "POST",
+  });
+  if (res.status === 401 || res.status === 403) {
+    return { valid: false, error: "Invalid or expired M365 Copilot access_token" };
+  }
+  return { valid: true, error: null };
 }
 
 describe("grok-web validation", () => {
@@ -246,14 +251,23 @@ describe("copilot web validation", () => {
     expect(result.error).toContain("Invalid or expired access_token");
   });
 
-  it("copilot-m365-web requires access_token and Chathub path", () => {
-    expect(validateCopilotM365Web("access_token=tok; chathubPath=user@tenant")).toEqual({
+  it("copilot-m365-web probes access_token and Chathub path", async () => {
+    global.fetch = vi.fn().mockResolvedValue({ status: 200 });
+    await expect(validateCopilotM365Web("access_token=tok; chathubPath=user@tenant")).resolves.toEqual({
       valid: true,
       error: null,
     });
-    expect(validateCopilotM365Web(
+    await expect(validateCopilotM365Web(
       "wss://substrate.office.com/m365Copilot/Chathub/user%40tenant?access_token=tok",
-    ).valid).toBe(true);
-    expect(validateCopilotM365Web("access_token=tok").valid).toBe(false);
+    )).resolves.toMatchObject({ valid: true });
+    await expect(validateCopilotM365Web("access_token=tok")).resolves.toMatchObject({ valid: false });
+    await expect(validateCopilotM365Web("chathubPath=user@tenant")).resolves.toMatchObject({ valid: false });
+  });
+
+  it("copilot-m365-web rejects auth failures from the negotiate probe", async () => {
+    global.fetch = vi.fn().mockResolvedValue({ status: 401 });
+    const result = await validateCopilotM365Web("access_token=bad; chathubPath=user@tenant");
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("Invalid or expired M365 Copilot access_token");
   });
 });

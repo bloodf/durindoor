@@ -2,6 +2,7 @@ import WebSocket from "ws";
 import { BaseExecutor } from "./base.js";
 import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import {
   buildPrompt,
   buildWsUrl,
@@ -16,6 +17,7 @@ import {
   handshakeError,
   handshakeFrame,
   isCompletionFrame,
+  isLastUpdate,
   keepaliveFrame,
   parseFrame,
   splitFrames,
@@ -48,12 +50,36 @@ function jsonError(message, status = 502) {
   });
 }
 
+function sseErrorResponse(error, status = 502) {
+  const message = error?.message || error || "Microsoft 365 Copilot stream error";
+  return jsonError(sanitizeErrorMessage(message), status);
+}
+
+function webFetch(url, options, proxyOptions) {
+  return proxyOptions ? proxyAwareFetch(url, options, proxyOptions) : fetch(url, options);
+}
+
+async function createWebSocketAgent(proxyOptions) {
+  if (!proxyOptions?.connectionProxyEnabled || !proxyOptions.connectionProxyUrl) return null;
+  const parsed = new URL(proxyOptions.connectionProxyUrl);
+  if (parsed.protocol.startsWith("socks")) {
+    const { SocksProxyAgent } = await import("socks-proxy-agent");
+    return new SocksProxyAgent(proxyOptions.connectionProxyUrl);
+  }
+  if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+    const { HttpsProxyAgent } = await import("https-proxy-agent");
+    return new HttpsProxyAgent(proxyOptions.connectionProxyUrl);
+  }
+  throw new Error("Microsoft 365 Copilot WebSocket proxy URL must use http, https, socks4, or socks5");
+}
+
 export class CopilotM365WebExecutor extends BaseExecutor {
   constructor() {
     super("copilot-m365-web", { id: "copilot-m365-web", baseUrl: "wss://substrate.office.com" });
   }
 
   async wsChat(input) {
+    const proxyAgent = await createWebSocketAgent(input.proxyOptions || null);
     return new ReadableStream({
       start(controller) {
         const encoder = new TextEncoder();
@@ -106,6 +132,7 @@ export class CopilotM365WebExecutor extends BaseExecutor {
               "User-Agent":
                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
             },
+            ...(proxyAgent ? { agent: proxyAgent } : {}),
           });
 
           const sendChat = () => {
@@ -135,6 +162,7 @@ export class CopilotM365WebExecutor extends BaseExecutor {
                   return;
                 }
                 handshakeComplete = true;
+                clearTimeout(timeout);
                 sendChat();
                 continue;
               }
@@ -146,7 +174,7 @@ export class CopilotM365WebExecutor extends BaseExecutor {
               const finalMessage = extractFinalResultMessage(frame);
               if (finalMessage) finalResultMessage = finalMessage;
 
-              if (isCompletionFrame(frame)) {
+              if (isCompletionFrame(frame) || isLastUpdate(frame)) {
                 clearTimeout(timeout);
                 finish();
                 return;
@@ -167,6 +195,30 @@ export class CopilotM365WebExecutor extends BaseExecutor {
         }
       },
     }, { highWaterMark: 16384 });
+  }
+
+  async testConnection(credentials, signal, proxyOptions = null) {
+    const connectionParams = resolveConnectionParams(credentials);
+    if ("error" in connectionParams) return false;
+    try {
+      const wsUrl = new URL(buildWsUrl(connectionParams).replace(/^wss:/, "https:"));
+      const probeUrl = new URL(`${wsUrl.origin}${wsUrl.pathname}/negotiate`);
+      wsUrl.searchParams.forEach((value, key) => probeUrl.searchParams.set(key, value));
+      probeUrl.searchParams.set("negotiateVersion", "1");
+      const res = await webFetch(probeUrl.toString(), {
+        method: "POST",
+        headers: {
+          Origin: "https://m365.cloud.microsoft",
+          Referer: "https://m365.cloud.microsoft/",
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+        },
+        signal,
+      }, proxyOptions);
+      return res.status !== 401 && res.status !== 403;
+    } catch {
+      return false;
+    }
   }
 
   async execute(input) {
@@ -195,7 +247,23 @@ export class CopilotM365WebExecutor extends BaseExecutor {
     }
 
     const wsUrl = buildWsUrl(connectionParams);
-    const wsStream = await this.wsChat({ wsUrl, prompt, model, signal: input.signal });
+    let wsStream;
+    try {
+      wsStream = await this.wsChat({
+        wsUrl,
+        prompt,
+        model,
+        signal: input.signal,
+        proxyOptions: input.proxyOptions || null,
+      });
+    } catch (err) {
+      return {
+        response: jsonError(sanitizeErrorMessage(err instanceof Error ? err.message : "Failed to connect to Microsoft 365 Copilot")),
+        url: redactWsUrl(wsUrl),
+        headers: {},
+        transformedBody: { model, prompt: prompt.slice(0, 100) },
+      };
+    }
 
     if (stream) {
       return {
@@ -220,6 +288,14 @@ export class CopilotM365WebExecutor extends BaseExecutor {
         if (!data || data === "[DONE]") continue;
         try {
           const parsed = JSON.parse(data);
+          if (parsed.error) {
+            return {
+              response: sseErrorResponse(parsed.error),
+              url: redactWsUrl(wsUrl),
+              headers: {},
+              transformedBody: { model, prompt: prompt.slice(0, 100) },
+            };
+          }
           const content = parsed.choices?.[0]?.delta?.content;
           if (typeof content === "string") fullText += content;
         } catch {

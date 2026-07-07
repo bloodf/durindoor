@@ -9,6 +9,7 @@ import { createHash } from "node:crypto";
 import { BaseExecutor } from "./base.js";
 import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
 
 const COPILOT_BASE = "https://copilot.microsoft.com";
 const COPILOT_START_URL = `${COPILOT_BASE}/c/api/start`;
@@ -60,11 +61,11 @@ export function solveHashcash(parameter, difficulty) {
 export function extractAccessToken(credential) {
   if (!credential) return null;
   const value = String(credential).trim();
-  if (value.startsWith("ey") || value.length > 100) return value;
   const cookieMatch = value.match(/access_token=([^;]+)/);
   if (cookieMatch) return cookieMatch[1];
   const bearerMatch = value.match(/[Bb]earer\s+(.+)/);
   if (bearerMatch) return bearerMatch[1];
+  if (value.startsWith("ey") || value.length > 100) return value;
   return value;
 }
 
@@ -95,18 +96,79 @@ function jsonError(message, status = 502) {
   });
 }
 
-function flattenPrompt(body) {
+function messageContentText(content) {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === "string") return part;
+        if (part?.type === "text" && typeof part.text === "string") return part.text;
+        return JSON.stringify(part ?? "");
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+  return content == null ? "" : JSON.stringify(content);
+}
+
+export function flattenPrompt(body) {
   const messages = body?.messages || [];
-  const userMsg = messages.filter((m) => m.role === "user").pop();
-  const systemMsgs = messages.filter((m) => m.role === "system");
-  const userText = userMsg
-    ? (typeof userMsg.content === "string" ? userMsg.content : JSON.stringify(userMsg.content ?? ""))
-    : "";
-  const systemText = systemMsgs
-    .map((m) => (typeof m.content === "string" ? m.content : ""))
+  const systemText = messages
+    .filter((m) => m.role === "system" || m.role === "developer")
+    .map((m) => messageContentText(m.content))
     .filter(Boolean)
     .join("\n");
-  return `${systemText ? `[System Instructions]\n${systemText}\n\n` : ""}${userText}`;
+  const turns = messages
+    .filter((m) => m.role !== "system" && m.role !== "developer")
+    .map((m) => {
+      const text = messageContentText(m.content).trim();
+      if (!text) return "";
+      const role = m.role === "assistant" ? "Assistant" : m.role === "tool" ? "Tool" : "User";
+      return `[${role}]\n${text}`;
+    })
+    .filter(Boolean)
+    .join("\n\n");
+  return `${systemText ? `[System Instructions]\n${systemText}\n\n` : ""}${turns}`;
+}
+
+function timeoutSignal(parentSignal, timeoutMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(new Error("Copilot session start timeout")), timeoutMs);
+  const onAbort = () => controller.abort(parentSignal?.reason || new Error("Request aborted"));
+  if (parentSignal) {
+    if (parentSignal.aborted) onAbort();
+    else parentSignal.addEventListener("abort", onAbort, { once: true });
+  }
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      clearTimeout(timeout);
+      parentSignal?.removeEventListener?.("abort", onAbort);
+    },
+  };
+}
+
+function sseErrorResponse(error, status = 502) {
+  const message = error?.message || error || "Copilot stream error";
+  return jsonError(sanitizeErrorMessage(message), status);
+}
+
+function webFetch(url, options, proxyOptions) {
+  return proxyOptions ? proxyAwareFetch(url, options, proxyOptions) : fetch(url, options);
+}
+
+async function createWebSocketAgent(proxyOptions) {
+  if (!proxyOptions?.connectionProxyEnabled || !proxyOptions.connectionProxyUrl) return null;
+  const parsed = new URL(proxyOptions.connectionProxyUrl);
+  if (parsed.protocol.startsWith("socks")) {
+    const { SocksProxyAgent } = await import("socks-proxy-agent");
+    return new SocksProxyAgent(proxyOptions.connectionProxyUrl);
+  }
+  if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+    const { HttpsProxyAgent } = await import("https-proxy-agent");
+    return new HttpsProxyAgent(proxyOptions.connectionProxyUrl);
+  }
+  throw new Error("Copilot WebSocket proxy URL must use http, https, socks4, or socks5");
 }
 
 export class CopilotWebExecutor extends BaseExecutor {
@@ -116,16 +178,9 @@ export class CopilotWebExecutor extends BaseExecutor {
 
   async getSession(accessToken, signal) {
     const poolKey = sessionPoolKey(accessToken);
-    const existing = sessionPool.get(poolKey);
-    if (
-      existing &&
-      !existing.isBlocked &&
-      existing.remainingTurns > 5 &&
-      Date.now() - existing.createdAt < 3_600_000
-    ) {
-      return existing;
-    }
 
+    // OpenAI-compatible chat calls are stateless unless the client supplies an
+    // explicit session key, so each request starts a fresh upstream thread.
     if (sessionRotationCount >= 1000) sessionRotationCount = 0;
     const session = await this.createSession(accessToken, signal);
     if (sessionPool.size >= 100) sessionPool.delete(sessionPool.keys().next().value);
@@ -134,7 +189,7 @@ export class CopilotWebExecutor extends BaseExecutor {
     return session;
   }
 
-  async createSession(accessToken, signal) {
+  async createSession(accessToken, signal, proxyOptions = null) {
     const headers = {
       "Content-Type": "application/json",
       "User-Agent": COPILOT_USER_AGENT,
@@ -143,16 +198,22 @@ export class CopilotWebExecutor extends BaseExecutor {
     };
     if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
-    const response = await fetch(COPILOT_START_URL, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        timeZone: "America/New_York",
-        startNewConversation: true,
-        teenSupportEnabled: false,
-      }),
-      signal,
-    });
+    const scopedSignal = timeoutSignal(signal, FETCH_CONNECT_TIMEOUT_MS);
+    let response;
+    try {
+      response = await webFetch(COPILOT_START_URL, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          timeZone: "America/New_York",
+          startNewConversation: true,
+          teenSupportEnabled: false,
+        }),
+        signal: scopedSignal.signal,
+      }, proxyOptions);
+    } finally {
+      scopedSignal.cleanup();
+    }
 
     if (!response.ok) {
       const text = await response.text().catch(() => "");
@@ -175,8 +236,21 @@ export class CopilotWebExecutor extends BaseExecutor {
     };
   }
 
-  async wsChat({ conversationId, prompt, mode, model, accessToken, signal }) {
+  async testConnection(credentials, signal, proxyOptions = null) {
+    const rawCredential = credentials?.apiKey || credentials?.providerSpecificData?.cookie || "";
+    const accessToken = extractAccessToken(rawCredential);
+    if (!accessToken) return false;
+    try {
+      await this.createSession(accessToken, signal, proxyOptions);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async wsChat({ conversationId, prompt, mode, model, accessToken, cookies, signal, proxyOptions }) {
     const WebSocketCtor = await resolveWebSocketCtor();
+    const proxyAgent = await createWebSocketAgent(proxyOptions);
     const wsUrl = `${COPILOT_WS_URL}&clientSessionId=${crypto.randomUUID()}`;
 
     return new ReadableStream({
@@ -186,6 +260,7 @@ export class CopilotWebExecutor extends BaseExecutor {
         let settled = false;
         let chatSent = false;
         let timeout;
+        let previousText = "";
 
         const cleanup = () => {
           if (timeout) clearTimeout(timeout);
@@ -223,18 +298,39 @@ export class CopilotWebExecutor extends BaseExecutor {
 
         signal?.addEventListener("abort", () => abort("Request aborted"), { once: true });
         try {
-          const options = accessToken ? { headers: { Authorization: `Bearer ${accessToken}` } } : undefined;
-          ws = options ? new WebSocketCtor(wsUrl, options) : new WebSocketCtor(wsUrl);
+          const headers = {};
+          if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+          if (cookies) headers.Cookie = cookies;
+          const options = { headers };
+          if (proxyAgent) options.agent = proxyAgent;
+          ws = new WebSocketCtor(wsUrl, options);
           timeout = setTimeout(() => abort("Copilot WebSocket timeout"), FETCH_CONNECT_TIMEOUT_MS);
 
-          const onOpen = () => sendChat();
+          const onOpen = () => {
+            if (timeout) {
+              clearTimeout(timeout);
+              timeout = null;
+            }
+            sendChat();
+          };
           const onMessage = (message) => {
             if (settled) return;
             const raw = message?.data ?? message;
             try {
               const event = typeof raw === "string" ? JSON.parse(raw) : JSON.parse(String(raw));
-              if (event.event === "appendText" || event.event === "replaceText") {
-                if (event.text) controller.enqueue(encoder.encode(makeSseChunk(model, { content: event.text })));
+              if (event.event === "appendText") {
+                if (event.text) {
+                  previousText += event.text;
+                  controller.enqueue(encoder.encode(makeSseChunk(model, { content: event.text })));
+                }
+              } else if (event.event === "replaceText") {
+                if (event.text) {
+                  const delta = String(event.text).startsWith(previousText)
+                    ? String(event.text).slice(previousText.length)
+                    : String(event.text);
+                  previousText = String(event.text);
+                  if (delta) controller.enqueue(encoder.encode(makeSseChunk(model, { content: delta })));
+                }
               } else if (event.event === "chainOfThought") {
                 if (event.text) controller.enqueue(encoder.encode(makeSseChunk(model, { reasoning_content: event.text })));
               } else if (event.event === "challenge") {
@@ -296,9 +392,11 @@ export class CopilotWebExecutor extends BaseExecutor {
     }
 
     let conversationId;
+    let sessionCookies = "";
     try {
-      const session = await this.getSession(accessToken || undefined, input.signal);
+      const session = await this.createSession(accessToken || undefined, input.signal, input.proxyOptions || null);
       conversationId = session.conversationId;
+      sessionCookies = session.cookies || "";
     } catch (err) {
       return {
         response: jsonError(sanitizeErrorMessage(err instanceof Error ? err.message : "Failed to start Copilot conversation")),
@@ -314,7 +412,9 @@ export class CopilotWebExecutor extends BaseExecutor {
       mode,
       model,
       accessToken: accessToken || undefined,
+      cookies: sessionCookies,
       signal: input.signal,
+      proxyOptions: input.proxyOptions || null,
     });
 
     if (stream) {
@@ -340,6 +440,14 @@ export class CopilotWebExecutor extends BaseExecutor {
         if (!data || data === "[DONE]") continue;
         try {
           const parsed = JSON.parse(data);
+          if (parsed.error) {
+            return {
+              response: sseErrorResponse(parsed.error),
+              url: COPILOT_WS_URL,
+              headers: {},
+              transformedBody: { conversationId, mode, prompt: prompt.slice(0, 100) },
+            };
+          }
           const content = parsed.choices?.[0]?.delta?.content;
           if (typeof content === "string") fullText += content;
         } catch {

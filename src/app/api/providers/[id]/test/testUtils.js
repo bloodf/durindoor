@@ -690,6 +690,8 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
       }
       case "adapta-web":
       case "chatgpt-web":
+      case "copilot-web":
+      case "copilot-m365-web":
       case "t3-web": {
         const executor = getExecutor(connection.provider);
         if (typeof executor.testConnection !== "function") {
@@ -699,7 +701,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           apiKey: connection.apiKey,
           accessToken: connection.accessToken,
           providerSpecificData: connection.providerSpecificData || {},
-        }, AbortSignal.timeout(10000));
+        }, AbortSignal.timeout(10000), effectiveProxy);
         return { valid, error: valid ? null : "Invalid web session credentials" };
       }
       case "opencode-go": {

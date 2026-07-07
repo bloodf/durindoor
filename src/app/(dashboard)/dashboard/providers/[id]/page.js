@@ -161,7 +161,7 @@ export default function ProviderDetailPage() {
   const isOAuth = !!OAUTH_PROVIDERS[providerId] || authModes.includes("oauth") || FREE_PROVIDERS[providerId]?.oauth;
   const supportsApiKeyAuth = !!APIKEY_PROVIDERS[providerId] || authModes.includes("apikey");
   const isFreeNoAuth = !!FREE_PROVIDERS[providerId]?.noAuth;
-  const isFreeNoAuthOnly = isNoAuthOnlyProvider(FREE_PROVIDERS[providerId]);
+  const isStoredNoAuth = isFreeNoAuth && providerId === "mimocode";
   const models = getModelsByProviderId(providerId);
   const providerAlias = getProviderAlias(providerId);
   
@@ -1482,10 +1482,7 @@ export default function ProviderDetailPage() {
       )}
 
       {/* Connections */}
-      {isFreeNoAuth && !isFreeNoAuthOnly && (
-        <NoAuthProxyCard providerId={providerId} />
-      )}
-      {isFreeNoAuthOnly ? (
+      {isFreeNoAuth && !isStoredNoAuth ? (
         <NoAuthProxyCard providerId={providerId} />
       ) : (
         <Card>

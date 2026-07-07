@@ -1,0 +1,468 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { fetchMock, proxyAwareFetchMock } = vi.hoisted(() => {
+  const fetchMock = vi.fn();
+  return {
+    fetchMock,
+    proxyAwareFetchMock: vi.fn((url, init, proxyOptions) => fetchMock(url, init, proxyOptions)),
+  };
+});
+
+vi.mock("undici", () => ({
+  fetch: (...args) => fetchMock(...args),
+  ProxyAgent: class { constructor() { /* no-op mock */ } },
+}));
+vi.stubGlobal("fetch", fetchMock);
+
+vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
+  proxyAwareFetch: proxyAwareFetchMock,
+}));
+
+import {
+  MimocodeExecutor,
+  MIMO_SYSTEM_MARKER,
+  generateFingerprint,
+  injectMimocodeSystemMarker,
+  parseJwtExp,
+} from "../../open-sse/executors/mimocode.js";
+import { getExecutor } from "../../open-sse/executors/index.js";
+import { PROVIDERS } from "../../open-sse/config/providers.js";
+import { PROVIDER_MODELS, PROVIDER_ID_TO_ALIAS } from "../../open-sse/config/providerModels.js";
+import { FREE_PROVIDERS } from "../../src/shared/constants/providers.js";
+
+function jsonResponse(data, { ok = true, status = 200 } = {}) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function makeJwt(expSec = Math.floor(Date.now() / 1000) + 3600) {
+  const header = Buffer.from(JSON.stringify({ alg: "HS256" })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify({ exp: expSec })).toString("base64url");
+  return `${header}.${payload}.sig`;
+}
+
+beforeEach(() => {
+  fetchMock.mockReset();
+  proxyAwareFetchMock.mockClear();
+});
+
+describe("MimocodeExecutor", () => {
+  it("generates deterministic 64-char fingerprints", () => {
+    expect(generateFingerprint()).toMatch(/^[0-9a-f]{64}$/);
+    expect(generateFingerprint("seed-a")).toBe(generateFingerprint("seed-a"));
+    expect(generateFingerprint("seed-a")).not.toBe(generateFingerprint("seed-b"));
+  });
+
+  it("parses JWT expiry and falls back for malformed tokens", () => {
+    const exp = Math.floor(Date.now() / 1000) + 1200;
+    expect(parseJwtExp(makeJwt(exp))).toBe(exp * 1000);
+    expect(parseJwtExp("bad-token")).toBeGreaterThan(Date.now());
+  });
+
+  it("injects the MiMoCode anti-abuse marker once", () => {
+    const first = injectMimocodeSystemMarker({ messages: [{ role: "user", content: "hi" }] });
+    expect(first.messages[0].role).toBe("system");
+    expect(first.messages[0].content).toContain(MIMO_SYSTEM_MARKER);
+
+    const second = injectMimocodeSystemMarker(first);
+    expect(second.messages.filter((message) => message.content?.includes?.(MIMO_SYSTEM_MARKER))).toHaveLength(1);
+  });
+
+  it("builds the chat endpoint, headers, and stripped model body", () => {
+    const executor = new MimocodeExecutor();
+    const transformed = executor.transformRequest("mcode/mimo-auto", {
+      model: "mcode/mimo-auto",
+      messages: [{ role: "user", content: "hi" }],
+    });
+
+    expect(executor.buildUrl()).toBe("https://api.xiaomimimo.com/api/free-ai/openai/chat");
+    expect(executor.buildHeaders({}, true)["X-Mimo-Source"]).toBe("mimocode-cli-free");
+    expect(executor.buildHeaders({}, true).Accept).toContain("text/event-stream");
+    expect(executor.buildHeaders({}, false).Accept).toBeUndefined();
+    expect(transformed.model).toBe("mimo-auto");
+    expect(transformed.messages[0].content).toContain(MIMO_SYSTEM_MARKER);
+  });
+
+  it("syncs configured fingerprints and per-account proxies", () => {
+    const executor = new MimocodeExecutor();
+    executor.syncAccountsFromCredentials({
+      providerSpecificData: {
+        fingerprints: ["fp-a", "fp-b"],
+        accountProxies: [
+          { fingerprint: "fp-a", proxy: { type: "http", host: "proxy-a.test", port: 8080 } },
+          { fingerprint: "fp-b", proxy: { type: "https", host: "proxy-b.test" } },
+        ],
+      },
+    });
+
+    expect(executor.accounts.some((account) => account.fingerprint === "fp-a")).toBe(true);
+    expect(executor.proxyUrlMap.get("fp-a")).toBe("http://proxy-a.test:8080");
+    expect(executor.proxyUrlMap.get("fp-b")).toBe("https://proxy-b.test:443");
+  });
+
+  it("rejects SOCKS per-account proxies until a fetch-socks dispatcher is ported", () => {
+    const executor = new MimocodeExecutor();
+    expect(() => executor.syncAccountsFromCredentials({
+      providerSpecificData: {
+        accountProxies: [
+          { fingerprint: "fp-socks", proxy: { type: "socks5", host: "proxy.test", port: 1080 } },
+        ],
+      },
+    })).toThrow(/fetch-socks dispatcher/);
+  });
+
+  it("bootstraps a JWT, injects marker, and sends bearer auth to chat", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+
+    const executor = new MimocodeExecutor();
+    const { response, headers, transformedBody } = await executor.execute({
+      model: "mcode/mimo-auto",
+      body: { messages: [{ role: "user", content: "hi" }], stream: false },
+      stream: false,
+      credentials: {},
+    });
+
+    expect(response.status).toBe(200);
+    expect(headers.Authorization).toMatch(/^Bearer /);
+    expect(transformedBody.messages[0].content).toContain(MIMO_SYSTEM_MARKER);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).client).toBe(generateFingerprint());
+    expect(fetchMock.mock.calls[0][1].headers["User-Agent"]).toContain("Mozilla/5.0");
+    expect(fetchMock.mock.calls[1][1].headers.Authorization).toMatch(/^Bearer /);
+  });
+
+  it("honors configured proxyOptions for bootstrap and chat fetches", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+
+    const proxyOptions = {
+      connectionProxyEnabled: true,
+      connectionProxyUrl: "http://pool-proxy.test:8080",
+      connectionNoProxy: "",
+      vercelRelayUrl: "",
+    };
+
+    const { response } = await new MimocodeExecutor().execute({
+      model: "mimo-auto",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: {},
+      proxyOptions,
+    });
+
+    expect(response.status).toBe(200);
+    expect(proxyAwareFetchMock).toHaveBeenCalledTimes(2);
+    expect(proxyAwareFetchMock.mock.calls[0][2]).toBe(proxyOptions);
+    expect(proxyAwareFetchMock.mock.calls[1][2]).toBe(proxyOptions);
+  });
+
+  it("round-robins into uninitialized configured fingerprints", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("ok-a", { status: 200 }))
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("ok-b", { status: 200 }));
+
+    const executor = new MimocodeExecutor();
+    executor.accounts = [executor.buildAccount("fp-a"), executor.buildAccount("fp-b")];
+
+    await executor.execute({
+      model: "mimo-auto",
+      body: { messages: [{ role: "user", content: "first" }] },
+      stream: false,
+      credentials: {},
+    });
+    await executor.execute({
+      model: "mimo-auto",
+      body: { messages: [{ role: "user", content: "second" }] },
+      stream: false,
+      credentials: {},
+    });
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).client).toBe("fp-a");
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body).client).toBe("fp-b");
+  });
+
+  it("re-bootstraps and retries once after 403 auth failure", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("forbidden", { status: 403 }))
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+
+    const { response } = await new MimocodeExecutor().execute({
+      model: "mimo-auto",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: true,
+      credentials: {},
+    });
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("rotates past accounts that stay unauthorized after forced re-bootstrap", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("forbidden", { status: 403 }))
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("forbidden", { status: 403 }))
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+
+    const executor = new MimocodeExecutor();
+    executor.accounts = [executor.buildAccount("fp-a"), executor.buildAccount("fp-b")];
+
+    const { response } = await executor.execute({
+      model: "mimo-auto",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: true,
+      credentials: {},
+    });
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    // First pair uses fp-a (auth fail + re-bootstrap), second pair uses fp-b.
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).client).toBe("fp-a");
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body).client).toBe("fp-a");
+    expect(JSON.parse(fetchMock.mock.calls[4][1].body).client).toBe("fp-b");
+  });
+
+  it("preserves the default account JWT across executes when no fingerprints are configured", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }))
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+
+    const executor = new MimocodeExecutor();
+    const baseInput = {
+      model: "mimo-auto",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: {},
+    };
+    await executor.execute(baseInput);
+    await executor.execute(baseInput);
+
+    // 1 bootstrap + 2 chats = 3 fetches; the second chat re-uses the cached JWT
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("rebuilds accounts from credentials and drops stale default fingerprints", () => {
+    const executor = new MimocodeExecutor();
+    executor.accounts = [executor.buildAccount("fp-a"), executor.buildAccount("fp-b")];
+    executor.nextAccountIdx = 1;
+
+    executor.syncAccountsFromCredentials({
+      providerSpecificData: {
+        fingerprints: ["fp-b", "fp-c"],
+      },
+    });
+
+    expect(executor.accounts.map((a) => a.fingerprint)).toEqual(["fp-b", "fp-c"]);
+    // fp-b state should be preserved (same object reference is not required, but cooldown stays 0).
+    expect(executor.accounts.every((a) => a.cooldownUntil === 0)).toBe(true);
+  });
+
+  it("stops when all accounts are cooling instead of returning a cooling account", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ jwt: makeJwt() }));
+
+    const executor = new MimocodeExecutor();
+    const account = executor.accounts[0];
+    account.cooldownUntil = Date.now() + 60_000;
+
+    const { response } = await executor.execute({
+      model: "mimo-auto",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: {},
+    });
+
+    expect(response.status).toBe(502);
+    expect((await response.json()).error.code).toBe("NO_ACCOUNTS");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("defaults omitted per-account proxy types to http", () => {
+    const executor = new MimocodeExecutor();
+    executor.syncAccountsFromCredentials({
+      providerSpecificData: {
+        accountProxies: [{ fingerprint: "fp-a", proxy: { host: "proxy.test", port: 8080 } }],
+      },
+    });
+
+    expect(executor.proxyUrlMap.get("fp-a")).toBe("http://proxy.test:8080");
+  });
+
+  it("propagates client abort instead of marking the account cooling", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }));
+    const executor = new MimocodeExecutor();
+    const controller = new AbortController();
+
+    const executing = executor.execute({
+      model: "mimo-auto",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: {},
+      signal: controller.signal,
+    });
+    controller.abort();
+
+    let error;
+    try {
+      await executing;
+    } catch (e) {
+      error = e;
+    }
+
+    expect(error?.name === "AbortError" || /AbortError/.test(String(error?.message))).toBe(true);
+    expect(executor.accounts[0].consecutiveFails).toBe(0);
+  });
+
+  it("keeps account and proxy state isolated per connection id", () => {
+    const executor = new MimocodeExecutor();
+    executor.syncAccountsFromCredentials({
+      connectionId: "conn-a",
+      providerSpecificData: {
+        fingerprints: ["fp-a"],
+        accountProxies: [{ fingerprint: "fp-a", proxy: { host: "proxy-a.test", port: 8080 } }],
+      },
+    });
+    executor.syncAccountsFromCredentials({
+      connectionId: "conn-b",
+      providerSpecificData: {
+        fingerprints: ["fp-b"],
+        accountProxies: [{ fingerprint: "fp-b", proxy: { host: "proxy-b.test", port: 8080 } }],
+      },
+    });
+
+    const stateA = executor.stateCache.get("conn-a");
+    const stateB = executor.stateCache.get("conn-b");
+    expect(stateA.accounts.map((a) => a.fingerprint)).toEqual(["fp-a"]);
+    expect(stateB.accounts.map((a) => a.fingerprint)).toEqual(["fp-b"]);
+    expect(stateA.proxyUrlMap.get("fp-a")).toBe("http://proxy-a.test:8080");
+    expect(stateB.proxyUrlMap.get("fp-b")).toBe("http://proxy-b.test:8080");
+    expect(stateA).not.toBe(stateB);
+  });
+
+  it("treats an internal bootstrap timeout as an upstream failure, not a client abort", async () => {
+    fetchMock.mockImplementation((_url, init) => new Promise((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true });
+    }));
+    vi.useFakeTimers({ shouldAdvanceTime: false });
+    const executor = new MimocodeExecutor();
+
+    try {
+      const executing = executor.execute({
+        model: "mimo-auto",
+        body: { messages: [{ role: "user", content: "hi" }] },
+        stream: false,
+        credentials: {},
+      });
+      await vi.advanceTimersByTimeAsync(15_000);
+      const { response } = await executing;
+
+      expect(response.status).toBe(502);
+      expect((await response.json()).error.code).toBe("EXECUTOR_ERROR");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("returns the terminal 429 status when all accounts are rate limited", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("rate limited", { status: 429 }))
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("rate limited", { status: 429 }));
+
+    const executor = new MimocodeExecutor();
+    executor.accounts = [executor.buildAccount("fp-a"), executor.buildAccount("fp-b")];
+
+    const { response } = await executor.execute({
+      model: "mimo-auto",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: {},
+    });
+
+    expect(response.status).toBe(429);
+    expect((await response.json()).error.code).toBe("NO_ACCOUNTS");
+  });
+
+  it("returns the terminal 403 status when all accounts are unauthorized", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("forbidden", { status: 403 }))
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("forbidden", { status: 403 }))
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("forbidden", { status: 403 }));
+
+    const executor = new MimocodeExecutor();
+    executor.accounts = [executor.buildAccount("fp-a")];
+
+    const { response } = await executor.execute({
+      model: "mimo-auto",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: {},
+    });
+
+    expect(response.status).toBe(403);
+    expect((await response.json()).error.code).toBe("NO_ACCOUNTS");
+  });
+
+  it("returns the bootstrap HTTP status when bootstrap fails for every account", async () => {
+    fetchMock.mockResolvedValueOnce(new Response("forbidden", { status: 403 }));
+    const executor = new MimocodeExecutor();
+
+    const { response } = await executor.execute({
+      model: "mimo-auto",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: {},
+    });
+
+    expect(response.status).toBe(403);
+    expect((await response.json()).error.code).toBe("EXECUTOR_ERROR");
+  });
+
+  it("rotates on retryable 5xx statuses and returns the terminal status when exhausted", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("bad gateway", { status: 502 }))
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("service unavailable", { status: 503 }))
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("gateway timeout", { status: 504 }));
+
+    const executor = new MimocodeExecutor();
+    executor.accounts = [executor.buildAccount("fp-a"), executor.buildAccount("fp-b"), executor.buildAccount("fp-c")];
+
+    const { response } = await executor.execute({
+      model: "mimo-auto",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: {},
+    });
+
+    expect(response.status).toBe(504);
+    expect((await response.json()).error.code).toBe("NO_ACCOUNTS");
+    expect(executor.accounts.every((a) => a.cooldownUntil > Date.now())).toBe(true);
+  });
+
+  it("registers Mimocode as a no-auth specialized provider and mcode alias", () => {
+    expect(getExecutor("mimocode")).toBeInstanceOf(MimocodeExecutor);
+    expect(getExecutor("mcode")).toBeInstanceOf(MimocodeExecutor);
+    expect(PROVIDERS.mimocode.noAuth).toBe(true);
+    expect(PROVIDER_ID_TO_ALIAS.mimocode).toBe("mcode");
+    expect(PROVIDER_MODELS.mcode.map((model) => model.id)).toEqual(["mimo-auto"]);
+    expect(FREE_PROVIDERS.mimocode.noAuth).toBe(true);
+  });
+});

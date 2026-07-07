@@ -3,6 +3,21 @@ import { extractApiKey } from "./auth.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
+import { getConsistentMachineId } from "@/shared/utils/machineId";
+
+const CLI_AUTH_SALT = "9r-cli-auth";
+let cachedCliToken = null;
+
+async function getCliToken() {
+  if (!cachedCliToken) cachedCliToken = await getConsistentMachineId(CLI_AUTH_SALT);
+  return cachedCliToken;
+}
+
+async function hasValidCliToken(request) {
+  const token = request?.headers?.get("x-9r-cli-token");
+  if (!token) return false;
+  return token === await getCliToken();
+}
 
 /**
  * Check if a model is allowed by the API key policy.
@@ -34,11 +49,10 @@ export function isModelAllowed(policy, modelStr) {
  * @returns {Promise<Response | null>} null if allowed, error Response if rejected
  */
 export async function enforceApiKeyModelPolicy(request, modelStr) {
-  // Skip policy enforcement for internal dashboard requests (e.g. provider test,
-  // model ping) — these carry an x-9r-cli-token header and are not from external
-  // API consumers. Policy only applies to external client requests.
-  const cliToken = request?.headers?.get("x-9r-cli-token");
-  if (cliToken) return null;
+  // Skip policy enforcement for internal dashboard/CLI requests only when the CLI
+  // token is genuinely valid. An arbitrary non-empty header should not bypass policy.
+  const hasCli = await hasValidCliToken(request);
+  if (hasCli) return null;
 
   const apiKey = extractApiKey(request);
   if (!apiKey) return null;

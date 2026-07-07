@@ -48,19 +48,24 @@ function decodeJwtPayload(token) {
   }
 }
 
+function extractTrailingEmail(value) {
+  const trimmed = value.trim();
+  const lastSpace = trimmed.lastIndexOf(" ");
+  if (lastSpace < 0) return "";
+  const possible = trimmed.slice(lastSpace + 1).trim();
+  return possible.includes("@") ? possible : "";
+}
+
 export function parseCredential(rawApiKey) {
   const trimmed = String(rawApiKey || "").trim();
-  const eqIdx = trimmed.indexOf("=");
-  const stripped =
-    eqIdx > 0 && !trimmed.startsWith("eyJ") ? trimmed.slice(eqIdx + 1).trim() : trimmed;
-  const lastSpace = stripped.lastIndexOf(" ");
-  if (lastSpace > 0) {
-    const possibleEmail = stripped.slice(lastSpace + 1).trim();
-    if (possibleEmail.includes("@")) {
-      return { token: stripped.slice(0, lastSpace).trim(), credEmail: possibleEmail };
-    }
+  const cookieMatch = trimmed.match(/(?:^|;\s*)token=([^;\s]+)/);
+  if (cookieMatch && cookieMatch[1].trim()) {
+    const token = cookieMatch[1].trim();
+    return { token, credEmail: extractTrailingEmail(trimmed) };
   }
-  return { token: stripped, credEmail: "" };
+  const stripped = trimmed.startsWith("eyJ") ? trimmed : trimmed.slice(trimmed.indexOf("=") + 1).trim();
+  const email = extractTrailingEmail(trimmed);
+  return { token: email ? stripped.slice(0, stripped.lastIndexOf(email)).trim() : stripped, credEmail: email };
 }
 
 function makeErrorResult(status, message, body) {
@@ -388,9 +393,89 @@ export class InnerAiExecutor extends BaseExecutor {
     if (!upstream.body) return makeErrorResult(502, "Inner.ai returned an empty response", body);
 
     const resolvedModel = modelEntry.llm_model || requestedModel;
-    if (wantStream !== false) {
+    if (wantStream === false) {
+      // non-stream requested — parse tool blocks if present.
+      let content;
+      try {
+        content = await collectContent(upstream.body);
+      } catch (err) {
+        if (err instanceof InnerAiStreamError) return makeErrorResult(err.status, err.message, body);
+        throw err;
+      }
+      const completionId = `chatcmpl-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      if (hasTools) {
+        const parsed = buildToolAwareResult(content, requestedTools, "inner");
+        if (parsed.toolCalls) {
+          return {
+            response: new Response(
+              JSON.stringify({
+                id: completionId,
+                object: "chat.completion",
+                created: Math.floor(Date.now() / 1000),
+                model: resolvedModel,
+                choices: [{ index: 0, message: { role: "assistant", content: null, tool_calls: parsed.toolCalls }, finish_reason: parsed.finishReason }],
+              }),
+              { status: 200, headers: { "Content-Type": "application/json" } }
+            ),
+            url: INNER_AI_CHAT_URL,
+            headers: reqHeaders,
+            transformedBody: innerAiBody,
+          };
+        }
+        content = parsed.content;
+      }
       return {
-        response: new Response(transformInnerAiSSE(upstream.body, resolvedModel), {
+        response: new Response(
+          JSON.stringify({
+            id: completionId,
+            object: "chat.completion",
+            created: Math.floor(Date.now() / 1000),
+            model: resolvedModel,
+            choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }],
+            usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+          }),
+          { headers: { "Content-Type": "application/json" } }
+        ),
+        url: INNER_AI_CHAT_URL,
+        headers: reqHeaders,
+        transformedBody: innerAiBody,
+      };
+    }
+    if (hasTools) {
+      // tool requests must be parsed; synthesize an OpenAI-compatible SSE stream.
+      let content;
+      try {
+        content = await collectContent(upstream.body);
+      } catch (err) {
+        if (err instanceof InnerAiStreamError) return makeErrorResult(err.status, err.message, body);
+        throw err;
+      }
+      const completionId = `chatcmpl-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const parsed = buildToolAwareResult(content, requestedTools, "inner");
+      if (parsed.toolCalls) {
+        const toolCalls = parsed.toolCalls;
+        const streamBody = [
+          `data: ${JSON.stringify({ id: completionId, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model: resolvedModel, choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null }] })}\n\n`,
+          ...toolCalls.map((call, index) => `data: ${JSON.stringify({ id: completionId, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model: resolvedModel, choices: [{ index: 0, delta: { tool_calls: [{ index, id: call.id, type: "function", function: { name: call.function.name, arguments: call.function.arguments } }] }, finish_reason: null }] })}\n\n`),
+          `data: ${JSON.stringify({ id: completionId, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model: resolvedModel, choices: [{ index: 0, delta: {}, finish_reason: parsed.finishReason }] })}\n\n`,
+          "data: [DONE]\n\n",
+        ].join("");
+        return {
+          response: new Response(streamBody, {
+            headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+          }),
+          url: INNER_AI_CHAT_URL,
+          headers: reqHeaders,
+          transformedBody: innerAiBody,
+        };
+      }
+      const streamBody = [
+        `data: ${JSON.stringify({ id: completionId, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model: resolvedModel, choices: [{ index: 0, delta: { role: "assistant", content: parsed.content }, finish_reason: null }] })}\n\n`,
+        `data: ${JSON.stringify({ id: completionId, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model: resolvedModel, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`,
+        "data: [DONE]\n\n",
+      ].join("");
+      return {
+        response: new Response(streamBody, {
           headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
         }),
         url: INNER_AI_CHAT_URL,
@@ -398,48 +483,10 @@ export class InnerAiExecutor extends BaseExecutor {
         transformedBody: innerAiBody,
       };
     }
-
-    let content;
-    try {
-      content = await collectContent(upstream.body);
-    } catch (err) {
-      if (err instanceof InnerAiStreamError) return makeErrorResult(err.status, err.message, body);
-      throw err;
-    }
-    const completionId = `chatcmpl-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    if (hasTools) {
-      const parsed = buildToolAwareResult(content, requestedTools, "inner");
-      if (parsed.toolCalls) {
-        return {
-          response: new Response(
-            JSON.stringify({
-              id: completionId,
-              object: "chat.completion",
-              created: Math.floor(Date.now() / 1000),
-              model: resolvedModel,
-              choices: [{ index: 0, message: { role: "assistant", content: null, tool_calls: parsed.toolCalls }, finish_reason: parsed.finishReason }],
-            }),
-            { status: 200, headers: { "Content-Type": "application/json" } }
-          ),
-          url: INNER_AI_CHAT_URL,
-          headers: reqHeaders,
-          transformedBody: innerAiBody,
-        };
-      }
-      content = parsed.content;
-    }
     return {
-      response: new Response(
-        JSON.stringify({
-          id: completionId,
-          object: "chat.completion",
-          created: Math.floor(Date.now() / 1000),
-          model: resolvedModel,
-          choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }],
-          usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
-        }),
-        { headers: { "Content-Type": "application/json" } }
-      ),
+      response: new Response(transformInnerAiSSE(upstream.body, resolvedModel), {
+        headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+      }),
       url: INNER_AI_CHAT_URL,
       headers: reqHeaders,
       transformedBody: innerAiBody,

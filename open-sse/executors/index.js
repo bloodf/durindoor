@@ -1,6 +1,7 @@
 import { AntigravityExecutor } from "./antigravity.js";
 import { AuggieExecutor } from "./auggie.js";
 import { AzureExecutor } from "./azure.js";
+import { AzureOpenAIExecutor } from "./azure-openai.js";
 import { BedrockExecutor } from "./bedrock.js";
 import { ChipotleExecutor } from "./chipotle.js";
 import { GeminiCLIExecutor } from "./gemini-cli.js";
@@ -47,6 +48,7 @@ const executors = {
   auggie: new AuggieExecutor(),
   aug: new AuggieExecutor(), // Alias for auggie
   azure: new AzureExecutor(),
+  "azure-openai": new AzureOpenAIExecutor(),
   bedrock: new BedrockExecutor(),
   chipotle: new ChipotleExecutor(),
   "gemini-cli": new GeminiCLIExecutor(),
@@ -118,6 +120,7 @@ export { BaseExecutor } from "./base.js";
 export { AntigravityExecutor } from "./antigravity.js";
 export { AuggieExecutor } from "./auggie.js";
 export { AzureExecutor } from "./azure.js";
+export { AzureOpenAIExecutor } from "./azure-openai.js";
 export { BedrockExecutor } from "./bedrock.js";
 export { ChipotleExecutor } from "./chipotle.js";
 export { GeminiCLIExecutor } from "./gemini-cli.js";

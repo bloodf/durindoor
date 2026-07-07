@@ -242,7 +242,15 @@ export class ChipotleExecutor extends BaseExecutor {
     const { model, stream, body, signal, log } = input;
     const messages = body?.messages ?? [];
     const lastUser = [...messages].reverse().find((message) => message.role === "user");
-    const prompt = typeof lastUser?.content === "string" ? lastUser.content : "";
+    const prompt = (() => {
+      const content = lastUser?.content;
+      if (typeof content === "string") return content;
+      if (!Array.isArray(content)) return "";
+      return content
+        .filter((part) => typeof part === "string" || (part && part.type === "text" && typeof part.text === "string"))
+        .map((part) => (typeof part === "string" ? part : part.text))
+        .join("");
+    })();
     let client = null;
     try {
       client = await this.clientFactory();
@@ -258,11 +266,10 @@ export class ChipotleExecutor extends BaseExecutor {
         return {
           response: new Response(
             [
-              `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: { role: "assistant", content }, finish_reason: null }] })}`,
-              `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}`,
-              "data: [DONE]",
-              "",
-            ].join("\n"),
+              `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: { role: "assistant", content }, finish_reason: null }] })}\n\n`,
+              `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`,
+              "data: [DONE]\n\n",
+            ].join(""),
             { status: 200, headers: { "Content-Type": "text/event-stream" } }
           ),
           url: this.buildUrl(),

@@ -106,7 +106,6 @@ function UsageContent() {
             </Button>
           </div>
         )}
-        )}
       </div>
 
       {activeTab === "overview" && (

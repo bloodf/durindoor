@@ -56,4 +56,24 @@ describe("Antigravity capacity fallback", () => {
       }),
     );
   });
+
+  it("falls back without cooldown for recoverable Antigravity project 403", async () => {
+    const { markAccountUnavailable } = await import("../../src/sse/services/auth.js");
+    const result = await markAccountUnavailable(
+      "ag-1",
+      403,
+      {
+        error: {
+          status: "PERMISSION_DENIED",
+          message: "Cloud AI Companion API has not been used in project 123 before or it is disabled.",
+          details: [{ reason: "SERVICE_DISABLED" }],
+        },
+      },
+      "antigravity",
+      "claude-sonnet-4-6",
+    );
+
+    expect(result).toEqual({ shouldFallback: true, cooldownMs: 0 });
+    expect(mocks.updateProviderConnection).not.toHaveBeenCalled();
+  });
 });

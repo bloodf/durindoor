@@ -301,6 +301,26 @@ function advanceRotationState(rotationKey, currentIndex, modelCount, normalizedS
   }
 }
 
+function advanceRoundRobinPointerPastServedModel(models, comboName, comboStickyLimit, servedModel) {
+  if (!Array.isArray(models) || models.length <= 1 || !servedModel) return;
+  const servedIndex = models.indexOf(servedModel);
+  if (servedIndex < 0) return;
+  const sticky = normalizeStickyLimit(comboStickyLimit);
+  if (sticky > 1) {
+    // For sticky round-robin, pin the served model as the current rotation
+    // and start its sticky counter so subsequent requests continue from it.
+    comboRotationState.set(comboName || "__default__", {
+      index: servedIndex,
+      consecutiveUseCount: 0,
+    });
+  } else {
+    comboRotationState.set(comboName || "__default__", {
+      index: (servedIndex + 1) % models.length,
+      consecutiveUseCount: 0,
+    });
+  }
+}
+
 function pruneConversationAffinity(now = Date.now()) {
   for (const [key, value] of comboConversationAffinity) {
     if (!value || now - value.lastUsed > CONVERSATION_AFFINITY_TTL_MS) {
@@ -760,6 +780,12 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
       // Success (2xx) - return response
       if (result.ok) {
         if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, true, null);
+        if (comboStrategy === "round-robin") {
+          const actuallyRotated = modelStr !== rotatedModels[0];
+          if (actuallyRotated) {
+            advanceRoundRobinPointerPastServedModel(models, comboName, comboStickyLimit, modelStr);
+          }
+        }
         log.info("COMBO", `Model ${modelStr} succeeded`);
         return result;
       }

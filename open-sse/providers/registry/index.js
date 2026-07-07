@@ -121,7 +121,8 @@ import p118 from "./llamagate.js";
 import p119 from "./llm7.js";
 import p120 from "./longcat.js";
 import p121 from "./maritalk.js";
-import p122 from "./meta-llama.js";
+import p122 from "./tinyfish.js";
+import p123 from "./meta-llama.js";
 
 export default [
   p0,
@@ -247,4 +248,5 @@ export default [
   p120,
   p121,
   p122,
+  p123,
 ];

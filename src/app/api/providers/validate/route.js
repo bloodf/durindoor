@@ -43,6 +43,9 @@ async function probeWebProvider(provider, apiKey, providerSpecificData = {}) {
   }
 
   const res = await fetch(url, { method: cfg.method, headers, body, signal: AbortSignal.timeout(8000) });
+  if (cfg.authHeader === "key") {
+    return res.ok;
+  }
   return res.status !== 401 && res.status !== 403;
 }
 

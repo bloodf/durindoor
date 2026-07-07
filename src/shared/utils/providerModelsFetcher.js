@@ -18,6 +18,7 @@ export async function fetchSuggestedModels(fetcher) {
 
   try {
     const params = new URLSearchParams({ url: fetcher.url, type: fetcher.type });
+    if (fetcher.provider) params.set("provider", fetcher.provider);
     const res = await fetch(`/api/providers/suggested-models?${params}`);
     if (!res.ok) return [];
     const json = await res.json();

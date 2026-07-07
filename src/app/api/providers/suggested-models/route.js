@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { FILTERS } from "./filters.js";
+import { getProviderConnections } from "@/models";
+import modelscopeRegistry from "open-sse/providers/registry/modelscope.js";
 
 export const dynamic = "force-dynamic";
 
@@ -7,6 +9,7 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const url = searchParams.get("url");
   const type = searchParams.get("type");
+  const provider = searchParams.get("provider");
 
   if (!url || !type) {
     return NextResponse.json({ error: "Missing url or type" }, { status: 400 });
@@ -18,7 +21,17 @@ export async function GET(request) {
   }
 
   try {
-    const res = await fetch(url);
+    const headers = {};
+    if (provider === "modelscope") {
+      const modelscopeUrl = modelscopeRegistry.modelsFetcher?.url;
+      if (modelscopeUrl && url === modelscopeUrl) {
+        const connections = await getProviderConnections({ provider: "modelscope", isActive: true });
+        const apiKey = connections[0]?.apiKey;
+        if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+      }
+    }
+
+    const res = await fetch(url, { headers });
     if (!res.ok) {
       return NextResponse.json({ data: [] });
     }

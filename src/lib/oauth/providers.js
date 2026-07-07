@@ -60,7 +60,11 @@ function extractGrokCliToken(input) {
 
   if (input && typeof input === "object") {
     const obj = input;
-    const inner = obj.accessToken && typeof obj.accessToken === "object" ? obj.accessToken : obj;
+    const inner = obj.authJson && typeof obj.authJson === "object"
+      ? obj.authJson
+      : obj.accessToken && typeof obj.accessToken === "object"
+        ? obj.accessToken
+        : obj;
 
     if (inner && typeof inner === "object") {
       for (const entry of Object.values(inner)) {
@@ -69,7 +73,6 @@ function extractGrokCliToken(input) {
           return {
             accessToken: entry.key,
             refreshToken: typeof entry.refresh_token === "string" ? entry.refresh_token : null,
-            rawAuthJson: inner,
             expiresAt: typeof entry.expires_at === "string" ? entry.expires_at : null,
           };
         }
@@ -90,7 +93,7 @@ function extractGrokCliToken(input) {
 }
 
 export function mapGrokCliTokens(tokens) {
-  const { accessToken, refreshToken, rawAuthJson, expiresAt } = extractGrokCliToken(tokens);
+  const { accessToken, refreshToken, expiresAt } = extractGrokCliToken(tokens);
   const payload = decodeJwtPayload(accessToken) || {};
   const currentSec = Math.floor(Date.now() / 1000);
   let expiresIn = 21600;
@@ -114,7 +117,6 @@ export function mapGrokCliTokens(tokens) {
       teamId: payload.team_id || null,
       tier: payload.tier || 1,
       principalType: payload.principal_type || "User",
-      rawAuthJson: rawAuthJson || undefined,
     },
   };
 }
@@ -542,6 +544,17 @@ const PROVIDERS = {
       email: extra?.userInfo?.email,
       projectId: extra?.projectId,
     }),
+  },
+
+  // `agy` intentionally uses the Antigravity OAuth lifecycle with an isolated
+  // provider id so CLI imports/connections do not collide with IDE accounts.
+  agy: {
+    config: ANTIGRAVITY_CONFIG,
+    flowType: "authorization_code",
+    buildAuthUrl: (config, redirectUri, state) => PROVIDERS.antigravity.buildAuthUrl(config, redirectUri, state),
+    exchangeToken: (config, code, redirectUri) => PROVIDERS.antigravity.exchangeToken(config, code, redirectUri),
+    postExchange: (tokens) => PROVIDERS.antigravity.postExchange(tokens),
+    mapTokens: (tokens, extra) => PROVIDERS.antigravity.mapTokens(tokens, extra),
   },
 
   iflow: {

@@ -78,8 +78,8 @@ Implemented in this slice:
 
 | Provider | Identifier | Credential path | Refresh behavior |
 | --- | --- | --- | --- |
-| Antigravity CLI | `agy` | Same Google OAuth shape as Antigravity, stored under a separate provider id so CLI credentials do not collide with IDE credentials. | Reuses the Antigravity Google refresh flow. |
-| Grok Build CLI | `grok-cli` | Import `~/.grok/auth.json` or a raw Grok JWT through the import-token flow. Auth JSON imports preserve the refresh token and non-secret account metadata. | Uses the xAI OAuth token endpoint and stores rotated refresh tokens when returned. |
+| Antigravity CLI | `agy` | Same Google OAuth shape as Antigravity, stored under a separate provider id so CLI credentials do not collide with IDE credentials. OAuth authorization, proactive refresh, and image generation adapter lookup are all explicitly registered for `agy` before it is shown in the dashboard. | Reuses the Antigravity Google refresh flow. |
+| Grok Build CLI | `grok-cli` | Import `~/.grok/auth.json`, a raw Grok JWT, or a structured `{ accessToken, refreshToken }` body through the import-token flow. Auth JSON imports persist the refresh token and decoded non-secret account metadata only; raw auth JSON is never stored in public provider metadata. | Uses the xAI OAuth token endpoint and stores rotated refresh tokens when returned. |
 
 Blocked from runtime exposure in this slice:
 

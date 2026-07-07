@@ -13,13 +13,17 @@ describe("OmniRoute OAuth/session provider slice", () => {
   it("exposes agy as an Antigravity-backed OAuth provider without alias collision", async () => {
     const { resolveProviderAlias } = await import("../../open-sse/services/model.js");
     const { getExecutor } = await import("../../open-sse/executors/index.js");
+    const { getImageAdapter } = await import("../../open-sse/handlers/imageProviders/index.js");
     const { PROVIDERS, PROVIDER_OAUTH } = await import("../../open-sse/providers/index.js");
+    const { getProvider } = await import("../../src/lib/oauth/providers.js");
 
     expect(resolveProviderAlias("agy")).toBe("agy");
     expect(PROVIDERS.agy.format).toBe("antigravity");
     expect(PROVIDERS.agy.clientId).toBe(PROVIDERS.antigravity.clientId);
     expect(PROVIDER_OAUTH.agy.tokenUrl).toBe(PROVIDER_OAUTH.antigravity.tokenUrl);
+    expect(getProvider("agy").buildAuthUrl).toBeTypeOf("function");
     expect(getExecutor("agy").getProvider()).toBe("agy");
+    expect(getImageAdapter("agy")).toBe(getImageAdapter("antigravity"));
   });
 
   it("maps grok-cli auth.json into serializable OAuth credentials", async () => {
@@ -52,7 +56,19 @@ describe("OmniRoute OAuth/session provider slice", () => {
       tier: 2,
       principalType: "User",
     });
-    expect(mapped.providerSpecificData.rawAuthJson).toEqual(authJson);
+    expect(mapped.providerSpecificData.rawAuthJson).toBeUndefined();
+  });
+
+  it("preserves grok-cli refresh tokens from structured import-token bodies", async () => {
+    const { mapGrokCliTokens } = await import("../../src/lib/oauth/providers.js");
+    const jwt = makeJwt({ sub: "user-2", email: "body@example.com" });
+
+    const mapped = mapGrokCliTokens({ accessToken: jwt, refreshToken: "refresh-body" });
+
+    expect(mapped.accessToken).toBe(jwt);
+    expect(mapped.refreshToken).toBe("refresh-body");
+    expect(mapped.email).toBe("body@example.com");
+    expect(mapped.providerSpecificData).toMatchObject({ userId: "user-2" });
   });
 
   it("clamps expired grok-cli tokens so refresh can run instead of storing a past expiresAt", async () => {
@@ -95,6 +111,28 @@ describe("OmniRoute OAuth/session provider slice", () => {
     expect(tokenCall?.[1].body.get("refresh_token")).toBe("old-refresh");
   });
 
+  it("refreshes agy credentials through the Antigravity Google token flow", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        access_token: "agy-access",
+        refresh_token: "agy-refresh-next",
+        expires_in: 600,
+      }),
+    }));
+
+    const { refreshTokenByProvider } = await import("../../open-sse/services/tokenRefresh.js");
+    const refreshed = await refreshTokenByProvider("agy", { refreshToken: "agy-refresh-old" }, null);
+
+    expect(refreshed).toEqual({
+      accessToken: "agy-access",
+      refreshToken: "agy-refresh-next",
+      expiresIn: 600,
+    });
+    const tokenCall = fetch.mock.calls.find(([url]) => String(url).includes("oauth2.googleapis.com/token"));
+    expect(tokenCall?.[1].body.get("refresh_token")).toBe("agy-refresh-old");
+  });
+
   it("grok-cli executor adds CLI headers and strips rejected params", async () => {
     const { GrokCliExecutor } = await import("../../open-sse/executors/grok-cli.js");
     const executor = new GrokCliExecutor();
@@ -107,15 +145,21 @@ describe("OmniRoute OAuth/session provider slice", () => {
     const body = executor.transformRequest("grok-build", {
       messages: [],
       presencePenalty: 1,
+      presence_penalty: 1,
       frequencyPenalty: 1,
+      frequency_penalty: 1,
       logprobs: true,
       topLogprobs: 5,
+      top_logprobs: 5,
     }, true);
 
     expect(body).toMatchObject({ model: "grok-build", stream: true, messages: [] });
     expect(body.presencePenalty).toBeUndefined();
+    expect(body.presence_penalty).toBeUndefined();
     expect(body.frequencyPenalty).toBeUndefined();
+    expect(body.frequency_penalty).toBeUndefined();
     expect(body.logprobs).toBeUndefined();
     expect(body.topLogprobs).toBeUndefined();
+    expect(body.top_logprobs).toBeUndefined();
   });
 });

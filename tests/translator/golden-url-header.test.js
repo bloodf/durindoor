@@ -48,6 +48,12 @@ function sanitize(headers) {
       .replaceAll(process.arch, "<ARCH>");             // e.g. x64 / arm64
     // App version cũng xuất hiện trần trong các header này.
     if (k === "X-CLIENT-VERSION" || k === "X-CORE-VERSION") s = "<VER>";
+    // X-Stainless-* fingerprint values are environment-dependent:
+    // X-Stainless-Os is derived via mapStainlessOs(), and X-Stainless-Arch
+    // via mapStainlessArch() or hardcoded in a provider. Normalize both to
+    // stable placeholders so snapshots are portable across OS/arch/CI.
+    if (k === "X-Stainless-Os") s = "<OS>";
+    if (k === "X-Stainless-Arch") s = "<ARCH>";
     out[k] = s;
   }
   return out;

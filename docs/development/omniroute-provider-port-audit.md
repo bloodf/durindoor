@@ -29,6 +29,12 @@ instead of limiting the inventory to one top-level directory per provider.
 - Missing by provider id: 133
 - OmniRoute provider icons missing locally: 0
 
+## Batch A Compatibility Notes
+
+- `agentrouter` uses the shared Claude CLI spoof fingerprint because the gateway validates Claude CLI client identity in addition to x-api-key authentication.
+- `aimlapi` keeps `thinkingFormat: "openai"` even for Claude/Gemini-family model ids because its `/v1/chat/completions` endpoint expects OpenAI-compatible reasoning fields.
+- `bailian-coding-plan` stores the full `/messages` endpoint in `transport.baseUrl`; `DefaultExecutor` posts to registry base URLs verbatim for static default providers.
+
 ## Missing Provider Classes
 
 - oauth-session: 6

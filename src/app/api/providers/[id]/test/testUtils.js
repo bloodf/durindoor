@@ -979,9 +979,58 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         }, effectiveProxy);
         return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
       }
-      default:
+      case "bailian-coding-plan": {
+        const cfg = PROVIDERS[connection.provider];
+        const res = await fetchWithConnectionProxy(cfg.baseUrl, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${connection.apiKey}`,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+            ...(cfg.headers || {}),
+          },
+          body: JSON.stringify({
+            model: getDefaultModel(connection.provider) || "claude-sonnet-4-20250514",
+            max_tokens: 1,
+            messages: [{ role: "user", content: "test" }],
+          }),
+        }, effectiveProxy);
+        const valid = res.status !== 401 && res.status !== 403;
+        return { valid, error: valid ? null : "Invalid API key" };
+      }
+      case "agentrouter": {
+        const cfg = PROVIDERS[connection.provider];
+        const res = await fetchWithConnectionProxy(cfg.baseUrl, {
+          method: "POST",
+          headers: {
+            "x-api-key": connection.apiKey,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+            ...(cfg.headers || {}),
+          },
+          body: JSON.stringify({
+            model: getDefaultModel(connection.provider) || "claude-sonnet-4-20250514",
+            max_tokens: 1,
+            messages: [{ role: "user", content: "test" }],
+          }),
+        }, effectiveProxy);
+        const valid = res.status !== 401 && res.status !== 403;
+        return { valid, error: valid ? null : "Invalid API key" };
+      }
+      default: {
+        // Generic config-driven fallback for API-key providers without an explicit case above.
+        // Uses the registry transport: validateUrl > modelsUrl > baseUrl-derived /models.
+        const cfg = PROVIDERS[connection.provider];
+        const validateUrl = cfg?.validateUrl || cfg?.modelsUrl || cfg?.baseUrl?.replace(/\/chat\/completions\/?$/, "/models");
+        if (validateUrl && connection.apiKey) {
+          const res = await fetchWithConnectionProxy(validateUrl, {
+            headers: { Authorization: `Bearer ${connection.apiKey}` },
+          }, effectiveProxy);
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+        }
         return await testRegistryOpenAIConnection(connection, effectiveProxy)
           || { valid: false, error: "Provider test not supported" };
+      }
     }
   } catch (err) {
     return { valid: false, error: err.message };

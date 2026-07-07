@@ -1,5 +1,5 @@
 // Latest schema version — bumped when a migration is added in ./migrations/
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export const PRAGMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -72,6 +72,9 @@ export const TABLES = {
     ],
   },
   apiKeys: {
+    // Declarative schema. The `expiresAt` column is currently added by
+    // migrations/004-api-key-expiry.js; keeping it here ensures fresh DBs
+    // created by the initial migration include it from the start.
     columns: {
       id: "TEXT PRIMARY KEY",
       key: "TEXT UNIQUE NOT NULL",
@@ -80,6 +83,7 @@ export const TABLES = {
       isActive: "INTEGER DEFAULT 1",
       allowedCombos: "TEXT",
       createdAt: "TEXT NOT NULL",
+      expiresAt: "TEXT",
     },
     indexes: ["CREATE INDEX IF NOT EXISTS idx_ak_key ON apiKeys(key)"],
   },

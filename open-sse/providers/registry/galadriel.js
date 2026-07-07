@@ -18,6 +18,6 @@ export default {
     forceNonStreaming: true,
   },
   models: [
-    { id: "galadriel-latest", name: "galadriel-latest" },
+    { id: "gpt-4o", name: "gpt-4o" },
   ],
 };

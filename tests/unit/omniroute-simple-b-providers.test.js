@@ -132,10 +132,13 @@ describe("OmniRoute simple/default provider batch B", () => {
 
     expect(registryById.get("databricks")?.hidden).toBe(true);
     expect(registryById.get("dify")?.hidden).toBe(true);
+    expect(registryById.get("factory")?.hidden).toBe(true);
     expect(AI_PROVIDERS.databricks?.hidden).toBe(true);
     expect(AI_PROVIDERS.dify?.hidden).toBe(true);
+    expect(AI_PROVIDERS.factory?.hidden).toBe(true);
     expect(isHiddenProvider("databricks")).toBe(true);
     expect(isHiddenProvider("dify")).toBe(true);
+    expect(isHiddenProvider("factory")).toBe(true);
     expect(isHiddenProvider("openai")).toBe(false);
   });
 
@@ -157,16 +160,25 @@ describe("OmniRoute simple/default provider batch B", () => {
   it("forces Galadriel OpenAI payloads to non-streaming and drops stream_options", () => {
     const executor = new DefaultExecutor("galadriel");
     const body = executor.transformRequest(
-      "galadriel-latest",
-      { model: "galadriel-latest", messages: [{ role: "user", content: "ping" }], stream: true, stream_options: { include_usage: true } },
+      "gpt-4o",
+      { model: "gpt-4o", messages: [{ role: "user", content: "ping" }], stream: true, stream_options: { include_usage: true } },
       false,
       { apiKey: "test-key" },
     );
 
+    expect(body.model).toBe("gpt-4o");
     expect(body.stream).toBe(false);
     // Upstream 400s if stream_options is sent alongside a forced stream:false —
     // it's only meaningful with stream:true (controls the final usage chunk).
     expect(body.stream_options).toBeUndefined();
+  });
+
+  it("seeds Galadriel with a verified supported model", () => {
+    const registryById = new Map(REGISTRY.map((entry) => [entry.id, entry]));
+    const galadriel = registryById.get("galadriel");
+
+    expect(galadriel.models[0].id).toBe("gpt-4o");
+    expect(PROVIDER_MODELS.galadriel?.[0].id).toBe("gpt-4o");
   });
 
   it("keeps model aliases and passthrough fetchers for dynamic catalogs", () => {

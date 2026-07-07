@@ -23,6 +23,19 @@ function applyConfiguredAuthHeader(headers, cfg, apiKey) {
   return headers;
 }
 
+export async function probeNoAuthLocalProvider(baseUrl) {
+  const normalized = String(baseUrl || "")
+    .replace(/\/$/, "")
+    .replace(/\/api\/chat$/, "");
+  if (!normalized) return { valid: false, error: "Base URL required for no-auth provider" };
+  try {
+    const res = await fetch(`${normalized}/models`, { signal: AbortSignal.timeout(8000) });
+    return { valid: res.ok, error: res.ok ? null : "Endpoint unreachable or rejected" };
+  } catch (err) {
+    return { valid: false, error: err.message };
+  }
+}
+
 // Probe a webSearch/webFetch provider using its searchConfig/fetchConfig.
 // Returns true if API key is accepted (status !== 401 && !== 403).
 async function probeWebProvider(provider, apiKey, providerSpecificData = {}) {
@@ -163,12 +176,15 @@ export async function POST(request) {
     const provider = normalizeProviderId(body.provider);
     const { apiKey, providerSpecificData } = body;
 
-    const isNoAuth = AI_PROVIDERS[provider]?.noAuth === true;
+    const providerInfo = AI_PROVIDERS[provider] || {};
+    const isNoAuth = providerInfo.noAuth === true;
     if (!provider || (!apiKey && provider !== "ollama-local" && !isNoAuth)) {
       return NextResponse.json({ error: "Provider and API key required" }, { status: 400 });
     }
     if (isNoAuth && !apiKey) {
-      return NextResponse.json({ valid: true, error: null });
+      return NextResponse.json(await probeNoAuthLocalProvider(
+        providerSpecificData?.baseUrl || providerInfo.defaultBaseUrl
+      ));
     }
 
     let isValid = false;

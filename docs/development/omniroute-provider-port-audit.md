@@ -192,4 +192,38 @@ instead of limiting the inventory to one top-level directory per provider.
   filename, same 128x128 dimensions) so the advertised local icon format
   matches the file on disk.
 
+## Specialized Executor Slice: Faraday
+
+Source inspected at `3ddcee6369c54e1c844a6e46cbbc79870d10d30b`:
+
+- `open-sse/executors/auggie.ts`
+- `open-sse/executors/bedrock.ts`
+- `open-sse/executors/chipotle.ts`
+- `open-sse/executors/commandCode.ts`
+- `open-sse/executors/inner-ai.ts`
+- `open-sse/executors/mimocode.ts`
+- `open-sse/executors/pollinations.ts`
+- `open-sse/executors/puter.ts`
+- `open-sse/executors/theoldllm.ts`
+- Matching provider registry modules under `open-sse/config/providers/registry/<provider>/index.ts`
+
+### Implemented
+
+These providers are exposed in DurinDoor with executor/unit coverage:
+
+- `command-code`: registered as a hyphenated provider id backed by DurinDoor's existing Command Code executor path. The provider keeps OmniRoute's `command-code` id, `cmd` alias, `/alpha/generate` endpoint, stream-forcing transport, and current model seed. This avoids duplicating the existing `commandcode` translator while making the OmniRoute provider id routable. `POST /api/providers/validate` dispatches both `commandcode` and `command-code` through the same CommandCode probe case (`src/app/api/providers/validate/route.js`), and `normalizeProviderId` (`src/lib/providerNormalization.js`) resolves the `cmd` alias and `command-code` via `getProviderByAlias` before dispatch, so an API key saved under either id validates instead of falling through to the generic "Provider validation not supported" path. The per-connection health-check probe (`testApiKeyConnection` in `src/app/api/providers/[id]/test/testUtils.js`) mirrors the same `commandcode`/`command-code` dual-case dispatch, so the dashboard's "Test" button on a saved connection no longer reports "Provider test not supported" for either id.
+- `pollinations`: ported as a small specialized executor for `https://gen.pollinations.ai/v1/chat/completions`. The provider is exposed as no-auth/free so the documented keyless catalog can be used without an API key, and it still accepts an optional real Pollinations API-key connection (from enter.pollinations.ai) for premium models — `src/sse/services/auth.js` prefers a real saved connection over the synthetic public no-auth credential and only falls back to it when no usable connection exists. `open-sse/executors/pollinations.js` rejects every synthetic no-auth placeholder (`sk_durindoor`, `{ accessToken: "public", id: "noauth" }` runtime shape) so none of them are ever forwarded as a real bearer token, and only enables `jsonMode` when the caller explicitly requests a `response_format.type` of `json_object` or `json_schema`. `POST /api/providers/validate`'s generic no-auth short-circuit (`cfg.noAuth`) only skips validation when the request omits an `apiKey`; a supplied premium key still falls through to the real Bearer probe below it, so a mistyped premium key is rejected at save time instead of silently persisting as "valid" and only failing later at request time.
+- `puter`: ported as a small specialized executor for Puter's OpenAI-compatible chat REST endpoint. It forwards bearer credentials and leaves model ids untouched because Puter accepts catalog ids directly.
+- `theoldllm`: ported as a no-auth executor that maps legacy model aliases, generates the `X-Request-Token` expected by the public The Old LLM endpoint, retries once on token rejection, and uses DurinDoor's proxy-aware fetch path. Successful streaming calls pipe the upstream SSE body directly; non-streaming calls use the shared SSE-to-OpenAI JSON parser so usage, reasoning, tool calls, and finish metadata survive conversion. The provider does not advertise passthrough models because unknown inputs are intentionally mapped to known upstream ids.
+
+### Blocked
+
+These providers remain audit-only and are not exposed as supported:
+
+- `auggie`: requires local Augment CLI process execution and provider test plumbing from OmniRoute's `open-sse/executors/auggie.ts`, including safe binary discovery, spawn lifecycle handling, stdin error handling, and a connection test that runs `auggie --version`. DurinDoor does not currently have this local CLI provider subsystem or UI/test path for a no-auth provider whose authentication is delegated to an external CLI login.
+- `bedrock`: requires `@aws-sdk/client-bedrock-runtime`, `open-sse/config/bedrock.ts`, and the Bedrock Converse/ConverseStream translation surface from OmniRoute's `open-sse/executors/bedrock.ts`. The target package does not depend on the AWS Bedrock runtime SDK, and the region/native Converse helpers are absent.
+- `chipotle`: requires the WebSocket/STOMP Amelia client from OmniRoute's `open-sse/executors/chipotle.ts` and the `ws` package. The target package does not depend on `ws`, and DurinDoor has no SockJS/STOMP session subsystem for this no-auth web endpoint.
+- `inner-ai`: requires OmniRoute's `../translator/webTools.ts` helpers (`prepareToolMessages`, `buildToolAwareResult`) plus the full Inner.ai profile/model discovery and web-tool result conversion flow in `open-sse/executors/inner-ai.ts`. The target tree has no `open-sse/translator/webTools` module, so a faithful port would require adding that translator subsystem first.
+- `mimocode`: requires OmniRoute's account fingerprint/JWT bootstrap subsystem from `open-sse/executors/mimocode.ts`, including per-account cooldown/rotation, SOCKS/HTTP proxy dispatch, `providerSpecificData.fingerprints`, and `accountProxies` handling. DurinDoor has `mimo-free` as a simpler no-auth Xiaomi path, but not Mimocode's multi-account state and proxy routing contract.
+
 Generated with `node scripts/audit-omniroute-providers.mjs --source <OmniRoute checkout> --format markdown`.

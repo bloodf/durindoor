@@ -32,8 +32,16 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     // Resolve alias to provider ID (e.g., "kc" -> "kilocode")
     const providerId = resolveProviderId(provider);
 
-    // Inject a virtual connection for no-auth free providers (with optional proxy pool from settings)
-    if (FREE_PROVIDERS[providerId]?.noAuth) {
+    const connections = await getProviderConnections({ provider: providerId, isActive: true });
+    log.debug("AUTH", `${provider} | total connections: ${connections.length}, excludeIds: ${excludeSet.size > 0 ? [...excludeSet].join(",") : "none"}, model: ${model || "any"}`);
+
+    // Inject a virtual connection for no-auth free providers (with optional proxy pool
+    // from settings) — but ONLY when the user has no real saved connection for this
+    // provider. Some "noAuth" providers (e.g. Pollinations) also accept an optional
+    // premium API key; short-circuiting here unconditionally would make a real saved
+    // key unreachable. Fall through to the normal connection-selection path below
+    // whenever at least one real connection exists.
+    const buildNoAuthCredential = async () => {
       const settings = await getSettings();
       const override = (settings.providerStrategies || {})[providerId] || {};
       const strategy = override.rotateStrategy || "none";
@@ -57,10 +65,12 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
           vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
         },
       };
-    }
+    };
+    const isNoAuthProvider = !!FREE_PROVIDERS[providerId]?.noAuth;
 
-    const connections = await getProviderConnections({ provider: providerId, isActive: true });
-    log.debug("AUTH", `${provider} | total connections: ${connections.length}, excludeIds: ${excludeSet.size > 0 ? [...excludeSet].join(",") : "none"}, model: ${model || "any"}`);
+    if (isNoAuthProvider && connections.length === 0) {
+      return buildNoAuthCredential();
+    }
 
     if (connections.length === 0) {
       log.warn("AUTH", `No credentials for ${provider}`);
@@ -85,6 +95,13 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     });
 
     if (availableConnections.length === 0) {
+      // For no-auth providers with a real saved key that is now excluded/locked,
+      // fall back to the public no-auth credential instead of failing outright —
+      // Pollinations (and similar) still serve unauthenticated traffic.
+      if (isNoAuthProvider) {
+        log.warn("AUTH", `${provider} | saved key unavailable, falling back to public no-auth`);
+        return buildNoAuthCredential();
+      }
       // Find earliest lock expiry across all connections for retry timing
       const lockedConns = connections.filter(c => isModelLockActive(c, model));
       const expiries = lockedConns.map(c => getEarliestModelLockUntil(c)).filter(Boolean);
@@ -103,6 +120,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       log.warn("AUTH", `${provider} | all ${connections.length} accounts unavailable`);
       return null;
     }
+
 
     const settings = await getSettings();
     // Per-provider strategy overrides global setting

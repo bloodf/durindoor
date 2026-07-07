@@ -102,6 +102,10 @@ import p99 from "./youcom.js";
 import p100 from "./nube.js";
 import p101 from "./kenari.js";
 import p102 from "./hcnsec.js";
+import p103 from "./command-code.js";
+import p104 from "./pollinations.js";
+import p105 from "./puter.js";
+import p106 from "./theoldllm.js";
 
 export default [
   p0,
@@ -207,4 +211,8 @@ export default [
   p100,
   p101,
   p102,
+  p103,
+  p104,
+  p105,
+  p106,
 ];

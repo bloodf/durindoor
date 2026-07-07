@@ -1,11 +1,55 @@
 const api = require("../api/client");
-const { prompt, confirm, pause } = require("../utils/input");
+const { prompt, select, confirm, pause } = require("../utils/input");
 const { clearScreen, showStatus, showHeader } = require("../utils/display");
 const { maskKey, formatDate, getRelativeTime } = require("../utils/format");
 const { showMenuWithBack } = require("../utils/menuHelper");
 const { copyToClipboard } = require("../utils/clipboard");
 const { getEndpoint } = require("../utils/endpoint");
 
+const EXPIRY_OPTIONS = [
+  { label: "Never expires", value: null },
+  { label: "1 day", ms: 24 * 60 * 60 * 1000 },
+  { label: "7 days", ms: 7 * 24 * 60 * 60 * 1000 },
+  { label: "30 days", ms: 30 * 24 * 60 * 60 * 1000 },
+  { label: "90 days", ms: 90 * 24 * 60 * 60 * 1000 },
+  { label: "Custom ISO datetime", custom: true },
+];
+
+function isExpired(expiresAt) {
+  if (!expiresAt) return false;
+  const time = new Date(expiresAt).getTime();
+  return !Number.isFinite(time) || time <= Date.now();
+}
+
+function formatExpiry(expiresAt) {
+  if (!expiresAt) return "Never expires";
+  const date = new Date(expiresAt);
+  if (!Number.isFinite(date.getTime())) return "Invalid expiry";
+  return `${isExpired(expiresAt) ? "Expired" : "Expires"}: ${formatDate(expiresAt)}`;
+}
+
+async function promptExpiry() {
+  const index = await select("Expiry:", EXPIRY_OPTIONS.map((option) => option.label));
+  const option = EXPIRY_OPTIONS[index];
+  if (!option || option.value === null) return null;
+  if (option.ms) return new Date(Date.now() + option.ms).toISOString();
+
+  while (option.custom) {
+    const input = await prompt("Custom expiry (ISO, e.g. 2026-12-31T23:59:00Z): ");
+    if (!input) return null;
+    const date = new Date(input);
+    if (!Number.isFinite(date.getTime())) {
+      console.log("Invalid date. Use ISO datetime.");
+      continue;
+    }
+    if (date.getTime() <= Date.now()) {
+      console.log("Expiry must be in the future.");
+      continue;
+    }
+    return date.toISOString();
+  }
+  return null;
+}
 /**
  * Display API keys list with formatted output
  * @param {Array} keys - Array of API key objects
@@ -32,6 +76,9 @@ function displayApiKeys(keys, port) {
       
       const created = formatDate(key.createdAt);
       console.log(`│     Created: ${created}${" ".repeat(43 - created.length)}│`);
+
+      const expiry = formatExpiry(key.expiresAt);
+      console.log(`│     Expiry: ${expiry}${" ".repeat(Math.max(0, 44 - expiry.length))}│`);
       
       if (key.lastUsedAt) {
         const lastUsed = getRelativeTime(key.lastUsedAt);
@@ -68,7 +115,8 @@ async function handleCreateKey() {
     return false;
   }
   
-  const result = await api.createApiKey(name);
+  const expiresAt = await promptExpiry();
+  const result = await api.createApiKey(name, expiresAt);
   
   if (!result.success) {
     showStatus(`Failed to create key: ${result.error}`, "error");
@@ -76,11 +124,12 @@ async function handleCreateKey() {
     return false;
   }
   
-  console.log("\n✅ API Key created successfully!");
+  console.log(`\n✅ API Key created successfully!`);
   console.log("\n⚠️  IMPORTANT: Save this key now. You won't be able to see it again!");
   console.log(`\nKey: ${result.data.key}`);
   console.log(`Name: ${result.data.name}`);
   console.log(`ID: ${result.data.id}`);
+  console.log(`Expiry: ${formatExpiry(result.data.expiresAt)}`);
   
   const shouldCopy = await confirm("\nCopy key to clipboard?");
   if (shouldCopy) {
@@ -105,6 +154,7 @@ async function handleViewFullKey(key) {
   console.log(`Name: ${key.name}`);
   console.log(`Key: ${key.key}`);
   console.log(`ID: ${key.id}`);
+  console.log(`Expiry: ${formatExpiry(key.expiresAt)}`);
   console.log(`Created: ${formatDate(key.createdAt)}`);
   
   if (key.lastUsedAt) {
@@ -135,9 +185,10 @@ async function handleCopyKey(key) {
  * @returns {Promise<boolean>} Success status
  */
 async function handleDeleteKey(key) {
-  console.log(`\n⚠️  Delete API Key: ${key.name}`);
+  console.log(`\n🗑️  Delete API Key: ${key.name}`);
   console.log("─".repeat(30));
   console.log(`Key: ${maskKey(key.key)}`);
+  console.log(`Expiry: ${formatExpiry(key.expiresAt)}`);
   console.log(`Created: ${formatDate(key.createdAt)}`);
   
   const confirmed = await confirm("\nAre you sure you want to delete this key?");
@@ -172,7 +223,7 @@ async function showKeyActions(key, port, breadcrumb = []) {
   await showMenuWithBack({
     title: `🔑 ${key.name}`,
     breadcrumb: [...breadcrumb, key.name],
-    headerContent: `Name: ${key.name}\nKey: ${key.key}\nEndpoint: ${endpoint}`,
+    headerContent: `Name: ${key.name}\nKey: ${key.key}\nExpiry: ${formatExpiry(key.expiresAt)}\nEndpoint: ${endpoint}`,
     items: [
       {
         label: "Copy to Clipboard",
@@ -215,7 +266,7 @@ async function showApiKeysMenu(port, breadcrumb = []) {
       }
       return { items: result.data.keys || [] };
     },
-    formatItem: (key) => `${key.name} (${maskKey(key.key)})`,
+    formatItem: (key) => `${key.name} (${maskKey(key.key)}) — ${formatExpiry(key.expiresAt)}`,
     onSelect: async (key) => {
       await showKeyActions(key, port, breadcrumb);
     },

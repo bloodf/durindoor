@@ -42,11 +42,12 @@ describe("API keys route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getConsistentMachineId.mockResolvedValue("machine-abc");
-    mocks.createApiKey.mockImplementation(async (name, machineId, expiresAt) => ({
+    mocks.createApiKey.mockImplementation(async (name, machineId, allowedCombos, expiresAt) => ({
       id: "key-id",
       key: "sk-machine-abc-key001-crc12345",
       name,
       machineId,
+      allowedCombos,
       expiresAt,
     }));
   });
@@ -59,7 +60,7 @@ describe("API keys route", () => {
 
     expect(response.status).toBe(201);
     expect(body.expiresAt).toBeNull();
-    expect(mocks.createApiKey).toHaveBeenCalledWith("prod", "machine-abc", null);
+    expect(mocks.createApiKey).toHaveBeenCalledWith("prod", "machine-abc", [], null);
   });
 
   it("rejects blank name", async () => {
@@ -80,7 +81,7 @@ describe("API keys route", () => {
 
     expect(response.status).toBe(201);
     expect(body.expiresAt).toBe(expiresAt);
-    expect(mocks.createApiKey).toHaveBeenCalledWith("short", "machine-abc", expiresAt);
+    expect(mocks.createApiKey).toHaveBeenCalledWith("short", "machine-abc", [], expiresAt);
   });
 
   it("rejects invalid or past expiresAt", async () => {

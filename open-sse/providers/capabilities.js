@@ -108,8 +108,8 @@ export const PROVIDER_CAPABILITIES = {
   // endpoint but does not return structured tool_use blocks.
   "zenmux-free": {
     "deepseek/deepseek-chat": { tools: false },
-    "deepseek/deepseek-reasoner": { tools: false },
-    "deepseek/deepseek-v4-pro": { tools: false },
+    "deepseek/deepseek-reasoner": { tools: false, reasoning: true, thinkingFormat: "deepseek", thinkingCanDisable: false, contextWindow: 128000 },
+    "deepseek/deepseek-v4-pro": { tools: false, reasoning: true, thinkingFormat: "deepseek", contextWindow: 1000000, maxOutput: 384000 },
     "kuaishou/kat-coder-pro-v1-free": { tools: false },
     "z-ai/glm-4.7-flash-free": { tools: false },
     "stepfun/step-3.5-flash-free": { tools: false },
@@ -121,8 +121,8 @@ export const PROVIDER_CAPABILITIES = {
   },
   zmf: {
     "deepseek/deepseek-chat": { tools: false },
-    "deepseek/deepseek-reasoner": { tools: false },
-    "deepseek/deepseek-v4-pro": { tools: false },
+    "deepseek/deepseek-reasoner": { tools: false, reasoning: true, thinkingFormat: "deepseek", thinkingCanDisable: false, contextWindow: 128000 },
+    "deepseek/deepseek-v4-pro": { tools: false, reasoning: true, thinkingFormat: "deepseek", contextWindow: 1000000, maxOutput: 384000 },
     "kuaishou/kat-coder-pro-v1-free": { tools: false },
     "z-ai/glm-4.7-flash-free": { tools: false },
     "stepfun/step-3.5-flash-free": { tools: false },

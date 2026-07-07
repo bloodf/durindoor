@@ -76,6 +76,18 @@ describe("zenmux-free registry", () => {
     expect(getCapabilitiesForModel("zmf", "deepseek/deepseek-chat").tools).toBe(false);
   });
 
+  it("preserves reasoning capabilities for ZenMux thinking models", () => {
+    const reasoner = getCapabilitiesForModel("zenmux-free", "deepseek/deepseek-reasoner");
+    expect(reasoner.tools).toBe(false);
+    expect(reasoner.reasoning).toBe(true);
+    expect(reasoner.thinkingFormat).toBe("deepseek");
+
+    const v4 = getCapabilitiesForModel("zmf", "deepseek/deepseek-v4-pro");
+    expect(v4.tools).toBe(false);
+    expect(v4.reasoning).toBe(true);
+    expect(v4.thinkingFormat).toBe("deepseek");
+  });
+
   it("uses the specialized executor", () => {
     expect(hasSpecializedExecutor("zenmux-free")).toBe(true);
     expect(getExecutor("zenmux-free")).toBeInstanceOf(ZenmuxFreeExecutor);

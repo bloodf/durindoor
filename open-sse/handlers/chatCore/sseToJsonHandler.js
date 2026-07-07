@@ -103,6 +103,23 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       appendLog({ tokens: usage, status: "200 OK" });
       saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint });
 
+      // When the client asked for the Responses API format, return the converted JSON directly.
+      // responsesApiToOpenAICompletion would project it to chat.completion shape and lose Responses fields.
+      if (targetFormat === FORMATS.OPENAI_RESPONSES) {
+        logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "sse-json-responses", requestBody: body, translatedBody, providerBody: jsonResponse, clientBody: jsonResponse });
+
+        const totalLatency = Date.now() - requestStartTime;
+        saveRequestDetail(buildRequestDetail({
+          ...ctx,
+          latency: { ttft: totalLatency, total: totalLatency },
+          tokens: { prompt_tokens: usage.input_tokens || 0, completion_tokens: usage.output_tokens || 0 },
+          response: { content: jsonResponse.output?.map?.(o => o.type === "message" ? o.content?.map?.(c => c.type === "output_text" ? c.text : "").join("") : "").join("") || null, thinking: null, finish_reason: jsonResponse.status === "completed" ? "stop" : jsonResponse.status || "unknown" },
+          status: "success"
+        }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});
+
+        return { success: true, response: new Response(JSON.stringify(jsonResponse), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
+      }
+
       const openAICompletion = responsesApiToOpenAICompletion(jsonResponse, model);
       const finalResp = projectCompletionToClientFormat(openAICompletion, sourceFormat);
       logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "sse-json-responses", requestBody: body, translatedBody, providerBody: jsonResponse, clientBody: finalResp });
@@ -115,8 +132,6 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         response: { content: openAICompletion.choices?.[0]?.message?.content || null, thinking: openAICompletion.choices?.[0]?.message?.reasoning_content || null, finish_reason: openAICompletion.choices?.[0]?.finish_reason || "unknown" },
         status: "success"
       }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});
-
-      return { success: true, response: new Response(JSON.stringify(finalResp), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
     } catch (err) {
       console.error("[ChatCore] Responses API SSE→JSON failed:", err);
       return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Failed to convert streaming response to JSON");

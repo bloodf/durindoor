@@ -92,6 +92,66 @@ export async function refreshAccessToken(provider, refreshToken, credentials, lo
   }, log);
 }
 
+export async function refreshGitLabDuoToken(refreshToken, credentials = {}, log) {
+  if (!refreshToken) return null;
+  const baseUrl = String(
+    credentials?.providerSpecificData?.baseUrl ||
+      process.env.GITLAB_DUO_BASE_URL ||
+      process.env.GITLAB_BASE_URL ||
+      "https://gitlab.com"
+  ).replace(/\/$/, "");
+  const clientId =
+    credentials?.providerSpecificData?.clientId ||
+    process.env.GITLAB_DUO_OAUTH_CLIENT_ID ||
+    process.env.GITLAB_OAUTH_CLIENT_ID ||
+    PROVIDER_OAUTH["gitlab-duo"]?.clientId ||
+    "";
+  const clientSecret =
+    credentials?.providerSpecificData?.clientSecret ||
+    process.env.GITLAB_DUO_OAUTH_CLIENT_SECRET ||
+    process.env.GITLAB_OAUTH_CLIENT_SECRET ||
+    PROVIDER_OAUTH["gitlab-duo"]?.clientSecret ||
+    "";
+
+    return dedupRefresh(`gitlab-duo:${baseUrl}:${clientId}`, refreshToken, async () => {
+    try {
+      const params = new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+        client_id: clientId,
+      });
+      if (clientSecret) params.set("client_secret", clientSecret);
+      const response = await proxyAwareFetch(`${baseUrl}/oauth/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+        body: params,
+      }, credentials?.proxyOptions || null);
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        log?.warn?.("TOKEN_REFRESH", `GitLab Duo refresh failed: ${response.status} ${errorText}`);
+        if (response.status === 400 || response.status === 401) return { error: "invalid_grant" };
+        return null;
+      }
+      const tokens = await response.json();
+      return {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token || refreshToken,
+        expiresIn: tokens.expires_in,
+        providerSpecificData: {
+          ...(credentials?.providerSpecificData || {}),
+          baseUrl,
+          clientId,
+          ...(clientSecret ? { clientSecret } : {}),
+          authKind: "oauth",
+        },
+      };
+    } catch (error) {
+      log?.warn?.("TOKEN_REFRESH", `GitLab Duo refresh error: ${error.message}`);
+      return null;
+    }
+  }, log);
+}
+
 export async function refreshClaudeOAuthToken(refreshToken, log) {
   if (!refreshToken) return null;
   return dedupRefresh("claude", refreshToken, async () => {

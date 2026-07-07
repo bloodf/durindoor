@@ -24,6 +24,10 @@ import { CliproxyapiExecutor } from "./cliproxyapi.js";
 import { GrokCliExecutor } from "./grok-cli.js";
 import { GigaChatExecutor } from "./gigachat.js";
 import { ZenmuxFreeExecutor } from "./zenmux-free.js";
+import { GitlabExecutor } from "./gitlab.js";
+import { TraeExecutor } from "./trae.js";
+import { DevinCliExecutor } from "./devin-cli.js";
+import { WindsurfExecutor } from "./windsurf.js";
 import { DefaultExecutor } from "./default.js";
 
 const executors = {
@@ -57,6 +61,10 @@ const executors = {
   "grok-cli": new GrokCliExecutor(),
   gigachat: new GigaChatExecutor(),
   "zenmux-free": new ZenmuxFreeExecutor(),
+  "gitlab-duo": new GitlabExecutor("gitlab-duo"),
+  trae: new TraeExecutor(),
+  "devin-cli": new DevinCliExecutor(),
+  windsurf: new WindsurfExecutor(),
 };
 
 const defaultCache = new Map();
@@ -99,3 +107,7 @@ export { CliproxyapiExecutor } from "./cliproxyapi.js";
 export { GrokCliExecutor } from "./grok-cli.js";
 export { GigaChatExecutor } from "./gigachat.js";
 export { ZenmuxFreeExecutor } from "./zenmux-free.js";
+export { GitlabExecutor } from "./gitlab.js";
+export { TraeExecutor } from "./trae.js";
+export { DevinCliExecutor } from "./devin-cli.js";
+export { WindsurfExecutor } from "./windsurf.js";

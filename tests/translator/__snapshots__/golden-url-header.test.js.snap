@@ -1,27 +1,5 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`GOLDEN buildHeaders (default executor providers) > agy → headers (apiKey / oauth) 1`] = `
-{
-  "apiKey": {
-    "Accept": "text/event-stream",
-    "Authorization": "Bearer <TOK>",
-    "Content-Type": "application/json",
-    "User-Agent": "antigravity/ide/2.1.1 darwin/arm64",
-  },
-  "nonStream": {
-    "Authorization": "Bearer <TOK>",
-    "Content-Type": "application/json",
-    "User-Agent": "antigravity/ide/2.1.1 darwin/arm64",
-  },
-  "oauth": {
-    "Accept": "text/event-stream",
-    "Authorization": "Bearer <TOK>",
-    "Content-Type": "application/json",
-    "User-Agent": "antigravity/ide/2.1.1 darwin/arm64",
-  },
-}
-`;
-
 exports[`GOLDEN buildHeaders (default executor providers) > alicode → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -550,6 +528,25 @@ exports[`GOLDEN buildHeaders (default executor providers) > deepseek → headers
 }
 `;
 
+exports[`GOLDEN buildHeaders (default executor providers) > devin-cli → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
 exports[`GOLDEN buildHeaders (default executor providers) > dgrid → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -798,6 +795,25 @@ exports[`GOLDEN buildHeaders (default executor providers) > gemini → headers (
 `;
 
 exports[`GOLDEN buildHeaders (default executor providers) > gitlab → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
+exports[`GOLDEN buildHeaders (default executor providers) > gitlab-duo → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
     "Accept": "text/event-stream",
@@ -1674,6 +1690,25 @@ exports[`GOLDEN buildHeaders (default executor providers) > together → headers
 }
 `;
 
+exports[`GOLDEN buildHeaders (default executor providers) > trae → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "<CRED>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "<CRED>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "<CRED>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
 exports[`GOLDEN buildHeaders (default executor providers) > venice → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -1731,6 +1766,25 @@ exports[`GOLDEN buildHeaders (default executor providers) > volcengine-ark → h
 }
 `;
 
+exports[`GOLDEN buildHeaders (default executor providers) > windsurf → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
 exports[`GOLDEN buildHeaders (default executor providers) > xai → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -1766,13 +1820,6 @@ exports[`GOLDEN buildHeaders (default executor providers) > xiaomi-mimo → head
     "Authorization": "Bearer <TOK>",
     "Content-Type": "application/json",
   },
-}
-`;
-
-exports[`GOLDEN buildUrl (default executor providers) > agy → url (stream + non-stream) 1`] = `
-{
-  "nonStream": undefined,
-  "stream": undefined,
 }
 `;
 
@@ -1923,6 +1970,13 @@ exports[`GOLDEN buildUrl (default executor providers) > deepseek → url (stream
 }
 `;
 
+exports[`GOLDEN buildUrl (default executor providers) > devin-cli → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "devin://acp/stdio",
+  "stream": "devin://acp/stdio",
+}
+`;
+
 exports[`GOLDEN buildUrl (default executor providers) > dgrid → url (stream + non-stream) 1`] = `
 {
   "nonStream": "https://api.dgrid.ai/v1/chat/completions",
@@ -2018,6 +2072,13 @@ exports[`GOLDEN buildUrl (default executor providers) > gitlab → url (stream +
 {
   "nonStream": "https://gitlab.com/api/v4/chat/completions",
   "stream": "https://gitlab.com/api/v4/chat/completions",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > gitlab-duo → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://gitlab.com/api/v4/code_suggestions/completions",
+  "stream": "https://gitlab.com/api/v4/code_suggestions/completions",
 }
 `;
 
@@ -2315,6 +2376,13 @@ exports[`GOLDEN buildUrl (default executor providers) > together → url (stream
 }
 `;
 
+exports[`GOLDEN buildUrl (default executor providers) > trae → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://core-normal.trae.ai/api/remote/v1",
+  "stream": "https://core-normal.trae.ai/api/remote/v1",
+}
+`;
+
 exports[`GOLDEN buildUrl (default executor providers) > venice → url (stream + non-stream) 1`] = `
 {
   "nonStream": "https://api.venice.ai/api/v1/chat/completions",
@@ -2333,6 +2401,13 @@ exports[`GOLDEN buildUrl (default executor providers) > volcengine-ark → url (
 {
   "nonStream": "https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions",
   "stream": "https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > windsurf → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://server.self-serve.windsurf.com",
+  "stream": "https://server.self-serve.windsurf.com",
 }
 `;
 

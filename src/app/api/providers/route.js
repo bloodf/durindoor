@@ -12,6 +12,26 @@ import { normalizeProviderId, normalizeProviderSpecificData } from "@/lib/provid
 
 export const dynamic = "force-dynamic";
 
+const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set(["clientSecret"]);
+
+function sanitizeProviderConnection(connection) {
+  const providerSpecificData = connection.providerSpecificData
+    ? Object.fromEntries(
+        Object.entries(connection.providerSpecificData)
+          .filter(([key]) => !SENSITIVE_PROVIDER_SPECIFIC_FIELDS.has(key))
+      )
+    : connection.providerSpecificData;
+
+  return {
+    ...connection,
+    apiKey: undefined,
+    accessToken: undefined,
+    refreshToken: undefined,
+    idToken: undefined,
+    ...(providerSpecificData !== undefined ? { providerSpecificData } : {}),
+  };
+}
+
 function normalizeProxyConfig(body = {}) {
   const enabled = body?.connectionProxyEnabled === true;
   const url = typeof body?.connectionProxyUrl === "string" ? body.connectionProxyUrl.trim() : "";
@@ -66,14 +86,7 @@ export async function GET() {
       const name = isCompatible
         ? (c.name || nodeNameMap[c.provider] || c.providerSpecificData?.nodeName || c.provider)
         : c.name;
-      return {
-        ...c,
-        name,
-        apiKey: undefined,
-        accessToken: undefined,
-        refreshToken: undefined,
-        idToken: undefined,
-      };
+      return sanitizeProviderConnection({ ...c, name });
     });
 
     return NextResponse.json({ connections: safeConnections });
@@ -193,8 +206,7 @@ export async function POST(request) {
     });
 
     // Hide sensitive fields
-    const result = { ...newConnection };
-    delete result.apiKey;
+    const result = sanitizeProviderConnection(newConnection);
 
     return NextResponse.json({ connection: result }, { status: 201 });
   } catch (error) {

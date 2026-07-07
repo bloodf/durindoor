@@ -6,6 +6,27 @@ import {
   deleteProviderConnection,
 } from "@/models";
 
+const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set(["clientSecret"]);
+
+function sanitizeProviderConnection(connection) {
+  const providerSpecificData = connection.providerSpecificData
+    ? Object.fromEntries(
+        Object.entries(connection.providerSpecificData)
+          .filter(([key]) => !SENSITIVE_PROVIDER_SPECIFIC_FIELDS.has(key))
+      )
+    : connection.providerSpecificData;
+
+  const result = {
+    ...connection,
+    ...(providerSpecificData !== undefined ? { providerSpecificData } : {}),
+  };
+  delete result.apiKey;
+  delete result.accessToken;
+  delete result.refreshToken;
+  delete result.idToken;
+  return result;
+}
+
 function normalizeProxyConfig(body = {}) {
   const hasAnyProxyField =
     Object.prototype.hasOwnProperty.call(body, "connectionProxyEnabled") ||
@@ -70,11 +91,7 @@ export async function GET(request, { params }) {
     }
 
     // Hide sensitive fields
-    const result = { ...connection };
-    delete result.apiKey;
-    delete result.accessToken;
-    delete result.refreshToken;
-    delete result.idToken;
+    const result = sanitizeProviderConnection(connection);
 
     return NextResponse.json({ connection: result });
   } catch (error) {
@@ -158,11 +175,7 @@ export async function PUT(request, { params }) {
     const updated = await updateProviderConnection(id, updateData);
 
     // Hide sensitive fields
-    const result = { ...updated };
-    delete result.apiKey;
-    delete result.accessToken;
-    delete result.refreshToken;
-    delete result.idToken;
+    const result = sanitizeProviderConnection(updated);
 
     return NextResponse.json({ connection: result });
   } catch (error) {

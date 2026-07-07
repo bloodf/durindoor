@@ -118,9 +118,13 @@ Blocked from runtime exposure in this slice:
 
 | Provider | Reason |
 | --- | --- |
-| `devin-cli` | Requires the official Devin CLI ACP stdio executor plus binary discovery and process lifecycle tests. DurinDoor has no matching executor subsystem in this branch. |
-| `gitlab-duo` | Requires GitLab Duo executor request/response adaptation, dynamic base URL OAuth endpoints, and token exchange tests for instance-specific client credentials. |
-| `trae` | Requires the Trae SOLO session executor, `/authorize` callback/import route, Cloud-IDE-JWT identity propagation, and MITM/session handling that is not present in this branch. |
-| `windsurf` | Requires the Windsurf gRPC-web executor and import-token UI/API flow for IDE-generated Codeium tokens. The runtime wire encoder is not present in this branch. |
+| `windsurf` | Requires the Windsurf gRPC-web protobuf encoder/decoder for `LanguageServerService/GetChatMessage`, model alias normalization, and stream framing tests. The registry exposes import-token metadata, but runtime calls stay blocked until the wire encoder is ported and verified. |
+
+Windsurf implementation plan:
+
+1. Port the OmniRoute `open-sse/executors/windsurf.ts` protobuf helpers to plain JS: gRPC-web frame writer/reader, `GetChatMessage` request encoding, response chunk decoding, and model alias normalization.
+2. Add unit tests for model alias mapping, OpenAI message conversion, gRPC-web frame parsing, content/done/error chunk decoding, and the guarded executor path.
+3. Replace the current `501` guard with the real executor only after the tests cover malformed/truncated frames and upstream error chunks.
+4. No new package dependency is expected if the minimal encoder is ported directly; using generated protobufs would require adding a protobuf runtime and generated code, so the direct encoder remains the preferred small port.
 
 Use the dashboard model selector or `/v1/models` response as the source of truth for available identifiers in your instance.

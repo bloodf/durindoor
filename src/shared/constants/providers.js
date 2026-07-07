@@ -37,6 +37,7 @@ function buildProviderEntry(r) {
     ...(r.authType ? { authType: r.authType } : {}),
     ...(r.authHint ? { authHint: r.authHint } : {}),
     ...(r.aliases ? { aliases: r.aliases } : {}),
+    ...(r.oauth?.flowType ? { flowType: r.oauth.flowType } : {}),
   };
 }
 

@@ -155,7 +155,6 @@ describe("OmniRoute OAuth/session provider slice", () => {
     const tokenCall = fetch.mock.calls.find(([url]) => String(url).includes("oauth2.googleapis.com/token"));
     expect(tokenCall?.[1].body.get("refresh_token")).toBe("agy-refresh-old");
   });
-
   it("grok-cli executor adds CLI headers and strips rejected params", async () => {
     const { GrokCliExecutor } = await import("../../open-sse/executors/grok-cli.js");
     const executor = new GrokCliExecutor();

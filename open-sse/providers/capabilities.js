@@ -104,6 +104,20 @@ export const MODEL_CAPABILITIES = {
  * Provider-specific capability overrides. Keyed by provider alias/id.
  */
 export const PROVIDER_CAPABILITIES = {
+  // OVHcloud serves multiple model families through an OpenAI-compatible endpoint.
+  // Only override models whose family-specific patterns would mis-advertise.
+  ovhcloud: {
+    "Mistral-Small-3.2-24B-Instruct-2506": { vision: true },
+    "Qwen2.5-Coder-32B-Instruct": { reasoning: false },
+  },
+
+  // Nous Research Hermes 4 models are hybrid-thinking, 128k-context according to
+  // the provider's portal; expose those capabilities so reasoning is not stripped.
+  "nous-research": {
+    "Hermes-4-405B": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 128000 },
+    "Hermes-4-70B": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 128000 },
+  },
+
   // Fireworks AI — all models served via OpenAI-compatible API, so
   // thinkingFormat must be "openai" (overrides family-native patterns like
   // zai/deepseek/kimi/minimax/qwen that would produce wrong wire shapes).
@@ -218,9 +232,15 @@ export const PROVIDER_CAPABILITIES = {
 
   // OrcaRouter exposes upstream models through an OpenAI-compatible endpoint
   // and declares per-model limits; expose those limits so /v1/models and combo
-  // capacity checks use the actual registry values rather than family defaults.
+  // capacity checks use the registry values rather than family defaults.
   orcarouter: {
+    "openai/gpt-5.5": { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1050000, maxOutput: 128000 },
+    "google/gemini-3.5-flash": { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1048576, maxOutput: 65536 },
+    "anthropic/claude-opus-4.8": { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000, maxOutput: 128000 },
+    "grok/grok-4.3": { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000 },
+    "deepseek/deepseek-v4-pro": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1048576, maxOutput: 384000 },
     "minimax/minimax-m2.7": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 204800, maxOutput: 2048 },
+    "qwen/qwen3.7-max": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000, maxOutput: 64000 },
   },
 
   // Morph exposes upstream models through an OpenAI-compatible endpoint and

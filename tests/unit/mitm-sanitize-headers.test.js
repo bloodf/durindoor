@@ -19,12 +19,16 @@ describe("MITM sanitizeHeaders", () => {
     expect(JSON.stringify(out)).not.toMatch(/s3cr3tValue|t0kenValue/);
   });
 
-  it("still masks authorization while passing non-secret headers through", () => {
+  it("masks known secret headers even when values do not match typical token patterns", () => {
     const out = sanitizeHeaders({
-      authorization: "Bearer sk-proj-abcdefghijklmnop",
+      authorization: "Basic abc",
+      cookie: "sid=abc123",
+      "x-api-key": "test-key",
       "content-type": "application/json",
     });
-    expect(out.authorization).not.toContain("sk-proj-abcdefghijklmnop");
+    expect(out.authorization).toBe("[REDACTED]");
+    expect(out.cookie).toBe("[REDACTED]");
+    expect(out["x-api-key"]).toBe("[REDACTED]");
     expect(out["content-type"]).toBe("application/json");
   });
 });

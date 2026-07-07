@@ -11,7 +11,15 @@ function rowToKey(row) {
     isActive: row.isActive === 1 || row.isActive === true,
     allowedCombos: (() => { try { const v = JSON.parse(row.allowedCombos); return Array.isArray(v) ? v : []; } catch { return []; } })(),
     createdAt: row.createdAt,
+    expiresAt: row.expiresAt || null,
   };
+}
+
+function isExpired(expiresAt) {
+  if (!expiresAt) return false;
+  const time = new Date(expiresAt).getTime();
+  if (!Number.isFinite(time)) return true;
+  return time <= Date.now();
 }
 
 export async function getApiKeys() {
@@ -32,7 +40,7 @@ export async function getApiKeyByKey(key) {
   return rowToKey(row);
 }
 
-export async function createApiKey(name, machineId, allowedCombos = []) {
+export async function createApiKey(name, machineId, allowedCombos = [], expiresAt = null) {
   if (!machineId) throw new Error("machineId is required");
   const db = await getAdapter();
   const { generateApiKeyWithMachine } = await import("@/shared/utils/apiKey");
@@ -45,10 +53,11 @@ export async function createApiKey(name, machineId, allowedCombos = []) {
     isActive: true,
     allowedCombos: Array.isArray(allowedCombos) ? allowedCombos : [],
     createdAt: new Date().toISOString(),
+    expiresAt: expiresAt || null,
   };
   db.run(
-    `INSERT INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?)`,
-    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, JSON.stringify(apiKey.allowedCombos), apiKey.createdAt]
+    `INSERT INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, createdAt, expiresAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
+    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, JSON.stringify(apiKey.allowedCombos), apiKey.createdAt, apiKey.expiresAt]
   );
   return apiKey;
 }
@@ -61,8 +70,8 @@ export async function updateApiKey(id, data) {
     if (!row) return;
     const merged = { ...rowToKey(row), ...data };
     db.run(
-      `UPDATE apiKeys SET key = ?, name = ?, machineId = ?, isActive = ?, allowedCombos = ? WHERE id = ?`,
-      [merged.key, merged.name, merged.machineId, merged.isActive ? 1 : 0, JSON.stringify(merged.allowedCombos || []), id]
+      `UPDATE apiKeys SET key = ?, name = ?, machineId = ?, isActive = ?, allowedCombos = ?, expiresAt = ? WHERE id = ?`,
+      [merged.key, merged.name, merged.machineId, merged.isActive ? 1 : 0, JSON.stringify(merged.allowedCombos || []), merged.expiresAt || null, id]
     );
     result = merged;
   });
@@ -77,7 +86,8 @@ export async function deleteApiKey(id) {
 
 export async function validateApiKey(key) {
   const db = await getAdapter();
-  const row = db.get(`SELECT isActive FROM apiKeys WHERE key = ?`, [key]);
+  const row = db.get(`SELECT isActive, expiresAt FROM apiKeys WHERE key = ?`, [key]);
   if (!row) return false;
-  return row.isActive === 1 || row.isActive === true;
+  if (!(row.isActive === 1 || row.isActive === true)) return false;
+  return !isExpired(row.expiresAt);
 }

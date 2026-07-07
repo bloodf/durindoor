@@ -7,6 +7,11 @@ const { fetchMock, proxyAwareFetchMock } = vi.hoisted(() => {
     proxyAwareFetchMock: vi.fn((url, init, proxyOptions) => fetchMock(url, init, proxyOptions)),
   };
 });
+
+vi.mock("undici", () => ({
+  fetch: (...args) => fetchMock(...args),
+  ProxyAgent: class { constructor() { /* no-op mock */ } },
+}));
 vi.stubGlobal("fetch", fetchMock);
 
 vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
@@ -199,6 +204,53 @@ describe("MimocodeExecutor", () => {
 
     expect(response.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("rotates past accounts that stay unauthorized after forced re-bootstrap", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("forbidden", { status: 403 }))
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("forbidden", { status: 403 }))
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+
+    const executor = new MimocodeExecutor();
+    executor.accounts = [executor.buildAccount("fp-a"), executor.buildAccount("fp-b")];
+
+    const { response } = await executor.execute({
+      model: "mimo-auto",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: true,
+      credentials: {},
+    });
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    // First pair uses fp-a (auth fail + re-bootstrap), second pair uses fp-b.
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).client).toBe("fp-a");
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body).client).toBe("fp-a");
+    expect(JSON.parse(fetchMock.mock.calls[4][1].body).client).toBe("fp-b");
+  });
+
+  it("preserves the default account JWT across executes when no fingerprints are configured", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }))
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+
+    const executor = new MimocodeExecutor();
+    const baseInput = {
+      model: "mimo-auto",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: {},
+    };
+    await executor.execute(baseInput);
+    await executor.execute(baseInput);
+
+    // 1 bootstrap + 2 chats = 3 fetches; the second chat re-uses the cached JWT
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("registers Mimocode as a no-auth specialized provider and mcode alias", () => {

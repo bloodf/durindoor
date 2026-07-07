@@ -311,6 +311,15 @@ export class MimocodeExecutor extends BaseExecutor {
             account.fingerprint,
             proxyOptions
           );
+          // If the forced re-bootstrap also returns 401/403, this account
+          // is invalid for the current proxy/region (e.g. banned). Cooldown
+          // it and let the outer loop try the next configured fingerprint
+          // instead of returning the auth failure to the caller.
+          if (response.status === 401 || response.status === 403) {
+            this.markCooldown(account);
+            log?.warn?.("MIMOCODE", `Account ${account.fingerprint.slice(0, 8)} still unauthorized after refresh; rotating`);
+            continue;
+          }
         }
 
         if (response.status === 429) {

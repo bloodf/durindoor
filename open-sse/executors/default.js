@@ -114,6 +114,22 @@ const REFRESH_GRANTS = Object.fromEntries(
     })
 );
 
+// OmniRoute local/self-hosted parity: these provider IDs are configurable
+// OpenAI-compatible endpoints. When no connection baseUrl is set, stay on the
+// provider's local default instead of falling back through PROVIDERS.openai.
+export const LOCAL_PROVIDER_DEFAULT_BASE_URLS = {
+  "lm-studio": "http://localhost:1234/v1",
+  vllm: "http://localhost:8000/v1",
+  lemonade: "http://localhost:13305/api/v1",
+  llamafile: "http://127.0.0.1:8080/v1",
+  "llama-cpp": "http://127.0.0.1:8080/v1",
+  triton: "http://localhost:8000/v1",
+  "docker-model-runner": "http://localhost:12434/v1",
+  xinference: "http://localhost:9997/v1",
+  oobabooga: "http://localhost:5000/v1",
+  "9router": "http://127.0.0.1:20130/v1",
+};
+
 export class DefaultExecutor extends BaseExecutor {
   constructor(provider) {
     super(provider, PROVIDERS[provider] || PROVIDERS.openai);
@@ -199,6 +215,16 @@ export class DefaultExecutor extends BaseExecutor {
       const baseUrl = credentials?.providerSpecificData?.baseUrl || ANTHROPIC_COMPAT_BASE;
       const normalized = baseUrl.replace(/\/$/, "");
       return `${normalized}/messages`;
+    }
+    if (LOCAL_PROVIDER_DEFAULT_BASE_URLS[this.provider]) {
+      const baseUrl =
+        credentials?.providerSpecificData?.baseUrl ||
+        this.config.baseUrl ||
+        LOCAL_PROVIDER_DEFAULT_BASE_URLS[this.provider];
+      const normalized = baseUrl.replace(/\/$/, "");
+      return normalized.endsWith("/chat/completions")
+        ? normalized
+        : `${normalized}/chat/completions`;
     }
     // gemini-format: build :streamGenerateContent / :generateContent path
     if (this.config.format === "gemini") {

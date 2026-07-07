@@ -106,6 +106,60 @@ import p103 from "./gitlab-duo.js";
 import p104 from "./trae.js";
 import p105 from "./devin-cli.js";
 import p106 from "./windsurf.js";
+import p107 from "./9router.js";
+import p108 from "./auto.js";
+import p109 from "./codex-cloud.js";
+import p110 from "./command-code.js";
+import p111 from "./crof.js";
+import p112 from "./databricks.js";
+import p113 from "./deepinfra.js";
+import p114 from "./dgrid.js";
+import p115 from "./dify.js";
+import p116 from "./digitalocean.js";
+import p117 from "./dit.js";
+import p118 from "./docker-model-runner.js";
+import p119 from "./doubao.js";
+import p120 from "./factory.js";
+import p121 from "./featherless-ai.js";
+import p122 from "./freeaiapikey.js";
+import p123 from "./freemodel-dev.js";
+import p124 from "./friendliai.js";
+import p125 from "./galadriel.js";
+import p126 from "./gigachat.js";
+import p127 from "./gitlawb.js";
+import p128 from "./glhf.js";
+import p129 from "./hackclub.js";
+import p130 from "./haiper.js";
+import p131 from "./hcnsec.js";
+import p132 from "./heroku.js";
+import p133 from "./ideogram.js";
+import p134 from "./iflytek.js";
+import p135 from "./inference-net.js";
+import p136 from "./kie.js";
+import p137 from "./kilo-gateway.js";
+import p138 from "./lambda-ai.js";
+import p139 from "./lemonade.js";
+import p140 from "./leonardo.js";
+import p141 from "./liquid.js";
+import p142 from "./llama-cpp.js";
+import p143 from "./llamafile.js";
+import p144 from "./llamagate.js";
+import p145 from "./llm7.js";
+import p146 from "./lm-studio.js";
+import p147 from "./longcat.js";
+import p148 from "./maritalk.js";
+import p149 from "./meta-llama.js";
+import p150 from "./oobabooga.js";
+import p151 from "./opencode-zen.js";
+import p152 from "./pollinations.js";
+import p153 from "./puter.js";
+import p154 from "./theoldllm.js";
+import p155 from "./tinyfish.js";
+import p156 from "./triton.js";
+import p157 from "./vllm.js";
+import p158 from "./xinference.js";
+import p159 from "./zed.js";
+import p160 from "./zenmux-free.js";
 
 export default [
   p0,
@@ -207,10 +261,66 @@ export default [
   p96,
   p97,
   p98,
+  p99,
+  p100,
   p101,
   p102,
   p103,
   p104,
   p105,
   p106,
+  p107,
+  p108,
+  p109,
+  p110,
+  p111,
+  p112,
+  p113,
+  p114,
+  p115,
+  p116,
+  p117,
+  p118,
+  p119,
+  p120,
+  p121,
+  p122,
+  p123,
+  p124,
+  p125,
+  p126,
+  p127,
+  p128,
+  p129,
+  p130,
+  p131,
+  p132,
+  p133,
+  p134,
+  p135,
+  p136,
+  p137,
+  p138,
+  p139,
+  p140,
+  p141,
+  p142,
+  p143,
+  p144,
+  p145,
+  p146,
+  p147,
+  p148,
+  p149,
+  p150,
+  p151,
+  p152,
+  p153,
+  p154,
+  p155,
+  p156,
+  p157,
+  p158,
+  p159,
+  p160,
 ];

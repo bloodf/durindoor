@@ -124,4 +124,19 @@ describe("Mimocode no-auth credentials", () => {
       connectionProxyPoolId: "pool-public",
     });
   });
+
+  it("does not fall back to public credentials when stored Mimocode connections are all excluded", async () => {
+    const storedConnection = {
+      id: "mimocode-excluded",
+      displayName: "Excluded Mimocode",
+      providerSpecificData: { fingerprints: ["fp-excluded"] },
+    };
+    mocks.getProviderConnections.mockResolvedValue([storedConnection]);
+    mocks.resolveConnectionProxyConfig.mockResolvedValue({ connectionProxyEnabled: false, connectionProxyUrl: "" });
+
+    const { getProviderCredentials } = await import("../../src/sse/services/auth.js");
+    const credentials = await getProviderCredentials("mimocode", new Set(["mimocode-excluded"]));
+
+    expect(credentials).toBeNull();
+  });
 });

@@ -23,12 +23,19 @@ export class PollinationsExecutor extends BaseExecutor {
     };
 
     // Pollinations serves a free, no-auth catalog; only forward a bearer
-    // token when the caller supplied a real premium key. `sk_durindoor` is
-    // the local placeholder DurinDoor injects for no-auth providers and
-    // must never be sent upstream (leaks a fake credential + can trip
-    // Pollinations' abuse detection for public no-auth traffic).
+    // token when the caller supplied a real premium key. Reject every
+    // synthetic no-auth placeholder DurinDoor may hand us here:
+    // `sk_durindoor` (legacy local placeholder), `public` (the accessToken
+    // literal from the runtime no-auth credential in
+    // src/sse/services/auth.js), and any credential object flagged with
+    // `id === "noauth"` (same synthetic credential, checked by shape too in
+    // case the placeholder string ever changes). None of these are real
+    // credentials — sending them upstream leaks a fake bearer token and can
+    // trip Pollinations' abuse detection for public no-auth traffic.
+    const NO_AUTH_PLACEHOLDERS = new Set(["sk_durindoor", "public"]);
     const key = credentials?.apiKey || credentials?.accessToken;
-    if (key && key !== "sk_durindoor") headers.Authorization = `Bearer ${key}`;
+    const isSyntheticNoAuth = credentials?.id === "noauth" || (key && NO_AUTH_PLACEHOLDERS.has(key));
+    if (key && !isSyntheticNoAuth) headers.Authorization = `Bearer ${key}`;
     if (stream) headers.Accept = "text/event-stream";
     return headers;
   }

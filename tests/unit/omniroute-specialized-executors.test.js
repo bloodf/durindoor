@@ -82,13 +82,28 @@ describe("OmniRoute specialized provider ports", () => {
     expect(executor.buildHeaders({}, true).Authorization).toBeUndefined();
     expect(executor.buildHeaders(undefined, true).Authorization).toBeUndefined();
 
-    // "sk_durindoor" is the local placeholder DurinDoor injects for no-auth
-    // providers — it is not a real Pollinations key and must never leak upstream.
+    // "sk_durindoor" is the legacy local placeholder DurinDoor injects for
+    // no-auth providers — it is not a real Pollinations key and must never
+    // leak upstream.
     expect(
       executor.buildHeaders({ apiKey: "sk_durindoor" }, true).Authorization
     ).toBeUndefined();
     expect(
       executor.buildHeaders({ accessToken: "sk_durindoor" }, true).Authorization
+    ).toBeUndefined();
+
+    // The real production no-auth credential shape from
+    // src/sse/services/auth.js is `{ id: "noauth", accessToken: "public" }`.
+    // Neither the "public" placeholder value nor the "noauth" id marker may
+    // ever be forwarded as a bearer token.
+    expect(
+      executor.buildHeaders({ id: "noauth", accessToken: "public" }, true).Authorization
+    ).toBeUndefined();
+    expect(
+      executor.buildHeaders({ accessToken: "public" }, true).Authorization
+    ).toBeUndefined();
+    expect(
+      executor.buildHeaders({ id: "noauth", apiKey: "real-premium-key" }, true).Authorization
     ).toBeUndefined();
 
     // A real premium key from enter.pollinations.ai must still be forwarded.

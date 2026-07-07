@@ -19,19 +19,22 @@
  *
  * Regression surfaced on Claude Code 2.1.x native web-search calls; same class
  * as CLIProxyAPI #1094/#1179.
+ *
+ * Ported from OmniRoute #6586. The remapper is shipped as `claudeCodeToolRemapper.js`
+ * in the OmniRoute upstream; DurinDoor keeps the .ts source verbatim (no TS toolchain
+ * in CI yet), so vitest must transform it on import. We import the .ts file directly
+ * via vitest's built-in ESBuild transformer — that is what this config's `defineConfig`
+ * defaults allow.
  */
-import { describe, it } from "node:test";
-import assert from "node:assert/strict";
+import { describe, it, expect } from "vitest";
 import {
   cloakThirdPartyToolNames,
   remapToolNamesInRequest,
-} from "../../open-sse/services/claudeCodeToolRemapper.ts";
-
-type AnyRecord = Record<string, unknown>;
+} from "../../open-sse/services/claudeCodeToolRemapper.js";
 
 describe("cloakThirdPartyToolNames — server-tool names in message history", () => {
   it("keeps a history tool_use reference to a declared web_search server tool", () => {
-    const body: AnyRecord = {
+    const body = {
       tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 8 }],
       messages: [
         {
@@ -41,22 +44,22 @@ describe("cloakThirdPartyToolNames — server-tool names in message history", ()
       ],
     };
     cloakThirdPartyToolNames(body);
-    assert.equal((body.tools as AnyRecord[])[0].name, "web_search");
-    const block = ((body.messages as AnyRecord[])[0].content as AnyRecord[])[0];
-    assert.equal(block.name, "web_search");
+    expect(body.tools[0].name).toBe("web_search");
+    const block = body.messages[0].content[0];
+    expect(block.name).toBe("web_search");
   });
 
   it("keeps a tool_choice reference to a declared web_search server tool", () => {
-    const body: AnyRecord = {
+    const body = {
       tools: [{ type: "web_search_20250305", name: "web_search" }],
       tool_choice: { type: "tool", name: "web_search" },
     };
     cloakThirdPartyToolNames(body);
-    assert.equal((body.tool_choice as AnyRecord).name, "web_search");
+    expect(body.tool_choice.name).toBe("web_search");
   });
 
   it("still cloaks a third-party history tool_use next to a server tool", () => {
-    const body: AnyRecord = {
+    const body = {
       tools: [{ type: "web_search_20250305", name: "web_search" }, { name: "mixture_of_agents" }],
       messages: [
         {
@@ -69,17 +72,14 @@ describe("cloakThirdPartyToolNames — server-tool names in message history", ()
       ],
     };
     cloakThirdPartyToolNames(body);
-    const blocks = (body.messages as AnyRecord[])[0].content as AnyRecord[];
-    assert.equal(blocks[0].name, "web_search");
-    assert.equal(blocks[1].name, "MixtureOfAgents");
-    assert.deepEqual(
-      (body.tools as AnyRecord[]).map((t) => t.name),
-      ["web_search", "MixtureOfAgents"]
-    );
+    const blocks = body.messages[0].content;
+    expect(blocks[0].name).toBe("web_search");
+    expect(blocks[1].name).toBe("MixtureOfAgents");
+    expect(body.tools.map((t) => t.name)).toEqual(["web_search", "MixtureOfAgents"]);
   });
 
   it("still cloaks a snake_case history name when no server tool declares it", () => {
-    const body: AnyRecord = {
+    const body = {
       tools: [{ name: "web_search", input_schema: { type: "object" } }],
       messages: [
         {
@@ -89,26 +89,22 @@ describe("cloakThirdPartyToolNames — server-tool names in message history", ()
       ],
     };
     cloakThirdPartyToolNames(body);
-    // Plain custom tool named web_search (no server type) remains cloakable —
-    // symmetrically in tools[] and history.
-    assert.equal((body.tools as AnyRecord[])[0].name, "WebSearch");
-    const block = ((body.messages as AnyRecord[])[0].content as AnyRecord[])[0];
-    assert.equal(block.name, "WebSearch");
+    expect(body.tools[0].name).toBe("WebSearch");
+    const block = body.messages[0].content[0];
+    expect(block.name).toBe("WebSearch");
   });
 });
 
 describe("remapToolNamesInRequest — Anthropic server tools", () => {
   it("does not rename a bash server tool to Bash in tools[]", () => {
-    const body: AnyRecord = {
-      tools: [{ type: "bash_20250124", name: "bash" }],
-    };
+    const body = { tools: [{ type: "bash_20250124", name: "bash" }] };
     remapToolNamesInRequest(body);
-    assert.equal((body.tools as AnyRecord[])[0].name, "bash");
-    assert.equal((body._toolNameMap as Map<string, string> | undefined)?.size ?? 0, 0);
+    expect(body.tools[0].name).toBe("bash");
+    expect((body._toolNameMap?.size) ?? 0).toBe(0);
   });
 
   it("does not rename history/tool_choice references to a declared bash server tool", () => {
-    const body: AnyRecord = {
+    const body = {
       tools: [{ type: "bash_20250124", name: "bash" }],
       messages: [
         {
@@ -119,13 +115,13 @@ describe("remapToolNamesInRequest — Anthropic server tools", () => {
       tool_choice: { type: "tool", name: "bash" },
     };
     remapToolNamesInRequest(body);
-    const block = ((body.messages as AnyRecord[])[0].content as AnyRecord[])[0];
-    assert.equal(block.name, "bash");
-    assert.equal((body.tool_choice as AnyRecord).name, "bash");
+    const block = body.messages[0].content[0];
+    expect(block.name).toBe("bash");
+    expect(body.tool_choice.name).toBe("bash");
   });
 
   it("tolerates null entries in tools[] without throwing", () => {
-    const body: AnyRecord = {
+    const body = {
       tools: [null, { type: "bash_20250124", name: "bash" }],
       messages: [
         {
@@ -135,13 +131,13 @@ describe("remapToolNamesInRequest — Anthropic server tools", () => {
       ],
     };
     remapToolNamesInRequest(body);
-    assert.equal((body.tools as AnyRecord[])[1].name, "bash");
-    const block = ((body.messages as AnyRecord[])[0].content as AnyRecord[])[0];
-    assert.equal(block.name, "bash");
+    expect(body.tools[1].name).toBe("bash");
+    const block = body.messages[0].content[0];
+    expect(block.name).toBe("bash");
   });
 
   it("still renames a plain lowercase custom bash tool to Bash", () => {
-    const body: AnyRecord = {
+    const body = {
       tools: [{ name: "bash", input_schema: { type: "object" } }],
       messages: [
         {
@@ -151,8 +147,8 @@ describe("remapToolNamesInRequest — Anthropic server tools", () => {
       ],
     };
     remapToolNamesInRequest(body);
-    assert.equal((body.tools as AnyRecord[])[0].name, "Bash");
-    const block = ((body.messages as AnyRecord[])[0].content as AnyRecord[])[0];
-    assert.equal(block.name, "Bash");
+    expect(body.tools[0].name).toBe("Bash");
+    const block = body.messages[0].content[0];
+    expect(block.name).toBe("Bash");
   });
 });

@@ -23,13 +23,16 @@ function applyConfiguredAuthHeader(headers, cfg, apiKey) {
   return headers;
 }
 
-export async function probeNoAuthLocalProvider(baseUrl) {
+export async function probeNoAuthLocalProvider(baseUrl, apiKey = undefined) {
   const normalized = String(baseUrl || "")
     .replace(/\/$/, "")
     .replace(/\/api\/chat$/, "");
   if (!normalized) return { valid: false, error: "Base URL required for no-auth provider" };
   try {
-    const res = await fetch(`${normalized}/models`, { signal: AbortSignal.timeout(8000) });
+    const res = await fetch(`${normalized}/models`, {
+      ...(apiKey ? { headers: { Authorization: `Bearer ${apiKey}` } } : {}),
+      signal: AbortSignal.timeout(8000),
+    });
     return { valid: res.ok, error: res.ok ? null : "Endpoint unreachable or rejected" };
   } catch (err) {
     return { valid: false, error: err.message };
@@ -181,9 +184,10 @@ export async function POST(request) {
     if (!provider || (!apiKey && provider !== "ollama-local" && !isNoAuth)) {
       return NextResponse.json({ error: "Provider and API key required" }, { status: 400 });
     }
-    if (isNoAuth && !apiKey) {
+    if (isNoAuth) {
       return NextResponse.json(await probeNoAuthLocalProvider(
-        providerSpecificData?.baseUrl || providerInfo.defaultBaseUrl
+        providerSpecificData?.baseUrl || providerInfo.defaultBaseUrl,
+        apiKey
       ));
     }
 

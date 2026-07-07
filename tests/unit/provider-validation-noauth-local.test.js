@@ -12,6 +12,16 @@ describe("probeNoAuthLocalProvider", () => {
     global.fetch = originalFetch;
   });
 
+  it("probes /models with bearer auth header when apiKey is provided", async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: true });
+
+    const result = await probeNoAuthLocalProvider("http://localhost:1234/v1", "local-key");
+
+    expect(result).toEqual({ valid: true, error: null });
+    const [, init] = fetch.mock.calls[0];
+    expect(init?.headers).toEqual({ Authorization: "Bearer local-key" });
+  });
+
   it("probes /models without auth header and accepts OK responses", async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: true });
 

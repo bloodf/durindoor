@@ -13,6 +13,7 @@ export default {
   authType: "apikey",
   noAuth: true,
   authHint: "API key optional. Configure the local Lemonade OpenAI-compatible base URL (default: http://localhost:13305/api/v1).",
+  thinkingFormat: "openai",
   transport: {
     baseUrl: "http://localhost:13305/api/v1",
     format: "openai",

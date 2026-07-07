@@ -14,6 +14,7 @@ export default {
   authType: "apikey",
   noAuth: true,
   authHint: "API key optional. Configure the local LM Studio OpenAI-compatible base URL (default: http://localhost:1234/v1).",
+  thinkingFormat: "openai",
   transport: {
     baseUrl: "http://localhost:1234/v1",
     format: "openai",

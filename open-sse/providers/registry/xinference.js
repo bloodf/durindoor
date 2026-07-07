@@ -13,6 +13,7 @@ export default {
   authType: "apikey",
   noAuth: true,
   authHint: "API key optional. Configure the local XInference OpenAI-compatible base URL (default: http://localhost:9997/v1).",
+  thinkingFormat: "openai",
   transport: {
     baseUrl: "http://localhost:9997/v1",
     format: "openai",

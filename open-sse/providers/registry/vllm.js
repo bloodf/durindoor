@@ -13,6 +13,7 @@ export default {
   authType: "apikey",
   noAuth: true,
   authHint: "API key optional. Configure the local vLLM OpenAI-compatible base URL (default: http://localhost:8000/v1).",
+  thinkingFormat: "openai",
   transport: {
     baseUrl: "http://localhost:8000/v1",
     format: "openai",

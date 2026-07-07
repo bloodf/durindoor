@@ -13,6 +13,7 @@ export default {
   authType: "apikey",
   noAuth: true,
   authHint: "API key optional. Configure the local Llamafile OpenAI-compatible base URL (default: http://127.0.0.1:8080/v1).",
+  thinkingFormat: "openai",
   transport: {
     baseUrl: "http://127.0.0.1:8080/v1",
     format: "openai",

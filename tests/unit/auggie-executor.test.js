@@ -37,10 +37,11 @@ afterAll(() => {
 });
 
 describe("AuggieExecutor", () => {
-  it("includes the flattened prompt as the print-mode instruction argument", () => {
-    const args = __test__.buildAuggieArgs("claude-sonnet-4.6", "Hello world");
-    expect(args).toContain("--");
-    expect(args.at(-1)).toBe("Hello world");
+  it("passes only flags in argv and sends the prompt through stdin", () => {
+    const args = __test__.buildAuggieArgs("claude-sonnet-4.6");
+    expect(args).not.toContain("--");
+    expect(args).not.toContain("Hello world");
+    expect(args).toEqual(["--print", "--quiet", "--model", "claude-sonnet-4.6"]);
   });
 
   it("detects Windows .cmd/.bat shims for shell launch", () => {
@@ -81,7 +82,7 @@ describe("AuggieExecutor", () => {
   });
 
   it("returns non-streaming chat completion output from the fake CLI", async () => {
-    const bin = writeFakeBin("fake-auggie-ok.sh", 'printf "hello world"');
+    const bin = writeFakeBin("fake-auggie-ok.sh", 'cat');
     const previous = process.env.AUGGIE_BIN;
     process.env.AUGGIE_BIN = bin;
     try {
@@ -94,7 +95,7 @@ describe("AuggieExecutor", () => {
       const body = await response.json();
       expect(response.status).toBe(200);
       expect(body.object).toBe("chat.completion");
-      expect(body.choices[0].message.content).toBe("hello world");
+      expect(body.choices[0].message.content).toContain("say hi");
       expect(transformedBody.model).toBe("claude-opus-4.6");
     } finally {
       if (previous === undefined) delete process.env.AUGGIE_BIN;

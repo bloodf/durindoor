@@ -36,8 +36,8 @@ export function resolveAuggieModel(model) {
   return { ok: true, model: requested };
 }
 
-function buildAuggieArgs(model, promptText) {
-  return ["--print", "--quiet", "--model", model, "--", promptText];
+function buildAuggieArgs(model) {
+  return ["--print", "--quiet", "--model", model];
 }
 
 function isWindowsCmdScript(bin) {
@@ -193,7 +193,7 @@ export class AuggieExecutor extends BaseExecutor {
   }
 
   spawnAuggie(auggieBin, model, promptText) {
-    const child = spawnAuggieCli(auggieBin, buildAuggieArgs(model, promptText), ["pipe", "pipe", "pipe"]);
+    const child = spawnAuggieCli(auggieBin, buildAuggieArgs(model), ["pipe", "pipe", "pipe"]);
     child.stdin.on("error", () => {});
     try {
       child.stdin.write(promptText);
@@ -267,7 +267,7 @@ export class AuggieExecutor extends BaseExecutor {
         };
 
         try {
-          child = spawnAuggieCli(auggieBin, buildAuggieArgs(model, promptText), ["pipe", "pipe", "pipe"]);
+          child = spawnAuggieCli(auggieBin, buildAuggieArgs(model), ["pipe", "pipe", "pipe"]);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           emitError(isEnoentLike(message) ? cliNotFoundMessage(auggieBin) : message);

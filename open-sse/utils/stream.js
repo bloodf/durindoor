@@ -471,7 +471,7 @@ export function createSSEStream(options = {}) {
           }
 
           usage = recordStreamCompletion(usage);
-          
+
           // IMPORTANT: In passthrough mode we still must terminate the SSE stream.
           // Some clients (e.g. OpenClaw) expect the OpenAI-style sentinel:
           //   data: [DONE]\n\n
@@ -484,12 +484,6 @@ export function createSSEStream(options = {}) {
             controller.enqueue(sharedEncoder.encode(doneOutput));
           }
 
-          if (onStreamComplete) {
-            onStreamComplete({
-              content: accumulatedContent,
-              thinking: accumulatedThinking
-            }, usage, ttftAt);
-          }
           logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "stream-passthrough", requestBody: body, translatedBody, providerBody: null, clientBody: null, providerToolCalls: toolTrace.summary() });
           return;
         }

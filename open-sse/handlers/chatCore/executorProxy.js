@@ -107,6 +107,11 @@ export async function resolveExecutorWithProxy(providerId, log, providerSpecific
       "UPSTREAM_PROXY",
       `${providerId} native failed (${result.response.status}), retrying via CLIProxyAPI`
     );
+    try {
+      await result.response.body?.cancel?.();
+    } catch {
+      // ignore cancel errors; body may already be consumed or not cancelable
+    }
     return executeCliproxyapiMapped(proxyExec, providerId, input, cfg.cliproxyapiModelMapping);
   };
 

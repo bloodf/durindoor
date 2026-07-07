@@ -131,6 +131,32 @@ describe("chatCore upstream proxy resolver", () => {
     });
   });
 
+  it("cancels the native response body before sidecar fallback", async () => {
+    settings.upstreamProxyConfig.openai = { enabled: true, mode: "fallback" };
+    settings.upstreamProxyConfig.cliproxyapi = { enabled: true, mode: "native", cliproxyapiModelMapping: { "gpt-4.1": "claude-sonnet-4.6" } };
+    calls.length = 0;
+    clearUpstreamProxyConfigCache();
+
+    const cancel = vi.fn();
+    const openai = getExecutor("openai");
+    openai.execute.mockImplementation(async () => ({
+      response: { status: 429, ok: false, body: { cancel } },
+      url: "https://openai.example",
+      headers: {},
+      transformedBody: {},
+    }));
+
+    const executor = await resolveExecutorWithProxy("openai");
+    await executor.execute({
+      model: "gpt-4.1",
+      body: { model: "gpt-4.1" },
+      stream: true,
+      credentials: { apiKey: "sk-test" },
+    });
+
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
   it("direct cliproxyapi executor remains noAuth even when credentials are provided", async () => {
     const executor = getExecutor("cliproxyapi");
     expect(executor.noAuth).toBe(true);

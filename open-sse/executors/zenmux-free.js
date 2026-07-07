@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
-import { errorResponse } from "../utils/error.js";
+import { buildErrorBody, errorResponse } from "../utils/error.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { toOpenAIFinish } from "../translator/concerns/finishReason.js";
 
@@ -97,11 +97,13 @@ function parseAnthropicSseData(line) {
 }
 
 async function collectText(body) {
-  if (!body) return "";
+  if (!body) return { text: "", reasoning: "", stopReason: null };
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   let text = "";
+  let reasoning = "";
+  let stopReason = null;
 
   try {
     while (true) {
@@ -113,8 +115,15 @@ async function collectText(body) {
       for (const line of lines) {
         const event = parseAnthropicSseData(line);
         if (!event || event === "[DONE]") continue;
+        if (event.type === "error") {
+          throw new Error(event.error?.message || "ZenMux streaming error");
+        }
         if (event.type === "content_block_delta" && event.delta) {
-          text += event.delta.text || event.delta.thinking || "";
+          text += event.delta.text || "";
+          reasoning += event.delta.thinking || "";
+        }
+        if (event.type === "message_delta" && event.delta?.stop_reason) {
+          stopReason = event.delta.stop_reason;
         }
       }
     }
@@ -122,7 +131,7 @@ async function collectText(body) {
     reader.releaseLock();
   }
 
-  return text;
+  return { text, reasoning, stopReason };
 }
 
 function buildStreamingResponse(upstream, model, cid, created, signal) {
@@ -139,6 +148,7 @@ function buildStreamingResponse(upstream, model, cid, created, signal) {
       }
 
       let buffer = "";
+      let errored = false;
       controller.enqueue(encoder.encode(openAiChunk({ id: cid, created, model, delta: { role: "assistant" } })));
 
       try {
@@ -153,10 +163,22 @@ function buildStreamingResponse(upstream, model, cid, created, signal) {
             const event = parseAnthropicSseData(line);
             if (!event) continue;
             if (event === "[DONE]") continue;
+            if (event.type === "error") {
+              const errorBody = buildErrorBody(502, event.error?.message || "ZenMux streaming error");
+              errored = true;
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorBody)}\n\n`));
+              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+              controller.close();
+              return;
+            }
             if (event.type === "content_block_delta" && event.delta) {
-              const text = event.delta.text || event.delta.thinking || "";
-              if (text) {
-                controller.enqueue(encoder.encode(openAiChunk({ id: cid, created, model, delta: { content: text } })));
+              const text = event.delta.text || "";
+              const reasoning = event.delta.thinking || "";
+              const delta = {};
+              if (text) delta.content = text;
+              if (reasoning) delta.reasoning_content = reasoning;
+              if (Object.keys(delta).length) {
+                controller.enqueue(encoder.encode(openAiChunk({ id: cid, created, model, delta })));
               }
             } else if (event.type === "message_delta" && event.delta?.stop_reason) {
               controller.enqueue(encoder.encode(openAiChunk({
@@ -174,7 +196,7 @@ function buildStreamingResponse(upstream, model, cid, created, signal) {
         if (!signal?.aborted) controller.error(error);
       } finally {
         reader.releaseLock();
-        controller.close();
+        if (!errored && !signal?.aborted) controller.close();
       }
     },
   });
@@ -233,6 +255,9 @@ export class ZenmuxFreeExecutor extends BaseExecutor {
         signal,
       }, proxyOptions);
     } catch (error) {
+      if (error.name === "AbortError") {
+        throw error;
+      }
       return makeErrorResult(502, `ZenMux Free fetch failed: ${error.message || "unknown"}`, body, url.toString());
     }
 
@@ -265,24 +290,30 @@ export class ZenmuxFreeExecutor extends BaseExecutor {
       };
     }
 
-    const text = await collectText(upstream.body);
-    return {
-      response: new Response(JSON.stringify({
-        id: cid,
-        object: "chat.completion",
-        created,
-        model: modelId,
-        choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }],
-        usage: {
-          prompt_tokens: 0,
-          completion_tokens: Math.ceil(text.length / 4),
-          total_tokens: Math.ceil(text.length / 4),
-        },
-      }), { headers: { "Content-Type": "application/json" } }),
-      url: url.toString(),
-      headers,
-      transformedBody,
-    };
+    try {
+      const { text, reasoning, stopReason } = await collectText(upstream.body);
+      const message = { role: "assistant", content: text };
+      if (reasoning) message.reasoning_content = reasoning;
+      return {
+        response: new Response(JSON.stringify({
+          id: cid,
+          object: "chat.completion",
+          created,
+          model: modelId,
+          choices: [{ index: 0, message, finish_reason: toOpenAIFinish(stopReason, "claude") }],
+          usage: {
+            prompt_tokens: 0,
+            completion_tokens: Math.ceil(text.length / 4),
+            total_tokens: Math.ceil(text.length / 4),
+          },
+        }), { headers: { "Content-Type": "application/json" } }),
+        url: url.toString(),
+        headers,
+        transformedBody,
+      };
+    } catch (error) {
+      return makeErrorResult(502, error.message || "ZenMux Free streaming error", body, url.toString());
+    }
   }
 }
 

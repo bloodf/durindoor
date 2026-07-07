@@ -176,6 +176,20 @@ describe("ZenmuxFreeExecutor.execute", () => {
     expect(result.transformedBody.model).toBe("deepseek/deepseek-chat");
   });
 
+  it("rethrows AbortError instead of converting it to a 502", async () => {
+    const abortError = new Error("aborted");
+    abortError.name = "AbortError";
+    proxyAwareFetch.mockRejectedValueOnce(abortError);
+    const exec = new ZenmuxFreeExecutor();
+
+    await expect(
+      exec.execute({
+        body: { model: "deepseek/deepseek-chat", messages: [{ role: "user", content: "hi" }] },
+        credentials: { apiKey: "ctoken=tok123" },
+        stream: false,
+      }),
+    ).rejects.toBe(abortError);
+  });
   it("passes configured proxy options through the proxy-aware fetch helper", async () => {
     global.fetch.mockResolvedValueOnce(zenmuxSse(["ok"]));
     const exec = new ZenmuxFreeExecutor();
@@ -196,7 +210,7 @@ describe("ZenmuxFreeExecutor.execute", () => {
   });
 
   it("converts Anthropic SSE into a non-streaming OpenAI chat response", async () => {
-    global.fetch.mockResolvedValueOnce(zenmuxSse(["hel", "lo"]));
+    global.fetch.mockResolvedValueOnce(zenmuxSse(["hel", "lo"], "max_tokens"));
     const exec = new ZenmuxFreeExecutor();
     const result = await exec.execute({
       body: { model: "deepseek/deepseek-chat", messages: [{ role: "user", content: "hi" }] },
@@ -207,6 +221,35 @@ describe("ZenmuxFreeExecutor.execute", () => {
     const json = await result.response.json();
     expect(json.object).toBe("chat.completion");
     expect(json.choices[0].message.content).toBe("hello");
+    expect(json.choices[0].finish_reason).toBe("length");
+  });
+
+  it("returns reasoning_content separately from content for thinking models", async () => {
+    global.fetch.mockResolvedValueOnce(
+      new Response(
+        new Blob([
+          'data: ' +
+            JSON.stringify({ type: "content_block_delta", delta: { thinking: "step" } }) +
+            "\n\n",
+          'data: ' +
+            JSON.stringify({ type: "content_block_delta", delta: { text: "answer" } }) +
+            "\n\n",
+          'data: ' + JSON.stringify({ type: "message_delta", delta: { stop_reason: "end_turn" } }) + "\n\n",
+        ]).stream(),
+        { status: 200, headers: { "Content-Type": "text/event-stream" } },
+      ),
+    );
+
+    const exec = new ZenmuxFreeExecutor();
+    const result = await exec.execute({
+      body: { model: "deepseek/deepseek-reasoner", messages: [{ role: "user", content: "hi" }] },
+      credentials: { apiKey: "ctoken=tok123" },
+      stream: false,
+    });
+
+    const json = await result.response.json();
+    expect(json.choices[0].message.content).toBe("answer");
+    expect(json.choices[0].message.reasoning_content).toBe("step");
     expect(json.choices[0].finish_reason).toBe("stop");
   });
 
@@ -224,6 +267,58 @@ describe("ZenmuxFreeExecutor.execute", () => {
     expect(text).toContain('"delta":{"content":"hel"}');
     expect(text).toContain('"delta":{"content":"lo"}');
     expect(text).toContain('"finish_reason":"length"');
+    expect(text).toContain("data: [DONE]");
+  });
+
+  it("emits reasoning_content deltas for thinking models in streaming", async () => {
+    global.fetch.mockResolvedValueOnce(
+      new Response(
+        new Blob([
+          'data: ' +
+            JSON.stringify({ type: "content_block_delta", delta: { thinking: "step" } }) +
+            "\n\n",
+          'data: ' +
+            JSON.stringify({ type: "content_block_delta", delta: { text: "answer" } }) +
+            "\n\n",
+          'data: ' + JSON.stringify({ type: "message_delta", delta: { stop_reason: "end_turn" } }) + "\n\n",
+        ]).stream(),
+        { status: 200, headers: { "Content-Type": "text/event-stream" } },
+      ),
+    );
+
+    const exec = new ZenmuxFreeExecutor();
+    const result = await exec.execute({
+      body: { model: "deepseek/deepseek-reasoner", messages: [{ role: "user", content: "hi" }], stream: true },
+      credentials: { apiKey: "ctoken=tok123" },
+      stream: true,
+    });
+
+    const text = await readText(result.response);
+    expect(text).toContain('"delta":{"reasoning_content":"step"}');
+    expect(text).toContain('"delta":{"content":"answer"}');
+    expect(text).toContain("data: [DONE]");
+  });
+
+  it("returns an OpenAI error body for Anthropic SSE error events in streaming", async () => {
+    global.fetch.mockResolvedValueOnce(
+      new Response(
+        new Blob([
+          'data: ' + JSON.stringify({ type: "error", error: { message: "quota exceeded" } }) + "\n\n",
+        ]).stream(),
+        { status: 200, headers: { "Content-Type": "text/event-stream" } },
+      ),
+    );
+
+    const exec = new ZenmuxFreeExecutor();
+    const result = await exec.execute({
+      body: { model: "deepseek/deepseek-chat", messages: [{ role: "user", content: "hi" }], stream: true },
+      credentials: { apiKey: "ctoken=tok123" },
+      stream: true,
+    });
+
+    const text = await readText(result.response);
+    expect(text).toContain('"error"');
+    expect(text).toContain("quota exceeded");
     expect(text).toContain("data: [DONE]");
   });
 });

@@ -201,12 +201,92 @@ export const PROVIDER_CAPABILITIES = {
     "deepseek-v4-flash":  { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 50000 },
     "deepseek-v3-2-volc": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 96000, maxOutput: 32000 },
   },
+
   // OpenCode Zen — Big Pickle advertises reasoning in the registry but the
   // generic fallback did not read model-level supportsReasoning flags.
   "opencode-zen": {
     "big-pickle": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true },
   },
+
+  // Qianfan ERNIE multimodal models exposed as vision-capable chat models.
+  qianfan: {
+    "ernie-5.1": { vision: true },
+    "ernie-5.0-thinking-latest": { vision: true, reasoning: true },
+    "ernie-x1.1": { vision: true, contextWindow: 64000 },
+  },
+
+  // Reka Edge 2603 is a vision-capable model on an OpenAI-compatible surface.
+  reka: {
+    "reka-edge-2603": { vision: true },
+  },
+
+  // v0 models support image inputs through the Vercel Chat Completions API.
+  "v0-vercel": {
+    "v0-1.5-md": { vision: true },
+    "v0-1.5-lg": { vision: true },
+  },
+
+  // SenseNova — SenseChat-Vision is advertised as a vision model; without an
+  // override the provider/model id falls through to the default text-only floor
+  // and images are stripped before the request reaches the provider.
+  sensenova: {
+    "SenseChat-Vision": { vision: true, contextWindow: 4096 },
+  },
+
+  // StepFun — step-3.7-flash is documented as a vision-capable reasoning model.
+  // The generic *step-* pattern is reasoning-only, so override vision while
+  // preserving the StepFun reasoning wire format.
+  stepfun: {
+    "step-3.7-flash": { vision: true, reasoning: true, thinkingFormat: "step", contextWindow: 262144 },
+    "step-3.5-flash": { reasoning: true, thinkingFormat: "step", contextWindow: 262144 },
+    "step-3.5-flash-2603": { reasoning: true, thinkingFormat: "step", contextWindow: 262144 },
+    "step-1o-turbo-vision": { vision: true, reasoning: true, thinkingFormat: "step", contextWindow: 32768 },
+  },
+
+  // Tencent Hunyuan — hunyuan-vision is advertised as a vision model, but the
+  // generic *hunyuan* pattern only marks reasoning; override so image inputs
+  // are not replaced with placeholders before the request is sent.
+  tencent: {
+    "hunyuan-vision": { vision: true, reasoning: true, thinkingFormat: "hunyuan" },
+  },
+
+  // Scaleway AI serves models through an OpenAI-compatible endpoint, so any
+  // reasoning model that defaults to a native thinking field must be forced to
+  // the openai reasoning_effort shape.
+  scaleway: {
+    "qwen3-235b-a22b-instruct-2507": { thinkingFormat: "openai" },
+    "llama-3.1-70b-instruct": { thinkingFormat: "openai" },
+    "llama-3.1-8b-instruct": { thinkingFormat: "openai" },
+    "mistral-small-3.2-24b-instruct-2506": { thinkingFormat: "openai" },
+    "deepseek-v3-0324": { thinkingFormat: "openai" },
+    "gpt-oss-120b": { thinkingFormat: "openai" },
+  },
+  scw: {
+    "qwen3-235b-a22b-instruct-2507": { thinkingFormat: "openai" },
+    "llama-3.1-70b-instruct": { thinkingFormat: "openai" },
+    "llama-3.1-8b-instruct": { thinkingFormat: "openai" },
+    "mistral-small-3.2-24b-instruct-2506": { thinkingFormat: "openai" },
+    "deepseek-v3-0324": { thinkingFormat: "openai" },
+    "gpt-oss-120b": { thinkingFormat: "openai" },
+  },
+
+  // Upstage — solar-pro3 contains "pro3" which matches the OpenAI o-series
+  // *o3* pattern, incorrectly marking it vision-capable. Override so it uses
+  // the text-only default and images fail locally instead of being forwarded.
+  upstage: {
+    "solar-pro3": { vision: false, reasoning: false },
+  },
+
+  // ZenMux — x-ai/grok-4.1-fast is explicitly text-only, so override vision to
+  // false while preserving the Grok pattern's reasoning/search/openai defaults.
+  // glm-4.6v-flash is advertised as vision-capable, but the generic *glm-4*
+  // pattern below is text-only; override here so images survive.
+  zenmux: {
+    "x-ai/grok-4.1-fast": { vision: false, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 256000 },
+    "z-ai/glm-4.6v-flash": { vision: true, contextWindow: 128000 },
+  },
 };
+
 
 /**
  * Pattern fallback — glob (* = wildcard), matched case-insensitively and

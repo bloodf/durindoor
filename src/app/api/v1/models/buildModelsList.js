@@ -277,6 +277,47 @@ async function fetchCompatibleModelIds(connection) {
   }
 }
 
+async function fetchRegistryModelIds(connection, modelsFetcher) {
+  const apiKey = typeof connection.apiKey === "string" ? connection.apiKey : "";
+  const url = String(modelsFetcher.url).trim();
+  const headers = { "Content-Type": "application/json" };
+  if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const response = await fetch(url, {
+      method: "GET",
+      headers,
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    const rawModels = parseOpenAIStyleModels(data);
+
+    return Array.from(
+      new Set(
+        rawModels
+          .map((model) => {
+            if (!isRecord(model)) return "";
+            return (
+              (typeof model.id === "string" ? model.id : undefined)
+              || (typeof model.name === "string" ? model.name : undefined)
+              || ""
+            );
+          })
+          .filter((modelId) => typeof modelId === "string" && modelId.trim() !== ""),
+      ),
+    );
+  } catch {
+    return [];
+  }
+}
+
 // Provider matches kindFilter when its serviceKinds intersect the requested kinds.
 // LLM is the default kind for providers missing serviceKinds.
 function providerMatchesKinds(providerId, kindFilter) {
@@ -457,6 +498,19 @@ export async function buildModelsList(kindFilter) {
       if (rawModelIds.length === 0 && !hasExplicitEnabledModels && !UPSTREAM_CONNECTION_RE.test(providerId)) {
         const localIds = await fetchLocalPassthroughModelIds(conn);
         if (localIds.length) rawModelIds = localIds;
+
+        // Registry-configured modelsFetcher: for dynamic-only providers (models: [])
+        // with no explicit enabledModels, fetch the live catalog so /v1/models can
+        // advertise discoverable model IDs.
+        const modelsFetcher = AI_PROVIDERS[providerId]?.modelsFetcher;
+        if (rawModelIds.length === 0 && isRecord(modelsFetcher) && typeof modelsFetcher.url === "string") {
+          try {
+            const fetchedIds = await fetchRegistryModelIds(conn, modelsFetcher);
+            if (fetchedIds.length) rawModelIds = fetchedIds;
+          } catch (err) {
+            console.log(`modelsFetcher fetch failed for ${providerId}: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
       }
 
       // Config-driven live catalog override (e.g. Kiro returns dynamic

@@ -6,6 +6,7 @@ import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, PROVIDERS, resolveXiaomiTokenplanBaseUrl } from "open-sse/config/providers.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
 import { buildZenmuxAnthropicBody, extractZenmuxCtoken, normalizeZenmuxCookie, ZENMUX_FREE_CHAT_URL } from "open-sse/executors/zenmux-free.js";
+import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
 import {
   refreshProviderCredentials,
   shouldRefreshCredentials,
@@ -674,10 +675,6 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         const res = await fetchWithConnectionProxy("https://openrouter.ai/api/v1/auth/key", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
         return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
       }
-      case "hcnsec": {
-        const res = await fetchWithConnectionProxy("https://api.hcnsec.cn/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-      }
       case "glm": {
         const res = await fetchWithConnectionProxy("https://api.z.ai/api/anthropic/v1/messages", {
           method: "POST",
@@ -791,37 +788,6 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
       case "hyperbolic": {
         const res = await fetchWithConnectionProxy("https://api.hyperbolic.xyz/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
         return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-      }
-      // "command-code" (OmniRoute hyphenated id, alias "cmd") shares this
-      // probe with "commandcode" — same upstream, same transport. Route
-      // through the same CommandCode probe used by validate/route.js:
-      // /api/providers/validate accepts both ids, but the dashboard's
-      // per-connection health-check/test action only had a "commandcode"
-      // case here, so a saved "command-code" connection fell through to
-      // the generic "Provider test not supported" default.
-      case "commandcode":
-      case "command-code": {
-        const cfg = PROVIDERS[connection.provider] || PROVIDERS.commandcode;
-        // PROVIDER_MODELS is keyed by registry alias ("commandcode"/"cmd"),
-        // not the hyphenated "command-code" id — fall back accordingly.
-        const model = getDefaultModel(connection.provider) || getDefaultModel("cmd") || getDefaultModel("commandcode");
-        const payload = openaiToCommandCodeRequest(model, {
-          messages: [{ role: "user", content: "ping" }],
-          max_tokens: 1,
-          stream: false,
-        }, false);
-        const res = await fetchWithConnectionProxy(cfg.baseUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(cfg.headers || {}),
-            "x-session-id": crypto.randomUUID(),
-            "Authorization": `Bearer ${connection.apiKey}`,
-          },
-          body: JSON.stringify(payload),
-        }, effectiveProxy);
-        const valid = res.status !== 401 && res.status !== 403;
-        return { valid, error: valid ? null : "Invalid API key" };
       }
       case "ollama": {
         const res = await fetch("https://ollama.com/api/tags", { headers: { Authorization: `Bearer ${connection.apiKey}` } });
@@ -1003,7 +969,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         const res = await fetchWithConnectionProxy(`${baseUrl}/models`, { headers }, effectiveProxy);
         return { valid: res.ok, error: res.ok ? null : "Pollinations test failed" };
       }
-      case "nube":
+      case "nube"
       case "kenari": {
         const config = PROVIDERS[connection.provider] || {};
         const validateUrl = config.validateUrl || config.baseUrl?.replace(/\/chat\/completions\/?$/, "/models");
@@ -1065,18 +1031,14 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         return { valid, error: valid ? null : "Invalid API key" };
       }
       default: {
-        // Generic config-driven fallback for API-key providers without an explicit case above.
-        // Uses the registry transport: validateUrl > modelsUrl > baseUrl-derived /models.
-        const cfg = PROVIDERS[connection.provider];
-        const validateUrl = cfg?.validateUrl || cfg?.modelsUrl || cfg?.baseUrl?.replace(/\/chat\/completions\/?$/, "/models");
-        if (validateUrl && connection.apiKey) {
-          const res = await fetchWithConnectionProxy(validateUrl, {
-            headers: { Authorization: `Bearer ${connection.apiKey}` },
-          }, effectiveProxy);
-          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-        }
-        return await testRegistryOpenAIConnection(connection, effectiveProxy)
-          || { valid: false, error: "Provider test not supported" };
+        const result = await probeRegistryProvider(
+          connection.provider,
+          connection.apiKey,
+          (url, options) => fetchWithConnectionProxy(url, options, effectiveProxy),
+          connection.providerSpecificData || {},
+        );
+        if (result) return { valid: result.valid, error: result.valid ? null : "Invalid API key" };
+        return { valid: false, error: "Provider test not supported" };
       }
     }
   } catch (err) {

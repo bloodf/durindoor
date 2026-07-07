@@ -48,7 +48,7 @@ export const FILTERS = {
         if (kind.includes("chat") || kind.includes("llm") || kind.includes("text-generation") || kind.includes("language-model") || isChat) return true;
         return false; // reject unknown model kinds to avoid offering non-chat ids in chat picker
       })
-      .map((m) => ({ id: m.id, name: m.name || m.id }));
+      .map((m) => ({ id: m.id, name: m.name || m.id, ...(m.context_length != null ? { contextLength: m.context_length } : {}) }));
   },
 
   // Plain OpenAI-compatible /v1/models list (Crof, DIT, FreeAIAPIKey, hcnsec, …):

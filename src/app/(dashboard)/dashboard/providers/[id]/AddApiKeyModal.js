@@ -28,7 +28,9 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     : (isXaiApiKey ? "xai-..." : "");
 
   const isAzure = provider === "azure";
-  const isCloudflareAi = provider === "cloudflare-ai";
+  const ACCOUNT_ID_PROVIDER_DETAILS = ["cloudflare-ai", "snowflake"];
+  const requiresAccountId = ACCOUNT_ID_PROVIDER_DETAILS.includes(provider);
+  const accountIdProviderLabel = provider === "snowflake" ? "Snowflake Cortex" : "Cloudflare Workers AI";
   const isGooglePse = isGooglePseProvider(provider);
   const providerRegions = AI_PROVIDERS?.[provider]?.regions || null;
   const defaultRegion = AI_PROVIDERS?.[provider]?.defaultRegion || providerRegions?.[0]?.id || "";
@@ -89,7 +91,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         organization: azureData.organization,
       };
     }
-    if (isCloudflareAi) {
+    if (requiresAccountId) {
       return { accountId: cloudflareData.accountId };
     }
     if (isGooglePse) {
@@ -353,17 +355,22 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
             Enter the model ID exactly as your compatible endpoint expects it. This model will be saved as the connection default.
           </p>
         )}
-        {isCloudflareAi && (
+        {requiresAccountId && (
           <div className="bg-sidebar/50 p-4 rounded-lg border border-accent/20">
-            <h3 className="font-semibold mb-3 text-sm">Cloudflare Workers AI</h3>
+            <h3 className="font-semibold mb-3 text-sm">{accountIdProviderLabel}</h3>
             <Input
               label="Account ID"
               value={cloudflareData.accountId}
               onChange={(e) => setCloudflareData({ ...cloudflareData, accountId: e.target.value })}
-              placeholder="abc123def456..."
+              placeholder={provider === "snowflake" ? "org-account" : "abc123def456..."}
             />
             <p className="text-xs text-text-muted mt-2">
-              Find your Account ID in the right sidebar of <a href="https://dash.cloudflare.com" target="_blank" rel="noopener noreferrer" className="text-primary underline">dash.cloudflare.com</a>
+              {provider === "snowflake"
+                ? "Find your account identifier in the Snowflake URL, e.g. https://org-account.snowflakecomputing.com"
+                : "Find your Account ID in the right sidebar of "}
+              {provider === "snowflake" ? null : (
+                <a href="https://dash.cloudflare.com" target="_blank" rel="noopener noreferrer" className="text-primary underline">dash.cloudflare.com</a>
+              )}
             </p>
           </div>
         )}
@@ -428,7 +435,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         </p>
 
         <div className="flex gap-2">
-          <Button onClick={handleSubmit} fullWidth disabled={saving || (!isOllamaLocal && (!formData.name || (!isNoAuthProvider && !isFreeNoAuthProvider && !formData.apiKey))) || (isCompatible && !formData.defaultModel.trim()) || (isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization)) || (isCloudflareAi && !cloudflareData.accountId) || !hasRequiredGooglePseCx}>
+          <Button onClick={handleSubmit} fullWidth disabled={saving || (!isOllamaLocal && (!formData.name || (!isNoAuthProvider && !isFreeNoAuthProvider && !formData.apiKey))) || (isCompatible && !formData.defaultModel.trim()) || (isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization)) || (requiresAccountId && !cloudflareData.accountId) || !hasRequiredGooglePseCx}>
             {saving ? "Saving..." : "Save"}
           </Button>
           <Button onClick={onClose} variant="ghost" fullWidth>

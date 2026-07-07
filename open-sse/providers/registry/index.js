@@ -191,6 +191,30 @@ import p188 from "./bazaarlink.js";
 import p189 from "./bluesminds.js";
 import p190 from "./bytez.js";
 import p191 from "./codestral.js";
+import p192 from "./qianfan.js";
+import p193 from "./qiniu.js";
+import p194 from "./reka.js";
+import p195 from "./requesty.js";
+import p196 from "./sambanova.js";
+import p197 from "./scaleway.js";
+import p198 from "./sensenova.js";
+import p199 from "./snowflake.js";
+import p200 from "./sparkdesk.js";
+import p201 from "./stepfun.js";
+import p202 from "./sumopod.js";
+import p203 from "./synthetic.js";
+import p204 from "./tencent.js";
+import p205 from "./tokenrouter.js";
+import p206 from "./uncloseai.js";
+import p207 from "./upstage.js";
+import p208 from "./v0-vercel.js";
+import p209 from "./volcengine.js";
+import p210 from "./wafer.js";
+import p211 from "./wandb.js";
+import p212 from "./x5lab.js";
+import p213 from "./yi.js";
+import p214 from "./zai.js";
+import p215 from "./zenmux.js";
 
 export default [
   p0,
@@ -385,4 +409,28 @@ export default [
   p189,
   p190,
   p191,
+  p192,
+  p193,
+  p194,
+  p195,
+  p196,
+  p197,
+  p198,
+  p199,
+  p200,
+  p201,
+  p202,
+  p203,
+  p204,
+  p205,
+  p206,
+  p207,
+  p208,
+  p209,
+  p210,
+  p211,
+  p212,
+  p213,
+  p214,
+  p215,
 ];

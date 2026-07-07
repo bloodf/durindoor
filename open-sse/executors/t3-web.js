@@ -24,7 +24,7 @@ export function parseT3Credentials(credentials) {
   let cookieHeader = raw.replace(/^cookie\s*:\s*/i, "");
   let convexSessionId = "";
 
-  if (/convexSessionId=|cookies=/.test(raw)) {
+  if (/convexSessionId=|convex-session-id=|cookies=/.test(raw)) {
     const cookieParts = [];
     for (const part of raw.split(/[,;\n]/).map((item) => item.trim()).filter(Boolean)) {
       if (part.startsWith("convexSessionId=")) convexSessionId = part.slice("convexSessionId=".length);
@@ -69,10 +69,12 @@ export function buildT3ChatBody({ messages, model, parsed, stream }) {
   const t3Messages = [];
   const systemParts = [];
   if (normalized.systemMsg) systemParts.push(normalized.systemMsg);
-  if (normalized.history.length > 0) {
-    systemParts.push(`Prior conversation:\n\n${normalized.history.map((item) => `${item.role === "assistant" ? "Assistant" : "User"}: ${item.content}`).join("\n\n")}`);
-  }
   if (systemParts.length > 0) t3Messages.push(t3Message("system", systemParts.join("\n\n")));
+  if (normalized.history.length > 0) {
+    for (const item of normalized.history) {
+      t3Messages.push(t3Message(item.role, item.content));
+    }
+  }
   if (normalized.currentMsg) t3Messages.push(t3Message("user", normalized.currentMsg));
 
   return {

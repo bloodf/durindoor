@@ -8,6 +8,41 @@ import * as log from "../utils/logger.js";
 // Mutex to prevent race conditions during account selection
 let selectionMutex = Promise.resolve();
 
+const NO_AUTH_STORED_DATA_PROVIDERS = new Set(["mimocode"]);
+
+function buildNoAuthCredential(providerSpecificData, resolvedProxy, connection) {
+  return {
+    id: connection?.id || "noauth",
+    connectionName: connection?.displayName || connection?.name || connection?.email || connection?.id || "Public",
+    isActive: true,
+    accessToken: "public",
+    providerSpecificData: {
+      ...(providerSpecificData || {}),
+      connectionProxyEnabled: resolvedProxy.connectionProxyEnabled,
+      connectionProxyUrl: resolvedProxy.connectionProxyUrl,
+      connectionNoProxy: resolvedProxy.connectionNoProxy,
+      connectionProxyPoolId: resolvedProxy.proxyPoolId || null,
+      vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
+    },
+    connectionId: connection?.id || "noauth",
+    _connection: connection || null,
+  };
+}
+
+async function buildPublicNoAuthCredential(providerId) {
+  const settings = await getSettings();
+  const override = (settings.providerStrategies || {})[providerId] || {};
+  const strategy = override.rotateStrategy || "none";
+  let pickedId = override.proxyPoolId || null;
+  if (strategy !== "none") {
+    const allPools = await getProxyPools({ isActive: true });
+    const poolIds = allPools.filter((p) => p.proxyUrl).map((p) => p.id);
+    pickedId = pickProxyPoolId(poolIds, strategy, providerId);
+  }
+  const resolvedProxy = await resolveConnectionProxyConfig({ proxyPoolId: pickedId || "" });
+  return buildNoAuthCredential({}, resolvedProxy, null);
+}
+
 /**
  * Get provider credentials from localDb
  * Filters out unavailable accounts and returns the selected account based on strategy
@@ -35,41 +70,43 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     const connections = await getProviderConnections({ provider: providerId, isActive: true });
     log.debug("AUTH", `${provider} | total connections: ${connections.length}, excludeIds: ${excludeSet.size > 0 ? [...excludeSet].join(",") : "none"}, model: ${model || "any"}`);
 
-    // Inject a virtual connection for no-auth free providers (with optional proxy pool
-    // from settings) — but ONLY when the user has no real saved connection for this
-    // provider. Some "noAuth" providers (e.g. Pollinations) also accept an optional
-    // premium API key; short-circuiting here unconditionally would make a real saved
-    // key unreachable. Fall through to the normal connection-selection path below
-    // whenever at least one real connection exists.
-    const buildNoAuthCredential = async () => {
-      const settings = await getSettings();
-      const override = (settings.providerStrategies || {})[providerId] || {};
-      const strategy = override.rotateStrategy || "none";
-      let pickedId = override.proxyPoolId || null;
-      if (strategy !== "none") {
-        const allPools = await getProxyPools({ isActive: true });
-        const poolIds = allPools.filter(p => p.proxyUrl).map(p => p.id);
-        pickedId = pickProxyPoolId(poolIds, strategy, providerId);
-      }
-      const resolvedProxy = await resolveConnectionProxyConfig({ proxyPoolId: pickedId || "" });
-      return {
-        id: "noauth",
-        connectionName: "Public",
-        isActive: true,
-        accessToken: "public",
-        providerSpecificData: {
-          connectionProxyEnabled: resolvedProxy.connectionProxyEnabled,
-          connectionProxyUrl: resolvedProxy.connectionProxyUrl,
-          connectionNoProxy: resolvedProxy.connectionNoProxy,
-          connectionProxyPoolId: resolvedProxy.proxyPoolId || null,
-          vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
-        },
-      };
-    };
-    const isNoAuthProvider = !!FREE_PROVIDERS[providerId]?.noAuth;
+    const isNoAuthProvider = FREE_PROVIDERS[providerId]?.noAuth === true;
 
-    if (isNoAuthProvider && connections.length === 0) {
-      return buildNoAuthCredential();
+    if (isNoAuthProvider) {
+      if (NO_AUTH_STORED_DATA_PROVIDERS.has(providerId) && connections.length > 0) {
+        const availableStoredConnections = connections.filter(
+          (c) => !excludeSet.has(c.id) && !isModelLockActive(c, model)
+        );
+        const connection = preferredConnectionId
+          ? availableStoredConnections.find((c) => c.id === preferredConnectionId)
+          : availableStoredConnections[0];
+        if (connection) {
+          const resolvedProxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
+          return buildNoAuthCredential(connection.providerSpecificData || {}, resolvedProxy, connection);
+        }
+        const lockedConnections = connections.filter(
+          (c) => !excludeSet.has(c.id) && isModelLockActive(c, model)
+        );
+        const expiries = lockedConnections.map((c) => getEarliestModelLockUntil(c)).filter(Boolean);
+        const earliest = expiries.sort()[0] || null;
+        if (earliest) {
+          const earliestConn = lockedConnections[0];
+          log.warn("AUTH", `${provider} | all ${connections.length} stored ${providerId} accounts locked for ${model || "all"} (${formatRetryAfter(earliest)}) | lastError=${earliestConn?.lastError?.slice(0, 50)}`);
+          return {
+            allRateLimited: true,
+            retryAfter: earliest,
+            retryAfterHuman: formatRetryAfter(earliest),
+            lastError: earliestConn?.lastError || null,
+            lastErrorCode: earliestConn?.errorCode || null,
+          };
+        }
+        log.warn("AUTH", `${provider} | all ${connections.length} stored ${providerId} accounts unavailable`);
+        return null;
+      }
+
+      if (connections.length === 0) {
+        return buildPublicNoAuthCredential(providerId);
+      }
     }
 
     if (connections.length === 0) {
@@ -100,7 +137,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       // Pollinations (and similar) still serve unauthenticated traffic.
       if (isNoAuthProvider) {
         log.warn("AUTH", `${provider} | saved key unavailable, falling back to public no-auth`);
-        return buildNoAuthCredential();
+        return buildPublicNoAuthCredential(providerId);
       }
       // Find earliest lock expiry across all connections for retry timing
       const lockedConns = connections.filter(c => isModelLockActive(c, model));

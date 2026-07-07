@@ -1,7 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const fetchMock = vi.fn();
+const { fetchMock, proxyAwareFetchMock } = vi.hoisted(() => {
+  const fetchMock = vi.fn();
+  return {
+    fetchMock,
+    proxyAwareFetchMock: vi.fn((url, init, proxyOptions) => fetchMock(url, init, proxyOptions)),
+  };
+});
 vi.stubGlobal("fetch", fetchMock);
+
+vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
+  proxyAwareFetch: proxyAwareFetchMock,
+}));
 
 import {
   MimocodeExecutor,
@@ -30,6 +40,7 @@ function makeJwt(expSec = Math.floor(Date.now() / 1000) + 3600) {
 
 beforeEach(() => {
   fetchMock.mockReset();
+  proxyAwareFetchMock.mockClear();
 });
 
 describe("MimocodeExecutor", () => {
@@ -115,7 +126,61 @@ describe("MimocodeExecutor", () => {
     expect(transformedBody.messages[0].content).toContain(MIMO_SYSTEM_MARKER);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).client).toBe(generateFingerprint());
+    expect(fetchMock.mock.calls[0][1].headers["User-Agent"]).toContain("Mozilla/5.0");
     expect(fetchMock.mock.calls[1][1].headers.Authorization).toMatch(/^Bearer /);
+  });
+
+  it("honors configured proxyOptions for bootstrap and chat fetches", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+
+    const proxyOptions = {
+      connectionProxyEnabled: true,
+      connectionProxyUrl: "http://pool-proxy.test:8080",
+      connectionNoProxy: "",
+      vercelRelayUrl: "",
+    };
+
+    const { response } = await new MimocodeExecutor().execute({
+      model: "mimo-auto",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: {},
+      proxyOptions,
+    });
+
+    expect(response.status).toBe(200);
+    expect(proxyAwareFetchMock).toHaveBeenCalledTimes(2);
+    expect(proxyAwareFetchMock.mock.calls[0][2]).toBe(proxyOptions);
+    expect(proxyAwareFetchMock.mock.calls[1][2]).toBe(proxyOptions);
+  });
+
+  it("round-robins into uninitialized configured fingerprints", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("ok-a", { status: 200 }))
+      .mockResolvedValueOnce(jsonResponse({ jwt: makeJwt() }))
+      .mockResolvedValueOnce(new Response("ok-b", { status: 200 }));
+
+    const executor = new MimocodeExecutor();
+    executor.accounts = [executor.buildAccount("fp-a"), executor.buildAccount("fp-b")];
+
+    await executor.execute({
+      model: "mimo-auto",
+      body: { messages: [{ role: "user", content: "first" }] },
+      stream: false,
+      credentials: {},
+    });
+    await executor.execute({
+      model: "mimo-auto",
+      body: { messages: [{ role: "user", content: "second" }] },
+      stream: false,
+      credentials: {},
+    });
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).client).toBe("fp-a");
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body).client).toBe("fp-b");
   });
 
   it("re-bootstraps and retries once after 403 auth failure", async () => {

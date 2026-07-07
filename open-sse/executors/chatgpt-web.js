@@ -380,7 +380,7 @@ export class ChatGptWebExecutor extends BaseExecutor {
       return { response: errorJson(401, `ChatGPT session exchange failed: ${err?.message || String(err)}`), url: SESSION_URL, headers: {}, transformedBody: body };
     }
     if (token.refreshedCookie && token.refreshedCookie !== rawCookie) {
-      await onCredentialsRefreshed?.({ ...credentials, apiKey: token.refreshedCookie });
+      await onCredentialsRefreshed?.({ apiKey: token.refreshedCookie });
     }
 
     const suppliedSentinel = credentials?.providerSpecificData?.chatgptWebSentinel || credentials?.providerSpecificData || {};
@@ -451,6 +451,7 @@ export class ChatGptWebExecutor extends BaseExecutor {
       signal: signal ?? undefined,
     }, proxyOptions);
     if (!response.ok) {
+      if (response.status === 401 || response.status === 403) tokenCache.delete(tokenKey(rawCookie));
       return { response: errorJson(response.status, `ChatGPT Web upstream returned HTTP ${response.status}`), url: CONVERSATION_URL, headers, transformedBody };
     }
     if (!response.body) return { response: errorJson(502, "ChatGPT Web returned an empty response body"), url: CONVERSATION_URL, headers, transformedBody };

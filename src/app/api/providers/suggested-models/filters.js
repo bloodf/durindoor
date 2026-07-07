@@ -18,6 +18,13 @@ export const FILTERS = {
       .filter((m) => m.id?.endsWith("-free") || KNOWN_FREE_OPENCODE_MODELS.includes(m.id))
       .map((m) => ({ id: m.id, name: m.id })),
 
+  // Generic OpenAI `/v1/models` catalog; keep all models with a string id
+  "openai": (models) =>
+    (Array.isArray(models) ? models : [])
+      .filter((m) => typeof m.id === "string")
+      .map((m) => ({ id: m.id, name: m.name || m.id })),
+
+
   // models.dev returns a large catalog; keep only mimo models
   "mimo-free": (models) =>
     (Array.isArray(models) ? models : [])

@@ -55,15 +55,16 @@ const AUTH_DESCRIPTORS = Object.fromEntries(
     .map(([id, t]) => [id, t.auth])
 );
 
-// Apply a token to a header per scheme (matches legacy: combined always sets, even when undefined).
+// Apply a token to a header per scheme. Missing tokens intentionally leave the
+// header absent so optional local providers do not send "Bearer undefined".
 function setAuth(headers, spec, token) {
+  if (!token) return;
   headers[spec.header] = spec.scheme === "bearer" ? `Bearer ${token}` : token;
 }
 
 // Resolve auth onto headers from a descriptor.
 function applyAuth(headers, desc, credentials) {
   if (desc.combined) {
-    // combined providers always set the header (legacy behavior, incl. noAuth → "Bearer undefined")
     setAuth(headers, desc, credentials.apiKey || credentials.accessToken);
     if (desc.anthropicVersion && !headers["anthropic-version"]) headers["anthropic-version"] = ANTHROPIC_API_VERSION;
     return;
@@ -113,6 +114,22 @@ const REFRESH_GRANTS = Object.fromEntries(
       }];
     })
 );
+
+// OmniRoute local/self-hosted parity: these provider IDs are configurable
+// OpenAI-compatible endpoints. When no connection baseUrl is set, stay on the
+// provider's local default instead of falling back through PROVIDERS.openai.
+export const LOCAL_PROVIDER_DEFAULT_BASE_URLS = {
+  "lm-studio": "http://localhost:1234/v1",
+  vllm: "http://localhost:8000/v1",
+  lemonade: "http://localhost:13305/api/v1",
+  llamafile: "http://127.0.0.1:8080/v1",
+  "llama-cpp": "http://127.0.0.1:8080/v1",
+  triton: "http://localhost:8000/v1",
+  "docker-model-runner": "http://localhost:12434/v1",
+  xinference: "http://localhost:9997/v1",
+  oobabooga: "http://localhost:5000/v1",
+  "9router": "http://127.0.0.1:20130/v1",
+};
 
 export class DefaultExecutor extends BaseExecutor {
   constructor(provider) {
@@ -200,6 +217,16 @@ export class DefaultExecutor extends BaseExecutor {
       const normalized = baseUrl.replace(/\/$/, "");
       return `${normalized}/messages`;
     }
+    if (LOCAL_PROVIDER_DEFAULT_BASE_URLS[this.provider]) {
+      const baseUrl =
+        credentials?.providerSpecificData?.baseUrl ||
+        this.config.baseUrl ||
+        LOCAL_PROVIDER_DEFAULT_BASE_URLS[this.provider];
+      const normalized = baseUrl.replace(/\/$/, "");
+      return normalized.endsWith("/chat/completions")
+        ? normalized
+        : `${normalized}/chat/completions`;
+    }
     // gemini-format: build :streamGenerateContent / :generateContent path
     if (this.config.format === "gemini") {
       return `${this.config.baseUrl}/${model}:${stream ? "streamGenerateContent?alt=sse" : "generateContent"}`;
@@ -228,9 +255,14 @@ export class DefaultExecutor extends BaseExecutor {
     return BEARER;
   }
 
-  buildHeaders(credentials, stream = true) {
+  buildHeaders(credentials = {}, stream = true) {
+    credentials ||= {};
     const rt = credentials?.runtimeTransport;
     const headers = { "Content-Type": "application/json", ...(rt ? rt.headers : this.config.headers) };
+    if (!credentials.apiKey && !credentials.accessToken) {
+      if (stream) headers["Accept"] = "text/event-stream";
+      return headers;
+    }
     const desc = rt?.auth || AUTH_DESCRIPTORS[this.provider] || this.resolveAuthDescriptor();
     // Hooks run BEFORE auth so dynamic overlays (claude cached headers) can't clobber the token.
     for (const hook of desc.hooks || []) HEADER_HOOKS[hook]?.(headers, credentials);

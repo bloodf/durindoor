@@ -12,7 +12,7 @@ export default {
   },
   category: "apikey",
   transport: {
-    baseUrl: "http://localhost:11434/api/chat",
+    baseUrl: "http://localhost:11434",
     format: "ollama",
   },
   serviceKinds: ["llm"],

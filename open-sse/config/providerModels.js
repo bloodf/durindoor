@@ -31,10 +31,21 @@ export function findModelName(aliasOrId, modelId) {
   return found?.name || modelId;
 }
 
+function getOpenCodeZenPassthroughTargetFormat(modelId) {
+  if (typeof modelId !== "string") return null;
+  if (modelId.startsWith("claude-")) return "claude";
+  if (/^gpt-5(?:[.-]|$)/.test(modelId)) return "openai-responses";
+  return null;
+}
+
 export function getModelTargetFormat(aliasOrId, modelId) {
   const models = PROVIDER_MODELS[aliasOrId];
-  if (!models) return null;
-  return modelTargetFormat(models.find(m => m.id === modelId));
+  const configuredTargetFormat = models ? modelTargetFormat(models.find(m => m.id === modelId)) : null;
+  if (configuredTargetFormat) return configuredTargetFormat;
+  // OpenCode Zen allows passthrough model IDs, but API-family prefixes still need
+  // their native translators instead of the provider default Chat Completions route.
+  if (aliasOrId === "opencode-zen") return getOpenCodeZenPassthroughTargetFormat(modelId);
+  return null;
 }
 
 export function getModelType(aliasOrId, modelId) {

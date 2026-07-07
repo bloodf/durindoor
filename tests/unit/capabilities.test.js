@@ -138,6 +138,16 @@ describe("getCapabilitiesForModel — Qwen max/plus vision", () => {
   });
 });
 
+describe("getCapabilitiesForModel — OpenCode Zen", () => {
+  it("Big Pickle reports reasoning via provider override", () => {
+    const caps = getCapabilitiesForModel("opencode-zen", "big-pickle");
+    expect(caps.reasoning).toBe(true);
+    expect(caps.thinkingFormat).toBe("openai");
+    expect(caps.thinkingCanDisable).toBe(true);
+  });
+});
+
+
 describe("getCapabilitiesForModel — MiniMax M2.x vision", () => {
   it("minimax-m2.7 has vision", () => {
     const caps = getCapabilitiesForModel(null, "minimax-m2.7");

@@ -201,6 +201,11 @@ export const PROVIDER_CAPABILITIES = {
     "deepseek-v4-flash":  { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 50000 },
     "deepseek-v3-2-volc": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 96000, maxOutput: 32000 },
   },
+  // OpenCode Zen — Big Pickle advertises reasoning in the registry but the
+  // generic fallback did not read model-level supportsReasoning flags.
+  "opencode-zen": {
+    "big-pickle": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true },
+  },
 };
 
 /**

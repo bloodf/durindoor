@@ -31,6 +31,7 @@ function buildProviderEntry(r) {
     ...(r.hasProviderSpecificData ? { hasProviderSpecificData: true } : {}),
     ...(r.noAuth ? { noAuth: true } : {}),
     ...(r.oauth ? { oauth: true } : {}),
+    ...(r.transport?.baseUrl ? { defaultBaseUrl: r.transport.baseUrl } : {}),
     ...(r.passthroughModels ? { passthroughModels: true } : {}),
     ...(r.hasOAuth ? { hasOAuth: true } : {}),
     ...(r.authModes ? { authModes: r.authModes } : {}),

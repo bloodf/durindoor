@@ -143,4 +143,20 @@ export class UnsupportedOmniRouteWebSessionExecutor extends BaseExecutor {
       transformedBody: payload,
     };
   }
+
+  parseError(response, bodyText) {
+    try {
+      const parsed = JSON.parse(bodyText);
+      if (parsed?.error?.type === "provider_port_pending") {
+        return {
+          status: response.status,
+          message: parsed.error.message,
+          errorBody: parsed,
+        };
+      }
+    } catch {
+      // fall through to default
+    }
+    return super.parseError(response, bodyText);
+  }
 }

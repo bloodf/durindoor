@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { PROVIDERS, PROVIDER_MEDIA, PROVIDER_MODELS } from "open-sse/providers/index.js";
-import { getExecutor, hasSpecializedExecutor } from "open-sse/executors/index.js";
+import { parseModel } from "open-sse/services/model.js";
+import { parseUpstreamError, createErrorResult } from "open-sse/utils/error.js";
 import { checkFallbackError } from "open-sse/services/accountFallback.js";
+import { getExecutor, hasSpecializedExecutor } from "open-sse/executors/index.js";
 import {
   BLOCKED_OMNIROUTE_PROVIDERS,
   BLOCKED_OMNIROUTE_PROVIDER_ALIASES,
@@ -54,6 +56,33 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
     expect(getProvidersByKind("music").map((p) => p.id)).not.toContain("suno");
     expect(getProvidersByKind("music").map((p) => p.id)).not.toContain("udio");
     expect(getProvidersByKind("video").map((p) => p.id)).not.toContain("veoaifree-web");
+  });
+
+  it("resolves uiAlias tokens to the guarded provider in model strings", () => {
+    expect(parseModel("m365/copilot-m365")).toMatchObject({ provider: "copilot-m365-web", model: "copilot-m365" });
+    expect(parseModel("copilot/copilot-pro")).toMatchObject({ provider: "copilot-web", model: "copilot-pro" });
+    expect(parseModel("ddg/gpt-4o-mini")).toMatchObject({ provider: "duckduckgo-web", model: "gpt-4o-mini" });
+    expect(parseModel("t3/claude-opus-4")).toMatchObject({ provider: "t3-web", model: "claude-opus-4" });
+  });
+
+  it("preserves structured provider_port_pending error body through the upstream error parser", async () => {
+    const executor = getExecutor("veoaifree-web");
+    const { response } = await executor.execute({});
+    const parsed = await parseUpstreamError(response, executor);
+    expect(parsed.statusCode).toBe(501);
+    expect(parsed.message).toContain("runtime execution is not ported yet");
+    expect(parsed.errorBody).toMatchObject({
+      error: {
+        type: "provider_port_pending",
+        provider: "veoaifree-web",
+        sourceFiles: expect.any(Array),
+      },
+    });
+    const result = createErrorResult(parsed.statusCode, parsed.message, undefined, parsed.errorBody);
+    const body = await result.response.json();
+    expect(body).toEqual(parsed.errorBody);
+    expect(body.error.type).toBe("provider_port_pending");
+    expect(body.error.sourceFiles).toEqual(expect.any(Array));
   });
 
   it("does not trigger account fallback for provider_port_pending errors", () => {

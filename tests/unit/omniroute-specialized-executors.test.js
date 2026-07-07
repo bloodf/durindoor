@@ -479,4 +479,12 @@ describe("OmniRoute specialized provider ports", () => {
     expect(converted.inferenceConfig.temperature).toBe(0.7);
     expect(converted.inferenceConfig.topP).toBe(0.95);
   });
+
+  it("forwards thinking config into Bedrock additionalModelRequestFields", () => {
+    const converted = openAIToBedrockConverse("anthropic.claude-sonnet-4-6", {
+      messages: [{ role: "user", content: "hi" }],
+      thinking: { type: "enabled", budget_tokens: 4096 },
+    });
+    expect(converted.additionalModelRequestFields).toEqual({ thinking: { type: "enabled", budget_tokens: 4096 } });
+  });
 });

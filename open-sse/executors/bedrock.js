@@ -233,6 +233,9 @@ export function openAIToBedrockConverse(model, body) {
   if (Object.keys(inferenceConfig).length > 0) payload.inferenceConfig = inferenceConfig;
   const toolConfig = toolConfigFromOpenAI(request.tools, request.tool_choice);
   if (toolConfig) payload.toolConfig = toolConfig;
+  if (request.thinking && typeof request.thinking === "object" && !Array.isArray(request.thinking)) {
+    payload.additionalModelRequestFields = { ...payload.additionalModelRequestFields, thinking: request.thinking };
+  }
   return payload;
 }
 

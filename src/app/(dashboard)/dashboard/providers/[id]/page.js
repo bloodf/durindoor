@@ -12,6 +12,7 @@ import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { translate } from "@/i18n/runtime";
 import { fetchSuggestedModels } from "@/shared/utils/providerModelsFetcher";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
+import { isNoAuthOnlyProvider } from "@/shared/utils/providerAuthMode";
 import ModelRow from "./ModelRow";
 import PassthroughModelsSection from "./PassthroughModelsSection";
 import CompatibleModelsSection from "./CompatibleModelsSection";
@@ -140,9 +141,10 @@ export default function ProviderDetailPage() {
       }
     : (OAUTH_PROVIDERS[providerId] || APIKEY_PROVIDERS[providerId] || FREE_PROVIDERS[providerId] || FREE_TIER_PROVIDERS[providerId] || WEB_COOKIE_PROVIDERS[providerId]);
   const authModes = providerInfo?.authModes || [];
-  const isOAuth = !!OAUTH_PROVIDERS[providerId] || !!FREE_PROVIDERS[providerId] || authModes.includes("oauth");
+  const isOAuth = !!OAUTH_PROVIDERS[providerId] || authModes.includes("oauth");
   const supportsApiKeyAuth = !!APIKEY_PROVIDERS[providerId] || authModes.includes("apikey");
   const isFreeNoAuth = !!FREE_PROVIDERS[providerId]?.noAuth;
+  const isFreeNoAuthOnly = isNoAuthOnlyProvider(FREE_PROVIDERS[providerId]);
   const models = getModelsByProviderId(providerId);
   const providerAlias = getProviderAlias(providerId);
   
@@ -1432,7 +1434,7 @@ export default function ProviderDetailPage() {
       )}
 
       {/* Connections */}
-      {isFreeNoAuth ? (
+      {isFreeNoAuthOnly ? (
         <NoAuthProxyCard providerId={providerId} />
       ) : (
         <Card>

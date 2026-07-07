@@ -130,10 +130,20 @@ MITM mode is optional and requires explicit local setup.
 | Variable | Default | Description |
 | --- | --- | --- |
 | `VALIDATE_OUTBOUND` | `true` | Set to `false` to disable outbound payload validation in the chat core. |
+| `CLIPROXYAPI_HOST` | `127.0.0.1` | Host for the optional CLIProxyAPI sidecar used by upstream proxy routing. |
+| `CLIPROXYAPI_PORT` | `8317` | Port for the optional CLIProxyAPI sidecar used by upstream proxy routing. |
+| `OMNIROUTE_PROVIDER_MANIFEST_URL` | local `/api/v1/provider-plugin-manifest` URL | Public provider manifest URL advertised to sidecars. Set this when CLIProxyAPI runs outside the DurinDoor network namespace. |
+| `OMNIROUTE_PUBLIC_PROTOCOL` | `http` | Protocol used when deriving the provider manifest URL from host and port. |
 | `CONCURRENCY_GATE_TIMEOUT_MS` | code default | Overrides provider concurrency gate timeout. |
 | `CURSOR_STREAM_DEBUG` | unset | Enables Cursor executor stream debug logs when set to `1`. |
 | `CURSOR_PROTOBUF_DEBUG` | unset | Enables Cursor protobuf debug logs when set to `1`. |
 | `ENABLE_TRANSLATOR` | `false` unless set | Enables the dashboard translator feature path. |
+
+Provider-level CLIProxyAPI routing is stored in the `upstreamProxyConfig`
+settings map. Each provider entry supports `enabled`, `mode` (`native`,
+`cliproxyapi`, or `fallback`), and `cliproxyapiModelMapping`. A connection can
+override its provider default with `providerSpecificData.cliproxyapiMode =
+"claude-native"`, which routes only that connection through CLIProxyAPI.
 
 ## Build and Packaging
 
@@ -149,4 +159,3 @@ MITM mode is optional and requires explicit local setup.
 These variables are used by the packaged updater and are not normally set by operators:
 
 `UPDATER_APP_PORT`, `UPDATER_LINGER_MS`, `UPDATER_PKG_NAME`, `UPDATER_PORT`, `UPDATER_RELAUNCH`, `UPDATER_RELAUNCH_ARGS`, `UPDATER_RELAUNCH_CMD`, `UPDATER_RETRIES`, `UPDATER_RETRY_DELAY_MS`, `UPDATER_SCRIPT_PATH`, `UPDATER_TAIL_LINES`, `UPDATER_WAIT_CHECK_MS`, `UPDATER_WAIT_MAX_MS`, `UPDATER_WAIT_MIN_MS`.
-

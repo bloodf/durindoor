@@ -161,7 +161,11 @@ export default function ProviderDetailPage() {
   const isOAuth = !!OAUTH_PROVIDERS[providerId] || authModes.includes("oauth") || FREE_PROVIDERS[providerId]?.oauth;
   const supportsApiKeyAuth = !!APIKEY_PROVIDERS[providerId] || authModes.includes("apikey");
   const isFreeNoAuth = !!FREE_PROVIDERS[providerId]?.noAuth;
+<<<<<<< HEAD
   const isFreeNoAuthOnly = isNoAuthOnlyProvider(FREE_PROVIDERS[providerId]);
+=======
+  const isStoredNoAuth = isFreeNoAuth && providerId === "mimocode";
+>>>>>>> 66ccfea8 (fix(review): expose stored Mimocode connection setup (PR #54 thread RL8))
   const models = getModelsByProviderId(providerId);
   const providerAlias = getProviderAlias(providerId);
   
@@ -1482,10 +1486,14 @@ export default function ProviderDetailPage() {
       )}
 
       {/* Connections */}
+<<<<<<< HEAD
       {isFreeNoAuth && !isFreeNoAuthOnly && (
         <NoAuthProxyCard providerId={providerId} />
       )}
       {isFreeNoAuthOnly ? (
+=======
+      {isFreeNoAuth && !isStoredNoAuth ? (
+>>>>>>> 66ccfea8 (fix(review): expose stored Mimocode connection setup (PR #54 thread RL8))
         <NoAuthProxyCard providerId={providerId} />
       ) : (
         <Card>

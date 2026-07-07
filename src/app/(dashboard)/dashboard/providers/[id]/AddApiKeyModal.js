@@ -15,6 +15,7 @@ const BULK_PLACEHOLDER = `name1|sk-key1\nname2|sk-key2\nsk-key-only-auto-named`;
 
 export default function AddApiKeyModal({ isOpen, provider, providerName, isCompatible, isAnthropic, authType, authHint, website, proxyPools, existingConnectionNames = [], existingConnectionCount = 0, error, onSave, onBulkDone, onClose }) {
   const NONE_PROXY_POOL_VALUE = "__none__";
+  const isFreeNoAuthProvider = provider === "mimocode";
   const isOllamaLocal = provider === "ollama-local";
   const providerInfo = AI_PROVIDERS?.[provider] || {};
   const isNoAuthProvider = providerInfo.noAuth === true;
@@ -122,9 +123,11 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
 
   const handleSubmit = async () => {
     if (!provider) return;
-    if (!isOllamaLocal && !isNoAuthProvider && !formData.apiKey) return;
+    if (!isOllamaLocal && !isNoAuthProvider && !isFreeNoAuthProvider && !formData.apiKey) return;
     if (!isOllamaLocal || isNoAuthProvider) {
       // Non-ollama providers require a name; optional local providers can save without a key.
+      if (!formData.name) return;
+    }
       if (!formData.name) return;
     }
     if (isCompatible && !formData.defaultModel.trim()) return;
@@ -136,14 +139,19 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
       try {
         setValidating(true);
         setValidationResult(null);
-        const res = await fetch("/api/providers/validate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ provider, apiKey: formData.apiKey, providerSpecificData: buildProviderSpecificData() }),
-        });
-        const data = await res.json();
-        isValid = !!data.valid;
-        setValidationResult(isValid ? "success" : "failed");
+        if (isFreeNoAuthProvider) {
+          isValid = true;
+          setValidationResult("success");
+        } else {
+          const res = await fetch("/api/providers/validate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ provider, apiKey: formData.apiKey, providerSpecificData: buildProviderSpecificData() }),
+          });
+          const data = await res.json();
+          isValid = !!data.valid;
+          setValidationResult(isValid ? "success" : "failed");
+        }
       } catch {
         setValidationResult("failed");
       } finally {
@@ -422,7 +430,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         </p>
 
         <div className="flex gap-2">
-          <Button onClick={handleSubmit} fullWidth disabled={saving || (!isOllamaLocal && (!formData.name || (!isNoAuthProvider && !formData.apiKey))) || (isCompatible && !formData.defaultModel.trim()) || (isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization)) || (isCloudflareAi && !cloudflareData.accountId) || !hasRequiredGooglePseCx}>
+          <Button onClick={handleSubmit} fullWidth disabled={saving || (!isOllamaLocal && (!formData.name || (!isNoAuthProvider && !isFreeNoAuthProvider && !formData.apiKey))) || (isCompatible && !formData.defaultModel.trim()) || (isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization)) || (isCloudflareAi && !cloudflareData.accountId) || !hasRequiredGooglePseCx}>
             {saving ? "Saving..." : "Save"}
           </Button>
           <Button onClick={onClose} variant="ghost" fullWidth>

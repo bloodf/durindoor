@@ -23,6 +23,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
     organization: "",
   });
   const [cloudflareData, setCloudflareData] = useState({ accountId: "" });
+  const [glmData, setGlmData] = useState({ glmOrganizationId: "", glmProjectId: "" });
   const [region, setRegion] = useState("");
   const [m365Tier, setM365Tier] = useState("");
   const [testing, setTesting] = useState(false);
@@ -50,6 +51,12 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       if (connection.provider === "cloudflare-ai" && connection.providerSpecificData) {
         setCloudflareData({ accountId: connection.providerSpecificData.accountId || "" });
       }
+      if ((connection.provider === "glm" || connection.provider === "glm-cn") && connection.providerSpecificData) {
+        setGlmData({
+          glmOrganizationId: connection.providerSpecificData.glmOrganizationId || "",
+          glmProjectId: connection.providerSpecificData.glmProjectId || "",
+        });
+      }
       // Load region for providers that support it (e.g. xiaomi-tokenplan)
       const providerCfg = AI_PROVIDERS?.[connection.provider];
       if (providerCfg?.regions) {
@@ -65,6 +72,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   const isOAuth = connection?.authType === "oauth";
   const isAzure = connection?.provider === "azure";
   const isCloudflareAi = connection?.provider === "cloudflare-ai";
+  const isGlm = connection?.provider === "glm" || connection?.provider === "glm-cn";
   const isCompatible = connection
     ? (isOpenAICompatibleProvider(connection.provider) || isAnthropicCompatibleProvider(connection.provider))
     : false;
@@ -110,6 +118,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
           apiKey: formData.apiKey,
           ...(isAzure ? { providerSpecificData: azureData } : {}),
           ...(isCloudflareAi ? { providerSpecificData: cloudflareData } : {}),
+          ...(isGlm ? { providerSpecificData: glmData } : {}),
           ...(providerRegions ? { providerSpecificData: buildRegionSpecificData() } : {}),
         }),
       });
@@ -145,6 +154,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
                 apiKey: formData.apiKey,
                 ...(isAzure ? { providerSpecificData: azureData } : {}),
                 ...(isCloudflareAi ? { providerSpecificData: cloudflareData } : {}),
+                ...(isGlm ? { providerSpecificData: glmData } : {}),
                 ...(providerRegions ? { providerSpecificData: buildRegionSpecificData() } : {}),
               }),
             });
@@ -175,6 +185,12 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       }
       if (isCloudflareAi) {
         updates.providerSpecificData = { accountId: cloudflareData.accountId };
+      }
+      if (isGlm) {
+        updates.providerSpecificData = {
+          glmOrganizationId: glmData.glmOrganizationId.trim(),
+          glmProjectId: glmData.glmProjectId.trim(),
+        };
       }
       // Persist updated region for region-aware providers
       if (providerRegions && region) {
@@ -271,6 +287,28 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
                 onChange={(e) => setAzureData({ ...azureData, organization: e.target.value })}
                 placeholder="Organization ID"
                 hint="Required for billing"
+              />
+            </div>
+          </div>
+        )}
+
+        {isGlm && (
+          <div className="bg-sidebar/50 p-4 rounded-lg border border-accent/20">
+            <h3 className="font-semibold mb-3 text-sm">GLM Team Plan</h3>
+            <div className="flex flex-col gap-3">
+              <Input
+                label="Organization ID"
+                value={glmData.glmOrganizationId}
+                onChange={(e) => setGlmData({ ...glmData, glmOrganizationId: e.target.value })}
+                placeholder="org-123"
+                hint="GLM team plan organization ID"
+              />
+              <Input
+                label="Project ID"
+                value={glmData.glmProjectId}
+                onChange={(e) => setGlmData({ ...glmData, glmProjectId: e.target.value })}
+                placeholder="project-456"
+                hint="GLM team plan project ID"
               />
             </div>
           </div>

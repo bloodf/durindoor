@@ -313,7 +313,6 @@ describe("git-log priority", () => {
     ].join("\n");
     expect(autoDetectFilter(input)).toBe(gitDiff);
   });
-<<<<<<< HEAD
 
   it("git diff with commit-looking context line still stays git-diff", () => {
     const input = [
@@ -347,8 +346,6 @@ describe("git-log priority", () => {
     ].join("\n");
     expect(autoDetectFilter(input)).toBe(gitLog);
   });
-=======
->>>>>>> 94bc35094 (feat(rtk): add JS-native git-log filter (#2423))
 });
 
 // ============================================================

@@ -32,7 +32,8 @@ export function autoDetectFilter(text) {
   const gitLogIndex = gitLogDetectionIndex(head);
   const gitDiffIndex = firstMatchIndex(head, RE_GIT_DIFF, RE_GIT_DIFF_HUNK);
   if (gitDiffIndex !== -1 && (gitLogIndex === -1 || gitDiffIndex < gitLogIndex)) return gitDiff;
-  if (gitLogIndex !== -1) return gitLog;  if (RE_GIT_STATUS.test(head)) return gitStatus;
+  if (gitLogIndex !== -1) return gitLog;
+  if (RE_GIT_STATUS.test(head)) return gitStatus;
 
   // Build output BEFORE porcelain check: prevents cargo "Compiling" misdetection as git-status
   if (RE_BUILD_OUTPUT.test(head)) return buildOutput;

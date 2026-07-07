@@ -19,13 +19,10 @@ const STRIP_RULES = [
   // this field on assistant turns; it is only meaningful in streamed responses, not
   // in request bodies. Strip it from every message before forwarding. #1649
   { provider: "mistral", dropMessageFields: ["reasoning_content"] },
-<<<<<<< HEAD
   // NVIDIA NIM z-ai/glm-5.2 rejects both OpenAI-style `reasoning` and
   // Claude-style `thinking` request fields on its OpenAI-compatible wrapper.
   { provider: "nvidia", match: /z-ai\/glm-5\.2\b/i, drop: ["reasoning", "thinking"] },
-=======
   { provider: "volcengine-ark", match: /glm-5/i, clampToModelMaxOutput: true },
->>>>>>> ef15b3afd (fix(volcengine-ark): clamp GLM-5 max_tokens to model output ceiling (#2428))
 ];
 
 // Test a rule's match (regex or predicate) against the model id.

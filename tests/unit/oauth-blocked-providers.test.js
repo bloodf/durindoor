@@ -165,12 +165,15 @@ describe("blocked OAuth/session provider port", () => {
 
     expect(calls[0].url).toBe("https://gitlab.example.com/api/v4/code_suggestions/completions");
     expect(calls[0].headers.Authorization).toBe("Bearer oauth-token");
-    expect(calls[0].body.project_path).toBe("group/project");
-    expect(calls[0].body.current_file.file_name).toBe("app.py");
-    expect(calls[0].body.current_file.content_above_cursor).toMatch(/System instructions/);
-    expect(calls[0].body.current_file.content_above_cursor).toMatch(/User: Write a helper/);
-    expect(calls[0].body.current_file.content_above_cursor).toMatch(/Assistant: Assistant context/);
-    expect(calls[0].body.user_instruction).toMatch(/Write hello world/);
+    const requestBody = calls[0].body;
+    expect(requestBody).not.toHaveProperty("model_name");
+    expect(requestBody.model_provider).toBeUndefined();
+    expect(requestBody.project_path).toBe("group/project");
+    expect(requestBody.current_file.file_name).toBe("app.py");
+    expect(requestBody.current_file.content_above_cursor).toMatch(/System instructions/);
+    expect(requestBody.current_file.content_above_cursor).toMatch(/User: Write a helper/);
+    expect(requestBody.current_file.content_above_cursor).toMatch(/Assistant: Assistant context/);
+    expect(requestBody.user_instruction).toMatch(/Write hello world/);
     expect(proxyAwareFetchMock).toHaveBeenCalledWith(
       "https://gitlab.example.com/api/v4/code_suggestions/completions",
       expect.any(Object),
@@ -182,36 +185,67 @@ describe("blocked OAuth/session provider port", () => {
     expect(body.choices[0].message.content).toMatch(/hello/);
   });
 
-  it("gitlab-duo refreshes OAuth access tokens with instance metadata", async () => {
+  it("gitlab-duo omits model_name by default and uses upstreamModelName when configured", async () => {
+    const { GitlabExecutor } = await import("../../open-sse/executors/gitlab.js");
+    const calls = [];
     vi.stubGlobal("fetch", vi.fn(async (url, init = {}) => {
-      expect(String(url)).toBe("https://gitlab.example.com/oauth/token");
-      expect(init.body.get("grant_type")).toBe("refresh_token");
-      expect(init.body.get("refresh_token")).toBe("old-refresh");
-      expect(init.body.get("client_secret")).toBe("secret-1");
-      return jsonResponse({
-        access_token: "new-access",
-        refresh_token: "new-refresh",
-        expires_in: 3600,
-      });
+      calls.push({ body: JSON.parse(String(init.body || "{}")), });
+      return jsonResponse({ id: "gitlab-response-2", model: { name: "code-gecko" }, choices: [{ text: "ok", finish_reason: "stop" }] });
     }));
+    await new GitlabExecutor().execute({
+      model: "gitlab-duo-code-suggestions",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: { accessToken: "token", providerSpecificData: { baseUrl: "https://gitlab.example.com", projectPath: "p" } },
+    });
+    expect(calls[0].body).not.toHaveProperty("model_name");
 
-    const { refreshTokenByProvider } = await import("../../open-sse/services/tokenRefresh.js");
-    await expect(refreshTokenByProvider("gitlab-duo", {
+    await new GitlabExecutor().execute({
+      model: "gitlab-duo-code-suggestions",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: { accessToken: "token", providerSpecificData: { baseUrl: "https://gitlab.example.com", projectPath: "p", upstreamModelName: "mistral" } },
+    });
+    expect(calls[1].body.model_name).toBe("mistral");
+  });
+  it("gitlab-duo refresh routes through proxyAwareFetch and preserves provider-specific data after retry", async () => {
+    const { GitlabExecutor } = await import("../../open-sse/executors/gitlab.js");
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ access_token: "refreshed", expires_in: 3600 })));
+
+    const credentials = {
       refreshToken: "old-refresh",
-      providerSpecificData: { baseUrl: "https://gitlab.example.com", clientId: "client-1", clientSecret: "secret-1" },
-    }, null)).resolves.toMatchObject({
-      accessToken: "new-access",
-      refreshToken: "new-refresh",
-      expiresIn: 3600,
+      accessToken: "old",
       providerSpecificData: {
         baseUrl: "https://gitlab.example.com",
         clientId: "client-1",
         clientSecret: "secret-1",
+        projectPath: "group/project",
+        fileName: "app.py",
+        intent: "generation",
+        modelProvider: "mistral",
+      },
+    };
+    const proxyOptions = { type: "http", url: "http://proxy.local:8080" };
+    const result = await new GitlabExecutor().refreshCredentials(credentials, null, proxyOptions);
+
+    expect(proxyAwareFetchMock).toHaveBeenCalledWith(
+      "https://gitlab.example.com/oauth/token",
+      expect.any(Object),
+      proxyOptions
+    );
+    expect(result).toMatchObject({
+      accessToken: "refreshed",
+      providerSpecificData: {
+        baseUrl: "https://gitlab.example.com",
+        clientId: "client-1",
       },
     });
+    expect(credentials.providerSpecificData.projectPath).toBe("group/project");
+    expect(credentials.providerSpecificData.fileName).toBe("app.py");
+    expect(credentials.providerSpecificData.modelProvider).toBe("mistral");
   });
 
-  it("gitlab-duo preserves per-connection client secret after OAuth code exchange", async () => {
+  it("gitlab-duo refreshes OAuth access tokens with instance metadata", async () => {
     vi.stubGlobal("fetch", vi.fn(async (url, init = {}) => {
       const urlString = String(url);
       if (urlString === "https://gitlab.example.com/oauth/token") {

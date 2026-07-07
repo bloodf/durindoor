@@ -77,7 +77,7 @@ function buildRequestBody(model, body, credentials) {
   const providerData = asObject(credentials?.providerSpecificData);
   const prompt = buildPrompt(body?.messages || []);
   const fileName = providerData.fileName || "durindoor-chat.md";
-  return {
+  const requestBody = {
     prompt_version: 1,
     project_path: providerData.projectPath || "durindoor/session",
     project_id: providerData.projectId || undefined,
@@ -89,8 +89,11 @@ function buildRequestBody(model, body, credentials) {
     intent: providerData.intent || "generation",
     user_instruction: prompt,
     model_provider: providerData.modelProvider || undefined,
-    model_name: model,
   };
+  if (providerData.upstreamModelName) {
+    requestBody.model_name = providerData.upstreamModelName;
+  }
+  return requestBody;
 }
 
 function resolveText(payload) {
@@ -197,7 +200,7 @@ export class GitlabExecutor extends BaseExecutor {
     };
   }
 
-  async refreshCredentials(credentials, log) {
-    return refreshGitLabDuoToken(credentials?.refreshToken, credentials, log);
+  async refreshCredentials(credentials, log, proxyOptions = null) {
+    return refreshGitLabDuoToken(credentials?.refreshToken, { ...credentials, proxyOptions }, log);
   }
 }

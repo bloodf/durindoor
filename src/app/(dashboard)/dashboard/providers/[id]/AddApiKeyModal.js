@@ -9,7 +9,7 @@ import { applyM365Tier, isM365TierCapableProvider } from "@/shared/utils/m365Tie
 
 const BULK_PLACEHOLDER = `name1|sk-key1\nname2|sk-key2\nsk-key-only-auto-named`;
 
-export default function AddApiKeyModal({ isOpen, provider, providerName, existingConnectionCount = 0, isCompatible, isAnthropic, authType, authHint, website, proxyPools, error, onSave, onBulkDone, onClose }) {
+export default function AddApiKeyModal({ isOpen, provider, providerName, existingConnectionNames = [], isCompatible, isAnthropic, authType, authHint, website, proxyPools, error, onSave, onBulkDone, onClose }) {
   const NONE_PROXY_POOL_VALUE = "__none__";
   const isOllamaLocal = provider === "ollama-local";
   const isCookie = authType === "cookie";
@@ -26,8 +26,9 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, existin
   const isCloudflareAi = provider === "cloudflare-ai";
   const providerRegions = AI_PROVIDERS?.[provider]?.regions || null;
   const defaultRegion = AI_PROVIDERS?.[provider]?.defaultRegion || providerRegions?.[0]?.id || "";
-  const defaultConnectionName = computeDefaultConnectionName(existingConnectionCount);
+  const defaultConnectionName = computeDefaultConnectionName(existingConnectionNames);
   const isM365TierCapable = isM365TierCapableProvider(provider);
+  const isGlm = provider === "glm" || provider === "glm-cn";
 
   const [formData, setFormData] = useState({
     name: defaultConnectionName,
@@ -44,6 +45,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, existin
     organization: "",
   });
   const [cloudflareData, setCloudflareData] = useState({ accountId: "" });
+  const [glmData, setGlmData] = useState({ glmOrganizationId: "", glmProjectId: "" });
   const [region, setRegion] = useState(defaultRegion);
   const [m365Tier, setM365Tier] = useState("");
   const [validating, setValidating] = useState(false);
@@ -56,7 +58,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, existin
   useEffect(() => {
     if (!isOpen) return;
     setFormData({
-      name: computeDefaultConnectionName(existingConnectionCount),
+      name: computeDefaultConnectionName(existingConnectionNames),
       apiKey: "",
       defaultModel: "",
       priority: 1,
@@ -69,7 +71,8 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, existin
     setBulkText("");
     setBulkResult(null);
     setMode("single");
-  }, [isOpen, existingConnectionCount, defaultRegion]);
+    setGlmData({ glmOrganizationId: "", glmProjectId: "" });
+  }, [isOpen, existingConnectionNames, defaultRegion, isGlm]);
 
   const buildProviderSpecificData = () => {
     if (isOllamaLocal && formData.ollamaHostUrl.trim()) {
@@ -85,6 +88,12 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, existin
     }
     if (isCloudflareAi) {
       return { accountId: cloudflareData.accountId };
+    }
+    if (isGlm) {
+      return {
+        glmOrganizationId: glmData.glmOrganizationId.trim(),
+        glmProjectId: glmData.glmProjectId.trim(),
+      };
     }
     if (providerRegions && region) {
       return { region };
@@ -349,6 +358,28 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, existin
             </p>
           </div>
         )}
+        {isGlm && (
+          <div className="bg-sidebar/50 p-4 rounded-lg border border-accent/20">
+            <h3 className="font-semibold mb-3 text-sm">GLM Team Plan</h3>
+            <div className="flex flex-col gap-3">
+              <Input
+                label="Organization ID"
+                value={glmData.glmOrganizationId}
+                onChange={(e) => setGlmData({ ...glmData, glmOrganizationId: e.target.value })}
+                placeholder="org-123"
+              />
+              <Input
+                label="Project ID"
+                value={glmData.glmProjectId}
+                onChange={(e) => setGlmData({ ...glmData, glmProjectId: e.target.value })}
+                placeholder="project-456"
+              />
+              <p className="text-xs text-text-muted">
+                Required for GLM Coding team plans. Both values are needed to fetch usage.
+              </p>
+            </div>
+          </div>
+        )}
         {isAzure && (
           <div className="bg-sidebar/50 p-4 rounded-lg border border-accent/20">
             <h3 className="font-semibold mb-3 text-sm">Azure OpenAI Configuration</h3>
@@ -427,7 +458,7 @@ AddApiKeyModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
   provider: PropTypes.string,
   providerName: PropTypes.string,
-  existingConnectionCount: PropTypes.number,
+  existingConnectionNames: PropTypes.arrayOf(PropTypes.string),
   isCompatible: PropTypes.bool,
   isAnthropic: PropTypes.bool,
   authType: PropTypes.string,

@@ -1775,7 +1775,7 @@ export default function ProviderDetailPage() {
         isOpen={showAddApiKeyModal}
         provider={providerId}
         providerName={providerInfo.name}
-        existingConnectionCount={connections.length}
+        existingConnectionNames={connections.map((c) => c.name)}
         isCompatible={isCompatible}
         isAnthropic={isAnthropicCompatible}
         authType={providerInfo?.authType}

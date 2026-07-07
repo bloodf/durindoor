@@ -13,7 +13,8 @@ export default {
   category: "webCookie",
   authType: "cookie",
   authHint: "Paste the __Secure-next-auth.session-token cookie value from chatgpt.com.",
-  serviceKinds: ["llm", "image"],
+  serviceKinds: ["llm"],
+  hiddenKinds: ["image"],
   transport: {
     baseUrl: "https://chatgpt.com/backend-api/conversation",
     format: "openai",

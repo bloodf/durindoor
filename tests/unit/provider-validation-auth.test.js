@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PROVIDERS } from "../../open-sse/config/providers.js";
-import { buildGenericProviderValidationHeaders } from "../../src/app/api/providers/validate/route.js";
+import { buildGenericProviderValidationHeaders } from "../../src/app/api/providers/validate/validation.js";
 
 describe("generic provider validation auth", () => {
   it("uses registry transport.auth for Pioneer x-api-key validation", () => {

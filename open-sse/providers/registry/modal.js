@@ -1,6 +1,7 @@
 export default {
   id: "modal",
   alias: "modal",
+  hidden: true,
   display: {
     name: "Modal",
     icon: "deployed_code",
@@ -14,7 +15,7 @@ export default {
   transport: {
     baseUrl: "https://api.modal.ai/v1/chat/completions",
   },
-  models: [
-    { id: "google/gemini-2.0-flash", name: "Gemini 2.0 Flash" },
-  ],
+  // Modal inference is deployed per workspace/endpoint. Keep hidden until the
+  // dashboard collects a user endpoint URL instead of using a global base URL.
+  models: [],
 };

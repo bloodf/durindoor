@@ -150,6 +150,11 @@ export const PROVIDER_CAPABILITIES = {
     "stepfun-ai/step-3.5-flash": { reasoning: true, thinkingFormat: "openai", contextWindow: 128000 },
     "stepfun-ai/step-3.7-flash": { reasoning: true, thinkingFormat: "openai", contextWindow: 128000 },
   },
+  // Nscale serves Qwen through an OpenAI-compatible chat endpoint. Use OpenAI's
+  // reasoning_effort wire shape instead of Qwen-native enable_thinking fields.
+  nscale: {
+    "Qwen/Qwen3-235B-A22B-Instruct-2507": { reasoning: true, thinkingFormat: "openai", contextWindow: 262144 },
+  },
   // CodeBuddy.cn — authoritative per-model metadata from the gateway's model
   // config (contextWindow=maxInputTokens, maxOutput=maxOutputTokens, vision=
   // supportsImages). Every model reasons via OpenAI-style reasoning_effort

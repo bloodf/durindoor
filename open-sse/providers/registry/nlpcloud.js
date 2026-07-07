@@ -1,6 +1,7 @@
 export default {
   id: "nlpcloud",
   alias: "nlpc",
+  hidden: true,
   display: {
     name: "NLP Cloud",
     icon: "cloud",
@@ -14,11 +15,7 @@ export default {
   transport: {
     baseUrl: "https://api.nlpcloud.io/v1/chat/completions",
   },
-  models: [
-    { id: "chatdolphin", name: "ChatDolphin", contextLength: 8192 },
-    { id: "dolphin", name: "Dolphin", contextLength: 16384 },
-    { id: "finetuned-llama-3-70b", name: "Fine-tuned LLaMA 3.3 70B" },
-    { id: "llama-3-1-405b", name: "LLaMA 3.1 405B" },
-    { id: "llama-3-8b-instruct", name: "Llama 3 8B" },
-  ],
+  // NLP Cloud chat uses model-scoped chatbot endpoints, not an OpenAI-compatible
+  // chat-completions route. Keep hidden until a native executor maps that API.
+  models: [],
 };

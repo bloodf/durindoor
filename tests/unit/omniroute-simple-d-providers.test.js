@@ -27,22 +27,22 @@ const ownedProviders = [
 ];
 
 const expected = {
-  modal: { alias: "modal", baseUrl: "https://api.modal.ai/v1/chat/completions", firstModel: "google/gemini-2.0-flash" },
+  modal: { alias: "modal", baseUrl: "https://api.modal.ai/v1/chat/completions", hidden: true, modelCount: 0 },
   modelscope: { alias: "ms", baseUrl: "https://api-inference.modelscope.cn/v1/chat/completions", validateUrl: "https://api-inference.modelscope.cn/v1/models", passthroughModels: true },
   monsterapi: { alias: "monster", baseUrl: "https://api.monsterapi.ai/v1/chat/completions", firstModel: "meta-llama/Meta-Llama-3.1-8B-Instruct" },
   moonshot: { alias: "moonshot", baseUrl: "https://api.moonshot.ai/v1/chat/completions", firstModel: "kimi-k2.6" },
   morph: { alias: "morph", baseUrl: "https://api.morphllm.com/v1/chat/completions", firstModel: "morph-v3-large" },
   nanogpt: { alias: "nanogpt", baseUrl: "https://nano-gpt.com/api/v1/chat/completions", firstModel: "chatgpt-4o-latest" },
-  nlpcloud: { alias: "nlpc", baseUrl: "https://api.nlpcloud.io/v1/chat/completions", firstModel: "chatdolphin" },
+  nlpcloud: { alias: "nlpc", baseUrl: "https://api.nlpcloud.io/v1/chat/completions", hidden: true, modelCount: 0 },
   "nous-research": { alias: "nous", baseUrl: "https://inference-api.nousresearch.com/v1/chat/completions", firstModel: "Hermes-4-405B" },
   novita: { alias: "novita", baseUrl: "https://api.novita.ai/openai/v1/chat/completions", validateUrl: "https://api.novita.ai/openai/v1/models", firstModel: "meta-llama/llama-3.1-8b-instruct" },
   nscale: { alias: "nscale", baseUrl: "https://inference.api.nscale.com/v1/chat/completions", firstModel: "moonshotai/Kimi-K2.5" },
   "ollama-cloud": { alias: "ollamacloud", baseUrl: "https://ollama.com/v1/chat/completions", validateUrl: "https://ollama.com/api/tags", passthroughModels: true, firstModel: "deepseek-v4-pro" },
   openadapter: { alias: "oad", baseUrl: "https://api.openadapter.in/v1/chat/completions", validateUrl: "https://api.openadapter.in/v1/models", firstModel: "glm-4.7", defaultContextLength: 128000 },
-  orcarouter: { alias: "orcarouter", baseUrl: "https://api.orcarouter.ai/v1", firstModel: "orcarouter/auto", defaultContextLength: 128000 },
+  orcarouter: { alias: "orcarouter", baseUrl: "https://api.orcarouter.ai/v1/chat/completions", firstModel: "orcarouter/auto", defaultContextLength: 128000 },
   ovhcloud: { alias: "ovh", baseUrl: "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions", firstModel: "Meta-Llama-3_3-70B-Instruct" },
   pioneer: { alias: "pn", baseUrl: "https://api.pioneer.ai/v1/chat/completions", firstModel: "Qwen/Qwen3-32B", auth: { combined: true, header: "x-api-key", scheme: "raw" } },
-  predibase: { alias: "predibase", baseUrl: "https://serving.app.predibase.com/v1/chat/completions", firstModel: "llama-3.3-70b" },
+  predibase: { alias: "predibase", baseUrl: "https://serving.app.predibase.com/v1/chat/completions", hidden: true, modelCount: 0 },
   publicai: { alias: "publicai", baseUrl: "https://api.publicai.co/v1/chat/completions", firstModel: "swiss-ai/apertus-70b-instruct" },
 };
 
@@ -56,6 +56,7 @@ describe("OmniRoute simple/default Batch D providers", () => {
       expect(entry, `${id} registry entry`).toBeTruthy();
       expect(entry.category).toBe("apikey");
       expect(entry.authType).toBe("apikey");
+      expect(entry.hidden, `${id} hidden`).toBe(spec.hidden);
       expect(PROVIDERS[id]?.format, `${id} format`).toBe("openai");
       expect(PROVIDERS[id]?.baseUrl, `${id} baseUrl`).toBe(spec.baseUrl);
       expect(PROVIDERS[id]?.validateUrl, `${id} validateUrl`).toBe(spec.validateUrl);
@@ -65,6 +66,7 @@ describe("OmniRoute simple/default Batch D providers", () => {
 
       const models = PROVIDER_MODELS[spec.alias];
       expect(models, `${id} models under alias ${spec.alias}`).toBeTruthy();
+      if (spec.modelCount !== undefined) expect(models).toHaveLength(spec.modelCount);
       if (spec.firstModel) expect(models[0]?.id).toBe(spec.firstModel);
     }
 

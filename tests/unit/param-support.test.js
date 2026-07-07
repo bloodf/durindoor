@@ -28,4 +28,12 @@ describe("stripUnsupportedParams", () => {
 
     expect(body).toEqual({ top_p: 1 });
   });
+
+  it("drops registry-declared unsupported params for Moonshot Kimi Code models", () => {
+    const body = { temperature: 0.7, top_p: 1, max_tokens: 16 };
+
+    stripUnsupportedParams("moonshot", "kimi-k2.7-code", body);
+
+    expect(body).toEqual({ max_tokens: 16 });
+  });
 });

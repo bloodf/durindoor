@@ -12,7 +12,7 @@ export default {
   category: "apikey",
   authType: "apikey",
   transport: {
-    baseUrl: "https://api.orcarouter.ai/v1",
+    baseUrl: "https://api.orcarouter.ai/v1/chat/completions",
     headers: {
       "HTTP-Referer": "https://endpoint-proxy.local",
       "X-Title": "Endpoint Proxy",

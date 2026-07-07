@@ -1,6 +1,7 @@
 export default {
   id: "predibase",
   alias: "predibase",
+  hidden: true,
   display: {
     name: "Predibase",
     icon: "storage",
@@ -14,7 +15,7 @@ export default {
   transport: {
     baseUrl: "https://serving.app.predibase.com/v1/chat/completions",
   },
-  models: [
-    { id: "llama-3.3-70b", name: "llama-3.3-70b" },
-  ],
+  // Predibase URLs are tenant/deployment scoped. Keep hidden until provider
+  // setup collects the required deployment path segments.
+  models: [],
 };

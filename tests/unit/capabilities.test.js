@@ -67,6 +67,13 @@ describe("getCapabilitiesForModel", () => {
     expect(out.thinking).toBeUndefined();
     expect(out.thinking_budget).toBeUndefined();
   });
+
+  it("uses OpenAI thinking format for Nscale-hosted Qwen", () => {
+    const caps = getCapabilitiesForModel("nscale", "Qwen/Qwen3-235B-A22B-Instruct-2507");
+
+    expect(caps.reasoning).toBe(true);
+    expect(caps.thinkingFormat).toBe("openai");
+  });
 });
 
 describe("getCapabilitiesForModel — MiMo (<think>-tag reasoning, always-on)", () => {

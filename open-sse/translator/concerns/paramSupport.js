@@ -1,5 +1,33 @@
 // Strip request params a given provider/model rejects upstream (e.g. HTTP 400).
 // Config-driven: add a rule instead of scattering `delete body.x` across executors.
+import REGISTRY from "../../providers/registry/index.js";
+
+const MODEL_UNSUPPORTED_PARAMS = new Map();
+
+for (const entry of REGISTRY) {
+  const providerKeys = [entry.id, entry.alias].filter(Boolean);
+  for (const model of entry.models || []) {
+    if (!Array.isArray(model.unsupportedParams) || !model.unsupportedParams.length) continue;
+    for (const providerKey of providerKeys) {
+      MODEL_UNSUPPORTED_PARAMS.set(`${providerKey}:${model.id}`, model.unsupportedParams);
+    }
+  }
+}
+
+function modelKeys(provider, model) {
+  const raw = String(model || "");
+  const keys = [`${provider}:${raw}`];
+  if (raw.includes("/")) keys.push(`${provider}:${raw.slice(raw.indexOf("/") + 1)}`);
+  return keys;
+}
+
+function getModelUnsupportedParams(provider, model) {
+  for (const key of modelKeys(provider, model)) {
+    const unsupported = MODEL_UNSUPPORTED_PARAMS.get(key);
+    if (unsupported) return unsupported;
+  }
+  return [];
+}
 
 // Each rule: optional provider, regex match on model, list of params to drop.
 // A param is removed only when it is present (!== undefined).
@@ -29,6 +57,9 @@ function matches(rule, model) {
 // Remove unsupported params from body in place; returns body.
 export function stripUnsupportedParams(provider, model, body) {
   if (!model || !body || typeof body !== "object") return body;
+  for (const key of getModelUnsupportedParams(provider, model)) {
+    if (body[key] !== undefined) delete body[key];
+  }
   for (const rule of STRIP_RULES) {
     if (rule.provider && rule.provider !== provider) continue;
     if (!matches(rule, model)) continue;

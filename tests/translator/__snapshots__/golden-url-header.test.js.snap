@@ -1884,8 +1884,8 @@ exports[`GOLDEN buildUrl (default executor providers) > openrouter → url (stre
 
 exports[`GOLDEN buildUrl (default executor providers) > orcarouter → url (stream + non-stream) 1`] = `
 {
-  "nonStream": "https://api.orcarouter.ai/v1",
-  "stream": "https://api.orcarouter.ai/v1",
+  "nonStream": "https://api.orcarouter.ai/v1/chat/completions",
+  "stream": "https://api.orcarouter.ai/v1/chat/completions",
 }
 `;
 

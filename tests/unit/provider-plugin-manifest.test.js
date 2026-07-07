@@ -3,6 +3,7 @@ import {
   generateProviderPluginManifestFromRegistry,
   getProviderPluginManifestEntryFromRegistry,
 } from "../../open-sse/config/providerPluginManifest.js";
+import { getProviderPluginManifestEntryForModel } from "../../open-sse/config/providerPluginManifestRegistry.js";
 
 const registryFixture = {
   openai: {
@@ -52,6 +53,9 @@ const registryFixture = {
     transport: {
       baseUrl: "https://generativelanguage.googleapis.com/v1beta/models",
       format: "gemini",
+      auth: {
+        apiKey: { header: "x-goog-api-key", scheme: "raw" },
+      },
     },
     models: [{ id: "gemini-1.5-flash", name: "Gemini 1.5 Flash" }],
   },
@@ -66,6 +70,19 @@ const registryFixture = {
       format: "openai",
     },
     models: [{ id: "openai/gpt-4o-mini-tts", name: "GPT-4o mini TTS" }],
+  },
+  "static-extra": {
+    id: "static-extra",
+    alias: "se",
+    category: "apikey",
+    transport: {
+      baseUrl: "https://static-extra.example/v1/messages",
+      format: "claude",
+      urlSuffix: "?beta=true",
+      headers: { "Anthropic-Version": "2023-06-01" },
+      auth: { combined: true, header: "x-api-key", scheme: "raw" },
+    },
+    models: [{ id: "se-model", name: "Static extra model" }],
   },
   "oauth-only": {
     id: "oauth-only",
@@ -105,6 +122,7 @@ describe("provider plugin manifest", () => {
       "oauth-only",
       "openai",
       "openrouter",
+      "static-extra",
     ]);
     expect(JSON.stringify(roundTripped)).not.toContain("clientSecret");
   });
@@ -159,5 +177,28 @@ describe("provider plugin manifest", () => {
     expect(claudeWeb.aliases).toEqual(["cwa", "claude"]);
     expect(openrouter.alias).toBe("or");
     expect(openrouter.aliases).toEqual(["or"]);
+  });
+
+  it("resolves exact model owners before slash prefixes", () => {
+    const entry = getProviderPluginManifestEntryForModel("openai/gpt-4o-mini-tts");
+
+    expect(entry).not.toBeNull();
+    expect(entry.id).toBe("openrouter");
+  });
+
+  it("honors nested apiKey auth header and exposes static headers and urlSuffix in endpoints", () => {
+    const manifest = generateProviderPluginManifestFromRegistry(registryFixture);
+    const byId = Object.fromEntries(manifest.providers.map((p) => [p.id, p]));
+
+    expect(byId.gemini.auth.header).toBe("x-goog-api-key");
+    expect(byId.gemini.sidecar.eligible).toBe(false);
+    expect(byId.gemini.sidecar.reasons).toEqual(
+      expect.arrayContaining(["Gemini endpoint constructed at dispatch"])
+    );
+    expect(byId["static-extra"].sidecar.eligible).toBe(true);
+    expect(byId["static-extra"].endpoints.headers).toEqual({
+      "Anthropic-Version": "2023-06-01",
+    });
+    expect(byId["static-extra"].endpoints.urlSuffix).toBe("?beta=true");
   });
 });

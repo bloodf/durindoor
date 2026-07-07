@@ -524,7 +524,6 @@ async function testRegistryOpenAIConnection(connection, effectiveProxy = null) {
   const valid = res.status !== 401 && res.status !== 403;
   return { valid, error: valid ? null : "Invalid API key" };
 }
-}
 
 async function testApiKeyConnection(connection, effectiveProxy = null) {
   if (isOpenAICompatibleProvider(connection.provider)) {

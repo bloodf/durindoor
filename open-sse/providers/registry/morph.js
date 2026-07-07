@@ -13,6 +13,10 @@ export default {
   authType: "apikey",
   transport: {
     baseUrl: "https://api.morphllm.com/v1/chat/completions",
+    // Morph fronts multiple upstream model families (Qwen/MiniMax/DeepSeek)
+    // through one OpenAI-compatible endpoint, so force the OpenAI
+    // reasoning_effort wire shape instead of a per-model native format.
+    thinkingFormat: "openai",
   },
   models: [
     { id: "morph-v3-large", name: "morph-v3-large" },

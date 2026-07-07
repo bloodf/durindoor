@@ -13,6 +13,14 @@ export default {
   authType: "apikey",
   transport: {
     baseUrl: "https://ollama.com/v1/chat/completions",
+    // Ollama Cloud serves multiple upstream model families (DeepSeek/Kimi/
+    // GLM/MiniMax/Qwen) through one OpenAI-compatible chat endpoint, so force
+    // the OpenAI reasoning_effort wire shape rather than a per-model native
+    // thinking format.
+    thinkingFormat: "openai",
+    // Dedicated key-check endpoint (api/tags), not /chat/completions with the
+    // "/models" suffix swap the generic validator falls back to — register it
+    // explicitly so provider key validation hits the right URL.
     validateUrl: "https://ollama.com/api/tags",
   },
   models: [

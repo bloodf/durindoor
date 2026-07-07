@@ -2,6 +2,12 @@
 const KNOWN_FREE_OPENCODE_MODELS = ["big-pickle"];
 
 export const FILTERS = {
+  // Plain OpenAI-compatible /v1/models list (modelscope, openadapter, kenari,
+  // novita, venice, vercel-ai-gateway, ...) — no free/pricing filter, just
+  // reshape { data: [{ id, ... }] } into { id, name }.
+  openai: (models) =>
+    (Array.isArray(models) ? models : []).map((m) => ({ id: m.id, name: m.id })),
+
   "openrouter-free": (models) =>
     models
       .filter(

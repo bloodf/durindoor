@@ -630,8 +630,10 @@ export async function POST(request) {
           // Build auth headers from registry transport.auth when present, then
           // fall back to the legacy authHeader/default bearer behavior.
           const headers = buildGenericProviderValidationHeaders(cfg, apiKey);
-          // Try /models first (fast GET), fallback to chat probe on ambiguous response
-          const modelsUrl = cfg.baseUrl.replace(/\/chat\/completions$/, "/models").replace(/\/chatbot$/, "/models");
+          // Prefer the registry's explicit validateUrl (e.g. ollama-cloud's
+          // "/api/tags", which the generic /chat/completions->/models suffix
+          // swap below can't derive) before falling back to the derived guess.
+          const modelsUrl = cfg.validateUrl || cfg.baseUrl.replace(/\/chat\/completions$/, "/models").replace(/\/chatbot$/, "/models");
           let probeOk = null;
           try {
             const probeRes = await fetch(modelsUrl, { headers, signal: AbortSignal.timeout(8000) });

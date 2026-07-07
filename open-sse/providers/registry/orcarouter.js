@@ -13,6 +13,11 @@ export default {
   authType: "apikey",
   transport: {
     baseUrl: "https://api.orcarouter.ai/v1/chat/completions",
+    // OrcaRouter proxies many upstream model families (OpenAI/Gemini/Claude/
+    // Grok/DeepSeek/MiniMax/Qwen) through one OpenAI-compatible endpoint, so
+    // force the OpenAI reasoning_effort wire shape instead of letting
+    // per-model native patterns (deepseek/minimax/qwen) leak through.
+    thinkingFormat: "openai",
     headers: {
       "HTTP-Referer": "https://endpoint-proxy.local",
       "X-Title": "Endpoint Proxy",

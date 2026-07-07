@@ -16,6 +16,9 @@ export default {
     validateUrl: "https://api-inference.modelscope.cn/v1/models",
   },
   models: [],
+  // type: "openai" reshapes the raw /v1/models list into { id, name } via
+  // FILTERS.openai (suggested-models/filters.js) — shared by every provider
+  // exposing a plain OpenAI-compatible model list (openadapter, novita, ...).
   modelsFetcher: { url: "https://api-inference.modelscope.cn/v1/models", type: "openai" },
   passthroughModels: true,
 };

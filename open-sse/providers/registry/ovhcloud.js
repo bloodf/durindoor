@@ -17,6 +17,8 @@ export default {
   models: [
     { id: "Meta-Llama-3_3-70B-Instruct", name: "Meta-Llama-3_3-70B-Instruct" },
     { id: "Qwen2.5-Coder-32B-Instruct", name: "Qwen2.5-Coder-32B-Instruct" },
-    { id: "Mistral-Small-3.2-24B-Instruct-2506", name: "Mistral-Small-3.2-24B-Instruct-2506" },
+    // Mistral Small 3.2 (24B) is a vision-language model — it accepts image
+    // + text input, not text-only — so mark supportsVision here.
+    { id: "Mistral-Small-3.2-24B-Instruct-2506", name: "Mistral-Small-3.2-24B-Instruct-2506", supportsVision: true },
   ],
 };

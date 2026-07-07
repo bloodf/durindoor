@@ -150,10 +150,16 @@ export const PROVIDER_CAPABILITIES = {
     "stepfun-ai/step-3.5-flash": { reasoning: true, thinkingFormat: "openai", contextWindow: 128000 },
     "stepfun-ai/step-3.7-flash": { reasoning: true, thinkingFormat: "openai", contextWindow: 128000 },
   },
-  // Nscale serves Qwen through an OpenAI-compatible chat endpoint. Use OpenAI's
-  // reasoning_effort wire shape instead of Qwen-native enable_thinking fields.
+  // Nscale — Qwen and Kimi served through an OpenAI-compatible chat endpoint.
+  // "moonshotai/Kimi-K2.5" here is case-sensitive; the canonical exact-id
+  // lookup ("kimi-k2.5") in MODEL_CAPABILITIES is also case-sensitive and
+  // misses it, so it would otherwise fall through to the generic "*kimi*"
+  // pattern (thinkingFormat:"kimi") instead of canonical's "openai". Force
+  // the OpenAI reasoning_effort wire shape and mirror canonical kimi-k2.5's
+  // other fields so nothing regresses via this provider override.
   nscale: {
     "Qwen/Qwen3-235B-A22B-Instruct-2507": { reasoning: true, thinkingFormat: "openai", contextWindow: 262144 },
+    "moonshotai/Kimi-K2.5": { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 164000, maxOutput: 32000 },
   },
   // CodeBuddy.cn — authoritative per-model metadata from the gateway's model
   // config (contextWindow=maxInputTokens, maxOutput=maxOutputTokens, vision=

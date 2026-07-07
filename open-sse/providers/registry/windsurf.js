@@ -12,7 +12,7 @@ export default {
   transport: {
     baseUrl: "https://server.self-serve.windsurf.com",
     chatPath: "/exa.language_server_pb.LanguageServerService/GetChatMessage",
-    format: "openai",
+    format: "grpc-web-proto",
     defaultContextLength: 200000,
     auth: {
       combined: true,

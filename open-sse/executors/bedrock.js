@@ -55,6 +55,9 @@ function textBlocksFromContent(content) {
     }
     if (type === "image_url" || type === "input_image") {
       const url = typeof p.image_url === "string" ? p.image_url : p.image_url?.url || p.image_url;
+      if (typeof url === "string" && /^https?:\/\//i.test(url)) {
+        throw new Error(`Bedrock does not support remote image URLs; inline the image as a data URI or use a provider that prefetches images (${url.slice(0, 60)})`);
+      }
       const image = stripDataUrlPrefix(url);
       if (image) {
         blocks.push({

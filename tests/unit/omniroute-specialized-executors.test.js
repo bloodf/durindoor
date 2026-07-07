@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { prepareToolMessages } from "../../open-sse/translator/webTools.js";
 import { BedrockExecutor, openAIToBedrockConverse } from "../../open-sse/executors/bedrock.js";
 import {
+  AmeliaClient,
   ChipotleExecutor,
   extractAmeliaText,
   parseStompMessageBody,
@@ -413,5 +415,13 @@ describe("OmniRoute specialized provider ports", () => {
   it("exposes Bedrock regions in provider registry", () => {
     expect(PROVIDERS.bedrock.defaultRegion).toBe("us-east-1");
     expect(PROVIDERS.bedrock.regions["eu-west-2"]).toBe("https://bedrock-runtime.eu-west-2.amazonaws.com");
+  });
+
+  it("rejects remote https image URLs in Bedrock requests", () => {
+    expect(() =>
+      openAIToBedrockConverse("anthropic.claude-sonnet-4-6", {
+        messages: [{ role: "user", content: [{ type: "image_url", image_url: "https://example.com/image.png" }] }],
+      })
+    ).toThrow("Bedrock does not support remote image URLs");
   });
 });

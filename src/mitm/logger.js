@@ -35,18 +35,6 @@ function isBlacklisted(url) {
   return LOG_BLACKLIST_URL_PARTS.some(part => url.includes(part));
 }
 
-function maskSecret(value) {
-  if (typeof value !== "string") return value;
-  return value
-    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
-    .replace(/sk-[A-Za-z0-9._-]{8,}/g, "sk-[REDACTED]")
-    .replace(/[A-Za-z0-9._~+/=-]{40,}/g, "[REDACTED]");
-}
-
-function sanitizeHeadersLazy(headers) {
-  return require("./sanitizeHeaders").sanitizeHeaders(headers);
-}
-
 // Decode body buffer based on content-encoding header
 function decodeBody(buf, encoding) {
   if (!buf || buf.length === 0) return buf;
@@ -57,6 +45,16 @@ function decodeBody(buf, encoding) {
     if (enc.includes("deflate")) return zlib.inflateSync(buf);
   } catch { /* return raw on failure */ }
   return buf;
+}
+
+const SENSITIVE_HEADERS = new Set(["set-cookie", "cookie", "authorization", "proxy-authorization"]);
+
+function sanitizeHeaders(headers) {
+  const copy = {};
+  for (const [k, v] of Object.entries(headers || {})) {
+    copy[k] = SENSITIVE_HEADERS.has(k.toLowerCase()) ? "[REDACTED]" : v;
+  }
+  return copy;
 }
 
 // Save raw request: method + url + headers + body
@@ -72,7 +70,7 @@ function dumpRequest(req, bodyBuffer, tag = "raw") {
       method: req.method,
       url: req.url,
       host: req.headers.host,
-      headers: sanitizeHeadersLazy(req.headers),
+      headers: sanitizeHeaders(req.headers),
       body: parsed ?? bodyBuffer.toString("utf8")
     }, null, 2));
     return file;
@@ -90,7 +88,7 @@ function createResponseDumper(req, tag = "raw") {
   let headers = {};
   const chunks = [];
   return {
-    writeHeader: (s, h) => { status = s; headers = h || {}; },
+    writeHeader: (s, h) => { status = s; headers = sanitizeHeaders(h || {}); },
     writeChunk: (chunk) => {
       if (chunk == null) return;
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
@@ -107,7 +105,7 @@ function createResponseDumper(req, tag = "raw") {
         const cleanHeaders = { ...headers };
         delete cleanHeaders["content-encoding"];
         delete cleanHeaders["Content-Encoding"];
-        const out = `STATUS: ${status}\nHEADERS: ${JSON.stringify(sanitizeHeadersLazy(cleanHeaders), null, 2)}\n---BODY---\n${text}`;
+        const out = `STATUS: ${status}\nHEADERS: ${JSON.stringify(cleanHeaders, null, 2)}\n---BODY---\n${text}`;
         fs.writeFileSync(file, out);
       } catch { /* ignore */ }
     },
@@ -115,4 +113,4 @@ function createResponseDumper(req, tag = "raw") {
   };
 }
 
-module.exports = { log, err, dumpRequest, createResponseDumper, clearDumpDir, maskSecret };
+module.exports = { log, err, dumpRequest, createResponseDumper, clearDumpDir };

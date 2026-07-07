@@ -36,6 +36,11 @@ const EXTRA_BINS = IS_WIN
       "/Library/Frameworks/Python.framework/Versions/3.11/bin",
       "/Library/Frameworks/Python.framework/Versions/3.10/bin",
       `${process.env.HOME || ""}/.local/bin`,
+      `${process.env.HOME || ""}/.local/share/mise/shims`,
+      `${process.env.HOME || ""}/.pyenv/shims`,
+      `${process.env.HOME || ""}/.asdf/shims`,
+      `${process.env.HOME || ""}/miniconda3/bin`,
+      `${process.env.HOME || ""}/anaconda3/bin`,
       "/usr/bin",
       "/bin",
     ];

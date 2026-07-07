@@ -14,6 +14,7 @@ import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
 import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
+import { enforceApiKeyModelPolicy, recordApiKeyUsage } from "../services/apiKeyPolicy.js";
 
 /**
  * Handle web fetch (URL extraction) request for the SSE/Next.js server.
@@ -98,6 +99,15 @@ export async function handleFetch(request) {
         return errorResponse(HTTP_STATUS.FORBIDDEN, `Access denied: combo "${providerInput}" is not allowed for this API key`);
       }
     }
+  }
+
+  // Enforce per-API-key model policy
+  const policyError = await enforceApiKeyModelPolicy(request, providerInput);
+  if (policyError) return policyError;
+
+  if (apiKey) {
+    const tokens = body.prompt ? String(body.prompt).length / 4 : 0;
+    await recordApiKeyUsage(apiKey, { tokens, cost: 0 });
   }
 
   // Combo expansion: providerInput may be a combo name → run fallback/round-robin across providers

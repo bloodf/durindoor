@@ -82,6 +82,7 @@ export const TABLES = {
       machineId: "TEXT",
       isActive: "INTEGER DEFAULT 1",
       allowedCombos: "TEXT",
+      policy: "TEXT",
       createdAt: "TEXT NOT NULL",
       expiresAt: "TEXT",
     },
@@ -177,6 +178,16 @@ export const TABLES = {
       dateKey: "TEXT PRIMARY KEY",
       data: "TEXT NOT NULL",
     },
+  },
+  apiKeyUsageTotals: {
+    columns: {
+      apiKeyId: "TEXT PRIMARY KEY",
+      totalTokens: "INTEGER DEFAULT 0",
+      totalCost: "REAL DEFAULT 0",
+      totalRequests: "INTEGER DEFAULT 0",
+      updatedAt: "TEXT",
+    },
+    indexes: ["CREATE INDEX IF NOT EXISTS idx_akut_key ON apiKeyUsageTotals(apiKeyId)"],
   },
   requestDetails: {
     columns: {

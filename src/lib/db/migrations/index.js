@@ -5,8 +5,9 @@ import m001 from "./001-initial.js";
 import m002 from "./002-mcp-gateway.js";
 import m003 from "./003-mcp-grant-tools.js";
 import m004 from "./004-api-key-expiry.js";
+import m005 from "./005-api-key-policy.js";
 
-export const MIGRATIONS = [m001, m002, m003, m004].sort((a, b) => a.version - b.version);
+export const MIGRATIONS = [m001, m002, m003, m004, m005].sort((a, b) => a.version - b.version);
 
 export function latestVersion() {
   return MIGRATIONS.length ? MIGRATIONS[MIGRATIONS.length - 1].version : 0;

@@ -21,6 +21,7 @@ import { isAntigravityCapacityError } from "open-sse/services/accountFallback.js
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
+import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
 
 const ANTIGRAVITY_CAPACITY_SWEEP_RETRIES = 2;
 
@@ -136,6 +137,10 @@ export async function handleChat(request, clientRawRequest = null) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   }
 
+  // Enforce per-API-key model policy
+  const policyError = await enforceApiKeyModelPolicy(request, modelStr);
+  if (policyError) return policyError;
+
   // Bypass naming/warmup requests before combo rotation to avoid wasting rotation slots
   const userAgent = request?.headers?.get("user-agent") || "";
   const bypassResponse = handleBypassRequest(body, modelStr, userAgent, !!settings.ccFilterNaming);
@@ -149,6 +154,9 @@ export async function handleChat(request, clientRawRequest = null) {
     const comboSpecificStrategy = comboStrategies[modelStr]?.fallbackStrategy;
     const comboStrategy = comboSpecificStrategy || settings.comboStrategy || "fallback";
 
+    // Combo names are intentionally excluded from the model allowlist; the allowlist
+    // is enforced against each concrete underlying model during expansion. Combo-level
+    // combo access control above remains the gate for combo names.
     if (comboStrategy === "fusion") {
       log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: fusion)`);
       return handleFusionChat({
@@ -239,6 +247,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   }
 
   const { provider, model } = modelInfo;
+
+  // Enforce per-API-key model policy against the resolved underlying model when
+  // the request started as a combo; the top-level combo name is not a model id.
+  const policyError2 = await enforceApiKeyModelPolicy(request, `${provider}/${model}`);
+  if (policyError2) return policyError2;
 
   // Strip reasoning_content for providers that reject it (Mistral, etc.)
   // Preserve for providers that require it (DeepSeek thinking mode)

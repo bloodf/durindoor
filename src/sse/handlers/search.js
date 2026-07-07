@@ -13,6 +13,7 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
+import { enforceApiKeyModelPolicy, recordApiKeyUsage } from "../services/apiKeyPolicy.js";
 
 /**
  * Handle web search request for the SSE/Next.js server.
@@ -79,6 +80,15 @@ export async function handleSearch(request) {
         return errorResponse(HTTP_STATUS.FORBIDDEN, `Access denied: combo "${providerInput}" is not allowed for this API key`);
       }
     }
+  }
+
+  // Enforce per-API-key model policy
+  const policyError = await enforceApiKeyModelPolicy(request, providerInput);
+  if (policyError) return policyError;
+
+  if (apiKey) {
+    const tokens = body.query ? String(body.query).length / 4 : 0;
+    await recordApiKeyUsage(apiKey, { tokens, cost: 0 });
   }
 
   // Combo expansion: providerInput may be a combo name → run fallback/round-robin across providers

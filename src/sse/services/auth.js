@@ -300,7 +300,20 @@ export async function clearAccountError(connectionId, currentConnection, model =
 /**
  * Extract API key from request headers
  */
+/**
+ * Resolve the API key credential used for the request.
+ * Supports:
+ * - Authorization: Bearer <key>
+ * - x-api-key: <key>
+ * - x-goog-api-key: <key> (Gemini native clients)
+ * - ?key=<key> query parameter (Gemini native clients)
+ *
+ * @param {Request} request
+ * @returns {string | null}
+ */
 export function extractApiKey(request) {
+  if (!request?.headers?.get) return null;
+
   // Check Authorization header first
   const authHeader = request.headers.get("Authorization");
   if (authHeader?.startsWith("Bearer ")) {
@@ -313,7 +326,14 @@ export function extractApiKey(request) {
     return xApiKey;
   }
 
-  return null;
+  // Check Gemini native header and query parameter
+  const googleApiKey = request.headers.get("x-goog-api-key");
+  if (googleApiKey) {
+    return googleApiKey;
+  }
+
+  const url = new URL(request.url);
+  return url.searchParams.get("key") || null;
 }
 
 /**

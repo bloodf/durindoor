@@ -1,5 +1,8 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
+import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
+
+const DEFAULT_POLICY = { allowedModels: [], maxTokens: null, maxCostUsd: null };
 
 function rowToKey(row) {
   if (!row) return null;
@@ -10,6 +13,7 @@ function rowToKey(row) {
     machineId: row.machineId,
     isActive: row.isActive === 1 || row.isActive === true,
     allowedCombos: (() => { try { const v = JSON.parse(row.allowedCombos); return Array.isArray(v) ? v : []; } catch { return []; } })(),
+    policy: parseJson(row.policy, DEFAULT_POLICY),
     createdAt: row.createdAt,
   };
 }
@@ -32,7 +36,7 @@ export async function getApiKeyByKey(key) {
   return rowToKey(row);
 }
 
-export async function createApiKey(name, machineId, allowedCombos = []) {
+export async function createApiKey(name, machineId, allowedCombos = [], policy = null) {
   if (!machineId) throw new Error("machineId is required");
   const db = await getAdapter();
   const { generateApiKeyWithMachine } = await import("@/shared/utils/apiKey");
@@ -44,11 +48,12 @@ export async function createApiKey(name, machineId, allowedCombos = []) {
     machineId,
     isActive: true,
     allowedCombos: Array.isArray(allowedCombos) ? allowedCombos : [],
+    policy: policy || DEFAULT_POLICY,
     createdAt: new Date().toISOString(),
   };
   db.run(
-    `INSERT INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?)`,
-    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, JSON.stringify(apiKey.allowedCombos), apiKey.createdAt]
+    `INSERT INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, policy, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
+    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, JSON.stringify(apiKey.allowedCombos), stringifyJson(apiKey.policy), apiKey.createdAt]
   );
   return apiKey;
 }
@@ -61,8 +66,8 @@ export async function updateApiKey(id, data) {
     if (!row) return;
     const merged = { ...rowToKey(row), ...data };
     db.run(
-      `UPDATE apiKeys SET key = ?, name = ?, machineId = ?, isActive = ?, allowedCombos = ? WHERE id = ?`,
-      [merged.key, merged.name, merged.machineId, merged.isActive ? 1 : 0, JSON.stringify(merged.allowedCombos || []), id]
+      `UPDATE apiKeys SET key = ?, name = ?, machineId = ?, isActive = ?, allowedCombos = ?, policy = ? WHERE id = ?`,
+      [merged.key, merged.name, merged.machineId, merged.isActive ? 1 : 0, JSON.stringify(merged.allowedCombos || []), stringifyJson(merged.policy || DEFAULT_POLICY), id]
     );
     result = merged;
   });

@@ -111,8 +111,63 @@ describe("PR #46 review: modelscope suggested-models filter", () => {
     expect(FILTERS[modelscope.modelsFetcher.type]).toBeDefined();
   });
 
+  it("registers an 'ollama' FILTERS entry (was missing, causing 400s)", () => {
+    expect(typeof FILTERS.ollama).toBe("function");
+  });
+
+  it("ollama-cloud's modelsFetcher type matches a real filter", () => {
+    const ollamaCloud = PROVIDERS["ollama-cloud"];
+    expect(FILTERS[ollamaCloud.modelsFetcher.type]).toBeDefined();
+  });
+
+  it("reshapes a raw Ollama /api/tags list into { id, name }", () => {
+    const raw = [{ name: "llama3:latest" }, { name: "qwen2.5:72b" }];
+    expect(FILTERS.ollama(raw)).toEqual([
+      { id: "llama3:latest", name: "llama3:latest" },
+      { id: "qwen2.5:72b", name: "qwen2.5:72b" },
+    ]);
+  });
+
   it("handles non-array input defensively", () => {
     expect(FILTERS.openai(null)).toEqual([]);
     expect(FILTERS.openai(undefined)).toEqual([]);
+    expect(FILTERS.ollama(null)).toEqual([]);
+  });
+});
+
+describe("PR #46 review: provider capability overrides", () => {
+  it("orcarouter minimax-m2.7 uses the registry 2048 max output cap", () => {
+    const caps = getCapabilitiesForModel("orcarouter", "minimax/minimax-m2.7");
+    expect(caps.maxOutput).toBe(2048);
+    expect(caps.thinkingFormat).toBe("openai");
+  });
+
+  it("morph-dsv4flash exposes the registry 1M context window", () => {
+    const caps = getCapabilitiesForModel("morph", "morph-dsv4flash");
+    expect(caps.contextWindow).toBe(1048576);
+    expect(caps.thinkingFormat).toBe("openai");
+  });
+
+  it("pioneer Qwen model uses OpenAI reasoning wire format", () => {
+    const caps = getCapabilitiesForModel("pioneer", "Qwen/Qwen3-32B");
+    expect(caps.reasoning).toBe(true);
+    expect(caps.thinkingFormat).toBe("openai");
+  });
+
+  it("openadapter glm-4.7 uses OpenAI reasoning wire format and 128K context", () => {
+    const caps = getCapabilitiesForModel("openadapter", "glm-4.7");
+    expect(caps.reasoning).toBe(true);
+    expect(caps.thinkingFormat).toBe("openai");
+    expect(caps.contextWindow).toBe(128000);
+  });
+
+  it("nanogpt Claude model is marked non-reasoning", () => {
+    const caps = getCapabilitiesForModel("nanogpt", "claude-3.5-sonnet");
+    expect(caps.reasoning).toBe(false);
+  });
+
+  it("publicai Qwen model is marked non-reasoning", () => {
+    const caps = getCapabilitiesForModel("publicai", "aisingapore/Qwen-SEA-LION-v4-32B-IT");
+    expect(caps.reasoning).toBe(false);
   });
 });

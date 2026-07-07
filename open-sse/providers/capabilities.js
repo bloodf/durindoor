@@ -183,6 +183,55 @@ export const PROVIDER_CAPABILITIES = {
     "deepseek-v4-flash":  { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 50000 },
     "deepseek-v3-2-volc": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 96000, maxOutput: 32000 },
   },
+
+  // PublicAI serves Qwen-family models through an OpenAI-compatible endpoint.
+  // The provider does not document reasoning support; mark non-reasoning so
+  // applyThinking strips any stray native Qwen thinking fields.
+  publicai: {
+    "aisingapore/Qwen-SEA-LION-v4-32B-IT": { reasoning: false },
+  },
+
+  // NanoGPT: exposes Claude/ChatGPT models through an OpenAI-compatible
+  // endpoint, but the reasoning wire shape must not be Anthropic-style.
+  // Cap the set to non-reasoning so applyThinking strips thinking fields.
+  nanogpt: {
+    "claude-3.5-sonnet": { reasoning: false },
+  },
+
+  // Pioneer serves Qwen-family models through an OpenAI-compatible endpoint.
+  // Override reasoning to use the OpenAI reasoning_effort wire shape rather
+  // than the generic Qwen native pattern.
+  pioneer: {
+    "Qwen/Qwen3-32B": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 262144 },
+    "Qwen/Qwen3.6-27B": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 262144 },
+    "Qwen/Qwen3.5-9B": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 262144 },
+    "Qwen/Qwen3-8B": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 262144 },
+    "Qwen/Qwen3-4B-Base": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 262144 },
+    "Qwen/Qwen3-1.7B-Base": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 262144 },
+  },
+
+  // OpenAdapter serves GLM-4.7 through an OpenAI-compatible endpoint; force
+  // OpenAI reasoning format instead of the generic Z.ai/GLM native pattern.
+  openadapter: {
+    "glm-4.7": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 128000 },
+  },
+
+  // OrcaRouter exposes upstream models through an OpenAI-compatible endpoint
+  // and declares per-model limits; expose those limits so /v1/models and combo
+  // capacity checks use the actual registry values rather than family defaults.
+  orcarouter: {
+    "minimax/minimax-m2.7": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 204800, maxOutput: 2048 },
+  },
+
+  // Morph exposes upstream models through an OpenAI-compatible endpoint and
+  // declares per-model context windows; expose those in capabilities so
+  // /v1/models and combo routing use the registry values.
+  morph: {
+    "morph-qwen35-397b": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 262144 },
+    "morph-minimax27-230b": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 200704 },
+    "morph-qwen36-27b": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 131072 },
+    "morph-dsv4flash": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1048576 },
+  },
 };
 
 /**

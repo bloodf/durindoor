@@ -8,6 +8,7 @@ import {
   buildAudit,
   classifyProvider,
   renderMarkdown,
+  verifySourceCommit,
 } from "../../scripts/audit-omniroute-providers.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -21,9 +22,15 @@ function makeFixture() {
   mkdirSync(join(omni, "open-sse/config/providers/registry"), { recursive: true });
   mkdirSync(join(omni, "public/providers"), { recursive: true });
 
-  writeFileSync(join(durin, "open-sse/providers/registry/index.js"), "export default [];\n");
+  writeFileSync(join(durin, "open-sse/providers/registry/index.js"), `
+    import p0 from "./present.js";
+    import p1 from "./loose-file.js";
+    export default [p0];
+  `);
   writeFileSync(join(durin, "open-sse/providers/registry/present.js"), "export default { id: 'present' };\n");
+  writeFileSync(join(durin, "open-sse/providers/registry/loose-file.js"), "export default { id: 'loose-file' };\n");
   writeFileSync(join(durin, "public/providers/present.png"), "");
+  writeFileSync(join(durin, "public/providers/simple.svg"), "");
 
   writeProvider(omni, "present", `
     export const presentProvider = {
@@ -43,6 +50,7 @@ function makeFixture() {
       baseUrl: "https://example.test/v1/chat/completions",
       authType: "apikey",
       authHeader: "bearer",
+      authPrefix: "Bearer ",
       forceStream: true,
       modelIdPrefix: "accounts/example/models/",
       models: [],
@@ -79,6 +87,7 @@ function makeFixture() {
     });
   `);
   writeFileSync(join(omni, "public/providers/simple.png"), "");
+  writeFileSync(join(omni, "public/providers/requesty.png"), "");
 
   return { durin, omni };
 }
@@ -105,9 +114,11 @@ describe("OmniRoute provider audit", () => {
       status: "missing",
       class: "simple-default",
       authHeader: "bearer",
+      authPrefix: "Bearer ",
       importantFields: ["forceStream", "modelIdPrefix"],
       hasSourceIcon: true,
-      hasLocalIcon: false,
+      hasLocalIcon: true,
+      localIconPath: "simple.svg",
     });
     expect(audit.rows.find((row) => row.id === "chatgpt-web")?.class).toBe("web-session");
     expect(audit.rows.find((row) => row.id === "grok-cli")?.class).toBe("oauth-session");
@@ -116,6 +127,8 @@ describe("OmniRoute provider audit", () => {
       executor: "default",
       format: "openai",
       authType: "apikey",
+      hasSourceIcon: true,
+      hasLocalIcon: false,
     });
   });
 
@@ -125,8 +138,27 @@ describe("OmniRoute provider audit", () => {
     const markdown = renderMarkdown(audit);
 
     expect(markdown).toContain("Source commit: `abc123`");
-    expect(markdown).toContain("| `simple` | simple-default");
+    expect(markdown).toContain("| `simple` | simple-default | default | openai | apikey | bearer | Bearer");
+    expect(markdown).toContain("`simple.svg`");
     expect(markdown).toContain("Generated with `node scripts/audit-omniroute-providers.mjs");
+  });
+
+  it("verifies a labeled source commit before CLI rendering", () => {
+    const sourceRoot = mkdtempSync(join(tmpdir(), "durindoor-audit-source-"));
+
+    try {
+      spawnSync("git", ["init"], { cwd: sourceRoot, encoding: "utf8" });
+      spawnSync("git", ["-c", "user.name=DurinDoor Test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-m", "fixture"], {
+        cwd: sourceRoot,
+        encoding: "utf8",
+      });
+      const head = spawnSync("git", ["rev-parse", "HEAD"], { cwd: sourceRoot, encoding: "utf8" }).stdout.trim();
+
+      expect(verifySourceCommit(sourceRoot, head)).toBe(head);
+      expect(() => verifySourceCommit(sourceRoot, "deadbeef")).toThrow(/does not match --commit/);
+    } finally {
+      rmSync(sourceRoot, { recursive: true, force: true });
+    }
   });
 
   it("prints help when invoked through a symlinked CLI path", () => {

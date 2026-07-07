@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +9,12 @@ const repoRoot = resolve(__dirname, "..");
 
 export function readDurinDoorProviders(root = repoRoot) {
   const registryDir = join(root, "open-sse", "providers", "registry");
+  const indexPath = join(registryDir, "index.js");
+  if (existsSync(indexPath)) {
+    const exported = readExportedRegistryProviders(readFileSync(indexPath, "utf8"));
+    if (exported.size > 0) return exported;
+  }
+
   return new Set(
     readdirSync(registryDir)
       .filter((file) => file.endsWith(".js") && file !== "index.js")
@@ -18,13 +25,14 @@ export function readDurinDoorProviders(root = repoRoot) {
 
 export function readProviderAssets(root = repoRoot) {
   const providersDir = join(root, "public", "providers");
-  if (!existsSync(providersDir)) return new Set();
-  return new Set(
-    readdirSync(providersDir)
-      .filter((file) => statSync(join(providersDir, file)).isFile())
-      .map((file) => basename(file, extname(file)))
-      .sort(),
-  );
+  const assets = new Map();
+  if (!existsSync(providersDir)) return assets;
+  for (const file of readdirSync(providersDir).sort()) {
+    if (statSync(join(providersDir, file)).isFile()) {
+      assets.set(basename(file, extname(file)), file);
+    }
+  }
+  return assets;
 }
 
 export function readOmniRouteProviders(sourceRoot) {
@@ -44,6 +52,7 @@ export function readOmniRouteProviders(sourceRoot) {
       baseUrl: readStringField(source, "baseUrl"),
       authType: readStringField(source, "authType") || (usesHelper ? "apikey" : null),
       authHeader: readStringField(source, "authHeader") || (usesHelper ? "bearer" : null),
+      authPrefix: readStringField(source, "authPrefix"),
       modelsUrl: readStringField(source, "modelsUrl"),
       passthroughModels: /\bpassthroughModels\s*:\s*true\b/.test(source),
       hasLiteralModels: /\bmodels\s*:\s*\[/.test(source),
@@ -64,8 +73,10 @@ export function buildAudit({ durinRoot = repoRoot, omniRoot, omniCommit = null }
 
   const rows = omniProviders.map((provider) => {
     const present = durinProviders.has(provider.id);
-    const hasLocalIcon = durinAssets.has(provider.id);
-    const hasSourceIcon = omniAssets.has(provider.id);
+    const localIconPath = durinAssets.get(provider.id) || null;
+    const sourceIconPath = omniAssets.get(provider.id) || null;
+    const hasLocalIcon = !!localIconPath;
+    const hasSourceIcon = !!sourceIconPath;
     return {
       id: provider.id,
       status: present ? "present" : "missing",
@@ -74,9 +85,12 @@ export function buildAudit({ durinRoot = repoRoot, omniRoot, omniCommit = null }
       format: provider.format || "unknown",
       authType: provider.authType || "unknown",
       authHeader: provider.authHeader || "unknown",
+      authPrefix: provider.authPrefix || "",
       importantFields: provider.importantFields,
       hasLocalIcon,
       hasSourceIcon,
+      localIconPath,
+      sourceIconPath,
       sourcePath: `open-sse/config/providers/registry/${provider.id}/index.ts`,
     };
   });
@@ -135,17 +149,18 @@ export function renderMarkdown(audit) {
   lines.push("");
   lines.push("## Missing Providers");
   lines.push("");
-  lines.push("| Provider | Class | Executor | Format | Auth | Auth header | Important fields | Source icon | Local icon |");
-  lines.push("| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
+  lines.push("| Provider | Class | Executor | Format | Auth | Auth header | Auth prefix | Important fields | Source icon | Local icon |");
+  lines.push("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
   for (const row of audit.rows.filter((item) => item.status === "missing")) {
     lines.push(
-      `| \`${row.id}\` | ${row.class} | ${row.executor} | ${row.format} | ${row.authType} | ${row.authHeader} | ${row.importantFields.join(", ") || "-"} | ${yesNo(row.hasSourceIcon)} | ${yesNo(row.hasLocalIcon)} |`,
+      `| \`${row.id}\` | ${row.class} | ${row.executor} | ${row.format} | ${row.authType} | ${row.authHeader} | ${row.authPrefix || "-"} | ${row.importantFields.join(", ") || "-"} | ${iconCell(row.sourceIconPath)} | ${iconCell(row.localIconPath)} |`,
     );
   }
   lines.push("");
   lines.push("## Porting Rules");
   lines.push("");
-  lines.push("- `simple-default`: may be ported as a DurinDoor registry entry backed by `DefaultExecutor` after preserving base URL, format, auth header, model list or passthrough model behavior, and local icon metadata.");
+  lines.push("- `simple-default`: may be ported as a DurinDoor registry entry backed by `DefaultExecutor` after preserving base URL, format, auth header and prefix, model list or passthrough model behavior, and local icon metadata.");
+  lines.push("- `Local icon` records the concrete asset filename. Non-`.png` assets need explicit provider icon metadata if a UI path would otherwise default to `/providers/<id>.png`.");
   lines.push("- `Important fields` is a warning list, not a complete conversion spec. Inspect the source registry module before porting each provider.");
   lines.push("- `specialized-executor`: must port or adapt the OmniRoute executor and add executor-specific unit tests before exposing the provider.");
   lines.push("- `web-session`: must include credential parsing/validation tests and a subscription/session risk notice.");
@@ -187,6 +202,23 @@ function readStringField(source, field) {
   return match ? match[1] : null;
 }
 
+function readExportedRegistryProviders(source) {
+  const imports = new Map();
+  for (const match of source.matchAll(/import\s+([A-Za-z_$][\w$]*)\s+from\s+["']\.\/([^"']+)\.js["']/g)) {
+    imports.set(match[1], match[2]);
+  }
+
+  const exportMatch = source.match(/export\s+default\s+\[([\s\S]*?)\]\s*;/);
+  if (!exportMatch) return new Set();
+
+  const providers = [];
+  for (const match of exportMatch[1].matchAll(/\b[A-Za-z_$][\w$]*\b/g)) {
+    const id = imports.get(match[0]);
+    if (id) providers.push(id);
+  }
+  return new Set(providers.sort());
+}
+
 function detectImportantFields(source) {
   const fields = [
     "headers",
@@ -220,6 +252,22 @@ function yesNo(value) {
   return value ? "yes" : "no";
 }
 
+function iconCell(assetPath) {
+  return assetPath ? `\`${assetPath}\`` : "no";
+}
+
+export function verifySourceCommit(sourceRoot, expectedCommit) {
+  if (!expectedCommit) return null;
+  const actualCommit = execFileSync("git", ["-C", sourceRoot, "rev-parse", "HEAD"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  }).trim();
+  if (actualCommit !== expectedCommit) {
+    throw new Error(`Source checkout HEAD ${actualCommit} does not match --commit ${expectedCommit}`);
+  }
+  return actualCommit;
+}
+
 function parseArgs(argv) {
   const args = { format: "json", source: process.env.OMNIROUTE_SOURCE || "" };
   for (let i = 0; i < argv.length; i += 1) {
@@ -240,6 +288,7 @@ async function main() {
     process.exit(args.help ? 0 : 1);
   }
   const source = resolve(args.source);
+  verifySourceCommit(source, args.commit || null);
   const audit = buildAudit({ omniRoot: source, omniCommit: args.commit || null });
   if (args.format === "markdown") process.stdout.write(renderMarkdown(audit));
   else if (args.format === "json") process.stdout.write(`${JSON.stringify(audit, null, 2)}\n`);

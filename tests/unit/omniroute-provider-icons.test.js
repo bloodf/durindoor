@@ -1,8 +1,9 @@
 import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-const repoRoot = resolve(import.meta.dirname, "../..");
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 describe("OmniRoute provider icon assets", () => {
   it("keeps copied provider icons local for future ports", () => {

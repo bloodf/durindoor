@@ -814,5 +814,21 @@
   "Translator": "转换器",
   "Debug translation flow between formats": "调试格式之间的转换流程",
   "Console Log": "控制台日志",
-  "Live server console output": "服务器实时控制台输出"
+  "Live server console output": "服务器实时控制台输出",
+  "Never expires": "永不过期",
+  "Invalid expiry": "无效的过期时间",
+  "Expired": "已过期",
+  "Expires": "过期时间",
+  "Expiry": "过期时间",
+  "1 day": "1 天",
+  "7 days": "7 天",
+  "30 days": "30 天",
+  "90 days": "90 天",
+  "Custom date/time": "自定义日期/时间",
+  "Custom Expiry": "自定义过期时间",
+  "Choose a custom expiry date.": "请选择自定义过期日期。",
+  "Choose a valid expiry date.": "请选择有效的过期日期。",
+  "Expiry must be in the future.": "过期时间必须在未来。",
+  "Expired keys stay visible but stop authenticating requests.": "已过期的密钥仍会显示，但不再用于请求认证。",
+  "Failed to create key": "创建密钥失败"
 }

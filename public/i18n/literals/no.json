@@ -191,5 +191,21 @@
   "Click to add, click again to remove. Changes are saved automatically.": "Klikk for å legge til, klikk igjen for å fjerne. Endringer lagres automatisk.",
   "⚠️ Risk Notice: This provider uses a subscription/OAuth session not officially licensed for proxy/router use. Account may be restricted or banned. Use at your own risk.": "⚠️ Risikovarsel: Denne leverandøren bruker en abonnements-/OAuth-økt som ikke er offisielt lisensiert for proxy-/ruterbruk. Kontoen kan bli begrenset eller utestengt. Bruk på eget ansvar.",
   "⚠️ MITM intercepts HTTPS traffic of IDE tools (Antigravity, GitHub Copilot, Kiro) via local CA to redirect requests to your providers. May violate ToS → account ban. Use at your own risk.": "⚠️ MITM avskjærer HTTPS-trafikk fra IDE-verktøy (Antigravity, GitHub Copilot, Kiro) via lokal CA for å omdirigere forespørsler til dine leverandører. Kan bryte ToS → risiko for kontoutestengelse. Bruk på eget ansvar.",
-  "Endpoint is exposed without an API key.": "Endepunktet er eksponert uten en API-nøkkel."
+  "Endpoint is exposed without an API key.": "Endepunktet er eksponert uten en API-nøkkel.",
+  "Never expires": "Utløper aldri",
+  "Invalid expiry": "Ugyldig utløp",
+  "Expired": "Utløpt",
+  "Expires": "Utløper",
+  "Expiry": "Utløp",
+  "1 day": "1 dag",
+  "7 days": "7 dager",
+  "30 days": "30 dager",
+  "90 days": "90 dager",
+  "Custom date/time": "Egendefinert dato/tid",
+  "Custom Expiry": "Egendefinert utløp",
+  "Choose a custom expiry date.": "Velg en egendefinert utløpsdato.",
+  "Choose a valid expiry date.": "Velg en gyldig utløpsdato.",
+  "Expiry must be in the future.": "Utløpet må være i fremtiden.",
+  "Expired keys stay visible but stop authenticating requests.": "Utløpte nøkler forblir synlige, men slutter å autentisere forespørsler.",
+  "Failed to create key": "Kunne ikke opprette nøkkel"
 }

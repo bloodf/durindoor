@@ -191,5 +191,21 @@
   "Click to add, click again to remove. Changes are saved automatically.": "I-click para idagdag, i-click muli para alisin. Ang mga pagbabago ay awtomatikong nase-save.",
   "⚠️ Risk Notice: This provider uses a subscription/OAuth session not officially licensed for proxy/router use. Account may be restricted or banned. Use at your own risk.": "⚠️ Babala sa Panganib: Ang provider na ito ay gumagamit ng subscription/OAuth session na hindi opisyal na lisensyado para sa proxy/router na paggamit. Maaaring marestrikta o ma-ban ang account. Gamitin sa sarili mong panganib.",
   "⚠️ MITM intercepts HTTPS traffic of IDE tools (Antigravity, GitHub Copilot, Kiro) via local CA to redirect requests to your providers. May violate ToS → account ban. Use at your own risk.": "⚠️ Hinaharang ng MITM ang HTTPS traffic ng mga IDE tool (Antigravity, GitHub Copilot, Kiro) sa pamamagitan ng lokal na CA upang i-redirect ang mga kahilingan sa iyong mga provider. Maaaring lumabag sa ToS → panganib ng pag-ban sa account. Gamitin sa sarili mong panganib.",
-  "Endpoint is exposed without an API key.": "Nakalantad ang endpoint nang walang API key."
+  "Endpoint is exposed without an API key.": "Nakalantad ang endpoint nang walang API key.",
+  "Never expires": "Hindi kailanman nag-e-expire",
+  "Invalid expiry": "Di-wastong expiry",
+  "Expired": "Nag-expire na",
+  "Expires": "Mag-e-expire",
+  "Expiry": "Expiry",
+  "1 day": "1 araw",
+  "7 days": "7 araw",
+  "30 days": "30 araw",
+  "90 days": "90 araw",
+  "Custom date/time": "Custom na petsa/oras",
+  "Custom Expiry": "Custom na expiry",
+  "Choose a custom expiry date.": "Pumili ng custom na petsa ng expiry.",
+  "Choose a valid expiry date.": "Pumili ng wastong petsa ng expiry.",
+  "Expiry must be in the future.": "Dapat nasa hinaharap ang expiry.",
+  "Expired keys stay visible but stop authenticating requests.": "Nananatiling nakikita ang mga expired na key, pero humihinto sa pag-authenticate ng mga request.",
+  "Failed to create key": "Nabigong gumawa ng key"
 }

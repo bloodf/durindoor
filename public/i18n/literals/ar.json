@@ -191,5 +191,21 @@
   "Click to add, click again to remove. Changes are saved automatically.": "انقر للإضافة، انقر مرة أخرى للإزالة. يتم حفظ التغييرات تلقائيًا.",
   "⚠️ Risk Notice: This provider uses a subscription/OAuth session not officially licensed for proxy/router use. Account may be restricted or banned. Use at your own risk.": "⚠️ تنبيه مخاطر: يستخدم هذا الموفر اشتراكًا/جلسة OAuth غير مرخصة رسميًا للاستخدام عبر البروكسي/الراوتر. قد يتم تقييد الحساب أو حظره. الاستخدام على مسؤوليتك الخاصة.",
   "⚠️ MITM intercepts HTTPS traffic of IDE tools (Antigravity, GitHub Copilot, Kiro) via local CA to redirect requests to your providers. May violate ToS → account ban. Use at your own risk.": "⚠️ يعترض MITM حركة مرور HTTPS لأدوات IDE (Antigravity، GitHub Copilot، Kiro) عبر CA محلية لإعادة توجيه الطلبات إلى مزوديك. قد ينتهك شروط الخدمة → خطر حظر الحساب. الاستخدام على مسؤوليتك الخاصة.",
-  "Endpoint is exposed without an API key.": "نقطة النهاية مكشوفة بدون مفتاح API."
+  "Endpoint is exposed without an API key.": "نقطة النهاية مكشوفة بدون مفتاح API.",
+  "Never expires": "لا تنتهي الصلاحية أبداً",
+  "Invalid expiry": "انتهاء صلاحية غير صالح",
+  "Expired": "منتهية الصلاحية",
+  "Expires": "تنتهي الصلاحية",
+  "Expiry": "انتهاء الصلاحية",
+  "1 day": "يوم واحد",
+  "7 days": "7 أيام",
+  "30 days": "30 يوماً",
+  "90 days": "90 يوماً",
+  "Custom date/time": "تاريخ/وقت مخصص",
+  "Custom Expiry": "انتهاء صلاحية مخصص",
+  "Choose a custom expiry date.": "اختر تاريخ انتهاء صلاحية مخصصاً.",
+  "Choose a valid expiry date.": "اختر تاريخ انتهاء صلاحية صالحاً.",
+  "Expiry must be in the future.": "يجب أن يكون تاريخ انتهاء الصلاحية في المستقبل.",
+  "Expired keys stay visible but stop authenticating requests.": "تبقى المفاتيح المنتهية الصلاحية مرئية لكنها تتوقف عن مصادقة الطلبات.",
+  "Failed to create key": "فشل إنشاء المفتاح"
 }

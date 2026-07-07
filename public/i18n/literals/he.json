@@ -191,5 +191,21 @@
   "Click to add, click again to remove. Changes are saved automatically.": "לחץ להוספה, לחץ שוב להסרה. השינויים נשמרים אוטומטית.",
   "⚠️ Risk Notice: This provider uses a subscription/OAuth session not officially licensed for proxy/router use. Account may be restricted or banned. Use at your own risk.": "⚠️ הודעת סיכון: ספק זה משתמש במנוי/הפעלת OAuth שאינה מורשית רשמית לשימוש פרוקסי/ראוטר. החשבון עלול להיות מוגבל או חסום. השימוש על אחריותך בלבד.",
   "⚠️ MITM intercepts HTTPS traffic of IDE tools (Antigravity, GitHub Copilot, Kiro) via local CA to redirect requests to your providers. May violate ToS → account ban. Use at your own risk.": "⚠️ MITM יירוט תעבורת HTTPS של כלי IDE (Antigravity, GitHub Copilot, Kiro) באמצעות CA מקומי כדי להפנות בקשות לספקים שלך. עלול להפר את תנאי השירות → סיכון חסימת חשבון. השימוש על אחריותך.",
-  "Endpoint is exposed without an API key.": "נקודת הקצה חשופה ללא מפתח API."
+  "Endpoint is exposed without an API key.": "נקודת הקצה חשופה ללא מפתח API.",
+  "Never expires": "לעולם לא פג",
+  "Invalid expiry": "תפוגה לא תקינה",
+  "Expired": "פג תוקף",
+  "Expires": "פג ב-",
+  "Expiry": "תפוגה",
+  "1 day": "יום אחד",
+  "7 days": "7 ימים",
+  "30 days": "30 ימים",
+  "90 days": "90 ימים",
+  "Custom date/time": "תאריך/שעה מותאמים אישית",
+  "Custom Expiry": "תפוגה מותאמת אישית",
+  "Choose a custom expiry date.": "בחר תאריך תפוגה מותאם אישית.",
+  "Choose a valid expiry date.": "בחר תאריך תפוגה תקין.",
+  "Expiry must be in the future.": "התפוגה חייבת להיות בעתיד.",
+  "Expired keys stay visible but stop authenticating requests.": "מפתחות שפג תוקפם נשארים גלויים, אך מפסיקים לאמת בקשות.",
+  "Failed to create key": "יצירת המפתח נכשלה"
 }

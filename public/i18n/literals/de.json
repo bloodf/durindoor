@@ -191,5 +191,21 @@
   "Click to add, click again to remove. Changes are saved automatically.": "Klicken zum Hinzufügen, erneut klicken zum Entfernen. Änderungen werden automatisch gespeichert.",
   "⚠️ Risk Notice: This provider uses a subscription/OAuth session not officially licensed for proxy/router use. Account may be restricted or banned. Use at your own risk.": "⚠️ Risikohinweis: Dieser Anbieter verwendet eine Abonnement-/OAuth-Sitzung, die nicht offiziell für die Proxy-/Router-Nutzung lizenziert ist. Das Konto kann eingeschränkt oder gesperrt werden. Nutzung auf eigene Gefahr.",
   "⚠️ MITM intercepts HTTPS traffic of IDE tools (Antigravity, GitHub Copilot, Kiro) via local CA to redirect requests to your providers. May violate ToS → account ban. Use at your own risk.": "⚠️ MITM fängt HTTPS-Verkehr von IDE-Tools (Antigravity, GitHub Copilot, Kiro) über lokale CA ab, um Anfragen an Ihre Anbieter umzuleiten. Kann gegen ToS verstoßen → Risiko der Kontosperrung. Nutzung auf eigene Gefahr.",
-  "Endpoint is exposed without an API key.": "Der Endpunkt ist ohne API-Schlüssel offengelegt."
+  "Endpoint is exposed without an API key.": "Der Endpunkt ist ohne API-Schlüssel offengelegt.",
+  "Never expires": "Läuft nie ab",
+  "Invalid expiry": "Ungültiges Ablaufdatum",
+  "Expired": "Abgelaufen",
+  "Expires": "Läuft ab",
+  "Expiry": "Ablauf",
+  "1 day": "1 Tag",
+  "7 days": "7 Tage",
+  "30 days": "30 Tage",
+  "90 days": "90 Tage",
+  "Custom date/time": "Benutzerdefiniertes Datum/Uhrzeit",
+  "Custom Expiry": "Benutzerdefinierter Ablauf",
+  "Choose a custom expiry date.": "Wählen Sie ein benutzerdefiniertes Ablaufdatum.",
+  "Choose a valid expiry date.": "Wählen Sie ein gültiges Ablaufdatum.",
+  "Expiry must be in the future.": "Das Ablaufdatum muss in der Zukunft liegen.",
+  "Expired keys stay visible but stop authenticating requests.": "Abgelaufene Schlüssel bleiben sichtbar, authentifizieren aber keine Anfragen mehr.",
+  "Failed to create key": "Schlüssel konnte nicht erstellt werden"
 }

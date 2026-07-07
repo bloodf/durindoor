@@ -572,39 +572,43 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
 
   const localBaseUrl = resolveLocalOpenAICompatibleBaseUrl(connection);
   if (localBaseUrl) {
-    const authHeaders = connection.apiKey ? { Authorization: `Bearer ${connection.apiKey}` } : undefined;
+    try {
+      const authHeaders = connection.apiKey ? { Authorization: `Bearer ${connection.apiKey}` } : undefined;
 
-    const modelsRes = await fetchWithConnectionProxy(`${localBaseUrl}/models`, authHeaders ? { headers: authHeaders } : {}, effectiveProxy);
-    if (modelsRes.ok) {
-      return { valid: true, error: null };
-    }
-    if (modelsRes.status === 401 || modelsRes.status === 403) {
-      return { valid: false, error: "Invalid API key" };
-    }
+      const modelsRes = await fetchWithConnectionProxy(`${localBaseUrl}/models`, authHeaders ? { headers: authHeaders } : {}, effectiveProxy);
+      if (modelsRes.ok) {
+        return { valid: true, error: null };
+      }
+      if (modelsRes.status === 401 || modelsRes.status === 403) {
+        return { valid: false, error: "Invalid API key" };
+      }
 
-    const chatHeaders = connection.apiKey
-      ? { Authorization: `Bearer ${connection.apiKey}`, "content-type": "application/json" }
-      : { "content-type": "application/json" };
-    const chatRes = await fetchWithConnectionProxy(
-      `${localBaseUrl}/chat/completions`,
-      {
-        method: "POST",
-        headers: chatHeaders,
-        body: JSON.stringify({
-          model: connection.defaultModel || getDefaultModel(connection.provider) || "test",
-          max_tokens: 1,
-          messages: [{ role: "user", content: "test" }],
-        }),
-      },
-      effectiveProxy
-    );
-    if (chatRes.ok) {
-      return { valid: true, error: null };
+      const chatHeaders = connection.apiKey
+        ? { Authorization: `Bearer ${connection.apiKey}`, "content-type": "application/json" }
+        : { "content-type": "application/json" };
+      const chatRes = await fetchWithConnectionProxy(
+        `${localBaseUrl}/chat/completions`,
+        {
+          method: "POST",
+          headers: chatHeaders,
+          body: JSON.stringify({
+            model: connection.defaultModel || getDefaultModel(connection.provider) || "test",
+            max_tokens: 1,
+            messages: [{ role: "user", content: "test" }],
+          }),
+        },
+        effectiveProxy
+      );
+      if (chatRes.ok) {
+        return { valid: true, error: null };
+      }
+      if (chatRes.status === 401 || chatRes.status === 403) {
+        return { valid: false, error: "Invalid API key" };
+      }
+      return { valid: false, error: "Invalid endpoint" };
+    } catch (err) {
+      return { valid: false, error: err.message };
     }
-    if (chatRes.status === 401 || chatRes.status === 403) {
-      return { valid: false, error: "Invalid API key" };
-    }
-    return { valid: false, error: "Invalid endpoint" };
   }
 
   try {

@@ -133,4 +133,21 @@ describe("local OpenAI-compatible providers connection test", () => {
     expect(result.valid).toBe(false);
     expect(result.error).toBe("Invalid API key");
   });
+
+  it("returns local failure message instead of throwing on fetch error", async () => {
+    global.fetch = vi.fn(() => Promise.reject(new Error("ECONNREFUSED")));
+
+    getProviderConnectionById.mockResolvedValue({
+      id: "lm-studio",
+      provider: "lm-studio",
+      apiKey: "",
+      authType: "apikey",
+      providerSpecificData: {},
+    });
+    updateProviderConnection.mockResolvedValue({});
+
+    const result = await testSingleConnection("lm-studio");
+    expect(result.valid).toBe(false);
+    expect(result.error).toBe("ECONNREFUSED");
+  });
 });

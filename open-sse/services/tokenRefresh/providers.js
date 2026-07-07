@@ -107,6 +107,7 @@ export async function refreshGitLabDuoToken(refreshToken, credentials = {}, log)
     PROVIDER_OAUTH["gitlab-duo"]?.clientId ||
     "";
   const clientSecret =
+    credentials?.providerSpecificData?.clientSecret ||
     process.env.GITLAB_DUO_OAUTH_CLIENT_SECRET ||
     process.env.GITLAB_OAUTH_CLIENT_SECRET ||
     PROVIDER_OAUTH["gitlab-duo"]?.clientSecret ||
@@ -139,6 +140,7 @@ export async function refreshGitLabDuoToken(refreshToken, credentials = {}, log)
         providerSpecificData: {
           baseUrl,
           clientId,
+          ...(clientSecret ? { clientSecret } : {}),
           authKind: "oauth",
         },
       };

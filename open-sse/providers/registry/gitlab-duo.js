@@ -34,4 +34,11 @@ export default {
       process.env.GITLAB_DUO_OAUTH_CLIENT_SECRET || process.env.GITLAB_OAUTH_CLIENT_SECRET || "",
     refreshLeadMs: 5 * 60 * 1000,
   },
+  models: [
+    {
+      id: "gitlab-duo-code-suggestions",
+      name: "GitLab Duo Code Suggestions",
+      contextLength: 200000,
+    },
+  ],
 };

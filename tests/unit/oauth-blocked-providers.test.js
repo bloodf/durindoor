@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const proxyAwareFetchMock = vi.hoisted(() => vi.fn((url, init) => fetch(url, init)));
+
+vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
+  proxyAwareFetch: proxyAwareFetchMock,
+}));
+
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -27,6 +33,7 @@ describe("blocked OAuth/session provider port", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    proxyAwareFetchMock.mockClear();
   });
 
   it("registers gitlab-duo, trae, devin-cli, and windsurf specialized executors", async () => {
@@ -39,12 +46,15 @@ describe("blocked OAuth/session provider port", () => {
   });
 
   it("exposes devin-cli and windsurf import-token metadata with windsurf guarded at runtime", async () => {
-    const { PROVIDERS, PROVIDER_OAUTH } = await import("../../open-sse/providers/index.js");
+    const { PROVIDERS, PROVIDER_MODELS, PROVIDER_OAUTH } = await import("../../open-sse/providers/index.js");
     const { getProvider, generateAuthData } = await import("../../src/lib/oauth/providers.js");
 
     expect(PROVIDER_OAUTH["devin-cli"].flowType).toBe("import_token");
     expect(PROVIDER_OAUTH.windsurf.flowType).toBe("import_token");
     expect(PROVIDERS.windsurf.blockedReason).toMatch(/gRPC-web/);
+    expect(PROVIDER_MODELS["gitlab-duo"].map((model) => model.id)).toContain("gitlab-duo-code-suggestions");
+    expect(PROVIDER_MODELS.trae.map((model) => model.id)).toEqual(expect.arrayContaining(["auto", "work"]));
+    expect(PROVIDER_MODELS["devin-cli"].map((model) => model.id)).toContain("devin-cli");
     expect(getProvider("devin-cli").flowType).toBe("import_token");
     expect(getProvider("windsurf").flowType).toBe("import_token");
 
@@ -55,12 +65,35 @@ describe("blocked OAuth/session provider port", () => {
   });
 
   it("devin-cli executor exposes ACP stdio contract", async () => {
-    const { DevinCliExecutor } = await import("../../open-sse/executors/devin-cli.js");
+    const { DevinCliExecutor, buildAcpPromptParams, parseAcpSessionUpdate } = await import("../../open-sse/executors/devin-cli.js");
     const executor = new DevinCliExecutor();
 
     expect(executor.buildUrl()).toBe("devin://acp/stdio");
     expect(executor.buildHeaders()).toEqual({});
     expect(executor.transformRequest()).toBeNull();
+    expect(buildAcpPromptParams("sess-1", "hello")).toEqual({
+      sessionId: "sess-1",
+      prompt: [{ type: "text", text: "hello" }],
+    });
+    expect(parseAcpSessionUpdate({
+      update: { sessionUpdate: "agent_message_chunk", content: { text: "chunk" } },
+    })).toEqual({ kind: "delta", text: "chunk" });
+  });
+
+  it("devin-cli returns a non-OK JSON response for an explicitly missing binary", async () => {
+    vi.stubEnv("CLI_DEVIN_BIN", "/definitely/missing/devin");
+    const { DevinCliExecutor } = await import("../../open-sse/executors/devin-cli.js");
+
+    const result = await new DevinCliExecutor().execute({
+      model: "devin-cli",
+      body: { messages: [{ role: "user", content: "hello" }] },
+      stream: false,
+    });
+
+    expect(result.response.status).toBe(502);
+    await expect(result.response.json()).resolves.toMatchObject({
+      error: { type: "devin_cli_error" },
+    });
   });
 
   it("windsurf executor returns an explicit not-implemented response instead of defaulting", async () => {
@@ -97,6 +130,8 @@ describe("blocked OAuth/session provider port", () => {
       body: {
         messages: [
           { role: "system", content: "Return Python only." },
+          { role: "user", content: "Write a helper" },
+          { role: "assistant", content: "Assistant context" },
           { role: "user", content: "Write hello world" },
         ],
       },
@@ -109,6 +144,7 @@ describe("blocked OAuth/session provider port", () => {
           fileName: "app.py",
         },
       },
+      proxyOptions: { type: "http", url: "http://proxy.local:8080" },
     });
 
     expect(calls[0].url).toBe("https://gitlab.example.com/api/v4/code_suggestions/completions");
@@ -116,7 +152,14 @@ describe("blocked OAuth/session provider port", () => {
     expect(calls[0].body.project_path).toBe("group/project");
     expect(calls[0].body.current_file.file_name).toBe("app.py");
     expect(calls[0].body.current_file.content_above_cursor).toMatch(/System instructions/);
+    expect(calls[0].body.current_file.content_above_cursor).toMatch(/User: Write a helper/);
+    expect(calls[0].body.current_file.content_above_cursor).toMatch(/Assistant: Assistant context/);
     expect(calls[0].body.user_instruction).toMatch(/Write hello world/);
+    expect(proxyAwareFetchMock).toHaveBeenCalledWith(
+      "https://gitlab.example.com/api/v4/code_suggestions/completions",
+      expect.any(Object),
+      { type: "http", url: "http://proxy.local:8080" }
+    );
 
     const body = await result.response.json();
     expect(body.model).toBe("code-gecko");
@@ -128,6 +171,7 @@ describe("blocked OAuth/session provider port", () => {
       expect(String(url)).toBe("https://gitlab.example.com/oauth/token");
       expect(init.body.get("grant_type")).toBe("refresh_token");
       expect(init.body.get("refresh_token")).toBe("old-refresh");
+      expect(init.body.get("client_secret")).toBe("secret-1");
       return jsonResponse({
         access_token: "new-access",
         refresh_token: "new-refresh",
@@ -138,7 +182,7 @@ describe("blocked OAuth/session provider port", () => {
     const { refreshTokenByProvider } = await import("../../open-sse/services/tokenRefresh.js");
     await expect(refreshTokenByProvider("gitlab-duo", {
       refreshToken: "old-refresh",
-      providerSpecificData: { baseUrl: "https://gitlab.example.com", clientId: "client-1" },
+      providerSpecificData: { baseUrl: "https://gitlab.example.com", clientId: "client-1", clientSecret: "secret-1" },
     }, null)).resolves.toMatchObject({
       accessToken: "new-access",
       refreshToken: "new-refresh",
@@ -146,6 +190,32 @@ describe("blocked OAuth/session provider port", () => {
       providerSpecificData: {
         baseUrl: "https://gitlab.example.com",
         clientId: "client-1",
+        clientSecret: "secret-1",
+      },
+    });
+  });
+
+  it("trae preserves structured import-token identity metadata", async () => {
+    const { getProvider } = await import("../../src/lib/oauth/providers.js");
+    const mapped = getProvider("trae").mapTokens({
+      accessToken: "jwt-token",
+      webId: "web-1",
+      bizUserId: "biz-1",
+      userUniqueId: "user-1",
+      tenant: "tenant-1",
+      scope: "scope-1",
+      region: "EU-West",
+    });
+
+    expect(mapped).toMatchObject({
+      accessToken: "jwt-token",
+      providerSpecificData: {
+        webId: "web-1",
+        bizUserId: "biz-1",
+        userUniqueId: "user-1",
+        tenant: "tenant-1",
+        scope: "scope-1",
+        region: "EU-West",
       },
     });
   });
@@ -183,12 +253,23 @@ describe("blocked OAuth/session provider port", () => {
         accessToken: "jwt-token",
         providerSpecificData: { webId: "web-1", bizUserId: "biz-1", userUniqueId: "user-1" },
       },
+      proxyOptions: { type: "socks", url: "socks://proxy.local:1080" },
     });
 
     expect(calls.headers.Authorization).toBe("Cloud-IDE-JWT jwt-token");
     expect(calls.sessionBody.initial_message.model_selection_strategy).toBe("manual");
     expect(calls.sessionBody.initial_message.model_name).toBe("gpt-5.2");
     expect(calls.eventsUrl).toContain("reply_to_message_id=msg1");
+    expect(proxyAwareFetchMock).toHaveBeenCalledWith(
+      "https://core-normal.trae.ai/api/remote/v1/chat_sessions",
+      expect.any(Object),
+      { type: "socks", url: "socks://proxy.local:1080" }
+    );
+    expect(proxyAwareFetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/chat_sessions/sess1/events"),
+      expect.any(Object),
+      { type: "socks", url: "socks://proxy.local:1080" }
+    );
 
     const body = await result.response.json();
     expect(body.choices[0].message.content).toBe("Hello");

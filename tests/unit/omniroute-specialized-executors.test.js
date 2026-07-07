@@ -279,4 +279,139 @@ describe("OmniRoute specialized provider ports", () => {
     expect(getExecutor("in-ai")).toBeInstanceOf(InnerAiExecutor);
     expect(PROVIDER_MODELS["in-ai"].some((model) => model.id === "gpt-4o")).toBe(true);
   });
+
+  it("extracts only the Inner.ai token cookie value", () => {
+    const payload = Buffer.from(JSON.stringify({ device_id: "dev-1", plan: "pro" })).toString("base64url");
+    const token = `eyJhbGciOiJub25lIn0.${payload}.sig`;
+    expect(parseCredential(`token=${token}; other=value`)).toEqual({ token, credEmail: "" });
+    expect(parseCredential(`other=value; token=${token}`)).toEqual({ token, credEmail: "" });
+    expect(parseCredential(`token=${token} user@example.com`)).toEqual({
+      token,
+      credEmail: "user@example.com",
+    });
+  });
+
+  it("streams Inner.ai tool blocks as OpenAI tool_call deltas", async () => {
+    const payload = Buffer.from(JSON.stringify({ device_id: "dev-2", plan: "pro" })).toString("base64url");
+    const token = `eyJhbGciOiJub25lIn0.${payload}.sig`;
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: { email: "e@example.com" } })))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: [{ id: "model-1", llm_model: "gpt-4o", ai_model_categories: [{ unique_identifier: "text" }] }],
+          })
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          'data: {"type":"text","item":"<tool>{\\"name\\":\\"lookup\\",\\"arguments\\":{\\"q\\":\\"abc\\"}}</tool>"}\n\ndata: {"type":"end_stream","item":"end"}\n\n',
+          { status: 200, headers: { "Content-Type": "text/event-stream" } }
+        )
+      );
+    const executor = new InnerAiExecutor();
+
+    const { response } = await executor.execute({
+      model: "gpt-4o",
+      stream: true,
+      credentials: { apiKey: token },
+      body: {
+        model: "gpt-4o",
+        messages: [{ role: "user", content: "use a tool" }],
+        tools: [{ type: "function", function: { name: "lookup", parameters: { type: "object" } } }],
+      },
+    });
+
+    const text = await response.text();
+    expect(text).toContain("tool_calls");
+    expect(text).toContain('"finish_reason":"tool_calls"');
+  });
+
+  it("omits Bedrock toolConfig when toolChoice is none", () => {
+    const converted = openAIToBedrockConverse("anthropic.claude-sonnet-4-6", {
+      messages: [{ role: "user", content: "hi" }],
+      tools: [{ type: "function", function: { name: "lookup", parameters: { type: "object" } } }],
+      tool_choice: "none",
+    });
+    expect(converted.toolConfig).toBeUndefined();
+  });
+
+  it("groups parallel Bedrock tool results into one user message", () => {
+    const converted = openAIToBedrockConverse("anthropic.claude-sonnet-4-6", {
+      messages: [
+        { role: "assistant", content: "ok", tool_calls: [{ id: "1", function: { name: "a", arguments: "{}" } }] },
+        { role: "tool", tool_call_id: "1", content: "r1" },
+        { role: "tool", tool_call_id: "2", content: "r2" },
+      ],
+    });
+    const userMessages = converted.messages.filter((m) => m.role === "user");
+    expect(userMessages.length).toBe(1);
+    expect(userMessages[0].content).toHaveLength(2);
+    expect(userMessages[0].content[0].toolResult.toolUseId).toBe("1");
+    expect(userMessages[0].content[1].toolResult.toolUseId).toBe("2");
+  });
+
+  it("streams Bedrock tool calls as OpenAI tool_call deltas", async () => {
+    const events = [
+      { contentBlockStart: { start: { toolUse: { toolUseId: "toolu_1", name: "lookup" } } }, contentBlockIndex: 0 },
+      { contentBlockDelta: { delta: { toolUse: { input: '{"q' } } }, contentBlockIndex: 0 },
+      { contentBlockDelta: { delta: { toolUse: { input: '":"x"}' } } }, contentBlockIndex: 0 },
+      { messageStop: { stopReason: "tool_use" } },
+    ];
+    async function* stream() {
+      for (const e of events) yield e;
+    }
+    const executor = new BedrockExecutor(() => ({ send: vi.fn(async () => ({ stream: stream() })) }));
+
+    const { response } = await executor.execute({
+      model: "anthropic.claude-sonnet-4-6",
+      body: {
+        messages: [{ role: "user", content: "hi" }],
+        tools: [{ type: "function", function: { name: "lookup", parameters: { type: "object" } } }],
+      },
+      stream: true,
+      credentials: { apiKey: "k", providerSpecificData: { region: "us-east-1" } },
+    });
+
+    const text = await response.text();
+    const lines = text.split("\n").filter((l) => l.startsWith("data:") && l !== "data: [DONE]");
+    const chunks = lines.map((l) => JSON.parse(l.slice(5).trim()));
+    expect(chunks.some((c) => c.choices[0].delta?.tool_calls)).toBe(true);
+    expect(chunks[chunks.length - 1].choices[0].finish_reason).toBe("tool_calls");
+  });
+
+  it("flattens OpenAI text parts before sending to Pepper", async () => {
+    const fakeClient = { chat: vi.fn(async () => "pepper reply") };
+    const executor = new ChipotleExecutor(async () => fakeClient);
+
+    await executor.execute({
+      model: "pepper-1",
+      body: { messages: [{ role: "user", content: [{ type: "text", text: "menu" }] }] },
+      stream: false,
+      credentials: {},
+    });
+
+    expect(fakeClient.chat).toHaveBeenCalledWith("menu", 15000, undefined);
+  });
+
+  it("frames Chipotle SSE events with blank lines", async () => {
+    const fakeClient = { chat: vi.fn(async () => "pepper reply") };
+    const executor = new ChipotleExecutor(async () => fakeClient);
+
+    const { response } = await executor.execute({
+      model: "pepper-1",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: true,
+      credentials: {},
+    });
+
+    const text = await response.text();
+    expect(text).toMatch(/^data: .+\n\ndata: .+\n\ndata: \[DONE\]\n\n$/s);
+    expect(text).toContain('"finish_reason":"stop"');
+  });
+
+  it("exposes Bedrock regions in provider registry", () => {
+    expect(PROVIDERS.bedrock.defaultRegion).toBe("us-east-1");
+    expect(PROVIDERS.bedrock.regions["eu-west-2"]).toBe("https://bedrock-runtime.eu-west-2.amazonaws.com");
+  });
 });

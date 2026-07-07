@@ -303,13 +303,22 @@ function advanceRotationState(rotationKey, currentIndex, modelCount, normalizedS
 
 function advanceRoundRobinPointerPastServedModel(models, comboName, comboStickyLimit, servedModel) {
   if (!Array.isArray(models) || models.length <= 1 || !servedModel) return;
-  if (normalizeStickyLimit(comboStickyLimit) > 1) return;
   const servedIndex = models.indexOf(servedModel);
   if (servedIndex < 0) return;
-  comboRotationState.set(comboName || "__default__", {
-    index: (servedIndex + 1) % models.length,
-    consecutiveUseCount: 0,
-  });
+  const sticky = normalizeStickyLimit(comboStickyLimit);
+  if (sticky > 1) {
+    // For sticky round-robin, pin the served model as the current rotation
+    // and start its sticky counter so subsequent requests continue from it.
+    comboRotationState.set(comboName || "__default__", {
+      index: servedIndex,
+      consecutiveUseCount: 0,
+    });
+  } else {
+    comboRotationState.set(comboName || "__default__", {
+      index: (servedIndex + 1) % models.length,
+      consecutiveUseCount: 0,
+    });
+  }
 }
 
 function pruneConversationAffinity(now = Date.now()) {

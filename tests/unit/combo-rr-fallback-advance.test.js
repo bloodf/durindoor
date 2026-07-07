@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { handleComboChat, resetComboRotation } from "../../open-sse/services/combo.js";
+import { handleComboChat, getRotatedModels, resetComboRotation } from "../../open-sse/services/combo.js";
 
 const log = {
   info() {},
@@ -8,14 +8,14 @@ const log = {
   error() {},
 };
 
-async function servedConnection(comboName) {
+async function servedConnection(comboName, stickyLimit) {
   let served = "";
   await handleComboChat({
     body: { messages: [{ role: "user", content: "hi" }] },
     models: ["provider/a", "provider/b", "provider/c"],
     comboName,
     comboStrategy: "round-robin",
-    comboStickyLimit: 1,
+    comboStickyLimit: stickyLimit,
     autoSwitch: false,
     log,
     handleSingleModel: async (_body, model) => {
@@ -34,10 +34,21 @@ describe("combo round-robin fallback pointer", () => {
     const comboName = `rr-fallback-${Date.now()}`;
     resetComboRotation(comboName);
 
-    const first = await servedConnection(comboName);
-    const second = await servedConnection(comboName);
+    const first = await servedConnection(comboName, 1);
+    const second = await servedConnection(comboName, 1);
 
     expect(first).toBe("provider/b");
     expect(second).toBe("provider/c");
+  });
+
+  it("pins served model as the sticky base for sticky round-robin after fallback", async () => {
+    const comboName = `rr-fallback-sticky-${Date.now()}`;
+    resetComboRotation(comboName);
+
+    const first = await servedConnection(comboName, 3);
+    const second = await servedConnection(comboName, 3);
+
+    expect(first).toBe("provider/b");
+    expect(second).toBe("provider/b");
   });
 });

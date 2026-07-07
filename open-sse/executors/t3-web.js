@@ -112,7 +112,7 @@ export class T3WebExecutor extends BaseExecutor {
     super("t3-web", PROVIDERS["t3-web"]);
   }
 
-  async testConnection(credentials, signal) {
+  async testConnection(credentials, signal, proxyOptions = null) {
     const parsed = parseT3Credentials(credentials);
     if (!validateT3Credentials(parsed)) return false;
     try {
@@ -127,7 +127,7 @@ export class T3WebExecutor extends BaseExecutor {
         headers: buildHeaders(parsed.cookieHeader),
         body: JSON.stringify({ ...validationBody, validateOnly: true }),
         signal: signal ?? undefined,
-      });
+      }, proxyOptions);
       return response.status !== 401 && response.status !== 403 && response.status < 500;
     } catch {
       return false;

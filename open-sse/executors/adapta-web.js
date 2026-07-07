@@ -5,7 +5,7 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import {
   collectTextFromEvents,
   errorJson,
-  extractText,
+  normalizeOpenAIMessages,
   openAICompletion,
   streamingTextResponse,
 } from "./web-chat-utils.js";
@@ -96,22 +96,17 @@ async function getSessionJwt(clientJwt, signal, proxyOptions = null) {
 }
 
 export function buildAdaptaMessages(messages) {
-  let systemText = "";
-  const adapted = [];
-  for (const msg of messages || []) {
-    let role = msg?.role === "developer" ? "system" : msg?.role;
-    const text = extractText(msg?.content).trim();
-    if (!text) continue;
-    if (role === "system") {
-      systemText += `${systemText ? "\n" : ""}${text}`;
-    } else if (role === "user" || role === "assistant") {
-      adapted.push({ role, parts: [{ type: "text", text }] });
-    }
-  }
-  if (systemText && adapted[0]?.role === "user") {
+  const normalized = normalizeOpenAIMessages(messages);
+  const adapted = normalized.history.map((msg) => ({
+    role: msg.role,
+    parts: [{ type: "text", text: msg.content }],
+  }));
+  if (normalized.currentMsg) adapted.push({ role: "user", parts: [{ type: "text", text: normalized.currentMsg }] });
+  // Tool results are normalized into readable user turns before Adapta receives the prompt.
+  if (normalized.systemMsg && adapted[0]?.role === "user") {
     adapted[0] = {
       ...adapted[0],
-      parts: [{ type: "text", text: `${systemText}\n\n${adapted[0].parts[0].text}` }],
+      parts: [{ type: "text", text: `${normalized.systemMsg}\n\n${adapted[0].parts[0].text}` }],
     };
   }
   return adapted;
@@ -128,10 +123,10 @@ export class AdaptaWebExecutor extends BaseExecutor {
     super("adapta-web", PROVIDERS["adapta-web"]);
   }
 
-  async testConnection(credentials, signal) {
+  async testConnection(credentials, signal, proxyOptions = null) {
     try {
       const clientJwt = extractAdaptaClientJwt(credentials?.apiKey || credentials?.accessToken || "");
-      return !!clientJwt && !!(await getSessionId(clientJwt, signal));
+      return !!clientJwt && !!(await getSessionId(clientJwt, signal, proxyOptions));
     } catch {
       return false;
     }

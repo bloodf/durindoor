@@ -68,7 +68,12 @@ export function openAICompletion({ id, created, model, content, prompt = "" }) {
   }), { status: 200, headers: { "Content-Type": "application/json" } });
 }
 
-export function streamingTextResponse({ source, model, id, created, extractDelta, signal }) {
+/**
+ * Convert provider event streams into OpenAI chat SSE. Most web providers keep
+ * legacy stream errors as content, while stricter executors can emit an SSE
+ * error object so upstream failures are not mistaken for assistant text.
+ */
+export function streamingTextResponse({ source, model, id, created, extractDelta, signal, streamErrorsAsContent = true }) {
   const encoder = new TextEncoder();
   return new Response(new ReadableStream({
     async start(controller) {
@@ -94,18 +99,28 @@ export function streamingTextResponse({ source, model, id, created, extractDelta
           })));
         }
       } catch (err) {
-        controller.enqueue(encoder.encode(sseChunk({
-          id,
-          object: "chat.completion.chunk",
-          created,
-          model,
-          choices: [{
-            index: 0,
-            delta: { content: `[Stream error: ${err?.message || String(err)}]` },
-            finish_reason: null,
-            logprobs: null,
-          }],
-        })));
+        if (streamErrorsAsContent) {
+          controller.enqueue(encoder.encode(sseChunk({
+            id,
+            object: "chat.completion.chunk",
+            created,
+            model,
+            choices: [{
+              index: 0,
+              delta: { content: `[Stream error: ${err?.message || String(err)}]` },
+              finish_reason: null,
+              logprobs: null,
+            }],
+          })));
+        } else {
+          controller.enqueue(encoder.encode(sseChunk({
+            error: {
+              message: err?.message || String(err),
+              type: err?.type || "server_error",
+              code: err?.code || "UPSTREAM_STREAM_ERROR",
+            },
+          })));
+        }
       }
 
       controller.enqueue(encoder.encode(sseChunk({

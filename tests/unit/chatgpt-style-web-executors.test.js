@@ -59,6 +59,18 @@ describe("Adapta Web executor", () => {
     ]);
   });
 
+  it("preserves OpenAI tool results as readable Adapta user turns", () => {
+    expect(buildAdaptaMessages([
+      { role: "assistant", content: "Calling weather." },
+      { role: "tool", tool_call_id: "call_weather", content: "72F and sunny" },
+      { role: "user", content: "Summarize it" },
+    ])).toEqual([
+      { role: "assistant", parts: [{ type: "text", text: "Calling weather." }] },
+      { role: "user", parts: [{ type: "text", text: "Tool result (call_weather):\n72F and sunny" }] },
+      { role: "user", parts: [{ type: "text", text: "Summarize it" }] },
+    ]);
+  });
+
   it("converts Adapta streaming deltas into non-streaming OpenAI completions", async () => {
     globalThis.fetch = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ response: { sessions: [{ id: "sess", status: "active" }] } }), { status: 200 }))
@@ -464,6 +476,64 @@ describe("ChatGPT Web executor", () => {
 
     expect((await result.response.json()).choices[0].message.content).toBe("final answer");
   });
+
+  it("returns non-streaming ChatGPT SSE errors as upstream failures", async () => {
+    globalThis.fetch = vi.fn(async (url) => {
+      if (String(url).endsWith("/api/auth/session")) {
+        return new Response(JSON.stringify({
+          accessToken: "access-token-sse-error",
+          expires: new Date(Date.now() + 60000).toISOString(),
+        }), { status: 200 });
+      }
+      return sseResponse([{ error: { message: "sentinel rejected", code: "bad_sentinel" } }]);
+    });
+
+    const result = await new ChatGptWebExecutor().execute({
+      model: "gpt-5",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: {
+        apiKey: "__Secure-next-auth.session-token=session-sse-error",
+        providerSpecificData: { chatgptWebSentinel: { proofToken: "proof" } },
+      },
+    });
+
+    expect(result.response.status).toBe(502);
+    await expect(result.response.json()).resolves.toMatchObject({
+      error: {
+        message: "ChatGPT upstream error: sentinel rejected",
+        code: "bad_sentinel",
+      },
+    });
+  });
+
+  it("streams ChatGPT SSE errors as error frames instead of assistant text", async () => {
+    globalThis.fetch = vi.fn(async (url) => {
+      if (String(url).endsWith("/api/auth/session")) {
+        return new Response(JSON.stringify({
+          accessToken: "access-token-stream-sse-error",
+          expires: new Date(Date.now() + 60000).toISOString(),
+        }), { status: 200 });
+      }
+      return sseResponse([{ error: { message: "account limited", code: "rate_limited" } }]);
+    });
+
+    const result = await new ChatGptWebExecutor().execute({
+      model: "gpt-5",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: true,
+      credentials: {
+        apiKey: "__Secure-next-auth.session-token=session-stream-sse-error",
+        providerSpecificData: { chatgptWebSentinel: { proofToken: "proof" } },
+      },
+    });
+
+    const text = await result.response.text();
+    expect(text).toContain('"error":');
+    expect(text).toContain('"message":"ChatGPT upstream error: account limited"');
+    expect(text).not.toContain("[ChatGPT error:");
+    expect(text).not.toContain('"content":"ChatGPT upstream error: account limited"');
+  });
 });
 
 describe("provider validation and refresh integration", () => {
@@ -512,6 +582,13 @@ describe("provider validation and refresh integration", () => {
       const source = readFileSync(join(root, "open-sse/executors", executor), "utf8");
       expect(source).toContain("proxyAwareFetch");
       expect(source).toContain("proxyOptions");
+      expect(source).toContain("async testConnection(credentials, signal, proxyOptions = null)");
     }
+    expect(readFileSync(join(root, "open-sse/executors/adapta-web.js"), "utf8"))
+      .toContain("getSessionId(clientJwt, signal, proxyOptions)");
+    expect(readFileSync(join(root, "open-sse/executors/chatgpt-web.js"), "utf8"))
+      .toContain("exchangeSession(rawCookie, signal, proxyOptions)");
+    expect(readFileSync(join(root, "open-sse/executors/t3-web.js"), "utf8"))
+      .toContain("}, proxyOptions);");
   });
 });

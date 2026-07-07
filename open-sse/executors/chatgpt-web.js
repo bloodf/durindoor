@@ -324,7 +324,13 @@ function extractChatGptDeltaFactory() {
   let finishPending = false;
   return (event) => {
     if (finishPending) return "__DONE__";
-    if (event?.error) return `[ChatGPT error: ${typeof event.error === "string" ? event.error : event.error.message || "unknown"}]`;
+    if (event?.error) {
+      const err = new Error(`ChatGPT upstream error: ${typeof event.error === "string" ? event.error : event.error.message || "unknown"}`);
+      err.code = event.error?.code || "CHATGPT_UPSTREAM_SSE_ERROR";
+      err.type = event.error?.type || "server_error";
+      err.status = event.error?.status || 502;
+      throw err;
+    }
     const parts = event?.message?.content?.parts;
     if (event?.type === "message_stream_complete") return "__DONE__";
     const finished = event?.message?.status === "finished_successfully";
@@ -343,11 +349,11 @@ export class ChatGptWebExecutor extends BaseExecutor {
     super("chatgpt-web", PROVIDERS["chatgpt-web"]);
   }
 
-  async testConnection(credentials, signal) {
+  async testConnection(credentials, signal, proxyOptions = null) {
     try {
       const rawCookie = credentials?.apiKey || credentials?.accessToken || "";
       if (!rawCookie) return false;
-      await exchangeSession(rawCookie, signal);
+      await exchangeSession(rawCookie, signal, proxyOptions);
       return true;
     } catch {
       return false;
@@ -451,9 +457,14 @@ export class ChatGptWebExecutor extends BaseExecutor {
     const id = `chatcmpl-cgpt-${Date.now()}`;
     const created = Math.floor(Date.now() / 1000);
     if (stream !== false) {
-      return { response: streamingTextResponse({ source: response.body, model, id, created, extractDelta: extractChatGptDeltaFactory(), signal }), url: CONVERSATION_URL, headers, transformedBody };
+      return { response: streamingTextResponse({ source: response.body, model, id, created, extractDelta: extractChatGptDeltaFactory(), signal, streamErrorsAsContent: false }), url: CONVERSATION_URL, headers, transformedBody };
     }
-    const content = await collectTextFromEvents(response.body, extractChatGptDeltaFactory(), signal);
+    let content;
+    try {
+      content = await collectTextFromEvents(response.body, extractChatGptDeltaFactory(), signal);
+    } catch (err) {
+      return { response: errorJson(err?.status || 502, err?.message || "ChatGPT upstream SSE error", err?.code || "CHATGPT_UPSTREAM_SSE_ERROR"), url: CONVERSATION_URL, headers, transformedBody };
+    }
     return { response: openAICompletion({ id, created, model, content, prompt: JSON.stringify(messages) }), url: CONVERSATION_URL, headers, transformedBody };
   }
 }

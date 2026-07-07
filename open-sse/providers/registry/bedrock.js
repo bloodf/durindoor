@@ -15,9 +15,28 @@ export default {
     },
   },
   category: "apikey",
+  hasProviderSpecificData: true,
+  regions: [
+    { id: "us-east-1", label: "US East (N. Virginia)" },
+    { id: "us-west-2", label: "US West (Oregon)" },
+    { id: "eu-west-1", label: "Europe (Ireland)" },
+    { id: "eu-west-2", label: "Europe (London)" },
+    { id: "eu-central-1", label: "Europe (Frankfurt)" },
+    { id: "ap-northeast-1", label: "Asia Pacific (Tokyo)" },
+  ],
+  defaultRegion: "us-east-1",
   transport: {
     baseUrl: "https://bedrock-runtime.us-east-1.amazonaws.com",
     format: "openai",
+    regions: {
+      "us-east-1": "https://bedrock-runtime.us-east-1.amazonaws.com",
+      "us-west-2": "https://bedrock-runtime.us-west-2.amazonaws.com",
+      "eu-west-1": "https://bedrock-runtime.eu-west-1.amazonaws.com",
+      "eu-west-2": "https://bedrock-runtime.eu-west-2.amazonaws.com",
+      "eu-central-1": "https://bedrock-runtime.eu-central-1.amazonaws.com",
+      "ap-northeast-1": "https://bedrock-runtime.ap-northeast-1.amazonaws.com",
+    },
+    defaultRegion: "us-east-1",
   },
   models: [
     {

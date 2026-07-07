@@ -10,7 +10,7 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { handleComboChat } from "open-sse/services/combo.js";
 import * as log from "../utils/logger.js";
-import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
+import { enforceApiKeyModelPolicy, recordApiKeyUsage } from "../services/apiKeyPolicy.js";
 
 // Derived from providers.js: any TTS provider not noAuth requires stored credentials
 const CREDENTIALED_PROVIDERS = new Set(
@@ -59,6 +59,11 @@ export async function handleTts(request) {
   // Enforce per-API-key model policy
   const policyError = await enforceApiKeyModelPolicy(request, modelStr);
   if (policyError) return policyError;
+
+  if (apiKey) {
+    const tokens = body.input ? String(body.input).length / 4 : 0;
+    await recordApiKeyUsage(apiKey, { tokens, cost: 0 });
+  }
 
   // Combo expansion: model may be a combo name → run fallback/round-robin across models
   const comboModels = await getComboModels(modelStr);

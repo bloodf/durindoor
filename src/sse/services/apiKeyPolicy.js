@@ -1,4 +1,4 @@
-import { getApiKeyByKey, getApiKeyUsageTotals } from "@/lib/localDb";
+import { getApiKeyByKey, getApiKeyUsageTotals, getApiKeyById, incrementApiKeyUsageSync } from "@/lib/localDb";
 import { extractApiKey } from "./auth.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
@@ -33,6 +33,23 @@ export function isModelAllowed(policy, modelStr) {
     return true;
   }
   return policy.allowedModels.includes(modelStr);
+}
+
+/**
+ * Record usage for an API key before enforcing non-chat limits.
+ * Runs in its own adapter write so non-chat handlers can count usage even when
+ * no saveRequestUsage transaction is active.
+ *
+ * @param {string} apiKey
+ * @param {{ tokens?: number, cost?: number }} usage
+ */
+export async function recordApiKeyUsage(apiKey, usage) {
+  if (!apiKey || !usage) return;
+  const { getAdapter } = await import("@/lib/db/driver.js");
+  const db = await getAdapter();
+  const row = db.get(`SELECT id FROM apiKeys WHERE key = ?`, [apiKey]);
+  if (!row) return;
+  incrementApiKeyUsageSync(db, row.id, usage);
 }
 
 /**

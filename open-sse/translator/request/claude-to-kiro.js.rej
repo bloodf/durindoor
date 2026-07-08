@@ -1,0 +1,10 @@
+diff a/open-sse/translator/request/claude-to-kiro.js b/open-sse/translator/request/claude-to-kiro.js	(rejected hunks)
+@@ -24,7 +24,7 @@
+  */
+ import { register } from "../index.js";
+ import { FORMATS } from "../formats.js";
+-import { v4 as uuidv4 } from "uuid";
++import { resolveSessionId } from "../../utils/sessionManager.js";
+ import {
+   resolveKiroModel,
+   resolveKiroThinkingBudget,

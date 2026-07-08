@@ -459,7 +459,7 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
   const payload = {
     conversationState: {
       chatTriggerType: "MANUAL",
-      conversationId: uuidv4(),
+      conversationId: resolveSessionId({ headers: credentials?.rawHeaders, body, connectionId: credentials?.connectionId, scope: "kiro" }),
       currentMessage: {
         userInputMessage,
       },

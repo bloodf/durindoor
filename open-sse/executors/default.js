@@ -174,7 +174,28 @@ export class DefaultExecutor extends BaseExecutor {
     super(provider, PROVIDERS[provider] || PROVIDERS.openai);
   }
 
+  applyRequestDefaults(body) {
+    const defaults = this.config?.requestDefaults;
+    if (!defaults || !body || typeof body !== "object") return body;
+    if (defaults.maxTokens !== undefined && body.max_tokens === undefined && body.max_completion_tokens === undefined) {
+      body.max_tokens = defaults.maxTokens;
+    }
+    if (defaults.temperature !== undefined && body.temperature === undefined) {
+      body.temperature = defaults.temperature;
+    }
+    if (defaults.thinkingBudgetTokens !== undefined || defaults.thinkingType !== undefined) {
+      const current = body.thinking && typeof body.thinking === "object" ? body.thinking : {};
+      body.thinking = {
+        ...current,
+        ...(current.type === undefined && defaults.thinkingType !== undefined ? { type: defaults.thinkingType } : {}),
+        ...(current.budget_tokens === undefined && defaults.thinkingBudgetTokens !== undefined ? { budget_tokens: defaults.thinkingBudgetTokens } : {}),
+      };
+    }
+    return body;
+  }
+
   transformRequest(model, body, stream, credentials) {
+    this.applyRequestDefaults(body);
     const transformed = this.applyJsonSchemaFallback(body);
 
     if (transformed && typeof transformed === "object") {

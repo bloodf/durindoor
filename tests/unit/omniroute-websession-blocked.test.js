@@ -23,7 +23,8 @@ const ownedProviders = [
   "yuanbao-web",
 ];
 
-const portedProviders = ["copilot-web", "copilot-m365-web"];
+const webSessionProviders = ["copilot-web", "copilot-m365-web"];
+const portedProviders = ["copilot-web", "copilot-m365-web", "veoaifree-web"];
 
 describe("OmniRoute PR #51 web-session provider port artifacts", () => {
   it("registers every owned provider with source catalog metadata", () => {
@@ -42,7 +43,7 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
   });
 
   it("ports Copilot web-session providers to real executors", async () => {
-    for (const provider of portedProviders) {
+    for (const provider of webSessionProviders) {
       expect(BLOCKED_OMNIROUTE_PROVIDERS[provider], `${provider} blocker`).toBeUndefined();
       expect(hasSpecializedExecutor(provider), `${provider} specialized executor`).toBe(true);
       const result = await getExecutor(provider).execute({});
@@ -69,7 +70,7 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
     expect(getProvidersByKind("image").map((p) => p.id)).not.toContain("chatgpt-web");
     expect(getProvidersByKind("music").map((p) => p.id)).not.toContain("suno");
     expect(getProvidersByKind("music").map((p) => p.id)).not.toContain("udio");
-    expect(getProvidersByKind("video").map((p) => p.id)).not.toContain("veoaifree-web");
+    expect(getProvidersByKind("video").map((p) => p.id)).toContain("veoaifree-web");
   });
 
   it("resolves uiAlias tokens to the guarded provider in model strings", () => {
@@ -80,7 +81,12 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
   });
 
   it("preserves structured provider_port_pending error body through the upstream error parser", async () => {
-    const executor = getExecutor("veoaifree-web");
+    const provider = BLOCKED_OMNIROUTE_PROVIDERS["yuanbao-web"];
+    expect(provider).toMatchObject({
+      reason: expect.any(String),
+      source: expect.any(Array),
+    });
+    const executor = getExecutor("yuanbao-web");
     const { response } = await executor.execute({});
     const parsed = await parseUpstreamError(response, executor);
     expect(parsed.statusCode).toBe(501);
@@ -88,7 +94,7 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
     expect(parsed.errorBody).toMatchObject({
       error: {
         type: "provider_port_pending",
-        provider: "veoaifree-web",
+        provider: "yuanbao-web",
         sourceFiles: expect.any(Array),
       },
     });

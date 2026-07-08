@@ -34,6 +34,7 @@ import { GrokCliExecutor } from "./grok-cli.js";
 import { GitlabExecutor } from "./gitlab.js";
 import { TraeExecutor } from "./trae.js";
 import { DevinCliExecutor } from "./devin-cli.js";
+import { VeoAIFreeWebExecutor } from "./veoaifree-web.js";
 import { WindsurfExecutor } from "./windsurf.js";
 import { DefaultExecutor } from "./default.js";
 import {
@@ -90,6 +91,8 @@ const executors = {
   trae: new TraeExecutor(),
   "devin-cli": new DevinCliExecutor(),
   windsurf: new WindsurfExecutor(),
+  "veoaifree-web": new VeoAIFreeWebExecutor(),
+  "veo-free": new VeoAIFreeWebExecutor(),
   ...Object.fromEntries(
     Object.keys(BLOCKED_OMNIROUTE_PROVIDERS).map((provider) => [
       provider,

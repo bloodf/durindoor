@@ -62,5 +62,24 @@ export function normalizeProviderSpecificData(provider, body = {}, providerSpeci
     if (baseUrl) next.baseUrl = baseUrl;
   }
 
+  if (provider === "azure-openai") {
+    const baseUrl = String(next.baseUrl || body.baseUrl || body.azureEndpoint || "").trim().replace(/\/+$/, "");
+    const apiVersion = String(next.apiVersion || body.apiVersion || "").trim();
+    const deployment = String(next.deployment || body.deployment || body.defaultModel || "").trim();
+
+    if (baseUrl) next.baseUrl = baseUrl;
+    if (apiVersion) next.apiVersion = apiVersion;
+    if (deployment) next.deployment = deployment;
+  }
+
+  if (provider === "azure-ai") {
+    const baseUrl = String(next.baseUrl || body.baseUrl || body.azureEndpoint || "").trim().replace(/\/+$/, "");
+    if (baseUrl) next.baseUrl = baseUrl;
+  }
+
+  if (provider === "sap") {
+    const baseUrl = String(next.baseUrl || body.baseUrl || body.deploymentUrl || "").trim().replace(/\/+$/, "");
+    if (baseUrl) next.baseUrl = baseUrl;
+  }
   return Object.keys(next).length > 0 ? next : null;
 }

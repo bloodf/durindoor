@@ -11,7 +11,10 @@
     "build:bun": "bun --bun next build --webpack",
     "start:bun": "bun ./.next/standalone/server.js",
     "cli:pack": "npm --prefix cli run pack:cli",
-    "cli:publish": "npm --prefix cli run publish:cli"
+    "cli:publish": "npm --prefix cli run publish:cli",
+    "lint": "eslint src",
+    "gen:agent-index": "node scripts/gen-agent-index.mjs",
+    "check:agent-index": "node scripts/check-agent-index.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.758.0",

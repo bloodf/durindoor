@@ -12,6 +12,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `aug` | AuggieExecutor | `./auggie.js` |
 | `auggie` | AuggieExecutor | `./auggie.js` |
 | `azure` | AzureExecutor | `./azure.js` |
+| `azure-openai` | AzureOpenAIExecutor | `./azure-openai.js` |
 | `bedrock` | BedrockExecutor | `./bedrock.js` |
 | `chipotle` | ChipotleExecutor | `./chipotle.js` |
 | `codebuddy-cn` | CodeBuddyExecutor | `./codebuddy-cn.js` |
@@ -56,6 +57,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 
 | id | format | category | baseUrl |
 |---|---|---|---|
+| `360ai` |  | apikey | `https://api.360.cn/v1/chat/completions` |
 | `9router` | openai | apikey | `http://127.0.0.1:20130/v1` |
 | `adapta-web` | openai | webCookie | `https://agent.adapta.one/api/chat/stream/v1` |
 | `agentrouter` | claude | apikey | `https://agentrouter.org/v1/messages` |
@@ -63,16 +65,20 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `ai21` |  | apikey | `https://api.ai21.com/studio/v1/chat/completions` |
 | `aimlapi` |  | apikey | `https://api.aimlapi.com/v1/chat/completions` |
 | `alibaba` |  | apikey | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions` |
+| `alibaba-cn` |  | apikey | `https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions` |
 | `alicode` |  | apikey | `https://coding.dashscope.aliyuncs.com/v1/chat/completions` |
 | `alicode-intl` |  | apikey | `https://coding-intl.dashscope.aliyuncs.com/v1/chat/completions` |
 | `anthropic` | claude | apikey | `https://api.anthropic.com/v1/messages` |
 | `antigravity` | antigravity | oauth | `` |
 | `api-airforce` |  | apikey | `https://api.airforce/v1/chat/completions` |
+| `arcee-ai` |  | apikey | `https://conductor.arcee.ai/v1/chat/completions` |
 | `assemblyai` |  | apikey | `https://api.assemblyai.com/v1/audio/transcriptions` |
 | `auggie` | openai | free | `auggie://cli/stdio` |
 | `auto` |  | system | `` |
 | `aws-polly` |  | apikey | `` |
 | `azure` |  | apikey | `` |
+| `azure-ai` |  | apikey | `https://example-resource.services.ai.azure.com/openai/v1/chat/completions` |
+| `azure-openai` |  | apikey | `https://example-resource.openai.azure.com` |
 | `bai` |  | apikey | `https://api.b.ai/v1/chat/completions` |
 | `baichuan` |  | apikey | `https://api.baichuan-ai.com/v1/chat/completions` |
 | `baidu` |  | apikey | `https://qianfan.baidubce.com/v2/chat/completions` |
@@ -86,15 +92,18 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `brave-search` |  | apikey | `` |
 | `byteplus` |  | freeTier | `https://ark.ap-southeast.bytepluses.com/api/coding/v3/chat/completions` |
 | `bytez` |  | apikey | `https://api.bytez.com/models/v2/openai/v1/chat/completions` |
+| `cablyai` |  | apikey | `https://api.cablyai.com/v1/chat/completions` |
 | `cartesia` |  | apikey | `` |
 | `cerebras` |  | apikey | `https://api.cerebras.ai/v1/chat/completions` |
 | `charm-hyper` |  | apikey | `https://hyper.charm.land/v1/chat/completions` |
 | `chatgpt-web` | openai | webCookie | `https://chatgpt.com/backend-api/conversation` |
 | `chipotle` | openai | free | `https://amelia.chipotle.com` |
 | `chutes` |  | apikey | `https://llm.chutes.ai/v1/chat/completions` |
+| `clarifai` |  | apikey | `https://api.clarifai.com/v2/ext/openai/v1/chat/completions` |
 | `claude` | claude | oauth | `https://api.anthropic.com/v1/messages` |
 | `cline` |  | oauth | `https://api.cline.bot/api/v1/chat/completions` |
 | `clinepass` |  | oauth | `https://api.cline.bot/api/v1/chat/completions` |
+| `cliproxyapi` |  | apikey | `http://127.0.0.1:8317/v1/chat/completions` |
 | `cloudflare-ai` |  | freeTier | `https://api.cloudflare.com/client/v4/accounts/{accountId}/ai/v1/chat/completions` |
 | `codebuddy-cn` |  | oauth | `https://copilot.tencent.com/v2/chat/completions` |
 | `codestral` |  | apikey | `https://codestral.mistral.ai/v1/chat/completions` |
@@ -110,6 +119,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `crof` |  | apikey | `https://crof.ai/v1/chat/completions` |
 | `cursor` | cursor | oauth | `https://api2.cursor.sh` |
 | `databricks` |  | apikey | `https://adb-0000000000000000.0.azuredatabricks.net/serving-endpoints` |
+| `datarobot` |  | apikey | `https://app.datarobot.com/api/v2/genai/llmgw/chat/completions/` |
 | `deepgram` |  | apikey | `https://api.deepgram.com/v1/listen` |
 | `deepinfra` |  | apikey | `https://api.deepinfra.com/v1/openai/chat/completions` |
 | `deepseek` |  | apikey | `https://api.deepseek.com/chat/completions` |
@@ -123,10 +133,12 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `duckduckgo-web` | openai | free | `https://duckduckgo.com/duckchat/v1/chat` |
 | `edge-tts` |  | freeTier | `` |
 | `elevenlabs` |  | apikey | `` |
+| `empower` |  | apikey | `https://app.empower.dev/api/v1/chat/completions` |
 | `exa` |  | apikey | `` |
 | `factory` |  | apikey | `https://api.factory.ai/v1/chat/completions` |
 | `fal-ai` |  | apikey | `` |
 | `featherless-ai` |  | apikey | `https://api.featherless.ai/v1/chat/completions` |
+| `fenayai` |  | apikey | `https://api.fenayai.com/v1/chat/completions` |
 | `firecrawl` |  | apikey | `` |
 | `firecrawl_custom` |  | apikey | `` |
 | `fireworks` |  | apikey | `https://api.fireworks.ai/inference/v1/chat/completions` |
@@ -136,14 +148,18 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `galadriel` |  | apikey | `https://api.galadriel.com/v1/verified/chat/completions` |
 | `gemini` | gemini | freeTier | `https://generativelanguage.googleapis.com/v1beta/models` |
 | `gemini-cli` | gemini-cli | free | `https://cloudcode-pa.googleapis.com/v1internal` |
+| `getgoapi` |  | apikey | `https://api.getgoapi.com/v1/chat/completions` |
 | `gigachat` |  | apikey | `https://gigachat.devices.sberbank.ru/api/v1/chat/completions` |
 | `github` |  | oauth | `https://api.githubcopilot.com/chat/completions` |
+| `github-models` |  | apikey | `https://models.github.ai/inference/chat/completions` |
 | `gitlab` |  | oauth | `https://gitlab.com/api/v4/chat/completions` |
 | `gitlab-duo` | openai | oauth | `https://gitlab.com/api/v4/code_suggestions/completions` |
 | `gitlawb` |  | apikey | `https://opengateway.gitlawb.com/v1/xiaomi-mimo/chat/completions` |
+| `gitlawb-gmi` |  | apikey | `https://opengateway.gitlawb.com/v1/chat/completions` |
 | `glhf` |  | apikey | `https://glhf.chat/api/openai/v1/chat/completions` |
 | `glm` | claude | apikey | `https://api.z.ai/api/anthropic/v1/messages` |
 | `glm-cn` |  | apikey | `https://open.bigmodel.cn/api/coding/paas/v4/chat/completions` |
+| `glmt` |  | apikey | `https://api.z.ai/api/coding/paas/v4/chat/completions` |
 | `google-pse` |  | apikey | `` |
 | `google-tts` |  | freeTier | `` |
 | `grok-cli` | openai | oauth | `https://cli-chat-proxy.grok.com/v1/chat/completions` |
@@ -171,8 +187,10 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `kimchi` | openai | oauth | `https://llm.kimchi.dev/openai/v1/chat/completions` |
 | `kimi` | claude | apikey | `https://api.kimi.com/coding/v1/messages` |
 | `kimi-coding` | claude | oauth | `https://api.kimi.com/coding/v1/messages` |
+| `kimi-coding-apikey` | claude | apikey | `https://api.kimi.com/coding/v1/messages` |
 | `kiro` | kiro | free | `https://runtime.us-east-1.kiro.dev/generateAssistantResponse` |
 | `lambda-ai` |  | apikey | `https://api.lambda.ai/v1/chat/completions` |
+| `laozhang` |  | apikey | `https://api.laozhang.ai/v1/chat/completions` |
 | `lemonade` | openai | apikey | `http://localhost:13305/api/v1` |
 | `leonardo` |  | apikey | `` |
 | `linkup` |  | apikey | `` |
@@ -195,8 +213,10 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `muse-spark-web` | openai | webCookie | `https://www.meta.ai/api/graphql` |
 | `nanobanana` |  | apikey | `https://api.nanobananaapi.ai/v1/chat/completions` |
 | `nebius` |  | apikey | `https://api.studio.nebius.ai/v1/chat/completions` |
+| `nomic` |  | hidden | `https://api-atlas.nomic.ai/v1/embedding/text` |
 | `nube` |  | apikey | `https://ai.nube.sh/api/v1/chat/completions` |
 | `nvidia` |  | freeTier | `https://integrate.api.nvidia.com/v1/chat/completions` |
+| `oci` |  | apikey | `https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/openai/v1/chat/completions` |
 | `ollama` | ollama | freeTier | `https://ollama.com/api/chat` |
 | `ollama-local` | ollama | apikey | `http://localhost:11434` |
 | `oobabooga` | openai | apikey | `http://localhost:5000/v1` |
@@ -207,7 +227,9 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `openrouter` |  | freeTier | `https://openrouter.ai/api/v1/chat/completions` |
 | `perplexity` |  | apikey | `https://api.perplexity.ai/chat/completions` |
 | `perplexity-web` | perplexity-web | webCookie | `https://www.perplexity.ai/rest/sse/perplexity_ask` |
+| `piapi` |  | apikey | `https://api.piapi.ai/v1/chat/completions` |
 | `playht` |  | apikey | `` |
+| `poe` |  | apikey | `https://api.poe.com/v1/chat/completions` |
 | `pollinations` | openai | apikey | `https://gen.pollinations.ai/v1/chat/completions` |
 | `puter` | openai | apikey | `https://api.puter.com/puterai/openai/v1/chat/completions` |
 | `qianfan` |  | apikey | `https://qianfan.baidubce.com/v2/chat/completions` |
@@ -219,6 +241,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `requesty` |  | freeTier | `https://router.requesty.ai/v1/chat/completions` |
 | `runwayml` |  | apikey | `` |
 | `sambanova` |  | freeTier | `https://api.sambanova.ai/v1/chat/completions` |
+| `sap` |  | apikey | `https://example-aicore.cfapps.eu10.hana.ondemand.com/v2/lm/deployments/example-deployment/chat/completions` |
 | `scaleway` |  | freeTier | `https://api.scaleway.ai/v1/chat/completions` |
 | `sdwebui` |  | apikey | `` |
 | `searchapi` |  | apikey | `` |
@@ -236,6 +259,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `t3-web` | openai | webCookie | `https://t3.chat/api/chat` |
 | `tavily` |  | apikey | `` |
 | `tencent` |  | freeTier | `https://api.hunyuan.cloud.tencent.com/v1/chat/completions` |
+| `thebai` |  | apikey | `https://api.theb.ai/v1/chat/completions` |
 | `theoldllm` | openai | free | `https://theoldllm.vercel.app/api/chatgpt` |
 | `tinyfish` |  | apikey | `` |
 | `together` |  | apikey | `https://api.together.xyz/v1/chat/completions` |
@@ -259,6 +283,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `voyage-ai` |  | apikey | `` |
 | `wafer` | claude | apikey | `https://pass.wafer.ai/v1/messages` |
 | `wandb` |  | apikey | `https://api.inference.wandb.ai/v1/chat/completions` |
+| `watsonx` |  | apikey | `https://ca-tor.ml.cloud.ibm.com/ml/gateway/v1/chat/completions` |
 | `windsurf` | grpc-web-proto | oauth | `https://server.self-serve.windsurf.com` |
 | `x5lab` |  | apikey | `https://api.x5lab.dev/v1/chat/completions` |
 | `xai` |  | oauth | `https://api.x.ai/v1/chat/completions` |

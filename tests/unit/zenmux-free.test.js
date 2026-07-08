@@ -393,6 +393,23 @@ describe("ZenmuxFreeExecutor.execute", () => {
     expect(text).toContain("data: [DONE]");
   });
 
+  it("strips ctoken from result.url while still sending it to fetch", async () => {
+    global.fetch.mockResolvedValueOnce(zenmuxSse(["ok"]));
+    const exec = new ZenmuxFreeExecutor();
+
+    const result = await exec.execute({
+      body: { model: "deepseek/deepseek-chat", messages: [{ role: "user", content: "hi" }] },
+      credentials: { apiKey: "ctoken=tok123" },
+      stream: false,
+    });
+
+    const [fetchedUrl] = proxyAwareFetch.mock.calls[0];
+    expect(fetchedUrl).toContain("ctoken=tok123");
+    expect(global.fetch.mock.calls[0][0]).toContain("ctoken=tok123");
+    expect(result.url).not.toContain("ctoken=");
+    expect(result.url).toContain(ZENMUX_FREE_CHAT_URL);
+  });
+
   it("does not close an already-errored streaming controller when the reader throws", async () => {
     const brokenBody = new Response(
       new ReadableStream({

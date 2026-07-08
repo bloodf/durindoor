@@ -244,6 +244,12 @@ function buildStreamingResponse(upstream, model, cid, created, signal) {
   });
 }
 
+function redactedZenmuxUrl(url) {
+  const redacted = new URL(url.toString());
+  redacted.searchParams.delete("ctoken");
+  return redacted.toString();
+}
+
 function makeErrorResult(status, message, body, url) {
   return {
     response: errorResponse(status, message),
@@ -275,6 +281,7 @@ export class ZenmuxFreeExecutor extends BaseExecutor {
     const transformedBody = buildZenmuxAnthropicBody(bodyObj, modelId);
     const url = new URL(ZENMUX_FREE_CHAT_URL);
     url.searchParams.set("ctoken", ctoken);
+    const resultUrl = redactedZenmuxUrl(url);
     const headers = {
       "Content-Type": "application/json",
       "User-Agent": USER_AGENT,
@@ -300,18 +307,18 @@ export class ZenmuxFreeExecutor extends BaseExecutor {
       if (error.name === "AbortError") {
         throw error;
       }
-      return makeErrorResult(502, `ZenMux Free fetch failed: ${error.message || "unknown"}`, body, url.toString());
+      return makeErrorResult(502, `ZenMux Free fetch failed: ${error.message || "unknown"}`, body, resultUrl);
     }
 
     if (!upstream.ok) {
       if (upstream.status === 401 || upstream.status === 403) {
-        return makeErrorResult(401, "ZenMux Free: cookies expired or invalid", body, url.toString());
+        return makeErrorResult(401, "ZenMux Free: cookies expired or invalid", body, resultUrl);
       }
       if (upstream.status === 402) {
-        return makeErrorResult(402, "ZenMux Free: free-tier quota exhausted", body, url.toString());
+        return makeErrorResult(402, "ZenMux Free: free-tier quota exhausted", body, resultUrl);
       }
       const errorText = await upstream.text().catch(() => "");
-      return makeErrorResult(upstream.status, `ZenMux Free error: ${errorText || upstream.statusText}`, body, url.toString());
+      return makeErrorResult(upstream.status, `ZenMux Free error: ${errorText || upstream.statusText}`, body, resultUrl);
     }
 
     const cid = `chatcmpl-zmf-${randomUUID().slice(0, 12)}`;
@@ -326,7 +333,7 @@ export class ZenmuxFreeExecutor extends BaseExecutor {
             Connection: "keep-alive",
           },
         }),
-        url: url.toString(),
+        url: resultUrl,
         headers,
         transformedBody,
       };
@@ -349,12 +356,12 @@ export class ZenmuxFreeExecutor extends BaseExecutor {
             total_tokens: Math.ceil(text.length / 4),
           },
         }), { headers: { "Content-Type": "application/json" } }),
-        url: url.toString(),
+        url: resultUrl,
         headers,
         transformedBody,
       };
     } catch (error) {
-      return makeErrorResult(502, error.message || "ZenMux Free streaming error", body, url.toString());
+      return makeErrorResult(502, error.message || "ZenMux Free streaming error", body, resultUrl);
     }
   }
 }

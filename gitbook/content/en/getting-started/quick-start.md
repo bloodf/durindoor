@@ -1,6 +1,6 @@
 # Getting Started
 
-Get 9Router running in 5 minutes and start routing AI requests intelligently.
+Get DurinDoor running in 5 minutes and start routing AI requests intelligently.
 
 ---
 
@@ -9,7 +9,7 @@ Get 9Router running in 5 minutes and start routing AI requests intelligently.
 ### 1. Install
 
 ```bash
-npm install -g 9router
+npm install -g durindoor
 ```
 
 **Requirements:** Node.js 20+ ([Installation details](getting-started/installation.md))
@@ -17,7 +17,7 @@ npm install -g 9router
 ### 2. Start
 
 ```bash
-9router
+durindoor
 ```
 
 🎉 **Dashboard opens automatically** at `http://localhost:20128`
@@ -43,7 +43,7 @@ Dashboard → Providers → Connect [Provider]
 **Example: Claude Code**
 1. Click "Connect Claude Code"
 2. Login with your Claude account
-3. Authorize 9Router
+3. Authorize DurinDoor
 4. ✅ Done! Use model: `cc/claude-opus-4-5-20251101`
 
 #### Option B: API Key (Cheap Providers)
@@ -83,14 +83,14 @@ Dashboard → Providers → Connect [Free Provider]
 
 ## 4. Use in CLI Tools
 
-Point your coding tool to 9Router:
+Point your coding tool to DurinDoor:
 
 ### Cursor IDE
 
 ```
 Settings → Models → Advanced:
   OpenAI API Base URL: http://localhost:20128/v1
-  OpenAI API Key: [from 9router dashboard]
+  OpenAI API Key: [from durindoor dashboard]
   Model: cc/claude-opus-4-5-20251101
 ```
 
@@ -101,7 +101,7 @@ Edit `~/.claude/config.json`:
 ```json
 {
   "anthropic_api_base": "http://localhost:20128/v1",
-  "anthropic_api_key": "your-9router-api-key"
+  "anthropic_api_key": "your-durindoor-api-key"
 }
 ```
 
@@ -118,7 +118,7 @@ Model: cc/claude-opus-4-5-20251101
 
 ```bash
 export OPENAI_BASE_URL="http://localhost:20128"
-export OPENAI_API_KEY="your-9router-api-key"
+export OPENAI_API_KEY="your-durindoor-api-key"
 
 codex "your prompt"
 ```
@@ -242,6 +242,6 @@ Daily routine:
 
 ## Need Help?
 
-- **Website**: [9router.com](https://9router.com)
-- **GitHub**: [github.com/decolua/9router](https://github.com/decolua/9router)
-- **Issues**: [github.com/decolua/9router/issues](https://github.com/decolua/9router/issues)
+- **Website**: [bloodf.github.io/durindoor](https://bloodf.github.io/durindoor/)
+- **GitHub**: [github.com/bloodf/durindoor](https://github.com/bloodf/durindoor)
+- **Issues**: [github.com/bloodf/durindoor/issues](https://github.com/bloodf/durindoor/issues)

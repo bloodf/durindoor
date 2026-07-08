@@ -1,3 +1,15 @@
+# v1.0.2 (2026-07-08)
+
+## Brand
+- Rebrand all user-facing documentation, GitBook, Docker docs, CLI README, and assets to the DurinDoor identity.
+- Remove non-English documentation; keep English-only docs for now.
+- Rename skill modules to the `durindoor-*` namespace and update URLs to `bloodf/durindoor`.
+- Update favicon and app icons to the new DurinDoor mark.
+- Fix release workflow to publish the `cli` package rather than the private root package.
+
+## Build
+- Bump root and CLI package versions to 1.0.2.
+
 # v0.5.18 (2026-07-03)
 
 ## Features
@@ -172,7 +184,7 @@
 - Dashboard: show provider node name instead of connection name in topology (#1770) + show explicit `kind="llm"` combos on combos page (#1684)
 
 ## Docs
-- README: add Indonesian 9Router tutorial video (#1709)
+- README: add Indonesian DurinDoor tutorial video (#1709)
 
 # v0.4.71 (2026-06-06)
 

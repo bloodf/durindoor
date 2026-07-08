@@ -18,7 +18,7 @@ DurinDoor is a self-hosted AI gateway that unifies the realm of LLM providers be
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Supported Providers](#supported-providers)
-- [Migrating from 9router](#migrating-from-9router)
+- [Migrating from durindoor](#migrating-from-durindoor)
 - [Contributing](#contributing)
 - [License](#license)
 - [Acknowledgments](#acknowledgments)
@@ -48,10 +48,10 @@ durindoor
 Then open your browser and enter the dashboard:
 
 ```
-http://localhost:11434
+http://localhost:20128
 ```
 
-From the dashboard, add providers, create an API key, and point your tools at `http://localhost:11434/v1`.
+From the dashboard, add providers, create an API key, and point your tools at `http://localhost:20128/v1`.
 
 ## Installation
 
@@ -70,8 +70,8 @@ DurinDoor provides a Docker image for those who prefer containers. Pull and run:
 docker pull ghcr.io/bloodf/durindoor:latest
 docker run -d \
   --name durindoor \
-  -p 11434:11434 \
-  -e PORT=11434 \
+  -p 20128:20128 \
+  -e PORT=20128 \
   -e HOSTNAME=0.0.0.0 \
   -e DATA_DIR=/app/data \
   -v durindoor-data:/app/data \
@@ -96,12 +96,12 @@ DurinDoor is configured through environment variables. Set them in your shell, i
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `PORT` | `11434` | HTTP port the gateway listens on. |
+| `PORT` | `20128` | HTTP port the gateway listens on. |
 | `HOSTNAME` | `0.0.0.0` | Network interface to bind. |
-| `DATA_DIR` | `~/.durindoor` | Persistent storage directory. |
+| `DATA_DIR` | `<<~/.durindoor>>` (legacy/migration compatibility) | Persistent storage directory. |
 | `MCP_GATEWAY_OAUTH_PUBLIC_URL` | — | Public URL used for MCP Gateway OAuth callbacks. |
 | `NODE_ENV` | `production` | Runtime environment (`development` or `production`). |
-| `NEXT_PUBLIC_BASE_URL` | `http://localhost:11434` | Public base URL of the dashboard. |
+| `NEXT_PUBLIC_BASE_URL` | `http://localhost:20128` | Public base URL of the dashboard. |
 
 Run `durindoor --help` to see all CLI options and flags.
 
@@ -123,9 +123,9 @@ DurinDoor supports a wide fellowship of AI providers, including:
 
 Check the dashboard **Providers** page for the full list and connection instructions.
 
-## Migrating from 9router
+## Migrating from durindoor
 
-DurinDoor honors the legacy realm. If you have existing data in `~/.9router`, DurinDoor will detect it on first run and migrate your configuration, accounts, and usage history automatically into the new `~/.durindoor` storage.
+DurinDoor honors the legacy realm. If you have existing data in `<<~/.durindoor>>`, DurinDoor will detect and use it on first run; your configuration, accounts, and usage history will be preserved.
 
 No manual intervention is required: start DurinDoor and your existing gates will be preserved.
 

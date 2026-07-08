@@ -1,4 +1,4 @@
-name: Deploy GitBook to 9router.github.io
+name: Deploy GitBook to GitHub Pages
 
 on:
   push:
@@ -37,12 +37,11 @@ jobs:
       - name: Add .nojekyll
         run: touch out/.nojekyll
 
-      - name: Deploy to 9router.github.io
+      - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           deploy_key: ${{ secrets.GH_PAGES_DEPLOY_KEY }}
-          external_repository: 9router/9router.github.io
-          publish_branch: main
+          publish_branch: gh-pages
           publish_dir: gitbook/out
           force_orphan: true
           user_name: github-actions[bot]

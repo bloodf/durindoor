@@ -28,6 +28,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     : (isXaiApiKey ? "xai-..." : "");
 
   const isAzure = provider === "azure";
+  const isCloudflareAi = provider === "cloudflare-ai";
   const ACCOUNT_ID_PROVIDER_DETAILS = ["cloudflare-ai", "snowflake"];
   const requiresAccountId = ACCOUNT_ID_PROVIDER_DETAILS.includes(provider);
   const accountIdProviderLabel = provider === "snowflake" ? "Snowflake Cortex" : "Cloudflare Workers AI";
@@ -191,13 +192,21 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
 
       let apiKey;
       let providerSpecificData;
-      if (isCloudflareAi && parts.length >= 3) {
-        // Format: name|apiKey|accountId
+      if (isCloudflareAi) {
+        // Codex P2: cloudflare bulk rows must carry an accountId; rows with
+        // fewer than 3 pipe-separated fields are skipped so the modal
+        // can't POST a "successful" key without an account id.
+        if (parts.length < 3) { failed++; continue; }
+        const accountId = parts[parts.length - 1].trim();
+        if (!accountId) { failed++; continue; }
         apiKey = parts.slice(1, -1).join("|").trim();
-        providerSpecificData = { accountId: parts[parts.length - 1].trim() };
+        providerSpecificData = { accountId };
       } else {
         apiKey = parts.length >= 2 ? parts.slice(1).join("|").trim() : parts[0].trim();
       }
+
+      const providerSpecificDataBody =
+        providerSpecificData || buildProviderSpecificData();
 
       try {
         const res = await fetch("/api/providers", {
@@ -209,7 +218,8 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
             name,
             priority: 1,
             testStatus: "unknown",
-            providerSpecificData: buildProviderSpecificData(),            ...(providerSpecificData ? { providerSpecificData } : {}),          }),
+            providerSpecificData: providerSpecificDataBody,
+          }),
         });
         if (res.ok) success++;
         else failed++;

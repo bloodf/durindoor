@@ -8,7 +8,7 @@ import {
   isValidApiKey,
 } from "../services/auth.js";
 import { cacheClaudeHeaders } from "open-sse/utils/claudeHeaderCache.js";
-import { getSettings, getApiKeyByKey } from "@/lib/localDb";
+import { getSettings, getApiKeyByKey, getApiKeyUsageLimitStatus } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
@@ -125,6 +125,16 @@ export async function handleChat(request, clientRawRequest = null) {
         log.warn("AUTH", `API key "${keyData.name}" not allowed to access combo "${modelStr}"`);
         return errorResponse(HTTP_STATUS.FORBIDDEN, `Access denied: combo "${modelStr}" is not allowed for this API key`);
       }
+    }
+  }
+
+  if (apiKey) {
+    const limitStatus = await getApiKeyUsageLimitStatus(apiKey);
+    if (limitStatus.exceeded) {
+      const used = Math.round(limitStatus.usedTokens);
+      const limit = Math.round(limitStatus.limitTokens);
+      log.warn("AUTH", `API key daily token limit exceeded (${used}/${limit})`);
+      return errorResponse(HTTP_STATUS.RATE_LIMITED, `API key daily token limit exceeded (${used}/${limit} tokens)`);
     }
   }
 

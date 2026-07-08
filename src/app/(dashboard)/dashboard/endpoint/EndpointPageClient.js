@@ -22,6 +22,7 @@ export default function APIPageClient({ machineId }) {
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newKeyName, setNewKeyName] = useState("");
+  const [newKeyDailyLimitTokens, setNewKeyDailyLimitTokens] = useState("");
   const [createdKey, setCreatedKey] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
   const [combos, setCombos] = useState([]);
@@ -622,10 +623,12 @@ export default function APIPageClient({ machineId }) {
     if (!newKeyName.trim()) return;
 
     try {
+      const dailyLimitTokens = newKeyDailyLimitTokens.trim() === "" ? null : Number(newKeyDailyLimitTokens);
+      if (dailyLimitTokens !== null && (!Number.isSafeInteger(dailyLimitTokens) || dailyLimitTokens < 0)) return;
       const res = await fetch("/api/keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newKeyName, allowedCombos: newKeyAllowedCombos }),
+        body: JSON.stringify({ name: newKeyName, allowedCombos: newKeyAllowedCombos, dailyLimitTokens }),
       });
       const data = await res.json();
 
@@ -633,6 +636,7 @@ export default function APIPageClient({ machineId }) {
         setCreatedKey(data.key);
         await fetchData();
         setNewKeyName("");
+        setNewKeyDailyLimitTokens("");
         setNewKeyAllowedCombos([]);
         setShowAddModal(false);
       }
@@ -692,6 +696,23 @@ export default function APIPageClient({ machineId }) {
       }
     } catch (error) {
       console.log("Error updating key combos:", error);
+    }
+  };
+
+  const handleUpdateKeyLimit = async (id, value) => {
+    const dailyLimitTokens = value.trim() === "" ? null : Number(value);
+    if (dailyLimitTokens !== null && (!Number.isSafeInteger(dailyLimitTokens) || dailyLimitTokens < 0)) return;
+    try {
+      const res = await fetch(`/api/keys/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dailyLimitTokens }),
+      });
+      if (res.ok) {
+        setKeys(prev => prev.map(k => k.id === id ? { ...k, dailyLimitTokens } : k));
+      }
+    } catch (error) {
+      console.log("Error updating key limit:", error);
     }
   };
 
@@ -1056,6 +1077,19 @@ export default function APIPageClient({ machineId }) {
                     <p className="text-xs text-orange-500 mt-1">Paused</p>
                   )}
                   <div className="flex flex-wrap items-center gap-1 mt-1">
+                    <span className="text-xs text-text-muted">Daily limit:</span>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={key.dailyLimitTokens ?? ""}
+                      onChange={(e) => setKeys(prev => prev.map(k => k.id === key.id ? { ...k, dailyLimitTokens: e.target.value } : k))}
+                      onBlur={(e) => handleUpdateKeyLimit(key.id, e.target.value)}
+                      placeholder="Unlimited"
+                      className="w-24 h-6 text-xs py-0"
+                    />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1 mt-1">
                     <span className="text-xs text-text-muted">Combos:</span>
                     {Array.isArray(key.allowedCombos) && key.allowedCombos.length > 0 ? (
                       key.allowedCombos.map((c) => (
@@ -1113,6 +1147,7 @@ export default function APIPageClient({ machineId }) {
         onClose={() => {
           setShowAddModal(false);
           setNewKeyName("");
+          setNewKeyDailyLimitTokens("");
         }}
       >
         <div className="flex flex-col gap-4">
@@ -1121,6 +1156,15 @@ export default function APIPageClient({ machineId }) {
             value={newKeyName}
             onChange={(e) => setNewKeyName(e.target.value)}
             placeholder="Production Key"
+          />
+          <Input
+            label="Daily token limit"
+            type="number"
+            min="0"
+            step="1"
+            value={newKeyDailyLimitTokens}
+            onChange={(e) => setNewKeyDailyLimitTokens(e.target.value)}
+            placeholder="Unlimited"
           />
           {combos.length > 0 && (
             <div>
@@ -1156,6 +1200,7 @@ export default function APIPageClient({ machineId }) {
               onClick={() => {
                 setShowAddModal(false);
                 setNewKeyName("");
+                setNewKeyDailyLimitTokens("");
               }}
               variant="ghost"
               fullWidth

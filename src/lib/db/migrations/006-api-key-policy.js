@@ -4,7 +4,7 @@
 // Also backfills lifetime per-key totals from existing usageHistory so new
 // limits applied to existing keys start from real usage.
 export default {
-  version: 5,
+  version: 6,
   name: "api-key-policy",
   up(db) {
     const cols = db.all(`PRAGMA table_info(apiKeys)`);

@@ -41,11 +41,6 @@ tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import
 tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import returns login-prompt error when tokens are missing even after fallback
 tests/unit/provider-models-minimax-m3.test.js :: MiniMax-M3 model registration includes MiniMax-M3 in PROVIDER_MODELS.minimax
 tests/unit/provider-models-minimax-m3.test.js :: MiniMax-M3 model registration includes MiniMax-M3 in PROVIDER_MODELS['minimax-cn']
-tests/unit/xai-oauth-service.test.js :: xai/oauth service builds authorize URLs with CLIProxyAPI query extras
-tests/unit/xai-oauth-service.test.js :: xai/oauth service discovers endpoints without custom user-agent headers
-tests/unit/xai-oauth-service.test.js :: xai/oauth service exchanges dashboard codes against the discovered xAI token endpoint
-tests/unit/xai-oauth-service.test.js :: xai/oauth service generates dashboard auth data with CLIProxyAPI PKCE size and discovered endpoints
-tests/unit/xai-oauth-service.test.js :: xai/oauth service validates discovered endpoints are https x.ai URLs
 tests/unit/xai-usage.test.js :: xAI (Grok) usage aggregates tokens and cost per model from usageHistory
 tests/unit/xai-usage.test.js :: xAI (Grok) usage scopes aggregation to the requested connectionId
 tests/unit/agentrouter-provider.test.js :: AgentRouter provider keeps Claude passthrough and context settings stable

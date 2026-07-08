@@ -30,6 +30,20 @@ describe("Claude → Kiro (direct route)", () => {
     expect(second.conversationState.conversationId).toBe("client-session-123");
   });
 
+  it("honors x-claude-code-session-id as the session header", () => {
+    const credentials = {
+      rawHeaders: { "x-claude-code-session-id": "claude-code-session-abc" },
+      connectionId: "conn-b",
+    };
+    const body = { messages: [{ role: "user", content: "hello" }] };
+
+    const first = C2K(body, credentials);
+    const second = C2K(body, credentials);
+
+    expect(first.conversationState.conversationId).toBe("claude-code-session-abc");
+    expect(second.conversationState.conversationId).toBe("claude-code-session-abc");
+  });
+
   it("uses different conversationIds for different client session headers", () => {
     const body = { messages: [{ role: "user", content: "hello" }] };
 

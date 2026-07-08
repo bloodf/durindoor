@@ -89,7 +89,7 @@ const ASSISTANT_CAP_LEN = 50;
 const MAX_ASSISTANT_SESSIONS = 5000;
 
 // Client headers/body fields that carry an upstream session id (priority order)
-const SESSION_HEADER_KEYS = ["x-session-id", "session-id", "session_id", "x-amp-thread-id", "x-client-request-id"];
+const SESSION_HEADER_KEYS = ["x-claude-code-session-id", "x-session-id", "session-id", "session_id", "x-amp-thread-id", "x-client-request-id"];
 const CLAUDE_CODE_SESSION_RE = /_session_([a-f0-9-]+)$/;
 
 function sha16(text) {

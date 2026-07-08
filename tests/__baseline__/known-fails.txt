@@ -21,12 +21,6 @@ tests/unit/kiro-profile-arn-regional.test.js :: fetchKiroProfileArn — regional
 tests/unit/kiro-profile-arn-regional.test.js :: fetchKiroProfileArn — regional endpoint + dispatch shape falls back to the first profile when no ARN matches the region
 tests/unit/kiro-profile-arn-regional.test.js :: fetchKiroProfileArn — regional endpoint + dispatch shape hits codewhisperer.<region>.amazonaws.com with x-amz-target dispatch
 tests/unit/kiro-profile-arn-regional.test.js :: fetchKiroProfileArn — regional endpoint + dispatch shape prefers the profile whose ARN region matches the caller region
-tests/unit/mitm-root-ca.test.js :: MITM Root CA generation creates Root CA files synchronously for direct server startup
-tests/unit/mitm-rootca-autogen.test.js :: MITM Root CA auto-generation (#2224) creates the MITM directory when it does not exist
-tests/unit/mitm-rootca-autogen.test.js :: MITM Root CA auto-generation (#2224) generates rootCA.key and rootCA.crt when both are absent
-tests/unit/mitm-rootca-autogen.test.js :: MITM Root CA auto-generation (#2224) generates when only rootCA.key exists (partial state)
-tests/unit/mitm-rootca-autogen.test.js :: MITM Root CA auto-generation (#2224) is idempotent when valid cert already exists (returns false)
-tests/unit/mitm-rootca-autogen.test.js :: MITM Root CA auto-generation (#2224) regenerates when rootCA.crt is corrupt / unreadable
 tests/unit/openai-to-kiro.test.js :: openaiToKiroRequest basic message conversion should convert a simple text message
 tests/unit/translator-request-normalization.test.js :: request normalization claudeToOpenAIRequest flattens text-only content arrays into string
 tests/unit/translator-request-normalization.test.js :: request normalization filterToOpenAIFormat flattens text-only arrays to string

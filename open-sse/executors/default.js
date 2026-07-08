@@ -84,6 +84,7 @@ function setAuth(headers, spec, token) {
   if (!token) return;
   const scheme = spec.scheme;
   if (scheme === "bearer") headers[spec.header] = `Bearer ${token}`;
+  else if (scheme === "key") headers[spec.header] = `Key ${token}`;
   else if (spec.prefix) headers[spec.header] = `${spec.prefix} ${token}`;
   else headers[spec.header] = token;
 }

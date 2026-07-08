@@ -15,6 +15,7 @@ export default {
     },
   },
   category: "apikey",
+  noAuth: true,
   transport: {
     baseUrl: "https://gen.pollinations.ai/v1/chat/completions",
     baseUrls: ["https://gen.pollinations.ai/v1/chat/completions"],

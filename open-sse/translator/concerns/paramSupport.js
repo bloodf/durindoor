@@ -68,9 +68,17 @@ export function stripUnsupportedParams(provider, model, body) {
         }
       }
     }
-    if (rule.clampToModelMaxOutput) {
-      const ceiling = getCapabilitiesForModel(provider, model).maxOutput;
-      if (Number.isFinite(ceiling) && ceiling > 0) {
+    if (rule.clampToModelMaxOutput || Number.isFinite(rule.maxOutputCap)) {
+      const modelCeiling = getCapabilitiesForModel(provider, model).maxOutput;
+      const candidates = [];
+      if (rule.clampToModelMaxOutput && Number.isFinite(modelCeiling) && modelCeiling > 0) {
+        candidates.push(modelCeiling);
+      }
+      if (Number.isFinite(rule.maxOutputCap) && rule.maxOutputCap > 0) {
+        candidates.push(rule.maxOutputCap);
+      }
+      if (candidates.length > 0) {
+        const ceiling = Math.min(...candidates);
         clampNumber(body, "max_tokens", ceiling);
         clampNumber(body, "max_completion_tokens", ceiling);
         clampNumber(body, "max_output_tokens", ceiling);

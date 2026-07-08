@@ -46,6 +46,25 @@ describe("kiro region helpers", () => {
   });
 });
 
+describe("KiroExecutor.getOrderedBaseUrls region routing", () => {
+  it("keeps the us-east-1 registry baseUrls when no region or profileArn is given", () => {
+    const ex = new KiroExecutor();
+    const urls = ex.getOrderedBaseUrls({ providerSpecificData: { authMethod: "idc" } });
+    expect(urls[0]).toBe("https://codewhisperer.us-east-1.amazonaws.com/generateAssistantResponse");
+  });
+
+  it("routes IdC credentials by profileArn region when no explicit region is set", () => {
+    const ex = new KiroExecutor();
+    const urls = ex.getOrderedBaseUrls({
+      providerSpecificData: {
+        authMethod: "idc",
+        profileArn: "arn:aws:codewhisperer:eu-central-1:123456789:profile/abcdef",
+      },
+    });
+    expect(urls).toEqual(["https://q.eu-central-1.amazonaws.com/generateAssistantResponse"]);
+  });
+});
+
 describe("KiroExecutor.buildUrl region routing", () => {
   it("keeps the us-east-1 registry baseUrl when no/default region", () => {
     const ex = new KiroExecutor();

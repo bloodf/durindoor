@@ -3,11 +3,9 @@ import { PROVIDERS } from "../config/providers.js";
 import { resolveKiroModel } from "../config/kiroConstants.js";
 import { v4 as uuidv4 } from "uuid";
 import { refreshKiroToken } from "../services/tokenRefresh.js";
-import { resolveKiroDataPlaneUrl } from "../config/kiroConstants.js";
+import { resolveKiroDataPlaneUrl, resolveKiroRegion } from "../config/kiroConstants.js";
 import { SSE_DONE, SSE_HEADERS } from "../utils/sseConstants.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
-import { resolveKiroRegion, buildKiroBaseUrls } from "../config/kiroRegions.js";
-
 /**
  * KiroExecutor - Executor for Kiro AI (AWS CodeWhisperer)
  * Uses AWS CodeWhisperer streaming API with AWS EventStream binary format
@@ -68,7 +66,8 @@ export class KiroExecutor extends BaseExecutor {
     // rejected by the hardcoded us-east-1 registry baseUrls (403 "bearer token
     // invalid"), so route to the account's regional Amazon Q endpoint. us-east-1
     // (Builder ID / social / unset) keeps the registry baseUrls + 429 rotation.
-    const regional = resolveKiroDataPlaneUrl(credentials?.providerSpecificData?.region);
+    const region = resolveKiroRegion(credentials);
+    const regional = resolveKiroDataPlaneUrl(region);
     if (regional) return [regional];
 
     const baseUrls = this.getBaseUrls();
@@ -82,7 +81,6 @@ export class KiroExecutor extends BaseExecutor {
       authMethod === "api_key" || authMethod === "external_idp" || authMethod === "idc";
     if (!isCodeWhispererSurface) return baseUrls;
 
-    const region = (credentials?.providerSpecificData?.region || "us-east-1").trim();
     const regionalize = (u) =>
       region && region !== "us-east-1" && u.includes("amazonaws.com")
         ? u.replace(/([a-z]+)\.[a-z0-9-]+\.amazonaws\.com/, `$1.${region}.amazonaws.com`)

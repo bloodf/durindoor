@@ -215,6 +215,12 @@ import p212 from "./x5lab.js";
 import p213 from "./yi.js";
 import p214 from "./zai.js";
 import p215 from "./zenmux.js";
+import p216 from "./alibaba-cn.js";
+import p217 from "./github-models.js";
+import p218 from "./gitlawb-gmi.js";
+import p219 from "./glmt.js";
+import p220 from "./kimi-coding-apikey.js";
+import p221 from "./omniroute-api-cloud.js";
 
 export default [
   p0,
@@ -433,4 +439,10 @@ export default [
   p213,
   p214,
   p215,
+  p216,
+  p217,
+  p218,
+  p219,
+  p220,
+  ...p221,
 ];

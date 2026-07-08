@@ -137,6 +137,9 @@ export function getTargetFormat(provider, credentials = null) {
   if (isAnthropicCompatible(provider)) {
     return "claude";
   }
+  if ((provider === "azure-ai" || provider === "oci") && credentials?.providerSpecificData?.apiType === "responses") {
+    return "openai-responses";
+  }
   const config = getProviderConfig(provider);
   return config.format || "openai";
 }

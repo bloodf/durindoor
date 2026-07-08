@@ -82,7 +82,11 @@ export function normalizeAccountIdPlaceholder(provider, accountId) {
 // Apply a token to a header per scheme (matches legacy: combined always sets, even when undefined).
 function setAuth(headers, spec, token) {
   if (!token) return;
-  headers[spec.header] = spec.scheme === "bearer" ? `Bearer ${token}` : token;
+  const scheme = spec.scheme;
+  if (scheme === "bearer") headers[spec.header] = `Bearer ${token}`;
+  else if (scheme === "key") headers[spec.header] = `Key ${token}`;
+  else if (spec.prefix) headers[spec.header] = `${spec.prefix} ${token}`;
+  else headers[spec.header] = token;
 }
 
 // Resolve auth onto headers from a descriptor.
@@ -165,12 +169,49 @@ export const LOCAL_PROVIDER_DEFAULT_BASE_URLS = {
   "9router": "http://127.0.0.1:20130/v1",
 };
 
+
+const GLMT_MODEL_ALIASES = {
+  "glm-5.2-high": { model: "glm-5.2", reasoningEffort: "high" },
+  "glm-5.2-max": { model: "glm-5.2", reasoningEffort: "max" },
+};
+
+function applyGlmtModelAlias(provider, model, body) {
+  if (provider !== "glmt" || !body || typeof body !== "object") return body;
+  const alias = GLMT_MODEL_ALIASES[model] || GLMT_MODEL_ALIASES[body.model];
+  if (!alias) return body;
+  body.model = alias.model;
+  body.reasoning_effort = alias.reasoningEffort;
+  return body;
+}
+
 export class DefaultExecutor extends BaseExecutor {
   constructor(provider) {
     super(provider, PROVIDERS[provider] || PROVIDERS.openai);
   }
 
+  applyRequestDefaults(body) {
+    const defaults = this.config?.requestDefaults;
+    if (!defaults || !body || typeof body !== "object") return body;
+    if (defaults.maxTokens !== undefined && body.max_tokens === undefined && body.max_completion_tokens === undefined) {
+      body.max_tokens = defaults.maxTokens;
+    }
+    if (defaults.temperature !== undefined && body.temperature === undefined) {
+      body.temperature = defaults.temperature;
+    }
+    if (defaults.thinkingBudgetTokens !== undefined || defaults.thinkingType !== undefined) {
+      const current = body.thinking && typeof body.thinking === "object" ? body.thinking : {};
+      body.thinking = {
+        ...current,
+        ...(current.type === undefined && defaults.thinkingType !== undefined ? { type: defaults.thinkingType } : {}),
+        ...(current.budget_tokens === undefined && defaults.thinkingBudgetTokens !== undefined ? { budget_tokens: defaults.thinkingBudgetTokens } : {}),
+      };
+    }
+    return body;
+  }
+
   transformRequest(model, body, stream, credentials) {
+    this.applyRequestDefaults(body);
+    applyGlmtModelAlias(this.provider, model, body);
     const transformed = this.applyJsonSchemaFallback(body);
 
     if (transformed && typeof transformed === "object") {

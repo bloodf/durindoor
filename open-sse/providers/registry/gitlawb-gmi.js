@@ -12,6 +12,7 @@ export default {
   category: "apikey",
   transport: {
     baseUrl: "https://opengateway.gitlawb.com/v1/chat/completions",
+    probeUsesBaseUrl: true,
     headers: {
       "User-Agent": "OpenClaude/1.0 (linux; x86_64)",
       "X-Title": "OpenClaude CLI",

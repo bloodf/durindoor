@@ -89,8 +89,46 @@ export function buildRegistryProviderProbe(provider, apiKey, providerSpecificDat
 
   if (cfg.format !== "openai") return null;
 
+  if (cfg.validateUrl) {
+    return {
+      url: cfg.validateUrl,
+      options: { headers, signal: AbortSignal.timeout(8000) },
+      fallback: {
+        url: baseUrl,
+        options: {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            model: getDefaultModel(provider) || "test",
+            messages: [{ role: "user", content: "ping" }],
+            max_tokens: 1,
+          }),
+          signal: AbortSignal.timeout(10000),
+        },
+      },
+      accepts: "ok",
+    };
+  }
+
+  if (cfg.probeUsesBaseUrl) {
+    return {
+      url: baseUrl,
+      options: {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          model: getDefaultModel(provider) || "test",
+          messages: [{ role: "user", content: "ping" }],
+          max_tokens: 1,
+        }),
+        signal: AbortSignal.timeout(10000),
+      },
+      accepts: "non-auth-failure",
+    };
+  }
+
   return {
-    url: cfg.validateUrl || baseUrl.replace(/\/chat\/completions$/, "/models").replace(/\/chatbot$/, "/models"),
+    url: baseUrl.replace(/\/chat\/completions$/, "/models").replace(/\/chatbot$/, "/models"),
     options: { headers, signal: AbortSignal.timeout(8000) },
     fallback: {
       url: baseUrl,

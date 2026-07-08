@@ -11,6 +11,19 @@
  *
  * Ported from OmniRoute #6586 (.ts → .js, this fork has no TS toolchain).
  * The 6586 review follow-up also added the `if (!tool) continue;` null guard.
+ *
+ * Codex P2 follow-ups (PR #95):
+ * 1. Apply the request-specific tool map BEFORE the generic reverse map, so
+ *    aliases the cloak introduced (e.g. `Bash` for `run_command`) get
+ *    de-cloaked to the client's original name, not the generic `bash`.
+ * 2. When the operator kill-switch is set and the request already carries
+ *    `_toolNameMap` from an earlier translation, return that existing map
+ *    (not an empty Map) so response tool calls can still be de-cloaked.
+ * 3. Reverse tool aliases longest-first so substrings don't shadow
+ *    longer ones (e.g. `Edit` should not replace `MultiEdit`).
+ * 4. Restrict response remapping to JSON tool-name fields, not free text,
+ *    so a model response that says "Run Bash" is not delivered as
+ *    "Run bash".
  */
 
 import { EXTRA_TOOL_RENAME_MAP } from "./claudeCodeExtraRemap.js";
@@ -39,6 +52,14 @@ const TOOL_RENAME_MAP = {
 const REVERSE_MAP = {};
 for (const [k, v] of Object.entries(TOOL_RENAME_MAP)) {
   REVERSE_MAP[v] = k;
+}
+
+// Codex P2: when iterating reverse map, longest alias first so substrings
+// like "Edit" do not shadow "MultiEdit". Sort by entry key length desc.
+function reverseEntriesLongestFirst() {
+  return Object.entries(REVERSE_MAP).sort(
+    ([a], [b]) => b.length - a.length,
+  );
 }
 
 function getRequestToolNameMap(body) {
@@ -145,22 +166,97 @@ export function remapToolNamesInRequest(body) {
   return hasLowercase || hasTitleCase;
 }
 
-export function remapToolNamesInResponse(text, forceLowercase = true, toolNameMap) {
-  if (!text) return text;
-  let out = text;
-  for (const [titleCase, lowercase] of Object.entries(REVERSE_MAP)) {
-    if (out.includes(titleCase)) {
-      out = out.split(titleCase).join(forceLowercase ? lowercase : titleCase);
+/**
+ * Codex P2: restrict reverse-map to JSON tool-name fields. We do not rewrite
+ * free text, so a model response like "Run Bash" is NOT delivered as
+ * "Run bash". The caller passes a response payload object (or JSON string);
+ * we walk the structure and only mutate the `name`, `toolName`, and
+ * `tool_call_id` fields on tool_use / tool_result / tool blocks.
+ *
+ * Codex P2 also fixes the request-specific map: the per-request tool map
+ * is applied FIRST so that aliases the cloak introduced (e.g. `Bash` for
+ * `run_command`) are de-cloaked to the client's original name, not the
+ * generic reverse map's `bash`.
+ */
+const TOOL_NAME_KEYS = new Set(["name", "toolName", "tool_name"]);
+const TOOL_BLOCK_TYPES = new Set(["tool_use", "tool_result", "toolCall", "function"]);
+
+function applyNameReplacementsToObject(value, orderedReplacements, perRequest, depth = 0) {
+  if (value === null || value === undefined) return;
+  if (depth > 12) return; // safety: structured payloads don't go this deep
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      applyNameReplacementsToObject(item, orderedReplacements, perRequest, depth + 1);
     }
+    return;
   }
-  if (toolNameMap && toolNameMap.size) {
-    for (const [titleCase, original] of toolNameMap.entries()) {
-      if (out.includes(titleCase)) {
-        out = out.split(titleCase).join(original);
+  if (typeof value !== "object") return;
+
+  for (const key of Object.keys(value)) {
+    if (
+      TOOL_NAME_KEYS.has(key) &&
+      typeof value[key] === "string" &&
+      /^[A-Z]/.test(value[key])
+    ) {
+      // 1) Per-request map first.
+      if (perRequest && perRequest.size) {
+        const perReqHit = perRequest.get(value[key]);
+        if (perReqHit) {
+          value[key] = perReqHit;
+        } else {
+          // 2) Generic reverse map.
+          for (const [titleCase, lowercase] of orderedReplacements) {
+            if (value[key] === titleCase) {
+              value[key] = lowercase;
+              break;
+            }
+          }
+        }
+      } else {
+        for (const [titleCase, lowercase] of orderedReplacements) {
+          if (value[key] === titleCase) {
+            value[key] = lowercase;
+            break;
+          }
+        }
       }
+    } else if (typeof value[key] === "object") {
+      // Recurse into nested objects/arrays.
+      applyNameReplacementsToObject(value[key], orderedReplacements, perRequest, depth + 1);
     }
   }
-  return out;
+}
+
+export function remapToolNamesInResponse(payload, forceLowercase = true, toolNameMap) {
+  if (payload === null || payload === undefined) return payload;
+
+  const ordered = reverseEntriesLongestFirst();
+  // Per Codex P2: when forceLowercase is false, generic reverse map should
+  // not lowercase (the response may legitimately contain the canonical
+  // TitleCase alias for the client's own canonical name).
+  const effective = forceLowercase
+    ? ordered
+    : []; // skip generic lowercasing when caller asks to preserve case
+
+  // Parse JSON if the caller passed a string; otherwise walk the object.
+  let parsed = payload;
+  let ownsParsed = false;
+  if (typeof payload === "string") {
+    try {
+      parsed = JSON.parse(payload);
+      ownsParsed = true;
+    } catch {
+      // Not JSON — payload is a free-text assistant message. We do NOT
+      // rewrite free text under any circumstance (Codex P2 #4). Return as-is.
+      return payload;
+    }
+  }
+  if (parsed === null || typeof parsed !== "object") {
+    return ownsParsed ? payload : parsed;
+  }
+
+  applyNameReplacementsToObject(parsed, effective, toolNameMap);
+  return ownsParsed ? JSON.stringify(parsed) : parsed;
 }
 
 export { TOOL_RENAME_MAP, REVERSE_MAP };
@@ -207,14 +303,21 @@ export function isAnthropicServerToolType(type) {
 }
 
 export function cloakThirdPartyToolNames(body, options) {
-  // Operator kill-switch (documented in .env.example / ENVIRONMENT.md).
-  if (process.env.CLAUDE_DISABLE_TOOL_NAME_CLOAK === "true") {
-    return new Map();
-  }
-  const shouldCloak = (name) =>
-    needsThirdPartyCloak(name) && !(options?.skip ? options.skip(name) : false);
   const tools = body.tools;
   const serverToolNames = collectServerToolNames(tools);
+  const existingMap =
+    body._toolNameMap instanceof Map ? body._toolNameMap : null;
+
+  // Codex P2: when the kill-switch is on, return the existing per-request
+  // map if the request already carried one (so the response path can
+  // still de-cloak tool names introduced by an earlier translation).
+  // Do not perform any further cloaking in this path.
+  if (process.env.CLAUDE_DISABLE_TOOL_NAME_CLOAK === "true") {
+    return existingMap ?? new Map();
+  }
+
+  const shouldCloak = (name) =>
+    needsThirdPartyCloak(name) && !(options?.skip ? options.skip(name) : false);
 
   const used = new Set();
   if (Array.isArray(tools)) {
@@ -222,8 +325,6 @@ export function cloakThirdPartyToolNames(body, options) {
       if (tool && typeof tool.name === "string") used.add(tool.name);
     }
   }
-  const existingMap =
-    body._toolNameMap instanceof Map ? body._toolNameMap : null;
   if (existingMap) {
     for (const alias of existingMap.keys()) used.add(alias);
   }

@@ -32,6 +32,12 @@ durindoor --skip-update
 durindoor --help
 ```
 
+> `--help` and `--version` (`-h`, `-v`) are evaluated above all runtime
+> hooks (SQLite self-heal, tray runtime, MITM hosts cleanup, settings
+> lookup), so a cold `durindoor --help` / `durindoor --version` does not
+> initialise native deps or open any network calls — they exit before
+> anything else has a chance to run.
+
 ## Data Location
 
 Unless `DATA_DIR` is set, the CLI uses the compatibility data directory:

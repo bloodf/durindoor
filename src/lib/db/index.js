@@ -31,6 +31,9 @@ export {
 export {
   getApiKeys, getApiKeyById, getApiKeyByKey, createApiKey, updateApiKey, deleteApiKey, validateApiKey, getApiKeyUsageLimitStatus,
 } from "./repos/apiKeysRepo.js";
+export {
+  getApiKeyUsageTotals, incrementApiKeyUsageSync,
+} from "./repos/apiKeyUsageTotalsRepo.js";
 
 // Combos
 export {

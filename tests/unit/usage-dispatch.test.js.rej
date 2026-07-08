@@ -1,0 +1,9 @@
+diff a/tests/unit/usage-dispatch.test.js b/tests/unit/usage-dispatch.test.js	(rejected hunks)
+@@ -16,6 +16,7 @@ const SUPPORTED = [
+   "github", "gemini-cli", "antigravity", "claude", "codex", "kiro",
+   "qoder", "qwen", "iflow", "ollama", "glm", "glm-cn",
+   "minimax", "minimax-cn", "vercel-ai-gateway",
++  "xai", "grok-web",
+ ];
+ 
+ describe("usage dispatch", () => {

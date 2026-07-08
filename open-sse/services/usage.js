@@ -28,6 +28,8 @@ import {
   getGlmUsage,
   getVercelAiGatewayUsage,
   getQoderUsage,
+  getXaiUsage,
+  getGrokWebUsage,
 } from "./usage/misc.js";
 
 /**

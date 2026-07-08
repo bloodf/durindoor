@@ -28,10 +28,6 @@ tests/unit/mitm-rootca-autogen.test.js :: MITM Root CA auto-generation (#2224) g
 tests/unit/mitm-rootca-autogen.test.js :: MITM Root CA auto-generation (#2224) is idempotent when valid cert already exists (returns false)
 tests/unit/mitm-rootca-autogen.test.js :: MITM Root CA auto-generation (#2224) regenerates when rootCA.crt is corrupt / unreadable
 tests/unit/openai-to-kiro.test.js :: openaiToKiroRequest basic message conversion should convert a simple text message
-tests/unit/translator-request-normalization.test.js :: request normalization claudeToOpenAIRequest flattens text-only content arrays into string
-tests/unit/translator-request-normalization.test.js :: request normalization filterToOpenAIFormat flattens text-only arrays to string
-tests/unit/translator-request-normalization.test.js :: request normalization parseSSELine supports provider raw NDJSON stream lines
-tests/unit/translator-request-normalization.test.js :: request normalization translateRequest keeps /v1/messages Claude->OpenAI text payloads string-safe
 tests/unit/kiro-region.test.js :: fetchKiroProfileArn region host queries us-east-1 codewhisperer by default
 tests/unit/kiro-region.test.js :: fetchKiroProfileArn region host queries the regional Amazon Q host for a non-default region
 tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import returns descriptive error if macOS db file exists but cannot be opened

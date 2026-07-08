@@ -135,7 +135,17 @@ export async function handleChat(request, clientRawRequest = null) {
   }
 
   if (apiKey) {
-    const limitStatus = await getApiKeyUsageLimitStatus(apiKey);
+    let limitStatus;
+    try {
+      limitStatus = await getApiKeyUsageLimitStatus(apiKey);
+    } catch (err) {
+      if (err?.message?.includes("no such table: apiKeyUsageTotals")) {
+        limitStatus = { enforced: false, exceeded: false };
+      } else {
+        log.error("AUTH", "Failed to load API key usage limit status", err);
+        return errorResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, "Database temporarily unavailable");
+      }
+    }
     if (limitStatus.exceeded) {
       const used = Math.round(limitStatus.usedTokens);
       const limit = Math.round(limitStatus.limitTokens);

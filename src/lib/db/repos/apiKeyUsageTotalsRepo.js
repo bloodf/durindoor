@@ -1,5 +1,9 @@
 import { getAdapter } from "../driver.js";
 
+function isMissingApiKeyUsageTotalsTable(err) {
+  return err?.message?.includes("no such table: apiKeyUsageTotals");
+}
+
 /**
  * Get lifetime usage totals for a single API key.
  * @param {string} apiKeyId
@@ -7,15 +11,22 @@ import { getAdapter } from "../driver.js";
  */
 export async function getApiKeyUsageTotals(apiKeyId) {
   const db = await getAdapter();
-  const row = db.get(`SELECT * FROM apiKeyUsageTotals WHERE apiKeyId = ?`, [apiKeyId]);
-  if (!row) return { totalTokens: 0, totalCost: 0, totalRequests: 0, updatedAt: null };
-  return {
-    apiKeyId: row.apiKeyId,
-    totalTokens: row.totalTokens || 0,
-    totalCost: row.totalCost || 0,
-    totalRequests: row.totalRequests || 0,
-    updatedAt: row.updatedAt || null,
-  };
+  try {
+    const row = db.get(`SELECT * FROM apiKeyUsageTotals WHERE apiKeyId = ?`, [apiKeyId]);
+    if (!row) return { totalTokens: 0, totalCost: 0, totalRequests: 0, updatedAt: null };
+    return {
+      apiKeyId: row.apiKeyId,
+      totalTokens: row.totalTokens || 0,
+      totalCost: row.totalCost || 0,
+      totalRequests: row.totalRequests || 0,
+      updatedAt: row.updatedAt || null,
+    };
+  } catch (err) {
+    if (isMissingApiKeyUsageTotalsTable(err)) {
+      return { totalTokens: 0, totalCost: 0, totalRequests: 0, updatedAt: null };
+    }
+    throw err;
+  }
 }
 
 /**
@@ -24,14 +35,21 @@ export async function getApiKeyUsageTotals(apiKeyId) {
  */
 export async function getAllApiKeyUsageTotals() {
   const db = await getAdapter();
-  const rows = db.all(`SELECT * FROM apiKeyUsageTotals ORDER BY updatedAt DESC`);
-  return rows.map((row) => ({
-    apiKeyId: row.apiKeyId,
-    totalTokens: row.totalTokens || 0,
-    totalCost: row.totalCost || 0,
-    totalRequests: row.totalRequests || 0,
-    updatedAt: row.updatedAt || null,
-  }));
+  try {
+    const rows = db.all(`SELECT * FROM apiKeyUsageTotals ORDER BY updatedAt DESC`);
+    return rows.map((row) => ({
+      apiKeyId: row.apiKeyId,
+      totalTokens: row.totalTokens || 0,
+      totalCost: row.totalCost || 0,
+      totalRequests: row.totalRequests || 0,
+      updatedAt: row.updatedAt || null,
+    }));
+  } catch (err) {
+    if (isMissingApiKeyUsageTotalsTable(err)) {
+      return [];
+    }
+    throw err;
+  }
 }
 
 /**
@@ -45,22 +63,29 @@ export async function getAllApiKeyUsageTotals() {
 export function incrementApiKeyUsageSync(db, apiKeyId, { tokens, cost }) {
   if (!apiKeyId) return;
   const now = new Date().toISOString();
-  const row = db.get(`SELECT * FROM apiKeyUsageTotals WHERE apiKeyId = ?`, [apiKeyId]);
-  if (row) {
-    db.run(
-      `UPDATE apiKeyUsageTotals SET totalTokens = ?, totalCost = ?, totalRequests = ?, updatedAt = ? WHERE apiKeyId = ?`,
-      [
-        (row.totalTokens || 0) + (tokens || 0),
-        (row.totalCost || 0) + (cost || 0),
-        (row.totalRequests || 0) + 1,
-        now,
-        apiKeyId,
-      ]
-    );
-  } else {
-    db.run(
-      `INSERT INTO apiKeyUsageTotals(apiKeyId, totalTokens, totalCost, totalRequests, updatedAt) VALUES(?, ?, ?, ?, ?)`,
-      [apiKeyId, tokens || 0, cost || 0, 1, now]
-    );
+  try {
+    const row = db.get(`SELECT * FROM apiKeyUsageTotals WHERE apiKeyId = ?`, [apiKeyId]);
+    if (row) {
+      db.run(
+        `UPDATE apiKeyUsageTotals SET totalTokens = ?, totalCost = ?, totalRequests = ?, updatedAt = ? WHERE apiKeyId = ?`,
+        [
+          (row.totalTokens || 0) + (tokens || 0),
+          (row.totalCost || 0) + (cost || 0),
+          (row.totalRequests || 0) + 1,
+          now,
+          apiKeyId,
+        ]
+      );
+    } else {
+      db.run(
+        `INSERT INTO apiKeyUsageTotals(apiKeyId, totalTokens, totalCost, totalRequests, updatedAt) VALUES(?, ?, ?, ?, ?)`,
+        [apiKeyId, tokens || 0, cost || 0, 1, now]
+      );
+    }
+  } catch (err) {
+    if (isMissingApiKeyUsageTotalsTable(err)) {
+      return;
+    }
+    throw err;
   }
 }

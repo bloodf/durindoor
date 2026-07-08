@@ -441,7 +441,7 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
 
   const userInputMessage = {
     content: finalContent,
-    modelId: upstreamModel,
+    modelId: kiroModelId,  // Codex P1: Kiro requires dash notation; matches kiroModelId used in history backfill + _kiroUpstreamModel
     origin: "AI_EDITOR",
     ...(currentMessage?.userInputMessage?.userInputMessageContext && {
       userInputMessageContext:

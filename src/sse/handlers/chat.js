@@ -9,6 +9,8 @@ import {
 } from "../services/auth.js";
 import { cacheClaudeHeaders } from "open-sse/utils/claudeHeaderCache.js";
 import { getSettings, getApiKeyByKey, getApiKeyUsageLimitStatus } from "@/lib/localDb";
+import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
+import { appendPxpipeEvent } from "@/lib/pxpipe/events.js";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
@@ -325,6 +327,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       cavemanLevel: chatSettings.cavemanLevel || "full",
       ponytailEnabled: !!chatSettings.ponytailEnabled,
       ponytailLevel: chatSettings.ponytailLevel || "full",
+      pxpipeEnabled: !!chatSettings.pxpipeEnabled,
+      pxpipeMinChars: chatSettings.pxpipeMinChars,
+      pxpipeTimeoutMs: chatSettings.pxpipeTimeoutMs,
+      pxpipeTransform: chatSettings.pxpipeEnabled ? await getPxpipeTransform() : null,
+      onPxpipeEvent: appendPxpipeEvent,
       providerThinking,
       providerConcurrencyLimit: chatSettings.providerConcurrencyLimits,
       // Detect source format by endpoint + body

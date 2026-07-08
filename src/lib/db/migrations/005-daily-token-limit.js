@@ -1,5 +1,5 @@
 export default {
-  version: 4,
+  version: 5,
   name: "add daily token limit to apiKeys",
   up(db) {
     try {

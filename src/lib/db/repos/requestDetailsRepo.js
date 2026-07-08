@@ -108,6 +108,7 @@ async function flushToDatabase() {
             status: item.status || null,
             latency: item.latency || {},
             tokens: item.tokens || {},
+            pxpipe: item.pxpipe || undefined,
             request: truncateRequestField(item.request, config.maxJsonSize),
             providerRequest: truncateRequestField(item.providerRequest, config.maxJsonSize),
             providerResponse: truncateField(item.providerResponse, config.maxJsonSize),

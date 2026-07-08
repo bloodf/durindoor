@@ -177,7 +177,6 @@ function geminiToOpenAIRequestFixed(model, body, stream) {
   }
 
   const splitContents = [];
-  const seenToolCallIds = new Set();
   for (const content of body.contents) {
     if (!content || !Array.isArray(content.parts)) {
       splitContents.push(content);
@@ -186,34 +185,18 @@ function geminiToOpenAIRequestFixed(model, body, stream) {
 
     const hasFunctionResponse = content.parts.some(p => p && p.functionResponse);
     if (!hasFunctionResponse) {
-      for (const part of content.parts) {
-        if (part?.functionCall) {
-          seenToolCallIds.add(part.functionCall.id || `call_${part.functionCall.name}`);
-        }
-      }
       splitContents.push(content);
       continue;
     }
 
     for (const part of content.parts) {
       if (part && part.functionResponse) {
-        const toolCallId = part.functionResponse.id || `call_${part.functionResponse.name}`;
-        if (seenToolCallIds.has(toolCallId)) {
-          splitContents.push({ ...content, parts: [part] });
-        }
+        splitContents.push({ ...content, parts: [part] });
       }
     }
     const nonFRParts = content.parts.filter(p => !(p && p.functionResponse));
-    const toolCallParts = nonFRParts.filter(p => p && p.functionCall);
-    const otherParts = nonFRParts.filter(p => !(p && p.functionCall));
-    if (otherParts.length > 0) {
-      splitContents.push({ ...content, parts: otherParts });
-    }
-    if (toolCallParts.length > 0) {
-      for (const part of toolCallParts) {
-        seenToolCallIds.add(part.functionCall.id || `call_${part.functionCall.name}`);
-      }
-      splitContents.push({ ...content, role: GEMINI_ROLE.MODEL, parts: toolCallParts });
+    if (nonFRParts.length > 0) {
+      splitContents.push({ ...content, parts: nonFRParts });
     }
   }
 

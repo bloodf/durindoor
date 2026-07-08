@@ -1,111 +1,73 @@
-<p align="center">
-  <img src="assets/durindoor-banner.png"
-       alt="DurinDoor - One guarded gateway for every AI provider"
-       width="100%">
-</p>
+![DurinDoor](public/durindoor-logo.png)
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)"
-            srcset="assets/durindoor-wordmark.png">
-    <source media="(prefers-color-scheme: light)"
-            srcset="assets/durindoor-wordmark-light.png">
-    <img src="assets/durindoor-wordmark-universal.png"
-         alt="DurinDoor - Speak, friend, and enter"
-         width="720">
-  </picture>
-</p>
+# DurinDoor — Forge Your AI Gateway
 
-<p align="center">
-  <em>One guarded gateway for every AI provider.</em>
-</p>
+[![npm](https://img.shields.io/npm/v/durindoor.svg)](https://www.npmjs.com/package/durindoor)
+[![License](https://img.shields.io/github/license/bloodf/durindoor.svg)](https://github.com/bloodf/durindoor/blob/main/LICENSE)
+[![Stars](https://img.shields.io/github/stars/bloodf/durindoor.svg)](https://github.com/bloodf/durindoor/stargazers)
+[![CI](https://img.shields.io/github/actions/workflow/status/bloodf/durindoor/ci.yml?branch=main)](https://github.com/bloodf/durindoor/actions)
 
-<p align="center">
-  <a href="docs/getting-started/quick-start.md"><strong>Quick Start</strong></a>
-  ·
-  <a href="docs/README.md"><strong>Documentation</strong></a>
-  ·
-  <a href="https://github.com/bloodf/durindoor/issues"><strong>Issues</strong></a>
-</p>
+---
 
-DurinDoor is a self-hosted AI gateway that gives developer tools and applications one stable API in front of many upstream AI providers. It exposes OpenAI-compatible endpoints, manages provider credentials, translates request and response formats, supports fallback combos, and records usage in a local dashboard.
+DurinDoor is a self-hosted AI gateway that unifies the realm of LLM providers behind a single OpenAI-compatible API. Forge one gateway to rule them all — connect OpenAI, Anthropic, Google, and many others, then route your tools through a single endpoint with unified billing, usage tracking, and fallback logic.
 
-DurinDoor is a fork of 9Router. Some compatibility identifiers intentionally remain so existing installations can migrate safely.
+## Table of Contents
+
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Supported Providers](#supported-providers)
+- [Migrating from durindoor](#migrating-from-durindoor)
+- [Contributing](#contributing)
+- [License](#license)
+- [Acknowledgments](#acknowledgments)
+
+## Features
+
+- **Chat & Completions** — OpenAI-compatible `/v1/chat/completions` and `/v1/completions` endpoint.
+- **Embeddings** — Route embedding requests to any supported provider.
+- **Image Generation** — Generate images through providers that support image models.
+- **Text-to-Speech & Speech-to-Text** — Unified TTS and STT routing.
+- **Web Search & Fetch** — Built-in web search and fetch tooling.
+- **MCP Gateway** — Expose Model Context Protocol servers through a single gateway.
+- **Provider Combos** — Combine multiple providers into failover and load-balanced sets.
+- **MITM Proxy** — Intercept and inspect AI traffic for debugging or transformation.
+- **Usage Tracking** — Keep a ledger of tokens, requests, and cost across accounts.
+- **Multi-Account Management** — Rotate keys and manage several accounts per provider.
 
 ## Quick Start
 
+Install the DurinDoor CLI globally and step through the gate:
+
 ```bash
-npm install -g durindoor
+npm i -g durindoor
 durindoor
 ```
 
-Open the dashboard:
+Then open your browser and enter the dashboard:
 
-```text
-http://localhost:20128/dashboard
+```
+http://localhost:20128
 ```
 
-Use this base URL in OpenAI-compatible clients:
+From the dashboard, add providers, create an API key, and point your tools at `http://localhost:20128/v1`.
 
-```text
-http://localhost:20128/v1
-```
+## Installation
 
-## Documentation
-
-The canonical English documentation is plain Markdown under [`docs/`](docs/README.md). Start with:
-
-- [Quick Start](docs/getting-started/quick-start.md)
-- [Installation](docs/getting-started/installation.md)
-- [Usage Guide](docs/guides/usage.md)
-- [Environment Variables](docs/reference/environment.md)
-- [API Reference](docs/reference/api.md)
-- [Provider Connections](docs/providers/subscription.md)
-- [Provider Nodes and Custom Providers](docs/providers/cheap.md)
-- [Combos and Fallback](docs/features/combos.md)
-- [Integrations](docs/integration/other-tools.md)
-- [Deployment](docs/deployment/cloud.md)
-- [Security](docs/operations/security.md)
-- [Contributing](docs/development/contributing.md)
-- [Troubleshooting](docs/troubleshooting.md)
-
-Repository-level documentation is indexed in [`docs/README.md`](docs/README.md).
-
-## Core Features
-
-- OpenAI-compatible API routes for chat, responses, messages, models, embeddings, images, audio, search, fetch, moderation, reranking, and token counting.
-- Provider connections for OAuth, API key, cookie-backed, local, and compatible providers.
-- Custom OpenAI-compatible and Anthropic-compatible provider nodes.
-- Model aliases and combo fallback chains.
-- Multi-account provider fallback.
-- Request and response translation across supported provider formats.
-- Usage, cost, quota, request log, and provider limit views.
-- CLI tool helpers for common coding tools.
-- Optional MITM, tunnel, proxy pool, token saver, and MCP gateway surfaces.
-
-## Install from Source
+### npm (global)
 
 ```bash
-git clone https://github.com/bloodf/durindoor.git
-cd durindoor
-npm install --no-audit --no-fund
-npm run build
-npm start
+npm i -g durindoor
+durindoor
 ```
 
-For development:
+### Docker
+
+DurinDoor provides a Docker image for those who prefer containers. Pull and run:
 
 ```bash
-npm run dev
-```
-
-The development server uses port `20127`.
-
-## Docker
-
-Replace `<version>` with a published release image tag, for example `0.5.18`.
-
-```bash
+docker pull ghcr.io/bloodf/durindoor:latest
 docker run -d \
   --name durindoor \
   -p 20128:20128 \
@@ -113,31 +75,63 @@ docker run -d \
   -e HOSTNAME=0.0.0.0 \
   -e DATA_DIR=/app/data \
   -v durindoor-data:/app/data \
-  ghcr.io/bloodf/durindoor:<version>
+  ghcr.io/bloodf/durindoor:latest
 ```
 
-Read [DOCKER.md](DOCKER.md) and [Cloud and Docker Deployment](docs/deployment/cloud.md) before exposing a deployment to a network.
+> DurinDoor's Docker image is `ghcr.io/bloodf/durindoor`. The `docker-compose.yml` in this repository is still being rebranded from the upstream project; use the `docker run` command above or compose your own service file with the `ghcr.io/bloodf/durindoor` image.
+
+### From source
+
+```bash
+git clone https://github.com/bloodf/durindoor.git
+cd durindoor
+npm install
+npm run build
+npm start
+```
 
 ## Configuration
 
-Important environment variables:
+DurinDoor is configured through environment variables. Set them in your shell, in a `.env` file, or in your container orchestrator.
 
-| Variable | Description |
-| --- | --- |
-| `PORT` | Gateway port. Default production port is `20128`. |
-| `DATA_DIR` | Persistent storage directory. Default remains `~/.9router` for compatibility. |
-| `JWT_SECRET` | Dashboard session signing secret. Set explicitly in production. |
-| `API_KEY_SECRET` | Secret used for generated API key CRC validation. Set explicitly in production. |
-| `INITIAL_PASSWORD` | Initial dashboard password. Set explicitly before remote exposure. |
-| `NEXT_PUBLIC_BASE_URL` | Browser-visible base URL. |
+| Variable | Default | Description |
+| --- | --- | --- |
+| `PORT` | `20128` | HTTP port the gateway listens on. |
+| `HOSTNAME` | `0.0.0.0` | Network interface to bind. |
+| `DATA_DIR` | `<<~/.durindoor>>` (legacy/migration compatibility) | Persistent storage directory. |
+| `MCP_GATEWAY_OAUTH_PUBLIC_URL` | — | Public URL used for MCP Gateway OAuth callbacks. |
+| `NODE_ENV` | `production` | Runtime environment (`development` or `production`). |
+| `NEXT_PUBLIC_BASE_URL` | `http://localhost:20128` | Public base URL of the dashboard. |
 
-## Migration from 9Router
+Run `durindoor --help` to see all CLI options and flags.
 
-Back up the existing data directory, start DurinDoor with the same or copied `DATA_DIR`, and verify providers, API keys, combos, and usage in the dashboard. The legacy data path and some names are kept intentionally for migration compatibility.
+## Supported Providers
+
+DurinDoor supports a wide fellowship of AI providers, including:
+
+- OpenAI
+- Anthropic
+- Google (Gemini / Vertex AI)
+- Azure OpenAI
+- Mistral
+- Cohere
+- Groq
+- Together AI
+- OpenRouter
+- Replicate
+- And more through custom configuration
+
+Check the dashboard **Providers** page for the full list and connection instructions.
+
+## Migrating from durindoor
+
+DurinDoor honors the legacy realm. If you have existing data in `<<~/.durindoor>>`, DurinDoor will detect and use it on first run; your configuration, accounts, and usage history will be preserved.
+
+No manual intervention is required: start DurinDoor and your existing gates will be preserved.
 
 ## Contributing
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/development/contributing.md](docs/development/contributing.md) before opening pull requests. Use conventional commits and target `dev` unless a maintainer asks otherwise.
+We welcome travelers and tinkerers. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening an issue or pull request. All commits must follow the [Conventional Commits](https://www.conventionalcommits.org/) standard so the changelog remains clear and true.
 
 ## License
 
@@ -145,4 +139,6 @@ DurinDoor is released under the [MIT License](LICENSE).
 
 ## Acknowledgments
 
-DurinDoor builds on [9Router](https://github.com/decolua/9router). The project keeps compatibility where it protects users during migration, while the canonical documentation and package identity now use DurinDoor.
+DurinDoor is a fork of [9router](https://github.com/decolua/9router), created by [decolua](https://github.com/decolua). We are grateful for the foundation they forged.
+
+DurinDoor expands on that foundation with enhanced features, a new identity, and a focus on keeping the doors of your AI stack open.

@@ -65,6 +65,29 @@ describe("DB SQLite layer — public API parity", () => {
     expect(await sqliteDb.getApiKeyById(k.id)).toBeNull();
   });
 
+  it("apiKeys: daily usage limit status uses today's API-key tokens", async () => {
+    const k = await sqliteDb.createApiKey("limited-key", "machine-abc", [], 100);
+    let status = await sqliteDb.getApiKeyUsageLimitStatus(k.key);
+    expect(status.enforced).toBe(true);
+    expect(status.exceeded).toBe(false);
+
+    await sqliteDb.saveRequestUsage({
+      provider: "openai",
+      model: "gpt-4o",
+      apiKey: k.key,
+      tokens: { prompt_tokens: 60, completion_tokens: 30, reasoning_tokens: 20, cost_usd: 0.2 },
+    });
+
+    status = await sqliteDb.getApiKeyUsageLimitStatus(k.key);
+    expect(status.usedTokens).toBe(110);
+    expect(status.exceeded).toBe(true);
+
+    await sqliteDb.updateApiKey(k.id, { dailyLimitTokens: null });
+    status = await sqliteDb.getApiKeyUsageLimitStatus(k.key);
+    expect(status.enforced).toBe(false);
+    await sqliteDb.deleteApiKey(k.id);
+  });
+
   it("providerConnections: CRUD + reorder by priority", async () => {
     const c1 = await sqliteDb.createProviderConnection({ provider: "test", authType: "apikey", name: "a", apiKey: "k1" });
     const c2 = await sqliteDb.createProviderConnection({ provider: "test", authType: "apikey", name: "b", apiKey: "k2" });

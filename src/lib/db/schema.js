@@ -72,9 +72,6 @@ export const TABLES = {
     ],
   },
   apiKeys: {
-    // Declarative schema. The `expiresAt` column is currently added by
-    // migrations/004-api-key-expiry.js; keeping it here ensures fresh DBs
-    // created by the initial migration include it from the start.
     columns: {
       id: "TEXT PRIMARY KEY",
       key: "TEXT UNIQUE NOT NULL",
@@ -82,9 +79,8 @@ export const TABLES = {
       machineId: "TEXT",
       isActive: "INTEGER DEFAULT 1",
       allowedCombos: "TEXT",
-      policy: "TEXT",
+      dailyLimitTokens: "INTEGER",
       createdAt: "TEXT NOT NULL",
-      expiresAt: "TEXT",
     },
     indexes: ["CREATE INDEX IF NOT EXISTS idx_ak_key ON apiKeys(key)"],
   },
@@ -178,16 +174,6 @@ export const TABLES = {
       dateKey: "TEXT PRIMARY KEY",
       data: "TEXT NOT NULL",
     },
-  },
-  apiKeyUsageTotals: {
-    columns: {
-      apiKeyId: "TEXT PRIMARY KEY",
-      totalTokens: "INTEGER DEFAULT 0",
-      totalCost: "REAL DEFAULT 0",
-      totalRequests: "INTEGER DEFAULT 0",
-      updatedAt: "TEXT",
-    },
-    indexes: ["CREATE INDEX IF NOT EXISTS idx_akut_key ON apiKeyUsageTotals(apiKeyId)"],
   },
   requestDetails: {
     columns: {

@@ -295,6 +295,10 @@ export function formatCost(cost) {
 export function calculateCostFromTokens(tokens, pricing) {
   if (!tokens || !pricing) return 0;
 
+  const directCost = tokens.cost_usd ?? tokens.cost_in_usd;
+  if (Number.isFinite(Number(directCost))) return Number(directCost);
+  if (Number.isFinite(Number(tokens.cost_in_usd_ticks))) return Number(tokens.cost_in_usd_ticks) / 1_000_000_000_000;
+
   let cost = 0;
 
   const inputTokens = tokens.prompt_tokens || tokens.input_tokens || 0;

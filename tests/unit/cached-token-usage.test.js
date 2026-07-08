@@ -118,6 +118,11 @@ describe("calculateCostFromTokens (canonical inclusive convention)", () => {
     const cost = calculateCostFromTokens({ prompt_tokens: 100, completion_tokens: 50 }, pricing);
     expect(cost).toBeCloseTo((100 * 3 + 50 * 15) / 1_000_000, 12);
   });
+
+  it("trusts provider-reported dollar cost when available", () => {
+    expect(calculateCostFromTokens({ prompt_tokens: 100, completion_tokens: 50, cost_in_usd: 0.123 }, pricing)).toBe(0.123);
+    expect(calculateCostFromTokens({ prompt_tokens: 100, completion_tokens: 50, cost_in_usd_ticks: 123000000000 }, pricing)).toBe(0.123);
+  });
 });
 
 describe("Anthropic streaming usage (message_start carries cache, message_delta output-only)", () => {

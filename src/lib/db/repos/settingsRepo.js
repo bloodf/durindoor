@@ -55,8 +55,10 @@ const DEFAULT_SETTINGS = {
   quotaTrackerState: DEFAULT_QUOTA_TRACKER_STATE,
   ponytailEnabled: false,
   ponytailLevel: "full",
-  // Per-provider concurrency limits: { "umans": 4, "openai": 2 }
-  // 0 or missing = unlimited. Limits concurrent in-flight upstream requests.
+  pxpipeEnabled: false,
+  pxpipeAutoInstall: true,
+  pxpipeMinChars: 25000,
+  pxpipeTimeoutMs: 15000,
   providerConcurrencyLimits: {},
   // Optional upstream routing overrides. Shape:
   // { [providerId]: { enabled, mode: "native"|"cliproxyapi"|"fallback", cliproxyapiModelMapping } }

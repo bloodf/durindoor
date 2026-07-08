@@ -5,7 +5,6 @@ import { extractUsage, mergeUsage, hasValidUsage, estimateUsage, logUsage, addBu
 import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE } from "./streamHelpers.js";
 import { getOpenAIResponsesEventName, isOpenAIResponsesTerminalEvent, formatIncompleteOpenAIResponsesStreamFailure } from "./responsesStreamHelpers.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
-import { createToolCallTraceAccumulator, logToolSemantics } from "./toolSemanticsTrace.js";
 
 import { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER } from "./sseConstants.js";
 
@@ -22,24 +21,6 @@ const STREAM_MODE = {
   TRANSLATE: "translate",    // Full translation between formats
   PASSTHROUGH: "passthrough" // No translation, normalize output, extract usage
 };
-
-function getGeminiFamilyParts(chunk) {
-  const parts = chunk?.response?.candidates?.[0]?.content?.parts
-    || chunk?.candidates?.[0]?.content?.parts;
-  return Array.isArray(parts) ? parts : [];
-}
-
-function accumulateGeminiFamilyParts(parts, accumulate) {
-  for (const part of parts) {
-    if (part.text && typeof part.text === "string") {
-      accumulate(part.text, part.thought === true);
-    }
-  }
-}
-
-function hasGeminiFamilyFinishReason(chunk) {
-  return !!(chunk?.response?.candidates?.[0]?.finishReason || chunk?.candidates?.[0]?.finishReason);
-}
 
 /**
  * Create unified SSE transform stream
@@ -67,9 +48,7 @@ export function createSSEStream(options = {}) {
     connectionId = null,
     body = null,
     onStreamComplete = null,
-    apiKey = null,
-    translatedBody = null,
-    log = null
+    apiKey = null
   } = options;
 
   let buffer = "";
@@ -93,39 +72,10 @@ export function createSSEStream(options = {}) {
   let openAIResponsesTerminalSeen = false;
   let openAIResponsesDoneSent = false;
   let streamDoneSent = false;  // track duplicate [DONE] across transform + flush
-  let completionRecorded = false;
-
-  const recordStreamCompletion = (currentUsage) => {
-    if (completionRecorded) return currentUsage;
-    let finalUsage = currentUsage;
-
-    if (!hasValidUsage(finalUsage) && totalContentLength > 0) {
-      finalUsage = estimateUsage(body, totalContentLength, mode === STREAM_MODE.PASSTHROUGH ? FORMATS.OPENAI : sourceFormat);
-    }
-
-    if (hasValidUsage(finalUsage)) {
-      logUsage(mode === STREAM_MODE.TRANSLATE ? (state?.provider || targetFormat) : provider, finalUsage, model, connectionId, apiKey);
-    } else {
-      appendRequestLog({ model, provider, connectionId, tokens: null, status: "200 OK" }).catch(() => { });
-    }
-
-    if (onStreamComplete) {
-      onStreamComplete({
-        content: accumulatedContent,
-        thinking: accumulatedThinking
-      }, finalUsage, ttftAt);
-    }
-
-    completionRecorded = true;
-    return finalUsage;
-  };
 
   // State for extracting <think>...</think> to reasoning_content across SSE chunks
   let thinkBuf = "";
   let inThink = false;
-
-  // Tool semantics trace accumulator — counts and HMAC digests only, never raw content
-  const toolTrace = createToolCallTraceAccumulator();
 
   return new TransformStream({
     transform(chunk, controller) {
@@ -160,7 +110,6 @@ export function createSSEStream(options = {}) {
           if (trimmed.startsWith("data:") && trimmed.slice(5).trim() !== "[DONE]") {
             try {
               const parsed = JSON.parse(trimmed.slice(5).trim());
-              toolTrace.push(parsed);
 
               const idFixed = fixInvalidId(parsed);
 
@@ -257,15 +206,6 @@ export function createSSEStream(options = {}) {
                 accumulatedThinking += reasoning;
               }
 
-              accumulateGeminiFamilyParts(getGeminiFamilyParts(parsed), (text, isThought) => {
-                totalContentLength += text.length;
-                if (isThought) {
-                  accumulatedThinking += text;
-                } else {
-                  accumulatedContent += text;
-                }
-              });
-
               const extracted = extractUsage(parsed);
               if (extracted) {
                 usage = mergeUsage(usage, extracted);
@@ -290,10 +230,6 @@ export function createSSEStream(options = {}) {
               if (toolNameDecloaked && !injectedUsage) {
                 output = `data: ${JSON.stringify(parsed)}\n`;
                 injectedUsage = true;
-              }
-
-              if (isFinishChunk || hasGeminiFamilyFinishReason(parsed)) {
-                usage = recordStreamCompletion(usage);
               }
             } catch {
               // Skip non-JSON data lines silently — don't forward garbage to clients.
@@ -377,23 +313,24 @@ export function createSSEStream(options = {}) {
           accumulatedThinking += parsed.choices[0].delta.reasoning_content;
         }
         
-        // Gemini-family format (Gemini/Vertex direct and Antigravity wrapped)
-        accumulateGeminiFamilyParts(getGeminiFamilyParts(parsed), (text, isThought) => {
-          totalContentLength += text.length;
-          if (isThought) {
-            accumulatedThinking += text;
-          } else {
-            accumulatedContent += text;
+        // Gemini format
+        if (parsed.candidates?.[0]?.content?.parts) {
+          for (const part of parsed.candidates[0].content.parts) {
+            if (part.text && typeof part.text === "string") {
+              totalContentLength += part.text.length;
+              // Check if this is thinking content
+              if (part.thought === true) {
+                accumulatedThinking += part.text;
+              } else {
+                accumulatedContent += part.text;
+              }
+            }
           }
-        });
+        }
 
         // Extract usage
         const extracted = extractUsage(parsed);
         if (extracted) state.usage = mergeUsage(state.usage, extracted); // Keep original usage for logging
-
-        if (hasGeminiFamilyFinishReason(parsed)) {
-          state.usage = recordStreamCompletion(state.usage);
-        }
 
         // Responses same-format passthrough: re-emit with original event framing
         if (keepsOpenAIResponsesFormat && openAIResponsesEventName) {
@@ -409,7 +346,6 @@ export function createSSEStream(options = {}) {
 
         // Translate: targetFormat -> openai -> sourceFormat
         const translated = translateResponse(targetFormat, sourceFormat, parsed, state);
-        toolTrace.push(parsed);
 
         // Log OpenAI intermediate chunks (if available)
         if (translated?._openaiIntermediate) {
@@ -470,21 +406,30 @@ export function createSSEStream(options = {}) {
             usage = estimateUsage(body, totalContentLength, FORMATS.OPENAI);
           }
 
-          usage = recordStreamCompletion(usage);
-
+          if (hasValidUsage(usage)) {
+            logUsage(provider, usage, model, connectionId, apiKey);
+          } else {
+            appendRequestLog({ model, provider, connectionId, tokens: null, status: "200 OK" }).catch(() => { });
+          }
+          
           // IMPORTANT: In passthrough mode we still must terminate the SSE stream.
           // Some clients (e.g. OpenClaw) expect the OpenAI-style sentinel:
           //   data: [DONE]\n\n
           // Without it they can hang until timeout and trigger failover.
-          // Gemini-family clients (Antigravity/agy, Vertex, Gemini) reject this sentinel with 400 syntax errors.
-          const isGeminiFamily = provider === "antigravity" || provider === "agy" || provider === "gemini" || provider === "vertex";
+          // Gemini-family clients (Antigravity, Vertex, Gemini) reject this sentinel with 400 syntax errors.
+          const isGeminiFamily = provider === "antigravity" || provider === "gemini" || provider === "vertex";
           if (!streamDoneSent && !isGeminiFamily) {
             const doneOutput = "data: [DONE]\n\n";
             reqLogger?.appendConvertedChunk?.(doneOutput);
             controller.enqueue(sharedEncoder.encode(doneOutput));
           }
 
-          logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "stream-passthrough", requestBody: body, translatedBody, providerBody: null, clientBody: null, providerToolCalls: toolTrace.summary() });
+          if (onStreamComplete) {
+            onStreamComplete({
+              content: accumulatedContent,
+              thinking: accumulatedThinking
+            }, usage, ttftAt);
+          }
           return;
         }
 
@@ -550,8 +495,18 @@ export function createSSEStream(options = {}) {
           state.usage = estimateUsage(body, totalContentLength, sourceFormat);
         }
 
-        state.usage = recordStreamCompletion(state?.usage);
-        logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "stream-translate", requestBody: body, translatedBody, providerBody: null, clientBody: null, providerToolCalls: toolTrace.summary() });
+        if (hasValidUsage(state?.usage)) {
+          logUsage(state.provider || targetFormat, state.usage, model, connectionId, apiKey);
+        } else {
+          appendRequestLog({ model, provider, connectionId, tokens: null, status: "200 OK" }).catch(() => { });
+        }
+        
+        if (onStreamComplete) {
+          onStreamComplete({
+            content: accumulatedContent,
+            thinking: accumulatedThinking
+          }, state?.usage, ttftAt);
+        }
       } catch (error) {
         console.log("Error in flush:", error);
       }
@@ -559,7 +514,7 @@ export function createSSEStream(options = {}) {
   });
 }
 
-export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, translatedBody = null, log = null) {
+export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null) {
   return createSSEStream({
     mode: STREAM_MODE.TRANSLATE,
     targetFormat,
@@ -571,23 +526,11 @@ export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, p
     connectionId,
     body,
     onStreamComplete,
-    apiKey,
-    translatedBody,
-    log
+    apiKey
   });
 }
 
-export function createPassthroughStreamWithLogger(provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, translatedBody = null, log = null) {
-  if (toolNameMap && !(toolNameMap instanceof Map) && typeof toolNameMap === "string") {
-    apiKey = onStreamComplete;
-    onStreamComplete = body;
-    body = connectionId;
-    connectionId = model;
-    model = reqLogger;
-    reqLogger = provider;
-    provider = toolNameMap;
-    toolNameMap = null;
-  }
+export function createPassthroughStreamWithLogger(provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null) {
   return createSSEStream({
     mode: STREAM_MODE.PASSTHROUGH,
     provider,
@@ -597,8 +540,6 @@ export function createPassthroughStreamWithLogger(provider = null, reqLogger = n
     connectionId,
     body,
     onStreamComplete,
-    apiKey,
-    translatedBody,
-    log
+    apiKey
   });
 }

@@ -3,10 +3,16 @@
 import { Suspense, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { UsageStats, RequestLogger, CardSkeleton, SegmentedControl, ConfirmModal, Button } from "@/shared/components";
-import { USAGE_PERIOD_OPTIONS } from "@/lib/usagePeriods.js";
 import RequestDetailsTab from "./components/RequestDetailsTab";
 
-const PERIODS = USAGE_PERIOD_OPTIONS;
+const PERIODS = [
+  { value: "today", label: "Today" },
+  { value: "24h", label: "24h" },
+  { value: "7d", label: "7D" },
+  { value: "30d", label: "30D" },
+  { value: "60d", label: "60D" },
+  { value: "all", label: "All Time" },
+];
 
 const RESET_PERIODS = [
   { value: "5m", label: "5 minutes" },
@@ -93,7 +99,7 @@ function UsageContent() {
               value={period}
               onChange={setPeriod}
               size="sm"
-              className="w-full overflow-x-auto sm:w-auto"
+              className="w-full sm:w-auto"
             />
             <Button
               variant="outline"

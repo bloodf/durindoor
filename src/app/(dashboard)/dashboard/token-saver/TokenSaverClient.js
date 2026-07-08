@@ -12,6 +12,19 @@ import {
 
 export default function TokenSaverClient() {
   const [rtkEnabled, setRtkEnabledState] = useState(true);
+  const [pxpipeEnabled, setPxpipeEnabled] = useState(false);
+  const [pxpipeMinChars, setPxpipeMinChars] = useState("25000");
+  const [pxpipeInputValue, setPxpipeInputValue] = useState("25000");
+  const [pxpipeStatus, setPxpipeStatus] = useState({
+    installed: false,
+    installing: false,
+    running: false,
+    version: null,
+    loading: true,
+  });
+  const [pxpipeHealth, setPxpipeHealth] = useState(null);
+  const [pxpipeActionLoading, setPxpipeActionLoading] = useState(false);
+  const [pxpipeActionError, setPxpipeActionError] = useState("");
   const [headroomEnabled, setHeadroomEnabled] = useState(false);
   const [headroomUrl, setHeadroomUrl] = useState("http://localhost:8787");
   const [headroomStatus, setHeadroomStatus] = useState({
@@ -37,7 +50,6 @@ export default function TokenSaverClient() {
   const [cavemanLevel, setCavemanLevel] = useState("full");
   const [ponytailEnabled, setPonytailEnabled] = useState(false);
   const [ponytailLevel, setPonytailLevel] = useState("full");
-  const [pxpipeEnabled, setPxpipeEnabled] = useState(false);
   const [locale, setLocale] = useState("en");
 
   const { copied, copy } = useCopyToClipboard();
@@ -88,11 +100,6 @@ export default function TokenSaverClient() {
   const handleCavemanEnabled = (value) => {
     setCavemanEnabled(value);
     patchSetting({ cavemanEnabled: value });
-  };
-
-  const handlePxpipeEnabled = (value) => {
-    setPxpipeEnabled(value);
-    patchSetting({ pxpipeEnabled: value });
   };
 
   const handleHeadroomEnabled = (value) => {
@@ -238,6 +245,72 @@ export default function TokenSaverClient() {
     patchSetting({ ponytailLevel: level });
   };
 
+  const refreshPxpipeStatus = useCallback(async () => {
+    setPxpipeStatus((s) => ({ ...s, loading: true }));
+    try {
+      const res = await fetch("/api/pxpipe/status", {
+        headers: { "Cache-Control": "no-store" },
+      });
+      const data = await res.json();
+      setPxpipeStatus({ ...data, loading: false });
+      if (typeof data.minChars === "number") {
+        const v = String(data.minChars);
+        setPxpipeMinChars(v);
+        setPxpipeInputValue(v);
+      }
+    } catch {
+      setPxpipeStatus({ installed: false, installing: false, running: false, version: null, loading: false });
+    }
+  }, []);
+
+  const runPxpipeHealth = useCallback(async () => {
+    try {
+      const res = await fetch("/api/pxpipe/health", { method: "POST" });
+      setPxpipeHealth(await res.json());
+    } catch (e) {
+      setPxpipeHealth({ healthy: false, checks: [], error: e.message });
+    }
+  }, []);
+
+  const pxpipeAction = useCallback(async (endpoint) => {
+    setPxpipeActionError("");
+    setPxpipeActionLoading(true);
+    try {
+      const res = await fetch(`/api/pxpipe/${endpoint}`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `PXPIPE ${endpoint} failed`);
+      await refreshPxpipeStatus();
+      await runPxpipeHealth();
+    } catch (e) {
+      setPxpipeActionError(e.message);
+    } finally {
+      setPxpipeActionLoading(false);
+    }
+  }, [refreshPxpipeStatus, runPxpipeHealth]);
+
+  const handlePxpipeEnabled = (value) => {
+    setPxpipeEnabled(value);
+    patchSetting({ pxpipeEnabled: value });
+  };
+
+  const handlePxpipeMinChars = (value) => {
+    setPxpipeInputValue(value);
+  };
+
+  const handlePxpipeMinCharsBlur = () => {
+    if (pxpipeInputValue === "") {
+      setPxpipeInputValue(pxpipeMinChars);
+      return;
+    }
+    const n = Number(pxpipeInputValue);
+    if (Number.isSafeInteger(n) && n > 0) {
+      setPxpipeMinChars(pxpipeInputValue);
+      patchSetting({ pxpipeMinChars: n });
+    } else {
+      setPxpipeInputValue(pxpipeMinChars);
+    }
+  };
+
   useEffect(() => {
     const loadSettings = async () => {
       try {
@@ -252,12 +325,15 @@ export default function TokenSaverClient() {
           setPonytailEnabled(!!data.ponytailEnabled);
           setPonytailLevel(data.ponytailLevel || "full");
           setPxpipeEnabled(!!data.pxpipeEnabled);
+          setPxpipeMinChars(String(data.pxpipeMinChars ?? 25000));
+          setPxpipeInputValue(String(data.pxpipeMinChars ?? 25000));
           refreshHeadroomStatus();
+          refreshPxpipeStatus();
         }
       } catch {}
     };
     loadSettings();
-  }, [refreshHeadroomStatus]);
+  }, [refreshHeadroomStatus, refreshPxpipeStatus]);
 
   const headroomRunning = !!headroomStatus.running;
   const headroomStatusLabel = headroomStatus.loading
@@ -273,6 +349,17 @@ export default function TokenSaverClient() {
   const headroomCanStart = !!headroomStatus.canStart;
   const headroomManaged =
     headroomLocalUrl && !!headroomStatus.managedPid;
+  const pxpipeStatusLabel = pxpipeStatus.loading
+    ? "Checking…"
+    : pxpipeStatus.installing
+      ? "Installing…"
+      : pxpipeHealth?.healthy
+        ? "Healthy"
+        : pxpipeStatus.running
+          ? "Running"
+          : pxpipeStatus.installed
+            ? "Stopped"
+            : "Not installed";
 
   return (
     <div className="space-y-6 p-6">
@@ -408,18 +495,6 @@ export default function TokenSaverClient() {
             </p>
           </div>
         )}
-        <div className="flex items-center justify-between py-4 border-b border-border gap-4 flex-wrap">
-          <div className="min-w-0 flex-1">
-            <p className="font-medium">PxPipe (context-as-image)</p>
-            <p className="text-sm text-text-muted">
-              Renders large text context as images on supported models (default: Claude Fable 5). Experimental.
-            </p>
-          </div>
-          <Toggle
-            checked={pxpipeEnabled}
-            onChange={() => handlePxpipeEnabled(!pxpipeEnabled)}
-          />
-        </div>
         <div className="flex items-center justify-between pt-4 gap-4 flex-wrap">
           <div className="min-w-0 flex-1">
             <p className="font-medium">
@@ -523,6 +598,112 @@ export default function TokenSaverClient() {
         </div>
       </Card>
 
+      <Card id="pxpipe">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <span className="material-symbols-outlined text-primary">image</span>
+            PXPIPE
+          </h2>
+          <a
+            href="/dashboard/pxpipe"
+            className="text-sm text-primary underline hover:opacity-80"
+          >
+            Open full page →
+          </a>
+        </div>
+        <div className="flex items-center justify-between pt-2 pb-4 border-b border-border gap-4">
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">Compress bulky Claude context into images</p>
+            <p className="text-sm text-text-muted">
+              Renders large text context as dense PNGs for vision-capable models. Fail-open.
+            </p>
+          </div>
+          <div className="shrink-0">
+            <Toggle checked={pxpipeEnabled} onChange={() => handlePxpipeEnabled(!pxpipeEnabled)} />
+          </div>
+        </div>
+        <div className="pt-4 space-y-4">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <p className="text-sm font-medium">Status</p>
+              <p className="text-sm text-text-muted">
+                {pxpipeStatusLabel}
+                {pxpipeStatus.version ? ` · v${pxpipeStatus.version}` : ""}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {!pxpipeStatus.installed ? (
+                <Button
+                  onClick={() => pxpipeAction("install")}
+                  disabled={pxpipeActionLoading}
+                  size="sm"
+                >
+                  {pxpipeActionLoading ? "Installing…" : "Install"}
+                </Button>
+              ) : pxpipeStatus.running ? (
+                <Button
+                  onClick={() => pxpipeAction("stop")}
+                  variant="ghost"
+                  disabled={pxpipeActionLoading}
+                  size="sm"
+                >
+                  {pxpipeActionLoading ? "Stopping…" : "Stop"}
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => pxpipeAction("start")}
+                  disabled={pxpipeActionLoading}
+                  size="sm"
+                >
+                  {pxpipeActionLoading ? "Starting…" : "Start"}
+                </Button>
+              )}
+              {pxpipeStatus.installed && (
+                <Button
+                  onClick={() => pxpipeAction("restart")}
+                  variant="ghost"
+                  disabled={pxpipeActionLoading}
+                  size="sm"
+                >
+                  Restart
+                </Button>
+              )}
+              <Button
+                onClick={() => {
+                  refreshPxpipeStatus();
+                  runPxpipeHealth();
+                }}
+                variant="ghost"
+                disabled={pxpipeStatus.loading}
+                size="sm"
+              >
+                Recheck
+              </Button>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="text-sm text-text-muted shrink-0">Min chars</label>
+            <Input
+              type="number"
+              min="1"
+              step="1"
+              value={pxpipeInputValue}
+              onChange={(e) => handlePxpipeMinChars(e.target.value)}
+              onBlur={handlePxpipeMinCharsBlur}
+              className="w-32 text-sm"
+            />
+          </div>
+          {pxpipeHealth && (
+            <p className={`text-sm ${pxpipeHealth.healthy ? "text-success" : "text-warning"}`}>
+              Health: {pxpipeHealth.healthy ? "OK" : pxpipeHealth.error || "Unhealthy"}
+            </p>
+          )}
+          {pxpipeActionError && (
+            <p className="text-sm text-warning">{pxpipeActionError}</p>
+          )}
+        </div>
+      </Card>
+
       <Modal
         isOpen={showHeadroomInstallModal}
         title={headroomRunning ? "Headroom" : "Setup Headroom"}
@@ -537,16 +718,6 @@ export default function TokenSaverClient() {
               {headroomStatusLabel}
             </span>
           </div>
-          {headroomRunning && (
-            <a
-              href="/api/headroom/proxy/dashboard"
-              target="_blank"
-              rel="noreferrer"
-              className="w-full rounded border border-border px-4 py-2 text-center text-sm hover:bg-surface-2"
-            >
-              Open Headroom Dashboard
-            </a>
-          )}
           <div className="flex flex-col gap-1">
             <p className="text-sm font-medium">Proxy URL</p>
             <Input

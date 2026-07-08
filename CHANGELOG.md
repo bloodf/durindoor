@@ -1,95 +1,14 @@
-# v1.0.2 (2026-07-06)
+# v1.0.2 (2026-07-08)
 
-## Features
+## Brand
+- Rebrand all user-facing documentation, GitBook, Docker docs, CLI README, and assets to the DurinDoor identity.
+- Remove non-English documentation; keep English-only docs for now.
+- Rename skill modules to the `durindoor-*` namespace and update URLs to `bloodf/durindoor`.
+- Update favicon and app icons to the new DurinDoor mark.
+- Fix release workflow to publish the `cli` package rather than the private root package.
 
-- Port OmniRoute provider infrastructure for CLIProxyAPI routing overrides,
-  provider manifest sidecar metadata, and Cliproxy model mapping during proxy
-  dispatch.
-
-# v1.0.1 (2026-07-06)
-
-## Features
-
-- Add DigitalOcean AI provider (serverless inference).
-- Add RTK git-log filter.
-
-## Fixes
-
-- Drop orphan Gemini function responses before OpenAI bridge conversion.
-- Refresh docs and remove non-English documentation set.
-
-# v1.0.0 (2026-07-04)
-
-First DurinDoor release. Initial fork from `decolua/9router` v0.5.18;
-rebranded display + identity strings preserved for data migration
-(`sk_9router`, `[providers.9router]`, `X-Msh-Platform: 9router`,
-`~/.9router/` data dir, `STORAGE_KEY`, `CLI_TOKEN_SALT`,
-`custom:9Router-*`).
-
-## Highlights
-
-- **Two-branch release model**: `dev` is the default branch (nightly
-  pre-releases), `main` only receives human-merged controlled releases.
-  `.github/workflows/nightly.yml` cuts an idempotent
-  `nightly-YYYY-MM-DD` tag daily 02:00 UTC, marked `prerelease: true`
-  and `make_latest: false`, anchored to a pinned commit SHA so future
-  `dev` history rewrites cannot re-anchor existing releases.
-- **Rebrand**: package name `durindoor`, UI rebrand to a LOTR
-  green/gold palette, traffic-light chrome removed,
-  `NineRemoteButton` / `NineRemotePromoModal` deleted, 9Remote- and
-  9router-only upstream changes not absorbed.
-- **CI/CD reorg**: emoji-named jobs/steps (✅ CI, ✨ Lint & Build, 🧪
-  Tests). `npm run lint` (scoped to `src/`) green with documented
-  warnings. `npm run test:ci` exits 0 against
-  `tests/__baseline__/known-fails.txt`. Release workflow hardened for
-  the no-`package-lock.json` reality.
-- **Upstream ports** (auto-ported via `durindoor-port-pr.sh`):
-  #2364 usage-stats API-key collision fix (sha256 fingerprint bucket),
-  #2373 NVIDIA NIM chat-model catalog expansion.
-- **OAuth secrets scrubbed**: `GEMINI_OAUTH_CLIENT_ID`,
-  `ANTIGRAVITY_OAUTH_CLIENT_ID` moved from source to env vars.
-- **Firecrawl URL**: DB setting > env var > default priority chain
-  (`open-sse/handlers/fetch/index.js`), tests for self-hosted in
-  `tests/unit/firecrawl-selfhosted.test.js`.
-
-## Fixes
-
-- **CI (`ci.yml`, `release.yml`, `nightly.yml`, `docker-publish.yml`)**:
-  switched `npm ci` → `npm install --no-audit --no-fund` (repo gitignores
-  `package-lock.json`, line 63 of `.gitignore`); removed `cache: npm`
-  from setup-node; added `persist-credentials: false` to checkout;
-  pinned `target_commitish` to the checked-out SHA. CI scope narrowed to
-  `install + lint + build`; tests moved to `test.yml` with a
-  no-regression gate. `docker-publish.yml` dropped Docker Hub
-  (GHCR-only on `v*` tags).
-
-## Breaking Changes
-
-- **Two-branch release model**: `dev` is now the default branch; nightly
-  pre-releases tag from `dev`; `main` only receives human-merged
-  controlled releases. Self-hosted operators tracking the old default
-  branch should switch to `dev` for nightly updates and treat `main`
-  as stable-only.
-## Synced from upstream decolua/9router v0.5.20 (2026-07-07)
-
-# v0.5.20 (2026-07-07)
-
-## Features
-- **Thinking**: per-model thinking level picker on provider page — appends `(level)` suffix to copied model names for forced reasoning effort across all formats (openai, claude, gemini, deepseek, kimi, qwen, zai, minimax, hunyuan, step)
-- **RTK**: add JS-native git-log filter (#2423)
-- **Caveman**: add targeted upstream-aligned style rules (#2424)
-- **i18n**: add Farsi (fa) language support (#2385)
-
-## Fixes
-- **Thinking**: strip `(level)` suffix from upstream `body.model` so providers no longer reject requests
-- **Translator**: preserve developer instructions in openai-responses conversion (#2434)
-- **count_tokens**: count structured Anthropic blocks (#2419)
-- **Volcengine-ark**: clamp GLM-5 max_tokens to model output ceiling (#2428)
-- **Kimi**: normalize reasoning_effort to backend enum (#2427)
-- **Claude**: reconcile max_tokens vs thinking budget and lift per-model ceiling (#2381)
-- **Kiro**: deliver system prompt natively, add Opus 4.5/4.7/4.8, tolerate dash version ids (#2366)
-- **Headroom**: proxy dashboard through app (#2372)
-- **MITM**: recover from stale lock file on server start
+## Build
+- Bump root and CLI package versions to 1.0.2.
 
 # v0.5.18 (2026-07-03)
 
@@ -100,7 +19,6 @@ rebranded display + identity strings preserved for data migration
 - **ClinePass**: add provider support — sternelee
 
 ## Fixes
-- **OmniRoute providers**: keep unsupported Ideogram/Haiper/Leonardo media routes hidden until adapters exist, support Hack Club keyless use, and validate MariTalk with its raw `key` header.
 - **Usage**: dedupe streaming request-details log entries — Qin Li
 - **Claude**: drop foreign thinking signatures in passthrough — decolua
 - Prevent non-SSE stream pipe crash and cross-IdP account overwrites (#2244) — KunN-21
@@ -266,7 +184,7 @@ rebranded display + identity strings preserved for data migration
 - Dashboard: show provider node name instead of connection name in topology (#1770) + show explicit `kind="llm"` combos on combos page (#1684)
 
 ## Docs
-- README: add Indonesian 9Router tutorial video (#1709)
+- README: add Indonesian DurinDoor tutorial video (#1709)
 
 # v0.4.71 (2026-06-06)
 

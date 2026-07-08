@@ -1,33 +1,33 @@
 ---
-name: 9router
-description: Entry point for 9Router — local/remote AI gateway with OpenAI-compatible REST for chat, image, TTS, embeddings, web search, web fetch. Use when the user mentions 9Router, NINEROUTER_URL, or wants AI without writing provider boilerplate. This skill covers setup + indexes capability skills; fetch the relevant capability SKILL.md from the URLs below when needed.
+name: durindoor
+description: Entry point for DurinDoor — local/remote AI gateway with OpenAI-compatible REST for chat, image, TTS, embeddings, web search, web fetch. Use when the user mentions DurinDoor, DURINDOOR_URL, or wants AI without writing provider boilerplate. This skill covers setup + indexes capability skills; fetch the relevant capability SKILL.md from the URLs below when needed.
 ---
 
-# 9Router
+# DurinDoor
 
 Local/remote AI gateway exposing OpenAI-compatible REST. One key, many providers, auto-fallback.
 
 ## Setup
 
 ```bash
-export NINEROUTER_URL="http://localhost:20128"      # or VPS / tunnel URL
-export NINEROUTER_KEY="sk-..."                      # from Dashboard → Keys (only if requireApiKey=true)
+export DURINDOOR_URL="http://localhost:20128"      # or VPS / tunnel URL
+export DURINDOOR_KEY="sk-..."                      # from Dashboard → Keys (only if requireApiKey=true)
 ```
 
-All requests: `${NINEROUTER_URL}/v1/...` with header `Authorization: Bearer ${NINEROUTER_KEY}` (omit if auth disabled).
+All requests: `${DURINDOOR_URL}/v1/...` with header `Authorization: Bearer ${DURINDOOR_KEY}` (omit if auth disabled).
 
-Verify: `curl $NINEROUTER_URL/api/health` → `{"ok":true}`
+Verify: `curl $DURINDOOR_URL/api/health` → `{"ok":true}`
 
 ## Discover models
 
 ```bash
-curl $NINEROUTER_URL/v1/models                  # chat/LLM (default)
-curl $NINEROUTER_URL/v1/models/image            # image-gen
-curl $NINEROUTER_URL/v1/models/tts              # text-to-speech
-curl $NINEROUTER_URL/v1/models/embedding        # embeddings
-curl $NINEROUTER_URL/v1/models/web              # web search + fetch (entries have `kind` field)
-curl $NINEROUTER_URL/v1/models/stt              # speech-to-text
-curl $NINEROUTER_URL/v1/models/image-to-text    # vision
+curl $DURINDOOR_URL/v1/models                  # chat/LLM (default)
+curl $DURINDOOR_URL/v1/models/image            # image-gen
+curl $DURINDOOR_URL/v1/models/tts              # text-to-speech
+curl $DURINDOOR_URL/v1/models/embedding        # embeddings
+curl $DURINDOOR_URL/v1/models/web              # web search + fetch (entries have `kind` field)
+curl $DURINDOOR_URL/v1/models/stt              # speech-to-text
+curl $DURINDOOR_URL/v1/models/image-to-text    # vision
 ```
 
 Use `data[].id` as `model` field in requests. Combos appear with `owned_by:"combo"`.
@@ -46,16 +46,16 @@ When the user needs a specific capability, fetch that skill's `SKILL.md` from it
 
 | Capability | Raw URL |
 |---|---|
-| Chat / code-gen | https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/9router-chat/SKILL.md |
-| Image generation | https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/9router-image/SKILL.md |
-| Text-to-speech | https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/9router-tts/SKILL.md |
-| Speech-to-text | https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/9router-stt/SKILL.md |
-| Embeddings | https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/9router-embeddings/SKILL.md |
-| Web search | https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/9router-web-search/SKILL.md |
-| Web fetch (URL → markdown) | https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/9router-web-fetch/SKILL.md |
+| Chat / code-gen | https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/master/skills/durindoor-chat/SKILL.md |
+| Image generation | https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/master/skills/durindoor-image/SKILL.md |
+| Text-to-speech | https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/master/skills/durindoor-tts/SKILL.md |
+| Speech-to-text | https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/master/skills/durindoor-stt/SKILL.md |
+| Embeddings | https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/master/skills/durindoor-embeddings/SKILL.md |
+| Web search | https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/master/skills/durindoor-web-search/SKILL.md |
+| Web fetch (URL → markdown) | https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/master/skills/durindoor-web-fetch/SKILL.md |
 
 ## Errors
 
-- 401 → set/refresh `NINEROUTER_KEY` (Dashboard → Keys)
+- 401 → set/refresh `DURINDOOR_KEY` (Dashboard → Keys)
 - 400 `Invalid model format` → check `model` exists in `/v1/models/<kind>`
 - 503 `All accounts unavailable` → wait `retry-after` or add another provider account

@@ -641,6 +641,48 @@ export default function RequestDetailsTab() {
               </div>
             </CollapsibleSection>
 
+            {selectedDetail.pxpipe && (
+              <div className="rounded-lg border border-border p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="material-symbols-outlined text-[18px] text-text-muted">image</span>
+                  <span className="font-semibold text-sm text-text-main">PXPIPE</span>
+                  <span className={cn(
+                    "text-xs px-2 py-0.5 rounded",
+                    selectedDetail.pxpipe.applied
+                      ? "bg-success/15 text-success"
+                      : "bg-warning/15 text-warning"
+                  )}>
+                    {selectedDetail.pxpipe.applied ? "Activated" : "Skipped"}
+                  </span>
+                </div>
+                {selectedDetail.pxpipe.applied ? (
+                  <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                    <div>
+                      <span className="text-text-muted block text-xs">Original (est.)</span>
+                      <span className="font-mono">{(selectedDetail.pxpipe.tokensBeforeEst || 0).toLocaleString()} tokens</span>
+                    </div>
+                    <div>
+                      <span className="text-text-muted block text-xs">Compressed (est.)</span>
+                      <span className="font-mono">{(selectedDetail.pxpipe.tokensAfterEst || 0).toLocaleString()} tokens</span>
+                    </div>
+                    <div>
+                      <span className="text-text-muted block text-xs">Saved</span>
+                      <span className="font-mono text-success">{selectedDetail.pxpipe.savedPct || 0}%</span>
+                    </div>
+                    <div>
+                      <span className="text-text-muted block text-xs">Images</span>
+                      <span className="font-mono">{selectedDetail.pxpipe.imageCount || 0} ({selectedDetail.pxpipe.durationMs || 0}ms)</span>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-text-muted">
+                    Reason: <span className="font-mono">{selectedDetail.pxpipe.reason}</span>
+                    {selectedDetail.pxpipe.detail ? ` — ${selectedDetail.pxpipe.detail}` : ""}
+                  </p>
+                )}
+              </div>
+            )}
+
             <TabbedDetailCard
               title="Request"
               icon="input"

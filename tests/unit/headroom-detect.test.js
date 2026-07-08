@@ -6,7 +6,6 @@ const mocks = vi.hoisted(() => ({
   execFileSync: vi.fn(() => Buffer.from(JSON.stringify([
     { name: "headroom-ai", version: "0.26.0" },
     { name: "tree-sitter", version: "0.25.0" },
-    { name: "tree-sitter-language-pack", version: "0.10.0" },
   ]))),
 }));
 
@@ -51,7 +50,6 @@ describe("headroom detect", () => {
       if (py === "python" && args.join(" ").startsWith("-m pip list ")) return Buffer.from(JSON.stringify([
         { name: "headroom-ai", version: "0.26.0" },
         { name: "tree-sitter", version: "0.25.0" },
-        { name: "tree-sitter-language-pack", version: "0.10.0" },
       ]));
       throw new Error(`unexpected execFileSync: ${py} ${args.join(" ")}`);
     });
@@ -73,7 +71,6 @@ describe("headroom detect", () => {
       if (py === "python" && args.join(" ").startsWith("-m pip list ")) return Buffer.from(JSON.stringify([
         { name: "headroom-ai", version: "0.26.0" },
         { name: "tree-sitter", version: "0.25.0" },
-        { name: "tree-sitter-language-pack", version: "0.10.0" },
       ]));
       throw new Error(`unexpected execFileSync: ${py} ${args.join(" ")}`);
     });

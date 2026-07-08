@@ -20,16 +20,20 @@
  * Regression surfaced on Claude Code 2.1.x native web-search calls; same class
  * as CLIProxyAPI #1094/#1179.
  *
- * Ported from OmniRoute #6586. The remapper is shipped as `claudeCodeToolRemapper.js`
- * in the OmniRoute upstream; DurinDoor keeps the .ts source verbatim (no TS toolchain
- * in CI yet), so vitest must transform it on import. We import the .ts file directly
- * via vitest's built-in ESBuild transformer — that is what this config's `defineConfig`
- * defaults allow.
+ * Codex P2 follow-ups (PR #95):
+ *  - request-specific tool map applied before generic reverse (no `Bash` →
+ *    `bash` when the request map said `Bash` → `run_command`).
+ *  - kill-switch returns the existing per-request map.
+ *  - reverse map iterates longest-first (`Edit` must not shadow `MultiEdit`).
+ *  - response remap restricts to JSON tool-name fields (no rewriting
+ *    "Run Bash" assistant text to "Run bash").
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   cloakThirdPartyToolNames,
   remapToolNamesInRequest,
+  remapToolNamesInResponse,
+  isAnthropicServerToolType,
 } from "../../open-sse/services/claudeCodeToolRemapper.js";
 
 describe("cloakThirdPartyToolNames — server-tool names in message history", () => {
@@ -150,5 +154,107 @@ describe("remapToolNamesInRequest — Anthropic server tools", () => {
     expect(body.tools[0].name).toBe("Bash");
     const block = body.messages[0].content[0];
     expect(block.name).toBe("Bash");
+  });
+});
+
+describe("remapToolNamesInResponse — Codex P2 follow-ups", () => {
+  it("applies per-request tool map before generic reverse", () => {
+    // Third-party client sent `run_command`; cloak mapped to `Bash` and
+    // recorded `_toolNameMap.Bash -> run_command`. The response mentions
+    // `Bash` (Anthropic's response). We must de-cloak back to `run_command`,
+    // not generic `bash`.
+    const perRequest = new Map([["Bash", "run_command"]]);
+    const out = remapToolNamesInResponse(
+      { content: [{ type: "tool_use", name: "Bash", input: {} }] },
+      true,
+      perRequest,
+    );
+    expect(out.content[0].name).toBe("run_command");
+  });
+
+  it("generic reverse still applies when per-request has no entry", () => {
+    const out = remapToolNamesInResponse(
+      { content: [{ type: "tool_use", name: "Bash", input: {} }] },
+      true,
+      new Map(),
+    );
+    expect(out.content[0].name).toBe("bash");
+  });
+
+  it("reverse iterates longest-first so Edit does not shadow MultiEdit", () => {
+    // If we used REVERSE_MAP directly without sorting, processing "Edit"
+    // would happen before "MultiEdit" and turn "MultiEdit" into "Multiedit".
+    // Sorted longest-first processes "MultiEdit" -> "multiedit" first.
+    const perRequest = new Map();
+    const payload = { content: [{ type: "tool_use", name: "MultiEdit", input: {} }] };
+    const out = remapToolNamesInResponse(payload, true, perRequest);
+    expect(out.content[0].name).toBe("multiedit");
+  });
+
+  it("does not rewrite free-text assistant prose", () => {
+    // Codex P2 #4: when the input is not JSON-parseable (free text from
+    // an assistant message), we must not rewrite it at all.
+    const text = "Run Bash in the morning to start the day";
+    expect(remapToolNamesInResponse(text, true, new Map())).toBe(text);
+  });
+
+  it("returns the input untouched when not JSON-parseable", () => {
+    const text = "no JSON here, just prose mentioning Bash";
+    expect(remapToolNamesInResponse(text, true, new Map())).toBe(text);
+  });
+
+  it("lower-cases nested tool_name fields recursively", () => {
+    const payload = {
+      tool_calls: [
+        { function: { name: "Bash", arguments: "{}" } },
+        { function: { name: "Read", arguments: "{}" } },
+      ],
+    };
+    const out = remapToolNamesInResponse(payload, true, new Map());
+    expect(out.tool_calls[0].function.name).toBe("bash");
+    expect(out.tool_calls[1].function.name).toBe("read");
+  });
+});
+
+describe("cloakThirdPartyToolNames — kill switch returns existing map", () => {
+  const originalEnv = process.env.CLAUDE_DISABLE_TOOL_NAME_CLOAK;
+  beforeEach(() => {
+    process.env.CLAUDE_DISABLE_TOOL_NAME_CLOAK = "true";
+  });
+  afterEach(() => {
+    if (originalEnv === undefined) delete process.env.CLAUDE_DISABLE_TOOL_NAME_CLOAK;
+    else process.env.CLAUDE_DISABLE_TOOL_NAME_CLOAK = originalEnv;
+  });
+
+  it("preserves an existing per-request tool name map when kill-switch is on", () => {
+    const existing = new Map([["Bash", "run_command"]]);
+    const body = {
+      _toolNameMap: existing,
+      tools: [{ name: "run_command" }],
+      messages: [
+        { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: {} }] },
+      ],
+    };
+    const returned = cloakThirdPartyToolNames(body);
+    expect(returned).toBe(existing);
+    // Body must NOT be mutated.
+    expect(body.tools[0].name).toBe("run_command");
+  });
+});
+
+describe("isAnthropicServerToolType", () => {
+  it("matches versioned types", () => {
+    expect(isAnthropicServerToolType("web_search_20250305")).toBe(true);
+    expect(isAnthropicServerToolType("bash_20250124")).toBe(true);
+  });
+  it("matches non-versioned types", () => {
+    expect(isAnthropicServerToolType("web_search")).toBe(true);
+    expect(isAnthropicServerToolType("web_search_preview")).toBe(true);
+  });
+  it("rejects regular tools and non-strings", () => {
+    expect(isAnthropicServerToolType("Bash")).toBe(false);
+    expect(isAnthropicServerToolType("Read")).toBe(false);
+    expect(isAnthropicServerToolType("")).toBe(false);
+    expect(isAnthropicServerToolType(null)).toBe(false);
   });
 });

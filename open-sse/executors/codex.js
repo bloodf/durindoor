@@ -207,9 +207,13 @@ export class CodexExecutor extends BaseExecutor {
     return headers;
   }
 
+  // P0 fix: derive _isCompact from the current request, not from instance state.
+  // Previously read `this._isCompact` before `transformRequest` set it; shared executor
+  // instance leaked the previous request's flag into the next. Now passed via
+  // `callArgs.credentials._isCompact` from `execute()`.
   buildUrl(model, stream, urlIndex = 0, credentials = null) {
     const base = super.buildUrl(model, stream, urlIndex, credentials);
-    return this._isCompact ? `${base}/compact` : base;
+    return credentials?._isCompact ? `${base}/compact` : base;
   }
 
   async refreshCredentials(credentials, log) {
@@ -255,13 +259,19 @@ export class CodexExecutor extends BaseExecutor {
       await this.prefetchImages(args.body);
     }
 
+    const compact = !!args.body?._compact;
+    const callArgs = {
+      ...args,
+      credentials: args.credentials ? { ...args.credentials, _isCompact: compact } : { _isCompact: compact },
+    };
+
     // Retry loop for SSE-level overloaded errors (200 OK body contains event: error)
     // Reuses 503 retry config — same semantic: upstream temporarily unavailable
     const retryConfig = { ...DEFAULT_RETRY_CONFIG, ...this.config.retry };
     const { attempts, delayMs } = resolveRetryEntry(retryConfig[503]);
     let attempt = 0;
     while (true) {
-      const result = await super.execute(args);
+      const result = await super.execute(callArgs);
       const peek = await this._peekSseTransientError(result.response);
       if (!peek.matched) {
         // Replace body with re-assembled stream (prefix bytes already read + rest)
@@ -309,11 +319,13 @@ export class CodexExecutor extends BaseExecutor {
         chunks.push(value);
         text += decoder.decode(value, { stream: true });
         const lowerText = text.toLowerCase();
+
+        if (CODEX_SSE_USER_OUTPUT_PATTERNS.some(p => lowerText.includes(p))) break;
+
         const accountHit = CODEX_SSE_ACCOUNT_FALLBACK_PATTERNS.find(p => lowerText.includes(p));
         if (accountHit) { matched = accountHit; accountFallback = true; break; }
         const retryHit = CODEX_SSE_RETRY_PATTERNS.find(p => lowerText.includes(p));
         if (retryHit) { matched = retryHit; break; }
-        if (CODEX_SSE_USER_OUTPUT_PATTERNS.some(p => lowerText.includes(p))) break;
       }
     } catch (e) {
       dbg("CODEX", `peek read error: ${e.message}`);
@@ -379,7 +391,6 @@ export class CodexExecutor extends BaseExecutor {
    * Image fetching is handled separately in prefetchImages() so this stays sync.
    */
   transformRequest(model, body, stream, credentials) {
-    this._isCompact = !!body._compact;
     delete body._compact;
     // Resolve conversation-stable session_id (priority: body → assistant-text → workspace → machine)
     this._currentSessionId = resolveCacheSessionId(body, credentials);

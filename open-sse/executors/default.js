@@ -82,7 +82,10 @@ export function normalizeAccountIdPlaceholder(provider, accountId) {
 // Apply a token to a header per scheme (matches legacy: combined always sets, even when undefined).
 function setAuth(headers, spec, token) {
   if (!token) return;
-  headers[spec.header] = spec.scheme === "bearer" ? `Bearer ${token}` : token;
+  const scheme = spec.scheme;
+  if (scheme === "bearer") headers[spec.header] = `Bearer ${token}`;
+  else if (spec.prefix) headers[spec.header] = `${spec.prefix} ${token}`;
+  else headers[spec.header] = token;
 }
 
 // Resolve auth onto headers from a descriptor.

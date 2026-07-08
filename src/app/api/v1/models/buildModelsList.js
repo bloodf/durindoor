@@ -337,157 +337,166 @@ export async function buildModelsList(kindFilter) {
       });
     }
   } else {
-    for (const [providerId, conn] of activeConnectionByProvider.entries()) {
-      if (!providerMatchesKinds(providerId, kindFilter)) continue;
+    const providerResults = await Promise.all(
+      Array.from(activeConnectionByProvider.entries()).map(async ([providerId, conn]) => {
+        if (!providerMatchesKinds(providerId, kindFilter)) return [];
 
-      const staticAlias = PROVIDER_ID_TO_ALIAS[providerId] ?? providerId;
-      const prefix = isRecord(conn.providerSpecificData) ? conn.providerSpecificData.prefix : undefined;
-      const outputAlias = (
-        (typeof prefix === "string" ? prefix : undefined)
-        || getProviderAlias(providerId)
-        || staticAlias
-      ).trim();
-      const providerModels = PROVIDER_MODELS[staticAlias] ?? [];
-      const psd = isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {};
-      const enabledModels = psd.enabledModels;
-      const hasExplicitEnabledModels =
-        Array.isArray(enabledModels) && enabledModels.length > 0;
-      const isCompatibleProvider =
-        isOpenAICompatibleProvider(providerId) || isAnthropicCompatibleProvider(providerId);
+        const staticAlias = PROVIDER_ID_TO_ALIAS[providerId] ?? providerId;
+        const prefix = isRecord(conn.providerSpecificData) ? conn.providerSpecificData.prefix : undefined;
+        const outputAlias = (
+          (typeof prefix === "string" ? prefix : undefined)
+          || getProviderAlias(providerId)
+          || staticAlias
+        ).trim();
+        const providerModels = PROVIDER_MODELS[staticAlias] ?? [];
+        const psd = isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {};
+        const enabledModels = psd.enabledModels;
+        const hasExplicitEnabledModels =
+          Array.isArray(enabledModels) && enabledModels.length > 0;
+        const isCompatibleProvider =
+          isOpenAICompatibleProvider(providerId) || isAnthropicCompatibleProvider(providerId);
 
-      // Build kind lookup for static models so we can filter even when only IDs are exposed
-      const staticModelKindById = new Map(
-        providerModels.map((m) => [m.id, modelKind(m)])
-      );
-      const liveModelKindById = new Map();
-      const liveCapabilitiesById = new Map();
+        // Build kind lookup for static models so we can filter even when only IDs are exposed
+        const staticModelKindById = new Map(
+          providerModels.map((m) => [m.id, modelKind(m)])
+        );
+        const liveModelKindById = new Map();
+        const liveCapabilitiesById = new Map();
 
-      let rawModelIds = hasExplicitEnabledModels
-        ? Array.from(
-            new Set(
-              enabledModels.filter(
-                (modelId) => typeof modelId === "string" && modelId.trim() !== "",
+        let rawModelIds = hasExplicitEnabledModels
+          ? Array.from(
+              new Set(
+                enabledModels.filter(
+                  (modelId) => typeof modelId === "string" && modelId.trim() !== "",
+                ),
               ),
-            ),
-          )
-        : providerModels.map((model) => model.id);
+            )
+          : providerModels.map((model) => model.id);
 
-      if (isCompatibleProvider && rawModelIds.length === 0 && !UPSTREAM_CONNECTION_RE.test(providerId)) {
-        rawModelIds = await fetchCompatibleModelIds(conn);
-      }
-
-      // Config-driven live catalog override (e.g. Kiro returns dynamic
-      // -thinking/-agentic variants per account). On failure, fall back to
-      // whatever rawModelIds already holds.
-      const liveResolver = LIVE_MODEL_RESOLVERS[providerId];
-      if (liveResolver && !hasExplicitEnabledModels) {
-        try {
-          const live = await liveResolver(conn);
-          if (live?.models?.length) {
-            rawModelIds = live.models.map((m) => {
-              if (m.kind || m.type) liveModelKindById.set(m.id, m.kind || m.type);
-              if (isRecord(m.capabilities)) liveCapabilitiesById.set(m.id, m.capabilities);
-              return m.id;
-            });
-          }
-        } catch (err) {
-          console.log(`Live model fetch failed for ${providerId}: ${err instanceof Error ? err.message : String(err)}`);
+        if (isCompatibleProvider && rawModelIds.length === 0 && !UPSTREAM_CONNECTION_RE.test(providerId)) {
+          rawModelIds = await fetchCompatibleModelIds(conn);
         }
-      }
 
-      const modelIds = rawModelIds
-        .map((modelId) => {
-          if (modelId.startsWith(`${outputAlias}/`)) {
-            return modelId.slice(outputAlias.length + 1);
+        // Config-driven live catalog override (e.g. Kiro returns dynamic
+        // -thinking/-agentic variants per account). On failure, fall back to
+        // whatever rawModelIds already holds.
+        const liveResolver = LIVE_MODEL_RESOLVERS[providerId];
+        if (liveResolver && !hasExplicitEnabledModels) {
+          try {
+            const live = await liveResolver(conn);
+            if (live?.models?.length) {
+              rawModelIds = live.models.map((m) => {
+                if (m.kind || m.type) liveModelKindById.set(m.id, m.kind || m.type);
+                if (isRecord(m.capabilities)) liveCapabilitiesById.set(m.id, m.capabilities);
+                return m.id;
+              });
+            }
+          } catch (err) {
+            console.log(`Live model fetch failed for ${providerId}: ${err instanceof Error ? err.message : String(err)}`);
           }
-          if (modelId.startsWith(`${staticAlias}/`)) {
-            return modelId.slice(staticAlias.length + 1);
-          }
-          if (modelId.startsWith(`${providerId}/`)) {
-            return modelId.slice(providerId.length + 1);
-          }
-          return modelId;
-        })
-        .filter((modelId) => typeof modelId === "string" && modelId.trim() !== "");
+        }
 
-      const customModelKindById = new Map();
-      const customModelIds = customModels
-        .filter((m) => {
-          if (!m.id) return false;
-          const kind = customModelKind(m);
-          // imageToText custom models are vision-capable chat models: expose them
-          // both in the default LLM list and in /v1/models/image-to-text.
-          if (!kindFilter.includes(kind) && !(kind === "imageToText" && kindFilter.includes(LLM_KIND))) return false;
-          const alias = m.providerAlias;
-          return alias === staticAlias || alias === outputAlias || alias === providerId;
-        })
-        .map((m) => {
-          const modelId = String(m.id).trim();
-          const kind = customModelKind(m);
-          if (modelId) customModelKindById.set(modelId, kind);
-          return modelId;
-        })
-        .filter((modelId) => modelId !== "");
+        const modelIds = rawModelIds
+          .map((modelId) => {
+            if (modelId.startsWith(`${outputAlias}/`)) {
+              return modelId.slice(outputAlias.length + 1);
+            }
+            if (modelId.startsWith(`${staticAlias}/`)) {
+              return modelId.slice(staticAlias.length + 1);
+            }
+            if (modelId.startsWith(`${providerId}/`)) {
+              return modelId.slice(providerId.length + 1);
+            }
+            return modelId;
+          })
+          .filter((modelId) => typeof modelId === "string" && modelId.trim() !== "");
 
-      const aliasModelIds = Object.values(modelAliases)
-        .filter((fullModel) => typeof fullModel === "string" && fullModel.includes("/"))
-        .map((fullModel) => {
-          if (fullModel.startsWith(`${outputAlias}/`)) {
-            return fullModel.slice(outputAlias.length + 1);
-          }
-          if (fullModel.startsWith(`${staticAlias}/`)) {
-            return fullModel.slice(staticAlias.length + 1);
-          }
-          if (fullModel.startsWith(`${providerId}/`)) {
-            return fullModel.slice(providerId.length + 1);
-          }
-          return fullModel;
-        })
-        .filter((modelId) => typeof modelId === "string" && modelId.trim() !== "");
+        const customModelKindById = new Map();
+        const customModelIds = customModels
+          .filter((m) => {
+            if (!m.id) return false;
+            const kind = customModelKind(m);
+            // imageToText custom models are vision-capable chat models: expose them
+            // both in the default LLM list and in /v1/models/image-to-text.
+            if (!kindFilter.includes(kind) && !(kind === "imageToText" && kindFilter.includes(LLM_KIND))) return false;
+            const alias = m.providerAlias;
+            return alias === staticAlias || alias === outputAlias || alias === providerId;
+          })
+          .map((m) => {
+            const modelId = String(m.id).trim();
+            const kind = customModelKind(m);
+            if (modelId) customModelKindById.set(modelId, kind);
+            return modelId;
+          })
+          .filter((modelId) => modelId !== "");
 
-      const mergedModelIds = Array.from(new Set([...modelIds, ...customModelIds, ...aliasModelIds]));
+        const aliasModelIds = Object.values(modelAliases)
+          .filter((fullModel) => typeof fullModel === "string" && fullModel.includes("/"))
+          .map((fullModel) => {
+            if (fullModel.startsWith(`${outputAlias}/`)) {
+              return fullModel.slice(outputAlias.length + 1);
+            }
+            if (fullModel.startsWith(`${staticAlias}/`)) {
+              return fullModel.slice(staticAlias.length + 1);
+            }
+            if (fullModel.startsWith(`${providerId}/`)) {
+              return fullModel.slice(providerId.length + 1);
+            }
+            return fullModel;
+          })
+          .filter((modelId) => typeof modelId === "string" && modelId.trim() !== "");
 
-      for (const modelId of mergedModelIds) {
-        // Resolve kind: prefer custom/live/static metadata, otherwise infer from ID heuristics
-        const customKind = customModelKindById.get(modelId);
-        const liveKind = liveModelKindById.get(modelId);
-        const kind = customKind || liveKind || staticModelKindById.get(modelId) || inferKindFromUnknownModelId(modelId);
-        // imageToText custom models stay in the LLM list (vision-capable chat models)
-        const allowAsLlm = kind === "imageToText" && kindFilter.includes(LLM_KIND);
-        if (!kindFilter.includes(kind) && !allowAsLlm) continue;
-        if (isDisabled(outputAlias, modelId) || isDisabled(staticAlias, modelId)) continue;
+        const mergedModelIds = Array.from(new Set([...modelIds, ...customModelIds, ...aliasModelIds]));
+        const perProviderModels = [];
 
-        const caps =
-          liveCapabilitiesById.get(modelId)
-          || capabilitiesFromServiceKind(customKind || liveKind)
-          || getCapabilitiesForModel(providerId, modelId);
-        const model = {
-          id: `${outputAlias}/${modelId}`,
-          object: "model",
-          owned_by: outputAlias,
-          capabilities: caps,
-        };
-        models.push(model);
-      }
+        for (const modelId of mergedModelIds) {
+          // Resolve kind: prefer custom/live/static metadata, otherwise infer from ID heuristics
+          const customKind = customModelKindById.get(modelId);
+          const liveKind = liveModelKindById.get(modelId);
+          const kind = customKind || liveKind || staticModelKindById.get(modelId) || inferKindFromUnknownModelId(modelId);
+          // imageToText custom models stay in the LLM list (vision-capable chat models)
+          const allowAsLlm = kind === "imageToText" && kindFilter.includes(LLM_KIND);
+          if (!kindFilter.includes(kind) && !allowAsLlm) continue;
+          if (isDisabled(outputAlias, modelId) || isDisabled(staticAlias, modelId)) continue;
 
-      // Web search/fetch — provider IS the model, expose as {alias}/search and/or {alias}/fetch with explicit kind
-      const providerInfo = AI_PROVIDERS[providerId];
-      if (kindFilter.includes("webSearch") && providerInfo?.searchConfig) {
-        models.push({
-          id: `${outputAlias}/search`,
-          object: "model",
-          kind: "webSearch",
-          owned_by: outputAlias,
-        });
-      }
-      if (kindFilter.includes("webFetch") && providerInfo?.fetchConfig) {
-        models.push({
-          id: `${outputAlias}/fetch`,
-          object: "model",
-          kind: "webFetch",
-          owned_by: outputAlias,
-        });
-      }
+          const caps =
+            liveCapabilitiesById.get(modelId)
+            || capabilitiesFromServiceKind(customKind || liveKind)
+            || getCapabilitiesForModel(providerId, modelId);
+          const model = {
+            id: `${outputAlias}/${modelId}`,
+            object: "model",
+            owned_by: outputAlias,
+            capabilities: caps,
+          };
+          perProviderModels.push(model);
+        }
+
+        // Web search/fetch — provider IS the model, expose as {alias}/search and/or {alias}/fetch with explicit kind
+        const providerInfo = AI_PROVIDERS[providerId];
+        if (kindFilter.includes("webSearch") && providerInfo?.searchConfig) {
+          perProviderModels.push({
+            id: `${outputAlias}/search`,
+            object: "model",
+            kind: "webSearch",
+            owned_by: outputAlias,
+          });
+        }
+        if (kindFilter.includes("webFetch") && providerInfo?.fetchConfig) {
+          perProviderModels.push({
+            id: `${outputAlias}/fetch`,
+            object: "model",
+            kind: "webFetch",
+            owned_by: outputAlias,
+          });
+        }
+
+        return perProviderModels;
+      })
+    );
+
+    for (const result of providerResults) {
+      models.push(...result);
     }
   }
 

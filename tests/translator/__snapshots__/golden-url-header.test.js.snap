@@ -77,7 +77,7 @@ exports[`GOLDEN buildHeaders (default executor providers) > agentrouter → head
     "X-Stainless-Timeout": "600",
     "x-api-key": "<CRED>",
   },
-  "oauth": "THROW: Cannot read properties of undefined (reading 'header')",
+  "oauth": "THROW: Cannot read properties of undefined (reading 'scheme')",
 }
 `;
 
@@ -651,16 +651,16 @@ exports[`GOLDEN buildHeaders (default executor providers) > clarifai → headers
 {
   "apiKey": {
     "Accept": "text/event-stream",
-    "Authorization": "<CRED>",
+    "Authorization": "Key <CRED>",
     "Content-Type": "application/json",
   },
   "nonStream": {
-    "Authorization": "<CRED>",
+    "Authorization": "Key <CRED>",
     "Content-Type": "application/json",
   },
   "oauth": {
     "Accept": "text/event-stream",
-    "Authorization": "<CRED>",
+    "Authorization": "Key <CRED>",
     "Content-Type": "application/json",
   },
 }

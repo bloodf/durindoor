@@ -19,6 +19,8 @@ import {
   getGlmUsage,
   getVercelAiGatewayUsage,
   getQoderUsage,
+  getXaiUsage,
+  getGrokWebUsage,
 } from "./usage/misc.js";
 
 /**
@@ -45,6 +47,8 @@ const USAGE_HANDLERS = {
   "vercel-ai-gateway": (c) => getVercelAiGatewayUsage(c.apiKey, c.proxyOptions),
   "codebuddy-cn": (c) => getCodeBuddyCnUsage(c.accessToken, c.apiKey, c.providerSpecificData, c.proxyOptions),
   cursor: (c) => getCursorUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
+  xai: () => getXaiUsage(),
+  "grok-web": () => getGrokWebUsage(),
 };
 
 export async function getUsageForProvider(connection, proxyOptions = null) {

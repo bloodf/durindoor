@@ -169,6 +169,21 @@ export const LOCAL_PROVIDER_DEFAULT_BASE_URLS = {
   "9router": "http://127.0.0.1:20130/v1",
 };
 
+
+const GLMT_MODEL_ALIASES = {
+  "glm-5.2-high": { model: "glm-5.2", reasoningEffort: "high" },
+  "glm-5.2-max": { model: "glm-5.2", reasoningEffort: "max" },
+};
+
+function applyGlmtModelAlias(provider, model, body) {
+  if (provider !== "glmt" || !body || typeof body !== "object") return body;
+  const alias = GLMT_MODEL_ALIASES[model] || GLMT_MODEL_ALIASES[body.model];
+  if (!alias) return body;
+  body.model = alias.model;
+  body.reasoning_effort = alias.reasoningEffort;
+  return body;
+}
+
 export class DefaultExecutor extends BaseExecutor {
   constructor(provider) {
     super(provider, PROVIDERS[provider] || PROVIDERS.openai);
@@ -196,6 +211,7 @@ export class DefaultExecutor extends BaseExecutor {
 
   transformRequest(model, body, stream, credentials) {
     this.applyRequestDefaults(body);
+    applyGlmtModelAlias(this.provider, model, body);
     const transformed = this.applyJsonSchemaFallback(body);
 
     if (transformed && typeof transformed === "object") {

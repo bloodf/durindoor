@@ -10,7 +10,28 @@ export function gitLog(text, maxLines = GIT_LOG_MAX_LINES) {
   const lines = input.split("\n");
   const out = [];
   let skipped = 0;
-  let omitted = false;      inCommit = true;
+  let omitted = false;
+  let inCommit = false;
+  let subjectSeen = false;
+
+  function pushLine(l) {
+    if (out.length < maxLines) {
+      out.push(l);
+      return true;
+    }
+    skipped++;
+    return false;
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    const line = raw.trimEnd();
+    const trimmed = line.trim();
+
+    // commit <sha> header — starts new commit entry
+    // Also matched with leading graph decoration (`*   commit abc1234...` — --graph without --oneline)
+    if (/^commit [0-9a-f]{7,40}(?:\s+[0-9a-f]{7,40})*(?:\s+\(.+\))?$/i.test(trimmed) || /^[*|/\\][*|/\\ ]*commit [0-9a-f]{7,40}(?:\s+[0-9a-f]{7,40})*(?:\s+\(.+\))?$/i.test(trimmed)) {
+      inCommit = true;
       subjectSeen = false;
       pushLine(line);
       continue;
@@ -18,14 +39,16 @@ export function gitLog(text, maxLines = GIT_LOG_MAX_LINES) {
 
     if (inCommit) {
       // Author / Date — keep as-is (already column 0 in raw, or graph-prefix stripped by commit-header match)
-      if (/^[*|/\\ ]*(Author|AuthorDate|Commit|CommitDate|Date):/i.test(trimmed)) {        pushLine(trimmed);
+      if (/^[*|/\\ ]*(Author|AuthorDate|Commit|CommitDate|Date):/i.test(trimmed)) {
+        pushLine(trimmed);
         continue;
       }
       // blank — skip
       if (trimmed === "") {
         omitted = true;
         continue;
-      }      // indented subject (4 spaces, optionally preceded by graph decoration) — first one is subject
+      }
+      // indented subject (4 spaces, optionally preceded by graph decoration) — first one is subject
       if (!subjectSeen && /^[*|/\\ ]*    \S/.test(line)) {
         pushLine("  Subject: " + trimmed);
         subjectSeen = true;
@@ -46,7 +69,8 @@ export function gitLog(text, maxLines = GIT_LOG_MAX_LINES) {
       }
       // name-only / name-status entries: "src/a.js" or "M\tsrc/a.js"
       if (isNameOnlyPath(graphStripped) || isNameStatusLine(graphStripped)) {
-        pushLine("  " + graphStripped);        continue;
+        pushLine("  " + graphStripped);
+        continue;
       }
       // embedded diff header — one-line marker
       if (/^diff --git /.test(trimmed)) {
@@ -55,7 +79,8 @@ export function gitLog(text, maxLines = GIT_LOG_MAX_LINES) {
         continue;
       }
       // everything else in commit body — drop
-      omitted = true;      continue;
+      omitted = true;
+      continue;
     }
 
     // Not in a commit block (--oneline / --graph modes):
@@ -75,4 +100,38 @@ export function gitLog(text, maxLines = GIT_LOG_MAX_LINES) {
 
     // Pure graph decoration (no sha) — drop
     if (/^[*|/\\ ]+$/.test(trimmed) && /[*|/\\]/.test(trimmed)) {
-      omitted = true;gitLog.filterName = "git-log";
+      omitted = true;
+      continue;
+    }
+
+    // catch-all pass-through
+    pushLine(trimmed);
+  }
+
+  if (skipped > 0) {
+    omitted = true;
+    out.push(`... (${skipped} more lines)`);
+  }
+
+  const result = out.join("\n");
+  if (!result && input) return input;
+  if (result.length > input.length && !omitted) return input;
+  return result;
+}
+
+function isNameStatusLine(line) {
+  return /^(?:[ACDMRTUXB]|\?\?|!!)(?:\d+)?\s+\S/.test(line);
+}
+
+function isStatFileLine(line) {
+  if (/^(?:\d+|-)\t(?:\d+|-)\t\S/.test(line)) return true;
+  return /^.+\s+\|\s+(?:\d+(?:\s+[+\-]+)?|Bin\s+\d+\s+->\s+\d+\s+bytes)$/.test(line);
+}
+
+function isNameOnlyPath(line) {
+  if (!line || /\s/.test(line)) return false;
+  if (/^(?:commit|Author:|Date:|diff|index)$/i.test(line)) return false;
+  return line.includes("/") || /\.[^/.]+$/.test(line);
+}
+
+gitLog.filterName = "git-log";

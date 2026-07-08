@@ -1,0 +1,453 @@
+diff --git a/src/lib/db/index.js b/src/lib/db/index.js
+index ee78fb7a7..ee3d74b59 100644
+--- a/src/lib/db/index.js
++++ b/src/lib/db/index.js
+@@ -29,8 +29,11 @@ export {
+ 
+ // API keys
+ export {
+-  getApiKeys, getApiKeyById, getApiKeyByKey, createApiKey, updateApiKey, deleteApiKey, validateApiKey,
++  getApiKeys, getApiKeyById, getApiKeyByKey, createApiKey, updateApiKey, deleteApiKey, validateApiKey, getApiKeyUsageLimitStatus,
+ } from "./repos/apiKeysRepo.js";
++export {
++  getApiKeyUsageTotals, incrementApiKeyUsageSync,
++} from "./repos/apiKeyUsageTotalsRepo.js";
+ 
+ // Combos
+ export {
+@@ -88,7 +91,7 @@ export async function exportDb() {
+     providerConnections: db.all(`SELECT * FROM providerConnections`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, provider: r.provider, authType: r.authType, name: r.name, email: r.email, priority: r.priority, isActive: r.isActive === 1, createdAt: r.createdAt, updatedAt: r.updatedAt })),
+     providerNodes: db.all(`SELECT * FROM providerNodes`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, type: r.type, name: r.name, createdAt: r.createdAt, updatedAt: r.updatedAt })),
+     proxyPools: db.all(`SELECT * FROM proxyPools`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, isActive: r.isActive === 1, testStatus: r.testStatus, createdAt: r.createdAt, updatedAt: r.updatedAt })),
+-    apiKeys: db.all(`SELECT * FROM apiKeys`).map((r) => { let ac = []; try { ac = JSON.parse(r.allowedCombos); if (!Array.isArray(ac)) ac = []; } catch {} return { id: r.id, key: r.key, name: r.name, machineId: r.machineId, isActive: r.isActive === 1, allowedCombos: ac, createdAt: r.createdAt }; }),
++    apiKeys: db.all(`SELECT * FROM apiKeys`).map((r) => { let ac = []; try { ac = JSON.parse(r.allowedCombos); if (!Array.isArray(ac)) ac = []; } catch {} return { id: r.id, key: r.key, name: r.name, machineId: r.machineId, isActive: r.isActive === 1, allowedCombos: ac, dailyLimitTokens: r.dailyLimitTokens ?? null, createdAt: r.createdAt }; }),
+     combos: db.all(`SELECT * FROM combos`).map((r) => ({ id: r.id, name: r.name, kind: r.kind, models: parseJson(r.models, []), createdAt: r.createdAt, updatedAt: r.updatedAt })),
+     modelAliases: {},
+     customModels: [],
+@@ -148,8 +151,8 @@ export async function importDb(payload) {
+     }
+     for (const k of payload.apiKeys || []) {
+       db.run(
+-        `INSERT OR REPLACE INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?)`,
+-        [k.id, k.key, k.name || null, k.machineId || null, k.isActive === false ? 0 : 1, JSON.stringify(k.allowedCombos || []), k.createdAt || new Date().toISOString()]
++        `INSERT OR REPLACE INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, dailyLimitTokens, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
++        [k.id, k.key, k.name || null, k.machineId || null, k.isActive === false ? 0 : 1, JSON.stringify(k.allowedCombos || []), k.dailyLimitTokens ?? null, k.createdAt || new Date().toISOString()]
+       );
+     }
+     for (const c of payload.combos || []) {
+diff --git a/src/lib/db/migrate.js b/src/lib/db/migrate.js
+index 36183c907..4e81e0b46 100644
+--- a/src/lib/db/migrate.js
++++ b/src/lib/db/migrate.js
+@@ -142,8 +142,8 @@ function importLegacyMain(adapter, data) {
+ 
+   importWithAssertion(adapter, "apiKeys", data.apiKeys || [], (k) => {
+     adapter.run(
+-      `INSERT OR REPLACE INTO apiKeys(id, key, name, machineId, isActive, createdAt) VALUES(?, ?, ?, ?, ?, ?)`,
+-      [k.id, k.key, k.name || null, k.machineId || null, k.isActive === false ? 0 : 1, k.createdAt || new Date().toISOString()]
++      `INSERT OR REPLACE INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, dailyLimitTokens, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
++      [k.id, k.key, k.name || null, k.machineId || null, k.isActive === false ? 0 : 1, JSON.stringify(k.allowedCombos || []), k.dailyLimitTokens ?? null, k.createdAt || new Date().toISOString()]
+     );
+   }, (k) => ({ id: k.id ?? null, name: k.name ?? null }));
+ 
+diff --git a/src/lib/db/migrations/004-api-key-expiry.js b/src/lib/db/migrations/004-api-key-expiry.js
+new file mode 100644
+index 000000000..ea378c782
+--- /dev/null
++++ b/src/lib/db/migrations/004-api-key-expiry.js
+@@ -0,0 +1,16 @@
++// Adds an optional expiry timestamp to API keys so expired keys can be
++// identified without deleting them. The column is additive and idempotent.
++export default {
++  version: 4,
++  name: "api-key-expiry",
++  up(db) {
++    // better-sqlite3 uses db.prepare(sql).all(); some adapters expose a db.all() wrapper.
++    const rows = typeof db.all === "function"
++      ? db.all(`PRAGMA table_info(apiKeys)`)
++      : db.prepare(`PRAGMA table_info(apiKeys)`).all();
++    const columns = rows.map((row) => row.name);
++    if (!columns.includes("expiresAt")) {
++      db.exec(`ALTER TABLE apiKeys ADD COLUMN expiresAt TEXT`);
++    }
++  },
++};
+diff --git a/src/lib/db/migrations/004-daily-token-limit.js b/src/lib/db/migrations/004-daily-token-limit.js
+new file mode 100644
+index 000000000..bc2a03cfe
+--- /dev/null
++++ b/src/lib/db/migrations/004-daily-token-limit.js
+@@ -0,0 +1,13 @@
++export default {
++  version: 4,
++  name: "add daily token limit to apiKeys",
++  up(db) {
++    try {
++      db.exec("ALTER TABLE apiKeys ADD COLUMN dailyLimitTokens INTEGER");
++    } catch (err) {
++      if (!/duplicate column|already exists|column.*exists/i.test(String(err))) {
++        throw err;
++      }
++    }
++  },
++};
+diff --git a/src/lib/db/migrations/005-api-key-policy.js b/src/lib/db/migrations/005-api-key-policy.js
+new file mode 100644
+index 000000000..6943398e0
+--- /dev/null
++++ b/src/lib/db/migrations/005-api-key-policy.js
+@@ -0,0 +1,39 @@
++// Add `policy` JSON column to apiKeys for per-key model allowlist (and future
++// token/cost limits). Additive only — syncSchemaFromTables also handles this
++// for existing DBs, but the migration stamps the version for traceability.
++// Also backfills lifetime per-key totals from existing usageHistory so new
++// limits applied to existing keys start from real usage.
++export default {
++  version: 5,
++  name: "api-key-policy",
++  up(db) {
++    const cols = db.all(`PRAGMA table_info(apiKeys)`);
++    if (!cols.some((c) => c.name === "policy")) {
++      db.exec(`ALTER TABLE apiKeys ADD COLUMN policy TEXT`);
++    }
++
++    // Backfill apiKeyUsageTotals from historical usage rows. The counter is
++    // normally incremented inside saveRequestUsage; pre-existing databases will
++    // have zero totals otherwise, causing per-key limits to under-count history.
++    const totalsTable = db.all(`PRAGMA table_info(apiKeyUsageTotals)`);
++    if (totalsTable.length === 0) return;
++
++    const rows = db.all(`
++      SELECT
++        a.id AS apiKeyId,
++        COALESCE(SUM(u.promptTokens + u.completionTokens), 0) AS totalTokens,
++        COALESCE(SUM(u.cost), 0) AS totalCost,
++        COUNT(u.id) AS totalRequests
++      FROM apiKeys a
++      LEFT JOIN usageHistory u ON u.apiKey = a.key
++      GROUP BY a.id
++    `);
++
++    for (const r of rows) {
++      db.run(
++        `INSERT OR REPLACE INTO apiKeyUsageTotals(apiKeyId, totalTokens, totalCost, totalRequests, updatedAt) VALUES(?, ?, ?, ?, ?)`,
++        [r.apiKeyId, r.totalTokens || 0, r.totalCost || 0, r.totalRequests || 0, new Date().toISOString()]
++      );
++    }
++  },
++};
+diff --git a/src/lib/db/migrations/index.js b/src/lib/db/migrations/index.js
+index 2b94c521b..a17851fdf 100644
+--- a/src/lib/db/migrations/index.js
++++ b/src/lib/db/migrations/index.js
+@@ -4,8 +4,9 @@
+ import m001 from "./001-initial.js";
+ import m002 from "./002-mcp-gateway.js";
+ import m003 from "./003-mcp-grant-tools.js";
++import m004 from "./004-daily-token-limit.js";
+ 
+-export const MIGRATIONS = [m001, m002, m003].sort((a, b) => a.version - b.version);
++export const MIGRATIONS = [m001, m002, m003, m004].sort((a, b) => a.version - b.version);
+ 
+ export function latestVersion() {
+   return MIGRATIONS.length ? MIGRATIONS[MIGRATIONS.length - 1].version : 0;
+diff --git a/src/lib/db/repos/apiKeyUsageTotalsRepo.js b/src/lib/db/repos/apiKeyUsageTotalsRepo.js
+new file mode 100644
+index 000000000..e61b88258
+--- /dev/null
++++ b/src/lib/db/repos/apiKeyUsageTotalsRepo.js
+@@ -0,0 +1,66 @@
++import { getAdapter } from "../driver.js";
++
++/**
++ * Get lifetime usage totals for a single API key.
++ * @param {string} apiKeyId
++ * @returns {Promise<{ totalTokens: number, totalCost: number, totalRequests: number, updatedAt: string | null } | null>}
++ */
++export async function getApiKeyUsageTotals(apiKeyId) {
++  const db = await getAdapter();
++  const row = db.get(`SELECT * FROM apiKeyUsageTotals WHERE apiKeyId = ?`, [apiKeyId]);
++  if (!row) return { totalTokens: 0, totalCost: 0, totalRequests: 0, updatedAt: null };
++  return {
++    apiKeyId: row.apiKeyId,
++    totalTokens: row.totalTokens || 0,
++    totalCost: row.totalCost || 0,
++    totalRequests: row.totalRequests || 0,
++    updatedAt: row.updatedAt || null,
++  };
++}
++
++/**
++ * Get lifetime usage totals for all API keys.
++ * @returns {Promise<Array<{ apiKeyId: string, totalTokens: number, totalCost: number, totalRequests: number, updatedAt: string | null }>>}
++ */
++export async function getAllApiKeyUsageTotals() {
++  const db = await getAdapter();
++  const rows = db.all(`SELECT * FROM apiKeyUsageTotals ORDER BY updatedAt DESC`);
++  return rows.map((row) => ({
++    apiKeyId: row.apiKeyId,
++    totalTokens: row.totalTokens || 0,
++    totalCost: row.totalCost || 0,
++    totalRequests: row.totalRequests || 0,
++    updatedAt: row.updatedAt || null,
++  }));
++}
++
++/**
++ * Increment usage totals for an API key. Called inside the saveRequestUsage transaction.
++ * Must be called with a db adapter already obtained (sync context).
++ *
++ * @param {object} db - adapter instance (from getAdapter())
++ * @param {string} apiKeyId
++ * @param {{ tokens: number, cost: number }} usage
++ */
++export function incrementApiKeyUsageSync(db, apiKeyId, { tokens, cost }) {
++  if (!apiKeyId) return;
++  const now = new Date().toISOString();
++  const row = db.get(`SELECT * FROM apiKeyUsageTotals WHERE apiKeyId = ?`, [apiKeyId]);
++  if (row) {
++    db.run(
++      `UPDATE apiKeyUsageTotals SET totalTokens = ?, totalCost = ?, totalRequests = ?, updatedAt = ? WHERE apiKeyId = ?`,
++      [
++        (row.totalTokens || 0) + (tokens || 0),
++        (row.totalCost || 0) + (cost || 0),
++        (row.totalRequests || 0) + 1,
++        now,
++        apiKeyId,
++      ]
++    );
++  } else {
++    db.run(
++      `INSERT INTO apiKeyUsageTotals(apiKeyId, totalTokens, totalCost, totalRequests, updatedAt) VALUES(?, ?, ?, ?, ?)`,
++      [apiKeyId, tokens || 0, cost || 0, 1, now]
++    );
++  }
++}
+diff --git a/src/lib/db/repos/apiKeysRepo.js b/src/lib/db/repos/apiKeysRepo.js
+index 7edff0abd..1cd7c54f0 100644
+--- a/src/lib/db/repos/apiKeysRepo.js
++++ b/src/lib/db/repos/apiKeysRepo.js
+@@ -10,10 +10,25 @@ function rowToKey(row) {
+     machineId: row.machineId,
+     isActive: row.isActive === 1 || row.isActive === true,
+     allowedCombos: (() => { try { const v = JSON.parse(row.allowedCombos); return Array.isArray(v) ? v : []; } catch { return []; } })(),
++    dailyLimitTokens: row.dailyLimitTokens ?? null,
+     createdAt: row.createdAt,
+   };
+ }
+ 
++function normalizeDailyLimitTokens(value) {
++  if (value === undefined) return undefined;
++  if (value === null || value === "") return null;
++  const limit = Number(value);
++  if (!Number.isSafeInteger(limit) || limit < 0) throw new Error("dailyLimitTokens must be a non-negative integer");
++  return limit;
++}
++
++function getLocalDayStartIso(now = new Date()) {
++  const d = new Date(now);
++  d.setHours(0, 0, 0, 0);
++  return d.toISOString();
++}
++
+ export async function getApiKeys() {
+   const db = await getAdapter();
+   const rows = db.all(`SELECT * FROM apiKeys ORDER BY createdAt ASC`);
+@@ -32,8 +47,9 @@ export async function getApiKeyByKey(key) {
+   return rowToKey(row);
+ }
+ 
+-export async function createApiKey(name, machineId, allowedCombos = []) {
++export async function createApiKey(name, machineId, allowedCombos = [], dailyLimitTokens = null) {
+   if (!machineId) throw new Error("machineId is required");
++  const tokenLimit = normalizeDailyLimitTokens(dailyLimitTokens);
+   const db = await getAdapter();
+   const { generateApiKeyWithMachine } = await import("@/shared/utils/apiKey");
+   const result = generateApiKeyWithMachine(machineId);
+@@ -44,11 +60,12 @@ export async function createApiKey(name, machineId, allowedCombos = []) {
+     machineId,
+     isActive: true,
+     allowedCombos: Array.isArray(allowedCombos) ? allowedCombos : [],
++    dailyLimitTokens: tokenLimit ?? null,
+     createdAt: new Date().toISOString(),
+   };
+   db.run(
+-    `INSERT INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?)`,
+-    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, JSON.stringify(apiKey.allowedCombos), apiKey.createdAt]
++    `INSERT INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, dailyLimitTokens, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
++    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, JSON.stringify(apiKey.allowedCombos), apiKey.dailyLimitTokens, apiKey.createdAt]
+   );
+   return apiKey;
+ }
+@@ -59,25 +76,49 @@ export async function updateApiKey(id, data) {
+   db.transaction(() => {
+     const row = db.get(`SELECT * FROM apiKeys WHERE id = ?`, [id]);
+     if (!row) return;
+-    const merged = { ...rowToKey(row), ...data };
++    const cleanData = { ...data };
++    if ("dailyLimitTokens" in cleanData) cleanData.dailyLimitTokens = normalizeDailyLimitTokens(cleanData.dailyLimitTokens);
++    const merged = { ...rowToKey(row), ...cleanData };
+     db.run(
+-      `UPDATE apiKeys SET key = ?, name = ?, machineId = ?, isActive = ?, allowedCombos = ? WHERE id = ?`,
+-      [merged.key, merged.name, merged.machineId, merged.isActive ? 1 : 0, JSON.stringify(merged.allowedCombos || []), id]
++      `UPDATE apiKeys SET key = ?, name = ?, machineId = ?, isActive = ?, allowedCombos = ?, dailyLimitTokens = ? WHERE id = ?`,
++      [merged.key, merged.name, merged.machineId, merged.isActive ? 1 : 0, JSON.stringify(merged.allowedCombos || []), merged.dailyLimitTokens ?? null, id]
+     );
+     result = merged;
+   });
+   return result;
+ }
+ 
+-export async function deleteApiKey(id) {
+-  const db = await getAdapter();
+-  const res = db.run(`DELETE FROM apiKeys WHERE id = ?`, [id]);
+-  return (res?.changes ?? 0) > 0;
+-}
+-
+ export async function validateApiKey(key) {
+   const db = await getAdapter();
+   const row = db.get(`SELECT isActive FROM apiKeys WHERE key = ?`, [key]);
+   if (!row) return false;
+   return row.isActive === 1 || row.isActive === true;
+ }
++
++export async function getApiKeyUsageLimitStatus(key, now = new Date()) {
++  if (!key) return { enforced: false, exceeded: false };
++  const db = await getAdapter();
++  const row = db.get(`SELECT isActive, dailyLimitTokens FROM apiKeys WHERE key = ?`, [key]);
++  if (!row || !(row.isActive === 1 || row.isActive === true)) return { enforced: false, exceeded: false };
++  const limit = normalizeDailyLimitTokens(row.dailyLimitTokens);
++  if (limit === null || limit === undefined) return { enforced: false, exceeded: false };
++  const start = getLocalDayStartIso(now);
++  const usedTokens = Number(db.get(
++    `SELECT COALESCE(SUM(COALESCE(promptTokens, 0) + COALESCE(completionTokens, 0) + COALESCE(json_extract(tokens, '$.reasoning_tokens'), 0)), 0) as usedTokens FROM usageHistory WHERE apiKey = ? AND timestamp >= ?`,
++    [key, start]
++  )?.usedTokens || 0);
++  return {
++    enforced: true,
++    exceeded: usedTokens >= limit,
++    usedTokens,
++    limitTokens: limit,
++    remainingTokens: Math.max(0, limit - usedTokens),
++    resetAt: new Date(new Date(now).setHours(24, 0, 0, 0)).toISOString(),
++  };
++}
++
++export async function deleteApiKey(id) {
++  const db = await getAdapter();
++  const res = db.run(`DELETE FROM apiKeys WHERE id = ?`, [id]);
++  return (res?.changes ?? 0) > 0;
++}
+diff --git a/src/lib/db/repos/requestDetailsRepo.js b/src/lib/db/repos/requestDetailsRepo.js
+index 3f2c86909..a5dd152d2 100644
+--- a/src/lib/db/repos/requestDetailsRepo.js
++++ b/src/lib/db/repos/requestDetailsRepo.js
+@@ -108,6 +108,7 @@ async function flushToDatabase() {
+             status: item.status || null,
+             latency: item.latency || {},
+             tokens: item.tokens || {},
++            pxpipe: item.pxpipe || undefined,
+             request: truncateRequestField(item.request, config.maxJsonSize),
+             providerRequest: truncateRequestField(item.providerRequest, config.maxJsonSize),
+             providerResponse: truncateField(item.providerResponse, config.maxJsonSize),
+diff --git a/src/lib/db/repos/settingsRepo.js b/src/lib/db/repos/settingsRepo.js
+index fd420c331..649d1b8c8 100644
+--- a/src/lib/db/repos/settingsRepo.js
++++ b/src/lib/db/repos/settingsRepo.js
+@@ -22,6 +22,7 @@ const DEFAULT_SETTINGS = {
+   tailscaleUrl: "",
+   stickyRoundRobinLimit: 3,
+   providerStrategies: {},
++  quotaVisibility: {},
+   comboStrategy: "fallback",
+   comboStickyRoundRobinLimit: 1,
+   comboStrategies: {},
+@@ -48,14 +49,21 @@ const DEFAULT_SETTINGS = {
+   headroomEnabled: false,
+   headroomUrl: DEFAULT_HEADROOM_URL,
+   headroomCompressUserMessages: false,
++  pxpipeEnabled: false,
+   cavemanEnabled: false,
+   cavemanLevel: "full",
+   quotaTrackerState: DEFAULT_QUOTA_TRACKER_STATE,
+   ponytailEnabled: false,
+   ponytailLevel: "full",
+-  // Per-provider concurrency limits: { "umans": 4, "openai": 2 }
+-  // 0 or missing = unlimited. Limits concurrent in-flight upstream requests.
++  pxpipeEnabled: false,
++  pxpipeAutoInstall: true,
++  pxpipeMinChars: 25000,
++  pxpipeTimeoutMs: 15000,
+   providerConcurrencyLimits: {},
++  // Optional upstream routing overrides. Shape:
++  // { [providerId]: { enabled, mode: "native"|"cliproxyapi"|"fallback", cliproxyapiModelMapping } }
++  upstreamProxyConfig: {},
++  cliproxyapi_fallback_codes: "429,500,502,503,504",
+ };
+ 
+ async function readRaw() {
+diff --git a/src/lib/db/repos/usageRepo.js b/src/lib/db/repos/usageRepo.js
+index d1ee46d6f..4fd78d95d 100644
+--- a/src/lib/db/repos/usageRepo.js
++++ b/src/lib/db/repos/usageRepo.js
+@@ -636,14 +636,13 @@ export async function getUsageStats(period = "all") {
+ 
+       if (r.apiKey && typeof r.apiKey === "string") {
+         const keyInfo = apiKeyMap[r.apiKey];
++        const keyName = keyInfo?.name || r.apiKey.slice(0, 8) + "...";
+         const apiKeyMasked = maskApiKey(r.apiKey);
+         const apiKeyFingerprint = fingerprintApiKey(r.apiKey);
+-        const apiKeyKey = apiKeyFingerprint || "local-no-key";
+-        const fingerprintTail = apiKeyKey.replace(/^sha256:/, "").slice(0, 8);
+-        const keyName = keyInfo?.name || (apiKeyMasked ? `${apiKeyMasked} (${fingerprintTail})` : "Local (No API Key)");
++        const apiKeyKey = apiKeyMasked;
+         const akKey = `${apiKeyFingerprint}|${r.model}|${r.provider || "unknown"}`;
+         if (!stats.byApiKey[akKey]) {
+-          stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, apiKeyMasked, keyName, apiKeyKey, lastUsed: r.timestamp };
++          stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, apiKeyMasked, keyName, apiKeyKey: apiKeyMasked, lastUsed: r.timestamp };
+         }
+         const ake = stats.byApiKey[akKey];
+         ake.requests++; ake.promptTokens += promptTokens; ake.completionTokens += completionTokens; ake.cachedTokens += cachedTokens; ake.cost += entryCost;
+@@ -724,9 +723,22 @@ export async function getChartData(period = "7d") {
+     return buckets;
+   }
+ 
++  const labelFn = (d, opts = { month: "short", day: "numeric" }) => d.toLocaleDateString("en-US", opts);
++
++  if (period === "all") {
++    const dayRows = loadDaysInRange(db, null).sort((a, b) => a.dateKey.localeCompare(b.dateKey));
++    return dayRows.map((r) => {
++      const dayData = parseJson(r.data, {});
++      return {
++        label: labelFn(new Date(`${r.dateKey}T00:00:00`), { month: "short", day: "numeric", year: "numeric" }),
++        tokens: (dayData.promptTokens || 0) + (dayData.completionTokens || 0),
++        cost: dayData.cost || 0,
++      };
++    });
++  }
++
+   const bucketCount = period === "7d" ? 7 : period === "30d" ? 30 : 60;
+   const today = new Date();
+-  const labelFn = (d) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+ 
+   // Build map of dateKey → day data
+   const dayRows = loadDaysInRange(db, bucketCount);
+diff --git a/src/lib/db/schema.js b/src/lib/db/schema.js
+index 6e7d51fbf..e686ea52c 100644
+--- a/src/lib/db/schema.js
++++ b/src/lib/db/schema.js
+@@ -1,5 +1,5 @@
+ // Latest schema version — bumped when a migration is added in ./migrations/
+-export const SCHEMA_VERSION = 3;
++export const SCHEMA_VERSION = 4;
+ 
+ export const PRAGMA_SQL = `
+ PRAGMA journal_mode = WAL;
+@@ -79,6 +79,7 @@ export const TABLES = {
+       machineId: "TEXT",
+       isActive: "INTEGER DEFAULT 1",
+       allowedCombos: "TEXT",
++      dailyLimitTokens: "INTEGER",
+       createdAt: "TEXT NOT NULL",
+     },
+     indexes: ["CREATE INDEX IF NOT EXISTS idx_ak_key ON apiKeys(key)"],

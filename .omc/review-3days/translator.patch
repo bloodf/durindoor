@@ -1,0 +1,1220 @@
+diff --git a/open-sse/translator/concerns/message.js b/open-sse/translator/concerns/message.js
+index 169aeaf04..c3e295a1e 100644
+--- a/open-sse/translator/concerns/message.js
++++ b/open-sse/translator/concerns/message.js
+@@ -3,5 +3,7 @@ import { OPENAI_BLOCK } from "../schema/index.js";
+ // Collapse an OpenAI content-part array: a lone text part becomes a plain string,
+ // otherwise the array is returned as-is. Matches existing translator behavior.
+ export function collapseTextParts(parts) {
+-  return parts.length === 1 && parts[0].type === OPENAI_BLOCK.TEXT ? parts[0].text : parts;
++  return parts.length > 0 && parts.every((part) => part?.type === OPENAI_BLOCK.TEXT)
++    ? parts.map((part) => part.text || "").join("\n")
++    : parts;
+ }
+diff --git a/open-sse/translator/concerns/paramSupport.js b/open-sse/translator/concerns/paramSupport.js
+index 553b9ab69..8031d00b9 100644
+--- a/open-sse/translator/concerns/paramSupport.js
++++ b/open-sse/translator/concerns/paramSupport.js
+@@ -1,3 +1,5 @@
++import { getCapabilitiesForModel } from "../../providers/capabilities.js";
++
+ // Strip request params a given provider/model rejects upstream (e.g. HTTP 400).
+ // Config-driven: add a rule instead of scattering `delete body.x` across executors.
+ 
+@@ -17,6 +19,10 @@ const STRIP_RULES = [
+   // this field on assistant turns; it is only meaningful in streamed responses, not
+   // in request bodies. Strip it from every message before forwarding. #1649
+   { provider: "mistral", dropMessageFields: ["reasoning_content"] },
++  // NVIDIA NIM z-ai/glm-5.2 rejects both OpenAI-style `reasoning` and
++  // Claude-style `thinking` request fields on its OpenAI-compatible wrapper.
++  { provider: "nvidia", match: /z-ai\/glm-5\.2\b/i, drop: ["reasoning", "thinking"] },
++  { provider: "volcengine-ark", match: /glm-5/i, clampToModelMaxOutput: true },
+ ];
+ 
+ // Test a rule's match (regex or predicate) against the model id.
+@@ -26,6 +32,12 @@ function matches(rule, model) {
+   return typeof rule.match === "function" ? rule.match(model) : rule.match.test(model);
+ }
+ 
++function clampNumber(body, key, ceiling) {
++  if (typeof body[key] === "number" && Number.isFinite(body[key]) && body[key] > ceiling) {
++    body[key] = ceiling;
++  }
++}
++
+ // Remove unsupported params from body in place; returns body.
+ export function stripUnsupportedParams(provider, model, body) {
+   if (!model || !body || typeof body !== "object") return body;
+@@ -56,6 +68,22 @@ export function stripUnsupportedParams(provider, model, body) {
+         }
+       }
+     }
++    if (rule.clampToModelMaxOutput || Number.isFinite(rule.maxOutputCap)) {
++      const modelCeiling = getCapabilitiesForModel(provider, model).maxOutput;
++      const candidates = [];
++      if (rule.clampToModelMaxOutput && Number.isFinite(modelCeiling) && modelCeiling > 0) {
++        candidates.push(modelCeiling);
++      }
++      if (Number.isFinite(rule.maxOutputCap) && rule.maxOutputCap > 0) {
++        candidates.push(rule.maxOutputCap);
++      }
++      if (candidates.length > 0) {
++        const ceiling = Math.min(...candidates);
++        clampNumber(body, "max_tokens", ceiling);
++        clampNumber(body, "max_completion_tokens", ceiling);
++        clampNumber(body, "max_output_tokens", ceiling);
++      }
++    }
+   }
+   return body;
+ }
+diff --git a/open-sse/translator/concerns/thinkingUnified.js b/open-sse/translator/concerns/thinkingUnified.js
+index 805ff8a25..ed7684130 100644
+--- a/open-sse/translator/concerns/thinkingUnified.js
++++ b/open-sse/translator/concerns/thinkingUnified.js
+@@ -20,6 +20,13 @@ const FORMAT_TO_NATIVE = {
+   kiro: "kiro",
+ };
+ 
++// Strip a trailing thinking suffix "model(value)" → "model" (no-op when absent).
++export function stripThinkingSuffix(model) {
++  if (typeof model !== "string") return model;
++  const m = model.match(/^(.*)\([^()]+\)\s*$/);
++  return m ? m[1].trim() : model;
++}
++
+ // Parse model-name suffix "model(value)" → { cleanModel, override }.
+ // value: level name (high) | number (8192) | auto | none. null override when absent.
+ export function parseSuffix(model) {
+@@ -132,6 +139,15 @@ function toGeminiThinkingLevel(cfg) {
+   return effortToThinkingLevel(raw);
+ }
+ 
++function toKimiReasoningEffort(cfg) {
++  const level = toLevel(cfg);
++  if (level === "auto") return "high";
++  if (level === "minimal") return "low";
++  if (level === "xhigh") return "max";
++  if (["low", "medium", "high", "max"].includes(level)) return level;
++  return null;
++}
++
+ // Gemini nests thinkingConfig under generationConfig. gemini-cli / antigravity wrap
+ // the whole request in a { request: { generationConfig } } envelope — target the
+ // envelope's generationConfig when present, else the top-level one.
+@@ -168,7 +184,8 @@ function applyFormat(fmt, body, cfg, caps) {
+     case "openai": {
+       if (none && canDisable) { body.reasoning_effort = "none"; break; }
+       const level = toLevel(eff);
+-      if (level) body.reasoning_effort = level;
++      // OpenAI reasoning_effort enum caps at "xhigh" (no "max"); clamp Claude Code's "max".
++      if (level) body.reasoning_effort = level === "max" ? "xhigh" : level;
+       break;
+     }
+     case "claude-adaptive": {
+@@ -225,8 +242,8 @@ function applyFormat(fmt, body, cfg, caps) {
+     }
+     case "kimi": {
+       if (none && canDisable) { body.thinking = { type: "disabled" }; break; }
+-      const level = toLevel(eff);
+-      if (level) body.reasoning_effort = level === "max" ? "high" : level;
++      const effort = toKimiReasoningEffort(eff);
++      if (effort) body.reasoning_effort = effort;
+       break;
+     }
+     case "minimax": {
+diff --git a/open-sse/translator/formats/claude.js b/open-sse/translator/formats/claude.js
+index ec6e6c474..adbd3ce81 100644
+--- a/open-sse/translator/formats/claude.js
++++ b/open-sse/translator/formats/claude.js
+@@ -192,10 +192,27 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
+     delete body.output_config;
+   }
+ 
+-  // Clamp max_tokens to the model output ceiling (never above DEFAULT_MAX_TOKENS)
++  // Clamp max_tokens to the model's real output ceiling. Models whose caps
++  // declare a higher maxOutput (e.g. Opus 4.8 / Sonnet 4.6 = 128000) are allowed
++  // up to it, so max-effort thinking gets full budget; others fall back to the
++  // conservative 64000 default.
+   if (body.max_tokens) {
+-    const ceiling = Math.min(getCapabilitiesForModel(provider, body.model).maxOutput, DEFAULT_MAX_TOKENS);
++    const ceiling = getCapabilitiesForModel(provider, body.model).maxOutput || DEFAULT_MAX_TOKENS;
+     if (body.max_tokens > ceiling) body.max_tokens = ceiling;
++
++    // Reconcile against thinking budget. applyThinking (thinkingUnified.js) runs
++    // AFTER adjustMaxTokens capped max_tokens, and the claude-budget format maps
++    // max effort → budget_tokens 128000 — larger than the clamped max_tokens.
++    // Anthropic requires max_tokens strictly greater than budget_tokens (else 400).
++    // Prefer raising max_tokens to preserve the requested thinking depth; if the
++    // budget alone meets/exceeds the ceiling, cap output and shrink the budget so
++    // some tokens remain for the answer.
++    if (body.thinking?.type === "enabled" && body.thinking.budget_tokens && body.thinking.budget_tokens >= body.max_tokens) {
++      body.max_tokens = Math.min(body.thinking.budget_tokens + 1024, ceiling);
++      if (body.thinking.budget_tokens >= body.max_tokens) {
++        body.thinking.budget_tokens = Math.max(1024, body.max_tokens - 1024);
++      }
++    }
+   }
+ 
+   // 1. System: remove all cache_control, add only to last block with ttl 1h
+diff --git a/open-sse/translator/formats/maxTokens.js b/open-sse/translator/formats/maxTokens.js
+index 0e5b36f26..4d2cd2095 100644
+--- a/open-sse/translator/formats/maxTokens.js
++++ b/open-sse/translator/formats/maxTokens.js
+@@ -3,9 +3,13 @@ import { DEFAULT_MAX_TOKENS, DEFAULT_MIN_TOKENS } from "../../config/runtimeConf
+ /**
+  * Adjust max_tokens based on request context
+  * @param {object} body - Request body
++ * @param {number} [ceiling=DEFAULT_MAX_TOKENS] - Upper bound for max_tokens.
++ *   Callers with model context (e.g. openai-to-claude) pass the model's real
++ *   maxOutput so high-output models (Opus 4.8 = 128000) aren't pre-clamped to
++ *   the conservative 64000 default before the model-aware step sees them.
+  * @returns {number} Adjusted max_tokens
+  */
+-export function adjustMaxTokens(body) {
++export function adjustMaxTokens(body, ceiling = DEFAULT_MAX_TOKENS) {
+   let maxTokens = body.max_tokens || DEFAULT_MAX_TOKENS;
+ 
+   // Auto-increase for tool calling to prevent truncated arguments (min never above max)
+@@ -16,14 +20,14 @@ export function adjustMaxTokens(body) {
+   }
+ 
+   // Ensure max_tokens > thinking.budget_tokens (Claude API requirement)
+-  // Claude API requires strictly greater, so add buffer instead of using DEFAULT_MAX_TOKENS
+-  // which could equal budget_tokens when budget_tokens >= 64000
++  // Claude API requires strictly greater, so add buffer instead of using the
++  // ceiling which could equal budget_tokens when budget_tokens >= ceiling
+   if (body.thinking?.budget_tokens && maxTokens <= body.thinking.budget_tokens) {
+     maxTokens = body.thinking.budget_tokens + 1024;
+   }
+ 
+-  // Never exceed the global ceiling
+-  if (maxTokens > DEFAULT_MAX_TOKENS) maxTokens = DEFAULT_MAX_TOKENS;
++  // Never exceed the ceiling
++  if (maxTokens > ceiling) maxTokens = ceiling;
+ 
+   return maxTokens;
+ }
+diff --git a/open-sse/translator/formats/openai.js b/open-sse/translator/formats/openai.js
+index 3252568f1..5dbfa8aec 100644
+--- a/open-sse/translator/formats/openai.js
++++ b/open-sse/translator/formats/openai.js
+@@ -1,5 +1,6 @@
+ // OpenAI helper functions for translator
+ import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, VALID_OPENAI_CONTENT_TYPES, VALID_OPENAI_MESSAGE_TYPES } from "../schema/index.js";
++import { collapseTextParts } from "../concerns/message.js";
+ 
+ // Re-export valid-type lists (moved to schema/blocks.js) to keep existing importers working.
+ export { VALID_OPENAI_CONTENT_TYPES, VALID_OPENAI_MESSAGE_TYPES };
+@@ -54,7 +55,7 @@ export function filterToOpenAIFormat(body, opts = {}) {
+         filteredContent.push({ type: OPENAI_BLOCK.TEXT, text: "" });
+       }
+       
+-      return { ...msg, content: filteredContent };
++      return { ...msg, content: keepCache ? filteredContent : collapseTextParts(filteredContent) };
+     }
+     
+     return msg;
+@@ -131,4 +132,3 @@ export function filterToOpenAIFormat(body, opts = {}) {
+ 
+   return body;
+ }
+-
+diff --git a/open-sse/translator/index.js b/open-sse/translator/index.js
+index 63702100d..70b3ce485 100644
+--- a/open-sse/translator/index.js
++++ b/open-sse/translator/index.js
+@@ -285,6 +285,7 @@ import "./response/claude-to-openai.js";
+ import "./response/openai-to-claude.js";
+ import "./response/gemini-to-openai.js";
+ import "./response/openai-to-antigravity.js";
++import "./response/openai-to-gemini.js";
+ import "./response/openai-responses.js";
+ import "./response/kiro-to-openai.js";
+ import "./response/cursor-to-openai.js";
+diff --git a/open-sse/translator/request/claude-to-kiro.js b/open-sse/translator/request/claude-to-kiro.js
+index 537babad1..36a4512d3 100644
+--- a/open-sse/translator/request/claude-to-kiro.js
++++ b/open-sse/translator/request/claude-to-kiro.js
+@@ -410,7 +410,10 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
+ 
+   let finalContent = currentMessage?.userInputMessage?.content || "";
+ 
+-  // System prompt → prepend to the user content.
++  // System prompt: pass via native systemInstruction field (Kiro/Q API supports it)
++  // and also prepend as <instructions> in user content as fallback for upstreams
++  // that don't support the native field.
++  let systemInstruction = undefined;
+   if (body.system) {
+     let systemText = "";
+     if (typeof body.system === "string") {
+@@ -418,7 +421,10 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
+     } else if (Array.isArray(body.system)) {
+       systemText = body.system.map((s) => s.text || "").join("\n");
+     }
+-    if (systemText) finalContent = `${systemText}\n\n${finalContent}`;
++    if (systemText) {
++      systemInstruction = systemText;
++      finalContent = `<instructions>\n${systemText}\n</instructions>\n\n${finalContent}`;
++    }
+   }
+ 
+   // Prefix order: thinking_mode tag, timestamp marker, then agentic prompt.
+@@ -433,23 +439,29 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
+   if (agentic && isFirstTurn) prefixParts.push(KIRO_AGENTIC_SYSTEM_PROMPT);
+   finalContent = `${prefixParts.join("\n\n")}\n\n${finalContent}`;
+ 
++  const userInputMessage = {
++    content: finalContent,
++    modelId: kiroModelId,  // Codex P1: Kiro requires dash notation; matches kiroModelId used in history backfill + _kiroUpstreamModel
++    origin: "AI_EDITOR",
++    ...(currentMessage?.userInputMessage?.userInputMessageContext && {
++      userInputMessageContext:
++        currentMessage.userInputMessage.userInputMessageContext,
++    }),
++    ...(currentMessage?.userInputMessage?.images && {
++      images: currentMessage.userInputMessage.images,
++    }),
++  };
++
++  if (systemInstruction) {
++    userInputMessage.systemInstruction = systemInstruction;
++  }
++
+   const payload = {
+     conversationState: {
+       chatTriggerType: "MANUAL",
+       conversationId: uuidv4(),
+       currentMessage: {
+-        userInputMessage: {
+-          content: finalContent,
+-          modelId: kiroModelId,
+-          origin: "AI_EDITOR",
+-          ...(currentMessage?.userInputMessage?.userInputMessageContext && {
+-            userInputMessageContext:
+-              currentMessage.userInputMessage.userInputMessageContext,
+-          }),
+-          ...(currentMessage?.userInputMessage?.images && {
+-            images: currentMessage.userInputMessage.images,
+-          }),
+-        },
++        userInputMessage,
+       },
+       history,
+     },
+diff --git a/open-sse/translator/request/claude-to-openai.js b/open-sse/translator/request/claude-to-openai.js
+index 069cebc01..540847ed8 100644
+--- a/open-sse/translator/request/claude-to-openai.js
++++ b/open-sse/translator/request/claude-to-openai.js
+@@ -129,14 +129,15 @@ function fixMissingToolResponsesOpenAI(messages) {
+   }
+ }
+ 
+-// Wrap mid-conversation system text so it ends as a user turn (avoids Anthropic prefill 400)
++// Wrap mid-conversation system text so it ends as a user turn (avoids Anthropic prefill 400).
++// Uses <instructions> tags that Claude models treat as authoritative directives.
+ function systemReminderText(content) {
+   const parts = Array.isArray(content)
+     ? content.filter(c => c?.type === CLAUDE_BLOCK.TEXT).map(c => c.text || "")
+     : [typeof content === "string" ? content : ""];
+   const text = parts.filter(Boolean).join("\n");
+   if (!text.trim()) return "";
+-  return `<system-reminder>\n${text}\n</system-reminder>`;
++  return `<instructions>\n${text}\n</instructions>`;
+ }
+ 
+ // Convert single Claude message - returns single message or array of messages
+@@ -159,6 +160,7 @@ function convertClaudeMessage(msg) {
+     const parts = [];
+     const toolCalls = [];
+     const toolResults = [];
++    let reasoningContent = "";
+ 
+     for (const block of msg.content) {
+       switch (block.type) {
+@@ -166,6 +168,10 @@ function convertClaudeMessage(msg) {
+           parts.push({ type: OPENAI_BLOCK.TEXT, text: block.text });
+           break;
+ 
++        case CLAUDE_BLOCK.THINKING:
++          if (block.thinking) reasoningContent += block.thinking;
++          break;
++
+         case CLAUDE_BLOCK.IMAGE:
+           if (block.source?.type === "base64") {
+             parts.push({
+@@ -239,16 +245,23 @@ function convertClaudeMessage(msg) {
+       if (parts.length > 0) {
+         result.content = collapseTextParts(parts);
+       }
++      if (reasoningContent) {
++        result.reasoning_content = reasoningContent;
++      }
+       result.tool_calls = toolCalls;
+       return result;
+     }
+ 
+     // Return content
+-    if (parts.length > 0) {
+-      return {
+-        role,
+-        content: collapseTextParts(parts)
+-      };
++    if (parts.length > 0 || reasoningContent) {
++      const result2 = { role };
++      if (parts.length > 0) {
++        result2.content = collapseTextParts(parts);
++      }
++      if (reasoningContent) {
++        result2.reasoning_content = reasoningContent;
++      }
++      return result2;
+     }
+     
+     // Empty content array
+diff --git a/open-sse/translator/request/gemini-to-openai.js b/open-sse/translator/request/gemini-to-openai.js
+index 161ea9be0..bafacefc7 100644
+--- a/open-sse/translator/request/gemini-to-openai.js
++++ b/open-sse/translator/request/gemini-to-openai.js
+@@ -81,8 +81,14 @@ function convertGeminiContent(content) {
+ 
+   const parts = [];
+   const toolCalls = [];
++  let reasoningContent = "";
+ 
+   for (const part of content.parts) {
++    if (part.thought === true) {
++      if (part.text !== undefined) reasoningContent += part.text;
++      continue;
++    }
++
+     if (part.text !== undefined) {
+       parts.push({ type: OPENAI_BLOCK.TEXT, text: part.text });
+     }
+@@ -123,15 +129,22 @@ function convertGeminiContent(content) {
+     if (parts.length > 0) {
+       result.content = parts.length === 1 ? parts[0].text : parts;
+     }
++    if (reasoningContent) {
++      result.reasoning_content = reasoningContent;
++    }
+     result.tool_calls = toolCalls;
+     return result;
+   }
+ 
+-  if (parts.length > 0) {
+-    return {
+-      role,
+-      content: collapseTextParts(parts)
+-    };
++  if (parts.length > 0 || reasoningContent) {
++    const result = { role };
++    if (parts.length > 0) {
++      result.content = collapseTextParts(parts);
++    }
++    if (reasoningContent) {
++      result.reasoning_content = reasoningContent;
++    }
++    return result;
+   }
+ 
+   return null;
+@@ -150,3 +163,46 @@ function extractGeminiText(content) {
+ register(FORMATS.GEMINI, FORMATS.OPENAI, geminiToOpenAIRequest, null);
+ register(FORMATS.GEMINI_CLI, FORMATS.OPENAI, geminiToOpenAIRequest, null);
+ 
++// Wrapper for geminiToOpenAIRequest that pre-splits contents containing
++// functionResponse parts co-located with other content (functionCall, text, etc.).
++// The original convertGeminiContent early-returns on the first functionResponse,
++// dropping any co-located parts. By splitting each such content into separate
++// sub-contents — one per functionResponse (each early-returns cleanly as a tool
++// message) and one for the remaining non-functionResponse parts — all co-located
++// content is preserved. Tool results are emitted first to match the expected
++// message ordering (tool result before the next assistant turn).
++function geminiToOpenAIRequestFixed(model, body, stream) {
++  if (!body || !Array.isArray(body.contents)) {
++    return geminiToOpenAIRequest(model, body, stream);
++  }
++
++  const splitContents = [];
++  for (const content of body.contents) {
++    if (!content || !Array.isArray(content.parts)) {
++      splitContents.push(content);
++      continue;
++    }
++
++    const hasFunctionResponse = content.parts.some(p => p && p.functionResponse);
++    if (!hasFunctionResponse) {
++      splitContents.push(content);
++      continue;
++    }
++
++    for (const part of content.parts) {
++      if (part && part.functionResponse) {
++        splitContents.push({ ...content, parts: [part] });
++      }
++    }
++    const nonFRParts = content.parts.filter(p => !(p && p.functionResponse));
++    if (nonFRParts.length > 0) {
++      splitContents.push({ ...content, parts: nonFRParts });
++    }
++  }
++
++  return geminiToOpenAIRequest(model, { ...body, contents: splitContents }, stream);
++}
++
++// Override registration to use the fixed version (Map.set: last wins)
++register(FORMATS.GEMINI, FORMATS.OPENAI, geminiToOpenAIRequestFixed, null);
++register(FORMATS.GEMINI_CLI, FORMATS.OPENAI, geminiToOpenAIRequestFixed, null);
+diff --git a/open-sse/translator/request/openai-responses.js b/open-sse/translator/request/openai-responses.js
+index 56fa94772..f274bc22c 100644
+--- a/open-sse/translator/request/openai-responses.js
++++ b/open-sse/translator/request/openai-responses.js
+@@ -259,18 +259,22 @@ function normalizeToolParameters(params) {
+ }
+ 
+ /**
+- * Convert OpenAI Chat Completions to OpenAI Responses API format
++ * Convert OpenAI Chat Completions to OpenAI Responses API format.
++ * Generic Responses transports preserve the caller's stream mode here so
++ * non-streaming clients can receive JSON from native /responses endpoints.
++ * Callers that always parse /responses as SSE, such as GitHub escalation,
++ * must pass stream=true explicitly.
+  */
+ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials) {
+   if (body.input) {
+     const cleanInput = stripOrphanedToolOutputs(body.input);
+-    return cleanInput === body.input ? { ...body, model, stream: true } : { ...body, input: cleanInput, model, stream: true };
++    return cleanInput === body.input ? { ...body, model, stream } : { ...body, input: cleanInput, model, stream };
+   }
+ 
+   const result = {
+     model,
+     input: [],
+-    stream: true,
++    stream,
+     store: false
+   };
+ 
+@@ -279,17 +283,26 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
+   const messages = body.messages || [];
+ 
+   for (const msg of messages) {
+-    if (msg.role === ROLE.SYSTEM) {
+-      // Use first system message as instructions
++    if (msg.role === ROLE.SYSTEM || msg.role === ROLE.DEVELOPER) {
++      // Use the first instruction-bearing message as instructions.
++      // OpenAI recommends role="developer" for GPT-5/Codex as the system-level prompt.
+       if (!hasSystemMessage) {
+         result.instructions = typeof msg.content === "string" ? msg.content : "";
+         hasSystemMessage = true;
+       }
+-      continue; // Skip system messages in input
++      continue; // Skip instruction messages in input
+     }
+ 
+     // Convert user/assistant messages to input items
+     if (msg.role === ROLE.USER || msg.role === ROLE.ASSISTANT) {
++      // Preserve reasoning_content as a reasoning item (before the message)
++      if (msg.role === ROLE.ASSISTANT && msg.reasoning_content) {
++        result.input.push({
++          type: RESPONSES_ITEM.REASONING,
++          summary: [{ type: RESPONSES_ITEM.SUMMARY_TEXT, text: msg.reasoning_content }]
++        });
++      }
++
+       const contentType = msg.role === ROLE.USER ? RESPONSES_ITEM.INPUT_TEXT : RESPONSES_ITEM.OUTPUT_TEXT;
+       const content = typeof msg.content === "string"
+         ? [{ type: contentType, text: msg.content }]
+diff --git a/open-sse/translator/request/openai-to-claude.js b/open-sse/translator/request/openai-to-claude.js
+index a84631f24..63b9f6668 100644
+--- a/open-sse/translator/request/openai-to-claude.js
++++ b/open-sse/translator/request/openai-to-claude.js
+@@ -6,6 +6,7 @@ import { safeParseJSON } from "../concerns/json.js";
+ import { parseDataUri } from "../concerns/image.js";
+ import { extractTextContent } from "../formats/gemini.js";
+ import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK } from "../schema/index.js";
++import { getCapabilitiesForModel } from "../../providers/capabilities.js";
+ 
+ // Empty prefix matches real Claude Code behavior (no tool name prefix).
+ // Previously "proxy_" was used but this is a detectable fingerprint difference.
+@@ -15,9 +16,13 @@ const CLAUDE_OAUTH_TOOL_PREFIX = "";
+ export function openaiToClaudeRequest(model, body, stream) {
+   // Tool name mapping for Claude OAuth (capitalizedName → originalName)
+   const toolNameMap = new Map();
++  // Cap max_tokens at the model's real output ceiling (e.g. Opus 4.8 = 128000),
++  // not the conservative 64000 default — otherwise a high-output model is
++  // pre-clamped here before prepareClaudeRequest's model-aware step runs.
++  const modelCeiling = getCapabilitiesForModel(null, model).maxOutput || undefined;
+   const result = {
+     model: model,
+-    max_tokens: adjustMaxTokens(body),
++    max_tokens: adjustMaxTokens(body, modelCeiling),
+     stream: stream
+   };
+ 
+@@ -242,7 +247,8 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
+   } else if (msg.role === ROLE.ASSISTANT) {
+     // OpenAI assistant reasoning_content → Claude thinking block. Prepend so it
+     // precedes the text/tool_use blocks (Claude requires thinking first).
+-    if (typeof msg.reasoning_content === "string" && msg.reasoning_content) {
++    const hasThinkingBlock = Array.isArray(msg.content) && msg.content.some(part => part.type === CLAUDE_BLOCK.THINKING);
++    if (typeof msg.reasoning_content === "string" && msg.reasoning_content && !hasThinkingBlock) {
+       blocks.push({ type: CLAUDE_BLOCK.THINKING, thinking: msg.reasoning_content });
+     }
+     if (Array.isArray(msg.content)) {
+diff --git a/open-sse/translator/request/openai-to-commandcode.js b/open-sse/translator/request/openai-to-commandcode.js
+index 9825048bd..d55c5dd21 100644
+--- a/open-sse/translator/request/openai-to-commandcode.js
++++ b/open-sse/translator/request/openai-to-commandcode.js
+@@ -89,6 +89,10 @@ function convertMessages(messages = []) {
+     if (role === ROLE.ASSISTANT) {
+       const blocks = [];
+       const text = flattenText(m.content);
++      // Preserve reasoning_content as a reasoning block (CommandCode/AI SDK v5 supports this)
++      if (m.reasoning_content) {
++        blocks.push({ type: "reasoning", text: m.reasoning_content });
++      }
+       if (text) blocks.push({ type: OPENAI_BLOCK.TEXT, text });
+       if (Array.isArray(m.tool_calls)) {
+         for (const tc of m.tool_calls) {
+diff --git a/open-sse/translator/request/openai-to-gemini.js b/open-sse/translator/request/openai-to-gemini.js
+index afb3effc6..9423b2937 100644
+--- a/open-sse/translator/request/openai-to-gemini.js
++++ b/open-sse/translator/request/openai-to-gemini.js
+@@ -1,7 +1,6 @@
+ import { register } from "../index.js";
+ import { FORMATS } from "../formats.js";
+ import { DEFAULT_THINKING_AG_SIGNATURE, DEFAULT_THINKING_GEMINI_CLI_SIGNATURE } from "../../config/defaultThinkingSignature.js";
+-import { ANTIGRAVITY_DEFAULT_SYSTEM } from "../../config/appConstants.js";
+ import { openaiToClaudeRequestForAntigravity } from "./openai-to-claude.js";
+ function generateUUID() {
+   return crypto.randomUUID();
+@@ -283,19 +282,6 @@ function wrapInCloudCodeEnvelope(model, geminiCLI, credentials = null, isAntigra
+   if (isAntigravity) {
+     envelope.requestType = "agent";
+ 
+-    // Inject required default system prompt for Antigravity
+-    // Inject required default system prompt for Antigravity (double injection)
+-    const systemParts = [
+-      { text: ANTIGRAVITY_DEFAULT_SYSTEM },
+-      { text: `Please ignore the following [ignore]${ANTIGRAVITY_DEFAULT_SYSTEM}[/ignore]` }
+-    ];
+-
+-    if (envelope.request.systemInstruction?.parts) {
+-      envelope.request.systemInstruction.parts.unshift(...systemParts);
+-    } else {
+-      envelope.request.systemInstruction = { role: GEMINI_ROLE.USER, parts: systemParts };
+-    }
+-
+     // Add toolConfig for Antigravity
+     if (geminiCLI.tools?.length > 0) {
+       envelope.request.toolConfig = {
+@@ -414,12 +400,7 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
+     }
+   }
+ 
+-  // Add system instruction (Antigravity default - double injection + user system prompt)
+-  const systemParts = [
+-    { text: ANTIGRAVITY_DEFAULT_SYSTEM },
+-    { text: `Please ignore the following [ignore]${ANTIGRAVITY_DEFAULT_SYSTEM}[/ignore]` }
+-  ];
+-
++  const systemParts = [];
+   // Merge user system prompt from claudeRequest
+   if (claudeRequest.system) {
+     if (Array.isArray(claudeRequest.system)) {
+@@ -431,10 +412,7 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
+     }
+   }
+ 
+-  // Merge existing systemInstruction parts (from contents conversion)
+-  if (envelope.request.systemInstruction?.parts) {
+-    envelope.request.systemInstruction.parts.unshift(...systemParts);
+-  } else {
++  if (systemParts.length > 0) {
+     envelope.request.systemInstruction = { role: GEMINI_ROLE.USER, parts: systemParts };
+   }
+ 
+@@ -463,4 +441,3 @@ export function openaiToAntigravityRequest(model, body, stream, credentials = nu
+ register(FORMATS.OPENAI, FORMATS.GEMINI, openaiToGeminiRequest, null);
+ register(FORMATS.OPENAI, FORMATS.GEMINI_CLI, (model, body, stream, credentials) => wrapInCloudCodeEnvelope(model, openaiToGeminiCLIRequest(model, body, stream), credentials), null);
+ register(FORMATS.OPENAI, FORMATS.ANTIGRAVITY, openaiToAntigravityRequest, null);
+-
+diff --git a/open-sse/translator/request/openai-to-kiro.js b/open-sse/translator/request/openai-to-kiro.js
+index 0d4ff15d5..844c44b32 100644
+--- a/open-sse/translator/request/openai-to-kiro.js
++++ b/open-sse/translator/request/openai-to-kiro.js
+@@ -279,29 +279,9 @@ function convertMessages(messages, tools, model) {
+     let msg = messages[i];
+     let role = msg.role;
+ 
+-    // Normalize: system -> user (with <system-reminder> wrapper to mark provenance)
+-    // tool -> user (raw content, no wrapper — tool output is already structured)
+-    if (role === ROLE.SYSTEM) {
+-      role = ROLE.USER;
+-      // Wrap in <system-reminder> so the model can distinguish injected system
+-      // instructions from actual user input (#2306 — without this the full Claude Code
+-      // system prompt appears as raw user text, leaking context and wasting tokens).
+-      const extractText = (content) => {
+-        if (typeof content === "string") return content;
+-        if (Array.isArray(content)) {
+-          return content
+-            .filter(c => c.type === OPENAI_BLOCK.TEXT || c.text)
+-            .map(c => c.text || "")
+-            .filter(Boolean)
+-            .join("\n");
+-        }
+-        return "";
+-      };
+-      const rawText = extractText(msg.content);
+-      if (rawText) {
+-        msg = { ...msg, content: `<system-reminder>\n${rawText}\n</system-reminder>` };
+-      }
+-    } else if (role === ROLE.TOOL) {
++    // Normalize: system/tool -> user
++    const wasSystem = role === ROLE.SYSTEM;
++    if (role === ROLE.SYSTEM || role === ROLE.TOOL) {
+       role = ROLE.USER;
+     }
+ 
+@@ -369,7 +349,10 @@ function convertMessages(messages, tools, model) {
+           content: [{ text: toolContent }]
+         });
+       } else if (content) {
+-        pendingUserContent.push(content);
++        // <instructions> tags: Claude models treat these as authoritative directives.
++        pendingUserContent.push(
++          wasSystem ? `<instructions>\n${content}\n</instructions>` : content
++        );
+       }
+     } else if (role === ROLE.ASSISTANT) {
+       // Extract text content and tool uses
+diff --git a/open-sse/translator/request/openai-to-ollama.js b/open-sse/translator/request/openai-to-ollama.js
+index 9ecdb67f4..49ce2d3cd 100644
+--- a/open-sse/translator/request/openai-to-ollama.js
++++ b/open-sse/translator/request/openai-to-ollama.js
+@@ -113,11 +113,15 @@ function normalizeMessages(messages) {
+         }
+       }));
+ 
+-      result.push({
++      const assistantMsg = {
+         role: ROLE.ASSISTANT,
+         content: content,
+         tool_calls: ollamaToolCalls
+-      });
++      };
++      if (msg.reasoning_content) {
++        assistantMsg.thinking = msg.reasoning_content;
++      }
++      result.push(assistantMsg);
+       continue;
+     }
+ 
+@@ -138,6 +142,11 @@ function normalizeMessages(messages) {
+       out.images = images;
+     }
+ 
++    // Preserve reasoning_content as thinking for assistant messages
++    if (role === ROLE.ASSISTANT && msg.reasoning_content) {
++      out.thinking = msg.reasoning_content;
++    }
++
+     result.push(out);
+   }
+ 
+diff --git a/open-sse/translator/response/commandcode-to-openai.js b/open-sse/translator/response/commandcode-to-openai.js
+index ab3d7d7b6..deaadd535 100644
+--- a/open-sse/translator/response/commandcode-to-openai.js
++++ b/open-sse/translator/response/commandcode-to-openai.js
+@@ -25,18 +25,16 @@ import { fallbackToolCallId } from "../concerns/toolCall.js";
+ import { toOpenAIFinish } from "../concerns/finishReason.js";
+ 
+ function ensureState(state, model) {
+-  if (!state.responseId) {
+-    state.responseId = `chatcmpl-${Date.now()}`;
+-    state.created = Math.floor(Date.now() / 1000);
+-    state.model = state.model || model || "commandcode";
+-    state.chunkIndex = 0;
+-    state.toolIndex = 0;
+-    state.toolIndexById = new Map();
+-    state.openTools = new Set();
+-    state.openText = false;
+-    state.finishReason = null;
+-    state.usage = null;
+-  }
++  state.responseId ??= `chatcmpl-${Date.now()}`;
++  state.created ??= Math.floor(Date.now() / 1000);
++  state.model = state.model || model || "commandcode";
++  state.chunkIndex ??= 0;
++  state.toolIndex ??= 0;
++  state.toolIndexById ??= new Map();
++  state.openTools ??= new Set();
++  state.openText ??= false;
++  state.finishReason ??= null;
++  state.usage ??= null;
+ }
+ 
+ function makeChunk(state, delta, finishReason = null) {
+diff --git a/open-sse/translator/response/completionProjector.js b/open-sse/translator/response/completionProjector.js
+new file mode 100644
+index 000000000..568592b63
+--- /dev/null
++++ b/open-sse/translator/response/completionProjector.js
+@@ -0,0 +1,279 @@
++import { FORMATS } from "../formats.js";
++import { fromOpenAIFinish } from "../concerns/finishReason.js";
++import { GEMINI_FINISH, OPENAI_FINISH } from "../schema/finishReasons.js";
++
++function parseArgs(value) {
++  if (!value) return {};
++  if (typeof value === "object") return value;
++  try {
++    return JSON.parse(value);
++  } catch {
++    return {};
++  }
++}
++
++function getChoice(completion) {
++  return completion?.choices?.[0] || {};
++}
++
++function getMessage(completion) {
++  return getChoice(completion).message || {};
++}
++
++function getToolCalls(completion) {
++  const calls = getMessage(completion).tool_calls;
++  return Array.isArray(calls) ? calls : [];
++}
++
++function openAIToGeminiFinish(reason) {
++  switch (reason) {
++    case OPENAI_FINISH.LENGTH: return GEMINI_FINISH.MAX_TOKENS;
++    case OPENAI_FINISH.CONTENT_FILTER: return GEMINI_FINISH.SAFETY;
++    default: return GEMINI_FINISH.STOP;
++  }
++}
++
++function openAICompletionToClaudeMessage(completion) {
++  if (!completion?.choices?.[0]) return completion;
++  const choice = getChoice(completion);
++  const message = getMessage(completion);
++  const content = [];
++
++  const reasoning = message.reasoning_content || message.provider_specific_fields?.reasoning_content || "";
++  if (reasoning) content.push({ type: "thinking", thinking: reasoning });
++  if (typeof message.content === "string" && message.content.length > 0) {
++    content.push({ type: "text", text: message.content });
++  }
++  for (const toolCall of getToolCalls(completion)) {
++    const fn = toolCall.function || {};
++    content.push({
++      type: "tool_use",
++      id: toolCall.id || `toolu_${Date.now()}_${content.length}`,
++      name: fn.name || toolCall.name || "",
++      input: parseArgs(fn.arguments || toolCall.arguments),
++    });
++  }
++  if (content.length === 0) content.push({ type: "text", text: "" });
++
++  const usage = completion.usage || {};
++  return {
++    id: String(completion.id || `msg_${Date.now()}`).replace(/^chatcmpl-/, ""),
++    type: "message",
++    role: "assistant",
++    model: completion.model || "unknown",
++    content,
++    stop_reason: fromOpenAIFinish(choice.finish_reason, FORMATS.CLAUDE),
++    stop_sequence: null,
++    usage: {
++      input_tokens: usage.prompt_tokens || usage.input_tokens || 0,
++      output_tokens: usage.completion_tokens || usage.output_tokens || 0,
++    },
++  };
++}
++
++function openAICompletionToGeminiResponse(completion) {
++  if (!completion?.choices?.[0]) return completion;
++  const message = getMessage(completion);
++  const usage = completion.usage || {};
++  const parts = [];
++  const reasoning = message.reasoning_content || message.provider_specific_fields?.reasoning_content || "";
++  if (reasoning) parts.push({ text: reasoning, thought: true });
++  if (typeof message.content === "string" && message.content.length > 0) {
++    parts.push({ text: message.content });
++  }
++  for (const toolCall of getToolCalls(completion)) {
++    const fn = toolCall.function || {};
++    parts.push({
++      functionCall: {
++        name: fn.name || toolCall.name || "",
++        args: parseArgs(fn.arguments || toolCall.arguments),
++      }
++    });
++  }
++  if (parts.length === 0) parts.push({ text: "" });
++
++  return {
++    response: {
++      candidates: [{
++        content: { role: "model", parts },
++        finishReason: openAIToGeminiFinish(getChoice(completion).finish_reason),
++        index: 0
++      }],
++      usageMetadata: {
++        promptTokenCount: usage.prompt_tokens || usage.input_tokens || 0,
++        candidatesTokenCount: usage.completion_tokens || usage.output_tokens || 0,
++        totalTokenCount: usage.total_tokens || ((usage.prompt_tokens || 0) + (usage.completion_tokens || 0)),
++      },
++      modelVersion: completion.model || "unknown",
++      responseId: completion.id || `resp_${Date.now()}`
++    }
++  };
++}
++
++function openAICompletionToOllama(completion) {
++  if (!completion?.choices?.[0]) return completion;
++  const choice = getChoice(completion);
++  const message = getMessage(completion);
++  const ollamaMessage = {
++    role: "assistant",
++    content: typeof message.content === "string" ? message.content : "",
++  };
++  if (message.reasoning_content) ollamaMessage.thinking = message.reasoning_content;
++  const toolCalls = getToolCalls(completion).map((toolCall) => {
++    const fn = toolCall.function || {};
++    return {
++      id: toolCall.id,
++      function: {
++        name: fn.name || toolCall.name || "",
++        arguments: parseArgs(fn.arguments || toolCall.arguments),
++      }
++    };
++  });
++  if (toolCalls.length > 0) ollamaMessage.tool_calls = toolCalls;
++
++  const usage = completion.usage || {};
++  return {
++    model: completion.model || "unknown",
++    created_at: completion.created ? new Date(completion.created * 1000).toISOString() : new Date().toISOString(),
++    message: ollamaMessage,
++    done: true,
++    done_reason: choice.finish_reason || "stop",
++    prompt_eval_count: usage.prompt_tokens || usage.input_tokens || 0,
++    eval_count: usage.completion_tokens || usage.output_tokens || 0,
++  };
++}
++
++export function responsesApiToOpenAICompletion(responseBody, fallbackModel) {
++  const output = Array.isArray(responseBody?.output) ? responseBody.output : [];
++  const reasoningText = output
++    .filter(item => item?.type === "reasoning")
++    .flatMap(item => Array.isArray(item.summary) ? item.summary : [])
++    .map(part => part?.text || "")
++    .join("");
++  const messages = output.filter(item => item?.type === "message");
++  const msgItem = [...messages].reverse().find(item => {
++    const content = Array.isArray(item.content) ? item.content : [];
++    return content.some(part => typeof part.text === "string" && part.text.length > 0);
++  }) || messages[messages.length - 1] || null;
++  const textContent = (Array.isArray(msgItem?.content) ? msgItem.content : [])
++    .map(part => part.type === "output_text" || typeof part.text === "string" ? part.text || "" : "")
++    .join("");
++  const toolCalls = output
++    .filter(item => item?.type === "function_call")
++    .map((item, idx) => ({
++      id: item.call_id || `call_${item.name || "tool"}_${idx}`,
++      type: "function",
++      function: {
++        name: item.name || "",
++        arguments: typeof item.arguments === "string" ? item.arguments : JSON.stringify(item.arguments || {}),
++      },
++    }));
++
++  const usage = responseBody?.usage || {};
++  const message = {
++    role: "assistant",
++    content: textContent || (toolCalls.length > 0 ? null : ""),
++  };
++  if (reasoningText) message.reasoning_content = reasoningText;
++  if (toolCalls.length > 0) message.tool_calls = toolCalls;
++
++  const responseDone = responseBody?.status === "completed" || responseBody?.status === "done";
++  const finishReason = toolCalls.length > 0 ? "tool_calls" : (responseDone ? "stop" : (responseBody?.status || "stop"));
++  return {
++    id: responseBody?.id || `chatcmpl-${Date.now()}`,
++    object: "chat.completion",
++    created: responseBody?.created_at || Math.floor(Date.now() / 1000),
++    model: responseBody?.model || fallbackModel || "unknown",
++    choices: [{ index: 0, message, finish_reason: finishReason }],
++    usage: {
++      prompt_tokens: usage.input_tokens || usage.prompt_tokens || 0,
++      completion_tokens: usage.output_tokens || usage.completion_tokens || 0,
++      total_tokens: usage.total_tokens || ((usage.input_tokens || usage.prompt_tokens || 0) + (usage.output_tokens || usage.completion_tokens || 0)),
++    },
++  };
++}
++
++function openAICompletionToResponsesOutput(completion) {
++  if (!completion?.choices?.[0]) return completion;
++  const message = getMessage(completion);
++  const usage = completion.usage || {};
++  const output = [];
++  let idx = 0;
++
++  const reasoning = message.reasoning_content || message.provider_specific_fields?.reasoning_content || "";
++  if (reasoning) {
++    output.push({
++      type: "reasoning",
++      id: `rs_${completion.id || Date.now()}_${idx}`,
++      summary: [{ type: "summary_text", text: reasoning }],
++    });
++    idx++;
++  }
++
++  const text = typeof message.content === "string" ? message.content : "";
++  if (text) {
++    output.push({
++      type: "message",
++      id: `msg_${completion.id || Date.now()}_${idx}`,
++      role: "assistant",
++      content: [{ type: "output_text", text, annotations: [], logprobs: [] }],
++    });
++    idx++;
++  }
++
++  const toolCalls = getToolCalls(completion);
++  if (toolCalls.length > 0) {
++    for (const toolCall of toolCalls) {
++      const fn = toolCall.function || {};
++      const callId = toolCall.id || `call_${fn.name || "tool"}_${idx}`;
++      output.push({
++        type: "function_call",
++        id: `fc_${callId}`,
++        call_id: callId,
++        name: fn.name || toolCall.name || "",
++        arguments: typeof fn.arguments === "string" ? fn.arguments : JSON.stringify(fn.arguments || {}),
++      });
++      idx++;
++    }
++  } else if (!text && !reasoning) {
++    output.push({
++      type: "message",
++      id: `msg_${completion.id || Date.now()}_${idx}`,
++      role: "assistant",
++      content: [{ type: "output_text", text: "", annotations: [], logprobs: [] }],
++    });
++  }
++
++  const finishReason = getChoice(completion).finish_reason || "stop";
++  return {
++    id: completion.id ? `resp_${completion.id}` : `resp_${Date.now()}`,
++    object: "response",
++    created_at: completion.created || Math.floor(Date.now() / 1000),
++    status: finishReason === "stop" || finishReason === "tool_calls" ? "completed" : finishReason,
++    output,
++    usage: {
++      input_tokens: usage.prompt_tokens || usage.input_tokens || 0,
++      output_tokens: usage.completion_tokens || usage.output_tokens || 0,
++      total_tokens: usage.total_tokens || ((usage.prompt_tokens || 0) + (usage.completion_tokens || 0)),
++    },
++  };
++}
++
++export function projectCompletionToClientFormat(completion, sourceFormat) {
++  switch (sourceFormat) {
++    case FORMATS.CLAUDE:
++      return openAICompletionToClaudeMessage(completion);
++    case FORMATS.GEMINI:
++    case FORMATS.GEMINI_CLI:
++    case FORMATS.ANTIGRAVITY:
++    case FORMATS.VERTEX:
++      return openAICompletionToGeminiResponse(completion);
++    case FORMATS.OLLAMA:
++      return openAICompletionToOllama(completion);
++    case FORMATS.OPENAI_RESPONSES:
++    case FORMATS.OPENAI_RESPONSE:
++      return openAICompletionToResponsesOutput(completion);
++    default:
++      return completion;
++  }
++}
+diff --git a/open-sse/translator/response/openai-to-gemini.js b/open-sse/translator/response/openai-to-gemini.js
+new file mode 100644
+index 000000000..4a05e2a49
+--- /dev/null
++++ b/open-sse/translator/response/openai-to-gemini.js
+@@ -0,0 +1,8 @@
++import { register } from "../index.js";
++import { FORMATS } from "../formats.js";
++import { openaiToAntigravityResponse } from "./openai-to-antigravity.js";
++
++// Gemini-family streaming responses share the same response.candidates envelope here.
++register(FORMATS.OPENAI, FORMATS.GEMINI, null, openaiToAntigravityResponse);
++register(FORMATS.OPENAI, FORMATS.GEMINI_CLI, null, openaiToAntigravityResponse);
++register(FORMATS.OPENAI, FORMATS.VERTEX, null, openaiToAntigravityResponse);
+diff --git a/open-sse/translator/webTools.js b/open-sse/translator/webTools.js
+new file mode 100644
+index 000000000..18281f7e2
+--- /dev/null
++++ b/open-sse/translator/webTools.js
+@@ -0,0 +1,156 @@
++function toRecord(value) {
++  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
++}
++
++function normalizeToolName(name) {
++  return String(name || "")
++    .toLowerCase()
++    .replace(/[^a-z0-9]/g, "");
++}
++
++function getRequestedToolNames(tools) {
++  if (!Array.isArray(tools)) return [];
++  const names = [];
++  const seen = new Set();
++  for (const tool of tools) {
++    const fn = toRecord(toRecord(tool)?.function);
++    const name = typeof fn?.name === "string" ? fn.name.trim() : "";
++    if (!name || seen.has(name)) continue;
++    seen.add(name);
++    names.push({ original: name, normalized: normalizeToolName(name) });
++  }
++  return names;
++}
++
++function stripCodeFence(value) {
++  return String(value || "")
++    .trim()
++    .replace(/^```(?:json|javascript|js|python)?\s*/i, "")
++    .replace(/\s*```$/i, "")
++    .trim();
++}
++
++function parseLooseJsonObject(raw) {
++  const trimmed = stripCodeFence(raw);
++  const candidates = [
++    trimmed,
++    trimmed
++      .replace(/\bTrue\b/g, "true")
++      .replace(/\bFalse\b/g, "false")
++      .replace(/\bNone\b/g, "null")
++      .replace(/([{,]\s*)([A-Za-z_][A-Za-z0-9_-]*)(\s*:)/g, '$1"$2"$3')
++      .replace(/,\s*([}\]])/g, "$1"),
++  ];
++  for (const candidate of candidates) {
++    try {
++      return toRecord(JSON.parse(candidate));
++    } catch {
++      // Try the next normalized candidate.
++    }
++  }
++  return null;
++}
++
++function serializeToolsToPrompt(tools) {
++  if (!Array.isArray(tools) || tools.length === 0) return "";
++  const lines = [];
++  for (const tool of tools) {
++    const fn = toRecord(toRecord(tool)?.function);
++    if (!fn?.name) continue;
++    const desc = typeof fn.description === "string" && fn.description ? fn.description : "";
++    let params = "";
++    try {
++      params = fn.parameters ? JSON.stringify(fn.parameters) : "";
++    } catch {
++      params = "";
++    }
++    lines.push(
++      `- ${fn.name}${desc ? `: ${desc}` : ""}${params ? `\n  parameters: ${params}` : ""}`
++    );
++  }
++  if (lines.length === 0) return "";
++  return [
++    "You can call tools. To call a tool, reply with a single line containing a <tool> block",
++    'with JSON: <tool>{"name": "<tool_name>", "arguments": { ... }}</tool>',
++    "Only emit the <tool> block when you actually want to call a tool; otherwise answer normally.",
++    "",
++    "Available tools:",
++    ...lines,
++  ].join("\n");
++}
++
++function resolveRequestedToolName(emitted, requestedTools) {
++  if (requestedTools.length === 0) return emitted;
++  const normalized = normalizeToolName(emitted);
++  const exact = requestedTools.find(
++    (tool) => tool.original === emitted || tool.normalized === normalized
++  );
++  return exact?.original || null;
++}
++
++function stripRanges(text, ranges) {
++  let content = text;
++  for (const range of [...ranges].sort((a, b) => b.start - a.start)) {
++    content = `${content.slice(0, range.start)}${content.slice(range.end)}`;
++  }
++  return content.replace(/\n{3,}/g, "\n\n").trim();
++}
++
++function toArgumentsString(value) {
++  if (value === undefined) return "{}";
++  if (typeof value === "string") {
++    const parsed = parseLooseJsonObject(value);
++    return parsed ? JSON.stringify(parsed) : value;
++  }
++  try {
++    return JSON.stringify(value);
++  } catch {
++    return "{}";
++  }
++}
++
++export function prepareToolMessages(bodyObj, messages) {
++  const requestedTools = bodyObj?.tools;
++  const hasTools = Array.isArray(requestedTools) && requestedTools.length > 0 && bodyObj?.tool_choice !== "none";
++  if (!hasTools) return { hasTools: false, requestedTools, effectiveMessages: messages };
++  return {
++    hasTools: true,
++    requestedTools,
++    effectiveMessages: [
++      { role: "system", content: serializeToolsToPrompt(requestedTools) },
++      ...messages,
++    ],
++  };
++}
++
++export function parseToolCallsFromText(text, idSeed = "call", requestedTools) {
++  const content = String(text ?? "");
++  const requestedToolNames = getRequestedToolNames(requestedTools);
++  const blockRe = /<tool(?:_call)?(?:\s+[^>]*)?\s*>\s*([\s\S]*?)\s*<\/tool(?:_call)?>/g;
++  const toolCalls = [];
++  const acceptedRanges = [];
++  let match;
++  while ((match = blockRe.exec(content)) !== null) {
++    const parsed = parseLooseJsonObject(match[1]);
++    const emitted = typeof parsed?.name === "string" ? parsed.name : parsed?.command;
++    const name = resolveRequestedToolName(emitted, requestedToolNames);
++    if (!name) continue;
++    toolCalls.push({
++      id: `${idSeed}_${toolCalls.length}`,
++      type: "function",
++      function: { name, arguments: toArgumentsString(parsed.arguments) },
++    });
++    acceptedRanges.push({ start: match.index, end: blockRe.lastIndex });
++  }
++  if (toolCalls.length === 0) return { content, toolCalls: null };
++  return { content: stripRanges(content, acceptedRanges), toolCalls };
++}
++
++export function buildToolAwareResult(rawContent, requestedTools, idSeed = "call") {
++  const { content, toolCalls } = parseToolCallsFromText(rawContent, idSeed, requestedTools);
++  return {
++    content,
++    toolCalls,
++    finishReason: toolCalls ? "tool_calls" : "stop",
++  };
++}

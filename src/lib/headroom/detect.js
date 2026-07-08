@@ -36,16 +36,11 @@ const EXTRA_BINS = IS_WIN
       "/Library/Frameworks/Python.framework/Versions/3.11/bin",
       "/Library/Frameworks/Python.framework/Versions/3.10/bin",
       `${process.env.HOME || ""}/.local/bin`,
-      `${process.env.HOME || ""}/.local/share/mise/shims`,
-      `${process.env.HOME || ""}/.pyenv/shims`,
-      `${process.env.HOME || ""}/.asdf/shims`,
-      `${process.env.HOME || ""}/miniconda3/bin`,
-      `${process.env.HOME || ""}/anaconda3/bin`,
       "/usr/bin",
       "/bin",
     ];
 
-export const EXTENDED_PATH = [...EXTRA_BINS, process.env.PATH || ""].filter(Boolean).join(path.delimiter);
+const EXTENDED_PATH = [...EXTRA_BINS, process.env.PATH || ""].filter(Boolean).join(path.delimiter);
 const PYTHON_CANDIDATES = ["python3.13", "python3.12", "python3.11", "python3.10", "python3", "python"];
 const MIN_VERSION = [3, 10];
 const HEADROOM_HEALTH_TIMEOUT_MS = 1500;
@@ -73,7 +68,6 @@ export function findHeadroomBinary() {
 // first candidate that can also see the installed `headroom-ai` package so the
 // dashboard probes and install action operate on the same interpreter as the CLI.
 export function findPython310() {
-  let firstValid = null;
   for (const candidate of PYTHON_CANDIDATES) {
     try {
       const ver = execSync(`${candidate} --version`, {
@@ -85,7 +79,7 @@ export function findPython310() {
       if (!match) continue;
       const [major, minor] = [parseInt(match[1], 10), parseInt(match[2], 10)];
       if (!(major > MIN_VERSION[0] || (major === MIN_VERSION[0] && minor >= MIN_VERSION[1]))) continue;
-      if (!firstValid) firstValid = candidate;
+      if (!IS_WIN) return candidate;
       try {
         execFileSync(candidate, ["-m", "pip", "show", "headroom-ai"], {
           stdio: ["ignore", "pipe", "ignore"],
@@ -95,13 +89,13 @@ export function findPython310() {
         });
         return candidate;
       } catch {
-        // Keep scanning until an interpreter sees headroom-ai.
+        // Keep scanning on Windows until an interpreter sees headroom-ai.
       }
     } catch {
       // candidate not present, try next
     }
   }
-  return firstValid;
+  return null;
 }
 
 // Probe whether a Headroom proxy is reachable at the given URL by hitting /health.
@@ -167,7 +161,7 @@ export function getInstalledHeadroomExtras(python) {
     const version = packages.find((p) => p.name?.toLowerCase() === "headroom-ai")?.version || null;
     const extras = {};
     for (const extra of HEADROOM_COMPRESSION_EXTRAS) {
-      extras[extra] = EXTRA_MARKERS[extra].every((m) => names.has(m));
+      extras[extra] = EXTRA_MARKERS[extra].some((m) => names.has(m));
     }
     return { installed: true, version, extras };
   } catch {

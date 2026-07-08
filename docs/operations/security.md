@@ -117,4 +117,3 @@ If an upstream provider credential leaks:
 2. Update the DurinDoor provider connection.
 3. Check provider-side billing and audit logs.
 4. Review DurinDoor usage logs.
-

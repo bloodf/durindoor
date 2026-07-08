@@ -206,6 +206,9 @@ export function canonicalizeUsage(usage) {
   if (Number.isFinite(Number(usage.cost_in_usd))) result.cost_in_usd = Number(usage.cost_in_usd);
   if (Number.isFinite(Number(usage.cost_in_usd_ticks))) result.cost_in_usd_ticks = Number(usage.cost_in_usd_ticks);
   if (reasoning > 0) result.reasoning_tokens = reasoning;
+  if (Number.isFinite(Number(usage.cost_usd))) result.cost_usd = Number(usage.cost_usd);
+  if (Number.isFinite(Number(usage.cost_in_usd))) result.cost_in_usd = Number(usage.cost_in_usd);
+  if (Number.isFinite(Number(usage.cost_in_usd_ticks))) result.cost_in_usd_ticks = Number(usage.cost_in_usd_ticks);
   return result;
 }
 

@@ -10,8 +10,7 @@ export {
   createProviderNode, updateProviderNode, deleteProviderNode,
   getProxyPools, getProxyPoolById,
   createProxyPool, updateProxyPool, deleteProxyPool,
-  getApiKeys, getApiKeyById, getApiKeyByKey, createApiKey, updateApiKey, deleteApiKey, validateApiKey,
-  getApiKeyUsageTotals, getAllApiKeyUsageTotals,
+  getApiKeys, getApiKeyById, getApiKeyByKey, getApiKeyUsageTotals, incrementApiKeyUsageSync, createApiKey, updateApiKey, deleteApiKey, validateApiKey, getApiKeyUsageLimitStatus,
   getCombos, getComboById, getComboByName,
   createCombo, updateCombo, deleteCombo,
   // MCP gateway

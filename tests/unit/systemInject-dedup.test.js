@@ -1,127 +1,200 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { injectSystemPrompt } from "../../open-sse/rtk/systemInject.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 
-const P = "You are a helpful assistant.";
-const LONG = `${P} `.repeat(50).trim();
+describe("systemInject deduplication", () => {
+  const TEST_PROMPT = "Respond like terse caveman. All technical substance stay exact, only fluff die.";
+  const SHORT_SIGNATURE = TEST_PROMPT.slice(0, 100);
 
-function countOccurrences(text, needle) {
-  let count = 0;
-  let idx = 0;
-  while ((idx = text.indexOf(needle, idx)) !== -1) {
-    count++;
-    idx += needle.length;
-  }
-  return count;
-}
+  describe("Claude format", () => {
+    it("injects prompt into empty system string", () => {
+      const body = { system: "" };
+      injectSystemPrompt(body, FORMATS.CLAUDE, TEST_PROMPT);
+      expect(body.system).toBe(TEST_PROMPT);
+    });
 
-describe("injectSystemPrompt deduplication", () => {
-  it("injects into a claude string system once", () => {
-    const body = { system: "Existing." };
-    injectSystemPrompt(body, FORMATS.CLAUDE, P);
-    expect(body.system).toContain(P);
-    expect(countOccurrences(body.system, P)).toBe(1);
-    injectSystemPrompt(body, FORMATS.CLAUDE, P);
-    expect(countOccurrences(body.system, P)).toBe(1);
+    it("appends prompt to existing system string", () => {
+      const body = { system: "Existing instruction." };
+      injectSystemPrompt(body, FORMATS.CLAUDE, TEST_PROMPT);
+      expect(body.system).toContain("Existing instruction.");
+      expect(body.system).toContain(TEST_PROMPT);
+    });
+
+    it("does NOT duplicate when called twice on system string", () => {
+      const body = { system: "Existing instruction." };
+      injectSystemPrompt(body, FORMATS.CLAUDE, TEST_PROMPT);
+      const afterFirst = body.system;
+      injectSystemPrompt(body, FORMATS.CLAUDE, TEST_PROMPT);
+      expect(body.system).toBe(afterFirst);
+    });
+
+    it("injects into system array without cache_control", () => {
+      const body = { system: [{ type: "text", text: "Existing." }] };
+      injectSystemPrompt(body, FORMATS.CLAUDE, TEST_PROMPT);
+      expect(body.system).toHaveLength(2);
+      expect(body.system[1].text).toBe(TEST_PROMPT);
+    });
+
+    it("does NOT duplicate when called twice on system array", () => {
+      const body = { system: [{ type: "text", text: "Existing." }] };
+      injectSystemPrompt(body, FORMATS.CLAUDE, TEST_PROMPT);
+      expect(body.system).toHaveLength(2);
+      injectSystemPrompt(body, FORMATS.CLAUDE, TEST_PROMPT);
+      expect(body.system).toHaveLength(2);
+    });
+
+    it("inserts before cache_control block", () => {
+      const body = {
+        system: [
+          { type: "text", text: "First." },
+          { type: "text", text: "Second.", cache_control: { type: "ephemeral" } },
+        ],
+      };
+      injectSystemPrompt(body, FORMATS.CLAUDE, TEST_PROMPT);
+      expect(body.system).toHaveLength(3);
+      expect(body.system[1].text).toBe(TEST_PROMPT);
+      expect(body.system[2].cache_control).toBeDefined();
+    });
+
+    it("does NOT duplicate before cache_control on second call", () => {
+      const body = {
+        system: [
+          { type: "text", text: "First." },
+          { type: "text", text: "Second.", cache_control: { type: "ephemeral" } },
+        ],
+      };
+      injectSystemPrompt(body, FORMATS.CLAUDE, TEST_PROMPT);
+      expect(body.system).toHaveLength(3);
+      injectSystemPrompt(body, FORMATS.CLAUDE, TEST_PROMPT);
+      expect(body.system).toHaveLength(3);
+    });
   });
 
-  it("injects into a claude array system once", () => {
-    const body = { system: [{ type: "text", text: "Existing." }] };
-    injectSystemPrompt(body, FORMATS.CLAUDE, P);
-    expect(body.system).toHaveLength(2);
-    injectSystemPrompt(body, FORMATS.CLAUDE, P);
-    expect(body.system).toHaveLength(2);
-    expect(
-      body.system.filter(b => b.type === "text" && b.text === P)
-    ).toHaveLength(1);
+  describe("OpenAI format", () => {
+    it("creates system message if none exists", () => {
+      const body = { messages: [{ role: "user", content: "Hello" }] };
+      injectSystemPrompt(body, FORMATS.OPENAI, TEST_PROMPT);
+      expect(body.messages[0].role).toBe("system");
+      expect(body.messages[0].content).toBe(TEST_PROMPT);
+    });
+
+    it("appends to existing system message", () => {
+      const body = { messages: [{ role: "system", content: "Existing." }] };
+      injectSystemPrompt(body, FORMATS.OPENAI, TEST_PROMPT);
+      expect(body.messages[0].content).toContain("Existing.");
+      expect(body.messages[0].content).toContain(TEST_PROMPT);
+    });
+
+    it("does NOT duplicate when called twice", () => {
+      const body = { messages: [{ role: "system", content: "Existing." }] };
+      injectSystemPrompt(body, FORMATS.OPENAI, TEST_PROMPT);
+      const afterFirst = body.messages[0].content;
+      injectSystemPrompt(body, FORMATS.OPENAI, TEST_PROMPT);
+      expect(body.messages[0].content).toBe(afterFirst);
+    });
+
+    it("handles developer role", () => {
+      const body = { messages: [{ role: "developer", content: "Existing." }] };
+      injectSystemPrompt(body, FORMATS.OPENAI, TEST_PROMPT);
+      expect(body.messages[0].content).toContain(TEST_PROMPT);
+      injectSystemPrompt(body, FORMATS.OPENAI, TEST_PROMPT);
+      expect(body.messages[0].content.split(SHORT_SIGNATURE)).toHaveLength(2);
+    });
+
+    it("handles array content in Responses API", () => {
+      const body = {
+        messages: [
+          { role: "system", content: [{ type: "input_text", text: "Existing." }] },
+        ],
+      };
+      injectSystemPrompt(body, FORMATS.OPENAI, TEST_PROMPT);
+      expect(body.messages[0].content).toHaveLength(2);
+      injectSystemPrompt(body, FORMATS.OPENAI, TEST_PROMPT);
+      expect(body.messages[0].content).toHaveLength(2);
+    });
+
+    it("handles instructions field", () => {
+      const body = { instructions: "Existing instruction." };
+      injectSystemPrompt(body, FORMATS.OPENAI, TEST_PROMPT);
+      expect(body.instructions).toContain("Existing instruction.");
+      expect(body.instructions).toContain(TEST_PROMPT);
+      injectSystemPrompt(body, FORMATS.OPENAI, TEST_PROMPT);
+      expect(body.instructions.split(SHORT_SIGNATURE)).toHaveLength(2);
+    });
   });
 
-  it("inserts claude block before the last cache_control", () => {
-    const body = {
-      system: [
-        { type: "text", text: "Prefix." },
-        { type: "text", text: "Cached.", cache_control: { type: "ephemeral" } },
-      ],
-    };
-    injectSystemPrompt(body, FORMATS.CLAUDE, P);
-    expect(body.system[1]).toEqual({ type: "text", text: P });
-    expect(body.system[2].cache_control).toBeDefined();
+  describe("Gemini format", () => {
+    it("creates systemInstruction if none exists", () => {
+      const body = {};
+      injectSystemPrompt(body, FORMATS.GEMINI, TEST_PROMPT);
+      expect(body.systemInstruction).toBeDefined();
+      expect(body.systemInstruction.parts[0].text).toBe(TEST_PROMPT);
+    });
+
+    it("appends to existing systemInstruction", () => {
+      const body = { systemInstruction: { parts: [{ text: "Existing." }] } };
+      injectSystemPrompt(body, FORMATS.GEMINI, TEST_PROMPT);
+      expect(body.systemInstruction.parts).toHaveLength(2);
+    });
+
+    it("does NOT duplicate when called twice", () => {
+      const body = { systemInstruction: { parts: [{ text: "Existing." }] } };
+      injectSystemPrompt(body, FORMATS.GEMINI, TEST_PROMPT);
+      expect(body.systemInstruction.parts).toHaveLength(2);
+      injectSystemPrompt(body, FORMATS.GEMINI, TEST_PROMPT);
+      expect(body.systemInstruction.parts).toHaveLength(2);
+    });
+
+    it("handles snake_case system_instruction", () => {
+      const body = { system_instruction: { parts: [{ text: "Existing." }] } };
+      injectSystemPrompt(body, FORMATS.GEMINI, TEST_PROMPT);
+      expect(body.system_instruction.parts).toHaveLength(2);
+      injectSystemPrompt(body, FORMATS.GEMINI, TEST_PROMPT);
+      expect(body.system_instruction.parts).toHaveLength(2);
+    });
+
+    it("handles Antigravity wrapped format", () => {
+      const body = { request: { systemInstruction: { parts: [{ text: "Existing." }] } } };
+      injectSystemPrompt(body, FORMATS.ANTIGRAVITY, TEST_PROMPT);
+      expect(body.request.systemInstruction.parts).toHaveLength(2);
+      injectSystemPrompt(body, FORMATS.ANTIGRAVITY, TEST_PROMPT);
+      expect(body.request.systemInstruction.parts).toHaveLength(2);
+    });
   });
 
-  it("injects into openai messages once", () => {
-    const body = { messages: [{ role: "system", content: "Existing." }] };
-    injectSystemPrompt(body, FORMATS.OPENAI, P);
-    expect(countOccurrences(body.messages[0].content, P)).toBe(1);
-    injectSystemPrompt(body, FORMATS.OPENAI, P);
-    expect(countOccurrences(body.messages[0].content, P)).toBe(1);
-  });
+  describe("multi-turn conversation simulation", () => {
+    it("does NOT accumulate duplicates across multiple turns (Claude)", () => {
+      const body = { system: "Base instruction." };
 
-  it("injects into openai developer role once", () => {
-    const body = { messages: [{ role: "developer", content: "Existing." }] };
-    injectSystemPrompt(body, FORMATS.OPENAI, P);
-    expect(countOccurrences(body.messages[0].content, P)).toBe(1);
-    injectSystemPrompt(body, FORMATS.OPENAI, P);
-    expect(countOccurrences(body.messages[0].content, P)).toBe(1);
-  });
+      // Turn 1
+      injectSystemPrompt(body, FORMATS.CLAUDE, TEST_PROMPT);
+      const turn1 = body.system;
+      expect(turn1.split(SHORT_SIGNATURE)).toHaveLength(2);
 
-  it("injects into openai responses instructions once", () => {
-    const body = { instructions: "Existing." };
-    injectSystemPrompt(body, FORMATS.OPENAI, P);
-    expect(countOccurrences(body.instructions, P)).toBe(1);
-    injectSystemPrompt(body, FORMATS.OPENAI, P);
-    expect(countOccurrences(body.instructions, P)).toBe(1);
-  });
+      // Turn 2 (simulating same conversation continuing)
+      injectSystemPrompt(body, FORMATS.CLAUDE, TEST_PROMPT);
+      expect(body.system).toBe(turn1);
 
-  it("injects into openai array content once", () => {
-    const body = { messages: [{ role: "system", content: [{ type: "text", text: "Existing." }] }] };
-    injectSystemPrompt(body, FORMATS.OPENAI, P);
-    const parts = body.messages[0].content;
-    expect(parts.filter(p => p.text === P)).toHaveLength(1);
-    injectSystemPrompt(body, FORMATS.OPENAI, P);
-    expect(parts.filter(p => p.text === P)).toHaveLength(1);
-  });
+      // Turn 3
+      injectSystemPrompt(body, FORMATS.CLAUDE, TEST_PROMPT);
+      expect(body.system).toBe(turn1);
+      expect(body.system.split(SHORT_SIGNATURE)).toHaveLength(2);
+    });
 
-  it("injects into gemini systemInstruction once", () => {
-    const body = { systemInstruction: { parts: [{ text: "Existing." }] } };
-    injectSystemPrompt(body, FORMATS.GEMINI, P);
-    expect(body.systemInstruction.parts).toHaveLength(2);
-    injectSystemPrompt(body, FORMATS.GEMINI, P);
-    expect(body.systemInstruction.parts).toHaveLength(2);
-  });
+    it("does NOT accumulate duplicates across multiple turns (OpenAI)", () => {
+      const body = { messages: [{ role: "system", content: "Base instruction." }] };
 
-  it("injects into gemini snake_case system_instruction once", () => {
-    const body = { system_instruction: { parts: [{ text: "Existing." }] } };
-    injectSystemPrompt(body, FORMATS.GEMINI, P);
-    expect(body.system_instruction.parts).toHaveLength(2);
-    injectSystemPrompt(body, FORMATS.GEMINI, P);
-    expect(body.system_instruction.parts).toHaveLength(2);
-  });
+      // Turn 1
+      injectSystemPrompt(body, FORMATS.OPENAI, TEST_PROMPT);
+      const turn1 = body.messages[0].content;
+      expect(turn1.split(SHORT_SIGNATURE)).toHaveLength(2);
 
-  it("injects into antigravity wrapped request once", () => {
-    const body = { request: { systemInstruction: { parts: [{ text: "Existing." }] } } };
-    injectSystemPrompt(body, FORMATS.ANTIGRAVITY, P);
-    expect(body.request.systemInstruction.parts).toHaveLength(2);
-    injectSystemPrompt(body, FORMATS.ANTIGRAVITY, P);
-    expect(body.request.systemInstruction.parts).toHaveLength(2);
-  });
-
-  it("uses the first 100 chars as a signature, not the full prompt", () => {
-    const body = { system: "Existing." };
-    injectSystemPrompt(body, FORMATS.CLAUDE, LONG);
-    const onlyFirst100 = LONG.slice(0, 100);
-    expect(body.system).toContain(onlyFirst100);
-    injectSystemPrompt(body, FORMATS.CLAUDE, LONG);
-    expect(countOccurrences(body.system, LONG)).toBe(1);
-  });
-
-  it("is idempotent across multi-turn calls with a long prompt", () => {
-    const body = { messages: [{ role: "system", content: "Existing." }] };
-    injectSystemPrompt(body, FORMATS.OPENAI, LONG);
-    const afterFirst = JSON.stringify(body);
-    injectSystemPrompt(body, FORMATS.OPENAI, LONG);
-    const afterSecond = JSON.stringify(body);
-    expect(afterSecond).toEqual(afterFirst);
-    expect(afterFirst).toContain(LONG.slice(0, 100));
-    expect(countOccurrences(afterFirst, LONG)).toBe(1);
+      // Turn 2-5
+      for (let i = 0; i < 4; i++) {
+        injectSystemPrompt(body, FORMATS.OPENAI, TEST_PROMPT);
+      }
+      expect(body.messages[0].content).toBe(turn1);
+      expect(body.messages[0].content.split(SHORT_SIGNATURE)).toHaveLength(2);
+    });
   });
 });

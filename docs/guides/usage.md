@@ -139,4 +139,3 @@ Check:
 - Test tool calls before using a model in coding-agent workflows.
 - Keep detailed request logging disabled unless debugging.
 - Back up `DATA_DIR` before major upgrades.
-

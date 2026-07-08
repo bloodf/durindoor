@@ -3,8 +3,6 @@ import { createHash } from "node:crypto";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { getMeta, setMeta } from "../helpers/metaStore.js";
-import { getChartDayBucketCount, getUsagePeriodDays } from "@/lib/usagePeriods.js";
-import { incrementApiKeyUsageSync } from "./apiKeyUsageTotalsRepo.js";
 
 function maskApiKey(key) {
   if (!key || typeof key !== "string") return null;
@@ -24,17 +22,8 @@ function getApiKeyStatsKey(apiKey, model, provider) {
 
 const PENDING_TIMEOUT_MS = 60 * 1000;
 const RING_CAP = 50;
-
 const CONN_CACHE_TTL_MS = 30 * 1000;
-const PERIOD_MS = {
-  "24h": 86400000,
-  "7d": 604800000,
-  "30d": 2592000000,
-  "60d": 5184000000,
-  "90d": 7776000000,
-  "180d": 15552000000,
-  "365d": 31536000000,
-};
+const PERIOD_MS = { "24h": 86400000, "7d": 604800000, "30d": 2592000000, "60d": 5184000000 };
 
 // In-memory state shared across Next.js modules
 if (!global._pendingRequests) global._pendingRequests = { byModel: {}, byAccount: {} };
@@ -271,13 +260,6 @@ export async function saveRequestUsage(entry) {
     const promptTokens = tokens.prompt_tokens || tokens.input_tokens || 0;
     const completionTokens = tokens.completion_tokens || tokens.output_tokens || 0;
 
-    // Resolve apiKey string → apiKeyId for usage totals counter
-    let apiKeyId = null;
-    if (entry.apiKey) {
-      const keyRow = db.get(`SELECT id FROM apiKeys WHERE key = ?`, [entry.apiKey]);
-      if (keyRow) apiKeyId = keyRow.id;
-    }
-
     let inserted = false;
 
     // All 3 writes (history insert, daily upsert, lifetime counter) in ONE transaction.
@@ -330,14 +312,6 @@ export async function saveRequestUsage(entry) {
       const cur = db.get(`SELECT value FROM _meta WHERE key = 'totalRequestsLifetime'`);
       const next = (cur ? parseInt(cur.value, 10) : 0) + 1;
       db.run(`INSERT INTO _meta(key, value) VALUES('totalRequestsLifetime', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [String(next)]);
-
-      // Increment per-API-key lifetime usage totals
-      if (apiKeyId) {
-        incrementApiKeyUsageSync(db, apiKeyId, {
-          tokens: promptTokens + completionTokens,
-          cost: entry.cost || 0,
-        });
-      }
       inserted = true;
     });
 
@@ -483,7 +457,8 @@ export async function getUsageStats(period = "all") {
   const useDailySummary = period !== "24h" && period !== "today";
 
   if (useDailySummary) {
-    const maxDays = getUsagePeriodDays(period);
+    const periodDays = { "7d": 7, "30d": 30, "60d": 60 };
+    const maxDays = periodDays[period] || null;
     const dayRows = loadDaysInRange(db, maxDays);
 
     for (const dr of dayRows) {
@@ -661,14 +636,13 @@ export async function getUsageStats(period = "all") {
 
       if (r.apiKey && typeof r.apiKey === "string") {
         const keyInfo = apiKeyMap[r.apiKey];
+        const keyName = keyInfo?.name || r.apiKey.slice(0, 8) + "...";
         const apiKeyMasked = maskApiKey(r.apiKey);
         const apiKeyFingerprint = fingerprintApiKey(r.apiKey);
-        const apiKeyKey = apiKeyFingerprint || "local-no-key";
-        const fingerprintTail = apiKeyKey.replace(/^sha256:/, "").slice(0, 8);
-        const keyName = keyInfo?.name || (apiKeyMasked ? `${apiKeyMasked} (${fingerprintTail})` : "Local (No API Key)");
+        const apiKeyKey = apiKeyMasked;
         const akKey = `${apiKeyFingerprint}|${r.model}|${r.provider || "unknown"}`;
         if (!stats.byApiKey[akKey]) {
-          stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, apiKeyMasked, keyName, apiKeyKey, lastUsed: r.timestamp };
+          stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, apiKeyMasked, keyName, apiKeyKey: apiKeyMasked, lastUsed: r.timestamp };
         }
         const ake = stats.byApiKey[akKey];
         ake.requests++; ake.promptTokens += promptTokens; ake.completionTokens += completionTokens; ake.cachedTokens += cachedTokens; ake.cost += entryCost;
@@ -749,27 +723,22 @@ export async function getChartData(period = "7d") {
     return buckets;
   }
 
+  const labelFn = (d, opts = { month: "short", day: "numeric" }) => d.toLocaleDateString("en-US", opts);
+
   if (period === "all") {
-    const dayRows = loadDaysInRange(db, null);
-    const labelFn = (dateKey) => {
-      const [y, m, d] = dateKey.split("-").map(Number);
-      return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    };
-    return dayRows
-      .sort((a, b) => a.dateKey.localeCompare(b.dateKey))
-      .map((r) => {
-        const dayData = parseJson(r.data, {});
-        return {
-          label: labelFn(r.dateKey),
-          tokens: (dayData.promptTokens || 0) + (dayData.completionTokens || 0),
-          cost: dayData.cost || 0,
-        };
-      });
+    const dayRows = loadDaysInRange(db, null).sort((a, b) => a.dateKey.localeCompare(b.dateKey));
+    return dayRows.map((r) => {
+      const dayData = parseJson(r.data, {});
+      return {
+        label: labelFn(new Date(`${r.dateKey}T00:00:00`), { month: "short", day: "numeric", year: "numeric" }),
+        tokens: (dayData.promptTokens || 0) + (dayData.completionTokens || 0),
+        cost: dayData.cost || 0,
+      };
+    });
   }
 
-  const bucketCount = getChartDayBucketCount(period) ?? 60;
+  const bucketCount = period === "7d" ? 7 : period === "30d" ? 30 : 60;
   const today = new Date();
-  const labelFn = (d) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
   // Build map of dateKey → day data
   const dayRows = loadDaysInRange(db, bucketCount);

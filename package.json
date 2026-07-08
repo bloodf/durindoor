@@ -1,24 +1,20 @@
 {
   "name": "durindoor",
-  "version": "0.5.20",
+  "version": "1.0.2",
   "description": "DurinDoor AI Gateway",
-  "private": false,
+  "private": true,
   "scripts": {
-    "gen:agent-index": "node scripts/gen-agent-index.mjs",
-    "check:agent-index": "node scripts/check-agent-index.mjs",
     "dev": "next dev --webpack --port 20127",
-    "build": "node scripts/build-app.js",
+    "build": "next build --webpack",
     "start": "next start",
     "dev:bun": "bun --bun next dev --webpack --port 20127",
     "build:bun": "bun --bun next build --webpack",
     "start:bun": "bun ./.next/standalone/server.js",
     "cli:pack": "npm --prefix cli run pack:cli",
-    "cli:publish": "npm --prefix cli run publish:cli",
-    "lint": "eslint src/",
-    "test:ci": "cd tests && npm run test:ci"
+    "cli:publish": "npm --prefix cli run publish:cli"
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock-runtime": "^3.1080.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.758.0",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/modifiers": "^9.0.0",
     "@dnd-kit/sortable": "^10.0.0",
@@ -29,6 +25,7 @@
     "bcryptjs": "^3.0.3",
     "confbox": "^0.2.4",
     "express": "^5.2.1",
+    "fs": "^0.0.1-security",
     "http-proxy-middleware": "^3.0.5",
     "jose": "^6.1.3",
     "marked": "^18.0.1",
@@ -39,7 +36,6 @@
     "node-machine-id": "^1.1.12",
     "open": "^11.0.0",
     "ora": "^9.1.0",
-    "pxpipe-proxy": "^0.8.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-is": "^16.13.1",
@@ -49,7 +45,7 @@
     "sql.js": "^1.14.1",
     "undici": "^7.19.2",
     "uuid": "^13.0.0",
-    "ws": "^8.21.0",
+    "ws": "^8.18.1",
     "zustand": "^5.0.10"
   },
   "optionalDependencies": {
@@ -62,11 +58,5 @@
     "eslint-config-next": "16.1.6",
     "postcss": "^8.5.6",
     "tailwindcss": "^4"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/bloodf/durindoor"
-  },
-  "homepage": "https://github.com/bloodf/durindoor#readme",
-  "bugs": "https://github.com/bloodf/durindoor/issues"
+  }
 }

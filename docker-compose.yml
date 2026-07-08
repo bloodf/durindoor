@@ -1,6 +1,6 @@
 services:
   durindoor:
-    image: decolua/durindoor:latest
+    image: ghcr.io/bloodf/durindoor:latest
     container_name: durindoor
     restart: always
     ports:
@@ -15,15 +15,6 @@ services:
       HOSTNAME: "0.0.0.0"
       NODE_ENV: production
       HEADROOM_URL: http://headroom:8787
-      NODE_OPTIONS: "--max-old-space-size=6144"
-    mem_limit: 8g
-    cpus: 4
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:20128/"]
-      interval: 30s
-      timeout: 10s
-      start_period: 30s
-      retries: 3
     depends_on:
       - headroom
 

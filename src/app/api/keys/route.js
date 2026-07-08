@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getApiKeys, createApiKey, getAllApiKeyUsageTotals } from "@/lib/localDb";
+import { getApiKeys, createApiKey } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 
 export const dynamic = "force-dynamic";
@@ -7,16 +7,8 @@ export const dynamic = "force-dynamic";
 // GET /api/keys - List API keys
 export async function GET() {
   try {
-    const [keys, usageTotals] = await Promise.all([
-      getApiKeys(),
-      getAllApiKeyUsageTotals(),
-    ]);
-    const usageByKey = Object.fromEntries(usageTotals.map((u) => [u.apiKeyId, u]));
-    const keysWithUsage = keys.map((k) => ({
-      ...k,
-      usage: usageByKey[k.id] || { totalTokens: 0, totalCost: 0, totalRequests: 0 },
-    }));
-    return NextResponse.json({ keys: keysWithUsage });
+    const keys = await getApiKeys();
+    return NextResponse.json({ keys });
   } catch (error) {
     console.log("Error fetching keys:", error);
     return NextResponse.json({ error: "Failed to fetch keys" }, { status: 500 });
@@ -27,7 +19,7 @@ export async function GET() {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { name, allowedCombos, allowedModels, maxTokens, maxCostUsd } = body;
+    const { name, allowedCombos, dailyLimitTokens } = body;
 
     if (!name) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
@@ -35,12 +27,7 @@ export async function POST(request) {
 
     // Always get machineId from server
     const machineId = await getConsistentMachineId();
-    const policy = {
-      allowedModels: Array.isArray(allowedModels) ? allowedModels : [],
-      maxTokens: maxTokens != null ? Number(maxTokens) : null,
-      maxCostUsd: maxCostUsd != null ? Number(maxCostUsd) : null,
-    };
-    const apiKey = await createApiKey(name, machineId, allowedCombos || [], policy);
+    const apiKey = await createApiKey(name, machineId, allowedCombos || [], dailyLimitTokens);
 
     return NextResponse.json({
       key: apiKey.key,
@@ -48,10 +35,11 @@ export async function POST(request) {
       id: apiKey.id,
       machineId: apiKey.machineId,
       allowedCombos: apiKey.allowedCombos,
-      policy: apiKey.policy,
+      dailyLimitTokens: apiKey.dailyLimitTokens,
     }, { status: 201 });
   } catch (error) {
     console.log("Error creating key:", error);
-    return NextResponse.json({ error: "Failed to create key" }, { status: 500 });
+    const status = /dailyLimitTokens/.test(error.message) ? 400 : 500;
+    return NextResponse.json({ error: status === 400 ? error.message : "Failed to create key" }, { status });
   }
 }

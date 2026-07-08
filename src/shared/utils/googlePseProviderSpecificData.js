@@ -32,4 +32,3 @@ export function buildGooglePseValidationPayload(provider, apiKey, cx, existingPr
   }
   return payload;
 }
-

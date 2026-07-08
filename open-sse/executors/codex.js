@@ -124,9 +124,12 @@ function resolveCacheSessionId(body, credentials) {
   });
 }
 
+function normalizeReasoningEffort(value) {
+  return value === "max" ? "xhigh" : value;
+}
+
 function findNestedMessage(value, depth = 0) {
-  if (!value || depth > 6) return null;
-  if (typeof value === "string") return null;
+  if (!value || depth > 6 || typeof value === "string") return null;
   if (Array.isArray(value)) {
     for (const item of value) {
       const found = findNestedMessage(item, depth + 1);
@@ -197,9 +200,9 @@ export class CodexExecutor extends BaseExecutor {
     // Identify client type to Codex backend (matches official codex CLI)
     if (!headers["originator"]) headers["originator"] = "codex_cli_rs";
     // Workspace binding header — improves account scope + cache affinity
-    const workspaceId = credentials?.providerSpecificData?.workspaceId;
-    if (typeof workspaceId === "string" && workspaceId && !headers["chatgpt-account-id"]) {
-      headers["chatgpt-account-id"] = workspaceId;
+    const workspaceId = credentials?.providerSpecificData?.workspaceId || credentials?.providerSpecificData?.chatgptAccountId;
+    if (typeof workspaceId === "string" && workspaceId && !headers["ChatGPT-Account-ID"]) {
+      headers["ChatGPT-Account-ID"] = workspaceId;
     }
     return headers;
   }
@@ -309,7 +312,7 @@ export class CodexExecutor extends BaseExecutor {
         const accountHit = CODEX_SSE_ACCOUNT_FALLBACK_PATTERNS.find(p => lowerText.includes(p));
         if (accountHit) { matched = accountHit; accountFallback = true; break; }
         const retryHit = CODEX_SSE_RETRY_PATTERNS.find(p => lowerText.includes(p));
-        if (retryHit) matched = retryHit;
+        if (retryHit) { matched = retryHit; break; }
         if (CODEX_SSE_USER_OUTPUT_PATTERNS.some(p => lowerText.includes(p))) break;
       }
     } catch (e) {
@@ -417,7 +420,7 @@ export class CodexExecutor extends BaseExecutor {
 
     // Extract thinking level from model name suffix
     // e.g., gpt-5.3-codex-high → high, gpt-5.3-codex → medium (default)
-    const effortLevels = ['none', 'low', 'medium', 'high', 'xhigh'];
+    const effortLevels = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'];
     let modelEffort = null;
     for (const level of effortLevels) {
       if (body.model.endsWith(`-${level}`)) {
@@ -430,10 +433,11 @@ export class CodexExecutor extends BaseExecutor {
 
     // Priority: explicit reasoning.effort > reasoning_effort param > model suffix > default (medium)
     if (!body.reasoning) {
-      const effort = body.reasoning_effort || modelEffort || 'low';
+      const effort = normalizeReasoningEffort(body.reasoning_effort || modelEffort || 'low');
       body.reasoning = { effort, summary: "auto" };
-    } else if (!body.reasoning.summary) {
-      body.reasoning.summary = "auto";
+    } else {
+      body.reasoning.effort = normalizeReasoningEffort(body.reasoning.effort);
+      if (!body.reasoning.summary) body.reasoning.summary = "auto";
     }
     delete body.reasoning_effort;
 
@@ -460,6 +464,9 @@ export class CodexExecutor extends BaseExecutor {
     delete body.stream_options; // Cursor sends this but Codex doesn't support it
     delete body.safety_identifier; // Droid CLI sends this but Codex doesn't support it
     delete body.previous_response_id; // store=false → backend can't resolve previous resp; avoid 404
+
+    if (body.service_tier === "fast") body.service_tier = "priority";
+    if (body.service_tier && body.service_tier !== "priority") delete body.service_tier;
 
     // Final allowlist filter — strip any unknown field that could trigger upstream "routing_unsupported"
     for (const k of Object.keys(body)) {

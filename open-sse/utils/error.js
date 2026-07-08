@@ -69,7 +69,12 @@ export async function parseUpstreamError(response, executor = null) {
       const parsed = executor.parseError(response, bodyText);
       if (parsed && typeof parsed === "object") {
         const msg = parsed.message || DEFAULT_ERROR_MESSAGES[response.status] || `Upstream error: ${response.status}`;
-        return { statusCode: parsed.status || response.status, message: msg, resetsAtMs: parsed.resetsAtMs };
+        return {
+          statusCode: parsed.status || response.status,
+          message: msg,
+          resetsAtMs: parsed.resetsAtMs,
+          errorBody: parsed.errorBody,
+        };
       }
     } catch { /* fall through to default parsing */ }
   }
@@ -95,13 +100,21 @@ export async function parseUpstreamError(response, executor = null) {
  * @param {number} [resetsAtMs] - Optional precise cooldown expiry (ms epoch) for provider-specific quota errors
  * @returns {{ success: false, status: number, error: string, response: Response, resetsAtMs?: number }}
  */
-export function createErrorResult(statusCode, message, resetsAtMs) {
+export function createErrorResult(statusCode, message, resetsAtMs, errorBody) {
   return {
     success: false,
     status: statusCode,
     error: message,
     resetsAtMs,
-    response: errorResponse(statusCode, message)
+    response: errorBody
+      ? new Response(JSON.stringify(errorBody), {
+          status: statusCode,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        })
+      : errorResponse(statusCode, message),
   };
 }
 
@@ -144,4 +157,18 @@ export function formatProviderError(error, provider, model, statusCode) {
   const causeMsg = error.cause?.message;
   const causeStr = causeCode || causeMsg ? ` (cause: ${[causeCode, causeMsg].filter(Boolean).join(": ")})` : "";
   return `[${code}]: ${message}${causeStr}`;
+}
+
+/**
+ * Keep provider-facing transport errors useful without leaking stack traces or
+ * local paths from WebSocket exceptions.
+ * @param {string} message
+ * @returns {string}
+ */
+export function sanitizeErrorMessage(message) {
+  const firstLine = String(message || "Upstream provider error").split(/\r?\n/)[0].trim();
+  return firstLine
+    .replace(/file:\/\/\S+/g, "[path]")
+    .replace(/\/(?:Users|home|var|tmp)\/\S+/g, "[path]")
+    .slice(0, 500) || "Upstream provider error";
 }

@@ -7,6 +7,7 @@ import {
   applyThinking,
 } from "../../open-sse/translator/concerns/thinkingUnified.js";
 import { extractReasoningText } from "../../open-sse/translator/concerns/reasoning.js";
+import { PROVIDERS } from "../../open-sse/providers/index.js";
 
 const apply = (targetFormat, model, body, provider) => {
   const b = JSON.parse(JSON.stringify(body));
@@ -144,6 +145,16 @@ describe("applyThinking per provider format", () => {
     const out = apply("openai", "kimi-k2.6", { reasoning_effort: "high" }, "kimi");
     expect(out.reasoning_effort).toBe("high");
   });
+  it("Kimi auto → supported reasoning_effort", () => {
+    const out = apply("openai", "kimi-k2.7", { reasoning_effort: "auto" }, "kimchi");
+    expect(out.reasoning_effort).toBe("high");
+  });
+  it("Kimi unsupported OpenAI levels → supported reasoning_effort", () => {
+    const minimal = apply("openai", "kimi-k2.7", { reasoning_effort: "minimal" }, "kimchi");
+    const xhigh = apply("openai", "kimi-k2.7", { reasoning_effort: "xhigh" }, "kimchi");
+    expect(minimal.reasoning_effort).toBe("low");
+    expect(xhigh.reasoning_effort).toBe("max");
+  });
   it("MiniMax M3 → adaptive", () => {
     const out = apply("claude", "MiniMax-M3", { reasoning_effort: "high" }, "minimax");
     expect(out.thinking).toEqual({ type: "adaptive" });
@@ -154,6 +165,25 @@ describe("applyThinking per provider format", () => {
   });
   it("aggregator (siliconflow) GLM model → forced openai reasoning_effort", () => {
     const out = apply("openai", "zai-org/GLM-5", { reasoning_effort: "high" }, "siliconflow");
+    expect(out.reasoning_effort).toBe("high");
+    expect(out.enable_thinking).toBeUndefined();
+  });
+  it("DIT.ai marketplace router: claude-sonnet-4-6 → forced openai reasoning_effort, not Anthropic thinking", () => {
+    expect(PROVIDERS.dit.thinkingFormat).toBe("openai");
+    const out = apply("openai", "claude-sonnet-4-6", { reasoning_effort: "high" }, "dit");
+    expect(out.reasoning_effort).toBe("high");
+    expect(out.thinking).toBeUndefined();
+    expect(out.output_config).toBeUndefined();
+  });
+  it("FreeAIAPIKey marketplace router: anthropic/claude model → forced openai reasoning_effort", () => {
+    expect(PROVIDERS.freeaiapikey.thinkingFormat).toBe("openai");
+    const out = apply("openai", "anthropic/claude-sonnet-4.6", { reasoning_effort: "high" }, "freeaiapikey");
+    expect(out.reasoning_effort).toBe("high");
+    expect(out.thinking).toBeUndefined();
+  });
+  it("Featherless QwQ → forced openai reasoning_effort, not Qwen enable_thinking", () => {
+    expect(PROVIDERS["featherless-ai"].thinkingFormat).toBe("openai");
+    const out = apply("openai", "featherless-ai/Qwerky-QwQ-32B", { reasoning_effort: "high" }, "featherless-ai");
     expect(out.reasoning_effort).toBe("high");
     expect(out.enable_thinking).toBeUndefined();
   });

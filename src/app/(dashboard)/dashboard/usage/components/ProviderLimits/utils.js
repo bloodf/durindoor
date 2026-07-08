@@ -22,6 +22,14 @@ export const QUOTA_SORT_OPTIONS = [
 ];
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
+// ┌────────────────────────────────────────────────────────────────────────────┐
+// │ Quota-visibility helpers                                                   │
+// │                                                                              │
+// │ These utilities let users hide individual quota rows per provider.          │
+// │ Quota rows are identified by a stable key (`modelKey` when available,        │
+// │ otherwise a composite of the display name and array index).                │
+// └────────────────────────────────────────────────────────────────────────────┘
+
 export function getConnectionLabel(connection) {
   return connection.name?.trim()
     || connection.email?.trim()
@@ -298,6 +306,65 @@ export function getRemainingPercentage(quota) {
   }
 
   return calculatePercentage(quota?.used, quota?.total);
+}
+
+/**
+ * Build a stable key used to identify a quota row for visibility settings.
+ *
+ * Prefer `quota.modelKey` when present. For positional display names such as
+ * "Month 1" / "Month 2", fall back to a composite key that includes the row's
+ * 0-based array index so reordering does not collapse distinct rows.
+ *
+ * @param {Object} quota - Normalized quota row
+ * @param {number} [index] - 0-based position of the row in its array
+ * @returns {string} Stable visibility key
+ */
+export function getQuotaVisibilityKey(quota, index) {
+  if (!quota || typeof quota !== "object") return "";
+  if (quota.modelKey) return String(quota.modelKey).trim();
+  const name = String(quota.name || "").trim();
+  if (name === "") return "";
+  if (index === undefined || index === null) return name;
+  return `${name}::${index}`;
+}
+
+function getProviderHiddenQuotaSet(provider, quotaVisibility) {
+  const hidden = quotaVisibility?.[provider]?.hidden;
+  return new Set(
+    (Array.isArray(hidden) ? hidden : [])
+      .map((item) => String(item).trim())
+      .filter(Boolean),
+  );
+}
+
+/**
+ * Return quota rows that should be visible for a provider.
+ *
+ * @param {string} provider - Provider identifier
+ * @param {Array<Object>} [quotas=[]] - Normalized quota rows
+ * @param {Object} [quotaVisibility={}] - Per-provider visibility settings
+ * @returns {Array<Object>} Quota rows that are not hidden
+ */
+export function filterQuotasByVisibility(provider, quotas = [], quotaVisibility = {}) {
+  if (!Array.isArray(quotas) || quotas.length === 0) return [];
+  const hidden = getProviderHiddenQuotaSet(provider, quotaVisibility);
+  if (hidden.size === 0) return quotas;
+  return quotas.filter((quota, index) => !hidden.has(getQuotaVisibilityKey(quota, index)));
+}
+
+/**
+ * Return quota rows that are currently hidden for a provider.
+ *
+ * @param {string} provider - Provider identifier
+ * @param {Array<Object>} [quotas=[]] - Normalized quota rows
+ * @param {Object} [quotaVisibility={}] - Per-provider visibility settings
+ * @returns {Array<Object>} Hidden quota rows
+ */
+export function getHiddenQuotaRows(provider, quotas = [], quotaVisibility = {}) {
+  if (!Array.isArray(quotas) || quotas.length === 0) return [];
+  const hidden = getProviderHiddenQuotaSet(provider, quotaVisibility);
+  if (hidden.size === 0) return [];
+  return quotas.filter((quota, index) => hidden.has(getQuotaVisibilityKey(quota, index)));
 }
 
 /**

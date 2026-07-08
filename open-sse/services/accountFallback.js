@@ -25,6 +25,12 @@ export function checkFallbackError(status, errorText, backoffLevel = 0) {
     ? (typeof errorText === "string" ? errorText : JSON.stringify(errorText)).toLowerCase()
     : "";
 
+  // Port-pending guards are explicit feature-not-implemented errors; they should not
+  // lock the user's connection or trigger the account fallback cooldown chain.
+  if (lowerError.includes("provider_port_pending")) {
+    return { shouldFallback: false, cooldownMs: 0 };
+  }
+
   for (const rule of ERROR_RULES) {
     // Text-based rule: match substring in error message
     if (rule.text && lowerError && lowerError.includes(rule.text)) {
@@ -47,6 +53,59 @@ export function checkFallbackError(status, errorText, backoffLevel = 0) {
 
   // Default: transient cooldown for any unmatched error
   return { shouldFallback: true, cooldownMs: TRANSIENT_COOLDOWN_MS };
+}
+
+/**
+ * Antigravity capacity is a per-request server saturation signal, not an
+ * account quota/rate-limit. It should skip the current connection only for
+ * this request and must not write cooldown state to DB.
+ */
+export function isAntigravityCapacityError(status, errorText = "") {
+  const text = typeof errorText === "string" ? errorText : JSON.stringify(errorText || "");
+  return Number(status) === 503 && (
+    /MODEL_CAPACITY_EXHAUSTED/i.test(text) ||
+    /No capacity available for model/i.test(text)
+  );
+}
+
+const CLOUD_CODE_ACCOUNT_DISABLED_403_PATTERNS = [
+  /disabled in this account/i,
+  /account[^.:\n]*(?:disabled|deactivated|suspended|banned|terminated|closed)/i,
+  /verify your account/i,
+  /violation of (?:the )?terms/i,
+  /terms of service/i,
+];
+
+const CLOUD_CODE_PROJECT_403_PATTERNS = [
+  /has not been used in project/i,
+  /accessNotConfigured/i,
+  /cloud ai companion api/i,
+  /cloudcode-pa\.googleapis\.com/i,
+  /api has not been (?:used|enabled)/i,
+  /SERVICE_DISABLED/,
+];
+
+/**
+ * Cloud Code / Antigravity 403s are recoverable only when the error identifies
+ * a project/API setup issue. Account verification, deactivation, suspension, or
+ * ToS-ban messages are real account failures and must keep normal cooldown
+ * handling, even when they come from a Cloud Code provider.
+ */
+export function isRecoverableCloudCodeProject403(provider, status, errorText = "") {
+  if (Number(status) !== 403) return false;
+  const p = String(provider || "").toLowerCase();
+  const isCloudCodeProvider =
+    p === "antigravity" ||
+    p === "gemini-cli" ||
+    p.includes("cloudcode") ||
+    p.includes("cloud-code");
+  const text = typeof errorText === "string" ? errorText : JSON.stringify(errorText || "");
+  if (CLOUD_CODE_ACCOUNT_DISABLED_403_PATTERNS.some((pattern) => pattern.test(text))) return false;
+
+  const hasProjectMarker = CLOUD_CODE_PROJECT_403_PATTERNS.some((pattern) => pattern.test(text)) ||
+    (/PERMISSION_DENIED/.test(text) && /\b(project|api|cloud ai companion|cloudcode-pa)\b/i.test(text));
+
+  return isCloudCodeProvider && hasProjectMarker;
 }
 
 /**

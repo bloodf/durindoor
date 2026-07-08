@@ -25,6 +25,10 @@ import {
   CLINE_CONFIG,
   CLINEPASS_CONFIG,
   GITLAB_CONFIG,
+  GITLAB_DUO_CONFIG,
+  TRAE_CONFIG,
+  DEVIN_CLI_CONFIG,
+  WINDSURF_CONFIG,
   CODEBUDDY_CONFIG,
   KIMCHI_CONFIG,
   getOAuthClientMetadata,
@@ -39,6 +43,85 @@ import {
 } from "./providerHelpers";
 
 export { extractCodexAccountInfo, fetchKiroProfileArn };
+
+function decodeJwtPayload(jwt) {
+  try {
+    if (!jwt || typeof jwt !== "string") return null;
+    const parts = jwt.split(".");
+    if (parts.length !== 3) return null;
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+    return JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function extractGrokCliToken(input) {
+  if (typeof input === "string") {
+    return { accessToken: input, refreshToken: null, rawAuthJson: null, expiresAt: null };
+  }
+
+  if (input && typeof input === "object") {
+    const obj = input;
+    const inner = obj.accessToken && typeof obj.accessToken === "object" ? obj.accessToken : obj;
+
+    if (inner && typeof inner === "object") {
+      for (const entry of Object.values(inner)) {
+        if (!entry || typeof entry !== "object") continue;
+        if (typeof entry.key === "string" && entry.key.startsWith("eyJ")) {
+          return {
+            accessToken: entry.key,
+            refreshToken: typeof entry.refresh_token === "string" ? entry.refresh_token : null,
+            rawAuthJson: inner,
+            expiresAt: typeof entry.expires_at === "string" ? entry.expires_at : null,
+          };
+        }
+      }
+    }
+
+    if (typeof obj.accessToken === "string" && obj.accessToken.length > 0) {
+      return {
+        accessToken: obj.accessToken,
+        refreshToken: typeof obj.refreshToken === "string" ? obj.refreshToken : null,
+        rawAuthJson: null,
+        expiresAt: null,
+      };
+    }
+  }
+
+  return { accessToken: "", refreshToken: null, rawAuthJson: null, expiresAt: null };
+}
+
+export function mapGrokCliTokens(tokens) {
+  const { accessToken, refreshToken, rawAuthJson, expiresAt } = extractGrokCliToken(tokens);
+  const payload = decodeJwtPayload(accessToken) || {};
+  const currentSec = Math.floor(Date.now() / 1000);
+  let expiresIn = 21600;
+
+  if (expiresAt) {
+    const parsed = Date.parse(expiresAt);
+    if (Number.isFinite(parsed)) expiresIn = Math.floor(parsed / 1000) - currentSec;
+  } else if (typeof payload.exp === "number" && payload.exp > 0) {
+    expiresIn = payload.exp - currentSec;
+  }
+
+  expiresIn = Math.max(1, expiresIn);
+
+  return {
+    accessToken,
+    refreshToken,
+    expiresIn,
+    email: payload.email || null,
+    providerSpecificData: {
+      userId: payload.sub || null,
+      teamId: payload.team_id || null,
+      tier: payload.tier || 1,
+      principalType: payload.principal_type || "User",
+      rawAuthJson: rawAuthJson || undefined,
+    },
+  };
+}
 
 // Inlined from services/xai.js to keep web route bundle free of `open` (CLI-only) package
 let cachedXaiDiscovery = null;
@@ -253,6 +336,15 @@ const PROVIDERS = {
       }
       return mapped;
     },
+  },
+
+  "grok-cli": {
+    config: {
+      clientId: XAI_CONFIG.clientId,
+      tokenUrl: "https://auth.x.ai/oauth2/token",
+    },
+    flowType: "import_token",
+    mapTokens: mapGrokCliTokens,
   },
 
   "gemini-cli": {
@@ -1233,6 +1325,108 @@ const PROVIDERS = {
         clientId: tokens._clientId,
         authKind: "oauth",
       },
+    }),
+  },
+
+  "gitlab-duo": {
+    config: GITLAB_DUO_CONFIG,
+    flowType: "authorization_code_pkce",
+    buildAuthUrl: (config, redirectUri, state, codeChallenge, meta = {}) => {
+      const baseUrl = (meta.baseUrl || config.defaultBaseUrl || "https://gitlab.com").replace(/\/$/, "");
+      const clientId = meta.clientId || config.clientId || "";
+      if (!clientId) return null;
+      const params = new URLSearchParams({
+        client_id: clientId,
+        redirect_uri: redirectUri,
+        response_type: "code",
+        state,
+        scope: config.scope,
+        code_challenge: codeChallenge,
+        code_challenge_method: config.codeChallengeMethod,
+      });
+      return `${baseUrl}${config.authorizeUrlPath}?${params.toString()}`;
+    },
+    exchangeToken: async (config, code, redirectUri, codeVerifier, state, meta = {}) => {
+      const baseUrl = (meta.baseUrl || config.defaultBaseUrl || "https://gitlab.com").replace(/\/$/, "");
+      const clientId = meta.clientId || config.clientId || "";
+      const clientSecret = meta.clientSecret || config.clientSecret || "";
+      const body = new URLSearchParams({
+        client_id: clientId,
+        grant_type: "authorization_code",
+        code,
+        redirect_uri: redirectUri,
+        code_verifier: codeVerifier,
+      });
+      if (clientSecret) body.set("client_secret", clientSecret);
+      const response = await fetch(`${baseUrl}${config.tokenUrlPath}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+        body: body.toString(),
+      });
+      if (!response.ok) throw new Error(`GitLab Duo token exchange failed: ${await response.text()}`);
+      const tokens = await response.json();
+      const userRes = await fetch(`${baseUrl}${config.userInfoUrlPath}`, {
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+      });
+      const user = userRes.ok ? await userRes.json() : {};
+      return { ...tokens, _user: user, _baseUrl: baseUrl, _clientId: clientId };
+    },
+    mapTokens: (tokens) => ({
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token,
+      expiresIn: tokens.expires_in,
+      scope: tokens.scope,
+      providerSpecificData: {
+        username: tokens._user?.username || "",
+        email: tokens._user?.email || tokens._user?.public_email || "",
+        name: tokens._user?.name || "",
+        baseUrl: tokens._baseUrl || GITLAB_DUO_CONFIG.defaultBaseUrl,
+        clientId: tokens._clientId || GITLAB_DUO_CONFIG.clientId,
+        authKind: "oauth",
+      },
+    }),
+  },
+
+  trae: {
+    config: TRAE_CONFIG,
+    flowType: "import_token",
+    buildAuthUrl: () => null,
+    mapTokens: (tokens) => ({
+      accessToken: tokens.accessToken || tokens.access_token || tokens.token || tokens,
+      refreshToken: null,
+      expiresIn: tokens.expiresIn || TRAE_CONFIG.tokenLifetimeDays * 24 * 60 * 60,
+      providerSpecificData: {
+        webId: tokens.webId || tokens.web_id || "",
+        bizUserId: tokens.bizUserId || tokens.biz_user_id || "",
+        userUniqueId: tokens.userUniqueId || tokens.user_unique_id || "",
+        scope: tokens.scope || "marscode-us",
+        tenant: tokens.tenant || "marscode",
+        region: tokens.region || "US-East",
+      },
+    }),
+  },
+
+  "devin-cli": {
+    config: DEVIN_CLI_CONFIG,
+    flowType: "import_token",
+    buildAuthUrl: () => null,
+    mapTokens: (tokens) => ({
+      accessToken: tokens.accessToken || tokens.access_token || tokens.token || tokens,
+      refreshToken: null,
+      expiresIn: tokens.expiresIn || null,
+      providerSpecificData: { authKind: "import_token" },
+    }),
+  },
+
+  windsurf: {
+    config: WINDSURF_CONFIG,
+    flowType: "import_token",
+    buildAuthUrl: () => null,
+    mapTokens: (tokens) => ({
+      accessToken: tokens.accessToken || tokens.access_token || tokens.token || tokens,
+      refreshToken: null,
+      expiresIn: tokens.expiresIn || null,
+      providerSpecificData: { authKind: "import_token" },
     }),
   },
 

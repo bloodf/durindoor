@@ -12,6 +12,7 @@ import {
   refreshGitHubToken,
   refreshCopilotToken,
   refreshCodebuddyToken,
+  refreshGitLabDuoToken,
   classifyOAuthRefreshError,
 } from "./tokenRefresh/providers.js";
 
@@ -27,6 +28,7 @@ export {
   refreshGitHubToken,
   refreshCopilotToken,
   refreshCodebuddyToken,
+  refreshGitLabDuoToken,
   classifyOAuthRefreshError,
 };
 
@@ -122,6 +124,7 @@ function vertexRefreshHandler(c, log) {
 const REFRESH_HANDLERS = {
   "gemini-cli": (c, log) => refreshGoogleToken(c.refreshToken, PROVIDERS["gemini-cli"].clientId, PROVIDERS["gemini-cli"].clientSecret, log),
   antigravity: (c, log) => refreshGoogleToken(c.refreshToken, PROVIDERS.antigravity.clientId, PROVIDERS.antigravity.clientSecret, log),
+  agy: (c, log) => refreshGoogleToken(c.refreshToken, PROVIDERS.agy.clientId, PROVIDERS.agy.clientSecret, log),
   claude: (c, log) => refreshClaudeOAuthToken(c.refreshToken, log),
   codex: (c, log) => refreshCodexToken(c.refreshToken, log),
   qwen: (c, log) => refreshQwenToken(c.refreshToken, log),
@@ -129,7 +132,9 @@ const REFRESH_HANDLERS = {
   github: (c, log) => refreshGitHubToken(c.refreshToken, log),
   kiro: (c, log) => refreshKiroToken(c.refreshToken, c.providerSpecificData, log),
   xai: (c, log) => refreshXaiToken(c.refreshToken, log),
+  "grok-cli": (c, log) => refreshXaiToken(c.refreshToken, log),
   "codebuddy-cn": (c, log) => refreshCodebuddyToken(c.refreshToken, log),
+  "gitlab-duo": (c, log) => refreshGitLabDuoToken(c.refreshToken, c, log),
   vertex: vertexRefreshHandler,
   "vertex-partner": vertexRefreshHandler
 };
@@ -187,12 +192,14 @@ export function formatProviderCredentials(provider, credentials, log) {
     case "openai":
     case "openrouter":
     case "xai":
+    case "grok-cli":
       return {
         apiKey: credentials.apiKey,
         accessToken: credentials.accessToken
       };
 
     case "antigravity":
+    case "agy":
     case "gemini-cli":
       return {
         accessToken: credentials.accessToken,

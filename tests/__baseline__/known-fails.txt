@@ -1,25 +1,67 @@
+tests/translator/golden-request.test.js :: GOLDEN request: OpenAI → Kiro full body (image base64 + tool_result)
+tests/translator/golden-response-stream.test.js :: GOLDEN response stream: Claude → OpenAI text + thinking + tool_use + usage + finish
+tests/translator/golden-url-header.test.js :: GOLDEN buildHeaders (default executor providers) charm-hyper → headers (apiKey / oauth)
+tests/translator/golden-url-header.test.js :: GOLDEN buildHeaders (default executor providers) claude → headers (apiKey / oauth)
+tests/translator/golden-url-header.test.js :: GOLDEN buildHeaders (default executor providers) clinepass → headers (apiKey / oauth)
+tests/translator/golden-url-header.test.js :: GOLDEN buildHeaders (default executor providers) kimchi → headers (apiKey / oauth)
+tests/translator/golden-url-header.test.js :: GOLDEN buildUrl (default executor providers) charm-hyper → url (stream + non-stream)
+tests/translator/golden-url-header.test.js :: GOLDEN buildUrl (default executor providers) clinepass → url (stream + non-stream)
 tests/unit/antigravity-mitm.test.js :: Antigravity MITM model handling flags the out-of-box agent/Default model mandatory
+tests/unit/antigravity-oauth-client.test.js :: antigravity oauth client (deduped) src oauth.js imports shared client + keeps full shape
 tests/unit/claude-header-forwarding.test.js :: proxyAwareFetch — api.anthropic.com routing routes api.anthropic.com to gotScraping (non-streaming) and returns ok response
-tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import extracts tokens using exact keys
-tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import falls back to fuzzy key matching on macOS when exact keys are missing
-tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import linux uses single hardcoded path and original error message
-tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import returns descriptive error if macOS db file exists but cannot be opened
-tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import returns login-prompt error when tokens are missing even after fallback
-tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import returns not-found when no macOS cursor db paths are accessible
-tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import unsupported platform returns 400
-tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import unwraps JSON-encoded string values
-tests/unit/openai-to-claude.test.js :: openaiToClaudeResponse omits empty Read pages tool argument before emitting Claude input deltas
-tests/unit/rtk.test.js :: RTK flag default off, toggle works
-tests/unit/rtk.test.js :: compressMessages (disabled) returns null when disabled
-tests/unit/rtk.test.js :: compressMessages (enabled) compresses Claude array-form tool_result text parts
-tests/unit/rtk.test.js :: compressMessages (enabled) compresses Claude string-form tool_result
-tests/unit/rtk.test.js :: compressMessages (enabled) compresses OpenAI tool message (string content)
-tests/unit/rtk.test.js :: compressMessages (enabled) handles mix of messages without crashing
-tests/unit/rtk.test.js :: compressMessages (enabled) never produces empty content (R14 guard)
-tests/unit/rtk.test.js :: compressMessages (enabled) skips below MIN_COMPRESS_SIZE (<500 bytes)
-tests/unit/rtk.test.js :: compressMessages (enabled) skips is_error tool_result
-tests/unit/rtk.test.js :: compressMessages (enabled) skips when body has no messages
+tests/unit/codex-refresh-token.test.js :: Codex Refresh Token CodexExecutor credential lifecycle should refresh Codex credentials and preserve omitted id_token
+tests/unit/codex-refresh-token.test.js :: Codex Refresh Token CodexExecutor credential lifecycle should refresh Codex when lastRefreshAt is older than the upstream stale window
+tests/unit/combo-autoswitch.test.js :: detectRequiredCapabilities web_search tool -> search not yet auto-detected (feature disabled)
+tests/unit/db-driver-chain.test.js :: Driver fallback chain falls back to sql.js when both native drivers unavailable
+tests/unit/db-sqlite-vs-lowdb.test.js :: DB SQLite layer — public API parity usage: 24h and today byApiKey keep keys with the same masked prefix separate
+tests/unit/force-stream-config.test.js :: forceStream provider config keeps forced-stream providers streaming for JSON clients when body.stream is false
+tests/unit/force-stream-config.test.js :: forceStream provider config keeps forced-stream providers streaming for JSON clients when body.stream is undefined
+tests/unit/kiro-profile-arn-regional.test.js :: fetchKiroProfileArn — regional endpoint + dispatch shape accepts both `arn` and `profileArn` field names in the response
+tests/unit/kiro-profile-arn-regional.test.js :: fetchKiroProfileArn — regional endpoint + dispatch shape defaults to us-east-1 when region is missing or malformed
+tests/unit/kiro-profile-arn-regional.test.js :: fetchKiroProfileArn — regional endpoint + dispatch shape falls back to the first profile when no ARN matches the region
+tests/unit/kiro-profile-arn-regional.test.js :: fetchKiroProfileArn — regional endpoint + dispatch shape hits codewhisperer.<region>.amazonaws.com with x-amz-target dispatch
+tests/unit/kiro-profile-arn-regional.test.js :: fetchKiroProfileArn — regional endpoint + dispatch shape prefers the profile whose ARN region matches the caller region
+tests/unit/mitm-root-ca.test.js :: MITM Root CA generation creates Root CA files synchronously for direct server startup
+tests/unit/mitm-rootca-autogen.test.js :: MITM Root CA auto-generation (#2224) creates the MITM directory when it does not exist
+tests/unit/mitm-rootca-autogen.test.js :: MITM Root CA auto-generation (#2224) generates rootCA.key and rootCA.crt when both are absent
+tests/unit/mitm-rootca-autogen.test.js :: MITM Root CA auto-generation (#2224) generates when only rootCA.key exists (partial state)
+tests/unit/mitm-rootca-autogen.test.js :: MITM Root CA auto-generation (#2224) is idempotent when valid cert already exists (returns false)
+tests/unit/mitm-rootca-autogen.test.js :: MITM Root CA auto-generation (#2224) regenerates when rootCA.crt is corrupt / unreadable
+tests/unit/openai-to-kiro.test.js :: openaiToKiroRequest basic message conversion should convert a simple text message
 tests/unit/translator-request-normalization.test.js :: request normalization claudeToOpenAIRequest flattens text-only content arrays into string
 tests/unit/translator-request-normalization.test.js :: request normalization filterToOpenAIFormat flattens text-only arrays to string
 tests/unit/translator-request-normalization.test.js :: request normalization parseSSELine supports provider raw NDJSON stream lines
 tests/unit/translator-request-normalization.test.js :: request normalization translateRequest keeps /v1/messages Claude->OpenAI text payloads string-safe
+tests/unit/kiro-region.test.js :: fetchKiroProfileArn region host queries us-east-1 codewhisperer by default
+tests/unit/kiro-region.test.js :: fetchKiroProfileArn region host queries the regional Amazon Q host for a non-default region
+tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import returns descriptive error if macOS db file exists but cannot be opened
+tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import extracts tokens using exact keys
+tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import unwraps JSON-encoded string values
+tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import falls back to fuzzy key matching on macOS when exact keys are missing
+tests/unit/oauth-cursor-auto-import.test.js :: GET /api/oauth/cursor/auto-import returns login-prompt error when tokens are missing even after fallback
+tests/unit/provider-models-minimax-m3.test.js :: MiniMax-M3 model registration includes MiniMax-M3 in PROVIDER_MODELS.minimax
+tests/unit/provider-models-minimax-m3.test.js :: MiniMax-M3 model registration includes MiniMax-M3 in PROVIDER_MODELS['minimax-cn']
+tests/unit/xai-oauth-service.test.js :: xai/oauth service builds authorize URLs with CLIProxyAPI query extras
+tests/unit/xai-oauth-service.test.js :: xai/oauth service discovers endpoints without custom user-agent headers
+tests/unit/xai-oauth-service.test.js :: xai/oauth service exchanges dashboard codes against the discovered xAI token endpoint
+tests/unit/xai-oauth-service.test.js :: xai/oauth service generates dashboard auth data with CLIProxyAPI PKCE size and discovered endpoints
+tests/unit/xai-oauth-service.test.js :: xai/oauth service validates discovered endpoints are https x.ai URLs
+tests/unit/xai-usage.test.js :: xAI (Grok) usage aggregates tokens and cost per model from usageHistory
+tests/unit/xai-usage.test.js :: xAI (Grok) usage scopes aggregation to the requested connectionId
+tests/unit/agentrouter-provider.test.js :: AgentRouter provider keeps Claude passthrough and context settings stable
+tests/unit/agentrouter-provider.test.js :: AgentRouter provider exposes a multi-transport mapping for mixed OpenAI/Claude models
+tests/unit/build-models-list-noauth.test.js :: buildModelsList no-auth provider visibility includes no-auth providers when only unrelated connections exist
+tests/unit/command-code-validation.test.js :: POST /api/providers/validate - CommandCode dispatch validates 'command-code' via the CommandCode probe, not the generic fallback
+tests/unit/gitlab-duo-registry.test.js :: GitLab Duo registry falls back to env-configured base URL when no connection baseUrl is set
+tests/unit/omniroute-simple-a-providers.test.js :: OmniRoute simple/default provider batch A registers each owned provider with DurinDoor's default registry contract
+tests/unit/omniroute-simple-a-providers.test.js :: OmniRoute simple/default provider batch A uses local copied icons where the OmniRoute source provided provider assets
+tests/unit/omniroute-simple-a-review-fixes.test.js :: PR #48 review: api-airforce validateUrl src/app/api/providers/validate/route.js prefers cfg.validateUrl in the generic OpenAI probe
+tests/unit/omniroute-simple-a-review-fixes.test.js :: PR #48 review: bai suggested-models openai filter FILTERS.openai passes through string model ids and ignores object ids
+tests/unit/omniroute-websession-blocked.test.js :: OmniRoute PR #51 web-session provider port artifacts ports Copilot web-session providers to real executors
+tests/unit/omniroute-websession-runtime.test.js :: ported media route cores routes VeoAIFree video generation through the concrete executor
+tests/unit/pollinations-auth-credentials.test.js :: getProviderCredentials for no-auth providers with an optional real key (Pollinations) falls back to the synthetic public no-auth credential when no saved connection exists
+tests/unit/pollinations-auth-credentials.test.js :: getProviderCredentials for no-auth providers with an optional real key (Pollinations) falls back to the synthetic public no-auth credential when the only saved connection is excluded
+tests/unit/pollinations-validate-premium-key.test.js :: POST /api/providers/validate - Pollinations no-auth + premium key returns valid:true without probing when no API key is supplied (keyless catalog)
+tests/unit/zenmux-free.test.js :: zenmux-free registry uses the specialized executor
+tests/unit/gitlawb-gmi-connection-test.test.js :: baseUrl-only API-key provider connection test probes gitlawb-gmi baseUrl when no validateUrl exists
+tests/unit/omniroute-simple-c-providers.test.js :: OmniRoute simple/default provider batch C exports every statically imported registry entry

@@ -1,4 +1,10 @@
-name: Tests
+name: "🧪 Tests"
+
+# Two-branch release model: only `dev` and `main`.
+# This workflow runs the vitest suite and the no-regression gate. The
+# gate compares the JSON output against `tests/__baseline__/known-fails.txt`
+# so a curated set of known drifts is tolerated — the real signal is
+# "did THIS commit introduce a NEW pass→fail regression?".
 
 on:
   push:
@@ -11,37 +17,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  vitest:
+    name: "🧪 Vitest + No-regression gate"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - name: "📥 Checkout"
+        uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v5
+      - name: "⚙️ Setup Node.js"
+        uses: actions/setup-node@v5
         with:
           node-version: 20
 
       # The repo intentionally does not commit a package-lock.json (it is
-      # gitignored), so there is no lockfile for `npm ci` or setup-node's npm
-      # cache to key on — hence plain `npm install` and no `cache: npm`.
-      #
+      # gitignored), so there is no lockfile for `npm ci` or setup-node's
+      # `cache: npm` to key on — hence plain `npm install` and no cache.
       # Root deps power the code under test (open-sse, src) and the native
-      # better-sqlite3 driver used by the DB concurrency tests. better-sqlite3
-      # is an optionalDependency with Linux prebuilds, so install resolves it.
-      - name: Install app dependencies
+      # better-sqlite3 driver used by the DB concurrency tests.
+      - name: "📦 Install app dependencies"
         run: npm install --no-audit --no-fund
 
-      - name: Install test dependencies (vitest)
+      - name: "📦 Install test dependencies"
         working-directory: tests
         run: npm install --no-audit --no-fund
 
-      # Vitest exits non-zero because a curated set of known failures
-      # (tests/__baseline__/known-fails.txt) is deliberately tolerated. The
-      # no-regression gate below is the real pass/fail signal, so let this step
-      # always succeed and hand its JSON output to the gate.
-      - name: Run test suite (vitest → JSON)
+      # Run via `npm run test:ci` (= `test:json` then `gate`).
+      # Vitest exits non-zero because the suite has real failures
+      # (intentional drift from the upstream-9router rebrand). The gate
+      # then reads `.test-results.json` and exits 0 only when every
+      # failure is already listed in `tests/__baseline__/known-fails.txt`.
+      # That is the real CI signal — "did THIS commit introduce a NEW
+      # pass→fail regression?"
+      - name: "🧪 Run vitest + no-regression gate"
         working-directory: tests
-        run: npm run test:json || true
-
-      - name: No-regression gate (fails only on a real pass→fail regression)
-        working-directory: tests
-        run: npm run gate
+        run: npm run test:ci

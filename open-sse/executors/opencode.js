@@ -11,7 +11,18 @@ export class OpenCodeExecutor extends BaseExecutor {
   }
 
   transformRequest(model, body) {
-    return injectReasoningContent({ provider: this.provider, model, body });
+    const transformed = injectReasoningContent({ provider: this.provider, model, body });
+    if (
+      transformed &&
+      typeof transformed === "object" &&
+      !Array.isArray(transformed) &&
+      Object.prototype.hasOwnProperty.call(transformed, "client_metadata")
+    ) {
+      const cleaned = { ...transformed };
+      delete cleaned.client_metadata;
+      return cleaned;
+    }
+    return transformed;
   }
 
   buildUrl(model) {

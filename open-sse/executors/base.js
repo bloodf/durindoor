@@ -3,6 +3,7 @@ import { shouldRefreshCredentials } from "../services/oauthCredentialManager.js"
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { dbg } from "../utils/debugLog.js";
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE } from "../providers/shared.js";
+import { findOffendingField } from "../config/providerFieldStrips.js";
 
 function removeBetaFlag(headers, flag) {
   for (const key of ["anthropic-beta", "Anthropic-Beta"]) {
@@ -148,21 +149,50 @@ export class BaseExecutor {
       if (!retryAttemptsByUrl[urlIndex]) retryAttemptsByUrl[urlIndex] = 0;
 
       // Abort if upstream doesn't return response headers within connection timeout
-      const connectCtrl = new AbortController();
+      let connectCtrl = new AbortController();
       const timeoutMs = this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
-      const connectTimer = setTimeout(() => connectCtrl.abort(new Error("fetch connect timeout")), timeoutMs);
-      const mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
+      let connectTimer = setTimeout(() => connectCtrl.abort(new Error("fetch connect timeout")), timeoutMs);
+      let mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
 
       try {
-        const bodyStr = JSON.stringify(transformedBody);
+        let requestBody = transformedBody;
+        let bodyStr = JSON.stringify(requestBody);
         const fetchT0 = Date.now();
         dbg("FETCH", `${this.provider.toUpperCase()} → ${url} | body=${bodyStr.length}B | connectTimeout=${timeoutMs}ms`);
-        const response = await proxyAwareFetch(url, {
+        let response = await proxyAwareFetch(url, {
           method: "POST",
           headers,
           body: bodyStr,
           signal: mergedSignal
         }, proxyOptions);
+        if (response.status === 400) {
+          const clone = response.clone?.();
+          const errorText = clone?.text ? await clone.text() : "";
+          const field = findOffendingField(errorText);
+          if (
+            field &&
+            requestBody &&
+            typeof requestBody === "object" &&
+            !Array.isArray(requestBody) &&
+            Object.prototype.hasOwnProperty.call(requestBody, field)
+          ) {
+            requestBody = { ...requestBody };
+            delete requestBody[field];
+            bodyStr = JSON.stringify(requestBody);
+            log?.debug?.("RETRY", `400 mentioned unsupported field ${field}; stripping and retrying once`);
+            // Reset the connect timeout for the new upstream request.
+            clearTimeout(connectTimer);
+            connectCtrl = new AbortController();
+            connectTimer = setTimeout(() => connectCtrl.abort(new Error("fetch connect timeout")), timeoutMs);
+            mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
+            response = await proxyAwareFetch(url, {
+              method: "POST",
+              headers,
+              body: bodyStr,
+              signal: mergedSignal
+            }, proxyOptions);
+          }
+        }
         clearTimeout(connectTimer);
         const ct = response.headers?.get?.("content-type") || "";
         const cl = response.headers?.get?.("content-length") || "?";
@@ -176,7 +206,7 @@ export class BaseExecutor {
           continue;
         }
 
-        return { response, url, headers, transformedBody };
+        return { response, url, headers, transformedBody: requestBody };
       } catch (error) {
         clearTimeout(connectTimer);
         lastError = error;

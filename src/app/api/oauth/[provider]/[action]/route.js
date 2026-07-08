@@ -187,6 +187,39 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: "Invalid or empty request body" }, { status: 400 });
     }
 
+    if (action === "import-token") {
+      const providerData = getProvider(provider);
+      if (providerData.flowType !== "import_token" || typeof providerData.mapTokens !== "function") {
+        return NextResponse.json({ error: `Provider ${provider} does not support import-token` }, { status: 400 });
+      }
+
+      const rawToken = body.accessToken ?? body.token ?? body.authJson ?? body;
+      const tokenData = providerData.mapTokens(rawToken);
+      if (!tokenData?.accessToken) {
+        return NextResponse.json({ error: "Missing accessToken" }, { status: 400 });
+      }
+
+      const connection = await createProviderConnection({
+        provider,
+        authType: "oauth",
+        ...tokenData,
+        expiresAt: tokenData.expiresIn
+          ? new Date(Date.now() + tokenData.expiresIn * 1000).toISOString()
+          : null,
+        testStatus: "active",
+      });
+
+      return NextResponse.json({
+        success: true,
+        connection: {
+          id: connection.id,
+          provider: connection.provider,
+          email: connection.email,
+          displayName: connection.displayName,
+        },
+      });
+    }
+
     if (action === "exchange") {
       const { code, redirectUri, codeVerifier, state, meta } = body;
 

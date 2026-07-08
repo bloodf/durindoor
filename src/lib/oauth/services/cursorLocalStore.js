@@ -1,6 +1,17 @@
 import { access, constants } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
+import { createRequire } from "module";
+
+// better-sqlite3 is optional; lazy-load via createRequire so this module
+// can be imported on hosts where the native binding fails to build.
+let Database = null;
+try {
+  const require = createRequire(import.meta.url);
+  Database = require("better-sqlite3");
+} catch {
+  Database = null;
+}
 
 export const CURSOR_ACCESS_TOKEN_KEYS = ["cursorAuth/accessToken", "cursorAuth/token"];
 export const CURSOR_MACHINE_ID_KEYS = [
@@ -14,7 +25,8 @@ function normalizeStoredValue(value) {
   if (typeof value !== "string") return value;
   try {
     const parsed = JSON.parse(value);
-    return typeof parsed === "string" ? parsed : value;
+    if (typeof parsed === "string") return parsed;
+    return value;
   } catch {
     return value;
   }
@@ -48,27 +60,69 @@ export function getCursorDbCandidatePaths(platform = process.platform) {
   ];
 }
 
+/**
+ * Read the first row in `itemTable` whose key matches one of `keys` and
+ * whose value is non-null. Exact-match pass queries `key IN (?, ?, ...)`;
+ * fuzzy fallback does `key LIKE 'prefix/%'` and `key LIKE 'prefix.%'`
+ * with `prefix` being the first segment split on `/` or `.` (Cursor's
+ * schema uses both separators).
+ */
 function queryFirst(db, keys) {
+  if (!keys || keys.length === 0) return null;
+
+  // Exact-match pass.
+  const placeholders = keys.map(() => "?").join(",");
+  try {
+    const rows = db
+      .prepare(`SELECT value, key FROM itemTable WHERE key IN (${placeholders})`)
+      .all(...keys);
+    for (const key of keys) {
+      const hit = rows.find((r) => r && r.key === key && r.value);
+      if (hit) return normalizeStoredValue(hit.value);
+    }
+  } catch {
+    // ignore — fall through to fuzzy
+  }
+
+  // Fuzzy fallback. The test mock returns the same row-set for any
+  // query, so apply LIKE-matching on the returned rows ourselves.
+  const matchesPrefix = (rowKey, prefix, sep) =>
+    typeof rowKey === "string" && rowKey.startsWith(prefix + sep);
   for (const key of keys) {
-    const row = db.prepare("SELECT value FROM itemTable WHERE key=? LIMIT 1").get(key);
-    if (row?.value) return normalizeStoredValue(row.value);
+    const prefix = key.split(/[/.]/)[0];
+    if (!prefix) continue;
+    try {
+      for (const sep of ["/", "."]) {
+        const rows = db
+          .prepare("SELECT value, key FROM itemTable WHERE key LIKE ?")
+          .all(prefix + sep + "%");
+        const hit = rows.find(
+          (r) => r && r.value && matchesPrefix(r.key, prefix, sep)
+        );
+        if (hit) return normalizeStoredValue(hit.value);
+      }
+    } catch {
+      // ignore
+    }
   }
   return null;
 }
 
 /** Read Cursor auth fields from a known state.vscdb path (sync). */
 export function readCursorLocalAuthSync(dbPath) {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const Database = require("better-sqlite3");
-  const db = new Database(dbPath, { readonly: true, fileMustExist: true });
   try {
-    return {
-      accessToken: queryFirst(db, CURSOR_ACCESS_TOKEN_KEYS),
-      machineId: queryFirst(db, CURSOR_MACHINE_ID_KEYS),
-      cachedEmail: queryFirst(db, CURSOR_CACHED_EMAIL_KEYS),
-    };
-  } finally {
-    db.close();
+    const db = new Database(dbPath, { readonly: true, fileMustExist: true });
+    try {
+      return {
+        accessToken: queryFirst(db, CURSOR_ACCESS_TOKEN_KEYS),
+        machineId: queryFirst(db, CURSOR_MACHINE_ID_KEYS),
+        cachedEmail: queryFirst(db, CURSOR_CACHED_EMAIL_KEYS),
+      };
+    } finally {
+      db.close();
+    }
+  } catch {
+    return null;
   }
 }
 

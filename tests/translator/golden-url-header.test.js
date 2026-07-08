@@ -4,6 +4,10 @@
 import { describe, it, expect } from "vitest";
 import { PROVIDERS } from "../../open-sse/config/providers.js";
 import { DefaultExecutor } from "../../open-sse/executors/default.js";
+import {
+  BLOCKED_OMNIROUTE_PROVIDERS,
+  BLOCKED_OMNIROUTE_PROVIDER_ALIASES,
+} from "../../open-sse/executors/unsupported-websession.js";
 
 // Credentials mẫu cố định (deterministic) — KHÔNG dùng Date.now/random.
 const API_KEY_CRED = { apiKey: "sk-test-APIKEY", providerSpecificData: {} };
@@ -17,10 +21,13 @@ const SPECIAL_CRED = {
 // Provider cần executor riêng (buildUrl/buildHeaders không nằm ở DefaultExecutor) → bỏ qua ở golden này.
 // Chúng được lock riêng ở 11-provider edge tests / unit test chuyên biệt.
 const SPECIALIZED = new Set([
-  "antigravity", "azure", "gemini-cli", "github", "iflow", "qoder", "kiro",
+  "antigravity", "agy", "azure", "gemini-cli", "github", "iflow", "qoder", "kiro",
   "codex", "cursor", "vertex", "vertex-partner", "qwen", "opencode",
   "opencode-go", "grok-web", "perplexity-web", "ollama-local", "commandcode",
-  "xiaomi-tokenplan", "mimo-free",
+  "xiaomi-tokenplan", "mimo-free", "grok-cli",
+  "pollinations", "theoldllm", "gigachat", "zenmux-free",
+  ...Object.keys(BLOCKED_OMNIROUTE_PROVIDERS),
+  ...Object.keys(BLOCKED_OMNIROUTE_PROVIDER_ALIASES),
 ]);
 
 // Sanitize header: khử token + mọi giá trị phụ thuộc môi trường (app version,
@@ -41,6 +48,12 @@ function sanitize(headers) {
       .replaceAll(process.arch, "<ARCH>");             // e.g. x64 / arm64
     // App version cũng xuất hiện trần trong các header này.
     if (k === "X-CLIENT-VERSION" || k === "X-CORE-VERSION") s = "<VER>";
+    // X-Stainless-* fingerprint values are environment-dependent:
+    // X-Stainless-Os is derived via mapStainlessOs(), and X-Stainless-Arch
+    // via mapStainlessArch() or hardcoded in a provider. Normalize both to
+    // stable placeholders so snapshots are portable across OS/arch/CI.
+    if (k === "X-Stainless-Os") s = "<OS>";
+    if (k === "X-Stainless-Arch") s = "<ARCH>";
     out[k] = s;
   }
   return out;

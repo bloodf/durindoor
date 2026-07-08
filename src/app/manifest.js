@@ -1,8 +1,8 @@
 export default function manifest() {
   return {
-    name: '9Router - AI Infrastructure Management',
-    short_name: '9Router',
-    description: 'One endpoint for all your AI providers. Manage keys, monitor usage, and scale effortlessly.',
+    name: 'DurinDoor - AI Gateway',
+    short_name: 'DurinDoor',
+    description: 'One stable API in front of many upstream AI providers. Self-hosted OpenAI-compatible gateway.',
     start_url: '/',
     display: 'standalone',
     background_color: '#0a0a0a',

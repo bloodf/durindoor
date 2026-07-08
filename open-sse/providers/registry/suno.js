@@ -1,0 +1,31 @@
+export default {
+  id: "suno",
+  priority: 242,
+  alias: "suno",
+  uiAlias: "suno",
+  display: {
+    name: "Suno",
+    icon: "music_note",
+    color: "#111827",
+    textIcon: "SU",
+    website: "https://suno.ai",
+  },
+  category: "webCookie",
+  authType: "cookie",
+  authHint: "Paste the Suno session cookie from suno.ai.",
+  serviceKinds: ["music"],
+  hiddenKinds: ["music"],
+  transport: {
+    baseUrl: "https://studio-api.suno.ai/api/generate/v2/",
+    format: "openai",
+    executor: "suno",
+    authType: "cookie",
+  },
+  musicConfig: { baseUrl: "https://studio-api.suno.ai/api/generate/v2/" },
+  models: [
+    { id: "chirp-fenix", name: "Chirp V5.5", kind: "music" },
+    { id: "chirp-crow", name: "Chirp V5", kind: "music" },
+    { id: "chirp-v4", name: "Chirp V4", kind: "music" },
+    { id: "chirp-v3-5", name: "Chirp V3.5", kind: "music" },
+  ],
+};

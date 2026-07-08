@@ -38,7 +38,7 @@ async function setupTestContext(nodeData) {
   };
 }
 
-function makeRequest(provider, name = "Test Connection") {
+function makeRequest(provider, name = "Test Connection", extras = {}) {
   return new Request("https://9router.local/api/providers", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -47,6 +47,7 @@ function makeRequest(provider, name = "Test Connection") {
       apiKey: "test-key",
       name,
       defaultModel: "test-model",
+      ...extras,
     }),
   });
 }
@@ -115,6 +116,32 @@ describe("compatible provider connections API", () => {
     });
   });
 
+  it("creates a no-auth connection for a free provider without an API key", async () => {
+    const ctx = await setupTestContext({
+      id: "mimocode",
+      type: "free",
+      name: "MiMoCode",
+      prefix: "mcode",
+      baseUrl: "https://api.xiaomimimo.com/v1",
+    });
+    cleanup = ctx.cleanup;
+
+    const response = await ctx.POST(makeRequest("mimocode", "Mimocode rotation", { apiKey: "", providerSpecificData: { fingerprints: ["fp-a"] } }));
+    const body = await response.json();
+    const storedConnections = await ctx.getProviderConnections({ provider: "mimocode" });
+
+    expect(response.status).toBe(201);
+    expect(storedConnections).toHaveLength(1);
+    expect(storedConnections[0]).toMatchObject({
+      provider: "mimocode",
+      authType: "apikey",
+      name: "Mimocode rotation",
+      providerSpecificData: {
+        fingerprints: ["fp-a"],
+      },
+    });
+    expect(body.connection.apiKey).toBeUndefined();
+  });
   it("creates one API-key connection for an Anthropic-compatible node", async () => {
     const ctx = await setupTestContext({
       id: "anthropic-compatible-test",
@@ -164,5 +191,50 @@ describe("compatible provider connections API", () => {
     expect(res2.status).toBe(201);
     expect(stored).toHaveLength(2);
     stored.forEach(c => expectCompatibleConnection(c, ctx.node, { apiType: "chat" }));
+  });
+
+  it("rejects hidden built-in API-key providers in the legacy creation API", async () => {
+    const ctx = await setupTestContext({
+      id: "openai-compatible-hidden-guard",
+      type: "openai-compatible",
+      name: "Hidden Guard Node",
+      prefix: "hgn",
+      apiType: "chat",
+      baseUrl: "https://hidden-guard.test/v1",
+    });
+    cleanup = ctx.cleanup;
+
+    const response = await ctx.POST(makeRequest("databricks"));
+    const body = await response.json();
+    const storedConnections = await ctx.getProviderConnections({ provider: "databricks" });
+
+    expect(response.status).toBe(400);
+    expect(body).toEqual({ error: "Invalid provider" });
+    expect(storedConnections).toHaveLength(0);
+  });
+
+  it("continues creating visible built-in API-key providers in the legacy creation API", async () => {
+    const ctx = await setupTestContext({
+      id: "openai-compatible-visible-guard",
+      type: "openai-compatible",
+      name: "Visible Guard Node",
+      prefix: "vgn",
+      apiType: "chat",
+      baseUrl: "https://visible-guard.test/v1",
+    });
+    cleanup = ctx.cleanup;
+
+    const response = await ctx.POST(makeRequest("openai"));
+    const body = await response.json();
+    const storedConnections = await ctx.getProviderConnections({ provider: "openai" });
+
+    expect(response.status).toBe(201);
+    expect(body.connection).toMatchObject({
+      provider: "openai",
+      authType: "apikey",
+      name: "Test Connection",
+    });
+    expect(body.connection.apiKey).toBeUndefined();
+    expect(storedConnections).toHaveLength(1);
   });
 });

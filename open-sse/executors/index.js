@@ -1,8 +1,13 @@
 import { AntigravityExecutor } from "./antigravity.js";
+import { AuggieExecutor } from "./auggie.js";
 import { AzureExecutor } from "./azure.js";
+import { AzureOpenAIExecutor } from "./azure-openai.js";
+import { BedrockExecutor } from "./bedrock.js";
+import { ChipotleExecutor } from "./chipotle.js";
 import { GeminiCLIExecutor } from "./gemini-cli.js";
 import { GithubExecutor } from "./github.js";
 import { IFlowExecutor } from "./iflow.js";
+import { InnerAiExecutor } from "./inner-ai.js";
 import { QoderExecutor } from "./qoder.js";
 import { KiroExecutor } from "./kiro.js";
 import { KimchiExecutor } from "./kimchi.js";
@@ -12,22 +17,45 @@ import { VertexExecutor } from "./vertex.js";
 import { QwenExecutor } from "./qwen.js";
 import { OpenCodeExecutor } from "./opencode.js";
 import { OpenCodeGoExecutor } from "./opencode-go.js";
+import { OpenCodeZenExecutor } from "./opencode-zen.js";
 import { GrokWebExecutor } from "./grok-web.js";
 import { PerplexityWebExecutor } from "./perplexity-web.js";
 import { OllamaLocalExecutor } from "./ollama-local.js";
 import { CommandCodeExecutor } from "./commandcode.js";
+import { PollinationsExecutor } from "./pollinations.js";
+import { PuterExecutor } from "./puter.js";
+import { TheOldLlmExecutor } from "./theoldllm.js";
 import { XiaomiTokenplanExecutor } from "./xiaomi-tokenplan.js";
 import { MimoFreeExecutor } from "./mimo-free.js";
+import { MimocodeExecutor } from "./mimocode.js";
 import { CodeBuddyExecutor } from "./codebuddy-cn.js";
 import { XaiExecutor } from "./xai.js";
+import { GrokCliExecutor } from "./grok-cli.js";
+import { GitlabExecutor } from "./gitlab.js";
+import { TraeExecutor } from "./trae.js";
+import { DevinCliExecutor } from "./devin-cli.js";
+import { WindsurfExecutor } from "./windsurf.js";
 import { DefaultExecutor } from "./default.js";
+import {
+  UnsupportedOmniRouteWebSessionExecutor,
+  BLOCKED_OMNIROUTE_PROVIDERS,
+  BLOCKED_OMNIROUTE_PROVIDER_ALIASES,
+} from "./unsupported-websession.js";
 
 const executors = {
   antigravity: new AntigravityExecutor(),
+  agy: new AntigravityExecutor("agy"),
+  auggie: new AuggieExecutor(),
+  aug: new AuggieExecutor(), // Alias for auggie
   azure: new AzureExecutor(),
+  "azure-openai": new AzureOpenAIExecutor(),
+  bedrock: new BedrockExecutor(),
+  chipotle: new ChipotleExecutor(),
   "gemini-cli": new GeminiCLIExecutor(),
   github: new GithubExecutor(),
   iflow: new IFlowExecutor(),
+  "inner-ai": new InnerAiExecutor(),
+  "in-ai": new InnerAiExecutor(), // Alias for inner-ai
   qoder: new QoderExecutor(),
   kiro: new KiroExecutor(),
   kimchi: new KimchiExecutor(),
@@ -39,15 +67,41 @@ const executors = {
   qwen: new QwenExecutor(),
   opencode: new OpenCodeExecutor(),
   "opencode-go": new OpenCodeGoExecutor(),
+  "opencode-zen": new OpenCodeZenExecutor(),
   "grok-web": new GrokWebExecutor(),
   "perplexity-web": new PerplexityWebExecutor(),
   "ollama-local": new OllamaLocalExecutor(),
   commandcode: new CommandCodeExecutor(),
+  "command-code": new CommandCodeExecutor("command-code"),
+  pollinations: new PollinationsExecutor(),
+  puter: new PuterExecutor(),
+  theoldllm: new TheOldLlmExecutor(),
   "xiaomi-tokenplan": new XiaomiTokenplanExecutor(),
   "mimo-free": new MimoFreeExecutor(),
+  mimocode: new MimocodeExecutor(),
+  mcode: new MimocodeExecutor(), // Alias for mimocode
   mmf: new MimoFreeExecutor(), // Alias for mimo-free
+  mimocode: new MimocodeExecutor(),
+  mcode: new MimocodeExecutor(), // Alias for mimocode
   "codebuddy-cn": new CodeBuddyExecutor(),
   xai: new XaiExecutor(),
+  "grok-cli": new GrokCliExecutor(),
+  "gitlab-duo": new GitlabExecutor("gitlab-duo"),
+  trae: new TraeExecutor(),
+  "devin-cli": new DevinCliExecutor(),
+  windsurf: new WindsurfExecutor(),
+  ...Object.fromEntries(
+    Object.keys(BLOCKED_OMNIROUTE_PROVIDERS).map((provider) => [
+      provider,
+      new UnsupportedOmniRouteWebSessionExecutor(provider),
+    ]),
+  ),
+  ...Object.fromEntries(
+    Object.entries(BLOCKED_OMNIROUTE_PROVIDER_ALIASES).map(([alias, provider]) => [
+      alias,
+      new UnsupportedOmniRouteWebSessionExecutor(provider),
+    ]),
+  ),
 };
 
 const defaultCache = new Map();
@@ -64,10 +118,15 @@ export function hasSpecializedExecutor(provider) {
 
 export { BaseExecutor } from "./base.js";
 export { AntigravityExecutor } from "./antigravity.js";
+export { AuggieExecutor } from "./auggie.js";
 export { AzureExecutor } from "./azure.js";
+export { AzureOpenAIExecutor } from "./azure-openai.js";
+export { BedrockExecutor } from "./bedrock.js";
+export { ChipotleExecutor } from "./chipotle.js";
 export { GeminiCLIExecutor } from "./gemini-cli.js";
 export { GithubExecutor } from "./github.js";
 export { IFlowExecutor } from "./iflow.js";
+export { InnerAiExecutor } from "./inner-ai.js";
 export { QoderExecutor } from "./qoder.js";
 export { KiroExecutor } from "./kiro.js";
 export { KimchiExecutor } from "./kimchi.js";
@@ -78,11 +137,26 @@ export { DefaultExecutor } from "./default.js";
 export { QwenExecutor } from "./qwen.js";
 export { OpenCodeExecutor } from "./opencode.js";
 export { OpenCodeGoExecutor } from "./opencode-go.js";
+export { OpenCodeZenExecutor } from "./opencode-zen.js";
 export { GrokWebExecutor } from "./grok-web.js";
 export { PerplexityWebExecutor } from "./perplexity-web.js";
 export { OllamaLocalExecutor } from "./ollama-local.js";
 export { CommandCodeExecutor } from "./commandcode.js";
+export { PollinationsExecutor } from "./pollinations.js";
+export { PuterExecutor } from "./puter.js";
+export { TheOldLlmExecutor } from "./theoldllm.js";
 export { XiaomiTokenplanExecutor } from "./xiaomi-tokenplan.js";
 export { MimoFreeExecutor } from "./mimo-free.js";
+export { MimocodeExecutor } from "./mimocode.js";
 export { CodeBuddyExecutor } from "./codebuddy-cn.js";
 export { XaiExecutor } from "./xai.js";
+export { GrokCliExecutor } from "./grok-cli.js";
+export { GitlabExecutor } from "./gitlab.js";
+export { TraeExecutor } from "./trae.js";
+export { DevinCliExecutor } from "./devin-cli.js";
+export { WindsurfExecutor } from "./windsurf.js";
+export {
+  UnsupportedOmniRouteWebSessionExecutor,
+  BLOCKED_OMNIROUTE_PROVIDERS,
+  BLOCKED_OMNIROUTE_PROVIDER_ALIASES,
+} from "./unsupported-websession.js";

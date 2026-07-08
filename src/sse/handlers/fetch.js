@@ -14,6 +14,7 @@ import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
 import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
+import { enforceApiKeyModelPolicy, recordApiKeyUsage } from "../services/apiKeyPolicy.js";
 
 /**
  * Handle web fetch (URL extraction) request for the SSE/Next.js server.
@@ -32,7 +33,7 @@ export async function handleFetch(request) {
 
   const reqUrl = new URL(request.url);
   // Accept either `provider` or `model` (UI sends `model` since provider IS the model for webFetch)
-  const providerInput = body.provider || body.model;
+  let providerInput = normalizeFetchProviderInput(body.provider || body.model);
   const targetUrl = body.url;
   const format = body.format;
   const maxCharacters = body.max_characters;
@@ -100,6 +101,15 @@ export async function handleFetch(request) {
     }
   }
 
+  // Enforce per-API-key model policy
+  const policyError = await enforceApiKeyModelPolicy(request, providerInput);
+  if (policyError) return policyError;
+
+  if (apiKey) {
+    const tokens = body.prompt ? String(body.prompt).length / 4 : 0;
+    await recordApiKeyUsage(apiKey, { tokens, cost: 0 });
+  }
+
   // Combo expansion: providerInput may be a combo name → run fallback/round-robin across providers
   const combos = await getCombos();
   const comboModels = getComboModelsFromData(providerInput, combos);
@@ -120,6 +130,26 @@ export async function handleFetch(request) {
   }
 
   return handleSingleProviderFetch(body, providerInput, request, apiKey, settings);
+}
+
+/**
+ * Normalize advertised webFetch model ids (e.g. tinyfish/fetch) to the provider
+ * alias, but only when the raw id is unknown and the stripped alias maps to a
+ * provider that supports web fetch.
+ * @param {string} providerInput
+ * @returns {string}
+ */
+export function normalizeFetchProviderInput(providerInput) {
+  if (typeof providerInput !== "string" || !providerInput.endsWith("/fetch")) {
+    return providerInput;
+  }
+  const stripped = providerInput.slice(0, -"/fetch".length);
+  const rawProvider = AI_PROVIDERS[resolveProviderId(providerInput)];
+  const strippedProvider = AI_PROVIDERS[resolveProviderId(stripped)];
+  if (!rawProvider?.fetchConfig && strippedProvider?.fetchConfig) {
+    return stripped;
+  }
+  return providerInput;
 }
 
 async function handleSingleProviderFetch(body, providerInput, request, apiKey, settings) {

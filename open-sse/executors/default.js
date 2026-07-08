@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { BaseExecutor } from "./base.js";
-import { PROVIDERS, PROVIDER_OAUTH } from "../config/providers.js";
+import { PROVIDERS, PROVIDER_OAUTH, resolveHerokuBaseUrl } from "../config/providers.js";
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE } from "../providers/shared.js";
 import { OAUTH_ENDPOINTS, buildKimiHeaders } from "../config/appConstants.js";
 import { buildClineHeaders } from "../shared/clineAuth.js";
@@ -55,23 +55,62 @@ const AUTH_DESCRIPTORS = Object.fromEntries(
     .map(([id, t]) => [id, t.auth])
 );
 
+// Apply a token to a header per scheme. Missing tokens intentionally leave the
+// header absent so optional local providers do not send "Bearer undefined".
+
+export function normalizeAccountIdPlaceholder(provider, accountId) {
+  const trimmed = `${accountId || ""}`.trim();
+  if (!trimmed) throw new Error(`${provider} requires accountId in providerSpecificData`);
+  // Snowflake documents a "dashed" hostname variant of the account identifier:
+  // underscores are valid in the account name but not in a DNS label, so
+  // normalize them to hyphens before validation/URL construction.
+  const normalized = trimmed.replace(/_/g, "-");
+
+  const labels = normalized.split(".");
+  const validDnsLabels = labels.every((label) => (
+    label.length > 0
+    && label.length <= 63
+    && /^[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?$/.test(label)
+  ));
+  if (!validDnsLabels || normalized.length > 253) {
+    throw new Error(`${provider} requires a valid accountId in providerSpecificData`);
+  }
+
+  return normalized;
+}
+
 // Apply a token to a header per scheme (matches legacy: combined always sets, even when undefined).
 function setAuth(headers, spec, token) {
-  headers[spec.header] = spec.scheme === "bearer" ? `Bearer ${token}` : token;
+  if (!token) return;
+  const scheme = spec.scheme;
+  if (scheme === "bearer") headers[spec.header] = `Bearer ${token}`;
+  else if (scheme === "key") headers[spec.header] = `Key ${token}`;
+  else if (spec.prefix) headers[spec.header] = `${spec.prefix} ${token}`;
+  else headers[spec.header] = token;
 }
 
 // Resolve auth onto headers from a descriptor.
 function applyAuth(headers, desc, credentials) {
   if (desc.combined) {
-    // combined providers always set the header (legacy behavior, incl. noAuth → "Bearer undefined")
     setAuth(headers, desc, credentials.apiKey || credentials.accessToken);
+    applyExtraHeaders(headers, desc.extraHeaders, credentials);
     if (desc.anthropicVersion && !headers["anthropic-version"]) headers["anthropic-version"] = ANTHROPIC_API_VERSION;
     return;
   }
   // split apiKey/oauth: set only the matching branch (legacy: anthropic-compatible skips when both absent)
   if (credentials.apiKey) setAuth(headers, desc.apiKey, credentials.apiKey);
   else if (credentials.accessToken) setAuth(headers, desc.oauth, credentials.accessToken);
+  applyExtraHeaders(headers, desc.extraHeaders, credentials);
   if (desc.anthropicVersion && !headers["anthropic-version"]) headers["anthropic-version"] = ANTHROPIC_API_VERSION;
+}
+
+function applyExtraHeaders(headers, extraHeaders, credentials) {
+  if (!Array.isArray(extraHeaders)) return;
+  for (const spec of extraHeaders) {
+    if (!spec?.header || !spec?.from) continue;
+    const value = credentials?.[spec.from];
+    if (value) headers[spec.header] = value;
+  }
 }
 
 // Provider-specific header quirks kept as small hooks (not pure auth).
@@ -114,12 +153,65 @@ const REFRESH_GRANTS = Object.fromEntries(
     })
 );
 
+// OmniRoute local/self-hosted parity: these provider IDs are configurable
+// OpenAI-compatible endpoints. When no connection baseUrl is set, stay on the
+// provider's local default instead of falling back through PROVIDERS.openai.
+export const LOCAL_PROVIDER_DEFAULT_BASE_URLS = {
+  "lm-studio": "http://localhost:1234/v1",
+  vllm: "http://localhost:8000/v1",
+  lemonade: "http://localhost:13305/api/v1",
+  llamafile: "http://127.0.0.1:8080/v1",
+  "llama-cpp": "http://127.0.0.1:8080/v1",
+  triton: "http://localhost:8000/v1",
+  "docker-model-runner": "http://localhost:12434/v1",
+  xinference: "http://localhost:9997/v1",
+  oobabooga: "http://localhost:5000/v1",
+  "9router": "http://127.0.0.1:20130/v1",
+};
+
+
+const GLMT_MODEL_ALIASES = {
+  "glm-5.2-high": { model: "glm-5.2", reasoningEffort: "high" },
+  "glm-5.2-max": { model: "glm-5.2", reasoningEffort: "max" },
+};
+
+function applyGlmtModelAlias(provider, model, body) {
+  if (provider !== "glmt" || !body || typeof body !== "object") return body;
+  const alias = GLMT_MODEL_ALIASES[model] || GLMT_MODEL_ALIASES[body.model];
+  if (!alias) return body;
+  body.model = alias.model;
+  body.reasoning_effort = alias.reasoningEffort;
+  return body;
+}
+
 export class DefaultExecutor extends BaseExecutor {
   constructor(provider) {
     super(provider, PROVIDERS[provider] || PROVIDERS.openai);
   }
 
+  applyRequestDefaults(body) {
+    const defaults = this.config?.requestDefaults;
+    if (!defaults || !body || typeof body !== "object") return body;
+    if (defaults.maxTokens !== undefined && body.max_tokens === undefined && body.max_completion_tokens === undefined) {
+      body.max_tokens = defaults.maxTokens;
+    }
+    if (defaults.temperature !== undefined && body.temperature === undefined) {
+      body.temperature = defaults.temperature;
+    }
+    if (defaults.thinkingBudgetTokens !== undefined || defaults.thinkingType !== undefined) {
+      const current = body.thinking && typeof body.thinking === "object" ? body.thinking : {};
+      body.thinking = {
+        ...current,
+        ...(current.type === undefined && defaults.thinkingType !== undefined ? { type: defaults.thinkingType } : {}),
+        ...(current.budget_tokens === undefined && defaults.thinkingBudgetTokens !== undefined ? { budget_tokens: defaults.thinkingBudgetTokens } : {}),
+      };
+    }
+    return body;
+  }
+
   transformRequest(model, body, stream, credentials) {
+    this.applyRequestDefaults(body);
+    applyGlmtModelAlias(this.provider, model, body);
     const transformed = this.applyJsonSchemaFallback(body);
 
     if (transformed && typeof transformed === "object") {
@@ -128,6 +220,16 @@ export class DefaultExecutor extends BaseExecutor {
         delete transformed.client_metadata;
       }
       this.defaultResponsesTextFormat(transformed);
+      if (this.config.format === "openai" && stream === false) {
+        // Resolved stream mode is authoritative for upstream OpenAI-compatible
+        // payloads, including providers that explicitly reject streaming.
+        // Also drop stream_options: it's only meaningful with stream:true
+        // (include_usage controls the final SSE usage chunk) and some
+        // OpenAI-compatible upstreams 400 on stream_options when stream is
+        // false (client sent it because it originally requested streaming).
+        transformed.stream = false;
+        delete transformed.stream_options;
+      }
       injectPromptCacheKey(this.provider, transformed, credentials);
       applyParamRenames(this.provider, model, transformed);
       stripUnsupportedParams(this.provider, model, transformed);
@@ -175,6 +277,9 @@ export class DefaultExecutor extends BaseExecutor {
     if (rt?.baseUrl) {
       return rt.urlSuffix ? `${rt.baseUrl}${rt.urlSuffix}` : rt.baseUrl;
     }
+    if (this.provider === "heroku") {
+      return `${resolveHerokuBaseUrl(credentials)}/chat/completions`;
+    }
     if (this.provider?.startsWith?.("openai-compatible-")) {
       const baseUrl = credentials?.providerSpecificData?.baseUrl || OPENAI_COMPAT_BASE;
       const normalized = baseUrl.replace(/\/$/, "");
@@ -187,6 +292,16 @@ export class DefaultExecutor extends BaseExecutor {
       const normalized = baseUrl.replace(/\/$/, "");
       return `${normalized}/messages`;
     }
+    if (LOCAL_PROVIDER_DEFAULT_BASE_URLS[this.provider]) {
+      const baseUrl =
+        credentials?.providerSpecificData?.baseUrl ||
+        this.config.baseUrl ||
+        LOCAL_PROVIDER_DEFAULT_BASE_URLS[this.provider];
+      const normalized = baseUrl.replace(/\/$/, "");
+      return normalized.endsWith("/chat/completions")
+        ? normalized
+        : `${normalized}/chat/completions`;
+    }
     // gemini-format: build :streamGenerateContent / :generateContent path
     if (this.config.format === "gemini") {
       return `${this.config.baseUrl}/${model}:${stream ? "streamGenerateContent?alt=sse" : "generateContent"}`;
@@ -197,8 +312,7 @@ export class DefaultExecutor extends BaseExecutor {
     }
     const url = this.config.baseUrl;
     if (url?.includes("{accountId}")) {
-      const accountId = credentials?.providerSpecificData?.accountId;
-      if (!accountId) throw new Error(`${this.provider} requires accountId in providerSpecificData`);
+      const accountId = normalizeAccountIdPlaceholder(this.provider, credentials?.providerSpecificData?.accountId);
       return url.replace("{accountId}", accountId);
     }
     return url;
@@ -215,9 +329,14 @@ export class DefaultExecutor extends BaseExecutor {
     return BEARER;
   }
 
-  buildHeaders(credentials, stream = true) {
+  buildHeaders(credentials = {}, stream = true) {
+    credentials ||= {};
     const rt = credentials?.runtimeTransport;
     const headers = { "Content-Type": "application/json", ...(rt ? rt.headers : this.config.headers) };
+    if (!credentials.apiKey && !credentials.accessToken) {
+      if (stream) headers["Accept"] = "text/event-stream";
+      return headers;
+    }
     const desc = rt?.auth || AUTH_DESCRIPTORS[this.provider] || this.resolveAuthDescriptor();
     // Hooks run BEFORE auth so dynamic overlays (claude cached headers) can't clobber the token.
     for (const hook of desc.hooks || []) HEADER_HOOKS[hook]?.(headers, credentials);

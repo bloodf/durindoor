@@ -3,12 +3,48 @@ import { getProviderNodeById } from "@/models";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, resolveXiaomiTokenplanBaseUrl, PROVIDERS } from "open-sse/config/providers.js";
+import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
+import { buildZenmuxAnthropicBody, extractZenmuxCtoken, normalizeZenmuxCookie, ZENMUX_FREE_CHAT_URL } from "open-sse/executors/zenmux-free.js";
 import { normalizeProviderId } from "@/lib/providerNormalization";
+import { isRedactedToken, isStructuredPathOnlyCredential, isStructuredWsUrlCredential } from "open-sse/executors/copilot-m365-connection.js";
+import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
+
+function applyConfiguredAuthHeader(headers, cfg, apiKey) {
+  const auth = cfg?.auth;
+  if (auth?.combined && auth.header) {
+    headers[auth.header] = auth.scheme === "bearer" ? `Bearer ${apiKey}` : apiKey;
+    return headers;
+  }
+  if (cfg?.authHeader === "x-api-key") {
+    headers["X-API-Key"] = apiKey;
+  } else if (cfg?.authHeader === "key") {
+    headers.key = apiKey;
+  } else {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
+  return headers;
+}
+
+export async function probeNoAuthLocalProvider(baseUrl, apiKey = undefined) {
+  const normalized = String(baseUrl || "")
+    .replace(/\/$/, "")
+    .replace(/\/api\/chat$/, "");
+  if (!normalized) return { valid: false, error: "Base URL required for no-auth provider" };
+  try {
+    const res = await fetch(`${normalized}/models`, {
+      ...(apiKey ? { headers: { Authorization: `Bearer ${apiKey}` } } : {}),
+      signal: AbortSignal.timeout(8000),
+    });
+    return { valid: res.ok, error: res.ok ? null : "Endpoint unreachable or rejected" };
+  } catch (err) {
+    return { valid: false, error: err.message };
+  }
+}
 
 // Probe a webSearch/webFetch provider using its searchConfig/fetchConfig.
 // Returns true if API key is accepted (status !== 401 && !== 403).
-async function probeWebProvider(provider, apiKey) {
+async function probeWebProvider(provider, apiKey, providerSpecificData = {}) {
   const p = AI_PROVIDERS[provider];
   if (!p) return null;
   // Skip if provider has dual-purpose (LLM + search), let LLM validate handle it
@@ -28,7 +64,11 @@ async function probeWebProvider(provider, apiKey) {
     case "bearer":              headers["Authorization"] = `Bearer ${apiKey}`; break;
     case "x-api-key":           headers["x-api-key"] = apiKey; break;
     case "x-subscription-token":headers["x-subscription-token"] = apiKey; break;
-    case "key":                 url += `?key=${encodeURIComponent(apiKey)}&q=ping&cx=test`; break; // google-pse
+    case "key": {
+      const cx = providerSpecificData?.cx || providerSpecificData?.searchEngineId || body?.cx || body?.searchEngineId;
+      url += `?key=${encodeURIComponent(apiKey)}&q=ping&cx=${encodeURIComponent(cx || "test")}`;
+      break;
+    }
     case "api_key":             url += `?api_key=${encodeURIComponent(apiKey)}&q=ping&engine=google`; break; // searchapi
   }
 
@@ -38,7 +78,7 @@ async function probeWebProvider(provider, apiKey) {
   }
 
   const res = await fetch(url, { method: cfg.method, headers, body, signal: AbortSignal.timeout(8000) });
-  return res.status !== 401 && res.status !== 403;
+  return res.ok;
 }
 
 // Probe a media provider (tts/embedding/stt/image/video) using *Config.
@@ -80,6 +120,57 @@ async function probeMediaProvider(provider, apiKey) {
   return res.status !== 401 && res.status !== 403;
 }
 
+async function exchangeGigaChatApiKey(apiKey) {
+  const cfg = PROVIDERS.gigachat;
+  const res = await fetch(cfg.tokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/json",
+      Authorization: `Basic ${apiKey}`,
+      RqUID: crypto.randomUUID(),
+    },
+    body: new URLSearchParams({ scope: cfg.tokenScope || "GIGACHAT_API_PERS" }),
+    signal: AbortSignal.timeout(8000),
+  });
+
+  if (!res.ok) return null;
+  const token = await res.json().catch(() => null);
+  return token?.access_token || null;
+}
+
+async function probeOpenAICompatibleRegistryProvider(provider, apiKey) {
+  const cfg = PROVIDERS[provider];
+  if (!cfg || cfg.format !== "openai" || !cfg.baseUrl) return null;
+  if (cfg.noAuth) return true;
+
+  const headers = { "Content-Type": "application/json", ...(cfg.headers || {}) };
+  if (cfg.authHeader === "x-api-key") headers["X-API-Key"] = apiKey;
+  else headers["Authorization"] = `Bearer ${apiKey}`;
+
+  // Prefer explicit model-list URLs because some OpenAI-compatible providers
+  // mount chat completions under a scoped path that does not imply /models.
+  const modelsUrl = cfg.modelsUrl || cfg.baseUrl.replace(/\/chat\/completions$/, "/models").replace(/\/chatbot$/, "/models");
+  let probeOk = null;
+  try {
+    const probeRes = await fetch(modelsUrl, { headers, signal: AbortSignal.timeout(8000) });
+    if (probeRes.status === 401 || probeRes.status === 403) probeOk = false;
+    else if (probeRes.ok) probeOk = true;
+  } catch {
+    // Fall back to a minimal chat probe below.
+  }
+  if (probeOk !== null) return probeOk;
+
+  const defaultModel = getDefaultModel(provider) || "test";
+  const chatRes = await fetch(cfg.baseUrl, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ model: defaultModel, messages: [{ role: "user", content: "ping" }], max_tokens: 1, stream: false }),
+    signal: AbortSignal.timeout(10000),
+  });
+  return chatRes.status !== 401 && chatRes.status !== 403;
+}
+
 // POST /api/providers/validate - Validate API key with provider
 export async function POST(request) {
   try {
@@ -87,9 +178,13 @@ export async function POST(request) {
     const provider = normalizeProviderId(body.provider);
     const { apiKey, providerSpecificData } = body;
 
-    const isNoAuth = AI_PROVIDERS[provider]?.noAuth === true;
+    const providerInfo = AI_PROVIDERS[provider] || {};
+    const isNoAuth = providerInfo.noAuth === true;
     if (!provider || (!apiKey && provider !== "ollama-local" && !isNoAuth)) {
       return NextResponse.json({ error: "Provider and API key required" }, { status: 400 });
+    }
+    if (isNoAuth && !apiKey) {
+      return NextResponse.json({ valid: true, error: null });
     }
 
     let isValid = false;
@@ -204,6 +299,48 @@ export async function POST(request) {
         });
       }
 
+      if (provider === "gigachat") {
+        const accessToken = await exchangeGigaChatApiKey(apiKey);
+        if (!accessToken) {
+          return NextResponse.json({ valid: false, error: "Invalid API key" });
+        }
+        const res = await fetch(PROVIDERS.gigachat.modelsUrl || "https://gigachat.devices.sberbank.ru/api/v1/models", {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          signal: AbortSignal.timeout(8000),
+        });
+        isValid = res.status !== 401 && res.status !== 403;
+        return NextResponse.json({
+          valid: isValid,
+          error: isValid ? null : "Invalid API key",
+        });
+      }
+
+      if (provider === "snowflake") {
+        const { providerSpecificData } = body;
+        let accountId;
+        try {
+          accountId = normalizeAccountIdPlaceholder("snowflake", providerSpecificData?.accountId);
+        } catch (err) {
+          return NextResponse.json({ valid: false, error: err.message });
+        }
+        const url = `https://${accountId}.snowflakecomputing.com/api/v2/cortex/v1/chat/completions`;
+        const snowflakeRes = await fetch(url, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: getDefaultModel("snowflake") || "llama3.1-70b",
+            messages: [{ role: "user", content: "test" }],
+            max_tokens: 1,
+          }),
+          signal: AbortSignal.timeout(10000),
+        });
+        isValid = snowflakeRes.status !== 401 && snowflakeRes.status !== 403;
+        return NextResponse.json({
+          valid: isValid,
+          error: isValid ? null : "Invalid API token or Account ID",
+        });
+      }
+
       if (provider === "azure") {
         const { providerSpecificData } = body;
         const endpoint = (providerSpecificData?.azureEndpoint || "").replace(/\/$/, "");
@@ -234,7 +371,7 @@ export async function POST(request) {
       }
 
       // Generic probe for webSearch/webFetch providers (config-driven)
-      const webResult = await probeWebProvider(provider, apiKey);
+      const webResult = await probeWebProvider(provider, apiKey, providerSpecificData);
       if (webResult !== null) {
         return NextResponse.json({
           valid: webResult,
@@ -302,6 +439,7 @@ export async function POST(request) {
         case "minimax-cn":
         case "alicode-intl":
         case "alicode":
+        case "bailian-coding-plan":
         case "agentrouter": {
           // Use baseUrl from PROVIDERS (DRY); separate openai-format vs claude-format flow
           const cfg = PROVIDERS[provider];
@@ -317,10 +455,11 @@ export async function POST(request) {
             isValid = res.status !== 401 && res.status !== 403;
           } else {
             const testModel = getDefaultModel(provider) || "claude-sonnet-4-20250514";
+            const isBearer = provider === "bailian-coding-plan";
             const res = await fetch(cfg.baseUrl, {
               method: "POST",
               headers: {
-                "x-api-key": apiKey,
+                ...(isBearer ? { "Authorization": `Bearer ${apiKey}` } : { "x-api-key": apiKey }),
                 "anthropic-version": "2023-06-01",
                 "content-type": "application/json",
                 ...(cfg.headers || {}),
@@ -408,7 +547,8 @@ export async function POST(request) {
           break;
         }
 
-        case "commandcode": {
+        case "commandcode":
+        case "command-code": {
           const cfg = PROVIDERS.commandcode;
           const model = getDefaultModel("commandcode");
           const payload = openaiToCommandCodeRequest(model, {
@@ -542,6 +682,62 @@ export async function POST(request) {
           break;
         }
 
+        case "copilot-web": {
+          const credential = String(apiKey || "").trim();
+          const token =
+            credential.match(/access_token=([^;]+)/)?.[1] ||
+            credential.match(/[Bb]earer\s+(.+)/)?.[1] ||
+            credential;
+          if (!token) {
+            isValid = false;
+            error = "Paste your access_token from copilot.microsoft.com";
+            break;
+          }
+          const res = await fetch("https://copilot.microsoft.com/c/api/start", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+              Origin: "https://copilot.microsoft.com",
+              Referer: "https://copilot.microsoft.com/",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              timeZone: "America/New_York",
+              startNewConversation: true,
+              teenSupportEnabled: false,
+            }),
+          });
+          if (res.status === 401 || res.status === 403) {
+            isValid = false;
+            error = "Invalid or expired access_token from copilot.microsoft.com";
+          } else {
+            isValid = true;
+          }
+          break;
+        }
+
+        case "copilot-m365-web": {
+          const credential = String(apiKey || "").trim();
+          const structuredAccessTokenMatch = credential.match(/(^|[?&;\s])access_token=([^;&\s]*)/);
+          const structuredAccessToken = structuredAccessTokenMatch?.[2] ?? "";
+          const hasEmptyOrRedactedAccessToken = structuredAccessTokenMatch && (!structuredAccessToken || isRedactedToken(structuredAccessToken));
+          const hasAccessToken = (structuredAccessTokenMatch && structuredAccessToken && !isRedactedToken(structuredAccessToken)) || (
+            credential &&
+            !credential.includes("access_token=") &&
+            !isStructuredPathOnlyCredential(credential) &&
+            !isStructuredWsUrlCredential(credential)
+          );
+          const hasChathubPath =
+            /(^|[;\s])(?:chathubPath|userTenant)=([^;@\s]+@[^;\s]+)/.test(credential) ||
+            /^wss:\/\/substrate\.office\.com\/m365Copilot\/Chathub\/[^?]+(?:@|%40)[^?]+\?/i.test(credential);
+          isValid = hasAccessToken && hasChathubPath && !hasEmptyOrRedactedAccessToken;
+          error = isValid
+            ? null
+            : "Paste the M365 Copilot access_token and Chathub path from the Chathub WebSocket URL";
+          break;
+        }
+
         case "perplexity-web": {
           let sessionToken = apiKey;
           if (sessionToken.startsWith("__Secure-next-auth.session-token=")) {
@@ -580,41 +776,53 @@ export async function POST(request) {
           break;
         }
 
-        default: {
-          // Generic probe for OpenAI-compatible providers (config-driven from PROVIDERS)
-          const cfg = PROVIDERS[provider];
-          if (!cfg || cfg.format !== "openai" || !cfg.baseUrl) {
-            return NextResponse.json({ error: "Provider validation not supported" }, { status: 400 });
-          }
-          if (cfg.noAuth) {
-            isValid = true;
+        case "zenmux-free": {
+          const cookie = normalizeZenmuxCookie(apiKey);
+          const ctoken = extractZenmuxCtoken(cookie);
+          if (!ctoken) {
+            isValid = false;
+            error = "Invalid ZenMux cookie - paste the full zenmux.ai Cookie header including ctoken";
             break;
           }
-          // Build auth headers based on cfg.authHeader (default: bearer)
-          const headers = { "Content-Type": "application/json", ...(cfg.headers || {}) };
-          if (cfg.authHeader === "x-api-key") headers["X-API-Key"] = apiKey;
-          else headers["Authorization"] = `Bearer ${apiKey}`;
-          // Try /models first (fast GET), fallback to chat probe on ambiguous response
-          const modelsUrl = cfg.baseUrl.replace(/\/chat\/completions$/, "/models").replace(/\/chatbot$/, "/models");
-          let probeOk = null;
-          try {
-            const probeRes = await fetch(modelsUrl, { headers, signal: AbortSignal.timeout(8000) });
-            if (probeRes.status === 401 || probeRes.status === 403) probeOk = false;
-            else if (probeRes.ok) probeOk = true;
-          } catch { /* fallback to chat */ }
-          if (probeOk !== null) {
-            isValid = probeOk;
-            break;
-          }
-          // Fallback: minimal chat probe
-          const defaultModel = getDefaultModel(provider) || "test";
-          const chatRes = await fetch(cfg.baseUrl, {
+          const url = new URL(ZENMUX_FREE_CHAT_URL);
+          url.searchParams.set("ctoken", ctoken);
+          const res = await fetch(url.toString(), {
             method: "POST",
-            headers,
-            body: JSON.stringify({ model: defaultModel, messages: [{ role: "user", content: "ping" }], max_tokens: 1 }),
+            headers: {
+              "Content-Type": "application/json",
+              "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+              Accept: "text/event-stream",
+              Origin: "https://zenmux.ai",
+              Referer: "https://zenmux.ai/platform/chat",
+              "anthropic-version": "2023-06-01",
+              "chat-request-id": crypto.randomUUID().replace(/-/g, ""),
+              "x-zenmux-accept-processing": "true, true",
+              "x-zenmux-apikey-source": "subscription",
+              Cookie: cookie,
+            },
+            body: JSON.stringify(buildZenmuxAnthropicBody({
+              model: getDefaultModel("zenmux-free") || "deepseek/deepseek-chat",
+              max_tokens: 1,
+              messages: [{ role: "user", content: "ping" }],
+            }, getDefaultModel("zenmux-free") || "deepseek/deepseek-chat")),
             signal: AbortSignal.timeout(10000),
           });
-          isValid = chatRes.status !== 401 && chatRes.status !== 403;
+          if (res.status === 401 || res.status === 403) {
+            isValid = false;
+            error = "Invalid ZenMux cookie - re-paste cookies from zenmux.ai";
+          } else {
+            isValid = true;
+          }
+          break;
+        }
+
+        default: {
+          // Generic registry probe covers OpenAI-compatible and Claude-format providers.
+          const registryResult = await probeRegistryProvider(provider, apiKey, fetch, providerSpecificData || {});
+          if (!registryResult) {
+            return NextResponse.json({ error: "Provider validation not supported" }, { status: 400 });
+          }
+          isValid = registryResult.valid;
           break;
         }
       }

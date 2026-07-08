@@ -1,9 +1,12 @@
 import { getProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { testProxyUrl } from "@/lib/network/proxyTest";
-import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
+import { AI_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, PROVIDERS, resolveXiaomiTokenplanBaseUrl } from "open-sse/config/providers.js";
+import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
+import { buildZenmuxAnthropicBody, extractZenmuxCtoken, normalizeZenmuxCookie, ZENMUX_FREE_CHAT_URL } from "open-sse/executors/zenmux-free.js";
+import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
 import {
   refreshProviderCredentials,
   shouldRefreshCredentials,
@@ -21,7 +24,7 @@ import {
 import { buildClineHeaders } from "@/shared/utils/clineAuth";
 
 // OAuth provider test endpoints
-const OAUTH_TEST_CONFIG = {
+export const OAUTH_TEST_CONFIG = {
   claude: { checkExpiry: true, refreshable: true },
   codex: {
     url: "https://chatgpt.com/backend-api/codex/responses",
@@ -47,6 +50,30 @@ const OAUTH_TEST_CONFIG = {
     method: "GET",
     authHeader: "Authorization",
     authPrefix: "Bearer ",
+    refreshable: true,
+  },
+  agy: {
+    url: "https://www.googleapis.com/oauth2/v1/userinfo?alt=json",
+    method: "GET",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    refreshable: true,
+  },
+  "grok-cli": {
+    url: "https://cli-chat-proxy.grok.com/v1/chat/completions",
+    method: "POST",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    extraHeaders: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "x-grok-client-version": "0.2.72",
+      "x-grok-client-identifier": "grok_cli_rs",
+      "User-Agent": "grok-cli/0.2.72 (Windows 10.0.26200; x64)",
+    },
+    // Minimal invalid body: a 400 means auth reached the upstream service.
+    body: JSON.stringify({ model: "grok-build", messages: [] }),
+    acceptStatuses: [400],
     refreshable: true,
   },
   github: {
@@ -87,6 +114,15 @@ const OAUTH_TEST_CONFIG = {
   gitlab: {
     // Test by hitting the GitLab user API — requires api or read_user scope
     url: "https://gitlab.com/api/v4/user",
+    method: "GET",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+  },
+  "gitlab-duo": {
+    buildUrl: (_token, connection) => {
+      const baseUrl = (connection.providerSpecificData?.baseUrl || process.env.GITLAB_DUO_BASE_URL || process.env.GITLAB_BASE_URL || "https://gitlab.com").replace(/\/$/, "");
+      return `${baseUrl}/api/v4/user`;
+    },
     method: "GET",
     authHeader: "Authorization",
     authPrefix: "Bearer ",
@@ -139,7 +175,7 @@ function parseProviderErrorMessage(bodyText, fallback) {
 }
 
 async function probeCloudCodeAssistAccess(connection, accessToken, effectiveProxy = null) {
-  const userAgent = connection.provider === "antigravity"
+  const userAgent = connection.provider === "antigravity" || connection.provider === "agy"
     ? "google-api-nodejs-client/9.15.1 vscode-antigravity/1.107.0"
     : "google-api-nodejs-client/9.15.1 gemini-cli/0.34.0";
 
@@ -169,7 +205,7 @@ async function refreshOAuthToken(connection) {
   if (!refreshToken) return null;
 
   try {
-    if (provider === "gemini-cli" || provider === "antigravity") {
+    if (provider === "gemini-cli" || provider === "antigravity" || provider === "agy") {
       const config = provider === "gemini-cli" ? GEMINI_CONFIG : ANTIGRAVITY_CONFIG;
       const response = await fetch("https://oauth2.googleapis.com/token", {
         method: "POST",
@@ -186,7 +222,7 @@ async function refreshOAuthToken(connection) {
       return { accessToken: data.access_token, expiresIn: data.expires_in, refreshToken: data.refresh_token || refreshToken };
     }
 
-    if (provider === "codex") {
+    if (provider === "codex" || provider === "grok-cli") {
       return await refreshProviderCredentials(provider, connection, console);
     }
 
@@ -312,7 +348,7 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
     return { valid: true, error: null, refreshed: false, newTokens: null };
   }
 
-  if (connection.provider === "gemini-cli" || connection.provider === "antigravity") {
+  if (connection.provider === "gemini-cli" || connection.provider === "antigravity" || connection.provider === "agy") {
     const initial = await probeCloudCodeAssistAccess(connection, accessToken, effectiveProxy);
     if (initial.valid) return { valid: true, error: null, refreshed, newTokens };
 
@@ -355,7 +391,7 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
   }
 
   try {
-    const testUrl = config.buildUrl ? config.buildUrl(accessToken) : config.url;
+    const testUrl = config.buildUrl ? config.buildUrl(accessToken, connection) : config.url;
     const headers = config.noAuth
       ? { ...config.extraHeaders }
       : { [config.authHeader]: `${config.authPrefix}${accessToken}`, ...config.extraHeaders };
@@ -369,7 +405,7 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
     if (res.status === 401 && config.refreshable && !refreshed && connection.refreshToken) {
       const tokens = await refreshOAuthToken(connection);
       if (tokens) {
-        const retryUrl = config.buildUrl ? config.buildUrl(tokens.accessToken) : testUrl;
+        const retryUrl = config.buildUrl ? config.buildUrl(tokens.accessToken, connection) : testUrl;
         const retryHeaders = config.noAuth
           ? { ...config.extraHeaders }
           : { [config.authHeader]: `${config.authPrefix}${tokens.accessToken}`, ...config.extraHeaders };
@@ -409,6 +445,85 @@ async function fetchWithConnectionProxy(url, options = {}, effectiveProxy = null
     connectionProxyUrl: effectiveProxy.connectionProxyUrl,
     connectionNoProxy: effectiveProxy.connectionNoProxy || "",
   });
+}
+
+const LOCAL_OPENAI_COMPATIBLE_PROVIDERS = new Set([
+  "9router",
+  "lm-studio",
+  "vllm",
+  "lemonade",
+  "llamafile",
+  "llama-cpp",
+  "triton",
+  "docker-model-runner",
+  "xinference",
+  "oobabooga",
+]);
+
+export function resolveLocalOpenAICompatibleBaseUrl(connection) {
+  const { provider } = connection;
+  if (!LOCAL_OPENAI_COMPATIBLE_PROVIDERS.has(provider)) return null;
+
+  const cfg = AI_PROVIDERS[provider] || PROVIDERS[provider];
+  const registryBaseUrl = cfg?.transport?.baseUrl || cfg?.defaultBaseUrl || cfg?.baseUrl;
+  const raw = connection.providerSpecificData?.baseUrl || connection.baseUrl || registryBaseUrl;
+  if (!raw) return null;
+
+  return raw.replace(/\/chat\/completions\/?$/, "").replace(/\/+$/, "");
+}
+
+async function exchangeGigaChatApiKey(apiKey, effectiveProxy = null) {
+  const cfg = PROVIDERS.gigachat;
+  const res = await fetchWithConnectionProxy(cfg.tokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/json",
+      Authorization: `Basic ${apiKey}`,
+      RqUID: crypto.randomUUID(),
+    },
+    body: new URLSearchParams({ scope: cfg.tokenScope || "GIGACHAT_API_PERS" }),
+  }, effectiveProxy);
+
+  if (!res.ok) return null;
+  const token = await res.json().catch(() => null);
+  return token?.access_token || null;
+}
+
+async function testRegistryOpenAIConnection(connection, effectiveProxy = null) {
+  const cfg = PROVIDERS[connection.provider];
+  if (!cfg || cfg.format !== "openai" || !cfg.baseUrl) return null;
+  if (cfg.noAuth) return { valid: true, error: null };
+
+  const headers = { "Content-Type": "application/json", ...(cfg.headers || {}) };
+  if (cfg.authHeader === "x-api-key") headers["X-API-Key"] = connection.apiKey;
+  else headers.Authorization = `Bearer ${connection.apiKey}`;
+
+  // Use cfg.modelsUrl when present; scoped providers may not expose /models
+  // beside their chat endpoint.
+  const modelsUrl = cfg.modelsUrl || cfg.baseUrl.replace(/\/chat\/completions$/, "/models").replace(/\/chatbot$/, "/models");
+  try {
+    const modelsRes = await fetchWithConnectionProxy(modelsUrl, { headers }, effectiveProxy);
+    if (modelsRes.status === 401 || modelsRes.status === 403) {
+      return { valid: false, error: "Invalid API key" };
+    }
+    if (modelsRes.ok) return { valid: true, error: null };
+  } catch {
+    // Fall back to chat below.
+  }
+
+  const res = await fetchWithConnectionProxy(cfg.baseUrl, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model: connection.defaultModel || getDefaultModel(connection.provider) || "test",
+      messages: [{ role: "user", content: "ping" }],
+      max_tokens: 1,
+      stream: false,
+    }),
+  }, effectiveProxy);
+  const valid = res.status !== 401 && res.status !== 403;
+  return { valid, error: valid ? null : "Invalid API key" };
 }
 
 async function testApiKeyConnection(connection, effectiveProxy = null) {
@@ -455,6 +570,47 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
     }
   }
 
+  const localBaseUrl = resolveLocalOpenAICompatibleBaseUrl(connection);
+  if (localBaseUrl) {
+    try {
+      const authHeaders = connection.apiKey ? { Authorization: `Bearer ${connection.apiKey}` } : undefined;
+
+      const modelsRes = await fetchWithConnectionProxy(`${localBaseUrl}/models`, authHeaders ? { headers: authHeaders } : {}, effectiveProxy);
+      if (modelsRes.ok) {
+        return { valid: true, error: null };
+      }
+      if (modelsRes.status === 401 || modelsRes.status === 403) {
+        return { valid: false, error: "Invalid API key" };
+      }
+
+      const chatHeaders = connection.apiKey
+        ? { Authorization: `Bearer ${connection.apiKey}`, "content-type": "application/json" }
+        : { "content-type": "application/json" };
+      const chatRes = await fetchWithConnectionProxy(
+        `${localBaseUrl}/chat/completions`,
+        {
+          method: "POST",
+          headers: chatHeaders,
+          body: JSON.stringify({
+            model: connection.defaultModel || getDefaultModel(connection.provider) || "test",
+            max_tokens: 1,
+            messages: [{ role: "user", content: "test" }],
+          }),
+        },
+        effectiveProxy
+      );
+      if (chatRes.ok) {
+        return { valid: true, error: null };
+      }
+      if (chatRes.status === 401 || chatRes.status === 403) {
+        return { valid: false, error: "Invalid API key" };
+      }
+      return { valid: false, error: "Invalid endpoint" };
+    } catch (err) {
+      return { valid: false, error: err.message };
+    }
+  }
+
   try {
     switch (connection.provider) {
       case "cloudflare-ai": {
@@ -469,6 +625,15 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         }, effectiveProxy);
         const valid = res.status !== 401 && res.status !== 403 && res.status !== 404;
         return { valid, error: valid ? null : "Invalid API token or Account ID" };
+      }
+      case "gigachat": {
+        const accessToken = await exchangeGigaChatApiKey(connection.apiKey, effectiveProxy);
+        if (!accessToken) return { valid: false, error: "Invalid API key" };
+        const res = await fetchWithConnectionProxy(PROVIDERS.gigachat.modelsUrl || "https://gigachat.devices.sberbank.ru/api/v1/models", {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }, effectiveProxy);
+        const valid = res.status !== 401 && res.status !== 403;
+        return { valid, error: valid ? null : "Invalid API key" };
       }
       case "azure": {
         const psd = connection.providerSpecificData || {};
@@ -672,6 +837,53 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         const valid = res.status !== 401 && res.status !== 403;
         return { valid, error: valid ? null : "Invalid SSO cookie" };
       }
+      case "copilot-web": {
+        const credential = String(connection.apiKey || "").trim();
+        const token =
+          credential.match(/access_token=([^;]+)/)?.[1] ||
+          credential.match(/[Bb]earer\s+(.+)/)?.[1] ||
+          credential;
+        if (!token) {
+          return { valid: false, error: "Paste your access_token from copilot.microsoft.com", refreshed: false, newTokens: null };
+        }
+        const res = await fetchWithConnectionProxy("https://copilot.microsoft.com/c/api/start", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+            Origin: "https://copilot.microsoft.com",
+            Referer: "https://copilot.microsoft.com/",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            timeZone: "America/New_York",
+            startNewConversation: true,
+            teenSupportEnabled: false,
+          }),
+        }, effectiveProxy);
+        if (res.status === 401 || res.status === 403) {
+          return { valid: false, error: "Invalid or expired access_token from copilot.microsoft.com", refreshed: false, newTokens: null };
+        }
+        return { valid: true, error: null, refreshed: false, newTokens: null };
+      }
+
+      case "copilot-m365-web": {
+        const credential = String(connection.apiKey || "").trim();
+        const hasAccessToken = /(^|[?&;\s])access_token=([^;&\s]+)/.test(credential) || (
+          credential &&
+          !credential.includes("access_token=") &&
+          !/^(?:chathubPath|userTenant)\s*=/i.test(credential) &&
+          !/^wss:\/\/substrate\.office\.com\/m365Copilot\/Chathub\//i.test(credential)
+        );
+        const hasChathubPath =
+          /(^|[;\s])(?:chathubPath|userTenant)=([^;@\s]+@[^;\s]+)/.test(credential) ||
+          /^wss:\/\/substrate\.office\.com\/m365Copilot\/Chathub\/[^?]+(?:@|%40)[^?]+\?/i.test(credential);
+        if (hasAccessToken && hasChathubPath) {
+          return { valid: true, error: null, refreshed: false, newTokens: null };
+        }
+        return { valid: false, error: "Paste the M365 Copilot access_token and Chathub path from the Chathub WebSocket URL", refreshed: false, newTokens: null };
+      }
+
       case "perplexity-web": {
         let sessionToken = connection.apiKey;
         if (sessionToken.startsWith("__Secure-next-auth.session-token=")) sessionToken = sessionToken.slice("__Secure-next-auth.session-token=".length);
@@ -687,11 +899,51 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         const valid = !!(data && data.user);
         return { valid, error: valid ? null : "Session expired — re-paste cookie" };
       }
+      case "zenmux-free": {
+        const cookie = normalizeZenmuxCookie(connection.apiKey);
+        const ctoken = extractZenmuxCtoken(cookie);
+        if (!ctoken) return { valid: false, error: "Invalid ZenMux cookie - paste the full zenmux.ai Cookie header including ctoken" };
+
+        const model = connection.defaultModel || getDefaultModel("zenmux-free") || "deepseek/deepseek-chat";
+        const url = new URL(ZENMUX_FREE_CHAT_URL);
+        url.searchParams.set("ctoken", ctoken);
+        const res = await fetchWithConnectionProxy(url.toString(), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+            Accept: "text/event-stream",
+            Origin: "https://zenmux.ai",
+            Referer: "https://zenmux.ai/platform/chat",
+            "anthropic-version": "2023-06-01",
+            "chat-request-id": crypto.randomUUID().replace(/-/g, ""),
+            "x-zenmux-accept-processing": "true, true",
+            "x-zenmux-apikey-source": "subscription",
+            Cookie: cookie,
+          },
+          body: JSON.stringify(buildZenmuxAnthropicBody({
+            model,
+            max_tokens: 1,
+            messages: [{ role: "user", content: "ping" }],
+          }, model)),
+        }, effectiveProxy);
+        const valid = res.status !== 401 && res.status !== 403;
+        return { valid, error: valid ? null : "Invalid ZenMux cookie - re-paste cookies from zenmux.ai" };
+      }
       case "opencode-go": {
         const res = await fetchWithConnectionProxy("https://opencode.ai/zen/go/v1/chat/completions", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${connection.apiKey}` },
           body: JSON.stringify({ model: getDefaultModel("opencode-go"), messages: [{ role: "user", content: "ping" }], max_tokens: 1, stream: false }),
+        }, effectiveProxy);
+        const valid = res.status !== 401 && res.status !== 403;
+        return { valid, error: valid ? null : "Invalid API key" };
+      }
+      case "opencode-zen": {
+        const res = await fetchWithConnectionProxy("https://opencode.ai/zen/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${connection.apiKey}` },
+          body: JSON.stringify({ model: getDefaultModel("opencode-zen") || "big-pickle", messages: [{ role: "user", content: "ping" }], max_tokens: 1, stream: false }),
         }, effectiveProxy);
         const valid = res.status !== 401 && res.status !== 403;
         return { valid, error: valid ? null : "Invalid API key" };
@@ -711,8 +963,83 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         }, effectiveProxy);
         return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
       }
-      default:
+      case "pollinations": {
+        const baseUrl = PROVIDERS["pollinations"]?.baseUrl?.replace(/\/chat\/completions\/?$/, "") || "https://gen.pollinations.ai/v1";
+        const headers = connection.apiKey ? { Authorization: `Bearer ${connection.apiKey}` } : {};
+        const res = await fetchWithConnectionProxy(`${baseUrl}/models`, { headers }, effectiveProxy);
+        return { valid: res.ok, error: res.ok ? null : "Pollinations test failed" };
+      }
+      case "nube":
+      case "kenari": {
+        const config = PROVIDERS[connection.provider] || {};
+        const validateUrl = config.validateUrl || config.baseUrl?.replace(/\/chat\/completions\/?$/, "/models");
+        if (!validateUrl) return { valid: false, error: "Provider test not supported" };
+        const res = await fetchWithConnectionProxy(validateUrl, {
+          headers: { Authorization: `Bearer ${connection.apiKey}` },
+        }, effectiveProxy);
+        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+      }
+      case "digitalocean": {
+        const res = await fetchWithConnectionProxy("https://inference.do-ai.run/v1/models", {
+          headers: { Authorization: `Bearer ${connection.apiKey}` },
+        }, effectiveProxy);
+        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+      }
+      case "puter": {
+        const baseUrl = PROVIDERS["puter"]?.baseUrl?.replace(/\/chat\/completions\/?$/, "") || "https://api.puter.com/puterai/openai/v1";
+        const res = await fetchWithConnectionProxy(`${baseUrl}/models`, {
+          headers: { Authorization: `Bearer ${connection.apiKey}` },
+        }, effectiveProxy);
+        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+      }
+      case "bailian-coding-plan": {
+        const cfg = PROVIDERS[connection.provider];
+        const res = await fetchWithConnectionProxy(cfg.baseUrl, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${connection.apiKey}`,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+            ...(cfg.headers || {}),
+          },
+          body: JSON.stringify({
+            model: getDefaultModel(connection.provider) || "claude-sonnet-4-20250514",
+            max_tokens: 1,
+            messages: [{ role: "user", content: "test" }],
+          }),
+        }, effectiveProxy);
+        const valid = res.status !== 401 && res.status !== 403;
+        return { valid, error: valid ? null : "Invalid API key" };
+      }
+      case "agentrouter": {
+        const cfg = PROVIDERS[connection.provider];
+        const res = await fetchWithConnectionProxy(cfg.baseUrl, {
+          method: "POST",
+          headers: {
+            "x-api-key": connection.apiKey,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+            ...(cfg.headers || {}),
+          },
+          body: JSON.stringify({
+            model: getDefaultModel(connection.provider) || "claude-sonnet-4-20250514",
+            max_tokens: 1,
+            messages: [{ role: "user", content: "test" }],
+          }),
+        }, effectiveProxy);
+        const valid = res.status !== 401 && res.status !== 403;
+        return { valid, error: valid ? null : "Invalid API key" };
+      }
+      default: {
+        const result = await probeRegistryProvider(
+          connection.provider,
+          connection.apiKey,
+          (url, options) => fetchWithConnectionProxy(url, options, effectiveProxy),
+          connection.providerSpecificData || {},
+        );
+        if (result) return { valid: result.valid, error: result.valid ? null : "Invalid API key" };
         return { valid: false, error: "Provider test not supported" };
+      }
     }
   } catch (err) {
     return { valid: false, error: err.message };

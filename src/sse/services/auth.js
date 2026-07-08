@@ -1,12 +1,47 @@
-import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings } from "@/lib/localDb";
-import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
-import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
+import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings, getProxyPools } from "@/lib/localDb";
+import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
+import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
 import * as log from "../utils/logger.js";
 
 // Mutex to prevent race conditions during account selection
 let selectionMutex = Promise.resolve();
+
+const NO_AUTH_STORED_DATA_PROVIDERS = new Set(["mimocode"]);
+
+function buildNoAuthCredential(providerSpecificData = {}, resolvedProxy = {}, connection = null) {
+  return {
+    id: connection?.id || "noauth",
+    connectionName: connection?.displayName || connection?.name || connection?.email || connection?.id || "Public",
+    isActive: true,
+    accessToken: "public",
+    providerSpecificData: {
+      ...(providerSpecificData || {}),
+      connectionProxyEnabled: resolvedProxy.connectionProxyEnabled,
+      connectionProxyUrl: resolvedProxy.connectionProxyUrl,
+      connectionNoProxy: resolvedProxy.connectionNoProxy,
+      connectionProxyPoolId: resolvedProxy.proxyPoolId || null,
+      vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
+    },
+    connectionId: connection?.id || "noauth",
+    _connection: connection || null,
+  };
+}
+
+async function buildPublicNoAuthCredential(providerId) {
+  const settings = await getSettings();
+  const override = (settings.providerStrategies || {})[providerId] || {};
+  const strategy = override.rotateStrategy || "none";
+  let pickedId = override.proxyPoolId || null;
+  if (strategy !== "none") {
+    const allPools = await getProxyPools({ isActive: true });
+    const poolIds = allPools.filter((p) => p.proxyUrl).map((p) => p.id);
+    pickedId = pickProxyPoolId(poolIds, strategy, providerId);
+  }
+  const resolvedProxy = await resolveConnectionProxyConfig({ proxyPoolId: pickedId || "" });
+  return buildNoAuthCredential({}, resolvedProxy, null);
+}
 
 /**
  * Get provider credentials from localDb
@@ -32,34 +67,59 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     // Resolve alias to provider ID (e.g., "kc" -> "kilocode")
     const providerId = resolveProviderId(provider);
 
-    // Inject a virtual connection for no-auth free providers (with optional proxy pool from settings)
-    if (FREE_PROVIDERS[providerId]?.noAuth) {
-      const settings = await getSettings();
-      const override = (settings.providerStrategies || {})[providerId] || {};
-      const resolvedProxy = await resolveConnectionProxyConfig({ proxyPoolId: override.proxyPoolId || "" });
-      return {
-        id: "noauth",
-        connectionName: "Public",
-        isActive: true,
-        accessToken: "public",
-        providerSpecificData: {
-          connectionProxyEnabled: resolvedProxy.connectionProxyEnabled,
-          connectionProxyUrl: resolvedProxy.connectionProxyUrl,
-          connectionNoProxy: resolvedProxy.connectionNoProxy,
-          connectionProxyPoolId: resolvedProxy.proxyPoolId || null,
-          vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
-        },
-      };
-    }
-
     const connections = await getProviderConnections({ provider: providerId, isActive: true });
     log.debug("AUTH", `${provider} | total connections: ${connections.length}, excludeIds: ${excludeSet.size > 0 ? [...excludeSet].join(",") : "none"}, model: ${model || "any"}`);
+
+    const isNoAuthProvider = !!FREE_PROVIDERS[providerId]?.noAuth;
+
+    if (isNoAuthProvider) {
+      // Stored-data no-auth providers (e.g., mimocode) use saved connections first
+      // and never fall back to the public no-auth credential.
+      if (NO_AUTH_STORED_DATA_PROVIDERS.has(providerId) && connections.length > 0) {
+        const availableStoredConnections = connections.filter(
+          (c) => !excludeSet.has(c.id) && !isModelLockActive(c, model)
+        );
+        const connection = preferredConnectionId
+          ? availableStoredConnections.find((c) => c.id === preferredConnectionId)
+          : availableStoredConnections[0];
+        if (connection) {
+          const resolvedProxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
+          return buildNoAuthCredential(connection.providerSpecificData || {}, resolvedProxy, connection);
+        }
+        // If all stored connections are model-locked, surface the earliest retry time so callers can back off.
+        const lockedConnections = connections.filter(
+          (c) => !excludeSet.has(c.id) && isModelLockActive(c, model)
+        );
+        const expiries = lockedConnections.map((c) => getEarliestModelLockUntil(c)).filter(Boolean);
+        const earliest = expiries.sort()[0] || null;
+        if (earliest) {
+          const earliestConn = lockedConnections[0];
+          log.warn("AUTH", `${provider} | all ${connections.length} stored ${providerId} accounts locked for ${model || "all"} (${formatRetryAfter(earliest)}) | lastError=${earliestConn?.lastError?.slice(0, 50)}`);
+          return {
+            allRateLimited: true,
+            retryAfter: earliest,
+            retryAfterHuman: formatRetryAfter(earliest),
+            lastError: earliestConn?.lastError || null,
+            lastErrorCode: earliestConn?.errorCode || null,
+          };
+        }
+        // Stored connections exist but all are excluded or unavailable; do not fall back to the public credential.
+        if (connections.length > 0) {
+          log.warn("AUTH", `${provider} | all ${connections.length} stored ${providerId} accounts unavailable`);
+          return null;
+        }
+      }
+
+      // Inject a public no-auth credential only when no real connection exists.
+      if (connections.length === 0) {
+        return buildPublicNoAuthCredential(providerId);
+      }
+    }
 
     if (connections.length === 0) {
       log.warn("AUTH", `No credentials for ${provider}`);
       return null;
     }
-
     // Filter out model-locked and excluded connections
     const availableConnections = connections.filter(c => {
       if (excludeSet.has(c.id)) return false;
@@ -78,6 +138,13 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     });
 
     if (availableConnections.length === 0) {
+      // For no-auth providers with a real saved key that is now excluded/locked,
+      // fall back to the public no-auth credential instead of failing outright —
+      // Pollinations (and similar) still serve unauthenticated traffic.
+      if (isNoAuthProvider) {
+        log.warn("AUTH", `${provider} | saved key unavailable, falling back to public no-auth`);
+        return buildPublicNoAuthCredential(providerId);
+      }
       // Find earliest lock expiry across all connections for retry timing
       const lockedConns = connections.filter(c => isModelLockActive(c, model));
       const expiries = lockedConns.map(c => getEarliestModelLockUntil(c)).filter(Boolean);
@@ -96,6 +163,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       log.warn("AUTH", `${provider} | all ${connections.length} accounts unavailable`);
       return null;
     }
+
 
     const settings = await getSettings();
     // Per-provider strategy overrides global setting
@@ -206,6 +274,18 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   const conn = connections.find(c => c.id === connectionId);
   const backoffLevel = conn?.backoffLevel || 0;
 
+  if ((provider === "antigravity" || provider === "agy") && isAntigravityCapacityError(status, errorText)) {
+    const connName = conn?.displayName || conn?.name || conn?.email || connectionId.slice(0, 8);
+    log.warn("AUTH", `${connName} hit Antigravity capacity for ${model || "unknown model"}; fallback without cooldown [${status}]`);
+    return { shouldFallback: true, cooldownMs: 0 };
+  }
+
+  if (isRecoverableCloudCodeProject403(provider, status, errorText)) {
+    const connName = conn?.displayName || conn?.name || conn?.email || connectionId.slice(0, 8);
+    log.warn("AUTH", `${connName} hit recoverable Cloud Code project 403 for ${model || "unknown model"}; fallback without cooldown`);
+    return { shouldFallback: true, cooldownMs: 0 };
+  }
+
   // Provider-specific precise cooldown (e.g. codex usage_limit_reached resets_at) overrides backoff
   let shouldFallback, cooldownMs, newBackoffLevel;
   if (resetsAtMs && resetsAtMs > Date.now()) {
@@ -287,7 +367,20 @@ export async function clearAccountError(connectionId, currentConnection, model =
 /**
  * Extract API key from request headers
  */
+/**
+ * Resolve the API key credential used for the request.
+ * Supports:
+ * - Authorization: Bearer <key>
+ * - x-api-key: <key>
+ * - x-goog-api-key: <key> (Gemini native clients)
+ * - ?key=<key> query parameter (Gemini native clients)
+ *
+ * @param {Request} request
+ * @returns {string | null}
+ */
 export function extractApiKey(request) {
+  if (!request?.headers?.get) return null;
+
   // Check Authorization header first
   const authHeader = request.headers.get("Authorization");
   if (authHeader?.startsWith("Bearer ")) {
@@ -300,7 +393,14 @@ export function extractApiKey(request) {
     return xApiKey;
   }
 
-  return null;
+  // Check Gemini native header and query parameter
+  const googleApiKey = request.headers.get("x-goog-api-key");
+  if (googleApiKey) {
+    return googleApiKey;
+  }
+
+  const url = new URL(request.url);
+  return url.searchParams.get("key") || null;
 }
 
 /**

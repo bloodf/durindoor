@@ -189,9 +189,13 @@ export class GithubExecutor extends BaseExecutor {
 
   async executeWithResponsesEndpoint({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
     const url = this.config.responsesUrl;
-    const headers = this.buildHeaders(credentials, stream);
+    // GitHub's /responses branch is always converted through an SSE transformer
+    // below. Keep the upstream Responses request streaming even when the
+    // original Chat Completions client requested a non-streaming response.
+    const responsesStream = true;
+    const headers = this.buildHeaders(credentials, responsesStream);
 
-    const transformedBody = openaiToOpenAIResponsesRequest(model, body, stream, credentials);
+    const transformedBody = openaiToOpenAIResponsesRequest(model, body, responsesStream, credentials);
 
     log?.debug("GITHUB", "Sending translated request to /responses");
 

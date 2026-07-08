@@ -22,6 +22,7 @@ const DEFAULT_SETTINGS = {
   tailscaleUrl: "",
   stickyRoundRobinLimit: 3,
   providerStrategies: {},
+  quotaVisibility: {},
   comboStrategy: "fallback",
   comboStickyRoundRobinLimit: 1,
   comboStrategies: {},
@@ -48,6 +49,7 @@ const DEFAULT_SETTINGS = {
   headroomEnabled: false,
   headroomUrl: DEFAULT_HEADROOM_URL,
   headroomCompressUserMessages: false,
+  pxpipeEnabled: false,
   cavemanEnabled: false,
   cavemanLevel: "full",
   quotaTrackerState: DEFAULT_QUOTA_TRACKER_STATE,
@@ -58,6 +60,10 @@ const DEFAULT_SETTINGS = {
   pxpipeMinChars: 25000,
   pxpipeTimeoutMs: 15000,
   providerConcurrencyLimits: {},
+  // Optional upstream routing overrides. Shape:
+  // { [providerId]: { enabled, mode: "native"|"cliproxyapi"|"fallback", cliproxyapiModelMapping } }
+  upstreamProxyConfig: {},
+  cliproxyapi_fallback_codes: "429,500,502,503,504",
 };
 
 async function readRaw() {

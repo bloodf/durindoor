@@ -104,6 +104,35 @@ export const MODEL_CAPABILITIES = {
  * Provider-specific capability overrides. Keyed by provider alias/id.
  */
 export const PROVIDER_CAPABILITIES = {
+  // ZenMux Free exposes text streaming through its Anthropic-compatible web
+  // endpoint but does not return structured tool_use blocks.
+  "zenmux-free": {
+    "deepseek/deepseek-chat": { tools: false },
+    "deepseek/deepseek-reasoner": { tools: false, reasoning: true, thinkingFormat: "deepseek", thinkingCanDisable: false, contextWindow: 128000 },
+    "deepseek/deepseek-v4-pro": { tools: false, reasoning: true, thinkingFormat: "deepseek", contextWindow: 1000000, maxOutput: 384000 },
+    "kuaishou/kat-coder-pro-v1-free": { tools: false },
+    "z-ai/glm-4.7-flash-free": { tools: false },
+    "stepfun/step-3.5-flash-free": { tools: false },
+    "inclusionai/ling-1t": { tools: false },
+    "inclusionai/ling-mini-2.0": { tools: false },
+    "inclusionai/ring-1t": { tools: false },
+    "sapiens-ai/agnes-1.5-lite": { tools: false },
+    "sapiens-ai/agnes-1.5-pro": { tools: false },
+  },
+  zmf: {
+    "deepseek/deepseek-chat": { tools: false },
+    "deepseek/deepseek-reasoner": { tools: false, reasoning: true, thinkingFormat: "deepseek", thinkingCanDisable: false, contextWindow: 128000 },
+    "deepseek/deepseek-v4-pro": { tools: false, reasoning: true, thinkingFormat: "deepseek", contextWindow: 1000000, maxOutput: 384000 },
+    "kuaishou/kat-coder-pro-v1-free": { tools: false },
+    "z-ai/glm-4.7-flash-free": { tools: false },
+    "stepfun/step-3.5-flash-free": { tools: false },
+    "inclusionai/ling-1t": { tools: false },
+    "inclusionai/ling-mini-2.0": { tools: false },
+    "inclusionai/ring-1t": { tools: false },
+    "sapiens-ai/agnes-1.5-lite": { tools: false },
+    "sapiens-ai/agnes-1.5-pro": { tools: false },
+  },
+
   // Fireworks AI — all models served via OpenAI-compatible API, so
   // thinkingFormat must be "openai" (overrides family-native patterns like
   // zai/deepseek/kimi/minimax/qwen that would produce wrong wire shapes).
@@ -135,6 +164,20 @@ export const PROVIDER_CAPABILITIES = {
     "z-ai/glm-5.2": { reasoning: true, thinkingFormat: "openai", contextWindow: 200000, maxOutput: 128000 },
     "deepseek-ai/deepseek-v4-pro": { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 65536 },
     "deepseek-ai/deepseek-v4-flash": { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 65536 },
+    "moonshotai/kimi-k2.6": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 262144, maxOutput: 262144 },
+    "meta/llama-3.2-11b-vision-instruct": { vision: true },
+    "meta/llama-3.2-90b-vision-instruct": { vision: true },
+    "mistralai/mistral-medium-3.5-128b": { reasoning: true, thinkingFormat: "openai", contextWindow: 128000 },
+    "nvidia/ising-calibration-1-35b-a3b": { reasoning: true, thinkingFormat: "openai", contextWindow: 128000 },
+    "nvidia/nemotron-3-nano-30b-a3b": { reasoning: true, thinkingFormat: "openai", contextWindow: 128000 },
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": { vision: true, audioInput: true, reasoning: true, thinkingFormat: "openai", contextWindow: 128000 },
+    "nvidia/nemotron-3-ultra-550b-a55b": { reasoning: true, thinkingFormat: "openai", contextWindow: 128000 },
+    "nvidia/nemotron-nano-12b-v2-vl": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 128000 },
+    "nvidia/nvidia-nemotron-nano-9b-v2": { reasoning: true, thinkingFormat: "openai", contextWindow: 128000 },
+    "qwen/qwen3-next-80b-a3b-instruct": { reasoning: false, contextWindow: 262144 },
+    "qwen/qwen3.5-122b-a10b": { vision: true, videoInput: true, reasoning: true, thinkingFormat: "openai", contextWindow: 262144, maxOutput: 65536 },
+    "stepfun-ai/step-3.5-flash": { reasoning: true, thinkingFormat: "openai", contextWindow: 128000 },
+    "stepfun-ai/step-3.7-flash": { reasoning: true, thinkingFormat: "openai", contextWindow: 128000 },
   },
   // CodeBuddy.cn — authoritative per-model metadata from the gateway's model
   // config (contextWindow=maxInputTokens, maxOutput=maxOutputTokens, vision=
@@ -158,7 +201,92 @@ export const PROVIDER_CAPABILITIES = {
     "deepseek-v4-flash":  { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 50000 },
     "deepseek-v3-2-volc": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 96000, maxOutput: 32000 },
   },
+
+  // OpenCode Zen — Big Pickle advertises reasoning in the registry but the
+  // generic fallback did not read model-level supportsReasoning flags.
+  "opencode-zen": {
+    "big-pickle": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true },
+  },
+
+  // Qianfan ERNIE multimodal models exposed as vision-capable chat models.
+  qianfan: {
+    "ernie-5.1": { vision: true },
+    "ernie-5.0-thinking-latest": { vision: true, reasoning: true },
+    "ernie-x1.1": { vision: true, contextWindow: 64000 },
+  },
+
+  // Reka Edge 2603 is a vision-capable model on an OpenAI-compatible surface.
+  reka: {
+    "reka-edge-2603": { vision: true },
+  },
+
+  // v0 models support image inputs through the Vercel Chat Completions API.
+  "v0-vercel": {
+    "v0-1.5-md": { vision: true },
+    "v0-1.5-lg": { vision: true },
+  },
+
+  // SenseNova — SenseChat-Vision is advertised as a vision model; without an
+  // override the provider/model id falls through to the default text-only floor
+  // and images are stripped before the request reaches the provider.
+  sensenova: {
+    "SenseChat-Vision": { vision: true, contextWindow: 4096 },
+  },
+
+  // StepFun — step-3.7-flash is documented as a vision-capable reasoning model.
+  // The generic *step-* pattern is reasoning-only, so override vision while
+  // preserving the StepFun reasoning wire format.
+  stepfun: {
+    "step-3.7-flash": { vision: true, reasoning: true, thinkingFormat: "step", contextWindow: 262144 },
+    "step-3.5-flash": { reasoning: true, thinkingFormat: "step", contextWindow: 262144 },
+    "step-3.5-flash-2603": { reasoning: true, thinkingFormat: "step", contextWindow: 262144 },
+    "step-1o-turbo-vision": { vision: true, reasoning: true, thinkingFormat: "step", contextWindow: 32768 },
+  },
+
+  // Tencent Hunyuan — hunyuan-vision is advertised as a vision model, but the
+  // generic *hunyuan* pattern only marks reasoning; override so image inputs
+  // are not replaced with placeholders before the request is sent.
+  tencent: {
+    "hunyuan-vision": { vision: true, reasoning: true, thinkingFormat: "hunyuan" },
+  },
+
+  // Scaleway AI serves models through an OpenAI-compatible endpoint, so any
+  // reasoning model that defaults to a native thinking field must be forced to
+  // the openai reasoning_effort shape.
+  scaleway: {
+    "qwen3-235b-a22b-instruct-2507": { thinkingFormat: "openai" },
+    "llama-3.1-70b-instruct": { thinkingFormat: "openai" },
+    "llama-3.1-8b-instruct": { thinkingFormat: "openai" },
+    "mistral-small-3.2-24b-instruct-2506": { thinkingFormat: "openai" },
+    "deepseek-v3-0324": { thinkingFormat: "openai" },
+    "gpt-oss-120b": { thinkingFormat: "openai" },
+  },
+  scw: {
+    "qwen3-235b-a22b-instruct-2507": { thinkingFormat: "openai" },
+    "llama-3.1-70b-instruct": { thinkingFormat: "openai" },
+    "llama-3.1-8b-instruct": { thinkingFormat: "openai" },
+    "mistral-small-3.2-24b-instruct-2506": { thinkingFormat: "openai" },
+    "deepseek-v3-0324": { thinkingFormat: "openai" },
+    "gpt-oss-120b": { thinkingFormat: "openai" },
+  },
+
+  // Upstage — solar-pro3 contains "pro3" which matches the OpenAI o-series
+  // *o3* pattern, incorrectly marking it vision-capable. Override so it uses
+  // the text-only default and images fail locally instead of being forwarded.
+  upstage: {
+    "solar-pro3": { vision: false, reasoning: false },
+  },
+
+  // ZenMux — x-ai/grok-4.1-fast is explicitly text-only, so override vision to
+  // false while preserving the Grok pattern's reasoning/search/openai defaults.
+  // glm-4.6v-flash is advertised as vision-capable, but the generic *glm-4*
+  // pattern below is text-only; override here so images survive.
+  zenmux: {
+    "x-ai/grok-4.1-fast": { vision: false, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 256000 },
+    "z-ai/glm-4.6v-flash": { vision: true, contextWindow: 128000 },
+  },
 };
+
 
 /**
  * Pattern fallback — glob (* = wildcard), matched case-insensitively and
@@ -339,25 +467,27 @@ export function aggregateComboCapabilities(comboModels, comboLookup = null, _dep
  * @returns {object} full capabilities object
  */
 export function getCapabilitiesForModel(provider, model) {
-  if (!model) return { ...DEFAULT_CAPABILITIES };
+  const finalize = (caps) => provider === "huggingchat" ? { ...caps, vision: false } : caps;
+
+  if (!model) return finalize({ ...DEFAULT_CAPABILITIES });
 
   // 1. Provider-specific override
   if (provider && PROVIDER_CAPABILITIES[provider]?.[model]) {
-    return { ...DEFAULT_CAPABILITIES, ...PROVIDER_CAPABILITIES[provider][model] };
+    return finalize({ ...DEFAULT_CAPABILITIES, ...PROVIDER_CAPABILITIES[provider][model] });
   }
 
   // 2. Canonical exact (strip vendor prefix: "anthropic/claude-opus-4.7" -> "claude-opus-4.7")
   const baseModel = model.includes("/") ? model.split("/").pop() : model;
-  if (MODEL_CAPABILITIES[baseModel]) return { ...DEFAULT_CAPABILITIES, ...MODEL_CAPABILITIES[baseModel] };
-  if (MODEL_CAPABILITIES[model]) return { ...DEFAULT_CAPABILITIES, ...MODEL_CAPABILITIES[model] };
+  if (MODEL_CAPABILITIES[baseModel]) return finalize({ ...DEFAULT_CAPABILITIES, ...MODEL_CAPABILITIES[baseModel] });
+  if (MODEL_CAPABILITIES[model]) return finalize({ ...DEFAULT_CAPABILITIES, ...MODEL_CAPABILITIES[model] });
 
   // 3. Pattern match (first match wins)
   for (const { pattern, caps } of PATTERN_CAPABILITIES) {
     if (matchPattern(pattern, baseModel) || matchPattern(pattern, model)) {
-      return { ...DEFAULT_CAPABILITIES, ...caps };
+      return finalize({ ...DEFAULT_CAPABILITIES, ...caps });
     }
   }
 
   // 4. Floor
-  return { ...DEFAULT_CAPABILITIES };
+  return finalize({ ...DEFAULT_CAPABILITIES });
 }

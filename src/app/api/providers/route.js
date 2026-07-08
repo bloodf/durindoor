@@ -7,10 +7,30 @@ import {
   getProxyPoolById,
 } from "@/models";
 import { APIKEY_PROVIDERS } from "@/shared/constants/config";
-import { AI_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider } from "@/shared/constants/providers";
+import { AI_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, FREE_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider, isHiddenProvider } from "@/shared/constants/providers";
 import { normalizeProviderId, normalizeProviderSpecificData } from "@/lib/providerNormalization";
 
 export const dynamic = "force-dynamic";
+
+const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set(["clientSecret"]);
+
+function sanitizeProviderConnection(connection) {
+  const providerSpecificData = connection.providerSpecificData
+    ? Object.fromEntries(
+        Object.entries(connection.providerSpecificData)
+          .filter(([key]) => !SENSITIVE_PROVIDER_SPECIFIC_FIELDS.has(key))
+      )
+    : connection.providerSpecificData;
+
+  return {
+    ...connection,
+    apiKey: undefined,
+    accessToken: undefined,
+    refreshToken: undefined,
+    idToken: undefined,
+    ...(providerSpecificData !== undefined ? { providerSpecificData } : {}),
+  };
+}
 
 function normalizeProxyConfig(body = {}) {
   const enabled = body?.connectionProxyEnabled === true;
@@ -66,14 +86,7 @@ export async function GET() {
       const name = isCompatible
         ? (c.name || nodeNameMap[c.provider] || c.providerSpecificData?.nodeName || c.provider)
         : c.name;
-      return {
-        ...c,
-        name,
-        apiKey: undefined,
-        accessToken: undefined,
-        refreshToken: undefined,
-        idToken: undefined,
-      };
+      return sanitizeProviderConnection({ ...c, name });
     });
 
     return NextResponse.json({ connections: safeConnections });
@@ -101,12 +114,14 @@ export async function POST(request) {
     const proxyPoolId = proxyPoolResult.proxyPoolId;
 
     // Validation
+    const isNoAuthProvider = AI_PROVIDERS[provider]?.noAuth === true || FREE_PROVIDERS[provider]?.noAuth === true;
     const isWebCookieProvider = !!WEB_COOKIE_PROVIDERS[provider];
     // Dual-auth providers (e.g. codebuddy-cn, xai) live under category "oauth" but also
     // accept an API key via authModes — they aren't in APIKEY_PROVIDERS, so allow them here.
     const supportsApiKeyMode = !!AI_PROVIDERS[provider]?.authModes?.includes("apikey");
     const isValidProvider = APIKEY_PROVIDERS[provider] ||
       FREE_TIER_PROVIDERS[provider] ||
+      FREE_PROVIDERS[provider] ||
       supportsApiKeyMode ||
       isWebCookieProvider ||
       isOpenAICompatibleProvider(provider) ||
@@ -116,7 +131,10 @@ export async function POST(request) {
     if (!provider || !isValidProvider) {
       return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
     }
-    if (!apiKey && provider !== "ollama-local") {
+    if (isHiddenProvider(provider)) {
+      return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
+    }
+    if (!apiKey && provider !== "ollama-local" && !isNoAuthProvider) {
       return NextResponse.json({ error: `${isWebCookieProvider ? "Cookie value" : "API Key"} is required` }, { status: 400 });
     }
     const connectionName = name || displayName || AI_PROVIDERS[provider]?.name;
@@ -125,6 +143,9 @@ export async function POST(request) {
     }
 
     let providerSpecificData = normalizeProviderSpecificData(provider, body, body.providerSpecificData);
+    if (provider === "google-pse" && !providerSpecificData?.cx) {
+      return NextResponse.json({ error: "Programmable Search Engine ID (cx) is required" }, { status: 400 });
+    }
 
     // Compatible/embedding nodes — no longer enforce single-connection limit.
     // Multiple API keys per node are allowed; downstream auth logic handles
@@ -187,8 +208,7 @@ export async function POST(request) {
     });
 
     // Hide sensitive fields
-    const result = { ...newConnection };
-    delete result.apiKey;
+    const result = sanitizeProviderConnection(newConnection);
 
     return NextResponse.json({ connection: result }, { status: 201 });
   } catch (error) {

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
+import { PROVIDER_MODELS } from "../../open-sse/providers/index.js";
+import { translateRequest } from "../../open-sse/translator/index.js";
+import { PROVIDERS } from "../../open-sse/providers/index.js";
 
 describe("getCapabilitiesForModel", () => {
   const claudeSonnet5Expected = {
@@ -25,6 +28,85 @@ describe("getCapabilitiesForModel", () => {
     expect(getCapabilitiesForModel("kiro", "claude-sonnet-5-thinking")).toMatchObject(claudeSonnet5Expected);
     expect(getCapabilitiesForModel("kiro", "claude-sonnet-5-agentic")).toMatchObject(claudeSonnet5Expected);
     expect(getCapabilitiesForModel("kiro", "claude-sonnet-5-thinking-agentic")).toMatchObject(claudeSonnet5Expected);
+  });
+
+  it("uses OpenAI thinking format for NVIDIA-hosted reasoning model families", () => {
+    for (const model of [
+      "z-ai/glm-5.2",
+      "deepseek-ai/deepseek-v4-pro",
+      "deepseek-ai/deepseek-v4-flash",
+      "moonshotai/kimi-k2.6",
+      "nvidia/nemotron-3-nano-30b-a3b",
+      "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+      "nvidia/nemotron-3-ultra-550b-a55b",
+      "qwen/qwen3.5-122b-a10b",
+      "stepfun-ai/step-3.7-flash",
+    ]) {
+      expect(getCapabilitiesForModel("nvidia", model)).toMatchObject({
+        reasoning: true,
+        thinkingFormat: "openai",
+      });
+    }
+  });
+
+  it("translates NVIDIA reasoning intent to reasoning_effort instead of vendor-native thinking fields", () => {
+    const out = translateRequest(
+      "openai",
+      "openai",
+      "mistralai/mistral-medium-3.5-128b",
+      {
+        messages: [{ role: "user", content: "hi" }],
+        stream: false,
+        reasoning_effort: "high",
+      },
+      false,
+      null,
+      "nvidia",
+    );
+
+    expect(out.reasoning_effort).toBe("high");
+    expect(out.enable_thinking).toBeUndefined();
+    expect(out.thinking).toBeUndefined();
+    expect(out.thinking_budget).toBeUndefined();
+  });
+});
+
+describe("getCapabilitiesForModel — ZenMux / TokenRouter provider overrides", () => {
+  it("preserves vision for advertised ZenMux glm-4.6v-flash model despite text-only *glm-4* pattern", () => {
+    expect(getCapabilitiesForModel(null, "z-ai/glm-4.6v-flash").vision).toBe(false);
+    expect(getCapabilitiesForModel("zenmux", "z-ai/glm-4.6v-flash")).toMatchObject({ vision: true });
+  });
+
+  it("does not leak ZenMux vision override onto other providers or GLM models", () => {
+    expect(getCapabilitiesForModel("codebuddy-cn", "z-ai/glm-4.6v-flash").vision).toBe(false);
+    expect(getCapabilitiesForModel("zenmux", "z-ai/glm-5.2").vision).toBe(false);
+  });
+
+  it("exposes openai thinkingFormat on the built ZenMux provider transport", () => {
+    expect(PROVIDERS.zenmux?.thinkingFormat).toBe("openai");
+  });
+
+  it("forces openai thinking format for TokenRouter's DeepSeek reasoning models", () => {
+    // registry transport.thinkingFormat: "openai" takes priority over PATTERN_CAPABILITIES'
+    // *deepseek* -> thinkingFormat: "deepseek" fallback (verified via resolveFormat in
+    // translator/concerns/thinkingUnified.js, exercised through translateRequest below).
+    const out = translateRequest(
+      "openai",
+      "openai",
+      "deepseek-v4-pro",
+      {
+        messages: [{ role: "user", content: "hi" }],
+        stream: false,
+        reasoning_effort: "high",
+      },
+      false,
+      null,
+      "tokenrouter",
+    );
+
+    expect(out.reasoning_effort).toBe("high");
+    expect(out.thinking).toBeUndefined();
+    expect(out.enable_thinking).toBeUndefined();
   });
 });
 
@@ -97,6 +179,16 @@ describe("getCapabilitiesForModel — Qwen max/plus vision", () => {
   });
 });
 
+describe("getCapabilitiesForModel — OpenCode Zen", () => {
+  it("Big Pickle reports reasoning via provider override", () => {
+    const caps = getCapabilitiesForModel("opencode-zen", "big-pickle");
+    expect(caps.reasoning).toBe(true);
+    expect(caps.thinkingFormat).toBe("openai");
+    expect(caps.thinkingCanDisable).toBe(true);
+  });
+});
+
+
 describe("getCapabilitiesForModel — MiniMax M2.x vision", () => {
   it("minimax-m2.7 has vision", () => {
     const caps = getCapabilitiesForModel(null, "minimax-m2.7");
@@ -138,6 +230,89 @@ describe("getCapabilitiesForModel — DeepSeek V4 text-only", () => {
   it("deepseek/deepseek-v4-pro (vendor-prefixed) has no vision", () => {
     const caps = getCapabilitiesForModel(null, "deepseek/deepseek-v4-pro");
     expect(caps.vision).toBe(false);
+  });
+});
+
+describe("getCapabilitiesForModel — HuggingChat text-only", () => {
+  it("huggingchat registry has no models flagged with supportsVision", () => {
+    const models = PROVIDER_MODELS.huggingchat || [];
+    const visionModels = models.filter((m) => m.supportsVision);
+    expect(visionModels).toEqual([]);
+  });
+
+  it("every HuggingChat model resolves as vision:false", () => {
+    const models = PROVIDER_MODELS.huggingchat || [];
+    expect(models.length).toBeGreaterThan(0);
+    for (const model of models) {
+      const caps = getCapabilitiesForModel("huggingchat", model.id);
+      expect(caps.vision, `${model.id} should be text-only`).toBe(false);
+    }
+  });
+
+  it("huggingchat vision-named model still resolves as vision:false", () => {
+    const caps = getCapabilitiesForModel("huggingchat", "CohereLabs/command-a-vision-07-2025");
+    expect(caps.vision).toBe(false);
+  });
+
+  it("same model id without provider still has vision via pattern match", () => {
+    const caps = getCapabilitiesForModel(null, "command-a-vision-07-2025");
+    expect(caps.vision).toBe(true);describe("getCapabilitiesForModel — simple provider vision/thinking overrides", () => {
+  it("preserves vision for SenseNova SenseChat-Vision", () => {
+    const caps = getCapabilitiesForModel("sensenova", "SenseChat-Vision");
+    expect(caps.vision).toBe(true);
+    expect(caps.contextWindow).toBe(4096);
+  });
+
+  it("preserves vision and reasoning for StepFun step-1o-turbo-vision", () => {
+    const caps = getCapabilitiesForModel("stepfun", "step-1o-turbo-vision");
+    expect(caps.vision).toBe(true);
+    expect(caps.reasoning).toBe(true);
+    expect(caps.thinkingFormat).toBe("step");
+    expect(caps.contextWindow).toBe(32768);
+  });
+
+  it("preserves vision and reasoning for Tencent hunyuan-vision", () => {
+    const caps = getCapabilitiesForModel("tencent", "hunyuan-vision");
+    expect(caps.vision).toBe(true);
+    expect(caps.reasoning).toBe(true);
+    expect(caps.thinkingFormat).toBe("hunyuan");
+  });
+
+  it("keeps Upstage solar-pro3 text-only despite o3 substring", () => {
+    // The global *o3* pattern would match "pro3" and incorrectly mark this as vision-capable.
+    expect(getCapabilitiesForModel(null, "solar-pro3").vision).toBe(true);
+    const caps = getCapabilitiesForModel("upstage", "solar-pro3");
+    expect(caps.vision).toBe(false);
+    expect(caps.reasoning).toBe(false);
+    expect(caps.thinkingFormat).toBeNull();
+  });
+
+  it("marks StepFun step-3.7-flash as vision-capable", () => {
+    const caps = getCapabilitiesForModel("stepfun", "step-3.7-flash");
+    expect(caps.vision).toBe(true);
+    expect(caps.reasoning).toBe(true);
+    expect(caps.thinkingFormat).toBe("step");
+  });
+
+  it("marks Reka Edge 2603 as vision-capable", () => {
+    const caps = getCapabilitiesForModel("reka", "reka-edge-2603");
+    expect(caps.vision).toBe(true);
+  });
+
+  it("keeps ZenMux Grok 4.1 Fast text-only", () => {
+    const caps = getCapabilitiesForModel("zenmux", "x-ai/grok-4.1-fast");
+    expect(caps.vision).toBe(false);
+  });
+
+  it("marks v0-1.5-md and v0-1.5-lg as vision-capable", () => {
+    expect(getCapabilitiesForModel("v0-vercel", "v0-1.5-md").vision).toBe(true);
+    expect(getCapabilitiesForModel("v0-vercel", "v0-1.5-lg").vision).toBe(true);
+  });
+
+  it("marks Qianfan ERNIE multimodal models as vision-capable", () => {
+    expect(getCapabilitiesForModel("qianfan", "ernie-5.1").vision).toBe(true);
+    expect(getCapabilitiesForModel("qianfan", "ernie-5.0-thinking-latest").vision).toBe(true);
+    expect(getCapabilitiesForModel("qianfan", "ernie-x1.1").vision).toBe(true);
   });
 });
 

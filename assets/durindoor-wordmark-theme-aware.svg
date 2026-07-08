@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 520" width="1920" height="520">
+  <style>
+    /* Default = light theme colors */
+    .title    { fill: #1a1a1a; }
+    .sub      { fill: #2a3a30; }
+    .tag      { fill: #2a2a2a; }
+    .tag-light{ fill: #4a4a4a; }
+    .glow     { flood-color: #10e882; flood-opacity: 0.6; }
+    .divider  { stroke: #10e882; fill: #10e882; }
+    .shadow-color { flood-color: #000000; flood-opacity: 0.0; }
+
+    /* Dark theme override — auto-switch when host page is dark */
+    @media (prefers-color-scheme: dark) {
+      .title    { fill: #f5f5f5; }
+      .sub      { fill: #e6f0e6; }
+      .tag      { fill: #dce8dc; }
+      .tag-light{ fill: #c8d7d2; }
+      .glow     { flood-color: #10e882; flood-opacity: 0.85; }
+      .shadow-color { flood-color: #000000; flood-opacity: 0.0; }
+    }
+
+    text {
+      font-family: 'Liberation Serif', 'Times New Roman', Times, serif;
+    }
+    .sans {
+      font-family: 'Liberation Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    }
+  </style>
+
+  <defs>
+    <filter id="emeraldGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feFlood class="glow" result="color"/>
+      <feComposite in="color" in2="blur" operator="in" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Title: Durin Door -->
+  <text class="title" x="960" y="180" text-anchor="middle"
+        font-size="170" font-weight="bold"
+        filter="url(#emeraldGlow)">Durin Door</text>
+
+  <!-- Decorative divider -->
+  <g transform="translate(960, 250)">
+    <line class="divider" x1="-180" y1="0" x2="-30" y2="0" stroke-width="2" stroke-opacity="0.8"/>
+    <polygon class="divider" points="0,-14 14,0 0,14 -14,0" fill-opacity="0.9"/>
+    <line class="divider" x1="30" y1="0" x2="180" y2="0" stroke-width="2" stroke-opacity="0.8"/>
+  </g>
+
+  <!-- Subtitle -->
+  <text class="sub" x="960" y="340" text-anchor="middle"
+        font-size="58" font-style="italic"
+        filter="url(#emeraldGlow)">Speak, friend, and enter</text>
+
+  <!-- Tagline -->
+  <text class="sans" x="960" y="430" text-anchor="middle" font-size="42">
+    <tspan class="tag" font-weight="bold">One guarded gateway</tspan>
+    <tspan class="tag-light"> for every AI provider</tspan>
+  </text>
+</svg>

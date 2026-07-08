@@ -4,35 +4,12 @@ import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { FORMATS } from "../../translator/formats.js";
 import { PROVIDERS } from "../../config/providers.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats } from "./requestDetail.js";
+import { projectCompletionToClientFormat, responsesApiToOpenAICompletion } from "../../translator/response/completionProjector.js";
+import { logToolSemantics } from "../../utils/toolSemanticsTrace.js";
 
 // Responses-API providers (e.g. codex) may emit SSE without content-type + use Responses output shape
 const isResponsesProvider = (p) => PROVIDERS[p]?.format === FORMATS.OPENAI_RESPONSES;
 import { saveRequestDetail, appendRequestLog } from "@/lib/usageDb.js";
-
-function textFromResponsesMessageItem(item) {
-  if (!item?.content || !Array.isArray(item.content)) return "";
-  const byType = item.content.find((c) => c.type === "output_text");
-  if (typeof byType?.text === "string") return byType.text;
-  const anyText = item.content.find((c) => typeof c.text === "string");
-  if (typeof anyText?.text === "string") return anyText.text;
-  return "";
-}
-
-/**
- * Codex / Responses API may emit many alternating reasoning + message items.
- * Early message blocks often have empty output_text; the user-visible answer is usually in the last non-empty message.
- */
-function pickAssistantMessageForChatCompletion(output) {
-  if (!Array.isArray(output)) return { msgItem: null, textContent: null };
-  const messages = output.filter((item) => item?.type === "message");
-  if (messages.length === 0) return { msgItem: null, textContent: null };
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const text = textFromResponsesMessageItem(messages[i]);
-    if (text.length > 0) return { msgItem: messages[i], textContent: text };
-  }
-  const last = messages[messages.length - 1];
-  return { msgItem: last, textContent: textFromResponsesMessageItem(last) };
-}
 
 /**
  * Parse OpenAI-style SSE text into a single chat completion JSON.
@@ -102,7 +79,7 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
  * Handle case: provider forced streaming but client wants JSON.
  * Supports both Codex/Responses API SSE and standard Chat Completions SSE.
  */
-export async function handleForcedSSEToJson({ providerResponse, sourceFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, trackDone, appendLog }) {
+export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, trackDone, appendLog, toolNameMap, log }) {
   const contentType = providerResponse.headers.get("content-type") || "";
   const isSSE = contentType.includes("text/event-stream") || (contentType === "" && isResponsesProvider(provider));
   if (!isSSE) return null; // not handled here
@@ -126,64 +103,35 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
       appendLog({ tokens: usage, status: "200 OK" });
       saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint });
 
-      const { msgItem, textContent } = pickAssistantMessageForChatCompletion(jsonResponse.output);
-      const totalLatency = Date.now() - requestStartTime;
+      // When the client asked for the Responses API format, return the converted JSON directly.
+      // responsesApiToOpenAICompletion would project it to chat.completion shape and lose Responses fields.
+      if (targetFormat === FORMATS.OPENAI_RESPONSES) {
+        logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "sse-json-responses", requestBody: body, translatedBody, providerBody: jsonResponse, clientBody: jsonResponse });
 
+        const totalLatency = Date.now() - requestStartTime;
+        saveRequestDetail(buildRequestDetail({
+          ...ctx,
+          latency: { ttft: totalLatency, total: totalLatency },
+          tokens: { prompt_tokens: usage.input_tokens || 0, completion_tokens: usage.output_tokens || 0 },
+          response: { content: jsonResponse.output?.map?.(o => o.type === "message" ? o.content?.map?.(c => c.type === "output_text" ? c.text : "").join("") : "").join("") || null, thinking: null, finish_reason: jsonResponse.status === "completed" ? "stop" : jsonResponse.status || "unknown" },
+          status: "success"
+        }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});
+
+        return { success: true, response: new Response(JSON.stringify(jsonResponse), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
+      }
+
+      const openAICompletion = responsesApiToOpenAICompletion(jsonResponse, model);
+      const finalResp = projectCompletionToClientFormat(openAICompletion, sourceFormat);
+      logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "sse-json-responses", requestBody: body, translatedBody, providerBody: jsonResponse, clientBody: finalResp });
+
+      const totalLatency = Date.now() - requestStartTime;
       saveRequestDetail(buildRequestDetail({
         ...ctx,
         latency: { ttft: totalLatency, total: totalLatency },
         tokens: { prompt_tokens: usage.input_tokens || 0, completion_tokens: usage.output_tokens || 0 },
-        response: { content: textContent, thinking: null, finish_reason: jsonResponse.status || "unknown" },
+        response: { content: openAICompletion.choices?.[0]?.message?.content || null, thinking: openAICompletion.choices?.[0]?.message?.reasoning_content || null, finish_reason: openAICompletion.choices?.[0]?.finish_reason || "unknown" },
         status: "success"
       }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});
-
-      // Client is Responses API → return as-is
-      if (sourceFormat === FORMATS.OPENAI_RESPONSES) {
-        return { success: true, response: new Response(JSON.stringify(jsonResponse), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
-      }
-
-      // Build client-format response
-      const inTokens = usage.input_tokens || 0;
-      const outTokens = usage.output_tokens || 0;
-      let finalResp;
-
-      // Extract tool calls from Responses API output (function_call items)
-      const funcCallItems = (jsonResponse.output || []).filter(item => item.type === "function_call");
-      const toolCalls = funcCallItems.map((item, idx) => ({
-        id: item.call_id || `call_${item.name}_${Date.now()}_${idx}`,
-        type: "function",
-        function: {
-          name: item.name,
-          arguments: typeof item.arguments === "string" ? item.arguments : JSON.stringify(item.arguments || {})
-        }
-      }));
-      const hasToolCalls = toolCalls.length > 0;
-
-      if (sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI) {
-        finalResp = {
-          response: {
-            candidates: [{ content: { role: "model", parts: [{ text: textContent || "" }] }, finishReason: "STOP", index: 0 }],
-            usageMetadata: { promptTokenCount: inTokens, candidatesTokenCount: outTokens, totalTokenCount: inTokens + outTokens },
-            modelVersion: model,
-            responseId: jsonResponse.id || `resp_${Date.now()}`
-          }
-        };
-      } else {
-        const message = { role: "assistant", content: textContent || (hasToolCalls ? null : "") };
-        if (hasToolCalls) message.tool_calls = toolCalls;
-        const responseDone = jsonResponse.status === "completed" || jsonResponse.status === "done";
-        const finishReason = hasToolCalls ? "tool_calls" : (responseDone ? "stop" : (jsonResponse.status || "stop"));
-        finalResp = {
-          id: jsonResponse.id || `chatcmpl-${Date.now()}`,
-          object: "chat.completion",
-          created: jsonResponse.created_at || Math.floor(Date.now() / 1000),
-          model: jsonResponse.model || model,
-          choices: [{ index: 0, message, finish_reason: finishReason }],
-          usage: { prompt_tokens: inTokens, completion_tokens: outTokens, total_tokens: inTokens + outTokens }
-        };
-      }
-
-      return { success: true, response: new Response(JSON.stringify(finalResp), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
     } catch (err) {
       console.error("[ChatCore] Responses API SSE→JSON failed:", err);
       return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Failed to convert streaming response to JSON");
@@ -227,7 +175,10 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
       }
     }
 
-    return { success: true, response: new Response(JSON.stringify(parsed), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
+    const finalResp = projectCompletionToClientFormat(parsed, sourceFormat);
+    logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "sse-json-chat", requestBody: body, translatedBody, providerBody: parsed, clientBody: finalResp });
+
+    return { success: true, response: new Response(JSON.stringify(finalResp), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
   } catch (err) {
     console.error("[ChatCore] Chat Completions SSE→JSON failed:", err);
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Failed to convert streaming response to JSON");

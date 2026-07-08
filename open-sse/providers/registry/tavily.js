@@ -1,6 +1,7 @@
 export default {
   id: "tavily",
   alias: "tavily",
+  aliases: ["tavily-search"],
   display: {
     name: "Tavily",
     icon: "search",

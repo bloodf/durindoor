@@ -14,6 +14,7 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { toExecutorCredentials, toCoreResult } from "./typeHelpers.js";
+import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
 
 /**
  * Handle moderations request — OpenAI-compatible /v1/moderations passthrough.
@@ -51,6 +52,10 @@ export async function handleModerations(request) {
 
   if (!modelStr) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   if (!body.input) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: input");
+
+  // Enforce per-API-key model policy before model fallback
+  const policyError = await enforceApiKeyModelPolicy(request, modelStr);
+  if (policyError) return policyError;
 
   return runWithModelFallback(
     modelStr,

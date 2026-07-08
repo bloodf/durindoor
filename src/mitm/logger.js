@@ -47,6 +47,16 @@ function decodeBody(buf, encoding) {
   return buf;
 }
 
+const SENSITIVE_HEADERS = new Set(["set-cookie", "cookie", "authorization", "proxy-authorization"]);
+
+function sanitizeHeaders(headers) {
+  const copy = {};
+  for (const [k, v] of Object.entries(headers || {})) {
+    copy[k] = SENSITIVE_HEADERS.has(k.toLowerCase()) ? "[REDACTED]" : v;
+  }
+  return copy;
+}
+
 // Save raw request: method + url + headers + body
 function dumpRequest(req, bodyBuffer, tag = "raw") {
   if (isBlacklisted(req.url)) return null;
@@ -60,7 +70,7 @@ function dumpRequest(req, bodyBuffer, tag = "raw") {
       method: req.method,
       url: req.url,
       host: req.headers.host,
-      headers: req.headers,
+      headers: sanitizeHeaders(req.headers),
       body: parsed ?? bodyBuffer.toString("utf8")
     }, null, 2));
     return file;
@@ -78,7 +88,7 @@ function createResponseDumper(req, tag = "raw") {
   let headers = {};
   const chunks = [];
   return {
-    writeHeader: (s, h) => { status = s; headers = h || {}; },
+    writeHeader: (s, h) => { status = s; headers = sanitizeHeaders(h || {}); },
     writeChunk: (chunk) => {
       if (chunk == null) return;
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));

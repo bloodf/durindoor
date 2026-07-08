@@ -2,6 +2,14 @@
 
 DurinDoor is a self-hosted AI Gateway that unifies multiple LLM providers behind a single OpenAI-compatible API. Forked from 9router with enhanced features and LOTR-inspired branding.
 
+This file is a project overview. The **operational contract for any agent working in this repo** is `AGENTS.md` in this same directory. Read it before doing anything non-trivial. In particular:
+
+- Agent contract, forbidden edits, commit types → `AGENTS.md` §1–§3
+- Translator layer conventions and pitfalls → `AGENTS.md` §4
+- open-sse layout, lifecycle, conventions → `AGENTS.md` §5
+- PR workflow, CI gates, and AI-review handling → `AGENTS.md` §6
+- Quick commands → `AGENTS.md` §7
+
 ## Quick Reference
 
 - **npm package**: `durindoor`
@@ -11,11 +19,15 @@ DurinDoor is a self-hosted AI Gateway that unifies multiple LLM providers behind
 
 ## Compatibility
 
-DurinDoor preserves 9router wire-format identifiers for data migration:
-- `sk_9router` API key prefix
-- `[providers.9router]` config sections
-- `X-Msh-Platform: 9router` header
-- `~/.9router/` data directory
+Default everywhere is **DurinDoor** (display) / **durindoor** (lowercase IDs).
+
+The server accepts legacy 9router identifiers **at the runtime boundary only**, for read-only support of existing user installs:
+- API key prefix `sk_9router-*` (existing keys continue to work; new keys are minted as `sk_durindoor-*`)
+- Provider section labels `9router` in incoming CLI tool configs
+- HTTP request header `X-Msh-Platform: 9router`
+- Data directory `~/.9router/`
+
+A one-shot cutover script ships as `scripts/migrate-from-9router.mjs` (idempotent; backup-before-any-move; never rewrites API key secrets).
 
 ## Build
 
@@ -33,14 +45,12 @@ cd tests && npm install && npx vitest run --reporter=verbose
 
 ## Conventional Commits
 
-This project uses conventional commits with a custom `port` type:
-- `feat:` new feature
-- `fix:` bug fix
-- `port(upstream): #N — title` for upstream 9router PR ports
-- `docs:`, `refactor:`, `ci:`, `chore:`, `revert:`
+This project uses conventional commits with a custom `port` type. The full type list and the `port(upstream): #N - <title>` format are defined in `.commitlintrc.json` and `AGENTS.md` §3.
 
 ## Branch Model
 
 Two-branch release model:
 - `main` — controlled production releases via GitHub Releases (`release.yml`, publishes to npm on `release: published`)
 - `dev` — active development + nightly pre-releases (`nightly.yml`, runs daily at 02:00 UTC, marked `prerelease: true`)
+
+Default PR target is `dev`. PR target rules, worktree discipline, CI gates, and AI-review handling are in `AGENTS.md` §6.

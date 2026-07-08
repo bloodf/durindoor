@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { getStatusVariant as getConnectionStatusVariant } from "@/shared/utils/connectionStatus";
+import { isGooglePseProvider, isGooglePseReadyForSave, buildGooglePseProviderSpecificData, buildGooglePseValidationPayload } from "@/shared/utils/googlePseProviderSpecificData.js";
 import PropTypes from "prop-types";
 import { Card, Badge, Button, Modal, Select, Toggle, EditConnectionModal, ConfirmModal } from "@/shared/components";
 
@@ -196,18 +197,19 @@ ConnectionRow.propTypes = {
 // ── AddApiKeyModal ─────────────────────────────────────────────
 function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, onClose }) {
   const NONE = "__none__";
-  const [formData, setFormData] = useState({ name: "", apiKey: "", priority: 1, proxyPoolId: NONE });
+  const [formData, setFormData] = useState({ name: "", apiKey: "", priority: 1, proxyPoolId: NONE, cx: "" });
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
   const [saving, setSaving] = useState(false);
 
   const handleValidate = async () => {
+    if (!formData.apiKey || !isGooglePseReadyForSave(provider, formData.cx)) return;
     setValidating(true);
     try {
       const res = await fetch("/api/providers/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, apiKey: formData.apiKey }),
+        body: JSON.stringify(buildGooglePseValidationPayload(provider, formData.apiKey, formData.cx)),
       });
       const data = await res.json();
       setValidationResult(data.valid ? "success" : "failed");
@@ -216,7 +218,7 @@ function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, on
   };
 
   const handleSubmit = async () => {
-    if (!provider || !formData.apiKey) return;
+    if (!provider || !formData.apiKey || !isGooglePseReadyForSave(provider, formData.cx)) return;
     setSaving(true);
     try {
       let isValid = false;
@@ -225,19 +227,21 @@ function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, on
         const res = await fetch("/api/providers/validate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ provider, apiKey: formData.apiKey }),
+          body: JSON.stringify(buildGooglePseValidationPayload(provider, formData.apiKey, formData.cx)),
         });
         const data = await res.json();
         isValid = !!data.valid;
         setValidationResult(isValid ? "success" : "failed");
       } catch { setValidationResult("failed"); }
       finally { setValidating(false); }
+      const providerSpecificData = isGooglePseProvider(provider) ? buildGooglePseProviderSpecificData(formData.cx) : undefined;
       await onSave({
         name: formData.name,
         apiKey: formData.apiKey,
         priority: formData.priority,
         proxyPoolId: formData.proxyPoolId === NONE ? null : formData.proxyPoolId,
         testStatus: isValid ? "active" : "unknown",
+        ...(providerSpecificData ? { providerSpecificData } : {}),
       });
     } finally { setSaving(false); }
   };
@@ -257,11 +261,17 @@ function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, on
             <input type="password" className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary" value={formData.apiKey} onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })} />
           </div>
           <div className="pt-6">
-            <Button onClick={handleValidate} disabled={!formData.apiKey || validating || saving} variant="secondary">
+            <Button onClick={handleValidate} disabled={!formData.apiKey || !isGooglePseReadyForSave(provider, formData.cx) || validating || saving} variant="secondary">
               {validating ? "Checking..." : "Check"}
             </Button>
           </div>
         </div>
+        {isGooglePseProvider(provider) && (
+          <div>
+            <label className="text-xs text-text-muted mb-1 block">Search Engine ID (cx)</label>
+            <input className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary" value={formData.cx} onChange={(e) => setFormData({ ...formData, cx: e.target.value })} placeholder="e.g. 0123456789:abcdefg" />
+          </div>
+        )}
         {validationResult && (
           <Badge variant={validationResult === "success" ? "success" : "error"}>
             {validationResult === "success" ? "Valid" : "Invalid"}
@@ -274,7 +284,7 @@ function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, on
         <Select label="Proxy Pool" value={formData.proxyPoolId} onChange={(e) => setFormData({ ...formData, proxyPoolId: e.target.value })}
           options={[{ value: NONE, label: "None" }, ...(proxyPools || []).map((p) => ({ value: p.id, label: p.name }))]} />
         <div className="flex gap-2">
-          <Button onClick={handleSubmit} fullWidth disabled={!formData.name || !formData.apiKey || saving}>
+          <Button onClick={handleSubmit} fullWidth disabled={!formData.name || !formData.apiKey || !isGooglePseReadyForSave(provider, formData.cx) || saving}>
             {saving ? "Saving..." : "Save"}
           </Button>
           <Button onClick={onClose} variant="ghost" fullWidth>Cancel</Button>

@@ -17,6 +17,8 @@ vi.mock("../../open-sse/utils/requestLogger.js", () => ({
     logClientRawRequest: vi.fn(),
     logRawRequest: vi.fn(),
     logTargetRequest: vi.fn(),
+    logProviderResponse: vi.fn(),
+    logConvertedResponse: vi.fn(),
     logError: vi.fn(),
   })),
 }));
@@ -90,6 +92,8 @@ vi.mock("../../open-sse/translator/concerns/prefetch.js", () => ({
 vi.mock("../../open-sse/handlers/chatCore/requestDetail.js", () => ({
   buildRequestDetail: vi.fn((detail) => detail),
   extractRequestConfig: vi.fn((body, stream) => ({ body, stream })),
+  extractUsageFromResponse: vi.fn((body) => body?.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }),
+  saveUsageStats: vi.fn(),
 }));
 
 vi.mock("../../open-sse/utils/error.js", () => ({
@@ -127,6 +131,48 @@ function makeOptions(bodyStream) {
   };
 }
 
+function makeAgyImageOptions() {
+  const body = {
+    model: "gemini-3-flash-image",
+    stream: true,
+    messages: [{ role: "user", content: "make an icon" }],
+  };
+
+  return {
+    body,
+    modelInfo: { provider: "agy", model: "gemini-3-flash-image" },
+    credentials: { accessToken: "tok-test", refreshToken: "refresh-test" },
+    clientRawRequest: {
+      endpoint: "/v1/chat/completions",
+      body,
+      headers: { accept: "text/event-stream" },
+    },
+    connectionId: "agy-image-connection",
+    log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  };
+}
+
+function makeGaladrielOptions() {
+  const body = {
+    model: "galadriel-latest",
+    messages: [{ role: "user", content: "hello" }],
+    stream: true,
+  };
+
+  return {
+    body,
+    modelInfo: { provider: "galadriel", model: "galadriel-latest" },
+    credentials: { apiKey: "sk-test" },
+    clientRawRequest: {
+      endpoint: "/v1/chat/completions",
+      body,
+      headers: { accept: "text/event-stream" },
+    },
+    connectionId: "test-connection",
+    log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  };
+}
+
 describe("forceStream provider config", () => {
   beforeEach(() => {
     executeMock.mockReset();
@@ -151,5 +197,52 @@ describe("forceStream provider config", () => {
 
     expect(executeMock).toHaveBeenCalledTimes(1);
     expect(executeMock.mock.calls[0][0].stream).toBe(true);
+  });
+
+  it("synthesizes SSE for streaming clients when Galadriel is forced non-streaming upstream", async () => {
+    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+    executeMock.mockResolvedValueOnce({
+      response: new Response(JSON.stringify({
+        id: "chatcmpl-test",
+        object: "chat.completion",
+        created: 123,
+        model: "galadriel-latest",
+        choices: [{
+          index: 0,
+          message: { role: "assistant", content: "hello from json" },
+          finish_reason: "stop",
+        }],
+        usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 },
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+      url: "https://api.galadriel.com/v1/verified/chat/completions",
+      headers: {},
+      transformedBody: null,
+    });
+
+    const result = await handleChatCore(makeGaladrielOptions());
+    const text = await result.response.text();
+
+    expect(executeMock).toHaveBeenCalledTimes(1);
+    expect(executeMock.mock.calls[0][0].stream).toBe(false);
+    expect(result.response.headers.get("Content-Type")).toContain("text/event-stream");
+    expect(text).toContain("data: ");
+    expect(text).toContain("hello from json");
+    expect(text).toContain("data: [DONE]");
+    expect(text).not.toContain("\"object\":\"chat.completion\"");
+  });
+
+  it("forces agy image generation through non-streaming Google generateContent", async () => {
+    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+
+    await handleChatCore(makeAgyImageOptions());
+
+    expect(executeMock).toHaveBeenCalledTimes(1);
+    expect(executeMock.mock.calls[0][0]).toMatchObject({
+      model: "gemini-3-flash-image",
+      stream: false,
+    });
   });
 });

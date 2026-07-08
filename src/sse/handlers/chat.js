@@ -19,9 +19,13 @@ import { handleComboChat, handleFusionChat } from "open-sse/services/combo.js";
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
+import { isAntigravityCapacityError } from "open-sse/services/accountFallback.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
+import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
+
+const ANTIGRAVITY_CAPACITY_SWEEP_RETRIES = 2;
 
 /**
  * Strip reasoning_content from assistant messages in conversation history.
@@ -145,6 +149,10 @@ export async function handleChat(request, clientRawRequest = null) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   }
 
+  // Enforce per-API-key model policy
+  const policyError = await enforceApiKeyModelPolicy(request, modelStr);
+  if (policyError) return policyError;
+
   // Bypass naming/warmup requests before combo rotation to avoid wasting rotation slots
   const userAgent = request?.headers?.get("user-agent") || "";
   const bypassResponse = handleBypassRequest(body, modelStr, userAgent, !!settings.ccFilterNaming);
@@ -158,6 +166,9 @@ export async function handleChat(request, clientRawRequest = null) {
     const comboSpecificStrategy = comboStrategies[modelStr]?.fallbackStrategy;
     const comboStrategy = comboSpecificStrategy || settings.comboStrategy || "fallback";
 
+    // Combo names are intentionally excluded from the model allowlist; the allowlist
+    // is enforced against each concrete underlying model during expansion. Combo-level
+    // combo access control above remains the gate for combo names.
     if (comboStrategy === "fusion") {
       log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: fusion)`);
       return handleFusionChat({
@@ -249,6 +260,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
   const { provider, model } = modelInfo;
 
+  // Enforce per-API-key model policy against the resolved underlying model when
+  // the request started as a combo; the top-level combo name is not a model id.
+  const policyError2 = await enforceApiKeyModelPolicy(request, `${provider}/${model}`);
+  if (policyError2) return policyError2;
+
   // Strip reasoning_content for providers that reject it (Mistral, etc.)
   // Preserve for providers that require it (DeepSeek thinking mode)
   if (!provider.startsWith("deepseek")) {
@@ -271,6 +287,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   const excludeConnectionIds = new Set();
   let lastError = null;
   let lastStatus = null;
+  let antigravityCapacitySweeps = 0;
 
   while (true) {
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model);
@@ -287,6 +304,16 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         log.warn("AUTH", `No active credentials for provider: ${provider}`);
         return errorResponse(HTTP_STATUS.NOT_FOUND, `No active credentials for provider: ${provider}`);
       }
+      if (
+        (provider === "antigravity" || provider === "agy") &&
+        isAntigravityCapacityError(lastStatus, lastError) &&
+        antigravityCapacitySweeps < ANTIGRAVITY_CAPACITY_SWEEP_RETRIES
+      ) {
+        antigravityCapacitySweeps += 1;
+        log.warn("CHAT", `[${provider}/${model}] all accounts reported capacity; restarting account sweep ${antigravityCapacitySweeps}/${ANTIGRAVITY_CAPACITY_SWEEP_RETRIES}`);
+        excludeConnectionIds.clear();
+        continue;
+      }
       log.warn("CHAT", "No more accounts available", { provider });
       return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
     }
@@ -297,7 +324,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
 
     // Ensure real project ID is available for providers that need it (P0 fix: cold miss)
-    if ((provider === "antigravity" || provider === "gemini-cli") && !refreshedCredentials.projectId) {
+    if ((provider === "antigravity" || provider === "agy" || provider === "gemini-cli") && !refreshedCredentials.projectId) {
       const pid = await getProjectIdForConnection(credentials.connectionId, refreshedCredentials.accessToken);
       if (pid) {
         refreshedCredentials.projectId = pid;
@@ -323,6 +350,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       headroomEnabled: !!chatSettings.headroomEnabled,
       headroomUrl: chatSettings.headroomUrl || DEFAULT_HEADROOM_URL,
       headroomCompressUserMessages: !!chatSettings.headroomCompressUserMessages,
+      pxpipeEnabled: !!chatSettings.pxpipeEnabled,
       cavemanEnabled: !!chatSettings.cavemanEnabled,
       cavemanLevel: chatSettings.cavemanLevel || "full",
       ponytailEnabled: !!chatSettings.ponytailEnabled,

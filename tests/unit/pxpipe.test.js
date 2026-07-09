@@ -120,7 +120,8 @@ describe("compressWithPxpipe gates", () => {
 
     expect(res.body).toBeNull();
     expect(res.summary.reason).toBe("transform_error");
-    expect(res.summary.detail).toMatch(/Cannot read properties of undefined.*startsWith/);
+    expect(res.summary.detail).toMatch(/^Cannot read properties of undefined/);
+    expect(res.summary.detail).toContain("startsWith");
     expect(transform).not.toHaveBeenCalled();
     expect(openaiBody).toEqual(original);
   });

@@ -112,11 +112,45 @@ describe("cached-token end-to-end (persist + aggregate + cost)", () => {
     expect(new Set(rows.map(([, row]) => row.apiKeyKey)).size).toBe(2);
     expect(new Set(rows.map(([, row]) => row.keyName)).size).toBe(2);
     for (const [key, row] of rows) {
-      expect(key).toMatch(/^sha256:[0-9a-f]+\|gpt-5\.5\|codex$/);
+      // Unregistered keys fall back to a 12-hex sha256 prefix under the
+      // api-key: namespace (upstream #2364): no raw key in object keys, and
+      // two keys sharing a visible prefix never collapse into one row.
+      expect(key).toMatch(/^api-key:[0-9a-f]{12}\|gpt-5\.5\|codex$/);
       expect(key).not.toContain(keyA);
       expect(key).not.toContain(keyB);
       expect(row.apiKeyMasked).toBe("sk-samep***");
       expect(row.requests).toBe(1);
     }
+  });
+
+  it("groups a registered API key by stable id across rename", async () => {
+    const created = await db.createApiKey("rename-me", "machine-test", [], null);
+    await db.saveRequestUsage({
+      provider: "codex",
+      model: "gpt-5.5",
+      apiKey: created.key,
+      tokens: { prompt_tokens: 10, completion_tokens: 1 },
+      endpoint: "/v1/responses",
+      status: "ok",
+    });
+    await db.updateApiKey(created.id, { name: "renamed" });
+    await db.saveRequestUsage({
+      provider: "codex",
+      model: "gpt-5.5",
+      apiKey: created.key,
+      tokens: { prompt_tokens: 20, completion_tokens: 2 },
+      endpoint: "/v1/responses",
+      status: "ok",
+    });
+
+    // Same registered key id -> single bucket; name shown is the latest.
+    const stats = await db.getUsageStats("24h");
+    const rows = Object.entries(stats.byApiKey)
+      .filter(([, row]) => row.apiKeyKey === `api-key:${created.id}`);
+    expect(rows).toHaveLength(1);
+    const [key, row] = rows[0];
+    expect(key).toBe(`api-key:${created.id}|gpt-5.5|codex`);
+    expect(row.apiKeyKey).toBe(`api-key:${created.id}`);
+    expect(row.requests).toBe(2);
   });
 });

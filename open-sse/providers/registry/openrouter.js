@@ -45,6 +45,7 @@ export default {
     { id: "cohere/rerank-4-pro", name: "Cohere Rerank 4 Pro (via OpenRouter)", kind: "rerank" },
     { id: "cohere/rerank-4-fast", name: "Cohere Rerank 4 Fast (via OpenRouter)", kind: "rerank" },
     { id: "cohere/rerank-v3.5", name: "Cohere Rerank v3.5 (via OpenRouter)", kind: "rerank" },
+    { id: "nvidia/llama-nemotron-rerank-vl-1b-v2:free", name: "Llama Nemotron Rerank VL 1B v2 (free, via OpenRouter)", kind: "rerank" },
   ],
   serviceKinds: ["llm","embedding","tts","imageToText","rerank"],
   ttsConfig: {

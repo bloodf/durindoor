@@ -177,6 +177,20 @@ Fixes:
 4. If using OIDC, confirm callback URLs and provider configuration.
 5. Check `JWT_SECRET` consistency across restarts.
 
+## MITM Root CA Not Found or Server Already Starting
+
+Symptoms:
+
+- MITM fails immediately with `Root CA not found` or exits on first run.
+- `MITM server is already starting (lock contention)` error.
+
+Fixes:
+
+1. The MITM server now auto-generates the Root CA on first start if `rootCA.key`/`rootCA.crt` are missing or expired.
+2. A missing certificate no longer requires manual generation before starting.
+3. The startup path removes stale lock files when the owning process is gone.
+4. If two MITM starts run at the same time, wait for the first to finish instead of starting a second instance.
+
 ## Request Logs Are Empty
 
 Possible causes:

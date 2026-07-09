@@ -518,7 +518,6 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
       throw e;
     }
   }
-
   try {
   await killLeftoverMitm(sudoPassword);
 
@@ -748,7 +747,6 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
   } catch (e) {
     // Clean up lock on any failure
     try { fs.unlinkSync(LOCK_FILE); } catch { /* ignore */ }
-    mitmStarting = false;
     throw e;
   } finally {
     mitmStarting = false;

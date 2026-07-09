@@ -302,6 +302,7 @@ export class CodexExecutor extends BaseExecutor {
     let text = "";
     let matched = null;
     let accountFallback = false;
+    let sawUserOutput = false;
     try {
       while (text.length < CODEX_SSE_PEEK_BYTES) {
         const { done, value } = await reader.read();
@@ -311,9 +312,7 @@ export class CodexExecutor extends BaseExecutor {
         const lowerText = text.toLowerCase();
         const accountHit = CODEX_SSE_ACCOUNT_FALLBACK_PATTERNS.find(p => lowerText.includes(p));
         if (accountHit) { matched = accountHit; accountFallback = true; break; }
-        const retryHit = CODEX_SSE_RETRY_PATTERNS.find(p => lowerText.includes(p));
-        if (retryHit) { matched = retryHit; break; }
-        if (CODEX_SSE_USER_OUTPUT_PATTERNS.some(p => lowerText.includes(p))) break;
+        if (CODEX_SSE_USER_OUTPUT_PATTERNS.some(p => lowerText.includes(p))) { sawUserOutput = true; break; }
       }
     } catch (e) {
       dbg("CODEX", `peek read error: ${e.message}`);
@@ -323,6 +322,14 @@ export class CodexExecutor extends BaseExecutor {
       try { await reader.cancel(); } catch { /* noop */ }
       try { reader.releaseLock(); } catch { /* noop */ }
       return { matched, message: extractSseErrorMessage(text, matched), accountFallback, replacementBody: null };
+    }
+
+    // Capacity takes precedence over generic overloaded/retry errors; only classify as a same-account
+    // retry if we finished peeking without seeing a capacity signal or normal user output.
+    if (!sawUserOutput) {
+      const lowerText = text.toLowerCase();
+      const retryHit = CODEX_SSE_RETRY_PATTERNS.find(p => lowerText.includes(p));
+      if (retryHit) { matched = retryHit; }
     }
 
     reader.releaseLock();

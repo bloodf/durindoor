@@ -194,6 +194,20 @@ export const TABLES = {
       "CREATE INDEX IF NOT EXISTS idx_rd_conn ON requestDetails(connectionId)",
     ],
   },
+  // Lifetime per-API-key usage rollup used by maxTokens/maxCostUsd policy
+  // enforcement (see src/lib/db/repos/apiKeyUsageTotalsRepo.js). Declared in
+  // TABLES so syncSchemaFromTables creates it on fresh DBs AND re-adds it on
+  // upgrades where the table was never declared previously. The columns here
+  // mirror what the 006-api-key-policy migration backfills from usageHistory.
+  apiKeyUsageTotals: {
+    columns: {
+      apiKeyId: "TEXT PRIMARY KEY",
+      totalTokens: "INTEGER DEFAULT 0",
+      totalCost: "REAL DEFAULT 0",
+      totalRequests: "INTEGER DEFAULT 0",
+      updatedAt: "TEXT",
+    },
+  },
 };
 
 export function buildCreateTableSql(name, def) {

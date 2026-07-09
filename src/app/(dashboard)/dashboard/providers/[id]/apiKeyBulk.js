@@ -1,0 +1,82 @@
+// Pure parser + validator for the "Bulk Add" rows in AddApiKeyModal.
+//
+// One row per line. Three shapes depending on the provider:
+//   - openai/anthropic/etc.:  "name|apiKey"   or   "apiKey"   (auto-named by index)
+//   - cloudflare-ai / snowflake:  "name|apiKey|accountId"
+//     The accountId is REQUIRED — a Cloudflare Workers AI or Snowflake Cortex
+//     connection without an accountId is unusable. Bulk submissions that omit
+//     the accountId are counted as failed and must NOT be POSTed to the
+//     provider API.
+//
+// Exported for ordinary runtime use (called from AddApiKeyModal.handleBulkSubmit)
+// and for unit testing. No DOM/fetch side effects — this is a pure function.
+
+/**
+ * Parse a single bulk-add row into the data needed to POST /api/providers.
+ *
+ * @param {string} line - Raw trimmed line from the textarea.
+ * @param {{ index: number, requiresAccountId?: boolean, defaultName?: string }} opts
+ * @returns {{
+ *   ok: boolean,
+ *   error?: string,
+ *   name?: string,
+ *   apiKey?: string,
+ *   providerSpecificData?: { accountId: string }
+ * }}
+ */
+export function parseBulkKeyRow(line, opts) {
+  const { index, requiresAccountId = false, defaultName = "Key" } = opts || {};
+  if (typeof line !== "string" || line.length === 0) {
+    return { ok: false, error: "empty row" };
+  }
+  const parts = line.split("|");
+
+  if (requiresAccountId) {
+    // Format: name|apiKey|accountId. The final segment is the accountId and
+    // must be non-empty — a missing or whitespace-only accountId produces a
+    // connection that can never be used (Snowflake Cortex and Cloudflare
+    // Workers AI both require it to resolve the upstream).
+    if (parts.length < 3) {
+      return { ok: false, error: "missing accountId (expected name|apiKey|accountId)" };
+    }
+    const accountId = parts[parts.length - 1].trim();
+    if (!accountId) {
+      return { ok: false, error: "accountId is empty" };
+    }
+    const apiKey = parts.slice(1, -1).join("|").trim();
+    if (!apiKey) {
+      return { ok: false, error: "apiKey is empty" };
+    }
+    const baseName = parts[0].trim() || defaultName;
+    return {
+      ok: true,
+      name: `${baseName} ${index + 1}`,
+      apiKey,
+      providerSpecificData: { accountId },
+    };
+  }
+
+  // Standard shape: name|apiKey OR just apiKey (auto-named).
+  if (parts.length >= 2) {
+    const baseName = parts[0].trim() || defaultName;
+    const apiKey = parts.slice(1).join("|").trim();
+    if (!apiKey) {
+      return { ok: false, error: "apiKey is empty" };
+    }
+    return {
+      ok: true,
+      name: `${baseName} ${index + 1}`,
+      apiKey,
+    };
+  }
+
+  const apiKey = parts[0].trim();
+  if (!apiKey) {
+    return { ok: false, error: "apiKey is empty" };
+  }
+  return {
+    ok: true,
+    name: `${defaultName} ${index + 1}`,
+    apiKey,
+  };
+}

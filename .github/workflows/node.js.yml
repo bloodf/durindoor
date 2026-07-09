@@ -1,0 +1,54 @@
+# Port of decolua/9router#2474 ("Add Node.js CI workflow").
+#
+# Fork adaptations from the upstream file (see PR body for rationale):
+#   - triggers retargeted from `master` to the two-branch release model
+#     (`dev` + `main`) used by every other DurinDoor workflow.
+#   - `npm ci` and `cache: npm` are kept because `package-lock.json` is
+#     tracked in this fork (it appears in `git ls-files` and is not
+#     ignored by git, even though `.gitignore` lists the entry; the
+#     tracked file takes precedence).
+#   - `npm run build --if-present` -> unconditional `npm run build`:
+#     this fork always defines a `build` script (Next.js webpack build),
+#     so a silent no-op would hide regressions.
+#   - The upstream `npm test` step is intentionally NOT included here.
+#     DurinDoor already runs the full vitest suite + no-regression gate in
+#     test.yml; adding it here would duplicate that job and also make the
+#     new check fail on the same pre-existing baseline drifts.
+#   - Node matrix narrowed from [18.x, 20.x, 22.x] to single 20 to match
+#     ci.yml / test.yml and bound Actions minutes.
+#   - Added concurrency group + permissions:contents:read to match the
+#     fork's other workflows.
+
+name: "🟢 Node.js CI"
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+
+concurrency:
+  group: node-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: "🟢 Node install & build"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: "📥 Checkout"
+        uses: actions/checkout@v4
+
+      - name: "⚙️ Setup Node.js"
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: "📦 Install dependencies"
+        run: npm ci
+
+      - name: "🏗️ Build"
+        run: npm run build

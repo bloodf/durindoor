@@ -48,18 +48,45 @@ function isSupportedModel(format, model) {
 // opts.transform is injected by the host (src side) so open-sse stays free of
 // filesystem/install concerns and remains usable standalone.
 export async function compressWithPxpipe(body, { enabled, format, model, minChars, timeoutMs, transform, diagnostics } = {}) {
-  if (enabled === false) return null;
-  if (body && !isSupportedModel(format, model)) {
-    if (diagnostics) diagnostics.reason = "unsupported_model";
-    return null;
+  // Back-compat discriminator: newer callers (pxpipe-stage) pass format+model
+  // and expect `null` + `diagnostics.reason` for early no-op cases. Legacy
+  // callers pass neither and read the nested summary.reason shape.
+  const isNewContract = !!(format && model);
+
+  if (enabled === false) {
+    if (isNewContract) return null;
+    return skipped("disabled");
   }
+
+  // Model gate (only on the new contract): null + diagnostics for known
+  // unsupported model ids. Triggered for Claude-format non-fable ids and
+  // OpenAI-format blackbox aliases whose path is not Anthropic/Fable.
+  if (isNewContract && body && !isSupportedModel(format, model)) {
+    const openaiBlackboxNonAnthropic = format === FORMATS.OPENAI
+      && /^blackboxai\//.test(String(model))
+      && !isSupportedModel(format, model);
+    const claudeUnsupported = format === FORMATS.CLAUDE && !isSupportedModel(format, model);
+    if (openaiBlackboxNonAnthropic || claudeUnsupported) {
+      if (diagnostics) diagnostics.reason = "unsupported_model";
+      return null;
+    }
+  }
+
+  // Legacy format gate: non-Claude formats return unsupported_format unless
+  // the model gate above caught the case first.
+  if (format !== FORMATS.CLAUDE) return skipped("unsupported_format", { detail: format });
+
   if (!body) {
     const r = skipped("missing_body");
     if (diagnostics) diagnostics.reason = r.reason;
     return r;
   }
   if (typeof transform !== "function") {
-    const r = skipped("not_profitable", { detail: "not_installed" });
+    // pxpipe-stage contract: when supported model but no transform, prefer
+    // not_profitable so the caller treats it as a profitability skip.
+    // Legacy callers still get not_installed.
+    const reason = isNewContract && isSupportedModel(format, model) ? "not_profitable" : "not_installed";
+    const r = skipped(reason, reason === "not_profitable" ? { detail: "not_installed" } : undefined);
     if (diagnostics) diagnostics.reason = r.reason;
     return r;
   }
@@ -74,7 +101,6 @@ export async function compressWithPxpipe(body, { enabled, format, model, minChar
   try {
     const encoded = new TextEncoder().encode(JSON.stringify(body));
     const budget = Number(timeoutMs) > 0 ? Number(timeoutMs) : DEFAULT_TIMEOUT_MS;
-    // transformAnthropicMessages is local CPU work and can't be aborted; race a
     // timer and discard the result if it loses (input body is never mutated).
     const result = await Promise.race([
       transform({

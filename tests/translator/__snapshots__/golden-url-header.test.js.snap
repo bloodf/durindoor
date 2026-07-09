@@ -4431,8 +4431,8 @@ exports[`GOLDEN buildUrl (default executor providers) > scaleway → url (stream
 
 exports[`GOLDEN buildUrl (default executor providers) > sensenova → url (stream + non-stream) 1`] = `
 {
-  "nonStream": "https://api.sensenova.cn/v1/chat/completions",
-  "stream": "https://api.sensenova.cn/v1/chat/completions",
+  "nonStream": "https://token.sensenova.cn/v1/chat/completions",
+  "stream": "https://token.sensenova.cn/v1/chat/completions",
 }
 `;
 

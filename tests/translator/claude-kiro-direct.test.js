@@ -46,6 +46,18 @@ describe("Claude → Kiro (direct route)", () => {
     expect(second.conversationState.conversationId).toBe("client-session-b");
   });
 
+  it("does not reuse metadata.user_id across separate conversations", () => {
+    const body = {
+      metadata: { user_id: "user-123" },
+      messages: [{ role: "user", content: "hello" }],
+    };
+
+    const first = C2K(body, { connectionId: "conn-a" });
+    const second = C2K(body, { connectionId: "conn-b" });
+
+    expect(first.conversationState.conversationId).not.toBe(second.conversationState.conversationId);
+  });
+
   it("guard 1: with no tools, a dangling tool_result is flattened to text (no structured ref)", () => {
     // Client omitted `tools` but kept a tool_result after compaction.
     const out = C2K({

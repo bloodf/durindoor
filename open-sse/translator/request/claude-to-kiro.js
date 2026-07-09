@@ -456,13 +456,19 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
     userInputMessage.systemInstruction = systemInstruction;
   }
 
+  // Reuse a session-scoped conversation id for the same Claude client turn so each
+  // Kiro request maps to the same upstream conversation. We avoid `metadata.user_id`
+  // because it can be user-scoped across separate Claude conversations.
+  const sessionBody = body?.metadata?.user_id
+    ? { ...body, metadata: { ...body.metadata, user_id: undefined } }
+    : body;
+
   const payload = {
     conversationState: {
       chatTriggerType: "MANUAL",
-      // Reuse the resolved client session id so each Claude turn maps back to the same Kiro conversation.
       conversationId: resolveSessionId({
         headers: credentials?.rawHeaders,
-        body,
+        body: sessionBody,
         connectionId: credentials?.connectionId,
         scope: "kiro",
       }),

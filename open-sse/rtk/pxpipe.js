@@ -1,6 +1,7 @@
 // PXPIPE: render bulky context as dense PNGs via pxpipe-proxy's library API
 // (transformAnthropicMessages). Fail-open like every token saver: any
-// error/timeout returns { body: null, summary } and leaves the request untouched.
+// error/timeout — including prepareTransformBody/translator normalization —
+// returns { body: null, summary } and leaves the request untouched.
 //
 // Null contract (new callers that pass both format+model):
 //   - disabled / unsupported_model → return `null` (optionally set diagnostics.reason)
@@ -152,16 +153,17 @@ export async function compressWithPxpipe(body, { enabled, format, model, minChar
   }
 
   // Transform speaks Anthropic Messages. OpenAI Fable bodies are normalized first
-  // and restored to OpenAI shape after a successful apply.
-  const prepared = prepareTransformBody(body, format, model);
-  if (!prepared) {
-    return skipped("unsupported_format", { detail: format || "unknown" });
-  }
-
+  // and restored to OpenAI shape after a successful apply. Preparation lives inside
+  // the fail-open boundary so translator exceptions become transform_error.
   try {
+    const prepared = prepareTransformBody(body, format, model);
+    if (!prepared) {
+      return skipped("unsupported_format", { detail: format || "unknown" });
+    }
+
     const encoded = new TextEncoder().encode(JSON.stringify(prepared.transformBody));
     const budget = Number(timeoutMs) > 0 ? Number(timeoutMs) : DEFAULT_TIMEOUT_MS;
-    // timer and discard the result if it loses (input body is never mutated).
+    // Race the transform against a timer and discard its result if it loses; input body is never mutated.
     const result = await Promise.race([
       transform({
         body: encoded,

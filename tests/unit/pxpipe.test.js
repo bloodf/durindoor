@@ -90,6 +90,41 @@ describe("compressWithPxpipe gates", () => {
     );
   });
 
+  it("fails open when OpenAI→Claude preparation throws", async () => {
+    // Defensive malformed OpenAI boundary: openaiToClaudeRequest derefs
+    // part.image_url.url without a guard. Preparation must remain inside the fail-open
+    // boundary, returning the escaped TypeError without changing the request.
+    const openaiBody = {
+      model: "blackboxai/anthropic/claude-fable-5",
+      max_tokens: 100,
+      messages: [{
+        role: "user",
+        content: [
+          { type: "text", text: bigText },
+          { type: "image_url", image_url: {} },
+        ],
+      }],
+    };
+    const original = structuredClone(openaiBody);
+    const transform = vi.fn(async () => {
+      throw new Error("transform must not run when preparation fails");
+    });
+
+    const res = await compressWithPxpipe(openaiBody, {
+      enabled: true,
+      format: "openai",
+      model: "blackboxai/anthropic/claude-fable-5",
+      minChars: 1,
+      transform,
+    });
+
+    expect(res.body).toBeNull();
+    expect(res.summary.reason).toBe("transform_error");
+    expect(res.summary.detail).toMatch(/Cannot read properties of undefined.*startsWith/);
+    expect(transform).not.toHaveBeenCalled();
+    expect(openaiBody).toEqual(original);
+  });
+
   it("bypasses small prompts below minChars", async () => {
     const transform = vi.fn();
     const small = { model: "claude-fable-5", messages: [{ role: "user", content: "hi" }] };

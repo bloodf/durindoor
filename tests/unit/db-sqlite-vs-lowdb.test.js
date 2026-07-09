@@ -53,6 +53,7 @@ describe("DB SQLite layer — public API parity", () => {
     expect(k.key).toMatch(/^sk-/);
     expect(k.machineId).toBe("machine-abc");
     expect(k.isActive).toBe(true);
+    expect(k.expiresAt).toBeNull();
 
     const all = await sqliteDb.getApiKeys();
     expect(all.find((x) => x.id === k.id)).toBeDefined();
@@ -63,6 +64,34 @@ describe("DB SQLite layer — public API parity", () => {
     const deleted = await sqliteDb.deleteApiKey(k.id);
     expect(deleted).toBe(true);
     expect(await sqliteDb.getApiKeyById(k.id)).toBeNull();
+  });
+
+  it("apiKeys: expiry is persisted and validated", async () => {
+    const future = new Date(Date.now() + 60_000).toISOString();
+    const k = await sqliteDb.createApiKey("expiring-key", "machine-abc", [], null, future);
+    expect(k.expiresAt).toBe(future);
+
+    expect(await sqliteDb.validateApiKey(k.key)).toBe(true);
+
+    const retrieved = await sqliteDb.getApiKeyById(k.id);
+    expect(retrieved.expiresAt).toBe(future);
+
+    await sqliteDb.updateApiKey(k.id, { expiresAt: null });
+    const updated = await sqliteDb.getApiKeyById(k.id);
+    expect(updated.expiresAt).toBeNull();
+    expect(await sqliteDb.validateApiKey(k.key)).toBe(true);
+
+    await sqliteDb.deleteApiKey(k.id);
+  });
+
+  it("apiKeys: expired keys fail validation", async () => {
+    const k = await sqliteDb.createApiKey("expired-key", "machine-abc", [], null);
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const db = await getAdapter();
+    const past = new Date(Date.now() - 60_000).toISOString();
+    db.run(`UPDATE apiKeys SET expiresAt = ? WHERE id = ?`, [past, k.id]);
+    expect(await sqliteDb.validateApiKey(k.key)).toBe(false);
+    await sqliteDb.deleteApiKey(k.id);
   });
 
   it("apiKeys: daily usage limit status uses today's API-key tokens", async () => {
@@ -388,9 +417,12 @@ describe("DB SQLite layer — public API parity", () => {
     expect(exported.settings).toBeDefined();
     expect(Array.isArray(exported.providerConnections)).toBe(true);
     expect(typeof exported.modelAliases).toBe("object");
+    expect(exported.apiKeys.every((k) => k.expiresAt !== undefined)).toBe(true);
 
-    // Add marker, export, import a different payload, verify reset
+    // Add marker, export a key with an expiry, import a different payload, verify reset
     await sqliteDb.setModelAlias("marker", "before");
+    const future = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    await sqliteDb.createApiKey("roundtrip-key", "machine-abc", [], null, future);
     const snap = await sqliteDb.exportDb();
 
     await sqliteDb.setModelAlias("marker", "after");
@@ -398,6 +430,10 @@ describe("DB SQLite layer — public API parity", () => {
 
     await sqliteDb.importDb(snap);
     expect((await sqliteDb.getModelAliases()).marker).toBe("before");
+    const roundtripKey = (await sqliteDb.getApiKeys()).find((k) => k.name === "roundtrip-key");
+    expect(roundtripKey).toBeDefined();
+    expect(roundtripKey.expiresAt).toBe(future);
+    if (roundtripKey) await sqliteDb.deleteApiKey(roundtripKey.id);
   });
 
   it("pricing: user pricing merged with constants", async () => {

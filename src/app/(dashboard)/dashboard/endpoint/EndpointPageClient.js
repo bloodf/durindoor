@@ -17,13 +17,25 @@ import EndpointRow from "./components/EndpointRow";
 import StatusAlert from "./components/StatusAlert";
 import Tooltip from "./components/Tooltip";
 import SecurityWarning from "./components/SecurityWarning";
+
+function formatKeyExpiry(expiresAt) {
+  if (!expiresAt) return { text: "Never expires", danger: false };
+  const time = new Date(expiresAt).getTime();
+  if (!Number.isFinite(time)) return { text: "Invalid expiry", danger: true };
+  if (time <= Date.now()) return { text: "Expired", danger: true };
+  return { text: `Expires ${new Date(expiresAt).toLocaleString()}`, danger: false };
+}
+
 export default function APIPageClient({ machineId }) {
   const [keys, setKeys] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newKeyName, setNewKeyName] = useState("");
   const [newKeyDailyLimitTokens, setNewKeyDailyLimitTokens] = useState("");
+  const [newKeyExpiresAt, setNewKeyExpiresAt] = useState("");
+  const [keyStatus, setKeyStatus] = useState(null);
   const [createdKey, setCreatedKey] = useState(null);
+  const [createdKeyExpiresAt, setCreatedKeyExpiresAt] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
   const [combos, setCombos] = useState([]);
   const [newKeyAllowedCombos, setNewKeyAllowedCombos] = useState([]);
@@ -625,23 +637,41 @@ export default function APIPageClient({ machineId }) {
     try {
       const dailyLimitTokens = newKeyDailyLimitTokens.trim() === "" ? null : Number(newKeyDailyLimitTokens);
       if (dailyLimitTokens !== null && (!Number.isSafeInteger(dailyLimitTokens) || dailyLimitTokens < 0)) return;
+
+      let expiresAt = null;
+      if (newKeyExpiresAt) {
+        const date = new Date(newKeyExpiresAt);
+        const time = date.getTime();
+        if (!Number.isFinite(time) || time <= Date.now()) {
+          setKeyStatus({ type: "error", message: "Expiry must be a future date and time" });
+          return;
+        }
+        expiresAt = date.toISOString();
+      }
+
       const res = await fetch("/api/keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newKeyName, allowedCombos: newKeyAllowedCombos, dailyLimitTokens }),
+        body: JSON.stringify({ name: newKeyName, allowedCombos: newKeyAllowedCombos, dailyLimitTokens, expiresAt }),
       });
       const data = await res.json();
 
       if (res.ok) {
         setCreatedKey(data.key);
+        setCreatedKeyExpiresAt(data.expiresAt || null);
         await fetchData();
         setNewKeyName("");
         setNewKeyDailyLimitTokens("");
+        setNewKeyExpiresAt("");
         setNewKeyAllowedCombos([]);
+        setKeyStatus(null);
         setShowAddModal(false);
+      } else {
+        setKeyStatus({ type: "error", message: data.error || "Failed to create key" });
       }
     } catch (error) {
       console.log("Error creating key:", error);
+      setKeyStatus({ type: "error", message: "Failed to create key" });
     }
   };
 
@@ -1076,6 +1106,9 @@ export default function APIPageClient({ machineId }) {
                   {key.isActive === false && (
                     <p className="text-xs text-orange-500 mt-1">Paused</p>
                   )}
+                  <p className={`text-xs mt-1 ${formatKeyExpiry(key.expiresAt).danger ? "text-red-500" : "text-text-muted"}`}>
+                    {formatKeyExpiry(key.expiresAt).text}
+                  </p>
                   <div className="flex flex-wrap items-center gap-1 mt-1">
                     <span className="text-xs text-text-muted">Daily limit:</span>
                     <Input
@@ -1148,6 +1181,8 @@ export default function APIPageClient({ machineId }) {
           setShowAddModal(false);
           setNewKeyName("");
           setNewKeyDailyLimitTokens("");
+          setNewKeyExpiresAt("");
+          setKeyStatus(null);
         }}
       >
         <div className="flex flex-col gap-4">
@@ -1165,6 +1200,13 @@ export default function APIPageClient({ machineId }) {
             value={newKeyDailyLimitTokens}
             onChange={(e) => setNewKeyDailyLimitTokens(e.target.value)}
             placeholder="Unlimited"
+          />
+          <Input
+            label="Expiry"
+            type="datetime-local"
+            value={newKeyExpiresAt}
+            onChange={(e) => { setNewKeyExpiresAt(e.target.value); setKeyStatus(null); }}
+            placeholder="Never expires"
           />
           {combos.length > 0 && (
             <div>
@@ -1192,6 +1234,7 @@ export default function APIPageClient({ machineId }) {
               </div>
             </div>
           )}
+          {keyStatus && <StatusAlert status={keyStatus} />}
           <div className="flex gap-2">
             <Button onClick={handleCreateKey} fullWidth disabled={!newKeyName.trim()}>
               Create
@@ -1201,6 +1244,9 @@ export default function APIPageClient({ machineId }) {
                 setShowAddModal(false);
                 setNewKeyName("");
                 setNewKeyDailyLimitTokens("");
+                setNewKeyExpiresAt("");
+                setNewKeyAllowedCombos([]);
+                setKeyStatus(null);
               }}
               variant="ghost"
               fullWidth
@@ -1215,7 +1261,7 @@ export default function APIPageClient({ machineId }) {
       <Modal
         isOpen={!!createdKey}
         title="API Key Created"
-        onClose={() => setCreatedKey(null)}
+        onClose={() => { setCreatedKey(null); setCreatedKeyExpiresAt(null); }}
       >
         <div className="flex flex-col gap-4">
           <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
@@ -1240,7 +1286,10 @@ export default function APIPageClient({ machineId }) {
               {copied === "created_key" ? "Copied!" : "Copy"}
             </Button>
           </div>
-          <Button onClick={() => setCreatedKey(null)} fullWidth>
+          <p className="text-sm text-text-muted">
+            Expiry: {createdKeyExpiresAt ? new Date(createdKeyExpiresAt).toLocaleString() : "Never expires"}
+          </p>
+          <Button onClick={() => { setCreatedKey(null); setCreatedKeyExpiresAt(null); }} fullWidth>
             Done
           </Button>
         </div>

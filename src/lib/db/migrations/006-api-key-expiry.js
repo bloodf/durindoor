@@ -1,7 +1,7 @@
 // Adds an optional expiry timestamp to API keys so expired keys can be
 // identified without deleting them. The column is additive and idempotent.
 export default {
-  version: 4,
+  version: 6,
   name: "api-key-expiry",
   up(db) {
     // better-sqlite3 uses db.prepare(sql).all(); some adapters expose a db.all() wrapper.

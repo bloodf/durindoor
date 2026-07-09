@@ -96,12 +96,18 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   // Stream-only providers (forceStream) must keep streaming even when the client
   // asked for JSON; the accumulated stream is converted to JSON downstream. (#2031)
+  // Provider-declared forceNonStreaming (e.g. Galadriel's verified API
+  // rejects streaming chat requests; synthesize SSE downstream).
+  const providerForcesNonStreaming = PROVIDERS[provider]?.forceNonStreaming === true;
+  // Stream-only providers (forceStream) must keep streaming even when the client
+  // asked for JSON; the accumulated stream is converted to JSON downstream. (#2031)
   let stream = resolveStreamFlag({
     providerRequiresStreaming,
     bodyStream: body.stream,
     forceNonStreaming:
-      (isImageGenModel && (provider === "antigravity" || provider === "gemini-cli")) ||
-      (detectedTool === "deepseek-tui" && body.stream !== true),
+      (isImageGenModel && (provider === "antigravity" || provider === "gemini-cli" || provider === "agy"))
+      || providerForcesNonStreaming
+      || (detectedTool === "deepseek-tui" && body.stream !== true),
     clientPrefersJson,
     clientPrefersSSE,
   });
@@ -437,9 +443,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     if (result) { streamController.handleComplete(); return result; }
   }
 
-  // True non-streaming response
+  // True non-streaming response. When the client asked for streaming but the
+  // provider forced non-streaming upstream, synthesize SSE bytes from the JSON
+  // body inside handleNonStreamingResponse so the SSE client contract holds.
   if (!stream) {
-    const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, reqLogger, toolNameMap, trackDone, appendLog });
+    const streamToClient = clientRequestedStreaming === true;
+    const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, reqLogger, toolNameMap, trackDone, appendLog, streamToClient });
     streamController.handleComplete();
     return result;
   }

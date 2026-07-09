@@ -112,3 +112,34 @@ tests/unit/xai-tokenRefresh.test.js :: xai/token-refresh wrapper formatProviderC
 tests/unit/xai-tokenRefresh.test.js :: xai/token-refresh wrapper refreshTokenByProvider returns null when refreshToken missing
 tests/unit/xai-tokenRefresh.test.js :: xai/token-refresh wrapper refreshTokenByProvider returns expiresIn for refreshed xai tokens
 tests/unit/zenmux-connection-test.test.js :: zenmux-free saved connection test probes ZenMux cookies through the configured connection proxy
+tests/translator/golden-request.test.js :: GOLDEN request: OpenAI → Kiro full body (image base64 + tool_result)
+tests/unit/agentrouter-provider.test.js :: AgentRouter provider exposes a multi-transport mapping for mixed OpenAI/Claude models
+tests/unit/agentrouter-provider.test.js :: AgentRouter provider keeps Claude passthrough and context settings stable
+tests/unit/antigravity-recent-requests.test.js :: Antigravity Recent Requests usage does not append OpenAI DONE sentinels for agy native passthrough streams
+tests/unit/antigravity-recent-requests.test.js :: Antigravity Recent Requests usage estimates usage for Antigravity passthrough content when upstream omits usageMetadata
+tests/unit/antigravity-recent-requests.test.js :: Antigravity Recent Requests usage estimates usage for translated Antigravity wrapped content when upstream omits usageMetadata
+tests/unit/antigravity-recent-requests.test.js :: Antigravity Recent Requests usage finalizes native Antigravity usage when the final chunk arrives before stream close
+tests/unit/antigravity-recent-requests.test.js :: Antigravity Recent Requests usage finalizes translated Responses API Antigravity usage when the final chunk arrives before stream close
+tests/unit/buildModelsList-modelsFetcher.test.js :: buildModelsList — registry modelsFetcher fetches dynamic model IDs for providers with modelsFetcher and empty static models
+tests/unit/codex-sse-capacity.test.js :: Codex SSE transient error peek does not classify split capacity events as same-account retries
+tests/unit/command-code-validation.test.js :: POST /api/providers/validate - CommandCode dispatch validates 'command-code' via the CommandCode probe, not the generic fallback
+tests/unit/gemini-to-openai-function-response.test.js :: gemini -> openai request translation — functionResponse co-located with other parts preserves a functionCall co-located with a functionResponse in the same content
+tests/unit/gemini-to-openai-function-response.test.js :: gemini -> openai request translation — functionResponse co-located with other parts preserves multiple functionResponses in the same content
+tests/unit/gemini-to-openai-function-response.test.js :: gemini -> openai request translation — functionResponse co-located with other parts preserves text co-located with a functionResponse, keeping the original turn role
+tests/unit/gemini-to-openai-function-response.test.js :: gemini -> openai request translation — functionResponse co-located with other parts still works for a functionResponse alone (no regression)
+tests/unit/local-passthrough-models.test.js :: local passthrough live model discovery fetches /models for passthrough local providers with empty static models
+tests/unit/local-passthrough-models.test.js :: local passthrough live model discovery includes Authorization header when local connection has an API key
+tests/unit/migrations/api-key-expiry.test.js :: api-key-expiry migration is registered in the migration registry
+tests/unit/non-streaming-forced-client-sse.test.js :: handleNonStreamingResponse: synthetic SSE respects client format emits Claude-format SSE events (not raw OpenAI chunks) for a Claude client
+tests/unit/non-streaming-forced-client-sse.test.js :: handleNonStreamingResponse: synthetic SSE respects client format emits OpenAI chat.completion.chunk SSE frames for an OpenAI client
+tests/unit/non-streaming-forced-client-sse.test.js :: handleNonStreamingResponse: synthetic SSE respects client format omits OpenAI-style [DONE] sentinel for Claude clients
+tests/unit/non-streaming-forced-client-sse.test.js :: handleNonStreamingResponse: synthetic SSE respects client format preserves OpenAI usage in synthesized Claude message_delta
+tests/unit/non-streaming-forced-client-sse.test.js :: handleNonStreamingResponse: synthetic SSE respects client format preserves reasoning content when synthesizing Claude SSE
+tests/unit/omniroute-simple-e-providers.test.js :: OmniRoute simple/default providers batch E keeps Snowflake wired into Account ID connection forms
+tests/unit/omniroute-websession-blocked.test.js :: OmniRoute PR #51 web-session provider port artifacts ports Copilot web-session providers to real executors
+tests/unit/omniroute-websession-runtime.test.js :: ported media route cores routes VeoAIFree video generation through the concrete executor
+tests/unit/pollinations-validate-premium-key.test.js :: POST /api/providers/validate - Pollinations no-auth + premium key returns valid:true without probing when no API key is supplied (keyless catalog)
+tests/unit/xai-usage.test.js :: xAI (Grok) usage aggregates tokens and cost per model from usageHistory
+tests/unit/xai-usage.test.js :: xAI (Grok) usage returns graceful message when no xai history exists
+tests/unit/xai-usage.test.js :: xAI (Grok) usage scopes aggregation to the requested connectionId
+tests/unit/zenmux-free.test.js :: zenmux-free registry uses the specialized executor

@@ -210,6 +210,10 @@ describe("stripThinkingSuffix", () => {
     expect(stripThinkingSuffix("gpt-4o")).toBe("gpt-4o");
     expect(stripThinkingSuffix("provider:model")).toBe("provider:model");
   });
+  it("preserves unknown parenthesized suffixes", () => {
+    expect(stripThinkingSuffix("foo(bar)")).toBe("foo(bar)");
+    expect(stripThinkingSuffix("custom(id-1)")).toBe("custom(id-1)");
+  });
 });
 
 describe("extractReasoningText (response shapes)", () => {

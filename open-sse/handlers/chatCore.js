@@ -1,6 +1,6 @@
 import { detectFormat, getTargetFormat, resolveTransport } from "../services/provider.js";
 import { translateRequest } from "../translator/index.js";
-import { stripThinkingSuffix } from "../translator/concerns/thinkingUnified.js";
+import { applyThinking, stripThinkingSuffix } from "../translator/concerns/thinkingUnified.js";
 import { FORMATS } from "../translator/formats.js";
 import { normalizeClaudePassthrough } from "../translator/formats/claude.js";
 import { validateOutboundPayload, stripInternalKeys } from "../translator/validate.js";
@@ -51,7 +51,8 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   if (bypassResponse) return bypassResponse;
 
   const alias = PROVIDER_ID_TO_ALIAS[provider] || provider;
-  const modelTargetFormat = getModelTargetFormat(alias, model);
+  const cleanModel = stripThinkingSuffix(model);
+  const modelTargetFormat = getModelTargetFormat(alias, cleanModel);
   // Multi-endpoint providers: pick transport matching sourceFormat → zero translation.
   // If found, force targetFormat=sourceFormat so we skip translation entirely —
   // otherwise the body could be translated to modelTargetFormat and sent to a
@@ -62,8 +63,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const targetFormat = skipTranslation
     ? sourceFormat
     : (modelTargetFormat || runtimeTransport?.format || getTargetFormat(provider, credentials));
-  const stripList = getModelStrip(alias, model);
-  const upstreamModel = getModelUpstreamId(alias, model);
+  const stripList = getModelStrip(alias, cleanModel);
+  const upstreamModel = getModelUpstreamId(alias, model); // keep suffix for translateRequest/applyThinking
+  const cleanUpstreamModel = getModelUpstreamId(alias, cleanModel); // provider-facing model id
 
   // Inject provider-level thinking config override (only if client hasn't set)
   // on/off → extended type (body.thinking), none/low/medium/high → effort type (body.reasoning_effort)
@@ -82,8 +84,8 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const clientRequestedStreaming = body.stream === true || sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI;
   const providerRequiresStreaming = PROVIDERS[provider]?.forceStream === true;
   // Image generation models require non-streaming (Google v1internal:generateContent)
-  const modelType = getModelType(alias, model);
-  const isImageGenModel = modelType === "imageGen" || /image|imagen|image-generation/i.test(model);
+  const modelType = getModelType(alias, cleanModel);
+  const isImageGenModel = modelType === "imageGen" || /image|imagen|image-generation/i.test(cleanModel);
 
   // DeepSeek-TUI: interactive TUI panel sends stream:true and needs SSE.
   // Non-interactive mode (-p flag) sends without stream and can't parse SSE.
@@ -107,7 +109,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     clientPrefersSSE,
   });
 
-  const reqLogger = await createRequestLogger(sourceFormat, targetFormat, model);
+  const reqLogger = await createRequestLogger(sourceFormat, targetFormat, cleanModel);
   if (clientRawRequest) reqLogger.logClientRawRequest(clientRawRequest.endpoint, clientRawRequest.body, clientRawRequest.headers);
   reqLogger.logRawRequest(body);
   log?.debug?.("FORMAT", `${sourceFormat} → ${targetFormat} | stream=${stream}`);
@@ -122,9 +124,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   // Auto-strip media blocks the model can't read (vision/audio/pdf) before translation.
   if (!passthrough) {
-    const caps = getCapabilitiesForModel(provider, model);
+    const caps = getCapabilitiesForModel(provider, cleanModel);
     if (stripUnsupportedModalities(body, sourceFormat, caps)) {
-      log?.debug?.("MODALITY", `stripped unsupported media for ${provider}/${model}`);
+      log?.debug?.("MODALITY", `stripped unsupported media for ${provider}/${cleanModel}`);
     }
     // Convert remote image URLs to base64 for targets that can't fetch URLs.
     try {
@@ -144,7 +146,8 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   let toolNameMap;
   if (passthrough) {
     log?.debug?.("PASSTHROUGH", `${clientTool} → ${provider} | native lossless`);
-    translatedBody = { ...body, model: stripThinkingSuffix(upstreamModel) };
+    translatedBody = { ...body, model: cleanUpstreamModel };
+    applyThinking(targetFormat, upstreamModel, translatedBody, provider);
     // Normalize newer Cowork/CC beta shapes (adaptive thinking, mid-conversation system) the API rejects
     if (clientTool === "claude") normalizeClaudePassthrough(translatedBody, translatedBody.model);
   } else {
@@ -155,7 +158,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     }
     toolNameMap = translatedBody._toolNameMap;
     delete translatedBody._toolNameMap;
-    translatedBody.model = stripThinkingSuffix(upstreamModel);
+    translatedBody.model = cleanUpstreamModel;
   }
 
   // Dedupe duplicate built-in tools when equivalent MCP tools are present (Claude clients only).
@@ -172,7 +175,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const finalFormat = passthrough ? sourceFormat : targetFormat;
 
   // TTS models don't support tool messages/function calling
-  if (getModelType(alias, model) === "tts" && translatedBody.messages) {
+  if (getModelType(alias, cleanModel) === "tts" && translatedBody.messages) {
     translatedBody.messages = translatedBody.messages.filter(msg => msg.role !== "tool");
     delete translatedBody.tools;
   }
@@ -190,7 +193,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   // Headroom: optional external proxy compression; fail open if proxy is absent.
   const headroomDiagnostics = {};
-  const headroomStats = await compressWithHeadroom(translatedBody, { enabled: headroomEnabled, url: headroomUrl, model: upstreamModel, format: finalFormat, compressUserMessages: headroomCompressUserMessages, diagnostics: headroomDiagnostics });
+  const headroomStats = await compressWithHeadroom(translatedBody, { enabled: headroomEnabled, url: headroomUrl, model: cleanUpstreamModel, format: finalFormat, compressUserMessages: headroomCompressUserMessages, diagnostics: headroomDiagnostics });
   const headroomLine = formatHeadroomLog(headroomStats);
   const headroomSizeLine = formatHeadroomSizeLog(headroomDiagnostics);
   if (headroomLine) {
@@ -224,7 +227,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   let pxpipeSummary = null;
   if (pxpipeEnabled) {
     const pxpipeResult = await compressWithPxpipe(translatedBody, {
-      enabled: true, format: finalFormat, model: upstreamModel,
+      enabled: true, format: finalFormat, model: cleanUpstreamModel,
       minChars: pxpipeMinChars, timeoutMs: pxpipeTimeoutMs, transform: pxpipeTransform,
     });
     pxpipeSummary = pxpipeResult.summary;
@@ -349,7 +352,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   }
 
   try {
-    const result = await executor.execute({ model, body: translatedBody, stream, credentials, signal: streamController.signal, log, proxyOptions });
+    const result = await executor.execute({ model: cleanUpstreamModel, body: translatedBody, stream, credentials, signal: streamController.signal, log, proxyOptions });
     providerResponse = result.response;
     providerUrl = result.url;
     providerHeaders = result.headers;
@@ -390,7 +393,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
           try { await onCredentialsRefreshed(newCredentials); } catch (e) { log?.warn?.("TOKEN", `onCredentialsRefreshed failed: ${e.message}`); }
         }
         try {
-          const retryResult = await executor.execute({ model, body: translatedBody, stream, credentials, signal: streamController.signal, log, proxyOptions });
+          const retryResult = await executor.execute({ model: cleanUpstreamModel, body: translatedBody, stream, credentials, signal: streamController.signal, log, proxyOptions });
           if (retryResult.response.ok) { providerResponse = retryResult.response; providerUrl = retryResult.url; }
         } catch { log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`); }
       } else {

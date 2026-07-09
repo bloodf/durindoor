@@ -101,3 +101,7 @@ cd tests && npx vitest run --config vitest.config.js unit/db-migrations-registry
 ```
 
 All three assertions pass. No lint or format was run.
+
+## API-key policy review follow-up
+
+Versioned migrations run before additive schema sync. Migration 006 now creates and reconciles `apiKeyUsageTotals` itself, so schema-v5 upgrades retain historical totals before the migration is stamped. Legacy JSON import reconciles again after inserting API keys and usage history, before its transaction commits.

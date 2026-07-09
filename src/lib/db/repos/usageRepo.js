@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { getMeta, setMeta } from "../helpers/metaStore.js";
-import { getUsagePeriodDays, getChartDayBucketCount } from "../../usagePeriods.js";
+import { incrementApiKeyUsageSync } from "./apiKeyUsageTotalsRepo.js";
 
 function maskApiKey(key) {
   if (!key || typeof key !== "string") return null;
@@ -24,16 +24,7 @@ function getApiKeyStatsKey(apiKey, model, provider) {
 const PENDING_TIMEOUT_MS = 60 * 1000;
 const RING_CAP = 50;
 const CONN_CACHE_TTL_MS = 30 * 1000;
-// Window durations in ms for history/reset queries. Calendar-day stats/charts use getUsagePeriodDays/getChartDayBucketCount from usagePeriods.js.
-const PERIOD_MS = {
-  "24h": 86400000,
-  "7d": 604800000,
-  "30d": 2592000000,
-  "60d": 5184000000,
-  "90d": 7776000000,
-  "180d": 15552000000,
-  "365d": 31536000000,
-};
+const PERIOD_MS = { "24h": 86400000, "7d": 604800000, "30d": 2592000000, "60d": 5184000000 };
 
 // In-memory state shared across Next.js modules
 if (!global._pendingRequests) global._pendingRequests = { byModel: {}, byAccount: {} };
@@ -318,10 +309,25 @@ export async function saveRequestUsage(entry) {
       aggregateEntryToDay(day, entry);
       db.run(`INSERT INTO usageDaily(dateKey, data) VALUES(?, ?) ON CONFLICT(dateKey) DO UPDATE SET data = excluded.data`, [dateKey, stringifyJson(day)]);
 
+      // Resolve apiKey string → apiKeyId for usage totals counter
+      let apiKeyId = null;
+      if (entry.apiKey) {
+        const keyRow = db.get(`SELECT id FROM apiKeys WHERE key = ?`, [entry.apiKey]);
+        if (keyRow) apiKeyId = keyRow.id;
+      }
+
       // Atomic counter increment in same transaction
       const cur = db.get(`SELECT value FROM _meta WHERE key = 'totalRequestsLifetime'`);
       const next = (cur ? parseInt(cur.value, 10) : 0) + 1;
       db.run(`INSERT INTO _meta(key, value) VALUES('totalRequestsLifetime', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [String(next)]);
+      // Increment per-API-key lifetime usage totals
+      if (apiKeyId) {
+        incrementApiKeyUsageSync(db, apiKeyId, {
+          tokens: promptTokens + completionTokens,
+          cost: entry.cost || 0,
+        });
+      }
+
       inserted = true;
     });
 
@@ -467,7 +473,8 @@ export async function getUsageStats(period = "all") {
   const useDailySummary = period !== "24h" && period !== "today";
 
   if (useDailySummary) {
-    const maxDays = getUsagePeriodDays(period);
+    const periodDays = { "7d": 7, "30d": 30, "60d": 60 };
+    const maxDays = periodDays[period] || null;
     const dayRows = loadDaysInRange(db, maxDays);
 
     for (const dr of dayRows) {
@@ -746,7 +753,7 @@ export async function getChartData(period = "7d") {
     });
   }
 
-  const bucketCount = getChartDayBucketCount(period) ?? 60;
+  const bucketCount = period === "7d" ? 7 : period === "30d" ? 30 : 60;
   const today = new Date();
 
   // Build map of dateKey → day data

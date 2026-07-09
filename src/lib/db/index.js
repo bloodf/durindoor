@@ -32,7 +32,7 @@ export {
   getApiKeys, getApiKeyById, getApiKeyByKey, createApiKey, updateApiKey, deleteApiKey, validateApiKey, getApiKeyUsageLimitStatus,
 } from "./repos/apiKeysRepo.js";
 export {
-  getApiKeyUsageTotals, incrementApiKeyUsageSync,
+  getApiKeyUsageTotals, getAllApiKeyUsageTotals, incrementApiKeyUsageSync,
 } from "./repos/apiKeyUsageTotalsRepo.js";
 
 // Combos
@@ -91,7 +91,7 @@ export async function exportDb() {
     providerConnections: db.all(`SELECT * FROM providerConnections`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, provider: r.provider, authType: r.authType, name: r.name, email: r.email, priority: r.priority, isActive: r.isActive === 1, createdAt: r.createdAt, updatedAt: r.updatedAt })),
     providerNodes: db.all(`SELECT * FROM providerNodes`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, type: r.type, name: r.name, createdAt: r.createdAt, updatedAt: r.updatedAt })),
     proxyPools: db.all(`SELECT * FROM proxyPools`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, isActive: r.isActive === 1, testStatus: r.testStatus, createdAt: r.createdAt, updatedAt: r.updatedAt })),
-    apiKeys: db.all(`SELECT * FROM apiKeys`).map((r) => { let ac = []; try { ac = JSON.parse(r.allowedCombos); if (!Array.isArray(ac)) ac = []; } catch {} return { id: r.id, key: r.key, name: r.name, machineId: r.machineId, isActive: r.isActive === 1, allowedCombos: ac, dailyLimitTokens: r.dailyLimitTokens ?? null, expiresAt: r.expiresAt || null, createdAt: r.createdAt }; }),
+    apiKeys: db.all(`SELECT * FROM apiKeys`).map((r) => { let ac = []; try { ac = JSON.parse(r.allowedCombos); if (!Array.isArray(ac)) ac = []; } catch {} return { id: r.id, key: r.key, name: r.name, machineId: r.machineId, isActive: r.isActive === 1, allowedCombos: ac, dailyLimitTokens: r.dailyLimitTokens ?? null, policy: parseJson(r.policy, { allowedModels: [] }), createdAt: r.createdAt }; }),
     combos: db.all(`SELECT * FROM combos`).map((r) => ({ id: r.id, name: r.name, kind: r.kind, models: parseJson(r.models, []), createdAt: r.createdAt, updatedAt: r.updatedAt })),
     modelAliases: {},
     customModels: [],
@@ -151,8 +151,8 @@ export async function importDb(payload) {
     }
     for (const k of payload.apiKeys || []) {
       db.run(
-        `INSERT OR REPLACE INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, dailyLimitTokens, expiresAt, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [k.id, k.key, k.name || null, k.machineId || null, k.isActive === false ? 0 : 1, JSON.stringify(k.allowedCombos || []), k.dailyLimitTokens ?? null, k.expiresAt || null, k.createdAt || new Date().toISOString()]
+        `INSERT OR REPLACE INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, dailyLimitTokens, policy, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [k.id, k.key, k.name || null, k.machineId || null, k.isActive === false ? 0 : 1, JSON.stringify(k.allowedCombos || []), k.dailyLimitTokens ?? null, stringifyJson(k.policy || { allowedModels: [] }), k.createdAt || new Date().toISOString()]
       );
     }
     for (const c of payload.combos || []) {

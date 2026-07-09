@@ -19,17 +19,46 @@ describe("compressWithPxpipe", () => {
     expect(JSON.stringify(body)).toBe(original);
   });
 
-  it("applies or reports a skip reason for a large blackbox OpenAI-format Fable body", async () => {
+  it("reaches transform for OpenAI-format Blackbox Anthropic Fable aliases", async () => {
     const body = JSON.parse(JSON.stringify(LARGE_BODY));
     const originalModel = "blackboxai/anthropic/claude-fable-5";
     body.model = originalModel;
-    const res = await compressWithPxpipe(body, { enabled: true, model: originalModel, format: FORMATS.OPENAI, diagnostics: {} });
-    if (res?.applied) {
-      expect(JSON.stringify(body)).toContain('"type":"image"');
-      expect(body.model).toBe(originalModel);
-    } else {
-      expect(["not_profitable", "below_min_chars", "below_min_tokens", "parse_error", "image_limit"]).toContain(res?.reason || "not_profitable");
-    }
+    const transform = async ({ body: encoded }) => {
+      const parsed = JSON.parse(new TextDecoder().decode(encoded));
+      // Must receive Claude-shaped content blocks, not OpenAI string content.
+      if (!Array.isArray(parsed.messages?.[0]?.content)) {
+        return { applied: false, reason: "parse_error", body: encoded, info: {} };
+      }
+      // Echo back a Claude image block so the OpenAI round-trip is exercised.
+      const out = {
+        ...parsed,
+        model: originalModel,
+        messages: [{
+          role: "user",
+          content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: "abc" } }],
+        }],
+      };
+      return {
+        applied: true,
+        reason: "applied",
+        body: new TextEncoder().encode(JSON.stringify(out)),
+        info: { compressedChars: 1000, imageCount: 1, imageBytes: 10, imagePixels: 750 },
+        cache: { ownsCacheControl: false, markerCount: 0 },
+      };
+    };
+    const res = await compressWithPxpipe(body, {
+      enabled: true,
+      model: originalModel,
+      format: FORMATS.OPENAI,
+      minChars: 1000,
+      transform,
+      diagnostics: {},
+    });
+    expect(res).not.toBeNull();
+    expect(res.applied).toBe(true);
+    expect(res.body.model).toBe(originalModel);
+    // Host keeps OpenAI transport shape after transform.
+    expect(JSON.stringify(res.body)).toMatch(/image_url|image/);
   });
 
   it("returns unsupported_model for blackbox non-anthropic OpenAI aliases", async () => {

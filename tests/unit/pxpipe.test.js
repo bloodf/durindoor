@@ -30,12 +30,64 @@ describe("compressWithPxpipe gates", () => {
     expect(summary.reason).toBe("not_installed");
   });
 
-  it("skips non-Claude formats", async () => {
+  it("skips unsupported OpenAI formats that are not Blackbox Fable aliases", async () => {
     const transform = vi.fn();
-    const { body, summary } = await compressWithPxpipe(claudeBody(), { enabled: true, format: "openai", transform });
+    const { body, summary } = await compressWithPxpipe(claudeBody(), {
+      enabled: true, format: "openai", model: "gpt-4o", transform,
+    });
     expect(body).toBeNull();
     expect(summary.reason).toBe("unsupported_format");
     expect(transform).not.toHaveBeenCalled();
+  });
+
+  it("reaches transform for OpenAI-format Blackbox Anthropic Fable aliases", async () => {
+    // Blackbox ships Fable as an OpenAI-format upstream id. The transform still
+    // speaks Anthropic Messages, so compressWithPxpipe must normalize before call.
+    const openaiBody = {
+      model: "blackboxai/anthropic/claude-fable-5",
+      max_tokens: 100,
+      messages: [{ role: "user", content: bigText }],
+    };
+    const compressed = {
+      model: "blackboxai/anthropic/claude-fable-5",
+      max_tokens: 100,
+      messages: [{
+        role: "user",
+        content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: "abc" } }],
+      }],
+    };
+    const transform = vi.fn(async ({ body }) => {
+      const parsed = JSON.parse(new TextDecoder().decode(body));
+      // Transform contract is Anthropic Messages (content blocks, not OpenAI strings).
+      expect(Array.isArray(parsed.messages?.[0]?.content)).toBe(true);
+      expect(parsed.messages[0].content[0]).toMatchObject({ type: "text" });
+      expect(parsed.model).toBe("blackboxai/anthropic/claude-fable-5");
+      return {
+        applied: true,
+        reason: "applied",
+        body: new TextEncoder().encode(JSON.stringify(compressed)),
+        info: { compressedChars: 25000, imageCount: 1, imageBytes: 100, imagePixels: 75000 },
+        cache: { ownsCacheControl: false, markerCount: 0 },
+      };
+    });
+
+    const { body, summary } = await compressWithPxpipe(openaiBody, {
+      enabled: true,
+      format: "openai",
+      model: "blackboxai/anthropic/claude-fable-5",
+      minChars: 1000,
+      transform,
+    });
+
+    expect(transform).toHaveBeenCalledTimes(1);
+    expect(summary.applied).toBe(true);
+    // Round-trip back to OpenAI shape for the Blackbox OpenAI transport.
+    expect(body.model).toBe("blackboxai/anthropic/claude-fable-5");
+    expect(body.messages[0].content).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "image_url" }),
+      ])
+    );
   });
 
   it("bypasses small prompts below minChars", async () => {

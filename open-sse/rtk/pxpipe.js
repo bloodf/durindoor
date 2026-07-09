@@ -1,7 +1,18 @@
-// PXPIPE: render bulky Claude-format context as dense PNGs via pxpipe-proxy's
-// library API (transformAnthropicMessages). Fail-open like every token saver:
-// any error/timeout returns { body: null, summary } and leaves the request untouched.
+// PXPIPE: render bulky context as dense PNGs via pxpipe-proxy's library API
+// (transformAnthropicMessages). Fail-open like every token saver: any
+// error/timeout returns { body: null, summary } and leaves the request untouched.
+//
+// Null contract (new callers that pass both format+model):
+//   - disabled / unsupported_model → return `null` (optionally set diagnostics.reason)
+//   - all other skips/applies → return the object shape below
+// Legacy callers (no format+model pair) always get the object shape.
+//
+// OpenAI Blackbox Fable aliases are supported: the transform still speaks
+// Anthropic Messages, so we openai→claude normalize, transform, then
+// claude→openai round-trip before returning the body to the OpenAI transport.
 import { FORMATS } from "../translator/formats.js";
+import { openaiToClaudeRequest } from "../translator/request/openai-to-claude.js";
+import { claudeToOpenAIRequest } from "../translator/request/claude-to-openai.js";
 
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_MIN_CHARS = 25000;
@@ -25,28 +36,67 @@ function skipped(reason, extra = {}) {
   return { body: null, summary: { applied: false, reason, ...extra }, applied: false, reason };
 }
 
+/** True for models pxpipe is allowed to image for the given wire format. */
 function isSupportedModel(format, model) {
   if (!model) return false;
   const m = String(model).toLowerCase();
   // Tight model whitelist: only claude-fable for Claude format, and only
-  // blackbox Anthropic aliases (e.g. Fable) for OpenAI format. Other model
-  // ids (claude-haiku, claude-sonnet, ...) return unsupported_model so the
-  // caller can record the skip reason without burning pxpipe credits.
+  // blackbox Anthropic Fable aliases for OpenAI format. Other model ids
+  // (claude-haiku, claude-sonnet, blackboxai/openai/gpt-...) return
+  // unsupported_model so the caller can record the skip without burning credits.
   if (format === FORMATS.CLAUDE) {
     return /claude-fable/.test(m);
   }
   if (format === FORMATS.OPENAI) {
-    return /blackboxai\/.+anthropic\/claude-fable/.test(m);
+    // blackboxai/anthropic/claude-fable-5  (no extra segment)
+    // blackboxai/<vendor>/anthropic/claude-fable-5  (optional mid segment)
+    return /blackboxai\/(?:.+\/)?anthropic\/claude-fable/.test(m);
   }
   return false;
 }
 
-// Transform a Claude-format request body through pxpipe. Returns
-// { body: <new body object> | null, summary, applied, reason, info?, originalChars?, durationMs? }.
-// Returns `null` for early no-op cases (disabled or unsupported model) so
-// callers can short-circuit without inspecting the summary shape.
-// opts.transform is injected by the host (src side) so open-sse stays free of
-// filesystem/install concerns and remains usable standalone.
+/**
+ * Normalize an OpenAI-format Blackbox Fable body into Anthropic Messages shape
+ * for transformAnthropicMessages, then map the transformed Claude body back.
+ * @returns {{ transformBody: object, restore: (claudeBody: object) => object } | null}
+ */
+function prepareTransformBody(body, format, model) {
+  if (format === FORMATS.CLAUDE) {
+    return { transformBody: body, restore: (next) => next };
+  }
+  if (format === FORMATS.OPENAI && isSupportedModel(format, model)) {
+    const claudeBody = openaiToClaudeRequest(model, body, body?.stream === true);
+    if (!claudeBody || !Array.isArray(claudeBody.messages)) return null;
+    // Keep original model id on the Claude-shaped body so the transform gate
+    // sees the upstream alias (pxpipe accepts Fable aliases).
+    claudeBody.model = model;
+    return {
+      transformBody: claudeBody,
+      restore: (nextClaude) => {
+        const openaiBody = claudeToOpenAIRequest(model, nextClaude, body?.stream === true);
+        // Preserve non-message OpenAI fields the Anthropic hop drops.
+        return {
+          ...body,
+          ...openaiBody,
+          model,
+        };
+      },
+    };
+  }
+  return null;
+}
+
+/**
+ * Transform a request body through pxpipe.
+ *
+ * Return shapes:
+ * - New contract (format+model both set): `null` for disabled/unsupported_model;
+ *   otherwise `{ body, summary, applied, reason, info?, originalChars?, durationMs? }`.
+ * - Legacy contract: always the object shape (never null).
+ *
+ * opts.transform is injected by the host (src side) so open-sse stays free of
+ * filesystem/install concerns and remains usable standalone.
+ */
 export async function compressWithPxpipe(body, { enabled, format, model, minChars, timeoutMs, transform, diagnostics } = {}) {
   // Back-compat discriminator: newer callers (pxpipe-stage) pass format+model
   // and expect `null` + `diagnostics.reason` for early no-op cases. Legacy
@@ -72,9 +122,12 @@ export async function compressWithPxpipe(body, { enabled, format, model, minChar
     }
   }
 
-  // Legacy format gate: non-Claude formats return unsupported_format unless
-  // the model gate above caught the case first.
-  if (format !== FORMATS.CLAUDE) return skipped("unsupported_format", { detail: format });
+  // Format gate: Claude always ok; OpenAI only for supported Blackbox Fable aliases.
+  // Other formats stay unsupported_format (legacy object shape).
+  const openaiFable = format === FORMATS.OPENAI && isSupportedModel(format, model);
+  if (format !== FORMATS.CLAUDE && !openaiFable) {
+    return skipped("unsupported_format", { detail: format });
+  }
 
   if (!body) {
     const r = skipped("missing_body");
@@ -98,8 +151,15 @@ export async function compressWithPxpipe(body, { enabled, format, model, minChar
     return skipped("below_threshold", { originalChars, threshold });
   }
 
+  // Transform speaks Anthropic Messages. OpenAI Fable bodies are normalized first
+  // and restored to OpenAI shape after a successful apply.
+  const prepared = prepareTransformBody(body, format, model);
+  if (!prepared) {
+    return skipped("unsupported_format", { detail: format || "unknown" });
+  }
+
   try {
-    const encoded = new TextEncoder().encode(JSON.stringify(body));
+    const encoded = new TextEncoder().encode(JSON.stringify(prepared.transformBody));
     const budget = Number(timeoutMs) > 0 ? Number(timeoutMs) : DEFAULT_TIMEOUT_MS;
     // timer and discard the result if it loses (input body is never mutated).
     const result = await Promise.race([
@@ -119,7 +179,8 @@ export async function compressWithPxpipe(body, { enabled, format, model, minChar
       });
     }
 
-    const newBody = JSON.parse(new TextDecoder().decode(result.body));
+    const transformedClaude = JSON.parse(new TextDecoder().decode(result.body));
+    const newBody = prepared.restore(transformedClaude);
     const compressedBodyChars = bodyChars(newBody);
     const info = result.info || {};
     const imagedChars = info.compressedChars || 0;

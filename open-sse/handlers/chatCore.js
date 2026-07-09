@@ -225,19 +225,28 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     log?.debug?.("PONYTAIL", `${ponytailLevel} | ${finalFormat}`);
   }
 
-  // PXPIPE: image bulky context (Claude-format bodies only), last saver before dispatch
+  // PXPIPE: image bulky context (Claude + OpenAI Blackbox Fable), last saver before dispatch.
+  // compressWithPxpipe returns null for early no-ops (disabled/unsupported model) under the
+  // new format+model contract — treat null like a skip and keep the request fail-open.
   let pxpipeSummary = null;
   if (pxpipeEnabled) {
     const pxpipeResult = await compressWithPxpipe(translatedBody, {
       enabled: true, format: finalFormat, model: upstreamModel,
       minChars: pxpipeMinChars, timeoutMs: pxpipeTimeoutMs, transform: pxpipeTransform,
     });
-    pxpipeSummary = pxpipeResult.summary;
-    if (pxpipeResult.body) translatedBody = pxpipeResult.body;
+    if (pxpipeResult == null) {
+      pxpipeSummary = { applied: false, reason: "unsupported_model" };
+    } else {
+      pxpipeSummary = pxpipeResult.summary || {
+        applied: !!pxpipeResult.applied,
+        reason: pxpipeResult.reason || (pxpipeResult.applied ? "applied" : "passthrough"),
+      };
+      if (pxpipeResult.body) translatedBody = pxpipeResult.body;
+    }
     const pxpipeLine = formatPxpipeLog(pxpipeSummary);
     if (pxpipeLine) log?.info?.("PXPIPE", pxpipeLine);
-    else log?.debug?.("PXPIPE", `skipped: ${pxpipeSummary.reason}${pxpipeSummary.detail ? ` (${pxpipeSummary.detail})` : ""}`);
-    try { onPxpipeEvent?.({ provider, model, ...pxpipeSummary }); } catch { /* stats must not break requests */ }
+    else log?.debug?.("PXPIPE", `skipped: ${pxpipeSummary?.reason || "unknown"}${pxpipeSummary?.detail ? ` (${pxpipeSummary.detail})` : ""}`);
+    try { onPxpipeEvent?.({ provider, model, ...(pxpipeSummary || {}) }); } catch { /* stats must not break requests */ }
   }
 
   // Re-strip after PXPIPE in case compression removed assistant/tool turns.

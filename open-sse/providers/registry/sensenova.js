@@ -1,3 +1,39 @@
+// SenseNova Token Plan ceiling: the /v1/chat/completions endpoint rejects
+// max_tokens / max_completion_tokens above 65536. requestDefaults.maxTokens only
+// fills the field when BOTH are absent, so an explicit client value above the
+// ceiling must be clamped here before the body is forwarded upstream.
+const SENSENOVA_MAX_OUTPUT_TOKENS = 65536;
+
+function clampSensenovaMaxTokens(body) {
+  if (!body || typeof body !== "object") return body;
+  if (typeof body.max_tokens === "number" && body.max_tokens > SENSENOVA_MAX_OUTPUT_TOKENS) {
+    body.max_tokens = SENSENOVA_MAX_OUTPUT_TOKENS;
+  }
+  if (typeof body.max_completion_tokens === "number" && body.max_completion_tokens > SENSENOVA_MAX_OUTPUT_TOKENS) {
+    body.max_completion_tokens = SENSENOVA_MAX_OUTPUT_TOKENS;
+  }
+  return body;
+}
+
+// SenseNova streams thinking deltas under choices[].delta.reasoning (not the
+// OpenAI-compatible reasoning_content the passthrough filter recognises). Map
+// reasoning -> reasoning_content in-place so the chunk survives the
+// hasValuableContent gate and reaches the client on the same-format path.
+function normalizeSensenovaStreamChunk(parsed) {
+  const choices = parsed?.choices;
+  if (!Array.isArray(choices)) return false;
+  let changed = false;
+  for (const choice of choices) {
+    const delta = choice?.delta;
+    if (!delta || typeof delta !== "object") continue;
+    if (typeof delta.reasoning === "string" && delta.reasoning && !delta.reasoning_content) {
+      delta.reasoning_content = delta.reasoning;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 export default {
   id: "sensenova",
   alias: "sensenova",
@@ -19,8 +55,10 @@ export default {
     // that enforces max_tokens in [1, 65536]. Do not raise above 65536.
     baseUrl: "https://token.sensenova.cn/v1/chat/completions",
     requestDefaults: {
-      maxTokens: 65536,
+      maxTokens: SENSENOVA_MAX_OUTPUT_TOKENS,
     },
+    clampRequestBody: clampSensenovaMaxTokens,
+    normalizeStreamChunk: normalizeSensenovaStreamChunk,
   },
   models: [
     // SenseNova Token Plan chat models (validated 2026-07-06). The /models

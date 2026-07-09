@@ -293,10 +293,11 @@ async function getApiKeys() {
 /**
  * Create new API key
  * @param {string} name - Key name
- * @returns {Promise<Object>} { success, data: { key, name, id, machineId } }
+ * @param {string|null} expiresAt - Optional ISO expiry timestamp
+ * @returns {Promise<Object>} { success, data: { key, name, id, machineId, expiresAt } }
  */
-async function createApiKey(name) {
-  return makeRequest("POST", "/api/keys", { name });
+async function createApiKey(name, expiresAt = null) {
+  return makeRequest("POST", "/api/keys", { name, expiresAt });
 }
 
 /**

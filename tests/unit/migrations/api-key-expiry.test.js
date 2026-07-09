@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import Database from "better-sqlite3";
-import m004 from "@/lib/db/migrations/004-api-key-expiry.js";
+import m006 from "@/lib/db/migrations/006-api-key-expiry.js";
 
 let tempDir;
 const originalDataDir = process.env.DATA_DIR;
@@ -25,7 +25,7 @@ describe("api-key-expiry migration", () => {
   it("is registered in the migration registry", async () => {
     const { MIGRATIONS } = await import("@/lib/db/migrations/index.js");
     expect(MIGRATIONS).toEqual(
-      expect.arrayContaining([expect.objectContaining({ version: 4, name: "api-key-expiry" })])
+      expect.arrayContaining([expect.objectContaining({ version: 6, name: "api-key-expiry" })])
     );
   });
 
@@ -33,7 +33,7 @@ describe("api-key-expiry migration", () => {
     const db = new Database(path.join(tempDir, "data.sqlite3"));
     db.exec(`CREATE TABLE apiKeys (id TEXT PRIMARY KEY, key TEXT NOT NULL)`);
 
-    m004.up(db);
+    m006.up(db);
 
     const columns = db.prepare(`PRAGMA table_info(apiKeys)`).all().map((row) => row.name);
     expect(columns).toContain("expiresAt");
@@ -43,8 +43,8 @@ describe("api-key-expiry migration", () => {
     const db = new Database(path.join(tempDir, "data.sqlite3"));
     db.exec(`CREATE TABLE apiKeys (id TEXT PRIMARY KEY, key TEXT NOT NULL)`);
 
-    m004.up(db);
-    m004.up(db);
+    m006.up(db);
+    m006.up(db);
 
     const expiresAtCols = db
       .prepare(`PRAGMA table_info(apiKeys)`)

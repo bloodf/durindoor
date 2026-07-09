@@ -4,9 +4,7 @@ import { useState } from "react";
 import PropTypes from "prop-types";
 import { Button, Badge, Input, Modal, Select } from "@/shared/components";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
-import { prepareBulkKeyRows, getAccountIdProviderData, isAccountIdValid, getProviderHelp } from "./apiKeyBulk.js";
-
-const BULK_PLACEHOLDER = `name1|sk-key1\nname2|sk-key2\nsk-key-only-auto-named`;
+import { prepareBulkKeyRows, getAccountIdProviderData, isAccountIdValid, getProviderHelp, getBulkGuidance } from "./apiKeyBulk.js";
 
 export default function AddApiKeyModal({ isOpen, provider, providerName, isCompatible, isAnthropic, authType, authHint, website, proxyPools, error, onSave, onBulkDone, onClose }) {
   const NONE_PROXY_POOL_VALUE = "__none__";
@@ -23,6 +21,8 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const ACCOUNT_ID_PROVIDER_DETAILS = ["cloudflare-ai", "snowflake"];
   const requiresAccountId = ACCOUNT_ID_PROVIDER_DETAILS.includes(provider);
   const accountIdProviderLabel = provider === "snowflake" ? "Snowflake Cortex" : "Cloudflare Workers AI";
+  // Presentation + row validation share the SAME requiresAccountId decision.
+  const bulkGuidance = getBulkGuidance({ requiresAccountId });
   const providerRegions = AI_PROVIDERS?.[provider]?.regions || null;
   const defaultRegion = AI_PROVIDERS?.[provider]?.defaultRegion || providerRegions?.[0]?.id || "";
 
@@ -45,10 +45,6 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
   const [saving, setSaving] = useState(false);
-  const bulkPlaceholder = requiresAccountId
-    ? `name1|sk-key1|acc123456\nname2|sk-key2|def789012\nsk-key-only-auto-named`
-    : BULK_PLACEHOLDER;
-
   const [mode, setMode] = useState("single"); // "single" | "bulk"
   const [bulkText, setBulkText] = useState("");
   const [bulkResult, setBulkResult] = useState(null); // { success, failed }
@@ -186,14 +182,15 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         {mode === "bulk" && (
           <div className="flex flex-col gap-3">
             <p className="text-xs text-text-muted">
-              {isCloudflareAi
-                ? <>One key per line. Format: <code>name|apiKey|accountId</code> or just <code>apiKey</code> (auto-named by index).</>
-                : <>One key per line. Format: <code>name|apiKey</code> or just <code>apiKey</code> (auto-named by index).</>
+              One key per line. Format: <code>{bulkGuidance.format}</code>
+              {bulkGuidance.allowsKeyOnly
+                ? <> or just <code>apiKey</code> (auto-named by index).</>
+                : <> — <code>accountId</code> is required for every row (rows without it are counted failed).</>
               }
             </p>
             <textarea
               className="w-full rounded border border-accent/30 bg-sidebar p-2 text-sm font-mono resize-y min-h-[140px] focus:outline-none focus:ring-1 focus:ring-primary"
-              placeholder={bulkPlaceholder}
+              placeholder={bulkGuidance.placeholder}
               value={bulkText}
               onChange={(e) => setBulkText(e.target.value)}
             />

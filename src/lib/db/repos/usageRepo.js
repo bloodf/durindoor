@@ -636,13 +636,15 @@ export async function getUsageStats(period = "all") {
 
       if (r.apiKey && typeof r.apiKey === "string") {
         const keyInfo = apiKeyMap[r.apiKey];
-        const keyName = keyInfo?.name || r.apiKey.slice(0, 8) + "...";
         const apiKeyMasked = maskApiKey(r.apiKey);
         const apiKeyFingerprint = fingerprintApiKey(r.apiKey);
+        // When the key has no registered name, fall back to a per-key
+        // fingerprint prefix so same-prefix keys remain distinguishable.
+        const keyName = keyInfo?.name || (apiKeyFingerprint ? apiKeyFingerprint.slice(0, 8) + "..." : r.apiKey.slice(0, 8) + "...");
         const apiKeyKey = apiKeyFingerprint || apiKeyMasked;
         const akKey = `${apiKeyFingerprint}|${r.model}|${r.provider || "unknown"}`;
         if (!stats.byApiKey[akKey]) {
-          stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, apiKeyMasked, keyName, apiKeyKey: apiKeyMasked, lastUsed: r.timestamp };
+          stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, apiKeyMasked, keyName, apiKeyKey, lastUsed: r.timestamp };
         }
         const ake = stats.byApiKey[akKey];
         ake.requests++; ake.promptTokens += promptTokens; ake.completionTokens += completionTokens; ake.cachedTokens += cachedTokens; ake.cost += entryCost;

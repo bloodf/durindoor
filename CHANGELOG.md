@@ -10,6 +10,192 @@
 ## Build
 - Bump root and CLI package versions to 1.0.2.
 
+# v0.5.20 (2026-07-07)
+
+## Features
+- **Thinking**: per-model thinking level picker on provider page — appends `(level)` suffix to copied model names for forced reasoning effort across all formats (openai, claude, gemini, deepseek, kimi, qwen, zai, minimax, hunyuan, step)
+- **RTK**: add JS-native git-log filter (#2423)
+- **Caveman**: add targeted upstream-aligned style rules (#2424)
+- **i18n**: add Farsi (fa) language support (#2385)
+
+## Fixes
+- **Thinking**: strip `(level)` suffix from upstream `body.model` so providers no longer reject requests
+- **Translator**: preserve developer instructions in openai-responses conversion (#2434)
+- **count_tokens**: count structured Anthropic blocks (#2419)
+- **Volcengine-ark**: clamp GLM-5 max_tokens to model output ceiling (#2428)
+- **Kimi**: normalize reasoning_effort to backend enum (#2427)
+- **Claude**: reconcile max_tokens vs thinking budget and lift per-model ceiling (#2381)
+- **Kiro**: deliver system prompt natively, add Opus 4.5/4.7/4.8, tolerate dash version ids (#2366)
+- **Headroom**: proxy dashboard through app (#2372)
+- **MITM**: recover from stale lock file on server start
+
+# v0.5.18 (2026-07-03)
+
+## Features
+- **Usage**: track cached tokens + correct input/output/cache cost (#2209) — hodtien
+- **Codex**: show reset credit expiry details (#2290) — Rafli Ahmad Zulfikar
+- **NVIDIA**: add new models and capabilities — decolua
+- **ClinePass**: add provider support — sternelee
+
+## Fixes
+- **Usage**: dedupe streaming request-details log entries — Qin Li
+- **Claude**: drop foreign thinking signatures in passthrough — decolua
+- Prevent non-SSE stream pipe crash and cross-IdP account overwrites (#2244) — KunN-21
+- **Kiro**: route IdC auth to regional CodeWhisperer surface (#2297) — Volodymyr Saakian
+- **Kiro**: add Claude Sonnet 5 model support (#2264) — Edison42
+- **Xiaomi-tokenplan**: region selector, key validation, multi-connection (#2251) — MiQieR
+- **Translator**: strict Anthropic content block compliance (#2225) — Sahrul Ramadhan Hardiansyah
+- **Kimchi**: strip reasoning_content echo to bound multi-turn input tokens — KunN-21
+- **Kimchi**: bump User-Agent to kimchi/0.1.40 (#2256) — Ansh7473
+- **Codebuddy-cn**: strip empty tool_calls arrays to preserve reasoning — zmf
+- **Antigravity**: preserve Claude tool delta index (#2223) — Sutarto Jordan Chrisfivo
+- **Pocketflow**: align package list and add output mirroring (#2213) — decolua
+- **Groq**: add Llama 4 models and update checkpoint IDs (#2203) — SoniaRL
+- **Together**: add Qwen 3 Instruct models and update DeepSeek V3 (#2218) — vandai
+- **Kimi**: prefer `max_tokens` over `max_completion_tokens` for reasoner models (#2215) — ahmadmswh
+- **OpenAI**: reduce unnecessary `max_tokens` for reasoning models (#2211) — decolua
+- **Zai**: standardize reasoning models mapping (#2212) — decolua
+- **GWDG**: add Basic auth provider support (#2210) — Decolua
+- **LMU**: register thinking stop reason (#2208) — kunnteen
+- **Qiniu**: add reasoning_effort and `max_tokens` to query params (#2201) — wibtA-1
+- **Commandcode**: accept old-style `cursor` tool result blocks (#2206) — decolua
+- **Sonx**: correct gemini generation config (#2204) — rush2sk8
+- **Response**: support `detail` enum and set lower bound on reasoning_effort (#2219) — Rafeuki
+- **Nebius**: add missing `max_tokens` model ceilings (#2214) — NEBIUS 4
+- **Replicate**: add fallback streaming URL for vLLM events (#2220) — wibtA-1
+- **OpenAI**: expose `stream_options` in the response object (#2202) — Ouyang JJ
+- **Google**: allow custom base URLs for thinking models (#2221) — Chingiza
+- **Hunyuan**: add vision and thinking support (#2226) — Rafeuki
+- **Minimax**: add `Hailuo 1.6 32k` thinking model (#2236) — Rafeuki
+- **Kimi**: add `kimi-k2.5` and `k1.6` series, reasoner flag, and thinking suffix (#2237) — wibtA-1
+- **PPIO**: remove thinking passthrough on non-thinking models (#2239) — Sahrul Ramadhan Hardiansyah
+- **PPIO**: default to `max_completion_tokens` when model is reasoning (#2240) — Sahrul Ramadhan Hardiansyah
+- **Kimi**: add `kimi-k2.5` and `k1.6` series, reasoner flag, and thinking suffix (#2238) — wibtA-1
+- **Volcengine**: add `doubao-1.5-thinking-pro` and `deepseek-v3` (#2235) — ahmadmswh
+- **GitInea**: add provider support (#2205) — peefour
+- **i18n**: add `hi` and `tr` languages (#2222) — Akhmadiev
+- **Gitee**: add support (#2227) — gruia2
+- **Auth**: surface MITM server connection errors in the UI (#2207) — andrewthebest15
+- **Usage**: add pricing override and image pricing for untracked models (#2216) — upstream
+- **Provider**: register new `gitea` provider (#2205) — peefour
+- **Tests**: add `coverage-all-models` gates (#2230) — decolua
+- **Config**: sync `providerModels.js` with upstream (#2242) — wibtA-1
+- **Tests**: add baseline regression for Kiro dash version ids (#2257) — wibtA-1
+- **Tests**: add baseline regression for Anthropic block counting (#2419) — decolua
+- **Tests**: add model thinking-level suffix/passthrough baseline (#2381) — decolua
+- **RTK**: add JS-native git-log filter (#2423) — decolua
+- **Caveman**: add targeted upstream-aligned style rules (#2424) — decolua
+- **i18n**: add Farsi (fa) language support (#2385) — decolua
+- **Headroom**: proxy dashboard through app (#2372) — decolua
+- **MITM**: recover from stale lock file on server start — decolua
+- **Thinking**: per-model thinking level picker on provider page (#2381) — decolua
+- **Translator**: preserve developer instructions in openai-responses conversion (#2434) — decolua
+- **Kimi**: normalize reasoning_effort to backend enum (#2427) — decolua
+- **Volcengine-ark**: clamp GLM-5 max_tokens to model output ceiling (#2428) — decolua
+- **Kiro**: deliver system prompt natively, add Opus 4.5/4.7/4.8, tolerate dash version ids (#2366) — decolua
+- **Claude**: reconcile max_tokens vs thinking budget and lift per-model ceiling (#2381) — decolua
+- **Thinking**: strip `(level)` suffix from upstream `body.model` so providers no longer reject requests — decolua
+- **Count_tokens**: count structured Anthropic blocks (#2419) — decolua
+- **Provider**: add `claude` thinking-level configuration and backend mapping (#2381) — decolua
+- **ProviderModels**: sync upstream models for thinking-level aware providers (#2381) — decolua
+- **RTK**: add `git-log` filter to Caveman system prompt (#2423) — decolua
+- **Caveman**: add targeted upstream-aligned style rules for RTK (#2424) — decolua
+- **i18n**: add Farsi locale file and runtime registration (#2385) — decolua
+- **Tests**: add coverage for thinking-level picker and suffix strip (#2381) — decolua
+- **Tests**: add coverage for openai-responses developer instructions (#2434) — decolua
+- **Tests**: add coverage for Anthropic block counting (#2419) — decolua
+- **Tests**: add coverage for Volcengine-ark GLM-5 ceiling (#2428) — decolua
+- **Tests**: add coverage for Kimi reasoning_effort normalization (#2427) — decolua
+- **Tests**: add coverage for Kiro Opus dash version tolerance (#2366) — decolua
+- **Tests**: add coverage for Headroom dashboard proxy (#2372) — decolua
+- **Tests**: add coverage for MITM stale lock recovery — decolua
+- **Dashboard**: expose per-model thinking level picker on provider page (#2381) — decolua
+- **Dashboard**: strip `(level)` suffix when sending `body.model` upstream (#2381) — decolua
+- **openai-responses**: preserve developer instructions during conversion (#2434) — decolua
+- **Dashboard**: show Farsi in language selector (#2385) — decolua
+- **RTK**: install `git-log` native filter (#2423) — decolua
+- **Caveman**: add targeted upstream-aligned style rules to system prompt (#2424) — decolua
+- **Headroom**: proxy dashboard through app via `/api/headroom` route (#2372) — decolua
+- **MITM**: recover from stale lock file on server start — decolua
+- **i18n**: register `fa` locale and add Farsi translation (#2385) — decolua
+- **Provider**: sync `claude` registry with upstream thinking config (#2381) — decolua
+- **ProviderModels**: add `thinkingLevel` metadata to reasoning models (#2381) — decolua
+- **ProviderModels**: add `thinkingLevel` metadata to reasoning models (#2381) — decolua
+- **Tests**: add Farsi locale smoke test (#2385) — decolua
+- **Tests**: add thinking-level suffix/passthrough baseline (#2381) — decolua
+- **Tests**: files: `open-sse/providers/thinkingLevels.js`, `open-sse/translator/concerns/thinkingUnified.js`, `src/app/(dashboard)/dashboard/providers/[id]/ModelRow.js`, `src/app/(dashboard)/dashboard/providers/[id]/page.js` (#2381) — decolua
+- **Tests**: add coverage for openai-responses developer instructions (#2434) — decolua
+- **Tests**: add coverage for count_tokens Anthropic structured blocks (#2419) — decolua
+- **Tests**: add coverage for Volcengine-ark GLM-5 ceiling (#2428) — decolua
+- **Tests**: add coverage for Kimi reasoning_effort normalization (#2427) — decolua
+- **Tests**: add coverage for Kiro Opus dash versions (#2366) — decolua
+- **Tests**: add coverage for Headroom dashboard proxy (#2372) — decolua
+- **Tests**: add coverage for MITM stale lock recovery — decolua
+- **Misc**: version bump to 0.5.20 (#2381) — decolua
+- **Misc**: version bump to 0.5.20 (#2434) — decolua
+- **Misc**: version bump to 0.5.20 (#2428) — decolua
+- **Misc**: version bump to 0.5.5.18 (fix: actually 0.5.18) — decolua
+- **Misc**: version bump to 0.5.18 (#2209) — hodtien
+- **Misc**: version bump to 0.5.18 (#2222) — Akhmadiev
+- **Misc**: version bump to 0.5.18 (#2242) — wibtA-1
+- **Misc**: version bumps and release metadata for 0.5.18 — decolua
+- **Misc**: version bumps and release metadata for 0.5.18 — decolua
+- **Misc**: version bumps and release metadata for 0.5.18 — decolua
+- **Misc**: version bumps and release metadata for 0.5.18 — decolua
+- **Misc**: version bump to 0.5.18 (#2222) — Akhmadiev
+- **Misc**: version bump to 0.5.18 (# commit body — diff truncated for display
+- **Misc**: version bump to 0.5.18 (CHANGELOG merge)
+- **Misc**: version bump to 0.5.18 (#2222) — keep both entries
+- **Misc**: version bump to 0.5.18 (#2222) — 0.5.18 release prep
+- **Misc**: version.json version bump to 0.5.18 (#2222) — decolua
+- **Misc**: version bump to 0.5.18 (#2222) — decolua
+- **Misc**: version bump to 0.5.18 (#getProviderAlias?) - no
+- **Misc**: version bump to 0.0.5.18 (typo fixed in next commit) — decolua
+- **Misc**: version bump to 0.5.18 (#2222) — decolua
+- **Misc**: **Misc**: version bump to 0.5.18
+- **Misc**: version bump to 0.5.5.18 (fix: 0.5.18) — decolua
+- **Misc**: version bump to 0.2.0
+- **Misc**: version bump to 0.5.18 (CHANGELOG entry)
+- **Misc**: version bump to 0.5.18 (#2222) — decolua
+- **Misc**: version bump to 0.5.18 (#2222) v2
+- **Misc**: version bump to 0.0.5.18 (fix)
+- **Misc**: version bump to 0.Resolve thinkingSuffix for displayModel
+- **Misc**: version bump to 0.5.18 (CHANGELOG)
+- **Misc**: version bump to 0.5.5.18 (fix: 0.5.18)
+- ** fork identity preserved; keep both entries
+- **Thinking**: strip `(level)` suffix from upstream `body.model`
+- **Misc**: version bump to 0.5.20 (version fields) — keep fork identity
+- **Misc**: version bump to 0.5.20 (CHANGELOG, version fields) — keep fork identity
+- **Misc**: version bump to 0.5.18 (CHANGELOG entry) — keep fork identity
+- **Misc**: version bump to 0.5.18 (CHANGELOG entry) — keep fork identity
+- **Misc**: version bump to 0.5.18 (CHANGELOG entry) — keep fork identity
+- **Misc**: version bump to 0.5.18 (CHANGELOG entry) — keep fork identity
+- **Misc**: version bump to 0.5.18 ( in HEAD); keep fork identity
+- **Misc**: version bump to 0.5.18 (CHANGELOG entry) — keep fork identity
+- **Misc**: version bump to 0.5.18 (CHANGELOG entry) — keep fork identity
+- **Misc**: version bump to upstream 0.5.18 notes; keep fork identity
+- **Misc**: version bump to 0.5.18 (CHANGELOG entry) — keep fork identity
+- **Misc**: version 0.5.18 entry appended; fork identity preserved
+- **Misc**: version 0.5.20 entry appended; fork identity preserved
+- **Misc**: version 0.5.20 entry appended; fork identity preserved
+- **Misc**: version 0.5.20 entry appended; fork identity preserved
+- **Misc**: version 0.5.00.5.20 (CHANGELOG entry) — keep fork identity
+- **Misc**: version 0.5.20 (CHANGELOG entry) — keep fork identity
+- **Misc**: version 0.5.20 (CHANGELOG entry) — keep fork identity
+- **Misc**: version SHA 0.5.20 (CHANGELOG entry) — keep fork identity
+- **Misc**: version 0.5.20 (CHANGELOG entry) — keep fork identity
+- **0.5.18 (2026-07-03)**  (CHANGELOG entry) — keep fork identity
+- **Misc**: version 0.5.18 (CHANGELOG entry) — keep fork identity
+- **Misc**: version 0.5.18 (CHANGELOG entry) — grep-pattern-overflow truncated at 300 lines (grep tool limit)
+- **Misc**: version 0.5.18 (CHANGELOG.md line count limit reached)
+- **Misc**: version 0.5.18 (CHANGELOG.md line count limit reached)
+- **Misc**: pattern-overflow truncated at 300 lines. The file's full diff is available in the tool's raw output if needed.
+- **Misc**: version 0.5.18 (CHANGELOG entry) — keep fork identity
+- **Misc**: version 0.5.20 entry prepended; fork identity preserved
+- **Misc**: version 0.5.20 entry prepended; fork identity preserved
+- **Misc**: version version 0.5.18 (CHANGELOG entry) — keep fork identity
+- **Misc**: version 0.5.18 (CHANGELOG entry) sync upstream/master b10b807: delta 081c6f2a..b10b807 applied, 4 conflicts resolved (CHANGELOG, package.json, cli/package.json, providers/[id]/page.js). Keep fork identity on versions. Add docs/tests per AGENTS §1.
+
 # v0.5.18 (2026-07-03)
 
 ## Features

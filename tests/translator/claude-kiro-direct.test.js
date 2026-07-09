@@ -6,14 +6,83 @@ import "./registerAll.js";
 import { translateRequest, translateResponse } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 
-const C2K = (body) =>
-  translateRequest(FORMATS.CLAUDE, FORMATS.KIRO, "claude-sonnet-4.5", body, true, null, "kiro");
+const C2K = (body, credentials = null) =>
+  translateRequest(FORMATS.CLAUDE, FORMATS.KIRO, "claude-sonnet-4.5", body, true, credentials, "kiro");
 
 describe("Claude → Kiro (direct route)", () => {
   it("produces a Kiro conversationState payload", () => {
     const out = C2K({ messages: [{ role: "user", content: "hello" }] });
     expect(out.conversationState).toBeTruthy();
     expect(out.conversationState.currentMessage.userInputMessage.content).toContain("hello");
+  });
+
+  it("keeps the same conversationId for the same client session header", () => {
+    const credentials = {
+      rawHeaders: { "x-session-id": "client-session-123" },
+      connectionId: "conn-a",
+    };
+    const body = { messages: [{ role: "user", content: "hello" }] };
+
+    const first = C2K(body, credentials);
+    const second = C2K(body, credentials);
+
+    expect(first.conversationState.conversationId).toBe("client-session-123");
+    expect(second.conversationState.conversationId).toBe("client-session-123");
+  });
+
+  it("uses different conversationIds for different client session headers", () => {
+    const body = { messages: [{ role: "user", content: "hello" }] };
+
+    const first = C2K(body, {
+      rawHeaders: { "x-session-id": "client-session-a" },
+      connectionId: "conn-a",
+    });
+    const second = C2K(body, {
+      rawHeaders: { "x-session-id": "client-session-b" },
+      connectionId: "conn-a",
+    });
+
+    expect(first.conversationState.conversationId).toBe("client-session-a");
+    expect(second.conversationState.conversationId).toBe("client-session-b");
+  });
+
+  it("does not reuse plain metadata.user_id across separate conversations", () => {
+    const body = {
+      metadata: { user_id: "user-123" },
+      messages: [{ role: "user", content: "hello" }],
+    };
+
+    const first = C2K(body, { connectionId: "conn-a" });
+    const second = C2K(body, { connectionId: "conn-b" });
+
+    expect(first.conversationState.conversationId).not.toBe(second.conversationState.conversationId);
+  });
+
+  it("preserves Claude Code _session_<id> marker as conversation id", () => {
+    const sessionId = "aaaaaaaa-1234-1234-1234-1234567890ab";
+    const body = {
+      metadata: { user_id: `abc123_session_${sessionId}` },
+      messages: [{ role: "user", content: "hello" }],
+    };
+
+    const first = C2K(body, { connectionId: "conn-a" });
+    const second = C2K(body, { connectionId: "conn-a" });
+
+    expect(first.conversationState.conversationId).toBe(`claude:${sessionId}`);
+    expect(second.conversationState.conversationId).toBe(`claude:${sessionId}`);
+  });
+
+  it("preserves Claude Code JSON session_id from metadata.user_id", () => {
+    const body = {
+      metadata: { user_id: '{"session_id":"sess-xyz-9"}' },
+      messages: [{ role: "user", content: "hello" }],
+    };
+
+    const first = C2K(body, { connectionId: "conn-a" });
+    const second = C2K(body, { connectionId: "conn-a" });
+
+    expect(first.conversationState.conversationId).toBe("claude:sess-xyz-9");
+    expect(second.conversationState.conversationId).toBe("claude:sess-xyz-9");
   });
 
   it("guard 1: with no tools, a dangling tool_result is flattened to text (no structured ref)", () => {

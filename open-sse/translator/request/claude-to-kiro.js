@@ -24,7 +24,7 @@
  */
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
-import { v4 as uuidv4 } from "uuid";
+import { resolveSessionId } from "../../utils/sessionManager.js";
 import {
   resolveKiroModel,
   toKiroModelId,
@@ -35,6 +35,25 @@ import {
 } from "../../config/kiroConstants.js";
 import { DEFAULT_IMAGE_MIME } from "../schema/index.js";
 import { ROLE, CLAUDE_BLOCK } from "../schema/index.js";
+
+// Match Claude Code's `_session_<id>` marker (where <id> is hex/hyphen characters) so we can preserve those
+// conversation-scoped ids while still dropping plain user_id values that
+// would otherwise collide across separate Claude conversations.
+const CLAUDE_CODE_SESSION_RE = /_session_([a-f0-9-]+)$/;
+
+function hasClaudeCodeSession(userId) {
+  if (typeof userId !== "string" || !userId) return false;
+  if (CLAUDE_CODE_SESSION_RE.test(userId)) return true;
+  if (userId[0] === "{") {
+    try {
+      const parsed = JSON.parse(userId).session_id;
+      return typeof parsed === "string" && parsed.trim() !== "";
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
 
 /** Stringify a tool_use input as a readable line. */
 function toolUseToText(name, input) {
@@ -456,10 +475,26 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
     userInputMessage.systemInstruction = systemInstruction;
   }
 
+  // Reuse a session-scoped conversation id for the same Claude client turn so each
+  // Kiro request maps to the same upstream conversation. We avoid plain
+  // `metadata.user_id` because it can be user-scoped across separate Claude
+  // conversations, but we preserve Claude Code's `_session_<id>` marker and JSON
+  // `session_id` values when present because they are conversation-scoped.
+  const rawUserId = body?.metadata?.user_id;
+  const sessionBody =
+    rawUserId != null && !hasClaudeCodeSession(rawUserId)
+      ? { ...body, metadata: { ...body.metadata, user_id: undefined } }
+      : body;
+
   const payload = {
     conversationState: {
       chatTriggerType: "MANUAL",
-      conversationId: uuidv4(),
+      conversationId: resolveSessionId({
+        headers: credentials?.rawHeaders,
+        body: sessionBody,
+        connectionId: credentials?.connectionId,
+        scope: "kiro",
+      }),
       currentMessage: {
         userInputMessage,
       },

@@ -17,8 +17,10 @@ import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { handleComboChat, handleFusionChat } from "open-sse/services/combo.js";
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
+import { handlePonytailCommands, DEFAULT_PONYTAIL_HELP } from "open-sse/utils/tokenSaverBridge.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
+import { detectFormat } from "open-sse/services/provider.js";
 import { isAntigravityCapacityError } from "open-sse/services/accountFallback.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
@@ -152,6 +154,25 @@ export async function handleChat(request, clientRawRequest = null) {
   // Enforce per-API-key model policy
   const policyError = await enforceApiKeyModelPolicy(request, modelStr);
   if (policyError) return policyError;
+
+  // Ponytail slash commands are local-only: respond before any account/credential lookup.
+  const sourceFormat = detectFormatByEndpoint(url.pathname, body) || detectFormat(body);
+  const acceptHeader = clientRawRequest?.headers?.accept || "";
+  const clientPrefersJson = acceptHeader.includes("application/json");
+  const clientPrefersSSE = acceptHeader.includes("text/event-stream");
+  const ponytailStream =
+    body.stream === true ? true :
+    body.stream === false ? false :
+    !(clientPrefersJson && !clientPrefersSSE);
+  const ponytailResponse = await handlePonytailCommands(body, modelStr, {
+    fetchStats: null,
+    helpText: DEFAULT_PONYTAIL_HELP,
+    sourceFormatOverride: sourceFormat,
+    streamOverride: ponytailStream,
+  });
+  if (ponytailResponse?.success && ponytailResponse.response) {
+    return ponytailResponse.response;
+  }
 
   // Bypass naming/warmup requests before combo rotation to avoid wasting rotation slots
   const userAgent = request?.headers?.get("user-agent") || "";

@@ -1,6 +1,15 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 
+function parseApiKeyPolicy(raw) {
+  if (raw == null) return null;
+  if (typeof raw === 'object') return raw;
+  if (typeof raw === 'string' && raw.length) {
+    try { return JSON.parse(raw); } catch { return null; }
+  }
+  return null;
+}
+
 function rowToKey(row) {
   if (!row) return null;
   return {
@@ -11,6 +20,8 @@ function rowToKey(row) {
     isActive: row.isActive === 1 || row.isActive === true,
     allowedCombos: (() => { try { const v = JSON.parse(row.allowedCombos); return Array.isArray(v) ? v : []; } catch { return []; } })(),
     dailyLimitTokens: row.dailyLimitTokens ?? null,
+    policy: parseApiKeyPolicy(row.policy),
+    expiresAt: row.expiresAt || null,
     createdAt: row.createdAt,
   };
 }

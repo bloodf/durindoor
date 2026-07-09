@@ -366,7 +366,10 @@ export function createSSEStream(options = {}) {
         // Fire onStreamComplete early on terminal chunk (raw parsed shape) for providers
         // that never reach the flush() path. The translated item may not be terminal-detectable;
         // detect the terminal marker on the raw parsed object instead.
-        const rawTerminal = parsed.choices?.[0]?.finish_reason || parsed.response?.candidates?.[0]?.finishReason;
+        // Restrict raw early completion to wrapped Gemini/Antigravity only.
+        // OpenAI include_usage streams send finish_reason BEFORE a trailing
+        // usage-only chunk; firing on finish_reason would lose the real usage.
+        const rawTerminal = parsed.response?.candidates?.[0]?.finishReason;
         if (rawTerminal && onStreamComplete && !onStreamCompleteFired) {
           onStreamCompleteFired = true;
           // Fallback to estimated usage when no real usage was extracted (e.g. wrapped Gemini
@@ -379,21 +382,27 @@ export function createSSEStream(options = {}) {
           }
           // Raw content fallback: read text directly from parsed.response.candidates when
           // accumulatedContent is empty (the Gemini accumulation may not be hit by the test's
-          // parse shape). Concatenate all part.text values.
-          let rawContent = accumulatedContent;
-          if (!rawContent && parsed.response?.candidates) {
+          // parse shape). Mirror the normal content/thinking split: thought parts go to thinking,
+          // non-thought parts go to content.
+          // Raw content fallback: only used when the normal accumulator did not capture
+          // the text. Reading parsed.response.candidates directly appends to whatever the
+          // translate path already accumulated, so guard with emptiness check.
+          let rawContent = '';
+          let rawThinking = '';
+          if (!accumulatedContent && parsed.response?.candidates) {
             for (const cand of parsed.response.candidates) {
               const parts = cand.content?.parts || [];
               for (const part of parts) {
                 if (part.text && typeof part.text === 'string') {
-                  rawContent = (rawContent || '') + part.text;
+                  if (part.thought === true) rawThinking += part.text;
+                  else rawContent += part.text;
                 }
               }
             }
           }
           onStreamComplete({
             content: rawContent || accumulatedContent,
-            thinking: accumulatedThinking,
+            thinking: rawThinking || accumulatedThinking,
           }, rawUsage, ttftAt);
         } // Keep original usage for logging
 

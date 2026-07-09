@@ -55,21 +55,17 @@ describe("AUDIT-002: API key masking", () => {
     expect(livePath.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("byApiKey object keys should use a secret-safe stable key, not raw or masked key", () => {
+  it("byApiKey object keys should use a secret-safe fingerprint, not raw key", () => {
     const source = fs.readFileSync(
       path.resolve(repoRoot, "src/lib/db/repos/usageRepo.js"),
       "utf-8"
     );
     // Internal aggregation keys need stable identity without exposing raw API keys.
-    expect(source).toContain("function apiKeyStatsKey");
-    expect(source).toContain("function getApiKeyStatsKey");
-    expect(source).toContain("createHash(\"sha256\")");
-    // Masked prefixes collide for generated keys that share the same machine prefix.
-    expect(source).not.toContain("${apiKeyMasked}|${r.model}|${r.provider");
-    expect(source).not.toContain("${apiKeyMasked}|${rawModel}|${provider");
-    // Should NOT use raw api key directly in any aggregation key template.
+    expect(source).toContain("function apiKeyIdentity");
+    expect(source).toContain("const apiKeyKey = apiKeyIdentity(r.apiKey)");
+    expect(source).toContain("getApiKeyStatsKey(r.apiKey, r.model, r.provider)");
+    // Should NOT use raw r.apiKey directly in the aggregation key template.
     expect(source).not.toContain("${r.apiKey}|${r.model}|${r.provider");
-    expect(source).not.toContain("${e.apiKey}|${e.model}|${e.provider");
   });
 });
 

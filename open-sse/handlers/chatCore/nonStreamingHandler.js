@@ -345,6 +345,21 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
 
   // Client requested streaming but the provider only returned a non-stream JSON
   if (streamToClient === true) {
+    const isNativeGeminiSSE = sourceFormat === targetFormat && [
+      FORMATS.GEMINI,
+      FORMATS.ANTIGRAVITY,
+      FORMATS.GEMINI_CLI,
+      FORMATS.VERTEX,
+    ].includes(sourceFormat) && Array.isArray(responseBody?.candidates);
+    if (isNativeGeminiSSE) {
+      return {
+        success: true,
+        response: new Response(formatSSE(responseBody, sourceFormat), {
+          headers: { "Content-Type": "text/event-stream", ...SSE_HEADERS_CORS },
+        }),
+      };
+    }
+
     const syntheticChunk = {
       id: translatedResponse?.id || responseBody?.id || `chatcmpl-${Date.now()}`,
       object: "chat.completion.chunk",
@@ -377,6 +392,16 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       }
       if (typeof text === "string" && text.length > 0) {
         syntheticChunk.choices[0].delta.content = text;
+      }
+      const toolCalls = blocks
+        .filter((block) => block?.type === "tool_use")
+        .map((block) => ({
+          id: block.id,
+          type: "function",
+          function: { name: block.name, arguments: JSON.stringify(block.input || {}) },
+        }));
+      if (toolCalls.length > 0) {
+        syntheticChunk.choices[0].delta.tool_calls = toolCalls;
       }
     }
 

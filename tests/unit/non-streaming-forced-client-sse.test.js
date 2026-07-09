@@ -150,6 +150,45 @@ describe("handleNonStreamingResponse: synthetic SSE respects client format", () 
     expect(text).toContain("therefore I am");
   });
 
+  it("preserves tool calls when synthesizing Claude SSE", async () => {
+    const toolCompletion = {
+      ...openaiCompletion,
+      choices: [{
+        index: 0,
+        message: { role: "assistant", tool_calls: [{ id: "call_1", type: "function", function: { name: "lookup", arguments: "{\"q\":\"x\"}" } }] },
+        finish_reason: "tool_calls",
+      }],
+    };
+    const result = await handleNonStreamingResponse(baseOptions({
+      providerResponse: makeProviderResponse(toolCompletion),
+      sourceFormat: FORMATS.CLAUDE,
+      targetFormat: FORMATS.OPENAI,
+    }));
+    const text = await result.response.text();
+
+    expect(text).toContain("\"type\":\"tool_use\"");
+    expect(text).toContain("\"name\":\"lookup\"");
+  });
+
+  it("preserves native Gemini parts when synthesizing Gemini SSE", async () => {
+    const geminiResponse = {
+      responseId: "gemini-1",
+      candidates: [{ content: { role: "model", parts: [
+        { text: "caption" },
+        { inlineData: { mimeType: "image/png", data: "aW1hZ2U=" } },
+      ] }, finishReason: "STOP" }],
+    };
+    const result = await handleNonStreamingResponse(baseOptions({
+      providerResponse: makeProviderResponse(geminiResponse),
+      sourceFormat: FORMATS.GEMINI,
+      targetFormat: FORMATS.GEMINI,
+    }));
+    const text = await result.response.text();
+
+    expect(text).toContain("caption");
+    expect(text).toContain("aW1hZ2U=");
+  });
+
   it("still returns the client-shaped Claude JSON body (not SSE) for a real non-streaming request", async () => {
     // streamToClient:false — same sourceFormat/targetFormat as the SSE test
     // above, but the client actually asked for JSON. Guards that forcing the

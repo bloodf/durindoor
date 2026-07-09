@@ -74,6 +74,9 @@ export function createSSEStream(options = {}) {
   let openAIResponsesDoneSent = false;
   let streamDoneSent = false;  // track duplicate [DONE] across transform + flush
 
+  // OpenAI include_usage streams end choices before their trailing usage-only chunk.
+  const waitsForOpenAIUsage = body?.stream_options?.include_usage === true;
+
   // State for extracting <think>...</think> to reasoning_content across SSE chunks
   let thinkBuf = "";
   let inThink = false;
@@ -227,13 +230,13 @@ export function createSSEStream(options = {}) {
               // Gemini-family (response.candidates[0].finishReason) passthrough shapes.
               const isFinishChunk = parsed.choices?.[0]?.finish_reason
                 || parsed.response?.candidates?.[0]?.finishReason;
-              if (isFinishChunk && !hasValidUsage(usage)) {
+              if (isFinishChunk && !waitsForOpenAIUsage && !hasValidUsage(usage)) {
                 const estimated = estimateUsage(body, totalContentLength, FORMATS.OPENAI);
                 parsed.usage = filterUsageForFormat(estimated, FORMATS.OPENAI);
                 output = `data: ${JSON.stringify(parsed)}\n`;
                 usage = estimated;
                 injectedUsage = true;
-              } else if (isFinishChunk && usage) {
+              } else if (isFinishChunk && !waitsForOpenAIUsage && usage) {
                 const buffered = addBufferToUsage(usage);
                 parsed.usage = filterUsageForFormat(buffered, FORMATS.OPENAI);
                 output = `data: ${JSON.stringify(parsed)}\n`;
@@ -243,14 +246,14 @@ export function createSSEStream(options = {}) {
                 injectedUsage = true;
               }
 
-              // Fire onStreamComplete early on terminal chunk for passthrough
-              // providers that never emit [DONE] (e.g. Antigravity).
-              // Detect both OpenAI (choices[0].finish_reason) and Gemini-family
-              // (candidates[0].finishReason) terminal markers.
-              const passthroughTerminal =
-                parsed.choices?.[0]?.finish_reason ||
-                parsed.response?.candidates?.[0]?.finishReason;
-              if (passthroughTerminal && onStreamComplete && !onStreamCompleteFired) {
+              /**
+               * Gemini-family streams may close without [DONE], so complete on their
+               * terminal candidate. OpenAI include_usage sends usage after finish_reason.
+               */
+              const passthroughTerminal = parsed.response?.candidates?.[0]?.finishReason
+                || (!waitsForOpenAIUsage && parsed.choices?.[0]?.finish_reason);
+              const hasOpenAIUsageOnlyChunk = parsed.choices?.length === 0 && hasValidUsage(usage);
+              if ((passthroughTerminal || hasOpenAIUsageOnlyChunk) && onStreamComplete && !onStreamCompleteFired) {
                 onStreamCompleteFired = true;
                 onStreamComplete({
                   content: accumulatedContent,
@@ -576,12 +579,16 @@ export function createSSEStream(options = {}) {
           streamDoneSent = true;
         }
 
-        if (!hasValidUsage(state?.usage) && totalContentLength > 0) {
-          state.usage = estimateUsage(body, totalContentLength, sourceFormat);
+        const finalUsage = mode === STREAM_MODE.PASSTHROUGH ? usage : state?.usage;
+        if (!hasValidUsage(finalUsage) && totalContentLength > 0) {
+          const estimated = estimateUsage(body, totalContentLength, sourceFormat);
+          if (mode === STREAM_MODE.PASSTHROUGH) usage = estimated;
+          else state.usage = estimated;
         }
 
-        if (hasValidUsage(state?.usage)) {
-          logUsage(state.provider || targetFormat, state.usage, model, connectionId, apiKey);
+        const completedUsage = mode === STREAM_MODE.PASSTHROUGH ? usage : state?.usage;
+        if (hasValidUsage(completedUsage)) {
+          logUsage(provider || targetFormat, completedUsage, model, connectionId, apiKey);
         } else {
           appendRequestLog({ model, provider, connectionId, tokens: null, status: "200 OK" }).catch(() => { });
         }
@@ -591,7 +598,7 @@ export function createSSEStream(options = {}) {
           onStreamComplete({
             content: accumulatedContent,
             thinking: accumulatedThinking
-          }, state?.usage, ttftAt);
+          }, completedUsage, ttftAt);
         }
       } catch (error) {
         console.log("Error in flush:", error);

@@ -187,6 +187,7 @@ const MODEL_TYPE_TO_KIND = {
   embedding: "embedding",
   stt: "stt",
   imageToText: "imageToText",
+  rerank: "rerank",
 };
 
 function modelKind(model) {

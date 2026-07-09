@@ -19,6 +19,9 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
 
   const isAzure = provider === "azure";
   const isCloudflareAi = provider === "cloudflare-ai";
+  const ACCOUNT_ID_PROVIDER_DETAILS = ["cloudflare-ai", "snowflake"];
+  const requiresAccountId = ACCOUNT_ID_PROVIDER_DETAILS.includes(provider);
+  const accountIdProviderLabel = provider === "snowflake" ? "Snowflake Cortex" : "Cloudflare Workers AI";
   const providerRegions = AI_PROVIDERS?.[provider]?.regions || null;
   const defaultRegion = AI_PROVIDERS?.[provider]?.defaultRegion || providerRegions?.[0]?.id || "";
 
@@ -36,12 +39,12 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     deployment: "",
     organization: "",
   });
-  const [cloudflareData, setCloudflareData] = useState({ accountId: "" });
+  const [accountIdData, setAccountIdData] = useState({ accountId: "" });
   const [region, setRegion] = useState(defaultRegion);
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
   const [saving, setSaving] = useState(false);
-  const bulkPlaceholder = isCloudflareAi
+  const bulkPlaceholder = requiresAccountId
     ? `name1|sk-key1|acc123456\nname2|sk-key2|def789012\nsk-key-only-auto-named`
     : BULK_PLACEHOLDER;
 
@@ -61,8 +64,8 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         organization: azureData.organization,
       };
     }
-    if (isCloudflareAi) {
-      return { accountId: cloudflareData.accountId };
+    if (requiresAccountId) {
+      return { accountId: accountIdData.accountId };
     }
     if (providerRegions && region) {
       return { region };
@@ -144,7 +147,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
 
       let apiKey;
       let providerSpecificData;
-      if (isCloudflareAi && parts.length >= 3) {
+      if (requiresAccountId && parts.length >= 3) {
         // Format: name|apiKey|accountId
         apiKey = parts.slice(1, -1).join("|").trim();
         providerSpecificData = { accountId: parts[parts.length - 1].trim() };
@@ -309,12 +312,12 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         )}
         {isCloudflareAi && (
           <div className="bg-sidebar/50 p-4 rounded-lg border border-accent/20">
-            <h3 className="font-semibold mb-3 text-sm">Cloudflare Workers AI</h3>
+            <h3 className="font-semibold mb-3 text-sm">{accountIdProviderLabel}</h3>
             <Input
               label="Account ID"
-              value={cloudflareData.accountId}
-              onChange={(e) => setCloudflareData({ ...cloudflareData, accountId: e.target.value })}
-              placeholder="abc123def456..."
+              value={accountIdData.accountId}
+              onChange={(e) => setAccountIdData({ ...accountIdData, accountId: e.target.value })}
+              placeholder={isCloudflareAi ? "abc123def456..." : "snowflake-account-id"}
             />
             <p className="text-xs text-text-muted mt-2">
               Find your Account ID in the right sidebar of <a href="https://dash.cloudflare.com" target="_blank" rel="noopener noreferrer" className="text-primary underline">dash.cloudflare.com</a>
@@ -382,7 +385,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         </p>
 
         <div className="flex gap-2">
-          <Button onClick={handleSubmit} fullWidth disabled={saving || (!isOllamaLocal && (!formData.name || !formData.apiKey)) || (isCompatible && !formData.defaultModel.trim()) || (isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization)) || (isCloudflareAi && !cloudflareData.accountId)}>
+          <Button onClick={handleSubmit} fullWidth disabled={saving || (!isOllamaLocal && (!formData.name || !formData.apiKey)) || (isCompatible && !formData.defaultModel.trim()) || (isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization)) || (requiresAccountId && !accountIdData.accountId)}>
             {saving ? "Saving..." : "Save"}
           </Button>
           <Button onClick={onClose} variant="ghost" fullWidth>

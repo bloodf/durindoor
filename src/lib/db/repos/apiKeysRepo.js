@@ -1,5 +1,8 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
+import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
+
+const DEFAULT_POLICY = { allowedModels: [], maxTokens: null, maxCostUsd: null };
 
 function rowToKey(row) {
   if (!row) return null;
@@ -11,6 +14,7 @@ function rowToKey(row) {
     isActive: row.isActive === 1 || row.isActive === true,
     allowedCombos: (() => { try { const v = JSON.parse(row.allowedCombos); return Array.isArray(v) ? v : []; } catch { return []; } })(),
     dailyLimitTokens: row.dailyLimitTokens ?? null,
+    policy: parseJson(row.policy, DEFAULT_POLICY),
     createdAt: row.createdAt,
   };
 }
@@ -47,7 +51,7 @@ export async function getApiKeyByKey(key) {
   return rowToKey(row);
 }
 
-export async function createApiKey(name, machineId, allowedCombos = [], dailyLimitTokens = null) {
+export async function createApiKey(name, machineId, allowedCombos = [], dailyLimitTokens = null, policy = null) {
   if (!machineId) throw new Error("machineId is required");
   const tokenLimit = normalizeDailyLimitTokens(dailyLimitTokens);
   const db = await getAdapter();
@@ -61,11 +65,12 @@ export async function createApiKey(name, machineId, allowedCombos = [], dailyLim
     isActive: true,
     allowedCombos: Array.isArray(allowedCombos) ? allowedCombos : [],
     dailyLimitTokens: tokenLimit ?? null,
+    policy: policy || DEFAULT_POLICY,
     createdAt: new Date().toISOString(),
   };
   db.run(
-    `INSERT INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, dailyLimitTokens, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
-    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, JSON.stringify(apiKey.allowedCombos), apiKey.dailyLimitTokens, apiKey.createdAt]
+    `INSERT INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, dailyLimitTokens, policy, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, JSON.stringify(apiKey.allowedCombos), apiKey.dailyLimitTokens, stringifyJson(apiKey.policy), apiKey.createdAt]
   );
   return apiKey;
 }
@@ -80,8 +85,8 @@ export async function updateApiKey(id, data) {
     if ("dailyLimitTokens" in cleanData) cleanData.dailyLimitTokens = normalizeDailyLimitTokens(cleanData.dailyLimitTokens);
     const merged = { ...rowToKey(row), ...cleanData };
     db.run(
-      `UPDATE apiKeys SET key = ?, name = ?, machineId = ?, isActive = ?, allowedCombos = ?, dailyLimitTokens = ? WHERE id = ?`,
-      [merged.key, merged.name, merged.machineId, merged.isActive ? 1 : 0, JSON.stringify(merged.allowedCombos || []), merged.dailyLimitTokens ?? null, id]
+      `UPDATE apiKeys SET key = ?, name = ?, machineId = ?, isActive = ?, allowedCombos = ?, dailyLimitTokens = ?, policy = ? WHERE id = ?`,
+      [merged.key, merged.name, merged.machineId, merged.isActive ? 1 : 0, JSON.stringify(merged.allowedCombos || []), merged.dailyLimitTokens ?? null, stringifyJson(merged.policy || DEFAULT_POLICY), id]
     );
     result = merged;
   });

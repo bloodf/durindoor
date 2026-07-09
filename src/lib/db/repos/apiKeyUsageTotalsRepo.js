@@ -25,13 +25,15 @@ export async function getApiKeyUsageTotals(apiKeyId) {
 export async function getAllApiKeyUsageTotals() {
   const db = await getAdapter();
   const rows = db.all(`SELECT * FROM apiKeyUsageTotals ORDER BY updatedAt DESC`);
-  return rows.map((row) => ({
-    apiKeyId: row.apiKeyId,
-    totalTokens: row.totalTokens || 0,
-    totalCost: row.totalCost || 0,
-    totalRequests: row.totalRequests || 0,
-    updatedAt: row.updatedAt || null,
-  }));
+  const map = {};
+  for (const row of rows) {
+    map[row.apiKeyId] = {
+      totalTokens: row.totalTokens || 0,
+      totalCost: row.totalCost || 0,
+      totalRequests: row.totalRequests || 0,
+    };
+  }
+  return map;
 }
 
 /**

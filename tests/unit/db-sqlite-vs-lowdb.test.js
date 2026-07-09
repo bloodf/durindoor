@@ -65,6 +65,42 @@ describe("DB SQLite layer — public API parity", () => {
     expect(await sqliteDb.getApiKeyById(k.id)).toBeNull();
   });
 
+  it("apiKeys: policy JSON and lifetime usage totals are persisted", async () => {
+    const policy = { allowedModels: ["openai/gpt-4o", "anthropic/claude-sonnet"], maxTokens: 5000, maxCostUsd: 1.5 };
+    const k = await sqliteDb.createApiKey("policy-key", "machine-abc", [], null, policy);
+    expect(k.policy).toEqual(policy);
+
+    const byId = await sqliteDb.getApiKeyById(k.id);
+    expect(byId.policy).toEqual(policy);
+
+    // Direct sync increment to verify lifetime counter wiring
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const db = await getAdapter();
+    sqliteDb.incrementApiKeyUsageSync(db, k.id, { tokens: 25, cost: 0.07 });
+
+    const totals = await sqliteDb.getApiKeyUsageTotals(k.id);
+    expect(totals.totalTokens).toBe(25);
+    expect(totals.totalCost).toBe(0.07);
+    expect(totals.totalRequests).toBe(1);
+
+    const allTotals = await sqliteDb.getAllApiKeyUsageTotals();
+    expect(allTotals[k.id]).toBeDefined();
+    expect(allTotals[k.id].totalTokens).toBe(25);
+
+    await sqliteDb.deleteApiKey(k.id);
+  });
+
+  it("apiKeys: update merges policy without losing other fields", async () => {
+    const k = await sqliteDb.createApiKey("merge-key", "machine-abc", ["combo-a"], 100, { allowedModels: ["openai/gpt-4o"], maxTokens: 1000, maxCostUsd: null });
+    // repo updateApiKey replaces the whole policy object; merge happens in the route
+    await sqliteDb.updateApiKey(k.id, { policy: { allowedModels: ["openai/gpt-4o", "anthropic/claude"], maxTokens: 1000, maxCostUsd: 2.0 } });
+    const back = await sqliteDb.getApiKeyById(k.id);
+    expect(back.allowedCombos).toEqual(["combo-a"]);
+    expect(back.dailyLimitTokens).toBe(100);
+    expect(back.policy).toEqual({ allowedModels: ["openai/gpt-4o", "anthropic/claude"], maxTokens: 1000, maxCostUsd: 2.0 });
+    await sqliteDb.deleteApiKey(k.id);
+  });
+
   it("apiKeys: daily usage limit status uses today's API-key tokens", async () => {
     const k = await sqliteDb.createApiKey("limited-key", "machine-abc", [], 100);
     let status = await sqliteDb.getApiKeyUsageLimitStatus(k.key);

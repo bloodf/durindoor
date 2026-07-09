@@ -1,39 +1,30 @@
-// Add `policy` JSON column to apiKeys for per-key model allowlist (and future
-// token/cost limits). Additive only — syncSchemaFromTables also handles this
-// for existing DBs, but the migration stamps the version for traceability.
-// Also backfills lifetime per-key totals from existing usageHistory so new
-// limits applied to existing keys start from real usage.
+// Add `policy` JSON column to apiKeys for per-key model allowlist, max lifetime
+// tokens, and max lifetime cost. Also create apiKeyUsageTotals table for
+// per-key lifetime counters. Additive only — syncSchemaFromTables also handles
+// these for existing DBs, but the migration stamps the version.
 export default {
   version: 5,
   name: "api-key-policy",
   up(db) {
-    const cols = db.all(`PRAGMA table_info(apiKeys)`);
-    if (!cols.some((c) => c.name === "policy")) {
-      db.exec(`ALTER TABLE apiKeys ADD COLUMN policy TEXT`);
+    try {
+      const cols = db.all(`PRAGMA table_info(apiKeys)`);
+      if (!cols.some((c) => c.name === "policy")) {
+        db.exec(`ALTER TABLE apiKeys ADD COLUMN policy TEXT`);
+      }
+    } catch (err) {
+      if (!/duplicate column|already exists|column.*exists/i.test(String(err))) {
+        throw err;
+      }
     }
 
-    // Backfill apiKeyUsageTotals from historical usage rows. The counter is
-    // normally incremented inside saveRequestUsage; pre-existing databases will
-    // have zero totals otherwise, causing per-key limits to under-count history.
-    const totalsTable = db.all(`PRAGMA table_info(apiKeyUsageTotals)`);
-    if (totalsTable.length === 0) return;
-
-    const rows = db.all(`
-      SELECT
-        a.id AS apiKeyId,
-        COALESCE(SUM(u.promptTokens + u.completionTokens), 0) AS totalTokens,
-        COALESCE(SUM(u.cost), 0) AS totalCost,
-        COUNT(u.id) AS totalRequests
-      FROM apiKeys a
-      LEFT JOIN usageHistory u ON u.apiKey = a.key
-      GROUP BY a.id
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS apiKeyUsageTotals (
+        apiKeyId TEXT PRIMARY KEY,
+        totalTokens INTEGER DEFAULT 0,
+        totalCost REAL DEFAULT 0,
+        totalRequests INTEGER DEFAULT 0,
+        updatedAt TEXT NOT NULL
+      )
     `);
-
-    for (const r of rows) {
-      db.run(
-        `INSERT OR REPLACE INTO apiKeyUsageTotals(apiKeyId, totalTokens, totalCost, totalRequests, updatedAt) VALUES(?, ?, ?, ?, ?)`,
-        [r.apiKeyId, r.totalTokens || 0, r.totalCost || 0, r.totalRequests || 0, new Date().toISOString()]
-      );
-    }
   },
 };

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import PropTypes from "prop-types";
-import { Card, Button, Input, Modal, CardSkeleton, Toggle, ConfirmModal } from "@/shared/components";
+import { Card, Button, Input, Modal, CardSkeleton, Toggle, ConfirmModal, ModelSelectModal } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import {
   TUNNEL_BENEFITS,
@@ -23,12 +23,17 @@ export default function APIPageClient({ machineId }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newKeyName, setNewKeyName] = useState("");
   const [newKeyDailyLimitTokens, setNewKeyDailyLimitTokens] = useState("");
+  const [newKeyPolicy, setNewKeyPolicy] = useState({ allowedModels: [], maxTokens: null, maxCostUsd: null });
   const [createdKey, setCreatedKey] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
   const [combos, setCombos] = useState([]);
   const [newKeyAllowedCombos, setNewKeyAllowedCombos] = useState([]);
   const [editKey, setEditKey] = useState(null);
   const [editKeyAllowedCombos, setEditKeyAllowedCombos] = useState([]);
+  const [editPolicyKey, setEditPolicyKey] = useState(null);
+  const [connections, setConnections] = useState([]);
+  const [modelAliases, setModelAliases] = useState({});
+  const [showModelModal, setShowModelModal] = useState(false);
 
   const [requireApiKey, setRequireApiKey] = useState(false);
   const [requireLogin, setRequireLogin] = useState(true);
@@ -260,9 +265,11 @@ export default function APIPageClient({ machineId }) {
 
   const fetchData = async () => {
     try {
-      const [keysRes, combosRes] = await Promise.all([
+      const [keysRes, combosRes, provRes, aliasRes] = await Promise.all([
         fetch("/api/keys"),
         fetch("/api/combos"),
+        fetch("/api/providers"),
+        fetch("/api/models/alias"),
       ]);
       const keysData = await keysRes.json();
       if (keysRes.ok) {
@@ -271,6 +278,14 @@ export default function APIPageClient({ machineId }) {
       if (combosRes.ok) {
         const combosData = await combosRes.json();
         setCombos(combosData.combos || combosData || []);
+      }
+      if (provRes.ok) {
+        const provData = await provRes.json();
+        setConnections(provData.connections || []);
+      }
+      if (aliasRes.ok) {
+        const aliasData = await aliasRes.json();
+        setModelAliases(aliasData.aliases || {});
       }
     } catch (error) {
       console.log("Error fetching data:", error);
@@ -628,7 +643,14 @@ export default function APIPageClient({ machineId }) {
       const res = await fetch("/api/keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newKeyName, allowedCombos: newKeyAllowedCombos, dailyLimitTokens }),
+        body: JSON.stringify({
+          name: newKeyName,
+          allowedCombos: newKeyAllowedCombos,
+          dailyLimitTokens,
+          allowedModels: newKeyPolicy.allowedModels || [],
+          maxTokens: newKeyPolicy.maxTokens ?? null,
+          maxCostUsd: newKeyPolicy.maxCostUsd ?? null,
+        }),
       });
       const data = await res.json();
 
@@ -638,6 +660,7 @@ export default function APIPageClient({ machineId }) {
         setNewKeyName("");
         setNewKeyDailyLimitTokens("");
         setNewKeyAllowedCombos([]);
+        setNewKeyPolicy({ allowedModels: [], maxTokens: null, maxCostUsd: null });
         setShowAddModal(false);
       }
     } catch (error) {
@@ -696,6 +719,27 @@ export default function APIPageClient({ machineId }) {
       }
     } catch (error) {
       console.log("Error updating key combos:", error);
+    }
+  };
+
+  const handleUpdateKeyPolicy = async (id, policy) => {
+    try {
+      const body = {
+        allowedModels: policy?.allowedModels || [],
+        maxTokens: policy?.maxTokens ?? null,
+        maxCostUsd: policy?.maxCostUsd ?? null,
+      };
+      const res = await fetch(`/api/keys/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setKeys(prev => prev.map(k => k.id === id ? { ...k, policy: data.key?.policy || policy } : k));
+      }
+    } catch (error) {
+      console.log("Error updating key policy:", error);
     }
   };
 
@@ -1073,6 +1117,32 @@ export default function APIPageClient({ machineId }) {
                   <p className="text-xs text-text-muted mt-1">
                     Created {new Date(key.createdAt).toLocaleDateString()}
                   </p>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <span className="text-xs text-text-muted">Models:</span>
+                    <button
+                      onClick={() => { setEditPolicyKey(key); }}
+                      className="text-xs text-text-muted hover:text-primary transition-colors"
+                    >
+                      {key.policy?.allowedModels?.length > 0
+                        ? `${key.policy.allowedModels.length} model${key.policy.allowedModels.length > 1 ? "s" : ""} allowed`
+                        : "All models"}
+                    </button>
+                    <span className="material-symbols-outlined text-[12px] text-text-muted">tune</span>
+                  </div>
+                  {(key.policy?.maxTokens != null || key.policy?.maxCostUsd != null) && (
+                    <div className="flex flex-wrap items-center gap-2 mt-1">
+                      {key.policy?.maxTokens != null && (
+                        <span className={`text-xs ${key.usage?.totalTokens >= key.policy.maxTokens ? "text-red-500" : "text-text-muted"}`}>
+                          {key.usage?.totalTokens?.toLocaleString() || 0} / {key.policy.maxTokens.toLocaleString()} tokens
+                        </span>
+                      )}
+                      {key.policy?.maxCostUsd != null && (
+                        <span className={`text-xs ${key.usage?.totalCost >= key.policy.maxCostUsd ? "text-red-500" : "text-text-muted"}`}>
+                          ${key.usage?.totalCost?.toFixed(4) || "0.0000"} / ${key.policy.maxCostUsd} cost
+                        </span>
+                      )}
+                    </div>
+                  )}
                   {key.isActive === false && (
                     <p className="text-xs text-orange-500 mt-1">Paused</p>
                   )}
@@ -1166,6 +1236,77 @@ export default function APIPageClient({ machineId }) {
             onChange={(e) => setNewKeyDailyLimitTokens(e.target.value)}
             placeholder="Unlimited"
           />
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-medium">Allowed Models</p>
+              <Button
+                size="sm"
+                variant="ghost"
+                icon="add"
+                onClick={() => setShowModelModal(true)}
+                disabled={connections.filter((c) => c.isActive !== false).length === 0}
+              >
+                Select Models
+              </Button>
+            </div>
+            <p className="text-xs text-text-muted mb-2">Leave empty to allow all models.</p>
+            {(newKeyPolicy.allowedModels || []).length > 0 ? (
+              <div className="flex flex-wrap gap-1.5 p-2 rounded-lg bg-bg-secondary border border-border min-h-[40px]">
+                {(newKeyPolicy.allowedModels || []).map((model) => (
+                  <span
+                    key={model}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs bg-primary/10 text-primary border border-primary/20"
+                  >
+                    {model}
+                    <button
+                      onClick={() => {
+                        setNewKeyPolicy({
+                          ...newKeyPolicy,
+                          allowedModels: newKeyPolicy.allowedModels.filter((m) => m !== model),
+                        });
+                      }}
+                      className="hover:text-red-500 transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-[12px]">close</span>
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <div className="p-2 rounded-lg bg-bg-secondary border border-border text-xs text-text-muted">All models allowed</div>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-sm font-medium mb-1 block">Max Tokens (lifetime)</label>
+              <input
+                type="number"
+                className="w-full px-3 py-1.5 rounded-lg bg-bg-secondary border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                value={newKeyPolicy.maxTokens ?? ""}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setNewKeyPolicy({ ...newKeyPolicy, maxTokens: val === "" ? null : Number(val) });
+                }}
+                placeholder="Unlimited"
+                min="0"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Max Cost USD (lifetime)</label>
+              <input
+                type="number"
+                step="0.01"
+                className="w-full px-3 py-1.5 rounded-lg bg-bg-secondary border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                value={newKeyPolicy.maxCostUsd ?? ""}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setNewKeyPolicy({ ...newKeyPolicy, maxCostUsd: val === "" ? null : Number(val) });
+                }}
+                placeholder="Unlimited"
+                min="0"
+              />
+            </div>
+          </div>
           {combos.length > 0 && (
             <div>
               <p className="text-sm font-medium mb-2">Allowed Combos</p>
@@ -1201,6 +1342,8 @@ export default function APIPageClient({ machineId }) {
                 setShowAddModal(false);
                 setNewKeyName("");
                 setNewKeyDailyLimitTokens("");
+                setNewKeyAllowedCombos([]);
+                setNewKeyPolicy({ allowedModels: [], maxTokens: null, maxCostUsd: null });
               }}
               variant="ghost"
               fullWidth
@@ -1443,6 +1586,143 @@ export default function APIPageClient({ machineId }) {
           </div>
         </div>
       </Modal>
+
+      <Modal
+        isOpen={!!editPolicyKey}
+        title={`API Key Policy — ${editPolicyKey?.name || ""}`}
+        onClose={() => setEditPolicyKey(null)}
+      >
+        <div className="flex flex-col gap-4">
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-medium">Allowed Models</p>
+              <Button
+                size="sm"
+                variant="ghost"
+                icon="add"
+                onClick={() => setShowModelModal(true)}
+                disabled={connections.filter((c) => c.isActive !== false).length === 0}
+              >
+                Select Models
+              </Button>
+            </div>
+            <p className="text-xs text-text-muted mb-2">Leave empty to allow all models. Click a model chip to remove.</p>
+            {(editPolicyKey?.policy?.allowedModels || []).length > 0 ? (
+              <div className="flex flex-wrap gap-1.5 p-2 rounded-lg bg-bg-secondary border border-border min-h-[40px]">
+                {(editPolicyKey?.policy?.allowedModels || []).map((model) => (
+                  <span
+                    key={model}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs bg-primary/10 text-primary border border-primary/20"
+                  >
+                    {model}
+                    <button
+                      onClick={() => {
+                        const updated = (editPolicyKey?.policy?.allowedModels || []).filter((m) => m !== model);
+                        setEditPolicyKey({ ...editPolicyKey, policy: { ...editPolicyKey.policy, allowedModels: updated } });
+                      }}
+                      className="hover:text-red-500 transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-[12px]">close</span>
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <div className="p-2 rounded-lg bg-bg-secondary border border-border text-xs text-text-muted">All models allowed</div>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-sm font-medium mb-1 block">Max Tokens (lifetime)</label>
+              <input
+                type="number"
+                className="w-full px-3 py-1.5 rounded-lg bg-bg-secondary border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                value={editPolicyKey?.policy?.maxTokens ?? ""}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setEditPolicyKey({
+                    ...editPolicyKey,
+                    policy: { ...editPolicyKey?.policy, maxTokens: val === "" ? null : Number(val) },
+                  });
+                }}
+                placeholder="Unlimited"
+                min="0"
+              />
+              {editPolicyKey?.usage && editPolicyKey?.policy?.maxTokens != null && (
+                <p className="text-xs text-text-muted mt-1">Used: {editPolicyKey.usage.totalTokens?.toLocaleString() || 0}</p>
+              )}
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Max Cost USD (lifetime)</label>
+              <input
+                type="number"
+                step="0.01"
+                className="w-full px-3 py-1.5 rounded-lg bg-bg-secondary border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                value={editPolicyKey?.policy?.maxCostUsd ?? ""}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setEditPolicyKey({
+                    ...editPolicyKey,
+                    policy: { ...editPolicyKey?.policy, maxCostUsd: val === "" ? null : Number(val) },
+                  });
+                }}
+                placeholder="Unlimited"
+                min="0"
+              />
+              {editPolicyKey?.usage && editPolicyKey?.policy?.maxCostUsd != null && (
+                <p className="text-xs text-text-muted mt-1">Used: ${editPolicyKey.usage.totalCost?.toFixed(4) || "0.0000"}</p>
+              )}
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              onClick={async () => {
+                if (editPolicyKey) {
+                  await handleUpdateKeyPolicy(editPolicyKey.id, editPolicyKey.policy);
+                  setEditPolicyKey(null);
+                }
+              }}
+              fullWidth
+            >
+              Save
+            </Button>
+            <Button onClick={() => setEditPolicyKey(null)} variant="ghost" fullWidth>Cancel</Button>
+          </div>
+        </div>
+      </Modal>
+
+      <ModelSelectModal
+        isOpen={showModelModal}
+        onClose={() => setShowModelModal(false)}
+        onSelect={(model) => {
+          if (editPolicyKey) {
+            const current = editPolicyKey?.policy?.allowedModels || [];
+            if (!current.includes(model.value)) {
+              setEditPolicyKey({ ...editPolicyKey, policy: { ...editPolicyKey.policy, allowedModels: [...current, model.value] } });
+            }
+          } else {
+            const current = newKeyPolicy.allowedModels || [];
+            if (!current.includes(model.value)) {
+              setNewKeyPolicy({ ...newKeyPolicy, allowedModels: [...current, model.value] });
+            }
+          }
+        }}
+        onDeselect={(model) => {
+          if (editPolicyKey) {
+            const current = editPolicyKey?.policy?.allowedModels || [];
+            setEditPolicyKey({ ...editPolicyKey, policy: { ...editPolicyKey.policy, allowedModels: current.filter((m) => m !== model.value) } });
+          } else {
+            const current = newKeyPolicy.allowedModels || [];
+            setNewKeyPolicy({ ...newKeyPolicy, allowedModels: current.filter((m) => m !== model.value) });
+          }
+        }}
+        selectedModel={null}
+        activeProviders={connections.filter((c) => c.isActive !== false)}
+        modelAliases={modelAliases}
+        addedModelValues={editPolicyKey ? (editPolicyKey.policy?.allowedModels || []) : (newKeyPolicy.allowedModels || [])}
+        closeOnSelect={false}
+        title="Select Allowed Models"
+      />
 
       {/* Confirm Modal */}
       <ConfirmModal

@@ -34,7 +34,8 @@ describe("fetchKiroProfileArn — regional endpoint + dispatch shape", () => {
       json: async () => ({ profiles: [{ arn: expectedArn }] }),
     });
 
-    const arn = await fetchKiroProfileArn("token", "eu-west-1");
+    const proxyOptions = { connectionProxyEnabled: true, connectionProxyUrl: "http://proxy.test" };
+    const arn = await fetchKiroProfileArn("token", "eu-west-1", proxyOptions);
     expect(arn).toBe(expectedArn);
 
     const [url, init] = fetchMock.mock.calls[0];
@@ -45,6 +46,7 @@ describe("fetchKiroProfileArn — regional endpoint + dispatch shape", () => {
       "AmazonCodeWhispererService.ListAvailableProfiles"
     );
     expect(init.headers.Authorization).toBe("Bearer token");
+    expect(init.proxyOptions).toBe(proxyOptions);
   });
 
   it("prefers the profile whose ARN region matches the caller region", async () => {

@@ -1837,6 +1837,7 @@ export default function ProviderDetailPage() {
           providerInfo={providerInfo}
           onSuccess={handleOAuthSuccess}
           onClose={() => setShowOAuthModal(false)}
+          proxyPools={proxyPools}
         />
       )}
       {providerId === "iflow" && (

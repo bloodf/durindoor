@@ -53,7 +53,7 @@ function extractEmailFromAccessToken(accessToken) {
   return payload.email || payload.preferred_username || payload.sub || undefined;
 }
 
-export async function fetchKiroProfileArn(accessToken, region = "us-east-1") {
+export async function fetchKiroProfileArn(accessToken, region = "us-east-1", proxyOptions = null) {
   if (!accessToken) return null;
   const safeRegion = typeof region === "string" && AWS_REGION_PATTERN.test(region) ? region : "us-east-1";
   const endpoint = `${buildKiroProfileEndpoint(safeRegion)}`;
@@ -67,6 +67,8 @@ export async function fetchKiroProfileArn(accessToken, region = "us-east-1") {
         Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({ maxResults: 10 }),
+      // Route Kiro profile discovery through the OAuth-selected proxy pool.
+      proxyOptions,
     });
     if (!response.ok) return null;
     const data = await response.json();

@@ -13,6 +13,7 @@
  */
 import { BaseExecutor } from "./base.js";
 import { errorResponse, sanitizeErrorMessage } from "../utils/error.js";
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { extractKimiJwt } from "@/lib/providers/webCookieAuth";
 
 export { extractKimiJwt };
@@ -140,6 +141,29 @@ export function isEndOfStream(msg) {
 }
 
 /**
+ * Render one OpenAI message `content` value to plain text for the Kimi prompt.
+ * String content is returned as-is. Array content (multimodal parts) folds
+ * `{type:"text", text}` parts joined by newline and annotates any unsupported
+ * media part as `[unsupported-part: <type>]` rather than emitting the raw JSON.
+ * @param {unknown} content
+ * @returns {string}
+ */
+export function contentToText(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return JSON.stringify(content ?? "");
+  return content
+    .map((part) => {
+      if (part && typeof part === "object") {
+        if (part.type === "text" && typeof part.text === "string") return part.text;
+        return `[unsupported-part: ${part.type ?? "unknown"}]`;
+      }
+      return typeof part === "string" ? part : "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+/**
  * Fold a multi-turn OpenAI `messages` array into a single Kimi user turn.
  * Kimi web chat is single-turn; tool/function messages are dropped.
  * @param {Array<{role: string, content: unknown}>} messages
@@ -149,7 +173,7 @@ export function foldMessages(messages) {
   let system = "";
   let user = "";
   for (const m of messages || []) {
-    const text = typeof m.content === "string" ? m.content : JSON.stringify(m.content ?? "");
+    const text = contentToText(m.content);
     if (m.role === "system") {
       system += (system ? "\n\n" : "") + text;
     } else if (m.role === "user") {
@@ -217,9 +241,10 @@ export class KimiWebExecutor extends BaseExecutor {
    * @param {object} input.credentials
    * @param {boolean} input.stream
    * @param {AbortSignal} [input.signal]
+   * @param {object|null} [input.proxyOptions]
    * @returns {Promise<{response: Response, url: string, headers: Record<string,string>, transformedBody: object}>}
    */
-  async execute({ body, credentials, stream: wantStream, signal }) {
+  async execute({ body, credentials, stream: wantStream, signal, proxyOptions = null }) {
     const bodyObj = body || {};
 
     const rawCredential = String(credentials?.apiKey || "").trim();
@@ -248,12 +273,12 @@ export class KimiWebExecutor extends BaseExecutor {
 
     let upstream;
     try {
-      upstream = await fetch(CHAT_URL, {
+      upstream = await proxyAwareFetch(CHAT_URL, {
         method: "POST",
         headers: reqHeaders,
         body: new Uint8Array(framedBody),
         signal,
-      });
+      }, proxyOptions);
     } catch (err) {
       return {
         response: errorResponse(502, `Kimi fetch failed: ${err instanceof Error ? err.message : "unknown"}`),
@@ -389,7 +414,17 @@ export class KimiWebExecutor extends BaseExecutor {
         let offset = 0;
         while (offset < buffer.length) {
           const { consumed, frame } = decodeConnectFrame(buffer, offset);
-          if (consumed === -1) break;
+          if (consumed === -1) {
+            // Mirror the streaming path: an oversized Connect frame is fatal
+            // rather than leaving it in the buffer where it could be re-parsed
+            // indefinitely or produce a partial bogus 200.
+            return {
+              response: errorResponse(503, "kimi-web oversized frame"),
+              url: CHAT_URL,
+              headers: reqHeaders,
+              transformedBody: JSON.parse(reqBody),
+            };
+          }
           if (consumed === 0) break;
           offset += consumed;
           if (!frame?.message) continue;

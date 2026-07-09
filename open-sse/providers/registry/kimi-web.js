@@ -15,7 +15,12 @@ export default {
   serviceKinds: ["llm"],
   transport: {
     baseUrl: "https://www.kimi.com/apiv2/kimi.gateway.chat.v1.ChatService/Chat",
-    format: "kimi-web",
+    // Executor emits OpenAI Chat Completions chunks/JSON (see executors/kimi-web.js).
+    // Declaring the wire format as "openai" keeps the streaming/non-streaming
+    // chatCore paths in passthrough mode (so `data: [DONE]` is forwarded for
+    // OpenAI clients and OpenAI JSON projects back to Claude correctly) and
+    // makes the generic OpenAI connection probe cover Validate/Test actions.
+    format: "openai",
     executor: "kimi-web",
     authType: "cookie",
   },

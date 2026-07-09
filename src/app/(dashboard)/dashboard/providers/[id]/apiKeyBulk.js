@@ -1,3 +1,17 @@
+export function isAccountIdValid(accountId) {
+  return typeof accountId === "string" && accountId.trim().length > 0;
+}
+
+export function getAccountIdProviderData(accountId) {
+  return isAccountIdValid(accountId) ? { accountId: accountId.trim() } : undefined;
+}
+
+export function getProviderHelp(provider) {
+  if (provider === "snowflake") {
+    return { text: "Find your Snowflake account identifier in Snowsight under account details.", href: "https://docs.snowflake.com/en/user-guide/admin-account-identifier" };
+  }
+  return { text: "Find your Cloudflare Account ID in the right sidebar of dash.cloudflare.com.", href: "https://dash.cloudflare.com" };
+}
 // Pure parser + validator for the "Bulk Add" rows in AddApiKeyModal.
 //
 // One row per line. Three shapes depending on the provider:

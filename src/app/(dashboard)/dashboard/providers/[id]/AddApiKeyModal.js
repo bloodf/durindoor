@@ -4,7 +4,7 @@ import { useState } from "react";
 import PropTypes from "prop-types";
 import { Button, Badge, Input, Modal, Select } from "@/shared/components";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
-import { prepareBulkKeyRows } from "./apiKeyBulk.js";
+import { prepareBulkKeyRows, getAccountIdProviderData, isAccountIdValid, getProviderHelp } from "./apiKeyBulk.js";
 
 const BULK_PLACEHOLDER = `name1|sk-key1\nname2|sk-key2\nsk-key-only-auto-named`;
 
@@ -65,9 +65,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         organization: azureData.organization,
       };
     }
-    if (requiresAccountId) {
-      return { accountId: accountIdData.accountId };
-    }
+    if (requiresAccountId) return getAccountIdProviderData(accountIdData.accountId);
     if (providerRegions && region) {
       return { region };
     }
@@ -315,7 +313,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
               placeholder={isCloudflareAi ? "abc123def456..." : "snowflake-account-id"}
             />
             <p className="text-xs text-text-muted mt-2">
-              Find your Account ID in the right sidebar of <a href="https://dash.cloudflare.com" target="_blank" rel="noopener noreferrer" className="text-primary underline">dash.cloudflare.com</a>
+              {getProviderHelp(provider).text} <a href={getProviderHelp(provider).href} target="_blank" rel="noopener noreferrer" className="text-primary underline">Open help</a>
             </p>
           </div>
         )}
@@ -380,7 +378,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         </p>
 
         <div className="flex gap-2">
-          <Button onClick={handleSubmit} fullWidth disabled={saving || (!isOllamaLocal && (!formData.name || !formData.apiKey)) || (isCompatible && !formData.defaultModel.trim()) || (isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization)) || (requiresAccountId && !accountIdData.accountId)}>
+          <Button onClick={handleSubmit} fullWidth disabled={saving || (!isOllamaLocal && (!formData.name || !formData.apiKey)) || (isCompatible && !formData.defaultModel.trim()) || (isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization)) || (requiresAccountId && !isAccountIdValid(accountIdData.accountId))}>
             {saving ? "Saving..." : "Save"}
           </Button>
           <Button onClick={onClose} variant="ghost" fullWidth>

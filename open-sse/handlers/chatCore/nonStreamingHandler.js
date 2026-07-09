@@ -350,7 +350,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       FORMATS.ANTIGRAVITY,
       FORMATS.GEMINI_CLI,
       FORMATS.VERTEX,
-    ].includes(sourceFormat) && Array.isArray(responseBody?.candidates);
+    ].includes(sourceFormat) && Array.isArray((responseBody.response || responseBody)?.candidates);
     if (isNativeGeminiSSE) {
       return {
         success: true,

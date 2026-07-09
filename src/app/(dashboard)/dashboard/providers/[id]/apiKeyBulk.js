@@ -56,7 +56,7 @@ export function prepareBulkKeyRows(lines, opts) {
  *   providerSpecificData?: { accountId: string }
  * }}
  */
- export function parseBulkKeyRow(line, opts) {
+export function parseBulkKeyRow(line, opts) {
   const { index, requiresAccountId = false, defaultName = "Key" } = opts || {};
   if (typeof line !== "string" || line.length === 0) {
     return { ok: false, error: "empty row" };

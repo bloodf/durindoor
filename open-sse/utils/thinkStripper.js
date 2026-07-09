@@ -1,8 +1,22 @@
 /**
- * Strip MiniMax M3 <think>...</think> tags from OpenAI-format responses.
- * MiniMax embeds thinking as XML tags inside the content field in its
- * native OpenAI endpoint — we strip them here so clients see clean output.
+ * MiniMax M3 embeds reasoning as `<think>...</think>` XML tags inside the
+ * `content` field of its OpenAI-format responses. This module exposes both
+ * stripping helpers (for streaming passthrough) and an extraction helper that
+ * moves the tagged reasoning into `reasoning_content` for non-streaming
+ * responses.
  */
+
+// Non-streaming: extract the first `<think>...</think>` block into
+// `reasoning_content` and return the content with all think tags removed.
+export function extractThinkTags(content) {
+  if (typeof content !== "string") return { content, reasoning: null };
+  const m = content.match(/<think>([\s\S]*?)<\/think>\s*/);
+  if (!m) return { content, reasoning: null };
+  return {
+    content: content.replace(/<think>[\s\S]*?<\/think>\s*/g, "").trimStart(),
+    reasoning: m[1].trim(),
+  };
+}
 
 // Non-streaming: simple regex (everything in one JSON blob)
 export function stripThinkFromResponse(responseBody) {

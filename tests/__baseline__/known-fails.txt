@@ -64,3 +64,8 @@ tests/unit/pollinations-validate-premium-key.test.js :: POST /api/providers/vali
 tests/unit/zenmux-free.test.js :: zenmux-free registry uses the specialized executor
 tests/unit/gitlawb-gmi-connection-test.test.js :: baseUrl-only API-key provider connection test probes gitlawb-gmi baseUrl when no validateUrl exists
 tests/unit/omniroute-simple-c-providers.test.js :: OmniRoute simple/default provider batch C exports every statically imported registry entry
+tests/unit/api-keys-route.test.js :: API keys route creates non-expiring API key by default
+tests/unit/api-keys-route.test.js :: API keys route normalizes future expiresAt and returns it
+tests/unit/api-keys-route.test.js :: API keys route rejects blank name
+tests/unit/api-keys-route.test.js :: API keys route returns 400 for invalid expiresAt
+tests/unit/cached-token-e2e.test.js :: cached-token end-to-end (persist + aggregate + cost) groups a registered API key by stable id across rename

@@ -243,8 +243,29 @@ export const PROVIDER_CAPABILITIES = {
   // SenseNova — SenseChat-Vision is advertised as a vision model; without an
   // override the provider/model id falls through to the default text-only floor
   // and images are stripped before the request reaches the provider.
+  // SenseNova Token Plan (validated 2026-07-06): max output tokens are clamped
+  // to 65536 via the registry requestDefaults. Only the three supported chat
+  // models are exposed; sensenova-u1-fast advertises on /models but 404s on
+  // chat completions, so it is omitted from the registry.
   sensenova: {
-    "SenseChat-Vision": { vision: true, contextWindow: 4096 },
+    "sensenova-6.7-flash-lite": {
+      vision: true,
+      tools: true,
+      contextWindow: 262144,
+      maxOutput: 65536,
+    },
+    "deepseek-v4-flash": {
+      reasoning: true,
+      contextWindow: 1048576,
+      maxOutput: 65536,
+      thinkingFormat: "deepseek",
+    },
+    "glm-5.2": {
+      reasoning: true,
+      contextWindow: 1048576,
+      maxOutput: 65536,
+      thinkingFormat: "openai",
+    },
   },
 
   // StepFun — step-3.7-flash is documented as a vision-capable reasoning model.

@@ -114,15 +114,15 @@ const parseOpenAIStyleModels = (data) => {
 
 
 /**
- * Fetch dynamic model IDs for a provider that exposes `modelsFetcher` in its
- * registry config and has no static models (e.g. qiniu, bai, hackclub). Returns
- * an empty array on any error so callers can fall back to whatever they had.
+ * Fetch dynamic model IDs for providers with an empty static catalog and an
+ * OpenAI-shaped registry fetcher (`openai` or `openai-compatible`). Preserve
+ * response validation and fail open for all unrelated fetcher formats.
  */
 async function fetchRegistryModelsFetcherIds(connection) {
   const providerId = connection?.provider;
   const provider = providerId ? AI_PROVIDERS[providerId] : null;
   const fetcher = provider?.modelsFetcher;
-  if (!fetcher || typeof fetcher.url !== "string" || fetcher.type !== "openai") return [];
+  if (!fetcher || typeof fetcher.url !== "string" || !["openai", "openai-compatible"].includes(fetcher.type)) return [];
   const apiKey = typeof connection.apiKey === "string" ? connection.apiKey : "";
   if (!apiKey) return [];
 

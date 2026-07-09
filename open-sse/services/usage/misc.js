@@ -270,8 +270,8 @@ export async function getQoderUsage(accessToken, proxyOptions = null) {
 
 /**
  * Aggregate xAI usage from local usageHistory scoped to a connection.
- * xAI does not currently expose a stable usage API for consumer accounts, so
- * the quota view falls back to per-request totals captured by the proxy.
+ * Uses getUsageHistory's supported startDate filter to make 30d totals an
+ * exact rolling 30-day window; xAI has no stable consumer usage API.
  */
 export async function getXaiUsage(connectionId) {
   const plan = "xAI / Grok Build";
@@ -286,7 +286,11 @@ export async function getXaiUsage(connectionId) {
   let rows = [];
   try {
     const { getUsageHistory } = await import("../../../src/lib/db/index.js");
-    rows = await getUsageHistory({ provider: "xai", connectionId });
+    rows = await getUsageHistory({
+      provider: "xai",
+      connectionId,
+      startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+    });
   } catch {
     rows = [];
   }

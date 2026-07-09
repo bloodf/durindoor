@@ -256,15 +256,26 @@ describe("getCapabilitiesForModel — HuggingChat text-only", () => {
 
   it("same model id without provider still has vision via pattern match", () => {
     const caps = getCapabilitiesForModel(null, "command-a-vision-07-2025");
+
     expect(caps.vision).toBe(true);
   });
 });
 
 describe("getCapabilitiesForModel — simple provider vision/thinking overrides", () => {
-  it("preserves vision for SenseNova SenseChat-Vision", () => {
-    const caps = getCapabilitiesForModel("sensenova", "SenseChat-Vision");
+  it("preserves vision for SenseNova sensenova-6.7-flash-lite", () => {
+    const caps = getCapabilitiesForModel("sensenova", "sensenova-6.7-flash-lite");
     expect(caps.vision).toBe(true);
-    expect(caps.contextWindow).toBe(4096);
+    expect(caps.contextWindow).toBe(262144);
+  });
+  it("preserves reasoning for SenseNova deepseek-v4-flash", () => {
+    const caps = getCapabilitiesForModel("sensenova", "deepseek-v4-flash");
+    expect(caps.reasoning).toBe(true);
+    expect(caps.contextWindow).toBe(1048576);
+  });
+  it("preserves reasoning for SenseNova glm-5.2", () => {
+    const caps = getCapabilitiesForModel("sensenova", "glm-5.2");
+    expect(caps.reasoning).toBe(true);
+    expect(caps.contextWindow).toBe(1048576);
   });
 
   it("preserves vision and reasoning for StepFun step-1o-turbo-vision", () => {

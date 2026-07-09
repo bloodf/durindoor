@@ -150,6 +150,29 @@ describe("handleNonStreamingResponse: synthetic SSE respects client format", () 
     expect(text).toContain("therefore I am");
   });
 
+  it("extracts <think> reasoning into reasoning_content for OpenAI non-streaming clients", async () => {
+    const thinkCompletion = {
+      ...openaiCompletion,
+      choices: [{
+        index: 0,
+        message: {
+          role: "assistant",
+          content: "<think>planning step</think>visible answer",
+        },
+        finish_reason: "stop",
+      }],
+    };
+    const result = await handleNonStreamingResponse(baseOptions({
+      providerResponse: makeProviderResponse(thinkCompletion),
+      sourceFormat: FORMATS.OPENAI,
+      targetFormat: FORMATS.OPENAI,
+      streamToClient: false,
+    }));
+    const body = await result.response.json();
+    const msg = body.choices[0].message;
+    expect(msg.reasoning_content).toBe("planning step");
+    expect(msg.content).toBe("visible answer");
+  });
   it("still returns the client-shaped Claude JSON body (not SSE) for a real non-streaming request", async () => {
     // streamToClient:false — same sourceFormat/targetFormat as the SSE test
     // above, but the client actually asked for JSON. Guards that forcing the

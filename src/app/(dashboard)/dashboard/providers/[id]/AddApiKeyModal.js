@@ -4,8 +4,9 @@ import { useState } from "react";
 import PropTypes from "prop-types";
 import { Button, Badge, Input, Modal, Select } from "@/shared/components";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
+import { prepareBulkKeyRows } from "./apiKeyBulk.js";
 
-const BULK_PLACEHOLDER = `name1|sk-key1\nname2|sk-key2\nsk-key-only-auto-named`;
+ const BULK_PLACEHOLDER = `name1|sk-key1\nname2|sk-key2\nsk-key-only-auto-named`;
 
 export default function AddApiKeyModal({ isOpen, provider, providerName, isCompatible, isAnthropic, authType, authHint, website, proxyPools, error, onSave, onBulkDone, onClose }) {
   const NONE_PROXY_POOL_VALUE = "__none__";
@@ -138,34 +139,28 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     if (!lines.length) return;
     setSaving(true);
     setBulkResult(null);
+    // Validate up-front: invalid rows (missing/blank accountId for
+    // requiresAccountId providers, empty apiKey, etc.) are counted as failed
+    // here and excluded from the POST loop below.
+    const { items, failed: initialFailed } = prepareBulkKeyRows(lines, {
+      requiresAccountId,
+    });
     let success = 0;
-    let failed = 0;
-    for (let i = 0; i < lines.length; i++) {
-      const parts = lines[i].split("|");
-      const baseName = parts.length >= 2 ? parts[0].trim() : "Key";
-      const name = `${baseName} ${i + 1}`;
-
-      let apiKey;
-      let providerSpecificData;
-      if (requiresAccountId && parts.length >= 3) {
-        // Format: name|apiKey|accountId
-        apiKey = parts.slice(1, -1).join("|").trim();
-        providerSpecificData = { accountId: parts[parts.length - 1].trim() };
-      } else {
-        apiKey = parts.length >= 2 ? parts.slice(1).join("|").trim() : parts[0].trim();
-      }
-
+    let failed = initialFailed;
+    for (const row of items) {
       try {
         const res = await fetch("/api/providers", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             provider,
-            apiKey,
-            name,
+            apiKey: row.apiKey,
+            name: row.name,
             priority: 1,
             testStatus: "unknown",
-            ...(providerSpecificData ? { providerSpecificData } : {}),
+            ...(row.providerSpecificData
+              ? { providerSpecificData: row.providerSpecificData }
+              : {}),
           }),
         });
         if (res.ok) success++;

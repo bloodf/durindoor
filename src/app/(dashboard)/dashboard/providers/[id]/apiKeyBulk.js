@@ -12,6 +12,38 @@
 // and for unit testing. No DOM/fetch side effects — this is a pure function.
 
 /**
+ * Prepare a batch of bulk-add lines into the rows eligible for POST.
+ *
+ * Pure: no DOM, no fetch, no I/O. The modal calls this once at submit time
+ * and only iterates the returned `items`. Rows that fail validation
+ * (missing/blank accountId for requiresAccountId providers, empty apiKey,
+ * etc.) are excluded from `items` and counted in `failed`. This is the
+ * contract that "invalid rows must never reach fetch/POST" relies on.
+ *
+ * @param {string[]} lines - Pre-trimmed, non-empty lines from the textarea.
+ * @param {{ requiresAccountId?: boolean, defaultName?: string }} [opts]
+ * @returns {{ items: Array<{ name: string, apiKey: string, providerSpecificData?: { accountId: string } }>, failed: number }}
+ */
+export function prepareBulkKeyRows(lines, opts) {
+  const { requiresAccountId = false, defaultName = "Key" } = opts || {};
+  const items = [];
+  let failed = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const parsed = parseBulkKeyRow(lines[i], { index: i, requiresAccountId, defaultName });
+    if (!parsed.ok) {
+      failed++;
+      continue;
+    }
+    const row = { name: parsed.name, apiKey: parsed.apiKey };
+    if (parsed.providerSpecificData) {
+      row.providerSpecificData = parsed.providerSpecificData;
+    }
+    items.push(row);
+  }
+  return { items, failed };
+}
+
+/**
  * Parse a single bulk-add row into the data needed to POST /api/providers.
  *
  * @param {string} line - Raw trimmed line from the textarea.
@@ -24,7 +56,7 @@
  *   providerSpecificData?: { accountId: string }
  * }}
  */
-export function parseBulkKeyRow(line, opts) {
+ export function parseBulkKeyRow(line, opts) {
   const { index, requiresAccountId = false, defaultName = "Key" } = opts || {};
   if (typeof line !== "string" || line.length === 0) {
     return { ok: false, error: "empty row" };

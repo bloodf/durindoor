@@ -46,6 +46,7 @@ describe("baseUrl-only API-key provider connection test", () => {
       expect(String(url)).toBe("https://opengateway.gitlawb.com/v1/chat/completions");
       expect(options.headers.Authorization).toBe("Bearer glb-test-key");
       expect(options.method).toBe("POST");
+      expect(JSON.parse(options.body).model).toBe("XiaomiMiMo/MiMo-V2.5-Pro");
       return new Response("", { status: 200 });
     });
 

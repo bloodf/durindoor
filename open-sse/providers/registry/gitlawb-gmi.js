@@ -12,6 +12,7 @@ export default {
   category: "apikey",
   transport: {
     baseUrl: "https://opengateway.gitlawb.com/v1/chat/completions",
+    /** When true, probe the provider by POSTing a minimal chat request to `baseUrl` instead of deriving a `/models` URL. Use for providers that expose an OpenAI-compatible completions endpoint but do not publish a `/models` discovery route. */
     probeUsesBaseUrl: true,
     headers: {
       "User-Agent": "OpenClaude/1.0 (linux; x86_64)",

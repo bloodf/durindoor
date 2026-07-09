@@ -1,4 +1,4 @@
-import { getDefaultModel } from "open-sse/config/providerModels.js";
+import { getDefaultModel, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
 import { PROVIDERS } from "open-sse/config/providers.js";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
@@ -111,13 +111,14 @@ export function buildRegistryProviderProbe(provider, apiKey, providerSpecificDat
   }
 
   if (cfg.probeUsesBaseUrl) {
+    const alias = PROVIDER_ID_TO_ALIAS[provider] ?? provider;
     return {
       url: baseUrl,
       options: {
         method: "POST",
         headers,
         body: JSON.stringify({
-          model: getDefaultModel(provider) || "test",
+          model: getDefaultModel(alias) || "test",
           messages: [{ role: "user", content: "ping" }],
           max_tokens: 1,
         }),

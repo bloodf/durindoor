@@ -63,5 +63,4 @@ tests/unit/pollinations-auth-credentials.test.js :: getProviderCredentials for n
 tests/unit/pollinations-auth-credentials.test.js :: getProviderCredentials for no-auth providers with an optional real key (Pollinations) falls back to the synthetic public no-auth credential when the only saved connection is excluded
 tests/unit/pollinations-validate-premium-key.test.js :: POST /api/providers/validate - Pollinations no-auth + premium key returns valid:true without probing when no API key is supplied (keyless catalog)
 tests/unit/zenmux-free.test.js :: zenmux-free registry uses the specialized executor
-tests/unit/gitlawb-gmi-connection-test.test.js :: baseUrl-only API-key provider connection test probes gitlawb-gmi baseUrl when no validateUrl exists
 tests/unit/omniroute-simple-c-providers.test.js :: OmniRoute simple/default provider batch C exports every statically imported registry entry

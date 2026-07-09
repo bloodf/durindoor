@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { getMeta, setMeta } from "../helpers/metaStore.js";
+import { getUsagePeriodDays, getChartDayBucketCount } from "../../usagePeriods.js";
 
 function maskApiKey(key) {
   if (!key || typeof key !== "string") return null;
@@ -23,7 +24,16 @@ function getApiKeyStatsKey(apiKey, model, provider) {
 const PENDING_TIMEOUT_MS = 60 * 1000;
 const RING_CAP = 50;
 const CONN_CACHE_TTL_MS = 30 * 1000;
-const PERIOD_MS = { "24h": 86400000, "7d": 604800000, "30d": 2592000000, "60d": 5184000000 };
+// Window durations in ms for history/reset queries. Calendar-day stats/charts use getUsagePeriodDays/getChartDayBucketCount from usagePeriods.js.
+const PERIOD_MS = {
+  "24h": 86400000,
+  "7d": 604800000,
+  "30d": 2592000000,
+  "60d": 5184000000,
+  "90d": 7776000000,
+  "180d": 15552000000,
+  "365d": 31536000000,
+};
 
 // In-memory state shared across Next.js modules
 if (!global._pendingRequests) global._pendingRequests = { byModel: {}, byAccount: {} };
@@ -457,8 +467,7 @@ export async function getUsageStats(period = "all") {
   const useDailySummary = period !== "24h" && period !== "today";
 
   if (useDailySummary) {
-    const periodDays = { "7d": 7, "30d": 30, "60d": 60 };
-    const maxDays = periodDays[period] || null;
+    const maxDays = getUsagePeriodDays(period);
     const dayRows = loadDaysInRange(db, maxDays);
 
     for (const dr of dayRows) {
@@ -737,7 +746,7 @@ export async function getChartData(period = "7d") {
     });
   }
 
-  const bucketCount = period === "7d" ? 7 : period === "30d" ? 30 : 60;
+  const bucketCount = getChartDayBucketCount(period) ?? 60;
   const today = new Date();
 
   // Build map of dateKey → day data

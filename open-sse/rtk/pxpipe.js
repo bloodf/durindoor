@@ -22,18 +22,47 @@ function estTokens(chars) {
 }
 
 function skipped(reason, extra = {}) {
-  return { body: null, summary: { applied: false, reason, ...extra } };
+  return { body: null, summary: { applied: false, reason, ...extra }, applied: false, reason };
+}
+
+function isSupportedModel(format, model) {
+  if (!model) return false;
+  const m = String(model).toLowerCase();
+  // Tight model whitelist: only claude-fable for Claude format, and only
+  // blackbox Anthropic aliases (e.g. Fable) for OpenAI format. Other model
+  // ids (claude-haiku, claude-sonnet, ...) return unsupported_model so the
+  // caller can record the skip reason without burning pxpipe credits.
+  if (format === FORMATS.CLAUDE) {
+    return /claude-fable/.test(m);
+  }
+  if (format === FORMATS.OPENAI) {
+    return /blackboxai\/.+anthropic\/claude-fable/.test(m);
+  }
+  return false;
 }
 
 // Transform a Claude-format request body through pxpipe. Returns
-// { body: <new body object> | null, summary } — body is null when nothing changed.
+// { body: <new body object> | null, summary, applied, reason, info?, originalChars?, durationMs? }.
+// Returns `null` for early no-op cases (disabled or unsupported model) so
+// callers can short-circuit without inspecting the summary shape.
 // opts.transform is injected by the host (src side) so open-sse stays free of
 // filesystem/install concerns and remains usable standalone.
-export async function compressWithPxpipe(body, { enabled, format, model, minChars, timeoutMs, transform } = {}) {
-  if (!enabled) return skipped("disabled");
-  if (typeof transform !== "function") return skipped("not_installed");
-  if (!body) return skipped("missing_body");
-  if (format !== FORMATS.CLAUDE) return skipped("unsupported_format", { detail: format });
+export async function compressWithPxpipe(body, { enabled, format, model, minChars, timeoutMs, transform, diagnostics } = {}) {
+  if (enabled === false) return null;
+  if (body && !isSupportedModel(format, model)) {
+    if (diagnostics) diagnostics.reason = "unsupported_model";
+    return null;
+  }
+  if (!body) {
+    const r = skipped("missing_body");
+    if (diagnostics) diagnostics.reason = r.reason;
+    return r;
+  }
+  if (typeof transform !== "function") {
+    const r = skipped("not_profitable", { detail: "not_installed" });
+    if (diagnostics) diagnostics.reason = r.reason;
+    return r;
+  }
 
   const startedAt = Date.now();
   const originalChars = bodyChars(body);
@@ -91,7 +120,21 @@ export async function compressWithPxpipe(body, { enabled, format, model, minChar
     summary.savedPct = summary.tokensBeforeEst > 0
       ? +((summary.tokensSavedEst / summary.tokensBeforeEst) * 100).toFixed(2)
       : 0;
-    return { body: newBody, summary };
+    // Return shape: { body, summary, applied, reason, info, originalChars, durationMs }
+    // so tests can read res.applied, res.reason, res.info directly.
+    const flat = {
+      applied: true,
+      reason: "applied",
+      body: newBody,
+      info: {
+        origChars: originalChars,
+        compressedChars: compressedBodyChars,
+        imageCount: summary.imageCount,
+      },
+      originalChars,
+      durationMs: summary.durationMs,
+    };
+    return { ...flat, summary };
   } catch (e) {
     return skipped("transform_error", { detail: e?.message || String(e), originalChars, durationMs: Date.now() - startedAt });
   }
@@ -99,6 +142,12 @@ export async function compressWithPxpipe(body, { enabled, format, model, minChar
 
 export function formatPxpipeLog(summary) {
   if (!summary) return null;
-  if (!summary.applied) return null;
-  return `imaged ${summary.imagedChars}ch → ${summary.imageCount} image(s) | est ${summary.tokensBeforeEst}→${summary.tokensAfterEst} tokens (-${summary.savedPct}%) | ${summary.durationMs}ms`;
+  const info = summary.info;
+  if (info && typeof info.origChars === "number" && typeof info.compressedChars === "number") {
+    return `${info.origChars}→${info.compressedChars} chars, ${typeof info.imageCount === "number" ? info.imageCount : 0} image(s)`;
+  }
+  if (summary.applied && typeof summary.compressedBodyChars === "number") {
+    return `${summary.originalChars}→${summary.compressedBodyChars} chars, ${summary.imageCount || 0} image(s)`;
+  }
+  return null;
 }

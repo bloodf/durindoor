@@ -243,30 +243,14 @@ export function stripOrphanedToolResults(body) {
   }
 
   // ── 3. Gemini / Antigravity: contents[] ───────────────────────────────────
-  if (Array.isArray(body.contents)) {
-    const liveIds = new Set();
-    for (const turn of body.contents) {
-      if (!Array.isArray(turn.parts)) continue;
-      for (const part of turn.parts) {
-        if (!part.functionCall) continue;
-        // Prefer explicit id; fall back to name when id is absent (older Gemini shapes).
-        const key = part.functionCall.id ?? part.functionCall.name;
-        if (key) liveIds.add(key);
-      }
-    }
-    if (liveIds.size > 0 || body.contents.some(t => Array.isArray(t.parts) && t.parts.some(p => p.functionResponse))) {
-      for (const turn of body.contents) {
-        if (!Array.isArray(turn.parts)) continue;
-        const before = turn.parts.length;
-        turn.parts = turn.parts.filter(part => {
-          if (!part.functionResponse) return true;
-          const key = part.functionResponse.id ?? part.functionResponse.name;
-          return key ? liveIds.has(key) : true;
-        });
-        stripped += before - turn.parts.length;
-      }
-    }
-  }
+  // Intentionally a no-op. The Gemini -> OpenAI request translator splits
+  // functionResponse parts into separate tool messages and keeps any
+  // co-located functionCall/text on the original turn; orphaning logic for
+  // OpenAI/Anthropic (where each tool result is its own message) does not
+  // apply here. A Gemini client can legitimately send functionResponse
+  // parts whose ids don't match a functionCall in the same body (multi-tool
+  // turns, prior-turn results carried over) — dropping them would silently
+  // lose tool messages.
 
   return stripped;
 }

@@ -150,7 +150,7 @@ async function probeOpenAICompatibleRegistryProvider(provider, apiKey) {
 
   // Prefer explicit model-list URLs because some OpenAI-compatible providers
   // mount chat completions under a scoped path that does not imply /models.
-  const modelsUrl = cfg.modelsUrl || cfg.baseUrl.replace(/\/chat\/completions$/, "/models").replace(/\/chatbot$/, "/models");
+  const modelsUrl = cfg.validateUrl || cfg.modelsUrl || cfg.baseUrl.replace(/\/chat\/completions$/, "/models").replace(/\/chatbot$/, "/models");
   let probeOk = null;
   try {
     const probeRes = await fetch(modelsUrl, { headers, signal: AbortSignal.timeout(8000) });
@@ -549,8 +549,9 @@ export async function POST(request) {
 
         case "commandcode":
         case "command-code": {
-          const cfg = PROVIDERS.commandcode;
-          const model = getDefaultModel("commandcode");
+          const cfg = PROVIDERS[provider];
+          const modelKey = provider === "command-code" ? "cmd" : "commandcode";
+          const model = getDefaultModel(modelKey);
           const payload = openaiToCommandCodeRequest(model, {
             messages: [{ role: "user", content: "ping" }],
             max_tokens: 1,

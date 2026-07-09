@@ -300,24 +300,33 @@ export async function buildModelsList(kindFilter) {
     models.push(entry);
   }
 
+  // No-auth providers are always visible (keyless access) even if the user only
+  // has active connections for unrelated providers. We add them here unless the
+  // provider already has an active connection (which renders its own catalog).
+  function addStaticModelsForProvider(providerId, alias) {
+    if (!providerMatchesKinds(providerId, kindFilter)) return;
+    const providerModels = PROVIDER_MODELS[alias] ?? [];
+    for (const model of providerModels) {
+      if (!kindFilter.includes(modelKind(model))) continue;
+      if (isDisabled(alias, model.id)) continue;
+      models.push({
+        id: `${alias}/${model.id}`,
+        object: "model",
+        owned_by: alias,
+        capabilities: getCapabilitiesForModel(providerId, model.id),
+      });
+    }
+  }
+
+  const aliasToProviderId = Object.fromEntries(
+    Object.entries(PROVIDER_ID_TO_ALIAS).map(([id, alias]) => [alias, id])
+  );
+
   if (connections.length === 0) {
     // DB unavailable -> return static models, filtered by per-model kind
-    const aliasToProviderId = Object.fromEntries(
-      Object.entries(PROVIDER_ID_TO_ALIAS).map(([id, alias]) => [alias, id])
-    );
     for (const [alias, providerModels] of Object.entries(PROVIDER_MODELS)) {
       const providerId = aliasToProviderId[alias] ?? alias;
-      if (!providerMatchesKinds(providerId, kindFilter)) continue;
-      for (const model of providerModels) {
-        if (!kindFilter.includes(modelKind(model))) continue;
-        if (isDisabled(alias, model.id)) continue;
-        models.push({
-          id: `${alias}/${model.id}`,
-          object: "model",
-          owned_by: alias,
-          capabilities: getCapabilitiesForModel(providerId, model.id),
-        });
-      }
+      addStaticModelsForProvider(providerId, alias);
     }
 
     for (const customModel of customModels) {
@@ -497,6 +506,17 @@ export async function buildModelsList(kindFilter) {
 
     for (const result of providerResults) {
       models.push(...result);
+    }
+
+    // Add keyless no-auth providers that are not already represented by an active connection.
+    // Pollinations is an optional-key provider: premium keys unlock extra models, but a free
+    // keyless catalog is always available, so it should behave like a no-auth provider here.
+    for (const [providerId, provider] of Object.entries(AI_PROVIDERS)) {
+      const isNoAuthLike = provider?.noAuth || providerId === "pollinations";
+      if (!isNoAuthLike) continue;
+      if (activeConnectionByProvider.has(providerId)) continue;
+      const alias = PROVIDER_ID_TO_ALIAS[providerId] ?? getProviderAlias(providerId) ?? providerId;
+      addStaticModelsForProvider(providerId, alias);
     }
   }
 

@@ -220,7 +220,7 @@ import p217 from "./github-models.js";
 import p218 from "./gitlawb-gmi.js";
 import p219 from "./glmt.js";
 import p220 from "./kimi-coding-apikey.js";
-import p221 from "./omniroute-api-cloud.js";
+import omnirouteApiCloud from "./omniroute-api-cloud.js";
 
 export default [
   p0,
@@ -444,5 +444,5 @@ export default [
   p218,
   p219,
   p220,
-  ...p221,
+  ...omnirouteApiCloud,
 ];

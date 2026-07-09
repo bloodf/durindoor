@@ -36,6 +36,7 @@ import { TraeExecutor } from "./trae.js";
 import { DevinCliExecutor } from "./devin-cli.js";
 import { WindsurfExecutor } from "./windsurf.js";
 import { DefaultExecutor } from "./default.js";
+import { ZenmuxFreeExecutor } from "./zenmux-free.js";
 import {
   UnsupportedOmniRouteWebSessionExecutor,
   BLOCKED_OMNIROUTE_PROVIDERS,
@@ -90,6 +91,7 @@ const executors = {
   trae: new TraeExecutor(),
   "devin-cli": new DevinCliExecutor(),
   windsurf: new WindsurfExecutor(),
+  "zenmux-free": new ZenmuxFreeExecutor(),
   ...Object.fromEntries(
     Object.keys(BLOCKED_OMNIROUTE_PROVIDERS).map((provider) => [
       provider,
@@ -155,6 +157,7 @@ export { GitlabExecutor } from "./gitlab.js";
 export { TraeExecutor } from "./trae.js";
 export { DevinCliExecutor } from "./devin-cli.js";
 export { WindsurfExecutor } from "./windsurf.js";
+export { ZenmuxFreeExecutor } from "./zenmux-free.js";
 export {
   UnsupportedOmniRouteWebSessionExecutor,
   BLOCKED_OMNIROUTE_PROVIDERS,

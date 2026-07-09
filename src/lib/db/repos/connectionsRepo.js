@@ -88,6 +88,12 @@ function reorderInTx(db, providerId) {
   });
 }
 
+// Codex rows may store the OpenAI account id as workspaceId, chatgptAccountId,
+// or accountId depending on how they were created. Normalize to the same alias
+// precedence used by CodexExecutor.buildHeaders so dedup compares the same value.
+const getCodexAccountId = (psd) =>
+  psd?.workspaceId || psd?.chatgptAccountId || psd?.accountId;
+
 export async function createProviderConnection(data) {
   const db = await getAdapter();
   const now = new Date().toISOString();
@@ -102,7 +108,18 @@ export async function createProviderConnection(data) {
       const incomingWs = data.providerSpecificData?.chatgptAccountId;
       existing = all.find(c => {
         if (c.authType !== "oauth" || c.email !== data.email) return false;
-        // Workspace providers (Codex) use workspace ID when both sides have it
+        // Codex/OpenAI can issue multiple OAuth grants for the same email.
+        // Refresh tokens are rotated single-use; collapsing a new login onto an
+        // existing bare-email row overwrites the first account's token pair and
+        // makes it look "invalid" after adding a second account. Only update an
+        // existing Codex row when both rows expose the same resolved account ID.
+        if (data.provider === "codex") {
+          const incomingId = getCodexAccountId(data.providerSpecificData);
+          const existingId = getCodexAccountId(c.providerSpecificData);
+          return !!incomingId && !!existingId && incomingId === existingId;
+        }
+
+        // Workspace providers use workspace ID when both sides have it
         const existingWs = c.providerSpecificData?.chatgptAccountId;
         if (incomingWs && existingWs) return incomingWs === existingWs;
         if (incomingWs && !existingWs) return false;

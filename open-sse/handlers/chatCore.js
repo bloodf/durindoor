@@ -12,8 +12,10 @@ import { PROVIDERS } from "../config/providers.js";
 import { createErrorResult, parseUpstreamError, formatProviderError } from "../utils/error.js";
 import { HTTP_STATUS, VALIDATE_OUTBOUND } from "../config/runtimeConfig.js";
 import { handleBypassRequest } from "../utils/bypassHandler.js";
+import { handlePonytailCommands, DEFAULT_PONYTAIL_HELP } from "../utils/tokenSaverBridge.js";
 import { trackPendingRequest, appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { acquireSlot, releaseSlot, getConcurrencyLimit, ConcurrencyGateTimeoutError } from "../services/concurrencyGate.js";
+
 import { getExecutor } from "../executors/index.js";
 import { buildRequestDetail, extractRequestConfig } from "./chatCore/requestDetail.js";
 import { handleForcedSSEToJson } from "./chatCore/sseToJsonHandler.js";
@@ -44,6 +46,26 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const requestStartTime = Date.now();
 
   const sourceFormat = sourceFormatOverride || detectFormat(body);
+
+  // Ponytail slash commands — must run before bypass heuristics.
+  // Honor sourceFormatOverride and header-driven non-streaming requests.
+  const acceptHeader = clientRawRequest?.headers?.accept || "";
+  const clientPrefersJson = acceptHeader.includes("application/json");
+  const clientPrefersSSE = acceptHeader.includes("text/event-stream");
+  // Honor explicit stream:false and header-driven non-streaming requests.
+  const ponytailStream =
+    body.stream === true ? true :
+    body.stream === false ? false :
+    !(clientPrefersJson && !clientPrefersSSE);
+  const ponytailResponse = await handlePonytailCommands(body, model, {
+    // /ponytail-gain is intentionally not wired to global stats in the chat
+    // path to avoid exposing aggregate usage/cost to any API-key holder.
+    fetchStats: null,
+    helpText: DEFAULT_PONYTAIL_HELP,
+    sourceFormatOverride: sourceFormat,
+    streamOverride: ponytailStream,
+  });
+  if (ponytailResponse) return ponytailResponse;
 
   // Check for bypass patterns (warmup, skip, cc naming)
   const bypassResponse = handleBypassRequest(body, model, userAgent, ccFilterNaming);
@@ -87,12 +109,6 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // DeepSeek-TUI: interactive TUI panel sends stream:true and needs SSE.
   // Non-interactive mode (-p flag) sends without stream and can't parse SSE.
   const detectedTool = detectClientTool(clientRawRequest?.headers || {}, body);
-
-  // Client Accept header preference (AI SDK sends Accept: application/json for
-  // non-streaming responses).
-  const acceptHeader = clientRawRequest?.headers?.accept || "";
-  const clientPrefersJson = acceptHeader.includes("application/json");
-  const clientPrefersSSE = acceptHeader.includes("text/event-stream");
 
   // Stream-only providers (forceStream) must keep streaming even when the client
   // asked for JSON; the accumulated stream is converted to JSON downstream. (#2031)

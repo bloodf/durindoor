@@ -17,6 +17,15 @@ const KNOWN_FREE_OPENCODE_MODELS = [
   "meta-llama/llama-3.3-70b-instruct",
 ];
 
+// Codex review PR #126: regex detects non-chat model ids/kinds (e.g.
+// "dall-e-3", "whisper-1", "text-embedding-3-small", "tts-1"). Use a single
+// regex to avoid a growing `|| includes(...)` chain that misses variants.
+const NON_CHAT_MODEL_RE = /(?:dall-e|whisper|text-embedding|tts-|moderation|rerank|embed|image|audio|speech)/i;
+
+// Allowed chat-shape ids/kinds. Unknown ids are rejected (see the
+// "rejects unknown ids" test in suggested-models-openai-filter.test.js).
+const CHAT_KIND_HINT = /(?:^|[\s/_-])(chat|gpt|claude|gemini|deepseek|llama|qwen|mistral|hermes|minimax|cogito|kimi|nova|scout|maverick|grok|o\d|haiku|sonnet|opus|mimo|openai|anthropic|meta-llama|google|nous|qwen|mistralai|deepseek|qwen|minimax|moonshot|alibaba|baidu|tencent|stepfun|baichuan|meta)/i;
+
 export const FILTERS = {
   // OpenRouter /api/v1/models — returns standard OpenAI-style objects; keep free ones.
   "openrouter-free": (models) =>
@@ -41,9 +50,10 @@ export const FILTERS = {
         if (typeof m.id !== "string" || !m.id) return false;
         const kind = String(m.type || m.kind || m.task || "").toLowerCase();
         const id = m.id.toLowerCase();
-        if (kind.includes("embedding") || kind.includes("image") || kind.includes("tts") || kind.includes("audio") || kind.includes("speech") || kind.includes("moderation") || kind.includes("rerank")) return false;
-        if (id.includes("embed") || id.includes("image") || id.includes("tts") || id.includes("audio") || id.includes("speech") || id.includes("moderation") || id.includes("rerank")) return false;
-        return true;
+        if (NON_CHAT_MODEL_RE.test(kind) || NON_CHAT_MODEL_RE.test(id)) return false;
+        // Codex review PR #126: require chat-shape id or kind (was missing — unknown ids passed).
+        if (!CHAT_KIND_HINT.test(kind) && !CHAT_KIND_HINT.test(id)) return false;
+         return true;
       })
       .map((m) => ({ id: m.id, name: m.name || m.id, ...(m.context_length != null ? { contextLength: m.context_length } : {}) }));
   },
@@ -63,5 +73,5 @@ export const FILTERS = {
   "mimo-free": (models) =>
     (Array.isArray(models) ? models : [])
       .filter((m) => m.id?.startsWith("mimo") || m.name?.toLowerCase().includes("mimo"))
-      .map((m) => ({ id: m.id, name: m.name || m.id })),
+      .map((m) => ({ id: m.id, name: m.id })),
 };

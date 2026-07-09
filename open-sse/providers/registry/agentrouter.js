@@ -33,14 +33,31 @@ export default {
       ],
     },
   },
+  // transports are alternate per-format runtimes. They MUST inherit the
+  // primary transport's auth headers and URL suffix; otherwise DefaultExecutor
+  // (which uses credentials.runtimeTransport) would drop them when the runtime
+  // is selected. Codex review PR #126 caught this regression.
   transports: [
     {
       format: "claude",
       baseUrl: "https://agentrouter.org/v1/messages",
+      urlSuffix: "?beta=true",
+      headers: { ...CLAUDE_CLI_SPOOF_HEADERS },
+      auth: {
+        combined: true,
+        header: "x-api-key",
+        scheme: "raw",
+        apiKey: { header: "x-api-key", scheme: "raw" },
+        hooks: ["claudeOverlay"],
+      },
     },
     {
       format: "openai",
       baseUrl: "https://agentrouter.org/v1/chat/completions",
+      // OpenAI transport does not require Claude spoof headers; keep an empty
+      // headers object so DefaultExecutor does not try to fall back to the
+      // primary transport's headers and break the cookie-shape request.
+      headers: {},
     },
   ],
   passthroughModels: true,

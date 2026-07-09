@@ -55,12 +55,14 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // If found, force targetFormat=sourceFormat so we skip translation entirely —
   // otherwise the body could be translated to modelTargetFormat and sent to a
   // transport that doesn't understand it.
-  const runtimeTransport = resolveTransport(provider, sourceFormat);
-  const skipTranslation = runtimeTransport?.format === sourceFormat;
-  if (skipTranslation && credentials) credentials.runtimeTransport = runtimeTransport;
-  const targetFormat = skipTranslation
-    ? sourceFormat
-    : (modelTargetFormat || runtimeTransport?.format || getTargetFormat(provider, credentials));
+  // Codex review PR #126: prefer the model's targetFormat over the sourceFormat
+  // when the model declares a specific wire format (e.g. claude-opus-4-6 marked
+  // `targetFormat: "claude"`). Otherwise an OpenAI client requesting a Claude-only
+  // model would be routed to the OpenAI runtime transport and the body would be
+  // sent to /v1/chat/completions in OpenAI shape — which the Claude backend
+  // rejects. Falling back to sourceFormat keeps passthrough clients working.
+  const runtimeTransport = resolveTransport(provider, modelTargetFormat)
+    || resolveTransport(provider, sourceFormat);
   const stripList = getModelStrip(alias, model);
   const upstreamModel = getModelUpstreamId(alias, model);
 

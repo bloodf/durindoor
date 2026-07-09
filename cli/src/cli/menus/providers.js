@@ -172,15 +172,41 @@ function countConnectionsByProvider(connections) {
   return counts;
 }
 
+/**
+ * Determines whether a connection supports the TUI Auto-ping toggle.
+ * Auto-ping is currently available only for OAuth Claude and Codex connections
+ * and is controlled by the `claudeAutoPing` / `codexAutoPing` settings keys.
+ * @param {Object} connection - Connection object.
+ * @param {string} connection.authType - "oauth" or "apikey".
+ * @param {string} providerId - Provider ID.
+ * @returns {boolean}
+ */
 function supportsConnectionAutoPing(connection, providerId) {
   return Boolean(AUTO_PING_SETTINGS_KEYS[providerId]) && connection?.authType === "oauth";
 }
 
+/**
+ * Reads whether Auto-ping is enabled for a specific connection.
+ * @param {Object} settings - Settings object returned by the API.
+ * @param {string} providerId - Provider ID (claude or codex).
+ * @param {string} connectionId - Connection ID.
+ * @returns {boolean}
+ */
 function isConnectionAutoPingOn(settings, providerId, connectionId) {
   const settingsKey = AUTO_PING_SETTINGS_KEYS[providerId];
   return settings?.[settingsKey]?.connections?.[connectionId] === true;
 }
 
+/**
+ * Builds the connection header shown in the TUI actions menu, including
+ * the current Auto-ping state when the provider/connection supports it.
+ * @param {string} name - Connection display name.
+ * @param {string} status - Connection status string.
+ * @param {string} providerId - Provider ID.
+ * @param {Object} connection - Connection object.
+ * @param {Object} [data={}] - Extra data from the menu refresh hook (settings / settingsError).
+ * @returns {string}
+ */
 function buildConnectionHeader(name, status, providerId, connection, data = {}) {
   const lines = [`Connection: ${name}`, `Status: ${status}`];
 
@@ -196,6 +222,14 @@ function buildConnectionHeader(name, status, providerId, connection, data = {}) 
   return lines.join("\n");
 }
 
+/**
+ * Toggles Auto-ping for an OAuth Claude or Codex connection by updating
+ * the matching settings key (`claudeAutoPing` or `codexAutoPing`).
+ * @param {Object} connection - Connection object.
+ * @param {string} providerId - Provider ID.
+ * @param {Object|null} [settings=null] - Current settings, or null to fetch them.
+ * @returns {Promise<void>}
+ */
 async function toggleConnectionAutoPing(connection, providerId, settings = null) {
   const settingsKey = AUTO_PING_SETTINGS_KEYS[providerId];
   if (!settingsKey) return;
@@ -932,4 +966,11 @@ async function handleEditCustomNode(node) {
   await pause();
 }
 
-module.exports = { showProvidersMenu };
+module.exports = {
+  showProvidersMenu,
+  __test__: {
+    supportsConnectionAutoPing,
+    isConnectionAutoPingOn,
+    buildConnectionHeader,
+  },
+};

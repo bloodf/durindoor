@@ -13,7 +13,6 @@ tests/unit/codex-refresh-token.test.js :: Codex Refresh Token CodexExecutor cred
 tests/unit/codex-refresh-token.test.js :: Codex Refresh Token CodexExecutor credential lifecycle should refresh Codex when lastRefreshAt is older than the upstream stale window
 tests/unit/combo-autoswitch.test.js :: detectRequiredCapabilities web_search tool -> search not yet auto-detected (feature disabled)
 tests/unit/db-driver-chain.test.js :: Driver fallback chain falls back to sql.js when both native drivers unavailable
-tests/unit/db-sqlite-vs-lowdb.test.js :: DB SQLite layer — public API parity usage: 24h and today byApiKey keep keys with the same masked prefix separate
 tests/unit/force-stream-config.test.js :: forceStream provider config keeps forced-stream providers streaming for JSON clients when body.stream is false
 tests/unit/force-stream-config.test.js :: forceStream provider config keeps forced-stream providers streaming for JSON clients when body.stream is undefined
 tests/unit/kiro-profile-arn-regional.test.js :: fetchKiroProfileArn — regional endpoint + dispatch shape accepts both `arn` and `profileArn` field names in the response

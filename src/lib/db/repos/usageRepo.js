@@ -10,14 +10,23 @@ function maskApiKey(key) {
   return key.slice(0, 8) + "***";
 }
 
-function fingerprintApiKey(key) {
-  if (!key || typeof key !== "string") return null;
-  return `sha256:${createHash("sha256").update(key).digest("hex")}`;
+/**
+ * Stable, collision-resistant identity for usage aggregation.
+ * `maskApiKey` keeps only the first 8 chars (display-only and prone to
+ * collisions across distinct keys); this hashes the full key with SHA-256 and
+ * truncates to 16 hex chars so two different real keys never share a grouping
+ * bucket while the masked value stays available for display.
+ * Empty / non-string values map to the shared "local-no-key" bucket.
+ */
+function apiKeyIdentity(key) {
+  if (!key || typeof key !== "string") return "local-no-key";
+  return createHash("sha256").update(key).digest("hex").slice(0, 16);
 }
 
 function getApiKeyStatsKey(apiKey, model, provider) {
-  const keyIdentity = fingerprintApiKey(apiKey) || "local-no-key";
-  return `${keyIdentity}|${model}|${provider || "unknown"}`;
+  const identity = apiKeyIdentity(apiKey);
+  const keyPart = identity === "local-no-key" ? identity : `sha256:${identity}`;
+  return `${keyPart}|${model}|${provider || "unknown"}`;
 }
 
 const PENDING_TIMEOUT_MS = 60 * 1000;
@@ -511,17 +520,16 @@ export async function getUsageStats(period = "all") {
         if (dateKey > (stats.byAccount[accountKey].lastUsed || "")) stats.byAccount[accountKey].lastUsed = dateKey;
       }
 
-      for (const [akKey, ak] of Object.entries(day.byApiKey || {})) {
-        const rawModel = ak.rawModel || akKey.split("|")[1] || "";
-        const provider = ak.provider || akKey.split("|")[2] || "";
+      for (const ak of Object.values(day.byApiKey || {})) {
+        const rawModel = ak.rawModel || "";
+        const provider = ak.provider || "";
         const providerDisplayName = providerNodeNameMap[provider] || provider;
         const apiKeyVal = ak.apiKey;
         const keyInfo = apiKeyVal ? apiKeyMap[apiKeyVal] : null;
-        const keyName = keyInfo?.name || (apiKeyVal ? apiKeyVal.slice(0, 8) + "..." : "Local (No API Key)");
+        const keyName = keyInfo?.name || (apiKeyVal ? `${apiKeyVal.slice(0, 8)}...${apiKeyVal.slice(-4)}` : "Local (No API Key)");
         const apiKeyMasked = maskApiKey(apiKeyVal);
-        const apiKeyFingerprint = fingerprintApiKey(apiKeyVal);
-        const apiKeyKey = apiKeyMasked || "local-no-key";
-        const statsKey = apiKeyFingerprint ? `${apiKeyFingerprint}|${rawModel}|${provider || "unknown"}` : akKey;
+        const apiKeyKey = apiKeyIdentity(apiKeyVal);
+        const statsKey = getApiKeyStatsKey(apiKeyVal, rawModel, provider);
         if (!stats.byApiKey[statsKey]) {
           stats.byApiKey[statsKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, cost: 0, rawModel, provider: providerDisplayName, apiKeyMasked, keyName, apiKeyKey, lastUsed: dateKey };
         }
@@ -636,13 +644,12 @@ export async function getUsageStats(period = "all") {
 
       if (r.apiKey && typeof r.apiKey === "string") {
         const keyInfo = apiKeyMap[r.apiKey];
-        const keyName = keyInfo?.name || r.apiKey.slice(0, 8) + "...";
+        const keyName = keyInfo?.name || `${r.apiKey.slice(0, 8)}...${r.apiKey.slice(-4)}`;
         const apiKeyMasked = maskApiKey(r.apiKey);
-        const apiKeyFingerprint = fingerprintApiKey(r.apiKey);
-        const apiKeyKey = apiKeyMasked;
-        const akKey = `${apiKeyFingerprint}|${r.model}|${r.provider || "unknown"}`;
+        const apiKeyKey = apiKeyIdentity(r.apiKey);
+        const akKey = getApiKeyStatsKey(r.apiKey, r.model, r.provider);
         if (!stats.byApiKey[akKey]) {
-          stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, apiKeyMasked, keyName, apiKeyKey: apiKeyMasked, lastUsed: r.timestamp };
+          stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, apiKeyMasked, keyName, apiKeyKey, lastUsed: r.timestamp };
         }
         const ake = stats.byApiKey[akKey];
         ake.requests++; ake.promptTokens += promptTokens; ake.completionTokens += completionTokens; ake.cachedTokens += cachedTokens; ake.cost += entryCost;

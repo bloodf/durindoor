@@ -5,6 +5,7 @@ import {
   parseSuffix,
   extractThinking,
   applyThinking,
+  stripThinkingSuffix,
 } from "../../open-sse/translator/concerns/thinkingUnified.js";
 import { extractReasoningText } from "../../open-sse/translator/concerns/reasoning.js";
 import { PROVIDERS } from "../../open-sse/providers/index.js";
@@ -194,6 +195,24 @@ describe("applyThinking per provider format", () => {
   it("openai keeps xhigh for reasoning models", () => {
     const out = apply("openai", "gpt-5.3-codex", { reasoning_effort: "xhigh" }, "codex");
     expect(out.reasoning_effort).toBe("xhigh");
+  });
+});
+
+describe("stripThinkingSuffix", () => {
+  it("removes known level suffix from model name", () => {
+    expect(stripThinkingSuffix("gpt-5(high)")).toBe("gpt-5");
+    expect(stripThinkingSuffix("claude-opus-4.7(medium)")).toBe("claude-opus-4.7");
+  });
+  it("removes numeric budget suffix", () => {
+    expect(stripThinkingSuffix("model(8192)")).toBe("model");
+  });
+  it("leaves model names without suffix unchanged", () => {
+    expect(stripThinkingSuffix("gpt-4o")).toBe("gpt-4o");
+    expect(stripThinkingSuffix("provider:model")).toBe("provider:model");
+  });
+  it("preserves unknown parenthesized suffixes", () => {
+    expect(stripThinkingSuffix("foo(bar)")).toBe("foo(bar)");
+    expect(stripThinkingSuffix("custom(id-1)")).toBe("custom(id-1)");
   });
 });
 

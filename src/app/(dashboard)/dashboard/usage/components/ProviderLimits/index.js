@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
+import { createLatestIntentQueue } from "@/shared/utils/latestIntentQueue";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import QuotaTable from "./QuotaTable";
 import Toggle from "@/shared/components/Toggle";
@@ -391,6 +392,29 @@ export default function ProviderLimits() {
   const [errors, setErrors] = useState({});
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [autoPingMaps, setAutoPingMaps] = useState({ claude: {}, codex: {} });
+  const [autoPingQueue] = useState(() => createLatestIntentQueue({
+    write: async (_key, enabled, { connectionId }) => {
+      const response = await fetch(`/api/providers/${encodeURIComponent(connectionId)}/auto-ping`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      if (!response.ok) throw new Error(`Auto-ping update failed (${response.status})`);
+      return response.json();
+    },
+    onOptimistic: (_key, enabled, { connectionId, provider }) => setAutoPingMaps((current) => ({
+      ...current,
+      [provider]: { ...(current[provider] || {}), [connectionId]: enabled },
+    })),
+    onConfirmed: (_key, enabled, { connectionId, provider }) => setAutoPingMaps((current) => ({
+      ...current,
+      [provider]: { ...(current[provider] || {}), [connectionId]: enabled },
+    })),
+    onRollback: (_key, enabled, { connectionId, provider }) => setAutoPingMaps((current) => ({
+      ...current,
+      [provider]: { ...(current[provider] || {}), [connectionId]: enabled },
+    })),
+  }));
   const [lastUpdated, setLastUpdated] = useState(null);
   const [hasHydratedSavedState, setHasHydratedSavedState] = useState(false);
   const [hasHydratedAutoRefresh, setHasHydratedAutoRefresh] = useState(false);
@@ -1057,36 +1081,24 @@ export default function ProviderLimits() {
     fetch("/api/settings", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : {}))
       .then((s) => {
-        setAutoPingMaps({
+        const maps = {
           claude: s?.claudeAutoPing?.connections || {},
           codex: s?.codexAutoPing?.connections || {},
-        });
+        };
+        autoPingQueue.hydrate(Object.entries(maps).flatMap(([provider, connectionsMap]) => (
+          Object.entries(connectionsMap).map(([id, enabled]) => [`${provider}:${id}`, enabled])
+        )));
+        setAutoPingMaps(maps);
         setQuotaVisibility(s?.quotaVisibility || {});
       })
       .catch(() => {});
-  }, []);
+  }, [autoPingQueue]);
 
   const toggleAutoPing = useCallback(async (connectionId, provider, on) => {
     const settingsKey = AUTO_PING_SETTINGS_KEYS[provider];
     if (!settingsKey) return;
-
-    const previous = autoPingMaps;
-    const nextProviderMap = { ...(autoPingMaps[provider] || {}), [connectionId]: on };
-    const nextMaps = { ...autoPingMaps, [provider]: nextProviderMap };
-    setAutoPingMaps(nextMaps);
-    try {
-      const r = await fetch("/api/settings", { cache: "no-store" });
-      const s = r.ok ? await r.json() : {};
-      const cfg = { ...(s[settingsKey] || {}), connections: nextProviderMap };
-      await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [settingsKey]: cfg }),
-      });
-    } catch {
-      setAutoPingMaps(previous);
-    }
-  }, [autoPingMaps]);
+    await autoPingQueue.enqueue(`${provider}:${connectionId}`, on, { connectionId, provider });
+  }, [autoPingQueue]);
 
   const pendingWrites = useRef([]);
   const isProcessingWrites = useRef(false);
@@ -1703,7 +1715,7 @@ export default function ProviderLimits() {
                         </Tooltip>
                       </>
                     )}
-                    {AUTO_PING_SETTINGS_KEYS[conn.provider] && conn.authType === "oauth" && (
+                    {AUTO_PING_SETTINGS_KEYS[conn.provider] && conn.authType === "oauth" && conn.isActive !== false && (
                       <Tooltip text={AUTO_PING_TOOLTIPS[conn.provider]}>
                         <button
                           type="button"

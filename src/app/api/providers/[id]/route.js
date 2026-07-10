@@ -7,6 +7,7 @@ import {
 } from "@/models";
 import { requiresProviderAccountId } from "@/lib/providerAccountIds";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
+import { notifyQuotaAutoPingSettingChanged } from "@/shared/services/quotaAutoPing";
 
 const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set(["clientSecret"]);
 
@@ -187,6 +188,7 @@ export async function PUT(request, { params }) {
     }
 
     const updated = await updateProviderConnection(id, updateData);
+    if (isActive === false) notifyQuotaAutoPingSettingChanged(existing.provider, id, false);
 
     // Hide sensitive fields
     const result = sanitizeProviderConnection(updated);
@@ -202,11 +204,14 @@ export async function PUT(request, { params }) {
 export async function DELETE(request, { params }) {
   try {
     const { id } = await params;
+    const existing = await getProviderConnectionById(id);
 
     const deleted = await deleteProviderConnection(id);
     if (!deleted) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
     }
+
+    if (existing) notifyQuotaAutoPingSettingChanged(existing.provider, id, false);
 
     return NextResponse.json({ message: "Connection deleted successfully" });
   } catch (error) {

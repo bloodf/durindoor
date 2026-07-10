@@ -401,6 +401,10 @@ async function updateSettings(data) {
   return makeRequest("PATCH", "/api/settings", data);
 }
 
+async function updateConnectionAutoPing(connectionId, enabled) {
+  return makeRequest("PATCH", `/api/providers/${encodeURIComponent(connectionId)}/auto-ping`, { enabled });
+}
+
 /**
  * Reset dashboard password to default (clears stored hash server-side)
  * @returns {Promise<Object>} { success }
@@ -528,6 +532,7 @@ module.exports = {
   // Settings
   getSettings,
   updateSettings,
+  updateConnectionAutoPing,
   resetPassword,
   
   // Tunnel

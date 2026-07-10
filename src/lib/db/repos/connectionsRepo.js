@@ -10,6 +10,28 @@ const OPTIONAL_FIELDS = [
   "consecutiveUseCount", "idToken", "lastRefreshAt",
 ];
 
+const AUTO_PING_SETTINGS_KEYS = {
+  claude: "claudeAutoPing",
+  codex: "codexAutoPing",
+};
+
+function updateAutoPingEntryInTx(db, provider, connectionId, enabled) {
+  const settingsKey = AUTO_PING_SETTINGS_KEYS[provider];
+  if (!settingsKey) return null;
+  const row = db.get(`SELECT data FROM settings WHERE id = 1`);
+  const current = row ? parseJson(row.data, {}) : {};
+  const currentConfig = current[settingsKey] || {};
+  const connections = { ...(currentConfig.connections || {}) };
+  if (enabled === true) connections[connectionId] = true;
+  else delete connections[connectionId];
+  const config = { ...currentConfig, connections };
+  db.run(
+    `INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`,
+    [stringifyJson({ ...current, [settingsKey]: config })],
+  );
+  return { settingsKey, config };
+}
+
 function rowToConn(row) {
   if (!row) return null;
   const extra = parseJson(row.data, {});
@@ -181,6 +203,7 @@ export async function updateProviderConnection(id, data) {
     const existing = rowToConn(row);
     const merged = { ...existing, ...data, updatedAt: new Date().toISOString() };
     upsert(db, merged);
+    if (data.isActive === false) updateAutoPingEntryInTx(db, existing.provider, id, false);
     if (data.priority !== undefined) reorderInTx(db, existing.provider);
     result = merged;
   });
@@ -193,6 +216,7 @@ export async function deleteProviderConnection(id) {
   db.transaction(() => {
     const row = db.get(`SELECT provider FROM providerConnections WHERE id = ?`, [id]);
     if (!row) return;
+    updateAutoPingEntryInTx(db, row.provider, id, false);
     db.run(`DELETE FROM providerConnections WHERE id = ?`, [id]);
     reorderInTx(db, row.provider);
     ok = true;
@@ -200,11 +224,44 @@ export async function deleteProviderConnection(id) {
   return ok;
 }
 
+export async function setProviderConnectionAutoPing(id, enabled) {
+  if (typeof enabled !== "boolean") throw new TypeError("enabled must be a boolean");
+  const db = await getAdapter();
+  let result = null;
+  db.transaction(() => {
+    const row = db.get(
+      `SELECT id, provider, authType, isActive FROM providerConnections WHERE id = ?`,
+      [id],
+    );
+    if (!row) return;
+    const settingsKey = AUTO_PING_SETTINGS_KEYS[row.provider];
+    if (!settingsKey || row.authType !== "oauth" || (enabled === true && row.isActive !== 1)) {
+      const error = new Error("Auto-ping is available only for active Claude or Codex OAuth connections");
+      error.code = "AUTO_PING_INELIGIBLE";
+      throw error;
+    }
+    const updated = updateAutoPingEntryInTx(db, row.provider, id, enabled);
+    result = {
+      connectionId: id,
+      provider: row.provider,
+      enabled,
+      settingsKey,
+      config: updated.config,
+    };
+  });
+  return result;
+}
+
 export async function deleteProviderConnectionsByProvider(providerId) {
   const db = await getAdapter();
-  const before = db.get(`SELECT COUNT(*) AS n FROM providerConnections WHERE provider = ?`, [providerId]);
-  db.run(`DELETE FROM providerConnections WHERE provider = ?`, [providerId]);
-  return before?.n || 0;
+  let count = 0;
+  db.transaction(() => {
+    const rows = db.all(`SELECT id FROM providerConnections WHERE provider = ?`, [providerId]);
+    for (const row of rows) updateAutoPingEntryInTx(db, providerId, row.id, false);
+    db.run(`DELETE FROM providerConnections WHERE provider = ?`, [providerId]);
+    count = rows.length;
+  });
+  return count;
 }
 
 export async function reorderProviderConnections(providerId) {

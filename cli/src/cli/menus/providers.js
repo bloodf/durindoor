@@ -182,7 +182,9 @@ function countConnectionsByProvider(connections) {
  * @returns {boolean}
  */
 function supportsConnectionAutoPing(connection, providerId) {
-  return Boolean(AUTO_PING_SETTINGS_KEYS[providerId]) && connection?.authType === "oauth";
+  return Boolean(AUTO_PING_SETTINGS_KEYS[providerId])
+    && connection?.authType === "oauth"
+    && connection?.isActive !== false;
 }
 
 /**
@@ -230,39 +232,38 @@ function buildConnectionHeader(name, status, providerId, connection, data = {}) 
  * @param {Object|null} [settings=null] - Current settings, or null to fetch them.
  * @returns {Promise<void>}
  */
-async function toggleConnectionAutoPing(connection, providerId, settings = null) {
+async function toggleConnectionAutoPing(connection, providerId, _settings = null, deps = {}) {
+  const apiClient = deps.api || api;
+  const report = deps.showStatus || showStatus;
+  const wait = deps.pause || pause;
   const settingsKey = AUTO_PING_SETTINGS_KEYS[providerId];
-  if (!settingsKey) return;
-
-  let currentSettings = settings;
-  if (!currentSettings) {
-    const settingsRes = await api.getSettings();
-    if (!settingsRes.success) {
-      showStatus(`Failed to load settings: ${settingsRes.error}`, "error");
-      await pause();
-      return;
-    }
-    currentSettings = settingsRes.data || {};
+  if (!settingsKey || !connection?.id || !supportsConnectionAutoPing(connection, providerId)) {
+    return { success: false, error: "Connection is not eligible for auto-ping" };
   }
 
-  const currentCfg = currentSettings[settingsKey] || {};
-  const currentConnections = currentCfg.connections || {};
+  // Always refetch at click time; the menu snapshot can be stale while the
+  // user is selecting an action. The server performs the atomic single-entry
+  // merge so concurrent clients cannot overwrite sibling preferences.
+  const settingsRes = await apiClient.getSettings();
+  if (!settingsRes.success) {
+    report(`Failed to load settings: ${settingsRes.error}`, "error");
+    await wait();
+    return { success: false, error: settingsRes.error };
+  }
+  const currentSettings = settingsRes.data || {};
+  const currentConnections = currentSettings[settingsKey]?.connections || {};
   const next = currentConnections[connection.id] !== true;
-  const nextCfg = {
-    ...currentCfg,
-    connections: {
-      ...currentConnections,
-      [connection.id]: next,
-    },
-  };
 
-  const result = await api.updateSettings({ [settingsKey]: nextCfg });
+  const result = await apiClient.updateConnectionAutoPing(connection.id, next);
   if (result.success) {
-    showStatus(`Auto-ping ${next ? "enabled" : "disabled"}`, "success");
+    report(`Auto-ping ${next ? "enabled" : "disabled"}`, "success");
   } else {
-    showStatus(`Failed to update auto-ping: ${result.error}`, "error");
+    report(`Failed to update auto-ping: ${result.error}`, "error");
   }
-  await pause();
+  await wait();
+  return result.success
+    ? { success: true, enabled: next, data: result.data }
+    : { success: false, error: result.error };
 }
 
 /**
@@ -433,7 +434,7 @@ async function showConnectionActions(connection, providerId, breadcrumb = []) {
         return `Auto-ping: ${on ? "ON" : "OFF"} → toggle`;
       },
       action: async (data) => {
-        await toggleConnectionAutoPing(connection, providerId, data?.settingsError ? null : (data?.settings || null));
+        await toggleConnectionAutoPing(connection, providerId);
         return true;
       }
     }] : []),
@@ -972,5 +973,6 @@ module.exports = {
     supportsConnectionAutoPing,
     isConnectionAutoPingOn,
     buildConnectionHeader,
+    toggleConnectionAutoPing,
   },
 };

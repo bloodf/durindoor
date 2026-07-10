@@ -15,6 +15,7 @@ import { fetchSuggestedModels } from "@/shared/utils/providerModelsFetcher";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
 import { shouldShowProviderConnections } from "@/shared/utils/providerAuthMode";
 import { buildImportTokenPayload, isImportTokenOAuthProvider } from "@/shared/utils/importTokenProviders";
+import { createLatestIntentQueue } from "@/shared/utils/latestIntentQueue";
 import ModelRow from "./ModelRow";
 import PassthroughModelsSection from "./PassthroughModelsSection";
 import CompatibleModelsSection from "./CompatibleModelsSection";
@@ -75,6 +76,32 @@ export default function ProviderDetailPage() {
   const [thinkingMode, setThinkingMode] = useState("auto");
   const [concurrencyLimit, setConcurrencyLimit] = useState("");
   const [autoPing, setAutoPing] = useState({ enabled: false, connections: {} });
+  const [autoPingQueue] = useState(() => createLatestIntentQueue({
+      write: async (_key, enabled, { connectionId }) => {
+        const response = await fetch(`/api/providers/${encodeURIComponent(connectionId)}/auto-ping`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled }),
+        });
+        if (!response.ok) throw new Error(`Auto-ping update failed (${response.status})`);
+        return response.json();
+      },
+      onOptimistic: (_key, enabled, { connectionId }) => setAutoPing((current) => ({
+        ...current,
+        connections: { ...current.connections, [connectionId]: enabled },
+      })),
+      onConfirmed: (_key, enabled, { connectionId }) => setAutoPing((current) => ({
+        ...current,
+        connections: { ...current.connections, [connectionId]: enabled },
+      })),
+      onRollback: (_key, enabled, { connectionId }, error) => {
+        console.log("Error saving auto-ping config:", error);
+        setAutoPing((current) => ({
+          ...current,
+          connections: { ...current.connections, [connectionId]: enabled },
+        }));
+      },
+    }));
   const [suggestedModels, setSuggestedModels] = useState([]);
   const [kiloFreeModels, setKiloFreeModels] = useState([]);
   const [disabledModelIds, setDisabledModelIds] = useState([]);
@@ -323,6 +350,9 @@ export default function ProviderDetailPage() {
       setConcurrencyLimit(cLimit != null ? String(cLimit) : "");
       const autoPingSettingsKey = AUTO_PING_SETTINGS_KEYS[providerId];
       const apCfg = autoPingSettingsKey ? settingsData[autoPingSettingsKey] || {} : {};
+      autoPingQueue.hydrate(
+        Object.entries(apCfg.connections || {}).map(([id, enabled]) => [`${providerId}:${id}`, enabled]),
+      );
       setAutoPing({ enabled: apCfg.enabled === true, connections: apCfg.connections || {} });
       if (nodesRes.ok) {
         let node = (nodesData.nodes || []).find((entry) => entry.id === providerId) || null;
@@ -347,7 +377,7 @@ export default function ProviderDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [providerId, isCompatible]);
+  }, [providerId, isCompatible, autoPingQueue]);
 
   const handleUpdateNode = async (formData) => {
     try {
@@ -463,24 +493,9 @@ export default function ProviderDetailPage() {
     saveConcurrencyLimit(value);
   };
 
-  const saveAutoPing = async (next) => {
-    const autoPingSettingsKey = AUTO_PING_SETTINGS_KEYS[providerId];
-    if (!autoPingSettingsKey) return;
-
-    setAutoPing(next);
-    try {
-      await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [autoPingSettingsKey]: next }),
-      });
-    } catch (error) {
-      console.log("Error saving auto-ping config:", error);
-    }
-  };
-
   const handleAutoPingConnection = (connectionId, on) => {
-    saveAutoPing({ ...autoPing, connections: { ...autoPing.connections, [connectionId]: on } });
+    if (!AUTO_PING_SETTINGS_KEYS[providerId]) return;
+    autoPingQueue.enqueue(`${providerId}:${connectionId}`, on, { connectionId });
   };
 
   useEffect(() => {
@@ -1040,7 +1055,7 @@ export default function ProviderDetailPage() {
                 onMoveUp={() => handleSwapPriority(index, index - 1)}
                 onMoveDown={() => handleSwapPriority(index, index + 1)}
                 onToggleActive={(isActive) => handleUpdateConnectionStatus(conn.id, isActive)}
-                autoPing={AUTO_PING_SETTINGS_KEYS[providerId] && conn.authType === "oauth" ? {
+                autoPing={AUTO_PING_SETTINGS_KEYS[providerId] && conn.authType === "oauth" && conn.isActive !== false ? {
                   on: autoPing.connections[conn.id] === true,
                   onToggle: (on) => handleAutoPingConnection(conn.id, on),
                   provider: providerId,

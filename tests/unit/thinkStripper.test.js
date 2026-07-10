@@ -1,54 +1,131 @@
 /**
- * Unit tests for thinkStripper.
- *
- * MiniMax M3 inlines reasoning as `<think>...</think>` XML tags inside the
- * `content` field of its OpenAI-format responses. `extractThinkTags()` moves
- * that reasoning into the `reasoning_content` field so clients can display it
- * without leaking raw XML tags into the visible reply.
+ * MiniMax's explicitly configured M3 OpenAI transport can inline reasoning in
+ * complete `<think>` segments. The pure parser must preserve visible bytes and
+ * fail open for any malformed token sequence.
  */
 
-import { describe, it, expect } from "vitest";
-import { extractThinkTags, stripThinkTags } from "../../open-sse/utils/thinkStripper.js";
+import { describe, expect, it } from "vitest";
+import {
+  createThinkTagStreamExtractor,
+  extractThinkTags,
+  stripThinkTags,
+} from "../../open-sse/utils/thinkStripper.js";
 
 describe("extractThinkTags", () => {
-  it("moves reasoning from <think> tags into reasoning_content", () => {
-    const { content, reasoning } = extractThinkTags("before <think>hidden</think> after");
-    expect(reasoning).toBe("hidden");
-    expect(content).toBe("before after");
+  it("extracts one complete segment without trimming visible text", () => {
+    expect(extractThinkTags("before <think>hidden</think> after")).toEqual({
+      content: "before  after",
+      reasoning: "hidden",
+      matched: true,
+      malformed: false,
+    });
   });
 
-  it("returns the original content when no think tags are present", () => {
-    const text = "just a normal response";
-    const { content, reasoning } = extractThinkTags(text);
-    expect(reasoning).toBeNull();
-    expect(content).toBe(text);
+  it("extracts multiple and multiline segments in order", () => {
+    const input = "a<think>first\nline</think>b<think>second</think>c";
+    expect(extractThinkTags(input)).toEqual({
+      content: "abc",
+      reasoning: "first\nline\nsecond",
+      matched: true,
+      malformed: false,
+    });
   });
 
-  it("handles content that is entirely inside think tags", () => {
-    const { content, reasoning } = extractThinkTags("<think>only reasoning</think>");
-    expect(reasoning).toBe("only reasoning");
-    expect(content).toBe("");
+  it("removes empty segments without discarding later reasoning", () => {
+    expect(extractThinkTags("<think></think>x<think>kept</think>y")).toEqual({
+      content: "xy",
+      reasoning: "kept",
+      matched: true,
+      malformed: false,
+    });
   });
 
-  it("strips leading whitespace left behind by </think>", () => {
-    const { content, reasoning } = extractThinkTags("<think>reason</think>   visible");
-    expect(reasoning).toBe("reason");
-    expect(content).toBe("visible");
+  it("reports a complete empty segment without inventing reasoning", () => {
+    expect(extractThinkTags("left<think></think>right")).toEqual({
+      content: "leftright",
+      reasoning: null,
+      matched: true,
+      malformed: false,
+    });
   });
 
-  it("ignores non-string inputs", () => {
-    const { content, reasoning } = extractThinkTags(null);
-    expect(reasoning).toBeNull();
-    expect(content).toBeNull();
+  it("leaves ordinary and non-string content unchanged", () => {
+    expect(extractThinkTags("plain")).toEqual({
+      content: "plain",
+      reasoning: null,
+      matched: false,
+      malformed: false,
+    });
+    const structured = [{ type: "text", text: "<think>literal</think>" }];
+    expect(extractThinkTags(structured)).toEqual({
+      content: structured,
+      reasoning: null,
+      matched: false,
+      malformed: false,
+    });
+  });
+
+  it.each([
+    "<think>unclosed",
+    "stray</think>",
+    "<think>outer<think>inner</think>end",
+    "<think>valid</think><think>unclosed",
+    "<think>valid</think></think>",
+  ])("fails open byte-for-byte for malformed input %j", (input) => {
+    expect(extractThinkTags(input)).toEqual({
+      content: input,
+      reasoning: null,
+      matched: false,
+      malformed: true,
+    });
+    expect(stripThinkTags(input)).toBe(input);
   });
 });
 
 describe("stripThinkTags", () => {
-  it("removes think tags and trailing whitespace", () => {
-    expect(stripThinkTags("a <think>b</think> c")).toBe("a c");
+  it("uses the validated parser for complete segments", () => {
+    expect(stripThinkTags("a<think>b</think>c<think>d</think>e")).toBe("ace");
   });
 
   it("leaves text without tags unchanged", () => {
     expect(stripThinkTags("no tags here")).toBe("no tags here");
+  });
+});
+
+describe("createThinkTagStreamExtractor", () => {
+  it("handles opening and closing tokens split across chunks", () => {
+    const extractor = createThinkTagStreamExtractor();
+    expect(extractor.process("<thi")).toEqual({ content: "", reasoning: null, changed: true });
+    expect(extractor.process("nk>streamed</thi")).toEqual({ content: "", reasoning: null, changed: true });
+    expect(extractor.process("nk>answer")).toEqual({ content: "answer", reasoning: "streamed", changed: true });
+    expect(extractor.flush()).toEqual({ content: "", reasoning: null, changed: false });
+  });
+
+  it("restores an unclosed segment as visible content at terminal", () => {
+    const extractor = createThinkTagStreamExtractor();
+    expect(extractor.process("before<think>unfinished")).toEqual({
+      content: "before",
+      reasoning: null,
+      changed: true,
+    });
+    expect(extractor.flush()).toEqual({
+      content: "<think>unfinished",
+      reasoning: null,
+      changed: true,
+    });
+  });
+
+  it("fails open and disables extraction after a nested opening tag", () => {
+    const extractor = createThinkTagStreamExtractor();
+    expect(extractor.process("<think>outer<think>inner")).toEqual({
+      content: "<think>outer<think>inner",
+      reasoning: null,
+      changed: true,
+    });
+    expect(extractor.process("</think>tail")).toEqual({
+      content: "</think>tail",
+      reasoning: null,
+      changed: false,
+    });
   });
 });

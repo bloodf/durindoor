@@ -14,7 +14,7 @@ import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
 import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
-import { enforceApiKeyModelPolicy, recordApiKeyUsage } from "../services/apiKeyPolicy.js";
+import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 
 /**
  * Handle web fetch (URL extraction) request for the SSE/Next.js server.
@@ -101,15 +101,6 @@ export async function handleFetch(request) {
     }
   }
 
-  // Enforce per-API-key model policy
-  const policyError = await enforceApiKeyModelPolicy(request, providerInput);
-  if (policyError) return policyError;
-
-  if (apiKey) {
-    const tokens = body.prompt ? String(body.prompt).length / 4 : 0;
-    await recordApiKeyUsage(apiKey, { tokens, cost: 0 });
-  }
-
   // Combo expansion: providerInput may be a combo name → run fallback/round-robin across providers
   const combos = await getCombos();
   const comboModels = getComboModelsFromData(providerInput, combos);
@@ -128,7 +119,6 @@ export async function handleFetch(request) {
       comboStickyLimit
     });
   }
-
   return handleSingleProviderFetch(body, providerInput, request, apiKey, settings);
 }
 
@@ -164,6 +154,9 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
     return errorResponse(HTTP_STATUS.BAD_REQUEST, `Unknown provider: ${providerInput}`);
   }
 
+  const resolvedPolicyError = await enforceApiKeyModelPolicy(request, providerId);
+  if (resolvedPolicyError) return resolvedPolicyError;
+
   const providerConfig = resolvedProvider.fetchConfig;
   if (!providerConfig) {
     log.warn("FETCH", "Provider does not support web fetch", { provider: providerId });
@@ -190,8 +183,12 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
       log
     });
     if (result.success) {
-      return new Response(JSON.stringify(result.data), {
+      const response = new Response(JSON.stringify(result.data), {
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+      });
+      return recordApiKeyUsageForResponse(apiKey, response, {
+        tokens: 0,
+        cost: Number(result.data?.usage?.fetch_cost_usd) || 0,
       });
     }
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Fetch failed");
@@ -246,8 +243,12 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
     });
 
     if (result.success) {
-      return new Response(JSON.stringify(result.data), {
+      const response = new Response(JSON.stringify(result.data), {
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+      });
+      return recordApiKeyUsageForResponse(apiKey, response, {
+        tokens: 0,
+        cost: Number(result.data?.usage?.fetch_cost_usd) || 0,
       });
     }
 

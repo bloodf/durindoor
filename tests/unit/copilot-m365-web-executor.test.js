@@ -102,6 +102,19 @@ class StallAfterHandshakeM365WebSocket extends MockM365WebSocket {
   }
 }
 
+class CloseBeforeCompletionM365WebSocket extends MockM365WebSocket {
+  send(data) {
+    this.sent.push(String(data));
+    const parsed = JSON.parse(String(data).replace(/\x1e$/, ""));
+    if (parsed.protocol === "json") {
+      queueMicrotask(() => this.emit("message", Buffer.from(encodeFrame({}))));
+    }
+    if (parsed.type === 4 && parsed.target === "chat") {
+      queueMicrotask(() => this.emit("close", 1000, Buffer.from("closed")));
+    }
+  }
+}
+
 describe("copilot-m365 connection helpers", () => {
   it("resolves pasted credentials and redacts WebSocket URLs", () => {
     const params = resolveConnectionParams({
@@ -142,6 +155,21 @@ describe("copilot-m365 connection helpers", () => {
     expect(resolveConnectionParams({
       apiKey: "access_token=; chathubPath=user@tenant",
     })).toMatchObject({ error: expect.stringContaining("access_token") });
+  });
+
+  it("rejects caller-controlled WebSocket hosts and malformed Chathub paths", () => {
+    expect(resolveConnectionParams({
+      apiKey: "access_token=SECRET123; chathubPath=user@tenant",
+      providerSpecificData: { host: "attacker.example" },
+    })).toMatchObject({ error: expect.stringContaining("host") });
+    expect(resolveConnectionParams({
+      apiKey: "access_token=SECRET123; chathubPath=user@tenant?redirect=evil",
+    })).toMatchObject({ error: expect.stringContaining("path") });
+    expect(() => buildWsUrl({
+      host: "attacker.example",
+      chathubPath: "user@tenant",
+      accessToken: "SECRET123",
+    })).toThrow(/host/i);
   });
 
   it("flattens system and prior chat turns", () => {
@@ -234,6 +262,24 @@ describe("CopilotM365WebExecutor", () => {
       expect(result.response.status).toBe(502);
       await expect(result.response.json()).resolves.toMatchObject({
         error: { message: expect.stringContaining("server-side failure") },
+      });
+    } finally {
+      restore();
+    }
+  });
+
+  it("returns 502 when the socket closes before a completion frame", async () => {
+    const restore = __setCopilotM365WebSocketForTesting(CloseBeforeCompletionM365WebSocket);
+    try {
+      const result = await new CopilotM365WebExecutor().execute({
+        model: "copilot-m365",
+        stream: false,
+        body: { messages: [{ role: "user", content: "close early" }] },
+        credentials: { apiKey: "access_token=SECRET123; chathubPath=user@tenant" },
+      });
+      expect(result.response.status).toBe(502);
+      await expect(result.response.json()).resolves.toMatchObject({
+        error: { message: expect.stringContaining("closed before completion") },
       });
     } finally {
       restore();

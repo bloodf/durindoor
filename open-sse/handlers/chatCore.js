@@ -28,10 +28,64 @@ import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
 import { compressMessages, formatRtkLog } from "../rtk/index.js";
 import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadroomPhantomSavings } from "../rtk/headroom.js";
-import { compressWithPxpipe, formatPxpipeLog } from "../rtk/pxpipe.js";
+import { compressWithPxpipe, formatPxpipeLog, normalizePxpipeResult } from "../rtk/pxpipe.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { stripUnsupportedModalities } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
+
+const NATIVE_TOOL_RESULT_FORMATS = new Set([
+  FORMATS.GEMINI,
+  FORMATS.GEMINI_CLI,
+  FORMATS.ANTIGRAVITY,
+  FORMATS.VERTEX,
+]);
+
+function isCompactResponsesEndpoint(endpoint) {
+  const path = String(endpoint || "").split(/[?#]/, 1)[0].replace(/\/+$/, "");
+  return path.endsWith("/v1/responses/compact");
+}
+
+/**
+ * Build immutable request-only metadata before logging or translation. The
+ * legacy body marker remains accepted for compatibility, but is removed from
+ * both working and diagnostic copies before either can leave the process.
+ */
+function captureRequestContext(body, clientRawRequest) {
+  const compact = isCompactResponsesEndpoint(clientRawRequest?.endpoint)
+    || body?._compact === true
+    || clientRawRequest?.body?._compact === true;
+  const clientHeaders = Object.freeze({ ...(clientRawRequest?.headers || {}) });
+  return Object.freeze({ compact, clientHeaders });
+}
+
+function stripLegacyCompactMarker(body, clientRawRequest) {
+  let cleanBody = body;
+  let cleanRawRequest = clientRawRequest;
+
+  if (body && typeof body === "object" && Object.prototype.hasOwnProperty.call(body, "_compact")) {
+    cleanBody = { ...body };
+    delete cleanBody._compact;
+  }
+  if (clientRawRequest?.body && typeof clientRawRequest.body === "object"
+    && Object.prototype.hasOwnProperty.call(clientRawRequest.body, "_compact")) {
+    const rawBody = { ...clientRawRequest.body };
+    delete rawBody._compact;
+    cleanRawRequest = { ...clientRawRequest, body: rawBody };
+  }
+
+  return { body: cleanBody, clientRawRequest: cleanRawRequest };
+}
+
+/**
+ * Gemini-family clients legitimately send functionResponse turns without the
+ * originating functionCall after trimming their local history. Their native
+ * APIs accept that history and the Gemini translators preserve the content.
+ * Applying the generic orphan cleaner to those wire formats silently deletes
+ * user-visible tool output before dispatch.
+ */
+export function shouldStripOrphanedToolResults(format) {
+  return !NATIVE_TOOL_RESULT_FORMATS.has(format);
+}
 
 /**
  * Core chat handler - shared between SSE and Worker
@@ -43,6 +97,8 @@ import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
 export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit }) {
   const { provider, model } = modelInfo;
   const requestStartTime = Date.now();
+  const requestContext = captureRequestContext(body, clientRawRequest);
+  ({ body, clientRawRequest } = stripLegacyCompactMarker(body, clientRawRequest));
 
   const sourceFormat = sourceFormatOverride || detectFormat(body);
 
@@ -99,12 +155,18 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   // Stream-only providers (forceStream) must keep streaming even when the client
   // asked for JSON; the accumulated stream is converted to JSON downstream. (#2031)
+  // Provider-declared forceNonStreaming (e.g. Galadriel's verified API
+  // rejects streaming chat requests; synthesize SSE downstream).
+  const providerForcesNonStreaming = PROVIDERS[provider]?.forceNonStreaming === true;
+  // Stream-only providers (forceStream) must keep streaming even when the client
+  // asked for JSON; the accumulated stream is converted to JSON downstream. (#2031)
   let stream = resolveStreamFlag({
     providerRequiresStreaming,
     bodyStream: body.stream,
     forceNonStreaming:
-      (isImageGenModel && (provider === "antigravity" || provider === "gemini-cli")) ||
-      (detectedTool === "deepseek-tui" && body.stream !== true),
+      (isImageGenModel && (provider === "antigravity" || provider === "gemini-cli" || provider === "agy"))
+      || providerForcesNonStreaming
+      || (detectedTool === "deepseek-tui" && body.stream !== true),
     clientPrefersJson,
     clientPrefersSSE,
   });
@@ -137,7 +199,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   // Strip orphaned tool results before translation so the translator never sees
   // stale call_id references that client-side history truncation left behind.
-  const preStripped = stripOrphanedToolResults(body);
+  const preStripped = shouldStripOrphanedToolResults(sourceFormat)
+    ? stripOrphanedToolResults(body)
+    : 0;
   if (preStripped > 0) {
     log?.debug?.("TOOLCLEAN", `pre-translation: stripped ${preStripped} orphaned tool result(s)`);
   }
@@ -206,7 +270,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // Strip orphaned tool results again after RTK/Headroom compression — both
   // compressors can remove assistant turns containing tool_calls, which would
   // otherwise leave dangling tool results that strict providers reject with 400.
-  const postStripped = stripOrphanedToolResults(translatedBody);
+  const postStripped = shouldStripOrphanedToolResults(finalFormat)
+    ? stripOrphanedToolResults(translatedBody)
+    : 0;
   if (postStripped > 0) {
     log?.debug?.("TOOLCLEAN", `post-compression: stripped ${postStripped} orphaned tool result(s)`);
   }
@@ -226,10 +292,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // PXPIPE: image bulky context (Claude-format bodies only), last saver before dispatch
   let pxpipeSummary = null;
   if (pxpipeEnabled) {
-    const pxpipeResult = await compressWithPxpipe(translatedBody, {
+    const pxpipeDiagnostics = {};
+    const pxpipeResult = normalizePxpipeResult(await compressWithPxpipe(translatedBody, {
       enabled: true, format: finalFormat, model: cleanUpstreamModel,
       minChars: pxpipeMinChars, timeoutMs: pxpipeTimeoutMs, transform: pxpipeTransform,
-    });
+      diagnostics: pxpipeDiagnostics,
+    }), pxpipeDiagnostics);
     pxpipeSummary = pxpipeResult.summary;
     if (pxpipeResult.body) translatedBody = pxpipeResult.body;
     const pxpipeLine = formatPxpipeLog(pxpipeSummary);
@@ -239,7 +307,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   }
 
   // Re-strip after PXPIPE in case compression removed assistant/tool turns.
-  const pxpipeStripped = stripOrphanedToolResults(translatedBody);
+  const pxpipeStripped = shouldStripOrphanedToolResults(finalFormat)
+    ? stripOrphanedToolResults(translatedBody)
+    : 0;
   if (pxpipeStripped > 0) {
     log?.debug?.("TOOLCLEAN", `post-pxpipe: stripped ${pxpipeStripped} orphaned tool result(s)`);
   }
@@ -352,7 +422,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   }
 
   try {
-    const result = await executor.execute({ model: cleanUpstreamModel, body: translatedBody, stream, credentials, signal: streamController.signal, log, proxyOptions });
+    const result = await executor.execute({ model: cleanUpstreamModel, body: translatedBody, stream, credentials, signal: streamController.signal, log, proxyOptions, requestContext });
     providerResponse = result.response;
     providerUrl = result.url;
     providerHeaders = result.headers;
@@ -393,7 +463,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
           try { await onCredentialsRefreshed(newCredentials); } catch (e) { log?.warn?.("TOKEN", `onCredentialsRefreshed failed: ${e.message}`); }
         }
         try {
-          const retryResult = await executor.execute({ model: cleanUpstreamModel, body: translatedBody, stream, credentials, signal: streamController.signal, log, proxyOptions });
+          const retryResult = await executor.execute({ model: cleanUpstreamModel, body: translatedBody, stream, credentials, signal: streamController.signal, log, proxyOptions, requestContext });
           if (retryResult.response.ok) { providerResponse = retryResult.response; providerUrl = retryResult.url; }
         } catch { log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`); }
       } else {
@@ -441,9 +511,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     if (result) { streamController.handleComplete(); return result; }
   }
 
-  // True non-streaming response
+  // True non-streaming response. When the client asked for streaming but the
+  // provider forced non-streaming upstream, synthesize SSE bytes from the JSON
+  // body inside handleNonStreamingResponse so the SSE client contract holds.
   if (!stream) {
-    const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, reqLogger, toolNameMap, trackDone, appendLog });
+    const streamToClient = clientRequestedStreaming === true;
+    const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, reqLogger, toolNameMap, trackDone, appendLog, streamToClient });
     streamController.handleComplete();
     return result;
   }

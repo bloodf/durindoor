@@ -16,6 +16,9 @@ export const M365_INDIVIDUAL_DEFAULTS = {
   scenario: "OfficeWebPaidConsumerCopilot",
 };
 
+export const M365_ALLOWED_HOSTS = new Set([M365_INDIVIDUAL_DEFAULTS.host]);
+const M365_CHATHUB_PATH_RE = /^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$/;
+
 export const M365_EDU_OVERRIDES = {
   scenario: "OfficeWebIncludedCopilot",
   isEdu: "true",
@@ -168,19 +171,30 @@ export function resolveConnectionParams(credentials) {
     (typeof psd.chathubPath === "string" && psd.chathubPath) ||
     (typeof psd.userTenant === "string" && psd.userTenant) ||
     "";
-  if (!chathubPath || !chathubPath.includes("@")) {
+  if (!chathubPath || !M365_CHATHUB_PATH_RE.test(chathubPath)) {
     return {
       error:
-        "Missing M365 Chathub path. Paste the '<user-oid>@<tenant-id>' segment from the WebSocket URL.",
+        "Invalid M365 Chathub path. Paste only the '<user-oid>@<tenant-id>' segment from the WebSocket URL.",
     };
   }
 
-  const host = (typeof psd.host === "string" && psd.host) || M365_INDIVIDUAL_DEFAULTS.host;
+  const host = ((typeof psd.host === "string" && psd.host) || M365_INDIVIDUAL_DEFAULTS.host)
+    .trim()
+    .toLowerCase();
+  if (!M365_ALLOWED_HOSTS.has(host)) {
+    return { error: "Unsupported M365 Copilot WebSocket host." };
+  }
   const variants = typeof psd.variants === "string" && psd.variants ? psd.variants : undefined;
   return { host, chathubPath, accessToken, variants, ...resolveTierOverrides(psd) };
 }
 
 export function buildWsUrl(params) {
+  const host = String(params?.host || "").trim().toLowerCase();
+  if (!M365_ALLOWED_HOSTS.has(host)) throw new Error("Unsupported M365 Copilot WebSocket host");
+  const chathubPath = String(params?.chathubPath || "");
+  if (!M365_CHATHUB_PATH_RE.test(chathubPath)) throw new Error("Invalid M365 Chathub path");
+  const [userId, tenantId] = chathubPath.split("@");
+  const encodedPath = `${encodeURIComponent(userId)}@${encodeURIComponent(tenantId)}`;
   const sessionKey = newChatSessionId();
   const query = new URLSearchParams({
     chatsessionid: sessionKey,
@@ -198,7 +212,7 @@ export function buildWsUrl(params) {
     agent: M365_INDIVIDUAL_DEFAULTS.agent,
     scenario: params.scenario ?? M365_INDIVIDUAL_DEFAULTS.scenario,
   });
-  return `wss://${params.host}/m365Copilot/Chathub/${params.chathubPath}?${query.toString()}`;
+  return `wss://${host}/m365Copilot/Chathub/${encodedPath}?${query.toString()}`;
 }
 
 export function redactWsUrl(wsUrl) {

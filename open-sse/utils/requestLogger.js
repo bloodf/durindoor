@@ -69,25 +69,83 @@ function writeJsonFile(sessionPath, filename, data) {
   }
 }
 
-// Mask sensitive data in headers (DISABLED - keep full token for testing)
-function maskSensitiveHeaders(headers) {
+const REDACTED = "[redacted]";
+const SESSION_METADATA_PATTERN = "session[-_]?id|chatgpt[-_]?account[-_]?id|prompt[-_]?cache[-_]?key";
+const SENSITIVE_HEADER_RE = new RegExp(`(?:authorization|auth|cookie|token|secret|signature|password|credential|(?:^|[-_])key(?:$|[-_])|${SESSION_METADATA_PATTERN})`, "i");
+const SENSITIVE_QUERY_RE = new RegExp(`^(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|api[-_]?key|key|auth|authorization|cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig|${SESSION_METADATA_PATTERN})$`, "i");
+const SENSITIVE_FIELD_RE = new RegExp(`^(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig|${SESSION_METADATA_PATTERN})$`, "i");
+
+export function maskSensitiveText(value) {
+  return String(value ?? "")
+    .replace(/\bBearer\s+\S+/gi, "Bearer [redacted]")
+    .replace(
+      /("(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig|session[-_]?id|chatgpt[-_]?account[-_]?id|prompt[-_]?cache[-_]?key)"\s*:\s*")[^"]*"/gi,
+      '$1[redacted]"',
+    )
+    .replace(/([A-Za-z0-9_-]*(?:auth(?:orization)?|cookie|token|key|secret|signature|password|credential|session[-_]?id|chatgpt[-_]?account[-_]?id|prompt[-_]?cache[-_]?key)[A-Za-z0-9_-]*\s*:\s*)[^\r\n]+/gi, "$1[redacted]")
+    .replace(
+      /((?:[?&;#]\s*|^)(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|api[-_]?key|key|auth|authorization|cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig|session[-_]?id|chatgpt[-_]?account[-_]?id|prompt[-_]?cache[-_]?key)=)[^&;\s]+/gi,
+      "$1[redacted]",
+    );
+}
+
+/** Recursively redact credential fields and credential-shaped text in logs. */
+export function maskSensitiveValue(value, seen = new WeakSet(), depth = 0) {
+  if (typeof value === "string") return maskSensitiveText(value);
+  if (value == null || typeof value !== "object" || depth >= 12) return value;
+  if (seen.has(value)) return "[circular]";
+  seen.add(value);
+  if (Array.isArray(value)) {
+    return value.map((entry) => maskSensitiveValue(entry, seen, depth + 1));
+  }
+  return Object.fromEntries(Object.entries(value).map(([key, entry]) => [
+    key,
+    SENSITIVE_FIELD_RE.test(key) ? REDACTED : maskSensitiveValue(entry, seen, depth + 1),
+  ]));
+}
+
+/**
+ * Redact credentials before writing optional request diagnostics to disk.
+ * Header names remain visible for troubleshooting, but their values never do.
+ */
+export function maskSensitiveHeaders(headers) {
   if (!headers) return {};
-  return { ...headers };
-  
-  // Old masking code (disabled):
-  // const masked = { ...headers };
-  // const sensitiveKeys = ["authorization", "x-api-key", "cookie", "token"];
-  // 
-  // for (const key of Object.keys(masked)) {
-  //   const lowerKey = key.toLowerCase();
-  //   if (sensitiveKeys.some(sk => lowerKey.includes(sk))) {
-  //     const value = masked[key];
-  //     if (value && value.length > 20) {
-  //       masked[key] = value.slice(0, 10) + "..." + value.slice(-5);
-  //     }
-  //   }
-  // }
-  // return masked;
+  const entries = typeof headers.entries === "function"
+    ? Array.from(headers.entries())
+    : Object.entries(headers);
+  return Object.fromEntries(entries.map(([key, value]) => [
+    key,
+    SENSITIVE_HEADER_RE.test(String(key)) ? REDACTED : value,
+  ]));
+}
+
+/** Redact credential-bearing query parameters while preserving the target. */
+export function maskSensitiveUrl(value) {
+  if (value == null) return value;
+  const raw = String(value);
+  try {
+    const isAbsolute = /^[a-z][a-z\d+.-]*:\/\//i.test(raw);
+    const parsed = new URL(raw, "http://request-log.invalid");
+    if (parsed.username) parsed.username = REDACTED;
+    if (parsed.password) parsed.password = REDACTED;
+    for (const key of Array.from(parsed.searchParams.keys())) {
+      if (SENSITIVE_QUERY_RE.test(key)) parsed.searchParams.set(key, REDACTED);
+    }
+    if (parsed.hash.includes("=")) {
+      const fragment = new URLSearchParams(parsed.hash.slice(1));
+      for (const key of Array.from(fragment.keys())) {
+        if (SENSITIVE_QUERY_RE.test(key)) fragment.set(key, REDACTED);
+      }
+      parsed.hash = fragment.toString();
+    }
+    if (isAbsolute) return parsed.toString();
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return raw.replace(
+      /([?&#](?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|api[-_]?key|key|auth|authorization|cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig|session[-_]?id|chatgpt[-_]?account[-_]?id|prompt[-_]?cache[-_]?key)=)[^&#\s]*/gi,
+      `$1${REDACTED}`,
+    );
+  }
 }
 
 // No-op logger when logging is disabled
@@ -130,9 +188,9 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
     logClientRawRequest(endpoint, body, headers = {}) {
       writeJsonFile(sessionPath, "1_req_client.json", {
         timestamp: new Date().toISOString(),
-        endpoint,
+        endpoint: maskSensitiveUrl(endpoint),
         headers: maskSensitiveHeaders(headers),
-        body
+        body: maskSensitiveValue(body)
       });
     },
     
@@ -141,7 +199,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
       writeJsonFile(sessionPath, "2_req_source.json", {
         timestamp: new Date().toISOString(),
         headers: maskSensitiveHeaders(headers),
-        body
+        body: maskSensitiveValue(body)
       });
     },
     
@@ -149,7 +207,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
     logOpenAIRequest(body) {
       writeJsonFile(sessionPath, "3_req_openai.json", {
         timestamp: new Date().toISOString(),
-        body
+        body: maskSensitiveValue(body)
       });
     },
     
@@ -157,9 +215,9 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
     logTargetRequest(url, headers, body) {
       writeJsonFile(sessionPath, "4_req_target.json", {
         timestamp: new Date().toISOString(),
-        url,
+        url: maskSensitiveUrl(url),
         headers: maskSensitiveHeaders(headers),
-        body
+        body: maskSensitiveValue(body)
       });
     },
     
@@ -170,8 +228,8 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
         timestamp: new Date().toISOString(),
         status,
         statusText,
-        headers: headers ? (typeof headers.entries === "function" ? Object.fromEntries(headers.entries()) : headers) : {},
-        body
+        headers: maskSensitiveHeaders(headers),
+        body: maskSensitiveValue(body)
       });
     },
     
@@ -180,7 +238,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
       if (!fs || !sessionPath) return;
       try {
         const filePath = path.join(sessionPath, "5_res_provider.txt");
-        fs.appendFileSync(filePath, chunk);
+        fs.appendFileSync(filePath, maskSensitiveText(chunk));
       } catch (err) {
         // Ignore append errors
       }
@@ -191,7 +249,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
       if (!fs || !sessionPath) return;
       try {
         const filePath = path.join(sessionPath, "6_res_openai.txt");
-        fs.appendFileSync(filePath, chunk);
+        fs.appendFileSync(filePath, maskSensitiveText(chunk));
       } catch (err) {
         // Ignore append errors
       }
@@ -201,7 +259,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
     logConvertedResponse(body) {
       writeJsonFile(sessionPath, "7_res_client.json", {
         timestamp: new Date().toISOString(),
-        body
+        body: maskSensitiveValue(body)
       });
     },
     
@@ -210,7 +268,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
       if (!fs || !sessionPath) return;
       try {
         const filePath = path.join(sessionPath, "7_res_client.txt");
-        fs.appendFileSync(filePath, chunk);
+        fs.appendFileSync(filePath, maskSensitiveText(chunk));
       } catch (err) {
         // Ignore append errors
       }
@@ -220,9 +278,9 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
     logError(error, requestBody = null) {
       writeJsonFile(sessionPath, "6_error.json", {
         timestamp: new Date().toISOString(),
-        error: error?.message || String(error),
-        stack: error?.stack,
-        requestBody
+        error: maskSensitiveText(error?.message || String(error)),
+        stack: error?.stack ? maskSensitiveText(error.stack) : undefined,
+        requestBody: maskSensitiveValue(requestBody)
       });
     }
   };
@@ -247,10 +305,10 @@ export function logError(provider, { error, url, model, requestBody }) {
       type: "error",
       provider,
       model,
-      url,
-      error: error?.message || String(error),
-      stack: error?.stack,
-      requestBody
+      url: maskSensitiveUrl(url),
+      error: maskSensitiveText(error?.message || String(error)),
+      stack: error?.stack ? maskSensitiveText(error.stack) : undefined,
+      requestBody: maskSensitiveValue(requestBody)
     };
     
     fs.appendFileSync(logPath, JSON.stringify(logEntry) + "\n");

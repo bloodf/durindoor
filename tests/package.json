@@ -9,13 +9,14 @@
     "test:watch": "vitest --reporter=verbose",
     "test:json": "vitest run --reporter=json --outputFile=./.test-results.json",
     "gate": "node __baseline__/verify-no-regression.mjs ./.test-results.json",
-    "test:ci": "npm run test:json || true && npm run gate"
+    "test:ci": "node __baseline__/run-ci.mjs"
   },
   "devDependencies": {
     "vitest": "^4.0.0"
   },
   "engines": {
-    "node": ">=18"
+    "node": "^20.19.0 || >=22.12.0",
+    "npm": "10.8.2"
   },
   "dependencies": {
     "uuid": "^14.0.1"

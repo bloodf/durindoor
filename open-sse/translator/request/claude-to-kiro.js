@@ -27,7 +27,6 @@ import { FORMATS } from "../formats.js";
 import { v4 as uuidv4 } from "uuid";
 import {
   resolveKiroModel,
-  toKiroModelId,
   resolveKiroThinkingBudget,
   buildThinkingSystemPrefix,
   KIRO_AGENTIC_SYSTEM_PROMPT,
@@ -384,9 +383,9 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
   const temperature = body.temperature;
   const topP = body.top_p;
 
-  const { upstream: upstreamModel, agentic } = resolveKiroModel(model);
-  // Kiro API requires dash-notation version numbers (claude-sonnet-4-5 not claude-sonnet-4.5)
-  const kiroModelId = toKiroModelId(upstreamModel);
+  // Synthetic suffixes are local routing hints. Kiro's current wire contract
+  // accepts Claude version dots, so preserve the resolved upstream ID exactly.
+  const { upstream: kiroModelId, agentic } = resolveKiroModel(model);
   const thinkingBudget = resolveKiroThinkingBudget(body, credentials?.rawHeaders, model);
 
   // Guard 1: no client tools → flatten all tool interactions to text.
@@ -441,7 +440,9 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
 
   const userInputMessage = {
     content: finalContent,
-    modelId: kiroModelId,  // Codex P1: Kiro requires dash notation; matches kiroModelId used in history backfill + _kiroUpstreamModel
+    // Keep the same canonical upstream ID in the current message, history
+    // backfill, and `_kiroUpstreamModel` metadata.
+    modelId: kiroModelId,
     origin: "AI_EDITOR",
     ...(currentMessage?.userInputMessage?.userInputMessageContext && {
       userInputMessageContext:

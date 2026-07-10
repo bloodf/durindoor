@@ -1,15 +1,16 @@
 import fs from "node:fs";
 import path from "node:path";
-import { LEGACY_FILES, DB_DIR, DATA_FILE } from "./paths.js";
+import { currentDataFile, currentDbDir, currentLegacyFiles } from "./paths.js";
 import { TABLES, buildCreateTableSql } from "./schema.js";
 import { MIGRATIONS, latestVersion } from "./migrations/index.js";
 import { getMetaSync, setMetaSync } from "./helpers/metaStore.js";
 import { makeBackupDir, backupFile, pruneOldBackups } from "./backup.js";
 import { getAppVersion } from "./version.js";
 import { stringifyJson } from "./helpers/jsonCol.js";
+import { backfillApiKeyUsageTotals } from "./helpers/apiKeyUsageTotals.js";
 
 // Marker file: prevents re-importing legacy JSON when user wipes data.sqlite.
-const MIGRATED_MARKER = path.join(DB_DIR, ".migrated-from-json");
+const migratedMarkerFile = () => path.join(currentDbDir(), ".migrated-from-json");
 
 // Track per-adapter so reusing same adapter skips re-run, but new adapter (after reset) re-runs.
 const _migratedAdapters = new WeakSet();
@@ -142,8 +143,8 @@ function importLegacyMain(adapter, data) {
 
   importWithAssertion(adapter, "apiKeys", data.apiKeys || [], (k) => {
     adapter.run(
-      `INSERT OR REPLACE INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, dailyLimitTokens, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
-      [k.id, k.key, k.name || null, k.machineId || null, k.isActive === false ? 0 : 1, JSON.stringify(k.allowedCombos || []), k.dailyLimitTokens ?? null, k.createdAt || new Date().toISOString()]
+      `INSERT OR REPLACE INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, dailyLimitTokens, policy, expiresAt, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [k.id, k.key, k.name || null, k.machineId || null, k.isActive === false ? 0 : 1, JSON.stringify(k.allowedCombos || []), k.dailyLimitTokens ?? null, k.policy == null ? null : stringifyJson(k.policy), k.expiresAt || null, k.createdAt || new Date().toISOString()]
     );
   }, (k) => ({ id: k.id ?? null, name: k.name ?? null }));
 
@@ -215,35 +216,71 @@ function importLegacyDetails(adapter, data) {
 // ─── Main entry ──────────────────────────────────────────────────────────
 export async function runMigrationOnce(adapter) {
   if (_migratedAdapters.has(adapter)) return;
-  _migratedAdapters.add(adapter);
 
   // Capture freshness BEFORE migrations stamp _meta (otherwise we'd misclassify
   // a brand-new DB as non-fresh once schemaVersion is written).
   const fresh = isFreshDb(adapter);
+
+  // Snapshot the existing database before any schema mutation. WAL-backed
+  // adapters must checkpoint first or the copied data.sqlite may omit committed
+  // pages that still live in the sidecar file.
+  const oldSchemaVersion = fresh ? 0 : parseInt(getMetaSync(adapter, "schemaVersion", "0"), 10) || 0;
+  const oldAppVersion = fresh ? null : getMetaSync(adapter, "appVersion", null);
+  const newAppVersion = getAppVersion();
+  const needsSchemaUpgrade = !fresh && oldSchemaVersion < latestVersion();
+  const needsAppBackup = !fresh && oldAppVersion && oldAppVersion !== newAppVersion;
+  // Earlier PR145 heads could stamp v6 while the policy migration silently
+  // skipped a missing totals table. Repair that exact structural state once;
+  // never rebuild an existing table because it also contains non-chat usage.
+  const needsTotalsRepair = !fresh
+    && oldSchemaVersion >= 6
+    && adapter.all(`PRAGMA table_info(apiKeyUsageTotals)`).length === 0;
+  let preUpgradeBackupDir = null;
+  if (needsSchemaUpgrade || needsAppBackup || needsTotalsRepair) {
+    // Strict checkpoint: adapters propagate SQL errors and reject a busy WAL.
+    // Migration must stop before copying or mutating if committed pages cannot
+    // be proven present in data.sqlite.
+    if (adapter.checkpoint) await adapter.checkpoint();
+    const label = needsSchemaUpgrade
+      ? `schema-${oldSchemaVersion}-to-${latestVersion()}`
+      : needsTotalsRepair
+        ? `schema-${oldSchemaVersion}-totals-repair`
+        : `upgrade-${oldAppVersion}-to-${newAppVersion}`;
+    preUpgradeBackupDir = makeBackupDir(label);
+    const source = currentDataFile();
+    const copied = backupFile(source, preUpgradeBackupDir);
+    if (fs.existsSync(source) && !copied) {
+      throw new Error(`[DB][migrate] failed to create pre-upgrade backup for ${source}`);
+    }
+  }
 
   // 1. Always run versioned migrations chain (skip-version safe)
   const migInfo = runVersionedMigrations(adapter);
 
   // 2. Additive sync (auto add missing columns/indexes declared in TABLES)
   syncSchemaFromTables(adapter);
+  if (needsTotalsRepair) backfillApiKeyUsageTotals(adapter);
 
   // 3. One-time legacy JSON import (only if DB was fresh on entry)
-  const alreadyImported = fs.existsSync(MIGRATED_MARKER);
-  const legacyMain = readJsonSafe(LEGACY_FILES.main);
-  const legacyUsage = readJsonSafe(LEGACY_FILES.usage);
-  const legacyDisabled = readJsonSafe(LEGACY_FILES.disabled);
-  const legacyDetails = readJsonSafe(LEGACY_FILES.details);
+  const markerFile = migratedMarkerFile();
+  const legacyFiles = currentLegacyFiles();
+  const alreadyImported = fs.existsSync(markerFile);
+  const legacyMain = readJsonSafe(legacyFiles.main);
+  const legacyUsage = readJsonSafe(legacyFiles.usage);
+  const legacyDisabled = readJsonSafe(legacyFiles.disabled);
+  const legacyDetails = readJsonSafe(legacyFiles.details);
   const hasLegacy = !!(legacyMain || legacyUsage || legacyDisabled || legacyDetails);
 
   if (fresh && hasLegacy && !alreadyImported) {
     const t0 = Date.now();
     const backupDir = makeBackupDir("migrate-from-json");
-    for (const f of Object.values(LEGACY_FILES)) backupFile(f, backupDir);
+    for (const f of Object.values(legacyFiles)) backupFile(f, backupDir);
 
     try {
       adapter.transaction(() => {
         importLegacyMain(adapter, legacyMain);
         importLegacyUsage(adapter, legacyUsage);
+        backfillApiKeyUsageTotals(adapter);
         importLegacyDisabled(adapter, legacyDisabled);
         importLegacyDetails(adapter, legacyDetails);
         setMetaSync(adapter, "appVersion", getAppVersion());
@@ -257,30 +294,29 @@ export async function runMigrationOnce(adapter) {
       throw err;
     }
 
-    try { fs.writeFileSync(MIGRATED_MARKER, new Date().toISOString()); } catch {}
+    try { fs.writeFileSync(markerFile, new Date().toISOString()); } catch {}
     pruneOldBackups();
     console.log(`[DB][migrate] JSON → SQLite in ${Date.now() - t0}ms | legacy JSON kept at DATA_DIR | backup: ${backupDir}`);
+    _migratedAdapters.add(adapter);
     return;
   }
 
   if (fresh) {
     setMetaSync(adapter, "appVersion", getAppVersion());
+    _migratedAdapters.add(adapter);
     return;
   }
 
-  // 4. App version bump → backup data.sqlite (safety net before user-side upgrade)
-  const oldVer = getMetaSync(adapter, "appVersion", null);
-  const newVer = getAppVersion();
-  if (oldVer && oldVer !== newVer) {
-    const backupDir = makeBackupDir(`upgrade-${oldVer}-to-${newVer}`);
-    try { backupFile(DATA_FILE, backupDir); } catch {}
-    setMetaSync(adapter, "appVersion", newVer);
+  // 4. Stamp the app version only after migrations succeed. Any required
+  // safety copy was created above, before the first schema mutation.
+  if (!oldAppVersion) setMetaSync(adapter, "appVersion", newAppVersion);
+  if (oldAppVersion && oldAppVersion !== newAppVersion) {
+    setMetaSync(adapter, "appVersion", newAppVersion);
     pruneOldBackups();
-    console.log(`[DB][migrate] App ${oldVer} → ${newVer} | schema ${migInfo.from} → ${migInfo.to} | backup: ${backupDir}`);
-  } else if (migInfo.applied > 0) {
-    // Schema upgrade without app version bump — still backup
-    const backupDir = makeBackupDir(`schema-${migInfo.from}-to-${migInfo.to}`);
-    try { backupFile(DATA_FILE, backupDir); } catch {}
+    console.log(`[DB][migrate] App ${oldAppVersion} → ${newAppVersion} | schema ${migInfo.from} → ${migInfo.to} | backup: ${preUpgradeBackupDir}`);
+  } else if (migInfo.applied > 0 || needsTotalsRepair) {
     pruneOldBackups();
+    console.log(`[DB][migrate] Schema ${migInfo.from} → ${migInfo.to}${needsTotalsRepair ? " | repaired API-key totals" : ""} | backup: ${preUpgradeBackupDir}`);
   }
+  _migratedAdapters.add(adapter);
 }

@@ -42,11 +42,17 @@ function classifyCodexErrorEvent(text) {
     const err = json?.error;
     if (!err) continue;
     const msg = String(err.message || "").toLowerCase();
-    if (CODEX_SSE_ACCOUNT_FALLBACK_PATTERNS.some((p) => msg.includes(p))) return "account";
+    const code = String(err.code || "").toLowerCase();
+    if (CODEX_SSE_ACCOUNT_FALLBACK_PATTERNS.some((p) => msg.includes(p) || code.includes(p))) return "account";
     const type = String(err.type || "").toLowerCase();
     if (CODEX_SSE_RETRY_PATTERNS.some((p) => type.includes(p))) return "retry";
   }
   return null;
+}
+
+function completeSseEventBlocks(text) {
+  const blocks = String(text || "").split(/\r?\n\r?\n/);
+  return blocks.slice(0, -1).filter(Boolean);
 }
 
 // Server-generated item id prefixes that Codex /responses cannot resolve when store=false
@@ -327,27 +333,34 @@ export class CodexExecutor extends BaseExecutor {
     let text = "";
     let matched = null;
     let accountFallback = false;
+    let streamEnded = false;
     try {
       while (text.length < CODEX_SSE_PEEK_BYTES) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          streamEnded = true;
+          break;
+        }
         chunks.push(value);
         text += decoder.decode(value, { stream: true });
         const lowerText = text.toLowerCase();
         // Prefer JSON-aware classification: parse complete data: lines and check
         // error.message vs error.type. Substring-matching raw text yields false
         // positives from JSON envelope keys (e.g. "code":"model_at_capacity").
-        const eventClass = classifyCodexErrorEvent(text);
+        const completeEvents = completeSseEventBlocks(text);
+        const completeText = completeEvents.join("\n\n");
+        const completeLowerText = completeText.toLowerCase();
+        const eventClass = classifyCodexErrorEvent(completeText);
         if (eventClass === "account") {
           // Surface the human-readable capacity phrase as the matched token
           // so callers can compare against the same string the patterns use.
-          const accountHit = CODEX_SSE_ACCOUNT_FALLBACK_PATTERNS.find(p => lowerText.includes(p));
+          const accountHit = CODEX_SSE_ACCOUNT_FALLBACK_PATTERNS.find(p => completeLowerText.includes(p));
           matched = accountHit || CODEX_SSE_ACCOUNT_FALLBACK_PATTERNS[0];
           accountFallback = true;
           break;
         }
         if (eventClass === "retry") {
-          const retryHit = CODEX_SSE_RETRY_PATTERNS.find(p => lowerText.includes(p));
+          const retryHit = CODEX_SSE_RETRY_PATTERNS.find(p => completeLowerText.includes(p));
           matched = retryHit || CODEX_SSE_RETRY_PATTERNS[0];
           break;
         }
@@ -357,15 +370,39 @@ export class CodexExecutor extends BaseExecutor {
         // Only run after a complete SSE event terminator so split chunks
         // (e.g. data: line that crosses a chunk boundary) are not matched
         // on the JSON envelope alone.
-        if (text.includes("\n\n")) {
+        for (const completeEvent of completeEvents) {
+          const eventText = completeEvent.toLowerCase();
+          if (CODEX_SSE_USER_OUTPUT_PATTERNS.some((pattern) => eventText.includes(pattern))) continue;
+          const eventName = completeEvent.match(/^event:\s*([^\r\n]+)/im)?.[1]?.trim().toLowerCase() || null;
+          const isErrorEvent = eventName === "error"
+            || (!eventName && (eventText.includes('"error"') || !eventText.includes("data: {")));
+          if (!isErrorEvent) continue;
           const accountTextHit = CODEX_SSE_ACCOUNT_FALLBACK_PATTERNS
             .filter(p => p !== "model_at_capacity")
-            .find(p => lowerText.includes(p));
+            .find(p => eventText.includes(p));
           if (accountTextHit) { matched = accountTextHit; accountFallback = true; break; }
-          const retryHit = CODEX_SSE_RETRY_PATTERNS.find(p => lowerText.includes(p));
+          const retryHit = CODEX_SSE_RETRY_PATTERNS.find(p => eventText.includes(p));
           if (retryHit) { matched = retryHit; break; }
         }
+        if (matched) break;
         if (CODEX_SSE_USER_OUTPUT_PATTERNS.some(p => lowerText.includes(p))) break;
+      }
+
+      // A few compatible gateways close the response immediately after the
+      // final data line instead of writing the SSE-spec blank-line terminator.
+      // EOF makes that trailing event complete, so classify its JSON once the
+      // stream ends; never do this while a chunk may still be incomplete.
+      if (!matched && streamEnded) {
+        const trailingClass = classifyCodexErrorEvent(text);
+        const trailingLower = text.toLowerCase();
+        if (trailingClass === "account") {
+          matched = CODEX_SSE_ACCOUNT_FALLBACK_PATTERNS.find((pattern) => trailingLower.includes(pattern))
+            || CODEX_SSE_ACCOUNT_FALLBACK_PATTERNS[0];
+          accountFallback = true;
+        } else if (trailingClass === "retry") {
+          matched = CODEX_SSE_RETRY_PATTERNS.find((pattern) => trailingLower.includes(pattern))
+            || CODEX_SSE_RETRY_PATTERNS[0];
+        }
       }
     } catch (e) {
       dbg("CODEX", `peek read error: ${e.message}`);

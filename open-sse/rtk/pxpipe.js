@@ -25,6 +25,13 @@ function skipped(reason, extra = {}) {
   return { body: null, summary: { applied: false, reason, ...extra }, applied: false, reason };
 }
 
+// New-contract gates return null so callers can distinguish an early no-op.
+// The request pipeline uses this normalizer before logging/persisting stats so
+// a skip can never turn into a null dereference on the request path.
+export function normalizePxpipeResult(result, diagnostics = {}) {
+  return result || skipped(diagnostics.reason || "skipped");
+}
+
 function isSupportedModel(format, model) {
   if (!model) return false;
   const m = String(model).toLowerCase();
@@ -35,8 +42,8 @@ function isSupportedModel(format, model) {
   if (format === FORMATS.CLAUDE) {
     return /claude-fable/.test(m);
   }
-  if (format === FORMATS.OPENAI) {
-    return /blackboxai\/.+anthropic\/claude-fable/.test(m);
+  if ([FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI_RESPONSE].includes(format)) {
+    return /^blackboxai\/anthropic\/claude-fable/.test(m);
   }
   return false;
 }
@@ -62,7 +69,7 @@ export async function compressWithPxpipe(body, { enabled, format, model, minChar
   // unsupported model ids. Triggered for Claude-format non-fable ids and
   // OpenAI-format blackbox aliases whose path is not Anthropic/Fable.
   if (isNewContract && body && !isSupportedModel(format, model)) {
-    const openaiBlackboxNonAnthropic = format === FORMATS.OPENAI
+    const openaiBlackboxNonAnthropic = [FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI_RESPONSE].includes(format)
       && /^blackboxai\//.test(String(model))
       && !isSupportedModel(format, model);
     const claudeUnsupported = format === FORMATS.CLAUDE && !isSupportedModel(format, model);
@@ -72,9 +79,14 @@ export async function compressWithPxpipe(body, { enabled, format, model, minChar
     }
   }
 
-  // Legacy format gate: non-Claude formats return unsupported_format unless
-  // the model gate above caught the case first.
-  if (format !== FORMATS.CLAUDE) return skipped("unsupported_format", { detail: format });
+  // Blackbox's Anthropic/Fable alias is transported through an OpenAI-shaped
+  // request even though pxpipe's transformer is model-specific. Allow that
+  // exact route; all other non-Claude wire formats remain fail-open skips.
+  const isOpenAiFable = [FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI_RESPONSE].includes(format)
+    && isSupportedModel(format, model);
+  if (format !== FORMATS.CLAUDE && !isOpenAiFable) {
+    return skipped("unsupported_format", { detail: format });
+  }
 
   if (!body) {
     const r = skipped("missing_body");
@@ -98,17 +110,25 @@ export async function compressWithPxpipe(body, { enabled, format, model, minChar
     return skipped("below_threshold", { originalChars, threshold });
   }
 
+  let timeoutId = null;
   try {
-    const encoded = new TextEncoder().encode(JSON.stringify(body));
+    const transformBody = isOpenAiFable
+      ? { ...body, model: String(model).slice("blackboxai/anthropic/".length) }
+      : body;
+    const encoded = new TextEncoder().encode(JSON.stringify(transformBody));
     const budget = Number(timeoutMs) > 0 ? Number(timeoutMs) : DEFAULT_TIMEOUT_MS;
     // timer and discard the result if it loses (input body is never mutated).
     const result = await Promise.race([
       transform({
         body: encoded,
         model,
+        format,
         options: { minCompressChars: threshold },
       }),
-      new Promise((resolve) => setTimeout(() => resolve(null), budget)),
+      new Promise((resolve) => {
+        timeoutId = setTimeout(() => resolve(null), budget);
+        timeoutId.unref?.();
+      }),
     ]);
     if (!result) return skipped("timeout", { originalChars, durationMs: Date.now() - startedAt });
     if (!result.applied) {
@@ -120,6 +140,7 @@ export async function compressWithPxpipe(body, { enabled, format, model, minChar
     }
 
     const newBody = JSON.parse(new TextDecoder().decode(result.body));
+    if (isOpenAiFable) newBody.model = body.model;
     const compressedBodyChars = bodyChars(newBody);
     const info = result.info || {};
     const imagedChars = info.compressedChars || 0;
@@ -163,6 +184,8 @@ export async function compressWithPxpipe(body, { enabled, format, model, minChar
     return { ...flat, summary };
   } catch (e) {
     return skipped("transform_error", { detail: e?.message || String(e), originalChars, durationMs: Date.now() - startedAt });
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
   }
 }
 

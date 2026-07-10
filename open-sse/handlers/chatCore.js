@@ -27,10 +27,28 @@ import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
 import { compressMessages, formatRtkLog } from "../rtk/index.js";
 import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadroomPhantomSavings } from "../rtk/headroom.js";
-import { compressWithPxpipe, formatPxpipeLog } from "../rtk/pxpipe.js";
+import { compressWithPxpipe, formatPxpipeLog, normalizePxpipeResult } from "../rtk/pxpipe.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { stripUnsupportedModalities } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
+
+const NATIVE_TOOL_RESULT_FORMATS = new Set([
+  FORMATS.GEMINI,
+  FORMATS.GEMINI_CLI,
+  FORMATS.ANTIGRAVITY,
+  FORMATS.VERTEX,
+]);
+
+/**
+ * Gemini-family clients legitimately send functionResponse turns without the
+ * originating functionCall after trimming their local history. Their native
+ * APIs accept that history and the Gemini translators preserve the content.
+ * Applying the generic orphan cleaner to those wire formats silently deletes
+ * user-visible tool output before dispatch.
+ */
+export function shouldStripOrphanedToolResults(format) {
+  return !NATIVE_TOOL_RESULT_FORMATS.has(format);
+}
 
 /**
  * Core chat handler - shared between SSE and Worker
@@ -140,7 +158,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   // Strip orphaned tool results before translation so the translator never sees
   // stale call_id references that client-side history truncation left behind.
-  const preStripped = stripOrphanedToolResults(body);
+  const preStripped = shouldStripOrphanedToolResults(sourceFormat)
+    ? stripOrphanedToolResults(body)
+    : 0;
   if (preStripped > 0) {
     log?.debug?.("TOOLCLEAN", `pre-translation: stripped ${preStripped} orphaned tool result(s)`);
   }
@@ -208,7 +228,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // Strip orphaned tool results again after RTK/Headroom compression — both
   // compressors can remove assistant turns containing tool_calls, which would
   // otherwise leave dangling tool results that strict providers reject with 400.
-  const postStripped = stripOrphanedToolResults(translatedBody);
+  const postStripped = shouldStripOrphanedToolResults(finalFormat)
+    ? stripOrphanedToolResults(translatedBody)
+    : 0;
   if (postStripped > 0) {
     log?.debug?.("TOOLCLEAN", `post-compression: stripped ${postStripped} orphaned tool result(s)`);
   }
@@ -228,10 +250,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // PXPIPE: image bulky context (Claude-format bodies only), last saver before dispatch
   let pxpipeSummary = null;
   if (pxpipeEnabled) {
-    const pxpipeResult = await compressWithPxpipe(translatedBody, {
+    const pxpipeDiagnostics = {};
+    const pxpipeResult = normalizePxpipeResult(await compressWithPxpipe(translatedBody, {
       enabled: true, format: finalFormat, model: upstreamModel,
       minChars: pxpipeMinChars, timeoutMs: pxpipeTimeoutMs, transform: pxpipeTransform,
-    });
+      diagnostics: pxpipeDiagnostics,
+    }), pxpipeDiagnostics);
     pxpipeSummary = pxpipeResult.summary;
     if (pxpipeResult.body) translatedBody = pxpipeResult.body;
     const pxpipeLine = formatPxpipeLog(pxpipeSummary);
@@ -241,7 +265,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   }
 
   // Re-strip after PXPIPE in case compression removed assistant/tool turns.
-  const pxpipeStripped = stripOrphanedToolResults(translatedBody);
+  const pxpipeStripped = shouldStripOrphanedToolResults(finalFormat)
+    ? stripOrphanedToolResults(translatedBody)
+    : 0;
   if (pxpipeStripped > 0) {
     log?.debug?.("TOOLCLEAN", `post-pxpipe: stripped ${pxpipeStripped} orphaned tool result(s)`);
   }

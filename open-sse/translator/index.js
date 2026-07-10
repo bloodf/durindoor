@@ -77,7 +77,8 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   // messages whose ids don't match a functionCall in the same body.
   const skipStrip = sourceFormat === FORMATS.GEMINI
     || sourceFormat === FORMATS.GEMINI_CLI
-    || sourceFormat === FORMATS.ANTIGRAVITY;
+    || sourceFormat === FORMATS.ANTIGRAVITY
+    || sourceFormat === FORMATS.VERTEX;
   if (targetFormat !== FORMATS.KIRO && !skipStrip) {
     stripOrphanedToolResults(result);
   }

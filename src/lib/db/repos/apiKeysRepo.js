@@ -5,7 +5,9 @@ function parseApiKeyPolicy(raw) {
   if (raw == null) return null;
   if (typeof raw === 'object') return raw;
   if (typeof raw === 'string' && raw.length) {
-    try { return JSON.parse(raw); } catch { return null; }
+    // Preserve malformed storage as an invalid value. Returning null here
+    // would downgrade a corrupt restrictive policy into unrestricted access.
+    try { return JSON.parse(raw); } catch { return raw; }
   }
   return null;
 }

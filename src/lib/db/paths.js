@@ -11,8 +11,14 @@ export const BACKUPS_DIR = path.join(DB_DIR, "backups");
 export function currentDataDir() {
   return process.env.DATA_DIR || DATA_DIR;
 }
+export function currentDbDir() {
+  return path.join(currentDataDir(), "db");
+}
 export function currentDataFile() {
-  return path.join(currentDataDir(), "db", "data.sqlite");
+  return path.join(currentDbDir(), "data.sqlite");
+}
+export function currentBackupsDir() {
+  return path.join(currentDbDir(), "backups");
 }
 export const LEGACY_FILES = {
   main: path.join(DATA_DIR, "db.json"),
@@ -20,10 +26,19 @@ export const LEGACY_FILES = {
   disabled: path.join(DATA_DIR, "disabledModels.json"),
   details: path.join(DATA_DIR, "request-details.json"),
 };
+export function currentLegacyFiles() {
+  const dir = currentDataDir();
+  return {
+    main: path.join(dir, "db.json"),
+    usage: path.join(dir, "usage.json"),
+    disabled: path.join(dir, "disabledModels.json"),
+    details: path.join(dir, "request-details.json"),
+  };
+}
 export function ensureDirs() {
   // Use live process.env.DATA_DIR so test mutations are honored between cases.
   const dir = currentDataDir();
-  for (const d of [dir, path.join(dir, "db"), path.join(dir, "db", "backups")]) {
+  for (const d of [dir, currentDbDir(), currentBackupsDir()]) {
     if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
   }
 }

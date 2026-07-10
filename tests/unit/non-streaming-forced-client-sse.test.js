@@ -122,6 +122,47 @@ describe("handleNonStreamingResponse: synthetic SSE respects client format", () 
     }
   });
 
+  it("preserves native Gemini-family candidates, inline data, and metadata", async () => {
+    const native = {
+      candidates: [{
+        content: {
+          role: "model",
+          parts: [
+            { text: "native answer" },
+            { inlineData: { mimeType: "application/pdf", data: "JVBERi0=" } },
+          ],
+        },
+        finishReason: "STOP",
+      }],
+      usageMetadata: { promptTokenCount: 2, candidatesTokenCount: 3, totalTokenCount: 5 },
+    };
+    for (const sourceFormat of [FORMATS.GEMINI, FORMATS.GEMINI_CLI, FORMATS.VERTEX]) {
+      const result = await handleNonStreamingResponse(baseOptions({
+        providerResponse: makeProviderResponse(native),
+        sourceFormat,
+        targetFormat: sourceFormat,
+      }));
+      const text = await result.response.text();
+      expect(text).toContain("native answer");
+      expect(text).toContain("inlineData");
+      expect(text).toContain("JVBERi0=");
+      expect(text).toContain("usageMetadata");
+      expect(text).not.toContain("chat.completion.chunk");
+      expect(text).not.toContain("data: [DONE]");
+    }
+
+    const wrapped = { response: native };
+    const result = await handleNonStreamingResponse(baseOptions({
+      providerResponse: makeProviderResponse(wrapped),
+      sourceFormat: FORMATS.ANTIGRAVITY,
+      targetFormat: FORMATS.ANTIGRAVITY,
+    }));
+    const text = await result.response.text();
+    expect(text).toContain("native answer");
+    expect(text).toContain("inlineData");
+    expect(text).not.toContain("chat.completion.chunk");
+  });
+
   it("preserves reasoning content when synthesizing Claude SSE", async () => {
     const reasoningCompletion = {
       ...openaiCompletion,
@@ -166,5 +207,36 @@ describe("handleNonStreamingResponse: synthetic SSE respects client format", () 
     const body = await result.response.json();
     expect(body.type).toBe("message");
     expect(body.content).toEqual([{ type: "text", text: "hello" }]);
+  });
+
+  it("normalizes Claude usage and tool terminal semantics for an OpenAI stream", async () => {
+    const claudeCompletion = {
+      id: "msg-claude",
+      type: "message",
+      role: "assistant",
+      model: "claude-test",
+      content: [
+        { type: "thinking", thinking: "considering" },
+        { type: "text", text: "calling tool" },
+        { type: "tool_use", id: "toolu_1", name: "lookup", input: { q: "x" } },
+      ],
+      stop_reason: "tool_use",
+      usage: { input_tokens: 5, output_tokens: 7 },
+    };
+    const result = await handleNonStreamingResponse(baseOptions({
+      providerResponse: makeProviderResponse(claudeCompletion),
+      sourceFormat: FORMATS.OPENAI,
+      targetFormat: FORMATS.CLAUDE,
+    }));
+    const text = await result.response.text();
+
+    expect(text).toContain("considering");
+    expect(text).toContain("calling tool");
+    expect(text).toContain('"name":"lookup"');
+    expect(text).toContain('"finish_reason":"tool_calls"');
+    expect(text).toContain('"prompt_tokens":5');
+    expect(text).toContain('"completion_tokens":7');
+    expect(text).not.toContain('"input_tokens":5');
+    expect(text).toContain("data: [DONE]");
   });
 });

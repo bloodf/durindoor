@@ -112,6 +112,8 @@ const parseOpenAIStyleModels = (data) => {
   return Array.isArray(list) ? list : [];
 };
 
+const OPENAI_MODELS_FETCHER_TYPES = new Set(["openai", "openai-compatible"]);
+
 
 /**
  * Fetch dynamic model IDs for a provider that exposes `modelsFetcher` in its
@@ -122,7 +124,7 @@ async function fetchRegistryModelsFetcherIds(connection) {
   const providerId = connection?.provider;
   const provider = providerId ? AI_PROVIDERS[providerId] : null;
   const fetcher = provider?.modelsFetcher;
-  if (!fetcher || typeof fetcher.url !== "string" || fetcher.type !== "openai") return [];
+  if (!fetcher || typeof fetcher.url !== "string" || !OPENAI_MODELS_FETCHER_TYPES.has(fetcher.type)) return [];
   const apiKey = typeof connection.apiKey === "string" ? connection.apiKey : "";
   if (!apiKey) return [];
 

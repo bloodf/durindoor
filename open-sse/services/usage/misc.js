@@ -286,7 +286,8 @@ export async function getXaiUsage(connectionId) {
   let rows = [];
   try {
     const { getUsageHistory } = await import("../../../src/lib/db/index.js");
-    rows = await getUsageHistory({ provider: "xai", connectionId });
+    const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    rows = await getUsageHistory({ provider: "xai", connectionId, startDate });
   } catch {
     rows = [];
   }

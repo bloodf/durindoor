@@ -21,6 +21,7 @@ const STREAM_MODE = {
   TRANSLATE: "translate",    // Full translation between formats
   PASSTHROUGH: "passthrough" // No translation, normalize output, extract usage
 };
+const GEMINI_PASSTHROUGH_PROVIDERS = new Set(["antigravity", "agy", "gemini", "gemini-cli", "gc", "vertex"]);
 
 /**
  * Create unified SSE transform stream
@@ -108,6 +109,8 @@ export function createSSEStream(options = {}) {
           let output;
           let injectedUsage = false;
 
+          if (trimmed === "data: [DONE]") streamDoneSent = true;
+
           if (trimmed.startsWith("data:") && trimmed.slice(5).trim() !== "[DONE]") {
             try {
               const parsed = JSON.parse(trimmed.slice(5).trim());
@@ -162,7 +165,13 @@ export function createSSEStream(options = {}) {
                 }
               }
 
-              if (!hasValuableContent(parsed, FORMATS.OPENAI)) {
+              // Usage-only OpenAI chunks have choices:[] and would otherwise
+              // be discarded as empty before accounting sees them.
+              const extracted = extractUsage(parsed);
+              if (extracted) {
+                usage = mergeUsage(usage, extracted);
+              }
+              if (!hasValuableContent(parsed, FORMATS.OPENAI) && !extracted) {
                 continue;
               }
 
@@ -218,11 +227,6 @@ export function createSSEStream(options = {}) {
                 }
               }
 
-              const extracted = extractUsage(parsed);
-              if (extracted) {
-                usage = mergeUsage(usage, extracted);
-              }
-
               // Detect terminal chunk in both OpenAI (choices[0].finish_reason) and
               // Gemini-family (response.candidates[0].finishReason) passthrough shapes.
               const isFinishChunk = parsed.choices?.[0]?.finish_reason
@@ -231,7 +235,6 @@ export function createSSEStream(options = {}) {
                 const estimated = estimateUsage(body, totalContentLength, FORMATS.OPENAI);
                 parsed.usage = filterUsageForFormat(estimated, FORMATS.OPENAI);
                 output = `data: ${JSON.stringify(parsed)}\n`;
-                usage = estimated;
                 injectedUsage = true;
               } else if (isFinishChunk && usage) {
                 const buffered = addBufferToUsage(usage);
@@ -243,14 +246,17 @@ export function createSSEStream(options = {}) {
                 injectedUsage = true;
               }
 
-              // Fire onStreamComplete early on terminal chunk for passthrough
-              // providers that never emit [DONE] (e.g. Antigravity).
-              // Detect both OpenAI (choices[0].finish_reason) and Gemini-family
-              // (candidates[0].finishReason) terminal markers.
-              const passthroughTerminal =
-                parsed.choices?.[0]?.finish_reason ||
-                parsed.response?.candidates?.[0]?.finishReason;
-              if (passthroughTerminal && onStreamComplete && !onStreamCompleteFired) {
+              // Only Gemini-family terminal markers are safe for early
+              // completion. OpenAI sends finish_reason before an optional
+              // trailing usage-only chunk, so its callback must wait for
+              // stream flush to preserve authoritative usage.
+              const passthroughGeminiTerminal =
+                parsed.candidates?.some?.((candidate) => candidate?.finishReason) ||
+                parsed.response?.candidates?.some?.((candidate) => candidate?.finishReason);
+              if (passthroughGeminiTerminal && onStreamComplete && !onStreamCompleteFired) {
+                if (!hasValidUsage(usage) && totalContentLength > 0) {
+                  usage = estimateUsage(body, totalContentLength, FORMATS.GEMINI);
+                }
                 onStreamCompleteFired = true;
                 onStreamComplete({
                   content: accumulatedContent,
@@ -369,12 +375,14 @@ export function createSSEStream(options = {}) {
         // Restrict raw early completion to wrapped Gemini/Antigravity only.
         // OpenAI include_usage streams send finish_reason BEFORE a trailing
         // usage-only chunk; firing on finish_reason would lose the real usage.
-        const rawTerminal = parsed.response?.candidates?.[0]?.finishReason;
-        if (rawTerminal && onStreamComplete && !onStreamCompleteFired) {
+        const rawGeminiTerminal =
+          parsed.candidates?.some?.((candidate) => candidate?.finishReason) ||
+          parsed.response?.candidates?.some?.((candidate) => candidate?.finishReason);
+        if (rawGeminiTerminal && onStreamComplete && !onStreamCompleteFired) {
           onStreamCompleteFired = true;
           // Fallback to estimated usage when no real usage was extracted (e.g. wrapped Gemini
           // Responses without usageMetadata). Use state.format if available, else infer from parse shape.
-          const rawFormat = state?.format || (parsed.response ? FORMATS.GEMINI : FORMATS.OPENAI);
+          const rawFormat = state?.format || FORMATS.GEMINI;
           let rawUsage = state.usage;
           if (!hasValidUsage(rawUsage) && totalContentLength > 0) {
             rawUsage = estimateUsage(body, totalContentLength, rawFormat);
@@ -389,8 +397,9 @@ export function createSSEStream(options = {}) {
           // translate path already accumulated, so guard with emptiness check.
           let rawContent = '';
           let rawThinking = '';
-          if (!accumulatedContent && parsed.response?.candidates) {
-            for (const cand of parsed.response.candidates) {
+          const rawCandidates = parsed.candidates || parsed.response?.candidates || [];
+          if (!accumulatedContent && rawCandidates.length > 0) {
+            for (const cand of rawCandidates) {
               const parts = cand.content?.parts || [];
               for (const part of parts) {
                 if (part.text && typeof part.text === 'string') {
@@ -442,21 +451,10 @@ export function createSSEStream(options = {}) {
             if (state.finishReason && isFinishChunk && !hasValidUsage(item.usage) && totalContentLength > 0) {
               const estimated = estimateUsage(body, totalContentLength, sourceFormat);
               item.usage = filterUsageForFormat(estimated, sourceFormat); // Filter + already has buffer
-              state.usage = estimated;
             } else if (state.finishReason && isFinishChunk && state.usage) {
               // Add buffer and filter usage for client (but keep original in state.usage for logging)
               const buffered = addBufferToUsage(state.usage);
               item.usage = filterUsageForFormat(buffered, sourceFormat);
-            }
-
-            // Fire onStreamComplete early on terminal chunk for providers that
-            // never reach the flush() path (e.g. Antigravity, Responses passthrough).
-            if (state.finishReason && isFinishChunk && onStreamComplete && !onStreamCompleteFired) {
-              onStreamCompleteFired = true;
-              onStreamComplete({
-                content: accumulatedContent,
-                thinking: accumulatedThinking,
-              }, state.usage, ttftAt);
             }
 
             const output = formatSSE(item, sourceFormat);
@@ -478,9 +476,17 @@ export function createSSEStream(options = {}) {
 
         if (mode === STREAM_MODE.PASSTHROUGH) {
           if (buffer) {
-            let output = buffer;
-            if (buffer.startsWith("data:") && !buffer.startsWith("data: ")) {
-              output = "data: " + buffer.slice(5);
+            const trimmedBuffer = buffer.trim();
+            let output;
+            if (/^data:\s*\[DONE\]$/.test(trimmedBuffer)) {
+              output = "data: [DONE]\n\n";
+              streamDoneSent = true;
+            } else {
+              output = buffer;
+              if (buffer.startsWith("data:") && !buffer.startsWith("data: ")) {
+                output = "data: " + buffer.slice(5);
+              }
+              if (!/\r?\n\r?\n$/.test(output)) output = `${output.replace(/\s+$/, "")}\n\n`;
             }
             reqLogger?.appendConvertedChunk?.(output);
             controller.enqueue(sharedEncoder.encode(output));
@@ -501,7 +507,7 @@ export function createSSEStream(options = {}) {
           //   data: [DONE]\n\n
           // Without it they can hang until timeout and trigger failover.
           // Gemini-family clients (Antigravity, Vertex, Gemini) reject this sentinel with 400 syntax errors.
-          const isGeminiFamily = provider === "antigravity" || provider === "agy" || provider === "gemini" || provider === "vertex";
+          const isGeminiFamily = GEMINI_PASSTHROUGH_PROVIDERS.has(provider);
           if (!streamDoneSent && !isGeminiFamily) {
             const doneOutput = "data: [DONE]\n\n";
             reqLogger?.appendConvertedChunk?.(doneOutput);

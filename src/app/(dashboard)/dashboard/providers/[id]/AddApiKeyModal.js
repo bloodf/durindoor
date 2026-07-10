@@ -4,6 +4,7 @@ import { useState } from "react";
 import PropTypes from "prop-types";
 import { Button, Badge, Input, Modal, Select } from "@/shared/components";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
+import { parseBulkApiKeyLine, requiresProviderAccountId } from "@/lib/providerAccountIds";
 
 const BULK_PLACEHOLDER = `name1|sk-key1\nname2|sk-key2\nsk-key-only-auto-named`;
 
@@ -19,8 +20,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
 
   const isAzure = provider === "azure";
   const isCloudflareAi = provider === "cloudflare-ai";
-  const ACCOUNT_ID_PROVIDER_DETAILS = ["cloudflare-ai", "snowflake"];
-  const requiresAccountId = ACCOUNT_ID_PROVIDER_DETAILS.includes(provider);
+  const requiresAccountId = requiresProviderAccountId(provider);
   const accountIdProviderLabel = provider === "snowflake" ? "Snowflake Cortex" : "Cloudflare Workers AI";
   const providerRegions = AI_PROVIDERS?.[provider]?.regions || null;
   const defaultRegion = AI_PROVIDERS?.[provider]?.defaultRegion || providerRegions?.[0]?.id || "";
@@ -45,7 +45,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const [validationResult, setValidationResult] = useState(null);
   const [saving, setSaving] = useState(false);
   const bulkPlaceholder = requiresAccountId
-    ? `name1|sk-key1|acc123456\nname2|sk-key2|def789012\nsk-key-only-auto-named`
+    ? `name1|sk-key1|acc123456\nname2|sk-key2|def789012`
     : BULK_PLACEHOLDER;
 
   const [mode, setMode] = useState("single"); // "single" | "bulk"
@@ -65,7 +65,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
       };
     }
     if (requiresAccountId) {
-      return { accountId: accountIdData.accountId };
+      return { accountId: accountIdData.accountId.trim() };
     }
     if (providerRegions && region) {
       return { region };
@@ -74,6 +74,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   };
 
   const handleValidate = async () => {
+    if (requiresAccountId && !accountIdData.accountId.trim()) return;
     setValidating(true);
     try {
       const res = await fetch("/api/providers/validate", {
@@ -98,6 +99,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
       if (!formData.name) return;
     }
     if (isCompatible && !formData.defaultModel.trim()) return;
+    if (requiresAccountId && !accountIdData.accountId.trim()) return;
 
     setSaving(true);
     try {
@@ -141,19 +143,14 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     let success = 0;
     let failed = 0;
     for (let i = 0; i < lines.length; i++) {
-      const parts = lines[i].split("|");
-      const baseName = parts.length >= 2 ? parts[0].trim() : "Key";
-      const name = `${baseName} ${i + 1}`;
-
-      let apiKey;
-      let providerSpecificData;
-      if (requiresAccountId && parts.length >= 3) {
-        // Format: name|apiKey|accountId
-        apiKey = parts.slice(1, -1).join("|").trim();
-        providerSpecificData = { accountId: parts[parts.length - 1].trim() };
-      } else {
-        apiKey = parts.length >= 2 ? parts.slice(1).join("|").trim() : parts[0].trim();
+      let parsed;
+      try {
+        parsed = parseBulkApiKeyLine(lines[i], i, provider);
+      } catch {
+        failed++;
+        continue;
       }
+      const { name, apiKey, providerSpecificData } = parsed;
 
       try {
         const res = await fetch("/api/providers", {
@@ -193,8 +190,8 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         {mode === "bulk" && (
           <div className="flex flex-col gap-3">
             <p className="text-xs text-text-muted">
-              {isCloudflareAi
-                ? <>One key per line. Format: <code>name|apiKey|accountId</code> or just <code>apiKey</code> (auto-named by index).</>
+              {requiresAccountId
+                ? <>One key per line. Required format: <code>name|apiKey|accountId</code>.</>
                 : <>One key per line. Format: <code>name|apiKey</code> or just <code>apiKey</code> (auto-named by index).</>
               }
             </p>
@@ -252,7 +249,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
               className="flex-1"
             />
             <div className="pt-6">
-              <Button onClick={handleValidate} disabled={!formData.apiKey || validating || saving} variant="secondary">
+              <Button onClick={handleValidate} disabled={!formData.apiKey || (requiresAccountId && !accountIdData.accountId.trim()) || validating || saving} variant="secondary">
                 {validating ? "Checking..." : "Check"}
               </Button>
             </div>
@@ -320,7 +317,10 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
               placeholder={isCloudflareAi ? "abc123def456..." : "snowflake-account-id"}
             />
             <p className="text-xs text-text-muted mt-2">
-              Find your Account ID in the right sidebar of <a href="https://dash.cloudflare.com" target="_blank" rel="noopener noreferrer" className="text-primary underline">dash.cloudflare.com</a>
+              {isCloudflareAi
+                ? <>Find your Account ID in the right sidebar of <a href="https://dash.cloudflare.com" target="_blank" rel="noopener noreferrer" className="text-primary underline">dash.cloudflare.com</a>.</>
+                : <>Use the organization-account identifier shown in <a href="https://app.snowflake.com" target="_blank" rel="noopener noreferrer" className="text-primary underline">Snowsight</a>.</>
+              }
             </p>
           </div>
         )}

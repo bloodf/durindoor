@@ -5,6 +5,8 @@ import {
   updateProviderConnection,
   deleteProviderConnection,
 } from "@/models";
+import { requiresProviderAccountId } from "@/lib/providerAccountIds";
+import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 
 const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set(["clientSecret"]);
 
@@ -169,6 +171,18 @@ export async function PUT(request, { params }) {
         } else {
           updateData.providerSpecificData.proxyPoolId = proxyPoolResult.proxyPoolId;
         }
+      }
+    }
+
+    if (requiresProviderAccountId(existing.provider)) {
+      const merged = updateData.providerSpecificData || existing.providerSpecificData || {};
+      try {
+        updateData.providerSpecificData = {
+          ...merged,
+          accountId: normalizeAccountIdPlaceholder(existing.provider, merged.accountId),
+        };
+      } catch (error) {
+        return NextResponse.json({ error: error.message }, { status: 400 });
       }
     }
 

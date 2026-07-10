@@ -4,7 +4,7 @@ import { currentDataFile, currentDbDir, currentLegacyFiles } from "./paths.js";
 import { TABLES, buildCreateTableSql } from "./schema.js";
 import { MIGRATIONS, latestVersion } from "./migrations/index.js";
 import { getMetaSync, setMetaSync } from "./helpers/metaStore.js";
-import { makeBackupDir, backupFile, pruneOldBackups } from "./backup.js";
+import { makeBackupDir, backupFile, backupDbLite, pruneOldBackups } from "./backup.js";
 import { getAppVersion } from "./version.js";
 import { stringifyJson } from "./helpers/jsonCol.js";
 import { backfillApiKeyUsageTotals } from "./helpers/apiKeyUsageTotals.js";
@@ -267,7 +267,17 @@ export async function runMigrationOnce(adapter) {
         : `upgrade-${oldAppVersion}-to-${newAppVersion}`;
     preUpgradeBackupDir = makeBackupDir(label);
     const source = currentDataFile();
-    const copied = backupFile(source, preUpgradeBackupDir);
+    // Schema upgrades use a lightweight ATTACH backup that skips the huge
+    // requestDetails observability log; app-version/totals-repair keep a full
+    // file copy. If the adapter cannot ATTACH (in-memory sql.js) or the lite
+    // copy fails, fall back to a full copy so the safety net always exists.
+    let copied = null;
+    if (needsSchemaUpgrade) {
+      copied = backupDbLite(adapter, preUpgradeBackupDir);
+    }
+    if (!copied) {
+      copied = backupFile(source, preUpgradeBackupDir);
+    }
     if (fs.existsSync(source) && !copied) {
       throw new Error(`[DB][migrate] failed to create pre-upgrade backup for ${source}`);
     }

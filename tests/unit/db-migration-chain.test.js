@@ -85,6 +85,17 @@ describe("Schema migrations", () => {
         INSERT INTO usageHistory(timestamp, provider, model, apiKey, promptTokens, completionTokens, cost, status, tokens, meta)
         VALUES(?, 'openai', 'gpt-test', ?, 11, 7, 0.25, 'ok', '{}', '{}')
       `).run("2026-01-02T00:00:00.000Z", secret);
+      // Seed a large observability row to prove the lite backup EXCLUDES
+      // requestDetails while preserving critical tables.
+      seeded.exec(`
+        CREATE TABLE requestDetails (
+          id TEXT PRIMARY KEY, timestamp TEXT, provider TEXT, model TEXT,
+          connectionId TEXT, status TEXT, data TEXT
+        );
+      `);
+      seeded.prepare(
+        `INSERT INTO requestDetails(id, timestamp, provider, model, status, data) VALUES(?,?,?,?,?,?)`
+      ).run("rd-1", "2026-01-02T00:00:00.000Z", "openai", "gpt-test", "ok", "x".repeat(2048));
       seeded.close();
 
       delete global._dbAdapter;
@@ -112,6 +123,13 @@ describe("Schema migrations", () => {
       expect(backup.prepare(`SELECT value FROM _meta WHERE key='schemaVersion'`).get().value).toBe(String(schemaVersion));
       expect(backup.prepare(`SELECT key FROM apiKeys WHERE id='key-1'`).get().key).toBe(secret);
       expect(backup.prepare(`PRAGMA table_info(apiKeys)`).all().map((row) => row.name)).not.toContain("policy");
+      // Lite backup excludes the requestDetails observability log.
+      const backupTables = backup.prepare(
+        `SELECT name FROM sqlite_master WHERE type='table'`
+      ).all().map((row) => row.name);
+      expect(backupTables).not.toContain("requestDetails");
+      // Critical table still backed up with its row.
+      expect(backupTables).toContain("apiKeys");
       backup.close();
     },
   );

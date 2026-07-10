@@ -10,7 +10,18 @@ function stripAnthropicBillingHeader(text) {
   return text.replace(/^x-anthropic-billing-header:[^\n]*(?:\r?\n)?/i, "");
 }
 
-// Convert Claude request to OpenAI format
+/**
+ * Translate an Anthropic `/v1/messages` request body into the OpenAI
+ * Chat Completions shape consumed by the upstream executor.
+ *
+ * @param {string} model Resolved upstream model id.
+ * @param {object} body Anthropic request body.
+ * @param {object} [body.metadata] Anthropic request metadata.
+ * @param {string} [body.metadata.user_id] End-user identifier; forwarded as the
+ *   OpenAI `user` field (abuse detection / caching) only when a non-empty string.
+ * @param {boolean} stream Whether the caller requested a streaming response.
+ * @returns {object} OpenAI-shaped request body.
+ */
 export function claudeToOpenAIRequest(model, body, stream) {
   const result = {
     model: model,
@@ -88,6 +99,12 @@ export function claudeToOpenAIRequest(model, body, stream) {
 
   if (body.reasoning !== undefined) {
     result.reasoning = body.reasoning;
+  }
+
+  // Anthropic metadata.user_id → OpenAI `user` (non-empty strings only).
+  const userId = body.metadata?.user_id;
+  if (typeof userId === "string" && userId.length > 0) {
+    result.user = userId;
   }
 
   return result;

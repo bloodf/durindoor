@@ -78,6 +78,41 @@ function installRequestWrapper({ httpModule = http, secret, verifyPeerOwner } = 
         }
       };
       const dispatch = () => {
+        // #6608 global HEAD body-suppression: Next 16 auto-derives HEAD from
+        // GET for App Router routes and streams the full body, so SDK health
+        // probes (and any HEAD request) hang ~6s then receive a non-empty body
+        // — violating RFC 9110 §9.3.2 (HEAD carries the headers a GET would,
+        // with zero body). Applied here inside installRequestWrapper so it
+        // covers BOTH production standalone (`run()` → installRequestWrapper)
+        // and the dev/start entry (`scripts/next-owner-server.cjs` →
+        // createOwnerAwareHandler), and every route — including ones without an
+        // explicit `HEAD` export. `res` is per-request, so the patched
+        // `write`/`end` stay in place for the whole response lifetime (no
+        // restore — a deferred stream write after the handler promise resolves
+        // must still be dropped; there is no cross-request leak). Status +
+        // headers set by the handler are preserved exactly; only body bytes are
+        // dropped.
+        const isHead = String(req.method || "GET").toUpperCase() === "HEAD";
+        if (isHead) {
+          const origEnd = res.end;
+          res.write = function (_chunk, _enc, cb) {
+            // Accept (chunk, cb) and (chunk, enc, cb) arities; signal success.
+            const callback = typeof _enc === "function" ? _enc : cb;
+            if (typeof callback === "function") callback();
+            return true;
+          };
+          res.end = function (_chunk, _enc, cb) {
+            // Normalize (cb), (chunk, cb), (chunk, enc, cb) into a single
+            // callback and hand it to the REAL end so Node invokes it once,
+            // after the stream fully closes — never swallow it (a swallowed
+            // callback can hang async handlers awaiting `end`). Body chunks
+            // are dropped; status + headers set by the handler are kept.
+            const callback = typeof _chunk === "function"
+              ? _chunk
+              : (typeof _enc === "function" ? _enc : cb);
+            return origEnd.call(res, callback);
+          };
+        }
         try {
           const result = handler(req, res);
           if (result && typeof result.catch === "function") {

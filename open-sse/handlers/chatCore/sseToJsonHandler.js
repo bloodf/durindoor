@@ -3,9 +3,11 @@ import { createErrorResult } from "../../utils/error.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { FORMATS } from "../../translator/formats.js";
 import { PROVIDERS } from "../../config/providers.js";
-import { buildRequestDetail, extractRequestConfig, saveUsageStats } from "./requestDetail.js";
+import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { projectCompletionToClientFormat, responsesApiToOpenAICompletion } from "../../translator/response/completionProjector.js";
 import { logToolSemantics } from "../../utils/toolSemanticsTrace.js";
+import { extractReasoningText } from "../../translator/concerns/reasoning.js";
+import { normalizeInlineThinkingResponse } from "./inlineThinking.js";
 
 // Responses-API providers (e.g. codex) may emit SSE without content-type + use Responses output shape
 const isResponsesProvider = (p) => PROVIDERS[p]?.format === FORMATS.OPENAI_RESPONSES;
@@ -29,47 +31,92 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
   if (chunks.length === 0) return null;
 
   const first = chunks[0];
-  const contentParts = [];
-  const reasoningParts = [];
-  const toolCallMap = new Map(); // index -> { id, type, function: { name, arguments } }
-  let finishReason = "stop";
+  const choicesByIndex = new Map();
   let usage = null;
 
   for (const chunk of chunks) {
-    const choice = chunk?.choices?.[0];
-    const delta = choice?.delta || {};
-    if (typeof delta.content === "string" && delta.content.length > 0) contentParts.push(delta.content);
-    if (typeof delta.reasoning_content === "string" && delta.reasoning_content.length > 0) reasoningParts.push(delta.reasoning_content);
-    if (choice?.finish_reason) finishReason = choice.finish_reason;
     if (chunk?.usage && typeof chunk.usage === "object") usage = chunk.usage;
 
-    // Accumulate tool_calls from streaming deltas
-    if (Array.isArray(delta.tool_calls)) {
-      for (const tc of delta.tool_calls) {
-        const idx = tc.index ?? 0;
-        if (!toolCallMap.has(idx)) {
-          toolCallMap.set(idx, { id: tc.id || "", type: "function", function: { name: "", arguments: "" } });
+    for (const [position, choice] of (chunk?.choices || []).entries()) {
+      const choiceIndex = Number.isInteger(choice?.index) ? choice.index : position;
+      if (!choicesByIndex.has(choiceIndex)) {
+        choicesByIndex.set(choiceIndex, {
+          index: choiceIndex,
+          role: "assistant",
+          contentParts: [],
+          reasoningParts: [],
+          toolCallMap: new Map(),
+          finishReason: "stop",
+        });
+      }
+
+      const accumulator = choicesByIndex.get(choiceIndex);
+      const delta = choice?.delta || {};
+      if (typeof delta.role === "string" && delta.role) accumulator.role = delta.role;
+      if (typeof delta.content === "string" && delta.content.length > 0) accumulator.contentParts.push(delta.content);
+      const reasoning = extractReasoningText(delta);
+      if (reasoning) accumulator.reasoningParts.push(reasoning);
+      if (choice?.finish_reason) accumulator.finishReason = choice.finish_reason;
+
+      // Tool-call indexes are scoped to a response choice, not the response.
+      for (const toolCall of (Array.isArray(delta.tool_calls) ? delta.tool_calls : [])) {
+        const toolIndex = toolCall.index ?? 0;
+        if (!accumulator.toolCallMap.has(toolIndex)) {
+          accumulator.toolCallMap.set(toolIndex, {
+            id: toolCall.id || "",
+            type: toolCall.type || "function",
+            function: { name: "", arguments: "" },
+          });
         }
-        const existing = toolCallMap.get(idx);
-        if (tc.id) existing.id = tc.id;
-        if (tc.function?.name) existing.function.name += tc.function.name;
-        if (tc.function?.arguments) existing.function.arguments += tc.function.arguments;
+        const existing = accumulator.toolCallMap.get(toolIndex);
+        if (toolCall.id) existing.id = toolCall.id;
+        if (toolCall.type) existing.type = toolCall.type;
+        if (toolCall.function?.name) existing.function.name += toolCall.function.name;
+        if (toolCall.function?.arguments) existing.function.arguments += toolCall.function.arguments;
       }
     }
   }
 
-  const message = { role: "assistant", content: contentParts.join("") || (toolCallMap.size > 0 ? null : "") };
-  if (reasoningParts.length > 0) message.reasoning_content = reasoningParts.join("");
-  if (toolCallMap.size > 0) {
-    message.tool_calls = [...toolCallMap.entries()].sort((a, b) => a[0] - b[0]).map(([, tc]) => tc);
+  if (choicesByIndex.size === 0) {
+    choicesByIndex.set(0, {
+      index: 0,
+      role: "assistant",
+      contentParts: [],
+      reasoningParts: [],
+      toolCallMap: new Map(),
+      finishReason: "stop",
+    });
   }
+
+  const choices = [...choicesByIndex.values()]
+    .sort((left, right) => left.index - right.index)
+    .map(accumulator => {
+      const text = accumulator.contentParts.join("");
+      const message = {
+        role: accumulator.role,
+        content: text || (accumulator.toolCallMap.size > 0 ? null : ""),
+      };
+      if (accumulator.reasoningParts.length > 0) {
+        message.reasoning_content = accumulator.reasoningParts.join("");
+      }
+      if (accumulator.toolCallMap.size > 0) {
+        message.tool_calls = [...accumulator.toolCallMap.entries()]
+          .sort((left, right) => left[0] - right[0])
+          .map(([, toolCall]) => toolCall);
+      }
+      return {
+        index: accumulator.index,
+        message,
+        finish_reason: accumulator.finishReason,
+      };
+    });
 
   const result = {
     id: first.id || `chatcmpl-${Date.now()}`,
     object: "chat.completion",
     created: first.created || Math.floor(Date.now() / 1000),
     model: first.model || fallbackModel || "unknown",
-    choices: [{ index: 0, message, finish_reason: finishReason }]
+    choices,
   };
   if (usage) result.usage = usage;
   return result;
@@ -79,7 +126,7 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
  * Handle case: provider forced streaming but client wants JSON.
  * Supports both Codex/Responses API SSE and standard Chat Completions SSE.
  */
-export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, trackDone, appendLog, toolNameMap, log }) {
+export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, trackDone, appendLog, toolNameMap, reqTag, log }) {
   const contentType = providerResponse.headers.get("content-type") || "";
   const isSSE = contentType.includes("text/event-stream") || (contentType === "" && isResponsesProvider(provider));
   if (!isSSE) return null; // not handled here
@@ -101,7 +148,8 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
 
       const usage = jsonResponse.usage || {};
       appendLog({ tokens: usage, status: "200 OK" });
-      saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint });
+      saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, silent: true });
+      if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime } }));
 
       // When the client asked for the Responses API format, return the converted JSON directly.
       // responsesApiToOpenAICompletion would project it to chat.completion shape and lose Responses fields.
@@ -141,14 +189,18 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
   // Standard Chat Completions SSE path
   try {
     const sseText = await providerResponse.text();
-    const parsed = parseSSEToOpenAIResponse(sseText, model);
+    let parsed = parseSSEToOpenAIResponse(sseText, model);
     if (!parsed) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
+
+    const inlineThinking = normalizeInlineThinkingResponse(parsed, { provider, model, targetFormat });
+    parsed = inlineThinking.responseBody;
 
     if (onRequestSuccess) await onRequestSuccess();
 
     const usage = parsed.usage || {};
     appendLog({ tokens: usage, status: "200 OK" });
-    saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint });
+    saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, silent: true });
+    if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime } }));
 
     const totalLatency = Date.now() - requestStartTime;
     saveRequestDetail(buildRequestDetail({
@@ -167,7 +219,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
     // When content is empty (e.g. thinking models that used all tokens for reasoning),
     // reasoning_content is the only useful output and must be preserved.
     // Previously this was unconditional, which broke Qwen3.5, Claude extended thinking, etc.
-    if (parsed?.choices) {
+    if (!inlineThinking.configured && parsed?.choices) {
       for (const choice of parsed.choices) {
         if (choice?.message?.reasoning_content && choice.message.content) {
           delete choice.message.reasoning_content;

@@ -295,11 +295,32 @@ function flattenTypeArrays(obj) {
   }
 }
 
-// Infer missing type=object when properties exist (Gemini requires explicit type)
+/**
+ * Infer missing `type: "object"` on schema nodes that carry `properties` but no
+ * explicit `type` (Gemini requires the explicit type).
+ *
+ * Recurses ONLY into real schema nodes — the values of the `properties` map and
+ * the `items` schema. Walking every value via `Object.values(obj)` is wrong: when a
+ * schema property is itself named "properties", the properties-map dictionary would
+ * be mistaken for a schema node and gain `type: "object"`, turning one of the
+ * property values into the literal string `"object"` and triggering a Gemini 400.
+ * Mutates `obj` in place.
+ *
+ * @param {object} obj - JSON Schema node to normalize (mutated in place).
+ * @returns {void}
+ */
 function ensureObjectType(obj) {
   if (!obj || typeof obj !== "object") return;
   if (obj.properties && !obj.type) obj.type = "object";
-  for (const v of Object.values(obj)) if (v && typeof v === "object") ensureObjectType(v);
+  // Recurse only into valid schema nodes: the values of the `properties` map and
+  // the `items` schema. Walking every value via Object.values(obj) is wrong: when a
+  // schema property is itself named "properties", the properties-map dictionary would
+  // be mistaken for a schema node and gain `type: "object"`, turning one of the
+  // property values into the literal string "object" -> Gemini 400.
+  if (obj.properties && typeof obj.properties === "object") {
+    for (const v of Object.values(obj.properties)) if (v && typeof v === "object") ensureObjectType(v);
+  }
+  if (obj.items && typeof obj.items === "object") ensureObjectType(obj.items);
 }
 
 // Clean JSON Schema for Antigravity API compatibility - removes unsupported keywords recursively

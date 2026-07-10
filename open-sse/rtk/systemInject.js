@@ -6,6 +6,15 @@ import { FORMATS } from "../translator/formats.js";
 
 const SEP = "\n\n";
 
+/**
+ * Whether `prompt` is already present in `content`, keyed off its first 100
+ * trimmed characters. Returns `false` when `prompt` is empty or non-string.
+ * `content` is assumed to be a string by callers.
+ *
+ * @param {string} content Existing system text to inspect.
+ * @param {string} prompt Prompt candidate about to be injected.
+ * @returns {boolean} `true` when the prompt signature is already present.
+ */
 function isPromptAlreadyInjected(content, prompt) {
   if (!content || !prompt) return false;
   const needle = typeof prompt === 'string' ? prompt.trim() : '';
@@ -46,8 +55,15 @@ export function injectSystemPrompt(body, format, prompt) {
 
 // OpenAI-shaped: messages[] (chat) or input[] (responses) or instructions (responses string)
 function injectMessagesSystem(body, prompt, format) {
+  // Responses Lite carries an `additional_tools` envelope at the head of input[];
+  // the system prompt must land in a developer message AFTER it, never inside the
+  // envelope and never as top-level instructions (Codex rejects both). Detect the
+  // envelope BEFORE the Responses/Codex top-level-instructions branch so only the
+  // Lite shape routes through input[].
+  const isResponsesLite = Array.isArray(body.input) && body.input.some(m => m?.type === "additional_tools");
+
   // OpenAI Responses API: Codex rejects instruction messages in input[]; use top-level instructions.
-  if (format === FORMATS.OPENAI_RESPONSES || format === FORMATS.OPENAI_RESPONSE || format === FORMATS.CODEX || typeof body.instructions === "string") {
+  if (!isResponsesLite && (format === FORMATS.OPENAI_RESPONSES || format === FORMATS.OPENAI_RESPONSE || format === FORMATS.CODEX || typeof body.instructions === "string")) {
     if (isPromptAlreadyInjected(body.instructions, prompt)) return;
     body.instructions = body.instructions
       ? `${body.instructions}${SEP}${prompt}`
@@ -60,12 +76,24 @@ function injectMessagesSystem(body, prompt, format) {
     : null;
   if (!arr) return;
 
-  const idx = arr.findIndex(m => m && (m.role === "system" || m.role === "developer"));
+  const isResponses = arr === body.input;
+  const idx = arr.findIndex(m =>
+    m && (!m.type || m.type === "message") && (m.role === "system" || m.role === "developer")
+  );
   if (idx >= 0) {
     // Check if already injected before appending
     const existing = extractTextFromOpenAIMessage(arr[idx]);
     if (isPromptAlreadyInjected(existing, prompt)) return;
     appendToOpenAIMessage(arr[idx], prompt);
+  } else if (isResponses) {
+    // Responses Lite puts an `additional_tools` envelope first; system prompt
+    // must land in a developer message AFTER it, never inside the envelope.
+    const insertAt = arr.findIndex(m => m?.type !== "additional_tools");
+    arr.splice(insertAt < 0 ? arr.length : insertAt, 0, {
+      type: "message",
+      role: "developer",
+      content: [{ type: "input_text", text: prompt }],
+    });
   } else {
     arr.unshift({ role: "system", content: prompt });
   }

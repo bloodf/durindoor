@@ -171,7 +171,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `glmt` |  | apikey | `https://api.z.ai/api/coding/paas/v4/chat/completions` |
 | `google-pse` |  | apikey | `` |
 | `google-tts` |  | freeTier | `` |
-| `grok-cli` | openai | oauth | `https://cli-chat-proxy.grok.com/v1/chat/completions` |
+| `grok-cli` | openai-responses | oauth | `https://cli-chat-proxy.grok.com/v1/responses` |
 | `grok-web` | grok-web | webCookie | `https://grok.com/rest/app-chat/conversations/new` |
 | `groq` |  | apikey | `https://api.groq.com/openai/v1/chat/completions` |
 | `hackclub` |  | apikey | `https://ai.hackclub.com/proxy/v1/chat/completions` |
@@ -235,6 +235,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `opencode-zen` | openai | apikey | `https://opencode.ai/zen/v1/chat/completions` |
 | `openrouter` |  | freeTier | `https://openrouter.ai/api/v1/chat/completions` |
 | `perplexity` |  | apikey | `https://api.perplexity.ai/chat/completions` |
+| `perplexity-agent` | openai-responses | apikey | `https://api.perplexity.ai/v1/responses` |
 | `perplexity-web` | perplexity-web | webCookie | `https://www.perplexity.ai/rest/sse/perplexity_ask` |
 | `piapi` |  | apikey | `https://api.piapi.ai/v1/chat/completions` |
 | `playht` |  | apikey | `` |

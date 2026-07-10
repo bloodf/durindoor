@@ -24,7 +24,7 @@ import { resolveStreamFlag } from "./chatCore/streamFlag.js";
 import { createEmptyRetryStream } from "./chatCore/emptyStreamGuard.js";
 import { detectClientTool, isNativePassthrough } from "../utils/clientDetector.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
-import { stripOrphanedToolResults } from "../translator/concerns/toolCall.js";
+import { salvageOrphanedToolResults, fixMissingToolResponses } from "../translator/concerns/toolCall.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
 import { compressMessages } from "../rtk/index.js";
@@ -35,13 +35,6 @@ import { stripUnsupportedModalities } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
 import { extractThinking } from "../translator/concerns/thinkingUnified.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
-
-const NATIVE_TOOL_RESULT_FORMATS = new Set([
-  FORMATS.GEMINI,
-  FORMATS.GEMINI_CLI,
-  FORMATS.ANTIGRAVITY,
-  FORMATS.VERTEX,
-]);
 
 function isCompactResponsesEndpoint(endpoint) {
   const path = String(endpoint || "").split(/[?#]/, 1)[0].replace(/\/+$/, "");
@@ -77,17 +70,6 @@ function stripLegacyCompactMarker(body, clientRawRequest) {
   }
 
   return { body: cleanBody, clientRawRequest: cleanRawRequest };
-}
-
-/**
- * Gemini-family clients legitimately send functionResponse turns without the
- * originating functionCall after trimming their local history. Their native
- * APIs accept that history and the Gemini translators preserve the content.
- * Applying the generic orphan cleaner to those wire formats silently deletes
- * user-visible tool output before dispatch.
- */
-export function shouldStripOrphanedToolResults(format) {
-  return !NATIVE_TOOL_RESULT_FORMATS.has(format);
 }
 
 /**
@@ -229,14 +211,13 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     } catch (e) { log?.warn?.("MODALITY", `image prefetch failed: ${e.message}`); }
   }
 
-  // Strip orphaned tool results before translation so the translator never sees
-  // stale call_id references that client-side history truncation left behind.
-  const preStripped = shouldStripOrphanedToolResults(sourceFormat)
-    ? stripOrphanedToolResults(body)
-    : 0;
-  if (preStripped > 0) {
-    log?.debug?.("TOOLCLEAN", `pre-translation: stripped ${preStripped} orphaned tool result(s)`);
-  }
+  // Salvage orphaned tool results before translation so the translator never
+  // sees stale call_id references that client-side history truncation left
+  // behind. Salvage folds orphan text into user text (non-lossy) rather than
+  // deleting it, preserving Kiro's orphan-salvage semantics. Runs
+  // unconditionally: salvage understands messages[] and contents[].
+  salvageOrphanedToolResults(body);
+  fixMissingToolResponses(body);
 
   let translatedBody;
   let toolNameMap;
@@ -345,15 +326,13 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     log?.warn?.("HEADROOM", `skipped: ${headroomDiagnostics.reason || "compression unavailable"}${headroomDiagnostics.endpoint ? ` (${headroomDiagnostics.endpoint})` : ""}`);
   }
 
-  // Strip orphaned tool results again after RTK/Headroom compression — both
+  // Re-run salvage + fixMissing after RTK/Headroom compression — both
   // compressors can remove assistant turns containing tool_calls, which would
   // otherwise leave dangling tool results that strict providers reject with 400.
-  const postStripped = shouldStripOrphanedToolResults(finalFormat)
-    ? stripOrphanedToolResults(translatedBody)
-    : 0;
-  if (postStripped > 0) {
-    log?.debug?.("TOOLCLEAN", `post-compression: stripped ${postStripped} orphaned tool result(s)`);
-  }
+  // Salvage first (fold orphan text), then fixMissing (re-insert empty results
+  // for any call that lost its response) to restore the tool-pairing invariant.
+  salvageOrphanedToolResults(translatedBody);
+  fixMissingToolResponses(translatedBody);
 
   // Caveman: inject terse-style system prompt
   if (cavemanEnabled && cavemanLevel) {
@@ -382,13 +361,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     try { onPxpipeEvent?.({ provider, model: cleanModel, ...pxpipeSummary }); } catch { /* stats must not break requests */ }
   }
 
-  // Re-strip after PXPIPE in case compression removed assistant/tool turns.
-  const pxpipeStripped = shouldStripOrphanedToolResults(finalFormat)
-    ? stripOrphanedToolResults(translatedBody)
-    : 0;
-  if (pxpipeStripped > 0) {
-    log?.debug?.("TOOLCLEAN", `post-pxpipe: stripped ${pxpipeStripped} orphaned tool result(s)`);
-  }
+  // Re-salvage + re-fix after PXPIPE in case compression removed assistant/tool turns.
+  salvageOrphanedToolResults(translatedBody);
+  fixMissingToolResponses(translatedBody);
 
   if (xf.length && log?.line) log.line(reqTag, "⚙", xf.join(" · "));
 

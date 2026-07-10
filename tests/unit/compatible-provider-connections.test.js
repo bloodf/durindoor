@@ -21,6 +21,7 @@ async function setupTestContext(nodeData) {
   }));
 
   const { POST } = await import("@/app/api/providers/route.js");
+  const { PUT } = await import("@/app/api/providers/[id]/route.js");
   const {
     createProviderNode,
     getProviderConnections,
@@ -31,6 +32,7 @@ async function setupTestContext(nodeData) {
   return {
     node,
     POST,
+    PUT,
     getProviderConnections,
     cleanup() {
       fs.rmSync(tempDir, { recursive: true, force: true });
@@ -236,5 +238,72 @@ describe("compatible provider connections API", () => {
     });
     expect(body.connection.apiKey).toBeUndefined();
     expect(storedConnections).toHaveLength(1);
+  });
+
+  it.each(["cloudflare-ai", "snowflake"])("rejects %s connections without an account ID", async (provider) => {
+    const ctx = await setupTestContext({
+      id: "account-id-guard",
+      type: "openai-compatible",
+      name: "Account ID Guard",
+      prefix: "aig",
+      apiType: "chat",
+      baseUrl: "https://account-id-guard.test/v1",
+    });
+    cleanup = ctx.cleanup;
+
+    const response = await ctx.POST(makeRequest(provider));
+    const body = await response.json();
+    const storedConnections = await ctx.getProviderConnections({ provider });
+
+    expect(response.status).toBe(400);
+    expect(body.error).toMatch(/requires accountId/);
+    expect(storedConnections).toHaveLength(0);
+  });
+
+  it("normalizes and stores the Snowflake account ID", async () => {
+    const ctx = await setupTestContext({
+      id: "snowflake-account-id-guard",
+      type: "openai-compatible",
+      name: "Snowflake Guard",
+      prefix: "sfg",
+      apiType: "chat",
+      baseUrl: "https://snowflake-guard.test/v1",
+    });
+    cleanup = ctx.cleanup;
+
+    const response = await ctx.POST(makeRequest("snowflake", "Snowflake", {
+      providerSpecificData: { accountId: "org_account" },
+    }));
+    const storedConnections = await ctx.getProviderConnections({ provider: "snowflake" });
+
+    expect(response.status).toBe(201);
+    expect(storedConnections).toHaveLength(1);
+    expect(storedConnections[0].providerSpecificData.accountId).toBe("org-account");
+  });
+
+  it("rejects an edit that clears a required Snowflake account ID", async () => {
+    const ctx = await setupTestContext({
+      id: "snowflake-edit-account-id-guard",
+      type: "openai-compatible",
+      name: "Snowflake Edit Guard",
+      prefix: "seg",
+      apiType: "chat",
+      baseUrl: "https://snowflake-edit-guard.test/v1",
+    });
+    cleanup = ctx.cleanup;
+    await ctx.POST(makeRequest("snowflake", "Snowflake", {
+      providerSpecificData: { accountId: "org-account" },
+    }));
+    const [stored] = await ctx.getProviderConnections({ provider: "snowflake" });
+
+    const response = await ctx.PUT(new Request(`https://9router.local/api/providers/${stored.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ providerSpecificData: { accountId: "" } }),
+    }), { params: Promise.resolve({ id: stored.id }) });
+    const after = (await ctx.getProviderConnections({ provider: "snowflake" }))[0];
+
+    expect(response.status).toBe(400);
+    expect(after.providerSpecificData.accountId).toBe("org-account");
   });
 });

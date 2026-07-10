@@ -112,6 +112,45 @@ const parseOpenAIStyleModels = (data) => {
   return Array.isArray(list) ? list : [];
 };
 
+const OPENAI_MODELS_FETCHER_TYPES = new Set(["openai", "openai-compatible"]);
+
+
+/**
+ * Fetch dynamic model IDs for a provider that exposes `modelsFetcher` in its
+ * registry config and has no static models (e.g. qiniu, bai, hackclub). Returns
+ * an empty array on any error so callers can fall back to whatever they had.
+ */
+async function fetchRegistryModelsFetcherIds(connection) {
+  const providerId = connection?.provider;
+  const provider = providerId ? AI_PROVIDERS[providerId] : null;
+  const fetcher = provider?.modelsFetcher;
+  if (!fetcher || typeof fetcher.url !== "string" || !OPENAI_MODELS_FETCHER_TYPES.has(fetcher.type)) return [];
+  const apiKey = typeof connection.apiKey === "string" ? connection.apiKey : "";
+  if (!apiKey) return [];
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const response = await fetch(fetcher.url, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    if (!response.ok) return [];
+    const data = await response.json();
+    const list = Array.isArray(data) ? data : (data?.data ?? data?.models ?? data?.results);
+    if (!Array.isArray(list)) return [];
+    return Array.from(new Set(
+      list
+        .map((m) => (isRecord(m) ? (m.id || m.name || m.model) : ""))
+        .filter((id) => typeof id === "string" && id.trim() !== "")
+    ));
+  } catch {
+    return [];
+  }
+}
 // Matches provider IDs that are upstream/cross-instance connections (contain a UUID suffix)
 const UPSTREAM_CONNECTION_RE = /[-_][0-9a-f]{8,}$/i;
 
@@ -211,6 +250,53 @@ async function fetchCompatibleModelIds(connection) {
     return [];
   }
 }
+
+/**
+ * Fetch model IDs for passthrough local providers (lm-studio, vllm, lemonade)
+ * by hitting the connection's baseUrl (or provider defaultBaseUrl) + /models.
+ * Sends Authorization: Bearer apiKey when the connection has one so gated
+ * deployments still respond.
+ */
+async function fetchLocalPassthroughModels(connection) {
+  const providerId = connection?.provider;
+  const provider = providerId ? AI_PROVIDERS[providerId] : null;
+  if (!provider?.passthroughModels) return [];
+  const psd = isRecord(connection.providerSpecificData) ? connection.providerSpecificData : {};
+  const psdBaseUrl = typeof psd.baseUrl === "string" ? psd.baseUrl.trim().replace(/\/$/, "") : "";
+  const defaultBaseUrl = typeof provider.defaultBaseUrl === "string" ? provider.defaultBaseUrl.trim().replace(/\/$/, "") : "";
+  const baseUrlRaw = psdBaseUrl || defaultBaseUrl;
+  if (!baseUrlRaw) return [];
+
+  const url = `${baseUrlRaw}/models`;
+  const headers = { "Content-Type": "application/json" };
+  if (typeof connection.apiKey === "string" && connection.apiKey) {
+    headers.Authorization = `Bearer ${connection.apiKey}`;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const response = await fetch(url, {
+      method: "GET",
+      headers,
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    if (!response.ok) return [];
+    const data = await response.json();
+    const list = Array.isArray(data) ? data : (data?.data ?? data?.models ?? data?.results);
+    if (!Array.isArray(list)) return [];
+    return Array.from(new Set(
+      list
+        .map((m) => (isRecord(m) ? (m.id || m.name || m.model) : ""))
+        .filter((id) => typeof id === "string" && id.trim() !== "")
+    ));
+  } catch {
+    return [];
+  }
+}
+
 
 // Provider matches kindFilter when its serviceKinds intersect the requested kinds.
 // LLM is the default kind for providers missing serviceKinds.
@@ -355,14 +441,13 @@ export async function buildModelsList(kindFilter) {
           Array.isArray(enabledModels) && enabledModels.length > 0;
         const isCompatibleProvider =
           isOpenAICompatibleProvider(providerId) || isAnthropicCompatibleProvider(providerId);
+        const liveModelKindById = new Map();
+        const liveCapabilitiesById = new Map();
 
         // Build kind lookup for static models so we can filter even when only IDs are exposed
         const staticModelKindById = new Map(
           providerModels.map((m) => [m.id, modelKind(m)])
         );
-        const liveModelKindById = new Map();
-        const liveCapabilitiesById = new Map();
-
         let rawModelIds = hasExplicitEnabledModels
           ? Array.from(
               new Set(
@@ -393,6 +478,36 @@ export async function buildModelsList(kindFilter) {
             }
           } catch (err) {
             console.log(`Live model fetch failed for ${providerId}: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
+        // Local passthrough live discovery (lm-studio, vllm, lemonade). Hits
+        // transport.baseUrl + /models with optional Bearer apiKey.
+        if (
+          rawModelIds.length === 0
+          && AI_PROVIDERS[providerId]?.passthroughModels
+          && !AI_PROVIDERS[providerId]?.modelsFetcher
+        ) {
+          try {
+            const localPassthroughIds = await fetchLocalPassthroughModels(conn);
+            if (localPassthroughIds.length) rawModelIds = localPassthroughIds;
+          } catch (err) {
+            console.log(`Local passthrough model fetch failed for ${providerId}: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
+        // Registry-driven modelsFetcher (e.g. qiniu exposes modelsFetcher in
+        // its registry entry). Fires only when no static models and no
+        // per-provider live resolver handled the empty case.
+        if (
+          rawModelIds.length === 0
+          && !hasExplicitEnabledModels
+          && !liveResolver
+          && AI_PROVIDERS[providerId]?.modelsFetcher
+        ) {
+          try {
+            const registryIds = await fetchRegistryModelsFetcherIds(conn);
+            if (registryIds.length) rawModelIds = registryIds;
+          } catch (err) {
+            console.log(`modelsFetcher failed for ${providerId}: ${err instanceof Error ? err.message : String(err)}`);
           }
         }
 

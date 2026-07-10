@@ -8,6 +8,7 @@ import Button from "@/shared/components/Button";
 import Badge from "@/shared/components/Badge";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import Select from "@/shared/components/Select";
+import { requiresProviderAccountId } from "@/lib/providerAccountIds";
 import {
   buildGooglePseProviderSpecificData,
   isGooglePseProvider,
@@ -51,9 +52,13 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
           organization: connection.providerSpecificData.organization || "",
         });
       }
-      if ((connection.provider === "cloudflare-ai" || connection.provider === "snowflake") && connection.providerSpecificData) {
-        setCloudflareData({ accountId: connection.providerSpecificData.accountId || "" });
-      }
+      // Always reset when switching connections so a legacy row with missing
+      // metadata cannot inherit another tenant's account ID from component state.
+      setCloudflareData({
+        accountId: requiresProviderAccountId(connection.provider)
+          ? connection.providerSpecificData?.accountId || ""
+          : "",
+      });
       if (connection.provider === "google-pse") {
         setGooglePseData({ cx: connection.providerSpecificData?.cx || "" });
       }
@@ -70,8 +75,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
 
   const isOAuth = connection?.authType === "oauth";
   const isAzure = connection?.provider === "azure";
-  const ACCOUNT_ID_PROVIDER_DETAILS = ["cloudflare-ai", "snowflake"];
-  const requiresAccountId = ACCOUNT_ID_PROVIDER_DETAILS.includes(connection?.provider);
+  const requiresAccountId = requiresProviderAccountId(connection?.provider);
   const accountIdProviderLabel = connection?.provider === "snowflake" ? "Snowflake Cortex" : "Cloudflare Workers AI";
   const isGooglePse = isGooglePseProvider(connection?.provider);
   const isCompatible = connection
@@ -95,7 +99,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       };
     }
     if (requiresAccountId) {
-      return { accountId: cloudflareData.accountId };
+      return { accountId: cloudflareData.accountId.trim() };
     }
     if (isGooglePse) {
       return buildGooglePseProviderSpecificData(googlePseData.cx, connection?.providerSpecificData);
@@ -126,6 +130,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   const handleValidate = async () => {
     if (!connection?.provider || !formData.apiKey) return;
     if (!hasRequiredGooglePseCx) return;
+    if (requiresAccountId && !cloudflareData.accountId.trim()) return;
     setValidating(true);
     setValidationResult(null);
     const providerSpecificData = buildProviderSpecificData();
@@ -151,6 +156,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   const handleSubmit = async () => {
     if (!connection) return;
     if (!hasRequiredGooglePseCx) return;
+    if (requiresAccountId && !cloudflareData.accountId.trim()) return;
     setSaving(true);
     try {
       const providerSpecificData = buildProviderSpecificData();
@@ -237,7 +243,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
                 className="flex-1"
               />
               <div className="pt-6">
-                <Button onClick={handleValidate} disabled={!formData.apiKey || !hasRequiredGooglePseCx || validating || saving} variant="secondary">
+                <Button onClick={handleValidate} disabled={!formData.apiKey || !hasRequiredGooglePseCx || (requiresAccountId && !cloudflareData.accountId.trim()) || validating || saving} variant="secondary">
                   {validating ? "Checking..." : "Check"}
                 </Button>
               </div>
@@ -335,7 +341,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         )}
 
         <div className="flex gap-2">
-          <Button onClick={handleSubmit} fullWidth disabled={saving || !hasRequiredGooglePseCx}>{saving ? "Saving..." : "Save"}</Button>
+          <Button onClick={handleSubmit} fullWidth disabled={saving || !hasRequiredGooglePseCx || (requiresAccountId && !cloudflareData.accountId.trim())}>{saving ? "Saving..." : "Save"}</Button>
           <Button onClick={onClose} variant="ghost" fullWidth>Cancel</Button>
         </div>
       </div>

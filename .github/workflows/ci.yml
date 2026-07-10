@@ -1,9 +1,5 @@
 name: "✅ CI"
 
-# Two-branch release model: only `dev` and `main`.
-# Scope here: install + lint + build. Tests live in `test.yml` to keep the
-# vitest job independent of build regressions.
-
 on:
   pull_request:
     branches: [dev, main]
@@ -11,8 +7,8 @@ on:
     branches: [dev, main]
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   lint-and-build:
@@ -27,24 +23,25 @@ jobs:
       - name: "⚙️ Setup Node.js"
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          # No `cache: npm` — repo gitignores package-lock.json (see .gitignore
-          # line 63). setup-node v4 throws "Dependencies lock file is not found"
-          # if you ask it to cache against a non-existent lockfile.
+          node-version: 20.20.2
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: "📌 Pin npm"
+        run: |
+          npm install --global npm@10.8.2
+          test "$(npm --version)" = "10.8.2"
 
       - name: "📦 Install dependencies"
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
-      # ponytail: lint is scoped to `src/` (DurinDoor-authored) because
-      # `open-sse/` re-exports the 9router upstream and would surface its
-      # pre-existing lint warnings as CI noise. A separate `lint:all`
-      # (not in CI) can later cover the whole tree when we triage the
-      # upstream-inherited warnings under `react-hooks/*`.
       - name: "🎨 Lint"
         run: npm run lint
 
       - name: Agent index drift gate
         run: npm run check:agent-index
 
-      - name: "🏗️ Build"
+      - name: "🏗️ Build (isolated state)"
+        env:
+          DATA_DIR: ${{ runner.temp }}/durindoor-data
         run: npm run build

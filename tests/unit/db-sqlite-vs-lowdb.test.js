@@ -253,15 +253,53 @@ describe("DB SQLite layer — public API parity", () => {
       expect(entries).toHaveLength(2);
       expect(entries.map((entry) => entry.keyName).sort()).toEqual(["collision-one", "collision-two"]);
       expect(entries.map((entry) => entry.requests).sort()).toEqual([1, 1]);
-      expect(new Set(entries.map((entry) => entry.apiKeyMasked)).size).toBe(1);
-      // After port(upstream): #2364 — keep API key stats distinct — the
-      // outer bucket key (akKey) uses the sha256 fingerprint, so two
-      // API keys sharing a prefix land in two distinct entries. The
-      // inner `apiKeyKey` is now the fingerprint too, not the masked
-      // prefix. The masked display value still collides.
+      expect(entries.every((entry) => entry.apiKeyMasked === "***")).toBe(true);
+      // Registered keys use their non-secret database IDs. The response never
+      // exposes a raw prefix or an offline-verifiable digest.
       expect(new Set(entries.map((entry) => entry.apiKeyKey)).size).toBe(2);
       expect(entries.every((entry) => entry.apiKeyKey !== entry.apiKeyMasked)).toBe(true);
+      expect(entries.map((entry) => entry.apiKeyKey).sort()).toEqual([
+        "api-key:ak-collision-1",
+        "api-key:ak-collision-2",
+      ]);
       expect(Object.keys(stats.byApiKey).some((key) => key.includes("sk-c84eb11fa877e0e9"))).toBe(false);
+    }
+  });
+
+  it("never exposes legacy key material or an offline-verifiable digest", async () => {
+    const legacySecret = "sk-deadbeef";
+    await sqliteDb.importDb({
+      settings: {},
+      apiKeys: [{ id: "legacy-key-id", key: legacySecret, name: "Legacy key", machineId: "m1", isActive: true }],
+    });
+    await sqliteDb.saveRequestUsage({
+      provider: "openai", model: "gpt-4o", apiKey: legacySecret,
+      tokens: { prompt_tokens: 7, completion_tokens: 3 },
+      endpoint: "/v1/chat/completions", status: "ok",
+    });
+
+    const expectedHash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(legacySecret));
+    const hexHash = Array.from(new Uint8Array(expectedHash), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    const payloads = [
+      await sqliteDb.getUsageHistory({ provider: "openai" }),
+      await sqliteDb.getUsageStats("24h"),
+      await sqliteDb.getUsageStats("7d"),
+    ];
+
+    for (const payload of payloads) {
+      const serialized = JSON.stringify(payload);
+      expect(serialized).not.toContain(legacySecret);
+      expect(serialized).not.toContain("sk-dead");
+      expect(serialized).not.toContain(hexHash);
+    }
+    expect(payloads[0][0].apiKeyMasked).toBe("***");
+    for (const stats of payloads.slice(1)) {
+      const entry = Object.values(stats.byApiKey).find((row) => row.apiKeyKey === "api-key:legacy-key-id");
+      expect(entry).toMatchObject({
+        apiKeyMasked: "***",
+        apiKeyKey: "api-key:legacy-key-id",
+        keyName: "Legacy key",
+      });
     }
   });
 

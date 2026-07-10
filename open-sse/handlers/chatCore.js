@@ -36,6 +36,16 @@ import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
 import { extractThinking } from "../translator/concerns/thinkingUnified.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 
+/**
+ * Whether a request targets the Codex compact-responses endpoint.
+ * Strips the query string and hash, removes trailing slashes, and tests the
+ * path against the canonical `/v1/responses/compact` suffix so equivalent
+ * spellings (`.../compact/`, `.../compact?x=1`) all match. Non-string /
+ * empty input never matches.
+ *
+ * @param {string} [endpoint] Request endpoint (path or absolute URL).
+ * @returns {boolean} `true` when the endpoint is `/v1/responses/compact`.
+ */
 function isCompactResponsesEndpoint(endpoint) {
   const path = String(endpoint || "").split(/[?#]/, 1)[0].replace(/\/+$/, "");
   return path.endsWith("/v1/responses/compact");
@@ -151,8 +161,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     }
   }
 
-  const clientRequestedStreaming = body.stream === true || sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI;
-  const providerRequiresStreaming = PROVIDERS[provider]?.forceStream === true;
+  const isCompactRequest = requestContext?.compact === true;
+  const clientRequestedStreaming = !isCompactRequest && (body.stream === true || sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI);
+  const providerRequiresStreaming = !isCompactRequest && PROVIDERS[provider]?.forceStream === true;
   // Image generation models require non-streaming (Google v1internal:generateContent)
   const modelType = getModelType(alias, cleanModel);
   const isImageGenModel = modelType === "imageGen" || /image|imagen|image-generation/i.test(cleanModel);
@@ -174,7 +185,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const providerForcesNonStreaming = PROVIDERS[provider]?.forceNonStreaming === true;
   // Stream-only providers (forceStream) must keep streaming even when the client
   // asked for JSON; the accumulated stream is converted to JSON downstream. (#2031)
-  let stream = resolveStreamFlag({
+  let stream = isCompactRequest ? false : resolveStreamFlag({
     providerRequiresStreaming,
     bodyStream: body.stream,
     forceNonStreaming:
@@ -223,7 +234,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   let toolNameMap;
   if (passthrough) {
     log?.debug?.("PASSTHROUGH", `${clientTool} → ${provider} | native lossless`);
-    translatedBody = { ...body, model: cleanUpstreamModel };
+    translatedBody = { ...structuredClone(body), model: cleanUpstreamModel };
     applyThinking(targetFormat, cleanModel, translatedBody, provider, modelThinkingIntent);
     // Normalize newer Cowork/CC beta shapes (adaptive thinking, mid-conversation system) the API rejects
     if (clientTool === "claude") normalizeClaudePassthrough(translatedBody, translatedBody.model, provider);

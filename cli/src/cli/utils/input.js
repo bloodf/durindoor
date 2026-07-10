@@ -56,6 +56,48 @@ async function prompt(question) {
   }));
 }
 
+/**
+ * Read a credential without echoing it into terminal scrollback.
+ * Non-interactive stdin has no terminal echo, so it can use the normal line
+ * reader while interactive TTYs stay in raw mode and render only bullets.
+ */
+async function promptSecret(question) {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) return prompt(question);
+  primeRawOnce();
+  return new Promise((resolve) => {
+    let value = "";
+    process.stdout.write(question);
+
+    const cleanup = () => process.stdin.removeListener("keypress", onKeypress);
+    const onKeypress = (text, key = {}) => {
+      if (key.ctrl && key.name === "c") {
+        cleanup();
+        process.stdout.write("\n");
+        process.exit(0);
+      }
+      if (key.name === "return" || key.name === "enter") {
+        cleanup();
+        process.stdout.write("\n");
+        resolve(value.trim());
+        return;
+      }
+      if (key.name === "backspace") {
+        if (value.length > 0) {
+          value = value.slice(0, -1);
+          process.stdout.write("\b \b");
+        }
+        return;
+      }
+      if (!key.ctrl && !key.meta && typeof text === "string" && text && !/^[\r\n]$/.test(text)) {
+        value += text;
+        process.stdout.write("•");
+      }
+    };
+
+    process.stdin.on("keypress", onKeypress);
+  });
+}
+
 async function select(question, options) {
   console.log(question);
   options.forEach((opt, i) => console.log(`  ${i + 1}. ${opt}`));
@@ -148,6 +190,7 @@ async function selectMenu(title, items, defaultIndex = 0, subtitle = "", headerC
 
 module.exports = {
   prompt,
+  promptSecret,
   select,
   confirm,
   pause,

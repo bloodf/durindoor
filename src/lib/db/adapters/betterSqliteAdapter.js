@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import { PRAGMA_SQL } from "../schema.js";
+import { assertCheckpointComplete } from "../helpers/checkpoint.js";
 
 // Periodic checkpoint to keep WAL file small (avoid huge -wal/-shm growth)
 const CHECKPOINT_INTERVAL_MS = 60 * 1000;
@@ -33,10 +34,14 @@ export function createBetterSqliteAdapter(filePath) {
   }
 
   // Ensure WAL is flushed and -wal/-shm files removed on shutdown
-  const onShutdown = () => gracefulClose();
-  process.once("beforeExit", onShutdown);
-  process.once("SIGINT", () => { onShutdown(); process.exit(0); });
-  process.once("SIGTERM", () => { onShutdown(); process.exit(0); });
+  const onSignal = () => {
+    // Flush WAL without closing the database. The central app signal handler
+    // still needs the settings repository to stop MITM safely before exit.
+    try { db.pragma("wal_checkpoint(TRUNCATE)"); } catch {}
+  };
+  process.once("beforeExit", gracefulClose);
+  process.once("SIGINT", onSignal);
+  process.once("SIGTERM", onSignal);
 
   return {
     driver: "better-sqlite3",
@@ -45,9 +50,14 @@ export function createBetterSqliteAdapter(filePath) {
     all(sql, params = []) { return prepare(sql).all(params); },
     exec(sql) { return db.exec(sql); },
     transaction(fn) { return db.transaction(fn)(); },
-    checkpoint() { try { db.pragma("wal_checkpoint(TRUNCATE)"); } catch {} },
+    checkpoint() {
+      return assertCheckpointComplete(db.pragma("wal_checkpoint(TRUNCATE)"), "better-sqlite3");
+    },
     close() {
       clearInterval(checkpointTimer);
+      process.removeListener("beforeExit", gracefulClose);
+      process.removeListener("SIGINT", onSignal);
+      process.removeListener("SIGTERM", onSignal);
       gracefulClose();
     },
     raw: db,

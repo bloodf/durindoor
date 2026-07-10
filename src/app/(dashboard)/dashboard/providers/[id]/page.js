@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, ImportTokenModal, IFlowCookieModal, GitLabAuthModal, Toggle, Select, EditConnectionModal, NoAuthProxyCard, ConfirmModal, ProviderIcon } from "@/shared/components";
-import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS, THINKING_CONFIG } from "@/shared/constants/providers";
+import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
@@ -13,8 +13,9 @@ import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { translate } from "@/i18n/runtime";
 import { fetchSuggestedModels } from "@/shared/utils/providerModelsFetcher";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
-import { isNoAuthOnlyProvider } from "@/shared/utils/providerAuthMode";
+import { shouldShowProviderConnections } from "@/shared/utils/providerAuthMode";
 import { buildImportTokenPayload, isImportTokenOAuthProvider } from "@/shared/utils/importTokenProviders";
+import { createLatestIntentQueue } from "@/shared/utils/latestIntentQueue";
 import ModelRow from "./ModelRow";
 import PassthroughModelsSection from "./PassthroughModelsSection";
 import CompatibleModelsSection from "./CompatibleModelsSection";
@@ -75,6 +76,32 @@ export default function ProviderDetailPage() {
   const [thinkingMode, setThinkingMode] = useState("auto");
   const [concurrencyLimit, setConcurrencyLimit] = useState("");
   const [autoPing, setAutoPing] = useState({ enabled: false, connections: {} });
+  const [autoPingQueue] = useState(() => createLatestIntentQueue({
+      write: async (_key, enabled, { connectionId }) => {
+        const response = await fetch(`/api/providers/${encodeURIComponent(connectionId)}/auto-ping`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled }),
+        });
+        if (!response.ok) throw new Error(`Auto-ping update failed (${response.status})`);
+        return response.json();
+      },
+      onOptimistic: (_key, enabled, { connectionId }) => setAutoPing((current) => ({
+        ...current,
+        connections: { ...current.connections, [connectionId]: enabled },
+      })),
+      onConfirmed: (_key, enabled, { connectionId }) => setAutoPing((current) => ({
+        ...current,
+        connections: { ...current.connections, [connectionId]: enabled },
+      })),
+      onRollback: (_key, enabled, { connectionId }, error) => {
+        console.log("Error saving auto-ping config:", error);
+        setAutoPing((current) => ({
+          ...current,
+          connections: { ...current.connections, [connectionId]: enabled },
+        }));
+      },
+    }));
   const [suggestedModels, setSuggestedModels] = useState([]);
   const [kiloFreeModels, setKiloFreeModels] = useState([]);
   const [disabledModelIds, setDisabledModelIds] = useState([]);
@@ -163,6 +190,7 @@ export default function ProviderDetailPage() {
   const supportsApiKeyAuth = !!APIKEY_PROVIDERS[providerId] || authModes.includes("apikey");
   const isFreeNoAuth = !!FREE_PROVIDERS[providerId]?.noAuth;
   const isStoredNoAuth = isFreeNoAuth && providerId === "mimocode";
+  const showConnections = shouldShowProviderConnections(providerInfo, { storedNoAuth: isStoredNoAuth });
   const models = getModelsByProviderId(providerId);
   const providerAlias = getProviderAlias(providerId);
   
@@ -178,17 +206,28 @@ export default function ProviderDetailPage() {
     const levels = getThinkingLevels(providerId, modelId);
     return levels && levels.includes(thinkingMode) ? thinkingMode : null;
   };
+  const providerStorageAlias = isCompatible ? providerId : providerAlias;
   // Union of levels across this provider's reasoning models — drives the level picker options.
+  // Include custom models too (e.g. manually added gpt-5.6-sol → max).
   const providerThinkingLevels = (() => {
     const set = new Set();
-    for (const m of models) {
-      const lv = getThinkingLevels(providerId, m.id);
+    const seen = new Set();
+    const addLevels = (modelId) => {
+      if (!modelId || seen.has(modelId)) return;
+      seen.add(modelId);
+      const lv = getThinkingLevels(providerId, modelId);
       if (lv) lv.forEach((l) => { if (l !== "none") set.add(l); });
+    };
+    for (const m of models) addLevels(m.id);
+    for (const m of kiloFreeModels) addLevels(m.id);
+    for (const entry of customModels) {
+      if (entry.providerAlias !== providerStorageAlias) continue;
+      if ((entry.kind || entry.type || "llm") !== "llm") continue;
+      addLevels(entry.id);
     }
     return set.size ? ["auto", ...[...set]] : null;
   })();
-  
-  const providerStorageAlias = isCompatible ? providerId : providerAlias;
+
   const providerDisplayAlias = isCompatible
     ? (providerNode?.prefix || providerId)
     : providerAlias;
@@ -322,6 +361,9 @@ export default function ProviderDetailPage() {
       setConcurrencyLimit(cLimit != null ? String(cLimit) : "");
       const autoPingSettingsKey = AUTO_PING_SETTINGS_KEYS[providerId];
       const apCfg = autoPingSettingsKey ? settingsData[autoPingSettingsKey] || {} : {};
+      autoPingQueue.hydrate(
+        Object.entries(apCfg.connections || {}).map(([id, enabled]) => [`${providerId}:${id}`, enabled]),
+      );
       setAutoPing({ enabled: apCfg.enabled === true, connections: apCfg.connections || {} });
       if (nodesRes.ok) {
         let node = (nodesData.nodes || []).find((entry) => entry.id === providerId) || null;
@@ -346,7 +388,7 @@ export default function ProviderDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [providerId, isCompatible]);
+  }, [providerId, isCompatible, autoPingQueue]);
 
   const handleUpdateNode = async (formData) => {
     try {
@@ -462,24 +504,9 @@ export default function ProviderDetailPage() {
     saveConcurrencyLimit(value);
   };
 
-  const saveAutoPing = async (next) => {
-    const autoPingSettingsKey = AUTO_PING_SETTINGS_KEYS[providerId];
-    if (!autoPingSettingsKey) return;
-
-    setAutoPing(next);
-    try {
-      await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [autoPingSettingsKey]: next }),
-      });
-    } catch (error) {
-      console.log("Error saving auto-ping config:", error);
-    }
-  };
-
   const handleAutoPingConnection = (connectionId, on) => {
-    saveAutoPing({ ...autoPing, connections: { ...autoPing.connections, [connectionId]: on } });
+    if (!AUTO_PING_SETTINGS_KEYS[providerId]) return;
+    autoPingQueue.enqueue(`${providerId}:${connectionId}`, on, { connectionId });
   };
 
   useEffect(() => {
@@ -1039,7 +1066,7 @@ export default function ProviderDetailPage() {
                 onMoveUp={() => handleSwapPriority(index, index - 1)}
                 onMoveDown={() => handleSwapPriority(index, index + 1)}
                 onToggleActive={(isActive) => handleUpdateConnectionStatus(conn.id, isActive)}
-                autoPing={AUTO_PING_SETTINGS_KEYS[providerId] && conn.authType === "oauth" ? {
+                autoPing={AUTO_PING_SETTINGS_KEYS[providerId] && conn.authType === "oauth" && conn.isActive !== false ? {
                   on: autoPing.connections[conn.id] === true,
                   onToggle: (on) => handleAutoPingConnection(conn.id, on),
                   provider: providerId,
@@ -1499,9 +1526,10 @@ export default function ProviderDetailPage() {
       )}
 
       {/* Connections */}
-      {isFreeNoAuth && !isStoredNoAuth ? (
+      {isFreeNoAuth && !isStoredNoAuth && (
         <NoAuthProxyCard providerId={providerId} />
-      ) : (
+      )}
+      {showConnections && (
         <Card>
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-lg font-semibold">Connections</h2>

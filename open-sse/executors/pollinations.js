@@ -22,8 +22,12 @@ export class PollinationsExecutor extends BaseExecutor {
       "Content-Type": "application/json",
     };
 
-    const key = credentials.apiKey || credentials.accessToken;
-    if (key) headers.Authorization = `Bearer ${key}`;
+    // `getProviderCredentials` uses the synthetic `public` access token to
+    // represent a keyless provider. It is routing state, not an upstream key.
+    const publicFallback = credentials.id === "noauth" || credentials.connectionId === "noauth";
+    const key = credentials.apiKey || credentials.accessToken || "";
+    const isPlaceholder = publicFallback || key === "public" || key === "sk_durindoor";
+    if (key && !isPlaceholder) headers.Authorization = `Bearer ${key}`;
     if (stream) headers.Accept = "text/event-stream";
     return headers;
   }

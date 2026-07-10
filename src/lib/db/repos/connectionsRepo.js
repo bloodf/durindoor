@@ -1,6 +1,8 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
+import { mergeProviderConnection } from "../helpers/mergeProviderMetadata.js";
+import { hasConflictingCodexAccountIds, resolveCodexAccountId } from "open-sse/shared/codexAccountId.js";
 
 const OPTIONAL_FIELDS = [
   "displayName", "email", "globalPriority", "defaultModel",
@@ -9,6 +11,28 @@ const OPTIONAL_FIELDS = [
   "lastTested", "lastError", "lastErrorAt", "rateLimitedUntil", "expiresIn", "errorCode",
   "consecutiveUseCount", "idToken", "lastRefreshAt",
 ];
+
+const AUTO_PING_SETTINGS_KEYS = {
+  claude: "claudeAutoPing",
+  codex: "codexAutoPing",
+};
+
+function updateAutoPingEntryInTx(db, provider, connectionId, enabled) {
+  const settingsKey = AUTO_PING_SETTINGS_KEYS[provider];
+  if (!settingsKey) return null;
+  const row = db.get(`SELECT data FROM settings WHERE id = 1`);
+  const current = row ? parseJson(row.data, {}) : {};
+  const currentConfig = current[settingsKey] || {};
+  const connections = { ...(currentConfig.connections || {}) };
+  if (enabled === true) connections[connectionId] = true;
+  else delete connections[connectionId];
+  const config = { ...currentConfig, connections };
+  db.run(
+    `INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`,
+    [stringifyJson({ ...current, [settingsKey]: config })],
+  );
+  return { settingsKey, config };
+}
 
 function rowToConn(row) {
   if (!row) return null;
@@ -54,6 +78,29 @@ function upsert(db, c) {
        data=excluded.data, updatedAt=excluded.updatedAt`,
     [r.id, r.provider, r.authType, r.name, r.email, r.priority, r.isActive, r.data, r.createdAt, r.updatedAt]
   );
+}
+
+/**
+ * Derive a human-readable connection name from provider identity data.
+ *
+ * For GitHub (Copilot) OAuth, prefer the stable account identity over a generic
+ * "Account N" fallback so multiple accounts on the same machine stay
+ * distinguishable: login → email → top-level email → display name → fallback.
+ * Other providers keep the caller-supplied fallback unchanged.
+ *
+ * @param {object} data - Incoming connection payload (provider, email, providerSpecificData).
+ * @param {string} fallbackName - Caller-provided default (e.g. `Account ${n}`).
+ * @returns {string} Resolved connection name.
+ */
+function deriveConnectionName(data, fallbackName) {
+  if (data.provider === "github") {
+    return data.providerSpecificData?.githubLogin
+      || data.providerSpecificData?.githubEmail
+      || data.email
+      || data.providerSpecificData?.githubName
+      || fallbackName;
+  }
+  return fallbackName;
 }
 
 export async function getProviderConnections(filter = {}) {
@@ -102,7 +149,20 @@ export async function createProviderConnection(data) {
       const incomingWs = data.providerSpecificData?.chatgptAccountId;
       existing = all.find(c => {
         if (c.authType !== "oauth" || c.email !== data.email) return false;
-        // Workspace providers (Codex) use workspace ID when both sides have it
+        // Codex/OpenAI can issue multiple OAuth grants for the same email.
+        // Refresh tokens are rotated single-use; collapsing a new login onto an
+        // existing bare-email row overwrites the first account's token pair and
+        // makes it look "invalid" after adding a second account. Only update an
+        // existing Codex row when both rows expose the same resolved account ID.
+        if (data.provider === "codex") {
+          if (hasConflictingCodexAccountIds(data.providerSpecificData) ||
+              hasConflictingCodexAccountIds(c.providerSpecificData)) return false;
+          const incomingId = resolveCodexAccountId(data.providerSpecificData);
+          const existingId = resolveCodexAccountId(c.providerSpecificData);
+          return !!incomingId && !!existingId && incomingId === existingId;
+        }
+
+        // Workspace providers use workspace ID when both sides have it
         const existingWs = c.providerSpecificData?.chatgptAccountId;
         if (incomingWs && existingWs) return incomingWs === existingWs;
         if (incomingWs && !existingWs) return false;
@@ -130,7 +190,7 @@ export async function createProviderConnection(data) {
     // access_token: never dedup — user manages duplicates manually
 
     if (existing) {
-      const merged = { ...existing, ...data, updatedAt: now };
+      const merged = { ...mergeProviderConnection(existing, data), updatedAt: now };
       upsert(db, merged);
       result = merged;
       return;
@@ -138,7 +198,7 @@ export async function createProviderConnection(data) {
 
     let connectionName = data.name || null;
     if (!connectionName && (data.authType === "oauth" || data.authType === "access_token")) {
-      connectionName = data.email || `Account ${all.length + 1}`;
+      connectionName = deriveConnectionName(data, data.email || `Account ${all.length + 1}`);
     }
     let connectionPriority = data.priority;
     if (!connectionPriority) {
@@ -179,8 +239,9 @@ export async function updateProviderConnection(id, data) {
     const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
     if (!row) { result = null; return; }
     const existing = rowToConn(row);
-    const merged = { ...existing, ...data, updatedAt: new Date().toISOString() };
+    const merged = { ...mergeProviderConnection(existing, data), updatedAt: new Date().toISOString() };
     upsert(db, merged);
+    if (data.isActive === false) updateAutoPingEntryInTx(db, existing.provider, id, false);
     if (data.priority !== undefined) reorderInTx(db, existing.provider);
     result = merged;
   });
@@ -193,6 +254,7 @@ export async function deleteProviderConnection(id) {
   db.transaction(() => {
     const row = db.get(`SELECT provider FROM providerConnections WHERE id = ?`, [id]);
     if (!row) return;
+    updateAutoPingEntryInTx(db, row.provider, id, false);
     db.run(`DELETE FROM providerConnections WHERE id = ?`, [id]);
     reorderInTx(db, row.provider);
     ok = true;
@@ -200,11 +262,44 @@ export async function deleteProviderConnection(id) {
   return ok;
 }
 
+export async function setProviderConnectionAutoPing(id, enabled) {
+  if (typeof enabled !== "boolean") throw new TypeError("enabled must be a boolean");
+  const db = await getAdapter();
+  let result = null;
+  db.transaction(() => {
+    const row = db.get(
+      `SELECT id, provider, authType, isActive FROM providerConnections WHERE id = ?`,
+      [id],
+    );
+    if (!row) return;
+    const settingsKey = AUTO_PING_SETTINGS_KEYS[row.provider];
+    if (!settingsKey || row.authType !== "oauth" || (enabled === true && row.isActive !== 1)) {
+      const error = new Error("Auto-ping is available only for active Claude or Codex OAuth connections");
+      error.code = "AUTO_PING_INELIGIBLE";
+      throw error;
+    }
+    const updated = updateAutoPingEntryInTx(db, row.provider, id, enabled);
+    result = {
+      connectionId: id,
+      provider: row.provider,
+      enabled,
+      settingsKey,
+      config: updated.config,
+    };
+  });
+  return result;
+}
+
 export async function deleteProviderConnectionsByProvider(providerId) {
   const db = await getAdapter();
-  const before = db.get(`SELECT COUNT(*) AS n FROM providerConnections WHERE provider = ?`, [providerId]);
-  db.run(`DELETE FROM providerConnections WHERE provider = ?`, [providerId]);
-  return before?.n || 0;
+  let count = 0;
+  db.transaction(() => {
+    const rows = db.all(`SELECT id FROM providerConnections WHERE provider = ?`, [providerId]);
+    for (const row of rows) updateAutoPingEntryInTx(db, providerId, row.id, false);
+    db.run(`DELETE FROM providerConnections WHERE provider = ?`, [providerId]);
+    count = rows.length;
+  });
+  return count;
 }
 
 export async function reorderProviderConnections(providerId) {

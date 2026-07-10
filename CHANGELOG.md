@@ -1,3 +1,11 @@
+# Unreleased
+
+## Localization
+- Complete Simplified Chinese UI translations and guard English/zh-CN key parity (#2436).
+
+## Fixes
+- **Thinking/Kiro**: keep request-only thinking controls out of provider model IDs, validate native Kiro envelopes, preserve direct-route sessions, and reconcile Claude passthrough thinking budgets.
+
 # v1.0.2 (2026-07-08)
 
 ## Brand

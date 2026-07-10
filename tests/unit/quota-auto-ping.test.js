@@ -19,6 +19,7 @@ vi.mock("@/app/api/usage/[connectionId]/route.js", () => ({
 vi.mock("@/shared/constants/config", () => ({
   QUOTA_AUTOPING_CONFIG: {
     tickIntervalMs: 60000,
+    pingTimeoutMs: 50,
     pingLeadMs: 5000,
     refreshAheadMs: 300000,
     failureCooldownMs: 900000,
@@ -72,6 +73,8 @@ vi.mock("open-sse/executors/index.js", () => ({
 
 describe("quota auto-ping", () => {
   let runQuotaAutoPingTick;
+  let notifyQuotaAutoPingSettingChanged;
+  let startQuotaAutoPing;
   let deps;
   let state;
   let getCodexUsage;
@@ -83,11 +86,16 @@ describe("quota auto-ping", () => {
     vi.resetModules();
     vi.clearAllMocks();
     vi.useRealTimers();
+    delete global.__quotaAutoPing;
 
     ({ getCodexUsage } = await import("open-sse/services/usage/codex.js"));
     ({ getClaudeUsage } = await import("open-sse/services/usage/claude.js"));
     ({ getExecutor } = await import("open-sse/executors/index.js"));
-    ({ runQuotaAutoPingTick } = await import("../../src/shared/services/quotaAutoPing.js"));
+    ({
+      runQuotaAutoPingTick,
+      notifyQuotaAutoPingSettingChanged,
+      startQuotaAutoPing,
+    } = await import("../../src/shared/services/quotaAutoPing.js"));
 
     deps = {
       getSettings: vi.fn(),
@@ -104,7 +112,13 @@ describe("quota auto-ping", () => {
     getExecutor.mockReturnValue({
       execute: vi.fn().mockResolvedValue({ response: { ok: true, text: codexResponseText } }),
     });
-    state = { running: false, resetCache: {}, failureCache: {} };
+    state = {
+      running: false,
+      resetCache: {},
+      failureCache: {},
+      inflightControllers: {},
+      rerunRequested: false,
+    };
     vi.setSystemTime(new Date("2026-01-01T12:00:00.000Z"));
   });
 
@@ -120,7 +134,10 @@ describe("quota auto-ping", () => {
   it("does not ping Codex on the first resetAt observation", async () => {
     deps.getSettings.mockResolvedValue({ codexAutoPing: { connections: { "codex-1": true } } });
     deps.getProviderConnections.mockImplementation(async ({ provider }) => (
-      provider === "codex" ? [{ id: "codex-1", provider: "codex", authType: "oauth", accessToken: "token" }] : []
+      provider === "codex" ? [{
+        id: "codex-1", provider: "codex", authType: "oauth", accessToken: "token",
+        providerSpecificData: { workspaceId: "account-auto-ping" },
+      }] : []
     ));
     getCodexUsage.mockResolvedValue({
       quotas: { session: { used: 1, resetAt: "2026-01-01T13:00:00.000Z" } },
@@ -130,6 +147,9 @@ describe("quota auto-ping", () => {
 
     expect(deps.getExecutor).not.toHaveBeenCalled();
     expect(deps.updateProviderConnection).not.toHaveBeenCalled();
+    expect(getCodexUsage).toHaveBeenCalledWith(
+      "token", { workspaceId: "account-auto-ping" }, expect.objectContaining({ strictProxy: false }),
+    );
     expect(state.resetCache["codex:codex-1"]).toBe("2026-01-01T13:00:00.000Z");
   });
 
@@ -347,5 +367,186 @@ describe("quota auto-ping", () => {
       max_tokens: 1,
       messages: [{ role: "user", content: "hi" }],
     });
+  });
+
+  it("drains a successful Claude response body before marking the ping", async () => {
+    const reader = {
+      read: vi.fn()
+        .mockResolvedValueOnce({ done: false, value: new Uint8Array([1]) })
+        .mockResolvedValueOnce({ done: true }),
+      releaseLock: vi.fn(),
+    };
+    deps.getSettings.mockResolvedValue({ claudeAutoPing: { connections: { "claude-1": true } } });
+    deps.getProviderConnections.mockResolvedValue([
+      { id: "claude-1", provider: "claude", authType: "oauth", accessToken: "token" },
+    ]);
+    getClaudeUsage.mockResolvedValue({
+      quotas: { "session (5h)": { resetAt: "2026-01-01T11:59:00.000Z" } },
+    });
+    deps.proxyAwareFetch.mockResolvedValue({
+      ok: true,
+      body: { getReader: () => reader },
+    });
+
+    await runQuotaAutoPingTick(deps, state);
+
+    expect(reader.read).toHaveBeenCalledTimes(2);
+    expect(reader.releaseLock).toHaveBeenCalledOnce();
+    expect(deps.updateProviderConnection).toHaveBeenCalledOnce();
+  });
+
+  it("cancels a non-ok Claude response body and does not mark the ping", async () => {
+    const cancel = vi.fn().mockResolvedValue();
+    deps.getSettings.mockResolvedValue({ claudeAutoPing: { connections: { "claude-1": true } } });
+    deps.getProviderConnections.mockResolvedValue([
+      { id: "claude-1", provider: "claude", authType: "oauth", accessToken: "token" },
+    ]);
+    getClaudeUsage.mockResolvedValue({
+      quotas: { "session (5h)": { resetAt: "2026-01-01T11:59:00.000Z" } },
+    });
+    deps.proxyAwareFetch.mockResolvedValue({ ok: false, body: { cancel } });
+
+    await runQuotaAutoPingTick(deps, state);
+
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(deps.updateProviderConnection).not.toHaveBeenCalled();
+  });
+
+  it("cancels a hung Claude response reader when the lifecycle deadline expires", async () => {
+    const reader = {
+      read: vi.fn().mockReturnValue(new Promise(() => {})),
+      cancel: vi.fn().mockResolvedValue(),
+      releaseLock: vi.fn(),
+    };
+    deps.getSettings.mockResolvedValue({ claudeAutoPing: { connections: { "claude-1": true } } });
+    deps.getProviderConnections.mockResolvedValue([
+      { id: "claude-1", provider: "claude", authType: "oauth", accessToken: "token" },
+    ]);
+    getClaudeUsage.mockResolvedValue({
+      quotas: { "session (5h)": { resetAt: "2026-01-01T11:59:00.000Z" } },
+    });
+    deps.proxyAwareFetch.mockResolvedValue({ ok: true, body: { getReader: () => reader } });
+
+    await runQuotaAutoPingTick(deps, state);
+
+    expect(reader.cancel).toHaveBeenCalledOnce();
+    expect(reader.releaseLock).toHaveBeenCalledOnce();
+    expect(deps.updateProviderConnection).not.toHaveBeenCalled();
+    expect(state.running).toBe(false);
+  });
+
+  it("revalidates settings immediately before the outbound request", async () => {
+    deps.getSettings
+      .mockResolvedValueOnce({ claudeAutoPing: { connections: { "claude-1": true } } })
+      .mockResolvedValueOnce({ claudeAutoPing: { connections: {} } });
+    deps.getProviderConnections.mockResolvedValue([
+      { id: "claude-1", provider: "claude", authType: "oauth", accessToken: "token" },
+    ]);
+    getClaudeUsage.mockResolvedValue({
+      quotas: { "session (5h)": { resetAt: "2026-01-01T11:59:00.000Z" } },
+    });
+
+    await runQuotaAutoPingTick(deps, state);
+
+    expect(deps.getSettings).toHaveBeenCalledTimes(2);
+    expect(deps.proxyAwareFetch).not.toHaveBeenCalled();
+    expect(deps.updateProviderConnection).not.toHaveBeenCalled();
+  });
+
+  it("aborts before send when a connection is disabled during quota lookup", async () => {
+    let resolveUsage;
+    const usageBarrier = new Promise((resolve) => { resolveUsage = resolve; });
+    deps.getSettings.mockResolvedValue({ claudeAutoPing: { connections: { "claude-1": true } } });
+    deps.getProviderConnections.mockResolvedValue([
+      { id: "claude-1", provider: "claude", authType: "oauth", accessToken: "token" },
+    ]);
+    getClaudeUsage.mockReturnValue(usageBarrier);
+
+    const tick = runQuotaAutoPingTick(deps, state);
+    await vi.waitFor(() => expect(getClaudeUsage).toHaveBeenCalledOnce());
+    notifyQuotaAutoPingSettingChanged("claude", "claude-1", false, state);
+    resolveUsage({ quotas: { "session (5h)": { resetAt: "2026-01-01T11:59:00.000Z" } } });
+    await tick;
+
+    expect(deps.proxyAwareFetch).not.toHaveBeenCalled();
+    expect(deps.updateProviderConnection).not.toHaveBeenCalled();
+    expect(state.running).toBe(false);
+    expect(state.failureCache).not.toHaveProperty("claude:claude-1");
+  });
+
+  it("propagates disable aborts into an in-flight provider request", async () => {
+    deps.getSettings.mockResolvedValue({ claudeAutoPing: { connections: { "claude-1": true } } });
+    deps.getProviderConnections.mockResolvedValue([
+      { id: "claude-1", provider: "claude", authType: "oauth", accessToken: "token" },
+    ]);
+    getClaudeUsage.mockResolvedValue({
+      quotas: { "session (5h)": { resetAt: "2026-01-01T11:59:00.000Z" } },
+    });
+    deps.proxyAwareFetch.mockImplementation((_url, options) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener("abort", () => reject(options.signal.reason), { once: true });
+    }));
+
+    const tick = runQuotaAutoPingTick(deps, state);
+    await vi.waitFor(() => expect(deps.proxyAwareFetch).toHaveBeenCalledOnce());
+    const signal = deps.proxyAwareFetch.mock.calls[0][1].signal;
+    notifyQuotaAutoPingSettingChanged("claude", "claude-1", false, state);
+    await tick;
+
+    expect(signal.aborted).toBe(true);
+    expect(deps.updateProviderConnection).not.toHaveBeenCalled();
+    expect(state.running).toBe(false);
+  });
+
+  it("bounds a hung preflight and releases the global scheduler", async () => {
+    deps.getSettings.mockResolvedValue({ claudeAutoPing: { connections: { "claude-1": true } } });
+    deps.getProviderConnections.mockResolvedValue([
+      { id: "claude-1", provider: "claude", authType: "oauth", accessToken: "token" },
+    ]);
+    deps.resolveConnectionProxyConfig.mockReturnValue(new Promise(() => {}));
+
+    await runQuotaAutoPingTick(deps, state);
+
+    expect(state.running).toBe(false);
+    expect(state.inflightControllers).not.toHaveProperty("claude:claude-1");
+    expect(state.failureCache).toHaveProperty("claude:claude-1");
+
+    deps.getSettings.mockResolvedValue({});
+    await expect(runQuotaAutoPingTick(deps, state)).resolves.toBeUndefined();
+    expect(state.running).toBe(false);
+  });
+
+  it("coalesces overlapping ticks into one follow-up run", async () => {
+    let releaseFirst;
+    deps.getSettings
+      .mockReturnValueOnce(new Promise((resolve) => { releaseFirst = resolve; }))
+      .mockResolvedValue({});
+
+    const first = runQuotaAutoPingTick(deps, state);
+    await vi.waitFor(() => expect(deps.getSettings).toHaveBeenCalledOnce());
+    await runQuotaAutoPingTick(deps, state);
+    expect(state.rerunRequested).toBe(true);
+    releaseFirst({});
+    await first;
+    await vi.waitFor(() => expect(deps.getSettings).toHaveBeenCalledTimes(2));
+
+    expect(state.running).toBe(false);
+    expect(state.rerunRequested).toBe(false);
+  });
+
+  it("starts exactly one process-wide interval", async () => {
+    vi.useFakeTimers();
+    const { getSettings } = await import("@/lib/localDb");
+    getSettings.mockResolvedValue({});
+
+    startQuotaAutoPing();
+    startQuotaAutoPing();
+    await Promise.resolve();
+
+    expect(vi.getTimerCount()).toBe(1);
+    expect(getSettings).toHaveBeenCalledOnce();
+
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(getSettings).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(1);
   });
 });

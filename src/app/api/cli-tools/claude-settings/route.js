@@ -6,6 +6,7 @@ import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { redactSecrets } from "@/shared/utils/secretRedaction";
 
 const execAsync = promisify(exec);
 
@@ -68,7 +69,7 @@ export async function GET() {
 
     return NextResponse.json({
       installed: true,
-      settings: settings,
+      settings: redactSecrets(settings),
       has9Router: has9Router,
       settingsPath: getClaudeSettingsPath(),
     });
@@ -200,4 +201,3 @@ export async function DELETE() {
     );
   }
 }
-

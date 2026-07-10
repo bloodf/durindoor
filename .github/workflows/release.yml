@@ -2,6 +2,7 @@ name: Release
 on:
   release:
     types: [published]
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -10,13 +11,68 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20.20.2
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            tests/package-lock.json
           registry-url: https://registry.npmjs.org
-      - run: npm ci
-      - run: npm --prefix cli install --include=dev
-      - run: npm run cli:publish
+
+      - name: Pin npm
+        run: |
+          npm install --global npm@10.8.2
+          test "$(npm --version)" = "10.8.2"
+
+      - name: Install app dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Install test dependencies
+        working-directory: tests
+        run: npm ci --no-audit --no-fund
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Agent index drift gate
+        run: npm run check:agent-index
+
+      - name: Build with isolated application state
+        run: npm run build
+
+      - name: Run blocking Vitest gate
+        working-directory: tests
+        env:
+          BASELINE_BASE_REF: HEAD^
+          HOME: ${{ runner.temp }}/durindoor-home
+          DATA_DIR: ${{ runner.temp }}/durindoor-data
+        run: mkdir -p "$HOME" "$DATA_DIR" && npm run test:ci
+
+      - name: Verify test reports
+        if: always()
+        run: |
+          test -s tests/.test-results.json
+          test -s tests/.test-results.junit.xml
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-vitest-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            tests/.test-results.json
+            tests/.test-results.junit.xml
+          include-hidden-files: true
+          if-no-files-found: error
+
+      - name: Install CLI dependencies
+        run: npm --prefix cli install --include=dev --no-audit --no-fund
+
+      - name: Publish CLI
+        run: npm run cli:publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

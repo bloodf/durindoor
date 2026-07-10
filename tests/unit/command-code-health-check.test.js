@@ -3,14 +3,9 @@
  * testApiKeyConnection (src/app/api/providers/[id]/test/testUtils.js),
  * exercised via the exported testSingleConnection.
  *
- * Regression coverage for: the dashboard's per-connection "Test" button
- * routes through testApiKeyConnection's provider switch. Before this PR,
- * neither `case "commandcode"` nor `case "command-code"` existed here
- * (unlike /api/providers/validate, which already had a probe), so every
- * saved CommandCode/command-code connection reported "Provider test not
- * supported" even for a valid key. This PR adds `case "commandcode"` plus
- * the `case "command-code"` alias so both saved ids route through the same
- * probe. See open-sse/providers/registry/commandcode.js and command-code.js.
+ * The dashboard's per-connection "Test" button delegates registry providers
+ * to the shared provider probe. Both Command Code IDs must use the explicit
+ * validation model and the same status policy as POST /providers/validate.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -55,6 +50,7 @@ describe("CommandCode connection health check", () => {
     const fetchSpy = vi.spyOn(global, "fetch").mockImplementation(async (url, options) => {
       expect(String(url)).toBe("https://api.commandcode.ai/alpha/generate");
       expect(options.headers.Authorization).toBe("Bearer user_test");
+      expect(JSON.parse(options.body).params.model).toBe("deepseek/deepseek-v4-flash");
       return new Response("{}", { status: 200 });
     });
 
@@ -66,6 +62,44 @@ describe("CommandCode connection health check", () => {
     expect(result.valid).toBe(true);
     expect(result.error).not.toBe("Provider test not supported");
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([400, 422, 429])("reports valid when status %d proves the key was accepted", async (status) => {
+    mocks.getProviderConnectionById.mockResolvedValue({
+      id: "conn-cc-status",
+      provider: "command-code",
+      authType: "apikey",
+      apiKey: "user_test",
+      providerSpecificData: {},
+    });
+    global.fetch = vi.fn(async () => new Response("", { status }));
+
+    const { testSingleConnection } = await import(
+      "../../src/app/api/providers/[id]/test/testUtils.js"
+    );
+    const result = await testSingleConnection("conn-cc-status");
+
+    expect(result.valid).toBe(true);
+    expect(result.error).toBeNull();
+  });
+
+  it.each([404, 405, 500])("reports unusable endpoint status %d as invalid", async (status) => {
+    mocks.getProviderConnectionById.mockResolvedValue({
+      id: "conn-cc-unusable",
+      provider: "command-code",
+      authType: "apikey",
+      apiKey: "user_test",
+      providerSpecificData: {},
+    });
+    global.fetch = vi.fn(async () => new Response("", { status }));
+
+    const { testSingleConnection } = await import(
+      "../../src/app/api/providers/[id]/test/testUtils.js"
+    );
+    const result = await testSingleConnection("conn-cc-unusable");
+
+    expect(result.valid).toBe(false);
+    expect(result.error).toMatch(/not found|failed|unavailable/i);
   });
 
   it("reports invalid on a 401 from the probe", async () => {

@@ -5,7 +5,7 @@ import {
   markAccountUnavailable,
   clearAccountError,
   extractApiKey,
-  isValidApiKey,
+  evaluateApiKeyAuth,
 } from "../services/auth.js";
 import { cacheClaudeHeaders } from "open-sse/utils/claudeHeaderCache.js";
 import { getSettings, getApiKeyByKey, getApiKeyUsageLimitStatus } from "@/lib/localDb";
@@ -26,8 +26,25 @@ import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
+import REGISTRY from "open-sse/providers/registry/index.js";
 
 const ANTIGRAVITY_CAPACITY_SWEEP_RETRIES = 2;
+
+/**
+ * #6457 / OmniRoute#6525: resolved registry model kind === "image" means the
+ * model is image-only and belongs on /v1/images/generations, not the chat
+ * endpoint. Forwarding it to a chat upstream yields a confusing raw provider
+ * 400 (e.g. HuggingFace: "not a chat model"). Per-model kind is used (not the
+ * provider-level serviceKinds) because mixed providers like Cloudflare serve
+ * both chat and image models.
+ */
+export function isImageOnlyModel(provider, model) {
+  const entry = REGISTRY.find(
+    (e) => e.id === provider || e.alias === provider || e.aliases?.includes(provider)
+  );
+  const m = entry?.models?.find((x) => x.id === model);
+  return (m?.kind ?? m?.type) === "image";
+}
 
 /**
  * Strip reasoning_content from assistant messages in conversation history.
@@ -110,18 +127,17 @@ export async function handleChat(request, clientRawRequest = null) {
     log.debug("AUTH", "No API key provided (local mode)");
   }
 
-  // Enforce API key if enabled in settings
+  // Stored credentials are always validated; local mode only permits unknown
+  // placeholders when API-key enforcement is disabled.
   const settings = await getSettings();
-  if (settings.requireApiKey) {
-    if (!apiKey) {
+  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true });
+  if (!apiKeyAuth.ok) {
+    if (apiKeyAuth.reason === "missing") {
       log.warn("AUTH", "Missing API key (requireApiKey=true)");
       return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
     }
-    const valid = await isValidApiKey(apiKey);
-    if (!valid) {
-      log.warn("AUTH", "Invalid API key (requireApiKey=true)");
-      return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
-    }
+    log.warn("AUTH", "Invalid API key");
+    return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
   }
 
   // Per-key combo access control
@@ -150,10 +166,6 @@ export async function handleChat(request, clientRawRequest = null) {
     log.warn("CHAT", "Missing model");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   }
-
-  // Enforce per-API-key model policy
-  const policyError = await enforceApiKeyModelPolicy(request, modelStr);
-  if (policyError) return policyError;
 
   // Ponytail slash commands are local-only: respond before any account/credential lookup.
   const sourceFormat = detectFormatByEndpoint(url.pathname, body) || detectFormat(body);
@@ -280,6 +292,18 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   }
 
   const { provider, model } = modelInfo;
+
+  // Reject image-only models routed to /v1/chat/completions (#6457 / #6525).
+  // getModelInfo already resolved the registry {provider, model}; a kind:"image"
+  // entry belongs on /v1/images/generations. Guard fires before credentials /
+  // dispatch so the upstream is never called.
+  if (isImageOnlyModel(provider, model)) {
+    log.warn("CHAT", `Rejecting image-generation model on chat endpoint: ${provider}/${model}`);
+    return errorResponse(
+      HTTP_STATUS.BAD_REQUEST,
+      `Model '${provider}/${model}' is an image-generation model and cannot be used on /v1/chat/completions. Use POST /v1/images/generations instead.`
+    );
+  }
 
   // Enforce per-API-key model policy against the resolved underlying model when
   // the request started as a combo; the top-level combo name is not a model id.

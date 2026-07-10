@@ -22,6 +22,7 @@ import {
 export const INTERNAL_KEYS = Object.freeze([
   "_toolNameMap",
   "_clientSessionId",
+  "_kiroUpstreamModel",
 ]);
 
 // Keys that may legitimately start with "_" in provider payloads (none today,
@@ -61,17 +62,116 @@ function pushError(errors, path, message) {
   errors.push({ path, message });
 }
 
+/**
+ * Coerce a tool parameters root schema whose `type` is null/missing to
+ * `type: "object"`. OpenAI-compatible upstreams reject a root schema without an
+ * explicit object type ("schema must be a JSON Schema of 'type: \"object\"', got
+ * 'type: null'" — 9router#6359 / OmniRoute#6375); clients like the Codex app emit
+ * `parameters: { type: null, ... }` for some tools. Root-only: nested null types
+ * remain a separate sanitizer concern, combinator roots (anyOf/oneOf/allOf) and
+ * explicit root types are preserved, and `properties:{}` is only added when
+ * absent/non-object. Mutates the schema in place.
+ */
+function coerceRootObjectType(schema) {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return;
+  const hasOwn = (k) => Object.prototype.hasOwnProperty.call(schema, k);
+  // Drop a null root type first (mirroring the upstream sanitizer) so a
+  // combinator root carrying `type: null` does not retain the invalid sibling.
+  if (hasOwn("type") && schema.type === null) delete schema.type;
+  // Explicit root type wins — leave it untouched.
+  if (hasOwn("type")) return;
+  // Combinator roots carry their own typing — injecting a sibling `type` would
+  // change their meaning. Own-property checks, not truthiness.
+  if (hasOwn("anyOf") || hasOwn("oneOf") || hasOwn("allOf")) return;
+  schema.type = "object";
+  if (!schema.properties || typeof schema.properties !== "object" || Array.isArray(schema.properties)) {
+    schema.properties = {};
+    // Synthesizing an empty-properties object under a strict validator reads as
+    // "no properties allowed"; keep it open to match the upstream sanitizer.
+    if (!hasOwn("additionalProperties")) schema.additionalProperties = true;
+  }
+}
+
+/**
+ * Normalize root `type: null`/missing on tool function parameters before
+ * dispatch, covering both OpenAI Chat Completions (`tools[].function.parameters`)
+ * and OpenAI Responses flattened (`tools[].parameters`) shapes. Runs regardless
+ * of the VALIDATE_OUTBOUND gate so the fix holds for passthrough
+ * (source === target) requests too — the reported Codex/OpenAI-compatible case.
+ * Mutates `body` in place and returns it. 9router#6359 / OmniRoute#6375.
+ */
+export function normalizeToolSchemaRoots(body) {
+  if (!body || typeof body !== "object" || !Array.isArray(body.tools)) return body;
+  for (const tool of body.tools) {
+    if (!tool || typeof tool !== "object") continue;
+    // Chat Completions shape: { type: "function", function: { parameters } }
+    if (tool.function && typeof tool.function === "object") {
+      coerceRootObjectType(tool.function.parameters);
+    }
+    // Responses flattened shape: { type: "function", parameters }
+    coerceRootObjectType(tool.parameters);
+  }
+  return body;
+}
+
 // Strip known internal keys (always) and any other underscore-prefixed keys
 // (silently — those don't fail validation, they just get removed).
 // Mutates the body in place and returns it for convenience.
 export function stripInternalKeys(body) {
   if (!body || typeof body !== "object") return body;
-  for (const k of Object.keys(body)) {
+  // getOwnPropertyNames also catches non-enumerable metadata. Object.keys did
+  // not remove legacy `_kiroUpstreamModel` hints before the executor boundary.
+  for (const k of Object.getOwnPropertyNames(body)) {
     if (k.startsWith("_") && !ALLOWED_UNDERSCORE_KEYS.has(k)) {
       delete body[k];
     }
   }
   return body;
+}
+
+function validateKiro(body, errors) {
+  const state = body.conversationState;
+  if (!state || typeof state !== "object" || Array.isArray(state)) {
+    pushError(errors, "conversationState", "Kiro conversationState object is required");
+    return;
+  }
+
+  if (typeof state.conversationId !== "string" || !state.conversationId.trim()) {
+    pushError(errors, "conversationState.conversationId", "Kiro conversationId string is required");
+  }
+  const input = state.currentMessage?.userInputMessage;
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    pushError(
+      errors,
+      "conversationState.currentMessage.userInputMessage",
+      "Kiro current userInputMessage object is required",
+    );
+  } else {
+    if (typeof input.modelId !== "string" || !input.modelId.trim()) {
+      pushError(
+        errors,
+        "conversationState.currentMessage.userInputMessage.modelId",
+        "Kiro modelId string is required",
+      );
+    }
+    if (typeof input.content !== "string") {
+      pushError(
+        errors,
+        "conversationState.currentMessage.userInputMessage.content",
+        "Kiro content must be a string",
+      );
+    }
+  }
+
+  if (!Array.isArray(state.history)) {
+    pushError(errors, "conversationState.history", "Kiro history must be an array");
+  } else {
+    state.history.forEach((item, index) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        pushError(errors, `conversationState.history[${index}]`, "Kiro history item must be an object");
+      }
+    });
+  }
 }
 
 // ---- Format-specific validators -------------------------------------------------
@@ -406,7 +506,7 @@ export function validateOutboundPayload(targetFormat, body) {
   }
   const b = body;
   // 1. Internal key leak detection (always fails validation by name).
-  for (const k of Object.keys(b)) {
+  for (const k of Object.getOwnPropertyNames(b)) {
     if (INTERNAL_KEYS.includes(k)) {
       pushError(errors, k, `internal key "${k}" must not leak upstream`);
     }
@@ -418,10 +518,12 @@ export function validateOutboundPayload(targetFormat, body) {
     case FORMATS.OLLAMA:
     case FORMATS.CURSOR:
     case FORMATS.COMMANDCODE:
-    case FORMATS.KIRO:
-      // Kiro / Codex / Ollama / Cursor / Commandcode receive OpenAI-shaped bodies
+      // Codex / Ollama / Cursor / Commandcode receive OpenAI-shaped bodies
       // from the translator pipeline.
       validateOpenAI(b, errors);
+      break;
+    case FORMATS.KIRO:
+      validateKiro(b, errors);
       break;
     case FORMATS.CLAUDE:
       validateClaude(b, errors);

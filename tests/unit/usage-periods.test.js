@@ -5,6 +5,8 @@ import {
   VALID_USAGE_CHART_PERIODS,
   getUsagePeriodDays,
   getChartDayBucketCount,
+  getUsageCalendarCutoff,
+  toLocalDateKey,
 } from "@/lib/usagePeriods.js";
 
 describe("usagePeriods", () => {
@@ -37,5 +39,17 @@ describe("usagePeriods", () => {
     expect(getChartDayBucketCount("90d")).toBe(90);
     expect(getChartDayBucketCount("365d")).toBe(365);
     expect(getChartDayBucketCount("all")).toBeNull();
+  });
+
+  it("uses an inclusive server-local calendar cutoff", () => {
+    const now = new Date(2026, 6, 10, 18, 30);
+    const cutoff = getUsageCalendarCutoff("7d", now);
+    expect(toLocalDateKey(cutoff)).toBe("2026-07-04");
+    expect(cutoff.getHours()).toBe(0);
+  });
+
+  it("fails closed for unknown direct repository periods", () => {
+    expect(() => getUsagePeriodDays("bogus")).toThrow("Invalid usage period");
+    expect(() => getChartDayBucketCount("bogus")).toThrow("Invalid usage period");
   });
 });

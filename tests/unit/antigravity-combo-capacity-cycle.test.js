@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   markAccountUnavailable: vi.fn(),
   clearAccountError: vi.fn(),
   extractApiKey: vi.fn(),
-  isValidApiKey: vi.fn(),
+  evaluateApiKeyAuth: vi.fn(),
   handleChatCore: vi.fn(),
 }));
 
@@ -26,7 +26,7 @@ vi.mock("../../src/sse/services/auth.js", () => ({
   markAccountUnavailable: mocks.markAccountUnavailable,
   clearAccountError: mocks.clearAccountError,
   extractApiKey: mocks.extractApiKey,
-  isValidApiKey: mocks.isValidApiKey,
+  evaluateApiKeyAuth: mocks.evaluateApiKeyAuth,
 }));
 
 vi.mock("../../src/sse/services/tokenRefresh.js", () => ({
@@ -96,6 +96,7 @@ describe("Antigravity combo capacity cycling", () => {
       return { provider: null, model: modelStr };
     });
     mocks.markAccountUnavailable.mockResolvedValue({ shouldFallback: true, cooldownMs: 0 });
+    mocks.evaluateApiKeyAuth.mockResolvedValue({ ok: true, reason: null, stored: false });
   });
 
   it("restarts the Antigravity account sweep after all accounts report model capacity before trying the next combo model", async () => {

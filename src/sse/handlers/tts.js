@@ -1,5 +1,5 @@
 import {
-  extractApiKey, isValidApiKey,
+  extractApiKey, evaluateApiKeyAuth,
   getProviderCredentials, markAccountUnavailable,
 } from "../services/auth.js";
 import { getSettings, getApiKeyByKey } from "@/lib/localDb";
@@ -10,7 +10,7 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { handleComboChat } from "open-sse/services/combo.js";
 import * as log from "../utils/logger.js";
-import { enforceApiKeyModelPolicy, recordApiKeyUsage } from "../services/apiKeyPolicy.js";
+import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 
 // Derived from providers.js: any TTS provider not noAuth requires stored credentials
 const CREDENTIALED_PROVIDERS = new Set(
@@ -35,11 +35,11 @@ export async function handleTts(request) {
 
   const settings = await getSettings();
   const apiKey = extractApiKey(request);
-  if (settings.requireApiKey) {
-    if (!apiKey) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
-    const valid = await isValidApiKey(apiKey);
-    if (!valid) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
-  }
+  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true });
+  if (!apiKeyAuth.ok) return errorResponse(
+    HTTP_STATUS.UNAUTHORIZED,
+    apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
+  );
 
   // Per-key combo access control
   if (apiKey && modelStr) {
@@ -56,15 +56,6 @@ export async function handleTts(request) {
   if (!modelStr) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   if (!body.input) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: input");
 
-  // Enforce per-API-key model policy
-  const policyError = await enforceApiKeyModelPolicy(request, modelStr);
-  if (policyError) return policyError;
-
-  if (apiKey) {
-    const tokens = body.input ? String(body.input).length / 4 : 0;
-    await recordApiKeyUsage(apiKey, { tokens, cost: 0 });
-  }
-
   // Combo expansion: model may be a combo name → run fallback/round-robin across models
   const comboModels = await getComboModels(modelStr);
   if (comboModels) {
@@ -75,28 +66,30 @@ export async function handleTts(request) {
     return handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleModelTts(b, m, responseFormat, language),
+      handleSingleModel: (b, m) => handleSingleModelTts(b, m, responseFormat, language, request, apiKey),
       log,
       comboName: modelStr,
       comboStrategy,
       comboStickyLimit,
     });
   }
-
-  return handleSingleModelTts(body, modelStr, responseFormat, language);
+  return handleSingleModelTts(body, modelStr, responseFormat, language, request, apiKey);
 }
 
-async function handleSingleModelTts(body, modelStr, responseFormat, language) {
+async function handleSingleModelTts(body, modelStr, responseFormat, language, request, apiKey) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
   const { provider, model } = modelInfo;
+  const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`);
+  if (resolvedPolicyError) return resolvedPolicyError;
+  const estimatedTokens = String(body.input).length / 4;
   log.info("ROUTING", `Provider: ${provider}, Voice: ${model}`);
 
   // noAuth providers — no credential needed
   if (!CREDENTIALED_PROVIDERS.has(provider)) {
     const result = await handleTtsCore({ provider, model, input: body.input, responseFormat, language });
-    if (result.success) return result.response;
+    if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "TTS failed");
   }
 
@@ -122,7 +115,7 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language) {
 
     const result = await handleTtsCore({ provider, model, input: body.input, credentials, responseFormat, language });
 
-    if (result.success) return result.response;
+    if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model);
     if (shouldFallback) {

@@ -25,6 +25,7 @@ import { apiKeyConnectionNames } from "./apiKeyConnectionName";
 import EditCompatibleNodeModal from "./EditCompatibleNodeModal";
 import AddCustomModelModal from "./AddCustomModelModal";
 import BulkImportCodexModal from "./BulkImportCodexModal";
+import { getProviderThinkingLevels } from "./providerThinkingLevels";
 
 const ONE_BY_ONE_DELAY_MS = 1000;
 
@@ -209,24 +210,13 @@ export default function ProviderDetailPage() {
   const providerStorageAlias = isCompatible ? providerId : providerAlias;
   // Union of levels across this provider's reasoning models — drives the level picker options.
   // Include custom models too (e.g. manually added gpt-5.6-sol → max).
-  const providerThinkingLevels = (() => {
-    const set = new Set();
-    const seen = new Set();
-    const addLevels = (modelId) => {
-      if (!modelId || seen.has(modelId)) return;
-      seen.add(modelId);
-      const lv = getThinkingLevels(providerId, modelId);
-      if (lv) lv.forEach((l) => { if (l !== "none") set.add(l); });
-    };
-    for (const m of models) addLevels(m.id);
-    for (const m of kiloFreeModels) addLevels(m.id);
-    for (const entry of customModels) {
-      if (entry.providerAlias !== providerStorageAlias) continue;
-      if ((entry.kind || entry.type || "llm") !== "llm") continue;
-      addLevels(entry.id);
-    }
-    return set.size ? ["auto", ...[...set]] : null;
-  })();
+  const providerThinkingLevels = getProviderThinkingLevels({
+    providerId,
+    models,
+    kiloFreeModels,
+    customModels,
+    providerStorageAlias,
+  });
 
   const providerDisplayAlias = isCompatible
     ? (providerNode?.prefix || providerId)

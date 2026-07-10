@@ -25,6 +25,7 @@ import { apiKeyConnectionNames } from "./apiKeyConnectionName";
 import EditCompatibleNodeModal from "./EditCompatibleNodeModal";
 import AddCustomModelModal from "./AddCustomModelModal";
 import BulkImportCodexModal from "./BulkImportCodexModal";
+import { getProviderThinkingLevels } from "./providerThinkingLevels";
 
 const ONE_BY_ONE_DELAY_MS = 1000;
 
@@ -198,7 +199,12 @@ export default function ProviderDetailPage() {
   const isAnthropicCompatible = isAnthropicCompatibleProvider(providerId);
   const isCompatible = isOpenAICompatible || isAnthropicCompatible;
   const hasDualAuthModes = !isCompatible && isOAuth && supportsApiKeyAuth;
-  const oauthConnectionLabel = providerId === "xai" ? "Grok Build OAuth" : "OAuth";
+  const oauthConnectionLabel =
+    providerId === "xai"
+      ? "Grok Build OAuth"
+      : providerId === "grok-cli"
+        ? "Grok CLI Device Login"
+        : "OAuth";
   const apiKeyConnectionLabel = providerId === "xai" ? "xAI API Key" : "API Key";
   // Resolve suffix "(level)" for a model when a thinking level is picked and the model supports it.
   const resolveThinkingSuffix = (modelId) => {
@@ -206,17 +212,17 @@ export default function ProviderDetailPage() {
     const levels = getThinkingLevels(providerId, modelId);
     return levels && levels.includes(thinkingMode) ? thinkingMode : null;
   };
-  // Union of levels across this provider's reasoning models — drives the level picker options.
-  const providerThinkingLevels = (() => {
-    const set = new Set();
-    for (const m of models) {
-      const lv = getThinkingLevels(providerId, m.id);
-      if (lv) lv.forEach((l) => { if (l !== "none") set.add(l); });
-    }
-    return set.size ? ["auto", ...[...set]] : null;
-  })();
-  
   const providerStorageAlias = isCompatible ? providerId : providerAlias;
+  // Union of levels across this provider's reasoning models — drives the level picker options.
+  // Include custom models too (e.g. manually added gpt-5.6-sol → max).
+  const providerThinkingLevels = getProviderThinkingLevels({
+    providerId,
+    models,
+    kiloFreeModels,
+    customModels,
+    providerStorageAlias,
+  });
+
   const providerDisplayAlias = isCompatible
     ? (providerNode?.prefix || providerId)
     : providerAlias;

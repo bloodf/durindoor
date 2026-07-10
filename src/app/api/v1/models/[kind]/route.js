@@ -1,5 +1,6 @@
 import { buildModelsList } from "../buildModelsList.js";
 import { buildModelsResponse } from "../_shared.js";
+import { headOkResponse, headNotFoundResponse } from "open-sse/translator/validate.js";
 
 // URL slug → service kind(s). `web` covers both webSearch and webFetch.
 const KIND_SLUG_MAP = {
@@ -15,7 +16,7 @@ export async function OPTIONS() {
   return new Response(null, {
     headers: {
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
       "Access-Control-Allow-Headers": "*",
     },
   });
@@ -51,4 +52,14 @@ export async function GET(request, { params }) {
       { status: 500 }
     );
   }
+}
+
+/**
+ * HEAD /v1/models/{kind} — mirrors GET status without building the list.
+ * Unknown `kind` → 404 (same body-less contract as GET's 404); known → 200.
+ */
+export async function HEAD(request, { params }) {
+  const { kind } = await params;
+  if (!KIND_SLUG_MAP[kind]) return headNotFoundResponse();
+  return headOkResponse();
 }

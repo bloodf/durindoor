@@ -16,6 +16,7 @@ import {
 import { getMitmStatus, startMitm, stopMitm, loadEncryptedPassword, initDbHooks, restoreToolDNS, isSudoPasswordRequired } from "@/mitm/manager";
 import { startQuotaAutoPing } from "@/shared/services/quotaAutoPing";
 import { syncToJson as syncMitmAliasCache } from "@/lib/mitmAliasCache";
+import { killAllBridges } from "@/lib/mcp/stdioSseBridge";
 
 // Inject correct paths and DB hooks into manager.js (CJS) from ESM context
 (function bootstrapMitm() {
@@ -75,6 +76,7 @@ export async function initializeApp() {
           // promise with an outer race: Windows stop can require two serial UAC
           // operations, and a late success must still reach the exit path.
           await stopMitm(undefined, { preserveDesiredState: true });
+          try { killAllBridges(); } catch { /* best effort */ }
           killCloudflared();
           process.exit(0);
         } catch (error) {

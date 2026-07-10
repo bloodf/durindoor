@@ -9,6 +9,7 @@ const crypto = require("crypto");
 const os = require("os");
 const { stopMitmViaManagerSync } = require("./src/cli/mitmManagerStop");
 const { getAppDataDir, getGlobalMitmStateDir } = require("./src/cli/appDataDir");
+const { waitServerReady } = require("./src/cli/waitServerReady");
 
 // Resolve once before any worker changes cwd. Every CLI helper and the Next
 // worker inherit the same absolute path, so database, PID, CA, and auth-token
@@ -94,6 +95,7 @@ if (hasFlag("--version", "-v")) {
 
 const { ensureSqliteRuntime, buildEnvWithRuntime } = require("./hooks/sqliteRuntime");
 const { ensureTrayRuntime } = require("./hooks/trayRuntime");
+const { killByPidFile } = require("./hooks/killByPidFile");
 
 
 // Self-heal SQLite runtime deps (sql.js + better-sqlite3) into ~/.9router/runtime
@@ -170,23 +172,6 @@ function compareVersions(a, b) {
     if (partsA[i] < partsB[i]) return -1;
   }
   return 0;
-}
-
-// Kill PID from file (best-effort, removes file after)
-function killByPidFile(pidFile) {
-  try {
-    if (!fs.existsSync(pidFile)) return;
-    const pid = parseInt(fs.readFileSync(pidFile, "utf8").trim(), 10);
-    if (!pid) return;
-    try {
-      if (process.platform === "win32") {
-        execSync(`taskkill /F /T /PID ${pid}`, { stdio: "ignore", windowsHide: true, timeout: 3000 });
-      } else {
-        process.kill(pid, "SIGKILL");
-      }
-    } catch { }
-    try { fs.unlinkSync(pidFile); } catch { }
-  } catch { }
 }
 
 // Kill tunnel processes (cloudflared/tailscale) by their PID files
@@ -569,15 +554,16 @@ if (!fs.existsSync(serverPath)) {
   process.exit(1);
 }
 
-// Check for updates FIRST, then start server
-checkForUpdate().then(async (latestVersion) => {
+// Kick off the update check in parallel with cleanup/port-release (not on the
+// critical path for server start). MITM/stale-redirect recovery stays sequential
+// BEFORE killAllAppProcesses: safety-critical system redirect cleanup.
+const updatePromise = checkForUpdate();
+(async () => {
   await recoverStaleMitmOwnershipBeforeStartup();
-  return killAllAppProcesses(port).then(() => {
-    return killProcessOnPort(port);
-  }).then(() => {
-    startServer(latestVersion);
-  });
-}).catch((error) => {
+  await killAllAppProcesses(port);
+  await killProcessOnPort(port);
+  startServer(updatePromise);
+})().catch((error) => {
   console.error(`Startup cleanup failed: ${error.message}`);
   process.exitCode = 1;
 });
@@ -630,7 +616,11 @@ async function showInterfaceMenu(latestVersion) {
 const MAX_RESTARTS = 2;
 const RESTART_RESET_MS = 30000; // Reset counter if alive > 30s
 
-function startServer(latestVersion) {
+function startServer(updatePromise) {
+  // Accept either a Promise (parallel update check) or a resolved value.
+  // Swallow update-check failures: a network blip must never crash startup or
+  // surface an unhandled rejection; the existing update menu simply sees null.
+  const latestVersionPromise = Promise.resolve(updatePromise).catch(() => null);
   const displayHost = getDisplayHost();
   const url = `http://${displayHost}:${port}/dashboard`;
   // Surface real network exposure when bound to all interfaces (default 0.0.0.0).
@@ -777,18 +767,34 @@ function startServer(latestVersion) {
     console.log(`\n🚀 ${DISPLAY_NAME} v${pkg.version}`);
     console.log(`Server: http://${displayHost}:${port}`);
 
-    setTimeout(() => {
+    waitServerReady(port).then((ready) => {
       initTrayIcon();
-      console.log("\n💡 Router is now running in system tray. Close this terminal if you want.");
+      if (ready) {
+        console.log("\n💡 Router is now running in system tray. Close this terminal if you want.");
+      } else {
+        console.log("\n⚠ Server process started; readiness unconfirmed. Tray attached anyway.");
+      }
       console.log("   Right-click tray icon to open dashboard or quit.\n");
-    }, 2000);
+    });
 
     return;
   }
 
   // Wait for server to be ready, then show interface menu loop + tray
-  setTimeout(async () => {
+  waitServerReady(port).then(async (ready) => {
     if (recoveryInProgress) return;
+    if (!ready) {
+      // Readiness failed after the deadline: the backend may have crashed and
+      // menu actions would hit a dead server. Keep the tray for control, but do
+      // not enter the interactive web/TUI loop; server event handlers manage
+      // restart/exit.
+      console.error("\n✖ Server did not become ready in time; not showing interface menu.");
+      console.error("  Check the logs above; the tray icon remains available.");
+      initTrayIcon();
+      return;
+    }
+    // Resolve parallel update check (already running); don't block server start on it.
+    const latestVersion = await latestVersionPromise;
     // Start tray icon alongside TUI
     initTrayIcon();
 
@@ -881,7 +887,7 @@ function startServer(latestVersion) {
       isShuttingDown = true;
       exitAfterCleanup(1, 0);
     }
-  }, 3000);
+  });
 
   function attachServerEvents() {
     server.on("error", (err) => {

@@ -14,6 +14,20 @@ import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
 import { resolveClinepassModels } from "open-sse/services/clinepassModels.js";
 import { aggregateComboCapabilities, capabilitiesFromServiceKind, getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 
+// In-flight request coalescing for `buildModelsList` (OmniRoute #6440):
+// concurrent `/v1/models` calls that hit before the first one resolves would
+// otherwise each re-run the full provider/combo/catalog aggregation. Map key
+// is the serialized kindFilter so `["llm"]` (root) and `["image"]` do not
+// collide, but two simultaneous `["llm"]` requests share ONE promise. Only the
+// in-flight promise is shared — settled results are NEVER cached (the key is
+// deleted in `finally`), so DB/credential changes are observed on the next
+// request and a rejection cannot poison future calls.
+const modelsInFlight = new Map();
+
+function kindFilterKey(kindFilter) {
+  return Array.isArray(kindFilter) ? kindFilter.slice().sort().join("\0") : "";
+}
+
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -321,7 +335,7 @@ function comboMatchesKinds(combo, kindFilter) {
  * @param {string[]} kindFilter - List of service kinds to include (e.g. ["llm"], ["webSearch","webFetch"]).
  * @returns {Promise<object[]>} OpenAI-format model entries.
  */
-export async function buildModelsList(kindFilter) {
+async function buildModelsListImpl(kindFilter) {
   let connections = [];
   try {
     connections = await getProviderConnections();
@@ -645,4 +659,32 @@ export async function buildModelsList(kindFilter) {
   }
 
   return dedupedModels;
+}
+
+/**
+ * Coalescing wrapper for `buildModelsList` (OmniRoute #6440).
+ *
+ * Concurrent `/v1/models` (and `/v1/models/{kind}`) requests that arrive while
+ * the first is still aggregating share a single in-flight promise instead of
+ * each re-running provider/combo/catalog aggregation. Keyed by the serialized
+ * `kindFilter` so root `["llm"]` and capability filters (e.g. `["image"]`) do
+ * not collide. The map entry is deleted in `finally`, so:
+ *   - settled results are NEVER cached (next request observes fresh DB state),
+ *   - a rejection cannot poison subsequent calls.
+ *
+ * @param {string[]} kindFilter - service kinds to include.
+ * @returns {Promise<object[]>} OpenAI-format model entries.
+ */
+export function buildModelsList(kindFilter) {
+  const key = kindFilterKey(kindFilter);
+  const existing = modelsInFlight.get(key);
+  if (existing) return existing;
+
+  const promise = buildModelsListImpl(kindFilter).finally(() => {
+    // Only delete if still the same promise (guards against a stale entry if
+    // the map is ever manipulated elsewhere).
+    if (modelsInFlight.get(key) === promise) modelsInFlight.delete(key);
+  });
+  modelsInFlight.set(key, promise);
+  return promise;
 }

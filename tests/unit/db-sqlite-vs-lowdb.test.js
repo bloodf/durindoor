@@ -468,14 +468,20 @@ describe("DB SQLite layer — public API parity", () => {
     expect(global._pendingRequests.byModel["gpt-4 (openai)"]).toBeUndefined();
   });
 
+  /** Regression contract: oversized observable request bodies retain tool definitions up to the dedicated 64 KiB tools budget. */
   it("requestDetails: save → query with paging", async () => {
-    // Enable observability first
-    await sqliteDb.updateSettings({ enableObservability: true, observabilityBatchSize: 1 });
+    // Enable observability first; force tiny JSON budget so request/providerRequest
+    // bodies truncate while their `tools` arrays are preserved under the dedicated
+    // tools budget (upstream #2281).
+    await sqliteDb.updateSettings({ enableObservability: true, observabilityBatchSize: 1, observabilityMaxJsonSize: 1 });
 
+    const bigTools = [{ type: "function", function: { name: "lookup_weather", description: "x".repeat(200) } }];
     await sqliteDb.saveRequestDetail({
       id: "d1", provider: "openai", model: "gpt-4", connectionId: "c1",
       status: "ok", tokens: { prompt_tokens: 10 },
-      request: { method: "POST" }, response: { status: 200 },
+      request: { method: "POST", messages: "m".repeat(5000), tools: bigTools },
+      providerRequest: { url: "/v1/chat", body: "b".repeat(5000), tools: bigTools },
+      response: { status: 200 },
     });
 
     // Wait for buffer flush
@@ -484,6 +490,12 @@ describe("DB SQLite layer — public API parity", () => {
     const got = await sqliteDb.getRequestDetailById("d1");
     expect(got).toBeDefined();
     expect(got.id).toBe("d1");
+
+    // Bodies truncated but tools retained under separate 64 KiB budget.
+    expect(got.request?._truncated).toBe(true);
+    expect(got.request?.tools).toEqual(bigTools);
+    expect(got.providerRequest?._truncated).toBe(true);
+    expect(got.providerRequest?.tools).toEqual(bigTools);
 
     const list = await sqliteDb.getRequestDetails({ provider: "openai" });
     expect(list.details.length).toBeGreaterThanOrEqual(1);

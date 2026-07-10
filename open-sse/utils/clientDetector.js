@@ -37,8 +37,8 @@ export function detectClientTool(headers = {}, body = {}) {
   // Gemini CLI
   if (ua.includes("gemini-cli")) return "gemini-cli";
 
-  // Codex CLI
-  if (ua.includes("codex-cli")) return "codex";
+  // Codex CLI (codex-cli / codex_cli_rs / codex_exec)
+  if (ua.includes("codex-cli") || ua.includes("codex_cli_rs") || ua.includes("codex_exec")) return "codex";
 
   // DeepSeek TUI
   if (ua.includes("deepseek-tui")) return "deepseek-tui";

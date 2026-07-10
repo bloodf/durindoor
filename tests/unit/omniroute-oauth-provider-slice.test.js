@@ -22,44 +22,46 @@ describe("OmniRoute OAuth/session provider slice", () => {
     expect(getExecutor("agy").getProvider()).toBe("agy");
   });
 
-  it("maps grok-cli auth.json into serializable OAuth credentials", async () => {
-    const { mapGrokCliTokens } = await import("../../src/lib/oauth/providers.js");
-    const future = new Date(Date.now() + 1800 * 1000).toISOString();
-    const jwt = makeJwt({
+  it("maps grok-cli device-code tokens into serializable OAuth credentials", async () => {
+    const { getProvider } = await import("../../src/lib/oauth/providers.js");
+    const idToken = makeJwt({
       sub: "user-1",
       email: "grok@example.com",
       team_id: "team-1",
-      tier: 2,
-      principal_type: "User",
     });
-    const authJson = {
-      "https://auth.x.ai::client": {
-        key: jwt,
+    const grok = getProvider("grok-cli");
+    expect(grok.flowType).toBe("device_code");
+
+    const mapped = grok.mapTokens(
+      {
+        access_token: "access-1",
         refresh_token: "refresh-1",
-        expires_at: future,
+        expires_in: 1800,
+        scope: "openid grok-cli:access",
+        id_token: idToken,
       },
-    };
+      { user: { userId: "user-1", email: "grok@example.com" } }
+    );
 
-    const mapped = mapGrokCliTokens({ accessToken: authJson });
-
-    expect(mapped.accessToken).toBe(jwt);
+    expect(mapped.accessToken).toBe("access-1");
     expect(mapped.refreshToken).toBe("refresh-1");
+    expect(mapped.expiresIn).toBe(1800);
     expect(mapped.email).toBe("grok@example.com");
-    expect(mapped.expiresIn).toBeGreaterThan(0);
     expect(mapped.providerSpecificData).toMatchObject({
+      authMethod: "device_code",
       userId: "user-1",
-      teamId: "team-1",
-      tier: 2,
-      principalType: "User",
+      email: "grok@example.com",
+      idToken,
     });
-    expect(mapped.providerSpecificData.rawAuthJson).toEqual(authJson);
   });
 
-  it("clamps expired grok-cli tokens so refresh can run instead of storing a past expiresAt", async () => {
-    const { mapGrokCliTokens } = await import("../../src/lib/oauth/providers.js");
-    const jwt = makeJwt({ email: "old@example.com", exp: Math.floor(Date.now() / 1000) - 3600 });
-
-    expect(mapGrokCliTokens(jwt).expiresIn).toBe(1);
+  it("maps expiry and null refresh when device flow omits a refresh token", async () => {
+    const { getProvider } = await import("../../src/lib/oauth/providers.js");
+    const grok = getProvider("grok-cli");
+    const mapped = grok.mapTokens({ access_token: "a", expires_in: 900 }, null);
+    expect(mapped.refreshToken).toBeNull();
+    expect(mapped.expiresIn).toBe(900);
+    expect(mapped.providerSpecificData.authMethod).toBe("device_code");
   });
 
   it("refreshes grok-cli credentials through xAI token rotation", async () => {
@@ -102,7 +104,7 @@ describe("OmniRoute OAuth/session provider slice", () => {
     const headers = executor.buildHeaders({ accessToken: "token" }, false);
     expect(headers.Authorization).toBe("Bearer token");
     expect(headers.Accept).toBe("application/json");
-    expect(headers["x-grok-client-identifier"]).toBe("grok_cli_rs");
+    expect(headers["x-grok-client-identifier"]).toBe("grok-pager");
 
     const body = executor.transformRequest("grok-build", {
       messages: [],
@@ -112,7 +114,9 @@ describe("OmniRoute OAuth/session provider slice", () => {
       topLogprobs: 5,
     }, true);
 
-    expect(body).toMatchObject({ model: "grok-build", stream: true, messages: [] });
+    expect(body).toMatchObject({ model: "grok-build", stream: true });
+    expect(body.messages).toBeUndefined();
+    expect(body.input).toBeDefined();
     expect(body.presencePenalty).toBeUndefined();
     expect(body.frequencyPenalty).toBeUndefined();
     expect(body.logprobs).toBeUndefined();

@@ -62,6 +62,58 @@ function pushError(errors, path, message) {
   errors.push({ path, message });
 }
 
+/**
+ * Coerce a tool parameters root schema whose `type` is null/missing to
+ * `type: "object"`. OpenAI-compatible upstreams reject a root schema without an
+ * explicit object type ("schema must be a JSON Schema of 'type: \"object\"', got
+ * 'type: null'" — 9router#6359 / OmniRoute#6375); clients like the Codex app emit
+ * `parameters: { type: null, ... }` for some tools. Root-only: nested null types
+ * remain a separate sanitizer concern, combinator roots (anyOf/oneOf/allOf) and
+ * explicit root types are preserved, and `properties:{}` is only added when
+ * absent/non-object. Mutates the schema in place.
+ */
+function coerceRootObjectType(schema) {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return;
+  const hasOwn = (k) => Object.prototype.hasOwnProperty.call(schema, k);
+  // Drop a null root type first (mirroring the upstream sanitizer) so a
+  // combinator root carrying `type: null` does not retain the invalid sibling.
+  if (hasOwn("type") && schema.type === null) delete schema.type;
+  // Explicit root type wins — leave it untouched.
+  if (hasOwn("type")) return;
+  // Combinator roots carry their own typing — injecting a sibling `type` would
+  // change their meaning. Own-property checks, not truthiness.
+  if (hasOwn("anyOf") || hasOwn("oneOf") || hasOwn("allOf")) return;
+  schema.type = "object";
+  if (!schema.properties || typeof schema.properties !== "object" || Array.isArray(schema.properties)) {
+    schema.properties = {};
+    // Synthesizing an empty-properties object under a strict validator reads as
+    // "no properties allowed"; keep it open to match the upstream sanitizer.
+    if (!hasOwn("additionalProperties")) schema.additionalProperties = true;
+  }
+}
+
+/**
+ * Normalize root `type: null`/missing on tool function parameters before
+ * dispatch, covering both OpenAI Chat Completions (`tools[].function.parameters`)
+ * and OpenAI Responses flattened (`tools[].parameters`) shapes. Runs regardless
+ * of the VALIDATE_OUTBOUND gate so the fix holds for passthrough
+ * (source === target) requests too — the reported Codex/OpenAI-compatible case.
+ * Mutates `body` in place and returns it. 9router#6359 / OmniRoute#6375.
+ */
+export function normalizeToolSchemaRoots(body) {
+  if (!body || typeof body !== "object" || !Array.isArray(body.tools)) return body;
+  for (const tool of body.tools) {
+    if (!tool || typeof tool !== "object") continue;
+    // Chat Completions shape: { type: "function", function: { parameters } }
+    if (tool.function && typeof tool.function === "object") {
+      coerceRootObjectType(tool.function.parameters);
+    }
+    // Responses flattened shape: { type: "function", parameters }
+    coerceRootObjectType(tool.parameters);
+  }
+  return body;
+}
+
 // Strip known internal keys (always) and any other underscore-prefixed keys
 // (silently — those don't fail validation, they just get removed).
 // Mutates the body in place and returns it for convenience.

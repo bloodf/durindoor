@@ -3,7 +3,7 @@ import { translateRequest } from "../translator/index.js";
 import { applyThinking, parseSuffix } from "../translator/concerns/thinkingUnified.js";
 import { FORMATS } from "../translator/formats.js";
 import { normalizeClaudePassthrough } from "../translator/formats/claude.js";
-import { validateOutboundPayload, stripInternalKeys } from "../translator/validate.js";
+import { validateOutboundPayload, stripInternalKeys, normalizeToolSchemaRoots } from "../translator/validate.js";
 import { COLORS } from "../utils/stream.js";
 import { createStreamController } from "../utils/streamHandler.js";
 import { refreshWithRetry } from "../services/tokenRefresh.js";
@@ -392,6 +392,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     log?.debug?.("PROXY", `${provider.toUpperCase()} | ${cleanModel} | conn=${connectionName} | no_proxy=${proxyOptions.connectionNoProxy}`);
   }
 
+  // #6375: coerce root `type: null`/missing on tool function parameters to
+  // `type: "object"` BEFORE the gate, unconditionally — passthrough (source ===
+  // target) requests skip translation and would otherwise carry a Codex-emitted
+  // `type: null` root straight to an OpenAI-compatible upstream that 400s it.
+  normalizeToolSchemaRoots(translatedBody);
+
   // Outbound validation gate. Run format-specific shape checks (which also
   // catch leftover internal keys) FIRST so the gate can return 400 with a
   // precise error. After the gate passes, strip any remaining underscore
@@ -566,7 +572,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   // Provider forced streaming but client wants JSON
   if (!clientRequestedStreaming && providerRequiresStreaming) {
-    const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, trackDone, appendLog });
+    const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, trackDone, appendLog });
     if (result) { streamController.handleComplete(); return result; }
   }
 

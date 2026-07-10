@@ -88,6 +88,29 @@ describe("DB SQLite layer — public API parity", () => {
     await sqliteDb.deleteApiKey(k.id);
   });
 
+  it("usage: registered API-key lifetime totals increment once for a duplicate save", async () => {
+    const key = await sqliteDb.createApiKey("lifetime-key", "machine-lifetime");
+    const entry = {
+      timestamp: "2026-07-09T12:34:56.000Z",
+      provider: "openai",
+      model: "gpt-4o",
+      apiKey: key.key,
+      tokens: { prompt_tokens: 10, completion_tokens: 5 },
+      endpoint: "/v1/chat/completions",
+      status: "ok",
+    };
+
+    await sqliteDb.saveRequestUsage({ ...entry });
+    await sqliteDb.saveRequestUsage({ ...entry });
+
+    const totals = await sqliteDb.getApiKeyUsageTotals(key.id);
+    expect(totals).toMatchObject({
+      apiKeyId: key.id,
+      totalTokens: 15,
+      totalRequests: 1,
+    });
+  });
+
   it("providerConnections: CRUD + reorder by priority", async () => {
     const c1 = await sqliteDb.createProviderConnection({ provider: "test", authType: "apikey", name: "a", apiKey: "k1" });
     const c2 = await sqliteDb.createProviderConnection({ provider: "test", authType: "apikey", name: "b", apiKey: "k2" });

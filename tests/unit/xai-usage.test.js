@@ -33,6 +33,7 @@ function makeTempDb() {
       meta TEXT
     );
   `);
+  db.close();
   return { dbPath, tmpDir };
 }
 
@@ -95,5 +96,18 @@ describe("xAI (Grok) usage", () => {
     const resultA = await getUsageForProvider({ provider: "xai", id: "conn-A" });
     expect(resultA.quotas["Total tokens (30d)"].used).toBe(100);
     expect(resultA.quotas["Total spend (30d)"].used).toBeCloseTo(0.0001, 4);
+  });
+
+  it("excludes requests older than the advertised 30-day window", async () => {
+    const now = Date.now();
+    seedHistory(dbPath, [
+      { timestamp: new Date(now - 29 * 24 * 60 * 60 * 1000).toISOString(), model: "grok-4", connectionId: "conn-1", prompt: 100, completion: 0, cost: 0.0001 },
+      { timestamp: new Date(now - 31 * 24 * 60 * 60 * 1000).toISOString(), model: "grok-4", connectionId: "conn-1", prompt: 999, completion: 0, cost: 0.5 },
+    ]);
+
+    const result = await getUsageForProvider({ provider: "xai", id: "conn-1" });
+
+    expect(result.quotas["Total tokens (30d)"].used).toBe(100);
+    expect(result.quotas["Total spend (30d)"].used).toBeCloseTo(0.0001, 4);
   });
 });

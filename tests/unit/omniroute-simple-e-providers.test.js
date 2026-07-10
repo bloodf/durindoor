@@ -322,6 +322,10 @@ describe("OmniRoute simple/default providers batch E", () => {
       expect(source).toContain("accountId");
     }
     expect(addApiKeyModalSource).toContain("providerSpecificData: buildProviderSpecificData()");
+    expect(addApiKeyModalSource).toContain("requiresAccountId && parts.length >= 3");
+    expect(addApiKeyModalSource).toContain("{requiresAccountId");
+    expect(addApiKeyModalSource).toContain("requiresAccountId && !accountIdData.accountId");
+    expect(addApiKeyModalSource).toContain("org-account");
   });
 
   it("keeps Snowflake validation accountId-aware", () => {

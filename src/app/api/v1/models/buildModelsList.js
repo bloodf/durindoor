@@ -112,6 +112,84 @@ const parseOpenAIStyleModels = (data) => {
   return Array.isArray(list) ? list : [];
 };
 
+async function fetchOpenAIStyleModelIds(url, headers) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers,
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!response.ok) return [];
+
+    const rawModels = parseOpenAIStyleModels(await response.json());
+    return Array.from(new Set(
+      rawModels
+        .map((model) => {
+          if (!isRecord(model)) return "";
+          return model.id || model.name || model.model || "";
+        })
+        .filter((modelId) => typeof modelId === "string" && modelId.trim() !== ""),
+    ));
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Resolve an empty static catalog through registry metadata. Only OpenAI-shaped
+ * fetchers are supported here; every unsupported format and fetch failure is
+ * fail-open so static/custom model handling remains unchanged.
+ */
+async function fetchRegistryModelIds(connection) {
+  const provider = AI_PROVIDERS[connection?.provider];
+  const fetcher = provider?.modelsFetcher;
+  if (
+    typeof fetcher?.url !== "string"
+    || !["openai", "openai-compatible"].includes(fetcher.type)
+    || typeof connection?.apiKey !== "string"
+    || !connection.apiKey
+  ) {
+    return [];
+  }
+
+  return fetchOpenAIStyleModelIds(fetcher.url, {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${connection.apiKey}`,
+  });
+}
+
+/**
+ * Query local OpenAI-compatible passthrough servers without requiring a key.
+ * An optional key is forwarded for gated local deployments.
+ */
+async function fetchLocalPassthroughModelIds(connection) {
+  const provider = AI_PROVIDERS[connection?.provider];
+  if (!provider?.passthroughModels || provider.modelsFetcher) return [];
+
+  const providerData = isRecord(connection?.providerSpecificData)
+    ? connection.providerSpecificData
+    : {};
+  const configuredBaseUrl = typeof providerData.baseUrl === "string"
+    ? providerData.baseUrl.trim().replace(/\/$/, "")
+    : "";
+  const defaultBaseUrl = typeof provider.defaultBaseUrl === "string"
+    ? provider.defaultBaseUrl.trim().replace(/\/$/, "")
+    : "";
+  const baseUrl = configuredBaseUrl || defaultBaseUrl;
+  if (!baseUrl) return [];
+
+  const headers = { "Content-Type": "application/json" };
+  if (typeof connection.apiKey === "string" && connection.apiKey) {
+    headers.Authorization = `Bearer ${connection.apiKey}`;
+  }
+  return fetchOpenAIStyleModelIds(`${baseUrl}/models`, headers);
+}
+
 // Matches provider IDs that are upstream/cross-instance connections (contain a UUID suffix)
 const UPSTREAM_CONNECTION_RE = /[-_][0-9a-f]{8,}$/i;
 
@@ -394,6 +472,16 @@ export async function buildModelsList(kindFilter) {
           } catch (err) {
             console.log(`Live model fetch failed for ${providerId}: ${err instanceof Error ? err.message : String(err)}`);
           }
+        }
+
+        if (rawModelIds.length === 0 && !hasExplicitEnabledModels) {
+          const registryModelIds = await fetchRegistryModelIds(conn);
+          if (registryModelIds.length > 0) rawModelIds = registryModelIds;
+        }
+
+        if (rawModelIds.length === 0 && !hasExplicitEnabledModels) {
+          const localModelIds = await fetchLocalPassthroughModelIds(conn);
+          if (localModelIds.length > 0) rawModelIds = localModelIds;
         }
 
         const modelIds = rawModelIds

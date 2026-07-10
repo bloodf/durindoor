@@ -268,10 +268,61 @@ export async function getQoderUsage(accessToken, proxyOptions = null) {
   }
 }
 
-export async function getXaiUsage() {
+/**
+ * Aggregate the rolling 30-day xAI history captured by DurinDoor. xAI does
+ * not expose a stable consumer quota endpoint, so results are connection-local
+ * observations rather than an upstream account balance.
+ */
+export async function getXaiUsage(connectionId) {
+  const plan = "xAI / Grok Build";
+  if (!connectionId) {
+    return { message: "xAI usage requires a connection id.", plan, quotas: {} };
+  }
+
+  let rows;
+  try {
+    const { getUsageHistory } = await import("../../../src/lib/db/index.js");
+    rows = await getUsageHistory({
+      provider: "xai",
+      connectionId,
+      startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+    });
+  } catch {
+    rows = [];
+  }
+
+  if (rows.length === 0) {
+    return {
+      message: "No requests recorded for this xAI connection in the last 30 days.",
+      plan,
+      quotas: {},
+    };
+  }
+
+  let totalTokens = 0;
+  let totalCost = 0;
+  const perModel = new Map();
+  for (const row of rows) {
+    const tokens = Number(row.promptTokens || 0) + Number(row.completionTokens || 0);
+    const cost = Number(row.cost || 0);
+    totalTokens += tokens;
+    totalCost += cost;
+    const model = row.model || "Unknown model";
+    perModel.set(model, (perModel.get(model) || 0) + tokens);
+  }
+
+  const quotas = {
+    "Total tokens (30d)": { used: totalTokens, limit: null, unit: "tokens" },
+    "Total spend (30d)": { used: totalCost, limit: null, unit: "usd" },
+  };
+  for (const [model, tokens] of perModel) {
+    quotas[`${model} (30d)`] = { used: tokens, limit: null, unit: "tokens" };
+  }
+
   return {
-    message: "xAI connected. Per-request usage/cost is tracked from API responses; account quota requires xAI Management API credentials.",
-    quotas: {},
+    message: `Aggregated ${rows.length} request${rows.length === 1 ? "" : "s"} for this xAI connection.`,
+    plan,
+    quotas,
   };
 }
 

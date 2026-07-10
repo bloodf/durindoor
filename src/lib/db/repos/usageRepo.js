@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { getMeta, setMeta } from "../helpers/metaStore.js";
+import { incrementApiKeyUsageSync } from "./apiKeyUsageTotalsRepo.js";
 
 function maskApiKey(key) {
   if (!key || typeof key !== "string") return null;
@@ -262,7 +263,9 @@ export async function saveRequestUsage(entry) {
 
     let inserted = false;
 
-    // All 3 writes (history insert, daily upsert, lifetime counter) in ONE transaction.
+    // History, daily summary, global lifetime, and registered-key lifetime
+    // writes share one transaction. Duplicate history rows return before any
+    // counter changes, keeping retries idempotent.
     // better-sqlite3 is sync → no JS yield mid-transaction → no race in same process.
     db.transaction(() => {
       const existing = db.get(
@@ -308,6 +311,16 @@ export async function saveRequestUsage(entry) {
       aggregateEntryToDay(day, entry);
       db.run(`INSERT INTO usageDaily(dateKey, data) VALUES(?, ?) ON CONFLICT(dateKey) DO UPDATE SET data = excluded.data`, [dateKey, stringifyJson(day)]);
 
+      if (entry.apiKey) {
+        const apiKeyRecord = db.get(`SELECT id FROM apiKeys WHERE key = ?`, [entry.apiKey]);
+        if (apiKeyRecord?.id) {
+          incrementApiKeyUsageSync(db, apiKeyRecord.id, {
+            tokens: promptTokens + completionTokens,
+            cost: entry.cost || 0,
+          });
+        }
+      }
+
       // Atomic counter increment in same transaction
       const cur = db.get(`SELECT value FROM _meta WHERE key = 'totalRequestsLifetime'`);
       const next = (cur ? parseInt(cur.value, 10) : 0) + 1;
@@ -331,16 +344,29 @@ export async function getUsageHistory(filter = {}) {
 
   if (filter.provider) { conds.push("provider = ?"); params.push(filter.provider); }
   if (filter.model) { conds.push("model = ?"); params.push(filter.model); }
+  if (filter.connectionId != null) { conds.push("connectionId = ?"); params.push(filter.connectionId); }
   if (filter.startDate) { conds.push("timestamp >= ?"); params.push(new Date(filter.startDate).toISOString()); }
   if (filter.endDate) { conds.push("timestamp <= ?"); params.push(new Date(filter.endDate).toISOString()); }
 
   const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
-  const rows = db.all(`SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens FROM usageHistory ${where} ORDER BY id ASC`, params);
+  const rows = db.all(
+    `SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens,
+            promptTokens, completionTokens
+       FROM usageHistory ${where} ORDER BY id ASC`,
+    params,
+  );
 
   return rows.map((r) => ({
     timestamp: r.timestamp, provider: r.provider, model: r.model,
     connectionId: r.connectionId, apiKeyMasked: maskApiKey(r.apiKey), endpoint: r.endpoint,
-    cost: r.cost, status: r.status, tokens: parseJson(r.tokens, {}),
+    cost: r.cost, status: r.status,
+    promptTokens: Number(r.promptTokens ?? parseJson(r.tokens, {}).prompt_tokens ?? 0),
+    completionTokens: Number(r.completionTokens ?? parseJson(r.tokens, {}).completion_tokens ?? 0),
+    tokens: {
+      prompt_tokens: Number(r.promptTokens ?? parseJson(r.tokens, {}).prompt_tokens ?? 0),
+      completion_tokens: Number(r.completionTokens ?? parseJson(r.tokens, {}).completion_tokens ?? 0),
+      ...parseJson(r.tokens, {}),
+    },
   }));
 }
 
@@ -520,7 +546,7 @@ export async function getUsageStats(period = "all") {
         const keyName = keyInfo?.name || (apiKeyVal ? apiKeyVal.slice(0, 8) + "..." : "Local (No API Key)");
         const apiKeyMasked = maskApiKey(apiKeyVal);
         const apiKeyFingerprint = fingerprintApiKey(apiKeyVal);
-        const apiKeyKey = apiKeyMasked || "local-no-key";
+        const apiKeyKey = apiKeyFingerprint || apiKeyMasked || "local-no-key";
         const statsKey = apiKeyFingerprint ? `${apiKeyFingerprint}|${rawModel}|${provider || "unknown"}` : akKey;
         if (!stats.byApiKey[statsKey]) {
           stats.byApiKey[statsKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, cost: 0, rawModel, provider: providerDisplayName, apiKeyMasked, keyName, apiKeyKey, lastUsed: dateKey };
@@ -636,13 +662,13 @@ export async function getUsageStats(period = "all") {
 
       if (r.apiKey && typeof r.apiKey === "string") {
         const keyInfo = apiKeyMap[r.apiKey];
-        const keyName = keyInfo?.name || r.apiKey.slice(0, 8) + "...";
         const apiKeyMasked = maskApiKey(r.apiKey);
         const apiKeyFingerprint = fingerprintApiKey(r.apiKey);
-        const apiKeyKey = apiKeyMasked;
+        const keyName = keyInfo?.name || (apiKeyFingerprint ? `${apiKeyFingerprint.slice(0, 8)}...` : `${r.apiKey.slice(0, 8)}...`);
+        const apiKeyKey = apiKeyFingerprint || apiKeyMasked;
         const akKey = `${apiKeyFingerprint}|${r.model}|${r.provider || "unknown"}`;
         if (!stats.byApiKey[akKey]) {
-          stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, apiKeyMasked, keyName, apiKeyKey: apiKeyMasked, lastUsed: r.timestamp };
+          stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, apiKeyMasked, keyName, apiKeyKey, lastUsed: r.timestamp };
         }
         const ake = stats.byApiKey[akKey];
         ake.requests++; ake.promptTokens += promptTokens; ake.completionTokens += completionTokens; ake.cachedTokens += cachedTokens; ake.cost += entryCost;
@@ -737,7 +763,7 @@ export async function getChartData(period = "7d") {
     });
   }
 
-  const bucketCount = period === "7d" ? 7 : period === "30d" ? 30 : 60;
+  const bucketCount = period === "7d" ? 7 : period === "30d" ? 30 : period === "60d" ? 60 : period === "90d" ? 90 : 60;
   const today = new Date();
 
   // Build map of dateKey → day data

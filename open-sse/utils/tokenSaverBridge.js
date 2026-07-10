@@ -1,5 +1,6 @@
 import { detectFormat } from "../services/provider.js";
-import { createNonStreamingResponse, createStreamingResponse } from "./bypassResponse.js";
+import { FORMATS } from "../translator/formats.js";
+import { createSyntheticResponse } from "./bypassResponse.js";
 
 const DEFAULT_PONYTAIL_HELP =
   "Ponytail — lazy-senior persona for minimal code.\n" +
@@ -27,7 +28,7 @@ const DEFAULT_PONYTAIL_HELP =
   "How to enable: toggle Ponytail in Token Saver settings.\n" +
   "\n" +
   "Commands:\n" +
-  "  /ponytail-gain  — show usage stats in the dashboard\n" +
+  "  /ponytail-gain  — show this API key's lifetime usage\n" +
   "  /ponytail-help  — show this help text";
 
 function formatGainStats(stats) {
@@ -36,12 +37,17 @@ function formatGainStats(stats) {
   }
 
   const nf = new Intl.NumberFormat("en-US");
-  const lines = ["Ponytail gain — lifetime"];
+  const scope = typeof stats.scope === "string" && stats.scope ? ` (${stats.scope})` : "";
+  const lines = [`Ponytail gain — lifetime${scope}`];
   lines.push("  requests: " + nf.format(stats.totalRequests || 0));
-  lines.push("  prompt tokens:     " + nf.format(stats.totalPromptTokens || 0));
-  lines.push("  completion tokens: " + nf.format(stats.totalCompletionTokens || 0));
-  lines.push("  cached tokens:       " + nf.format(stats.totalCachedTokens || 0));
-  lines.push("  est. cost:        $" + (stats.totalCost || 0).toFixed(2));
+  if (Number.isFinite(Number(stats.totalTokens))) {
+    lines.push("  total tokens: " + nf.format(Number(stats.totalTokens) || 0));
+  } else {
+    lines.push("  prompt tokens:     " + nf.format(stats.totalPromptTokens || 0));
+    lines.push("  completion tokens: " + nf.format(stats.totalCompletionTokens || 0));
+    lines.push("  cached tokens:      " + nf.format(stats.totalCachedTokens || 0));
+  }
+  lines.push("  est. cost: $" + (Number(stats.totalCost) || 0).toFixed(2));
 
   if (stats.byProvider && typeof stats.byProvider === "object") {
     const entries = Object.entries(stats.byProvider);
@@ -65,20 +71,83 @@ function formatGainStats(stats) {
   return lines.join("\n");
 }
 
-function messagesFromResponsesInput(input) {
-  const items = Array.isArray(input) ? input : [{ role: "user", content: input }];
-  const messages = [];
-  for (const item of items) {
-    if (item && typeof item === "object" && (item.role || item.type === "message")) {
-      messages.push({
-        role: item.role || "user",
-        content: item.content,
-      });
-    } else if (typeof item === "string") {
-      messages.push({ role: "user", content: item });
-    }
+function textFromBlocks(content, allowedTypes) {
+  if (typeof content === "string") return content.trim();
+  if (!Array.isArray(content) || content.length === 0) return null;
+
+  const parts = [];
+  for (const block of content) {
+    if (!block || typeof block !== "object" || !allowedTypes.has(block.type)) return null;
+    if (typeof block.text !== "string") return null;
+    parts.push(block.text);
   }
-  return messages;
+  return parts.join(" ").trim();
+}
+
+function textFromChatMessages(messages) {
+  if (!Array.isArray(messages) || messages.length === 0) return null;
+  const last = messages[messages.length - 1];
+  if (!last || last.role !== "user") return null;
+  return textFromBlocks(last.content, new Set(["text", "input_text"]));
+}
+
+function textFromResponsesInput(input) {
+  if (typeof input === "string") return input.trim();
+  const items = Array.isArray(input) ? input : [input];
+  if (items.length === 0) return null;
+  const last = items[items.length - 1];
+  if (typeof last === "string") return last.trim();
+  if (!last || typeof last !== "object") return null;
+  if (last.type !== undefined && last.type !== "message") return null;
+  if (last.role !== "user") return null;
+  return textFromBlocks(last.content, new Set(["input_text", "text"]));
+}
+
+function textFromGeminiContents(contents) {
+  if (!Array.isArray(contents) || contents.length === 0) return null;
+  const last = contents[contents.length - 1];
+  if (!last || last.role !== "user" || !Array.isArray(last.parts) || last.parts.length === 0) {
+    return null;
+  }
+
+  const parts = [];
+  for (const part of last.parts) {
+    if (!part || typeof part !== "object" || typeof part.text !== "string") return null;
+    if (Object.keys(part).some((key) => key !== "text")) return null;
+    parts.push(part.text);
+  }
+  return parts.join(" ").trim();
+}
+
+/**
+ * Parse an exact Ponytail command from the active final user turn.
+ * Text-only Chat Completions, Responses `input_text`, and Gemini `parts[].text`
+ * are supported. Mixed media/tool blocks and older turns deliberately fail open
+ * to the upstream request path.
+ */
+export function extractPonytailCommand(body = {}) {
+  const text = Array.isArray(body.messages)
+    ? textFromChatMessages(body.messages)
+    : body.input !== undefined
+      ? textFromResponsesInput(body.input)
+      : textFromGeminiContents(body.contents || body.request?.contents);
+
+  if (!text) return null;
+  const match = text.match(/^\/ponytail(?:-|[\t ]+)(gain|help)$/i);
+  return match ? match[1].toLowerCase() : null;
+}
+
+/** Resolve the client's requested response mode without changing protocol defaults. */
+export function resolvePonytailStream(body = {}, sourceFormat, acceptHeader = "") {
+  if (body.stream === true) return true;
+  if (body.stream === false) return false;
+  const clientPrefersJson = acceptHeader.includes("application/json");
+  const clientPrefersSSE = acceptHeader.includes("text/event-stream");
+  if (clientPrefersSSE && !clientPrefersJson) return true;
+  if (clientPrefersJson && !clientPrefersSSE) return false;
+  return !(sourceFormat === FORMATS.OPENAI_RESPONSES
+    || sourceFormat === FORMATS.OPENAI_RESPONSE
+    || sourceFormat === FORMATS.CODEX);
 }
 
 /**
@@ -88,31 +157,7 @@ function messagesFromResponsesInput(input) {
  * `/ponytail-gain`. This keeps the hot path cheap for normal requests.
  */
 export async function handlePonytailCommands(body, model, { fetchStats, helpText, sourceFormatOverride, streamOverride } = {}) {
-  // Extract messages from Responses API bodies if they were not pre-converted.
-  const messages = body.messages?.length ? body.messages : body.input ? messagesFromResponsesInput(body.input) : null;
-  if (!messages?.length) return null;
-
-  const getText = (content) => {
-    if (typeof content === "string") return content.trim();
-    if (Array.isArray(content)) return content.filter(c => c.type === "text").map(c => c.text).join(" ").trim();
-    return "";
-  };
-
-  const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
-  if (!lastUserMsg) return null;
-
-  const lastText = getText(lastUserMsg.content);
-  if (!lastText) return null;
-
-  const lowerText = lastText.toLowerCase();
-  let command = null;
-
-  if (lowerText === "/ponytail-gain" || lowerText === "/ponytail gain") {
-    command = "gain";
-  } else if (lowerText === "/ponytail-help" || lowerText === "/ponytail help") {
-    command = "help";
-  }
-
+  const command = extractPonytailCommand(body);
   if (!command) return null;
 
   let text;
@@ -127,11 +172,9 @@ export async function handlePonytailCommands(body, model, { fetchStats, helpText
   }
 
   const sourceFormat = sourceFormatOverride || detectFormat(body);
-  const stream = streamOverride ?? (body.stream !== false);
+  const stream = streamOverride ?? resolvePonytailStream(body, sourceFormat);
 
-  return stream
-    ? createStreamingResponse(sourceFormat, model, text)
-    : createNonStreamingResponse(sourceFormat, model, text);
+  return createSyntheticResponse({ sourceFormat, model, text, stream });
 }
 
 export { DEFAULT_PONYTAIL_HELP };

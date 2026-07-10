@@ -13,7 +13,7 @@ import { PROVIDERS } from "../config/providers.js";
 import { createErrorResult, parseUpstreamError, formatProviderError } from "../utils/error.js";
 import { HTTP_STATUS, VALIDATE_OUTBOUND } from "../config/runtimeConfig.js";
 import { handleBypassRequest } from "../utils/bypassHandler.js";
-import { handlePonytailCommands, DEFAULT_PONYTAIL_HELP } from "../utils/tokenSaverBridge.js";
+import { handlePonytailCommands, DEFAULT_PONYTAIL_HELP, resolvePonytailStream } from "../utils/tokenSaverBridge.js";
 import { trackPendingRequest, appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { acquireSlot, releaseSlot, getConcurrencyLimit, ConcurrencyGateTimeoutError } from "../services/concurrencyGate.js";
 
@@ -96,7 +96,7 @@ export function shouldStripOrphanedToolResults(format) {
  * @param {object} options.credentials - Provider credentials
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit }) {
+export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, skipPonytailCommands = false }) {
   const { provider, model: requestedModel } = modelInfo;
   const requestStartTime = Date.now();
   const requestContext = captureRequestContext(body, clientRawRequest);
@@ -109,20 +109,17 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const acceptHeader = clientRawRequest?.headers?.accept || "";
   const clientPrefersJson = acceptHeader.includes("application/json");
   const clientPrefersSSE = acceptHeader.includes("text/event-stream");
-  // Honor explicit stream:false and header-driven non-streaming requests.
-  const ponytailStream =
-    body.stream === true ? true :
-    body.stream === false ? false :
-    !(clientPrefersJson && !clientPrefersSSE);
-  const ponytailResponse = await handlePonytailCommands(body, model, {
-    // /ponytail-gain is intentionally not wired to global stats in the chat
-    // path to avoid exposing aggregate usage/cost to any API-key holder.
-    fetchStats: null,
-    helpText: DEFAULT_PONYTAIL_HELP,
-    sourceFormatOverride: sourceFormat,
-    streamOverride: ponytailStream,
-  });
-  if (ponytailResponse) return ponytailResponse;
+  if (!skipPonytailCommands) {
+    const ponytailResponse = await handlePonytailCommands(body, requestedModel, {
+      // Worker/core fallbacks have no authenticated API-key record, so gain
+      // deliberately returns the dashboard hint instead of aggregate stats.
+      fetchStats: null,
+      helpText: DEFAULT_PONYTAIL_HELP,
+      sourceFormatOverride: sourceFormat,
+      streamOverride: resolvePonytailStream(body, sourceFormat, acceptHeader),
+    });
+    if (ponytailResponse) return ponytailResponse;
+  }
 
   // Check for bypass patterns (warmup, skip, cc naming)
   const bypassResponse = handleBypassRequest(body, requestedModel, userAgent, ccFilterNaming);

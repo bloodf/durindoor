@@ -1,88 +1,125 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
+import "../translator/registerAll.js";
+import { FORMATS } from "../../open-sse/translator/formats.js";
+import { createSyntheticResponse } from "../../open-sse/utils/bypassResponse.js";
 
-vi.mock("../../open-sse/translator/index.js", () => ({
-  translateResponse: vi.fn((from, to, chunk) => {
-    // Simulate a buggy translator that returns [null] on flush.
-    if (chunk === null) return [null];
-    return [chunk];
-  }),
-  initState: vi.fn(() => ({})),
-}));
-vi.mock("../../open-sse/translator/formats.js", () => ({
-  FORMATS: { OPENAI: "openai", OPENAI_RESPONSES: "openai-responses", CLAUDE: "claude" },
-}));
-vi.mock("../../open-sse/utils/stream.js", () => ({
-  formatSSE: vi.fn((chunk) => (chunk == null ? null : `data: ${JSON.stringify(chunk)}\n\n`)),
-}));
+async function jsonResponse(sourceFormat) {
+  const { response } = createSyntheticResponse({
+    sourceFormat,
+    model: "demo-model",
+    text: "hello world",
+    stream: false,
+  });
+  return { response, body: await response.json() };
+}
 
-const { mergeChunksToResponse, createNonStreamingResponse, createStreamingResponse } = await import("../../open-sse/utils/bypassResponse.js");
+async function streamResponse(sourceFormat) {
+  const { response } = createSyntheticResponse({
+    sourceFormat,
+    model: "demo-model",
+    text: "hello world",
+    stream: true,
+  });
+  return { response, text: await response.text() };
+}
 
-describe("createNonStreamingResponse", () => {
-  it("returns a Chat Completions JSON response for openai sourceFormat", async () => {
-    const { response } = await createNonStreamingResponse("openai", "demo", "hello");
-    const body = await response.json();
-    expect(body.object).toBe("chat.completion");
-    expect(body.choices[0].message.content).toBe("hello");
+function dataPayloads(text) {
+  return text
+    .split("\n")
+    .filter((line) => line.startsWith("data: ") && line !== "data: [DONE]")
+    .map((line) => JSON.parse(line.slice(6)));
+}
+
+describe("createSyntheticResponse JSON", () => {
+  it("projects OpenAI Chat Completions", async () => {
+    const { response, body } = await jsonResponse(FORMATS.OPENAI);
     expect(response.headers.get("Content-Type")).toBe("application/json");
+    expect(body).toMatchObject({
+      object: "chat.completion",
+      model: "demo-model",
+      choices: [{ message: { content: "hello world" }, finish_reason: "stop" }],
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+    });
   });
 
-  it("returns a Responses API JSON object for openai-responses sourceFormat", async () => {
-    const { response } = await createNonStreamingResponse("openai-responses", "demo", "hello");
-    const body = await response.json();
-    expect(body.object).toBe("response");
-    expect(body.output[0].content[0].text).toBe("hello");
-    expect(response.headers.get("Content-Type")).toBe("application/json");
-  });
-});
-
-describe("createStreamingResponse", () => {
-  it("emits valid OpenAI SSE frames for openai sourceFormat", async () => {
-    const { response } = await createStreamingResponse("openai", "demo", "hello");
-    const text = await response.text();
-    const lines = text.trim().split("\n").filter(Boolean);
-    expect(lines[0]).toContain("data: {");
-    expect(lines.some(l => l.includes("[DONE]"))).toBe(true);
-    expect(text).not.toContain("data: null");
+  it("projects a native Responses object with model and usage", async () => {
+    const { body } = await jsonResponse(FORMATS.OPENAI_RESPONSES);
+    expect(body).toMatchObject({
+      object: "response",
+      model: "demo-model",
+      status: "completed",
+      output: [{ content: [{ type: "output_text", text: "hello world" }] }],
+      usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+    });
+    expect(body.choices).toBeUndefined();
   });
 
-  it("emits OpenAI SSE frames for openai-responses sourceFormat", async () => {
-    const { response } = await createStreamingResponse("openai-responses", "demo", "hello");
-    const text = await response.text();
-    expect(response.headers.get("Content-Type")).toBe("text/event-stream");
-    expect(text).toContain("data: {");
-    expect(text).toContain("data: [DONE]");
-    expect(text).not.toContain("data: null");
+  it("projects a complete Claude message", async () => {
+    const { body } = await jsonResponse(FORMATS.CLAUDE);
+    expect(body).toMatchObject({
+      type: "message",
+      model: "demo-model",
+      content: [{ type: "text", text: "hello world" }],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 1, output_tokens: 1 },
+    });
   });
-});
-describe("mergeChunksToResponse", () => {
-  it("reconstructs non-streaming Claude message content from translated chunks", () => {
-    const chunks = [
-      {
-        type: "message_start",
-        message: {
-          id: "msg_1",
-          type: "message",
-          role: "assistant",
-          model: "demo",
-          content: [],
-          stop_reason: null,
-          stop_sequence: null,
-          usage: { input_tokens: 1, cache_read_input_tokens: 2 },
-        },
+
+  it.each([FORMATS.GEMINI, FORMATS.GEMINI_CLI, FORMATS.ANTIGRAVITY, FORMATS.VERTEX])("projects a complete %s response", async (format) => {
+    const { body } = await jsonResponse(format);
+    expect(body.response).toMatchObject({
+      candidates: [{
+        content: { role: "model", parts: [{ text: "hello world" }] },
+        finishReason: "STOP",
+      }],
+      modelVersion: "demo-model",
+      usageMetadata: {
+        promptTokenCount: 1,
+        candidatesTokenCount: 1,
+        totalTokenCount: 2,
       },
-      { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
-      { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "hello world" } },
-      { type: "content_block_stop", index: 0 },
-      { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 3 } },
-      { type: "message_stop" },
-    ];
+    });
+  });
+});
 
-    const result = mergeChunksToResponse(chunks, "claude");
+describe("createSyntheticResponse SSE", () => {
+  it("uses Chat Completions frames and [DONE] only for OpenAI", async () => {
+    const { response, text } = await streamResponse(FORMATS.OPENAI);
+    expect(response.headers.get("Content-Type")).toBe("text/event-stream");
+    expect(text).toContain('"content":"hello world"');
+    expect(text).toContain("data: [DONE]\n\n");
+    expect(text).not.toContain("data: null");
+  });
 
-    expect(result.type).toBe("message");
-    expect(result.role).toBe("assistant");
-    expect(result.content).toEqual([{ type: "text", text: "hello world" }]);
-    expect(result.stop_reason).toBe("end_turn");
-    expect(result.usage).toEqual({ input_tokens: 1, cache_read_input_tokens: 2, output_tokens: 3 });
+  it("uses native named Responses events with model and usage", async () => {
+    const { text } = await streamResponse(FORMATS.OPENAI_RESPONSES);
+    expect(text).toContain("event: response.created");
+    expect(text).toContain("event: response.output_text.delta");
+    expect(text).toContain("event: response.completed");
+    expect(text).toContain('"model":"demo-model"');
+    expect(text).toContain('"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2');
+    expect(text).not.toContain('"choices"');
+    expect(text).not.toContain("[DONE]");
+    expect(text).not.toContain("data: null");
+  });
+
+  it("uses Claude events ending at message_stop", async () => {
+    const { text } = await streamResponse(FORMATS.CLAUDE);
+    expect(text).toContain("event: message_start");
+    expect(text).toContain('"type":"text_delta","text":"hello world"');
+    expect(text).toContain("event: message_stop");
+    expect(text).not.toContain("[DONE]");
+    expect(text).not.toContain("data: null");
+  });
+
+  it.each([FORMATS.GEMINI, FORMATS.GEMINI_CLI, FORMATS.ANTIGRAVITY, FORMATS.VERTEX])("uses native %s frames ending at finishReason", async (format) => {
+    const { text } = await streamResponse(format);
+    const payloads = dataPayloads(text);
+    expect(payloads.some((item) => item.response?.candidates?.[0]?.content?.parts?.[0]?.text === "hello world")).toBe(true);
+    expect(payloads.some((item) => item.response?.candidates?.[0]?.finishReason === "STOP")).toBe(true);
+    expect(payloads.some((item) => item.response?.modelVersion === "demo-model")).toBe(true);
+    expect(payloads.some((item) => item.response?.usageMetadata?.totalTokenCount === 2)).toBe(true);
+    expect(text).not.toContain("[DONE]");
+    expect(text).not.toContain("data: null");
   });
 });

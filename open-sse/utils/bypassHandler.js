@@ -1,6 +1,6 @@
 import { detectFormat } from "../services/provider.js";
 import { SKIP_PATTERNS } from "../config/runtimeConfig.js";
-import { createNonStreamingResponse, createStreamingResponse } from "./bypassResponse.js";
+import { createSyntheticResponse } from "./bypassResponse.js";
 
 /**
  * Check for bypass patterns - return fake response without calling provider
@@ -79,13 +79,8 @@ export function handleBypassRequest(body, model, userAgent = "", ccFilterNaming 
     const userText = getText(userMsg?.content);
     const title = userText.trim().split(/\s+/).slice(0, 3).join(" ");
     const namingText = JSON.stringify({ isNewTopic: true, title });
-    return stream
-      ? createStreamingResponse(sourceFormat, model, namingText)
-      : createNonStreamingResponse(sourceFormat, model, namingText);
+    return createSyntheticResponse({ sourceFormat, model, text: namingText, stream });
   }
 
-  return stream 
-    ? createStreamingResponse(sourceFormat, model)
-    : createNonStreamingResponse(sourceFormat, model);
+  return createSyntheticResponse({ sourceFormat, model, stream });
 }
-

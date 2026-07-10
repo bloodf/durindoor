@@ -18,6 +18,9 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
   if (!chunk) {
     return flushEvents(state);
   }
+
+  if (chunk.model) state.model = chunk.model;
+  if (chunk.usage && typeof chunk.usage === "object") state.usage = chunk.usage;
   
   if (!chunk.choices?.length) return [];
   
@@ -44,6 +47,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
         id: state.responseId,
         object: "response",
         created_at: state.created,
+        model: state.model || MODEL_FALLBACK,
         status: "in_progress",
         background: false,
         error: null,
@@ -57,6 +61,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
         id: state.responseId,
         object: "response",
         created_at: state.created,
+        model: state.model || MODEL_FALLBACK,
         status: "in_progress"
       }
     });
@@ -336,6 +341,7 @@ function sendCompleted(state, emit) {
         id: state.responseId,
         object: "response",
         created_at: state.created,
+        model: state.model || MODEL_FALLBACK,
         status: "completed",
         background: false,
         error: null,

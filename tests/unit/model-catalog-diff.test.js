@@ -244,10 +244,13 @@ describe("comparisonReport", () => {
     await expect(comparisonReport("definitely-not-a-ref-xyz", null)).rejects.toThrow(/ref not found/);
   });
 
+  // The live-tree path spawns Git and extracts the full provider catalog. It is
+  // normally fast in isolation but can exceed Vitest's 5 s default while the
+  // complete suite is saturating workers, so keep a bounded integration budget.
   it("renders pinned HEAD SHA and table header against the live tree", async () => {
     const md = await comparisonReport(null, null);
     expect(md).toMatch(/# Model Catalog Report/);
     expect(md).toMatch(/ours \(HEAD\): `[0-9a-f]{40}`/);
     expect(md).toMatch(/\| model id \| ours \| upstream \| omniroute \|/);
-  });
+  }, 15_000);
 });

@@ -3887,8 +3887,8 @@ exports[`GOLDEN buildUrl (default executor providers) > gitlawb → url (stream 
 
 exports[`GOLDEN buildUrl (default executor providers) > gitlawb-gmi → url (stream + non-stream) 1`] = `
 {
-  "nonStream": "https://opengateway.gitlawb.com/v1/chat/completions",
-  "stream": "https://opengateway.gitlawb.com/v1/chat/completions",
+  "nonStream": "https://opengateway.gitlawb.com/v1/gmi-cloud/chat/completions",
+  "stream": "https://opengateway.gitlawb.com/v1/gmi-cloud/chat/completions",
 }
 `;
 

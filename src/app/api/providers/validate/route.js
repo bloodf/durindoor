@@ -823,6 +823,7 @@ export async function POST(request) {
             return NextResponse.json({ error: "Provider validation not supported" }, { status: 400 });
           }
           isValid = registryResult.valid;
+          if (!isValid && registryResult.error) error = registryResult.error;
           break;
         }
       }

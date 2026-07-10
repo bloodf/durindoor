@@ -1037,7 +1037,12 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           (url, options) => fetchWithConnectionProxy(url, options, effectiveProxy),
           connection.providerSpecificData || {},
         );
-        if (result) return { valid: result.valid, error: result.valid ? null : "Invalid API key" };
+        if (result) {
+          return {
+            valid: result.valid,
+            error: result.valid ? null : (result.error || "Invalid API key"),
+          };
+        }
         return { valid: false, error: "Provider test not supported" };
       }
     }

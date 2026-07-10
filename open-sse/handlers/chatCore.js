@@ -34,6 +34,16 @@ import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { stripUnsupportedModalities } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
 
+/**
+ * Whether a request targets the Codex compact-responses endpoint.
+ * Strips the query string and hash, removes trailing slashes, and tests the
+ * path against the canonical `/v1/responses/compact` suffix so equivalent
+ * spellings (`.../compact/`, `.../compact?x=1`) all match. Non-string /
+ * empty input never matches.
+ *
+ * @param {string} [endpoint] Request endpoint (path or absolute URL).
+ * @returns {boolean} `true` when the endpoint is `/v1/responses/compact`.
+ */
 function isCompactResponsesEndpoint(endpoint) {
   const path = String(endpoint || "").split(/[?#]/, 1)[0].replace(/\/+$/, "");
   return path.endsWith("/v1/responses/compact");

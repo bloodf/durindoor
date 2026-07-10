@@ -46,11 +46,32 @@ const CODEX_LITE_METADATA_MAX_BYTES = 16_384;
 const CODEX_LITE_USER_AGENT_RE = /^codex(?:_cli_rs|_exec|-cli)\//i;
 const CODEX_LITE_ORIGINATOR_RE = /^[A-Za-z0-9_.-]{1,128}$/;
 
+/**
+ * Whether the inbound request opted into the Codex Responses Lite transport.
+ * The client sets the `x-openai-internal-codex-responses-lite` header to the
+ * literal string `"true"`; the comparison is case-insensitive and tolerates
+ * surrounding whitespace. Missing header or any other value means "off".
+ *
+ * @param {object} [requestContext] Immutable per-request context carrying `clientHeaders`.
+ * @returns {boolean} `true` when Responses Lite is explicitly requested.
+ */
 function usesResponsesLite(requestContext) {
   const value = requestContext?.clientHeaders?.[CODEX_RESPONSES_LITE_HEADER];
   return String(value || "").trim().toLowerCase() === "true";
 }
 
+/**
+ * Forward the Responses Lite allowlist onto an outbound `headers` object.
+ * No-op unless {@link usesResponsesLite} is true for the request, so the
+ * lite transport never leaks onto ordinary requests. Copies the marker header,
+ * allowlisted metadata headers (skipped when absent, non-string, or over the
+ * length cap), and forwards the Codex CLI `User-Agent` / `originator` only when
+ * they match the expected shapes. Mutates `headers` in place.
+ *
+ * @param {Record<string, string>} headers Destination headers object to populate.
+ * @param {object} [requestContext] Immutable per-request context carrying `clientHeaders`.
+ * @returns {void}
+ */
 function copyResponsesLiteHeaders(headers, requestContext) {
   if (!usesResponsesLite(requestContext)) return;
   const clientHeaders = requestContext?.clientHeaders || {};
@@ -81,6 +102,15 @@ const COMPACT_API_ALLOWLIST = new Set([
   "service_tier", "prompt_cache_key", "text"
 ]);
 
+/**
+ * Split a streaming chunk buffer into complete SSE frames plus a trailing
+ * remainder. Frames are separated by a blank line (`\r?\n\r?\n`); any bytes
+ * after the last delimiter are returned as `remainder` so the caller can
+ * prepend them to the next chunk without inspecting partial data.
+ *
+ * @param {string} buffer Accumulated raw SSE text that may contain a partial final frame.
+ * @returns {{frames: string[], remainder: string}} Complete frames and the unterminated tail.
+ */
 function extractCompleteSseFrames(buffer) {
   const frames = [];
   const delimiter = /\r?\n\r?\n/g;
@@ -93,15 +123,40 @@ function extractCompleteSseFrames(buffer) {
   return { frames, remainder: buffer.slice(cursor) };
 }
 
+/**
+ * Canonicalize an SSE event name for case-insensitive comparison.
+ * Non-string inputs collapse to the empty string rather than throwing.
+ *
+ * @param {unknown} value Raw `event` field (or payload `type`/`event`) value.
+ * @returns {string} Trimmed, lowercased name, or `""` for non-strings.
+ */
 function normalizeEventName(value) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
 
+/**
+ * Recognize explicit error event names.
+ * Matches the bare `error` event and any name ending with `.error`
+ * (e.g. `response.error`).
+ *
+ * @param {unknown} value Candidate event name (raw `event`/`type` field).
+ * @returns {boolean} `true` when the value names an explicit error event.
+ */
 function isExplicitErrorEvent(value) {
   const name = normalizeEventName(value);
   return name === "error" || name.endsWith(".error");
 }
 
+/**
+ * Return the first `patterns` entry that appears as a substring of any value.
+ * Comparison is case-insensitive; `values` are coerced to strings so `null` /
+ * `undefined` entries simply never match. Used to classify an SSE error frame
+ * as retryable vs account-rotating from a list of message substrings.
+ *
+ * @param {unknown[]} values Candidate strings to search (e.g. error messages).
+ * @param {string[]} patterns Lowercased substrings to look for, in priority order.
+ * @returns {string|null} The matching pattern, or `null` when none match.
+ */
 function firstPattern(values, patterns) {
   const lowered = values.map((value) => String(value || "").toLowerCase());
   return patterns.find((pattern) => lowered.some((value) => value.includes(pattern))) || null;

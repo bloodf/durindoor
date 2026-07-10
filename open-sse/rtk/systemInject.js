@@ -6,6 +6,15 @@ import { FORMATS } from "../translator/formats.js";
 
 const SEP = "\n\n";
 
+/**
+ * Whether `prompt` is already present in `content`, keyed off its first 100
+ * trimmed characters. Returns `false` when `prompt` is empty or non-string.
+ * `content` is assumed to be a string by callers.
+ *
+ * @param {string} content Existing system text to inspect.
+ * @param {string} prompt Prompt candidate about to be injected.
+ * @returns {boolean} `true` when the prompt signature is already present.
+ */
 function isPromptAlreadyInjected(content, prompt) {
   if (!content || !prompt) return false;
   const needle = typeof prompt === 'string' ? prompt.trim() : '';

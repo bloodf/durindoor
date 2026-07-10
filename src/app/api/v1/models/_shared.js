@@ -43,6 +43,15 @@ function toAnthropicModel(m) {
   };
 }
 
+/**
+ * Serialize the Anthropic `/v1/models` paginated envelope. The catalog is small
+ * and returned in full, so `has_more` is always `false`; `first_id`/`last_id`
+ * bound the page (both `null` on an empty catalog) per the List shape contract.
+ *
+ * @param {object[]} data Internal model records to project via {@link toAnthropicModel}.
+ * @param {Record<string, string>} headers Response headers to forward (CORS).
+ * @returns {Response} JSON `200` envelope.
+ */
 function buildAnthropicModelsResponse(data, headers) {
   const ids = data
     .map((m) => (typeof m.id === "string" ? m.id : null))

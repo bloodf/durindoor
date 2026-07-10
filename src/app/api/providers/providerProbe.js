@@ -2,6 +2,7 @@ import { getDefaultModel, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerM
 import { PROVIDERS } from "open-sse/config/providers.js";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
+import { assertOutboundUrlAllowed, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 
 const AUTH_FAILURE_STATUSES = new Set([401, 403]);
 const CHAT_PROBE_ACCEPT_STATUSES = new Set([400, 422, 429]);
@@ -161,6 +162,26 @@ export async function probeRegistryProvider(provider, apiKey, fetcher = fetch, p
   const probe = buildRegistryProviderProbe(provider, apiKey, providerSpecificData);
   if (!probe) return null;
   if (probe.accepts === "always") return { valid: true, status: 200 };
+
+  // SSRF guard (#6542): provider validation hits a caller-controllable baseUrl
+  // (e.g. OpenAI-compatible `${baseUrl}/models` + the chat fallback). Validate
+  // BOTH URLs before any socket opens, and forbid 3xx redirects so a provider
+  // cannot redirect the probe to cloud-metadata past the initial-URL check.
+  const guard = getProviderValidationGuard();
+  try {
+    assertOutboundUrlAllowed(probe.url, guard);
+    if (probe.fallback?.url) assertOutboundUrlAllowed(probe.fallback.url, guard);
+  } catch (err) {
+    return {
+      valid: false,
+      status: null,
+      error: err?.message || "Provider URL blocked by SSRF guard",
+      blocked: true,
+    };
+  }
+  const noRedirect = { redirect: "manual" };
+  probe.options = { ...probe.options, ...noRedirect };
+  if (probe.fallback?.options) probe.fallback.options = { ...probe.fallback.options, ...noRedirect };
 
   let res;
   try {

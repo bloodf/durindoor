@@ -9,6 +9,14 @@ import { buildZenmuxAnthropicBody, extractZenmuxCtoken, normalizeZenmuxCookie, Z
 import { normalizeProviderId } from "@/lib/providerNormalization";
 import { resolveConnectionParams } from "open-sse/executors/copilot-m365-connection.js";
 import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
+import { guardedProbeFetch, assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
+
+function guardBlockedResponse(err) {
+  return NextResponse.json(
+    { valid: false, error: err?.message || "Provider URL blocked by SSRF guard", blocked: true },
+    { status: 403 },
+  );
+}
 
 function applyConfiguredAuthHeader(headers, cfg, apiKey) {
   const auth = cfg?.auth;
@@ -32,12 +40,13 @@ export async function probeNoAuthLocalProvider(baseUrl, apiKey = undefined) {
     .replace(/\/api\/chat$/, "");
   if (!normalized) return { valid: false, error: "Base URL required for no-auth provider" };
   try {
-    const res = await fetch(`${normalized}/models`, {
+    const res = await guardedProbeFetch(`${normalized}/models`, {
       ...(apiKey ? { headers: { Authorization: `Bearer ${apiKey}` } } : {}),
       signal: AbortSignal.timeout(8000),
     });
     return { valid: res.ok, error: res.ok ? null : "Endpoint unreachable or rejected" };
   } catch (err) {
+    if (err instanceof OutboundUrlGuardError) return { valid: false, error: err.message, blocked: true };
     return { valid: false, error: err.message };
   }
 }
@@ -166,9 +175,15 @@ export async function POST(request) {
           return NextResponse.json({ error: "OpenAI Compatible node not found" }, { status: 404 });
         }
         const modelsUrl = `${node.baseUrl?.replace(/\/$/, "")}/models`;
-        const res = await fetch(modelsUrl, {
-          headers: { "Authorization": `Bearer ${apiKey}` },
-        });
+        let res;
+        try {
+          res = await guardedProbeFetch(modelsUrl, {
+            headers: { "Authorization": `Bearer ${apiKey}` },
+          });
+        } catch (err) {
+          if (err instanceof OutboundUrlGuardError) return guardBlockedResponse(err);
+          throw err;
+        }
         isValid = res.ok;
         return NextResponse.json({
           valid: isValid,
@@ -183,8 +198,21 @@ export async function POST(request) {
           return NextResponse.json({ error: "Custom Embedding node not found" }, { status: 404 });
         }
         const baseUrl = node.baseUrl?.replace(/\/$/, "");
-        const modelsRes = await fetch(`${baseUrl}/models`, {
+        const modelsUrl = `${baseUrl}/models`;
+        const embedUrl = `${baseUrl}/embeddings`;
+        // Validate BOTH URLs before any socket opens (#6542): a provider that
+        // lacks /models falls through to /embeddings, so both must pass the
+        // SSRF guard up front (the guard also forces redirect:"manual").
+        try {
+          assertOutboundUrlAllowed(modelsUrl);
+          assertOutboundUrlAllowed(embedUrl);
+        } catch (err) {
+          if (err instanceof OutboundUrlGuardError) return guardBlockedResponse(err);
+          throw err;
+        }
+        const modelsRes = await fetch(modelsUrl, {
           headers: { "Authorization": `Bearer ${apiKey}` },
+          redirect: "manual",
         });
         if (modelsRes.ok) {
           return NextResponse.json({ valid: true });
@@ -194,10 +222,11 @@ export async function POST(request) {
           return NextResponse.json({ valid: false, error: "Invalid API key" });
         }
         // Fallback: probe /embeddings with a common test model — many providers lack /models
-        const embedRes = await fetch(`${baseUrl}/embeddings`, {
+        const embedRes = await fetch(embedUrl, {
           method: "POST",
           headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({ model: "test", input: "ping" }),
+          redirect: "manual",
         });
         // 401/403 = bad key; anything else (including 400 "model not found") means key works
         isValid = embedRes.status !== 401 && embedRes.status !== 403;
@@ -221,20 +250,26 @@ export async function POST(request) {
         const messagesUrl = `${normalizedBase}/v1/messages`;
         const model = node.defaultModel || "claude-3-haiku-20240307";
 
-        const res = await fetch(messagesUrl, {
-          method: "POST",
-          headers: {
-            "x-api-key": apiKey,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-            "Authorization": `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model,
-            max_tokens: 1,
-            messages: [{ role: "user", content: "test" }],
-          }),
-        });
+        let res;
+        try {
+          res = await guardedProbeFetch(messagesUrl, {
+            method: "POST",
+            headers: {
+              "x-api-key": apiKey,
+              "anthropic-version": "2023-06-01",
+              "content-type": "application/json",
+              "Authorization": `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+              model,
+              max_tokens: 1,
+              messages: [{ role: "user", content: "test" }],
+            }),
+          });
+        } catch (err) {
+          if (err instanceof OutboundUrlGuardError) return guardBlockedResponse(err);
+          throw err;
+        }
 
         // 400/529 still confirms key accepted; only 401/403 = bad key
         isValid = res.status !== 401 && res.status !== 403;
@@ -323,14 +358,21 @@ export async function POST(request) {
         };
         if (organization) headers["OpenAI-Organization"] = organization;
 
-        const azureRes = await fetch(url, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            messages: [{ role: "user", content: "test" }],
-            max_tokens: 1,
-          }),
-        });
+        // SSRF guard (#6542): azureEndpoint is fully caller-controllable.
+        let azureRes;
+        try {
+          azureRes = await guardedProbeFetch(url, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              messages: [{ role: "user", content: "test" }],
+              max_tokens: 1,
+            }),
+          });
+        } catch (err) {
+          if (err instanceof OutboundUrlGuardError) return guardBlockedResponse(err);
+          throw err;
+        }
         isValid = azureRes.status !== 401 && azureRes.status !== 403;
         return NextResponse.json({
           valid: isValid,

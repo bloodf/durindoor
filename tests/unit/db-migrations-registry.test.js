@@ -3,6 +3,7 @@ import { MIGRATIONS, latestVersion } from "../../src/lib/db/migrations/index.js"
 import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { SCHEMA_VERSION } from "../../src/lib/db/schema.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDir = path.resolve(__dirname, "../../src/lib/db/migrations");
@@ -24,5 +25,14 @@ describe("db migrations registry", () => {
   it("latestVersion equals the highest registered version", () => {
     const max = Math.max(...MIGRATIONS.map((m) => m.version));
     expect(latestVersion()).toBe(max);
+    expect(SCHEMA_VERSION).toBe(max);
+  });
+
+  it("keeps the published v4 daily-limit, v5 expiry, and v6 policy sequence", () => {
+    expect(MIGRATIONS.slice(-3).map(({ version, name }) => [version, name])).toEqual([
+      [4, "add-daily-token-limit-to-api-keys"],
+      [5, "api-key-expiry"],
+      [6, "api-key-policy"],
+    ]);
   });
 });

@@ -14,7 +14,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
   const [loading, setLoading] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [sudoPassword, setSudoPassword] = useState("");
-  const [selectedApiKey, setSelectedApiKey] = useState(() => apiKeys?.[0]?.key || "");
+  const [selectedApiKey, setSelectedApiKey] = useState("");
   const [pendingAction, setPendingAction] = useState(null);
   const [modalError, setModalError] = useState(null);
   const [actionError, setActionError] = useState(null);
@@ -72,7 +72,6 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
         });
       } else if (action === "start") {
         const keyToUse = selectedApiKey?.trim()
-          || (apiKeys?.length > 0 ? apiKeys[0].key : null)
           || (!cloudEnabled ? "sk_durindoor" : null);
         res = await fetch("/api/cli-tools/antigravity-mitm", {
           method: "POST",
@@ -188,19 +187,17 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
                 <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">API Key</span>
                 <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
                 <input
-                  type="text"
-                  list="mitm-api-keys"
+                  type="password"
                   value={selectedApiKey}
                   onChange={(e) => setSelectedApiKey(e.target.value)}
-                  placeholder={cloudEnabled ? "Enter or pick API key" : "sk_durindoor (default)"}
+                  autoComplete="off"
+                  placeholder={cloudEnabled ? "Paste the API key secret" : "sk_durindoor (default)"}
                   className="flex-1 min-w-0 px-2 py-1.5 bg-surface rounded border border-border text-xs text-text-main focus:outline-none focus:ring-1 focus:ring-primary/50"
                 />
                 {apiKeys?.length > 0 && (
-                  <datalist id="mitm-api-keys">
-                    {apiKeys.map((key) => (
-                      <option key={key.id} value={key.key}>{key.name || key.key}</option>
-                    ))}
-                  </datalist>
+                  <span className="text-[11px] text-text-muted sm:col-start-3">
+                    Managed keys: {apiKeys.map((key) => `${key.name || "Key"} (${key.maskedKey || "***"})`).join(", ")}. Paste a saved secret to use one.
+                  </span>
                 )}
               </div>
             )}

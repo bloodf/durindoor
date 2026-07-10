@@ -1,4 +1,5 @@
-import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings, getProxyPools } from "@/lib/localDb";
+import { getProviderConnections, getApiKeyByKey, validateApiKey, updateProviderConnection, getSettings, getProxyPools } from "@/lib/localDb";
+import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
 import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
@@ -410,4 +411,26 @@ export function extractApiKey(request) {
 export async function isValidApiKey(apiKey) {
   if (!apiKey) return false;
   return await validateApiKey(apiKey);
+}
+
+/**
+ * Evaluate a caller credential before any model/provider work.
+ *
+ * Local mode still permits an unknown placeholder credential for compatibility,
+ * but once a credential matches a stored row it must be active and unexpired.
+ * This prevents an expired or malformed stored key from becoming a policy/usage
+ * identity when global API-key enforcement is disabled.
+ */
+export async function evaluateApiKeyAuth(apiKey, { required = false, now = Date.now() } = {}) {
+  if (!apiKey) {
+    return { ok: !required, reason: required ? "missing" : null, stored: false };
+  }
+
+  const record = await getApiKeyByKey(apiKey);
+  if (!record) {
+    return { ok: !required, reason: required ? "invalid" : null, stored: false };
+  }
+
+  const valid = record.isActive === true && !isApiKeyExpired(record.expiresAt, now);
+  return { ok: valid, reason: valid ? null : "invalid", stored: true };
 }

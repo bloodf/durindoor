@@ -291,6 +291,11 @@ async function createApiKey(name, expiresAt = null) {
   return makeRequest("POST", "/api/keys", { name, expiresAt });
 }
 
+/** Update mutable API-key management fields without retrieving its secret. */
+async function updateApiKey(id, data) {
+  return makeRequest("PUT", `/api/keys/${id}`, data);
+}
+
 /**
  * Delete API key
  * @param {string} id - Key ID
@@ -516,6 +521,7 @@ module.exports = {
   // API Keys
   getApiKeys,
   createApiKey,
+  updateApiKey,
   deleteApiKey,
   
   // Combos

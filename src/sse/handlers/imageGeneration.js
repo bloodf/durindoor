@@ -3,7 +3,7 @@ import {
   markAccountUnavailable,
   clearAccountError,
   extractApiKey,
-  isValidApiKey,
+  evaluateApiKeyAuth,
 } from "../services/auth.js";
 import { getSettings, getApiKeyByKey } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
@@ -38,11 +38,11 @@ export async function handleImageGeneration(request) {
 
   const apiKey = extractApiKey(request);
   const settings = await getSettings();
-  if (settings.requireApiKey) {
-    if (!apiKey) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
-    const valid = await isValidApiKey(apiKey);
-    if (!valid) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
-  }
+  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true });
+  if (!apiKeyAuth.ok) return errorResponse(
+    HTTP_STATUS.UNAUTHORIZED,
+    apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
+  );
 
   // Per-key combo access control
   if (apiKey && modelStr) {

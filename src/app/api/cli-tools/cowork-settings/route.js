@@ -8,6 +8,7 @@ import crypto from "crypto";
 import { DEFAULT_PLUGINS, LOCAL_STDIO_PLUGINS, buildManagedMcpServers } from "@/shared/constants/coworkPlugins";
 import { UPDATER_CONFIG } from "@/shared/constants/config";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
+import { redactSecrets } from "@/shared/utils/secretRedaction";
 
 const APP_PORT = UPDATER_CONFIG.appPort;
 const CLI_TOKEN_HEADER = "x-9r-cli-token";
@@ -273,7 +274,7 @@ export async function GET() {
 
     return NextResponse.json({
       installed: true,
-      config,
+      config: redactSecrets(config),
       has9Router,
       configPath,
       cowork: {

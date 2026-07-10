@@ -46,12 +46,6 @@ export default function JcodeToolCard({
   const configStatus = getConfigStatus();
 
   useEffect(() => {
-    if (apiKeys?.length > 0 && !selectedApiKey) {
-      setSelectedApiKey(apiKeys[0].key);
-    }
-  }, [apiKeys, selectedApiKey]);
-
-  useEffect(() => {
     if (initialStatus) setJcodeStatus(initialStatus);
   }, [initialStatus]);
 
@@ -81,14 +75,9 @@ export default function JcodeToolCard({
         if (provider.default_model) {
           setSelectedModel(provider.default_model);
         }
-        // Try to match API key from env file
-        const envApiKey = jcodeStatus.envApiKey;
-        if (envApiKey && apiKeys?.some(k => k.key === envApiKey)) {
-          setSelectedApiKey(envApiKey);
-        }
       }
     }
-  }, [jcodeStatus, apiKeys]);
+  }, [jcodeStatus]);
 
   const checkJcodeStatus = async () => {
     setCheckingJcode(true);
@@ -127,7 +116,6 @@ export default function JcodeToolCard({
     setMessage(null);
     try {
       const keyToUse = selectedApiKey?.trim()
-        || (apiKeys?.length > 0 ? apiKeys[0].key : null)
         || (!cloudEnabled ? "sk_durindoor" : null);
 
       const res = await fetch("/api/cli-tools/jcode-settings", {

@@ -6,6 +6,7 @@ import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { redactSecrets } from "@/shared/utils/secretRedaction";
 
 const execAsync = promisify(exec);
 
@@ -69,7 +70,7 @@ export async function GET() {
 
     return NextResponse.json({
       installed: true,
-      settings,
+      settings: redactSecrets(settings),
       has9Router: has9RouterConfig(settings),
       settingsPath: getDroidSettingsPath(),
     });
@@ -110,13 +111,14 @@ export async function POST(request) {
     if (!settings.customModels) {
       settings.customModels = [];
     }
+    const existingKey = settings.customModels.find((m) => m.id?.startsWith("custom:9Router"))?.apiKey;
 
     // Remove all existing 9Router configs
     settings.customModels = settings.customModels.filter(m => !m.id?.startsWith("custom:9Router"));
 
     // Normalize baseUrl to ensure /v1 suffix
     const normalizedBaseUrl = baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
-    const keyToUse = apiKey || "your_api_key";
+    const keyToUse = apiKey || existingKey || "your_api_key";
 
     // Determine active model: prefer explicit activeModel, else first of modelsArray
     // If activeModel is explicitly empty string, no model will be set as default

@@ -1,4 +1,4 @@
-import { getProviderCredentials, extractApiKey, isValidApiKey } from "../services/auth.js";
+import { getProviderCredentials, extractApiKey, evaluateApiKeyAuth } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { handleCountTokensCore, estimateTokens } from "open-sse/handlers/countTokensCore.js";
@@ -22,10 +22,9 @@ export async function handleCountTokens(request) {
   }
 
   const settings = await getSettings();
-  if (settings.requireApiKey) {
-    const apiKey = extractApiKey(request);
-    if (!apiKey || !(await isValidApiKey(apiKey, request))) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
-  }
+  const apiKey = extractApiKey(request);
+  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true });
+  if (!apiKeyAuth.ok) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
 
   const modelStr = body.model;
   // No model (or unresolvable) → estimate directly from the body.

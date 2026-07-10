@@ -188,7 +188,7 @@ describe("Schema migrations", () => {
         key: "sk-deadbeef",
         name: "test",
         policy: { allowedModels: ["openai/gpt-test"] },
-        expiresAt: "2030-01-01T00:00:00.000Z",
+        expiresAt: "2030-01-01T03:30:00+03:30",
         createdAt: new Date().toISOString(),
       }],
       modelAliases: { "gpt-4": "gpt-4-turbo" },
@@ -224,6 +224,132 @@ describe("Schema migrations", () => {
 
     const aliases = db.all(`SELECT * FROM kv WHERE scope='modelAliases'`);
     expect(aliases).toHaveLength(1);
+  });
+
+  it("rejects malformed legacy expiry before schema mutation and retries after correction", async () => {
+    const legacyPath = path.join(tempDir, "db.json");
+    const legacy = {
+      apiKeys: [{
+        id: "legacy-key",
+        key: "sk-deadbeef",
+        name: "Legacy",
+        expiresAt: "2030-01-01T00:00:00",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }],
+    };
+    fs.writeFileSync(legacyPath, JSON.stringify(legacy));
+
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    await expect(getAdapter()).rejects.toMatchObject({ code: "INVALID_API_KEY_EXPIRY" });
+
+    const physical = new Database(path.join(tempDir, "db", "data.sqlite"));
+    expect(physical.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='_meta'`).get()).toBeUndefined();
+    physical.close();
+    expect(fs.existsSync(legacyPath)).toBe(true);
+    expect(fs.existsSync(path.join(tempDir, "db", ".migrated-from-json"))).toBe(false);
+
+    legacy.apiKeys[0].expiresAt = "2030-01-01T03:30:00+03:30";
+    fs.writeFileSync(legacyPath, JSON.stringify(legacy));
+    const db = await getAdapter();
+    expect(db.get(`SELECT key, expiresAt FROM apiKeys WHERE id='legacy-key'`)).toEqual({
+      key: "sk-deadbeef",
+      expiresAt: "2030-01-01T00:00:00.000Z",
+    });
+  });
+
+  it.each([
+    ["expiresAt INTEGER", "incompatible type"],
+    ["expiresAt TEXT NOT NULL", "incompatible nullability"],
+  ])("rejects a stamped partial v5 schema before backup or mutation: %s", async (column, _label) => {
+    const dbDir = path.join(tempDir, "db");
+    fs.mkdirSync(dbDir, { recursive: true });
+    const seeded = new Database(path.join(dbDir, "data.sqlite"));
+    seeded.exec(`
+      CREATE TABLE _meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE apiKeys (
+        id TEXT PRIMARY KEY, key TEXT UNIQUE NOT NULL, name TEXT, machineId TEXT,
+        isActive INTEGER DEFAULT 1, allowedCombos TEXT, dailyLimitTokens INTEGER,
+        ${column}, createdAt TEXT NOT NULL
+      );
+      INSERT INTO _meta(key, value) VALUES('schemaVersion', '5');
+    `);
+    seeded.close();
+
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    await expect(getAdapter()).rejects.toThrow("Published schema mismatch");
+
+    const unchanged = new Database(path.join(dbDir, "data.sqlite"), { readonly: true });
+    expect(unchanged.prepare(`SELECT value FROM _meta WHERE key='schemaVersion'`).get().value).toBe("5");
+    expect(unchanged.prepare(`PRAGMA table_info(apiKeys)`).all().map((row) => row.name)).not.toContain("policy");
+    unchanged.close();
+    const backupDir = path.join(dbDir, "backups");
+    expect(fs.existsSync(backupDir) ? fs.readdirSync(backupDir) : []).toHaveLength(0);
+  });
+
+  it("recovers a stamped v5 database whose expiry column is missing", async () => {
+    const dbDir = path.join(tempDir, "db");
+    fs.mkdirSync(dbDir, { recursive: true });
+    const seeded = new Database(path.join(dbDir, "data.sqlite"));
+    seeded.exec(`
+      CREATE TABLE _meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE apiKeys (
+        id TEXT PRIMARY KEY, key TEXT UNIQUE NOT NULL, name TEXT, machineId TEXT,
+        isActive INTEGER DEFAULT 1, allowedCombos TEXT, dailyLimitTokens INTEGER,
+        createdAt TEXT NOT NULL
+      );
+      CREATE TABLE usageHistory (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL, provider TEXT,
+        model TEXT, connectionId TEXT, apiKey TEXT, endpoint TEXT,
+        promptTokens INTEGER DEFAULT 0, completionTokens INTEGER DEFAULT 0,
+        cost REAL DEFAULT 0, status TEXT, tokens TEXT, meta TEXT
+      );
+      INSERT INTO _meta(key, value) VALUES('schemaVersion', '5');
+      INSERT INTO apiKeys(id, key, name, isActive, allowedCombos, createdAt)
+      VALUES('key-1', 'sk-deadbeef', 'Existing', 1, '[]', '2026-01-01T00:00:00.000Z');
+    `);
+    seeded.close();
+
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const db = await getAdapter();
+    expect(db.get(`SELECT value FROM _meta WHERE key='schemaVersion'`).value).toBe("6");
+    expect(db.all(`PRAGMA table_info(apiKeys)`).map((row) => row.name)).toContain("expiresAt");
+    expect(db.get(`SELECT key, expiresAt FROM apiKeys WHERE id='key-1'`)).toEqual({
+      key: "sk-deadbeef",
+      expiresAt: null,
+    });
+  });
+
+  it("accepts and preserves a compatible expiry column left by a partial v4 migration", async () => {
+    const dbDir = path.join(tempDir, "db");
+    fs.mkdirSync(dbDir, { recursive: true });
+    const seeded = new Database(path.join(dbDir, "data.sqlite"));
+    seeded.exec(`
+      CREATE TABLE _meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE apiKeys (
+        id TEXT PRIMARY KEY, key TEXT UNIQUE NOT NULL, name TEXT, machineId TEXT,
+        isActive INTEGER DEFAULT 1, allowedCombos TEXT, dailyLimitTokens INTEGER,
+        expiresAt TEXT, createdAt TEXT NOT NULL
+      );
+      CREATE TABLE usageHistory (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL, provider TEXT,
+        model TEXT, connectionId TEXT, apiKey TEXT, endpoint TEXT,
+        promptTokens INTEGER DEFAULT 0, completionTokens INTEGER DEFAULT 0,
+        cost REAL DEFAULT 0, status TEXT, tokens TEXT, meta TEXT
+      );
+      INSERT INTO _meta(key, value) VALUES('schemaVersion', '4');
+      INSERT INTO apiKeys(id, key, name, isActive, allowedCombos, expiresAt, createdAt)
+      VALUES('key-1', 'sk-deadbeef', 'Existing', 1, '[]', '2030-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
+    `);
+    seeded.close();
+
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const db = await getAdapter();
+    expect(db.get(`SELECT value FROM _meta WHERE key='schemaVersion'`).value).toBe("6");
+    expect(db.get(`SELECT key, expiresAt FROM apiKeys WHERE id='key-1'`)).toEqual({
+      key: "sk-deadbeef",
+      expiresAt: "2030-01-01T00:00:00.000Z",
+    });
+    expect(db.all(`PRAGMA table_info(apiKeys)`).filter((row) => row.name === "expiresAt")).toHaveLength(1);
   });
 
   it("auto-sync re-creates missing index when DB lacks it", async () => {

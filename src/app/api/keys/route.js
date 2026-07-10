@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getApiKeys, createApiKey } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
+import { isApiKeyExpiryValidationError } from "@/shared/utils/apiKeyExpiry";
+import { toApiKeyManagementView } from "@/shared/utils/apiKeyManagement";
 
 export const dynamic = "force-dynamic";
 
@@ -8,7 +10,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const keys = await getApiKeys();
-    return NextResponse.json({ keys });
+    return NextResponse.json({ keys: keys.map(toApiKeyManagementView) });
   } catch (error) {
     console.log("Error fetching keys:", error);
     return NextResponse.json({ error: "Failed to fetch keys" }, { status: 500 });
@@ -41,7 +43,7 @@ export async function POST(request) {
     }, { status: 201 });
   } catch (error) {
     console.log("Error creating key:", error);
-    const status = /dailyLimitTokens|expiresAt/.test(error.message) ? 400 : 500;
+    const status = /dailyLimitTokens/.test(error.message) || isApiKeyExpiryValidationError(error) ? 400 : 500;
     return NextResponse.json({ error: status === 400 ? error.message : "Failed to create key" }, { status });
   }
 }

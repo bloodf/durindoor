@@ -44,6 +44,11 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const requestStartTime = Date.now();
 
   const sourceFormat = sourceFormatOverride || detectFormat(body);
+  const preserveGeminiToolResults = [
+    FORMATS.GEMINI,
+    FORMATS.GEMINI_CLI,
+    FORMATS.ANTIGRAVITY,
+  ].includes(sourceFormat);
 
   // Check for bypass patterns (warmup, skip, cc naming)
   const bypassResponse = handleBypassRequest(body, model, userAgent, ccFilterNaming);
@@ -96,12 +101,16 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   // Stream-only providers (forceStream) must keep streaming even when the client
   // asked for JSON; the accumulated stream is converted to JSON downstream. (#2031)
+  // Providers that reject streaming still retain the client's response-mode intent;
+  // their JSON response is converted back to SSE below when the client requested it.
+  const providerForcesNonStreaming = PROVIDERS[provider]?.forceNonStreaming === true;
   let stream = resolveStreamFlag({
     providerRequiresStreaming,
     bodyStream: body.stream,
     forceNonStreaming:
-      (isImageGenModel && (provider === "antigravity" || provider === "gemini-cli")) ||
-      (detectedTool === "deepseek-tui" && body.stream !== true),
+      (isImageGenModel && (provider === "antigravity" || provider === "gemini-cli" || provider === "agy"))
+      || providerForcesNonStreaming
+      || (detectedTool === "deepseek-tui" && body.stream !== true),
     clientPrefersJson,
     clientPrefersSSE,
   });
@@ -132,9 +141,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     } catch (e) { log?.warn?.("MODALITY", `image prefetch failed: ${e.message}`); }
   }
 
-  // Strip orphaned tool results before translation so the translator never sees
-  // stale call_id references that client-side history truncation left behind.
-  const preStripped = stripOrphanedToolResults(body);
+  // Gemini-family translators own functionResponse reconciliation. Pre-cleaning
+  // here would erase orphan/co-located results before that format policy runs.
+  const preStripped = preserveGeminiToolResults ? 0 : stripOrphanedToolResults(body);
   if (preStripped > 0) {
     log?.debug?.("TOOLCLEAN", `pre-translation: stripped ${preStripped} orphaned tool result(s)`);
   }
@@ -199,10 +208,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     }
   } else if (headroomEnabled) log?.warn?.("HEADROOM", `skipped: ${headroomDiagnostics.reason || "compression unavailable"}${headroomDiagnostics.endpoint ? ` (${headroomDiagnostics.endpoint})` : ""}`);
 
-  // Strip orphaned tool results again after RTK/Headroom compression — both
-  // compressors can remove assistant turns containing tool_calls, which would
-  // otherwise leave dangling tool results that strict providers reject with 400.
-  const postStripped = stripOrphanedToolResults(translatedBody);
+  // Strict-provider cleanup remains fail-open, but Gemini-family source history
+  // must survive until its translator reconciliation policy has completed.
+  const postStripped = preserveGeminiToolResults ? 0 : stripOrphanedToolResults(translatedBody);
   if (postStripped > 0) {
     log?.debug?.("TOOLCLEAN", `post-compression: stripped ${postStripped} orphaned tool result(s)`);
   }
@@ -219,23 +227,37 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     log?.debug?.("PONYTAIL", `${ponytailLevel} | ${finalFormat}`);
   }
 
-  // PXPIPE: image bulky context (Claude-format bodies only), last saver before dispatch
+  // PXPIPE: image bulky context for helper-supported format/model pairs, last saver before dispatch.
   let pxpipeSummary = null;
   if (pxpipeEnabled) {
+    const pxpipeDiagnostics = {};
     const pxpipeResult = await compressWithPxpipe(translatedBody, {
       enabled: true, format: finalFormat, model: upstreamModel,
       minChars: pxpipeMinChars, timeoutMs: pxpipeTimeoutMs, transform: pxpipeTransform,
+      diagnostics: pxpipeDiagnostics,
     });
-    pxpipeSummary = pxpipeResult.summary;
-    if (pxpipeResult.body) translatedBody = pxpipeResult.body;
+    if (pxpipeResult == null) {
+      pxpipeSummary = {
+        applied: false,
+        reason: pxpipeDiagnostics.reason || "unsupported_model",
+        ...(pxpipeDiagnostics.detail ? { detail: pxpipeDiagnostics.detail } : {}),
+      };
+    } else {
+      pxpipeSummary = pxpipeResult.summary || {
+        applied: pxpipeResult.applied === true,
+        reason: pxpipeResult.reason || (pxpipeResult.applied ? "applied" : "passthrough"),
+      };
+      if (pxpipeResult.body) translatedBody = pxpipeResult.body;
+    }
     const pxpipeLine = formatPxpipeLog(pxpipeSummary);
     if (pxpipeLine) log?.info?.("PXPIPE", pxpipeLine);
-    else log?.debug?.("PXPIPE", `skipped: ${pxpipeSummary.reason}${pxpipeSummary.detail ? ` (${pxpipeSummary.detail})` : ""}`);
-    try { onPxpipeEvent?.({ provider, model, ...pxpipeSummary }); } catch { /* stats must not break requests */ }
+    else log?.debug?.("PXPIPE", `skipped: ${pxpipeSummary?.reason || "unknown"}${pxpipeSummary?.detail ? ` (${pxpipeSummary.detail})` : ""}`);
+    try { onPxpipeEvent?.({ provider, model, ...(pxpipeSummary || {}) }); } catch { /* stats must not break requests */ }
   }
 
-  // Re-strip after PXPIPE in case compression removed assistant/tool turns.
-  const pxpipeStripped = stripOrphanedToolResults(translatedBody);
+  // Re-strip after PXPIPE unless the original Gemini-family provenance requires
+  // preserving functionResponse history at the executor boundary.
+  const pxpipeStripped = preserveGeminiToolResults ? 0 : stripOrphanedToolResults(translatedBody);
   if (pxpipeStripped > 0) {
     log?.debug?.("TOOLCLEAN", `post-pxpipe: stripped ${pxpipeStripped} orphaned tool result(s)`);
   }
@@ -437,9 +459,20 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     if (result) { streamController.handleComplete(); return result; }
   }
 
-  // True non-streaming response
+  // True non-streaming upstream response. Keep the client response mode separate:
+  // forced JSON providers still owe SSE bytes to a streaming client.
   if (!stream) {
-    const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, reqLogger, toolNameMap, trackDone, appendLog });
+    const result = await handleNonStreamingResponse({
+      ...sharedCtx,
+      providerResponse,
+      sourceFormat,
+      targetFormat,
+      reqLogger,
+      toolNameMap,
+      trackDone,
+      appendLog,
+      streamToClient: clientRequestedStreaming === true,
+    });
     streamController.handleComplete();
     return result;
   }

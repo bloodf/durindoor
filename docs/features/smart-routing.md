@@ -58,6 +58,8 @@ Important rules:
 
 - OpenAI-compatible requests are the common entry point for most tools.
 - Some direct translator routes preserve provider-specific fields better than a generic bridge.
+- Gemini and Gemini CLI `functionResponse` history reaches the format translator before generic orphan-result cleanup, including responses co-located with another part.
+- Optional PXPIPE compression is fail-open: an unsupported-model or disabled no-op retains the translated request body and continues dispatch.
 - Tool calls, image blocks, reasoning fields, and audio content are the highest-risk fields during translation.
 - Provider-specific unsupported parameters may be stripped or normalized before the upstream call.
 
@@ -72,6 +74,12 @@ The response layer is responsible for:
 - Normalizing usage data when available.
 - Handling provider-specific stream formats.
 - Returning errors in a client-compatible shape.
+
+Terminal framing follows the client's protocol rather than the upstream transport:
+
+- OpenAI passthrough forwards or creates exactly one `[DONE]` sentinel; Gemini-family streams do not receive that OpenAI marker.
+- OpenAI `include_usage` streams remain open through the trailing usage-only chunk before request usage is finalized.
+- A non-streaming upstream response synthesized for a Claude streaming client preserves native `tool_use` stop reasons and `input_tokens`/`output_tokens` usage keys.
 
 ## Failure Handling
 

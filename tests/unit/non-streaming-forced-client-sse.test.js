@@ -41,6 +41,12 @@ function baseOptions(overrides) {
   };
 }
 
+function parseNamedEvent(text, eventName) {
+  const prefix = `event: ${eventName}\ndata: `;
+  const frame = text.split("\n\n").find((item) => item.startsWith(prefix));
+  return frame ? JSON.parse(frame.slice(prefix.length)) : null;
+}
+
 describe("handleNonStreamingResponse: synthetic SSE respects client format", () => {
   const openaiCompletion = {
     id: "chatcmpl-abc",
@@ -148,6 +154,57 @@ describe("handleNonStreamingResponse: synthetic SSE respects client format", () 
     expect(text).toContain("I think therefore I am");
     expect(text).toContain("event: content_block_delta");
     expect(text).toContain("therefore I am");
+  });
+
+  it("preserves native Claude tool_use as the synthetic terminal stop reason", async () => {
+    const nativeClaudeToolUse = {
+      id: "msg_tool",
+      type: "message",
+      role: "assistant",
+      content: [{
+        type: "tool_use",
+        id: "toolu_1",
+        name: "lookup",
+        input: { query: "durindoor" },
+      }],
+      model: "claude-sonnet-4-5",
+      stop_reason: "tool_use",
+      stop_sequence: null,
+      usage: { input_tokens: 8, output_tokens: 4 },
+    };
+    const result = await handleNonStreamingResponse(baseOptions({
+      providerResponse: makeProviderResponse(nativeClaudeToolUse),
+      sourceFormat: FORMATS.CLAUDE,
+      targetFormat: FORMATS.CLAUDE,
+    }));
+    const text = await result.response.text();
+
+    expect(text).toContain('"type":"tool_use"');
+    expect(parseNamedEvent(text, "message_delta")?.delta?.stop_reason).toBe("tool_use");
+  });
+
+  it("preserves native Claude usage keys in synthetic message_delta", async () => {
+    const nativeClaudeCompletion = {
+      id: "msg_usage",
+      type: "message",
+      role: "assistant",
+      content: [{ type: "text", text: "hello" }],
+      model: "claude-sonnet-4-5",
+      stop_reason: "end_turn",
+      stop_sequence: null,
+      usage: { input_tokens: 8, output_tokens: 4 },
+    };
+    const result = await handleNonStreamingResponse(baseOptions({
+      providerResponse: makeProviderResponse(nativeClaudeCompletion),
+      sourceFormat: FORMATS.CLAUDE,
+      targetFormat: FORMATS.CLAUDE,
+    }));
+    const text = await result.response.text();
+
+    expect(parseNamedEvent(text, "message_delta")?.usage).toEqual({
+      input_tokens: 8,
+      output_tokens: 4,
+    });
   });
 
   it("still returns the client-shaped Claude JSON body (not SSE) for a real non-streaming request", async () => {

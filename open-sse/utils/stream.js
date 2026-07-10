@@ -66,12 +66,34 @@ export function createSSEStream(options = {}) {
   let sseLineCount = 0;
   let sseEmittedCount = 0;
   const eventTypeCounts = {};
+  let onStreamCompleteFired = false;
 
   // Track Responses API event framing for same-format passthrough (codex)
   let currentOpenAIResponsesEvent = null;
   let openAIResponsesTerminalSeen = false;
   let openAIResponsesDoneSent = false;
   let streamDoneSent = false;  // track duplicate [DONE] across transform + flush
+  const waitsForOpenAIUsage = body?.stream_options?.include_usage === true;
+
+  const completeStream = (currentUsage, estimateFormat = sourceFormat || FORMATS.OPENAI) => {
+    if (onStreamCompleteFired) return currentUsage;
+
+    let completedUsage = currentUsage;
+    if (!hasValidUsage(completedUsage) && totalContentLength > 0) {
+      completedUsage = estimateUsage(body, totalContentLength, estimateFormat);
+      if (mode === STREAM_MODE.PASSTHROUGH) usage = completedUsage;
+      else state.usage = completedUsage;
+    }
+
+    if (onStreamComplete) {
+      onStreamCompleteFired = true;
+      onStreamComplete({
+        content: accumulatedContent,
+        thinking: accumulatedThinking,
+      }, completedUsage, ttftAt);
+    }
+    return completedUsage;
+  };
 
   // State for extracting <think>...</think> to reasoning_content across SSE chunks
   let thinkBuf = "";
@@ -106,10 +128,13 @@ export function createSSEStream(options = {}) {
         if (mode === STREAM_MODE.PASSTHROUGH) {
           let output;
           let injectedUsage = false;
+          const dataPayload = trimmed.startsWith("data:") ? trimmed.slice(5).trim() : null;
 
-          if (trimmed.startsWith("data:") && trimmed.slice(5).trim() !== "[DONE]") {
+          if (dataPayload === "[DONE]") streamDoneSent = true;
+
+          if (dataPayload && dataPayload !== "[DONE]") {
             try {
-              const parsed = JSON.parse(trimmed.slice(5).trim());
+              const parsed = JSON.parse(dataPayload);
 
               const idFixed = fixInvalidId(parsed);
 
@@ -206,19 +231,35 @@ export function createSSEStream(options = {}) {
                 accumulatedThinking += reasoning;
               }
 
+              const geminiParts = parsed.candidates?.[0]?.content?.parts
+                || parsed.response?.candidates?.[0]?.content?.parts
+                || [];
+              for (const part of geminiParts) {
+                if (typeof part.text !== "string" || part.text.length === 0) continue;
+                totalContentLength += part.text.length;
+                if (part.thought === true) accumulatedThinking += part.text;
+                else accumulatedContent += part.text;
+              }
+
               const extracted = extractUsage(parsed);
               if (extracted) {
+                if (extracted.total_tokens === undefined && Number.isFinite(parsed.usage?.total_tokens)) {
+                  extracted.total_tokens = parsed.usage.total_tokens;
+                }
                 usage = mergeUsage(usage, extracted);
               }
 
-              const isFinishChunk = parsed.choices?.[0]?.finish_reason;
-              if (isFinishChunk && !hasValidUsage(parsed.usage)) {
+              const openAITerminal = parsed.choices?.[0]?.finish_reason;
+              const geminiTerminal = parsed.candidates?.[0]?.finishReason
+                || parsed.response?.candidates?.[0]?.finishReason;
+              const isFinishChunk = openAITerminal || geminiTerminal;
+              if (isFinishChunk && !waitsForOpenAIUsage && !hasValidUsage(usage)) {
                 const estimated = estimateUsage(body, totalContentLength, FORMATS.OPENAI);
                 parsed.usage = filterUsageForFormat(estimated, FORMATS.OPENAI);
                 output = `data: ${JSON.stringify(parsed)}\n`;
                 usage = estimated;
                 injectedUsage = true;
-              } else if (isFinishChunk && usage) {
+              } else if (isFinishChunk && !waitsForOpenAIUsage && usage) {
                 const buffered = addBufferToUsage(usage);
                 parsed.usage = filterUsageForFormat(buffered, FORMATS.OPENAI);
                 output = `data: ${JSON.stringify(parsed)}\n`;
@@ -226,6 +267,13 @@ export function createSSEStream(options = {}) {
               } else if (idFixed || fieldsInjected) {
                 output = `data: ${JSON.stringify(parsed)}\n`;
                 injectedUsage = true;
+              }
+
+              const usageOnlyTerminal = waitsForOpenAIUsage
+                && parsed.choices?.length === 0
+                && hasValidUsage(usage);
+              if (geminiTerminal || (!waitsForOpenAIUsage && openAITerminal) || usageOnlyTerminal) {
+                completeStream(usage, geminiTerminal ? FORMATS.ANTIGRAVITY : FORMATS.OPENAI);
               }
               if (toolNameDecloaked && !injectedUsage) {
                 output = `data: ${JSON.stringify(parsed)}\n`;
@@ -313,9 +361,12 @@ export function createSSEStream(options = {}) {
           accumulatedThinking += parsed.choices[0].delta.reasoning_content;
         }
         
-        // Gemini format
-        if (parsed.candidates?.[0]?.content?.parts) {
-          for (const part of parsed.candidates[0].content.parts) {
+        // Gemini-family formats may wrap the native response in `response`.
+        const geminiParts = parsed.candidates?.[0]?.content?.parts
+          || parsed.response?.candidates?.[0]?.content?.parts
+          || [];
+        if (geminiParts.length > 0) {
+          for (const part of geminiParts) {
             if (part.text && typeof part.text === "string") {
               totalContentLength += part.text.length;
               // Check if this is thinking content
@@ -330,7 +381,19 @@ export function createSSEStream(options = {}) {
 
         // Extract usage
         const extracted = extractUsage(parsed);
-        if (extracted) state.usage = mergeUsage(state.usage, extracted); // Keep original usage for logging
+        if (extracted) {
+          if (extracted.total_tokens === undefined && Number.isFinite(parsed.usage?.total_tokens)) {
+            extracted.total_tokens = parsed.usage.total_tokens;
+          }
+          state.usage = mergeUsage(state.usage, extracted); // Keep original usage for logging
+        }
+
+        const rawGeminiTerminal = parsed.candidates?.[0]?.finishReason
+          || parsed.response?.candidates?.[0]?.finishReason;
+        const openAIUsageOnlyTerminal = targetFormat === FORMATS.OPENAI
+          && waitsForOpenAIUsage
+          && parsed.choices?.length === 0
+          && hasValidUsage(state.usage);
 
         // Responses same-format passthrough: re-emit with original event framing
         if (keepsOpenAIResponsesFormat && openAIResponsesEventName) {
@@ -355,6 +418,7 @@ export function createSSEStream(options = {}) {
           }
         }
 
+        let translatedTerminal = false;
         if (translated?.length > 0) {
           for (const item of translated) {
             if (item === null || item === undefined) continue;
@@ -365,11 +429,12 @@ export function createSSEStream(options = {}) {
 
             // Inject estimated usage if finish chunk has no valid usage
             const isFinishChunk = item.type === "message_delta" || item.choices?.[0]?.finish_reason;
-            if (state.finishReason && isFinishChunk && !hasValidUsage(item.usage) && totalContentLength > 0) {
+            if (state.finishReason && isFinishChunk) translatedTerminal = true;
+            if (!waitsForOpenAIUsage && state.finishReason && isFinishChunk && !hasValidUsage(item.usage) && totalContentLength > 0) {
               const estimated = estimateUsage(body, totalContentLength, sourceFormat);
               item.usage = filterUsageForFormat(estimated, sourceFormat); // Filter + already has buffer
               state.usage = estimated;
-            } else if (state.finishReason && isFinishChunk && state.usage) {
+            } else if (!waitsForOpenAIUsage && state.finishReason && isFinishChunk && state.usage) {
               // Add buffer and filter usage for client (but keep original in state.usage for logging)
               const buffered = addBufferToUsage(state.usage);
               item.usage = filterUsageForFormat(buffered, sourceFormat);
@@ -380,6 +445,10 @@ export function createSSEStream(options = {}) {
             controller.enqueue(sharedEncoder.encode(output));
             sseEmittedCount++;
           }
+        }
+
+        if (rawGeminiTerminal || openAIUsageOnlyTerminal || (translatedTerminal && !waitsForOpenAIUsage)) {
+          completeStream(state.usage, rawGeminiTerminal ? FORMATS.ANTIGRAVITY : sourceFormat);
         }
       }
     },
@@ -394,6 +463,11 @@ export function createSSEStream(options = {}) {
 
         if (mode === STREAM_MODE.PASSTHROUGH) {
           if (buffer) {
+            const bufferedPayload = buffer.trim().startsWith("data:")
+              ? buffer.trim().slice(5).trim()
+              : null;
+            if (bufferedPayload === "[DONE]") streamDoneSent = true;
+
             let output = buffer;
             if (buffer.startsWith("data:") && !buffer.startsWith("data: ")) {
               output = "data: " + buffer.slice(5);
@@ -417,19 +491,19 @@ export function createSSEStream(options = {}) {
           //   data: [DONE]\n\n
           // Without it they can hang until timeout and trigger failover.
           // Gemini-family clients (Antigravity, Vertex, Gemini) reject this sentinel with 400 syntax errors.
-          const isGeminiFamily = provider === "antigravity" || provider === "gemini" || provider === "vertex";
+          const isGeminiFamily = provider === "antigravity"
+            || provider === "agy"
+            || provider === "gemini"
+            || provider === "gemini-cli"
+            || provider === "vertex";
           if (!streamDoneSent && !isGeminiFamily) {
             const doneOutput = "data: [DONE]\n\n";
             reqLogger?.appendConvertedChunk?.(doneOutput);
             controller.enqueue(sharedEncoder.encode(doneOutput));
+            streamDoneSent = true;
           }
 
-          if (onStreamComplete) {
-            onStreamComplete({
-              content: accumulatedContent,
-              thinking: accumulatedThinking
-            }, usage, ttftAt);
-          }
+          completeStream(usage, isGeminiFamily ? FORMATS.ANTIGRAVITY : FORMATS.OPENAI);
           return;
         }
 
@@ -491,9 +565,7 @@ export function createSSEStream(options = {}) {
           streamDoneSent = true;
         }
 
-        if (!hasValidUsage(state?.usage) && totalContentLength > 0) {
-          state.usage = estimateUsage(body, totalContentLength, sourceFormat);
-        }
+        completeStream(state?.usage, sourceFormat);
 
         if (hasValidUsage(state?.usage)) {
           logUsage(state.provider || targetFormat, state.usage, model, connectionId, apiKey);
@@ -501,12 +573,6 @@ export function createSSEStream(options = {}) {
           appendRequestLog({ model, provider, connectionId, tokens: null, status: "200 OK" }).catch(() => { });
         }
         
-        if (onStreamComplete) {
-          onStreamComplete({
-            content: accumulatedContent,
-            thinking: accumulatedThinking
-          }, state?.usage, ttftAt);
-        }
       } catch (error) {
         console.log("Error in flush:", error);
       }

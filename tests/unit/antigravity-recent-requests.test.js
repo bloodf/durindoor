@@ -31,6 +31,50 @@ async function writeAndCollect(transform, chunks) {
 }
 
 describe("Antigravity Recent Requests usage", () => {
+  it("does not duplicate an upstream OpenAI DONE sentinel during passthrough flush", async () => {
+    const stream = createPassthroughStreamWithLogger(
+      "openai",
+      null,
+      null,
+      "gpt-4.1",
+      "conn-openai-done",
+      { messages: [{ role: "user", content: "hello" }], stream: true },
+      null,
+      null,
+    );
+
+    const event = {
+      id: "chatcmpl-done",
+      object: "chat.completion.chunk",
+      choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+      usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 },
+    };
+    const chunks = await writeAndCollect(stream, [
+      `data: ${JSON.stringify(event)}\n\ndata: [DONE]\n\n`,
+    ]);
+    const output = chunks.map((chunk) => new TextDecoder().decode(chunk)).join("");
+
+    expect(output.match(/data: \[DONE\]/g)).toHaveLength(1);
+  });
+
+  it("recognizes an upstream OpenAI DONE sentinel buffered without a final newline", async () => {
+    const stream = createPassthroughStreamWithLogger(
+      "openai",
+      null,
+      null,
+      "gpt-4.1",
+      "conn-openai-buffered-done",
+      { messages: [{ role: "user", content: "hello" }], stream: true },
+      null,
+      null,
+    );
+
+    const chunks = await writeAndCollect(stream, ["data: [DONE]"]);
+    const output = chunks.map((chunk) => new TextDecoder().decode(chunk)).join("");
+
+    expect(output.match(/data: \[DONE\]/g)).toHaveLength(1);
+  });
+
   it("does not append OpenAI DONE sentinels for agy native passthrough streams", async () => {
     const stream = createPassthroughStreamWithLogger(
       "agy",
@@ -162,6 +206,67 @@ describe("Antigravity Recent Requests usage", () => {
 
     await writer.abort();
     await reader.cancel().catch(() => {});
+  });
+
+  it("waits for trailing OpenAI include_usage before completing a translated stream", async () => {
+    let completed = null;
+    const stream = createSSETransformStreamWithLogger(
+      FORMATS.OPENAI,
+      FORMATS.CLAUDE,
+      "openai",
+      null,
+      null,
+      "gpt-4.1",
+      "conn-openai-usage",
+      {
+        messages: [{ role: "user", content: "hello" }],
+        stream: true,
+        stream_options: { include_usage: true },
+      },
+      (content, usage) => {
+        completed = { content, usage };
+      },
+      null,
+    );
+
+    const writer = stream.writable.getWriter();
+    const reader = stream.readable.getReader();
+    const drain = (async () => {
+      while (!(await reader.read()).done) {
+        // Drain translated frames so TransformStream backpressure cannot hide completion.
+      }
+    })();
+    const finishChunk = {
+      id: "chatcmpl-usage",
+      object: "chat.completion.chunk",
+      choices: [{
+        index: 0,
+        delta: { content: "USAGE_AFTER_FINISH" },
+        finish_reason: "stop",
+      }],
+      usage: null,
+    };
+    const usageChunk = {
+      id: "chatcmpl-usage",
+      object: "chat.completion.chunk",
+      choices: [],
+      usage: { prompt_tokens: 11, completion_tokens: 7, total_tokens: 18 },
+    };
+
+    await writer.write(new TextEncoder().encode(`data: ${JSON.stringify(finishChunk)}\n\n`));
+    expect(completed).toBeNull();
+
+    await writer.write(new TextEncoder().encode(`data: ${JSON.stringify(usageChunk)}\n\n`));
+    expect(completed?.content?.content).toBe("USAGE_AFTER_FINISH");
+    expect(completed?.usage).toMatchObject({
+      prompt_tokens: 11,
+      completion_tokens: 7,
+      total_tokens: 18,
+    });
+
+    await writer.abort();
+    await reader.cancel().catch(() => {});
+    await drain.catch(() => {});
   });
 
   it("estimates usage for Antigravity passthrough content when upstream omits usageMetadata", async () => {

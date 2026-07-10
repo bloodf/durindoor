@@ -1,5 +1,5 @@
 import { FORMATS } from "../../translator/formats.js";
-import { needsTranslation } from "../../translator/index.js";
+import { initState, needsTranslation, translateResponse } from "../../translator/index.js";
 import { fromOpenAIFinish } from "../../translator/concerns/finishReason.js";
 import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.js";
 import { addBufferToUsage, filterUsageForFormat } from "../../utils/usageTracking.js";
@@ -12,6 +12,8 @@ import { appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { decloakToolNames } from "../../utils/claudeCloaking.js";
 import { stripThinkFromResponse } from "../../utils/thinkStripper.js";
 import { openAIResponsesBodyToClaude, openAIResponsesBodyToOpenAI } from "../../translator/response/openai-responses-nonstream.js";
+import { formatSSE } from "../../utils/streamHelpers.js";
+import { SSE_HEADERS_CORS } from "../../utils/sseConstants.js";
 
 function parseToolArguments(value) {
   if (!value) return {};
@@ -227,9 +229,44 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
 }
 
 /**
+ * Project a complete OpenAI response into one terminal stream chunk. Keeping
+ * this intermediate canonical lets each client-format response translator own
+ * its native SSE framing, stop reason, reasoning blocks, tools, and usage keys.
+ */
+function buildSyntheticOpenAIChunk(responseBody, fallbackModel) {
+  const choice = responseBody?.choices?.[0] || {};
+  const message = choice.message || {};
+  const toolCalls = Array.isArray(message.tool_calls)
+    ? message.tool_calls.map((toolCall, index) => ({ index, ...toolCall }))
+    : undefined;
+  const delta = {};
+
+  if (typeof message.reasoning_content === "string" && message.reasoning_content.length > 0) {
+    delta.reasoning_content = message.reasoning_content;
+  }
+  if (typeof message.content === "string" && message.content.length > 0) {
+    delta.content = message.content;
+  }
+  if (toolCalls?.length > 0) delta.tool_calls = toolCalls;
+
+  return {
+    id: responseBody?.id || `chatcmpl-${Date.now()}`,
+    object: "chat.completion.chunk",
+    created: responseBody?.created || Math.floor(Date.now() / 1000),
+    model: responseBody?.model || fallbackModel,
+    choices: [{
+      index: 0,
+      delta,
+      finish_reason: toolCalls?.length > 0 ? "tool_calls" : (choice.finish_reason || "stop"),
+    }],
+    usage: responseBody?.usage,
+  };
+}
+
+/**
  * Handle non-streaming response from provider.
  */
-export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, trackDone, appendLog, pxpipe }) {
+export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, streamToClient, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, trackDone, appendLog, pxpipe }) {
   trackDone();
   const contentType = providerResponse.headers.get("content-type") || "";
   let responseBody;
@@ -263,6 +300,17 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
 
   // Decloak tool_use names once on raw Claude body, before any translation (INPUT side)
   responseBody = decloakToolNames(responseBody, toolNameMap);
+
+  // Preserve an unbuffered OpenAI-normalized snapshot for synthetic streaming.
+  // The ordinary JSON path may translate and add usage headroom below; neither
+  // operation should leak into the client's terminal SSE usage frame.
+  let streamOpenAIResponse = null;
+  if (streamToClient === true) {
+    const normalizedOpenAIResponse = needsTranslation(targetFormat, FORMATS.OPENAI)
+      ? translateNonStreamingResponse(responseBody, targetFormat, FORMATS.OPENAI)
+      : responseBody;
+    streamOpenAIResponse = JSON.parse(JSON.stringify(normalizedOpenAIResponse));
+  }
 
   const usage = extractUsageFromResponse(responseBody);
   appendLog({ tokens: usage, status: "200 OK" });
@@ -339,6 +387,25 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   }, { endpoint: clientRawRequest?.endpoint || null })).catch(err => {
     console.error("[RequestDetail] Failed to save:", err.message);
   });
+
+  if (streamToClient === true) {
+    const syntheticChunk = buildSyntheticOpenAIChunk(streamOpenAIResponse, model);
+    const state = initState(sourceFormat);
+    const events = translateResponse(FORMATS.OPENAI, sourceFormat, syntheticChunk, state);
+    let sseText = "";
+
+    for (const event of events || []) {
+      if (event != null) sseText += formatSSE(event, sourceFormat);
+    }
+    if (sourceFormat === FORMATS.OPENAI) {
+      sseText += formatSSE({ done: true }, sourceFormat);
+    }
+
+    return {
+      success: true,
+      response: new Response(sseText, { headers: SSE_HEADERS_CORS }),
+    };
+  }
 
   return {
     success: true,

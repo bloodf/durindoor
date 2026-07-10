@@ -267,3 +267,60 @@ describe("wiring — POST handler (azure + openai-compatible branches, real hand
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
+
+describe("SECAUD gap regressions", () => {
+  const makeRequest = (body) => ({ json: async () => body });
+
+  it("trailing-dot metadata FQDN bypass closed (normalizeHost strips trailing '.')", async () => {
+    setGuardEnv("default");
+    const { assertOutboundUrlAllowed, OutboundUrlGuardError } =
+      await import("open-sse/utils/outboundUrlGuard.js");
+    for (const u of [
+      "http://metadata.google.internal./computeMetadata/v1/",
+      "http://metadata.goog./computeMetadata/v1/",
+    ]) {
+      expect(() => assertOutboundUrlAllowed(u), u).toThrow(OutboundUrlGuardError);
+    }
+  });
+
+  it("public-only: RFC1918 upper-bound (172.31.255.1), hex IP, IDN localhost blocked", async () => {
+    setGuardEnv("public-only");
+    const { assertOutboundUrlAllowed, OutboundUrlGuardError } =
+      await import("open-sse/utils/outboundUrlGuard.js");
+    for (const u of [
+      "http://172.31.255.1/v1", // RFC1918 172.16/12 upper bound
+      "http://0x7f000001/v1", // hex IP — URL parser canonicalizes to 127.0.0.1
+      "http://ⓛocalhost/v1", // unicode IDN — punycodes/normalizes to localhost
+    ]) {
+      expect(() => assertOutboundUrlAllowed(u), u).toThrow(OutboundUrlGuardError);
+    }
+  });
+
+  it("client error must NOT echo attacker URL; server still logs original (POST path)", async () => {
+    setGuardEnv("default");
+    const ATTACKER = "http://metadata.google.internal./computeMetadata/v1/instance/service-accounts/";
+    vi.doMock("@/models", async (importOriginal) => ({
+      ...(await importOriginal()),
+      getProviderNodeById: vi.fn(async () => ({ baseUrl: ATTACKER })),
+    }));
+    vi.doMock("@/shared/constants/providers", () => ({
+      isOpenAICompatibleProvider: (p) => p === "openai-compatible",
+      isAnthropicCompatibleProvider: () => false,
+      isCustomEmbeddingProvider: () => false,
+      AI_PROVIDERS: { "openai-compatible": {} },
+    }));
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => ({ ok: true, status: 200 }));
+    const { POST } = await import("@/app/api/providers/validate/route.js");
+    const res = await POST(makeRequest({ provider: "openai-compatible", apiKey: "x", providerSpecificData: {} }));
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain(ATTACKER);
+    expect(serialized).not.toContain("metadata.google.internal");
+    expect(body.error).toBe("URL validation failed");
+    expect(fetchSpy).not.toHaveBeenCalled();
+    const logged = logSpy.mock.calls.flat().join(" ");
+    expect(logged).toContain("metadata.google.internal"); // original retained server-side
+  });
+});

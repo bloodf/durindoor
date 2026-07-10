@@ -11,9 +11,12 @@ import { resolveConnectionParams } from "open-sse/executors/copilot-m365-connect
 import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
 import { guardedProbeFetch, assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
 
+const CLIENT_VALIDATION_ERROR = "URL validation failed";
+
 function guardBlockedResponse(err) {
+  if (err) console.log("Provider URL blocked by SSRF guard:", err?.message, "url=", err?.url);
   return NextResponse.json(
-    { valid: false, error: err?.message || "Provider URL blocked by SSRF guard", blocked: true },
+    { valid: false, error: CLIENT_VALIDATION_ERROR, blocked: true },
     { status: 403 },
   );
 }
@@ -46,8 +49,9 @@ export async function probeNoAuthLocalProvider(baseUrl, apiKey = undefined) {
     });
     return { valid: res.ok, error: res.ok ? null : "Endpoint unreachable or rejected" };
   } catch (err) {
-    if (err instanceof OutboundUrlGuardError) return { valid: false, error: err.message, blocked: true };
-    return { valid: false, error: err.message };
+    console.log("probeNoAuthLocalProvider error:", err);
+    if (err instanceof OutboundUrlGuardError) return { valid: false, error: CLIENT_VALIDATION_ERROR, blocked: true };
+    return { valid: false, error: CLIENT_VALIDATION_ERROR };
   }
 }
 
@@ -324,7 +328,8 @@ export async function POST(request) {
         try {
           accountId = normalizeAccountIdPlaceholder("snowflake", providerSpecificData?.accountId);
         } catch (err) {
-          return NextResponse.json({ valid: false, error: err.message });
+          console.log("snowflake accountId normalization error:", err?.message);
+          return NextResponse.json({ valid: false, error: CLIENT_VALIDATION_ERROR });
         }
         const url = `https://${accountId}.snowflakecomputing.com/api/v2/cortex/v1/chat/completions`;
         const snowflakeRes = await fetch(url, {
@@ -831,7 +836,8 @@ export async function POST(request) {
         }
       }
     } catch (err) {
-      error = err.message;
+      console.log("provider validation probe error:", err?.message);
+      error = CLIENT_VALIDATION_ERROR;
       isValid = false;
     }
 

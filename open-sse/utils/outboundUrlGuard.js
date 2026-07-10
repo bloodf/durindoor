@@ -53,7 +53,11 @@ export const CLOUD_METADATA_BLOCKED_MESSAGE = "Blocked cloud-metadata endpoint";
 export { PRIVATE_PROVIDER_URLS_ENV, LOCAL_PROVIDER_URLS_ENV, getProviderValidationGuard };
 
 function normalizeHost(hostname) {
-  const normalized = String(hostname || "").trim().toLowerCase();
+  let normalized = String(hostname || "").trim().toLowerCase();
+  // Trailing DNS dot makes an absolute FQDN (e.g. "metadata.google.internal.")
+  // and is preserved by the WHATWG URL parser; without stripping it the exact
+  // Set match in isCloudMetadataHost() misses and metadata probes slip through.
+  while (normalized.endsWith(".")) normalized = normalized.slice(0, -1);
   if (normalized.startsWith("[") && normalized.endsWith("]")) {
     return normalized.slice(1, -1);
   }

@@ -7,7 +7,7 @@ import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
 import { buildZenmuxAnthropicBody, extractZenmuxCtoken, normalizeZenmuxCookie, ZENMUX_FREE_CHAT_URL } from "open-sse/executors/zenmux-free.js";
 import { normalizeProviderId } from "@/lib/providerNormalization";
-import { isRedactedToken, isStructuredPathOnlyCredential, isStructuredWsUrlCredential } from "open-sse/executors/copilot-m365-connection.js";
+import { resolveConnectionParams } from "open-sse/executors/copilot-m365-connection.js";
 import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
 
 function applyConfiguredAuthHeader(headers, cfg, apiKey) {
@@ -137,38 +137,6 @@ async function exchangeGigaChatApiKey(apiKey) {
   if (!res.ok) return null;
   const token = await res.json().catch(() => null);
   return token?.access_token || null;
-}
-
-async function probeOpenAICompatibleRegistryProvider(provider, apiKey) {
-  const cfg = PROVIDERS[provider];
-  if (!cfg || cfg.format !== "openai" || !cfg.baseUrl) return null;
-  if (cfg.noAuth) return true;
-
-  const headers = { "Content-Type": "application/json", ...(cfg.headers || {}) };
-  if (cfg.authHeader === "x-api-key") headers["X-API-Key"] = apiKey;
-  else headers["Authorization"] = `Bearer ${apiKey}`;
-
-  // Prefer explicit model-list URLs because some OpenAI-compatible providers
-  // mount chat completions under a scoped path that does not imply /models.
-  const modelsUrl = cfg.modelsUrl || cfg.baseUrl.replace(/\/chat\/completions$/, "/models").replace(/\/chatbot$/, "/models");
-  let probeOk = null;
-  try {
-    const probeRes = await fetch(modelsUrl, { headers, signal: AbortSignal.timeout(8000) });
-    if (probeRes.status === 401 || probeRes.status === 403) probeOk = false;
-    else if (probeRes.ok) probeOk = true;
-  } catch {
-    // Fall back to a minimal chat probe below.
-  }
-  if (probeOk !== null) return probeOk;
-
-  const defaultModel = getDefaultModel(provider) || "test";
-  const chatRes = await fetch(cfg.baseUrl, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ model: defaultModel, messages: [{ role: "user", content: "ping" }], max_tokens: 1, stream: false }),
-    signal: AbortSignal.timeout(10000),
-  });
-  return chatRes.status !== 401 && chatRes.status !== 403;
 }
 
 // POST /api/providers/validate - Validate API key with provider
@@ -549,8 +517,9 @@ export async function POST(request) {
 
         case "commandcode":
         case "command-code": {
-          const cfg = PROVIDERS.commandcode;
-          const model = getDefaultModel("commandcode");
+          const cfg = PROVIDERS[provider];
+          const modelKey = provider === "command-code" ? "cmd" : "commandcode";
+          const model = cfg.validationModelId || getDefaultModel(modelKey);
           const payload = openaiToCommandCodeRequest(model, {
             messages: [{ role: "user", content: "ping" }],
             max_tokens: 1,
@@ -566,7 +535,13 @@ export async function POST(request) {
             },
             body: JSON.stringify(payload),
           });
-          isValid = res.status !== 401 && res.status !== 403;
+          // A schema/rate-limit response proves the key reached Command Code.
+          // Missing endpoints, unsupported methods, and upstream failures do
+          // not prove either credential validity or a usable integration.
+          isValid = res.status >= 200 && res.status < 300
+            || res.status === 400
+            || res.status === 422
+            || res.status === 429;
           break;
         }
 
@@ -718,23 +693,9 @@ export async function POST(request) {
         }
 
         case "copilot-m365-web": {
-          const credential = String(apiKey || "").trim();
-          const structuredAccessTokenMatch = credential.match(/(^|[?&;\s])access_token=([^;&\s]*)/);
-          const structuredAccessToken = structuredAccessTokenMatch?.[2] ?? "";
-          const hasEmptyOrRedactedAccessToken = structuredAccessTokenMatch && (!structuredAccessToken || isRedactedToken(structuredAccessToken));
-          const hasAccessToken = (structuredAccessTokenMatch && structuredAccessToken && !isRedactedToken(structuredAccessToken)) || (
-            credential &&
-            !credential.includes("access_token=") &&
-            !isStructuredPathOnlyCredential(credential) &&
-            !isStructuredWsUrlCredential(credential)
-          );
-          const hasChathubPath =
-            /(^|[;\s])(?:chathubPath|userTenant)=([^;@\s]+@[^;\s]+)/.test(credential) ||
-            /^wss:\/\/substrate\.office\.com\/m365Copilot\/Chathub\/[^?]+(?:@|%40)[^?]+\?/i.test(credential);
-          isValid = hasAccessToken && hasChathubPath && !hasEmptyOrRedactedAccessToken;
-          error = isValid
-            ? null
-            : "Paste the M365 Copilot access_token and Chathub path from the Chathub WebSocket URL";
+          const params = resolveConnectionParams({ apiKey, providerSpecificData });
+          isValid = !("error" in params);
+          error = isValid ? null : params.error;
           break;
         }
 

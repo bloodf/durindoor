@@ -72,7 +72,8 @@ export function buildRegistryProviderProbe(provider, apiKey, providerSpecificDat
   }
 
   if (cfg.format === "commandcode") {
-    const model = getDefaultModel(provider) || "command-code";
+    const alias = PROVIDER_ID_TO_ALIAS[provider] ?? provider;
+    const model = cfg.validationModelId || getDefaultModel(alias) || "command-code";
     return {
       url: baseUrl,
       options: {
@@ -91,7 +92,7 @@ export function buildRegistryProviderProbe(provider, apiKey, providerSpecificDat
         ),
         signal: AbortSignal.timeout(10000),
       },
-      accepts: "non-auth-failure",
+      accepts: "chat-auth",
     };
   }
 

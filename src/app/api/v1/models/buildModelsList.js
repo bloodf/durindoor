@@ -368,6 +368,24 @@ export async function buildModelsList(kindFilter) {
 
   const models = [];
   const comboByName = Object.fromEntries(combos.map((combo) => [combo.name, combo.models || []]));
+  const aliasToProviderId = Object.fromEntries(
+    Object.entries(PROVIDER_ID_TO_ALIAS).map(([id, alias]) => [alias, id]),
+  );
+
+  const addStaticProviderModels = (providerId, alias, { hasCredentials = false } = {}) => {
+    if (!providerMatchesKinds(providerId, kindFilter)) return;
+    for (const model of PROVIDER_MODELS[alias] ?? []) {
+      if (!kindFilter.includes(modelKind(model))) continue;
+      if (model.requiresApiKey === true && !hasCredentials) continue;
+      if (isDisabled(alias, model.id)) continue;
+      models.push({
+        id: `${alias}/${model.id}`,
+        object: "model",
+        owned_by: alias,
+        capabilities: getCapabilitiesForModel(providerId, model.id),
+      });
+    }
+  };
 
   // Combos first (filtered by kind). Web combos expose `kind` so AI knows search vs fetch.
   for (const combo of combos) {
@@ -388,22 +406,9 @@ export async function buildModelsList(kindFilter) {
 
   if (connections.length === 0) {
     // DB unavailable -> return static models, filtered by per-model kind
-    const aliasToProviderId = Object.fromEntries(
-      Object.entries(PROVIDER_ID_TO_ALIAS).map(([id, alias]) => [alias, id])
-    );
-    for (const [alias, providerModels] of Object.entries(PROVIDER_MODELS)) {
+    for (const alias of Object.keys(PROVIDER_MODELS)) {
       const providerId = aliasToProviderId[alias] ?? alias;
-      if (!providerMatchesKinds(providerId, kindFilter)) continue;
-      for (const model of providerModels) {
-        if (!kindFilter.includes(modelKind(model))) continue;
-        if (isDisabled(alias, model.id)) continue;
-        models.push({
-          id: `${alias}/${model.id}`,
-          object: "model",
-          owned_by: alias,
-          capabilities: getCapabilitiesForModel(providerId, model.id),
-        });
-      }
+      addStaticProviderModels(providerId, alias);
     }
 
     for (const customModel of customModels) {
@@ -448,6 +453,12 @@ export async function buildModelsList(kindFilter) {
         const staticModelKindById = new Map(
           providerModels.map((m) => [m.id, modelKind(m)])
         );
+        const staticModelById = new Map(providerModels.map((m) => [m.id, m]));
+        const hasUsableCredential = conn.id !== "noauth" && [conn.apiKey, conn.accessToken]
+          .some((value) => typeof value === "string"
+            && value.trim() !== ""
+            && value !== "public"
+            && value !== "sk_durindoor");
         let rawModelIds = hasExplicitEnabledModels
           ? Array.from(
               new Set(
@@ -565,6 +576,7 @@ export async function buildModelsList(kindFilter) {
         const perProviderModels = [];
 
         for (const modelId of mergedModelIds) {
+          if (staticModelById.get(modelId)?.requiresApiKey === true && !hasUsableCredential) continue;
           // Resolve kind: prefer custom/live/static metadata, otherwise infer from ID heuristics
           const customKind = customModelKindById.get(modelId);
           const liveKind = liveModelKindById.get(modelId);
@@ -612,6 +624,15 @@ export async function buildModelsList(kindFilter) {
 
     for (const result of providerResults) {
       models.push(...result);
+    }
+
+    // Keyless catalogs stay visible even when unrelated saved connections
+    // exist. A real connection for the same provider already contributes its
+    // catalog above and suppresses this synthetic static fallback.
+    for (const [providerId, provider] of Object.entries(AI_PROVIDERS)) {
+      if (provider?.noAuth !== true || activeConnectionByProvider.has(providerId)) continue;
+      const alias = PROVIDER_ID_TO_ALIAS[providerId] ?? getProviderAlias(providerId) ?? providerId;
+      addStaticProviderModels(providerId, alias);
     }
   }
 

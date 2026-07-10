@@ -19,6 +19,9 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `codex` | CodexExecutor | `./codex.js` |
 | `command-code` | CommandCodeExecutor | `./commandcode.js` |
 | `commandcode` | CommandCodeExecutor | `./commandcode.js` |
+| `copilot` | CopilotWebExecutor | `./copilot-web.js` |
+| `copilot-m365-web` | CopilotM365WebExecutor | `./copilot-m365-web.js` |
+| `copilot-web` | CopilotWebExecutor | `./copilot-web.js` |
 | `cu` | CursorExecutor | `./cursor.js` |
 | `cursor` | CursorExecutor | `./cursor.js` |
 | `devin-cli` | DevinCliExecutor | `./devin-cli.js` |
@@ -32,6 +35,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `inner-ai` | InnerAiExecutor | `./inner-ai.js` |
 | `kimchi` | KimchiExecutor | `./kimchi.js` |
 | `kiro` | KiroExecutor | `./kiro.js` |
+| `m365copilot` | CopilotM365WebExecutor | `./copilot-m365-web.js` |
 | `mcode` | MimocodeExecutor | `./mimocode.js` |
 | `mimo-free` | MimoFreeExecutor | `./mimo-free.js` |
 | `mimocode` | MimocodeExecutor | `./mimocode.js` |
@@ -41,17 +45,22 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `opencode-go` | OpenCodeGoExecutor | `./opencode-go.js` |
 | `opencode-zen` | OpenCodeZenExecutor | `./opencode-zen.js` |
 | `perplexity-web` | PerplexityWebExecutor | `./perplexity-web.js` |
+| `pol` | PollinationsExecutor | `./pollinations.js` |
 | `pollinations` | PollinationsExecutor | `./pollinations.js` |
 | `puter` | PuterExecutor | `./puter.js` |
 | `qoder` | QoderExecutor | `./qoder.js` |
 | `qwen` | QwenExecutor | `./qwen.js` |
 | `theoldllm` | TheOldLlmExecutor | `./theoldllm.js` |
 | `trae` | TraeExecutor | `./trae.js` |
+| `veo-free` | VeoAIFreeWebExecutor | `./veoaifree-web.js` |
+| `veoaifree-web` | VeoAIFreeWebExecutor | `./veoaifree-web.js` |
 | `vertex` | VertexExecutor | `./vertex.js` |
 | `vertex-partner` | VertexExecutor | `./vertex.js` |
 | `windsurf` | WindsurfExecutor | `./windsurf.js` |
 | `xai` | XaiExecutor | `./xai.js` |
 | `xiaomi-tokenplan` | XiaomiTokenplanExecutor | `./xiaomi-tokenplan.js` |
+| `zenmux-free` | ZenmuxFreeExecutor | `./zenmux-free.js` |
+| `zmf` | ZenmuxFreeExecutor | `./zenmux-free.js` |
 
 ## Providers
 
@@ -230,7 +239,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `piapi` |  | apikey | `https://api.piapi.ai/v1/chat/completions` |
 | `playht` |  | apikey | `` |
 | `poe` |  | apikey | `https://api.poe.com/v1/chat/completions` |
-| `pollinations` | openai | apikey | `https://gen.pollinations.ai/v1/chat/completions` |
+| `pollinations` | openai | free | `https://gen.pollinations.ai/v1/chat/completions` |
 | `puter` | openai | apikey | `https://api.puter.com/puterai/openai/v1/chat/completions` |
 | `qianfan` |  | apikey | `https://qianfan.baidubce.com/v2/chat/completions` |
 | `qiniu` |  | apikey | `https://api.qnaigc.com/v1/chat/completions` |

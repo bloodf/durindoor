@@ -22,21 +22,29 @@ npm test           # full suite, verbose reporter
 npm run test:watch # watch mode
 ```
 
-## CI gate (no-regression)
+## CI gate (zero-failure)
 
-During Stage 1 recovery, CI tolerates only the curated failures in
-`__baseline__/known-fails.txt`. The runner fails closed on startup, collection,
-runtime, stale-report, and parse errors, and rejects any new baseline entry.
+The recovery baseline is empty. CI requires direct Vitest success and treats
+any raw failure as a regression; `__baseline__/known-fails.txt` must remain
+empty. Bug-exposure tests that intentionally use `it.fails` remain governed by
+the translator convention in `AGENTS.md` and are not baseline exceptions.
 
 ```bash
 cd tests
 npm run test:ci    # runs the suite (JSON) then the no-regression gate
 ```
 
-`test:ci` deletes old reports first, writes `.test-results.json` and
+`test:ci` fails closed on startup, collection, runtime, stale-report, and parse
+errors. It deletes old reports first, writes `.test-results.json` and
 `.test-results.junit.xml`, and reports raw failures, known failures, and stale
-baseline entries separately. This is what `.github/workflows/test.yml` runs and
-uploads on every attempt.
+baseline entries separately; all three counts must be zero. This is what
+`.github/workflows/test.yml`, Nightly, and release workflows run and upload on
+every attempt.
+
+Use Node `20.20.2` and npm `10.8.2`. For an unwrapped raw run, use `npm test`;
+for the authoritative report-producing gate, use `npm run test:ci`. Build and
+test commands must point `HOME` and `DATA_DIR` at disposable directories so
+they cannot read or migrate an operator database.
 
 ## Test Files
 

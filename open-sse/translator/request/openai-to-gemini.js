@@ -281,16 +281,15 @@ function wrapInCloudCodeEnvelope(model, geminiCLI, credentials = null, isAntigra
   // Antigravity specific fields
   if (isAntigravity) {
     envelope.requestType = "agent";
-
-    // Add toolConfig for Antigravity
-    if (geminiCLI.tools?.length > 0) {
-      envelope.request.toolConfig = {
-        functionCallingConfig: { mode: "VALIDATED" }
-      };
-    }
   } else {
     // Keep safetySettings for Gemini CLI
     envelope.request.safetySettings = geminiCLI.safetySettings;
+  }
+
+  if (geminiCLI.tools?.length > 0) {
+    envelope.request.toolConfig = {
+      functionCallingConfig: { mode: "VALIDATED" }
+    };
   }
 
   return envelope;

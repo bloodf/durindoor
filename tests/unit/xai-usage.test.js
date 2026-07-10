@@ -110,4 +110,17 @@ describe("xAI (Grok) usage", () => {
     expect(result.quotas["Total tokens (30d)"].used).toBe(100);
     expect(result.quotas["Total spend (30d)"].used).toBeCloseTo(0.0001, 4);
   });
+
+  it("excludes future-dated requests from the advertised 30-day window", async () => {
+    const now = Date.now();
+    seedHistory(dbPath, [
+      { timestamp: new Date(now - 1000).toISOString(), model: "grok-4", connectionId: "conn-1", prompt: 100, completion: 0, cost: 0.0001 },
+      { timestamp: new Date(now + 24 * 60 * 60 * 1000).toISOString(), model: "grok-4", connectionId: "conn-1", prompt: 999, completion: 0, cost: 0.5 },
+    ]);
+
+    const result = await getUsageForProvider({ provider: "xai", id: "conn-1" });
+
+    expect(result.quotas["Total tokens (30d)"].used).toBe(100);
+    expect(result.quotas["Total spend (30d)"].used).toBeCloseTo(0.0001, 4);
+  });
 });

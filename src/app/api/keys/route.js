@@ -19,7 +19,7 @@ export async function GET() {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { name, allowedCombos, dailyLimitTokens } = body;
+    const { name, allowedCombos, dailyLimitTokens, policy, expiresAt } = body;
 
     if (!name) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
@@ -27,7 +27,7 @@ export async function POST(request) {
 
     // Always get machineId from server
     const machineId = await getConsistentMachineId();
-    const apiKey = await createApiKey(name, machineId, allowedCombos || [], dailyLimitTokens);
+    const apiKey = await createApiKey(name, machineId, allowedCombos || [], dailyLimitTokens, { policy, expiresAt });
 
     return NextResponse.json({
       key: apiKey.key,
@@ -36,10 +36,12 @@ export async function POST(request) {
       machineId: apiKey.machineId,
       allowedCombos: apiKey.allowedCombos,
       dailyLimitTokens: apiKey.dailyLimitTokens,
+      policy: apiKey.policy,
+      expiresAt: apiKey.expiresAt,
     }, { status: 201 });
   } catch (error) {
     console.log("Error creating key:", error);
-    const status = /dailyLimitTokens/.test(error.message) ? 400 : 500;
+    const status = /dailyLimitTokens|policy|expiresAt/.test(error.message) ? 400 : 500;
     return NextResponse.json({ error: status === 400 ? error.message : "Failed to create key" }, { status });
   }
 }

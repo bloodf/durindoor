@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { getMeta, setMeta } from "../helpers/metaStore.js";
+import { getChartDayBucketCount, getUsagePeriodDays } from "../../usagePeriods.js";
 import { incrementApiKeyUsageSync } from "./apiKeyUsageTotalsRepo.js";
 
 function maskApiKey(key) {
@@ -14,6 +15,10 @@ function maskApiKey(key) {
 function fingerprintApiKey(key) {
   if (!key || typeof key !== "string") return null;
   return `sha256:${createHash("sha256").update(key).digest("hex")}`;
+}
+
+function formatApiKeyFingerprint(fingerprint) {
+  return fingerprint ? `${fingerprint.slice(0, "sha256:".length + 12)}...` : null;
 }
 
 function getApiKeyStatsKey(apiKey, model, provider) {
@@ -483,8 +488,7 @@ export async function getUsageStats(period = "all") {
   const useDailySummary = period !== "24h" && period !== "today";
 
   if (useDailySummary) {
-    const periodDays = { "7d": 7, "30d": 30, "60d": 60 };
-    const maxDays = periodDays[period] || null;
+    const maxDays = getUsagePeriodDays(period);
     const dayRows = loadDaysInRange(db, maxDays);
 
     for (const dr of dayRows) {
@@ -543,9 +547,9 @@ export async function getUsageStats(period = "all") {
         const providerDisplayName = providerNodeNameMap[provider] || provider;
         const apiKeyVal = ak.apiKey;
         const keyInfo = apiKeyVal ? apiKeyMap[apiKeyVal] : null;
-        const keyName = keyInfo?.name || (apiKeyVal ? apiKeyVal.slice(0, 8) + "..." : "Local (No API Key)");
         const apiKeyMasked = maskApiKey(apiKeyVal);
         const apiKeyFingerprint = fingerprintApiKey(apiKeyVal);
+        const keyName = keyInfo?.name || formatApiKeyFingerprint(apiKeyFingerprint) || "Local (No API Key)";
         const apiKeyKey = apiKeyFingerprint || apiKeyMasked || "local-no-key";
         const statsKey = apiKeyFingerprint ? `${apiKeyFingerprint}|${rawModel}|${provider || "unknown"}` : akKey;
         if (!stats.byApiKey[statsKey]) {
@@ -664,7 +668,7 @@ export async function getUsageStats(period = "all") {
         const keyInfo = apiKeyMap[r.apiKey];
         const apiKeyMasked = maskApiKey(r.apiKey);
         const apiKeyFingerprint = fingerprintApiKey(r.apiKey);
-        const keyName = keyInfo?.name || (apiKeyFingerprint ? `${apiKeyFingerprint.slice(0, 8)}...` : `${r.apiKey.slice(0, 8)}...`);
+        const keyName = keyInfo?.name || formatApiKeyFingerprint(apiKeyFingerprint);
         const apiKeyKey = apiKeyFingerprint || apiKeyMasked;
         const akKey = `${apiKeyFingerprint}|${r.model}|${r.provider || "unknown"}`;
         if (!stats.byApiKey[akKey]) {
@@ -763,7 +767,7 @@ export async function getChartData(period = "7d") {
     });
   }
 
-  const bucketCount = period === "7d" ? 7 : period === "30d" ? 30 : period === "60d" ? 60 : period === "90d" ? 90 : 60;
+  const bucketCount = getChartDayBucketCount(period) || 60;
   const today = new Date();
 
   // Build map of dateKey → day data

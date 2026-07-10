@@ -65,6 +65,62 @@ describe("DB SQLite layer — public API parity", () => {
     expect(await sqliteDb.getApiKeyById(k.id)).toBeNull();
   });
 
+  it("apiKeys: policy and expiry survive create, update, and read without changing the secret", async () => {
+    const createdExpiry = "2030-01-01T00:00:00.000Z";
+    const updatedExpiry = "2031-01-01T00:00:00.000Z";
+    const created = await sqliteDb.createApiKey("policy-key", "machine-policy", [], null, {
+      policy: { allowedModels: ["openai/gpt-4o"] },
+      expiresAt: createdExpiry,
+    });
+    const originalSecret = created.key;
+
+    expect(created).toMatchObject({
+      policy: { allowedModels: ["openai/gpt-4o"] },
+      expiresAt: createdExpiry,
+    });
+
+    await sqliteDb.updateApiKey(created.id, {
+      policy: { maxTokens: 2500, maxCostUsd: 1.5 },
+      expiresAt: updatedExpiry,
+    });
+    const reloaded = await sqliteDb.getApiKeyByKey(originalSecret);
+
+    expect(reloaded).toMatchObject({
+      policy: { maxTokens: 2500, maxCostUsd: 1.5 },
+      expiresAt: updatedExpiry,
+    });
+    expect(reloaded.key).toBe(originalSecret);
+  });
+
+  it("apiKeys: export/import preserves policy and expiry while validation rejects expired keys", async () => {
+    const expired = await sqliteDb.createApiKey("expired-key", "machine-expired", [], null, {
+      policy: { maxTokens: 100 },
+      expiresAt: "2000-01-01T00:00:00.000Z",
+    });
+    const unexpired = await sqliteDb.createApiKey("unexpired-key", "machine-unexpired", [], null, {
+      policy: { allowedModels: ["openai/gpt-4o-mini"] },
+      expiresAt: "2100-01-01T00:00:00.000Z",
+    });
+    const snapshot = await sqliteDb.exportDb();
+    const exportedExpired = snapshot.apiKeys.find((key) => key.id === expired.id);
+
+    expect(exportedExpired).toMatchObject({
+      key: expired.key,
+      policy: { maxTokens: 100 },
+      expiresAt: "2000-01-01T00:00:00.000Z",
+    });
+
+    await sqliteDb.importDb(snapshot);
+
+    expect(await sqliteDb.getApiKeyById(expired.id)).toMatchObject({
+      key: expired.key,
+      policy: { maxTokens: 100 },
+      expiresAt: "2000-01-01T00:00:00.000Z",
+    });
+    expect(await sqliteDb.validateApiKey(expired.key)).toBe(false);
+    expect(await sqliteDb.validateApiKey(unexpired.key)).toBe(true);
+  });
+
   it("apiKeys: daily usage limit status uses today's API-key tokens", async () => {
     const k = await sqliteDb.createApiKey("limited-key", "machine-abc", [], 100);
     let status = await sqliteDb.getApiKeyUsageLimitStatus(k.key);
@@ -245,6 +301,43 @@ describe("DB SQLite layer — public API parity", () => {
     expect(stats.byProvider.openai).toBeDefined();
     expect(stats.byProvider.openai.requests).toBeGreaterThanOrEqual(2);
     expect(stats.byProvider.openai.promptTokens).toBeGreaterThanOrEqual(300);
+  });
+
+  it("usage: extended stats periods exclude rows older than their advertised window", async () => {
+    const now = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+    const cases = [
+      { period: "90d", insideDays: 80, outsideDays: 100 },
+      { period: "180d", insideDays: 170, outsideDays: 200 },
+      { period: "365d", insideDays: 350, outsideDays: 380 },
+    ];
+
+    for (const { period, insideDays, outsideDays } of cases) {
+      const provider = `window-${period}`;
+      await sqliteDb.saveRequestUsage({
+        timestamp: new Date(now - insideDays * dayMs).toISOString(),
+        provider,
+        model: "inside",
+        tokens: { prompt_tokens: 10, completion_tokens: 1 },
+        endpoint: "/v1/chat/completions",
+        status: "ok",
+      });
+      await sqliteDb.saveRequestUsage({
+        timestamp: new Date(now - outsideDays * dayMs).toISOString(),
+        provider,
+        model: "outside",
+        tokens: { prompt_tokens: 1000, completion_tokens: 100 },
+        endpoint: "/v1/chat/completions",
+        status: "ok",
+      });
+
+      const stats = await sqliteDb.getUsageStats(period);
+      expect(stats.byProvider[provider]).toMatchObject({
+        requests: 1,
+        promptTokens: 10,
+        completionTokens: 1,
+      });
+    }
   });
 
   it("usage: 24h and today byApiKey keep keys with the same masked prefix separate", async () => {

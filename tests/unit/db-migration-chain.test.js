@@ -83,6 +83,65 @@ describe("Schema migrations", () => {
     expect(aliases).toHaveLength(1);
   });
 
+  it("switching DATA_DIR keeps legacy imports, markers, and backups isolated", async () => {
+    const dirA = path.join(tempDir, "tenant-a");
+    const dirB = path.join(tempDir, "tenant-b");
+    fs.mkdirSync(dirA, { recursive: true });
+    fs.mkdirSync(dirB, { recursive: true });
+    fs.writeFileSync(path.join(dirA, "db.json"), JSON.stringify({
+      settings: { tenant: "a" },
+      apiKeys: [{ id: "key-a", key: "sk-aaaaaaaa", name: "A" }],
+    }));
+    fs.writeFileSync(path.join(dirB, "db.json"), JSON.stringify({
+      settings: { tenant: "b" },
+      apiKeys: [{ id: "key-b", key: "sk-bbbbbbbb", name: "B" }],
+    }));
+
+    process.env.DATA_DIR = dirA;
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const dbA = await getAdapter();
+    expect(JSON.parse(dbA.get(`SELECT data FROM settings WHERE id=1`).data)).toEqual({ tenant: "a" });
+    expect(dbA.all(`SELECT key FROM apiKeys`)).toEqual([{ key: "sk-aaaaaaaa" }]);
+
+    process.env.DATA_DIR = dirB;
+    const dbB = await getAdapter();
+    expect(JSON.parse(dbB.get(`SELECT data FROM settings WHERE id=1`).data)).toEqual({ tenant: "b" });
+    expect(dbB.all(`SELECT key FROM apiKeys`)).toEqual([{ key: "sk-bbbbbbbb" }]);
+
+    for (const dir of [dirA, dirB]) {
+      expect(fs.existsSync(path.join(dir, "db", ".migrated-from-json"))).toBe(true);
+      const backupsDir = path.join(dir, "db", "backups");
+      const backupNames = fs.readdirSync(backupsDir);
+      expect(backupNames).toHaveLength(1);
+      expect(fs.existsSync(path.join(backupsDir, backupNames[0], "db.json"))).toBe(true);
+    }
+    dbA.close?.();
+  }, 15_000);
+
+  it("does not reuse an in-flight adapter initialization for a different data file", async () => {
+    const dirA = path.join(tempDir, "race-a");
+    const dirB = path.join(tempDir, "race-b");
+    process.env.DATA_DIR = dirA;
+    const { getAdapter } = await import("@/lib/db/driver.js");
+
+    const adapterAPromise = getAdapter();
+    process.env.DATA_DIR = dirB;
+    const adapterBPromise = getAdapter();
+    const [adapterA, adapterB] = await Promise.all([adapterAPromise, adapterBPromise]);
+
+    expect(adapterA).not.toBe(adapterB);
+    expect(adapterA.get(`SELECT value FROM _meta WHERE key = 'schemaVersion'`).value).toBe("7");
+    expect(adapterB.get(`SELECT value FROM _meta WHERE key = 'schemaVersion'`).value).toBe("7");
+    expect(fs.existsSync(path.join(dirA, "db", "data.sqlite"))).toBe(true);
+    expect(fs.existsSync(path.join(dirB, "db", "data.sqlite"))).toBe(true);
+    adapterA.close?.();
+    process.env.DATA_DIR = dirA;
+    const reopenedA = await getAdapter();
+    expect(reopenedA).not.toBe(adapterA);
+    expect(reopenedA.get(`SELECT value FROM _meta WHERE key = 'schemaVersion'`).value).toBe("7");
+    reopenedA.close?.();
+  }, 15_000);
+
   it("auto-sync re-creates missing index when DB lacks it", async () => {
     const { getAdapter } = await import("@/lib/db/driver.js");
     const db = await getAdapter();

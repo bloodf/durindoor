@@ -12,10 +12,13 @@ const originalDataDir = process.env.DATA_DIR;
 beforeEach(() => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "9router-mig-apikey-"));
   process.env.DATA_DIR = tempDir;
+  delete global._dbAdapter;
   vi.resetModules();
 });
 
 afterEach(() => {
+  try { global._dbAdapter?.instance?.close?.(); } catch {}
+  delete global._dbAdapter;
   if (originalDataDir === undefined) delete process.env.DATA_DIR;
   else process.env.DATA_DIR = originalDataDir;
   if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
@@ -36,13 +39,12 @@ describe("api-key-expiry migration", () => {
     expect(new Set(MIGRATIONS.map((migration) => migration.version)).size).toBe(MIGRATIONS.length);
   });
 
-  it("v7 repairs already-stamped-v6 totals idempotently", async () => {
-    const { MIGRATIONS } = await import("@/lib/db/migrations/index.js");
-    const repair = MIGRATIONS.find((migration) => migration.version === 7);
-    expect(repair).toBeDefined();
-
-    const db = new Database(path.join(tempDir, "stamped-v6.sqlite3"));
+  it("runner upgrades stamped v6 to v7 once across restart without rewriting secrets", async () => {
+    const dbDir = path.join(tempDir, "db");
+    fs.mkdirSync(dbDir, { recursive: true });
+    const db = new Database(path.join(dbDir, "data.sqlite"));
     db.exec(`
+      CREATE TABLE _meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE apiKeys (id TEXT PRIMARY KEY, key TEXT NOT NULL);
       CREATE TABLE usageHistory (
         id INTEGER PRIMARY KEY,
@@ -63,24 +65,35 @@ describe("api-key-expiry migration", () => {
         VALUES('sk-12345678', 10, 5, 0.1), ('sk-12345678', 12, 3, 0.2);
       INSERT INTO apiKeyUsageTotals(apiKeyId, totalTokens, totalCost, totalRequests)
         VALUES('registered-id', 1, 0.01, 1);
+      INSERT INTO _meta(key, value) VALUES('schemaVersion', '6');
     `);
-    const adapter = {
-      all: (sql, params = []) => db.prepare(sql).all(params),
-      run: (sql, params = []) => db.prepare(sql).run(params),
-      exec: (sql) => db.exec(sql),
-    };
+    db.close();
 
-    repair.up(adapter);
-    repair.up(adapter);
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const firstBoot = await getAdapter();
+    const firstTotals = firstBoot.get(`SELECT * FROM apiKeyUsageTotals WHERE apiKeyId = ?`, ["registered-id"]);
+    expect(firstBoot.get(`SELECT value FROM _meta WHERE key = 'schemaVersion'`).value).toBe("7");
+    expect(firstBoot.get(`SELECT key FROM apiKeys WHERE id = 'registered-id'`).key).toBe("sk-12345678");
+    expect(firstTotals).toMatchObject({
+      totalTokens: 30,
+      totalRequests: 2,
+    });
+    expect(firstTotals.totalCost).toBeCloseTo(0.3, 12);
+    firstBoot.close?.();
 
-    const totals = db.prepare(`SELECT * FROM apiKeyUsageTotals WHERE apiKeyId = ?`).get("registered-id");
+    delete global._dbAdapter;
+    vi.resetModules();
+    const { getAdapter: getAdapterAfterRestart } = await import("@/lib/db/driver.js");
+    const secondBoot = await getAdapterAfterRestart();
+    const totals = secondBoot.get(`SELECT * FROM apiKeyUsageTotals WHERE apiKeyId = ?`, ["registered-id"]);
+    expect(secondBoot.get(`SELECT value FROM _meta WHERE key = 'schemaVersion'`).value).toBe("7");
+    expect(secondBoot.get(`SELECT key FROM apiKeys WHERE id = 'registered-id'`).key).toBe("sk-12345678");
     expect(totals).toMatchObject({
       totalTokens: 30,
       totalRequests: 2,
     });
     expect(totals.totalCost).toBeCloseTo(0.3, 12);
-    db.close();
-  });
+  }, 15_000);
 
   it("up() adds expiresAt to apiKeys when missing", () => {
     const db = new Database(path.join(tempDir, "data.sqlite3"));

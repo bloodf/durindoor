@@ -282,10 +282,12 @@ export async function getXaiUsage(connectionId) {
   let rows;
   try {
     const { getUsageHistory } = await import("../../../src/lib/db/index.js");
+    const now = new Date();
     rows = await getUsageHistory({
       provider: "xai",
       connectionId,
-      startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+      startDate: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
+      endDate: now,
     });
   } catch {
     rows = [];

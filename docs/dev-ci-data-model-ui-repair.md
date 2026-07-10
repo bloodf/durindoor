@@ -15,11 +15,11 @@ Registry fetchers accept the `openai` and `openai-compatible` response shapes. L
 
 ## Usage data
 
-The `agy` provider uses the Antigravity usage handler. xAI has no stable consumer quota endpoint, so the dashboard sums DurinDoor request history for the selected connection over a rolling 30-day window.
+The `agy` provider uses the Antigravity usage handler. xAI has no stable consumer quota endpoint, so the dashboard sums DurinDoor request history for the selected connection over the closed interval from 30 days ago through the current time. Future-dated history is excluded.
 
-Usage history resolves the active `DATA_DIR` at access time. Tests and isolated processes can switch data directories without reusing an adapter for the old SQLite file.
+The database file, legacy JSON sources, migration marker, and backup directory are all derived from the same resolved `DATA_DIR` at access time. Tests and isolated processes can switch data directories without reusing an adapter or in-flight initialization promise for a different SQLite file.
 
-API-key statistics use a SHA-256 fingerprint for internal identity and keep the masked prefix for display. The API response never returns the raw key. Chart requests for `90d` produce 90 daily buckets.
+API-key statistics use a SHA-256 fingerprint for internal identity and keep the masked prefix for display. Unregistered-key labels show 12 digest characters rather than raw key material. Chart and statistics requests share the same period definitions; `90d`, `180d`, and `365d` use matching date filters and daily bucket counts.
 
 ## Account ID providers
 
@@ -29,7 +29,7 @@ Cloudflare Workers AI and Snowflake Cortex require `providerSpecificData.account
 name|apiKey|accountId
 ```
 
-The add form rejects account-ID rows that omit the third field. Snowflake examples use the dashed hostname form, such as `org-account`.
+The Account-ID single-add path trims IDs, rejects blank or whitespace-only values, and saves only after provider validation succeeds. Other providers retain the existing `testStatus: "unknown"` save fallback when validation is unavailable. Bulk rows reject an omitted third field. Snowflake examples use the dashed hostname form, such as `org-account`.
 
 ## Migration order and lifetime totals
 
@@ -46,4 +46,6 @@ Migration 7 rebuilds registered-key totals from `usageHistory`. Repeated runs re
 
 `saveRequestUsage` increments a registered key inside the history transaction after it inserts a new history row. A retry with the same history identity returns before the increment, which keeps request and token totals stable.
 
-The migrations add columns and tables without changing stored key values. Both legacy `sk-<8 hex>` keys and current structured `sk-...` keys retain their existing secrets and validation behavior.
+API-key create, update, read, export, and import paths preserve `policy` and `expiresAt`. Validation rejects an active key after its valid expiry timestamp while retaining its database record.
+
+The migrations add columns and tables without changing stored key values. A version-6 database runs only migration 7 on restart, stamps version 7, and leaves totals stable on later restarts. Both legacy `sk-<8 hex>` keys and current structured `sk-...` keys retain their existing secret bytes.

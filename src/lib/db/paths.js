@@ -2,29 +2,39 @@ import path from "node:path";
 import fs from "node:fs";
 import { DATA_DIR } from "@/lib/dataDir.js";
 
-export const DB_DIR = path.join(DATA_DIR, "db");
-export const DATA_FILE = path.join(DB_DIR, "data.sqlite");
-export const BACKUPS_DIR = path.join(DB_DIR, "backups");
-
 /** Resolve the active data directory at call time for isolated runtimes/tests. */
 export function currentDataDir() {
-  return process.env.DATA_DIR || DATA_DIR;
+  return path.resolve(process.env.DATA_DIR || DATA_DIR);
 }
 
-/** Resolve the active SQLite file without changing legacy snapshot exports. */
+/** Resolve the active SQLite file at call time. */
 export function currentDataFile() {
   return path.join(currentDataDir(), "db", "data.sqlite");
 }
-export const LEGACY_FILES = {
-  main: path.join(DATA_DIR, "db.json"),
-  usage: path.join(DATA_DIR, "usage.json"),
-  disabled: path.join(DATA_DIR, "disabledModels.json"),
-  details: path.join(DATA_DIR, "request-details.json"),
-};
-export function ensureDirs() {
-  const dataDir = currentDataDir();
-  const dbDir = path.join(dataDir, "db");
-  for (const dir of [dataDir, dbDir, path.join(dbDir, "backups")]) {
+
+/** Derive every DB-adjacent path from one resolved SQLite file. */
+export function resolveDataPaths(dataFile = currentDataFile()) {
+  const resolvedDataFile = path.resolve(dataFile);
+  const dbDir = path.dirname(resolvedDataFile);
+  const dataDir = path.dirname(dbDir);
+  return {
+    dataDir,
+    dbDir,
+    dataFile: resolvedDataFile,
+    backupsDir: path.join(dbDir, "backups"),
+    migratedMarker: path.join(dbDir, ".migrated-from-json"),
+    legacyFiles: {
+      main: path.join(dataDir, "db.json"),
+      usage: path.join(dataDir, "usage.json"),
+      disabled: path.join(dataDir, "disabledModels.json"),
+      details: path.join(dataDir, "request-details.json"),
+    },
+  };
+}
+
+export function ensureDirs(dataFile = currentDataFile()) {
+  const { dataDir, dbDir, backupsDir } = resolveDataPaths(dataFile);
+  for (const dir of [dataDir, dbDir, backupsDir]) {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   }
 }

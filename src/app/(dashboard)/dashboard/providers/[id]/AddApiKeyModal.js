@@ -4,9 +4,9 @@ import { useState } from "react";
 import PropTypes from "prop-types";
 import { Button, Badge, Input, Modal, Select } from "@/shared/components";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
+import { ACCOUNT_ID_PROVIDER_DETAILS, buildAccountIdProviderData, validateAndSaveProviderConnection } from "./addApiKeyForm.js";
 
 const BULK_PLACEHOLDER = `name1|sk-key1\nname2|sk-key2\nsk-key-only-auto-named`;
-const ACCOUNT_ID_PROVIDER_DETAILS = ["cloudflare-ai", "snowflake"];
 
 export default function AddApiKeyModal({ isOpen, provider, providerName, isCompatible, isAnthropic, authType, authHint, website, proxyPools, error, onSave, onBulkDone, onClose }) {
   const NONE_PROXY_POOL_VALUE = "__none__";
@@ -67,7 +67,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
       };
     }
     if (requiresAccountId) {
-      return { accountId: accountIdData.accountId };
+      return buildAccountIdProviderData(provider, accountIdData.accountId);
     }
     if (providerRegions && region) {
       return { region };
@@ -100,37 +100,29 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
       if (!formData.name) return;
     }
     if (isCompatible && !formData.defaultModel.trim()) return;
+    if (requiresAccountId && !buildProviderSpecificData()) return;
 
     setSaving(true);
     try {
-      let isValid = false;
-      try {
-        setValidating(true);
-        setValidationResult(null);
-        const res = await fetch("/api/providers/validate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ provider, apiKey: formData.apiKey, providerSpecificData: buildProviderSpecificData() }),
-        });
-        const data = await res.json();
-        isValid = !!data.valid;
-        setValidationResult(isValid ? "success" : "failed");
-      } catch {
-        setValidationResult("failed");
-      } finally {
-        setValidating(false);
-      }
-
-      await onSave({
-        name: formData.name || (isOllamaLocal ? "Ollama Local" : ""),
+      setValidating(true);
+      setValidationResult(null);
+      const isValid = await validateAndSaveProviderConnection({
+        provider,
         apiKey: formData.apiKey,
-        defaultModel: isCompatible ? formData.defaultModel.trim() : undefined,
-        priority: formData.priority,
-        proxyPoolId: formData.proxyPoolId === NONE_PROXY_POOL_VALUE ? null : formData.proxyPoolId,
-        testStatus: isValid ? "active" : "unknown",
-        providerSpecificData: buildProviderSpecificData()
+        providerSpecificData: buildProviderSpecificData(),
+        connection: {
+          name: formData.name || (isOllamaLocal ? "Ollama Local" : ""),
+          apiKey: formData.apiKey,
+          defaultModel: isCompatible ? formData.defaultModel.trim() : undefined,
+          priority: formData.priority,
+          proxyPoolId: formData.proxyPoolId === NONE_PROXY_POOL_VALUE ? null : formData.proxyPoolId,
+          testStatus: "active",
+        },
+        onSave,
       });
+      setValidationResult(isValid ? "success" : "failed");
     } finally {
+      setValidating(false);
       setSaving(false);
     }
   };
@@ -392,7 +384,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         </p>
 
         <div className="flex gap-2">
-          <Button onClick={handleSubmit} fullWidth disabled={saving || (!isOllamaLocal && (!formData.name || !formData.apiKey)) || (isCompatible && !formData.defaultModel.trim()) || (isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization)) || (requiresAccountId && !accountIdData.accountId)}>
+          <Button onClick={handleSubmit} fullWidth disabled={saving || (!isOllamaLocal && (!formData.name || !formData.apiKey)) || (isCompatible && !formData.defaultModel.trim()) || (isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization)) || (requiresAccountId && !accountIdData.accountId.trim())}>
             {saving ? "Saving..." : "Save"}
           </Button>
           <Button onClick={onClose} variant="ghost" fullWidth>

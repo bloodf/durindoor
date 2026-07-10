@@ -116,6 +116,7 @@ describe("cached-token end-to-end (persist + aggregate + cost)", () => {
       expect(key).not.toContain(keyA);
       expect(key).not.toContain(keyB);
       expect(row.apiKeyMasked).toBe("sk-samep***");
+      expect(row.keyName).toMatch(/^sha256:[0-9a-f]{12}\.\.\.$/);
       expect(row.requests).toBe(1);
     }
   });

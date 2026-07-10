@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
+import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 
 function rowToKey(row) {
   if (!row) return null;
@@ -11,6 +12,8 @@ function rowToKey(row) {
     isActive: row.isActive === 1 || row.isActive === true,
     allowedCombos: (() => { try { const v = JSON.parse(row.allowedCombos); return Array.isArray(v) ? v : []; } catch { return []; } })(),
     dailyLimitTokens: row.dailyLimitTokens ?? null,
+    policy: parseJson(row.policy, null),
+    expiresAt: row.expiresAt ?? null,
     createdAt: row.createdAt,
   };
 }
@@ -21,6 +24,20 @@ function normalizeDailyLimitTokens(value) {
   const limit = Number(value);
   if (!Number.isSafeInteger(limit) || limit < 0) throw new Error("dailyLimitTokens must be a non-negative integer");
   return limit;
+}
+
+function normalizePolicy(value) {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  if (typeof value !== "object" || Array.isArray(value)) throw new Error("policy must be an object or null");
+  return value;
+}
+
+function normalizeExpiresAt(value) {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  if (typeof value !== "string" || !Number.isFinite(Date.parse(value))) throw new Error("expiresAt must be a valid date string or null");
+  return value;
 }
 
 function getLocalDayStartIso(now = new Date()) {
@@ -47,9 +64,11 @@ export async function getApiKeyByKey(key) {
   return rowToKey(row);
 }
 
-export async function createApiKey(name, machineId, allowedCombos = [], dailyLimitTokens = null) {
+export async function createApiKey(name, machineId, allowedCombos = [], dailyLimitTokens = null, metadata = {}) {
   if (!machineId) throw new Error("machineId is required");
   const tokenLimit = normalizeDailyLimitTokens(dailyLimitTokens);
+  const policy = normalizePolicy(metadata.policy) ?? null;
+  const expiresAt = normalizeExpiresAt(metadata.expiresAt) ?? null;
   const db = await getAdapter();
   const { generateApiKeyWithMachine } = await import("@/shared/utils/apiKey");
   const result = generateApiKeyWithMachine(machineId);
@@ -61,11 +80,13 @@ export async function createApiKey(name, machineId, allowedCombos = [], dailyLim
     isActive: true,
     allowedCombos: Array.isArray(allowedCombos) ? allowedCombos : [],
     dailyLimitTokens: tokenLimit ?? null,
+    policy,
+    expiresAt,
     createdAt: new Date().toISOString(),
   };
   db.run(
-    `INSERT INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, dailyLimitTokens, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
-    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, JSON.stringify(apiKey.allowedCombos), apiKey.dailyLimitTokens, apiKey.createdAt]
+    `INSERT INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, dailyLimitTokens, policy, expiresAt, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, JSON.stringify(apiKey.allowedCombos), apiKey.dailyLimitTokens, stringifyJson(apiKey.policy), apiKey.expiresAt, apiKey.createdAt]
   );
   return apiKey;
 }
@@ -78,10 +99,12 @@ export async function updateApiKey(id, data) {
     if (!row) return;
     const cleanData = { ...data };
     if ("dailyLimitTokens" in cleanData) cleanData.dailyLimitTokens = normalizeDailyLimitTokens(cleanData.dailyLimitTokens);
+    if ("policy" in cleanData) cleanData.policy = normalizePolicy(cleanData.policy);
+    if ("expiresAt" in cleanData) cleanData.expiresAt = normalizeExpiresAt(cleanData.expiresAt);
     const merged = { ...rowToKey(row), ...cleanData };
     db.run(
-      `UPDATE apiKeys SET key = ?, name = ?, machineId = ?, isActive = ?, allowedCombos = ?, dailyLimitTokens = ? WHERE id = ?`,
-      [merged.key, merged.name, merged.machineId, merged.isActive ? 1 : 0, JSON.stringify(merged.allowedCombos || []), merged.dailyLimitTokens ?? null, id]
+      `UPDATE apiKeys SET key = ?, name = ?, machineId = ?, isActive = ?, allowedCombos = ?, dailyLimitTokens = ?, policy = ?, expiresAt = ? WHERE id = ?`,
+      [merged.key, merged.name, merged.machineId, merged.isActive ? 1 : 0, JSON.stringify(merged.allowedCombos || []), merged.dailyLimitTokens ?? null, stringifyJson(merged.policy), merged.expiresAt ?? null, id]
     );
     result = merged;
   });
@@ -90,9 +113,14 @@ export async function updateApiKey(id, data) {
 
 export async function validateApiKey(key) {
   const db = await getAdapter();
-  const row = db.get(`SELECT isActive FROM apiKeys WHERE key = ?`, [key]);
+  const row = db.get(`SELECT isActive, expiresAt FROM apiKeys WHERE key = ?`, [key]);
   if (!row) return false;
-  return row.isActive === 1 || row.isActive === true;
+  if (!(row.isActive === 1 || row.isActive === true)) return false;
+  if (row.expiresAt) {
+    const expiresAt = Date.parse(row.expiresAt);
+    if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) return false;
+  }
+  return true;
 }
 
 export async function getApiKeyUsageLimitStatus(key, now = new Date()) {

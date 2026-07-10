@@ -1,6 +1,7 @@
 const esbuild = require("esbuild");
 const fs = require("fs");
 const path = require("path");
+const { resolveCliAppDir } = require("./cliBuildPaths");
 
 // ── Build config ─────────────────────────────────────────
 const BUILD_CONFIG = {
@@ -15,7 +16,8 @@ const BUILD_CONFIG = {
 
 const cliDir = path.resolve(__dirname, "..");
 const appDir = path.resolve(cliDir, "..");
-const cliMitmDir = path.join(cliDir, "app", "src", "mitm");
+const cliAppDir = resolveCliAppDir(cliDir);
+const cliMitmDir = path.join(cliAppDir, "src", "mitm");
 // Bundle everything — no externals. This keeps MITM runtime self-contained so
 // it can be copied to DATA_DIR/runtime/ and spawned from there (escapes
 // node_modules file locks that block `npm i -g durindoor@latest` on Windows).

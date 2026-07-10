@@ -16,6 +16,14 @@ function isPromptAlreadyInjected(content, prompt) {
   return content.includes(signature);
 }
 
+/**
+ * Inject system prompt using the request shape selected by `format`.
+ * Responses/Codex use `body.instructions`; OpenAI chat uses the system/developer message.
+ * No-op when `body`/`prompt` empty or the prompt is already present. Mutates `body` in place.
+ * @param {object} body translated request body (mutated)
+ * @param {string} format one of FORMATS
+ * @param {string} prompt system/token-saver text to inject
+ */
 export function injectSystemPrompt(body, format, prompt) {
   if (!body || !prompt) return;
 
@@ -32,14 +40,14 @@ export function injectSystemPrompt(body, format, prompt) {
       return;
     default:
       // OpenAI and OpenAI-shaped formats (responses/codex/cursor/kiro/ollama)
-      injectMessagesSystem(body, prompt);
+      injectMessagesSystem(body, prompt, format);
   }
 }
 
 // OpenAI-shaped: messages[] (chat) or input[] (responses) or instructions (responses string)
-function injectMessagesSystem(body, prompt) {
-  // OpenAI Responses API: top-level string field
-  if (typeof body.instructions === "string") {
+function injectMessagesSystem(body, prompt, format) {
+  // OpenAI Responses API: Codex rejects instruction messages in input[]; use top-level instructions.
+  if (format === FORMATS.OPENAI_RESPONSES || format === FORMATS.OPENAI_RESPONSE || format === FORMATS.CODEX || typeof body.instructions === "string") {
     if (isPromptAlreadyInjected(body.instructions, prompt)) return;
     body.instructions = body.instructions
       ? `${body.instructions}${SEP}${prompt}`

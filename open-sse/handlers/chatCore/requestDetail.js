@@ -83,7 +83,17 @@ export function buildRequestDetail(base, overrides = {}) {
   };
 }
 
-// Build the "done" summary: duration, ttft, in/out tokens with cache breakdown
+/**
+ * Build the unified "done" summary line: total latency, optional TTFT, input
+ * tokens (with cache read/creation breakdown when present), and output tokens.
+ * Accepted usage fields: `prompt_tokens`/`input_tokens`, `completion_tokens`/
+ * `output_tokens`, `cache_read_input_tokens`/`cached_tokens` /
+ * `prompt_tokens_details.cached_tokens`, and `cache_creation_input_tokens`.
+ * @param {object} params
+ * @param {object} [params.usage] - Usage object using the field names above.
+ * @param {{ttft?: number, total?: number}} [params.latency] - Latency in ms.
+ * @returns {string} `DONE <total>ms[ · TTFT <ms>] · IN <n>[(CACHE …)] · OUT <n>`.
+ */
 export function formatDoneLine({ usage, latency }) {
   const u = usage || {};
   const inTok = u.prompt_tokens ?? u.input_tokens ?? 0;

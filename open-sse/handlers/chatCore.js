@@ -92,9 +92,23 @@ export function shouldStripOrphanedToolResults(format) {
 
 /**
  * Core chat handler - shared between SSE and Worker
+ *
+ * Unified request-lifecycle logging: derives a session-stable `reqTag` (via
+ * `log.tagForSession`/`log.nextTag` over the resolved session id) and emits one
+ * correlated request line (format, thinking, message/tool counts, account), a
+ * `⚙` token-saver summary line when at least one saver is active, and a DONE /
+ * ERROR line at completion. The `reqTag` is threaded into `buildOnStreamComplete`
+ * so streaming and non-streaming paths share one color across the CLI conversation.
+ *
+ * @param {object} options
  * @param {object} options.body - Request body
  * @param {object} options.modelInfo - { provider, model }
  * @param {object} options.credentials - Provider credentials
+ * @param {object} [options.log] - Unified logger (src/sse/utils/logger.js).
+ *   Expected: `tagForSession(seed)`/`nextTag()` to allocate the session tag,
+ *   `fmtThink(intent)` for the thinking label, `line(tag, symbol, message)`
+ *   for INFO lines, and `errorLine(tag, symbol, message)` for always-printed
+ *   errors. Legacy `info`/`debug`/`warn`/`error` remain supported.
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
 export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit }) {

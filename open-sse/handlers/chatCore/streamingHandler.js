@@ -108,7 +108,16 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
 }
 
 /**
- * Build onStreamComplete callback for streaming usage tracking.
+ * Build the streaming completion callback: persists request detail + stream
+ * usage, then emits one correlated DONE line via the unified logger.
+ * @param {object} params
+ * @param {string} params.provider - Provider id.
+ * @param {string} params.model - Resolved model id.
+ * @param {string} params.reqTag - Session-stable colored tag from chatCore.
+ * @param {object} [params.log] - Unified logger; `line(tag, symbol, message)`
+ *   emits the DONE line when present.
+ * @param {number} params.requestStartTime - `Date.now()` at request start (TTFT base).
+ * @returns {{onStreamComplete: Function, streamDetailId: string}}
  */
 export function buildOnStreamComplete({ provider, model, connectionId, apiKey, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest, pxpipe, reqTag, log }) {
   const streamDetailId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;

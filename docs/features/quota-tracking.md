@@ -44,6 +44,14 @@ Common reset patterns:
 
 Treat displayed reset windows as operational hints unless the provider explicitly guarantees them.
 
+## Claude and Codex Auto-ping
+
+Auto-ping is an opt-in setting for each active Claude or Codex OAuth connection. Enable it from the connection row on the provider page, the Provider Limits view, or the CLI connection actions. DurinDoor persists the choice with that connection and sends a minimal request only when the provider reports that the five-hour session window is ready to restart. Codex auto-ping also waits when a longer blocking quota is exhausted.
+
+The scheduler rechecks both the connection and its setting immediately before sending. Disabling or deleting a connection removes its saved entry and cancels pending work where possible. A request already accepted by the upstream provider cannot be recalled. Auto-ping never applies to API-key connections or providers other than Claude and Codex.
+
+Dashboard and CLI updates use a connection-scoped endpoint. Concurrent changes to different accounts preserve each other, and rapid changes to one dashboard toggle are serialized so the last selection wins. If an update fails, the dashboard restores the last server-confirmed value.
+
 ## Cost Estimates
 
 Cost estimates require pricing data and usage data. If either is missing, cost may be blank or approximate.
@@ -56,6 +64,17 @@ Use cost estimates for:
 - Creating budget review reports.
 
 Do not treat estimates as invoices. The upstream provider remains the billing authority.
+
+## Analytics Period Semantics
+
+Usage analytics use one shared period contract across the dashboard, stats API, chart API, and database repository:
+
+- `Today` starts at midnight in the DurinDoor server timezone. On daylight-saving transitions its hourly chart contains the actual 23 or 25 local hours.
+- `24h` is an exact rolling 86,400,000-millisecond window ending at the current server time.
+- `7D`, `30D`, `60D`, `90D`, `180D`, and `365D` are inclusive server-local calendar-day windows. For example, `7D` includes today and the six preceding local dates.
+- `All` includes every retained calendar day. The chart fills gaps from the earliest retained day through today. Long histories are grouped into at most 366 deterministic buckets without dropping totals.
+
+All bounded queries exclude future-dated records. Cached and cache-creation tokens remain subsets of input tokens and are reported separately; reasoning tokens are reported separately from normal output tokens. Chart `tokens` remains the compatible input-plus-output value, with cached, cache-creation, and reasoning values available as additive fields rather than being double-counted. Historical daily rollups created by older DurinDoor versions did not store the newer reasoning and cache-creation detail fields, so those additive fields can be zero for retained pre-upgrade days even when the compatible input/output totals and cost remain complete.
 
 ## Request Logs and Privacy
 

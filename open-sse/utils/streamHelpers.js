@@ -61,6 +61,15 @@ export function parseSSELine(line, format = null) {
 
 // Check if chunk has valuable content (not empty)
 export function hasValuableContent(chunk, format) {
+  // Wrapped Gemini-family Responses passthrough (e.g. Antigravity) - check
+  // the response.candidates path even when format is OpenAI, so terminal
+  // chunks with finishReason or non-empty content are not filtered.
+  if (chunk.response?.candidates?.[0]?.content?.parts) {
+    return true;
+  }
+  if (chunk.response?.candidates?.[0]?.finishReason) {
+    return true;
+  }
   // OpenAI format
   if (format === FORMATS.OPENAI && chunk.choices?.[0]?.delta) {
     const delta = chunk.choices[0].delta;

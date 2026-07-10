@@ -67,6 +67,7 @@ describe("xAI (Grok) usage", () => {
       { timestamp: new Date(now - 1000).toISOString(), model: "grok-4", connectionId: "conn-1", prompt: 100, completion: 50, cost: 0.0006 },
       { timestamp: new Date(now - 2000).toISOString(), model: "grok-4", connectionId: "conn-1", prompt: 200, completion: 75, cost: 0.0009 },
       { timestamp: new Date(now - 3000).toISOString(), model: "grok-code-fast-1", connectionId: "conn-1", prompt: 400, completion: 25, cost: 0.0005 },
+      { timestamp: new Date(now - 31 * 24 * 60 * 60 * 1000).toISOString(), model: "grok-old", connectionId: "conn-1", prompt: 9999, completion: 9999, cost: 9 },
     ]);
 
     const result = await getUsageForProvider({ provider: "xai", id: "conn-1" });
@@ -77,6 +78,7 @@ describe("xAI (Grok) usage", () => {
     expect(result.quotas["Total spend (30d)"].used).toBeCloseTo(0.002, 4);
     expect(result.quotas["grok-4 (30d)"].used).toBe(425);
     expect(result.quotas["grok-code-fast-1 (30d)"].used).toBe(425);
+    expect(result.quotas["grok-old (30d)"]).toBeUndefined();
   });
 
   it("returns graceful message when no xai history exists", async () => {

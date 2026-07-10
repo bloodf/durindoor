@@ -7,6 +7,7 @@ import {
   getCopilotMode,
   sessionPoolKey,
   solveHashcash,
+  solveHashcashAsync,
 } from "../../open-sse/executors/copilot-web.js";
 import { __setOriginalFetchForTesting } from "../../open-sse/utils/proxyFetch.js";
 
@@ -148,6 +149,7 @@ describe("copilot-web helpers", () => {
 
   it("keeps session keys isolated by access token", () => {
     expect(sessionPoolKey("alice")).not.toBe(sessionPoolKey("bob"));
+    expect(sessionPoolKey("alice")).not.toContain("alice");
     expect(sessionPoolKey()).toBe("anonymous");
   });
 
@@ -155,6 +157,15 @@ describe("copilot-web helpers", () => {
     expect(solveHashcash("param", 0)).toBeNull();
     expect(solveHashcash("param", 9)).toBeNull();
     expect(typeof solveHashcash("param", 1)).toBe("number");
+  });
+
+  it("yields and bounds runtime hashcash work", async () => {
+    await expect(solveHashcashAsync("param", 1)).resolves.toEqual(expect.any(Number));
+    await expect(solveHashcashAsync("param", 8, {
+      maxIterations: 2_001,
+      maxDurationMs: 1,
+      yieldEvery: 1_000,
+    })).resolves.toBeNull();
   });
 });
 
@@ -248,6 +259,8 @@ describe("CopilotWebExecutor", () => {
         credentials: { apiKey: "access_token=tok" },
       });
       expect(result.response.status).toBe(401);
+      expect(result.headers).toEqual({ Authorization: "[redacted]" });
+      expect(JSON.stringify({ url: result.url, headers: result.headers })).not.toContain("tok");
       await expect(result.response.json()).resolves.toMatchObject({
         error: { message: expect.stringContaining("401") },
       });

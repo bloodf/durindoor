@@ -1,6 +1,7 @@
 // Built-in node:sqlite adapter — available in Node >= 22.5.0.
 // No native build, no npm install. API mirrors betterSqliteAdapter.
 import { PRAGMA_SQL } from "../schema.js";
+import { assertCheckpointComplete } from "../helpers/checkpoint.js";
 
 const CHECKPOINT_INTERVAL_MS = 60 * 1000;
 
@@ -43,10 +44,13 @@ export async function createNodeSqliteAdapter(filePath) {
     try { stmtCache.clear(); } catch {}
     try { db.close(); } catch {}
   }
-  const onShutdown = () => gracefulClose();
-  process.once("beforeExit", onShutdown);
-  process.once("SIGINT", () => { onShutdown(); process.exit(0); });
-  process.once("SIGTERM", () => { onShutdown(); process.exit(0); });
+  const onSignal = () => {
+    // Keep the repository available until the central MITM cleanup finishes.
+    try { db.exec("PRAGMA wal_checkpoint(TRUNCATE)"); } catch {}
+  };
+  process.once("beforeExit", gracefulClose);
+  process.once("SIGINT", onSignal);
+  process.once("SIGTERM", onSignal);
 
   return {
     driver: "node:sqlite",
@@ -74,7 +78,10 @@ export async function createNodeSqliteAdapter(filePath) {
         throw e;
       }
     },
-    checkpoint() { try { db.exec("PRAGMA wal_checkpoint(TRUNCATE)"); } catch {} },
+    checkpoint() {
+      const row = db.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get();
+      return assertCheckpointComplete(row, "node:sqlite");
+    },
     close() {
       clearInterval(checkpointTimer);
       gracefulClose();

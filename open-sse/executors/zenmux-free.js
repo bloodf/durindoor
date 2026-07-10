@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
-import { buildErrorBody, errorResponse } from "../utils/error.js";
+import { buildErrorBody, errorResponse, sanitizeErrorMessage } from "../utils/error.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { toOpenAIFinish } from "../translator/concerns/finishReason.js";
 import { applyThinking, captureThinking } from "../translator/concerns/thinkingUnified.js";
@@ -21,7 +21,12 @@ export function normalizeZenmuxCookie(value) {
 
 export function extractZenmuxCtoken(cookieHeader) {
   const match = normalizeZenmuxCookie(cookieHeader).match(/(?:^|;\s*)ctoken=([^;]+)/);
-  return match ? decodeURIComponent(match[1]) : "";
+  if (!match) return "";
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return "";
+  }
 }
 
 function textFromContent(content) {
@@ -135,7 +140,13 @@ function parseAnthropicSseData(line) {
   }
 }
 
-async function collectText(body) {
+function abortReason(signal) {
+  return signal?.reason instanceof Error
+    ? signal.reason
+    : new DOMException("Request aborted", "AbortError");
+}
+
+async function collectText(body, signal) {
   if (!body) return { text: "", reasoning: "", stopReason: null };
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -143,10 +154,17 @@ async function collectText(body) {
   let text = "";
   let reasoning = "";
   let stopReason = null;
+  const onAbort = () => {
+    reader.cancel(abortReason(signal)).catch(() => {});
+  };
+  if (signal?.aborted) onAbort();
+  else signal?.addEventListener("abort", onAbort, { once: true });
 
   try {
     while (true) {
+      if (signal?.aborted) throw abortReason(signal);
       const { done, value } = await reader.read();
+      if (signal?.aborted) throw abortReason(signal);
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
@@ -155,7 +173,7 @@ async function collectText(body) {
         const event = parseAnthropicSseData(line);
         if (!event || event === "[DONE]") continue;
         if (event.type === "error") {
-          throw new Error(event.error?.message || "ZenMux streaming error");
+          throw new Error(sanitizeErrorMessage(event.error?.message || "ZenMux streaming error"));
         }
         if (event.type === "content_block_delta" && event.delta) {
           text += event.delta.text || "";
@@ -167,6 +185,7 @@ async function collectText(body) {
       }
     }
   } finally {
+    signal?.removeEventListener?.("abort", onAbort);
     reader.releaseLock();
   }
 
@@ -188,12 +207,18 @@ function buildStreamingResponse(upstream, model, cid, created, signal) {
 
       let buffer = "";
       let errored = false;
+      const onAbort = () => {
+        reader.cancel(abortReason(signal)).catch(() => {});
+      };
+      if (signal?.aborted) onAbort();
+      else signal?.addEventListener("abort", onAbort, { once: true });
       controller.enqueue(encoder.encode(openAiChunk({ id: cid, created, model, delta: { role: "assistant" } })));
 
       try {
         while (true) {
-          if (signal?.aborted) break;
+          if (signal?.aborted) throw abortReason(signal);
           const { done, value } = await reader.read();
+          if (signal?.aborted) throw abortReason(signal);
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split("\n");
@@ -203,7 +228,10 @@ function buildStreamingResponse(upstream, model, cid, created, signal) {
             if (!event) continue;
             if (event === "[DONE]") continue;
             if (event.type === "error") {
-              const errorBody = buildErrorBody(502, event.error?.message || "ZenMux streaming error");
+              const errorBody = buildErrorBody(
+                502,
+                sanitizeErrorMessage(event.error?.message || "ZenMux streaming error"),
+              );
               errored = true;
               controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorBody)}\n\n`));
               controller.enqueue(encoder.encode("data: [DONE]\n\n"));
@@ -233,10 +261,12 @@ function buildStreamingResponse(upstream, model, cid, created, signal) {
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
       } catch (error) {
         errored = true;
-        if (!signal?.aborted) controller.error(error);
+        // Aborts must settle the downstream stream too; suppressing the error
+        // here leaves Response consumers pending forever after reader.cancel().
+        try { controller.error(error); } catch { /* consumer already closed */ }
       } finally {
+        signal?.removeEventListener?.("abort", onAbort);
         reader.releaseLock();
-        if (signal?.aborted) return;
         if (errored) return;
         controller.close();
       }
@@ -287,6 +317,9 @@ export class ZenmuxFreeExecutor extends BaseExecutor {
       "x-zenmux-apikey-source": "subscription",
       Cookie: rawCookie,
     };
+    // Executor results are consumed by the optional on-disk request logger.
+    // Keep the real cookie only in the fetch options and expose a safe summary.
+    const logHeaders = { ...headers, Cookie: "[redacted]" };
 
     let upstream;
     try {
@@ -300,18 +333,28 @@ export class ZenmuxFreeExecutor extends BaseExecutor {
       if (error.name === "AbortError") {
         throw error;
       }
-      return makeErrorResult(502, `ZenMux Free fetch failed: ${error.message || "unknown"}`, body, url.toString());
+      return makeErrorResult(
+        502,
+        `ZenMux Free fetch failed: ${sanitizeErrorMessage(error.message || "unknown")}`,
+        body,
+        ZENMUX_FREE_CHAT_URL,
+      );
     }
 
     if (!upstream.ok) {
       if (upstream.status === 401 || upstream.status === 403) {
-        return makeErrorResult(401, "ZenMux Free: cookies expired or invalid", body, url.toString());
+        return makeErrorResult(401, "ZenMux Free: cookies expired or invalid", body, ZENMUX_FREE_CHAT_URL);
       }
       if (upstream.status === 402) {
-        return makeErrorResult(402, "ZenMux Free: free-tier quota exhausted", body, url.toString());
+        return makeErrorResult(402, "ZenMux Free: free-tier quota exhausted", body, ZENMUX_FREE_CHAT_URL);
       }
       const errorText = await upstream.text().catch(() => "");
-      return makeErrorResult(upstream.status, `ZenMux Free error: ${errorText || upstream.statusText}`, body, url.toString());
+      return makeErrorResult(
+        upstream.status,
+        `ZenMux Free error: ${sanitizeErrorMessage(errorText || upstream.statusText)}`,
+        body,
+        ZENMUX_FREE_CHAT_URL,
+      );
     }
 
     const cid = `chatcmpl-zmf-${randomUUID().slice(0, 12)}`;
@@ -326,14 +369,14 @@ export class ZenmuxFreeExecutor extends BaseExecutor {
             Connection: "keep-alive",
           },
         }),
-        url: url.toString(),
-        headers,
+        url: ZENMUX_FREE_CHAT_URL,
+        headers: logHeaders,
         transformedBody,
       };
     }
 
     try {
-      const { text, reasoning, stopReason } = await collectText(upstream.body);
+      const { text, reasoning, stopReason } = await collectText(upstream.body, signal);
       const message = { role: "assistant", content: text };
       if (reasoning) message.reasoning_content = reasoning;
       return {
@@ -349,12 +392,20 @@ export class ZenmuxFreeExecutor extends BaseExecutor {
             total_tokens: Math.ceil(text.length / 4),
           },
         }), { headers: { "Content-Type": "application/json" } }),
-        url: url.toString(),
-        headers,
+        url: ZENMUX_FREE_CHAT_URL,
+        headers: logHeaders,
         transformedBody,
       };
     } catch (error) {
-      return makeErrorResult(502, error.message || "ZenMux Free streaming error", body, url.toString());
+      if (signal?.aborted || error.name === "AbortError") {
+        throw signal?.reason instanceof Error ? signal.reason : error;
+      }
+      return makeErrorResult(
+        502,
+        sanitizeErrorMessage(error.message || "ZenMux Free streaming error"),
+        body,
+        ZENMUX_FREE_CHAT_URL,
+      );
     }
   }
 }

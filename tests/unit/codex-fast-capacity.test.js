@@ -49,11 +49,9 @@ describe("Codex fast tier and capacity handling", () => {
 
   it("classifies 200-SSE model capacity as account fallback", async () => {
     const executor = new CodexExecutor();
-    const response = new Response(streamFromText([
-      "event: error",
-      'data: {"error":{"message":"Selected model is at capacity. Please try a different model."}}',
-      "",
-    ].join("\n")), {
+    const response = new Response(streamFromText(
+      'event: error\ndata: {"error":{"message":"Selected model is at capacity. Please try a different model."}}\n\n',
+    ), {
       status: 200,
       headers: { "Content-Type": "text/event-stream" },
     });
@@ -65,11 +63,7 @@ describe("Codex fast tier and capacity handling", () => {
 
   it("reassembles normal SSE after peeking", async () => {
     const executor = new CodexExecutor();
-    const text = [
-      "event: response.output_text.delta",
-      'data: {"type":"response.output_text.delta","delta":"OK"}',
-      "",
-    ].join("\n");
+    const text = 'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"OK"}\n\n';
     const response = new Response(streamFromText(text), {
       status: 200,
       headers: { "Content-Type": "text/event-stream" },

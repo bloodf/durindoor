@@ -22,12 +22,13 @@ export function getDataDir() {
     return defaultDir();
   }
 
+  const resolved = path.resolve(configured);
   try {
-    fs.mkdirSync(configured, { recursive: true });
-    return configured;
+    fs.mkdirSync(resolved, { recursive: true });
+    return resolved;
   } catch (e) {
     if (e?.code === "EACCES" || e?.code === "EPERM") {
-      console.warn(`[DATA_DIR] '${configured}' not writable → fallback ~/.${APP_NAME}`);
+      console.warn(`[DATA_DIR] '${resolved}' not writable → fallback ~/.${APP_NAME}`);
       return defaultDir();
     }
     throw e;

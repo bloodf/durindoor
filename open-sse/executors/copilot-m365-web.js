@@ -68,6 +68,7 @@ export class CopilotM365WebExecutor extends BaseExecutor {
         let previousText = "";
         let finalResultMessage = "";
         let handshakeComplete = false;
+        let completionReceived = false;
 
         const cleanup = () => {
           clearTimeout(timeout);
@@ -166,6 +167,7 @@ export class CopilotM365WebExecutor extends BaseExecutor {
                   abort(`Microsoft 365 Copilot completion error: ${frame.error}`);
                   return;
                 }
+                completionReceived = true;
                 clearTimeout(timeout);
                 finish();
                 return;
@@ -178,7 +180,11 @@ export class CopilotM365WebExecutor extends BaseExecutor {
           });
           ws.on("close", () => {
             clearTimeout(timeout);
-            finish();
+            if (settled) return;
+            if (completionReceived) finish();
+            else abort(handshakeComplete
+              ? "Microsoft 365 Copilot WebSocket closed before completion"
+              : "Microsoft 365 Copilot WebSocket closed before handshake");
           });
         } catch (err) {
           clearTimeout(timeout);

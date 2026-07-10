@@ -4,7 +4,7 @@ export {
   getSettings, updateSettings, isCloudEnabled, getCloudUrl,
   getProviderConnections, getProviderConnectionById,
   createProviderConnection, updateProviderConnection,
-  deleteProviderConnection, deleteProviderConnectionsByProvider,
+  deleteProviderConnection, deleteProviderConnectionsByProvider, setProviderConnectionAutoPing,
   reorderProviderConnections, cleanupProviderConnections,
   getProviderNodes, getProviderNodeById,
   createProviderNode, updateProviderNode, deleteProviderNode,

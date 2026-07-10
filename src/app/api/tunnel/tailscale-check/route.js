@@ -46,7 +46,8 @@ export async function GET() {
     ]);
     const daemonRunning = customDaemonRunning || systemDaemonRunning;
     const loggedIn = daemonRunning ? isTailscaleLoggedIn() : false;
-    const hasCachedPassword = !!(getCachedPassword() || await loadEncryptedPassword());
+    await loadEncryptedPassword();
+    const hasCachedPassword = !!getCachedPassword();
     return NextResponse.json({ installed, loggedIn, platform, brewAvailable, daemonRunning, customDaemonRunning, systemDaemonRunning, hasCachedPassword });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

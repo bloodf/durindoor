@@ -22,6 +22,7 @@ import {
 export const INTERNAL_KEYS = Object.freeze([
   "_toolNameMap",
   "_clientSessionId",
+  "_kiroUpstreamModel",
 ]);
 
 // Keys that may legitimately start with "_" in provider payloads (none today,
@@ -66,12 +67,59 @@ function pushError(errors, path, message) {
 // Mutates the body in place and returns it for convenience.
 export function stripInternalKeys(body) {
   if (!body || typeof body !== "object") return body;
-  for (const k of Object.keys(body)) {
+  // getOwnPropertyNames also catches non-enumerable metadata. Object.keys did
+  // not remove legacy `_kiroUpstreamModel` hints before the executor boundary.
+  for (const k of Object.getOwnPropertyNames(body)) {
     if (k.startsWith("_") && !ALLOWED_UNDERSCORE_KEYS.has(k)) {
       delete body[k];
     }
   }
   return body;
+}
+
+function validateKiro(body, errors) {
+  const state = body.conversationState;
+  if (!state || typeof state !== "object" || Array.isArray(state)) {
+    pushError(errors, "conversationState", "Kiro conversationState object is required");
+    return;
+  }
+
+  if (typeof state.conversationId !== "string" || !state.conversationId.trim()) {
+    pushError(errors, "conversationState.conversationId", "Kiro conversationId string is required");
+  }
+  const input = state.currentMessage?.userInputMessage;
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    pushError(
+      errors,
+      "conversationState.currentMessage.userInputMessage",
+      "Kiro current userInputMessage object is required",
+    );
+  } else {
+    if (typeof input.modelId !== "string" || !input.modelId.trim()) {
+      pushError(
+        errors,
+        "conversationState.currentMessage.userInputMessage.modelId",
+        "Kiro modelId string is required",
+      );
+    }
+    if (typeof input.content !== "string") {
+      pushError(
+        errors,
+        "conversationState.currentMessage.userInputMessage.content",
+        "Kiro content must be a string",
+      );
+    }
+  }
+
+  if (!Array.isArray(state.history)) {
+    pushError(errors, "conversationState.history", "Kiro history must be an array");
+  } else {
+    state.history.forEach((item, index) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        pushError(errors, `conversationState.history[${index}]`, "Kiro history item must be an object");
+      }
+    });
+  }
 }
 
 // ---- Format-specific validators -------------------------------------------------
@@ -406,7 +454,7 @@ export function validateOutboundPayload(targetFormat, body) {
   }
   const b = body;
   // 1. Internal key leak detection (always fails validation by name).
-  for (const k of Object.keys(b)) {
+  for (const k of Object.getOwnPropertyNames(b)) {
     if (INTERNAL_KEYS.includes(k)) {
       pushError(errors, k, `internal key "${k}" must not leak upstream`);
     }
@@ -418,10 +466,12 @@ export function validateOutboundPayload(targetFormat, body) {
     case FORMATS.OLLAMA:
     case FORMATS.CURSOR:
     case FORMATS.COMMANDCODE:
-    case FORMATS.KIRO:
-      // Kiro / Codex / Ollama / Cursor / Commandcode receive OpenAI-shaped bodies
+      // Codex / Ollama / Cursor / Commandcode receive OpenAI-shaped bodies
       // from the translator pipeline.
       validateOpenAI(b, errors);
+      break;
+    case FORMATS.KIRO:
+      validateKiro(b, errors);
       break;
     case FORMATS.CLAUDE:
       validateClaude(b, errors);

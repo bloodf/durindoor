@@ -1088,6 +1088,9 @@ describe("MITM manager startup coordination", () => {
     await vi.advanceTimersByTimeAsync(1000);
     await expect(stop).resolves.toEqual({ running: false, pid: null });
 
+    // Hosts cleanup runs via the manager-owned stop path with the operator
+    // password (upstream #2216 exit-hook restore semantics).
+    expect(harness.removeAllDNSEntries).toHaveBeenCalledWith("fixture-password");
     expect(harness.killedPids).toContain(healthPid);
     expect(harness.killedPids).toContain(launcherPid);
     expect(fs.existsSync(path.join(harness.mitmDir, ".mitm.pid"))).toBe(false);

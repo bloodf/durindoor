@@ -8,6 +8,8 @@ import { makeBackupDir, backupFile, pruneOldBackups } from "./backup.js";
 import { getAppVersion } from "./version.js";
 import { stringifyJson } from "./helpers/jsonCol.js";
 import { backfillApiKeyUsageTotals } from "./helpers/apiKeyUsageTotals.js";
+import { verifyPublishedSchemaShapes } from "./helpers/schemaVerifier.js";
+import { canonicalizeApiKeyExpiresAt } from "../../shared/utils/apiKeyExpiry.js";
 
 // Marker file: prevents re-importing legacy JSON when user wipes data.sqlite.
 const migratedMarkerFile = () => path.join(currentDbDir(), ".migrated-from-json");
@@ -144,7 +146,7 @@ function importLegacyMain(adapter, data) {
   importWithAssertion(adapter, "apiKeys", data.apiKeys || [], (k) => {
     adapter.run(
       `INSERT OR REPLACE INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, dailyLimitTokens, policy, expiresAt, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [k.id, k.key, k.name || null, k.machineId || null, k.isActive === false ? 0 : 1, JSON.stringify(k.allowedCombos || []), k.dailyLimitTokens ?? null, k.policy == null ? null : stringifyJson(k.policy), k.expiresAt || null, k.createdAt || new Date().toISOString()]
+      [k.id, k.key, k.name || null, k.machineId || null, k.isActive === false ? 0 : 1, JSON.stringify(k.allowedCombos || []), k.dailyLimitTokens ?? null, k.policy == null ? null : stringifyJson(k.policy), canonicalizeApiKeyExpiresAt(k.expiresAt ?? null), k.createdAt || new Date().toISOString()]
     );
   }, (k) => ({ id: k.id ?? null, name: k.name ?? null }));
 
@@ -220,6 +222,22 @@ export async function runMigrationOnce(adapter) {
   // Capture freshness BEFORE migrations stamp _meta (otherwise we'd misclassify
   // a brand-new DB as non-fresh once schemaVersion is written).
   const fresh = isFreshDb(adapter);
+  const markerFile = migratedMarkerFile();
+  const legacyFiles = currentLegacyFiles();
+  const alreadyImported = fs.existsSync(markerFile);
+  const legacyMain = readJsonSafe(legacyFiles.main);
+  const legacyUsage = readJsonSafe(legacyFiles.usage);
+  const legacyDisabled = readJsonSafe(legacyFiles.disabled);
+  const legacyDetails = readJsonSafe(legacyFiles.details);
+  const hasLegacy = !!(legacyMain || legacyUsage || legacyDisabled || legacyDetails);
+
+  // Validate legacy expiry before backups, migration stamps, or table changes.
+  // A corrected db.json can then be retried against the same still-fresh DB.
+  if (fresh && hasLegacy && !alreadyImported) {
+    for (const key of legacyMain?.apiKeys || []) {
+      canonicalizeApiKeyExpiresAt(key.expiresAt ?? null);
+    }
+  }
 
   // Snapshot the existing database before any schema mutation. WAL-backed
   // adapters must checkpoint first or the copied data.sqlite may omit committed
@@ -235,6 +253,7 @@ export async function runMigrationOnce(adapter) {
   const needsTotalsRepair = !fresh
     && oldSchemaVersion >= 6
     && adapter.all(`PRAGMA table_info(apiKeyUsageTotals)`).length === 0;
+  verifyPublishedSchemaShapes(adapter);
   let preUpgradeBackupDir = null;
   if (needsSchemaUpgrade || needsAppBackup || needsTotalsRepair) {
     // Strict checkpoint: adapters propagate SQL errors and reject a busy WAL.
@@ -262,15 +281,6 @@ export async function runMigrationOnce(adapter) {
   if (needsTotalsRepair) backfillApiKeyUsageTotals(adapter);
 
   // 3. One-time legacy JSON import (only if DB was fresh on entry)
-  const markerFile = migratedMarkerFile();
-  const legacyFiles = currentLegacyFiles();
-  const alreadyImported = fs.existsSync(markerFile);
-  const legacyMain = readJsonSafe(legacyFiles.main);
-  const legacyUsage = readJsonSafe(legacyFiles.usage);
-  const legacyDisabled = readJsonSafe(legacyFiles.disabled);
-  const legacyDetails = readJsonSafe(legacyFiles.details);
-  const hasLegacy = !!(legacyMain || legacyUsage || legacyDisabled || legacyDetails);
-
   if (fresh && hasLegacy && !alreadyImported) {
     const t0 = Date.now();
     const backupDir = makeBackupDir("migrate-from-json");

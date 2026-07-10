@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Card, Button, Badge, Modal, Input, ModelSelectModal } from "@/shared/components";
 import Image from "next/image";
+import ApiKeySelect from "./ApiKeySelect";
 
 export default function AntigravityToolCard({
   tool,
@@ -26,12 +27,6 @@ export default function AntigravityToolCard({
   const [modalOpen, setModalOpen] = useState(false);
   const [currentEditingAlias, setCurrentEditingAlias] = useState(null);
   const [modelAliases, setModelAliases] = useState({});
-
-  useEffect(() => {
-    if (apiKeys?.length > 0 && !selectedApiKey) {
-      setSelectedApiKey(apiKeys[0].key);
-    }
-  }, [apiKeys, selectedApiKey]);
 
   useEffect(() => {
     if (initialStatus) setStatus(initialStatus);
@@ -117,7 +112,6 @@ export default function AntigravityToolCard({
     setStartingStep("cert");
     try {
       const keyToUse = selectedApiKey?.trim()
-        || (apiKeys?.length > 0 ? apiKeys[0].key : null)
         || (!cloudEnabled ? "sk_durindoor" : null);
 
       const res = await fetch("/api/cli-tools/antigravity-mitm", {
@@ -326,19 +320,12 @@ export default function AntigravityToolCard({
               <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
                 <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">API Key</span>
                 <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
-                {apiKeys.length > 0 ? (
-                  <select
-                    value={selectedApiKey}
-                    onChange={(e) => setSelectedApiKey(e.target.value)}
-                    className="w-full min-w-0 px-2 py-2 bg-surface rounded text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary/50 sm:py-1.5"
-                  >
-                    {apiKeys.map((key) => <option key={key.id} value={key.key}>{key.key}</option>)}
-                  </select>
-                ) : (
-                  <span className="min-w-0 rounded bg-surface/40 px-2 py-2 text-xs text-text-muted sm:py-1.5">
-                    {cloudEnabled ? "No API keys - Create one in Keys page" : "sk_durindoor (default)"}
-                  </span>
-                )}
+                <ApiKeySelect
+                  value={selectedApiKey}
+                  onChange={setSelectedApiKey}
+                  apiKeys={apiKeys}
+                  cloudEnabled={cloudEnabled}
+                />
               </div>
 
               {tool.defaultModels.map((model) => (

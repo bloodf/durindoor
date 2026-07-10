@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   handleChat: vi.fn(),
   getSettings: vi.fn(),
-  isValidApiKey: vi.fn(),
+  evaluateApiKeyAuth: vi.fn(),
   getProviderCredentials: vi.fn(),
   markAccountUnavailable: vi.fn(),
   clearAccountError: vi.fn(),
@@ -15,7 +15,7 @@ vi.mock("@/sse/handlers/chat.js", () => ({
 
 vi.mock("@/sse/services/auth.js", () => ({
   getProviderCredentials: mocks.getProviderCredentials,
-  isValidApiKey: mocks.isValidApiKey,
+  evaluateApiKeyAuth: mocks.evaluateApiKeyAuth,
   markAccountUnavailable: mocks.markAccountUnavailable,
   clearAccountError: mocks.clearAccountError,
 }));
@@ -60,7 +60,7 @@ describe("Gemini native v1beta endpoint", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getSettings.mockResolvedValue({ requireApiKey: true });
-    mocks.isValidApiKey.mockResolvedValue(true);
+    mocks.evaluateApiKeyAuth.mockResolvedValue({ ok: true, reason: null, stored: true });
     mocks.getProviderCredentials.mockResolvedValue({
       apiKey: "real-gemini-key",
       connectionId: "gemini-conn",
@@ -122,9 +122,25 @@ describe("Gemini native v1beta endpoint", () => {
       params: Promise.resolve({ path: ["gemini-2.5-flash-preview-tts:generateContent"] }),
     });
 
-    expect(mocks.isValidApiKey).toHaveBeenCalledWith("client-router-key");
+    expect(mocks.evaluateApiKeyAuth).toHaveBeenCalledWith("client-router-key", { required: true });
     expect(global.fetch.mock.calls[0][1].headers["x-goog-api-key"]).toBe("real-gemini-key");
     expect(global.fetch.mock.calls[0][1].headers["x-goog-api-key"]).not.toBe("client-router-key");
+  });
+
+  it("rejects an invalid stored key before native provider work when global enforcement is disabled", async () => {
+    mocks.getSettings.mockResolvedValueOnce({ requireApiKey: false });
+    mocks.evaluateApiKeyAuth.mockResolvedValueOnce({ ok: false, reason: "invalid", stored: true });
+
+    const response = await POST(makeGeminiRequest("gemini-3.1-flash-tts-preview:generateContent", audioBody()), {
+      params: Promise.resolve({ path: ["gemini-3.1-flash-tts-preview:generateContent"] }),
+    });
+
+    expect(response.status).toBe(401);
+    expect(await response.text()).toContain("Invalid API key");
+    expect(mocks.getProviderCredentials).not.toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(mocks.handleChat).not.toHaveBeenCalled();
+    expect(mocks.markAccountUnavailable).not.toHaveBeenCalled();
   });
 
   it("does not forward stale compression headers from native upstream responses", async () => {

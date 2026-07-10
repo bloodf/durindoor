@@ -35,10 +35,21 @@ DurinDoor API keys authenticate client tools to the gateway.
 Best practices:
 
 - Create one key per tool, user, or automation.
+- Set the shortest practical expiry. Available presets are never, 1, 7, 30, and 90 days, plus a custom local date and time.
 - Revoke unused keys.
 - Do not share provider API keys with client tools.
 - Rotate keys after exposure.
 - Keep `API_KEY_SECRET` stable so generated keys remain valid.
+
+The full key is returned once, in the creation response. Management list/detail responses and CLI-tool status responses redact stored credentials. Keep the creation output in a password manager; the dashboard and CLI cannot reveal an old key again.
+
+Expiry values are stored as canonical UTC timestamps. Custom dashboard/CLI input is interpreted in the operator's local timezone, and displays use local time. Selecting **Never expires** during an edit explicitly clears the value. Enforcement uses server time and treats `now == expiresAt` as expired. Missing expiry on an older key means it never expires; malformed stored expiry fails closed. Expired, inactive, and otherwise invalid credentials intentionally share the same generic unauthorized response.
+
+### Upgrade and backup compatibility
+
+The published API-key schema order is fixed: v4 adds daily limits, v5 adds nullable expiry, and v6 adds policy and lifetime usage totals. Startup supports fresh databases and upgrades from v3, v4, or v5, including a compatible expiry column left by a partial historical migration. An incompatible pre-existing expiry column stops startup before backup or schema mutation.
+
+Database export/import, automatic pre-upgrade backups, and legacy JSON migration preserve the literal key bytes, name, machine ID, active state, combo access, daily limit, policy, expiry, creation time, and lifetime totals. Imports accept historical expired timestamps but reject local-only or malformed timestamps atomically. Upgrades and restores do not rotate existing keys.
 
 ## Provider Credentials
 

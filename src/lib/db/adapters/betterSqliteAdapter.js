@@ -55,6 +55,9 @@ export function createBetterSqliteAdapter(filePath) {
     },
     close() {
       clearInterval(checkpointTimer);
+      process.removeListener("beforeExit", gracefulClose);
+      process.removeListener("SIGINT", onSignal);
+      process.removeListener("SIGTERM", onSignal);
       gracefulClose();
     },
     raw: db,

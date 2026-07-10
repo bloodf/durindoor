@@ -1,5 +1,16 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
+import { isApiKeyExpired, normalizeApiKeyExpiresAt } from "@/shared/utils/apiKeyExpiry";
+
+/**
+ * API key repository.
+ *
+ * Expiry policy:
+ * - `expiresAt` is stored as an ISO-8601 timestamp or null (never expires).
+ * - Existing keys without an expiry are treated as never-expiring.
+ * - Expired keys remain visible in the dashboard/CLI but stop authenticating requests.
+ * - Setting `expiresAt` to null clears an existing expiry.
+ */
 
 function parseApiKeyPolicy(raw) {
   if (raw == null) return null;
@@ -23,7 +34,7 @@ function rowToKey(row) {
     allowedCombos: (() => { try { const v = JSON.parse(row.allowedCombos); return Array.isArray(v) ? v : []; } catch { return []; } })(),
     dailyLimitTokens: row.dailyLimitTokens ?? null,
     policy: parseApiKeyPolicy(row.policy),
-    expiresAt: row.expiresAt || null,
+    expiresAt: row.expiresAt ?? null,
     createdAt: row.createdAt,
   };
 }
@@ -60,9 +71,10 @@ export async function getApiKeyByKey(key) {
   return rowToKey(row);
 }
 
-export async function createApiKey(name, machineId, allowedCombos = [], dailyLimitTokens = null) {
+export async function createApiKey(name, machineId, allowedCombos = [], dailyLimitTokens = null, expiresAt = null, now = Date.now()) {
   if (!machineId) throw new Error("machineId is required");
   const tokenLimit = normalizeDailyLimitTokens(dailyLimitTokens);
+  const expiry = normalizeApiKeyExpiresAt(expiresAt, now);
   const db = await getAdapter();
   const { generateApiKeyWithMachine } = await import("@/shared/utils/apiKey");
   const result = generateApiKeyWithMachine(machineId);
@@ -74,45 +86,50 @@ export async function createApiKey(name, machineId, allowedCombos = [], dailyLim
     isActive: true,
     allowedCombos: Array.isArray(allowedCombos) ? allowedCombos : [],
     dailyLimitTokens: tokenLimit ?? null,
-    createdAt: new Date().toISOString(),
+    expiresAt: expiry,
+    createdAt: new Date(Number(now)).toISOString(),
   };
   db.run(
-    `INSERT INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, dailyLimitTokens, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
-    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, JSON.stringify(apiKey.allowedCombos), apiKey.dailyLimitTokens, apiKey.createdAt]
+    `INSERT INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, dailyLimitTokens, expiresAt, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, JSON.stringify(apiKey.allowedCombos), apiKey.dailyLimitTokens, apiKey.expiresAt, apiKey.createdAt]
   );
   return apiKey;
 }
 
-export async function updateApiKey(id, data) {
+export async function updateApiKey(id, data, now = Date.now()) {
   const db = await getAdapter();
   let result = null;
   db.transaction(() => {
     const row = db.get(`SELECT * FROM apiKeys WHERE id = ?`, [id]);
     if (!row) return;
-    const cleanData = { ...data };
-    if ("dailyLimitTokens" in cleanData) cleanData.dailyLimitTokens = normalizeDailyLimitTokens(cleanData.dailyLimitTokens);
-    const merged = { ...rowToKey(row), ...cleanData };
+    const merged = rowToKey(row);
+    if (Object.hasOwn(data, "name")) merged.name = data.name;
+    if (Object.hasOwn(data, "isActive")) merged.isActive = data.isActive === true;
+    if (Object.hasOwn(data, "allowedCombos")) merged.allowedCombos = Array.isArray(data.allowedCombos) ? [...data.allowedCombos] : [];
+    if (Object.hasOwn(data, "dailyLimitTokens")) merged.dailyLimitTokens = normalizeDailyLimitTokens(data.dailyLimitTokens);
+    if (Object.hasOwn(data, "expiresAt")) merged.expiresAt = normalizeApiKeyExpiresAt(data.expiresAt, now);
     db.run(
-      `UPDATE apiKeys SET key = ?, name = ?, machineId = ?, isActive = ?, allowedCombos = ?, dailyLimitTokens = ? WHERE id = ?`,
-      [merged.key, merged.name, merged.machineId, merged.isActive ? 1 : 0, JSON.stringify(merged.allowedCombos || []), merged.dailyLimitTokens ?? null, id]
+      `UPDATE apiKeys SET name = ?, isActive = ?, allowedCombos = ?, dailyLimitTokens = ?, expiresAt = ? WHERE id = ?`,
+      [merged.name, merged.isActive ? 1 : 0, JSON.stringify(merged.allowedCombos || []), merged.dailyLimitTokens ?? null, merged.expiresAt ?? null, id]
     );
     result = merged;
   });
   return result;
 }
 
-export async function validateApiKey(key) {
+export async function validateApiKey(key, now = Date.now()) {
   const db = await getAdapter();
-  const row = db.get(`SELECT isActive FROM apiKeys WHERE key = ?`, [key]);
+  const row = db.get(`SELECT isActive, expiresAt FROM apiKeys WHERE key = ?`, [key]);
   if (!row) return false;
-  return row.isActive === 1 || row.isActive === true;
+  if (!(row.isActive === 1 || row.isActive === true)) return false;
+  return !isApiKeyExpired(row.expiresAt, now);
 }
 
 export async function getApiKeyUsageLimitStatus(key, now = new Date()) {
   if (!key) return { enforced: false, exceeded: false };
   const db = await getAdapter();
-  const row = db.get(`SELECT isActive, dailyLimitTokens FROM apiKeys WHERE key = ?`, [key]);
-  if (!row || !(row.isActive === 1 || row.isActive === true)) return { enforced: false, exceeded: false };
+  const row = db.get(`SELECT isActive, dailyLimitTokens, expiresAt FROM apiKeys WHERE key = ?`, [key]);
+  if (!row || !(row.isActive === 1 || row.isActive === true) || isApiKeyExpired(row.expiresAt, now.getTime())) return { enforced: false, exceeded: false };
   const limit = normalizeDailyLimitTokens(row.dailyLimitTokens);
   if (limit === null || limit === undefined) return { enforced: false, exceeded: false };
   const start = getLocalDayStartIso(now);

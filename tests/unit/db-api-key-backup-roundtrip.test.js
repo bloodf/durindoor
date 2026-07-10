@@ -31,9 +31,19 @@ describe("API-key database backup", () => {
     const db = await getAdapter();
     const secret = "sk-deadbeef";
     db.run(
-      `INSERT INTO apiKeys(id, key, name, isActive, allowedCombos, dailyLimitTokens, policy, expiresAt, createdAt)
-       VALUES(?, ?, ?, 1, '[]', ?, ?, ?, ?)`,
-      ["key-1", secret, "Backup key", 1200, JSON.stringify({ allowedModels: ["openai/gpt-test"] }), "2030-01-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z"],
+      `INSERT INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, dailyLimitTokens, policy, expiresAt, createdAt)
+       VALUES(?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
+      [
+        "key-1",
+        secret,
+        "Backup key",
+        "machine-original",
+        JSON.stringify(["combo-a", "combo-b"]),
+        1200,
+        JSON.stringify({ allowedModels: ["openai/gpt-test"] }),
+        "2030-01-01T00:00:00.000Z",
+        "2026-01-01T00:00:00.000Z",
+      ],
     );
     db.run(
       `INSERT INTO apiKeyUsageTotals(apiKeyId, totalTokens, totalCost, totalRequests, updatedAt) VALUES(?, ?, ?, ?, ?)`,
@@ -43,19 +53,33 @@ describe("API-key database backup", () => {
     const snapshot = await database.exportDb();
     expect(snapshot.apiKeys[0]).toMatchObject({
       key: secret,
+      name: "Backup key",
+      machineId: "machine-original",
+      isActive: false,
+      allowedCombos: ["combo-a", "combo-b"],
+      dailyLimitTokens: 1200,
       policy: { allowedModels: ["openai/gpt-test"] },
       expiresAt: "2030-01-01T00:00:00.000Z",
+      createdAt: "2026-01-01T00:00:00.000Z",
     });
     expect(snapshot.apiKeyUsageTotals[0]).toMatchObject({ totalTokens: 44, totalCost: 1.25, totalRequests: 3 });
 
-    db.run(`UPDATE apiKeys SET key = 'sk-feedface', policy = NULL, expiresAt = NULL WHERE id = 'key-1'`);
+    db.run(`UPDATE apiKeys SET key = 'sk-feedface', name = 'changed', machineId = 'changed', isActive = 1,
+      allowedCombos = '[]', dailyLimitTokens = NULL, policy = NULL, expiresAt = NULL,
+      createdAt = '2999-01-01T00:00:00.000Z' WHERE id = 'key-1'`);
     db.run(`DELETE FROM apiKeyUsageTotals`);
     await database.importDb(snapshot);
 
-    expect(db.get(`SELECT key, policy, expiresAt FROM apiKeys WHERE id = 'key-1'`)).toEqual({
+    expect(db.get(`SELECT key, name, machineId, isActive, allowedCombos, dailyLimitTokens, policy, expiresAt, createdAt FROM apiKeys WHERE id = 'key-1'`)).toEqual({
       key: secret,
+      name: "Backup key",
+      machineId: "machine-original",
+      isActive: 0,
+      allowedCombos: JSON.stringify(["combo-a", "combo-b"]),
+      dailyLimitTokens: 1200,
       policy: JSON.stringify({ allowedModels: ["openai/gpt-test"] }),
       expiresAt: "2030-01-01T00:00:00.000Z",
+      createdAt: "2026-01-01T00:00:00.000Z",
     });
     expect(db.get(`SELECT totalTokens, totalCost, totalRequests FROM apiKeyUsageTotals WHERE apiKeyId = 'key-1'`)).toEqual({
       totalTokens: 44,
@@ -136,6 +160,59 @@ describe("API-key database backup", () => {
       apiKeys: [{ id: "one", key: "sk-deadbeef", policy: { allowedModels: "openai/gpt-4o" } }],
     })).rejects.toThrow("allowedModels");
     expect(db.get(`SELECT key FROM apiKeys WHERE id = 'existing'`).key).toBe("sk-cafebabe");
+
+    await expect(database.importDb({
+      apiKeys: [{ id: "one", key: "sk-deadbeef", expiresAt: "2030-01-01T00:00:00" }],
+    })).rejects.toThrow("absolute ISO-8601");
+    expect(db.get(`SELECT key FROM apiKeys WHERE id = 'existing'`).key).toBe("sk-cafebabe");
+  });
+
+  it("canonicalizes offset expiries, permits expired history, and preserves exact key bytes on import", async () => {
+    const database = await import("@/lib/db/index.js");
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const db = await getAdapter();
+
+    await database.importDb({
+      apiKeys: [
+        {
+          id: "offset",
+          key: "sk-machine-key-crc",
+          name: "Offset",
+          machineId: "machine-a",
+          isActive: true,
+          allowedCombos: ["combo-a"],
+          dailyLimitTokens: 10,
+          policy: { maxTokens: 100 },
+          expiresAt: "2030-01-01T03:30:00+03:30",
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+        {
+          id: "historical",
+          key: "sk-deadbeef",
+          name: "Historical",
+          expiresAt: "2000-01-01T00:00:00Z",
+          createdAt: "1999-01-01T00:00:00.000Z",
+        },
+      ],
+      apiKeyUsageTotals: [
+        { apiKeyId: "offset", totalTokens: 9, totalCost: 0.25, totalRequests: 2, updatedAt: "2026-01-02T00:00:00.000Z" },
+        { apiKeyId: "historical", totalTokens: 0, totalCost: 0, totalRequests: 0 },
+      ],
+    });
+
+    expect(db.get(`SELECT key, expiresAt FROM apiKeys WHERE id = 'offset'`)).toEqual({
+      key: "sk-machine-key-crc",
+      expiresAt: "2030-01-01T00:00:00.000Z",
+    });
+    expect(db.get(`SELECT key, expiresAt FROM apiKeys WHERE id = 'historical'`)).toEqual({
+      key: "sk-deadbeef",
+      expiresAt: "2000-01-01T00:00:00.000Z",
+    });
+    expect(await database.getApiKeyUsageTotals("offset")).toMatchObject({
+      totalTokens: 9,
+      totalCost: 0.25,
+      totalRequests: 2,
+    });
   });
 
   it("fails closed and refuses export when stored policy JSON is corrupt", async () => {
@@ -157,5 +234,22 @@ describe("API-key database backup", () => {
     expect(response?.status).toBe(403);
     await expect(database.exportDb()).rejects.toThrow("API key corrupt-policy has invalid policy JSON");
     await expect(database.exportDb()).rejects.not.toThrow(secret);
+  });
+
+  it("refuses to emit a backup with malformed stored expiry", async () => {
+    const database = await import("@/lib/db/index.js");
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const db = await getAdapter();
+    const secret = "sk-deadbeef";
+    db.run(
+      `INSERT INTO apiKeys(id, key, name, isActive, allowedCombos, expiresAt, createdAt)
+       VALUES(?, ?, ?, 1, '[]', ?, ?)`,
+      ["corrupt-expiry", secret, "Corrupt expiry", "local-time-only", "2026-01-01T00:00:00.000Z"],
+    );
+
+    const error = await database.exportDb().catch((caught) => caught);
+    expect(error).toBeInstanceOf(Error);
+    expect(error.message).toBe("API key corrupt-expiry has invalid expiresAt storage");
+    expect(error.message).not.toContain(secret);
   });
 });

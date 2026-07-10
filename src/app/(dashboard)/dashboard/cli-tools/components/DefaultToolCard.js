@@ -11,10 +11,7 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
   const [showModelModal, setShowModelModal] = useState(false);
   const [modelValue, setModelValue] = useState("");
   
-  // Initialize state directly with computed value - no need for useEffect
-  const [selectedApiKey, setSelectedApiKey] = useState(() => 
-    apiKeys?.length > 0 ? apiKeys[0].key : ""
-  );
+  const [selectedApiKey, setSelectedApiKey] = useState("");
 
   const replaceVars = (text) => {
     const keyToUse = (selectedApiKey && selectedApiKey.trim()) 
@@ -268,4 +265,3 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
     </Card>
   );
 }
-

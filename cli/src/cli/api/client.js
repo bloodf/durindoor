@@ -284,10 +284,16 @@ async function getApiKeys() {
 /**
  * Create new API key
  * @param {string} name - Key name
- * @returns {Promise<Object>} { success, data: { key, name, id, machineId } }
+ * @param {string|null} expiresAt - Optional ISO expiry timestamp
+ * @returns {Promise<Object>} { success, data: { key, name, id, machineId, expiresAt } }
  */
-async function createApiKey(name) {
-  return makeRequest("POST", "/api/keys", { name });
+async function createApiKey(name, expiresAt = null) {
+  return makeRequest("POST", "/api/keys", { name, expiresAt });
+}
+
+/** Update mutable API-key management fields without retrieving its secret. */
+async function updateApiKey(id, data) {
+  return makeRequest("PUT", `/api/keys/${id}`, data);
 }
 
 /**
@@ -515,6 +521,7 @@ module.exports = {
   // API Keys
   getApiKeys,
   createApiKey,
+  updateApiKey,
   deleteApiKey,
   
   // Combos

@@ -1,5 +1,5 @@
 import {
-  extractApiKey, isValidApiKey,
+  extractApiKey, evaluateApiKeyAuth,
   getProviderCredentials, markAccountUnavailable,
 } from "../services/auth.js";
 import { getSettings, getApiKeyByKey } from "@/lib/localDb";
@@ -35,11 +35,11 @@ export async function handleTts(request) {
 
   const settings = await getSettings();
   const apiKey = extractApiKey(request);
-  if (settings.requireApiKey) {
-    if (!apiKey) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
-    const valid = await isValidApiKey(apiKey);
-    if (!valid) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
-  }
+  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true });
+  if (!apiKeyAuth.ok) return errorResponse(
+    HTTP_STATUS.UNAUTHORIZED,
+    apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
+  );
 
   // Per-key combo access control
   if (apiKey && modelStr) {

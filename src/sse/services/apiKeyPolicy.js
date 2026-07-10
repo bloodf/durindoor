@@ -62,7 +62,7 @@ export async function recordApiKeyUsageForResponse(apiKey, response, usage) {
 /**
  * Enforce API key policy on a request: model allowlist + token/cost limits.
  *
- * Call this AFTER the existing requireApiKey/isValidApiKey check.
+ * Call this AFTER the shared evaluateApiKeyAuth guard.
  * If no API key is provided, returns null (allow — requireApiKey handles that case).
  * If the key has no policy or an empty allowedModels list, returns null (allow all).
  * If the model is not in the allowlist, returns a 403 error Response.

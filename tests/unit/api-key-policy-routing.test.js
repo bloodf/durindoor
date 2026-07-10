@@ -7,14 +7,17 @@ const mocks = vi.hoisted(() => ({
   record: vi.fn(async (_apiKey, response) => response),
   moderationCore: vi.fn(),
   rerankCore: vi.fn(),
+  evaluateApiKeyAuth: vi.fn(),
+  getExecutor: vi.fn(() => ({ noAuth: true })),
+  getProviderCredentials: vi.fn(),
 }));
 
 vi.mock("@/lib/localDb", () => ({ getSettings: mocks.getSettings }));
 vi.mock("../../src/sse/services/model.js", () => ({ getModelInfo: mocks.getModelInfo }));
 vi.mock("../../src/sse/services/auth.js", () => ({
   extractApiKey: vi.fn(() => "sk-test"),
-  isValidApiKey: vi.fn(async () => true),
-  getProviderCredentials: vi.fn(),
+  evaluateApiKeyAuth: mocks.evaluateApiKeyAuth,
+  getProviderCredentials: mocks.getProviderCredentials,
   markAccountUnavailable: vi.fn(),
   clearAccountError: vi.fn(),
 }));
@@ -24,7 +27,7 @@ vi.mock("../../src/sse/services/apiKeyPolicy.js", () => ({
 }));
 vi.mock("../../open-sse/handlers/moderationsCore.js", () => ({ handleModerationsCore: mocks.moderationCore }));
 vi.mock("../../open-sse/handlers/rerankCore.js", () => ({ handleRerankCore: mocks.rerankCore }));
-vi.mock("../../open-sse/executors/index.js", () => ({ getExecutor: () => ({ noAuth: true }) }));
+vi.mock("../../open-sse/executors/index.js", () => ({ getExecutor: mocks.getExecutor }));
 vi.mock("../../src/sse/services/tokenRefresh.js", () => ({ checkAndRefreshToken: vi.fn() }));
 vi.mock("../../src/sse/utils/logger.js", () => ({
   request: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(),
@@ -53,8 +56,26 @@ describe("resolved-target API-key policy routing", () => {
     mocks.getSettings.mockResolvedValue({ requireApiKey: false, modelFallbacks: {} });
     mocks.getModelInfo.mockImplementation(async (name) => ({ provider: "openai", model: `${name}-resolved` }));
     mocks.enforce.mockResolvedValue(null);
+    mocks.evaluateApiKeyAuth.mockResolvedValue({ ok: true, reason: null, stored: true });
     mocks.moderationCore.mockResolvedValue(coreResult());
     mocks.rerankCore.mockResolvedValue(coreResult());
+  });
+
+  it.each([
+    ["expired", { ok: false, reason: "invalid", stored: true }],
+    ["malformed", { ok: false, reason: "invalid", stored: true }],
+  ])("rejects a supplied %s stored key before model or provider work", async (_label, result) => {
+    mocks.evaluateApiKeyAuth.mockResolvedValueOnce(result);
+
+    const response = await handleModerations(request("/v1/moderations", { model: "safe", input: "hello" }));
+
+    expect(response.status).toBe(401);
+    expect(await response.text()).toContain("Invalid API key");
+    expect(mocks.getModelInfo).not.toHaveBeenCalled();
+    expect(mocks.enforce).not.toHaveBeenCalled();
+    expect(mocks.getExecutor).not.toHaveBeenCalled();
+    expect(mocks.getProviderCredentials).not.toHaveBeenCalled();
+    expect(mocks.moderationCore).not.toHaveBeenCalled();
   });
 
   it("blocks a denied canonical alias before moderation core execution", async () => {

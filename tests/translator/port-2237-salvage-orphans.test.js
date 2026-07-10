@@ -97,4 +97,60 @@ describe("port #2237: salvage orphaned tool results across formats", () => {
     const json = JSON.stringify(out);
     expect(json, "orphaned function_call_output forwarded").not.toContain("missing_call");
   });
+
+  // Guards the Gemini-family skip in translator/index.js: salvage MUST NOT run
+  // on native contents[] before gemini->openai conversion, otherwise it rewrites
+  // legitimate functionResponses (keyed per-part) into `[Tool result: ...]` text
+  // because its global knownCall set never contains sibling parts. Asserts BOTH
+  // that the input object is byte-for-byte unchanged (salvage never touched it)
+  // and that the translated OpenAI output still emits the tool result.
+  it("Gemini native contents[]: salvage skipped — input unchanged, tool result survives translation", () => {
+    const body = {
+      contents: [
+        { role: "user", parts: [{ text: "run both" }] },
+        {
+          role: "model",
+          parts: [
+            { functionCall: { id: "call_a", name: "tool_a", args: { x: 1 } } },
+            { functionCall: { id: "call_b", name: "tool_b", args: { y: 2 } } },
+          ],
+        },
+        {
+          role: "user",
+          parts: [
+            { functionResponse: { id: "call_a", name: "tool_a", response: { result: "A" } } },
+            { functionResponse: { id: "call_b", name: "tool_b", response: { result: "B" } } },
+          ],
+        },
+      ],
+    };
+    const before = JSON.stringify(body);
+    const out = translateRequest(FORMATS.GEMINI, FORMATS.OPENAI, "gemini-pro", body, false);
+    expect(JSON.stringify(body), "salvage mutated native Gemini contents[] before conversion").toBe(before);
+    const toolMsgs = out.messages.filter((m) => m.role === "tool");
+    expect(toolMsgs, "both functionResponses must survive as role:tool messages").toHaveLength(2);
+    expect(toolMsgs.map((m) => m.tool_call_id).sort()).toEqual(["call_a", "call_b"]);
+  });
+
+  it("Gemini native contents[]: co-located functionCall+functionResponse not collapsed to text", () => {
+    // Regression for run 29122517702: one content with functionCall(call_a)
+    // plus functionResponse(call_b) — salvage keyed call_b as orphan against
+    // the {call_a} set and rewrote it to text, dropping the role:tool message.
+    const body = {
+      contents: [
+        {
+          role: "model",
+          parts: [
+            { functionCall: { id: "call_a", name: "tool_a", args: {} } },
+            { functionResponse: { id: "call_b", name: "tool_b", response: { result: "B" } } },
+          ],
+        },
+      ],
+    };
+    const before = JSON.stringify(body);
+    const out = translateRequest(FORMATS.GEMINI, FORMATS.OPENAI, "gemini-pro", body, false);
+    expect(JSON.stringify(body)).toBe(before);
+    expect(out.messages.find((m) => m.role === "tool"), "call_b functionResponse must survive").toBeDefined();
+    expect(out.messages.find((m) => m.role === "assistant" && m.tool_calls), "call_a tool_call must survive").toBeDefined();
+  });
 });

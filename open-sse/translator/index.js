@@ -71,19 +71,27 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   // Fix missing tool responses (insert empty tool_result if needed)
   fixMissingToolResponses(result);
 
-  // Strip orphaned tool results (tool_result with no matching tool_call).
-  // Skip for Kiro: its request translator salvages orphaned tool_results by
-  // folding their content into user text (reconcileOrphanedToolResults /
-  // flattenClaudeToolInteractions) rather than dropping it. Stripping here
-  // first would delete that content before the Kiro translator can preserve it.
   // Salvage orphaned tool results (tool_result with no matching tool_call).
   // Folds orphan content into user text (`[Tool result: ...]`) instead of
-  // deleting — non-lossy across messages[] and contents[], and preserves Kiro's
-  // reconcileOrphanedToolResults salvage semantics. Runs unconditionally
-  // because salvage itself understands both envelopes (Gemini/Antigravity
-  // contents[] included); Responses API function_call_output is structural-
-  // stripped separately inside openai-responses.js.
-  salvageOrphanedToolResults(result);
+  // deleting — non-lossy for the translated messages[] shape (OpenAI/Claude)
+  // and preserves Kiro's reconcileOrphanedToolResults salvage semantics.
+  //
+  // MUST skip the Gemini family (gemini/gemini-cli/antigravity/vertex): at this
+  // point the body still carries native contents[] whose functionResponse ids
+  // are keyed per-part, not against the global functionCall set salvage builds,
+  // so an unconditional run rewrites legitimate functionResponses into
+  // `[Tool result: ...]` text before the gemini->openai conversion can read
+  // them. Those formats are salvaged downstream of their own conversion if at
+  // all. Responses API function_call_output is structural-stripped separately
+  // inside openai-responses.js.
+  const skipSalvage =
+    sourceFormat === FORMATS.GEMINI ||
+    sourceFormat === FORMATS.GEMINI_CLI ||
+    sourceFormat === FORMATS.ANTIGRAVITY ||
+    sourceFormat === FORMATS.VERTEX;
+  if (!skipSalvage) {
+    salvageOrphanedToolResults(result);
+  }
 
   // Capture thinking intent from the original (pre-translation) body, before any
   // format conversion strips/renames the fields. Applied after translation.

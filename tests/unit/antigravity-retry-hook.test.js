@@ -109,3 +109,46 @@ describe("antigravity computeRetryDelay hook (D3)", () => {
     expect(out.request.generationConfig.maxOutputTokens).toBe(64000);
   });
 });
+
+describe("antigravity parseError quota reset extraction (U-16 #2514)", () => {
+  const ag = new AntigravityExecutor();
+
+  it("extracts resetsAtMs from quotaResetTimeStamp (ISO) on 429", () => {
+    const ts = new Date(Date.now() + 160 * 3600 * 1000).toISOString();
+    const body = JSON.stringify({
+      error: { message: "Quota exceeded", details: [{ metadata: { quotaResetTimeStamp: ts } }] },
+    });
+    const result = ag.parseError({ status: 429 }, body);
+    expect(result.status).toBe(429);
+    expect(result.resetsAtMs).toBe(new Date(ts).getTime());
+  });
+
+  it("extracts resetsAtMs from quotaResetDelay duration string on 429", () => {
+    const now = Date.now();
+    const body = JSON.stringify({
+      error: { message: "Quota exceeded", details: [{ metadata: { quotaResetDelay: "160h19m55s" } }] },
+    });
+    const result = ag.parseError({ status: 429 }, body);
+    const expected = now + (160 * 3600 + 19 * 60 + 55) * 1000;
+    expect(result.resetsAtMs).toBeGreaterThan(expected - 1500);
+    expect(result.resetsAtMs).toBeLessThan(expected + 1500);
+  });
+
+  it("falls back to base parser for non-429 status", () => {
+    const result = ag.parseError({ status: 503 }, "capacity");
+    expect(result).toEqual({ status: 503, message: "capacity" });
+    expect(result.resetsAtMs).toBeUndefined();
+  });
+
+  it("falls back to base parser for malformed body / missing metadata", () => {
+    const malformed = ag.parseError({ status: 429 }, "not json{");
+    expect(malformed).toEqual({ status: 429, message: "not json{" });
+    expect(malformed.resetsAtMs).toBeUndefined();
+
+    const noMeta = ag.parseError(
+      { status: 429 },
+      JSON.stringify({ error: { message: "quota", details: [{ metadata: {} }] } }),
+    );
+    expect(noMeta.resetsAtMs).toBeUndefined();
+  });
+});

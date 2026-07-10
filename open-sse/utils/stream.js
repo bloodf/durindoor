@@ -74,6 +74,34 @@ export function createSSEStream(options = {}) {
   let openAIResponsesDoneSent = false;
   let streamDoneSent = false;  // track duplicate [DONE] across transform + flush
   const waitsForOpenAIUsage = body?.stream_options?.include_usage === true;
+  let pendingTranslatedTerminal = [];
+
+  const usageForSourceFormat = (currentUsage) => {
+    if (!currentUsage) return currentUsage;
+    if (sourceFormat === FORMATS.CLAUDE) {
+      return {
+        input_tokens: currentUsage.input_tokens ?? currentUsage.prompt_tokens ?? 0,
+        output_tokens: currentUsage.output_tokens ?? currentUsage.completion_tokens ?? 0,
+      };
+    }
+    return filterUsageForFormat(currentUsage, sourceFormat);
+  };
+
+  const emitPendingTranslatedTerminal = (controller, currentUsage) => {
+    if (pendingTranslatedTerminal.length === 0) return;
+    const clientUsage = usageForSourceFormat(currentUsage);
+
+    for (const pendingItem of pendingTranslatedTerminal) {
+      const item = pendingItem.type === "message_delta"
+        ? { ...pendingItem, usage: clientUsage }
+        : pendingItem;
+      const output = formatSSE(item, sourceFormat);
+      reqLogger?.appendConvertedChunk?.(output);
+      controller.enqueue(sharedEncoder.encode(output));
+      sseEmittedCount++;
+    }
+    pendingTranslatedTerminal = [];
+  };
 
   const completeStream = (currentUsage, estimateFormat = sourceFormat || FORMATS.OPENAI) => {
     if (onStreamCompleteFired) return currentUsage;
@@ -419,6 +447,9 @@ export function createSSEStream(options = {}) {
         }
 
         let translatedTerminal = false;
+        const holdsTranslatedTerminal = targetFormat === FORMATS.OPENAI
+          && waitsForOpenAIUsage
+          && Boolean(parsed.choices?.[0]?.finish_reason);
         if (translated?.length > 0) {
           for (const item of translated) {
             if (item === null || item === undefined) continue;
@@ -440,6 +471,11 @@ export function createSSEStream(options = {}) {
               item.usage = filterUsageForFormat(buffered, sourceFormat);
             }
 
+            if (holdsTranslatedTerminal && (item.type === "content_block_stop" || item.type === "message_delta" || item.type === "message_stop")) {
+              pendingTranslatedTerminal.push(item);
+              continue;
+            }
+
             const output = formatSSE(item, sourceFormat);
             reqLogger?.appendConvertedChunk?.(output);
             controller.enqueue(sharedEncoder.encode(output));
@@ -447,6 +483,9 @@ export function createSSEStream(options = {}) {
           }
         }
 
+        if (openAIUsageOnlyTerminal) {
+          emitPendingTranslatedTerminal(controller, state.usage);
+        }
         if (rawGeminiTerminal || openAIUsageOnlyTerminal || (translatedTerminal && !waitsForOpenAIUsage)) {
           completeStream(state.usage, rawGeminiTerminal ? FORMATS.ANTIGRAVITY : sourceFormat);
         }
@@ -565,7 +604,8 @@ export function createSSEStream(options = {}) {
           streamDoneSent = true;
         }
 
-        completeStream(state?.usage, sourceFormat);
+        const completedUsage = completeStream(state?.usage, sourceFormat);
+        emitPendingTranslatedTerminal(controller, completedUsage);
 
         if (hasValidUsage(state?.usage)) {
           logUsage(state.provider || targetFormat, state.usage, model, connectionId, apiKey);

@@ -58,14 +58,14 @@ Important rules:
 
 - OpenAI-compatible requests are the common entry point for most tools.
 - Some direct translator routes preserve provider-specific fields better than a generic bridge.
-- Gemini and Gemini CLI `functionResponse` history reaches the format translator before generic orphan-result cleanup, including responses co-located with another part.
+- Gemini and Gemini CLI preserve only structurally valid native `functionResponse` history across translation, including responses co-located with another part. Malformed responses and unrelated orphan results in `messages` or `input` are still removed; Antigravity uses the ordinary cleanup policy.
 - Optional PXPIPE compression is fail-open: an unsupported-model or disabled no-op retains the translated request body and continues dispatch.
 - Tool calls, image blocks, reasoning fields, and audio content are the highest-risk fields during translation.
 - Provider-specific unsupported parameters may be stripped or normalized before the upstream call.
 
 ## Response Translation
 
-For streaming requests, DurinDoor reads provider chunks and emits client-compatible chunks. For non-streaming requests, it normalizes the final JSON response. Client streaming intent is tracked separately from upstream streaming capability: if a provider must be called without streaming, DurinDoor can still return client-facing SSE by converting the provider's final JSON response into chat completion chunks.
+For streaming requests, DurinDoor reads provider chunks and emits client-compatible chunks. For non-streaming requests, it normalizes the final JSON response. Client streaming intent is tracked separately from upstream streaming capability: if a provider must be called without streaming, DurinDoor can still return client-facing SSE by converting the provider's final JSON response into chat completion chunks. An explicit `Accept: text/event-stream` selects that downstream SSE mode when `body.stream` is omitted; an explicit `body.stream: false` remains authoritative.
 
 The response layer is responsible for:
 
@@ -78,8 +78,9 @@ The response layer is responsible for:
 Terminal framing follows the client's protocol rather than the upstream transport:
 
 - OpenAI passthrough forwards or creates exactly one `[DONE]` sentinel; Gemini-family streams do not receive that OpenAI marker.
-- OpenAI `include_usage` streams remain open through the trailing usage-only chunk before request usage is finalized.
+- OpenAI `include_usage` streams remain open through the trailing usage-only chunk before request usage is finalized. For translated Claude clients, terminal content/message frames are delayed until that chunk supplies nonzero usage. Executor-added options, such as Qwen's `include_usage`, participate in the same finalization rule.
 - A non-streaming upstream response synthesized for a Claude streaming client preserves native `tool_use` stop reasons and `input_tokens`/`output_tokens` usage keys.
+- Synthetic OpenAI Responses SSE carries the provider's usage in `response.completed`, and synthetic SSE is built only after inline `<think>...</think>` blocks are scrubbed.
 
 ## Failure Handling
 

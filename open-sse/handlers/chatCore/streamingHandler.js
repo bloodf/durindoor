@@ -78,7 +78,19 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
     };
   }
 
-  const transformStream = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey });
+  // Stream terminal expectations come from the executor-finalized request.
+  // Overlay only stream_options so usage estimation still sees the client body,
+  // while executor additions/removals control whether a usage-only chunk follows.
+  const usageBody = body && typeof body === "object" ? { ...body } : body;
+  const executorBody = finalBody || translatedBody;
+  if (usageBody && typeof usageBody === "object" && executorBody && typeof executorBody === "object") {
+    if (Object.prototype.hasOwnProperty.call(executorBody, "stream_options")) {
+      usageBody.stream_options = executorBody.stream_options;
+    } else {
+      delete usageBody.stream_options;
+    }
+  }
+  const transformStream = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, model, connectionId, body: usageBody, onStreamComplete, apiKey });
 
   // Responses passthrough: synthesize response.failed + [DONE] if the stream aborts/stalls before a terminal event
   const isResponsesPassthrough = sourceFormat === FORMATS.OPENAI_RESPONSES && targetFormat === FORMATS.OPENAI_RESPONSES;

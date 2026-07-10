@@ -2,7 +2,7 @@ import { FORMATS } from "../../translator/formats.js";
 import { initState, needsTranslation, translateResponse } from "../../translator/index.js";
 import { fromOpenAIFinish } from "../../translator/concerns/finishReason.js";
 import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.js";
-import { addBufferToUsage, filterUsageForFormat } from "../../utils/usageTracking.js";
+import { addBufferToUsage, extractUsage, filterUsageForFormat } from "../../utils/usageTracking.js";
 import { createErrorResult } from "../../utils/error.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { parseSSEToOpenAIResponse } from "./sseToJsonHandler.js";
@@ -310,6 +310,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       ? translateNonStreamingResponse(responseBody, targetFormat, FORMATS.OPENAI)
       : responseBody;
     streamOpenAIResponse = JSON.parse(JSON.stringify(normalizedOpenAIResponse));
+    stripThinkFromResponse(streamOpenAIResponse);
   }
 
   const usage = extractUsageFromResponse(responseBody);
@@ -391,6 +392,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   if (streamToClient === true) {
     const syntheticChunk = buildSyntheticOpenAIChunk(streamOpenAIResponse, model);
     const state = initState(sourceFormat);
+    state.usage = extractUsage(syntheticChunk);
     const events = translateResponse(FORMATS.OPENAI, sourceFormat, syntheticChunk, state);
     let sseText = "";
 

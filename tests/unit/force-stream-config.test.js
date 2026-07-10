@@ -1,5 +1,6 @@
 // Guards forceStream moved from chatCore hardcode → PROVIDERS schema (#5).
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import "../translator/registerAll.js";
 
 const { executeMock } = vi.hoisted(() => ({
   executeMock: vi.fn(),
@@ -152,12 +153,12 @@ function makeAgyImageOptions() {
   };
 }
 
-function makeGaladrielOptions() {
+function makeGaladrielOptions(bodyStream = true) {
   const body = {
     model: "galadriel-latest",
     messages: [{ role: "user", content: "hello" }],
-    stream: true,
   };
+  if (typeof bodyStream === "boolean") body.stream = bodyStream;
 
   return {
     body,
@@ -232,6 +233,38 @@ describe("forceStream provider config", () => {
     expect(text).toContain("hello from json");
     expect(text).toContain("data: [DONE]");
     expect(text).not.toContain("\"object\":\"chat.completion\"");
+  });
+
+  it("honors an explicit SSE Accept header when a forced-JSON request omits body.stream", async () => {
+    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+    executeMock.mockResolvedValueOnce({
+      response: new Response(JSON.stringify({
+        id: "chatcmpl-accept",
+        object: "chat.completion",
+        created: 123,
+        model: "galadriel-latest",
+        choices: [{
+          index: 0,
+          message: { role: "assistant", content: "accept-header-sse" },
+          finish_reason: "stop",
+        }],
+        usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 },
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+      url: "https://api.galadriel.com/v1/verified/chat/completions",
+      headers: {},
+      transformedBody: null,
+    });
+
+    const result = await handleChatCore(makeGaladrielOptions(null));
+    const text = await result.response.text();
+
+    expect(executeMock.mock.calls[0][0].stream).toBe(false);
+    expect(result.response.headers.get("Content-Type")).toContain("text/event-stream");
+    expect(text).toContain("accept-header-sse");
+    expect(text).toContain("data: [DONE]");
   });
 
   it("forces agy image generation through non-streaming Google generateContent", async () => {

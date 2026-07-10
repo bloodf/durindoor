@@ -231,9 +231,12 @@ describe("Antigravity Recent Requests usage", () => {
 
     const writer = stream.writable.getWriter();
     const reader = stream.readable.getReader();
+    const wireChunks = [];
     const drain = (async () => {
-      while (!(await reader.read()).done) {
-        // Drain translated frames so TransformStream backpressure cannot hide completion.
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        wireChunks.push(new TextDecoder().decode(value));
       }
     })();
     const finishChunk = {
@@ -254,15 +257,28 @@ describe("Antigravity Recent Requests usage", () => {
     };
 
     await writer.write(new TextEncoder().encode(`data: ${JSON.stringify(finishChunk)}\n\n`));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(completed).toBeNull();
+    expect(wireChunks.join("")).not.toContain("event: content_block_stop");
+    expect(wireChunks.join("")).not.toContain("event: message_delta");
+    expect(wireChunks.join("")).not.toContain("event: message_stop");
 
     await writer.write(new TextEncoder().encode(`data: ${JSON.stringify(usageChunk)}\n\n`));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(completed?.content?.content).toBe("USAGE_AFTER_FINISH");
     expect(completed?.usage).toMatchObject({
       prompt_tokens: 11,
       completion_tokens: 7,
       total_tokens: 18,
     });
+
+    const wireOutput = wireChunks.join("");
+    const eventOrder = wireOutput.match(/^event: ([^\n]+)/gm)?.map((line) => line.slice(7)) || [];
+    expect(eventOrder.slice(-3)).toEqual(["content_block_stop", "message_delta", "message_stop"]);
+    const messageDeltaFrame = wireOutput.split("\n\n")
+      .find((frame) => frame.startsWith("event: message_delta\ndata: "));
+    const messageDelta = JSON.parse(messageDeltaFrame.slice("event: message_delta\ndata: ".length));
+    expect(messageDelta.usage).toEqual({ input_tokens: 11, output_tokens: 7 });
 
     await writer.abort();
     await reader.cancel().catch(() => {});

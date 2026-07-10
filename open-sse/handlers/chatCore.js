@@ -22,7 +22,7 @@ import { handleStreamingResponse, buildOnStreamComplete } from "./chatCore/strea
 import { resolveStreamFlag } from "./chatCore/streamFlag.js";
 import { detectClientTool, isNativePassthrough } from "../utils/clientDetector.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
-import { stripOrphanedToolResults } from "../translator/concerns/toolCall.js";
+import { collectEligibleGeminiFunctionResponseIds, stripOrphanedToolResults } from "../translator/concerns/toolCall.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
 import { compressMessages, formatRtkLog } from "../rtk/index.js";
@@ -44,11 +44,10 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const requestStartTime = Date.now();
 
   const sourceFormat = sourceFormatOverride || detectFormat(body);
-  const preserveGeminiToolResults = [
-    FORMATS.GEMINI,
-    FORMATS.GEMINI_CLI,
-    FORMATS.ANTIGRAVITY,
-  ].includes(sourceFormat);
+  const isNativeGeminiSource = sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI;
+  const preserveToolResultIds = isNativeGeminiSource
+    ? collectEligibleGeminiFunctionResponseIds(body)
+    : undefined;
 
   // Check for bypass patterns (warmup, skip, cc naming)
   const bypassResponse = handleBypassRequest(body, model, userAgent, ccFilterNaming);
@@ -83,7 +82,6 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     }
   }
 
-  const clientRequestedStreaming = body.stream === true || sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI;
   const providerRequiresStreaming = PROVIDERS[provider]?.forceStream === true;
   // Image generation models require non-streaming (Google v1internal:generateContent)
   const modelType = getModelType(alias, model);
@@ -98,6 +96,11 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const acceptHeader = clientRawRequest?.headers?.accept || "";
   const clientPrefersJson = acceptHeader.includes("application/json");
   const clientPrefersSSE = acceptHeader.includes("text/event-stream");
+  const clientRequestedStreaming = body.stream === true
+    || (body.stream !== false && clientPrefersSSE)
+    || sourceFormat === FORMATS.ANTIGRAVITY
+    || sourceFormat === FORMATS.GEMINI
+    || sourceFormat === FORMATS.GEMINI_CLI;
 
   // Stream-only providers (forceStream) must keep streaming even when the client
   // asked for JSON; the accumulated stream is converted to JSON downstream. (#2031)
@@ -141,9 +144,11 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     } catch (e) { log?.warn?.("MODALITY", `image prefetch failed: ${e.message}`); }
   }
 
-  // Gemini-family translators own functionResponse reconciliation. Pre-cleaning
-  // here would erase orphan/co-located results before that format policy runs.
-  const preStripped = preserveGeminiToolResults ? 0 : stripOrphanedToolResults(body);
+  // Preserve only structurally valid native Gemini functionResponses until
+  // translation can reconcile them. Other orphan shapes are always cleaned.
+  const preStripped = stripOrphanedToolResults(body, {
+    preserveGeminiFunctionResponses: isNativeGeminiSource,
+  });
   if (preStripped > 0) {
     log?.debug?.("TOOLCLEAN", `pre-translation: stripped ${preStripped} orphaned tool result(s)`);
   }
@@ -178,6 +183,8 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // Token savers: applied at the final body just before dispatch
   // Covers both passthrough (source shape) and translated (target shape) flows
   const finalFormat = passthrough ? sourceFormat : targetFormat;
+  const keepsNativeGeminiShape = isNativeGeminiSource
+    && (finalFormat === FORMATS.GEMINI || finalFormat === FORMATS.GEMINI_CLI);
 
   // TTS models don't support tool messages/function calling
   if (getModelType(alias, model) === "tts" && translatedBody.messages) {
@@ -208,9 +215,11 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     }
   } else if (headroomEnabled) log?.warn?.("HEADROOM", `skipped: ${headroomDiagnostics.reason || "compression unavailable"}${headroomDiagnostics.endpoint ? ` (${headroomDiagnostics.endpoint})` : ""}`);
 
-  // Strict-provider cleanup remains fail-open, but Gemini-family source history
-  // must survive until its translator reconciliation policy has completed.
-  const postStripped = preserveGeminiToolResults ? 0 : stripOrphanedToolResults(translatedBody);
+  // After translation, preserve only results derived from eligible native IDs.
+  const postStripped = stripOrphanedToolResults(translatedBody, {
+    preserveGeminiFunctionResponses: keepsNativeGeminiShape,
+    preserveToolResultIds,
+  });
   if (postStripped > 0) {
     log?.debug?.("TOOLCLEAN", `post-compression: stripped ${postStripped} orphaned tool result(s)`);
   }
@@ -255,9 +264,11 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     try { onPxpipeEvent?.({ provider, model, ...(pxpipeSummary || {}) }); } catch { /* stats must not break requests */ }
   }
 
-  // Re-strip after PXPIPE unless the original Gemini-family provenance requires
-  // preserving functionResponse history at the executor boundary.
-  const pxpipeStripped = preserveGeminiToolResults ? 0 : stripOrphanedToolResults(translatedBody);
+  // Re-strip after PXPIPE while retaining only translated eligible results.
+  const pxpipeStripped = stripOrphanedToolResults(translatedBody, {
+    preserveGeminiFunctionResponses: keepsNativeGeminiShape,
+    preserveToolResultIds,
+  });
   if (pxpipeStripped > 0) {
     log?.debug?.("TOOLCLEAN", `post-pxpipe: stripped ${pxpipeStripped} orphaned tool result(s)`);
   }

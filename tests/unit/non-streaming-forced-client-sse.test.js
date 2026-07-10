@@ -128,6 +128,49 @@ describe("handleNonStreamingResponse: synthetic SSE respects client format", () 
     }
   });
 
+  it("preserves usage in synthetic OpenAI Responses response.completed", async () => {
+    const result = await handleNonStreamingResponse(baseOptions({
+      providerResponse: makeProviderResponse(openaiCompletion),
+      sourceFormat: FORMATS.OPENAI_RESPONSES,
+      targetFormat: FORMATS.OPENAI,
+    }));
+    const text = await result.response.text();
+    const completedFrame = text.split("\n\n")
+      .find((frame) => frame.startsWith("event: response.completed\ndata: "));
+
+    expect(completedFrame).toBeDefined();
+    const completed = JSON.parse(completedFrame.slice("event: response.completed\ndata: ".length));
+    expect(completed.response.usage).toEqual({
+      input_tokens: 2,
+      output_tokens: 3,
+      total_tokens: 5,
+    });
+  });
+
+  it("scrubs inline think blocks before synthesizing OpenAI SSE", async () => {
+    const inlineThinkCompletion = {
+      ...openaiCompletion,
+      choices: [{
+        index: 0,
+        message: {
+          role: "assistant",
+          content: "<think>internal chain</think>visible answer",
+        },
+        finish_reason: "stop",
+      }],
+    };
+    const result = await handleNonStreamingResponse(baseOptions({
+      providerResponse: makeProviderResponse(inlineThinkCompletion),
+      sourceFormat: FORMATS.OPENAI,
+      targetFormat: FORMATS.OPENAI,
+    }));
+    const text = await result.response.text();
+
+    expect(text).toContain('"content":"visible answer"');
+    expect(text).not.toContain("internal chain");
+    expect(text).not.toContain("<think>");
+  });
+
   it("preserves reasoning content when synthesizing Claude SSE", async () => {
     const reasoningCompletion = {
       ...openaiCompletion,

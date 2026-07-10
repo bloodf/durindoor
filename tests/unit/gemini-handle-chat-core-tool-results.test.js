@@ -83,10 +83,10 @@ vi.mock("@/lib/usageDb.js", () => ({
 
 const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
 
-function makeOptions(sourceFormat, body) {
+function makeOptions(sourceFormat, body, provider = "openai") {
   return {
     body,
-    modelInfo: { provider: "openai", model: "gpt-4.1" },
+    modelInfo: { provider, model: provider === "gemini" ? "gemini-pro" : "gpt-4.1" },
     credentials: { apiKey: "sk-test", providerSpecificData: {} },
     sourceFormatOverride: sourceFormat,
     connectionId: `gemini-runtime-${sourceFormat}`,
@@ -164,5 +164,79 @@ describe.each([FORMATS.GEMINI, FORMATS.GEMINI_CLI])(
       expect(executorBody).toContain("co-located-survives");
       expect(executorBody).toContain("call_next");
     });
+
+    it("preserves only eligible native functionResponses while cleaning mixed orphan shapes", async () => {
+      const body = {
+        model: "gemini-pro",
+        messages: [{ role: "tool", tool_call_id: "message_orphan", content: "DROP_MESSAGE_ORPHAN" }],
+        input: [{ type: "function_call_output", call_id: "input_orphan", output: "DROP_INPUT_ORPHAN" }],
+        contents: [{
+          role: "user",
+          parts: [
+            {
+              functionResponse: {
+                id: "call_eligible",
+                name: "lookup",
+                response: { result: "KEEP_ELIGIBLE_RESPONSE" },
+              },
+            },
+            { functionResponse: [{ result: "DROP_ARRAY_FUNCTION_RESPONSE" }] },
+            {
+              functionResponse: {
+                id: " ",
+                name: " ",
+                response: { result: "DROP_BLANK_ID_RESPONSE" },
+              },
+            },
+            {
+              functionResponse: {
+                id: "call_array_response",
+                name: "lookup",
+                response: ["DROP_ARRAY_RESPONSE"],
+              },
+            },
+          ],
+        }],
+      };
+
+      await handleChatCore(makeOptions(sourceFormat, body, "gemini"));
+
+      expect(executeMock).toHaveBeenCalledTimes(1);
+      const executorBody = JSON.stringify(executeMock.mock.calls[0][0].body);
+      expect(executorBody).toContain("KEEP_ELIGIBLE_RESPONSE");
+      expect(executorBody).not.toContain("DROP_MESSAGE_ORPHAN");
+      expect(executorBody).not.toContain("DROP_INPUT_ORPHAN");
+      expect(executorBody).not.toContain("DROP_ARRAY_FUNCTION_RESPONSE");
+      expect(executorBody).not.toContain("DROP_BLANK_ID_RESPONSE");
+      expect(executorBody).not.toContain("DROP_ARRAY_RESPONSE");
+    });
   },
 );
+
+describe("handleChatCore does not extend native Gemini preservation to Antigravity", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    executeMock.mockRejectedValue(new Error("executor capture"));
+  });
+
+  it("cleans an orphan functionResponse before Antigravity executor dispatch", async () => {
+    const body = {
+      model: "gemini-pro",
+      contents: [{
+        role: "user",
+        parts: [{
+          functionResponse: {
+            id: "call_antigravity_orphan",
+            name: "lookup",
+            response: { result: "DROP_ANTIGRAVITY_ORPHAN" },
+          },
+        }, { text: "keep this turn valid" }],
+      }],
+    };
+
+    await handleChatCore(makeOptions(FORMATS.ANTIGRAVITY, body, "antigravity"));
+
+    expect(executeMock).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(executeMock.mock.calls[0][0].body)).not.toContain("DROP_ANTIGRAVITY_ORPHAN");
+  });
+});

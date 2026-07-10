@@ -10,11 +10,11 @@ import { buildRequestDetail, extractRequestConfig, extractUsageFromResponse, sav
 import { translateOpenAIToClaudeIfNeeded } from "../../translator/response/openai-to-claude-json.js";
 import { appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { decloakToolNames } from "../../utils/claudeCloaking.js";
-import { stripThinkFromResponse } from "../../utils/thinkStripper.js";
 import { openAIResponsesBodyToClaude, openAIResponsesBodyToOpenAI } from "../../translator/response/openai-responses-nonstream.js";
 import { translateResponse, initState } from "../../translator/index.js";
 import { formatSSE } from "../../utils/streamHelpers.js";
 import { SSE_HEADERS_CORS } from "../../utils/sseConstants.js";
+import { normalizeInlineThinkingResponse } from "./inlineThinking.js";
 
 const GEMINI_FAMILY_FORMATS = new Set([
   FORMATS.GEMINI,
@@ -37,41 +37,72 @@ function openAICompletionToChunks(responseBody, fallbackModel) {
   const id = responseBody?.id || `chatcmpl-${Date.now()}`;
   const created = responseBody?.created || Math.floor(Date.now() / 1000);
   const model = responseBody?.model || fallbackModel;
-  const choice = responseBody?.choices?.[0] || {};
-  const message = choice.message || {};
+  const choices = Array.isArray(responseBody?.choices) && responseBody.choices.length > 0
+    ? responseBody.choices
+    : [{}];
+  const choiceIndex = (choice, position) => Number.isInteger(choice?.index) ? choice.index : position;
   const chunks = [{
     id,
     object: "chat.completion.chunk",
     created,
     model,
-    choices: [{ index: 0, delta: { role: message.role || "assistant" }, finish_reason: null }],
+    choices: choices.map((choice, position) => ({
+      index: choiceIndex(choice, position),
+      delta: { role: choice?.message?.role || "assistant" },
+      finish_reason: null,
+    })),
   }];
 
-  if (typeof message.reasoning_content === "string" && message.reasoning_content.length > 0) {
+  const reasoningChoices = choices.flatMap((choice, position) => {
+    const reasoning = choice?.message?.reasoning_content;
+    return typeof reasoning === "string" && reasoning.length > 0
+      ? [{ index: choiceIndex(choice, position), delta: { reasoning_content: reasoning }, finish_reason: null }]
+      : [];
+  });
+  if (reasoningChoices.length > 0) {
     chunks.push({
       id, object: "chat.completion.chunk", created, model,
-      choices: [{ index: 0, delta: { reasoning_content: message.reasoning_content }, finish_reason: null }],
+      choices: reasoningChoices,
     });
   }
-  if (typeof message.content === "string" && message.content.length > 0) {
+
+  const contentChoices = choices.flatMap((choice, position) => {
+    const content = choice?.message?.content;
+    return typeof content === "string" && content.length > 0
+      ? [{ index: choiceIndex(choice, position), delta: { content }, finish_reason: null }]
+      : [];
+  });
+  if (contentChoices.length > 0) {
     chunks.push({
       id, object: "chat.completion.chunk", created, model,
-      choices: [{ index: 0, delta: { content: message.content }, finish_reason: null }],
+      choices: contentChoices,
     });
   }
-  if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
+
+  const toolChoices = choices.flatMap((choice, position) => {
+    const toolCalls = choice?.message?.tool_calls;
+    return Array.isArray(toolCalls) && toolCalls.length > 0
+      ? [{
+          index: choiceIndex(choice, position),
+          delta: { tool_calls: toolCalls.map((toolCall, index) => ({ index, ...toolCall })) },
+          finish_reason: null,
+        }]
+      : [];
+  });
+  if (toolChoices.length > 0) {
     chunks.push({
       id, object: "chat.completion.chunk", created, model,
-      choices: [{
-        index: 0,
-        delta: { tool_calls: message.tool_calls.map((toolCall, index) => ({ index, ...toolCall })) },
-        finish_reason: null,
-      }],
+      choices: toolChoices,
     });
   }
+
   const final = {
     id, object: "chat.completion.chunk", created, model,
-    choices: [{ index: 0, delta: {}, finish_reason: choice.finish_reason || "stop" }],
+    choices: choices.map((choice, position) => ({
+      index: choiceIndex(choice, position),
+      delta: {},
+      finish_reason: choice?.finish_reason || "stop",
+    })),
   };
   if (responseBody?.usage) final.usage = responseBody.usage;
   chunks.push(final);
@@ -334,6 +365,12 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   // Decloak tool_use names once on raw Claude body, before any translation (INPUT side)
   responseBody = decloakToolNames(responseBody, toolNameMap);
 
+  // MiniMax's OpenAI transport may inline M3 reasoning as complete <think>
+  // segments. Normalize the raw provider completion once, before a client
+  // projection can collapse its per-choice OpenAI shape.
+  const inlineThinking = normalizeInlineThinkingResponse(responseBody, { provider, model, targetFormat });
+  responseBody = inlineThinking.responseBody;
+
   const usage = extractUsageFromResponse(responseBody);
   appendLog({ tokens: usage, status: "200 OK" });
   saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint });
@@ -342,9 +379,6 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     ? translateNonStreamingResponse(responseBody, targetFormat, sourceFormat)
     : responseBody;
   const isClaudeMessageResponse = sourceFormat === FORMATS.CLAUDE && translatedResponse?.type === "message";
-
-  // Strip embedded <think>...</think> tags from providers that inline thinking (MiniMax M3)
-  stripThinkFromResponse(translatedResponse);
 
   const isOpenAIChatResponse = Array.isArray(translatedResponse?.choices);
 
@@ -378,10 +412,9 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     translatedResponse.usage = filterUsageForFormat(addBufferToUsage(translatedResponse.usage), sourceFormat);
   }
 
-  // Strip reasoning_content only when content is non-empty.
-  // When content is empty (e.g. thinking models that used all tokens for reasoning),
-  // reasoning_content is the only useful output and must be preserved.
-  if (!isClaudeMessageResponse && translatedResponse?.choices) {
+  // Preserve native and extracted reasoning for the explicitly configured M3
+  // OpenAI response policy. Other providers retain the existing cleanup.
+  if (!isClaudeMessageResponse && isOpenAIChatResponse && !inlineThinking.configured) {
     for (const choice of translatedResponse.choices) {
       if (choice?.message?.reasoning_content && choice.message.content) {
         delete choice.message.reasoning_content;
@@ -443,7 +476,6 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     if (Array.isArray(intermediateChoice?.message?.tool_calls) && intermediateChoice.message.tool_calls.length > 0) {
       intermediateChoice.finish_reason = "tool_calls";
     }
-    stripThinkFromResponse(openAIIntermediate);
     const sseText = openAICompletionToClientSSE(openAIIntermediate, model, sourceFormat);
 
     return {

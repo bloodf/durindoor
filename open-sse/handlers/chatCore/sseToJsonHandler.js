@@ -3,7 +3,7 @@ import { createErrorResult } from "../../utils/error.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { FORMATS } from "../../translator/formats.js";
 import { PROVIDERS } from "../../config/providers.js";
-import { buildRequestDetail, extractRequestConfig, saveUsageStats } from "./requestDetail.js";
+import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { projectCompletionToClientFormat, responsesApiToOpenAICompletion } from "../../translator/response/completionProjector.js";
 import { logToolSemantics } from "../../utils/toolSemanticsTrace.js";
 import { extractReasoningText } from "../../translator/concerns/reasoning.js";
@@ -126,7 +126,7 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
  * Handle case: provider forced streaming but client wants JSON.
  * Supports both Codex/Responses API SSE and standard Chat Completions SSE.
  */
-export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, trackDone, appendLog, toolNameMap, log }) {
+export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, trackDone, appendLog, toolNameMap, reqTag, log }) {
   const contentType = providerResponse.headers.get("content-type") || "";
   const isSSE = contentType.includes("text/event-stream") || (contentType === "" && isResponsesProvider(provider));
   if (!isSSE) return null; // not handled here
@@ -148,7 +148,8 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
 
       const usage = jsonResponse.usage || {};
       appendLog({ tokens: usage, status: "200 OK" });
-      saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint });
+      saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, silent: true });
+      if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime } }));
 
       // When the client asked for the Responses API format, return the converted JSON directly.
       // responsesApiToOpenAICompletion would project it to chat.completion shape and lose Responses fields.
@@ -198,7 +199,8 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
 
     const usage = parsed.usage || {};
     appendLog({ tokens: usage, status: "200 OK" });
-    saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint });
+    saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, silent: true });
+    if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime } }));
 
     const totalLatency = Date.now() - requestStartTime;
     saveRequestDetail(buildRequestDetail({

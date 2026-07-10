@@ -49,6 +49,12 @@ artifacts, and reports three counts separately:
 - failures still present in `__baseline__/known-fails.txt`;
 - stale baseline entries whose tests now pass.
 
+The reports are dot-prefixed files. Because `actions/upload-artifact` excludes
+hidden files by default, the test workflow explicitly enables hidden-file
+uploads, verifies both reports are non-empty, and treats missing reports as an
+error. This keeps the `if: always()` diagnostic upload useful even when the
+test command itself fails.
+
 Pull requests may delete stale baseline entries but may not add entries. The
 baseline is temporary recovery state; the zero-test stage removes it entirely.
 

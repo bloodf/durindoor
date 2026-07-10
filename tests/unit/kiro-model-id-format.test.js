@@ -30,7 +30,7 @@ describe("Kiro wire model IDs", () => {
     expect(result.conversationState.currentMessage.userInputMessage.modelId).toBe(
       "claude-sonnet-4.5",
     );
-    expect(result._kiroUpstreamModel).toBe("claude-sonnet-4.5");
+    expect(Reflect.ownKeys(result).filter((key) => String(key).startsWith("_"))).toEqual([]);
   });
 
   it("preserves dotted Claude IDs in direct Claude-to-Kiro payloads", () => {
@@ -44,6 +44,6 @@ describe("Kiro wire model IDs", () => {
     expect(result.conversationState.currentMessage.userInputMessage.modelId).toBe(
       "claude-sonnet-4.5",
     );
-    expect(result._kiroUpstreamModel).toBe("claude-sonnet-4.5");
+    expect(Reflect.ownKeys(result).filter((key) => String(key).startsWith("_"))).toEqual([]);
   });
 });

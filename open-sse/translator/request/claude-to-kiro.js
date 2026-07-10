@@ -24,7 +24,7 @@
  */
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
-import { v4 as uuidv4 } from "uuid";
+import { resolveSessionId } from "../../utils/sessionManager.js";
 import {
   resolveKiroModel,
   resolveKiroThinkingBudget,
@@ -375,7 +375,7 @@ function reconcileOrphanedToolResults(history, currentMessage) {
 /**
  * Build a Kiro payload directly from a Claude Messages API request body.
  */
-export function claudeToKiroRequest(model, body, stream, credentials) {
+export function claudeToKiroRequest(model, body, stream, credentials, translationContext = null) {
   let messages = Array.isArray(body.messages) ? body.messages : [];
   const tools = Array.isArray(body.tools) ? body.tools : [];
   const clientProvidedTools = tools.length > 0;
@@ -386,7 +386,12 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
   // Synthetic suffixes are local routing hints. Kiro's current wire contract
   // accepts Claude version dots, so preserve the resolved upstream ID exactly.
   const { upstream: kiroModelId, agentic } = resolveKiroModel(model);
-  const thinkingBudget = resolveKiroThinkingBudget(body, credentials?.rawHeaders, model);
+  const thinkingBudget = resolveKiroThinkingBudget(
+    body,
+    credentials?.rawHeaders,
+    model,
+    translationContext?.thinkingIntent,
+  );
 
   // Guard 1: no client tools → flatten all tool interactions to text.
   if (!clientProvidedTools) {
@@ -441,7 +446,7 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
   const userInputMessage = {
     content: finalContent,
     // Keep the same canonical upstream ID in the current message, history
-    // backfill, and `_kiroUpstreamModel` metadata.
+    // backfill.
     modelId: kiroModelId,
     origin: "AI_EDITOR",
     ...(currentMessage?.userInputMessage?.userInputMessageContext && {
@@ -460,7 +465,12 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
   const payload = {
     conversationState: {
       chatTriggerType: "MANUAL",
-      conversationId: uuidv4(),
+      conversationId: translationContext?.clientSessionId || resolveSessionId({
+        headers: credentials?.rawHeaders,
+        body,
+        connectionId: credentials?.connectionId,
+        scope: "kiro",
+      }),
       currentMessage: {
         userInputMessage,
       },
@@ -476,12 +486,6 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
     if (temperature !== undefined) payload.inferenceConfig.temperature = temperature;
     if (topP !== undefined) payload.inferenceConfig.topP = topP;
   }
-
-  // Non-enumerable hint so the executor can route the upstream model id.
-  Object.defineProperty(payload, "_kiroUpstreamModel", {
-    value: kiroModelId,
-    enumerable: false,
-  });
 
   return payload;
 }

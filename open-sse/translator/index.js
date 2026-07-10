@@ -4,7 +4,7 @@ import { prepareClaudeRequest } from "./formats/claude.js";
 import { cloakClaudeTools } from "../utils/claudeCloaking.js";
 import { filterToOpenAIFormat } from "./formats/openai.js";
 import { normalizeThinkingConfig } from "../services/provider.js";
-import { applyThinking, captureThinking } from "./concerns/thinkingUnified.js";
+import { applyThinking, captureThinking, parseSuffix } from "./concerns/thinkingUnified.js";
 import { captureSessionId } from "../utils/sessionManager.js";
 import { AntigravityExecutor } from "../executors/antigravity.js";
 import { PROVIDERS } from "../providers/index.js";
@@ -48,10 +48,16 @@ function stripContentTypes(body, stripList = []) {
   }
 }
 
-// Translate request: source -> openai -> target
-export function translateRequest(sourceFormat, targetFormat, model, body, stream = true, credentials = null, provider = null, reqLogger = null, stripList = [], connectionId = null, clientTool = null) {
+// Translate request: source -> openai -> target. `translationContext` carries
+// request-scoped routing intent (never serialized into the provider body).
+export function translateRequest(sourceFormat, targetFormat, model, body, stream = true, credentials = null, provider = null, reqLogger = null, stripList = [], connectionId = null, clientTool = null, translationContext = null) {
   ensureInitialized();
   let result = body;
+  // chatCore supplies an already-clean mapped model plus explicit context, but
+  // public/direct translator callers may still pass `model(level)`. Keep that
+  // entry point safe by parsing here as a compatibility fallback.
+  const parsedModel = parseSuffix(model);
+  const translationModel = parsedModel.cleanModel;
 
   // Strip explicit content types (opt-in via strip[] in PROVIDER_MODELS entry)
   stripContentTypes(result, stripList);
@@ -85,10 +91,17 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
 
   // Capture thinking intent from the original (pre-translation) body, before any
   // format conversion strips/renames the fields. Applied after translation.
-  const thinkingIntent = captureThinking(result);
+  const thinkingIntent = translationContext?.thinkingIntent
+    ?? parsedModel.override
+    ?? captureThinking(result);
 
   // Capture session id from the original body (envelope still intact, e.g. antigravity request.sessionId)
   const clientSessionId = captureSessionId(result, credentials, connectionId, targetFormat);
+  const resolvedTranslationContext = Object.freeze({
+    ...(translationContext || {}),
+    thinkingIntent,
+    clientSessionId,
+  });
   // Expose to downstream translators (gemini-cli/antigravity envelopes) that run after envelope is stripped
   if (credentials) credentials._clientSessionId = clientSessionId;
 
@@ -99,13 +112,13 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     // pairs like claude:kiro (avoids the claude->openai->kiro double-hop).
     const directFn = requestRegistry.get(`${sourceFormat}:${targetFormat}`);
     if (directFn) {
-      result = directFn(model, result, stream, credentials);
+      result = directFn(translationModel, result, stream, credentials, resolvedTranslationContext);
     } else {
       // Step 1: source -> openai (if source is not openai)
       if (sourceFormat !== FORMATS.OPENAI) {
         const toOpenAI = requestRegistry.get(`${sourceFormat}:${FORMATS.OPENAI}`);
         if (toOpenAI) {
-          result = toOpenAI(model, result, stream, credentials);
+          result = toOpenAI(translationModel, result, stream, credentials, resolvedTranslationContext);
           // Log OpenAI intermediate format
           reqLogger?.logOpenAIRequest?.(result);
         }
@@ -115,14 +128,32 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
       if (targetFormat !== FORMATS.OPENAI) {
         const fromOpenAI = requestRegistry.get(`${FORMATS.OPENAI}:${targetFormat}`);
         if (fromOpenAI) {
-          result = fromOpenAI(model, result, stream, credentials);
+          result = fromOpenAI(translationModel, result, stream, credentials, resolvedTranslationContext);
         }
       }
     }
   }
 
+  // Direct callers may provide a request body that still contains the
+  // recognized suffix. Keep same-format translations safe as well; unknown
+  // parenthesized IDs have no override and remain untouched.
+  if (
+    parsedModel.override
+    && result
+    && typeof result === "object"
+    && Object.prototype.hasOwnProperty.call(result, "model")
+  ) {
+    result.model = translationModel;
+  }
+
   // Normalize thinking to the target provider-native format (config-driven, capability-aware)
-  applyThinking(targetFormat, model, result, provider, thinkingIntent);
+  applyThinking(
+    targetFormat,
+    resolvedTranslationContext.capabilityModel || translationModel,
+    result,
+    provider,
+    thinkingIntent,
+  );
 
   // Always normalize to clean OpenAI format when target is OpenAI
   // This handles hybrid requests (e.g., OpenAI messages + Claude tools)

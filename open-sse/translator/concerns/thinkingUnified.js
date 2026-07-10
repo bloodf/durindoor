@@ -4,7 +4,10 @@
 
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 import { PROVIDERS } from "../../providers/index.js";
-import { LEVEL_TO_BUDGET, budgetToLevel, effortToBudget, effortToThinkingLevel } from "./thinking.js";
+import { budgetToLevel, effortToBudget, effortToThinkingLevel } from "./thinking.js";
+import { parseSuffix, stripThinkingSuffix } from "./thinkingSuffix.js";
+
+export { parseSuffix, stripThinkingSuffix } from "./thinkingSuffix.js";
 
 // Map a target wire-format to its native thinking format (when capability has none).
 const FORMAT_TO_NATIVE = {
@@ -19,28 +22,6 @@ const FORMAT_TO_NATIVE = {
   antigravity: "gemini-budget",
   kiro: "kiro",
 };
-
-// Strip a trailing thinking suffix "model(value)" → "model" (no-op when absent or unknown suffix).
-export function stripThinkingSuffix(model) {
-  if (typeof model !== "string") return model;
-  const parsed = parseSuffix(model);
-  return parsed.override ? parsed.cleanModel : model;
-}
-
-// Parse model-name suffix "model(value)" → { cleanModel, override }.
-// value: level name (high) | number (8192) | auto | none. null override when absent.
-export function parseSuffix(model) {
-  if (typeof model !== "string") return { cleanModel: model, override: null };
-  const m = model.match(/^(.*)\(([^()]+)\)\s*$/);
-  if (!m) return { cleanModel: model, override: null };
-  const cleanModel = m[1].trim();
-  const raw = m[2].trim().toLowerCase();
-  if (raw === "none" || raw === "off") return { cleanModel, override: { mode: "none" } };
-  if (raw === "auto") return { cleanModel, override: { mode: "auto" } };
-  if (/^\d+$/.test(raw)) return { cleanModel, override: { mode: "budget", budget: Number(raw) } };
-  if (LEVEL_TO_BUDGET[raw] !== undefined) return { cleanModel, override: { mode: "level", level: raw } };
-  return { cleanModel, override: null };
-}
 
 // Extract unified thinking intent from a request body (post-translation, mixed shapes).
 // Returns { mode, budget?, level? } or null when no thinking intent present.

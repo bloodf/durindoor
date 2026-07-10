@@ -22,16 +22,10 @@ export async function OPTIONS() {
 
 /**
  * POST /v1/responses/compact - Compact conversation context
- * Reuses the same handleChat pipeline, signals compact via body._compact
+ * The original Request is preserved. The chat pipeline derives compact routing
+ * from the endpoint instead of injecting an internal field into client JSON.
  */
 export async function POST(request) {
   await ensureInitialized();
-  const body = await request.json();
-  body._compact = true;
-  const newRequest = new Request(request.url, {
-    method: "POST",
-    headers: request.headers,
-    body: JSON.stringify(body)
-  });
-  return await handleChat(newRequest);
+  return await handleChat(request);
 }

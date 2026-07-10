@@ -39,6 +39,42 @@ const NATIVE_TOOL_RESULT_FORMATS = new Set([
   FORMATS.VERTEX,
 ]);
 
+function isCompactResponsesEndpoint(endpoint) {
+  const path = String(endpoint || "").split(/[?#]/, 1)[0].replace(/\/+$/, "");
+  return path.endsWith("/v1/responses/compact");
+}
+
+/**
+ * Build immutable request-only metadata before logging or translation. The
+ * legacy body marker remains accepted for compatibility, but is removed from
+ * both working and diagnostic copies before either can leave the process.
+ */
+function captureRequestContext(body, clientRawRequest) {
+  const compact = isCompactResponsesEndpoint(clientRawRequest?.endpoint)
+    || body?._compact === true
+    || clientRawRequest?.body?._compact === true;
+  const clientHeaders = Object.freeze({ ...(clientRawRequest?.headers || {}) });
+  return Object.freeze({ compact, clientHeaders });
+}
+
+function stripLegacyCompactMarker(body, clientRawRequest) {
+  let cleanBody = body;
+  let cleanRawRequest = clientRawRequest;
+
+  if (body && typeof body === "object" && Object.prototype.hasOwnProperty.call(body, "_compact")) {
+    cleanBody = { ...body };
+    delete cleanBody._compact;
+  }
+  if (clientRawRequest?.body && typeof clientRawRequest.body === "object"
+    && Object.prototype.hasOwnProperty.call(clientRawRequest.body, "_compact")) {
+    const rawBody = { ...clientRawRequest.body };
+    delete rawBody._compact;
+    cleanRawRequest = { ...clientRawRequest, body: rawBody };
+  }
+
+  return { body: cleanBody, clientRawRequest: cleanRawRequest };
+}
+
 /**
  * Gemini-family clients legitimately send functionResponse turns without the
  * originating functionCall after trimming their local history. Their native
@@ -60,6 +96,8 @@ export function shouldStripOrphanedToolResults(format) {
 export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit }) {
   const { provider, model } = modelInfo;
   const requestStartTime = Date.now();
+  const requestContext = captureRequestContext(body, clientRawRequest);
+  ({ body, clientRawRequest } = stripLegacyCompactMarker(body, clientRawRequest));
 
   const sourceFormat = sourceFormatOverride || detectFormat(body);
 
@@ -380,7 +418,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   }
 
   try {
-    const result = await executor.execute({ model, body: translatedBody, stream, credentials, signal: streamController.signal, log, proxyOptions });
+    const result = await executor.execute({ model, body: translatedBody, stream, credentials, signal: streamController.signal, log, proxyOptions, requestContext });
     providerResponse = result.response;
     providerUrl = result.url;
     providerHeaders = result.headers;
@@ -421,7 +459,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
           try { await onCredentialsRefreshed(newCredentials); } catch (e) { log?.warn?.("TOKEN", `onCredentialsRefreshed failed: ${e.message}`); }
         }
         try {
-          const retryResult = await executor.execute({ model, body: translatedBody, stream, credentials, signal: streamController.signal, log, proxyOptions });
+          const retryResult = await executor.execute({ model, body: translatedBody, stream, credentials, signal: streamController.signal, log, proxyOptions, requestContext });
           if (retryResult.response.ok) { providerResponse = retryResult.response; providerUrl = retryResult.url; }
         } catch { log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`); }
       } else {

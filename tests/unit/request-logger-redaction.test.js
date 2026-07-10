@@ -16,6 +16,9 @@ describe("request logger credential redaction", () => {
       HAIPER_KEY: "haiper-secret",
       key: "raw-key-secret",
       "X-Model-Key": "model-key-secret",
+      session_id: "conversation-secret",
+      "ChatGPT-Account-ID": "account-secret",
+      "prompt-cache-key": "cache-secret",
       "x-request-id": "request-123",
       Accept: "application/json",
     })).toEqual({
@@ -25,6 +28,9 @@ describe("request logger credential redaction", () => {
       HAIPER_KEY: "[redacted]",
       key: "[redacted]",
       "X-Model-Key": "[redacted]",
+      session_id: "[redacted]",
+      "ChatGPT-Account-ID": "[redacted]",
+      "prompt-cache-key": "[redacted]",
       "x-request-id": "request-123",
       Accept: "application/json",
     });
@@ -44,12 +50,13 @@ describe("request logger credential redaction", () => {
 
   it("redacts sensitive query parameters without hiding ordinary routing data", () => {
     const masked = maskSensitiveUrl(
-      "https://zenmux.ai/api/messages?ctoken=secret&model=deepseek%2Fchat&sig=abc",
+      "https://zenmux.ai/api/messages?ctoken=secret&model=deepseek%2Fchat&sig=abc&session_id=private-session",
     );
 
     expect(masked).toContain("ctoken=%5Bredacted%5D");
     expect(masked).toContain("model=deepseek%2Fchat");
     expect(masked).toContain("sig=%5Bredacted%5D");
+    expect(masked).toContain("session_id=%5Bredacted%5D");
     expect(masked).not.toContain("secret");
   });
 
@@ -72,6 +79,13 @@ describe("request logger credential redaction", () => {
     )).toBe(
       "X-Subscription-Token: [redacted]\nClient-Secret: [redacted]",
     );
+    expect(maskSensitiveText(
+      "session_id: private-session\nChatGPT-Account-ID: private-account\nprompt_cache_key: private-cache",
+    )).toBe(
+      "session_id: [redacted]\nChatGPT-Account-ID: [redacted]\nprompt_cache_key: [redacted]",
+    );
+    expect(maskSensitiveText("request failed?session_id=private-session&model=gpt"))
+      .toBe("request failed?session_id=[redacted]&model=gpt");
   });
 
   it("recursively redacts response and request body credential fields", () => {
@@ -83,6 +97,8 @@ describe("request logger credential redaction", () => {
         api_key: "api-secret",
         auth: "auth-secret",
         "x-api-key": "x-api-secret",
+        session_id: "private-session",
+        prompt_cache_key: "private-cache",
         safe: "model-1",
       },
       rows: [{ cookie: "session=secret", "set-cookie": "server-secret" }],
@@ -94,6 +110,8 @@ describe("request logger credential redaction", () => {
         api_key: "[redacted]",
         auth: "[redacted]",
         "x-api-key": "[redacted]",
+        session_id: "[redacted]",
+        prompt_cache_key: "[redacted]",
         safe: "model-1",
       },
       rows: [{ cookie: "[redacted]", "set-cookie": "[redacted]" }],

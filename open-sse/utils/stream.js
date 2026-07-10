@@ -88,20 +88,62 @@ export function createSSEStream(options = {}) {
 
   const getInlineThinkingState = (choiceIndex) => {
     if (!inlineThinkingStates.has(choiceIndex)) {
-      inlineThinkingStates.set(choiceIndex, createThinkTagStreamExtractor());
+      inlineThinkingStates.set(choiceIndex, {
+        extractor: createThinkTagStreamExtractor(),
+        bypass: false,
+        reasoningSeen: false,
+        reasoningEndsWithNewline: false,
+        lastReasoningSource: null,
+      });
     }
     return inlineThinkingStates.get(choiceIndex);
+  };
+
+  const appendInlineThinkingReasoning = (choiceState, existing, addition) => {
+    if (typeof addition !== "string" || addition.length === 0) return existing;
+    if (typeof existing === "string" && existing.length > 0) {
+      return appendReasoningText(existing, addition);
+    }
+    if (choiceState.reasoningSeen) {
+      const separator = choiceState.reasoningEndsWithNewline || addition.startsWith("\n") ? "" : "\n";
+      return `${existing || ""}${separator}${addition}`;
+    }
+    return appendReasoningText(existing, addition);
+  };
+
+  const trackInlineThinkingReasoning = (choiceState, value, source) => {
+    if (typeof value !== "string" || value.length === 0) return;
+    choiceState.reasoningSeen = true;
+    choiceState.reasoningEndsWithNewline = value.endsWith("\n");
+    if (source) choiceState.lastReasoningSource = source;
+  };
+
+  const normalizeNativeReasoningAfterInline = (choiceState, value) => {
+    if (typeof value !== "string" || value.length === 0) return value;
+    if (choiceState.lastReasoningSource !== "inline") return value;
+    const separator = choiceState.reasoningEndsWithNewline || value.startsWith("\n") ? "" : "\n";
+    return `${separator}${value}`;
   };
 
   const flushInlineThinkingStates = () => {
     if (!extractInlineThinking || inlineThinkingStates.size === 0) return "";
     const choices = [];
-    for (const [index, extractor] of inlineThinkingStates) {
-      const pending = extractor.flush();
+    for (const [index, choiceState] of inlineThinkingStates) {
+      const pending = choiceState.extractor.flush();
+      const delta = {};
       if (pending.content) {
-        choices.push({ index, delta: { content: pending.content }, finish_reason: null });
+        delta.content = pending.content;
         totalContentLength += pending.content.length;
         accumulatedContent += pending.content;
+      }
+      if (pending.reasoning) {
+        delta.reasoning_content = appendInlineThinkingReasoning(choiceState, undefined, pending.reasoning);
+        trackInlineThinkingReasoning(choiceState, delta.reasoning_content, "inline");
+        totalContentLength += delta.reasoning_content.length;
+        accumulatedThinking += delta.reasoning_content;
+      }
+      if (Object.keys(delta).length > 0) {
+        choices.push({ index, delta, finish_reason: null });
       }
     }
     inlineThinkingStates.clear();
@@ -146,6 +188,7 @@ export function createSSEStream(options = {}) {
           let output;
           let injectedUsage = false;
           let pendingInlineThinkingOutput = "";
+          const inlineThinkingRecoveryChoices = [];
 
           if (trimmed === "data: [DONE]") {
             pendingInlineThinkingOutput = flushInlineThinkingStates();
@@ -228,18 +271,61 @@ export function createSSEStream(options = {}) {
               if (extractInlineThinking && Array.isArray(parsed.choices)) {
                 for (const [position, choice] of parsed.choices.entries()) {
                   const choiceIndex = Number.isInteger(choice?.index) ? choice.index : position;
-                  const extractor = getInlineThinkingState(choiceIndex);
+                  const choiceState = getInlineThinkingState(choiceIndex);
+                  const extractor = choiceState.extractor;
                   const delta = choice.delta || (choice.delta = {});
-                  let nextContent = "";
+                  let nextContent = typeof delta.content === "string" ? delta.content : "";
                   let changed = false;
+                  let emittedInlineReasoning = false;
 
-                  if (typeof delta.content === "string") {
+                  const hasStructuredReasoning = delta.reasoning_content != null
+                    && typeof delta.reasoning_content !== "string";
+                  const hasNativeReasoning = typeof delta.reasoning_content === "string"
+                    && delta.reasoning_content.length > 0;
+
+                  if (!choiceState.bypass && hasNativeReasoning) {
+                    const normalizedNativeReasoning = normalizeNativeReasoningAfterInline(
+                      choiceState,
+                      delta.reasoning_content,
+                    );
+                    if (normalizedNativeReasoning !== delta.reasoning_content) {
+                      delta.reasoning_content = normalizedNativeReasoning;
+                      changed = true;
+                    }
+                  }
+
+                  if (!choiceState.bypass && hasStructuredReasoning) {
+                    const pending = extractor.failOpen();
+                    choiceState.bypass = true;
+                    if (pending.content) {
+                      if (typeof delta.content === "string") {
+                        nextContent = `${pending.content}${delta.content}`;
+                        changed = true;
+                      } else if (delta.content == null) {
+                        nextContent = pending.content;
+                        changed = true;
+                      } else {
+                        inlineThinkingRecoveryChoices.push({
+                          index: choiceIndex,
+                          delta: { content: pending.content },
+                          finish_reason: null,
+                        });
+                        totalContentLength += pending.content.length;
+                        accumulatedContent += pending.content;
+                      }
+                    }
+                  } else if (!choiceState.bypass && typeof delta.content === "string") {
                     const extractedThink = extractor.process(delta.content);
                     nextContent = extractedThink.content;
                     changed = extractedThink.changed || extractedThink.content !== delta.content;
                     if (extractedThink.reasoning) {
-                      delta.reasoning_content = appendReasoningText(delta.reasoning_content, extractedThink.reasoning);
+                      delta.reasoning_content = appendInlineThinkingReasoning(
+                        choiceState,
+                        delta.reasoning_content,
+                        extractedThink.reasoning,
+                      );
                       changed = true;
+                      emittedInlineReasoning = true;
                     }
                   }
 
@@ -249,6 +335,15 @@ export function createSSEStream(options = {}) {
                       nextContent += pending.content;
                       changed = true;
                     }
+                    if (pending.reasoning) {
+                      delta.reasoning_content = appendInlineThinkingReasoning(
+                        choiceState,
+                        delta.reasoning_content,
+                        pending.reasoning,
+                      );
+                      changed = true;
+                      emittedInlineReasoning = true;
+                    }
                     inlineThinkingStates.delete(choiceIndex);
                   }
 
@@ -257,7 +352,24 @@ export function createSSEStream(options = {}) {
                     if (nextContent.length > 0) delta.content = nextContent;
                     else delete delta.content;
                   }
+
+                  trackInlineThinkingReasoning(
+                    choiceState,
+                    delta.reasoning_content,
+                    emittedInlineReasoning ? "inline" : (hasNativeReasoning ? "native" : null),
+                  );
                 }
+              }
+
+              if (inlineThinkingRecoveryChoices.length > 0) {
+                const recoveryChunk = {
+                  id: inlineThinkingChunkMeta?.id || parsed.id || `chatcmpl-${Date.now()}`,
+                  object: inlineThinkingChunkMeta?.object || parsed.object || "chat.completion.chunk",
+                  created: inlineThinkingChunkMeta?.created || parsed.created || Math.floor(Date.now() / 1000),
+                  model: inlineThinkingChunkMeta?.model || parsed.model || model || "unknown",
+                  choices: inlineThinkingRecoveryChoices,
+                };
+                pendingInlineThinkingOutput += `data: ${JSON.stringify(recoveryChunk)}\n\n`;
               }
 
               for (const choice of (parsed.choices || [])) {
@@ -687,9 +799,10 @@ export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, p
   });
 }
 
-export function createPassthroughStreamWithLogger(provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null) {
+export function createPassthroughStreamWithLogger(provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, targetFormat = null) {
   return createSSEStream({
     mode: STREAM_MODE.PASSTHROUGH,
+    targetFormat,
     provider,
     reqLogger,
     toolNameMap,

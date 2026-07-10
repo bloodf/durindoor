@@ -3,9 +3,15 @@
  * OpenAI-transport compatibility quirk. The handler owns provider/model
  * gating and invokes `extractThinkTags()` before any client-format conversion.
  *
- * Complete segments are extracted in order while visible text is preserved
- * byte-for-byte. Any stray, nested, or unclosed tag fails open: the original
- * content remains visible and no partial reasoning is returned.
+ * `extractThinkTags()` validates the complete response before changing it:
+ * complete segments are extracted in order while visible text is preserved
+ * byte-for-byte, and any stray, nested, or unclosed tag fails open.
+ *
+ * The streaming counterpart validates each pending tag transaction before it
+ * emits normalized bytes, then commits balanced segments promptly to preserve
+ * live output. Malformed bytes received after a committed segment remain
+ * visible and disable later extraction, but cannot retract reasoning that the
+ * client has already consumed.
  */
 
 const OPEN_TAG = "<think>";
@@ -91,23 +97,44 @@ export function stripThinkTags(text) {
   return extracted.matched ? extracted.content : text;
 }
 
-function longestOpeningPrefixSuffix(value) {
-  const limit = Math.min(value.length, OPEN_TAG.length - 1);
+function longestTagPrefixSuffix(value) {
+  const limit = Math.min(value.length, Math.max(OPEN_TAG.length, CLOSE_TAG.length) - 1);
   for (let length = limit; length > 0; length--) {
-    if (OPEN_TAG.startsWith(value.slice(-length))) return length;
+    const suffix = value.slice(-length);
+    if (OPEN_TAG.startsWith(suffix) || CLOSE_TAG.startsWith(suffix)) return length;
   }
   return 0;
 }
 
 /**
- * Stateful counterpart for passthrough SSE. It keeps partial opening/closing
- * tokens and reasoning scoped to one response choice. `flush()` restores an
- * unclosed opening tag as visible text so the stream fails open at terminal.
+ * Stateful counterpart for passthrough SSE. It keeps partial tokens and one
+ * pending tag transaction scoped to a response choice. A transaction commits
+ * once its current input batch is balanced with no partial tag token. Until
+ * then malformed input can restore the original bytes across chunk boundaries.
+ * `failOpen()` permanently disables extraction for the choice.
  */
 export function createThinkTagStreamExtractor() {
-  let buffer = "";
+  let pending = "";
   let inside = false;
   let disabled = false;
+  let transactionRaw = null;
+  let transactionVisible = "";
+  let reasoningSegments = [];
+
+  const clearTransaction = () => {
+    pending = "";
+    inside = false;
+    transactionRaw = null;
+    transactionVisible = "";
+    reasoningSegments = [];
+  };
+
+  const rollback = (prefix = "") => {
+    const content = `${prefix}${transactionRaw || ""}${pending}`;
+    clearTransaction();
+    disabled = true;
+    return { content, reasoning: null, changed: true };
+  };
 
   return {
     process(text) {
@@ -116,65 +143,121 @@ export function createThinkTagStreamExtractor() {
       }
       if (disabled) return { content: text, reasoning: null, changed: false };
 
-      buffer += text;
+      pending += text;
       let content = "";
-      const reasoningSegments = [];
       let changed = false;
 
-      while (buffer.length > 0) {
-        if (inside) {
-          const closeIndex = buffer.indexOf(CLOSE_TAG);
-          const nestedOpenIndex = buffer.indexOf(OPEN_TAG);
-          if (nestedOpenIndex !== -1 && (closeIndex === -1 || nestedOpenIndex < closeIndex)) {
-            content += `${OPEN_TAG}${buffer}`;
-            buffer = "";
-            inside = false;
-            disabled = true;
+      while (pending.length > 0) {
+        if (transactionRaw === null) {
+          const openIndex = pending.indexOf(OPEN_TAG);
+          const strayCloseIndex = pending.indexOf(CLOSE_TAG);
+
+          if (strayCloseIndex !== -1 && (openIndex === -1 || strayCloseIndex < openIndex)) {
+            return rollback(content);
+          }
+
+          if (openIndex !== -1) {
+            content += pending.slice(0, openIndex);
+            pending = pending.slice(openIndex + OPEN_TAG.length);
+            transactionRaw = OPEN_TAG;
+            inside = true;
             changed = true;
-            break;
+            continue;
+          }
+
+          const retainedLength = longestTagPrefixSuffix(pending);
+          const emitLength = pending.length - retainedLength;
+          content += pending.slice(0, emitLength);
+          pending = pending.slice(emitLength);
+          if (retainedLength > 0) changed = true;
+          break;
+        }
+
+        if (inside) {
+          const closeIndex = pending.indexOf(CLOSE_TAG);
+          const nestedOpenIndex = pending.indexOf(OPEN_TAG);
+          if (nestedOpenIndex !== -1 && (closeIndex === -1 || nestedOpenIndex < closeIndex)) {
+            return rollback(content);
           }
           if (closeIndex === -1) {
             changed = true;
             break;
           }
-          const segment = buffer.slice(0, closeIndex);
+          const segment = pending.slice(0, closeIndex);
           if (segment.length > 0) reasoningSegments.push(segment);
-          buffer = buffer.slice(closeIndex + CLOSE_TAG.length);
+          transactionRaw += `${segment}${CLOSE_TAG}`;
+          pending = pending.slice(closeIndex + CLOSE_TAG.length);
           inside = false;
           changed = true;
           continue;
         }
 
-        const openIndex = buffer.indexOf(OPEN_TAG);
+        const openIndex = pending.indexOf(OPEN_TAG);
+        const strayCloseIndex = pending.indexOf(CLOSE_TAG);
+        if (strayCloseIndex !== -1 && (openIndex === -1 || strayCloseIndex < openIndex)) {
+          return rollback(content);
+        }
+
         if (openIndex !== -1) {
-          content += buffer.slice(0, openIndex);
-          buffer = buffer.slice(openIndex + OPEN_TAG.length);
+          const visible = pending.slice(0, openIndex);
+          transactionVisible += visible;
+          transactionRaw += `${visible}${OPEN_TAG}`;
+          pending = pending.slice(openIndex + OPEN_TAG.length);
           inside = true;
           changed = true;
           continue;
         }
 
-        const retainedLength = longestOpeningPrefixSuffix(buffer);
-        const emitLength = buffer.length - retainedLength;
-        content += buffer.slice(0, emitLength);
-        buffer = buffer.slice(emitLength);
+        const retainedLength = longestTagPrefixSuffix(pending);
+        const emitLength = pending.length - retainedLength;
+        const visible = pending.slice(0, emitLength);
+        transactionVisible += visible;
+        transactionRaw += visible;
+        pending = pending.slice(emitLength);
         if (retainedLength > 0) changed = true;
         break;
       }
 
+      if (transactionRaw !== null && !inside && pending.length === 0) {
+        content += transactionVisible;
+        const reasoning = reasoningSegments.length > 0 ? reasoningSegments.join("\n") : null;
+        clearTransaction();
+        return { content, reasoning, changed: true };
+      }
+
       return {
         content,
-        reasoning: reasoningSegments.length > 0 ? reasoningSegments.join("\n") : null,
-        changed,
+        reasoning: null,
+        changed: changed || transactionRaw !== null,
       };
     },
 
     flush() {
-      const content = inside ? `${OPEN_TAG}${buffer}` : buffer;
-      const changed = content.length > 0;
-      buffer = "";
-      inside = false;
-      return { content, reasoning: null, changed };
+      if (disabled) {
+        const content = pending;
+        clearTransaction();
+        return { content, reasoning: null, changed: content.length > 0 };
+      }
+
+      if (transactionRaw !== null) {
+        if (inside) return rollback();
+
+        const content = `${transactionVisible}${pending}`;
+        const reasoning = reasoningSegments.length > 0 ? reasoningSegments.join("\n") : null;
+        clearTransaction();
+        return { content, reasoning, changed: true };
+      }
+
+      const content = pending;
+      clearTransaction();
+      return { content, reasoning: null, changed: content.length > 0 };
+    },
+
+    failOpen() {
+      if (disabled) return { content: "", reasoning: null, changed: false };
+      if (transactionRaw !== null || pending.length > 0) return rollback();
+      disabled = true;
+      return { content: "", reasoning: null, changed: false };
     },
   };
 }

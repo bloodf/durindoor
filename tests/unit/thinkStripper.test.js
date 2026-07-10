@@ -128,4 +128,61 @@ describe("createThinkTagStreamExtractor", () => {
       changed: false,
     });
   });
+
+  it("fails open for a completed segment followed by a stray close", () => {
+    const extractor = createThinkTagStreamExtractor();
+    expect(extractor.process("before<think>valid</think></think>after")).toEqual({
+      content: "before<think>valid</think></think>after",
+      reasoning: null,
+      changed: true,
+    });
+    expect(extractor.flush()).toEqual({ content: "", reasoning: null, changed: false });
+  });
+
+  it("rolls back a cross-chunk transaction before it is committed", () => {
+    const extractor = createThinkTagStreamExtractor();
+    expect(extractor.process("before<think>valid</thi")).toEqual({
+      content: "before",
+      reasoning: null,
+      changed: true,
+    });
+    expect(extractor.process("nk></think>after")).toEqual({
+      content: "<think>valid</think></think>after",
+      reasoning: null,
+      changed: true,
+    });
+  });
+
+  it("cannot retract a committed segment when a later chunk is malformed", () => {
+    const extractor = createThinkTagStreamExtractor();
+    expect(extractor.process("before<think>valid</think>answer")).toEqual({
+      content: "beforeanswer",
+      reasoning: "valid",
+      changed: true,
+    });
+    expect(extractor.process("</think>after")).toEqual({
+      content: "</think>after",
+      reasoning: null,
+      changed: true,
+    });
+  });
+
+  it("exposes a pending transaction when extraction must fail open", () => {
+    const extractor = createThinkTagStreamExtractor();
+    expect(extractor.process("before<think>part")).toEqual({
+      content: "before",
+      reasoning: null,
+      changed: true,
+    });
+    expect(extractor.failOpen()).toEqual({
+      content: "<think>part",
+      reasoning: null,
+      changed: true,
+    });
+    expect(extractor.process("ial</think>after")).toEqual({
+      content: "ial</think>after",
+      reasoning: null,
+      changed: false,
+    });
+  });
 });

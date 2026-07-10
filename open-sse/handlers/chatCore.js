@@ -21,25 +21,31 @@ import { handleForcedSSEToJson } from "./chatCore/sseToJsonHandler.js";
 import { handleNonStreamingResponse } from "./chatCore/nonStreamingHandler.js";
 import { handleStreamingResponse, buildOnStreamComplete } from "./chatCore/streamingHandler.js";
 import { resolveStreamFlag } from "./chatCore/streamFlag.js";
+import { createEmptyRetryStream } from "./chatCore/emptyStreamGuard.js";
 import { detectClientTool, isNativePassthrough } from "../utils/clientDetector.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
-import { stripOrphanedToolResults } from "../translator/concerns/toolCall.js";
+import { salvageOrphanedToolResults, fixMissingToolResponses } from "../translator/concerns/toolCall.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
-import { compressMessages, formatRtkLog } from "../rtk/index.js";
+import { compressMessages } from "../rtk/index.js";
 import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadroomPhantomSavings } from "../rtk/headroom.js";
-import { compressWithPxpipe, formatPxpipeLog, normalizePxpipeResult } from "../rtk/pxpipe.js";
+import { compressWithPxpipe, normalizePxpipeResult } from "../rtk/pxpipe.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { stripUnsupportedModalities } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
+import { extractThinking } from "../translator/concerns/thinkingUnified.js";
+import { resolveSessionId } from "../utils/sessionManager.js";
 
-const NATIVE_TOOL_RESULT_FORMATS = new Set([
-  FORMATS.GEMINI,
-  FORMATS.GEMINI_CLI,
-  FORMATS.ANTIGRAVITY,
-  FORMATS.VERTEX,
-]);
-
+/**
+ * Whether a request targets the Codex compact-responses endpoint.
+ * Strips the query string and hash, removes trailing slashes, and tests the
+ * path against the canonical `/v1/responses/compact` suffix so equivalent
+ * spellings (`.../compact/`, `.../compact?x=1`) all match. Non-string /
+ * empty input never matches.
+ *
+ * @param {string} [endpoint] Request endpoint (path or absolute URL).
+ * @returns {boolean} `true` when the endpoint is `/v1/responses/compact`.
+ */
 function isCompactResponsesEndpoint(endpoint) {
   const path = String(endpoint || "").split(/[?#]/, 1)[0].replace(/\/+$/, "");
   return path.endsWith("/v1/responses/compact");
@@ -77,28 +83,41 @@ function stripLegacyCompactMarker(body, clientRawRequest) {
 }
 
 /**
- * Gemini-family clients legitimately send functionResponse turns without the
- * originating functionCall after trimming their local history. Their native
- * APIs accept that history and the Gemini translators preserve the content.
- * Applying the generic orphan cleaner to those wire formats silently deletes
- * user-visible tool output before dispatch.
- */
-export function shouldStripOrphanedToolResults(format) {
-  return !NATIVE_TOOL_RESULT_FORMATS.has(format);
-}
-
-/**
  * Core chat handler - shared between SSE and Worker
+ *
+ * Unified request-lifecycle logging: derives a session-stable `reqTag` (via
+ * `log.tagForSession`/`log.nextTag` over the resolved session id) and emits one
+ * correlated request line (format, thinking, message/tool counts, account), a
+ * `⚙` token-saver summary line when at least one saver is active, and a DONE /
+ * ERROR line at completion. The `reqTag` is threaded into `buildOnStreamComplete`
+ * so streaming and non-streaming paths share one color across the CLI conversation.
+ *
+ * @param {object} options
  * @param {object} options.body - Request body
  * @param {object} options.modelInfo - { provider, model }
  * @param {object} options.credentials - Provider credentials
+ * @param {object} [options.log] - Unified logger (src/sse/utils/logger.js).
+ *   Expected: `tagForSession(seed)`/`nextTag()` to allocate the session tag,
+ *   `fmtThink(intent)` for the thinking label, `line(tag, symbol, message)`
+ *   for INFO lines, and `errorLine(tag, symbol, message)` for always-printed
+ *   errors. Legacy `info`/`debug`/`warn`/`error` remain supported.
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit }) {
+export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit }) {
   const { provider, model: requestedModel } = modelInfo;
   const requestStartTime = Date.now();
   const requestContext = captureRequestContext(body, clientRawRequest);
   ({ body, clientRawRequest } = stripLegacyCompactMarker(body, clientRawRequest));
+
+  // Stable per-session color so all lines of one CLI conversation share a tag
+  const sessionSeed = (() => {
+    try {
+      return resolveSessionId({ headers: clientRawRequest?.headers, body, connectionId, scope: provider });
+    } catch {
+      return connectionId || "";
+    }
+  })();
+  const reqTag = log?.tagForSession ? log.tagForSession(sessionSeed) : (log?.nextTag ? log.nextTag() : "");
 
   const sourceFormat = sourceFormatOverride || detectFormat(body);
 
@@ -142,8 +161,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     }
   }
 
-  const clientRequestedStreaming = body.stream === true || sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI;
-  const providerRequiresStreaming = PROVIDERS[provider]?.forceStream === true;
+  const isCompactRequest = requestContext?.compact === true;
+  const clientRequestedStreaming = !isCompactRequest && (body.stream === true || sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI);
+  const providerRequiresStreaming = !isCompactRequest && PROVIDERS[provider]?.forceStream === true;
   // Image generation models require non-streaming (Google v1internal:generateContent)
   const modelType = getModelType(alias, cleanModel);
   const isImageGenModel = modelType === "imageGen" || /image|imagen|image-generation/i.test(cleanModel);
@@ -165,7 +185,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const providerForcesNonStreaming = PROVIDERS[provider]?.forceNonStreaming === true;
   // Stream-only providers (forceStream) must keep streaming even when the client
   // asked for JSON; the accumulated stream is converted to JSON downstream. (#2031)
-  let stream = resolveStreamFlag({
+  let stream = isCompactRequest ? false : resolveStreamFlag({
     providerRequiresStreaming,
     bodyStream: body.stream,
     forceNonStreaming:
@@ -202,20 +222,19 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     } catch (e) { log?.warn?.("MODALITY", `image prefetch failed: ${e.message}`); }
   }
 
-  // Strip orphaned tool results before translation so the translator never sees
-  // stale call_id references that client-side history truncation left behind.
-  const preStripped = shouldStripOrphanedToolResults(sourceFormat)
-    ? stripOrphanedToolResults(body)
-    : 0;
-  if (preStripped > 0) {
-    log?.debug?.("TOOLCLEAN", `pre-translation: stripped ${preStripped} orphaned tool result(s)`);
-  }
+  // Salvage orphaned tool results before translation so the translator never
+  // sees stale call_id references that client-side history truncation left
+  // behind. Salvage folds orphan text into user text (non-lossy) rather than
+  // deleting it, preserving Kiro's orphan-salvage semantics. Runs
+  // unconditionally: salvage understands messages[] and contents[].
+  salvageOrphanedToolResults(body);
+  fixMissingToolResponses(body);
 
   let translatedBody;
   let toolNameMap;
   if (passthrough) {
     log?.debug?.("PASSTHROUGH", `${clientTool} → ${provider} | native lossless`);
-    translatedBody = { ...body, model: cleanUpstreamModel };
+    translatedBody = { ...structuredClone(body), model: cleanUpstreamModel };
     applyThinking(targetFormat, cleanModel, translatedBody, provider, modelThinkingIntent);
     // Normalize newer Cowork/CC beta shapes (adaptive thinking, mid-conversation system) the API rejects
     if (clientTool === "claude") normalizeClaudePassthrough(translatedBody, translatedBody.model, provider);
@@ -258,6 +277,26 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // Covers both passthrough (source shape) and translated (target shape) flows
   const finalFormat = passthrough ? sourceFormat : targetFormat;
 
+  // Request line: one correlated summary (fmt + thinking + counts + account)
+  if (log?.line) {
+    const clientModel = clientRawRequest?.body?.model || requestedModel;
+    const msgN = translatedBody.messages?.length || translatedBody.input?.length || translatedBody.contents?.length || body.messages?.length || body.input?.length || 0;
+    const toolN = translatedBody.tools?.length || body.tools?.length || 0;
+    const fmtStr = passthrough ? `FMT: ${sourceFormat} (passthrough)` : `FMT: ${sourceFormat}→${targetFormat}`;
+    const think = log.fmtThink?.(extractThinking(translatedBody));
+    const acc = credentials?.connectionName || credentials?.connectionId?.slice(0, 8) || "-";
+    const parts = [
+      `POST ${clientModel} → ${provider}/${cleanModel}`,
+      fmtStr,
+      stream ? "STREAM" : "JSON",
+      `${msgN} MSG`,
+    ];
+    if (toolN) parts.push(`${toolN} TOOL`);
+    if (think) parts.push(`THINK:${think}`);
+    parts.push(`ACC:${acc}`);
+    log.line(reqTag, "▶", parts.join(" · "));
+  }
+
   // TTS models don't support tool messages/function calling
   if (getModelType(alias, cleanModel) === "tts" && translatedBody.messages) {
     translatedBody.messages = translatedBody.messages.filter(msg => msg.role !== "tool");
@@ -270,43 +309,52 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     translatedBody.tools = translatedBody.tools.map(tool => tool.type ? tool : { type: "custom", ...tool });
   }
 
+  // Token-saver summary parts, printed as one "⚙" line at the end (only active ones)
+  const xf = [];
+
   // RTK: compress tool_result content
   const rtkStats = compressMessages(translatedBody, rtkEnabled);
-  const rtkLine = formatRtkLog(rtkStats);
-  if (rtkLine) console.log(rtkLine);
+  if (rtkStats?.hits?.length) {
+    const saved = rtkStats.bytesBefore - rtkStats.bytesAfter;
+    const pct = rtkStats.bytesBefore > 0 ? ((saved / rtkStats.bytesBefore) * 100).toFixed(0) : "0";
+    xf.push(`RTK −${saved}B(${pct}%)`);
+  }
 
   // Headroom: optional external proxy compression; fail open if proxy is absent.
   const headroomDiagnostics = {};
   const headroomStats = await compressWithHeadroom(translatedBody, { enabled: headroomEnabled, url: headroomUrl, model: cleanUpstreamModel, format: finalFormat, compressUserMessages: headroomCompressUserMessages, diagnostics: headroomDiagnostics });
-  const headroomLine = formatHeadroomLog(headroomStats);
-  const headroomSizeLine = formatHeadroomSizeLog(headroomDiagnostics);
-  if (headroomLine) {
-    log?.info?.("HEADROOM", `${headroomLine}${headroomSizeLine ? ` | ${headroomSizeLine}` : ""}`);
+  if (headroomStats) {
+    const before = headroomStats.tokens_before || 0;
+    const delta = headroomStats.tokens_saved || 0;
+    const pct = before > 0 ? ((delta / before) * 100).toFixed(1) : "0";
+    xf.push(`HEADROOM −${delta}tok(${pct}%)`);
+    log?.info?.("HEADROOM", formatHeadroomLog(headroomStats));
+    log?.info?.("HEADROOM", formatHeadroomSizeLog(headroomDiagnostics));
     if (isHeadroomPhantomSavings(headroomStats, headroomDiagnostics)) {
-      log?.warn?.("HEADROOM", `reported token delta, but outbound JSON shrank <5%; provider may bill near-original payload | ${headroomSizeLine}`);
+      log?.warn?.("HEADROOM", `reported token delta, but outbound JSON shrank <5%; provider may bill near-original payload | ${formatHeadroomSizeLog(headroomDiagnostics)}`);
     }
-  } else if (headroomEnabled) log?.warn?.("HEADROOM", `skipped: ${headroomDiagnostics.reason || "compression unavailable"}${headroomDiagnostics.endpoint ? ` (${headroomDiagnostics.endpoint})` : ""}`);
+  } else if (headroomEnabled) {
+    log?.warn?.("HEADROOM", `skipped: ${headroomDiagnostics.reason || "compression unavailable"}${headroomDiagnostics.endpoint ? ` (${headroomDiagnostics.endpoint})` : ""}`);
+  }
 
-  // Strip orphaned tool results again after RTK/Headroom compression — both
+  // Re-run salvage + fixMissing after RTK/Headroom compression — both
   // compressors can remove assistant turns containing tool_calls, which would
   // otherwise leave dangling tool results that strict providers reject with 400.
-  const postStripped = shouldStripOrphanedToolResults(finalFormat)
-    ? stripOrphanedToolResults(translatedBody)
-    : 0;
-  if (postStripped > 0) {
-    log?.debug?.("TOOLCLEAN", `post-compression: stripped ${postStripped} orphaned tool result(s)`);
-  }
+  // Salvage first (fold orphan text), then fixMissing (re-insert empty results
+  // for any call that lost its response) to restore the tool-pairing invariant.
+  salvageOrphanedToolResults(translatedBody);
+  fixMissingToolResponses(translatedBody);
 
   // Caveman: inject terse-style system prompt
   if (cavemanEnabled && cavemanLevel) {
     injectCaveman(translatedBody, finalFormat, cavemanLevel);
-    log?.debug?.("CAVEMAN", `${cavemanLevel} | ${finalFormat}`);
+    xf.push(`CAVEMAN:${cavemanLevel}`);
   }
 
   // Ponytail: inject lazy-senior-dev system prompt
   if (ponytailEnabled && ponytailLevel) {
     injectPonytail(translatedBody, finalFormat, ponytailLevel);
-    log?.debug?.("PONYTAIL", `${ponytailLevel} | ${finalFormat}`);
+    xf.push(`PONYTAIL:${ponytailLevel}`);
   }
 
   // PXPIPE: image bulky context (Claude-format bodies only), last saver before dispatch
@@ -320,19 +368,15 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     }), pxpipeDiagnostics);
     pxpipeSummary = pxpipeResult.summary;
     if (pxpipeResult.body) translatedBody = pxpipeResult.body;
-    const pxpipeLine = formatPxpipeLog(pxpipeSummary);
-    if (pxpipeLine) log?.info?.("PXPIPE", pxpipeLine);
-    else log?.debug?.("PXPIPE", `skipped: ${pxpipeSummary.reason}${pxpipeSummary.detail ? ` (${pxpipeSummary.detail})` : ""}`);
+    if (pxpipeSummary?.applied) xf.push(`PXPIPE:${pxpipeSummary.imageCount}img`);
     try { onPxpipeEvent?.({ provider, model: cleanModel, ...pxpipeSummary }); } catch { /* stats must not break requests */ }
   }
 
-  // Re-strip after PXPIPE in case compression removed assistant/tool turns.
-  const pxpipeStripped = shouldStripOrphanedToolResults(finalFormat)
-    ? stripOrphanedToolResults(translatedBody)
-    : 0;
-  if (pxpipeStripped > 0) {
-    log?.debug?.("TOOLCLEAN", `post-pxpipe: stripped ${pxpipeStripped} orphaned tool result(s)`);
-  }
+  // Re-salvage + re-fix after PXPIPE in case compression removed assistant/tool turns.
+  salvageOrphanedToolResults(translatedBody);
+  fixMissingToolResponses(translatedBody);
+
+  if (xf.length && log?.line) log.line(reqTag, "⚙", xf.join(" · "));
 
   const executor = getExecutor(provider);
   trackPendingRequest(cleanModel, provider, connectionId, true);
@@ -355,7 +399,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       trackPendingRequest(cleanModel, provider, connectionId, false);
       if (slotAcquired) releaseSlot(provider);
     },
-    log, provider, model: cleanModel
+    log, provider, model: cleanModel, reqTag
   });
 
   const proxyOptions = {
@@ -474,7 +518,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       return createErrorResult(499, "Request aborted");
     }
     const errMsg = formatProviderError(error, provider, requestedModel, HTTP_STATUS.BAD_GATEWAY);
-    console.log(`${COLORS.red}[ERROR] ${errMsg}${COLORS.reset}`);
+    if (log?.errorLine) {
+      log.errorLine(reqTag, "✗", `ERROR 502 · ${provider}/${cleanModel} · ${Date.now() - requestStartTime}ms\n    ${errMsg}${error.stack ? `\n    ${error.stack}` : ""}`);
+    }
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, errMsg);
   }
 
@@ -483,7 +529,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     try {
       const newCredentials = await refreshWithRetry(() => executor.refreshCredentials(credentials, log), 3, log);
       if (newCredentials?.accessToken || newCredentials?.copilotToken) {
-        log?.info?.("TOKEN", `${provider.toUpperCase()} | refreshed`);
+        if (log?.line) log.line(reqTag, "🔑", `TOKEN REFRESHED · ${provider}/${cleanModel}`);
         Object.assign(credentials, newCredentials);
         if (onCredentialsRefreshed) {
           try { await onCredentialsRefreshed(newCredentials); } catch (e) { log?.warn?.("TOKEN", `onCredentialsRefreshed failed: ${e.message}`); }
@@ -518,12 +564,53 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     })).catch(() => { });
 
     const errMsg = formatProviderError(new Error(message), provider, requestedModel, statusCode);
-    console.log(`${COLORS.red}[ERROR] ${errMsg}${COLORS.reset}`);
+    if (log?.errorLine) {
+      const urlStr = providerUrl ? `\n    URL: ${providerUrl}` : "";
+      log.errorLine(reqTag, "✗", `ERROR ${statusCode} · ${provider}/${cleanModel} · ${Date.now() - requestStartTime}ms${urlStr}\n    ${errMsg}`);
+    }
     reqLogger.logError(new Error(message), finalBody || translatedBody);
     return createErrorResult(statusCode, errMsg, resetsAtMs);
   }
 
-  const sharedCtx = { provider, model: cleanModel, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, pxpipe: pxpipeSummary };
+  // Antigravity/AGY empty-stream guard — oh-my-pi parity: bytes (thinking included)
+  // stream to the client live; emptiness is judged per upstream attempt and an
+  // empty attempt is retried in-stream with the identical request, spliced into
+  // the same client message (see emptyStreamGuard.js). Exhaustion surfaces as an
+  // in-stream error event (retryable by Claude Code); onUpstreamEmptyExhausted
+  // lets the caller bench the account so the client's retry rotates to the next
+  // one (#2188, #2229, #2250, #2259).
+  if ((provider === "antigravity" || provider === "agy") && stream && providerResponse.body) {
+    const reexecute = async () => {
+      const retryResult = await executor.execute({ model: cleanUpstreamModel, body: translatedBody, stream, credentials, signal: streamController.signal, log, proxyOptions, requestContext });
+      if (!retryResult.response.ok) {
+        const { statusCode, message } = await parseUpstreamError(retryResult.response, executor);
+        throw new Error(`[${statusCode}] ${message}`);
+      }
+      if (!retryResult.response.body) throw new Error("upstream returned no body");
+      return retryResult.response.body;
+    };
+    providerResponse = new Response(
+      createEmptyRetryStream({
+        body: providerResponse.body,
+        reexecute,
+        signal: streamController.signal,
+        log,
+        onExhausted: (reason, { upstreamError } = {}) => {
+          if (!onUpstreamEmptyExhausted) return;
+          // Quota-style exhaustion carries the reset time only inside the error
+          // message ("Your quota will reset after 2h7m23s") — bench precisely.
+          const resetMs = executor.parseRetryFromErrorMessage?.(upstreamError?.message || reason);
+          return onUpstreamEmptyExhausted(
+            formatProviderError(new Error(reason), provider, cleanModel, HTTP_STATUS.BAD_GATEWAY),
+            resetMs ? Date.now() + resetMs : undefined
+          );
+        },
+      }),
+      { status: providerResponse.status, headers: providerResponse.headers }
+    );
+  }
+
+  const sharedCtx = { provider, model: cleanModel, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, pxpipe: pxpipeSummary, reqTag, log };
   const appendLog = (extra) => appendRequestLog({ model: cleanModel, provider, connectionId, ...extra }).catch(() => { });
   // Release the concurrency slot when the request completes (covers streaming + non-streaming + disconnect)
   const trackDone = () => {
@@ -533,7 +620,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   // Provider forced streaming but client wants JSON
   if (!clientRequestedStreaming && providerRequiresStreaming) {
-    const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, trackDone, appendLog });
+    const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, trackDone, appendLog });
     if (result) { streamController.handleComplete(); return result; }
   }
 

@@ -102,6 +102,7 @@ DurinDoor is configured through environment variables. Set them in your shell, i
 | `MCP_GATEWAY_OAUTH_PUBLIC_URL` | — | Public URL used for MCP Gateway OAuth callbacks. |
 | `NODE_ENV` | `production` | Runtime environment (`development` or `production`). |
 | `NEXT_PUBLIC_BASE_URL` | `http://localhost:20128` | Public base URL of the dashboard. |
+| `SEARXNG_URL` | `http://localhost:8888/search` | Endpoint for the built-in unauthenticated SearXNG web-search provider. |
 
 Run `durindoor --help` to see all CLI options and flags.
 

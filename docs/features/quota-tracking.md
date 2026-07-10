@@ -65,6 +65,17 @@ Use cost estimates for:
 
 Do not treat estimates as invoices. The upstream provider remains the billing authority.
 
+## Analytics Period Semantics
+
+Usage analytics use one shared period contract across the dashboard, stats API, chart API, and database repository:
+
+- `Today` starts at midnight in the DurinDoor server timezone. On daylight-saving transitions its hourly chart contains the actual 23 or 25 local hours.
+- `24h` is an exact rolling 86,400,000-millisecond window ending at the current server time.
+- `7D`, `30D`, `60D`, `90D`, `180D`, and `365D` are inclusive server-local calendar-day windows. For example, `7D` includes today and the six preceding local dates.
+- `All` includes every retained calendar day. The chart fills gaps from the earliest retained day through today. Long histories are grouped into at most 366 deterministic buckets without dropping totals.
+
+All bounded queries exclude future-dated records. Cached and cache-creation tokens remain subsets of input tokens and are reported separately; reasoning tokens are reported separately from normal output tokens. Chart `tokens` remains the compatible input-plus-output value, with cached, cache-creation, and reasoning values available as additive fields rather than being double-counted. Historical daily rollups created by older DurinDoor versions did not store the newer reasoning and cache-creation detail fields, so those additive fields can be zero for retained pre-upgrade days even when the compatible input/output totals and cost remain complete.
+
 ## Request Logs and Privacy
 
 Request logs can contain sensitive prompts, responses, file names, URLs, tokens, or user data. Keep request body logging disabled unless you need it for debugging and have permission to store that content.

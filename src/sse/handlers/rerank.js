@@ -13,7 +13,7 @@ import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { toExecutorCredentials, toCoreResult } from "./typeHelpers.js";
-import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
+import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 
 /**
  * Handle rerank request — Cohere/Jina/Voyage-style /v1/rerank passthrough.
@@ -46,19 +46,15 @@ export async function handleRerank(request) {
   if (body.query === undefined || body.query === null) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: query");
   if (!Array.isArray(body.documents)) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: documents (array)");
 
-  // Enforce per-API-key model policy before model fallback
-  const policyError = await enforceApiKeyModelPolicy(request, modelStr);
-  if (policyError) return policyError;
-
   return runWithModelFallback(
     modelStr,
     settings.modelFallbacks,
-    (m) => handleSingleModelRerank(m, body),
+    (m) => handleSingleModelRerank(m, body, request, apiKey),
     log
   );
 }
 
-async function handleSingleModelRerank(modelStr, body) {
+async function handleSingleModelRerank(modelStr, body, request, apiKey) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) {
     log.warn("RERANK", "Invalid model format", { model: modelStr });
@@ -66,6 +62,9 @@ async function handleSingleModelRerank(modelStr, body) {
   }
 
   const { provider, model } = modelInfo;
+  const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`);
+  if (resolvedPolicyError) return resolvedPolicyError;
+  const estimatedTokens = (String(body.query).length + JSON.stringify(body.documents).length) / 4;
   if (modelStr !== `${provider}/${model}`) {
     log.info("ROUTING", `${modelStr} → ${provider}/${model}`);
   } else {
@@ -79,7 +78,7 @@ async function handleSingleModelRerank(modelStr, body) {
       await handleRerankCore({ body, modelInfo: { provider, model }, credentials: {}, log }),
       "Rerank failed",
     );
-    if (result.success) return result.response;
+    if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Rerank failed");
   }
 
@@ -119,7 +118,7 @@ async function handleSingleModelRerank(modelStr, body) {
       "Rerank failed",
     );
 
-    if (result.success) return result.response;
+    if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model);
     if (shouldFallback) {

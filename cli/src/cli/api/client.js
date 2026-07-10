@@ -3,8 +3,8 @@ const https = require("https");
 const crypto = require("crypto");
 const fs = require("node:fs");
 const path = require("node:path");
-const os = require("node:os");
 const { machineIdSync } = require("node-machine-id");
+const { getAppDataDir } = require("../appDataDir");
 
 // Default configuration
 const DEFAULT_CONFIG = {
@@ -15,18 +15,9 @@ const DEFAULT_CONFIG = {
 
 const CLI_TOKEN_HEADER = "x-9r-cli-token";
 const CLI_TOKEN_SALT = "9r-cli-auth";
-const APP_NAME = "9router";
-
-function getDataDir() {
-  if (process.env.DATA_DIR) return process.env.DATA_DIR;
-  if (process.platform === "win32") {
-    return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), APP_NAME);
-  }
-  return path.join(os.homedir(), `.${APP_NAME}`);
-}
-
-const MACHINE_ID_FILE = path.join(getDataDir(), "machine-id");
-const AUTH_DIR = path.join(getDataDir(), "auth");
+const DATA_DIR = getAppDataDir();
+const MACHINE_ID_FILE = path.join(DATA_DIR, "machine-id");
+const AUTH_DIR = path.join(DATA_DIR, "auth");
 const CLI_SECRET_FILE = path.join(AUTH_DIR, "cli-secret");
 
 let config = { ...DEFAULT_CONFIG };
@@ -496,6 +487,7 @@ async function disableTunnel() {
 
 module.exports = {
   configure,
+  getCliToken,
   
   // Providers
   getProviders,

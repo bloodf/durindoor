@@ -2,9 +2,26 @@ import { NextResponse } from "next/server";
 import { detectFormat, getTargetFormat } from "open-sse/services/provider.js";
 import { translateRequest } from "open-sse/translator/index.js";
 import { FORMATS } from "open-sse/translator/formats.js";
+import { parseSuffix } from "open-sse/translator/concerns/thinkingUnified.js";
+import {
+  getModelTargetFormat,
+  getModelUpstreamId,
+  PROVIDER_ID_TO_ALIAS,
+} from "open-sse/config/providerModels.js";
 import { getModelInfo } from "@/sse/services/model.js";
 import { getProviderConnections } from "@/lib/localDb.js";
 import { getExecutor } from "open-sse/executors/index.js";
+
+function resolveRequestModel(provider, requestedModel) {
+  const { cleanModel, override } = parseSuffix(requestedModel);
+  const alias = PROVIDER_ID_TO_ALIAS[provider] || provider;
+  return {
+    capabilityModel: cleanModel,
+    upstreamModel: getModelUpstreamId(alias, cleanModel),
+    thinkingIntent: override,
+    targetFormat: getModelTargetFormat(alias, cleanModel) || getTargetFormat(provider),
+  };
+}
 
 export async function POST(request) {
   try {
@@ -31,9 +48,26 @@ export async function POST(request) {
         const { provider, model } = await getModelInfo(clientBody.model);
         const sourceFormat = detectFormat(clientBody);
         const stream = clientBody.stream !== false;
+        const resolvedModel = resolveRequestModel(provider, model);
 
         // translateRequest(source, OPENAI) = only the first half
-        const result = translateRequest(sourceFormat, FORMATS.OPENAI, model, clientBody, stream, null, provider);
+        const result = translateRequest(
+          sourceFormat,
+          FORMATS.OPENAI,
+          resolvedModel.upstreamModel,
+          { ...clientBody, model: resolvedModel.capabilityModel },
+          stream,
+          null,
+          provider,
+          null,
+          [],
+          null,
+          null,
+          {
+            thinkingIntent: resolvedModel.thinkingIntent,
+            capabilityModel: resolvedModel.capabilityModel,
+          },
+        );
         delete result._toolNameMap;
 
         return NextResponse.json({ success: true, result: { body: result } });
@@ -49,12 +83,32 @@ export async function POST(request) {
           return NextResponse.json({ success: false, error: "provider and model required" }, { status: 400 });
         }
 
-        const targetFormat = getTargetFormat(provider);
+        const resolvedModel = resolveRequestModel(provider, model);
+        const targetFormat = resolvedModel.targetFormat;
         const stream = openaiBody.stream !== false;
 
         // translateRequest(OPENAI, target) = second half of pipeline
-        const translated = translateRequest(FORMATS.OPENAI, targetFormat, model, openaiBody, stream, null, provider);
+        const translated = translateRequest(
+          FORMATS.OPENAI,
+          targetFormat,
+          resolvedModel.upstreamModel,
+          { ...openaiBody, model: resolvedModel.capabilityModel },
+          stream,
+          null,
+          provider,
+          null,
+          [],
+          null,
+          null,
+          {
+            thinkingIntent: resolvedModel.thinkingIntent,
+            capabilityModel: resolvedModel.capabilityModel,
+          },
+        );
         delete translated._toolNameMap;
+        if (targetFormat !== FORMATS.KIRO) {
+          translated.model = resolvedModel.upstreamModel;
+        }
 
         // Build URL + headers via executor (same as chatCore → executor.execute)
         const connections = await getProviderConnections({ provider });
@@ -73,9 +127,14 @@ export async function POST(request) {
         };
 
         const executor = getExecutor(provider);
-        const url = executor.buildUrl(model, stream, 0, credentials);
+        const url = executor.buildUrl(resolvedModel.upstreamModel, stream, 0, credentials);
         const headers = executor.buildHeaders(credentials, stream);
-        const finalBody = executor.transformRequest(model, translated, stream, credentials);
+        const finalBody = executor.transformRequest(
+          resolvedModel.upstreamModel,
+          translated,
+          stream,
+          credentials,
+        );
 
         return NextResponse.json({ success: true, result: { url, headers, body: finalBody } });
       }

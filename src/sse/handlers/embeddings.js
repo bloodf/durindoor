@@ -12,7 +12,7 @@ import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
-import { enforceApiKeyModelPolicy, recordApiKeyUsage } from "../services/apiKeyPolicy.js";
+import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 
 /**
  * Handle embeddings request for the SSE/Next.js server.
@@ -61,14 +61,6 @@ export async function handleEmbeddings(request) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   }
 
-  const policyError = await enforceApiKeyModelPolicy(request, modelStr);
-  if (policyError) return policyError;
-
-  if (apiKey) {
-    const tokens = body.input ? JSON.stringify(body.input).length / 4 : 0;
-    await recordApiKeyUsage(apiKey, { tokens, cost: 0 });
-  }
-
   if (!body.input) {
     log.warn("EMBEDDINGS", "Missing input");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: input");
@@ -81,6 +73,9 @@ export async function handleEmbeddings(request) {
   }
 
   const { provider, model } = modelInfo;
+  const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`);
+  if (resolvedPolicyError) return resolvedPolicyError;
+  const estimatedTokens = JSON.stringify(body.input).length / 4;
 
   if (modelStr !== `${provider}/${model}`) {
     log.info("ROUTING", `${modelStr} → ${provider}/${model}`);
@@ -133,7 +128,9 @@ export async function handleEmbeddings(request) {
       }
     });
 
-    if (result.success) return result.response;
+    if (result.success) {
+      return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
+    }
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model);
 

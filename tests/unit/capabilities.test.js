@@ -256,7 +256,11 @@ describe("getCapabilitiesForModel — HuggingChat text-only", () => {
 
   it("same model id without provider still has vision via pattern match", () => {
     const caps = getCapabilitiesForModel(null, "command-a-vision-07-2025");
-    expect(caps.vision).toBe(true);describe("getCapabilitiesForModel — simple provider vision/thinking overrides", () => {
+    expect(caps.vision).toBe(true);
+  });
+});
+
+describe("getCapabilitiesForModel — simple provider vision/thinking overrides", () => {
   it("preserves vision for SenseNova SenseChat-Vision", () => {
     const caps = getCapabilitiesForModel("sensenova", "SenseChat-Vision");
     expect(caps.vision).toBe(true);

@@ -1,5 +1,4 @@
-import { describe, it } from "node:test";
-import assert from "node:assert/strict";
+import { describe, expect, it } from "vitest";
 import { cloakClaudeTools } from "../../open-sse/utils/claudeCloaking.js";
 
 describe("cloakClaudeTools preserves Anthropic server tool literal names", () => {
@@ -24,14 +23,14 @@ describe("cloakClaudeTools preserves Anthropic server tool literal names", () =>
     const { body: cloaked } = cloakClaudeTools(body);
 
     const tools = cloaked.tools;
-    assert.equal(tools[0].name, "web_search");
-    assert.equal(tools[1].name, "mixture_of_agents_ide");
+    expect(tools[0].name).toBe("web_search");
+    expect(tools[1].name).toBe("mixture_of_agents_ide");
 
     const blocks = cloaked.messages[0].content;
-    assert.equal(blocks[0].name, "web_search");
-    assert.equal(blocks[1].name, "mixture_of_agents_ide");
+    expect(blocks[0].name).toBe("web_search");
+    expect(blocks[1].name).toBe("mixture_of_agents_ide");
 
-    assert.equal(cloaked.tool_choice.name, "mixture_of_agents_ide");
+    expect(cloaked.tool_choice.name).toBe("mixture_of_agents_ide");
   });
 
   it("does not rewrite tool_choice for a server tool", () => {
@@ -42,7 +41,7 @@ describe("cloakClaudeTools preserves Anthropic server tool literal names", () =>
 
     const { body: cloaked } = cloakClaudeTools(body);
 
-    assert.equal(cloaked.tools[0].name, "web_search");
-    assert.equal(cloaked.tool_choice.name, "web_search");
+    expect(cloaked.tools[0].name).toBe("web_search");
+    expect(cloaked.tool_choice.name).toBe("web_search");
   });
 });

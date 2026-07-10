@@ -111,7 +111,7 @@ export class BaseExecutor {
     return { status: response.status, message: bodyText || `HTTP ${response.status}` };
   }
 
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
+  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null }) {
     const fallbackCount = this.getFallbackCount();
     let lastError = null;
     let lastStatus = 0;
@@ -139,9 +139,12 @@ export class BaseExecutor {
     };
 
     for (let urlIndex = 0; urlIndex < fallbackCount; urlIndex++) {
-      const url = this.buildUrl(model, stream, urlIndex, credentials);
-      const transformedBody = this.transformRequest(model, body, stream, credentials);
-      const headers = this.buildHeaders(credentials, stream);
+      // Request context carries internal, request-scoped routing metadata without
+      // placing private markers on provider credentials or outbound JSON bodies.
+      // Extra arguments are backward-compatible with executors that do not use it.
+      const url = this.buildUrl(model, stream, urlIndex, credentials, requestContext);
+      const transformedBody = this.transformRequest(model, body, stream, credentials, requestContext);
+      const headers = this.buildHeaders(credentials, stream, requestContext);
       if (transformedBody?.thinking?.display === "summarized") {
         removeBetaFlag(headers, "redact-thinking-2026-02-12");
       }

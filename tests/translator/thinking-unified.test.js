@@ -5,6 +5,7 @@ import {
   parseSuffix,
   extractThinking,
   applyThinking,
+  stripThinkingSuffix,
 } from "../../open-sse/translator/concerns/thinkingUnified.js";
 import { extractReasoningText } from "../../open-sse/translator/concerns/reasoning.js";
 import { PROVIDERS } from "../../open-sse/providers/index.js";
@@ -21,10 +22,23 @@ describe("parseSuffix", () => {
   });
   it("parses numeric budget suffix", () => {
     expect(parseSuffix("model(8192)")).toEqual({ cleanModel: "model", override: { mode: "budget", budget: 8192 } });
+    expect(parseSuffix("model(0)")).toEqual({ cleanModel: "model", override: { mode: "none" } });
   });
   it("parses auto / none", () => {
     expect(parseSuffix("m(auto)").override).toEqual({ mode: "auto" });
     expect(parseSuffix("m(none)").override).toEqual({ mode: "none" });
+  });
+  it("maps the UI's binary thinking choice to automatic thinking", () => {
+    expect(parseSuffix("glm-5(thinking)")).toEqual({
+      cleanModel: "glm-5",
+      override: { mode: "auto" },
+    });
+  });
+  it("keeps unknown parentheses as an opaque model ID", () => {
+    expect(parseSuffix("gpt-5.5(custom)")).toEqual({
+      cleanModel: "gpt-5.5(custom)",
+      override: null,
+    });
   });
   it("no suffix → passthrough", () => {
     expect(parseSuffix("claude-opus-4.7")).toEqual({ cleanModel: "claude-opus-4.7", override: null });
@@ -194,6 +208,24 @@ describe("applyThinking per provider format", () => {
   it("openai keeps xhigh for reasoning models", () => {
     const out = apply("openai", "gpt-5.3-codex", { reasoning_effort: "xhigh" }, "codex");
     expect(out.reasoning_effort).toBe("xhigh");
+  });
+});
+
+describe("stripThinkingSuffix", () => {
+  it("removes known level suffix from model name", () => {
+    expect(stripThinkingSuffix("gpt-5(high)")).toBe("gpt-5");
+    expect(stripThinkingSuffix("claude-opus-4.7(medium)")).toBe("claude-opus-4.7");
+  });
+  it("removes numeric budget suffix", () => {
+    expect(stripThinkingSuffix("model(8192)")).toBe("model");
+  });
+  it("leaves model names without suffix unchanged", () => {
+    expect(stripThinkingSuffix("gpt-4o")).toBe("gpt-4o");
+    expect(stripThinkingSuffix("provider:model")).toBe("provider:model");
+  });
+  it("preserves unknown parenthesized suffixes", () => {
+    expect(stripThinkingSuffix("foo(bar)")).toBe("foo(bar)");
+    expect(stripThinkingSuffix("custom(id-1)")).toBe("custom(id-1)");
   });
 });
 

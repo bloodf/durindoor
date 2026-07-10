@@ -12,7 +12,12 @@ export async function POST() {
   try {
     // Kill sibling processes (cloudflared, MITM, stray next-server) to release file locks on Windows
     await killAppProcesses();
-  } catch { /* best effort */ }
+  } catch (error) {
+    return NextResponse.json({
+      success: false,
+      message: `Update blocked because safe process cleanup failed: ${error.message}`,
+    }, { status: 500 });
+  }
 
   // Schedule detached updater then exit current server process
   spawnUpdaterAndExit();

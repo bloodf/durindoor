@@ -11,6 +11,17 @@ import { getAdapter } from "../driver.js";
  * - Setting `expiresAt` to null clears an existing expiry.
  */
 
+function parseApiKeyPolicy(raw) {
+  if (raw == null) return null;
+  if (typeof raw === 'object') return raw;
+  if (typeof raw === 'string' && raw.length) {
+    // Preserve malformed storage as an invalid value. Returning null here
+    // would downgrade a corrupt restrictive policy into unrestricted access.
+    try { return JSON.parse(raw); } catch { return raw; }
+  }
+  return null;
+}
+
 function rowToKey(row) {
   if (!row) return null;
   return {
@@ -21,6 +32,7 @@ function rowToKey(row) {
     isActive: row.isActive === 1 || row.isActive === true,
     allowedCombos: (() => { try { const v = JSON.parse(row.allowedCombos); return Array.isArray(v) ? v : []; } catch { return []; } })(),
     dailyLimitTokens: row.dailyLimitTokens ?? null,
+    policy: parseApiKeyPolicy(row.policy),
     expiresAt: row.expiresAt || null,
     createdAt: row.createdAt,
   };

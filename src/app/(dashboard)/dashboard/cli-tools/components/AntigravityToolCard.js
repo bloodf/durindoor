@@ -387,11 +387,11 @@ export default function AntigravityToolCard({
             </>
           )}
 
-          {/* Windows admin warning */}
+          {/* Windows privilege boundary */}
           {!isRunning && serverIsWindows && (
             <div className="flex items-center gap-2 px-2 py-1.5 rounded text-xs bg-yellow-500/10 text-yellow-600 border border-yellow-500/20">
               <span className="material-symbols-outlined text-[14px]">warning</span>
-              <span>Windows: Run terminal (DurinDoor) as Administrator to enable MITM</span>
+              <span>Windows: keep DurinDoor in standard-user mode; UAC is requested only for system configuration.</span>
             </div>
           )}
 

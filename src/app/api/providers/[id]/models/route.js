@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getProviderConnectionById } from "@/models";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { PROVIDER_MODELS_CONFIG, resolveQwenModelsUrl, parseOpenAIStyleModels } from "./modelsConfig.js";
+import { applyCodexAccountHeader } from "open-sse/shared/codexAccountId.js";
 
 /**
  * GET /api/providers/[id]/models - Get models list from provider
@@ -147,6 +148,9 @@ export async function GET(request, { params }) {
     const headers = { ...config.headers };
     if (config.authHeader && !config.authQuery) {
       headers[config.authHeader] = (config.authPrefix || "") + token;
+    }
+    if (connection.provider === "codex") {
+      applyCodexAccountHeader(headers, connection.providerSpecificData);
     }
 
     // Make request

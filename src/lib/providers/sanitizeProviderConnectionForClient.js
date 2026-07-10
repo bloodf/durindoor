@@ -28,6 +28,7 @@ export function sanitizeProviderConnectionForClient(c) {
   if (c.providerSpecificData) {
     const psd = {};
     for (const f of SAFE_PSD_FIELDS) {
+      if (c.provider === "codex" && f === "accountId") continue;
       if (c.providerSpecificData[f] !== undefined) psd[f] = c.providerSpecificData[f];
     }
     safe.providerSpecificData = psd;

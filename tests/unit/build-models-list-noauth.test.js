@@ -46,6 +46,9 @@ describe("buildModelsList no-auth provider visibility", () => {
 
     expect(ids.some((id) => id.startsWith("pol/"))).toBe(true);
     expect(ids.some((id) => id.startsWith("tllm/"))).toBe(true);
+    expect(ids).toContain("pol/openai");
+    expect(ids).not.toContain("pol/claude");
+    expect(ids).not.toContain("pol/gemini");
   });
 
   it("still includes no-auth providers with zero connections (unchanged behavior)", async () => {
@@ -59,6 +62,7 @@ describe("buildModelsList no-auth provider visibility", () => {
 
     expect(ids.some((id) => id.startsWith("pol/"))).toBe(true);
     expect(ids.some((id) => id.startsWith("tllm/"))).toBe(true);
+    expect(ids).not.toContain("pol/claude");
   });
 
   it("does not duplicate a no-auth provider that also has its own active connection", async () => {
@@ -75,5 +79,22 @@ describe("buildModelsList no-auth provider visibility", () => {
 
     expect(uniqueIds.size).toBe(ids.length);
     expect(ids.some((id) => id.startsWith("pol/"))).toBe(true);
+    expect(ids).toContain("pol/claude");
+    expect(ids).toContain("pol/gemini");
+  });
+
+  it("does not expose premium Pollinations models for a saved keyless connection", async () => {
+    mocks.getProviderConnections.mockResolvedValue([
+      { id: "pollinations-public", provider: "pollinations", isActive: true },
+    ]);
+
+    const { buildModelsList } = await import(
+      "../../src/app/api/v1/models/buildModelsList.js"
+    );
+    const ids = (await buildModelsList(["llm"])).map((model) => model.id);
+
+    expect(ids).toContain("pol/openai");
+    expect(ids).not.toContain("pol/claude");
+    expect(ids).not.toContain("pol/gemini");
   });
 });

@@ -80,10 +80,20 @@ export const TABLES = {
       isActive: "INTEGER DEFAULT 1",
       allowedCombos: "TEXT",
       dailyLimitTokens: "INTEGER",
+      policy: "TEXT",
       expiresAt: "TEXT",
       createdAt: "TEXT NOT NULL",
     },
     indexes: ["CREATE INDEX IF NOT EXISTS idx_ak_key ON apiKeys(key)"],
+  },
+  apiKeyUsageTotals: {
+    columns: {
+      apiKeyId: "TEXT PRIMARY KEY REFERENCES apiKeys(id) ON DELETE CASCADE",
+      totalTokens: "INTEGER NOT NULL DEFAULT 0",
+      totalCost: "REAL NOT NULL DEFAULT 0",
+      totalRequests: "INTEGER NOT NULL DEFAULT 0",
+      updatedAt: "TEXT",
+    },
   },
   combos: {
     columns: {

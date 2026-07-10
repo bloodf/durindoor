@@ -46,6 +46,28 @@ function getParams(connectionId) {
 }
 
 describe("GET /api/providers/[id]/models - registry modelsFetcher fallback", () => {
+  it("binds Codex model discovery to the selected account", async () => {
+    getProviderConnectionById.mockResolvedValue({
+      id: "codex-1", provider: "codex", accessToken: "token",
+      providerSpecificData: { workspaceId: " account-1 " },
+    });
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ models: [] }),
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const res = await GET(getRequest("codex-1"), { params: getParams("codex-1") });
+
+    expect(res.status).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining("/backend-api/codex/models"),
+      expect.objectContaining({
+        headers: expect.objectContaining({ "ChatGPT-Account-ID": "account-1" }),
+      }),
+    );
+    vi.unstubAllGlobals();
+  });
+
   it("fetches dynamic models for providers with a registry modelsFetcher", async () => {
     getProviderConnectionById.mockResolvedValue({
       id: "conn-1",

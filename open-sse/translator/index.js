@@ -1,5 +1,5 @@
 import { FORMATS } from "./formats.js";
-import { ensureToolCallIds, fixMissingToolResponses, stripOrphanedToolResults } from "./concerns/toolCall.js";
+import { ensureToolCallIds, fixMissingToolResponses, salvageOrphanedToolResults } from "./concerns/toolCall.js";
 import { prepareClaudeRequest } from "./formats/claude.js";
 import { cloakClaudeTools } from "../utils/claudeCloaking.js";
 import { filterToOpenAIFormat } from "./formats/openai.js";
@@ -76,18 +76,14 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   // folding their content into user text (reconcileOrphanedToolResults /
   // flattenClaudeToolInteractions) rather than dropping it. Stripping here
   // first would delete that content before the Kiro translator can preserve it.
-  // Gemini / Antigravity pre-translation cleanup is handled inside the Gemini
-  // -> OpenAI request translator (geminiToOpenAIRequestFixed splits
-  // functionResponse parts into their own contents). Running the generic
-  // OpenAI/Anthropic orphan stripper here would strip legitimate tool
-  // messages whose ids don't match a functionCall in the same body.
-  const skipStrip = sourceFormat === FORMATS.GEMINI
-    || sourceFormat === FORMATS.GEMINI_CLI
-    || sourceFormat === FORMATS.ANTIGRAVITY
-    || sourceFormat === FORMATS.VERTEX;
-  if (targetFormat !== FORMATS.KIRO && !skipStrip) {
-    stripOrphanedToolResults(result);
-  }
+  // Salvage orphaned tool results (tool_result with no matching tool_call).
+  // Folds orphan content into user text (`[Tool result: ...]`) instead of
+  // deleting — non-lossy across messages[] and contents[], and preserves Kiro's
+  // reconcileOrphanedToolResults salvage semantics. Runs unconditionally
+  // because salvage itself understands both envelopes (Gemini/Antigravity
+  // contents[] included); Responses API function_call_output is structural-
+  // stripped separately inside openai-responses.js.
+  salvageOrphanedToolResults(result);
 
   // Capture thinking intent from the original (pre-translation) body, before any
   // format conversion strips/renames the fields. Applied after translation.

@@ -128,6 +128,10 @@ const editConnectionModalSource = readFileSync(
   resolve(repoRoot, "src/shared/components/EditConnectionModal.js"),
   "utf8",
 );
+const providerAccountIdsSource = readFileSync(
+  resolve(repoRoot, "src/lib/providerAccountIds.js"),
+  "utf8",
+);
 const providerValidateRouteSource = readFileSync(
   resolve(repoRoot, "src/app/api/providers/validate/route.js"),
   "utf8",
@@ -316,11 +320,11 @@ describe("OmniRoute simple/default providers batch E", () => {
 
   it("keeps Snowflake wired into Account ID connection forms", () => {
     for (const source of [addApiKeyModalSource, editConnectionModalSource]) {
-      expect(source).toContain("ACCOUNT_ID_PROVIDER_DETAILS");
-      expect(source).toContain("\"cloudflare-ai\"");
-      expect(source).toContain("snowflake");
+      expect(source).toContain("requiresProviderAccountId");
       expect(source).toContain("accountId");
     }
+    expect(providerAccountIdsSource).toContain("\"cloudflare-ai\"");
+    expect(providerAccountIdsSource).toContain("\"snowflake\"");
     expect(addApiKeyModalSource).toContain("providerSpecificData: buildProviderSpecificData()");
   });
 

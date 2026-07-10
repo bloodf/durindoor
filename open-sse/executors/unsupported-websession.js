@@ -73,15 +73,6 @@ export const BLOCKED_OMNIROUTE_PROVIDERS = {
     ],
     reason: "requires OmniRoute's music-generation route and Udio media executor contract",
   },
-  "veoaifree-web": {
-    aliases: ["veo-free"],
-    source: [
-      "open-sse/executors/veoaifree-web.ts",
-      "open-sse/config/videoRegistry.ts",
-      "open-sse/handlers/videoGeneration.ts",
-    ],
-    reason: "requires WordPress AJAX video/image workflow plumbing and video-generation routes",
-  },
   "yuanbao-web": {
     aliases: ["ybw"],
     source: [

@@ -23,7 +23,7 @@ describe("openaiToKiroRequest", () => {
 
       const currentMsg = result.conversationState.currentMessage;
       expect(currentMsg.userInputMessage.content).toContain("Hello");
-      expect(currentMsg.userInputMessage.modelId).toBe("claude-sonnet-4-6");
+      expect(currentMsg.userInputMessage.modelId).toBe("claude-sonnet-4.6");
       expect(currentMsg.userInputMessage.origin).toBe("AI_EDITOR");
     });
 
@@ -321,6 +321,44 @@ describe("openaiToKiroRequest", () => {
   });
 
   describe("thinking budget", () => {
+    it("does not infer thinking from sentinel words inside an opaque suffix", () => {
+      for (const model of [
+        "claude-sonnet-4.6(custom-thinking)",
+        "claude-sonnet-4.6(custom-reason)",
+      ]) {
+        const result = openaiToKiroRequest(
+          model,
+          { messages: [{ role: "user", content: "hello" }] },
+          true,
+          {},
+        );
+        expect(contentOf(result)).not.toContain("<thinking_mode>");
+        expect(result.conversationState.currentMessage.userInputMessage.modelId).toBe(model);
+      }
+    });
+
+    it("uses request-scoped suffix intent with a clean model ID", () => {
+      const body = {
+        messages: [
+          { role: "user", content: "first" },
+          { role: "assistant", content: "answer" },
+          { role: "user", content: "second" },
+        ],
+      };
+      const result = openaiToKiroRequest(
+        "claude-sonnet-4.6",
+        body,
+        true,
+        {},
+        { thinkingIntent: { mode: "budget", budget: 8192 }, clientSessionId: "session-8192" },
+      );
+
+      expect(contentOf(result)).toContain("<max_thinking_length>8192</max_thinking_length>");
+      expect(result.conversationState.conversationId).toBe("session-8192");
+      expect(JSON.stringify(result)).not.toContain("(8192)");
+      expect(Reflect.ownKeys(result).filter((key) => String(key).startsWith("_"))).toEqual([]);
+    });
+
     it("maps reasoning_effort low to max_thinking_length 1024", () => {
       const body = {
         reasoning_effort: "low",

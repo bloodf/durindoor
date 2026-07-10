@@ -1,7 +1,11 @@
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { OAUTH_TEST_CONFIG } from "../../src/app/api/providers/[id]/test/testUtils.js";
 
 describe("GitLab Duo test config", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("defines a gitlab-duo entry that probes the connection base URL", () => {
     const config = OAUTH_TEST_CONFIG["gitlab-duo"];
     expect(config).toBeDefined();
@@ -18,6 +22,5 @@ describe("GitLab Duo test config", () => {
     const fallback = { providerSpecificData: {} };
     vi.stubEnv("GITLAB_DUO_BASE_URL", "https://duo.example.com");
     expect(config.buildUrl("token", fallback)).toBe("https://duo.example.com/api/v4/user");
-    vi.unstubAllEnvs();
   });
 });

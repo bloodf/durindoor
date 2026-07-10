@@ -1,6 +1,63 @@
 // Public API barrel — all DB functions
 import { getAdapter } from "./driver.js";
 import { stringifyJson, parseJson } from "./helpers/jsonCol.js";
+import { backfillApiKeyUsageTotals } from "./helpers/apiKeyUsageTotals.js";
+import { normalizeApiKeyPolicy } from "./helpers/apiKeyPolicy.js";
+
+function assertUniqueNonEmpty(rows, field, label, { revealDuplicate = true } = {}) {
+  const seen = new Set();
+  for (const row of rows) {
+    const value = row?.[field];
+    if (typeof value !== "string" || !value.trim()) {
+      throw new Error(`${label} ${field} must be a non-empty string`);
+    }
+    if (seen.has(value)) {
+      throw new Error(revealDuplicate
+        ? `Duplicate ${label} ${field}: ${value}`
+        : `Duplicate ${label} ${field}`);
+    }
+    seen.add(value);
+  }
+  return seen;
+}
+
+function validateApiKeyImport(payload) {
+  const apiKeys = payload.apiKeys ?? [];
+  const totals = payload.apiKeyUsageTotals ?? [];
+  if (!Array.isArray(apiKeys)) throw new Error("apiKeys must be an array");
+  if (Object.hasOwn(payload, "apiKeyUsageTotals") && !Array.isArray(totals)) {
+    throw new Error("apiKeyUsageTotals must be an array");
+  }
+
+  const ids = assertUniqueNonEmpty(apiKeys, "id", "API key");
+  // API-key secrets must never be copied into an import error or route log.
+  assertUniqueNonEmpty(apiKeys, "key", "API key", { revealDuplicate: false });
+  for (const key of apiKeys) {
+    if (key.allowedCombos != null && (!Array.isArray(key.allowedCombos) || key.allowedCombos.some((combo) => typeof combo !== "string"))) {
+      throw new Error(`API key ${key.id} allowedCombos must be an array of strings`);
+    }
+    if (key.dailyLimitTokens != null) {
+      const limit = Number(key.dailyLimitTokens);
+      if (!Number.isSafeInteger(limit) || limit < 0) throw new Error(`API key ${key.id} dailyLimitTokens must be a non-negative integer`);
+    }
+    if (key.expiresAt != null && (typeof key.expiresAt !== "string" || !Number.isFinite(Date.parse(key.expiresAt)))) {
+      throw new Error(`API key ${key.id} expiresAt must be a valid timestamp or null`);
+    }
+    normalizeApiKeyPolicy(key.policy);
+  }
+
+  const totalIds = assertUniqueNonEmpty(totals, "apiKeyId", "API-key total");
+  for (const total of totals) {
+    if (!ids.has(total.apiKeyId)) throw new Error(`API-key total references missing key: ${total.apiKeyId}`);
+    for (const field of ["totalTokens", "totalCost", "totalRequests"]) {
+      const value = Number(total[field] ?? 0);
+      if (!Number.isFinite(value) || value < 0 || (field !== "totalCost" && !Number.isSafeInteger(value))) {
+        throw new Error(`API-key total ${total.apiKeyId} ${field} is invalid`);
+      }
+    }
+  }
+  return { apiKeys, totals, totalIds };
+}
 
 // Settings
 export {
@@ -91,7 +148,28 @@ export async function exportDb() {
     providerConnections: db.all(`SELECT * FROM providerConnections`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, provider: r.provider, authType: r.authType, name: r.name, email: r.email, priority: r.priority, isActive: r.isActive === 1, createdAt: r.createdAt, updatedAt: r.updatedAt })),
     providerNodes: db.all(`SELECT * FROM providerNodes`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, type: r.type, name: r.name, createdAt: r.createdAt, updatedAt: r.updatedAt })),
     proxyPools: db.all(`SELECT * FROM proxyPools`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, isActive: r.isActive === 1, testStatus: r.testStatus, createdAt: r.createdAt, updatedAt: r.updatedAt })),
-    apiKeys: db.all(`SELECT * FROM apiKeys`).map((r) => { let ac = []; try { ac = JSON.parse(r.allowedCombos); if (!Array.isArray(ac)) ac = []; } catch {} return { id: r.id, key: r.key, name: r.name, machineId: r.machineId, isActive: r.isActive === 1, allowedCombos: ac, dailyLimitTokens: r.dailyLimitTokens ?? null, createdAt: r.createdAt }; }),
+    apiKeys: db.all(`SELECT * FROM apiKeys`).map((r) => {
+      let ac = [];
+      try { ac = JSON.parse(r.allowedCombos); if (!Array.isArray(ac)) ac = []; } catch {}
+      let policy = null;
+      if (r.policy != null) {
+        try {
+          policy = normalizeApiKeyPolicy(JSON.parse(r.policy));
+        } catch {
+          // Never turn corrupt policy storage into an unrestricted backup.
+          // The error names only the non-secret row ID.
+          throw new Error(`API key ${r.id} has invalid policy JSON`);
+        }
+      }
+      return { id: r.id, key: r.key, name: r.name, machineId: r.machineId, isActive: r.isActive === 1, allowedCombos: ac, dailyLimitTokens: r.dailyLimitTokens ?? null, policy, expiresAt: r.expiresAt ?? null, createdAt: r.createdAt };
+    }),
+    apiKeyUsageTotals: db.all(`SELECT * FROM apiKeyUsageTotals`).map((r) => ({
+      apiKeyId: r.apiKeyId,
+      totalTokens: Number(r.totalTokens) || 0,
+      totalCost: Number(r.totalCost) || 0,
+      totalRequests: Number(r.totalRequests) || 0,
+      updatedAt: r.updatedAt || null,
+    })),
     combos: db.all(`SELECT * FROM combos`).map((r) => ({ id: r.id, name: r.name, kind: r.kind, models: parseJson(r.models, []), createdAt: r.createdAt, updatedAt: r.updatedAt })),
     modelAliases: {},
     customModels: [],
@@ -111,6 +189,10 @@ export async function importDb(payload) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new Error("Invalid database payload");
   }
+  // Validate before opening the transaction or deleting any existing rows.
+  // This makes duplicate keys, dangling totals, and malformed policies a hard
+  // import error instead of silently collapsing or weakening enforcement.
+  validateApiKeyImport(payload);
   const db = await getAdapter();
 
   db.transaction(() => {
@@ -119,6 +201,7 @@ export async function importDb(payload) {
     db.run(`DELETE FROM providerConnections`);
     db.run(`DELETE FROM providerNodes`);
     db.run(`DELETE FROM proxyPools`);
+    db.run(`DELETE FROM apiKeyUsageTotals`);
     db.run(`DELETE FROM apiKeys`);
     db.run(`DELETE FROM combos`);
     db.run(`DELETE FROM kv WHERE scope IN ('modelAliases', 'customModels', 'mitmAlias', 'pricing')`);
@@ -151,9 +234,22 @@ export async function importDb(payload) {
     }
     for (const k of payload.apiKeys || []) {
       db.run(
-        `INSERT OR REPLACE INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, dailyLimitTokens, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
-        [k.id, k.key, k.name || null, k.machineId || null, k.isActive === false ? 0 : 1, JSON.stringify(k.allowedCombos || []), k.dailyLimitTokens ?? null, k.createdAt || new Date().toISOString()]
+        `INSERT INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, dailyLimitTokens, policy, expiresAt, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [k.id, k.key, k.name || null, k.machineId || null, k.isActive === false ? 0 : 1, JSON.stringify(k.allowedCombos || []), k.dailyLimitTokens ?? null, k.policy == null ? null : stringifyJson(normalizeApiKeyPolicy(k.policy)), k.expiresAt || null, k.createdAt || new Date().toISOString()]
       );
+    }
+    if (Object.hasOwn(payload, "apiKeyUsageTotals")) {
+      for (const total of payload.apiKeyUsageTotals || []) {
+        if (!total?.apiKeyId) continue;
+        db.run(
+          `INSERT INTO apiKeyUsageTotals(apiKeyId, totalTokens, totalCost, totalRequests, updatedAt) VALUES(?, ?, ?, ?, ?)`,
+          [total.apiKeyId, Number(total.totalTokens) || 0, Number(total.totalCost) || 0, Number(total.totalRequests) || 0, total.updatedAt || null]
+        );
+      }
+    } else {
+      // Older backups predate durable totals. Rebuild from retained history
+      // instead of silently resetting policy enforcement to zero.
+      backfillApiKeyUsageTotals(db);
     }
     for (const c of payload.combos || []) {
       db.run(

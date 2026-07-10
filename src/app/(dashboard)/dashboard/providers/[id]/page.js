@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, ImportTokenModal, IFlowCookieModal, GitLabAuthModal, Toggle, Select, EditConnectionModal, NoAuthProxyCard, ConfirmModal, ProviderIcon } from "@/shared/components";
-import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS, THINKING_CONFIG } from "@/shared/constants/providers";
+import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
@@ -13,7 +13,7 @@ import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { translate } from "@/i18n/runtime";
 import { fetchSuggestedModels } from "@/shared/utils/providerModelsFetcher";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
-import { isNoAuthOnlyProvider } from "@/shared/utils/providerAuthMode";
+import { shouldShowProviderConnections } from "@/shared/utils/providerAuthMode";
 import { buildImportTokenPayload, isImportTokenOAuthProvider } from "@/shared/utils/importTokenProviders";
 import ModelRow from "./ModelRow";
 import PassthroughModelsSection from "./PassthroughModelsSection";
@@ -163,6 +163,7 @@ export default function ProviderDetailPage() {
   const supportsApiKeyAuth = !!APIKEY_PROVIDERS[providerId] || authModes.includes("apikey");
   const isFreeNoAuth = !!FREE_PROVIDERS[providerId]?.noAuth;
   const isStoredNoAuth = isFreeNoAuth && providerId === "mimocode";
+  const showConnections = shouldShowProviderConnections(providerInfo, { storedNoAuth: isStoredNoAuth });
   const models = getModelsByProviderId(providerId);
   const providerAlias = getProviderAlias(providerId);
   
@@ -1499,9 +1500,10 @@ export default function ProviderDetailPage() {
       )}
 
       {/* Connections */}
-      {isFreeNoAuth && !isStoredNoAuth ? (
+      {isFreeNoAuth && !isStoredNoAuth && (
         <NoAuthProxyCard providerId={providerId} />
-      ) : (
+      )}
+      {showConnections && (
         <Card>
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-lg font-semibold">Connections</h2>

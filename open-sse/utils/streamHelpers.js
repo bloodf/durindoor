@@ -71,13 +71,16 @@ export function hasValuableContent(chunk, format) {
     return true;
   }
   // OpenAI format
-  if (format === FORMATS.OPENAI && chunk.choices?.[0]?.delta) {
-    const delta = chunk.choices[0].delta;
-    return delta.content && delta.content !== "" ||
-           delta.reasoning_content && delta.reasoning_content !== "" ||
-           delta.tool_calls && delta.tool_calls.length > 0 ||
-           chunk.choices[0].finish_reason ||
-           delta.role;
+  if (format === FORMATS.OPENAI && Array.isArray(chunk.choices)) {
+    return chunk.choices.some((choice) => {
+      const delta = choice?.delta;
+      if (!delta) return Boolean(choice?.finish_reason);
+      return delta.content && delta.content !== "" ||
+             delta.reasoning_content && delta.reasoning_content !== "" ||
+             delta.tool_calls && delta.tool_calls.length > 0 ||
+             choice.finish_reason ||
+             delta.role;
+    });
   }
 
   // Claude format

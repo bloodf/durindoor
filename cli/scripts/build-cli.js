@@ -3,11 +3,12 @@
 const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
+const { resolveCliAppDir } = require("./cliBuildPaths");
 
 const cliDir = path.resolve(__dirname, "..");
 const appDir = path.resolve(cliDir, "..");
 const rootDir = path.resolve(appDir, "..");
-const cliAppDir = path.join(cliDir, "app");
+const cliAppDir = resolveCliAppDir(cliDir);
 const buildHomeDir = path.join(cliDir, ".build-home");
 const buildDistDirName = ".next-cli-build";
 const buildDistDir = path.join(appDir, buildDistDirName);

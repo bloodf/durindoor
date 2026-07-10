@@ -25,6 +25,7 @@ import { updateProviderCredentials, checkAndRefreshToken } from "../services/tok
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
+import { validateChatRequestBody } from "open-sse/translator/validate.js";
 
 const ANTIGRAVITY_CAPACITY_SWEEP_RETRIES = 2;
 
@@ -89,6 +90,16 @@ export async function handleChat(request, clientRawRequest = null) {
   } catch {
     log.warn("CHAT", "Invalid JSON body");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
+  }
+
+  // Inbound schema guard (OmniRoute O-A): reject malformed `messages` / `model`
+  // / scalar params with a clear 400 BEFORE auth + model resolution, so a bad
+  // body never surfaces as a misleading `model_not_found` 404 or an unsanitized
+  // 500. See open-sse/translator/validate.js (ports #6515/#6433/#6437).
+  const earlyRejection = validateChatRequestBody(body);
+  if (earlyRejection) {
+    log.warn("CHAT", "Rejecting schema-invalid request body");
+    return earlyRejection;
   }
 
   // Build clientRawRequest for logging (if not provided)

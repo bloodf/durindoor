@@ -156,7 +156,7 @@ describe("Codex executor request isolation", () => {
       body,
       stream: true,
       credentials: { apiKey: "key-1", connectionId: "connection-1" },
-      requestContext: { compact: true, clientHeaders: { "x-session-id": "retry-session" } },
+      requestContext: { compact: false, clientHeaders: { "x-session-id": "retry-session" } },
     });
     await result.response.text();
 
@@ -166,11 +166,12 @@ describe("Codex executor request isolation", () => {
     expect(sentBodies[0]).not.toHaveProperty("_compact");
     expect(sentBodies[0].prompt_cache_key).toBe("retry-session");
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      "https://api.openai.test/v1/responses/compact",
-      "https://api.openai.test/v1/responses/compact",
+      "https://api.openai.test/v1/responses",
+      "https://api.openai.test/v1/responses",
     ]);
     expect(body).toEqual({ model: "gpt-5.3-codex", input: [{ role: "user", content: "retry" }] });
   });
+
 
   it("preserves compact and session context across base-URL fallback", async () => {
     const executor = makeExecutor();
@@ -238,5 +239,104 @@ describe("Codex executor request isolation", () => {
 
     await expect(pending).rejects.toMatchObject({ name: "AbortError" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("forwards the Responses Lite transport contract over SSE", async () => {
+    const executor = makeExecutor();
+    const credentials = {
+      apiKey: "key-1",
+      connectionId: "connection-1",
+    };
+    const clientHeaders = {
+      "x-openai-internal-codex-responses-lite": "true",
+      "user-agent": "codex_exec/0.144.1",
+      originator: "codex_exec",
+      "x-client-request-id": "request-id",
+      "x-codex-turn-metadata": "turn-metadata",
+      "x-forwarded-for": "203.0.113.1",
+    };
+
+    const result = await executor.execute({
+      model: "gpt-5.3-codex",
+      body: {
+        model: "gpt-5.3-codex",
+        input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] }],
+        parallel_tool_calls: false,
+      },
+      stream: true,
+      credentials,
+      requestContext: { compact: false, clientHeaders },
+    });
+    const sseText = await result.response.text();
+    const sseFrames = sseText.split(/\r?\n\r?\n/).filter(Boolean);
+    const dataPayloads = sseFrames
+      .map((frame) => frame.split(/\r?\n/).find((line) => line.startsWith("data:"))?.slice(5).trim())
+      .filter((data) => data && data !== "[DONE]")
+      .map((data) => JSON.parse(data));
+    expect(dataPayloads).toContainEqual(
+      expect.objectContaining({ type: "response.output_text.delta", delta: "hi" }),
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://api.openai.test/v1/responses");
+    expect(init.headers["x-openai-internal-codex-responses-lite"]).toBe("true");
+    expect(init.headers["User-Agent"]).toBe("codex_exec/0.144.1");
+    expect(init.headers.originator).toBe("codex_exec");
+    expect(init.headers["x-client-request-id"]).toBe("request-id");
+    expect(init.headers["x-codex-turn-metadata"]).toBe("turn-metadata");
+    expect(init.headers["x-forwarded-for"]).toBeUndefined();
+    const sent = JSON.parse(init.body);
+    expect(sent.stream).toBe(true);
+    expect(sent.parallel_tool_calls).toBe(false);
+  });
+
+  it("keeps Responses Lite compact requests on the compact contract", async () => {
+    const executor = makeExecutor();
+    const clientHeaders = { "x-openai-internal-codex-responses-lite": "true" };
+
+    const result = await executor.execute({
+      model: "gpt-5.3-codex",
+      body: {
+        model: "gpt-5.3-codex",
+        input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
+        stream: true,
+        store: false,
+        include: ["reasoning.encrypted_content"],
+        client_metadata: { thread_id: "test" },
+        parallel_tool_calls: false,
+      },
+      stream: true,
+      credentials: { apiKey: "key-1", connectionId: "connection-1" },
+      requestContext: { compact: true, clientHeaders },
+    });
+    await result.response.text();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://api.openai.test/v1/responses/compact");
+    expect(init.headers["x-openai-internal-codex-responses-lite"]).toBe("true");
+    const sent = JSON.parse(init.body);
+    // Compact body contract: stream/store/include stripped, parallel_tool_calls kept.
+    expect(sent.stream).toBeUndefined();
+    expect(sent.store).toBeUndefined();
+    expect(sent.include).toBeUndefined();
+    expect(sent.client_metadata).toBeUndefined();
+    expect(sent.parallel_tool_calls).toBe(false);
+  });
+
+  it("does not forward Responses Lite without the client opt-in header", async () => {
+    const executor = makeExecutor();
+    const result = await executor.execute({
+      model: "gpt-5.3-codex",
+      body: { model: "gpt-5.3-codex", input: "hello" },
+      stream: true,
+      credentials: { apiKey: "key-1", connectionId: "connection-1" },
+      requestContext: { compact: false, clientHeaders: {} },
+    });
+    await result.response.text();
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.headers["x-openai-internal-codex-responses-lite"]).toBeUndefined();
   });
 });

@@ -1,4 +1,5 @@
-@import "tailwindcss";
+/* Limit Tailwind source detection to src/. */
+@import "tailwindcss" source("../");
 
 @custom-variant dark (&:where(.dark, .dark *));
 

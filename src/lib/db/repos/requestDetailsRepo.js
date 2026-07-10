@@ -195,6 +195,19 @@ export async function getRequestDetailById(id) {
   return row ? parseJson(row.data, null) : null;
 }
 
+/**
+ * Distinct provider ids present in the requestDetails log.
+ * Reads only the `provider` column — deliberately avoids parsing every row's
+ * full JSON blob, which can be hundreds of MB and previously caused OOM in
+ * /api/usage/providers.
+ * @returns {Promise<string[]>}
+ */
+export async function getDistinctProviders() {
+  const db = await getAdapter();
+  const rows = db.all(`SELECT DISTINCT provider FROM requestDetails WHERE provider IS NOT NULL ORDER BY provider ASC`);
+  return rows.map((r) => r.provider);
+}
+
 const _shutdownHandler = async () => {
   if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
   if (writeBuffer.length > 0) await flushToDatabase();

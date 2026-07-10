@@ -191,6 +191,175 @@ describe("handleNonStreamingResponse: synthetic SSE respects client format", () 
     expect(text).toContain("therefore I am");
   });
 
+  it("extracts <think> reasoning into reasoning_content for OpenAI non-streaming clients", async () => {
+    const thinkCompletion = {
+      ...openaiCompletion,
+      choices: [{
+        index: 0,
+        message: {
+          role: "assistant",
+          content: "<think>planning step</think>visible answer",
+        },
+        finish_reason: "stop",
+      }],
+    };
+    const result = await handleNonStreamingResponse(baseOptions({
+      providerResponse: makeProviderResponse(thinkCompletion),
+      provider: "minimax-cn",
+      model: "MiniMax-M3",
+      body: { model: "MiniMax-M3", messages: [] },
+      sourceFormat: FORMATS.OPENAI,
+      targetFormat: FORMATS.OPENAI,
+      streamToClient: false,
+    }));
+    const body = await result.response.json();
+    const msg = body.choices[0].message;
+    expect(msg.reasoning_content).toBe("planning step");
+    expect(msg.content).toBe("visible answer");
+  });
+
+  it("extracts before OpenAI-to-Claude projection", async () => {
+    const thinkCompletion = {
+      ...openaiCompletion,
+      model: "MiniMax-M3",
+      choices: [{
+        index: 0,
+        message: { role: "assistant", content: "<think>planning step</think>visible answer" },
+        finish_reason: "stop",
+      }],
+    };
+    const result = await handleNonStreamingResponse(baseOptions({
+      providerResponse: makeProviderResponse(thinkCompletion),
+      provider: "minimax-cn",
+      model: "MiniMax-M3",
+      body: { model: "MiniMax-M3", messages: [] },
+      sourceFormat: FORMATS.CLAUDE,
+      targetFormat: FORMATS.OPENAI,
+      streamToClient: false,
+    }));
+    const body = await result.response.json();
+    expect(body.type).toBe("message");
+    expect(body.content).toEqual([
+      { type: "text", text: "visible answer" },
+      { type: "thinking", thinking: "planning step" },
+    ]);
+  });
+
+  it("synthesizes extracted reasoning into SSE exactly once", async () => {
+    const thinkCompletion = {
+      ...openaiCompletion,
+      model: "MiniMax-M3",
+      choices: [{
+        index: 0,
+        message: { role: "assistant", content: "<think>once only</think>visible answer" },
+        finish_reason: "stop",
+      }],
+    };
+    const result = await handleNonStreamingResponse(baseOptions({
+      providerResponse: makeProviderResponse(thinkCompletion),
+      provider: "minimax",
+      model: "MiniMax-M3",
+      body: { model: "MiniMax-M3", messages: [] },
+      sourceFormat: FORMATS.OPENAI,
+      targetFormat: FORMATS.OPENAI,
+      streamToClient: true,
+    }));
+    const text = await result.response.text();
+    expect(text.match(/once only/g)).toHaveLength(1);
+    expect(text).toContain('"reasoning_content":"once only"');
+    expect(text).toContain('"content":"visible answer"');
+    expect(text).not.toContain("<think>");
+  });
+
+  it("preserves every MiniMax choice when synthesizing OpenAI SSE", async () => {
+    const multiChoice = {
+      ...openaiCompletion,
+      model: "MiniMax-M3",
+      choices: [
+        {
+          index: 0,
+          message: { role: "assistant", content: "<think>zero reason</think>zero answer" },
+          finish_reason: "stop",
+        },
+        {
+          index: 1,
+          message: { role: "assistant", content: "<think>one reason</think>one answer" },
+          finish_reason: "length",
+        },
+      ],
+    };
+    const result = await handleNonStreamingResponse(baseOptions({
+      providerResponse: makeProviderResponse(multiChoice),
+      provider: "minimax",
+      model: "MiniMax-M3",
+      body: { model: "MiniMax-M3", messages: [] },
+      sourceFormat: FORMATS.OPENAI,
+      targetFormat: FORMATS.OPENAI,
+      streamToClient: true,
+    }));
+    const objects = (await result.response.text()).split("\n")
+      .filter(line => line.startsWith("data:") && line.slice(5).trim() !== "[DONE]")
+      .map(line => JSON.parse(line.slice(5).trim()));
+    const collect = (index, field) => objects
+      .flatMap(object => object.choices || [])
+      .filter(choice => choice.index === index)
+      .map(choice => choice.delta?.[field] || "")
+      .join("");
+
+    expect(collect(0, "reasoning_content")).toBe("zero reason");
+    expect(collect(0, "content")).toBe("zero answer");
+    expect(collect(1, "reasoning_content")).toBe("one reason");
+    expect(collect(1, "content")).toBe("one answer");
+    const terminal = objects.find(object => object.choices?.some(choice => choice.finish_reason));
+    expect(terminal.choices).toMatchObject([
+      { index: 0, finish_reason: "stop" },
+      { index: 1, finish_reason: "length" },
+    ]);
+  });
+
+  it("leaves literal tags visible for providers without the response quirk", async () => {
+    const literalCompletion = {
+      ...openaiCompletion,
+      choices: [{
+        index: 0,
+        message: { role: "assistant", content: "<think>visible literal</think>answer" },
+        finish_reason: "stop",
+      }],
+    };
+    const result = await handleNonStreamingResponse(baseOptions({
+      providerResponse: makeProviderResponse(literalCompletion),
+      sourceFormat: FORMATS.OPENAI,
+      targetFormat: FORMATS.OPENAI,
+      streamToClient: false,
+    }));
+    const message = (await result.response.json()).choices[0].message;
+    expect(message.content).toBe("<think>visible literal</think>answer");
+    expect(message.reasoning_content).toBeUndefined();
+  });
+
+  it("preserves native structured reasoning for configured M3 responses", async () => {
+    const nativeCompletion = {
+      ...openaiCompletion,
+      model: "MiniMax-M3",
+      choices: [{
+        index: 0,
+        message: { role: "assistant", content: "visible answer", reasoning_content: "native reasoning" },
+        finish_reason: "stop",
+      }],
+    };
+    const result = await handleNonStreamingResponse(baseOptions({
+      providerResponse: makeProviderResponse(nativeCompletion),
+      provider: "minimax",
+      model: "MiniMax-M3",
+      body: { model: "MiniMax-M3", messages: [] },
+      sourceFormat: FORMATS.OPENAI,
+      targetFormat: FORMATS.OPENAI,
+      streamToClient: false,
+    }));
+    const message = (await result.response.json()).choices[0].message;
+    expect(message).toEqual({ role: "assistant", content: "visible answer", reasoning_content: "native reasoning" });
+  });
+
   it("still returns the client-shaped Claude JSON body (not SSE) for a real non-streaming request", async () => {
     // streamToClient:false — same sourceFormat/targetFormat as the SSE test
     // above, but the client actually asked for JSON. Guards that forcing the

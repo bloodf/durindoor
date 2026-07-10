@@ -33,7 +33,7 @@ vi.mock("@/lib/usageDb.js", () => ({
   saveRequestDetail: vi.fn(async () => {}),
 }));
 
-const { handleChatCore, shouldStripOrphanedToolResults } = await import("../../open-sse/handlers/chatCore.js");
+const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
 
 describe("handleChatCore Headroom diagnostics", () => {
   beforeEach(() => {
@@ -55,20 +55,6 @@ describe("handleChatCore Headroom diagnostics", () => {
       transformedBody: null,
     });
   });
-
-  it.each(["gemini", "gemini-cli", "antigravity", "vertex"])(
-    "preserves native %s tool-result history at every cleanup point",
-    (format) => {
-      expect(shouldStripOrphanedToolResults(format)).toBe(false);
-    },
-  );
-
-  it.each(["openai", "claude", "openai-responses"])(
-    "cleans orphaned tool results for strict %s payloads",
-    (format) => {
-      expect(shouldStripOrphanedToolResults(format)).toBe(true);
-    },
-  );
 
   it("logs why Headroom was skipped on chat completions", async () => {
     const log = { debug: vi.fn(), info: vi.fn(), warn: vi.fn() };

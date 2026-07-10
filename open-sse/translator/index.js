@@ -1,5 +1,5 @@
 import { FORMATS } from "./formats.js";
-import { ensureToolCallIds, fixMissingToolResponses, stripOrphanedToolResults } from "./concerns/toolCall.js";
+import { ensureToolCallIds, fixMissingToolResponses, salvageOrphanedToolResults } from "./concerns/toolCall.js";
 import { prepareClaudeRequest } from "./formats/claude.js";
 import { cloakClaudeTools } from "../utils/claudeCloaking.js";
 import { filterToOpenAIFormat } from "./formats/openai.js";
@@ -71,22 +71,26 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   // Fix missing tool responses (insert empty tool_result if needed)
   fixMissingToolResponses(result);
 
-  // Strip orphaned tool results (tool_result with no matching tool_call).
-  // Skip for Kiro: its request translator salvages orphaned tool_results by
-  // folding their content into user text (reconcileOrphanedToolResults /
-  // flattenClaudeToolInteractions) rather than dropping it. Stripping here
-  // first would delete that content before the Kiro translator can preserve it.
-  // Gemini / Antigravity pre-translation cleanup is handled inside the Gemini
-  // -> OpenAI request translator (geminiToOpenAIRequestFixed splits
-  // functionResponse parts into their own contents). Running the generic
-  // OpenAI/Anthropic orphan stripper here would strip legitimate tool
-  // messages whose ids don't match a functionCall in the same body.
-  const skipStrip = sourceFormat === FORMATS.GEMINI
-    || sourceFormat === FORMATS.GEMINI_CLI
-    || sourceFormat === FORMATS.ANTIGRAVITY
-    || sourceFormat === FORMATS.VERTEX;
-  if (targetFormat !== FORMATS.KIRO && !skipStrip) {
-    stripOrphanedToolResults(result);
+  // Salvage orphaned tool results (tool_result with no matching tool_call).
+  // Folds orphan content into user text (`[Tool result: ...]`) instead of
+  // deleting — non-lossy for the translated messages[] shape (OpenAI/Claude)
+  // and preserves Kiro's reconcileOrphanedToolResults salvage semantics.
+  //
+  // MUST skip the Gemini family (gemini/gemini-cli/antigravity/vertex): at this
+  // point the body still carries native contents[] whose functionResponse ids
+  // are keyed per-part, not against the global functionCall set salvage builds,
+  // so an unconditional run rewrites legitimate functionResponses into
+  // `[Tool result: ...]` text before the gemini->openai conversion can read
+  // them. Those formats are salvaged downstream of their own conversion if at
+  // all. Responses API function_call_output is structural-stripped separately
+  // inside openai-responses.js.
+  const skipSalvage =
+    sourceFormat === FORMATS.GEMINI ||
+    sourceFormat === FORMATS.GEMINI_CLI ||
+    sourceFormat === FORMATS.ANTIGRAVITY ||
+    sourceFormat === FORMATS.VERTEX;
+  if (!skipSalvage) {
+    salvageOrphanedToolResults(result);
   }
 
   // Capture thinking intent from the original (pre-translation) body, before any
@@ -226,6 +230,14 @@ export function translateResponse(targetFormat, sourceFormat, chunk, state) {
         openaiResults = results; // Store OpenAI intermediate
       }
     }
+  }
+
+  // Flush sentinel: a null chunk means "the stream ended" (stream.js flush).
+  // When step 1 has nothing to convert, forward the sentinel so the source-side
+  // translator can finalize a dangling message (all openai→X translators
+  // null-check their chunk, so this is a no-op unless one implements a flush).
+  if (chunk === null && results.length === 0) {
+    results = [null];
   }
 
   // Step 2: openai -> source (if source is not openai)

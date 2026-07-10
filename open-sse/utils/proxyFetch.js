@@ -384,7 +384,14 @@ async function getDispatcher(proxyUrl) {
       proxyDispatchers.delete(proxyDispatchers.keys().next().value);
     }
     const { ProxyAgent } = await import("undici");
-    proxyDispatchers.set(normalized, new ProxyAgent({ uri: normalized }));
+    // proxyTunnel: true forces a CONNECT tunnel even for plain-HTTP targets.
+    // undici 8.6+ defaults to forwarding plain-HTTP as an origin request
+    // (GET http://host/…) which CONNECT-only proxies reject with 501. Safe on
+    // undici <8.6: unknown option, ignored (those versions already tunneled).
+    proxyDispatchers.set(
+      normalized,
+      new ProxyAgent({ uri: normalized, proxyTunnel: true }),
+    );
   }
 
   return proxyDispatchers.get(normalized);

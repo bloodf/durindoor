@@ -31,6 +31,7 @@ import {
   WINDSURF_CONFIG,
   CODEBUDDY_CONFIG,
   KIMCHI_CONFIG,
+  GROK_CLI_CONFIG,
   getOAuthClientMetadata,
 } from "./constants/oauth";
 import { XAI_CONFIG, XAI_PKCE_VERIFIER_BYTES } from "./constants/xai";
@@ -43,85 +44,6 @@ import {
 } from "./providerHelpers";
 
 export { extractCodexAccountInfo, fetchKiroProfileArn };
-
-function decodeJwtPayload(jwt) {
-  try {
-    if (!jwt || typeof jwt !== "string") return null;
-    const parts = jwt.split(".");
-    if (parts.length !== 3) return null;
-    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
-    return JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
-  } catch {
-    return null;
-  }
-}
-
-function extractGrokCliToken(input) {
-  if (typeof input === "string") {
-    return { accessToken: input, refreshToken: null, rawAuthJson: null, expiresAt: null };
-  }
-
-  if (input && typeof input === "object") {
-    const obj = input;
-    const inner = obj.accessToken && typeof obj.accessToken === "object" ? obj.accessToken : obj;
-
-    if (inner && typeof inner === "object") {
-      for (const entry of Object.values(inner)) {
-        if (!entry || typeof entry !== "object") continue;
-        if (typeof entry.key === "string" && entry.key.startsWith("eyJ")) {
-          return {
-            accessToken: entry.key,
-            refreshToken: typeof entry.refresh_token === "string" ? entry.refresh_token : null,
-            rawAuthJson: inner,
-            expiresAt: typeof entry.expires_at === "string" ? entry.expires_at : null,
-          };
-        }
-      }
-    }
-
-    if (typeof obj.accessToken === "string" && obj.accessToken.length > 0) {
-      return {
-        accessToken: obj.accessToken,
-        refreshToken: typeof obj.refreshToken === "string" ? obj.refreshToken : null,
-        rawAuthJson: null,
-        expiresAt: null,
-      };
-    }
-  }
-
-  return { accessToken: "", refreshToken: null, rawAuthJson: null, expiresAt: null };
-}
-
-export function mapGrokCliTokens(tokens) {
-  const { accessToken, refreshToken, rawAuthJson, expiresAt } = extractGrokCliToken(tokens);
-  const payload = decodeJwtPayload(accessToken) || {};
-  const currentSec = Math.floor(Date.now() / 1000);
-  let expiresIn = 21600;
-
-  if (expiresAt) {
-    const parsed = Date.parse(expiresAt);
-    if (Number.isFinite(parsed)) expiresIn = Math.floor(parsed / 1000) - currentSec;
-  } else if (typeof payload.exp === "number" && payload.exp > 0) {
-    expiresIn = payload.exp - currentSec;
-  }
-
-  expiresIn = Math.max(1, expiresIn);
-
-  return {
-    accessToken,
-    refreshToken,
-    expiresIn,
-    email: payload.email || null,
-    providerSpecificData: {
-      userId: payload.sub || null,
-      teamId: payload.team_id || null,
-      tier: payload.tier || 1,
-      principalType: payload.principal_type || "User",
-      rawAuthJson: rawAuthJson || undefined,
-    },
-  };
-}
 
 // Inlined from services/xai.js to keep web route bundle free of `open` (CLI-only) package
 let cachedXaiDiscovery = null;
@@ -339,12 +261,105 @@ const PROVIDERS = {
   },
 
   "grok-cli": {
-    config: {
-      clientId: XAI_CONFIG.clientId,
-      tokenUrl: "https://auth.x.ai/oauth2/token",
+    config: GROK_CLI_CONFIG,
+    flowType: "device_code",
+    // Grok CLI / Grok Build — device code flow to auth.x.ai, inference on cli-chat-proxy.grok.com
+    requestDeviceCode: async (config) => {
+      const body = new URLSearchParams({
+        client_id: config.clientId,
+        scope: config.scope,
+      });
+      // Official CLI sends referrer=grok-build
+      if (config.referrer) body.set("referrer", config.referrer);
+
+      const response = await fetch(config.deviceCodeUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+          "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)",
+        },
+        body,
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Grok CLI device code request failed: ${error}`);
+      }
+
+      return await response.json();
     },
-    flowType: "import_token",
-    mapTokens: mapGrokCliTokens,
+    pollToken: async (config, deviceCode) => {
+      const response = await fetch(config.tokenUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+          "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)",
+        },
+        body: new URLSearchParams({
+          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+          device_code: deviceCode,
+          client_id: config.clientId,
+        }),
+      });
+
+      let data;
+      const text = await response.text();
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        data = { error: "invalid_response", error_description: text };
+      }
+
+      // Device flow: 400 + authorization_pending / slow_down is expected while the user authorizes.
+      const pending = data?.error === "authorization_pending" || data?.error === "slow_down";
+      return { ok: response.ok || pending, data };
+    },
+    postExchange: async (tokens) => {
+      // Best-effort user profile from cli-chat-proxy (non-fatal).
+      try {
+        const res = await fetch("https://cli-chat-proxy.grok.com/v1/user", {
+          headers: {
+            Authorization: `Bearer ${tokens.access_token}`,
+            Accept: "application/json",
+            "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)",
+            "x-xai-token-auth": "xai-grok-cli",
+            "x-grok-client-version": "0.2.93",
+          },
+        });
+        if (res.ok) return { user: await res.json() };
+      } catch {
+        /* ignore */
+      }
+      return { user: null };
+    },
+    mapTokens: (tokens, extra) => {
+      const email =
+        decodeXaiIdTokenEmail(tokens.id_token) ||
+        extractEmailFromAccessToken(tokens.access_token) ||
+        extra?.user?.email ||
+        null;
+      const userId = extra?.user?.userId || extra?.user?.principalId || null;
+      const displayName =
+        [extra?.user?.firstName, extra?.user?.lastName].filter(Boolean).join(" ").trim() || null;
+
+      return {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token || null,
+        expiresIn: tokens.expires_in,
+        scope: tokens.scope,
+        // Top-level for dashboard connection cards.
+        email,
+        ...(displayName ? { displayName } : {}),
+        providerSpecificData: {
+          authMethod: "device_code",
+          ...(tokens.id_token ? { idToken: tokens.id_token } : {}),
+          ...(email ? { email } : {}),
+          ...(userId ? { userId } : {}),
+        },
+      };
+    },
   },
 
   "gemini-cli": {

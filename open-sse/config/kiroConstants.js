@@ -109,23 +109,28 @@ export function resolveKiroControlPlaneHost(region) {
  * credential's region. This is the single place that decides which profileArn
  * (if any) a request carries:
  *
- *   - a stored profileArn      → returned, with its region segment aligned to
- *                                the request region (self-heals mismatches)
+ *   - a stored profileArn      → returned VERBATIM. The profile's own region is
+ *                                authoritative: a Q Developer profile can live
+ *                                in a different region than the IAM Identity
+ *                                Center that minted the token (e.g. IDC
+ *                                eu-north-1, profile eu-central-1). Rewriting
+ *                                the region here corrupts valid Org ARNs → 400
+ *                                "Improperly formed request". The data plane is
+ *                                routed off the ARN region by the executor.
  *   - no ARN, api_key auth     → "" (api keys must use their own account ARN;
  *                                the shared default would 403)
  *   - no ARN, us-east-1        → the shared builder-id/social default ARN
  *   - no ARN, other region     → "" (no shared default exists outside us-east-1;
- *                                the ARN is resolved on token refresh instead)
+ *                                the ARN is resolved at request time instead)
  *
  * @param {object} credentials Connection record with providerSpecificData
- * @param {string} [region]    Pre-resolved region (defaults to resolveKiroRegion)
  * @returns {string} profileArn or "" when none should be sent
  */
-export function resolveKiroProfileArn(credentials, region) {
+export function resolveKiroProfileArn(credentials) {
   const psd = credentials?.providerSpecificData || {};
-  const r = region || resolveKiroRegion(credentials);
-  if (psd.profileArn) return alignProfileArnRegion(psd.profileArn, r);
+  if (psd.profileArn) return psd.profileArn;
   if (psd.authMethod === "api_key") return "";
+  const r = resolveKiroRegion(credentials);
   if (r === KIRO_DEFAULT_REGION) return resolveDefaultProfileArn(psd.authMethod);
   return "";
 }

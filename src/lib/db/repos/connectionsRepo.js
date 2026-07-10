@@ -80,6 +80,29 @@ function upsert(db, c) {
   );
 }
 
+/**
+ * Derive a human-readable connection name from provider identity data.
+ *
+ * For GitHub (Copilot) OAuth, prefer the stable account identity over a generic
+ * "Account N" fallback so multiple accounts on the same machine stay
+ * distinguishable: login → email → top-level email → display name → fallback.
+ * Other providers keep the caller-supplied fallback unchanged.
+ *
+ * @param {object} data - Incoming connection payload (provider, email, providerSpecificData).
+ * @param {string} fallbackName - Caller-provided default (e.g. `Account ${n}`).
+ * @returns {string} Resolved connection name.
+ */
+function deriveConnectionName(data, fallbackName) {
+  if (data.provider === "github") {
+    return data.providerSpecificData?.githubLogin
+      || data.providerSpecificData?.githubEmail
+      || data.email
+      || data.providerSpecificData?.githubName
+      || fallbackName;
+  }
+  return fallbackName;
+}
+
 export async function getProviderConnections(filter = {}) {
   const db = await getAdapter();
   const where = [];
@@ -175,7 +198,7 @@ export async function createProviderConnection(data) {
 
     let connectionName = data.name || null;
     if (!connectionName && (data.authType === "oauth" || data.authType === "access_token")) {
-      connectionName = data.email || `Account ${all.length + 1}`;
+      connectionName = deriveConnectionName(data, data.email || `Account ${all.length + 1}`);
     }
     let connectionPriority = data.priority;
     if (!connectionPriority) {

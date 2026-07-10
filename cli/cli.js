@@ -95,6 +95,7 @@ if (hasFlag("--version", "-v")) {
 
 const { ensureSqliteRuntime, buildEnvWithRuntime } = require("./hooks/sqliteRuntime");
 const { ensureTrayRuntime } = require("./hooks/trayRuntime");
+const { killByPidFile } = require("./hooks/killByPidFile");
 
 
 // Self-heal SQLite runtime deps (sql.js + better-sqlite3) into ~/.9router/runtime
@@ -171,23 +172,6 @@ function compareVersions(a, b) {
     if (partsA[i] < partsB[i]) return -1;
   }
   return 0;
-}
-
-// Kill PID from file (best-effort, removes file after)
-function killByPidFile(pidFile) {
-  try {
-    if (!fs.existsSync(pidFile)) return;
-    const pid = parseInt(fs.readFileSync(pidFile, "utf8").trim(), 10);
-    if (!pid) return;
-    try {
-      if (process.platform === "win32") {
-        execSync(`taskkill /F /T /PID ${pid}`, { stdio: "ignore", windowsHide: true, timeout: 3000 });
-      } else {
-        process.kill(pid, "SIGKILL");
-      }
-    } catch { }
-    try { fs.unlinkSync(pidFile); } catch { }
-  } catch { }
 }
 
 // Kill tunnel processes (cloudflared/tailscale) by their PID files

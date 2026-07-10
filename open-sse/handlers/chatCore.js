@@ -1,5 +1,6 @@
 import { detectFormat, getTargetFormat, resolveTransport } from "../services/provider.js";
 import { translateRequest } from "../translator/index.js";
+import { applyThinking, parseSuffix } from "../translator/concerns/thinkingUnified.js";
 import { FORMATS } from "../translator/formats.js";
 import { normalizeClaudePassthrough } from "../translator/formats/claude.js";
 import { validateOutboundPayload, stripInternalKeys } from "../translator/validate.js";
@@ -27,10 +28,64 @@ import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
 import { compressMessages, formatRtkLog } from "../rtk/index.js";
 import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadroomPhantomSavings } from "../rtk/headroom.js";
-import { compressWithPxpipe, formatPxpipeLog } from "../rtk/pxpipe.js";
+import { compressWithPxpipe, formatPxpipeLog, normalizePxpipeResult } from "../rtk/pxpipe.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { stripUnsupportedModalities } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
+
+const NATIVE_TOOL_RESULT_FORMATS = new Set([
+  FORMATS.GEMINI,
+  FORMATS.GEMINI_CLI,
+  FORMATS.ANTIGRAVITY,
+  FORMATS.VERTEX,
+]);
+
+function isCompactResponsesEndpoint(endpoint) {
+  const path = String(endpoint || "").split(/[?#]/, 1)[0].replace(/\/+$/, "");
+  return path.endsWith("/v1/responses/compact");
+}
+
+/**
+ * Build immutable request-only metadata before logging or translation. The
+ * legacy body marker remains accepted for compatibility, but is removed from
+ * both working and diagnostic copies before either can leave the process.
+ */
+function captureRequestContext(body, clientRawRequest) {
+  const compact = isCompactResponsesEndpoint(clientRawRequest?.endpoint)
+    || body?._compact === true
+    || clientRawRequest?.body?._compact === true;
+  const clientHeaders = Object.freeze({ ...(clientRawRequest?.headers || {}) });
+  return Object.freeze({ compact, clientHeaders });
+}
+
+function stripLegacyCompactMarker(body, clientRawRequest) {
+  let cleanBody = body;
+  let cleanRawRequest = clientRawRequest;
+
+  if (body && typeof body === "object" && Object.prototype.hasOwnProperty.call(body, "_compact")) {
+    cleanBody = { ...body };
+    delete cleanBody._compact;
+  }
+  if (clientRawRequest?.body && typeof clientRawRequest.body === "object"
+    && Object.prototype.hasOwnProperty.call(clientRawRequest.body, "_compact")) {
+    const rawBody = { ...clientRawRequest.body };
+    delete rawBody._compact;
+    cleanRawRequest = { ...clientRawRequest, body: rawBody };
+  }
+
+  return { body: cleanBody, clientRawRequest: cleanRawRequest };
+}
+
+/**
+ * Gemini-family clients legitimately send functionResponse turns without the
+ * originating functionCall after trimming their local history. Their native
+ * APIs accept that history and the Gemini translators preserve the content.
+ * Applying the generic orphan cleaner to those wire formats silently deletes
+ * user-visible tool output before dispatch.
+ */
+export function shouldStripOrphanedToolResults(format) {
+  return !NATIVE_TOOL_RESULT_FORMATS.has(format);
+}
 
 /**
  * Core chat handler - shared between SSE and Worker
@@ -40,17 +95,26 @@ import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
 export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit }) {
-  const { provider, model } = modelInfo;
+  const { provider, model: requestedModel } = modelInfo;
   const requestStartTime = Date.now();
+  const requestContext = captureRequestContext(body, clientRawRequest);
+  ({ body, clientRawRequest } = stripLegacyCompactMarker(body, clientRawRequest));
 
   const sourceFormat = sourceFormatOverride || detectFormat(body);
 
   // Check for bypass patterns (warmup, skip, cc naming)
-  const bypassResponse = handleBypassRequest(body, model, userAgent, ccFilterNaming);
+  const bypassResponse = handleBypassRequest(body, requestedModel, userAgent, ccFilterNaming);
   if (bypassResponse) return bypassResponse;
 
   const alias = PROVIDER_ID_TO_ALIAS[provider] || provider;
-  const modelTargetFormat = getModelTargetFormat(alias, model);
+  // Parse the request-only dashboard suffix once. The raw ID is retained only
+  // for client-visible bypass identity; routing, compression, accounting, and
+  // provider dispatch consistently use the clean catalog identity.
+  const parsedModel = parseSuffix(requestedModel);
+  const cleanModel = parsedModel.cleanModel;
+  const modelThinkingIntent = parsedModel.override;
+  body = { ...body, model: cleanModel };
+  const modelTargetFormat = getModelTargetFormat(alias, cleanModel);
   // Multi-endpoint providers: pick transport matching sourceFormat → zero translation.
   // If found, force targetFormat=sourceFormat so we skip translation entirely —
   // otherwise the body could be translated to modelTargetFormat and sent to a
@@ -61,8 +125,8 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const targetFormat = skipTranslation
     ? sourceFormat
     : (modelTargetFormat || runtimeTransport?.format || getTargetFormat(provider, credentials));
-  const stripList = getModelStrip(alias, model);
-  const upstreamModel = getModelUpstreamId(alias, model);
+  const stripList = getModelStrip(alias, cleanModel);
+  const cleanUpstreamModel = getModelUpstreamId(alias, cleanModel); // provider-facing model id
 
   // Inject provider-level thinking config override (only if client hasn't set)
   // on/off → extended type (body.thinking), none/low/medium/high → effort type (body.reasoning_effort)
@@ -81,8 +145,8 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const clientRequestedStreaming = body.stream === true || sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI;
   const providerRequiresStreaming = PROVIDERS[provider]?.forceStream === true;
   // Image generation models require non-streaming (Google v1internal:generateContent)
-  const modelType = getModelType(alias, model);
-  const isImageGenModel = modelType === "imageGen" || /image|imagen|image-generation/i.test(model);
+  const modelType = getModelType(alias, cleanModel);
+  const isImageGenModel = modelType === "imageGen" || /image|imagen|image-generation/i.test(cleanModel);
 
   // DeepSeek-TUI: interactive TUI panel sends stream:true and needs SSE.
   // Non-interactive mode (-p flag) sends without stream and can't parse SSE.
@@ -96,17 +160,23 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   // Stream-only providers (forceStream) must keep streaming even when the client
   // asked for JSON; the accumulated stream is converted to JSON downstream. (#2031)
+  // Provider-declared forceNonStreaming (e.g. Galadriel's verified API
+  // rejects streaming chat requests; synthesize SSE downstream).
+  const providerForcesNonStreaming = PROVIDERS[provider]?.forceNonStreaming === true;
+  // Stream-only providers (forceStream) must keep streaming even when the client
+  // asked for JSON; the accumulated stream is converted to JSON downstream. (#2031)
   let stream = resolveStreamFlag({
     providerRequiresStreaming,
     bodyStream: body.stream,
     forceNonStreaming:
-      (isImageGenModel && (provider === "antigravity" || provider === "gemini-cli")) ||
-      (detectedTool === "deepseek-tui" && body.stream !== true),
+      (isImageGenModel && (provider === "antigravity" || provider === "gemini-cli" || provider === "agy"))
+      || providerForcesNonStreaming
+      || (detectedTool === "deepseek-tui" && body.stream !== true),
     clientPrefersJson,
     clientPrefersSSE,
   });
 
-  const reqLogger = await createRequestLogger(sourceFormat, targetFormat, model);
+  const reqLogger = await createRequestLogger(sourceFormat, targetFormat, cleanModel);
   if (clientRawRequest) reqLogger.logClientRawRequest(clientRawRequest.endpoint, clientRawRequest.body, clientRawRequest.headers);
   reqLogger.logRawRequest(body);
   log?.debug?.("FORMAT", `${sourceFormat} → ${targetFormat} | stream=${stream}`);
@@ -121,9 +191,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   // Auto-strip media blocks the model can't read (vision/audio/pdf) before translation.
   if (!passthrough) {
-    const caps = getCapabilitiesForModel(provider, model);
+    const caps = getCapabilitiesForModel(provider, cleanModel);
     if (stripUnsupportedModalities(body, sourceFormat, caps)) {
-      log?.debug?.("MODALITY", `stripped unsupported media for ${provider}/${model}`);
+      log?.debug?.("MODALITY", `stripped unsupported media for ${provider}/${cleanModel}`);
     }
     // Convert remote image URLs to base64 for targets that can't fetch URLs.
     try {
@@ -134,7 +204,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   // Strip orphaned tool results before translation so the translator never sees
   // stale call_id references that client-side history truncation left behind.
-  const preStripped = stripOrphanedToolResults(body);
+  const preStripped = shouldStripOrphanedToolResults(sourceFormat)
+    ? stripOrphanedToolResults(body)
+    : 0;
   if (preStripped > 0) {
     log?.debug?.("TOOLCLEAN", `pre-translation: stripped ${preStripped} orphaned tool result(s)`);
   }
@@ -143,18 +215,34 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   let toolNameMap;
   if (passthrough) {
     log?.debug?.("PASSTHROUGH", `${clientTool} → ${provider} | native lossless`);
-    translatedBody = { ...body, model: upstreamModel };
+    translatedBody = { ...body, model: cleanUpstreamModel };
+    applyThinking(targetFormat, cleanModel, translatedBody, provider, modelThinkingIntent);
     // Normalize newer Cowork/CC beta shapes (adaptive thinking, mid-conversation system) the API rejects
-    if (clientTool === "claude") normalizeClaudePassthrough(translatedBody, upstreamModel);
+    if (clientTool === "claude") normalizeClaudePassthrough(translatedBody, translatedBody.model, provider);
   } else {
-    translatedBody = translateRequest(sourceFormat, targetFormat, upstreamModel, body, stream, credentials, provider, reqLogger, stripList, connectionId, clientTool);
+    translatedBody = translateRequest(
+      sourceFormat,
+      targetFormat,
+      cleanUpstreamModel,
+      body,
+      stream,
+      credentials,
+      provider,
+      reqLogger,
+      stripList,
+      connectionId,
+      clientTool,
+      { thinkingIntent: modelThinkingIntent, capabilityModel: cleanModel },
+    );
     if (!translatedBody) {
-      trackPendingRequest(model, provider, connectionId, false, true);
+      trackPendingRequest(cleanModel, provider, connectionId, false, true);
       return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Failed to translate request for ${sourceFormat} → ${targetFormat}`);
     }
     toolNameMap = translatedBody._toolNameMap;
     delete translatedBody._toolNameMap;
-    translatedBody.model = upstreamModel;
+    // Kiro carries the provider model inside every native userInputMessage.
+    // Adding a stray OpenAI-style top-level model obscures boundary validation.
+    if (targetFormat !== FORMATS.KIRO) translatedBody.model = cleanUpstreamModel;
   }
 
   // Dedupe duplicate built-in tools when equivalent MCP tools are present (Claude clients only).
@@ -171,7 +259,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const finalFormat = passthrough ? sourceFormat : targetFormat;
 
   // TTS models don't support tool messages/function calling
-  if (getModelType(alias, model) === "tts" && translatedBody.messages) {
+  if (getModelType(alias, cleanModel) === "tts" && translatedBody.messages) {
     translatedBody.messages = translatedBody.messages.filter(msg => msg.role !== "tool");
     delete translatedBody.tools;
   }
@@ -189,7 +277,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   // Headroom: optional external proxy compression; fail open if proxy is absent.
   const headroomDiagnostics = {};
-  const headroomStats = await compressWithHeadroom(translatedBody, { enabled: headroomEnabled, url: headroomUrl, model: upstreamModel, format: finalFormat, compressUserMessages: headroomCompressUserMessages, diagnostics: headroomDiagnostics });
+  const headroomStats = await compressWithHeadroom(translatedBody, { enabled: headroomEnabled, url: headroomUrl, model: cleanUpstreamModel, format: finalFormat, compressUserMessages: headroomCompressUserMessages, diagnostics: headroomDiagnostics });
   const headroomLine = formatHeadroomLog(headroomStats);
   const headroomSizeLine = formatHeadroomSizeLog(headroomDiagnostics);
   if (headroomLine) {
@@ -202,7 +290,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // Strip orphaned tool results again after RTK/Headroom compression — both
   // compressors can remove assistant turns containing tool_calls, which would
   // otherwise leave dangling tool results that strict providers reject with 400.
-  const postStripped = stripOrphanedToolResults(translatedBody);
+  const postStripped = shouldStripOrphanedToolResults(finalFormat)
+    ? stripOrphanedToolResults(translatedBody)
+    : 0;
   if (postStripped > 0) {
     log?.debug?.("TOOLCLEAN", `post-compression: stripped ${postStripped} orphaned tool result(s)`);
   }
@@ -222,30 +312,34 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // PXPIPE: image bulky context (Claude-format bodies only), last saver before dispatch
   let pxpipeSummary = null;
   if (pxpipeEnabled) {
-    const pxpipeResult = await compressWithPxpipe(translatedBody, {
-      enabled: true, format: finalFormat, model: upstreamModel,
+    const pxpipeDiagnostics = {};
+    const pxpipeResult = normalizePxpipeResult(await compressWithPxpipe(translatedBody, {
+      enabled: true, format: finalFormat, model: cleanUpstreamModel,
       minChars: pxpipeMinChars, timeoutMs: pxpipeTimeoutMs, transform: pxpipeTransform,
-    });
+      diagnostics: pxpipeDiagnostics,
+    }), pxpipeDiagnostics);
     pxpipeSummary = pxpipeResult.summary;
     if (pxpipeResult.body) translatedBody = pxpipeResult.body;
     const pxpipeLine = formatPxpipeLog(pxpipeSummary);
     if (pxpipeLine) log?.info?.("PXPIPE", pxpipeLine);
     else log?.debug?.("PXPIPE", `skipped: ${pxpipeSummary.reason}${pxpipeSummary.detail ? ` (${pxpipeSummary.detail})` : ""}`);
-    try { onPxpipeEvent?.({ provider, model, ...pxpipeSummary }); } catch { /* stats must not break requests */ }
+    try { onPxpipeEvent?.({ provider, model: cleanModel, ...pxpipeSummary }); } catch { /* stats must not break requests */ }
   }
 
   // Re-strip after PXPIPE in case compression removed assistant/tool turns.
-  const pxpipeStripped = stripOrphanedToolResults(translatedBody);
+  const pxpipeStripped = shouldStripOrphanedToolResults(finalFormat)
+    ? stripOrphanedToolResults(translatedBody)
+    : 0;
   if (pxpipeStripped > 0) {
     log?.debug?.("TOOLCLEAN", `post-pxpipe: stripped ${pxpipeStripped} orphaned tool result(s)`);
   }
 
   const executor = getExecutor(provider);
-  trackPendingRequest(model, provider, connectionId, true);
-  appendRequestLog({ model, provider, connectionId, status: "PENDING" }).catch(() => { });
+  trackPendingRequest(cleanModel, provider, connectionId, true);
+  appendRequestLog({ model: cleanModel, provider, connectionId, status: "PENDING" }).catch(() => { });
 
   const msgCount = translatedBody.messages?.length || translatedBody.input?.length || translatedBody.contents?.length || translatedBody.request?.contents?.length || 0;
-  log?.debug?.("REQUEST", `${provider.toUpperCase()} | ${model} | ${msgCount} msgs`);
+  log?.debug?.("REQUEST", `${provider.toUpperCase()} | ${cleanModel} | ${msgCount} msgs`);
 
   // --- Per-provider concurrency gate (declaration before streamController closures) ---
   const concurrencyLimit = getConcurrencyLimit(provider, providerConcurrencyLimit);
@@ -253,15 +347,15 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   const streamController = createStreamController({
     onDisconnect: (reason) => {
-      trackPendingRequest(model, provider, connectionId, false);
+      trackPendingRequest(cleanModel, provider, connectionId, false);
       if (slotAcquired) releaseSlot(provider);
       if (onDisconnect) onDisconnect(reason);
     },
     onError: () => {
-      trackPendingRequest(model, provider, connectionId, false);
+      trackPendingRequest(cleanModel, provider, connectionId, false);
       if (slotAcquired) releaseSlot(provider);
     },
-    log, provider, model
+    log, provider, model: cleanModel
   });
 
   const proxyOptions = {
@@ -274,7 +368,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   if (proxyOptions.vercelRelayUrl) {
     const connectionName = credentials?.connectionName || credentials?.connectionId || "unknown";
     const poolId = credentials?.providerSpecificData?.connectionProxyPoolId || "none";
-    log?.info?.("PROXY", `${provider.toUpperCase()} | ${model} | conn=${connectionName} | pool=${poolId} | vercel-relay=${proxyOptions.vercelRelayUrl}`);
+    log?.info?.("PROXY", `${provider.toUpperCase()} | ${cleanModel} | conn=${connectionName} | pool=${poolId} | vercel-relay=${proxyOptions.vercelRelayUrl}`);
   } else if (proxyOptions.connectionProxyEnabled && proxyOptions.connectionProxyUrl) {
     let maskedProxyUrl = proxyOptions.connectionProxyUrl;
     try {
@@ -289,12 +383,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
     const poolId = credentials?.providerSpecificData?.connectionProxyPoolId || "none";
     const connectionName = credentials?.connectionName || credentials?.connectionId || "unknown";
-    log?.info?.("PROXY", `${provider.toUpperCase()} | ${model} | conn=${connectionName} | pool=${poolId} | url=${maskedProxyUrl}`);
+    log?.info?.("PROXY", `${provider.toUpperCase()} | ${cleanModel} | conn=${connectionName} | pool=${poolId} | url=${maskedProxyUrl}`);
   }
 
   if (proxyOptions.connectionProxyEnabled && proxyOptions.connectionNoProxy) {
     const connectionName = credentials?.connectionName || credentials?.connectionId || "unknown";
-    log?.debug?.("PROXY", `${provider.toUpperCase()} | ${model} | conn=${connectionName} | no_proxy=${proxyOptions.connectionNoProxy}`);
+    log?.debug?.("PROXY", `${provider.toUpperCase()} | ${cleanModel} | conn=${connectionName} | no_proxy=${proxyOptions.connectionNoProxy}`);
   }
 
   // Outbound validation gate. Run format-specific shape checks (which also
@@ -309,10 +403,10 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
         .join("; ");
       const errMsg = `Outbound validation failed for ${finalFormat}: ${summary}`;
       log?.warn?.("VALIDATE", errMsg);
-      trackPendingRequest(model, provider, connectionId, false, true);
-      appendRequestLog({ model, provider, connectionId, status: `FAILED ${HTTP_STATUS.BAD_REQUEST}` }).catch(() => { });
+      trackPendingRequest(cleanModel, provider, connectionId, false, true);
+      appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${HTTP_STATUS.BAD_REQUEST}` }).catch(() => { });
       saveRequestDetail(buildRequestDetail({
-        provider, model, connectionId,
+        provider, model: cleanModel, connectionId,
         latency: { ttft: 0, total: Date.now() - requestStartTime },
         tokens: { prompt_tokens: 0, completion_tokens: 0 },
         request: extractRequestConfig(body, stream),
@@ -348,18 +442,18 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   }
 
   try {
-    const result = await executor.execute({ model, body: translatedBody, stream, credentials, signal: streamController.signal, log, proxyOptions });
+    const result = await executor.execute({ model: cleanUpstreamModel, body: translatedBody, stream, credentials, signal: streamController.signal, log, proxyOptions, requestContext });
     providerResponse = result.response;
     providerUrl = result.url;
     providerHeaders = result.headers;
     finalBody = result.transformedBody;
     reqLogger.logTargetRequest(providerUrl, providerHeaders, finalBody);
   } catch (error) {
-    trackPendingRequest(model, provider, connectionId, false, true);
+    trackPendingRequest(cleanModel, provider, connectionId, false, true);
     if (slotAcquired) releaseSlot(provider);
-    appendRequestLog({ model, provider, connectionId, status: `FAILED ${error.name === "AbortError" ? 499 : HTTP_STATUS.BAD_GATEWAY}` }).catch(() => { });
+    appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${error.name === "AbortError" ? 499 : HTTP_STATUS.BAD_GATEWAY}` }).catch(() => { });
     saveRequestDetail(buildRequestDetail({
-      provider, model, connectionId,
+      provider, model: cleanModel, connectionId,
       latency: { ttft: 0, total: Date.now() - requestStartTime },
       tokens: { prompt_tokens: 0, completion_tokens: 0 },
       request: extractRequestConfig(body, stream),
@@ -373,7 +467,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       streamController.handleError(error);
       return createErrorResult(499, "Request aborted");
     }
-    const errMsg = formatProviderError(error, provider, model, HTTP_STATUS.BAD_GATEWAY);
+    const errMsg = formatProviderError(error, provider, requestedModel, HTTP_STATUS.BAD_GATEWAY);
     console.log(`${COLORS.red}[ERROR] ${errMsg}${COLORS.reset}`);
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, errMsg);
   }
@@ -389,7 +483,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
           try { await onCredentialsRefreshed(newCredentials); } catch (e) { log?.warn?.("TOKEN", `onCredentialsRefreshed failed: ${e.message}`); }
         }
         try {
-          const retryResult = await executor.execute({ model, body: translatedBody, stream, credentials, signal: streamController.signal, log, proxyOptions });
+          const retryResult = await executor.execute({ model: cleanUpstreamModel, body: translatedBody, stream, credentials, signal: streamController.signal, log, proxyOptions, requestContext });
           if (retryResult.response.ok) { providerResponse = retryResult.response; providerUrl = retryResult.url; }
         } catch { log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`); }
       } else {
@@ -402,12 +496,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   // Provider returned error
   if (!providerResponse.ok) {
-    trackPendingRequest(model, provider, connectionId, false, true);
+    trackPendingRequest(cleanModel, provider, connectionId, false, true);
     if (slotAcquired) releaseSlot(provider);
     const { statusCode, message, resetsAtMs } = await parseUpstreamError(providerResponse, executor);
-    appendRequestLog({ model, provider, connectionId, status: `FAILED ${statusCode}` }).catch(() => { });
+    appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${statusCode}` }).catch(() => { });
     saveRequestDetail(buildRequestDetail({
-      provider, model, connectionId,
+      provider, model: cleanModel, connectionId,
       latency: { ttft: 0, total: Date.now() - requestStartTime },
       tokens: { prompt_tokens: 0, completion_tokens: 0 },
       request: extractRequestConfig(body, stream),
@@ -417,17 +511,17 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       status: "error"
     })).catch(() => { });
 
-    const errMsg = formatProviderError(new Error(message), provider, model, statusCode);
+    const errMsg = formatProviderError(new Error(message), provider, requestedModel, statusCode);
     console.log(`${COLORS.red}[ERROR] ${errMsg}${COLORS.reset}`);
     reqLogger.logError(new Error(message), finalBody || translatedBody);
     return createErrorResult(statusCode, errMsg, resetsAtMs);
   }
 
-  const sharedCtx = { provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, pxpipe: pxpipeSummary };
-  const appendLog = (extra) => appendRequestLog({ model, provider, connectionId, ...extra }).catch(() => { });
+  const sharedCtx = { provider, model: cleanModel, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, pxpipe: pxpipeSummary };
+  const appendLog = (extra) => appendRequestLog({ model: cleanModel, provider, connectionId, ...extra }).catch(() => { });
   // Release the concurrency slot when the request completes (covers streaming + non-streaming + disconnect)
   const trackDone = () => {
-    trackPendingRequest(model, provider, connectionId, false);
+    trackPendingRequest(cleanModel, provider, connectionId, false);
     if (slotAcquired) releaseSlot(provider);
   };
 
@@ -437,9 +531,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     if (result) { streamController.handleComplete(); return result; }
   }
 
-  // True non-streaming response
+  // True non-streaming response. When the client asked for streaming but the
+  // provider forced non-streaming upstream, synthesize SSE bytes from the JSON
+  // body inside handleNonStreamingResponse so the SSE client contract holds.
   if (!stream) {
-    const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, reqLogger, toolNameMap, trackDone, appendLog });
+    const streamToClient = clientRequestedStreaming === true;
+    const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, reqLogger, toolNameMap, trackDone, appendLog, streamToClient });
     streamController.handleComplete();
     return result;
   }

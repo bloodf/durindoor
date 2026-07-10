@@ -1,16 +1,20 @@
 // All intercepted domains + URL patterns per tool
 
-const fs = require("fs");
+const { resolveTrustedUnixBinary } = require("./trustedBinaries");
 
 const IS_DEV = process.env.NODE_ENV === "development";
+// Explicit argv marker survives sudo and esbuild's CommonJS wrapper, where
+// require.main may no longer identify the bundled MITM entry module.
+const MITM_ENTRY_ARG = "--durindoor-mitm-entry";
+// Loopback-only OS locks disappear automatically when their owner exits.
+const MITM_START_LOCK_PORT = 20443;
+const ROOT_CA_LOCK_PORT = 20444;
+const MITM_NODE_PORT = 8443;
 
 // Resolve lsof absolute path — packaged apps / sudo secure_path may strip /usr/sbin from PATH
 const LSOF_BIN = (() => {
   if (process.platform === "win32") return null;
-  for (const p of ["/usr/sbin/lsof", "/usr/bin/lsof", "/sbin/lsof"]) {
-    try { fs.accessSync(p, fs.constants.X_OK); return p; } catch { /* try next */ }
-  }
-  return "lsof"; // last-resort fallback (depends on PATH)
+  return resolveTrustedUnixBinary("lsof", { required: false });
 })();
 
 const TARGET_HOSTS = [
@@ -86,4 +90,4 @@ function getToolForHost(host) {
   return null;
 }
 
-module.exports = { IS_DEV, LSOF_BIN, TARGET_HOSTS, URL_PATTERNS, MODEL_SYNONYMS, MODEL_PATTERNS, MODEL_NO_MAP, LOG_BLACKLIST_URL_PARTS, getToolForHost };
+module.exports = { IS_DEV, LSOF_BIN, MITM_ENTRY_ARG, MITM_START_LOCK_PORT, ROOT_CA_LOCK_PORT, MITM_NODE_PORT, TARGET_HOSTS, URL_PATTERNS, MODEL_SYNONYMS, MODEL_PATTERNS, MODEL_NO_MAP, LOG_BLACKLIST_URL_PARTS, getToolForHost };

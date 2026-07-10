@@ -112,10 +112,12 @@ describe("cached-token end-to-end (persist + aggregate + cost)", () => {
     expect(new Set(rows.map(([, row]) => row.apiKeyKey)).size).toBe(2);
     expect(new Set(rows.map(([, row]) => row.keyName)).size).toBe(2);
     for (const [key, row] of rows) {
-      expect(key).toMatch(/^sha256:[0-9a-f]+\|gpt-5\.5\|codex$/);
+      expect(key).toMatch(/^api-key:deleted-[12]\|gpt-5\.5\|codex$/);
       expect(key).not.toContain(keyA);
       expect(key).not.toContain(keyB);
-      expect(row.apiKeyMasked).toBe("sk-samep***");
+      expect(row.apiKeyMasked).toBe("***");
+      expect(row.apiKeyKey).toMatch(/^api-key:deleted-[12]$/);
+      expect(row.keyName).toMatch(/^Deleted API key [12]$/);
       expect(row.requests).toBe(1);
     }
   });

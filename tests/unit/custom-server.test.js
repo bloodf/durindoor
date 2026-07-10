@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { createRequire } from "module";
 import path from "path";
 import fs from "fs";
@@ -27,8 +27,8 @@ describe("Next.js Server Process Title", () => {
     };
 
     try {
-      // Require custom-server.js
-      require("../../custom-server.js");
+      const { setProcessTitle } = require("../../custom-server.js");
+      setProcessTitle();
 
       // Verify process.title is updated
       expect(process.title).toBe("9router next-server");
@@ -58,5 +58,26 @@ describe("Next.js Server Process Title", () => {
         fs.unlinkSync(serverPath);
       } catch {}
     }
+  });
+
+  it("dispatches a mutating request once when proof lookup or the handler rejects", async () => {
+    const fakeHttp = {
+      createServer: vi.fn((handler) => ({ handler })),
+    };
+    const verifyPeerOwner = vi.fn(async () => { throw new Error("lookup failed"); });
+    const handler = vi.fn(async () => { throw new Error("application failed"); });
+    const { installRequestWrapper } = require("../../custom-server.js");
+    installRequestWrapper({ httpModule: fakeHttp, secret: "a".repeat(64), verifyPeerOwner });
+    const server = fakeHttp.createServer(handler);
+    const response = { writeHead: vi.fn(), end: vi.fn(), headersSent: false, writableEnded: false };
+    server.handler({
+      method: "POST",
+      url: "/api/cli-tools/antigravity-mitm",
+      headers: {},
+      socket: { localAddress: "127.0.0.1", remoteAddress: "127.0.0.1", remotePort: 45000 },
+    }, response);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(handler).toHaveBeenCalledOnce();
+    expect(response.end).toHaveBeenCalledWith("Internal Server Error");
   });
 });

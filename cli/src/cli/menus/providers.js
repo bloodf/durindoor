@@ -172,15 +172,43 @@ function countConnectionsByProvider(connections) {
   return counts;
 }
 
+/**
+ * Determines whether a connection supports the TUI Auto-ping toggle.
+ * Auto-ping is currently available only for OAuth Claude and Codex connections
+ * and is controlled by the `claudeAutoPing` / `codexAutoPing` settings keys.
+ * @param {Object} connection - Connection object.
+ * @param {string} connection.authType - "oauth" or "apikey".
+ * @param {string} providerId - Provider ID.
+ * @returns {boolean}
+ */
 function supportsConnectionAutoPing(connection, providerId) {
-  return Boolean(AUTO_PING_SETTINGS_KEYS[providerId]) && connection?.authType === "oauth";
+  return Boolean(AUTO_PING_SETTINGS_KEYS[providerId])
+    && connection?.authType === "oauth"
+    && connection?.isActive !== false;
 }
 
+/**
+ * Reads whether Auto-ping is enabled for a specific connection.
+ * @param {Object} settings - Settings object returned by the API.
+ * @param {string} providerId - Provider ID (claude or codex).
+ * @param {string} connectionId - Connection ID.
+ * @returns {boolean}
+ */
 function isConnectionAutoPingOn(settings, providerId, connectionId) {
   const settingsKey = AUTO_PING_SETTINGS_KEYS[providerId];
   return settings?.[settingsKey]?.connections?.[connectionId] === true;
 }
 
+/**
+ * Builds the connection header shown in the TUI actions menu, including
+ * the current Auto-ping state when the provider/connection supports it.
+ * @param {string} name - Connection display name.
+ * @param {string} status - Connection status string.
+ * @param {string} providerId - Provider ID.
+ * @param {Object} connection - Connection object.
+ * @param {Object} [data={}] - Extra data from the menu refresh hook (settings / settingsError).
+ * @returns {string}
+ */
 function buildConnectionHeader(name, status, providerId, connection, data = {}) {
   const lines = [`Connection: ${name}`, `Status: ${status}`];
 
@@ -196,39 +224,46 @@ function buildConnectionHeader(name, status, providerId, connection, data = {}) 
   return lines.join("\n");
 }
 
-async function toggleConnectionAutoPing(connection, providerId, settings = null) {
+/**
+ * Toggles Auto-ping for an OAuth Claude or Codex connection by updating
+ * the matching settings key (`claudeAutoPing` or `codexAutoPing`).
+ * @param {Object} connection - Connection object.
+ * @param {string} providerId - Provider ID.
+ * @param {Object|null} [settings=null] - Current settings, or null to fetch them.
+ * @returns {Promise<void>}
+ */
+async function toggleConnectionAutoPing(connection, providerId, _settings = null, deps = {}) {
+  const apiClient = deps.api || api;
+  const report = deps.showStatus || showStatus;
+  const wait = deps.pause || pause;
   const settingsKey = AUTO_PING_SETTINGS_KEYS[providerId];
-  if (!settingsKey) return;
-
-  let currentSettings = settings;
-  if (!currentSettings) {
-    const settingsRes = await api.getSettings();
-    if (!settingsRes.success) {
-      showStatus(`Failed to load settings: ${settingsRes.error}`, "error");
-      await pause();
-      return;
-    }
-    currentSettings = settingsRes.data || {};
+  if (!settingsKey || !connection?.id || !supportsConnectionAutoPing(connection, providerId)) {
+    return { success: false, error: "Connection is not eligible for auto-ping" };
   }
 
-  const currentCfg = currentSettings[settingsKey] || {};
-  const currentConnections = currentCfg.connections || {};
+  // Always refetch at click time; the menu snapshot can be stale while the
+  // user is selecting an action. The server performs the atomic single-entry
+  // merge so concurrent clients cannot overwrite sibling preferences.
+  const settingsRes = await apiClient.getSettings();
+  if (!settingsRes.success) {
+    report(`Failed to load settings: ${settingsRes.error}`, "error");
+    await wait();
+    return { success: false, error: settingsRes.error };
+  }
+  const currentSettings = settingsRes.data || {};
+  const currentConnections = currentSettings[settingsKey]?.connections || {};
   const next = currentConnections[connection.id] !== true;
-  const nextCfg = {
-    ...currentCfg,
-    connections: {
-      ...currentConnections,
-      [connection.id]: next,
-    },
-  };
 
-  const result = await api.updateSettings({ [settingsKey]: nextCfg });
+  const result = await apiClient.updateConnectionAutoPing(connection.id, next);
   if (result.success) {
-    showStatus(`Auto-ping ${next ? "enabled" : "disabled"}`, "success");
+    report(`Auto-ping ${next ? "enabled" : "disabled"}`, "success");
   } else {
-    showStatus(`Failed to update auto-ping: ${result.error}`, "error");
+    report(`Failed to update auto-ping: ${result.error}`, "error");
   }
-  await pause();
+  await wait();
+  return result.success
+    ? { success: true, enabled: next, data: result.data }
+    : { success: false, error: result.error };
 }
 
 /**
@@ -399,7 +434,7 @@ async function showConnectionActions(connection, providerId, breadcrumb = []) {
         return `Auto-ping: ${on ? "ON" : "OFF"} → toggle`;
       },
       action: async (data) => {
-        await toggleConnectionAutoPing(connection, providerId, data?.settingsError ? null : (data?.settings || null));
+        await toggleConnectionAutoPing(connection, providerId);
         return true;
       }
     }] : []),
@@ -932,4 +967,12 @@ async function handleEditCustomNode(node) {
   await pause();
 }
 
-module.exports = { showProvidersMenu };
+module.exports = {
+  showProvidersMenu,
+  __test__: {
+    supportsConnectionAutoPing,
+    isConnectionAutoPingOn,
+    buildConnectionHeader,
+    toggleConnectionAutoPing,
+  },
+};

@@ -70,20 +70,21 @@ function writeJsonFile(sessionPath, filename, data) {
 }
 
 const REDACTED = "[redacted]";
-const SENSITIVE_HEADER_RE = /(?:authorization|auth|cookie|token|secret|signature|password|credential|(?:^|[-_])key(?:$|[-_]))/i;
-const SENSITIVE_QUERY_RE = /^(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|api[-_]?key|key|auth|authorization|cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)$/i;
-const SENSITIVE_FIELD_RE = /^(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)$/i;
+const SESSION_METADATA_PATTERN = "session[-_]?id|chatgpt[-_]?account[-_]?id|prompt[-_]?cache[-_]?key";
+const SENSITIVE_HEADER_RE = new RegExp(`(?:authorization|auth|cookie|token|secret|signature|password|credential|(?:^|[-_])key(?:$|[-_])|${SESSION_METADATA_PATTERN})`, "i");
+const SENSITIVE_QUERY_RE = new RegExp(`^(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|api[-_]?key|key|auth|authorization|cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig|${SESSION_METADATA_PATTERN})$`, "i");
+const SENSITIVE_FIELD_RE = new RegExp(`^(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig|${SESSION_METADATA_PATTERN})$`, "i");
 
 export function maskSensitiveText(value) {
   return String(value ?? "")
     .replace(/\bBearer\s+\S+/gi, "Bearer [redacted]")
     .replace(
-      /("(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)"\s*:\s*")[^"]*"/gi,
+      /("(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig|session[-_]?id|chatgpt[-_]?account[-_]?id|prompt[-_]?cache[-_]?key)"\s*:\s*")[^"]*"/gi,
       '$1[redacted]"',
     )
-    .replace(/([A-Za-z0-9_-]*(?:auth(?:orization)?|cookie|token|key|secret|signature|password|credential)[A-Za-z0-9_-]*\s*:\s*)[^\r\n]+/gi, "$1[redacted]")
+    .replace(/([A-Za-z0-9_-]*(?:auth(?:orization)?|cookie|token|key|secret|signature|password|credential|session[-_]?id|chatgpt[-_]?account[-_]?id|prompt[-_]?cache[-_]?key)[A-Za-z0-9_-]*\s*:\s*)[^\r\n]+/gi, "$1[redacted]")
     .replace(
-      /((?:[?&;#]\s*|^)(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|api[-_]?key|key|auth|authorization|cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)=)[^&;\s]+/gi,
+      /((?:[?&;#]\s*|^)(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|api[-_]?key|key|auth|authorization|cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig|session[-_]?id|chatgpt[-_]?account[-_]?id|prompt[-_]?cache[-_]?key)=)[^&;\s]+/gi,
       "$1[redacted]",
     );
 }
@@ -141,7 +142,7 @@ export function maskSensitiveUrl(value) {
     return `${parsed.pathname}${parsed.search}${parsed.hash}`;
   } catch {
     return raw.replace(
-      /([?&#](?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|api[-_]?key|key|auth|authorization|cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)=)[^&#\s]*/gi,
+      /([?&#](?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|api[-_]?key|key|auth|authorization|cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig|session[-_]?id|chatgpt[-_]?account[-_]?id|prompt[-_]?cache[-_]?key)=)[^&#\s]*/gi,
       `$1${REDACTED}`,
     );
   }

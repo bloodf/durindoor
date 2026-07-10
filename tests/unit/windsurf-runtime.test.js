@@ -43,6 +43,8 @@ function textFromSseLine(line) {
 }
 
 describe("Windsurf runtime wire helpers", () => {
+  // This first import initializes the full executor graph. Under the complete
+  // suite's worker load it can exceed Vitest's 5 s default before assertions.
   it("normalizes OmniRoute model aliases and passes unknown models through", async () => {
     const { __windsurfInternals } = await import("../../open-sse/executors/windsurf.js");
 
@@ -51,7 +53,7 @@ describe("Windsurf runtime wire helpers", () => {
     expect(__windsurfInternals.resolveWsModelId("claude-sonnet-4.6")).toBe("claude-sonnet-4-6");
     expect(__windsurfInternals.resolveWsModelId("gemini-2.5-pro")).toBe("MODEL_GOOGLE_GEMINI_2_5_PRO");
     expect(__windsurfInternals.resolveWsModelId("some-unknown-model")).toBe("some-unknown-model");
-  });
+  }, 15_000);
 
   it("converts OpenAI text messages into Windsurf chat messages", async () => {
     const { __windsurfInternals } = await import("../../open-sse/executors/windsurf.js");

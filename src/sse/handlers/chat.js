@@ -17,8 +17,10 @@ import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { handleComboChat, handleFusionChat } from "open-sse/services/combo.js";
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
+import { handlePonytailCommands, DEFAULT_PONYTAIL_HELP, resolvePonytailStream } from "open-sse/utils/tokenSaverBridge.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
+import { detectFormat } from "open-sse/services/provider.js";
 import { isAntigravityCapacityError } from "open-sse/services/accountFallback.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
@@ -140,13 +142,15 @@ export async function handleChat(request, clientRawRequest = null) {
     return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
   }
 
-  // Per-key combo access control
+  // Per-key combo access control. Retain the authenticated record so local
+  // commands can expose only this key's own lifetime totals.
+  let authenticatedKeyRecord = null;
   if (apiKey && modelStr) {
-    const keyData = await getApiKeyByKey(apiKey);
-    if (keyData && Array.isArray(keyData.allowedCombos) && keyData.allowedCombos.length > 0) {
+    authenticatedKeyRecord = await getApiKeyByKey(apiKey);
+    if (authenticatedKeyRecord && Array.isArray(authenticatedKeyRecord.allowedCombos) && authenticatedKeyRecord.allowedCombos.length > 0) {
       const comboCheck = await getComboModels(modelStr);
-      if (comboCheck && !keyData.allowedCombos.includes(modelStr)) {
-        log.warn("AUTH", `API key "${keyData.name}" not allowed to access combo "${modelStr}"`);
+      if (comboCheck && !authenticatedKeyRecord.allowedCombos.includes(modelStr)) {
+        log.warn("AUTH", `API key "${authenticatedKeyRecord.name}" not allowed to access combo "${modelStr}"`);
         return errorResponse(HTTP_STATUS.FORBIDDEN, `Access denied: combo "${modelStr}" is not allowed for this API key`);
       }
     }
@@ -165,6 +169,30 @@ export async function handleChat(request, clientRawRequest = null) {
   if (!modelStr) {
     log.warn("CHAT", "Missing model");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
+  }
+
+  // Ponytail slash commands are local-only: respond before any account/credential lookup.
+  const sourceFormat = detectFormatByEndpoint(
+    clientRawRequest?.endpoint || new URL(request.url).pathname,
+    body,
+  ) || detectFormat(body);
+  const acceptHeader = clientRawRequest?.headers?.accept || "";
+  const ponytailResponse = await handlePonytailCommands(body, modelStr, {
+    fetchStats: authenticatedKeyRecord
+      ? async () => {
+          const { getApiKeyUsageTotals } = await import("@/lib/localDb");
+          return {
+            ...(await getApiKeyUsageTotals(authenticatedKeyRecord.id)),
+            scope: "this API key",
+          };
+        }
+      : null,
+    helpText: DEFAULT_PONYTAIL_HELP,
+    sourceFormatOverride: sourceFormat,
+    streamOverride: resolvePonytailStream(body, sourceFormat, acceptHeader),
+  });
+  if (ponytailResponse?.success && ponytailResponse.response) {
+    return ponytailResponse.response;
   }
 
   // Bypass naming/warmup requests before combo rotation to avoid wasting rotation slots

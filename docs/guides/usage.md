@@ -28,6 +28,22 @@ This guide shows how to use DurinDoor after it is installed and running.
 | Token Saver | Configure request compression helpers such as Headroom. |
 | MITM | Configure optional IDE traffic interception. |
 
+## Ponytail Local Commands
+
+Ponytail provides local commands that supported chat clients can send as an
+exact text-only final user turn:
+
+- `/ponytail-help` or `/ponytail help` returns the Ponytail levels and ladder.
+- `/ponytail-gain` or `/ponytail gain` returns lifetime totals for the
+  authenticated DurinDoor API key.
+
+Commands work with Chat Completions, Responses, Claude, and Gemini request
+shapes. DurinDoor replies in that client's native JSON or streaming protocol
+without selecting a provider account. A command mixed with an image, tool
+result, or other non-text block is treated as an ordinary model request. When
+no stored API-key identity is available, `gain` points to the dashboard instead
+of exposing installation-wide usage.
+
 ## Create an API Key
 
 Use the dashboard to create a DurinDoor API key. Save the key immediately and use it in client tools. The creation confirmation is the only response that shows the complete secret; later lists, details, the dashboard, and the CLI show a masked identifier only.

@@ -3,6 +3,7 @@ const path = require("path");
 const zlib = require("zlib");
 const { DATA_DIR } = require("./paths");
 const { LOG_BLACKLIST_URL_PARTS } = require("./config");
+const { sanitizeHeaders } = require("./sanitizeHeaders");
 
 function time() {
   return new Date().toLocaleTimeString("en-US", { hour12: false });
@@ -12,12 +13,19 @@ const log = (msg) => console.log(`[${time()}] [MITM] ${msg}`);
 const err = (msg) => console.error(`[${time()}] ❌ [MITM] ${msg}`);
 
 const DUMP_DIR = path.join(DATA_DIR, "logs", "mitm");
-if (!fs.existsSync(DUMP_DIR)) fs.mkdirSync(DUMP_DIR, { recursive: true });
+
+function ensureDumpDir() {
+  if (!fs.existsSync(DUMP_DIR)) fs.mkdirSync(DUMP_DIR, { recursive: true });
+  const stat = fs.lstatSync(DUMP_DIR);
+  if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error(`Unsafe MITM dump directory: ${DUMP_DIR}`);
+}
 
 // Clear all files inside DUMP_DIR (called on MITM server start to avoid unbounded growth)
 function clearDumpDir() {
   try {
     if (!fs.existsSync(DUMP_DIR)) return;
+    const stat = fs.lstatSync(DUMP_DIR);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) return;
     for (const f of fs.readdirSync(DUMP_DIR)) {
       try { fs.rmSync(path.join(DUMP_DIR, f), { recursive: true, force: true }); } catch { /* ignore */ }
     }
@@ -47,20 +55,11 @@ function decodeBody(buf, encoding) {
   return buf;
 }
 
-const SENSITIVE_HEADERS = new Set(["set-cookie", "cookie", "authorization", "proxy-authorization"]);
-
-function sanitizeHeaders(headers) {
-  const copy = {};
-  for (const [k, v] of Object.entries(headers || {})) {
-    copy[k] = SENSITIVE_HEADERS.has(k.toLowerCase()) ? "[REDACTED]" : v;
-  }
-  return copy;
-}
-
 // Save raw request: method + url + headers + body
 function dumpRequest(req, bodyBuffer, tag = "raw") {
   if (isBlacklisted(req.url)) return null;
   try {
+    ensureDumpDir();
     const ts = new Date().toISOString().replace(/[:.]/g, "-");
     const slug = slugify((req.headers.host || "") + req.url);
     const file = path.join(DUMP_DIR, `${ts}_${tag}_${slug}.req.json`);
@@ -95,6 +94,7 @@ function createResponseDumper(req, tag = "raw") {
     },
     end: () => {
       try {
+        ensureDumpDir();
         const raw = Buffer.concat(chunks);
         const enc = headers["content-encoding"] || headers["Content-Encoding"];
         const decoded = decodeBody(raw, enc);

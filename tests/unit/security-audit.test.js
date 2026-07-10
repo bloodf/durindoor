@@ -215,35 +215,40 @@ describe("AUDIT-018: XSS escaping in OAuth callback", () => {
 });
 
 // ============================================================
-// AUDIT-004 (#1963): TOCTOU race - atomic lock file
+// AUDIT-004 (#1963): TOCTOU-free OS-backed startup lock
 // ============================================================
-describe("AUDIT-004: Atomic lock file for MITM startup", () => {
-  it("manager.js should define LOCK_FILE constant", () => {
+describe("AUDIT-004: OS-backed MITM startup lock", () => {
+  it("manager.js should acquire the configured loopback socket lock", () => {
     const source = fs.readFileSync(
       path.resolve(repoRoot, "src/mitm/manager.js"),
       "utf-8"
     );
-    expect(source).toContain("LOCK_FILE");
-    expect(source).toContain(".mitm.lock");
+    expect(source).toContain("acquireSocketLock({ port: MITM_START_LOCK_PORT })");
+    expect(source).not.toContain(".mitm.lock");
   });
 
-  it("should use O_EXCL flag (wx) for atomic creation", () => {
+  it("should bind only loopback with an exclusive listener", () => {
     const source = fs.readFileSync(
-      path.resolve(repoRoot, "src/mitm/manager.js"),
+      path.resolve(repoRoot, "src/mitm/startLock.js"),
       "utf-8"
     );
-    expect(source).toContain('"wx"');
-    expect(source).toContain("EEXIST");
+    expect(source).toContain('host = "127.0.0.1"');
+    expect(source).toContain("exclusive: true");
+    expect(source).toContain("EADDRINUSE");
   });
 
-  it("should clean up lock file on all exit paths", () => {
-    const source = fs.readFileSync(
+  it("should release through the listener handle without lock-file unlink", () => {
+    const managerSource = fs.readFileSync(
       path.resolve(repoRoot, "src/mitm/manager.js"),
       "utf-8"
     );
-    const matches = source.match(/unlinkSync\(LOCK_FILE\)/g);
-    expect(matches).not.toBeNull();
-    expect(matches.length).toBeGreaterThanOrEqual(4);
+    const lockSource = fs.readFileSync(
+      path.resolve(repoRoot, "src/mitm/startLock.js"),
+      "utf-8"
+    );
+    expect(managerSource).toContain("release: releaseSocketLock");
+    expect(managerSource).not.toContain("unlinkSync(LOCK_FILE)");
+    expect(lockSource).toContain("owner.server.close");
   });
 });
 
@@ -294,7 +299,7 @@ describe("AUDIT-001: Synchronous restart guard", () => {
     const maxRestartsIdx = funcBody.indexOf("Max restart attempts reached");
     expect(maxRestartsIdx).toBeGreaterThan(-1);
 
-    const afterMax = funcBody.substring(maxRestartsIdx, maxRestartsIdx + 200);
+    const afterMax = funcBody.substring(maxRestartsIdx, maxRestartsIdx + 600);
     expect(afterMax).toContain("mitmIsRestarting = false");
   });
 });

@@ -6,7 +6,10 @@ const path = require("path");
 const BUILD_CONFIG = {
   bundle: true,
   minify: true,
-  cleanPlainFiles: true,
+  // custom-server.js and the bundled Next manager load peer-owner, control
+  // proof, and lifecycle modules from this directory at runtime. Preserve the
+  // copied source closure and overwrite only server.js with its portable bundle.
+  cleanPlainFiles: false,
 };
 // ─────────────────────────────────────────────────────────
 
@@ -40,7 +43,7 @@ async function buildEntry(entry) {
       bundle: true,
       minify: BUILD_CONFIG.minify,
       platform: "node",
-      target: "node18",
+      target: "node20",
       external: EXTERNALS,
       plugins: [buildPlugin],
       outfile: output,

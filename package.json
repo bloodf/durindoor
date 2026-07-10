@@ -9,12 +9,12 @@
     "npm": "10.8.2"
   },
   "scripts": {
-    "dev": "next dev --webpack --port 20127",
+    "dev": "node scripts/next-owner-server.cjs --dev --port 20127",
     "build": "node scripts/build-app.mjs",
-    "start": "next start",
-    "dev:bun": "bun --bun next dev --webpack --port 20127",
-    "build:bun": "bun --bun next build --webpack",
-    "start:bun": "bun ./.next/standalone/server.js",
+    "start": "node .next/standalone/custom-server.js",
+    "dev:bun": "bun scripts/next-owner-server.cjs --dev --port 20127",
+    "build:bun": "bun scripts/build-app.mjs",
+    "start:bun": "bun ./.next/standalone/custom-server.js",
     "cli:pack": "npm --prefix cli run pack:cli",
     "cli:publish": "npm --prefix cli run publish:cli",
     "lint": "eslint src",

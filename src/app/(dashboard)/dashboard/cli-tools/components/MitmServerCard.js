@@ -23,9 +23,6 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
 
   const serverIsWindows = status?.isWin === true;
   const canRunWithoutPassword = serverIsWindows || status?.hasCachedPassword || status?.needsSudoPassword === false;
-  const isAdmin = status?.isAdmin !== false;
-  // No privilege: not admin/root AND (Win OR no cached sudo password)
-  const noPrivilege = !isAdmin && (serverIsWindows || (!status?.hasCachedPassword && status?.needsSudoPassword !== false));
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -233,8 +230,8 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
             ) : (
               <button
                 onClick={() => handleAction("start")}
-                disabled={loading || !status || (serverIsWindows && !isAdmin)}
-                title={serverIsWindows && !isAdmin ? "Administrator required" : undefined}
+                disabled={loading || !status || (serverIsWindows && status?.isAdmin === true)}
+                title={serverIsWindows && status?.isAdmin === true ? "Restart DurinDoor as a standard user" : undefined}
                 className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-50 sm:w-auto sm:py-1.5"
               >
                 <span className="material-symbols-outlined text-[16px]">play_circle</span>
@@ -254,11 +251,17 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
             </div>
           )}
 
-          {/* Windows admin warning */}
-          {serverIsWindows && !isAdmin && (
+          {/* Windows privilege boundary */}
+          {serverIsWindows && status?.isAdmin === true && (
             <div className="flex items-center gap-2 px-2 py-1.5 rounded text-xs bg-red-500/10 text-red-600 border border-red-500/20">
               <span className="material-symbols-outlined text-[14px]">shield_lock</span>
-              <span>Administrator required — restart DurinDoor as Administrator to use MITM</span>
+              <span>Restart DurinDoor as a standard user. Only the firewall, certificate, and hosts changes request UAC.</span>
+            </div>
+          )}
+          {serverIsWindows && status?.isAdmin === false && (
+            <div className="flex items-center gap-2 px-2 py-1.5 rounded text-xs bg-yellow-500/10 text-yellow-600 border border-yellow-500/20">
+              <span className="material-symbols-outlined text-[14px]">verified_user</span>
+              <span>The proxy stays unprivileged; Windows may show narrow UAC prompts for system configuration.</span>
             </div>
           )}
         </div>

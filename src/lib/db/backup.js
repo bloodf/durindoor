@@ -25,9 +25,19 @@ export function makeBackupDir(label) {
   ensureDirs();
   const ver = getAppVersion();
   const slug = `${label}-${ver}-${timestampSlug()}`;
-  const dir = path.join(currentBackupsDir(), slug);
-  fs.mkdirSync(dir, { recursive: true });
-  return dir;
+  // ponytail: timestampSlug() has 1s resolution; same-second calls collide.
+  // Upgrade path: millisecond/microsecond slug. Atomic-mkdir retry keeps callers safe now.
+  const base = currentBackupsDir();
+  for (let n = 0; ; n += 1) {
+    const dir = n === 0 ? path.join(base, slug) : path.join(base, `${slug}-${n}`);
+    try {
+      fs.mkdirSync(dir); // non-recursive: fails with EEXIST if taken, atomic under concurrency
+      return dir;
+    } catch (e) {
+      if (e?.code === "EEXIST") continue;
+      throw e;
+    }
+  }
 }
 
 export function backupFile(srcPath, destDir, destName = null) {

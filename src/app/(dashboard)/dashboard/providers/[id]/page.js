@@ -198,7 +198,12 @@ export default function ProviderDetailPage() {
   const isAnthropicCompatible = isAnthropicCompatibleProvider(providerId);
   const isCompatible = isOpenAICompatible || isAnthropicCompatible;
   const hasDualAuthModes = !isCompatible && isOAuth && supportsApiKeyAuth;
-  const oauthConnectionLabel = providerId === "xai" ? "Grok Build OAuth" : "OAuth";
+  const oauthConnectionLabel =
+    providerId === "xai"
+      ? "Grok Build OAuth"
+      : providerId === "grok-cli"
+        ? "Grok CLI Device Login"
+        : "OAuth";
   const apiKeyConnectionLabel = providerId === "xai" ? "xAI API Key" : "API Key";
   // Resolve suffix "(level)" for a model when a thinking level is picked and the model supports it.
   const resolveThinkingSuffix = (modelId) => {

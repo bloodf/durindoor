@@ -2,10 +2,11 @@ import { CLAUDE_CLI_SPOOF_HEADERS } from "../shared.js";
 
 export default {
   id: "agentrouter",
+  alias: "agentrouter",
   priority: 12,
   display: {
     name: "AgentRouter",
-    icon: "route",
+    icon: "agentrouter",
     color: "#D97757",
     website: "https://agentrouter.org",
     notice: {
@@ -18,6 +19,7 @@ export default {
     format: "claude",
     urlSuffix: "?beta=true",
     headers: { ...CLAUDE_CLI_SPOOF_HEADERS },
+    defaultContextLength: 128000,
     auth: {
       apiKey: {
         header: "x-api-key",
@@ -34,4 +36,5 @@ export default {
     { id: "glm-5.1", name: "GLM 5.1" },
     { id: "deepseek-v3.2", name: "DeepSeek V3.2" },
   ],
+  passthroughModels: true,
 };

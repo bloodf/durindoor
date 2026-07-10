@@ -28,7 +28,8 @@ export async function enableTailscale(localPort = 20128) {
   const token = svc.cancelToken;
 
   try {
-    const sudoPass = getCachedPassword() || await loadEncryptedPassword() || "";
+    await loadEncryptedPassword();
+    const sudoPass = getCachedPassword() || "";
     await startDaemonWithPassword(sudoPass);
     console.log("[Tailscale] daemon ready");
     throwIfCancelled(token);

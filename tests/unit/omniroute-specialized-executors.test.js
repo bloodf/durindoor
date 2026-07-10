@@ -67,6 +67,7 @@ describe("OmniRoute specialized provider ports", () => {
     );
 
     expect(executor).toBeInstanceOf(PollinationsExecutor);
+    expect(getExecutor("pol")).toBeInstanceOf(PollinationsExecutor);
     expect(executor.buildUrl("openai", false)).toBe(
       "https://gen.pollinations.ai/v1/chat/completions"
     );
@@ -498,9 +499,11 @@ describe("OmniRoute specialized provider ports", () => {
     const client = new AmeliaClient({ webSocketFactory: () => ws, connectTimeoutMs: 50 });
     client.session = { cookieHeader: "session=abc", csrfToken: "token", userId: "u1" };
     try {
-      const connectPromise = client.connect();
+      // Attach the rejection handler before advancing fake timers. Otherwise
+      // Node reports a transient unhandled rejection in larger suite batches.
+      const rejection = expect(client.connect()).rejects.toThrow("WS connect timeout");
       await vi.advanceTimersByTimeAsync(100);
-      await expect(connectPromise).rejects.toThrow("WS connect timeout");
+      await rejection;
       expect(close).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();

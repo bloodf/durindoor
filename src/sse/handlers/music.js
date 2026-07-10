@@ -1,9 +1,10 @@
-import { getProviderCredentials, extractApiKey, isValidApiKey, markAccountUnavailable } from "../services/auth.js";
+import { getProviderCredentials, extractApiKey, evaluateApiKeyAuth, markAccountUnavailable } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { handleMusicGenerationCore } from "open-sse/handlers/musicGenerationCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
+import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 
 export async function handleMusicGeneration(request) {
   let body;
@@ -15,16 +16,20 @@ export async function handleMusicGeneration(request) {
 
   const settings = await getSettings();
   const apiKey = extractApiKey(request);
-  if (settings.requireApiKey) {
-    if (!apiKey) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
-    if (!(await isValidApiKey(apiKey))) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
-  }
+  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true });
+  if (!apiKeyAuth.ok) return errorResponse(
+    HTTP_STATUS.UNAUTHORIZED,
+    apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
+  );
 
   if (!body.model) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   const preferredConnectionId = request.headers.get("x-connection-id") || null;
   const modelInfo = await getModelInfo(body.model);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
   const { provider, model } = modelInfo;
+  const policyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`);
+  if (policyError) return policyError;
+  const estimatedTokens = String(body.prompt || "").length / 4;
 
   const excludeConnectionIds = new Set();
   let lastError = null;
@@ -44,7 +49,7 @@ export async function handleMusicGeneration(request) {
     }
 
     const result = await handleMusicGenerationCore({ provider, model, body, credentials });
-    if (result.success) return result.response;
+    if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model);
     if (shouldFallback) {

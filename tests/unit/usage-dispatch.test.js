@@ -36,4 +36,23 @@ describe("usage dispatch", () => {
       expect(res?.message).not.toBe(`Usage API not implemented for ${provider}`);
     }
   });
+
+  it("passes Codex provider metadata to the usage request", async () => {
+    const { proxyAwareFetch } = await import("../../open-sse/utils/proxyFetch.js");
+    const { getUsageForProvider } = await load();
+
+    await getUsageForProvider({
+      provider: "codex",
+      accessToken: "token",
+      providerSpecificData: { accountId: "account-usage" },
+    }, { strictProxy: false });
+
+    expect(proxyAwareFetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        headers: expect.objectContaining({ "ChatGPT-Account-ID": "account-usage" }),
+      }),
+      { strictProxy: false },
+    );
+  });
 });

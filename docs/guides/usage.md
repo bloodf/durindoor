@@ -30,13 +30,23 @@ This guide shows how to use DurinDoor after it is installed and running.
 
 ## Create an API Key
 
-Use the dashboard to create a DurinDoor API key. Save the key immediately and use it in client tools.
+Use the dashboard to create a DurinDoor API key. Save the key immediately and use it in client tools. The creation confirmation is the only response that shows the complete secret; later lists, details, the dashboard, and the CLI show a masked identifier only.
 
 ```text
 Dashboard -> Endpoint or Settings -> API Keys -> Create Key
 ```
 
 Use one key per tool or user so keys can be revoked independently.
+
+Each key can use one of these expiry choices:
+
+- Never expires
+- 1, 7, 30, or 90 days from creation
+- A custom local date and time
+
+The dashboard and CLI convert custom local input to an absolute UTC timestamp before storage. They display the date in the operator's local timezone. Edit a key and choose **Never expires** to clear an existing expiry. An expiry is enforced using server time; the key is expired as soon as server time equals the stored timestamp.
+
+Expired keys remain visible for management and backup, but cannot authenticate. Clients receive the same generic invalid-key response used for other invalid credentials. Paste the secret you saved at creation into integration and media-test forms; management APIs cannot retrieve it later.
 
 ## Choose a Model
 

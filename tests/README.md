@@ -1,4 +1,4 @@
-# 9Router Test Suite
+# DurinDoor Test Suite
 
 Vitest suite covering the open-sse handlers, translator, provider executors, DB
 layer, and security audits (plus the original `/v1/embeddings` unit tests).
@@ -11,7 +11,7 @@ installed, then install the test dependencies:
 
 ```bash
 npm ci                  # repo root — installs open-sse/src deps + better-sqlite3
-cd tests && npm install # installs vitest into tests/node_modules
+cd tests && npm ci      # installs the locked Vitest dependency graph
 ```
 
 ## Running Tests
@@ -22,21 +22,29 @@ npm test           # full suite, verbose reporter
 npm run test:watch # watch mode
 ```
 
-## CI gate (no-regression)
+## CI gate (zero-failure)
 
-CI does **not** require every test to pass. A curated set of known failures
-(`__baseline__/known-fails.txt`) is tolerated — some are intentional
-"bug-exposing" TODO tests. The gate only fails when a test that is **not** in
-that list fails (a real pass→fail regression):
+The recovery baseline is empty. CI requires direct Vitest success and treats
+any raw failure as a regression; `__baseline__/known-fails.txt` must remain
+empty. Bug-exposure tests that intentionally use `it.fails` remain governed by
+the translator convention in `AGENTS.md` and are not baseline exceptions.
 
 ```bash
 cd tests
 npm run test:ci    # runs the suite (JSON) then the no-regression gate
 ```
 
-`test:ci` writes JSON results to `tests/.test-results.json` (gitignored) and runs
-`__baseline__/verify-no-regression.mjs`, which exits non-zero on any regression.
-This is what the GitHub Actions workflow (`.github/workflows/test.yml`) runs.
+`test:ci` fails closed on startup, collection, runtime, stale-report, and parse
+errors. It deletes old reports first, writes `.test-results.json` and
+`.test-results.junit.xml`, and reports raw failures, known failures, and stale
+baseline entries separately; all three counts must be zero. This is what
+`.github/workflows/test.yml`, Nightly, and release workflows run and upload on
+every attempt.
+
+Use Node `20.20.2` and npm `10.8.2`. For an unwrapped raw run, use `npm test`;
+for the authoritative report-producing gate, use `npm run test:ci`. Build and
+test commands must point `HOME` and `DATA_DIR` at disposable directories so
+they cannot read or migrate an operator database.
 
 ## Test Files
 

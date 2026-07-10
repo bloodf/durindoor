@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { isNoAuthOnlyProvider } from "@/shared/utils/providerAuthMode";
+import {
+  isNoAuthOnlyProvider,
+  shouldShowProviderConnections,
+} from "@/shared/utils/providerAuthMode";
 
 describe("isNoAuthOnlyProvider", () => {
   it("returns true for providers with noAuth and no apikey auth mode", () => {
@@ -19,5 +22,23 @@ describe("isNoAuthOnlyProvider", () => {
       false
     );
     expect(isNoAuthOnlyProvider({ authModes: ["apikey"] })).toBe(false);
+  });
+});
+
+describe("shouldShowProviderConnections", () => {
+  it("keeps optional API-key connections reachable for dual-auth providers", () => {
+    expect(shouldShowProviderConnections({
+      id: "pollinations",
+      noAuth: true,
+      authModes: ["apikey"],
+    })).toBe(true);
+  });
+
+  it("hides saved connections for pure no-auth providers", () => {
+    expect(shouldShowProviderConnections({ noAuth: true })).toBe(false);
+  });
+
+  it("keeps stored no-auth account providers on the connections surface", () => {
+    expect(shouldShowProviderConnections({ noAuth: true }, { storedNoAuth: true })).toBe(true);
   });
 });

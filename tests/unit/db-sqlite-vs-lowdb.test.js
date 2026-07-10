@@ -53,6 +53,7 @@ describe("DB SQLite layer — public API parity", () => {
     expect(k.key).toMatch(/^sk-/);
     expect(k.machineId).toBe("machine-abc");
     expect(k.isActive).toBe(true);
+    expect(k.expiresAt).toBeNull();
 
     const all = await sqliteDb.getApiKeys();
     expect(all.find((x) => x.id === k.id)).toBeDefined();
@@ -63,6 +64,34 @@ describe("DB SQLite layer — public API parity", () => {
     const deleted = await sqliteDb.deleteApiKey(k.id);
     expect(deleted).toBe(true);
     expect(await sqliteDb.getApiKeyById(k.id)).toBeNull();
+  });
+
+  it("apiKeys: expiry is persisted and validated", async () => {
+    const future = new Date(Date.now() + 60_000).toISOString();
+    const k = await sqliteDb.createApiKey("expiring-key", "machine-abc", [], null, future);
+    expect(k.expiresAt).toBe(future);
+
+    expect(await sqliteDb.validateApiKey(k.key)).toBe(true);
+
+    const retrieved = await sqliteDb.getApiKeyById(k.id);
+    expect(retrieved.expiresAt).toBe(future);
+
+    await sqliteDb.updateApiKey(k.id, { expiresAt: null });
+    const updated = await sqliteDb.getApiKeyById(k.id);
+    expect(updated.expiresAt).toBeNull();
+    expect(await sqliteDb.validateApiKey(k.key)).toBe(true);
+
+    await sqliteDb.deleteApiKey(k.id);
+  });
+
+  it("apiKeys: expired keys fail validation", async () => {
+    const k = await sqliteDb.createApiKey("expired-key", "machine-abc", [], null);
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const db = await getAdapter();
+    const past = new Date(Date.now() - 60_000).toISOString();
+    db.run(`UPDATE apiKeys SET expiresAt = ? WHERE id = ?`, [past, k.id]);
+    expect(await sqliteDb.validateApiKey(k.key)).toBe(false);
+    await sqliteDb.deleteApiKey(k.id);
   });
 
   it("apiKeys: daily usage limit status uses today's API-key tokens", async () => {
@@ -109,6 +138,122 @@ describe("DB SQLite layer — public API parity", () => {
     const after = await sqliteDb.getProviderConnections({ provider: "test" });
     expect(after).toHaveLength(2);
     expect(after.every((c) => [1, 2].includes(c.priority))).toBe(true);
+  });
+
+  it("providerConnections: Codex OAuth with same email but different account IDs creates distinct rows", async () => {
+    const first = await sqliteDb.createProviderConnection({
+      provider: "codex",
+      authType: "oauth",
+      email: "shared@example.com",
+      accessToken: "first-token",
+      refreshToken: "first-rt",
+      providerSpecificData: { chatgptAccountId: "account-a" },
+    });
+
+    const second = await sqliteDb.createProviderConnection({
+      provider: "codex",
+      authType: "oauth",
+      email: "shared@example.com",
+      accessToken: "second-token",
+      refreshToken: "second-rt",
+      providerSpecificData: { chatgptAccountId: "account-b" },
+    });
+
+    // Different ChatGPT account IDs should not collapse into a single row.
+    expect(first.id).not.toBe(second.id);
+    const codexConnections = await sqliteDb.getProviderConnections({ provider: "codex" });
+    expect(codexConnections).toHaveLength(2);
+
+    const bareEmail = await sqliteDb.createProviderConnection({
+      provider: "codex",
+      authType: "oauth",
+      email: "shared@example.com",
+      accessToken: "bare-token",
+      refreshToken: "bare-rt",
+      providerSpecificData: {},
+    });
+
+    // A bare-email login must not overwrite an existing account-scoped row.
+    expect(bareEmail.id).not.toBe(first.id);
+    expect(bareEmail.id).not.toBe(second.id);
+  });
+
+  it("providerConnections: Codex OAuth alias-normalized dedup updates the same account across aliases", async () => {
+    // First login stores the account as chatgptAccountId (OAuth import).
+    const first = await sqliteDb.createProviderConnection({
+      provider: "codex",
+      authType: "oauth",
+      email: "alias@example.com",
+      accessToken: "first-token",
+      refreshToken: "first-rt",
+      idToken: "first-id",
+      providerSpecificData: {
+        chatgptAccountId: "account-123",
+        chatgptPlanType: "pro",
+        proxy: { host: "proxy.example", auth: { username: "user" } },
+      },
+    });
+
+    // A later login stores the same account as workspaceId (custom/manual entry).
+    // The resolved account id is the same, so it should update the existing row.
+    const second = await sqliteDb.createProviderConnection({
+      provider: "codex",
+      authType: "oauth",
+      email: "alias@example.com",
+      accessToken: "second-token",
+      refreshToken: null,
+      idToken: "",
+      providerSpecificData: { workspaceId: "account-123", proxy: { auth: { password: "pass" } } },
+    });
+
+    expect(first.id).toBe(second.id);
+
+    const updated = await sqliteDb.getProviderConnectionById(second.id);
+    expect(updated.accessToken).toBe("second-token");
+    expect(updated.refreshToken).toBe("first-rt");
+    expect(updated.idToken).toBe("first-id");
+    expect(updated.providerSpecificData).toEqual({
+      chatgptAccountId: "account-123",
+      workspaceId: "account-123",
+      chatgptPlanType: "pro",
+      proxy: { host: "proxy.example", auth: { username: "user", password: "pass" } },
+    });
+  });
+
+  it("providerConnections: concurrent Codex callbacks converge only for the same identity", async () => {
+    const create = (accountId, token) => sqliteDb.createProviderConnection({
+      provider: "codex", authType: "oauth", email: "concurrent@example.com",
+      accessToken: token, providerSpecificData: { chatgptAccountId: accountId },
+    });
+
+    const same = await Promise.all([create("same-account", "one"), create("same-account", "two")]);
+    const distinct = await Promise.all([create("other-a", "three"), create("other-b", "four")]);
+
+    expect(new Set(same.map((row) => row.id)).size).toBe(1);
+    expect(distinct[0].id).not.toBe(distinct[1].id);
+  });
+
+  it("providerConnections: Codex OAuth bare-email rows with the same email stay distinct", async () => {
+    const first = await sqliteDb.createProviderConnection({
+      provider: "codex",
+      authType: "oauth",
+      email: "bare-only@example.com",
+      accessToken: "first-token",
+      refreshToken: "first-rt",
+      providerSpecificData: {},
+    });
+
+    const second = await sqliteDb.createProviderConnection({
+      provider: "codex",
+      authType: "oauth",
+      email: "bare-only@example.com",
+      accessToken: "second-token",
+      refreshToken: "second-rt",
+      providerSpecificData: {},
+    });
+
+    // Bare-email rows used to collapse and overwrite each other; they should now remain distinct.
+    expect(first.id).not.toBe(second.id);
   });
 
   it("providerConnections: optional fields persisted via JSON column", async () => {
@@ -253,15 +398,53 @@ describe("DB SQLite layer — public API parity", () => {
       expect(entries).toHaveLength(2);
       expect(entries.map((entry) => entry.keyName).sort()).toEqual(["collision-one", "collision-two"]);
       expect(entries.map((entry) => entry.requests).sort()).toEqual([1, 1]);
-      expect(new Set(entries.map((entry) => entry.apiKeyMasked)).size).toBe(1);
-      // After port(upstream): #2364 — keep API key stats distinct — the
-      // outer bucket key (akKey) uses the sha256 fingerprint, so two
-      // API keys sharing a prefix land in two distinct entries. The
-      // inner `apiKeyKey` is now the fingerprint too, not the masked
-      // prefix. The masked display value still collides.
+      expect(entries.every((entry) => entry.apiKeyMasked === "***")).toBe(true);
+      // Registered keys use their non-secret database IDs. The response never
+      // exposes a raw prefix or an offline-verifiable digest.
       expect(new Set(entries.map((entry) => entry.apiKeyKey)).size).toBe(2);
       expect(entries.every((entry) => entry.apiKeyKey !== entry.apiKeyMasked)).toBe(true);
+      expect(entries.map((entry) => entry.apiKeyKey).sort()).toEqual([
+        "api-key:ak-collision-1",
+        "api-key:ak-collision-2",
+      ]);
       expect(Object.keys(stats.byApiKey).some((key) => key.includes("sk-c84eb11fa877e0e9"))).toBe(false);
+    }
+  });
+
+  it("never exposes legacy key material or an offline-verifiable digest", async () => {
+    const legacySecret = "sk-deadbeef";
+    await sqliteDb.importDb({
+      settings: {},
+      apiKeys: [{ id: "legacy-key-id", key: legacySecret, name: "Legacy key", machineId: "m1", isActive: true }],
+    });
+    await sqliteDb.saveRequestUsage({
+      provider: "openai", model: "gpt-4o", apiKey: legacySecret,
+      tokens: { prompt_tokens: 7, completion_tokens: 3 },
+      endpoint: "/v1/chat/completions", status: "ok",
+    });
+
+    const expectedHash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(legacySecret));
+    const hexHash = Array.from(new Uint8Array(expectedHash), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    const payloads = [
+      await sqliteDb.getUsageHistory({ provider: "openai" }),
+      await sqliteDb.getUsageStats("24h"),
+      await sqliteDb.getUsageStats("7d"),
+    ];
+
+    for (const payload of payloads) {
+      const serialized = JSON.stringify(payload);
+      expect(serialized).not.toContain(legacySecret);
+      expect(serialized).not.toContain("sk-dead");
+      expect(serialized).not.toContain(hexHash);
+    }
+    expect(payloads[0][0].apiKeyMasked).toBe("***");
+    for (const stats of payloads.slice(1)) {
+      const entry = Object.values(stats.byApiKey).find((row) => row.apiKeyKey === "api-key:legacy-key-id");
+      expect(entry).toMatchObject({
+        apiKeyMasked: "***",
+        apiKeyKey: "api-key:legacy-key-id",
+        keyName: "Legacy key",
+      });
     }
   });
 
@@ -299,9 +482,12 @@ describe("DB SQLite layer — public API parity", () => {
     expect(exported.settings).toBeDefined();
     expect(Array.isArray(exported.providerConnections)).toBe(true);
     expect(typeof exported.modelAliases).toBe("object");
+    expect(exported.apiKeys.every((k) => k.expiresAt !== undefined)).toBe(true);
 
-    // Add marker, export, import a different payload, verify reset
+    // Add marker, export a key with an expiry, import a different payload, verify reset
     await sqliteDb.setModelAlias("marker", "before");
+    const future = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    await sqliteDb.createApiKey("roundtrip-key", "machine-abc", [], null, future);
     const snap = await sqliteDb.exportDb();
 
     await sqliteDb.setModelAlias("marker", "after");
@@ -309,6 +495,10 @@ describe("DB SQLite layer — public API parity", () => {
 
     await sqliteDb.importDb(snap);
     expect((await sqliteDb.getModelAliases()).marker).toBe("before");
+    const roundtripKey = (await sqliteDb.getApiKeys()).find((k) => k.name === "roundtrip-key");
+    expect(roundtripKey).toBeDefined();
+    expect(roundtripKey.expiresAt).toBe(future);
+    if (roundtripKey) await sqliteDb.deleteApiKey(roundtripKey.id);
   });
 
   it("pricing: user pricing merged with constants", async () => {

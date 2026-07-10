@@ -23,7 +23,8 @@ const ownedProviders = [
   "yuanbao-web",
 ];
 
-const portedProviders = ["copilot-web", "copilot-m365-web"];
+const portedProviders = ["copilot-web", "copilot-m365-web", "veoaifree-web"];
+const blockedProviders = ownedProviders.filter((provider) => !portedProviders.includes(provider));
 
 describe("OmniRoute PR #51 web-session provider port artifacts", () => {
   it("registers every owned provider with source catalog metadata", () => {
@@ -41,8 +42,8 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
     }
   });
 
-  it("ports Copilot web-session providers to real executors", async () => {
-    for (const provider of portedProviders) {
+  it("ports completed web-session providers to real executors", async () => {
+    for (const provider of ["copilot-web", "copilot-m365-web"]) {
       expect(BLOCKED_OMNIROUTE_PROVIDERS[provider], `${provider} blocker`).toBeUndefined();
       expect(hasSpecializedExecutor(provider), `${provider} specialized executor`).toBe(true);
       const result = await getExecutor(provider).execute({});
@@ -50,7 +51,11 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
       const body = await result.response.json();
       expect(body.error?.type).not.toBe("provider_port_pending");
     }
+    expect(hasSpecializedExecutor("copilot")).toBe(true);
     expect(hasSpecializedExecutor("m365copilot")).toBe(true);
+    expect(BLOCKED_OMNIROUTE_PROVIDERS["veoaifree-web"]).toBeUndefined();
+    expect(hasSpecializedExecutor("veoaifree-web")).toBe(true);
+    expect(hasSpecializedExecutor("veo-free")).toBe(true);
   });
 
   it("marks no-auth web providers and media-only providers explicitly", () => {
@@ -65,11 +70,11 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
     expect(PROVIDER_MEDIA["chatgpt-web"]).toMatchObject({ serviceKinds: ["llm"], imageConfig: expect.any(Object) });
   });
 
-  it("excludes port-pending web providers from kind selectors they cannot currently serve", () => {
+  it("excludes port-pending media providers while exposing completed runtimes", () => {
     expect(getProvidersByKind("image").map((p) => p.id)).not.toContain("chatgpt-web");
     expect(getProvidersByKind("music").map((p) => p.id)).not.toContain("suno");
     expect(getProvidersByKind("music").map((p) => p.id)).not.toContain("udio");
-    expect(getProvidersByKind("video").map((p) => p.id)).not.toContain("veoaifree-web");
+    expect(getProvidersByKind("video").map((p) => p.id)).toContain("veoaifree-web");
   });
 
   it("resolves uiAlias tokens to the guarded provider in model strings", () => {
@@ -80,7 +85,7 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
   });
 
   it("preserves structured provider_port_pending error body through the upstream error parser", async () => {
-    const executor = getExecutor("veoaifree-web");
+    const executor = getExecutor("adapta-web");
     const { response } = await executor.execute({});
     const parsed = await parseUpstreamError(response, executor);
     expect(parsed.statusCode).toBe(501);
@@ -88,7 +93,7 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
     expect(parsed.errorBody).toMatchObject({
       error: {
         type: "provider_port_pending",
-        provider: "veoaifree-web",
+        provider: "adapta-web",
         sourceFiles: expect.any(Array),
       },
     });
@@ -107,7 +112,7 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
   });
 
   it("uses an explicit unsupported executor instead of silently falling back to default OpenAI transport", async () => {
-    for (const provider of ownedProviders) {
+    for (const provider of blockedProviders) {
       expect(hasSpecializedExecutor(provider), `${provider} specialized executor`).toBe(true);
       const result = await getExecutor(provider).execute({});
       expect(result.response.status, `${provider} status`).toBe(501);

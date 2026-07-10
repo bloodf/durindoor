@@ -41,4 +41,21 @@ describe("/api/providers/client sanitization", () => {
       proxyPoolId: "pool-1",
     });
   });
+
+  it("keeps Codex account aliases private without hiding other providers' accountId", () => {
+    const codex = sanitizeProviderConnectionForClient({
+      id: "codex-1", provider: "codex",
+      providerSpecificData: {
+        workspaceId: "workspace-secret", chatgptAccountId: "chatgpt-secret",
+        accountId: "legacy-secret", authMethod: "oauth",
+      },
+    });
+    const snowflake = sanitizeProviderConnectionForClient({
+      id: "snowflake-1", provider: "snowflake",
+      providerSpecificData: { accountId: "visible-account" },
+    });
+
+    expect(codex.providerSpecificData).toEqual({ authMethod: "oauth" });
+    expect(snowflake.providerSpecificData.accountId).toBe("visible-account");
+  });
 });

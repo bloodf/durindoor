@@ -525,7 +525,7 @@ function convertMessages(messages, tools, model) {
  *    `thinking`, OpenAI `reasoning_effort`, AMP/Cursor magic tags, and model
  *    name hints.
  */
-export function openaiToKiroRequest(model, body, stream, credentials) {
+export function openaiToKiroRequest(model, body, stream, credentials, translationContext = null) {
   const messages = body.messages || [];
   const tools = body.tools || [];
   const maxTokens = 32000;
@@ -536,7 +536,12 @@ export function openaiToKiroRequest(model, body, stream, credentials) {
   // resolved upstream ID is already Kiro's wire ID; live Kiro accepts Claude
   // version dots (for example `claude-sonnet-4.5`) and must receive them intact.
   const { upstream: kiroModelId, agentic } = resolveKiroModel(model);
-  const thinkingBudget = resolveKiroThinkingBudget(body, credentials?.rawHeaders, model);
+  const thinkingBudget = resolveKiroThinkingBudget(
+    body,
+    credentials?.rawHeaders,
+    model,
+    translationContext?.thinkingIntent,
+  );
 
   const { history, currentMessage } = convertMessages(messages, tools, kiroModelId);
 
@@ -567,7 +572,12 @@ export function openaiToKiroRequest(model, body, stream, credentials) {
   const payload = {
     conversationState: {
       chatTriggerType: "MANUAL",
-      conversationId: resolveSessionId({ headers: credentials?.rawHeaders, body, connectionId: credentials?.connectionId, scope: "kiro" }),
+      conversationId: translationContext?.clientSessionId || resolveSessionId({
+        headers: credentials?.rawHeaders,
+        body,
+        connectionId: credentials?.connectionId,
+        scope: "kiro",
+      }),
       currentMessage: {
         userInputMessage: {
           content: finalContent,
@@ -595,12 +605,6 @@ export function openaiToKiroRequest(model, body, stream, credentials) {
     if (temperature !== undefined) payload.inferenceConfig.temperature = temperature;
     if (topP !== undefined) payload.inferenceConfig.topP = topP;
   }
-
-  // Tag payload so the executor can route the upstream model id correctly.
-  Object.defineProperty(payload, "_kiroUpstreamModel", {
-    value: kiroModelId,
-    enumerable: false
-  });
 
   return payload;
 }

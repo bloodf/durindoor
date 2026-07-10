@@ -15,7 +15,7 @@
  * fiction. The suffix is stripped before the request leaves this process.
  */
 
-import { extractThinking } from "../translator/concerns/thinkingUnified.js";
+import { extractThinking, parseSuffix } from "../translator/concerns/thinkingUnified.js";
 import { assertValidAwsRegion } from "../../src/lib/oauth/constants/oauth.js";
 import { effortToBudget } from "../translator/concerns/thinking.js";
 import {
@@ -195,10 +195,15 @@ REMEMBER: When in doubt, write LESS per operation. Multiple small operations > o
  * @param {object} body OpenAI/Claude-shaped request body
  * @param {object} [headers] Original inbound HTTP headers (case-insensitive)
  * @param {string} [model] Model id the caller asked for
+ * @param {object|null} [intent] Pre-parsed request-scoped thinking override
  * @returns {number|null} budget to inject, or null when thinking is disabled
  */
-export function resolveKiroThinkingBudget(body, headers, model) {
-  const cfg = extractThinking(body);
+export function resolveKiroThinkingBudget(body, headers, model, intent = null) {
+  // A model suffix is an explicit client choice, so it must win over body,
+  // header, tag, and legacy model-name heuristics. In particular `(none)`
+  // suppresses all of those fallbacks.
+  const parsedModel = parseSuffix(model);
+  const cfg = intent ?? parsedModel.override ?? extractThinking(body);
   if (cfg) {
     if (cfg.mode === "none") return null;
     if (cfg.mode === "budget") return cfg.budget;
@@ -216,8 +221,11 @@ export function resolveKiroThinkingBudget(body, headers, model) {
   if (containsThinkingModeTag(body)) return KIRO_THINKING_BUDGET_DEFAULT;
 
   if (typeof model === "string" && model) {
-    const m = model.toLowerCase();
-    if (m.includes("thinking") || m.includes("-reason")) return KIRO_THINKING_BUDGET_DEFAULT;
+    const hasOpaqueSuffix = /\([^()]+\)\s*$/.test(model) && !parsedModel.override;
+    if (!hasOpaqueSuffix) {
+      const m = parsedModel.cleanModel.toLowerCase();
+      if (m.includes("thinking") || m.includes("-reason")) return KIRO_THINKING_BUDGET_DEFAULT;
+    }
   }
 
   return null;
@@ -232,8 +240,8 @@ export function resolveKiroThinkingBudget(body, headers, model) {
  * @param {string} [model] Model id the caller asked for (post-strip ok)
  * @returns {boolean}
  */
-export function isThinkingEnabled(body, headers, model) {
-  return resolveKiroThinkingBudget(body, headers, model) !== null;
+export function isThinkingEnabled(body, headers, model, intent = null) {
+  return resolveKiroThinkingBudget(body, headers, model, intent) !== null;
 }
 
 /**

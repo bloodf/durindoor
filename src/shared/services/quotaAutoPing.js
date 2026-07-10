@@ -20,7 +20,8 @@ const providerHandlers = {
     sendPing: sendClaudePing,
   },
   codex: {
-    getUsage: getCodexUsage,
+    getUsage: (accessToken, proxyOptions, connection) =>
+      getCodexUsage(accessToken, connection?.providerSpecificData, proxyOptions),
     sendPing: sendCodexPing,
   },
 };
@@ -231,7 +232,7 @@ async function pingConnectionCore(conn, provider, providerConfig, handler, deps,
     return;
   }
 
-  const usage = await handler.getUsage(connection.accessToken, proxyOptions);
+  const usage = await handler.getUsage(connection.accessToken, proxyOptions, connection);
   signal.throwIfAborted();
   const quotas = usage?.quotas || {};
   const quota = quotas?.[providerConfig.quotaKey];

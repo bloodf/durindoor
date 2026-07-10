@@ -2,6 +2,12 @@
 
 OpenAI Codex and OpenAI-compatible clients can use DurinDoor through OpenAI environment variables or client configuration.
 
+## Account binding compatibility
+
+DurinDoor keeps each Codex OAuth connection bound to its own ChatGPT account. Legacy imports may store the binding as `workspaceId`, `chatgptAccountId`, or `accountId`; all three names remain accepted, with `workspaceId` taking precedence. Values are trimmed, unsafe header values are ignored, and aliases are preserved during refresh, backup, and import instead of rewriting credentials.
+
+OAuth logins are deduplicated only when both records have the same unambiguous account binding. A shared email without an account binding, different bindings on the same email, or conflicting aliases remain separate connections so token pairs cannot overwrite one another. Account identifiers and tokens are never returned by the client-facing provider API.
+
 ## Prerequisites
 
 - DurinDoor running locally or behind a reachable URL.

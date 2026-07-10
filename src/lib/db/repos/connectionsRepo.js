@@ -1,6 +1,8 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
+import { mergeProviderConnection } from "../helpers/mergeProviderMetadata.js";
+import { hasConflictingCodexAccountIds, resolveCodexAccountId } from "open-sse/shared/codexAccountId.js";
 
 const OPTIONAL_FIELDS = [
   "displayName", "email", "globalPriority", "defaultModel",
@@ -124,7 +126,20 @@ export async function createProviderConnection(data) {
       const incomingWs = data.providerSpecificData?.chatgptAccountId;
       existing = all.find(c => {
         if (c.authType !== "oauth" || c.email !== data.email) return false;
-        // Workspace providers (Codex) use workspace ID when both sides have it
+        // Codex/OpenAI can issue multiple OAuth grants for the same email.
+        // Refresh tokens are rotated single-use; collapsing a new login onto an
+        // existing bare-email row overwrites the first account's token pair and
+        // makes it look "invalid" after adding a second account. Only update an
+        // existing Codex row when both rows expose the same resolved account ID.
+        if (data.provider === "codex") {
+          if (hasConflictingCodexAccountIds(data.providerSpecificData) ||
+              hasConflictingCodexAccountIds(c.providerSpecificData)) return false;
+          const incomingId = resolveCodexAccountId(data.providerSpecificData);
+          const existingId = resolveCodexAccountId(c.providerSpecificData);
+          return !!incomingId && !!existingId && incomingId === existingId;
+        }
+
+        // Workspace providers use workspace ID when both sides have it
         const existingWs = c.providerSpecificData?.chatgptAccountId;
         if (incomingWs && existingWs) return incomingWs === existingWs;
         if (incomingWs && !existingWs) return false;
@@ -152,7 +167,7 @@ export async function createProviderConnection(data) {
     // access_token: never dedup — user manages duplicates manually
 
     if (existing) {
-      const merged = { ...existing, ...data, updatedAt: now };
+      const merged = { ...mergeProviderConnection(existing, data), updatedAt: now };
       upsert(db, merged);
       result = merged;
       return;
@@ -201,7 +216,7 @@ export async function updateProviderConnection(id, data) {
     const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
     if (!row) { result = null; return; }
     const existing = rowToConn(row);
-    const merged = { ...existing, ...data, updatedAt: new Date().toISOString() };
+    const merged = { ...mergeProviderConnection(existing, data), updatedAt: new Date().toISOString() };
     upsert(db, merged);
     if (data.isActive === false) updateAutoPingEntryInTx(db, existing.provider, id, false);
     if (data.priority !== undefined) reorderInTx(db, existing.provider);

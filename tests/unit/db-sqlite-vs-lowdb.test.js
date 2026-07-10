@@ -111,6 +111,122 @@ describe("DB SQLite layer — public API parity", () => {
     expect(after.every((c) => [1, 2].includes(c.priority))).toBe(true);
   });
 
+  it("providerConnections: Codex OAuth with same email but different account IDs creates distinct rows", async () => {
+    const first = await sqliteDb.createProviderConnection({
+      provider: "codex",
+      authType: "oauth",
+      email: "shared@example.com",
+      accessToken: "first-token",
+      refreshToken: "first-rt",
+      providerSpecificData: { chatgptAccountId: "account-a" },
+    });
+
+    const second = await sqliteDb.createProviderConnection({
+      provider: "codex",
+      authType: "oauth",
+      email: "shared@example.com",
+      accessToken: "second-token",
+      refreshToken: "second-rt",
+      providerSpecificData: { chatgptAccountId: "account-b" },
+    });
+
+    // Different ChatGPT account IDs should not collapse into a single row.
+    expect(first.id).not.toBe(second.id);
+    const codexConnections = await sqliteDb.getProviderConnections({ provider: "codex" });
+    expect(codexConnections).toHaveLength(2);
+
+    const bareEmail = await sqliteDb.createProviderConnection({
+      provider: "codex",
+      authType: "oauth",
+      email: "shared@example.com",
+      accessToken: "bare-token",
+      refreshToken: "bare-rt",
+      providerSpecificData: {},
+    });
+
+    // A bare-email login must not overwrite an existing account-scoped row.
+    expect(bareEmail.id).not.toBe(first.id);
+    expect(bareEmail.id).not.toBe(second.id);
+  });
+
+  it("providerConnections: Codex OAuth alias-normalized dedup updates the same account across aliases", async () => {
+    // First login stores the account as chatgptAccountId (OAuth import).
+    const first = await sqliteDb.createProviderConnection({
+      provider: "codex",
+      authType: "oauth",
+      email: "alias@example.com",
+      accessToken: "first-token",
+      refreshToken: "first-rt",
+      idToken: "first-id",
+      providerSpecificData: {
+        chatgptAccountId: "account-123",
+        chatgptPlanType: "pro",
+        proxy: { host: "proxy.example", auth: { username: "user" } },
+      },
+    });
+
+    // A later login stores the same account as workspaceId (custom/manual entry).
+    // The resolved account id is the same, so it should update the existing row.
+    const second = await sqliteDb.createProviderConnection({
+      provider: "codex",
+      authType: "oauth",
+      email: "alias@example.com",
+      accessToken: "second-token",
+      refreshToken: null,
+      idToken: "",
+      providerSpecificData: { workspaceId: "account-123", proxy: { auth: { password: "pass" } } },
+    });
+
+    expect(first.id).toBe(second.id);
+
+    const updated = await sqliteDb.getProviderConnectionById(second.id);
+    expect(updated.accessToken).toBe("second-token");
+    expect(updated.refreshToken).toBe("first-rt");
+    expect(updated.idToken).toBe("first-id");
+    expect(updated.providerSpecificData).toEqual({
+      chatgptAccountId: "account-123",
+      workspaceId: "account-123",
+      chatgptPlanType: "pro",
+      proxy: { host: "proxy.example", auth: { username: "user", password: "pass" } },
+    });
+  });
+
+  it("providerConnections: concurrent Codex callbacks converge only for the same identity", async () => {
+    const create = (accountId, token) => sqliteDb.createProviderConnection({
+      provider: "codex", authType: "oauth", email: "concurrent@example.com",
+      accessToken: token, providerSpecificData: { chatgptAccountId: accountId },
+    });
+
+    const same = await Promise.all([create("same-account", "one"), create("same-account", "two")]);
+    const distinct = await Promise.all([create("other-a", "three"), create("other-b", "four")]);
+
+    expect(new Set(same.map((row) => row.id)).size).toBe(1);
+    expect(distinct[0].id).not.toBe(distinct[1].id);
+  });
+
+  it("providerConnections: Codex OAuth bare-email rows with the same email stay distinct", async () => {
+    const first = await sqliteDb.createProviderConnection({
+      provider: "codex",
+      authType: "oauth",
+      email: "bare-only@example.com",
+      accessToken: "first-token",
+      refreshToken: "first-rt",
+      providerSpecificData: {},
+    });
+
+    const second = await sqliteDb.createProviderConnection({
+      provider: "codex",
+      authType: "oauth",
+      email: "bare-only@example.com",
+      accessToken: "second-token",
+      refreshToken: "second-rt",
+      providerSpecificData: {},
+    });
+
+    // Bare-email rows used to collapse and overwrite each other; they should now remain distinct.
+    expect(first.id).not.toBe(second.id);
+  });
+
   it("providerConnections: optional fields persisted via JSON column", async () => {
     const c = await sqliteDb.createProviderConnection({
       provider: "p2", authType: "oauth", email: "x@y.com",

@@ -36,6 +36,17 @@ describe("Codex fast tier and capacity handling", () => {
     expect(headers["ChatGPT-Account-ID"]).toBe("acct_1");
   });
 
+  it("falls back to accountId when ChatGPT-Account-ID has no workspaceId or chatgptAccountId", () => {
+    const executor = new CodexExecutor();
+    const headers = executor.buildHeaders({
+      accessToken: "token",
+      connectionId: "conn_1",
+      providerSpecificData: { accountId: "acc_1" },
+    });
+
+    expect(headers["ChatGPT-Account-ID"]).toBe("acc_1");
+  });
+
   it("classifies 200-SSE model capacity as account fallback", async () => {
     const executor = new CodexExecutor();
     const response = new Response(streamFromText(

@@ -23,6 +23,7 @@ import {
   KIMCHI_CONFIG,
 } from "@/lib/oauth/constants/oauth";
 import { buildClineHeaders } from "@/shared/utils/clineAuth";
+import { applyCodexAccountHeader } from "open-sse/shared/codexAccountId.js";
 
 // OAuth provider test endpoints
 export const OAUTH_TEST_CONFIG = {
@@ -396,6 +397,9 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
     const headers = config.noAuth
       ? { ...config.extraHeaders }
       : { [config.authHeader]: `${config.authPrefix}${accessToken}`, ...config.extraHeaders };
+    if (connection.provider === "codex") {
+      applyCodexAccountHeader(headers, connection.providerSpecificData);
+    }
     const fetchOpts = { method: config.method, headers };
     if (config.body) fetchOpts.body = config.body;
     const res = await fetchWithConnectionProxy(testUrl, fetchOpts, effectiveProxy);
@@ -410,6 +414,9 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
         const retryHeaders = config.noAuth
           ? { ...config.extraHeaders }
           : { [config.authHeader]: `${config.authPrefix}${tokens.accessToken}`, ...config.extraHeaders };
+        if (connection.provider === "codex") {
+          applyCodexAccountHeader(retryHeaders, connection.providerSpecificData);
+        }
         const retryOpts = { method: config.method, headers: retryHeaders };
         if (config.body) retryOpts.body = config.body;
         const retryRes = await fetchWithConnectionProxy(retryUrl, retryOpts, effectiveProxy);

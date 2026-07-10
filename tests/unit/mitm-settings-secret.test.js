@@ -54,4 +54,17 @@ describe("settings API legacy MITM secret filtering", () => {
     expect(response.body).toEqual(expect.objectContaining({ theme: "light" }));
     expect(response.body).not.toHaveProperty("mitmSudoEncrypted");
   });
+
+  it.each(["claudeAutoPing", "codexAutoPing"])(
+    "rejects direct %s writes in favor of the connection-scoped endpoint",
+    async (settingsKey) => {
+      const response = await settingsRoute.PATCH({
+        json: async () => ({ [settingsKey]: { connections: { "conn-1": true } } }),
+      });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toContain("connection-scoped");
+      expect(mocks.updateSettings).not.toHaveBeenCalled();
+    },
+  );
 });

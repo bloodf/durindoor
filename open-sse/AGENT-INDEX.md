@@ -155,7 +155,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `gitlab` |  | oauth | `https://gitlab.com/api/v4/chat/completions` |
 | `gitlab-duo` | openai | oauth | `https://gitlab.com/api/v4/code_suggestions/completions` |
 | `gitlawb` |  | apikey | `https://opengateway.gitlawb.com/v1/xiaomi-mimo/chat/completions` |
-| `gitlawb-gmi` |  | apikey | `https://opengateway.gitlawb.com/v1/chat/completions` |
+| `gitlawb-gmi` |  | apikey | `https://opengateway.gitlawb.com/v1/gmi-cloud/chat/completions` |
 | `glhf` |  | apikey | `https://glhf.chat/api/openai/v1/chat/completions` |
 | `glm` | claude | apikey | `https://api.z.ai/api/anthropic/v1/messages` |
 | `glm-cn` |  | apikey | `https://open.bigmodel.cn/api/coding/paas/v4/chat/completions` |

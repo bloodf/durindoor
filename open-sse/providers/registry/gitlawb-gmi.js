@@ -11,8 +11,11 @@ export default {
   },
   category: "apikey",
   transport: {
-    baseUrl: "https://opengateway.gitlawb.com/v1/chat/completions",
-    /** When true, probe the provider by POSTing a minimal chat request to `baseUrl` instead of deriving a `/models` URL. Use for providers that expose an OpenAI-compatible completions endpoint but do not publish a `/models` discovery route. */
+    // OmniRoute stores the shared `/v1/gmi-cloud` prefix and appends the
+    // operation path. DurinDoor executors consume a full endpoint instead.
+    baseUrl: "https://opengateway.gitlawb.com/v1/gmi-cloud/chat/completions",
+    modelsUrl: "https://opengateway.gitlawb.com/v1/gmi-cloud/models",
+    /** Validate with a minimal chat POST when source auth semantics require a real model request, even when a separate models catalog exists. */
     probeUsesBaseUrl: true,
     headers: {
       "User-Agent": "OpenClaude/1.0 (linux; x86_64)",
@@ -31,4 +34,8 @@ export default {
     { id: "XiaomiMiMo/MiMo-V2.5", name: "MiMo-V2.5 (GMI)", contextLength: 1050000, maxOutputTokens: 131072 },
   ],
   passthroughModels: true,
+  modelsFetcher: {
+    url: "https://opengateway.gitlawb.com/v1/gmi-cloud/models",
+    type: "openai",
+  },
 };

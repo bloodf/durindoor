@@ -129,16 +129,68 @@ function toKimiReasoningEffort(cfg) {
   return null;
 }
 
-// Gemini nests thinkingConfig under generationConfig. gemini-cli / antigravity wrap
-// the whole request in a { request: { generationConfig } } envelope — target the
-// envelope's generationConfig when present, else the top-level one.
+/** Minimum maxOutputTokens by Gemini thinkingLevel. */
+const GEMINI_LEVEL_OUTPUT_FLOOR = {
+  minimal: 4096,
+  low: 8192,
+  medium: 16384,
+  high: 65535,
+};
+
+/**
+ * Minimum maxOutputTokens for a numeric thinkingBudget (gemini-2.5 style).
+ * `budget === -1` (dynamic) and non-finite inputs map to a safe default.
+ */
+function geminiBudgetOutputFloor(budget) {
+  if (budget === -1) return 32768;
+  if (!Number.isFinite(budget)) return 32768;
+  if (budget <= 1024) return 8192;
+  if (budget <= 8192) return 16384;
+  if (budget <= 24576) return 32768;
+  return 65535;
+}
+
+/** Output floor for a named thinkingLevel (defaults to `high` when unknown). */
+function geminiLevelOutputFloor(level) {
+  return GEMINI_LEVEL_OUTPUT_FLOOR[level] || GEMINI_LEVEL_OUTPUT_FLOOR.high;
+}
+
+/**
+ * Resolve the generationConfig object thinking fields live on. gemini-cli /
+ * antigravity wrap the request in `{ request: { generationConfig } }`; target
+ * that envelope's generationConfig when present, else the top-level one,
+ * creating whichever is missing.
+ */
+function getGeminiGenerationConfig(body) {
+  if (body.request && typeof body.request === "object") {
+    if (!body.request.generationConfig || typeof body.request.generationConfig !== "object") {
+      body.request.generationConfig = {};
+    }
+    return body.request.generationConfig;
+  }
+  if (!body.generationConfig || typeof body.generationConfig !== "object") {
+    body.generationConfig = {};
+  }
+  return body.generationConfig;
+}
+
 function setGeminiThinking(body, tc) {
-  const gc = body.request?.generationConfig
-    ? body.request.generationConfig
-    : (body.generationConfig && typeof body.generationConfig === "object"
-        ? body.generationConfig
-        : (body.generationConfig = {}));
+  const gc = getGeminiGenerationConfig(body);
   gc.thinkingConfig = tc;
+}
+
+/**
+ * Raise maxOutputTokens to at least `floor` (clamped to caps.maxOutput when
+ * known). Never lowers an existing, larger value; never exceeds the provider cap.
+ */
+function ensureGeminiOutputFloor(body, floor, caps) {
+  const cap = Number.isFinite(caps?.maxOutput) ? caps.maxOutput : floor;
+  const target = Math.min(floor, cap);
+  const gc = getGeminiGenerationConfig(body);
+  const current = Number(gc.maxOutputTokens);
+  if (!Number.isFinite(current) || current < target) {
+    gc.maxOutputTokens = target;
+  }
 }
 
 // Strip every known thinking field from a body (used before re-applying / when unsupported).
@@ -189,12 +241,14 @@ function applyFormat(fmt, body, cfg, caps) {
     case "gemini-level": {
       const level = none ? "minimal" : toGeminiThinkingLevel(eff);
       setGeminiThinking(body, { thinkingLevel: level, includeThoughts: level !== "minimal" });
+      ensureGeminiOutputFloor(body, geminiLevelOutputFloor(level), caps);
       break;
     }
     case "gemini-budget": {
       if (none && canDisable) { setGeminiThinking(body, { thinkingBudget: 0, includeThoughts: false }); break; }
       const budget = toBudget(eff, caps.thinkingRange);
       setGeminiThinking(body, { thinkingBudget: budget ?? -1, includeThoughts: true });
+      ensureGeminiOutputFloor(body, geminiBudgetOutputFloor(budget ?? -1), caps);
       break;
     }
     case "zai": {

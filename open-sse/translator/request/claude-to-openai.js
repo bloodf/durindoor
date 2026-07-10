@@ -90,6 +90,13 @@ export function claudeToOpenAIRequest(model, body, stream) {
     result.reasoning = body.reasoning;
   }
 
+  // Anthropic metadata.user_id → OpenAI `user` (end-user identifier for abuse
+  // detection / caching). Only forward non-empty strings.
+  const userId = body.metadata?.user_id;
+  if (typeof userId === "string" && userId.length > 0) {
+    result.user = userId;
+  }
+
   return result;
 }
 

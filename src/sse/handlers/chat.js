@@ -172,7 +172,10 @@ export async function handleChat(request, clientRawRequest = null) {
   }
 
   // Ponytail slash commands are local-only: respond before any account/credential lookup.
-  const sourceFormat = detectFormatByEndpoint(url.pathname, body) || detectFormat(body);
+  const sourceFormat = detectFormatByEndpoint(
+    clientRawRequest?.endpoint || new URL(request.url).pathname,
+    body,
+  ) || detectFormat(body);
   const acceptHeader = clientRawRequest?.headers?.accept || "";
   const ponytailResponse = await handlePonytailCommands(body, modelStr, {
     fetchStats: authenticatedKeyRecord

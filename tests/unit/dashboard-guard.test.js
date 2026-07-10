@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createControlProof } from "../../src/mitm/controlProof.js";
+
+process.env.DURINDOOR_CONTROL_PROOF_SECRET = "a".repeat(64);
 
 const mocks = vi.hoisted(() => ({
   nextResponse: Symbol("next"),
@@ -35,11 +38,12 @@ vi.mock("@/lib/auth/dashboardSession", () => ({
 
 const { proxy, __test__ } = await import("../../src/dashboardGuard.js");
 
-function request(pathname, headers = {}) {
+function request(pathname, headers = {}, method = "GET") {
   const normalizedHeaders = new Headers(headers);
   return {
     nextUrl: { pathname, searchParams: new URL(`http://localhost${pathname}`).searchParams },
     headers: normalizedHeaders,
+    method,
     cookies: { get: vi.fn(() => undefined) },
     url: `http://localhost${pathname}`,
   };
@@ -216,7 +220,7 @@ describe("dashboard guard local-only access", () => {
     expect(response.body.error).toBe("Local only: CLI token required");
   });
 
-  it("allows local-only route on loopback when requireLogin=false", async () => {
+  it("allows read-only MITM status on loopback when requireLogin=false", async () => {
     mocks.getSettings.mockResolvedValue({ requireLogin: false });
 
     const response = await proxy(request("/api/cli-tools/antigravity-mitm", {
@@ -225,6 +229,134 @@ describe("dashboard guard local-only access", () => {
     }));
 
     expect(response).toBe(mocks.nextResponse);
+  });
+
+  it("rejects a loopback MITM mutation without an owner proof when login is disabled", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+
+    const response = await proxy(request("/api/cli-tools/antigravity-mitm", {
+      host: "localhost:20128",
+      origin: "http://localhost:20128",
+      "x-9r-real-ip": "127.0.0.1",
+    }, "POST"));
+
+    expect(response.status).toBe(403);
+  });
+
+  it("allows a JWT-authenticated, same-owner loopback MITM mutation", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+    const remotePort = 54321;
+    const proof = createControlProof({
+      method: "POST",
+      pathname: "/api/cli-tools/antigravity-mitm",
+      remotePort,
+    });
+
+    const response = await proxy(request("/api/cli-tools/antigravity-mitm", {
+      host: "localhost:20128",
+      origin: "http://localhost:20128",
+      "x-9r-real-ip": "127.0.0.1",
+      "x-9r-owner-port": String(remotePort),
+      "x-9r-owner-proof": proof,
+    }, "POST"));
+
+    expect(response).toBe(mocks.nextResponse);
+  });
+
+  it("rejects an owner-stamped mutation without an explicit loopback Origin", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+    const remotePort = 54321;
+    const proof = createControlProof({
+      method: "POST",
+      pathname: "/api/cli-tools/antigravity-mitm",
+      remotePort,
+    });
+
+    const response = await proxy(request("/api/cli-tools/antigravity-mitm", {
+      host: "localhost:20128",
+      "x-9r-real-ip": "127.0.0.1",
+      "x-9r-owner-port": String(remotePort),
+      "x-9r-owner-proof": proof,
+    }, "POST"));
+
+    expect(response.status).toBe(403);
+  });
+
+  it("rejects an owner proof without JWT or CLI authentication", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+    const remotePort = 54321;
+    const proof = createControlProof({
+      method: "POST",
+      pathname: "/api/cli-tools/antigravity-mitm",
+      remotePort,
+    });
+
+    const response = await proxy(request("/api/cli-tools/antigravity-mitm", {
+      host: "localhost:20128",
+      origin: "http://localhost:20128",
+      "x-9r-real-ip": "127.0.0.1",
+      "x-9r-owner-port": String(remotePort),
+      "x-9r-owner-proof": proof,
+    }, "POST"));
+
+    expect(response.status).toBe(403);
+  });
+
+  it("rejects a JWT and owner proof from a different loopback origin", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+    const remotePort = 54321;
+    const proof = createControlProof({
+      method: "POST",
+      pathname: "/api/cli-tools/antigravity-mitm",
+      remotePort,
+    });
+    const baseHeaders = {
+      host: "localhost:20128",
+      "x-9r-real-ip": "127.0.0.1",
+      "x-9r-owner-port": String(remotePort),
+      "x-9r-owner-proof": proof,
+    };
+
+    for (const origin of ["http://localhost:9999", "http://127.0.0.1:20128"]) {
+      const response = await proxy(request("/api/cli-tools/antigravity-mitm", {
+        ...baseHeaders,
+        origin,
+      }, "POST"));
+      expect(response.status).toBe(403);
+    }
+  });
+
+  it("rejects a forged or method-replayed owner proof", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+    const remotePort = 54321;
+    const proof = createControlProof({
+      method: "PATCH",
+      pathname: "/api/cli-tools/antigravity-mitm",
+      remotePort,
+    });
+
+    const response = await proxy(request("/api/cli-tools/antigravity-mitm", {
+      host: "localhost:20128",
+      origin: "http://localhost:20128",
+      "x-9r-real-ip": "127.0.0.1",
+      "x-9r-owner-port": String(remotePort),
+      "x-9r-owner-proof": proof,
+    }, "DELETE"));
+
+    expect(response.status).toBe(403);
+  });
+
+  it("requires an owner-bound proof for mutating MITM alias subroutes", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+    const response = await proxy(request("/api/cli-tools/antigravity-mitm/alias", {
+      host: "localhost:20128",
+      origin: "http://localhost:20128",
+      "x-9r-real-ip": "127.0.0.1",
+    }, "PUT"));
+    expect(response.status).toBe(403);
   });
 
   it("rejects local-only route from tunnel host even when requireLogin=false", async () => {

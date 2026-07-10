@@ -2,7 +2,7 @@ import { getProviderConnections, validateApiKey, updateProviderConnection, getSe
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
 import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
-import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
+import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
 import * as log from "../utils/logger.js";
 
 // Mutex to prevent race conditions during account selection
@@ -70,7 +70,8 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     const connections = await getProviderConnections({ provider: providerId, isActive: true });
     log.debug("AUTH", `${provider} | total connections: ${connections.length}, excludeIds: ${excludeSet.size > 0 ? [...excludeSet].join(",") : "none"}, model: ${model || "any"}`);
 
-    const isNoAuthProvider = !!FREE_PROVIDERS[providerId]?.noAuth;
+    const isNoAuthProvider = AI_PROVIDERS[providerId]?.noAuth === true;
+    const publicFallbackAllowed = !excludeSet.has("noauth");
 
     if (isNoAuthProvider) {
       // Stored-data no-auth providers (e.g., mimocode) use saved connections first
@@ -112,7 +113,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
 
       // Inject a public no-auth credential only when no real connection exists.
       if (connections.length === 0) {
-        return buildPublicNoAuthCredential(providerId);
+        return publicFallbackAllowed ? buildPublicNoAuthCredential(providerId) : null;
       }
     }
 
@@ -141,7 +142,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       // For no-auth providers with a real saved key that is now excluded/locked,
       // fall back to the public no-auth credential instead of failing outright —
       // Pollinations (and similar) still serve unauthenticated traffic.
-      if (isNoAuthProvider) {
+      if (isNoAuthProvider && publicFallbackAllowed) {
         log.warn("AUTH", `${provider} | saved key unavailable, falling back to public no-auth`);
         return buildPublicNoAuthCredential(providerId);
       }

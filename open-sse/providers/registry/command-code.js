@@ -18,6 +18,7 @@ export default {
   transport: {
     baseUrl: "https://api.commandcode.ai/alpha/generate",
     format: "commandcode",
+    validationModelId: "deepseek/deepseek-v4-flash",
     forceStream: true,
     headers: {
       "x-command-code-version": "0.33.2",

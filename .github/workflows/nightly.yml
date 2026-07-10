@@ -57,7 +57,10 @@ jobs:
         run: npm run check:agent-index
 
       - name: Build with isolated application state
-        run: npm run build
+        env:
+          HOME: ${{ runner.temp }}/durindoor-build-home
+          DATA_DIR: ${{ runner.temp }}/durindoor-build-data
+        run: mkdir -p "$HOME" "$DATA_DIR" && npm run build
 
       - name: Run blocking Vitest gate
         working-directory: tests
@@ -99,7 +102,7 @@ jobs:
           fi
 
       - name: Publish nightly pre-release
-        if: steps.check.outputs.exists == 'false'
+        if: ${{ success() && steps.check.outputs.exists == 'false' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.check.outputs.tag }}

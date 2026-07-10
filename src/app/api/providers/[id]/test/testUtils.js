@@ -6,6 +6,7 @@ import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, PROVIDERS, resolveXiaomiTokenplanBaseUrl } from "open-sse/config/providers.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
 import { buildZenmuxAnthropicBody, extractZenmuxCtoken, normalizeZenmuxCookie, ZENMUX_FREE_CHAT_URL } from "open-sse/executors/zenmux-free.js";
+import { resolveConnectionParams } from "open-sse/executors/copilot-m365-connection.js";
 import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
 import {
   refreshProviderCredentials,
@@ -868,20 +869,11 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
       }
 
       case "copilot-m365-web": {
-        const credential = String(connection.apiKey || "").trim();
-        const hasAccessToken = /(^|[?&;\s])access_token=([^;&\s]+)/.test(credential) || (
-          credential &&
-          !credential.includes("access_token=") &&
-          !/^(?:chathubPath|userTenant)\s*=/i.test(credential) &&
-          !/^wss:\/\/substrate\.office\.com\/m365Copilot\/Chathub\//i.test(credential)
-        );
-        const hasChathubPath =
-          /(^|[;\s])(?:chathubPath|userTenant)=([^;@\s]+@[^;\s]+)/.test(credential) ||
-          /^wss:\/\/substrate\.office\.com\/m365Copilot\/Chathub\/[^?]+(?:@|%40)[^?]+\?/i.test(credential);
-        if (hasAccessToken && hasChathubPath) {
+        const params = resolveConnectionParams(connection);
+        if (!("error" in params)) {
           return { valid: true, error: null, refreshed: false, newTokens: null };
         }
-        return { valid: false, error: "Paste the M365 Copilot access_token and Chathub path from the Chathub WebSocket URL", refreshed: false, newTokens: null };
+        return { valid: false, error: params.error, refreshed: false, newTokens: null };
       }
 
       case "perplexity-web": {

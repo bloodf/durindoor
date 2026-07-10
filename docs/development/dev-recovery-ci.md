@@ -34,7 +34,7 @@ to be a safe mask.
 
 ## Test gate
 
-Run the Stage 1 gate from `tests/`:
+Run the zero-failure gate from `tests/`:
 
 ```bash
 npm ci
@@ -55,8 +55,10 @@ uploads, verifies both reports are non-empty, and treats missing reports as an
 error. This keeps the `if: always()` diagnostic upload useful even when the
 test command itself fails.
 
-Pull requests may delete stale baseline entries but may not add entries. The
-baseline is temporary recovery state; the zero-test stage removes it entirely.
+`tests/__baseline__/known-fails.txt` is now empty and must remain empty. Every
+pull request must keep raw failures, known failures, and stale entries at zero.
+The translator's explicit `it.fails` bug-exposure convention remains separate
+from this CI baseline.
 
 ## Build isolation
 
@@ -65,5 +67,7 @@ This ensures page collection cannot initialize or migrate the operator's real
 database, machine ID, certificates, or dashboard secret. Application bootstrap
 is dynamically imported only outside build/prerender phases.
 
-Nightly and release workflows run install, lint, index, build, and test gates
-before publication. A failed gate prevents publication.
+Nightly and release workflows run install, lint, index, isolated build, and
+test gates before publication. Test reports upload even on failure, while the
+publish step has an explicit success dependency and cannot run after a failed
+or missing gate.

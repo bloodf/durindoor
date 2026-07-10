@@ -33,7 +33,7 @@ vi.mock("@/lib/usageDb.js", () => ({
   saveRequestDetail: vi.fn(async () => {}),
 }));
 
-const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+const { handleChatCore, shouldStripOrphanedToolResults } = await import("../../open-sse/handlers/chatCore.js");
 
 describe("handleChatCore Headroom diagnostics", () => {
   beforeEach(() => {
@@ -55,6 +55,20 @@ describe("handleChatCore Headroom diagnostics", () => {
       transformedBody: null,
     });
   });
+
+  it.each(["gemini", "gemini-cli", "antigravity", "vertex"])(
+    "preserves native %s tool-result history at every cleanup point",
+    (format) => {
+      expect(shouldStripOrphanedToolResults(format)).toBe(false);
+    },
+  );
+
+  it.each(["openai", "claude", "openai-responses"])(
+    "cleans orphaned tool results for strict %s payloads",
+    (format) => {
+      expect(shouldStripOrphanedToolResults(format)).toBe(true);
+    },
+  );
 
   it("logs why Headroom was skipped on chat completions", async () => {
     const log = { debug: vi.fn(), info: vi.fn(), warn: vi.fn() };
@@ -249,5 +263,45 @@ describe("handleChatCore Headroom diagnostics", () => {
       "HEADROOM",
       expect.stringContaining("reported token delta, but outbound JSON shrank <5%; provider may bill near-original payload")
     );
+  });
+
+  it.each([
+    ["gemini", "gemini", "gemini-2.5-flash"],
+    ["vertex", "vertex", "gemini-2.5-flash"],
+  ])("preserves standalone %s functionResponse content through provider dispatch", async (sourceFormat, provider, model) => {
+    const log = { debug: vi.fn(), info: vi.fn(), warn: vi.fn() };
+    const functionResponse = {
+      id: "call_from_trimmed_history",
+      name: "lookup",
+      response: { result: { answer: 42 } },
+    };
+
+    await handleChatCore({
+      body: {
+        model,
+        contents: [{ role: "user", parts: [{ functionResponse }] }],
+      },
+      modelInfo: { provider, model },
+      credentials: { apiKey: "test-key", providerSpecificData: {} },
+      log,
+      connectionId: "gemini-connection",
+      rtkEnabled: false,
+      headroomEnabled: false,
+      cavemanEnabled: false,
+      ponytailEnabled: false,
+      pxpipeEnabled: false,
+      sourceFormatOverride: sourceFormat,
+      clientRawRequest: {
+        endpoint: "/v1beta/models/gemini-2.5-flash:generateContent",
+        body: {},
+        headers: { accept: "application/json" },
+      },
+    });
+
+    expect(executeMock).toHaveBeenCalledWith(expect.objectContaining({
+      body: expect.objectContaining({
+        contents: [{ role: "user", parts: [{ functionResponse }] }],
+      }),
+    }));
   });
 });

@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { resolveConnectionParams } from "../../open-sse/executors/copilot-m365-connection.js";
 
 const originalFetch = global.fetch;
 
@@ -92,21 +93,12 @@ async function validateCopilotWeb(apiKey) {
   return { valid: true, error: null };
 }
 
-function validateCopilotM365Web(apiKey) {
-  const credential = String(apiKey || "").trim();
-  const hasAccessToken = /(^|[?&;\s])access_token=([^;&\s]+)/.test(credential) || (
-    credential &&
-    !credential.includes("access_token=") &&
-    !/^(?:chathubPath|userTenant)\s*=/i.test(credential)
-  );
-  const hasChathubPath =
-    /(^|[;\s])(?:chathubPath|userTenant)=([^;@\s]+@[^;\s]+)/.test(credential) ||
-    /^wss:\/\/substrate\.office\.com\/m365Copilot\/Chathub\/[^?]+(?:@|%40)[^?]+\?/i.test(credential);
+function validateCopilotM365Web(apiKey, providerSpecificData = {}) {
+  const params = resolveConnectionParams({ apiKey, providerSpecificData });
+  const valid = !("error" in params);
   return {
-    valid: !!(hasAccessToken && hasChathubPath),
-    error: hasAccessToken && hasChathubPath
-      ? null
-      : "Paste the M365 Copilot access_token and Chathub path from the Chathub WebSocket URL",
+    valid,
+    error: valid ? null : params.error,
   };
 }
 
@@ -259,5 +251,10 @@ describe("copilot web validation", () => {
     expect(validateCopilotM365Web("access_token=tok").valid).toBe(false);
     expect(validateCopilotM365Web("chathubPath=user@tenant").valid).toBe(false);
     expect(validateCopilotM365Web("userTenant=user@tenant").valid).toBe(false);
+    expect(validateCopilotM365Web("access_token=tok; chathubPath=user@tenant?junk").valid).toBe(false);
+    expect(validateCopilotM365Web(
+      "access_token=tok; chathubPath=user@tenant",
+      { host: "attacker.example" },
+    ).valid).toBe(false);
   });
 });

@@ -13,7 +13,6 @@ export default {
   category: "free",
   noAuth: true,
   serviceKinds: ["video"],
-  hiddenKinds: ["video"],
   transport: {
     baseUrl: "https://veoaifree.com/wp-admin/admin-ajax.php",
     format: "openai",

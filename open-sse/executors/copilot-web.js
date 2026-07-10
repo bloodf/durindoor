@@ -46,8 +46,6 @@ const MODEL_MODE_MAP = {
   "copilot-study": "chat",
 };
 
-const sessionPool = new Map();
-let sessionRotationCount = 0;
 let WebSocketCtorForTesting = null;
 
 export function __setCopilotWebSocketForTesting(ctor) {
@@ -72,6 +70,30 @@ export function solveHashcash(parameter, difficulty) {
   return null;
 }
 
+/**
+ * Solve upstream hashcash without monopolizing the Node event loop. Work is
+ * time-bounded and yields between small batches so unrelated requests keep
+ * progressing while a challenge is evaluated.
+ */
+export async function solveHashcashAsync(
+  parameter,
+  difficulty,
+  { maxIterations = 10_000_000, maxDurationMs = 2_000, yieldEvery = 2_000 } = {},
+) {
+  if (!Number.isInteger(difficulty) || difficulty < 1 || difficulty > 8) return null;
+  const prefix = "0".repeat(difficulty);
+  const deadline = Date.now() + Math.max(1, maxDurationMs);
+  for (let i = 0; i < maxIterations; i++) {
+    const hash = createHash("sha256").update(`${parameter}:${i}`).digest("hex");
+    if (hash.startsWith(prefix)) return i;
+    if (i > 0 && i % yieldEvery === 0) {
+      if (Date.now() >= deadline) return null;
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+  }
+  return null;
+}
+
 export function extractAccessToken(credential) {
   if (!credential) return null;
   const value = String(credential).trim();
@@ -84,7 +106,9 @@ export function extractAccessToken(credential) {
 }
 
 export function sessionPoolKey(token) {
-  return token && token.length > 0 ? token : "anonymous";
+  return token && token.length > 0
+    ? createHash("sha256").update(String(token)).digest("hex")
+    : "anonymous";
 }
 
 async function resolveWebSocketCtor() {
@@ -173,16 +197,9 @@ export class CopilotWebExecutor extends BaseExecutor {
   }
 
   async getSession(accessToken, signal, proxyOptions = null) {
-    const poolKey = sessionPoolKey(accessToken);
-
     // OpenAI-compatible chat calls are stateless unless the client supplies an
     // explicit session key, so each request starts a fresh upstream thread.
-    if (sessionRotationCount >= 1000) sessionRotationCount = 0;
-    const session = await this.createSession(accessToken, signal, proxyOptions);
-    if (sessionPool.size >= 100) sessionPool.delete(sessionPool.keys().next().value);
-    sessionPool.set(poolKey, session);
-    sessionRotationCount++;
-    return session;
+    return this.createSession(accessToken, signal, proxyOptions);
   }
 
   async createSession(accessToken, signal, proxyOptions = null) {
@@ -309,7 +326,7 @@ export class CopilotWebExecutor extends BaseExecutor {
             }
             sendChat();
           };
-          const onMessage = (message) => {
+          const onMessage = async (message) => {
             if (settled) return;
             resetStallTimer();
             const raw = message?.data ?? message;
@@ -335,10 +352,15 @@ export class CopilotWebExecutor extends BaseExecutor {
               } else if (event.event === "challenge") {
                 if (event.method === "hashcash" && event.parameter) {
                   const [param, difficultyRaw = "1"] = String(event.parameter).split(":");
-                  const solution = solveHashcash(param, parseInt(difficultyRaw, 10));
+                  const solution = await solveHashcashAsync(param, parseInt(difficultyRaw, 10));
+                  if (settled) return;
+                  if (solution === null) {
+                    abort("Copilot hashcash challenge exceeded the safe work limit. Use an authenticated access_token.");
+                    return;
+                  }
                   ws.send(JSON.stringify({
                     event: "challengeResponse",
-                    token: solution !== null ? String(solution) : "",
+                    token: String(solution),
                     method: "hashcash",
                   }));
                   chatSent = false;
@@ -407,7 +429,7 @@ export class CopilotWebExecutor extends BaseExecutor {
       return {
         response: jsonError(sanitizeErrorMessage(err instanceof Error ? err.message : "Failed to start Copilot conversation"), status),
         url: COPILOT_START_URL,
-        headers: accessToken ? { Authorization: `Bearer ${accessToken.slice(0, 20)}...` } : {},
+        headers: accessToken ? { Authorization: "[redacted]" } : {},
         transformedBody: { conversationId: null, mode, prompt: prompt.slice(0, 100) },
       };
     }

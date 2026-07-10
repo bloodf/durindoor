@@ -70,7 +70,16 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   // folding their content into user text (reconcileOrphanedToolResults /
   // flattenClaudeToolInteractions) rather than dropping it. Stripping here
   // first would delete that content before the Kiro translator can preserve it.
-  if (targetFormat !== FORMATS.KIRO) {
+  // Gemini / Antigravity pre-translation cleanup is handled inside the Gemini
+  // -> OpenAI request translator (geminiToOpenAIRequestFixed splits
+  // functionResponse parts into their own contents). Running the generic
+  // OpenAI/Anthropic orphan stripper here would strip legitimate tool
+  // messages whose ids don't match a functionCall in the same body.
+  const skipStrip = sourceFormat === FORMATS.GEMINI
+    || sourceFormat === FORMATS.GEMINI_CLI
+    || sourceFormat === FORMATS.ANTIGRAVITY
+    || sourceFormat === FORMATS.VERTEX;
+  if (targetFormat !== FORMATS.KIRO && !skipStrip) {
     stripOrphanedToolResults(result);
   }
 

@@ -176,7 +176,7 @@ describe("OmniRoute simple/default provider batch C", () => {
     const importedVars = [...indexSource.matchAll(/^import\s+(p\d+)\s+from\s+".+\.js";$/gm)].map(
       ([, variable]) => variable,
     );
-    const exportedVars = [...indexSource.matchAll(/^\s+(p\d+),$/gm)].map(([, variable]) => variable);
+    const exportedVars = [...indexSource.matchAll(/^\s+(?:\.\.\.)?(p\d+),$/gm)].map(([, variable]) => variable);
 
     expect(exportedVars).toEqual(importedVars);
   });

@@ -5,6 +5,7 @@ const {
   getApiKeyByKeyMock,
   getApiKeyUsageTotalsMock,
   incrementApiKeyUsageSyncMock,
+  getAdapterMock,
   extractApiKeyMock,
   getConsistentMachineIdMock,
   errorResponseMock,
@@ -12,6 +13,7 @@ const {
   getApiKeyByKeyMock: vi.fn(),
   getApiKeyUsageTotalsMock: vi.fn(),
   incrementApiKeyUsageSyncMock: vi.fn(),
+  getAdapterMock: vi.fn(),
   extractApiKeyMock: vi.fn(),
   getConsistentMachineIdMock: vi.fn(),
   errorResponseMock: vi.fn((status, message) => ({ status, message })),
@@ -30,6 +32,10 @@ vi.mock("../../src/sse/services/auth.js", () => ({
 
 vi.mock("@/shared/utils/machineId", () => ({
   getConsistentMachineId: getConsistentMachineIdMock,
+}));
+
+vi.mock("@/lib/db/driver.js", () => ({
+  getAdapter: getAdapterMock,
 }));
 
 vi.mock("open-sse/utils/error.js", () => ({
@@ -121,6 +127,22 @@ describe("api-key-policy", () => {
     expect(result).toEqual(errorResponseMock(429, "API key cost limit reached ($5.5000/$5)"));
   });
 
+  it("fails closed when a persisted policy is malformed", async () => {
+    extractApiKeyMock.mockReturnValue("key-malformed");
+    getApiKeyByKeyMock.mockResolvedValue({
+      id: "k-malformed",
+      name: "Malformed Key",
+      isActive: true,
+      policy: { allowedModels: "allowed-model", maxTokens: "NaN" },
+    });
+
+    const { enforceApiKeyModelPolicy } = await load();
+    const result = await enforceApiKeyModelPolicy(makeRequest(), "allowed-model");
+
+    expect(result).toEqual(errorResponseMock(403, "API key policy is invalid; contact the administrator"));
+    expect(getApiKeyUsageTotalsMock).not.toHaveBeenCalled();
+  });
+
   it("bypasses policy enforcement with a valid x-9r-cli-token", async () => {
     const { enforceApiKeyModelPolicy } = await load();
     const result = await enforceApiKeyModelPolicy(
@@ -200,10 +222,8 @@ describe("api-key-policy", () => {
 
   it("records non-chat usage by looking up the key and incrementing its usage totals", async () => {
     const apiKey = "key-non-chat";
-    const { getAdapter } = vi.hoisted(() => ({ getAdapter: vi.fn() }));
-    vi.doMock("@/lib/db/driver.js", () => ({ getAdapter }));
     const db = { get: vi.fn() };
-    getAdapter.mockResolvedValue(db);
+    getAdapterMock.mockResolvedValue(db);
     db.get.mockReturnValue({ id: "k5" });
 
     const { recordApiKeyUsage } = await load();
@@ -211,5 +231,19 @@ describe("api-key-policy", () => {
 
     expect(db.get).toHaveBeenCalledWith("SELECT id FROM apiKeys WHERE key = ?", [apiKey]);
     expect(incrementApiKeyUsageSyncMock).toHaveBeenCalledWith(db, "k5", { tokens: 42, cost: 0.01 });
+  });
+
+  it("records non-chat usage only for successful responses", async () => {
+    const db = { get: vi.fn(() => ({ id: "k-success" })) };
+    getAdapterMock.mockResolvedValue(db);
+    const { recordApiKeyUsageForResponse } = await load();
+
+    const failed = new Response("bad input", { status: 400 });
+    expect(await recordApiKeyUsageForResponse("key", failed, { tokens: 99, cost: 1 })).toBe(failed);
+    expect(incrementApiKeyUsageSyncMock).not.toHaveBeenCalled();
+
+    const success = new Response("ok", { status: 200 });
+    expect(await recordApiKeyUsageForResponse("key", success, { tokens: 9, cost: 0 })).toBe(success);
+    expect(incrementApiKeyUsageSyncMock).toHaveBeenCalledOnce();
   });
 });

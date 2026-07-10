@@ -168,6 +168,16 @@ export function formatProviderError(error, provider, model, statusCode) {
 export function sanitizeErrorMessage(message) {
   const firstLine = String(message || "Upstream provider error").split(/\r?\n/)[0].trim();
   return firstLine
+    .replace(/\bBearer\s+\S+/gi, "Bearer [redacted]")
+    .replace(
+      /("(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)"\s*:\s*")[^"]*"/gi,
+      '$1[redacted]"',
+    )
+    .replace(/([A-Za-z0-9_-]*(?:auth(?:orization)?|cookie|token|key|secret|signature|password|credential)[A-Za-z0-9_-]*\s*:\s*)[^\r\n]+/gi, "$1[redacted]")
+    .replace(
+      /((?:[?&;#]\s*|^)(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)=)[^&;\s]+/gi,
+      "$1[redacted]",
+    )
     .replace(/file:\/\/\S+/g, "[path]")
     .replace(/\/(?:Users|home|var|tmp)\/\S+/g, "[path]")
     .slice(0, 500) || "Upstream provider error";

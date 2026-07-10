@@ -157,7 +157,12 @@ describe("DB SQLite layer — public API parity", () => {
       email: "alias@example.com",
       accessToken: "first-token",
       refreshToken: "first-rt",
-      providerSpecificData: { chatgptAccountId: "account-123" },
+      idToken: "first-id",
+      providerSpecificData: {
+        chatgptAccountId: "account-123",
+        chatgptPlanType: "pro",
+        proxy: { host: "proxy.example", auth: { username: "user" } },
+      },
     });
 
     // A later login stores the same account as workspaceId (custom/manual entry).
@@ -167,14 +172,36 @@ describe("DB SQLite layer — public API parity", () => {
       authType: "oauth",
       email: "alias@example.com",
       accessToken: "second-token",
-      refreshToken: "second-rt",
-      providerSpecificData: { workspaceId: "account-123" },
+      refreshToken: null,
+      idToken: "",
+      providerSpecificData: { workspaceId: "account-123", proxy: { auth: { password: "pass" } } },
     });
 
     expect(first.id).toBe(second.id);
 
     const updated = await sqliteDb.getProviderConnectionById(second.id);
     expect(updated.accessToken).toBe("second-token");
+    expect(updated.refreshToken).toBe("first-rt");
+    expect(updated.idToken).toBe("first-id");
+    expect(updated.providerSpecificData).toEqual({
+      chatgptAccountId: "account-123",
+      workspaceId: "account-123",
+      chatgptPlanType: "pro",
+      proxy: { host: "proxy.example", auth: { username: "user", password: "pass" } },
+    });
+  });
+
+  it("providerConnections: concurrent Codex callbacks converge only for the same identity", async () => {
+    const create = (accountId, token) => sqliteDb.createProviderConnection({
+      provider: "codex", authType: "oauth", email: "concurrent@example.com",
+      accessToken: token, providerSpecificData: { chatgptAccountId: accountId },
+    });
+
+    const same = await Promise.all([create("same-account", "one"), create("same-account", "two")]);
+    const distinct = await Promise.all([create("other-a", "three"), create("other-b", "four")]);
+
+    expect(new Set(same.map((row) => row.id)).size).toBe(1);
+    expect(distinct[0].id).not.toBe(distinct[1].id);
   });
 
   it("providerConnections: Codex OAuth bare-email rows with the same email stay distinct", async () => {

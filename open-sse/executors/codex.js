@@ -11,6 +11,7 @@ import { getModelUpstreamId } from "../config/providerModels.js";
 import { DEFAULT_RETRY_CONFIG, HTTP_STATUS, resolveRetryEntry } from "../config/runtimeConfig.js";
 import { dbg } from "../utils/debugLog.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
+import { applyCodexAccountHeader } from "../shared/codexAccountId.js";
 
 // SSE error patterns inside 200-OK bodies. Some retry same account first; capacity rotates accounts.
 const CODEX_SSE_RETRY_PATTERNS = ["server_is_overloaded", "service_unavailable_error"];
@@ -326,13 +327,7 @@ export class CodexExecutor extends BaseExecutor {
     // older/custom rows may use workspaceId/accountId. Prefer explicit workspaceId
     // but fall back to chatgptAccountId/accountId so requests don't cross-bind to
     // the wrong OpenAI account and surface as token_invalid after adding another account.
-    const accountId =
-      credentials?.providerSpecificData?.workspaceId ||
-      credentials?.providerSpecificData?.chatgptAccountId ||
-      credentials?.providerSpecificData?.accountId;
-    if (typeof accountId === "string" && accountId && !headers["ChatGPT-Account-ID"]) {
-      headers["ChatGPT-Account-ID"] = accountId;
-    }
+    applyCodexAccountHeader(headers, credentials?.providerSpecificData);
     return headers;
   }
 

@@ -13,7 +13,7 @@ import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { toExecutorCredentials, toCoreResult } from "./typeHelpers.js";
-import { enforceApiKeyModelPolicy, recordApiKeyUsage } from "../services/apiKeyPolicy.js";
+import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 
 // Allow large image uploads (mask + image can be several MB).
 export const maxDuration = 300;
@@ -48,29 +48,23 @@ export async function handleImageEdit(request) {
   if (!formData.get("image")) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: image");
   if (!formData.get("prompt")) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: prompt");
 
-  // Enforce per-API-key model policy before model fallback
-  const policyError = await enforceApiKeyModelPolicy(request, modelStr);
-  if (policyError) return policyError;
-
-  if (apiKey) {
-    const prompt = formData.get("prompt");
-    const tokens = prompt ? String(prompt).length / 4 : 0;
-    await recordApiKeyUsage(apiKey, { tokens, cost: 0 });
-  }
-
   return runWithModelFallback(
     modelStr,
     settings.modelFallbacks,
-    (m) => handleSingleModelImageEdit(m, formData),
+    (m) => handleSingleModelImageEdit(m, formData, request, apiKey),
     log
   );
 }
 
-async function handleSingleModelImageEdit(modelStr, formData) {
+async function handleSingleModelImageEdit(modelStr, formData, request, apiKey) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
   const { provider, model } = modelInfo;
+  const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`);
+  if (resolvedPolicyError) return resolvedPolicyError;
+  const prompt = formData.get("prompt");
+  const estimatedTokens = prompt ? String(prompt).length / 4 : 0;
   log.info("ROUTING", `Provider: ${provider}, Model: ${model}`);
 
   const excludeConnectionIds = new Set();
@@ -105,7 +99,7 @@ async function handleSingleModelImageEdit(modelStr, formData) {
       "Image edit failed",
     );
 
-    if (result.success) return result.response;
+    if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model);
     if (shouldFallback) {

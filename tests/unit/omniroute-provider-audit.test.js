@@ -14,6 +14,24 @@ import {
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
+function runFixtureGit(cwd, args) {
+  const env = { ...process.env };
+  for (const key of [
+    "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR",
+    "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  ]) delete env[key];
+  return spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8", env });
+}
+
+function hostRepositoryState() {
+  const run = (args) => spawnSync("git", ["-C", repoRoot, ...args], { encoding: "utf8" });
+  return {
+    head: run(["rev-parse", "HEAD"]).stdout.trim(),
+    topLevel: run(["rev-parse", "--show-toplevel"]).stdout.trim(),
+    coreWorktree: run(["config", "--get", "core.worktree"]).stdout.trim(),
+  };
+}
+
 function makeFixture() {
   const root = join(tmpdir(), `durindoor-audit-${process.pid}-${Date.now()}`);
   const durin = join(root, "durin");
@@ -165,17 +183,18 @@ describe("OmniRoute provider audit", () => {
 
   it("verifies a labeled source commit before CLI rendering", () => {
     const sourceRoot = mkdtempSync(join(tmpdir(), "durindoor-audit-source-"));
+    const hostBefore = hostRepositoryState();
+    expect(hostBefore.topLevel).toBe(repoRoot);
+    expect(hostBefore.coreWorktree).toBe("");
 
     try {
-      spawnSync("git", ["init"], { cwd: sourceRoot, encoding: "utf8" });
-      spawnSync("git", ["-c", "user.name=DurinDoor Test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-m", "fixture"], {
-        cwd: sourceRoot,
-        encoding: "utf8",
-      });
-      const head = spawnSync("git", ["rev-parse", "HEAD"], { cwd: sourceRoot, encoding: "utf8" }).stdout.trim();
+      expect(runFixtureGit(sourceRoot, ["init"]).status).toBe(0);
+      expect(runFixtureGit(sourceRoot, ["-c", "user.name=DurinDoor Test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-m", "fixture"]).status).toBe(0);
+      const head = runFixtureGit(sourceRoot, ["rev-parse", "HEAD"]).stdout.trim();
 
       expect(verifySourceCommit(sourceRoot, head)).toBe(head);
       expect(() => verifySourceCommit(sourceRoot, "deadbeef")).toThrow(/does not match --commit/);
+      expect(hostRepositoryState()).toEqual(hostBefore);
     } finally {
       rmSync(sourceRoot, { recursive: true, force: true });
     }
@@ -183,16 +202,17 @@ describe("OmniRoute provider audit", () => {
 
   it("rejects dirty source checkouts before CLI rendering", () => {
     const sourceRoot = mkdtempSync(join(tmpdir(), "durindoor-audit-dirty-source-"));
+    const hostBefore = hostRepositoryState();
+    expect(hostBefore.topLevel).toBe(repoRoot);
+    expect(hostBefore.coreWorktree).toBe("");
 
     try {
-      spawnSync("git", ["init"], { cwd: sourceRoot, encoding: "utf8" });
-      spawnSync("git", ["-c", "user.name=DurinDoor Test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-m", "fixture"], {
-        cwd: sourceRoot,
-        encoding: "utf8",
-      });
+      expect(runFixtureGit(sourceRoot, ["init"]).status).toBe(0);
+      expect(runFixtureGit(sourceRoot, ["-c", "user.name=DurinDoor Test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-m", "fixture"]).status).toBe(0);
       writeFileSync(join(sourceRoot, "uncommitted.txt"), "dirty\n");
 
       expect(() => verifyCleanSourceCheckout(sourceRoot)).toThrow(/uncommitted changes/);
+      expect(hostRepositoryState()).toEqual(hostBefore);
     } finally {
       rmSync(sourceRoot, { recursive: true, force: true });
     }

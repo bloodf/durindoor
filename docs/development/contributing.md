@@ -40,7 +40,8 @@ Common types:
 ## Local Setup
 
 ```bash
-npm install --no-audit --no-fund
+nvm use
+npm ci --no-audit --no-fund
 npm run dev
 ```
 
@@ -53,10 +54,10 @@ The development server runs on port `20127`.
 | `npm run dev` | Start the development server. |
 | `npm run build` | Build the production app. |
 | `npm run lint` | Run ESLint for `src/`. |
-| `npm run test:ci` | Run the test suite from `tests/`. |
+| `cd tests && npm run test:ci` | Run the fail-closed test and baseline gate. |
 | `npm --prefix cli run pack:cli` | Package the CLI. |
 
-Some environments may need a fresh `npm install` before build or lint commands are available.
+Use Node `20.20.2` and npm `10.8.2`; update and commit lockfiles when dependencies change.
 
 ## Pull Request Checklist
 

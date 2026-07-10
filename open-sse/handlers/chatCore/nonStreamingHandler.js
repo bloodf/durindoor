@@ -12,6 +12,16 @@ import { appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { decloakToolNames } from "../../utils/claudeCloaking.js";
 import { stripThinkFromResponse } from "../../utils/thinkStripper.js";
 import { openAIResponsesBodyToClaude, openAIResponsesBodyToOpenAI } from "../../translator/response/openai-responses-nonstream.js";
+import { translateResponse, initState } from "../../translator/index.js";
+import { formatSSE } from "../../utils/streamHelpers.js";
+import { SSE_HEADERS_CORS } from "../../utils/sseConstants.js";
+
+const GEMINI_FAMILY_FORMATS = new Set([
+  FORMATS.GEMINI,
+  FORMATS.GEMINI_CLI,
+  FORMATS.ANTIGRAVITY,
+  FORMATS.VERTEX,
+]);
 
 function parseToolArguments(value) {
   if (!value) return {};
@@ -21,6 +31,66 @@ function parseToolArguments(value) {
   } catch {
     return {};
   }
+}
+
+function openAICompletionToChunks(responseBody, fallbackModel) {
+  const id = responseBody?.id || `chatcmpl-${Date.now()}`;
+  const created = responseBody?.created || Math.floor(Date.now() / 1000);
+  const model = responseBody?.model || fallbackModel;
+  const choice = responseBody?.choices?.[0] || {};
+  const message = choice.message || {};
+  const chunks = [{
+    id,
+    object: "chat.completion.chunk",
+    created,
+    model,
+    choices: [{ index: 0, delta: { role: message.role || "assistant" }, finish_reason: null }],
+  }];
+
+  if (typeof message.reasoning_content === "string" && message.reasoning_content.length > 0) {
+    chunks.push({
+      id, object: "chat.completion.chunk", created, model,
+      choices: [{ index: 0, delta: { reasoning_content: message.reasoning_content }, finish_reason: null }],
+    });
+  }
+  if (typeof message.content === "string" && message.content.length > 0) {
+    chunks.push({
+      id, object: "chat.completion.chunk", created, model,
+      choices: [{ index: 0, delta: { content: message.content }, finish_reason: null }],
+    });
+  }
+  if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
+    chunks.push({
+      id, object: "chat.completion.chunk", created, model,
+      choices: [{
+        index: 0,
+        delta: { tool_calls: message.tool_calls.map((toolCall, index) => ({ index, ...toolCall })) },
+        finish_reason: null,
+      }],
+    });
+  }
+  const final = {
+    id, object: "chat.completion.chunk", created, model,
+    choices: [{ index: 0, delta: {}, finish_reason: choice.finish_reason || "stop" }],
+  };
+  if (responseBody?.usage) final.usage = responseBody.usage;
+  chunks.push(final);
+  return chunks;
+}
+
+function openAICompletionToClientSSE(responseBody, fallbackModel, sourceFormat) {
+  const state = initState(sourceFormat);
+  let output = "";
+  for (const chunk of openAICompletionToChunks(responseBody, fallbackModel)) {
+    const events = sourceFormat === FORMATS.OPENAI
+      ? [chunk]
+      : translateResponse(FORMATS.OPENAI, sourceFormat, chunk, state);
+    for (const event of events || []) {
+      if (event != null) output += formatSSE(event, sourceFormat);
+    }
+  }
+  if (sourceFormat === FORMATS.OPENAI) output += formatSSE({ done: true }, sourceFormat);
+  return output;
 }
 
 function openAICompletionToClaudeMessage(responseBody) {
@@ -229,7 +299,7 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
 /**
  * Handle non-streaming response from provider.
  */
-export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, trackDone, appendLog, pxpipe }) {
+export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, streamToClient, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, trackDone, appendLog, pxpipe }) {
   trackDone();
   const contentType = providerResponse.headers.get("content-type") || "";
   let responseBody;
@@ -339,6 +409,53 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   }, { endpoint: clientRawRequest?.endpoint || null })).catch(err => {
     console.error("[RequestDetail] Failed to save:", err.message);
   });
+
+  // Client requested streaming but the provider only returned a non-stream JSON
+  if (streamToClient === true) {
+    // A same-format Gemini-family response is already a valid streaming chunk.
+    // Sending it through an empty OpenAI synthetic delta loses text, inlineData,
+    // function calls/results, and provider-specific metadata.
+    const isNativeGeminiResponse = sourceFormat === targetFormat
+      && GEMINI_FAMILY_FORMATS.has(sourceFormat)
+      && (Array.isArray(translatedResponse?.candidates) || Array.isArray(translatedResponse?.response?.candidates));
+    if (isNativeGeminiResponse) {
+      return {
+        success: true,
+        response: new Response(formatSSE(translatedResponse, sourceFormat), {
+          headers: {
+            "Content-Type": "text/event-stream",
+            ...SSE_HEADERS_CORS,
+          },
+        }),
+      };
+    }
+
+    // Always synthesize from an OpenAI-normalized intermediate. Reading finish
+    // and usage from the raw provider body mislabels Claude/Gemini fields and
+    // drops tool terminal semantics.
+    const openAIIntermediate = targetFormat === FORMATS.OPENAI
+      ? structuredClone(responseBody)
+      : translateNonStreamingResponse(structuredClone(responseBody), targetFormat, FORMATS.OPENAI);
+    if (!Array.isArray(openAIIntermediate?.choices)) {
+      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Unable to normalize non-streaming response for SSE");
+    }
+    const intermediateChoice = openAIIntermediate.choices[0];
+    if (Array.isArray(intermediateChoice?.message?.tool_calls) && intermediateChoice.message.tool_calls.length > 0) {
+      intermediateChoice.finish_reason = "tool_calls";
+    }
+    stripThinkFromResponse(openAIIntermediate);
+    const sseText = openAICompletionToClientSSE(openAIIntermediate, model, sourceFormat);
+
+    return {
+      success: true,
+      response: new Response(sseText, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          ...SSE_HEADERS_CORS,
+        },
+      }),
+    };
+  }
 
   return {
     success: true,

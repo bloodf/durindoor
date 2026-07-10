@@ -13,7 +13,7 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
-import { enforceApiKeyModelPolicy, recordApiKeyUsage } from "../services/apiKeyPolicy.js";
+import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 
 /**
  * Handle web search request for the SSE/Next.js server.
@@ -82,15 +82,6 @@ export async function handleSearch(request) {
     }
   }
 
-  // Enforce per-API-key model policy
-  const policyError = await enforceApiKeyModelPolicy(request, providerInput);
-  if (policyError) return policyError;
-
-  if (apiKey) {
-    const tokens = body.query ? String(body.query).length / 4 : 0;
-    await recordApiKeyUsage(apiKey, { tokens, cost: 0 });
-  }
-
   // Combo expansion: providerInput may be a combo name → run fallback/round-robin across providers
   const combos = await getCombos();
   const comboModels = getComboModelsFromData(providerInput, combos);
@@ -109,7 +100,6 @@ export async function handleSearch(request) {
       comboStickyLimit
     });
   }
-
   return handleSingleProviderSearch(body, providerInput, request, apiKey, settings);
 }
 
@@ -122,6 +112,9 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
     log.warn("SEARCH", "Unknown provider", { provider: providerInput });
     return errorResponse(HTTP_STATUS.BAD_REQUEST, `Unknown provider: ${providerInput}`);
   }
+
+  const resolvedPolicyError = await enforceApiKeyModelPolicy(request, providerId);
+  if (resolvedPolicyError) return resolvedPolicyError;
 
   const providerConfig = resolvedProvider.searchConfig;
   const supportsSearch = !!providerConfig || !!resolvedProvider.searchViaChat;
@@ -162,7 +155,13 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
       credentials: null,
       log
     });
-    if (result.success) return result.response;
+    if (result.success) {
+      const usage = result.data?.usage || {};
+      return recordApiKeyUsageForResponse(apiKey, result.response, {
+        tokens: Number(usage.llm_tokens) || String(query).length / 4,
+        cost: Number(usage.search_cost_usd) || 0,
+      });
+    }
     return result.response;
   }
 
@@ -212,7 +211,13 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
       }
     });
 
-    if (result.success) return result.response;
+    if (result.success) {
+      const usage = result.data?.usage || {};
+      return recordApiKeyUsageForResponse(apiKey, result.response, {
+        tokens: Number(usage.llm_tokens) || String(query).length / 4,
+        cost: Number(usage.search_cost_usd) || 0,
+      });
+    }
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, providerId);
 

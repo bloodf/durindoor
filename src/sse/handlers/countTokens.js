@@ -5,6 +5,7 @@ import { handleCountTokensCore, estimateTokens } from "open-sse/handlers/countTo
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
+import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
 
 /**
  * Handle /v1/messages/count_tokens. Calls the provider's native count_tokens
@@ -38,6 +39,8 @@ export async function handleCountTokens(request) {
   }
 
   const { provider, model } = modelInfo;
+  const policyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`);
+  if (policyError) return policyError;
   // count_tokens is best-effort: a single credential attempt is enough (the core
   // falls back to the estimate on any failure / no native endpoint).
   const credentials = (await getProviderCredentials(provider, new Set(), model)) || {};

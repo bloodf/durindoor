@@ -79,7 +79,10 @@ export function findPython310() {
       if (!match) continue;
       const [major, minor] = [parseInt(match[1], 10), parseInt(match[2], 10)];
       if (!(major > MIN_VERSION[0] || (major === MIN_VERSION[0] && minor >= MIN_VERSION[1]))) continue;
-      if (!IS_WIN) return candidate;
+      // Always probe pip show so the chosen interpreter actually has
+      // headroom-ai installed. Otherwise the dashboard probes and install
+      // action could land on a different interpreter than the one that has
+      // the package, especially when both python and python3 exist.
       try {
         execFileSync(candidate, ["-m", "pip", "show", "headroom-ai"], {
           stdio: ["ignore", "pipe", "ignore"],
@@ -89,7 +92,7 @@ export function findPython310() {
         });
         return candidate;
       } catch {
-        // Keep scanning on Windows until an interpreter sees headroom-ai.
+        // Keep scanning until an interpreter sees headroom-ai.
       }
     } catch {
       // candidate not present, try next

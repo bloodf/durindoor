@@ -55,15 +55,17 @@ describe("AUDIT-002: API key masking", () => {
     expect(livePath.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("byApiKey object keys should use a secret-safe fingerprint, not raw key", () => {
+  it("byApiKey object keys should use non-secret database or opaque IDs", () => {
     const source = fs.readFileSync(
       path.resolve(repoRoot, "src/lib/db/repos/usageRepo.js"),
       "utf-8"
     );
-    // Internal aggregation keys need stable identity without exposing raw API keys.
+    // Internal aggregation may hash for grouping, but API responses must use a
+    // DB ID or request-local opaque ordinal rather than an offline verifier.
     expect(source).toContain("function fingerprintApiKey");
-    expect(source).toContain("const apiKeyFingerprint = fingerprintApiKey(r.apiKey)");
-    expect(source).toContain("${apiKeyFingerprint}|${r.model}|${r.provider");
+    expect(source).toContain("function getPublicApiKeyIdentity");
+    expect(source).toContain("`api-key:${keyInfo.id}`");
+    expect(source).toContain("`api-key:deleted-${ordinal}`");
     // Should NOT use raw r.apiKey directly in the aggregation key template.
     expect(source).not.toContain("${r.apiKey}|${r.model}|${r.provider");
   });

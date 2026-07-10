@@ -4,6 +4,7 @@ import { getModelInfo } from "../services/model.js";
 import { handleMusicGenerationCore } from "open-sse/handlers/musicGenerationCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
+import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 
 export async function handleMusicGeneration(request) {
   let body;
@@ -25,6 +26,9 @@ export async function handleMusicGeneration(request) {
   const modelInfo = await getModelInfo(body.model);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
   const { provider, model } = modelInfo;
+  const policyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`);
+  if (policyError) return policyError;
+  const estimatedTokens = String(body.prompt || "").length / 4;
 
   const excludeConnectionIds = new Set();
   let lastError = null;
@@ -44,7 +48,7 @@ export async function handleMusicGeneration(request) {
     }
 
     const result = await handleMusicGenerationCore({ provider, model, body, credentials });
-    if (result.success) return result.response;
+    if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model);
     if (shouldFallback) {

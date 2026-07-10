@@ -3,9 +3,14 @@
   "version": "1.0.2",
   "description": "DurinDoor AI Gateway",
   "private": true,
+  "packageManager": "npm@10.8.2",
+  "engines": {
+    "node": "20.20.2",
+    "npm": "10.8.2"
+  },
   "scripts": {
     "dev": "next dev --webpack --port 20127",
-    "build": "next build --webpack",
+    "build": "node scripts/build-app.mjs",
     "start": "next start",
     "dev:bun": "bun --bun next dev --webpack --port 20127",
     "build:bun": "bun --bun next build --webpack",

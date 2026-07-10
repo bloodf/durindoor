@@ -1,4 +1,4 @@
-# 9Router Test Suite
+# DurinDoor Test Suite
 
 Vitest suite covering the open-sse handlers, translator, provider executors, DB
 layer, and security audits (plus the original `/v1/embeddings` unit tests).
@@ -11,7 +11,7 @@ installed, then install the test dependencies:
 
 ```bash
 npm ci                  # repo root — installs open-sse/src deps + better-sqlite3
-cd tests && npm install # installs vitest into tests/node_modules
+cd tests && npm ci      # installs the locked Vitest dependency graph
 ```
 
 ## Running Tests
@@ -24,19 +24,19 @@ npm run test:watch # watch mode
 
 ## CI gate (no-regression)
 
-CI does **not** require every test to pass. A curated set of known failures
-(`__baseline__/known-fails.txt`) is tolerated — some are intentional
-"bug-exposing" TODO tests. The gate only fails when a test that is **not** in
-that list fails (a real pass→fail regression):
+During Stage 1 recovery, CI tolerates only the curated failures in
+`__baseline__/known-fails.txt`. The runner fails closed on startup, collection,
+runtime, stale-report, and parse errors, and rejects any new baseline entry.
 
 ```bash
 cd tests
 npm run test:ci    # runs the suite (JSON) then the no-regression gate
 ```
 
-`test:ci` writes JSON results to `tests/.test-results.json` (gitignored) and runs
-`__baseline__/verify-no-regression.mjs`, which exits non-zero on any regression.
-This is what the GitHub Actions workflow (`.github/workflows/test.yml`) runs.
+`test:ci` deletes old reports first, writes `.test-results.json` and
+`.test-results.junit.xml`, and reports raw failures, known failures, and stale
+baseline entries separately. This is what `.github/workflows/test.yml` runs and
+uploads on every attempt.
 
 ## Test Files
 

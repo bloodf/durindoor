@@ -6,6 +6,49 @@ import { getInstallInfo, libraryEntry } from "./install.js";
 let cached = null; // { module, version, loadedAt }
 let loadPromise = null;
 
+function normalizeLibraryResult(result) {
+  if (!result) return null;
+  const applied = typeof result.applied === "boolean"
+    ? result.applied
+    : result.info?.compressed === true;
+  return {
+    ...result,
+    applied,
+    reason: result.reason || result.info?.reason || (applied ? "applied" : "passthrough"),
+  };
+}
+
+/**
+ * Select the pxpipe library entry point for the request wire format. The
+ * Anthropic and OpenAI APIs use incompatible image block shapes, so they must
+ * never share transformAnthropicMessages.
+ */
+export function createPxpipeDispatcher(mod) {
+  return async (args = {}) => {
+    const format = args.format || "claude";
+    const isResponses = format === "openai-responses" || format === "openai-response";
+    const transform = format === "openai"
+      ? mod.transformOpenAIChatCompletions
+      : isResponses
+        ? mod.transformOpenAIResponses
+        : format === "claude"
+          ? mod.transformAnthropicMessages
+          : null;
+    if (typeof transform !== "function") {
+      return {
+        applied: false,
+        body: args.body,
+        reason: "unsupported_format",
+        detail: `pxpipe does not provide a ${format} transformer`,
+      };
+    }
+    const result = format === "claude"
+      ? await transform(args)
+      : await transform(args.body, { compress: true, ...(args.options || {}) });
+    return normalizeLibraryResult(result);
+  };
+}
+
 export function getLoadedInfo() {
   return cached ? { loaded: true, version: cached.version, loadedAt: cached.loadedAt } : { loaded: false };
 }
@@ -46,7 +89,7 @@ export async function getTransform({ autoLoad = true } = {}) {
   try {
     if (!cached && !autoLoad) return null;
     const { module: mod } = await loadPxpipe();
-    return mod.transformAnthropicMessages;
+    return createPxpipeDispatcher(mod);
   } catch {
     return null;
   }

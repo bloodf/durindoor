@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   refreshCredentials: vi.fn(),
   refreshWithRetry: vi.fn(),
   handleStreamingResponse: vi.fn(),
+  handleNonStreamingResponse: vi.fn(),
   logClientRawRequest: vi.fn(),
   logRawRequest: vi.fn(),
   logTargetRequest: vi.fn(),
@@ -59,6 +60,10 @@ vi.mock("../../open-sse/handlers/chatCore/streamingHandler.js", () => ({
   handleStreamingResponse: mocks.handleStreamingResponse,
 }));
 
+vi.mock("../../open-sse/handlers/chatCore/nonStreamingHandler.js", () => ({
+  handleNonStreamingResponse: mocks.handleNonStreamingResponse,
+}));
+
 vi.mock("@/lib/usageDb.js", () => ({
   trackPendingRequest: vi.fn(),
   appendRequestLog: vi.fn(() => Promise.resolve()),
@@ -105,6 +110,7 @@ describe("Codex compact request context in chatCore", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.handleStreamingResponse.mockImplementation(async ({ providerResponse }) => ({ success: true, response: providerResponse }));
+    mocks.handleNonStreamingResponse.mockImplementation(async ({ providerResponse }) => ({ success: true, response: providerResponse }));
     mocks.refreshWithRetry.mockResolvedValue({ accessToken: "new-token" });
   });
 
@@ -141,7 +147,9 @@ describe("Codex compact request context in chatCore", () => {
     expect(mocks.execute.mock.calls[0][0].body).not.toHaveProperty("_compact");
     expect(mocks.logClientRawRequest.mock.calls[0][1]).not.toHaveProperty("_compact");
     expect(mocks.logRawRequest.mock.calls[0][0]).not.toHaveProperty("_compact");
-    expect(mocks.handleStreamingResponse.mock.calls[0][0].body).not.toHaveProperty("_compact");
+    expect(mocks.handleNonStreamingResponse).toHaveBeenCalledOnce();
+    expect(mocks.handleStreamingResponse).not.toHaveBeenCalled();
+    expect(mocks.handleNonStreamingResponse.mock.calls[0][0].body).not.toHaveProperty("_compact");
     expect(options.credentials).not.toHaveProperty("_isCompact");
   });
 });

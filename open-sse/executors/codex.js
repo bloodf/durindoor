@@ -24,6 +24,63 @@ const CODEX_SSE_USER_OUTPUT_EVENTS = new Set([
 const CODEX_SSE_PEEK_BYTES = 256 * 1024;
 const CODEX_MODEL_CAPACITY_MESSAGE = "Selected model is at capacity. Please try a different model.";
 
+// Responses Lite transport: official codex CLI exec subagents send this opt-in
+// header plus a slim metadata envelope. Forward the contract verbatim only when
+// the client opted in, scoped to the immutable request-local context so
+// concurrent requests never leak headers across shared credentials.
+const CODEX_RESPONSES_LITE_HEADER = "x-openai-internal-codex-responses-lite";
+const CODEX_LITE_METADATA_HEADERS = [
+  "openai-beta",
+  "x-client-request-id",
+  "x-codex-beta-features",
+  "x-codex-installation-id",
+  "x-codex-parent-thread-id",
+  "x-codex-turn-metadata",
+  "x-codex-turn-state",
+  "x-codex-window-id",
+  "x-openai-memgen-request",
+  "x-openai-subagent",
+  "x-responsesapi-include-timing-metrics",
+];
+const CODEX_LITE_METADATA_MAX_BYTES = 16_384;
+const CODEX_LITE_USER_AGENT_RE = /^codex(?:_cli_rs|_exec|-cli)\//i;
+const CODEX_LITE_ORIGINATOR_RE = /^[A-Za-z0-9_.-]{1,128}$/;
+
+function usesResponsesLite(requestContext) {
+  const value = requestContext?.clientHeaders?.[CODEX_RESPONSES_LITE_HEADER];
+  return String(value || "").trim().toLowerCase() === "true";
+}
+
+function copyResponsesLiteHeaders(headers, requestContext) {
+  if (!usesResponsesLite(requestContext)) return;
+  const clientHeaders = requestContext?.clientHeaders || {};
+  headers[CODEX_RESPONSES_LITE_HEADER] = "true";
+
+  for (const name of CODEX_LITE_METADATA_HEADERS) {
+    const value = clientHeaders[name];
+    if (typeof value === "string" && value && value.length <= CODEX_LITE_METADATA_MAX_BYTES) {
+      headers[name] = value;
+    }
+  }
+
+  const userAgent = clientHeaders["user-agent"];
+  if (typeof userAgent === "string" && CODEX_LITE_USER_AGENT_RE.test(userAgent)) {
+    headers["User-Agent"] = userAgent;
+  }
+
+  const originator = clientHeaders.originator;
+  if (typeof originator === "string" && CODEX_LITE_ORIGINATOR_RE.test(originator)) {
+    headers.originator = originator;
+  }
+}
+
+// Compact (/responses/compact) uses a unary JSON contract — narrower allowlist,
+// no stream/store/include fields — distinct from streaming Responses.
+const COMPACT_API_ALLOWLIST = new Set([
+  "model", "input", "instructions", "tools", "parallel_tool_calls", "reasoning",
+  "service_tier", "prompt_cache_key", "text"
+]);
+
 function extractCompleteSseFrames(buffer) {
   const frames = [];
   const delimiter = /\r?\n\r?\n/g;
@@ -121,7 +178,7 @@ const CODEX_PASSTHROUGH_TOOL_TYPES = new Set(["custom"]);
 
 // Allowlist of fields accepted by Codex Responses API — anything else is stripped
 const RESPONSES_API_ALLOWLIST = new Set([
-  "model", "input", "instructions", "tools", "tool_choice", "stream", "store",
+  "model", "input", "instructions", "tools", "tool_choice", "parallel_tool_calls", "stream", "store",
   "reasoning", "service_tier", "include", "prompt_cache_key", "client_metadata",
   "text"
 ]);
@@ -322,6 +379,9 @@ export class CodexExecutor extends BaseExecutor {
     headers["session_id"] = requestContext?.sessionId || credentials?.connectionId || "default";
     // Identify client type to Codex backend (matches official codex CLI)
     if (!headers["originator"]) headers["originator"] = "codex_cli_rs";
+    // Responses Lite transport: forward the opt-in header + slim metadata
+    // envelope from the immutable request context (never from shared credentials).
+    copyResponsesLiteHeaders(headers, requestContext);
     // Account/workspace binding header — required when multiple Codex accounts
     // are configured. OAuth import stores ChatGPT account ID as chatgptAccountId;
     // older/custom rows may use workspaceId/accountId. Prefer explicit workspaceId
@@ -529,6 +589,8 @@ export class CodexExecutor extends BaseExecutor {
    */
   transformRequest(model, body, stream, credentials, requestContext = null) {
     delete body._compact;
+    const isCompact = requestContext?.compact === true;
+    const responsesLite = usesResponsesLite(requestContext);
     // Resolve conversation-stable session_id (priority: body → assistant-text → workspace → machine)
     const sessionId = requestContext?.sessionId || resolveCacheSessionId(body, credentials, requestContext);
     // Convert string input to array format (Codex API requires input as array)
@@ -547,16 +609,22 @@ export class CodexExecutor extends BaseExecutor {
     // Flatten function tools + drop unsupported types
     normalizeCodexTools(body);
 
-    // Ensure streaming is enabled (Codex API requires it)
-    body.stream = true;
+    // Ensure streaming is enabled (Codex API requires it); /responses/compact is unary JSON.
+    if (isCompact) delete body.stream;
+    else body.stream = true;
 
-    // If no instructions provided, inject default Codex instructions
-    if (!body.instructions || body.instructions.trim() === "") {
+    // If no instructions provided, inject default Codex instructions.
+    // Responses Lite / compact carry instructions inside body.input (developer
+    // message); injecting the default top-level string would duplicate it.
+    if (!responsesLite && !isCompact && (typeof body.instructions !== "string" || body.instructions.trim() === "")) {
       body.instructions = CODEX_DEFAULT_INSTRUCTIONS;
+    } else if (responsesLite && body.instructions === "") {
+      delete body.instructions;
     }
 
-    // Ensure store is false (Codex requirement)
-    body.store = false;
+    // Ensure store is false (Codex requirement); compact has no store field.
+    if (isCompact) delete body.store;
+    else body.store = false;
 
     // Inject prompt_cache_key for stable Codex prompt caching
     if (!body.prompt_cache_key && sessionId) {
@@ -589,9 +657,12 @@ export class CodexExecutor extends BaseExecutor {
     }
     delete body.reasoning_effort;
 
-    // Include reasoning encrypted content (required by Codex backend for reasoning models)
-    if (body.reasoning && body.reasoning.effort && body.reasoning.effort !== 'none') {
+    // Include reasoning encrypted content (required by Codex backend for reasoning models);
+    // compact requests omit the include field entirely.
+    if (!isCompact && body.reasoning && body.reasoning.effort && body.reasoning.effort !== 'none') {
       body.include = ["reasoning.encrypted_content"];
+    } else if (isCompact) {
+      delete body.include;
     }
 
     // Remove unsupported parameters for Codex API
@@ -616,9 +687,10 @@ export class CodexExecutor extends BaseExecutor {
     if (body.service_tier === "fast") body.service_tier = "priority";
     if (body.service_tier && body.service_tier !== "priority") delete body.service_tier;
 
-    // Final allowlist filter — strip any unknown field that could trigger upstream "routing_unsupported"
+    // Final allowlist filter — compact and streaming Responses use different contracts.
+    const allowlist = isCompact ? COMPACT_API_ALLOWLIST : RESPONSES_API_ALLOWLIST;
     for (const k of Object.keys(body)) {
-      if (!RESPONSES_API_ALLOWLIST.has(k)) delete body[k];
+      if (!allowlist.has(k)) delete body[k];
     }
 
     return body;

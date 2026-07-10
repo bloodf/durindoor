@@ -3,14 +3,13 @@ import { describe, it, expect } from "vitest";
 import { stripUnsupportedParams } from "../../open-sse/translator/concerns/paramSupport.js";
 
 describe("stripUnsupportedParams", () => {
-  it("flattens Cloudflare AI OpenAI content-part arrays", () => {
+  it("flattens Cloudflare AI OpenAI text content-part arrays", () => {
     const body = {
       messages: [
         {
           role: "user",
           content: [
             { type: "text", text: "hello " },
-            { type: "image_url", image_url: { url: "data:image/png;base64,xx" } },
             { type: "text", text: "world" },
           ],
         },
@@ -19,6 +18,28 @@ describe("stripUnsupportedParams", () => {
 
     expect(() => stripUnsupportedParams("cloudflare-ai", "@cf/meta/llama-3.1-8b-instruct", body)).not.toThrow();
     expect(body.messages[0].content).toBe("hello world");
+  });
+
+  it("throws on Cloudflare AI non-text content parts without silently dropping them (#6390)", () => {
+    const imagePart = { type: "image_url", image_url: { url: "data:image/png;base64,xx" } };
+    const body = {
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello " }, imagePart, { type: "text", text: "world" }],
+        },
+      ],
+    };
+
+    expect(() => stripUnsupportedParams("cloudflare-ai", "@cf/meta/llama-3.1-8b-instruct", body)).toThrow(
+      /does not accept image\/non-text content parts/
+    );
+    // Content array left intact: no silent data loss (#6390 safeguard).
+    expect(body.messages[0].content).toEqual([
+      { type: "text", text: "hello " },
+      imagePart,
+      { type: "text", text: "world" },
+    ]);
   });
 
   it("still drops unsupported GitHub model params", () => {

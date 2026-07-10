@@ -270,3 +270,204 @@ export function stripOrphanedToolResults(body) {
 
   return stripped;
 }
+
+// Extract text content from a tool_result block (Claude-shaped) or tool message (OpenAI-shaped).
+// Returns "" when there is no text (e.g. image-only tool_result).
+function extractToolResultText(content) {
+  if (typeof content === "string") return content.trim();
+  if (!Array.isArray(content)) return "";
+  return content
+    .filter(block => block?.type === "text" && typeof block.text === "string")
+    .map(block => block.text)
+    .join("\n")
+    .trim();
+}
+
+// Merge consecutive same-role user messages so downstream translators that don't
+// merge (notably openai-to-gemini) don't emit adjacent user turns after salvage
+// (Gemini rejects consecutive user turns with 400 INVALID_ARGUMENT).
+// Only merges string-content user messages; array-content messages are left as-is
+// (they may carry structured blocks like tool_result that shouldn't be concatenated).
+// Clone-on-merge: concatenating replaces the last entry with a new object instead
+// of mutating in place, preserving the caller's original message reference.
+function mergeConsecutiveUserMessages(messages) {
+  const merged = [];
+  for (const msg of messages) {
+    const last = merged[merged.length - 1];
+    if (last && last.role === "user" && msg.role === "user"
+        && typeof last.content === "string" && typeof msg.content === "string") {
+      merged[merged.length - 1] = { ...last, content: `${last.content}\n${msg.content}` };
+    } else {
+      merged.push(msg);
+    }
+  }
+  return merged;
+}
+
+/**
+ * Salvage orphaned tool results — results that reference a tool call no longer
+ * present in the same request. Mirrors fixMissingToolResponses on the result
+ * side: that helper ensures every call has a result; this one ensures every
+ * result has a call.
+ *
+ * Unlike stripOrphanedToolResults (which deletes orphans), this folds the
+ * orphan's text content into a user-text block: `[Tool result: <text>]`.
+ * Non-lossy across all formats and preserves Kiro's
+ * reconcileOrphanedToolResults salvage semantics (orphan text is kept as user
+ * text rather than dropped). Image-only results (no text) are still dropped.
+ *
+ * Handles three wire envelopes:
+ *   - OpenAI messages[]     : orphaned role:"tool"           -> user text
+ *   - Anthropic messages[]  : orphaned tool_result block     -> text block
+ *   - Gemini/Antigravity contents[]: orphaned functionResponse -> text part
+ *
+ * Responses API function_call_output is handled separately in
+ * openai-responses.js (stripOrphanedToolOutputs): Responses items have no text
+ * representation to salvage — they are structural call/output pairs, not
+ * content blocks.
+ *
+ * After salvaging messages[], consecutive same-role user messages are merged so
+ * downstream translators that don't merge (notably openai-to-gemini) don't emit
+ * adjacent user turns that trigger Gemini 400 INVALID_ARGUMENT.
+ *
+ * Fail-open: any error returns the body unchanged.
+ *
+ * @param {object} body request body (mutated in place; messages[]/contents[])
+ * @returns {object} the same body reference
+ */
+export function salvageOrphanedToolResults(body) {
+  if (!body || typeof body !== "object") return body;
+
+  try {
+    let changed = false;
+
+    // ── OpenAI/Claude messages[] ───────────────────────────────────────────
+    if (Array.isArray(body.messages)) {
+      const knownCallIds = new Set();
+      for (const msg of body.messages) {
+        // Only assistant turns carry tool calls — collecting from other roles
+        // causes false positives (a user message with tool_use would mask orphans).
+        if (msg.role !== "assistant") continue;
+        if (Array.isArray(msg.tool_calls)) {
+          for (const tc of msg.tool_calls) {
+            if (typeof tc?.id === "string") knownCallIds.add(tc.id);
+          }
+        }
+        if (Array.isArray(msg.content)) {
+          for (const block of msg.content) {
+            if (block?.type === "tool_use" && typeof block.id === "string") {
+              knownCallIds.add(block.id);
+            }
+          }
+        }
+      }
+
+      const salvagedMessages = [];
+      for (const msg of body.messages) {
+        // OpenAI shape: orphaned role:"tool" message -> salvage to user text
+        if (msg.role === "tool" && msg.tool_call_id) {
+          if (knownCallIds.has(msg.tool_call_id)) {
+            salvagedMessages.push(msg);
+          } else {
+            const text = extractToolResultText(msg.content);
+            if (text) salvagedMessages.push({ role: "user", content: `[Tool result: ${text}]` });
+            changed = true;
+          }
+          continue;
+        }
+
+        // Claude shape: orphaned tool_result block in user content -> salvage text
+        if (Array.isArray(msg.content)) {
+          let orphanCount = 0;
+          const rebuiltContent = [];
+          for (const block of msg.content) {
+            if (block?.type !== "tool_result") {
+              rebuiltContent.push(block);
+              continue;
+            }
+            if (typeof block.tool_use_id === "string" && knownCallIds.has(block.tool_use_id)) {
+              rebuiltContent.push(block);
+              continue;
+            }
+            orphanCount++;
+            const text = extractToolResultText(block.content);
+            if (text) rebuiltContent.push({ type: "text", text: `[Tool result: ${text}]` });
+          }
+          if (orphanCount > 0) {
+            changed = true;
+            if (rebuiltContent.length === 0) continue; // all blocks image-only orphans
+            msg.content = rebuiltContent;
+          }
+        }
+
+        salvagedMessages.push(msg);
+      }
+
+      if (changed) body.messages = mergeConsecutiveUserMessages(salvagedMessages);
+    }
+
+    // ── Gemini/Antigravity contents[] ──────────────────────────────────────
+    if (Array.isArray(body.contents)) {
+      const knownFnIds = new Set();
+      for (const turn of body.contents) {
+        // Only model turns carry functionCall — a malformed user turn with
+        // functionCall would otherwise mask real orphans.
+        if (turn.role !== "model") continue;
+        if (!Array.isArray(turn.parts)) continue;
+        for (const part of turn.parts) {
+          if (part?.functionCall) {
+            const key = part.functionCall.id ?? part.functionCall.name;
+            if (key) knownFnIds.add(key);
+          }
+        }
+      }
+
+      // Only salvage when at least one functionCall exists to match against.
+      // Gemini-family clients legitimately send functionResponse turns without
+      // the originating functionCall after trimming local history; with no call
+      // set, every response would look orphaned and be dropped. Preserving them
+      // here keeps that standalone tool output visible (matches the previous
+      // per-format skip for gemini/gemini-cli/antigravity/vertex).
+      if (knownFnIds.size > 0 && body.contents.some(t => Array.isArray(t.parts) && t.parts.some(p => p.functionResponse))) {
+        const salvagedContents = [];
+        for (const turn of body.contents) {
+          if (!Array.isArray(turn.parts) || !turn.parts.some(p => p.functionResponse)) {
+            salvagedContents.push(turn);
+            continue;
+          }
+          let orphanCount = 0;
+          const rebuiltParts = [];
+          for (const part of turn.parts) {
+            if (!part.functionResponse) {
+              rebuiltParts.push(part);
+              continue;
+            }
+            const key = part.functionResponse.id ?? part.functionResponse.name;
+            if (key && knownFnIds.has(key)) {
+              rebuiltParts.push(part);
+              continue;
+            }
+            orphanCount++;
+            const resp = part.functionResponse.response;
+            const raw = resp?.result ?? resp;
+            const text = typeof raw === "string" ? raw.trim() : (raw ? JSON.stringify(raw).trim() : "");
+            if (text) rebuiltParts.push({ text: `[Tool result: ${text}]` });
+          }
+          if (orphanCount > 0) {
+            changed = true;
+            // Drop the turn entirely if all parts were image-only orphans —
+            // Gemini rejects turns with empty parts[] (400 INVALID_ARGUMENT).
+            if (rebuiltParts.length === 0) continue;
+            turn.parts = rebuiltParts;
+          }
+          salvagedContents.push(turn);
+        }
+        if (changed) body.contents = salvagedContents;
+      }
+    }
+
+    return body;
+  } catch {
+    return body;
+  }
+}

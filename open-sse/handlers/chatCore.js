@@ -23,9 +23,10 @@ import { handleForcedSSEToJson } from "./chatCore/sseToJsonHandler.js";
 import { handleNonStreamingResponse } from "./chatCore/nonStreamingHandler.js";
 import { handleStreamingResponse, buildOnStreamComplete } from "./chatCore/streamingHandler.js";
 import { resolveStreamFlag } from "./chatCore/streamFlag.js";
+import { createEmptyRetryStream } from "./chatCore/emptyStreamGuard.js";
 import { detectClientTool, isNativePassthrough } from "../utils/clientDetector.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
-import { stripOrphanedToolResults } from "../translator/concerns/toolCall.js";
+import { salvageOrphanedToolResults, fixMissingToolResponses } from "../translator/concerns/toolCall.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
 import { compressMessages, formatRtkLog } from "../rtk/index.js";
@@ -34,13 +35,6 @@ import { compressWithPxpipe, formatPxpipeLog, normalizePxpipeResult } from "../r
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { stripUnsupportedModalities } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
-
-const NATIVE_TOOL_RESULT_FORMATS = new Set([
-  FORMATS.GEMINI,
-  FORMATS.GEMINI_CLI,
-  FORMATS.ANTIGRAVITY,
-  FORMATS.VERTEX,
-]);
 
 function isCompactResponsesEndpoint(endpoint) {
   const path = String(endpoint || "").split(/[?#]/, 1)[0].replace(/\/+$/, "");
@@ -79,24 +73,13 @@ function stripLegacyCompactMarker(body, clientRawRequest) {
 }
 
 /**
- * Gemini-family clients legitimately send functionResponse turns without the
- * originating functionCall after trimming their local history. Their native
- * APIs accept that history and the Gemini translators preserve the content.
- * Applying the generic orphan cleaner to those wire formats silently deletes
- * user-visible tool output before dispatch.
- */
-export function shouldStripOrphanedToolResults(format) {
-  return !NATIVE_TOOL_RESULT_FORMATS.has(format);
-}
-
-/**
  * Core chat handler - shared between SSE and Worker
  * @param {object} options.body - Request body
  * @param {object} options.modelInfo - { provider, model }
  * @param {object} options.credentials - Provider credentials
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, skipPonytailCommands = false }) {
+export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, skipPonytailCommands = false }) {
   const { provider, model: requestedModel } = modelInfo;
   const requestStartTime = Date.now();
   const requestContext = captureRequestContext(body, clientRawRequest);
@@ -215,14 +198,13 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     } catch (e) { log?.warn?.("MODALITY", `image prefetch failed: ${e.message}`); }
   }
 
-  // Strip orphaned tool results before translation so the translator never sees
-  // stale call_id references that client-side history truncation left behind.
-  const preStripped = shouldStripOrphanedToolResults(sourceFormat)
-    ? stripOrphanedToolResults(body)
-    : 0;
-  if (preStripped > 0) {
-    log?.debug?.("TOOLCLEAN", `pre-translation: stripped ${preStripped} orphaned tool result(s)`);
-  }
+  // Salvage orphaned tool results before translation so the translator never
+  // sees stale call_id references that client-side history truncation left
+  // behind. Salvage folds orphan text into user text (non-lossy) rather than
+  // deleting it, preserving Kiro's orphan-salvage semantics. Runs
+  // unconditionally: salvage understands messages[] and contents[].
+  salvageOrphanedToolResults(body);
+  fixMissingToolResponses(body);
 
   let translatedBody;
   let toolNameMap;
@@ -300,15 +282,13 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     }
   } else if (headroomEnabled) log?.warn?.("HEADROOM", `skipped: ${headroomDiagnostics.reason || "compression unavailable"}${headroomDiagnostics.endpoint ? ` (${headroomDiagnostics.endpoint})` : ""}`);
 
-  // Strip orphaned tool results again after RTK/Headroom compression — both
+  // Re-run salvage + fixMissing after RTK/Headroom compression — both
   // compressors can remove assistant turns containing tool_calls, which would
   // otherwise leave dangling tool results that strict providers reject with 400.
-  const postStripped = shouldStripOrphanedToolResults(finalFormat)
-    ? stripOrphanedToolResults(translatedBody)
-    : 0;
-  if (postStripped > 0) {
-    log?.debug?.("TOOLCLEAN", `post-compression: stripped ${postStripped} orphaned tool result(s)`);
-  }
+  // Salvage first (fold orphan text), then fixMissing (re-insert empty results
+  // for any call that lost its response) to restore the tool-pairing invariant.
+  salvageOrphanedToolResults(translatedBody);
+  fixMissingToolResponses(translatedBody);
 
   // Caveman: inject terse-style system prompt
   if (cavemanEnabled && cavemanLevel) {
@@ -339,13 +319,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     try { onPxpipeEvent?.({ provider, model: cleanModel, ...pxpipeSummary }); } catch { /* stats must not break requests */ }
   }
 
-  // Re-strip after PXPIPE in case compression removed assistant/tool turns.
-  const pxpipeStripped = shouldStripOrphanedToolResults(finalFormat)
-    ? stripOrphanedToolResults(translatedBody)
-    : 0;
-  if (pxpipeStripped > 0) {
-    log?.debug?.("TOOLCLEAN", `post-pxpipe: stripped ${pxpipeStripped} orphaned tool result(s)`);
-  }
+  // Re-salvage + re-fix after PXPIPE in case compression removed assistant/tool turns.
+  salvageOrphanedToolResults(translatedBody);
+  fixMissingToolResponses(translatedBody);
 
   const executor = getExecutor(provider);
   trackPendingRequest(cleanModel, provider, connectionId, true);
@@ -534,6 +510,44 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     console.log(`${COLORS.red}[ERROR] ${errMsg}${COLORS.reset}`);
     reqLogger.logError(new Error(message), finalBody || translatedBody);
     return createErrorResult(statusCode, errMsg, resetsAtMs);
+  }
+
+  // Antigravity/AGY empty-stream guard — oh-my-pi parity: bytes (thinking included)
+  // stream to the client live; emptiness is judged per upstream attempt and an
+  // empty attempt is retried in-stream with the identical request, spliced into
+  // the same client message (see emptyStreamGuard.js). Exhaustion surfaces as an
+  // in-stream error event (retryable by Claude Code); onUpstreamEmptyExhausted
+  // lets the caller bench the account so the client's retry rotates to the next
+  // one (#2188, #2229, #2250, #2259).
+  if ((provider === "antigravity" || provider === "agy") && stream && providerResponse.body) {
+    const reexecute = async () => {
+      const retryResult = await executor.execute({ model: cleanUpstreamModel, body: translatedBody, stream, credentials, signal: streamController.signal, log, proxyOptions, requestContext });
+      if (!retryResult.response.ok) {
+        const { statusCode, message } = await parseUpstreamError(retryResult.response, executor);
+        throw new Error(`[${statusCode}] ${message}`);
+      }
+      if (!retryResult.response.body) throw new Error("upstream returned no body");
+      return retryResult.response.body;
+    };
+    providerResponse = new Response(
+      createEmptyRetryStream({
+        body: providerResponse.body,
+        reexecute,
+        signal: streamController.signal,
+        log,
+        onExhausted: (reason, { upstreamError } = {}) => {
+          if (!onUpstreamEmptyExhausted) return;
+          // Quota-style exhaustion carries the reset time only inside the error
+          // message ("Your quota will reset after 2h7m23s") — bench precisely.
+          const resetMs = executor.parseRetryFromErrorMessage?.(upstreamError?.message || reason);
+          return onUpstreamEmptyExhausted(
+            formatProviderError(new Error(reason), provider, cleanModel, HTTP_STATUS.BAD_GATEWAY),
+            resetMs ? Date.now() + resetMs : undefined
+          );
+        },
+      }),
+      { status: providerResponse.status, headers: providerResponse.headers }
+    );
   }
 
   const sharedCtx = { provider, model: cleanModel, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, pxpipe: pxpipeSummary };

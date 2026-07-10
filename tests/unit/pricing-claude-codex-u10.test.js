@@ -3,6 +3,7 @@ import {
   getPricingForModel,
   MODEL_PRICING,
   PROVIDER_PRICING,
+  PATTERN_PRICING,
 } from "../../open-sse/providers/pricing.js";
 
 // Port of upstream 9router d2599ebf1 — fix(pricing): Claude/Codex model rates + new models.
@@ -110,30 +111,34 @@ describe("U-10 Claude/Codex pricing (upstream d2599ebf1)", () => {
 
     // The three rows below have NO exact/family case that reaches them: every
     // changed canonical id is also matched by a more specific dotted pattern.
-    // Probe each with an unknown id that uniquely lands on that single row.
+    // Probe each with an unknown id that uniquely lands on that single row, and
+    // assert IDENTITY against the matched PATTERN_PRICING row (toBe) so a
+    // deleted row falling through to an equal-value sibling would fail.
+    const row = (pattern) => PATTERN_PRICING.find((p) => p.pattern === pattern);
+
     it("*-codex catch-all suffix row repriced (unknown id, no codex-* prefix)", () => {
       // "zz-future-codex": ends -codex, but does NOT start with "codex-" (so
       // codex-* is skipped) and carries no -low/-none/-spark suffix — unique hit
       // on the `*-codex` row.
-      expect(getPricingForModel(null, "zz-future-codex")).toEqual(
-        claude(1.75, 14.00, 0.175, 14.00, 1.75),
-      );
+      const r = getPricingForModel(null, "zz-future-codex");
+      expect(r).toBe(row("*-codex").pricing);
+      expect(r).toEqual(claude(1.75, 14.00, 0.175, 14.00, 1.75));
     });
 
     it("gpt-5-* dashed-family row repriced (unknown id, not a dotted 5.x)", () => {
       // "gpt-5-zzz": matches gpt-5-* but NOT gpt-5.1/5.2/5.3/5.6-* (those need
       // a dot) — lands uniquely on the dashed-family row.
-      expect(getPricingForModel(null, "gpt-5-zzz")).toEqual(
-        claude(1.25, 10.00, 0.625, 10.00, 1.25),
-      );
+      const r = getPricingForModel(null, "gpt-5-zzz");
+      expect(r).toBe(row("gpt-5-*").pricing);
+      expect(r).toEqual(claude(1.25, 10.00, 0.625, 10.00, 1.25));
     });
 
     it("gpt-5* bare row repriced (unknown id, no dash or dot after gpt-5)", () => {
       // "gpt-5zzz": matches gpt-5* but NOT gpt-5-* (needs a dash) nor the
       // dotted 5.x rows — unique hit on the bare catch-all row.
-      expect(getPricingForModel(null, "gpt-5zzz")).toEqual(
-        claude(1.25, 10.00, 0.625, 10.00, 1.25),
-      );
+      const r = getPricingForModel(null, "gpt-5zzz");
+      expect(r).toBe(row("gpt-5*").pricing);
+      expect(r).toEqual(claude(1.25, 10.00, 0.625, 10.00, 1.25));
     });
   });
 

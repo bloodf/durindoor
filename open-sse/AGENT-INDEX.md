@@ -171,7 +171,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `glmt` |  | apikey | `https://api.z.ai/api/coding/paas/v4/chat/completions` |
 | `google-pse` |  | apikey | `` |
 | `google-tts` |  | freeTier | `` |
-| `grok-cli` | openai | oauth | `https://cli-chat-proxy.grok.com/v1/chat/completions` |
+| `grok-cli` | openai-responses | oauth | `https://cli-chat-proxy.grok.com/v1/responses` |
 | `grok-web` | grok-web | webCookie | `https://grok.com/rest/app-chat/conversations/new` |
 | `groq` |  | apikey | `https://api.groq.com/openai/v1/chat/completions` |
 | `hackclub` |  | apikey | `https://ai.hackclub.com/proxy/v1/chat/completions` |

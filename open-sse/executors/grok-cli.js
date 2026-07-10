@@ -235,6 +235,7 @@ export class GrokCliExecutor extends BaseExecutor {
     headers["x-grok-client-version"] =
       this.config.clientVersion || headers["x-grok-client-version"] || "0.2.93";
     headers["x-authenticateresponse"] = "authenticate-response";
+    if (!headers.Accept) headers.Accept = "application/json";
 
     const sessionId = this._currentSessionId || credentials?.connectionId || crypto.randomUUID();
     const reqId = this._currentReqId || crypto.randomUUID();
@@ -354,10 +355,13 @@ export class GrokCliExecutor extends BaseExecutor {
     delete body.max_completion_tokens;
     delete body.n;
     delete body.seed;
-    delete body.logprobs;
-    delete body.top_logprobs;
     delete body.frequency_penalty;
     delete body.presence_penalty;
+    delete body.frequencyPenalty;
+    delete body.presencePenalty;
+    delete body.logprobs;
+    delete body.top_logprobs;
+    delete body.topLogprobs;
     delete body.logit_bias;
     delete body.user;
     delete body.stream_options;

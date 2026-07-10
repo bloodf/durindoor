@@ -58,12 +58,24 @@ export function stripUnsupportedParams(provider, model, body) {
         }
       }
     }
-    // CF Workers AI oneOf root schema only accepts content as plain string (#1926)
+    // CF Workers AI oneOf root schema only accepts content as plain string (#1926).
+    // #6390: the endpoint has no way to carry image/non-text parts once flattened,
+    // so previously any non-text part (e.g. image_url) was silently mapped to "" and
+    // the attachment vanished from the outgoing request with no error. Refuse instead
+    // of silently dropping data — a plain Error here surfaces through chatCore's
+    // executor error path (sanitizeErrorMessage) before reaching the client.
     if (rule.flattenContent && Array.isArray(body.messages)) {
       for (const msg of body.messages) {
         if (msg && Array.isArray(msg.content)) {
           msg.content = msg.content
-            .map(b => (b?.type === "text" && typeof b.text === "string") ? b.text : "")
+            .map(b => {
+              if (b?.type === "text" && typeof b.text === "string") return b.text;
+              const got = typeof b?.type === "string" ? b.type : "unknown";
+              throw new Error(
+                "Cloudflare Workers AI chat endpoint does not accept image/non-text content parts " +
+                `(got type "${got}"). Remove image/file attachments or route this request to a vision-capable provider.`
+              );
+            })
             .join("");
         }
       }

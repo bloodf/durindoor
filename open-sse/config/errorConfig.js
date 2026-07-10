@@ -38,8 +38,8 @@ export const BACKOFF_CONFIG = {
 // Default cooldown for transient/unknown errors
 export const TRANSIENT_COOLDOWN_MS = 30 * 1000;
 
-// Hard cap for provider-reported rate limit cooldown (e.g. codex resets_at can be 5-6h)
-export const MAX_RATE_LIMIT_COOLDOWN_MS = 30 * 60 * 1000;
+// Hard cap for provider-reported rate limit cooldown (e.g. codex resets_at 5-6h, antigravity quota ~160h)
+export const MAX_RATE_LIMIT_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
 
 // Cooldown durations (ms)
 const COOLDOWN = {
@@ -64,6 +64,8 @@ export const ERROR_RULES = [
   { text: "rate limit",               backoff: true },
   { text: "too many requests",        backoff: true },
   { text: "quota exceeded",           backoff: true },
+  { text: "quota reached",            backoff: true },
+  { text: "individual quota",         backoff: true },
   { text: "capacity",                 backoff: true },
   { text: "overloaded",               backoff: true },
 

@@ -21,7 +21,8 @@
     "gen:agent-index": "node scripts/gen-agent-index.mjs",
     "check:agent-index": "node scripts/check-agent-index.mjs",
     "gen:registry-index": "node scripts/gen-registry-index.mjs",
-    "check:registry-index": "node scripts/gen-registry-index.mjs --check"
+    "check:registry-index": "node scripts/gen-registry-index.mjs --check",
+    "catalog:diff": "node scripts/model-catalog-diff.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1084.0",

@@ -130,6 +130,25 @@ describe("buildEmbeddingsBody", () => {
     expect(sent.encoding_format).toBe("base64");
   });
 
+  // Port of decolua/9router#2178: asymmetric embedding models (e.g. NVIDIA NIM
+  // nvidia/llama-nemotron-embed-*) require input_type ("query" | "passage");
+  // it must be forwarded verbatim through handleEmbeddingsCore to the provider body.
+  it("forwards input_type to the provider request body", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(makeProviderResponse(VALID_EMBEDDING_RESPONSE));
+
+    await handleEmbeddingsCore(makeOptions({
+      body: {
+        model: "nvidia/llama-nemotron-embed-1b-v2",
+        input: "what is rag?",
+        input_type: "query",
+      },
+    }));
+
+    const [, init] = vi.mocked(fetch).mock.calls[0];
+    const sent = JSON.parse(init.body);
+    expect(sent.input_type).toBe("query");
+  });
+
   it("no encoding_format in body → defaults to float", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(makeProviderResponse(VALID_EMBEDDING_RESPONSE));
 

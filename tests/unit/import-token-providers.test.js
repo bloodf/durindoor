@@ -6,8 +6,8 @@ import {
 } from "../../src/shared/utils/importTokenProviders.js";
 
 describe("import-token OAuth providers", () => {
-  it("routes grok-cli through import-token instead of generic OAuth authorize", () => {
-    expect(isImportTokenOAuthProvider("grok-cli")).toBe(true);
+  it("no longer routes grok-cli through import-token (it is a device-code provider)", () => {
+    expect(isImportTokenOAuthProvider("grok-cli")).toBe(false);
     expect(isImportTokenOAuthProvider("claude")).toBe(false);
   });
 
@@ -15,7 +15,7 @@ describe("import-token OAuth providers", () => {
     expect(buildImportTokenPayload("  eyJ.token.sig  ")).toBe("eyJ.token.sig");
   });
 
-  it("parses pasted Grok CLI auth JSON for the import-token API", () => {
+  it("parses pasted auth JSON unchanged", () => {
     const payload = buildImportTokenPayload(`{
       "https://auth.x.ai::client": {
         "key": "eyJ.token.sig",

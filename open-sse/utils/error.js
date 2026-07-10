@@ -127,10 +127,24 @@ export function createErrorResult(statusCode, message, resetsAtMs, errorBody) {
  * @returns {Response}
  */
 export function unavailableResponse(statusCode, message, retryAfter, retryAfterHuman) {
-  const retryAfterSec = Math.max(Math.ceil((new Date(retryAfter).getTime() - Date.now()) / 1000), 1);
+  const retryAfterMs = new Date(retryAfter).getTime();
+  const retryAfterSec = Math.max(Math.ceil((retryAfterMs - Date.now()) / 1000), 1);
   const msg = `${message} (${retryAfterHuman})`;
+  const error = { message: msg };
+  // #6523: for 429 rate-limit responses, surface the OpenAI-shaped type/code
+  // and an ISO `retry_after` timestamp so SDKs can back off deterministically.
+  // Kept alongside the `Retry-After` seconds header (RFC 7231) — some clients
+  // read one, some the other. Only emitted for 429; other statuses keep the
+  // legacy minimal envelope to avoid changing existing call-site contracts.
+  if (statusCode === 429) {
+    error.type = "rate_limit_error";
+    error.code = "rate_limit_exceeded";
+    if (Number.isFinite(retryAfterMs)) {
+      error.retry_after = new Date(retryAfterMs).toISOString();
+    }
+  }
   return new Response(
-    JSON.stringify({ error: { message: msg } }),
+    JSON.stringify({ error }),
     {
       status: statusCode,
       headers: {

@@ -58,4 +58,19 @@ describe("fail-closed CI runner", () => {
     expect(addedBaselineEntries("@@\n-old failure\n")).toEqual([]);
     expect(addedBaselineEntries("@@\n+new failure\n")).toEqual(["new failure"]);
   });
+
+  it("fails closed while uploading the hidden JSON and JUnit reports", () => {
+    for (const file of ["test.yml", "nightly.yml", "release.yml"]) {
+      const workflow = fs.readFileSync(
+        new URL(`../../.github/workflows/${file}`, import.meta.url),
+        "utf8",
+      );
+      expect(workflow).toContain("tests/.test-results.json");
+      expect(workflow).toContain("tests/.test-results.junit.xml");
+      expect(workflow).toContain("test -s tests/.test-results.json");
+      expect(workflow).toContain("test -s tests/.test-results.junit.xml");
+      expect(workflow).toContain("include-hidden-files: true");
+      expect(workflow).toContain("if-no-files-found: error");
+    }
+  });
 });

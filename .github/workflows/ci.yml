@@ -16,8 +16,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    env:
-      DATA_DIR: ${{ runner.temp }}/durindoor-data
     steps:
       - name: "📥 Checkout"
         uses: actions/checkout@v4
@@ -44,4 +42,6 @@ jobs:
         run: npm run check:agent-index
 
       - name: "🏗️ Build (isolated state)"
+        env:
+          DATA_DIR: ${{ runner.temp }}/durindoor-data
         run: npm run build

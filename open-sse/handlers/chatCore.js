@@ -13,8 +13,10 @@ import { PROVIDERS } from "../config/providers.js";
 import { createErrorResult, parseUpstreamError, formatProviderError } from "../utils/error.js";
 import { HTTP_STATUS, VALIDATE_OUTBOUND } from "../config/runtimeConfig.js";
 import { handleBypassRequest } from "../utils/bypassHandler.js";
+import { handlePonytailCommands, DEFAULT_PONYTAIL_HELP, resolvePonytailStream } from "../utils/tokenSaverBridge.js";
 import { trackPendingRequest, appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { acquireSlot, releaseSlot, getConcurrencyLimit, ConcurrencyGateTimeoutError } from "../services/concurrencyGate.js";
+
 import { getExecutor } from "../executors/index.js";
 import { buildRequestDetail, extractRequestConfig } from "./chatCore/requestDetail.js";
 import { handleForcedSSEToJson } from "./chatCore/sseToJsonHandler.js";
@@ -103,7 +105,7 @@ function stripLegacyCompactMarker(body, clientRawRequest) {
  *   errors. Legacy `info`/`debug`/`warn`/`error` remain supported.
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit }) {
+export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, skipPonytailCommands = false }) {
   const { provider, model: requestedModel } = modelInfo;
   const requestStartTime = Date.now();
   const requestContext = captureRequestContext(body, clientRawRequest);
@@ -120,6 +122,23 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const reqTag = log?.tagForSession ? log.tagForSession(sessionSeed) : (log?.nextTag ? log.nextTag() : "");
 
   const sourceFormat = sourceFormatOverride || detectFormat(body);
+
+  // Ponytail slash commands — must run before bypass heuristics.
+  // Honor sourceFormatOverride and header-driven non-streaming requests.
+  const acceptHeader = clientRawRequest?.headers?.accept || "";
+  const clientPrefersJson = acceptHeader.includes("application/json");
+  const clientPrefersSSE = acceptHeader.includes("text/event-stream");
+  if (!skipPonytailCommands) {
+    const ponytailResponse = await handlePonytailCommands(body, requestedModel, {
+      // Worker/core fallbacks have no authenticated API-key record, so gain
+      // deliberately returns the dashboard hint instead of aggregate stats.
+      fetchStats: null,
+      helpText: DEFAULT_PONYTAIL_HELP,
+      sourceFormatOverride: sourceFormat,
+      streamOverride: resolvePonytailStream(body, sourceFormat, acceptHeader),
+    });
+    if (ponytailResponse) return ponytailResponse;
+  }
 
   // Check for bypass patterns (warmup, skip, cc naming)
   const bypassResponse = handleBypassRequest(body, requestedModel, userAgent, ccFilterNaming);
@@ -171,12 +190,6 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // DeepSeek-TUI: interactive TUI panel sends stream:true and needs SSE.
   // Non-interactive mode (-p flag) sends without stream and can't parse SSE.
   const detectedTool = detectClientTool(clientRawRequest?.headers || {}, body);
-
-  // Client Accept header preference (AI SDK sends Accept: application/json for
-  // non-streaming responses).
-  const acceptHeader = clientRawRequest?.headers?.accept || "";
-  const clientPrefersJson = acceptHeader.includes("application/json");
-  const clientPrefersSSE = acceptHeader.includes("text/event-stream");
 
   // Stream-only providers (forceStream) must keep streaming even when the client
   // asked for JSON; the accumulated stream is converted to JSON downstream. (#2031)

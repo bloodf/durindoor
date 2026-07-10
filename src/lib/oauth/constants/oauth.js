@@ -117,6 +117,11 @@ export const WINDSURF_CONFIG = { ...PROVIDER_OAUTH.windsurf };
 // CodeBuddy (Tencent) OAuth Configuration (Browser OAuth Polling Flow)
 export const CODEBUDDY_CONFIG = { ...PROVIDER_OAUTH["codebuddy-cn"] };
 
+// Grok CLI / Grok Build OAuth Configuration (Device Code Flow)
+// Endpoint: cli-chat-proxy.grok.com — same client_id as xai, different flow + scopes.
+// Sourced from the registry oauth block (single source of truth).
+export const GROK_CLI_CONFIG = { ...PROVIDER_OAUTH["grok-cli"] };
+
 // Kimchi OAuth Configuration (Browser token callback flow)
 export const KIMCHI_CONFIG = { ...PROVIDER_OAUTH["kimchi"] };
 
@@ -147,4 +152,5 @@ export const PROVIDERS = {
   WINDSURF: "windsurf",
   CODEBUDDY: "codebuddy-cn",
   KIMCHI: "kimchi",
+  GROK_CLI: "grok-cli",
 };

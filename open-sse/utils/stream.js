@@ -5,6 +5,10 @@ import { extractUsage, mergeUsage, hasValidUsage, estimateUsage, logUsage, addBu
 import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE } from "./streamHelpers.js";
 import { getOpenAIResponsesEventName, isOpenAIResponsesTerminalEvent, formatIncompleteOpenAIResponsesStreamFailure } from "./responsesStreamHelpers.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
+import { createThinkTagStreamExtractor } from "./thinkStripper.js";
+import { resolveInlineThinkingFormat } from "../handlers/chatCore/inlineThinking.js";
+import { INLINE_THINKING_FORMATS } from "../providers/schema.js";
+import { appendReasoningText } from "../translator/concerns/reasoning.js";
 
 import { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER } from "./sseConstants.js";
 
@@ -75,9 +79,84 @@ export function createSSEStream(options = {}) {
   let openAIResponsesDoneSent = false;
   let streamDoneSent = false;  // track duplicate [DONE] across transform + flush
 
-  // State for extracting <think>...</think> to reasoning_content across SSE chunks
-  let thinkBuf = "";
-  let inThink = false;
+  // The compatibility parser is enabled only by exact provider transport/model
+  // metadata. State is isolated by OpenAI choice index.
+  const extractInlineThinking = mode === STREAM_MODE.PASSTHROUGH
+    && resolveInlineThinkingFormat(provider, model, targetFormat) === INLINE_THINKING_FORMATS.THINK_TAGS;
+  const inlineThinkingStates = new Map();
+  let inlineThinkingChunkMeta = null;
+
+  const getInlineThinkingState = (choiceIndex) => {
+    if (!inlineThinkingStates.has(choiceIndex)) {
+      inlineThinkingStates.set(choiceIndex, {
+        extractor: createThinkTagStreamExtractor(),
+        bypass: false,
+        reasoningSeen: false,
+        reasoningEndsWithNewline: false,
+        lastReasoningSource: null,
+      });
+    }
+    return inlineThinkingStates.get(choiceIndex);
+  };
+
+  const appendInlineThinkingReasoning = (choiceState, existing, addition) => {
+    if (typeof addition !== "string" || addition.length === 0) return existing;
+    if (typeof existing === "string" && existing.length > 0) {
+      return appendReasoningText(existing, addition);
+    }
+    if (choiceState.reasoningSeen) {
+      const separator = choiceState.reasoningEndsWithNewline || addition.startsWith("\n") ? "" : "\n";
+      return `${existing || ""}${separator}${addition}`;
+    }
+    return appendReasoningText(existing, addition);
+  };
+
+  const trackInlineThinkingReasoning = (choiceState, value, source) => {
+    if (typeof value !== "string" || value.length === 0) return;
+    choiceState.reasoningSeen = true;
+    choiceState.reasoningEndsWithNewline = value.endsWith("\n");
+    if (source) choiceState.lastReasoningSource = source;
+  };
+
+  const normalizeNativeReasoningAfterInline = (choiceState, value) => {
+    if (typeof value !== "string" || value.length === 0) return value;
+    if (choiceState.lastReasoningSource !== "inline") return value;
+    const separator = choiceState.reasoningEndsWithNewline || value.startsWith("\n") ? "" : "\n";
+    return `${separator}${value}`;
+  };
+
+  const flushInlineThinkingStates = () => {
+    if (!extractInlineThinking || inlineThinkingStates.size === 0) return "";
+    const choices = [];
+    for (const [index, choiceState] of inlineThinkingStates) {
+      const pending = choiceState.extractor.flush();
+      const delta = {};
+      if (pending.content) {
+        delta.content = pending.content;
+        totalContentLength += pending.content.length;
+        accumulatedContent += pending.content;
+      }
+      if (pending.reasoning) {
+        delta.reasoning_content = appendInlineThinkingReasoning(choiceState, undefined, pending.reasoning);
+        trackInlineThinkingReasoning(choiceState, delta.reasoning_content, "inline");
+        totalContentLength += delta.reasoning_content.length;
+        accumulatedThinking += delta.reasoning_content;
+      }
+      if (Object.keys(delta).length > 0) {
+        choices.push({ index, delta, finish_reason: null });
+      }
+    }
+    inlineThinkingStates.clear();
+    if (choices.length === 0) return "";
+    const chunk = {
+      id: inlineThinkingChunkMeta?.id || `chatcmpl-${Date.now()}`,
+      object: inlineThinkingChunkMeta?.object || "chat.completion.chunk",
+      created: inlineThinkingChunkMeta?.created || Math.floor(Date.now() / 1000),
+      model: inlineThinkingChunkMeta?.model || model || "unknown",
+      choices,
+    };
+    return `data: ${JSON.stringify(chunk)}\n\n`;
+  };
 
   return new TransformStream({
     transform(chunk, controller) {
@@ -108,12 +187,26 @@ export function createSSEStream(options = {}) {
         if (mode === STREAM_MODE.PASSTHROUGH) {
           let output;
           let injectedUsage = false;
+          let pendingInlineThinkingOutput = "";
+          const inlineThinkingRecoveryChoices = [];
 
-          if (trimmed === "data: [DONE]") streamDoneSent = true;
+          if (trimmed === "data: [DONE]") {
+            pendingInlineThinkingOutput = flushInlineThinkingStates();
+            streamDoneSent = true;
+          }
 
           if (trimmed.startsWith("data:") && trimmed.slice(5).trim() !== "[DONE]") {
             try {
               const parsed = JSON.parse(trimmed.slice(5).trim());
+
+              if (Array.isArray(parsed?.choices)) {
+                inlineThinkingChunkMeta = {
+                  id: parsed.id,
+                  object: parsed.object,
+                  created: parsed.created,
+                  model: parsed.model,
+                };
+              }
 
               const idFixed = fixInvalidId(parsed);
 
@@ -175,45 +268,121 @@ export function createSSEStream(options = {}) {
                 continue;
               }
 
-              const delta = parsed.choices?.[0]?.delta;
-              // Extract <think>...</think> from content to reasoning_content (MiniMax M3)
-              if (typeof delta?.content === "string") {
-                let t = delta.content;
-                let gotThink = false;
-                if (inThink) {
-                  let ei = t.indexOf("</think>");
-                  if (ei >= 0) {
-                    thinkBuf += t.slice(0, ei);
-                    delta.reasoning_content = thinkBuf.trim();
-                    thinkBuf = ""; inThink = false;
-                    t = t.slice(ei + 8).trimStart();
-                    gotThink = true;
-                  } else { thinkBuf += t; t = ""; gotThink = true; }
-                }
-                if (!inThink) {
-                  let si = t.indexOf("<think>");
-                  if (si >= 0) {
-                    let aft = t.slice(si + 7), ei = aft.indexOf("</think>");
-                    if (ei >= 0) {
-                      delta.reasoning_content = aft.slice(0, ei).trim();
-                      t = t.slice(0, si) + aft.slice(ei + 8).trimStart();
-                    } else { inThink = true; thinkBuf = aft; t = t.slice(0, si); }
-                    gotThink = true;
+              if (extractInlineThinking && Array.isArray(parsed.choices)) {
+                for (const [position, choice] of parsed.choices.entries()) {
+                  const choiceIndex = Number.isInteger(choice?.index) ? choice.index : position;
+                  const choiceState = getInlineThinkingState(choiceIndex);
+                  const extractor = choiceState.extractor;
+                  const delta = choice.delta || (choice.delta = {});
+                  let nextContent = typeof delta.content === "string" ? delta.content : "";
+                  let changed = false;
+                  let emittedInlineReasoning = false;
+
+                  const hasStructuredReasoning = delta.reasoning_content != null
+                    && typeof delta.reasoning_content !== "string";
+                  const hasNativeReasoning = typeof delta.reasoning_content === "string"
+                    && delta.reasoning_content.length > 0;
+
+                  if (!choiceState.bypass && hasNativeReasoning) {
+                    const normalizedNativeReasoning = normalizeNativeReasoningAfterInline(
+                      choiceState,
+                      delta.reasoning_content,
+                    );
+                    if (normalizedNativeReasoning !== delta.reasoning_content) {
+                      delta.reasoning_content = normalizedNativeReasoning;
+                      changed = true;
+                    }
                   }
+
+                  if (!choiceState.bypass && hasStructuredReasoning) {
+                    const pending = extractor.failOpen();
+                    choiceState.bypass = true;
+                    if (pending.content) {
+                      if (typeof delta.content === "string") {
+                        nextContent = `${pending.content}${delta.content}`;
+                        changed = true;
+                      } else if (delta.content == null) {
+                        nextContent = pending.content;
+                        changed = true;
+                      } else {
+                        inlineThinkingRecoveryChoices.push({
+                          index: choiceIndex,
+                          delta: { content: pending.content },
+                          finish_reason: null,
+                        });
+                        totalContentLength += pending.content.length;
+                        accumulatedContent += pending.content;
+                      }
+                    }
+                  } else if (!choiceState.bypass && typeof delta.content === "string") {
+                    const extractedThink = extractor.process(delta.content);
+                    nextContent = extractedThink.content;
+                    changed = extractedThink.changed || extractedThink.content !== delta.content;
+                    if (extractedThink.reasoning) {
+                      delta.reasoning_content = appendInlineThinkingReasoning(
+                        choiceState,
+                        delta.reasoning_content,
+                        extractedThink.reasoning,
+                      );
+                      changed = true;
+                      emittedInlineReasoning = true;
+                    }
+                  }
+
+                  if (choice.finish_reason) {
+                    const pending = extractor.flush();
+                    if (pending.content) {
+                      nextContent += pending.content;
+                      changed = true;
+                    }
+                    if (pending.reasoning) {
+                      delta.reasoning_content = appendInlineThinkingReasoning(
+                        choiceState,
+                        delta.reasoning_content,
+                        pending.reasoning,
+                      );
+                      changed = true;
+                      emittedInlineReasoning = true;
+                    }
+                    inlineThinkingStates.delete(choiceIndex);
+                  }
+
+                  if (changed) {
+                    fieldsInjected = true;
+                    if (nextContent.length > 0) delta.content = nextContent;
+                    else delete delta.content;
+                  }
+
+                  trackInlineThinkingReasoning(
+                    choiceState,
+                    delta.reasoning_content,
+                    emittedInlineReasoning ? "inline" : (hasNativeReasoning ? "native" : null),
+                  );
                 }
-                if (gotThink) { fieldsInjected = true; }
-                if (delta.reasoning_content && (!t || !t.trim())) delete delta.content;
-                else delta.content = t || "";
               }
-              const content = delta?.content;
-              const reasoning = delta?.reasoning_content;
-              if (content && typeof content === "string") {
-                totalContentLength += content.length;
-                accumulatedContent += content;
+
+              if (inlineThinkingRecoveryChoices.length > 0) {
+                const recoveryChunk = {
+                  id: inlineThinkingChunkMeta?.id || parsed.id || `chatcmpl-${Date.now()}`,
+                  object: inlineThinkingChunkMeta?.object || parsed.object || "chat.completion.chunk",
+                  created: inlineThinkingChunkMeta?.created || parsed.created || Math.floor(Date.now() / 1000),
+                  model: inlineThinkingChunkMeta?.model || parsed.model || model || "unknown",
+                  choices: inlineThinkingRecoveryChoices,
+                };
+                pendingInlineThinkingOutput += `data: ${JSON.stringify(recoveryChunk)}\n\n`;
               }
-              if (reasoning && typeof reasoning === "string") {
-                totalContentLength += reasoning.length;
-                accumulatedThinking += reasoning;
+
+              for (const choice of (parsed.choices || [])) {
+                const content = choice?.delta?.content;
+                const reasoning = choice?.delta?.reasoning_content;
+                if (content && typeof content === "string") {
+                  totalContentLength += content.length;
+                  accumulatedContent += content;
+                }
+                if (reasoning && typeof reasoning === "string") {
+                  totalContentLength += reasoning.length;
+                  accumulatedThinking += reasoning;
+                }
               }
 
               // Gemini-family passthrough accumulation (e.g. Antigravity Responses streaming).
@@ -229,7 +398,7 @@ export function createSSEStream(options = {}) {
 
               // Detect terminal chunk in both OpenAI (choices[0].finish_reason) and
               // Gemini-family (response.candidates[0].finishReason) passthrough shapes.
-              const isFinishChunk = parsed.choices?.[0]?.finish_reason
+              const isFinishChunk = parsed.choices?.some?.(choice => choice?.finish_reason)
                 || parsed.response?.candidates?.[0]?.finishReason;
               if (isFinishChunk && !hasValidUsage(usage)) {
                 const estimated = estimateUsage(body, totalContentLength, FORMATS.OPENAI);
@@ -282,6 +451,8 @@ export function createSSEStream(options = {}) {
               output = line + "\n";
             }
           }
+
+          if (pendingInlineThinkingOutput) output = pendingInlineThinkingOutput + output;
 
           reqLogger?.appendConvertedChunk?.(output);
           controller.enqueue(sharedEncoder.encode(output));
@@ -475,6 +646,12 @@ export function createSSEStream(options = {}) {
         if (remaining) buffer += remaining;
 
         if (mode === STREAM_MODE.PASSTHROUGH) {
+          const pendingInlineThinkingOutput = flushInlineThinkingStates();
+          if (pendingInlineThinkingOutput) {
+            reqLogger?.appendConvertedChunk?.(pendingInlineThinkingOutput);
+            controller.enqueue(sharedEncoder.encode(pendingInlineThinkingOutput));
+          }
+
           if (buffer) {
             const trimmedBuffer = buffer.trim();
             let output;
@@ -622,9 +799,10 @@ export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, p
   });
 }
 
-export function createPassthroughStreamWithLogger(provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null) {
+export function createPassthroughStreamWithLogger(provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, targetFormat = null) {
   return createSSEStream({
     mode: STREAM_MODE.PASSTHROUGH,
+    targetFormat,
     provider,
     reqLogger,
     toolNameMap,

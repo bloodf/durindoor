@@ -24,8 +24,26 @@ import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
+import REGISTRY from "open-sse/providers/registry/index.js";
+import { validateChatRequestBody } from "open-sse/translator/validate.js";
 
 const ANTIGRAVITY_CAPACITY_SWEEP_RETRIES = 2;
+
+/**
+ * #6457 / OmniRoute#6525: resolved registry model kind === "image" means the
+ * model is image-only and belongs on /v1/images/generations, not the chat
+ * endpoint. Forwarding it to a chat upstream yields a confusing raw provider
+ * 400 (e.g. HuggingFace: "not a chat model"). Per-model kind is used (not the
+ * provider-level serviceKinds) because mixed providers like Cloudflare serve
+ * both chat and image models.
+ */
+export function isImageOnlyModel(provider, model) {
+  const entry = REGISTRY.find(
+    (e) => e.id === provider || e.alias === provider || e.aliases?.includes(provider)
+  );
+  const m = entry?.models?.find((x) => x.id === model);
+  return (m?.kind ?? m?.type) === "image";
+}
 
 /**
  * Strip reasoning_content from assistant messages in conversation history.
@@ -74,6 +92,16 @@ export async function handleChat(request, clientRawRequest = null) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
   }
 
+  // Inbound schema guard (OmniRoute O-A): reject malformed `messages` / `model`
+  // / scalar params with a clear 400 BEFORE auth + model resolution, so a bad
+  // body never surfaces as a misleading `model_not_found` 404 or an unsanitized
+  // 500. See open-sse/translator/validate.js (ports #6515/#6433/#6437).
+  const earlyRejection = validateChatRequestBody(body);
+  if (earlyRejection) {
+    log.warn("CHAT", "Rejecting schema-invalid request body");
+    return earlyRejection;
+  }
+
   // Build clientRawRequest for logging (if not provided)
   if (!clientRawRequest) {
     const url = new URL(request.url);
@@ -85,18 +113,9 @@ export async function handleChat(request, clientRawRequest = null) {
   }
   cacheClaudeHeaders(clientRawRequest.headers);
 
-  // Strip reasoning_content from conversation history (providers like Mistral reject it)
-
-
-  // Log request endpoint and model
-  const url = new URL(request.url);
   const modelStr = body.model;
 
-  // Count messages (support both messages[] and input[] formats)
-  const msgCount = body.messages?.length || body.input?.length || 0;
-  const toolCount = body.tools?.length || 0;
-  const effort = body.reasoning_effort || body.reasoning?.effort || null;
-  log.request("POST", `${url.pathname} | ${modelStr} | ${msgCount} msgs${toolCount ? ` | ${toolCount} tools` : ""}${effort ? ` | effort=${effort}` : ""}`);
+  // Request summary is emitted as the unified "▶" line in chatCore (has fmt/thinking/account)
 
   // Log API key (masked)
   const authHeader = request.headers.get("Authorization");
@@ -255,6 +274,18 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
   const { provider, model } = modelInfo;
 
+  // Reject image-only models routed to /v1/chat/completions (#6457 / #6525).
+  // getModelInfo already resolved the registry {provider, model}; a kind:"image"
+  // entry belongs on /v1/images/generations. Guard fires before credentials /
+  // dispatch so the upstream is never called.
+  if (isImageOnlyModel(provider, model)) {
+    log.warn("CHAT", `Rejecting image-generation model on chat endpoint: ${provider}/${model}`);
+    return errorResponse(
+      HTTP_STATUS.BAD_REQUEST,
+      `Model '${provider}/${model}' is an image-generation model and cannot be used on /v1/chat/completions. Use POST /v1/images/generations instead.`
+    );
+  }
+
   // Enforce per-API-key model policy against the resolved underlying model when
   // the request started as a combo; the top-level combo name is not a model id.
   const policyError2 = await enforceApiKeyModelPolicy(request, `${provider}/${model}`);
@@ -268,12 +299,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   // Fix message ordering for all providers (prefix: true for last assistant)
   fixMessageOrdering(body.messages);
 
-  // Log model routing (alias → actual model)
-  if (modelStr !== `${provider}/${model}`) {
-    log.info("ROUTING", `${modelStr} → ${provider}/${model}`);
-  } else {
-    log.info("ROUTING", `Provider: ${provider}, Model: ${model}`);
-  }
+  // Routing shown in the unified "▶" line (client model → provider/model)
 
   // Extract userAgent from request
   const userAgent = request?.headers?.get("user-agent") || "";
@@ -313,9 +339,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
     }
 
-    // Log account selection
-    log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
-
+    // Account selection shown in the unified "▶" line (acc:...)
     const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
 
     // Ensure real project ID is available for providers that need it (P0 fix: cold miss)
@@ -332,7 +356,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     const chatSettings = await getSettings();
     const providerThinking = (chatSettings.providerThinking || {})[provider] || null;
     const result = await handleChatCore({
-      body: { ...body, model: `${provider}/${model}` },
+      body: { ...structuredClone(body), model: `${provider}/${model}` },
       modelInfo: { provider, model },
       credentials: refreshedCredentials,
       log,
@@ -368,6 +392,13 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       },
       onRequestSuccess: async () => {
         await clearAccountError(credentials.connectionId, credentials, model);
+      },
+      // Empty-stream retries exhausted mid-stream (headers already sent, so no
+      // pre-stream fallback is possible): bench the account so the client's
+      // automatic retry of the in-stream error lands on the next one. Quota
+      // exhaustion passes a precise resetsAtMs instead of the generic cooldown.
+      onUpstreamEmptyExhausted: async (reason, resetsAtMs) => {
+        await markAccountUnavailable(credentials.connectionId, HTTP_STATUS.BAD_GATEWAY, reason, provider, model, resetsAtMs);
       }
     });
 
@@ -377,7 +408,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, result.resetsAtMs);
 
     if (shouldFallback) {
-      log.warn("AUTH", `Account ${credentials.connectionName} unavailable (${result.status}), trying fallback`);
+      log.warn("FALLBACK", `⇄ ACC:${credentials.connectionName} UNAVAILABLE (${result.status}) → NEXT ACCOUNT`);
       excludeConnectionIds.add(credentials.connectionId);
       lastError = result.error;
       lastStatus = result.status;

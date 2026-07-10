@@ -59,6 +59,8 @@ Thanks.md
 PUBLIC.en.md
 PR/*
 package-lock.json
+!package-lock.json
+!tests/package-lock.json
 
 
 #Ignore vscode AI rules
@@ -75,6 +77,7 @@ gitbook/README.md
 open-sse.old/
 .graphifyignore
 graphify-out/*
+.next-analyze/*
 
 # cron + drift-check scripts (added in the daily-check PR)
 scripts/__pycache__/

@@ -4,6 +4,7 @@ import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
+import { validateApiKeyPolicy } from "@/lib/db/helpers/apiKeyPolicy.js";
 
 const CLI_AUTH_SALT = "9r-cli-auth";
 
@@ -47,9 +48,21 @@ export async function recordApiKeyUsage(apiKey, usage) {
 }
 
 /**
+ * Record non-chat usage only after a successful response. Validation errors,
+ * policy denials, and upstream failures must not consume a caller's lifetime
+ * allowance.
+ */
+export async function recordApiKeyUsageForResponse(apiKey, response, usage) {
+  if (apiKey && response && response.status >= 200 && response.status < 300) {
+    await recordApiKeyUsage(apiKey, usage);
+  }
+  return response;
+}
+
+/**
  * Enforce API key policy on a request: model allowlist + token/cost limits.
  *
- * Call this AFTER the existing requireApiKey/isValidApiKey check.
+ * Call this AFTER the shared evaluateApiKeyAuth guard.
  * If no API key is provided, returns null (allow — requireApiKey handles that case).
  * If the key has no policy or an empty allowedModels list, returns null (allow all).
  * If the model is not in the allowlist, returns a 403 error Response.
@@ -71,7 +84,15 @@ export async function enforceApiKeyModelPolicy(request, modelStr) {
   const keyRecord = await getApiKeyByKey(apiKey);
   if (!keyRecord || !keyRecord.isActive) return null;
 
-  const policy = keyRecord.policy || {};
+  const policyResult = validateApiKeyPolicy(keyRecord.policy);
+  if (!policyResult.ok) {
+    log.warn("AUTH", `Invalid policy for API key "${keyRecord.name}": ${policyResult.error}`);
+    return errorResponse(
+      HTTP_STATUS.FORBIDDEN,
+      "API key policy is invalid; contact the administrator"
+    );
+  }
+  const policy = policyResult.value || {};
 
   // Check model allowlist
   if (!isModelAllowed(policy, modelStr)) {

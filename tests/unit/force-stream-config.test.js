@@ -35,8 +35,15 @@ vi.mock("../../open-sse/utils/bypassHandler.js", () => ({
 vi.mock("../../open-sse/utils/streamHandler.js", () => ({
   createStreamController: vi.fn(() => ({
     signal: undefined,
+    startTime: Date.now(),
+    isConnected: () => true,
     handleComplete: vi.fn(),
     handleError: vi.fn(),
+    handleDisconnect: vi.fn(),
+    abort: vi.fn(),
+  })),
+  pipeWithDisconnect: vi.fn(() => new ReadableStream({
+    start(controller) { controller.close(); }
   })),
 }));
 

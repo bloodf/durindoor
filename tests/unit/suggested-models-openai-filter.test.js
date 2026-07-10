@@ -36,8 +36,11 @@ describe("suggested-models openai filter", () => {
     ]);
   });
 
-  it("rejects unknown ids without chat kind or chat prefix", () => {
+  it("keeps opaque string IDs after excluding known non-chat families", () => {
     const models = [{ id: "valid" }, { id: 123 }, { name: "no-id" }, { id: "unknown-thing" }];
-    expect(FILTERS.openai(models)).toEqual([]);
+    expect(FILTERS.openai(models)).toEqual([
+      { id: "valid", name: "valid" },
+      { id: "unknown-thing", name: "unknown-thing" },
+    ]);
   });
 });

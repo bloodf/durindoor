@@ -14,7 +14,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
   const [loading, setLoading] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [sudoPassword, setSudoPassword] = useState("");
-  const [selectedApiKey, setSelectedApiKey] = useState(() => apiKeys?.[0]?.key || "");
+  const [selectedApiKey, setSelectedApiKey] = useState("");
   const [pendingAction, setPendingAction] = useState(null);
   const [modalError, setModalError] = useState(null);
   const [actionError, setActionError] = useState(null);
@@ -23,9 +23,6 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
 
   const serverIsWindows = status?.isWin === true;
   const canRunWithoutPassword = serverIsWindows || status?.hasCachedPassword || status?.needsSudoPassword === false;
-  const isAdmin = status?.isAdmin !== false;
-  // No privilege: not admin/root AND (Win OR no cached sudo password)
-  const noPrivilege = !isAdmin && (serverIsWindows || (!status?.hasCachedPassword && status?.needsSudoPassword !== false));
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -75,7 +72,6 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
         });
       } else if (action === "start") {
         const keyToUse = selectedApiKey?.trim()
-          || (apiKeys?.length > 0 ? apiKeys[0].key : null)
           || (!cloudEnabled ? "sk_durindoor" : null);
         res = await fetch("/api/cli-tools/antigravity-mitm", {
           method: "POST",
@@ -191,19 +187,17 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
                 <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">API Key</span>
                 <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
                 <input
-                  type="text"
-                  list="mitm-api-keys"
+                  type="password"
                   value={selectedApiKey}
                   onChange={(e) => setSelectedApiKey(e.target.value)}
-                  placeholder={cloudEnabled ? "Enter or pick API key" : "sk_durindoor (default)"}
+                  autoComplete="off"
+                  placeholder={cloudEnabled ? "Paste the API key secret" : "sk_durindoor (default)"}
                   className="flex-1 min-w-0 px-2 py-1.5 bg-surface rounded border border-border text-xs text-text-main focus:outline-none focus:ring-1 focus:ring-primary/50"
                 />
                 {apiKeys?.length > 0 && (
-                  <datalist id="mitm-api-keys">
-                    {apiKeys.map((key) => (
-                      <option key={key.id} value={key.key}>{key.name || key.key}</option>
-                    ))}
-                  </datalist>
+                  <span className="text-[11px] text-text-muted sm:col-start-3">
+                    Managed keys: {apiKeys.map((key) => `${key.name || "Key"} (${key.maskedKey || "***"})`).join(", ")}. Paste a saved secret to use one.
+                  </span>
                 )}
               </div>
             )}
@@ -233,8 +227,8 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
             ) : (
               <button
                 onClick={() => handleAction("start")}
-                disabled={loading || !status || (serverIsWindows && !isAdmin)}
-                title={serverIsWindows && !isAdmin ? "Administrator required" : undefined}
+                disabled={loading || !status || (serverIsWindows && status?.isAdmin === true)}
+                title={serverIsWindows && status?.isAdmin === true ? "Restart DurinDoor as a standard user" : undefined}
                 className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-50 sm:w-auto sm:py-1.5"
               >
                 <span className="material-symbols-outlined text-[16px]">play_circle</span>
@@ -254,11 +248,17 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
             </div>
           )}
 
-          {/* Windows admin warning */}
-          {serverIsWindows && !isAdmin && (
+          {/* Windows privilege boundary */}
+          {serverIsWindows && status?.isAdmin === true && (
             <div className="flex items-center gap-2 px-2 py-1.5 rounded text-xs bg-red-500/10 text-red-600 border border-red-500/20">
               <span className="material-symbols-outlined text-[14px]">shield_lock</span>
-              <span>Administrator required — restart DurinDoor as Administrator to use MITM</span>
+              <span>Restart DurinDoor as a standard user. Only the firewall, certificate, and hosts changes request UAC.</span>
+            </div>
+          )}
+          {serverIsWindows && status?.isAdmin === false && (
+            <div className="flex items-center gap-2 px-2 py-1.5 rounded text-xs bg-yellow-500/10 text-yellow-600 border border-yellow-500/20">
+              <span className="material-symbols-outlined text-[14px]">verified_user</span>
+              <span>The proxy stays unprivileged; Windows may show narrow UAC prompts for system configuration.</span>
             </div>
           )}
         </div>

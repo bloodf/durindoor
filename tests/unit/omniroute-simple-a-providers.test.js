@@ -29,7 +29,10 @@ const expectedShape = {
     alias: "agentrouter",
     format: "claude",
     baseUrl: "https://agentrouter.org/v1/messages",
-    auth: { header: "x-api-key", scheme: "raw" },
+    auth: {
+      apiKey: { header: "x-api-key", scheme: "raw" },
+      hooks: ["claudeOverlay"],
+    },
     defaultContextLength: 128000,
     passthroughModels: true,
     model: "claude-opus-4-6",

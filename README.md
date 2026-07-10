@@ -18,6 +18,7 @@ DurinDoor is a self-hosted AI gateway that unifies the realm of LLM providers be
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Supported Providers](#supported-providers)
+- [Model catalog](#model-catalog)
 - [Migrating from durindoor](#migrating-from-durindoor)
 - [Contributing](#contributing)
 - [License](#license)
@@ -102,6 +103,7 @@ DurinDoor is configured through environment variables. Set them in your shell, i
 | `MCP_GATEWAY_OAUTH_PUBLIC_URL` | — | Public URL used for MCP Gateway OAuth callbacks. |
 | `NODE_ENV` | `production` | Runtime environment (`development` or `production`). |
 | `NEXT_PUBLIC_BASE_URL` | `http://localhost:20128` | Public base URL of the dashboard. |
+| `SEARXNG_URL` | `http://localhost:8888/search` | Endpoint for the built-in unauthenticated SearXNG web-search provider. |
 
 Run `durindoor --help` to see all CLI options and flags.
 
@@ -122,6 +124,35 @@ DurinDoor supports a wide fellowship of AI providers, including:
 - And more through custom configuration
 
 Check the dashboard **Providers** page for the full list and connection instructions.
+
+## Model catalog
+
+Provider model catalogs live in `open-sse/providers/registry/*.js` (one file per
+provider, transport + models co-located). The runtime `PROVIDER_MODELS` map is
+built from that registry by `open-sse/providers/index.js` and re-exported through
+`open-sse/config/providerModels.js` (which also adds lookup helpers) — **never edit
+either to add a model**; append to the relevant registry file instead. Model-array
+order is behavior (the default model is `models[0]`), so new entries are appended,
+never reordered.
+
+The catalog tool keeps the catalog honest across the three trees we track
+(`origin` = DurinDoor, `upstream` = 9router, `omniroute` = OmniRoute):
+
+```bash
+# Mode 1 — local consistency audit (npm script; local-only, needs no extra remotes):
+# duplicate ids, empty ids, orphan upstreamModelId, bad targetFormat, orphan pricing rows.
+# Exits non-zero on findings.
+npm run catalog:diff
+
+# Mode 2 — cross-tree comparison report (direct node invocation; needs the
+# upstream + omniroute refs fetched):
+node scripts/model-catalog-diff.mjs --upstream-ref upstream/master --omniroute-ref omniroute/main
+# → writes model-catalog-report.md (commit-SHA pinned; review only, never auto-applied)
+```
+
+The committed `model-catalog-report.md` records the exact commit SHAs compared and
+a per-provider `model id | ours | upstream | omniroute` table plus a "missing here"
+summary; regenerate it after each catalog refresh.
 
 ## Migrating from durindoor
 

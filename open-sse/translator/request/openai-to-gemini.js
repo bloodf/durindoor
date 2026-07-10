@@ -45,8 +45,23 @@ function normalizeGeminiContents(contents) {
   return out;
 }
 
-// Core: Convert OpenAI request to Gemini format (base for all variants)
+/**
+ * Core OpenAI→Gemini request translator (base for all Gemini variants).
+ *
+ * Gemma 4 on the Gemini API rejects replayed synthetic thought parts and
+ * `thoughtSignature` on `functionCall` history parts (generic INVALID_ARGUMENT),
+ * so for `gemma-4*` models we drop `reasoning_content` replay and omit the
+ * synthetic thought signature from tool-call history. Other Gemini models keep
+ * both for Antigravity/Gemini replay.
+ *
+ * @param {string} model - Target Gemini model id.
+ * @param {object} body - OpenAI-shaped request body.
+ * @param {boolean} stream - Whether the caller requested streaming.
+ * @param {string} [signature] - Synthetic thought signature to attach to replayed tool calls.
+ * @returns {object} Gemini-shaped generateContent request.
+ */
 function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG_SIGNATURE) {
+  const isGemma4 = typeof model === "string" && /gemma-4/i.test(model);
   const result = {
     model: model,
     contents: [],
@@ -112,8 +127,9 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
       } else if (role === ROLE.ASSISTANT) {
         const parts = [];
 
-        // Thinking/reasoning → thought part with signature
-        if (msg.reasoning_content) {
+        // Thinking/reasoning → thought part with signature.
+        // Gemma 4 rejects replayed synthetic thought parts in multi-turn history.
+        if (msg.reasoning_content && !isGemma4) {
           parts.push({
             thought: true,
             text: msg.reasoning_content
@@ -137,14 +153,18 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
             if (tc.type !== OPENAI_BLOCK.FUNCTION) continue;
 
             const args = tryParseJSON(tc.function?.arguments || "{}");
-            parts.push({
-              thoughtSignature: signature,
+            const functionCallPart = {
               functionCall: {
                 id: tc.id,
                 name: sanitizeGeminiFunctionName(tc.function.name),
                 args: args
               }
-            });
+            };
+            // Synthetic thought signatures are useful for Gemini/Antigravity
+            // replay, but Gemma 4 on Gemini API rejects them on functionCall
+            // history parts with a generic INVALID_ARGUMENT.
+            if (!isGemma4) functionCallPart.thoughtSignature = signature;
+            parts.push(functionCallPart);
             toolCallIds.push(tc.id);
           }
 
@@ -162,12 +182,11 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
 
               let name = tcID2Name[fid];
               if (!name) {
-                const idParts = fid.split("-");
-                if (idParts.length > 2) {
-                  name = idParts.slice(0, -2).join("-");
-                } else {
-                  name = fid;
-                }
+                // Generated ids encode the name: `name_<ts>_<idx>` (current) or
+                // `name-<ts>-<idx>` (legacy). Foreign ids (toolu_..., upstream
+                // functionCall.id) don't — fall back to the id itself, as before.
+                const m = fid.match(/^(.+?)[-_]\d{10,}[-_]\d+$/);
+                name = m ? m[1] : fid;
               }
 
               let resp = toolResponses[fid];
@@ -281,16 +300,15 @@ function wrapInCloudCodeEnvelope(model, geminiCLI, credentials = null, isAntigra
   // Antigravity specific fields
   if (isAntigravity) {
     envelope.requestType = "agent";
-
-    // Add toolConfig for Antigravity
-    if (geminiCLI.tools?.length > 0) {
-      envelope.request.toolConfig = {
-        functionCallingConfig: { mode: "VALIDATED" }
-      };
-    }
   } else {
     // Keep safetySettings for Gemini CLI
     envelope.request.safetySettings = geminiCLI.safetySettings;
+  }
+
+  if (geminiCLI.tools?.length > 0) {
+    envelope.request.toolConfig = {
+      functionCallingConfig: { mode: "VALIDATED" }
+    };
   }
 
   return envelope;

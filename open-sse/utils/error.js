@@ -127,10 +127,24 @@ export function createErrorResult(statusCode, message, resetsAtMs, errorBody) {
  * @returns {Response}
  */
 export function unavailableResponse(statusCode, message, retryAfter, retryAfterHuman) {
-  const retryAfterSec = Math.max(Math.ceil((new Date(retryAfter).getTime() - Date.now()) / 1000), 1);
+  const retryAfterMs = new Date(retryAfter).getTime();
+  const retryAfterSec = Math.max(Math.ceil((retryAfterMs - Date.now()) / 1000), 1);
   const msg = `${message} (${retryAfterHuman})`;
+  const error = { message: msg };
+  // #6523: for 429 rate-limit responses, surface the OpenAI-shaped type/code
+  // and an ISO `retry_after` timestamp so SDKs can back off deterministically.
+  // Kept alongside the `Retry-After` seconds header (RFC 7231) — some clients
+  // read one, some the other. Only emitted for 429; other statuses keep the
+  // legacy minimal envelope to avoid changing existing call-site contracts.
+  if (statusCode === 429) {
+    error.type = "rate_limit_error";
+    error.code = "rate_limit_exceeded";
+    if (Number.isFinite(retryAfterMs)) {
+      error.retry_after = new Date(retryAfterMs).toISOString();
+    }
+  }
   return new Response(
-    JSON.stringify({ error: { message: msg } }),
+    JSON.stringify({ error }),
     {
       status: statusCode,
       headers: {
@@ -168,6 +182,16 @@ export function formatProviderError(error, provider, model, statusCode) {
 export function sanitizeErrorMessage(message) {
   const firstLine = String(message || "Upstream provider error").split(/\r?\n/)[0].trim();
   return firstLine
+    .replace(/\bBearer\s+\S+/gi, "Bearer [redacted]")
+    .replace(
+      /("(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)"\s*:\s*")[^"]*"/gi,
+      '$1[redacted]"',
+    )
+    .replace(/([A-Za-z0-9_-]*(?:auth(?:orization)?|cookie|token|key|secret|signature|password|credential)[A-Za-z0-9_-]*\s*:\s*)[^\r\n]+/gi, "$1[redacted]")
+    .replace(
+      /((?:[?&;#]\s*|^)(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)=)[^&;\s]+/gi,
+      "$1[redacted]",
+    )
     .replace(/file:\/\/\S+/g, "[path]")
     .replace(/\/(?:Users|home|var|tmp)\/\S+/g, "[path]")
     .slice(0, 500) || "Upstream provider error";

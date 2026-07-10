@@ -6,6 +6,7 @@ import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { redactSecrets } from "@/shared/utils/secretRedaction";
 
 const execAsync = promisify(exec);
 
@@ -72,7 +73,7 @@ export async function GET() {
 
     return NextResponse.json({
       installed: true,
-      config,
+      config: redactSecrets(config),
       has9Router: has9RouterConfig(config),
       configPath: getConfigPath(),
         opencode: {
@@ -112,7 +113,6 @@ export async function POST(request) {
     } catch { /* No existing config */ }
 
     const normalizedBaseUrl = baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
-    const keyToUse = apiKey || "sk_durindoor";
     const effectiveSubagentModel = subagentModel || modelsArray[0];
 
     // Ensure provider object
@@ -120,6 +120,7 @@ export async function POST(request) {
 
     // Preserve any existing 9router provider entry and its models
     const existingProvider = config.provider["9router"] || { npm: "@ai-sdk/openai-compatible", options: {}, models: {} };
+    const keyToUse = apiKey || existingProvider.options?.apiKey || "sk_durindoor";
 
     // Merge options (overwrite baseURL/apiKey)
     existingProvider.options = {

@@ -84,8 +84,16 @@ export function antigravityToOpenAIRequest(model, body, stream) {
   return result;
 }
 
-// Recursively convert Antigravity schema types (OBJECT, STRING, etc.) to lowercase
-// and strip unsupported fields like enumDescriptions
+/**
+ * Recursively normalize an Antigravity/Gemini tool-parameter schema for the
+ * OpenAI-shaped tool surface: lowercase `type` keywords (OBJECT -> object), strip
+ * unsupported fields (e.g. `enumDescriptions`), recurse into `properties`,
+ * `items`, and `additionalProperties`, and add a placeholder `properties` map to
+ * bare `type: "object"` nodes (Gemini rejects object schemas with no properties).
+ *
+ * @param {object} schema - Antigravity tool parameter schema.
+ * @returns {object} Normalized schema (a shallow-cloned tree).
+ */
 function normalizeSchemaTypes(schema) {
   if (!schema || typeof schema !== "object") return schema;
 
@@ -110,6 +118,15 @@ function normalizeSchemaTypes(schema) {
 
   if (result.items) {
     result.items = normalizeSchemaTypes(result.items);
+  }
+
+  if (result.additionalProperties && typeof result.additionalProperties === "object") {
+    result.additionalProperties = normalizeSchemaTypes(result.additionalProperties);
+  }
+
+  // Gemini rejects type:object without properties — add placeholder to satisfy API
+  if (result.type === "object" && (!result.properties || Object.keys(result.properties).length === 0)) {
+    result.properties = { _: { type: "string" } };
   }
 
   return result;

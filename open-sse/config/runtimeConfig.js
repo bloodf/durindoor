@@ -39,6 +39,30 @@ function envMs(name, def) {
   return Number.isFinite(n) && n > 0 ? n : def;
 }
 
+/**
+ * Read a trimmed string env override, falling back to a default when the
+ * variable is unset, empty, or whitespace-only.
+ *
+ * @param {string} name - Environment variable name.
+ * @param {string} def - Default value used when the env var is blank.
+ * @returns {string} Trimmed env value or `def`.
+ */
+function envUrl(name, def) {
+  const raw = process.env[name]?.trim();
+  return raw || def;
+}
+
+/**
+ * Endpoint used by the built-in unauthenticated SearXNG web-search provider.
+ *
+ * Resolved once at module load from the `SEARXNG_URL` env var (trimmed); falls
+ * back to the loopback default when unset/blank. Set this to point at a
+ * separate Docker service or remote SearXNG instance.
+ *
+ * @type {string}
+ */
+export const SEARXNG_URL = envUrl("SEARXNG_URL", "http://localhost:8888/search");
+
 // Inter-chunk stall timeout (once tokens are flowing). Generous headroom so
 // slow reasoning models aren't aborted mid-stream. Env: STREAM_STALL_TIMEOUT_MS.
 export const STREAM_STALL_TIMEOUT_MS = envMs("STREAM_STALL_TIMEOUT_MS", 360 * 1000);

@@ -6,12 +6,22 @@ import { addBufferToUsage, filterUsageForFormat } from "../../utils/usageTrackin
 import { createErrorResult } from "../../utils/error.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { parseSSEToOpenAIResponse } from "./sseToJsonHandler.js";
-import { buildRequestDetail, extractRequestConfig, extractUsageFromResponse, saveUsageStats } from "./requestDetail.js";
+import { buildRequestDetail, extractRequestConfig, extractUsageFromResponse, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { translateOpenAIToClaudeIfNeeded } from "../../translator/response/openai-to-claude-json.js";
 import { appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { decloakToolNames } from "../../utils/claudeCloaking.js";
-import { stripThinkFromResponse } from "../../utils/thinkStripper.js";
 import { openAIResponsesBodyToClaude, openAIResponsesBodyToOpenAI } from "../../translator/response/openai-responses-nonstream.js";
+import { translateResponse, initState } from "../../translator/index.js";
+import { formatSSE } from "../../utils/streamHelpers.js";
+import { SSE_HEADERS_CORS } from "../../utils/sseConstants.js";
+import { normalizeInlineThinkingResponse } from "./inlineThinking.js";
+
+const GEMINI_FAMILY_FORMATS = new Set([
+  FORMATS.GEMINI,
+  FORMATS.GEMINI_CLI,
+  FORMATS.ANTIGRAVITY,
+  FORMATS.VERTEX,
+]);
 
 function parseToolArguments(value) {
   if (!value) return {};
@@ -21,6 +31,97 @@ function parseToolArguments(value) {
   } catch {
     return {};
   }
+}
+
+function openAICompletionToChunks(responseBody, fallbackModel) {
+  const id = responseBody?.id || `chatcmpl-${Date.now()}`;
+  const created = responseBody?.created || Math.floor(Date.now() / 1000);
+  const model = responseBody?.model || fallbackModel;
+  const choices = Array.isArray(responseBody?.choices) && responseBody.choices.length > 0
+    ? responseBody.choices
+    : [{}];
+  const choiceIndex = (choice, position) => Number.isInteger(choice?.index) ? choice.index : position;
+  const chunks = [{
+    id,
+    object: "chat.completion.chunk",
+    created,
+    model,
+    choices: choices.map((choice, position) => ({
+      index: choiceIndex(choice, position),
+      delta: { role: choice?.message?.role || "assistant" },
+      finish_reason: null,
+    })),
+  }];
+
+  const reasoningChoices = choices.flatMap((choice, position) => {
+    const reasoning = choice?.message?.reasoning_content;
+    return typeof reasoning === "string" && reasoning.length > 0
+      ? [{ index: choiceIndex(choice, position), delta: { reasoning_content: reasoning }, finish_reason: null }]
+      : [];
+  });
+  if (reasoningChoices.length > 0) {
+    chunks.push({
+      id, object: "chat.completion.chunk", created, model,
+      choices: reasoningChoices,
+    });
+  }
+
+  const contentChoices = choices.flatMap((choice, position) => {
+    const content = choice?.message?.content;
+    return typeof content === "string" && content.length > 0
+      ? [{ index: choiceIndex(choice, position), delta: { content }, finish_reason: null }]
+      : [];
+  });
+  if (contentChoices.length > 0) {
+    chunks.push({
+      id, object: "chat.completion.chunk", created, model,
+      choices: contentChoices,
+    });
+  }
+
+  const toolChoices = choices.flatMap((choice, position) => {
+    const toolCalls = choice?.message?.tool_calls;
+    return Array.isArray(toolCalls) && toolCalls.length > 0
+      ? [{
+          index: choiceIndex(choice, position),
+          delta: { tool_calls: toolCalls.map((toolCall, index) => ({ index, ...toolCall })) },
+          finish_reason: null,
+        }]
+      : [];
+  });
+  if (toolChoices.length > 0) {
+    chunks.push({
+      id, object: "chat.completion.chunk", created, model,
+      choices: toolChoices,
+    });
+  }
+
+  const final = {
+    id, object: "chat.completion.chunk", created, model,
+    choices: choices.map((choice, position) => ({
+      index: choiceIndex(choice, position),
+      delta: {},
+      finish_reason: choice?.finish_reason || "stop",
+    })),
+  };
+  if (responseBody?.usage) final.usage = responseBody.usage;
+  chunks.push(final);
+  return chunks;
+}
+
+function openAICompletionToClientSSE(responseBody, fallbackModel, sourceFormat) {
+  const state = initState(sourceFormat);
+  let output = "";
+  for (const chunk of openAICompletionToChunks(responseBody, fallbackModel)) {
+    const events = sourceFormat === FORMATS.OPENAI
+      ? [chunk]
+      : translateResponse(FORMATS.OPENAI, sourceFormat, chunk, state);
+    for (const event of events || []) {
+      if (event != null) output += formatSSE(event, sourceFormat);
+    }
+  }
+  if (sourceFormat === FORMATS.OPENAI) output += formatSSE({ done: true }, sourceFormat);
+  return output;
 }
 
 function openAICompletionToClaudeMessage(responseBody) {
@@ -229,7 +330,7 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
 /**
  * Handle non-streaming response from provider.
  */
-export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, trackDone, appendLog, pxpipe }) {
+export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, streamToClient, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, trackDone, appendLog, pxpipe, reqTag, log }) {
   trackDone();
   const contentType = providerResponse.headers.get("content-type") || "";
   let responseBody;
@@ -264,17 +365,21 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   // Decloak tool_use names once on raw Claude body, before any translation (INPUT side)
   responseBody = decloakToolNames(responseBody, toolNameMap);
 
+  // MiniMax's OpenAI transport may inline M3 reasoning as complete <think>
+  // segments. Normalize the raw provider completion once, before a client
+  // projection can collapse its per-choice OpenAI shape.
+  const inlineThinking = normalizeInlineThinkingResponse(responseBody, { provider, model, targetFormat });
+  responseBody = inlineThinking.responseBody;
+
   const usage = extractUsageFromResponse(responseBody);
   appendLog({ tokens: usage, status: "200 OK" });
-  saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint });
+  saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, silent: true });
+  if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime } }));
 
   const translatedResponse = needsTranslation(targetFormat, sourceFormat)
     ? translateNonStreamingResponse(responseBody, targetFormat, sourceFormat)
     : responseBody;
   const isClaudeMessageResponse = sourceFormat === FORMATS.CLAUDE && translatedResponse?.type === "message";
-
-  // Strip embedded <think>...</think> tags from providers that inline thinking (MiniMax M3)
-  stripThinkFromResponse(translatedResponse);
 
   const isOpenAIChatResponse = Array.isArray(translatedResponse?.choices);
 
@@ -308,10 +413,9 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     translatedResponse.usage = filterUsageForFormat(addBufferToUsage(translatedResponse.usage), sourceFormat);
   }
 
-  // Strip reasoning_content only when content is non-empty.
-  // When content is empty (e.g. thinking models that used all tokens for reasoning),
-  // reasoning_content is the only useful output and must be preserved.
-  if (!isClaudeMessageResponse && translatedResponse?.choices) {
+  // Preserve native and extracted reasoning for the explicitly configured M3
+  // OpenAI response policy. Other providers retain the existing cleanup.
+  if (!isClaudeMessageResponse && isOpenAIChatResponse && !inlineThinking.configured) {
     for (const choice of translatedResponse.choices) {
       if (choice?.message?.reasoning_content && choice.message.content) {
         delete choice.message.reasoning_content;
@@ -339,6 +443,52 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   }, { endpoint: clientRawRequest?.endpoint || null })).catch(err => {
     console.error("[RequestDetail] Failed to save:", err.message);
   });
+
+  // Client requested streaming but the provider only returned a non-stream JSON
+  if (streamToClient === true) {
+    // A same-format Gemini-family response is already a valid streaming chunk.
+    // Sending it through an empty OpenAI synthetic delta loses text, inlineData,
+    // function calls/results, and provider-specific metadata.
+    const isNativeGeminiResponse = sourceFormat === targetFormat
+      && GEMINI_FAMILY_FORMATS.has(sourceFormat)
+      && (Array.isArray(translatedResponse?.candidates) || Array.isArray(translatedResponse?.response?.candidates));
+    if (isNativeGeminiResponse) {
+      return {
+        success: true,
+        response: new Response(formatSSE(translatedResponse, sourceFormat), {
+          headers: {
+            "Content-Type": "text/event-stream",
+            ...SSE_HEADERS_CORS,
+          },
+        }),
+      };
+    }
+
+    // Always synthesize from an OpenAI-normalized intermediate. Reading finish
+    // and usage from the raw provider body mislabels Claude/Gemini fields and
+    // drops tool terminal semantics.
+    const openAIIntermediate = targetFormat === FORMATS.OPENAI
+      ? structuredClone(responseBody)
+      : translateNonStreamingResponse(structuredClone(responseBody), targetFormat, FORMATS.OPENAI);
+    if (!Array.isArray(openAIIntermediate?.choices)) {
+      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Unable to normalize non-streaming response for SSE");
+    }
+    const intermediateChoice = openAIIntermediate.choices[0];
+    if (Array.isArray(intermediateChoice?.message?.tool_calls) && intermediateChoice.message.tool_calls.length > 0) {
+      intermediateChoice.finish_reason = "tool_calls";
+    }
+    const sseText = openAICompletionToClientSSE(openAIIntermediate, model, sourceFormat);
+
+    return {
+      success: true,
+      response: new Response(sseText, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          ...SSE_HEADERS_CORS,
+        },
+      }),
+    };
+  }
 
   return {
     success: true,

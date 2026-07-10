@@ -22,6 +22,7 @@ import {
 export const INTERNAL_KEYS = Object.freeze([
   "_toolNameMap",
   "_clientSessionId",
+  "_kiroUpstreamModel",
 ]);
 
 // Keys that may legitimately start with "_" in provider payloads (none today,
@@ -61,17 +62,116 @@ function pushError(errors, path, message) {
   errors.push({ path, message });
 }
 
+/**
+ * Coerce a tool parameters root schema whose `type` is null/missing to
+ * `type: "object"`. OpenAI-compatible upstreams reject a root schema without an
+ * explicit object type ("schema must be a JSON Schema of 'type: \"object\"', got
+ * 'type: null'" — 9router#6359 / OmniRoute#6375); clients like the Codex app emit
+ * `parameters: { type: null, ... }` for some tools. Root-only: nested null types
+ * remain a separate sanitizer concern, combinator roots (anyOf/oneOf/allOf) and
+ * explicit root types are preserved, and `properties:{}` is only added when
+ * absent/non-object. Mutates the schema in place.
+ */
+function coerceRootObjectType(schema) {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return;
+  const hasOwn = (k) => Object.prototype.hasOwnProperty.call(schema, k);
+  // Drop a null root type first (mirroring the upstream sanitizer) so a
+  // combinator root carrying `type: null` does not retain the invalid sibling.
+  if (hasOwn("type") && schema.type === null) delete schema.type;
+  // Explicit root type wins — leave it untouched.
+  if (hasOwn("type")) return;
+  // Combinator roots carry their own typing — injecting a sibling `type` would
+  // change their meaning. Own-property checks, not truthiness.
+  if (hasOwn("anyOf") || hasOwn("oneOf") || hasOwn("allOf")) return;
+  schema.type = "object";
+  if (!schema.properties || typeof schema.properties !== "object" || Array.isArray(schema.properties)) {
+    schema.properties = {};
+    // Synthesizing an empty-properties object under a strict validator reads as
+    // "no properties allowed"; keep it open to match the upstream sanitizer.
+    if (!hasOwn("additionalProperties")) schema.additionalProperties = true;
+  }
+}
+
+/**
+ * Normalize root `type: null`/missing on tool function parameters before
+ * dispatch, covering both OpenAI Chat Completions (`tools[].function.parameters`)
+ * and OpenAI Responses flattened (`tools[].parameters`) shapes. Runs regardless
+ * of the VALIDATE_OUTBOUND gate so the fix holds for passthrough
+ * (source === target) requests too — the reported Codex/OpenAI-compatible case.
+ * Mutates `body` in place and returns it. 9router#6359 / OmniRoute#6375.
+ */
+export function normalizeToolSchemaRoots(body) {
+  if (!body || typeof body !== "object" || !Array.isArray(body.tools)) return body;
+  for (const tool of body.tools) {
+    if (!tool || typeof tool !== "object") continue;
+    // Chat Completions shape: { type: "function", function: { parameters } }
+    if (tool.function && typeof tool.function === "object") {
+      coerceRootObjectType(tool.function.parameters);
+    }
+    // Responses flattened shape: { type: "function", parameters }
+    coerceRootObjectType(tool.parameters);
+  }
+  return body;
+}
+
 // Strip known internal keys (always) and any other underscore-prefixed keys
 // (silently — those don't fail validation, they just get removed).
 // Mutates the body in place and returns it for convenience.
 export function stripInternalKeys(body) {
   if (!body || typeof body !== "object") return body;
-  for (const k of Object.keys(body)) {
+  // getOwnPropertyNames also catches non-enumerable metadata. Object.keys did
+  // not remove legacy `_kiroUpstreamModel` hints before the executor boundary.
+  for (const k of Object.getOwnPropertyNames(body)) {
     if (k.startsWith("_") && !ALLOWED_UNDERSCORE_KEYS.has(k)) {
       delete body[k];
     }
   }
   return body;
+}
+
+function validateKiro(body, errors) {
+  const state = body.conversationState;
+  if (!state || typeof state !== "object" || Array.isArray(state)) {
+    pushError(errors, "conversationState", "Kiro conversationState object is required");
+    return;
+  }
+
+  if (typeof state.conversationId !== "string" || !state.conversationId.trim()) {
+    pushError(errors, "conversationState.conversationId", "Kiro conversationId string is required");
+  }
+  const input = state.currentMessage?.userInputMessage;
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    pushError(
+      errors,
+      "conversationState.currentMessage.userInputMessage",
+      "Kiro current userInputMessage object is required",
+    );
+  } else {
+    if (typeof input.modelId !== "string" || !input.modelId.trim()) {
+      pushError(
+        errors,
+        "conversationState.currentMessage.userInputMessage.modelId",
+        "Kiro modelId string is required",
+      );
+    }
+    if (typeof input.content !== "string") {
+      pushError(
+        errors,
+        "conversationState.currentMessage.userInputMessage.content",
+        "Kiro content must be a string",
+      );
+    }
+  }
+
+  if (!Array.isArray(state.history)) {
+    pushError(errors, "conversationState.history", "Kiro history must be an array");
+  } else {
+    state.history.forEach((item, index) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        pushError(errors, `conversationState.history[${index}]`, "Kiro history item must be an object");
+      }
+    });
+  }
 }
 
 // ---- Format-specific validators -------------------------------------------------
@@ -406,7 +506,7 @@ export function validateOutboundPayload(targetFormat, body) {
   }
   const b = body;
   // 1. Internal key leak detection (always fails validation by name).
-  for (const k of Object.keys(b)) {
+  for (const k of Object.getOwnPropertyNames(b)) {
     if (INTERNAL_KEYS.includes(k)) {
       pushError(errors, k, `internal key "${k}" must not leak upstream`);
     }
@@ -418,10 +518,12 @@ export function validateOutboundPayload(targetFormat, body) {
     case FORMATS.OLLAMA:
     case FORMATS.CURSOR:
     case FORMATS.COMMANDCODE:
-    case FORMATS.KIRO:
-      // Kiro / Codex / Ollama / Cursor / Commandcode receive OpenAI-shaped bodies
+      // Codex / Ollama / Cursor / Commandcode receive OpenAI-shaped bodies
       // from the translator pipeline.
       validateOpenAI(b, errors);
+      break;
+    case FORMATS.KIRO:
+      validateKiro(b, errors);
       break;
     case FORMATS.CLAUDE:
       validateClaude(b, errors);
@@ -444,4 +546,265 @@ export function validateOutboundPayload(targetFormat, body) {
       }
   }
   return { ok: errors.length === 0, errors };
+}
+
+// ---------------------------------------------------------------------------
+// Inbound HTTP-layer validators (OmniRoute O-A port).
+//
+// These run at the route boundary, BEFORE model/provider resolution, so a
+// schema-invalid request fails fast with a clear OpenAI-shaped 4xx instead of
+// surfacing as a misleading `model_not_found` 404 from downstream lookup. They
+// are intentionally separate from `validateOutboundPayload` above (which guards
+// the translated body right before the upstream dispatch). Keep both: outbound
+// catches translator bugs; these catch client bugs.
+//
+// Source pins (TS → JS hand-translation):
+//   diegosouzapw/OmniRoute#6515 (messages array guard, #6402)
+//   diegosouzapw/OmniRoute#6433 (non-string model, #6407)
+//   diegosouzapw/OmniRoute#6437 (scalar params, #6412 / #6424)
+//   diegosouzapw/OmniRoute#6513 + #6434 (Content-Type 415, #6414)
+// ---------------------------------------------------------------------------
+
+// `Response.json` sets its own Content-Type; passing an explicit header would
+// risk a duplicate/combined value on some runtimes, so the error builders below
+// deliberately omit it. Only `headOkResponse` (a plain `Response`, no JSON body)
+// sets `content-type` explicitly.
+
+/**
+ * Build an OpenAI-compatible error envelope.
+ * @param {string} message - human-readable message (field-prefixed).
+ * @param {string} type - OpenAI error type, e.g. `invalid_request_error`.
+ * @param {string} [code] - machine-readable code.
+ * @returns {{error: {message: string, type: string, code?: string}}}
+ */
+function errorEnvelope(message, type, code) {
+  const error = { message, type };
+  if (code) error.code = code;
+  return { error };
+}
+
+/**
+ * Validate the `messages` / Responses-API `input` discriminator of a chat body.
+ *
+ * Mirrors OmniRoute `handleChat` early guard (#6402): a present-but-non-array
+ * `messages`, an empty array, or a fully-absent `messages` (when `input` is also
+ * absent) must be rejected with a 400 before any routing. Responses-API
+ * requests that carry `input` (no `messages`) pass through untouched.
+ *
+ * @param {unknown} body - parsed JSON request body (may be any value).
+ * @returns {Response | null} a 400 `Response` on failure, or `null` to proceed.
+ */
+export function validateMessagesField(body) {
+  const b = body && typeof body === "object" ? body : {};
+  const hasMessages = Object.prototype.hasOwnProperty.call(b, "messages");
+  const hasInput = Object.prototype.hasOwnProperty.call(b, "input");
+
+  if (hasMessages && !Array.isArray(b.messages)) {
+    return Response.json(
+      errorEnvelope("messages: Expected array", "invalid_request_error"),
+      { status: 400 },
+    );
+  }
+  if (Array.isArray(b.messages) && b.messages.length === 0) {
+    return Response.json(
+      errorEnvelope("messages: at least one message is required", "invalid_request_error"),
+      { status: 400 },
+    );
+  }
+  if (!hasMessages && !hasInput) {
+    return Response.json(
+      errorEnvelope("messages: Expected array, received undefined", "invalid_request_error"),
+      { status: 400 },
+    );
+  }
+  return null;
+}
+
+/**
+ * Validate the `model` field type.
+ *
+ * A non-string `model` (number/boolean/array/object) crashes downstream
+ * `.toLowerCase()` / `.split()` lookups and escapes the error sanitizer as a
+ * 500 with an empty body (#6407). `null` / `undefined` are left for the
+ * existing `Missing model` guard to report; anything else that is not a string
+ * is a client type error and is rejected here with a 400.
+ *
+ * @param {unknown} body - parsed JSON request body.
+ * @returns {Response | null} a 400 `Response` on failure, or `null` to proceed.
+ */
+export function validateModelField(body) {
+  const b = body && typeof body === "object" ? body : {};
+  const raw = b.model;
+  if (raw === undefined || raw === null || typeof raw === "string") return null;
+  const received = Array.isArray(raw) ? "array" : typeof raw;
+  return Response.json(
+    errorEnvelope(`model: Expected string, received ${received}`, "invalid_request_error"),
+    { status: 400 },
+  );
+}
+
+/**
+ * Validate widely-supported OpenAI scalar chat params.
+ *
+ * Runs BEFORE provider/model resolution so a malformed param (e.g.
+ * `temperature: "foo"`) on an unknown model returns a 400 naming the field
+ * rather than a 404 `model_not_found` (#6412). Kept narrow to the OpenAI-spec
+ * params that every upstream accepts so provider-specific fields are never
+ * rejected here: `temperature` (number, 0..2), `top_p` (number, 0..1),
+ * `max_tokens` (integer ≥ 1), `n` (integer ≥ 1). Omitted params pass.
+ *
+ * @param {unknown} body - parsed JSON request body.
+ * @returns {Response | null} a 400 `Response` on failure, or `null` to proceed.
+ */
+export function validateChatScalarParams(body) {
+  const b = body && typeof body === "object" ? body : {};
+  const bad = (name, msg) =>
+    Response.json(errorEnvelope(`${name}: ${msg}`, "invalid_request_error"), {
+      status: 400,
+    });
+
+  if (b.temperature !== undefined) {
+    if (typeof b.temperature !== "number" || Number.isNaN(b.temperature)) {
+      return bad("temperature", "must be a number");
+    }
+    if (b.temperature < 0 || b.temperature > 2) {
+      return bad("temperature", "must be between 0 and 2");
+    }
+  }
+  if (b.top_p !== undefined) {
+    if (typeof b.top_p !== "number" || Number.isNaN(b.top_p)) {
+      return bad("top_p", "must be a number");
+    }
+    if (b.top_p < 0 || b.top_p > 1) {
+      return bad("top_p", "must be between 0 and 1");
+    }
+  }
+  if (b.max_tokens !== undefined) {
+    if (
+      typeof b.max_tokens !== "number" ||
+      !Number.isInteger(b.max_tokens) ||
+      b.max_tokens < 1
+    ) {
+      return bad("max_tokens", "must be a positive integer");
+    }
+  }
+  if (b.n !== undefined) {
+    if (typeof b.n !== "number" || !Number.isInteger(b.n) || b.n < 1) {
+      return bad("n", "must be a positive integer");
+    }
+  }
+  return null;
+}
+
+/**
+ * Content-Type guard for JSON POST/PUT/PATCH routes (#6414).
+ *
+ * OpenAI's reference API returns HTTP 415 `unsupported_media_type` when a POST
+ * arrives with a non-JSON Content-Type (or none). Without this guard a
+ * `text/plain` body is silently parsed as JSON and falls through to provider
+ * lookup, surfacing as a misleading error. Only inspects the header — no body
+ * read, no I/O. A `; charset=…` suffix is permitted; matching is
+ * case-insensitive.
+ *
+ * @param {Request} request - inbound request.
+ * @returns {Response | null} a 415 `Response` on rejection, or `null` to proceed.
+ */
+export function requireJsonContentType(request) {
+  const method = String(request.method || "").toUpperCase();
+  if (method !== "POST" && method !== "PUT" && method !== "PATCH") return null;
+  const raw = request.headers.get("content-type");
+  const ct = (raw ?? "").trim().toLowerCase();
+  if (ct.startsWith("application/json")) return null;
+  return Response.json(
+    errorEnvelope(
+      "Content-Type must be application/json",
+      "invalid_request_error",
+      "unsupported_media_type",
+    ),
+    { status: 415 },
+  );
+}
+
+/**
+ * Run the full inbound-validation chain for a chat-style body.
+ *
+ * Order is load-bearing: scalar params and the model/messages type checks are
+ * cheap pure functions and short-circuit before any async model resolution.
+ * `messages` is checked first (most common client error), then `model`, then
+ * scalar params — matching OmniRoute's handler order so error messages line up
+ * with upstream behavior for overlapping-invalid bodies.
+ *
+ * @param {unknown} body - parsed JSON request body.
+ * @returns {Response | null} first failing 4xx `Response`, or `null` to proceed.
+ */
+export function validateChatRequestBody(body) {
+  return (
+    validateMessagesField(body) ||
+    validateModelField(body) ||
+    validateChatScalarParams(body) ||
+    null
+  );
+}
+
+/**
+ * Build the JSON 404 used by the `/v1/*` and `/api/*` catch-all routes.
+ *
+ * Next.js App Router falls through to `not-found.tsx` for unmatched paths and
+ * returns the dashboard HTML shell — OpenAI/Anthropic SDKs crash parsing it.
+ * Centralized here so both catch-alls stay byte-identical (#6405 / #6424).
+ *
+ * @param {Request} request - inbound request (pathname is echoed in the body).
+ * @returns {Response} 404 with `error.type === "not_found"`.
+ */
+export function jsonNotFoundResponse(request) {
+  const url = new URL(request.url);
+  return Response.json(
+    {
+      error: {
+        message: `Unknown API route: ${url.pathname}`,
+        type: "not_found",
+        code: "unknown_route",
+        path: url.pathname,
+      },
+    },
+    { status: 404 },
+  );
+}
+
+/**
+ * Explicit HEAD 200 for routes like `/v1/models` whose GET body is expensive.
+ *
+ * Next.js 16 auto-derives HEAD from GET and streams the full body; SDK health
+ * probes then hang ~6s (#6400). Returning `{ status: 200, body: null }` closes
+ * immediately per RFC 9110 §9.3.2.
+ *
+ * @returns {Response} 200 with a null body.
+ */
+export function headOkResponse() {
+  return new Response(null, {
+    status: 200,
+    headers: {
+      "content-type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+    },
+  });
+}
+
+/**
+ * HEAD variant of the catch-all 404: identical status + JSON content-type, but
+ * a null body. Returning a JSON body here would clash with the global HEAD
+ * body-suppression wrapper (#6608) and violate RFC 9110 §9.3.2 (HEAD carries
+ * the headers a GET would, with zero body). Tests assert status + content-type
+ * only, so the envelope is intentionally not serialized.
+ *
+ * @returns {Response} 404 with a null body.
+ */
+export function headNotFoundResponse() {
+  return new Response(null, {
+    status: 404,
+    headers: {
+      "content-type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+    },
+  });
 }

@@ -16,6 +16,7 @@ import "../../open-sse/translator/response/claude-to-openai.js";
 import "../../open-sse/translator/response/openai-to-claude.js";
 import "../../open-sse/translator/response/gemini-to-openai.js";
 import "../../open-sse/translator/response/openai-to-antigravity.js";
+import "../../open-sse/translator/response/openai-to-gemini.js";
 import "../../open-sse/translator/response/openai-responses.js";
 import "../../open-sse/translator/response/kiro-to-openai.js";
 import "../../open-sse/translator/response/cursor-to-openai.js";

@@ -48,12 +48,6 @@ export default function DeepSeekTuiToolCard({
   const configStatus = getConfigStatus();
 
   useEffect(() => {
-    if (apiKeys?.length > 0 && !selectedApiKey) {
-      setSelectedApiKey(apiKeys[0].key);
-    }
-  }, [apiKeys, selectedApiKey]);
-
-  useEffect(() => {
     if (initialStatus) setDeepseekStatus(initialStatus);
   }, [initialStatus]);
 
@@ -115,7 +109,6 @@ export default function DeepSeekTuiToolCard({
     setMessage(null);
     try {
       const keyToUse = selectedApiKey?.trim()
-        || (apiKeys?.length > 0 ? apiKeys[0].key : null)
         || (!cloudEnabled ? "sk_durindoor" : null);
 
       const res = await fetch(ENDPOINT, {

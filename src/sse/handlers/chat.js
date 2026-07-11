@@ -12,6 +12,7 @@ import { getSettings, getApiKeyByKey, getApiKeyUsageLimitStatus } from "@/lib/lo
 import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
 import { appendPxpipeEvent } from "@/lib/pxpipe/events.js";
 import { getModelInfo, getComboModels } from "../services/model.js";
+import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
 import { applyVisionBridgeReroute } from "open-sse/services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
@@ -149,7 +150,7 @@ export async function handleChat(request, clientRawRequest = null) {
   if (apiKey && modelStr) {
     authenticatedKeyRecord = await getApiKeyByKey(apiKey);
     if (authenticatedKeyRecord && Array.isArray(authenticatedKeyRecord.allowedCombos) && authenticatedKeyRecord.allowedCombos.length > 0) {
-      const comboCheck = await getComboModels(modelStr);
+      const comboCheck = await getComboModels(modelStr, settings);
       if (comboCheck && !authenticatedKeyRecord.allowedCombos.includes(modelStr)) {
         log.warn("AUTH", `API key "${authenticatedKeyRecord.name}" not allowed to access combo "${modelStr}"`);
         return errorResponse(HTTP_STATUS.FORBIDDEN, `Access denied: combo "${modelStr}" is not allowed for this API key`);
@@ -224,11 +225,20 @@ export async function handleChat(request, clientRawRequest = null) {
   if (bypassResponse) return bypassResponse.response || bypassResponse;
 
   // Check if model is a combo (has multiple models with fallback)
-  const comboModels = await getComboModels(modelStr);
+  const comboModels = await getComboModels(modelStr, settings);
   if (comboModels) {
-    // Check for combo-specific strategy first, fallback to global
+    // Check for combo-specific strategy first, fallback to global. Auto-combo
+    // ids (`auto/<family>`) honor the assignment's `comboStrategies[modelStr].strategy`;
+    // named combos keep the legacy `.fallbackStrategy`. Auto IDs fall through to
+    // `.fallbackStrategy` when `.strategy` is absent so partial config still works.
     const comboStrategies = settings.comboStrategies || {};
-    const comboSpecificStrategy = comboStrategies[modelStr]?.fallbackStrategy;
+    const perCombo = comboStrategies[modelStr] || {};
+    // Auto-combo ids (`auto/<family>`) honor the F2a2 `.strategy` shape; named
+    // combos keep the legacy `.fallbackStrategy`. Never let a stray `.strategy`
+    // on a named-combo config change legacy behavior.
+    const comboSpecificStrategy = isAutoComboId(modelStr)
+      ? (perCombo.strategy ?? perCombo.fallbackStrategy)
+      : perCombo.fallbackStrategy;
     const comboStrategy = comboSpecificStrategy || settings.comboStrategy || "fallback";
 
     // Combo names are intentionally excluded from the model allowlist; the allowlist

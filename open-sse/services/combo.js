@@ -7,6 +7,7 @@ import { checkFallbackError, formatRetryAfter } from "./accountFallback.js";
 import { unavailableResponse } from "../utils/error.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { extractTextContent } from "../translator/formats/gemini.js";
+import { isAutoComboId, familyOfAutoId, resolveAutoCombo } from "./autoComboResolver.js";
 
 // Hard capabilities = input modalities; missing one drops request data (e.g. image
 // stripped). Must be prioritized. Soft (e.g. search) only degrades a feature.
@@ -702,12 +703,27 @@ export function resetComboScoring(comboName) {
 }
 
 /**
- * Get combo models from combos data
+ * Get combo models from combos data. `auto/<family>` resolves BEFORE the slash
+ * guard and the combos-data lookup: a recognized auto id always returns an array
+ * (possibly empty) — never null — so callers enter the combo path and fail fast
+ * (handleComboChat emits a controlled 503) rather than falling through to a
+ * literal "auto" provider or a combos-data miss.
  * @param {string} modelStr - Model string to check
  * @param {Array|Object} combosData - Array of combos or object with combos
- * @returns {string[]|null} Array of models or null if not a combo
+ * @param {Object} [options] - { catalog, settings } for auto/* resolution
+ * @returns {string[]|null} Array of models (empty for empty auto pool), or null if not a combo
  */
-export function getComboModelsFromData(modelStr, combosData) {
+export function getComboModelsFromData(modelStr, combosData, options = {}) {
+  // `auto/<family>` resolves BEFORE the slash guard and the combos-data lookup.
+  // With a catalog supplied it materializes the family pool; with no catalog the
+  // recognized auto id still short-circuits to [] (fail-fast) rather than
+  // falling through to a literal "auto" provider or a combos-data miss. A
+  // recognized auto id always returns an array (possibly empty) — never null.
+  if (isAutoComboId(modelStr)) {
+    const family = familyOfAutoId(modelStr);
+    return resolveAutoCombo(family, options.catalog || {}, options.settings);
+  }
+
   // Don't check if it's in provider/model format
   if (modelStr.includes("/")) return null;
   

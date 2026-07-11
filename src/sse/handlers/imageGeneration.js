@@ -7,6 +7,7 @@ import {
 } from "../services/auth.js";
 import { getSettings, getApiKeyByKey } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
+import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
 import { handleImageGenerationCore } from "open-sse/handlers/imageGenerationCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
@@ -48,7 +49,7 @@ export async function handleImageGeneration(request) {
   if (apiKey && modelStr) {
     const keyData = await getApiKeyByKey(apiKey);
     if (keyData && Array.isArray(keyData.allowedCombos) && keyData.allowedCombos.length > 0) {
-      const comboCheck = await getComboModels(modelStr);
+      const comboCheck = await getComboModels(modelStr, settings);
       if (comboCheck && !keyData.allowedCombos.includes(modelStr)) {
         log.warn("AUTH", `API key "${keyData.name}" not allowed to access combo "${modelStr}"`);
         return errorResponse(HTTP_STATUS.FORBIDDEN, `Access denied: combo "${modelStr}" is not allowed for this API key`);
@@ -60,10 +61,14 @@ export async function handleImageGeneration(request) {
   if (!body.prompt) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: prompt");
 
   // Combo expansion: model may be a combo name → run fallback/round-robin across models
-  const comboModels = await getComboModels(modelStr);
+  const comboModels = await getComboModels(modelStr, settings);
   if (comboModels) {
     const comboStrategies = settings.comboStrategies || {};
-    const comboStrategy = comboStrategies[modelStr]?.fallbackStrategy || settings.comboStrategy || "fallback";
+    const perCombo = comboStrategies[modelStr] || {};
+    const comboSpecificStrategy = isAutoComboId(modelStr)
+      ? (perCombo.strategy ?? perCombo.fallbackStrategy)
+      : perCombo.fallbackStrategy;
+    const comboStrategy = comboSpecificStrategy || settings.comboStrategy || "fallback";
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
     log.info("IMAGE", `Combo "${modelStr}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
     return handleComboChat({

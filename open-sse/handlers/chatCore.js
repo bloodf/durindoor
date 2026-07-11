@@ -416,8 +416,10 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // its parser as unparseable and the gated action fails closed. Placed after
   // token-saver/caveman/ponytail/pxpipe processing, immediately before the
   // upstream call, so low-cost combo fallbacks can't return empty content that
-  // breaks the classifier.
-  if (shouldDefaultAllowClassifier(sourceFormat, body, claudeClassifierCompat)) {
+  // breaks the classifier. Only `auto` short-circuits (requires the classifier
+  // marker); `always` widens error-path default-allow + response sanitization
+  // but still dispatches upstream, so a healthy upstream is not bypassed.
+  if (claudeClassifierCompat === "auto" && shouldDefaultAllowClassifier(sourceFormat, body, claudeClassifierCompat)) {
     log?.warn?.("CHAT", `classifier compat=${claudeClassifierCompat} | short-circuit default-allow`);
     appendRequestLog({ model: cleanModel, provider, connectionId, status: "ALLOWED (compat short-circuit)" }).catch(() => { });
     return buildDefaultAllowClaudeMessage();
@@ -715,7 +717,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 }
 
 // Minimal Claude message the auto-mode classifier parses as ALLOW.
-function buildDefaultAllowClaudeMessage() {
+export function buildDefaultAllowClaudeMessage() {
   return {
     success: true,
     response: new Response(
@@ -740,10 +742,12 @@ function buildDefaultAllowClaudeMessage() {
 // Detect Claude Code auto-mode classifier requests: security-monitor system
 // prompt OR '</block>' stop_sequence. Only honored for Claude clients, and only
 // when the classifier marker is present — `always` widens response sanitization
-// (handled in the stream/non-stream handlers), NOT short-circuit eligibility.
-function shouldDefaultAllowClassifier(sourceFormat, body, claudeClassifierCompat) {
+// (handled in the stream/non-stream handlers) and the error-path default-allow,
+// NOT auto-mode short-circuit eligibility.
+export function shouldDefaultAllowClassifier(sourceFormat, body, claudeClassifierCompat) {
   if (claudeClassifierCompat === "off") return false;
   if (sourceFormat !== FORMATS.CLAUDE) return false;
+  if (claudeClassifierCompat === "always") return true;
   const systemTexts = Array.isArray(body?.system)
     ? body.system.map((p) => (typeof p?.text === "string" ? p.text : "")).filter(Boolean)
     : [];

@@ -15,7 +15,10 @@
  *        - `targetFormat` values not present in `open-sse/translator/formats.js#FORMATS`
  *        - pricing rows (`MODEL_PRICING`, `PROVIDER_PRICING`, `PATTERN_PRICING`)
  *          whose id / glob pattern matches NO registry model id (orphan pricing)
- *      Works in any clone/CI with only `origin`. Exit 1 when findings exist.
+ *      Works in any clone/CI with only `origin`. Reviewed-intentional findings are
+ *      recorded in `open-sse/config/catalogAllowlist.js` and skipped by default so a
+ *      fully-reviewed catalog exits clean; pass `--strict` to show every finding.
+ *      Exit 1 when un-reviewed findings exist.
  *
  *   2. Comparison (`--upstream-ref <ref> --omniroute-ref <ref>`):
  *      Reads foreign catalog trees via `git show <ref>:<path>` and emits
@@ -33,6 +36,7 @@
 import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import { REVIEWED_ORPHANS } from "../open-sse/config/catalogAllowlist.js";
 
 const ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 
@@ -96,13 +100,32 @@ function globMatch(pattern, id) {
 /**
  * Run the local consistency audit against our registry + pricing.
  * Returns an array of human-readable findings (empty = clean).
+ *
+ * Findings that have been human-reviewed and confirmed intentional are recorded
+ * in `open-sse/config/catalogAllowlist.js` (REVIEWED_ORPHANS). By default they are
+ * skipped so a fully-reviewed catalog exits clean; pass `{ strict: true }` (CLI
+ * `--strict`) to surface every finding regardless of allowlist. Allowlist matching
+ * uses STABLE keys built at finding-creation time — never parsed back out of the
+ * message text.
+ *
+ * @param {object} [opts]
+ * @param {boolean} [opts.strict=false]  ignore the allowlist and return everything
+ * @param {Map<string,string>} [opts.allowlist=REVIEWED_ORPHANS]  key → reason
  */
-export async function localAudit(registryOverride, formatsOverride, pricingOverride) {
+export async function localAudit(registryOverride, formatsOverride, pricingOverride, opts = {}) {
   const registry = registryOverride || (await loadOurRegistry());
   const formats = formatsOverride || (await loadFormats());
   const pricing = pricingOverride || (await loadPricing());
+  const strict = opts.strict === true;
+  const allowlist = opts.allowlist === undefined ? REVIEWED_ORPHANS : opts.allowlist;
 
   const findings = [];
+  // Push a finding unless it is allowlisted (and we are not in strict mode).
+  // `key` is the stable allowlist key; `message` is the human-readable text.
+  function addFinding(key, message) {
+    if (key != null && !strict && allowlist && allowlist.has(key)) return;
+    findings.push(message);
+  }
   // Every model id that exists anywhere in our registry (for MODEL_PRICING +
   // PATTERN_PRICING orphan checks, both provider-agnostic).
   const allIds = new Set();
@@ -115,7 +138,7 @@ export async function localAudit(registryOverride, formatsOverride, pricingOverr
   for (const entry of registry) {
     const provider = entry.id || entry.alias || "<unknown>";
     const models = entry.models || [];
-    const seen = new Map(); // id → first index
+    const seen = new Map(); // composite key `${id}\0${effectiveKind}` → first index
     const idSet = new Set();
 
     for (let i = 0; i < models.length; i++) {
@@ -124,19 +147,31 @@ export async function localAudit(registryOverride, formatsOverride, pricingOverr
       const id = m.id;
 
       if (typeof id !== "string" || id.length === 0) {
-        findings.push(`[${provider}] model[${i}] has empty/non-string id (${JSON.stringify(id)})`);
+        addFinding(null, `[${provider}] model[${i}] has empty/non-string id (${JSON.stringify(id)})`);
         continue;
       }
+      const kind = m.kind || m.type || "llm";
+      const dedupKey = `${id}\0${kind}`;
       idSet.add(id);
       allIds.add(id);
-      if (seen.has(id)) {
-        findings.push(`[${provider}] duplicate model id "${id}" (indices ${seen.get(id)}, ${i})`);
+      // Same id is allowed across distinct kinds (e.g. gemini-2.5-pro as llm + stt).
+      // A true duplicate is the same id repeated within the SAME effective kind.
+      // Kind resolution matches runtime: `m.kind || m.type || "llm"` (see
+      // open-sse/providers/models/schema.js#modelKind). Chat rows carry no kind
+      // and resolve to the llm default; a bare duplicate chat row still flags.
+      if (seen.has(dedupKey)) {
+        const kindNote = kind ? `, kind "${kind}"` : " (no kind)";
+        addFinding(
+          null,
+          `[${provider}] duplicate model id "${id}"${kindNote} (indices ${seen.get(dedupKey)}, ${i})`
+        );
       } else {
-        seen.set(id, i);
+        seen.set(dedupKey, i);
       }
 
       if (m.targetFormat != null && !formats.has(m.targetFormat)) {
-        findings.push(
+        addFinding(
+          null,
           `[${provider}] model "${id}" targetFormat "${m.targetFormat}" not in FORMATS`
         );
       }
@@ -152,7 +187,8 @@ export async function localAudit(registryOverride, formatsOverride, pricingOverr
       const raw = models[i];
       const m = typeof raw === "string" ? { id: raw } : raw || {};
       if (m.upstreamModelId != null && !idSet.has(m.upstreamModelId)) {
-        findings.push(
+        addFinding(
+          `${provider}:${m.id}`,
           `[${provider}] model "${m.id}" upstreamModelId "${m.upstreamModelId}" resolves to no id in this provider`
         );
       }
@@ -162,18 +198,18 @@ export async function localAudit(registryOverride, formatsOverride, pricingOverr
   // Orphan pricing: a row is "covered" if some registry id equals/matches it.
   for (const key of Object.keys(pricing.model)) {
     if (!allIds.has(key)) {
-      findings.push(`pricing MODEL_PRICING["${key}"] matches no registry model id`);
+      addFinding(`pricing:${key}`, `pricing MODEL_PRICING["${key}"] matches no registry model id`);
     }
   }
   for (const prov of Object.keys(pricing.provider)) {
     const ids = providerIds.get(prov);
     if (!ids) {
-      findings.push(`pricing PROVIDER_PRICING.${prov} — provider key matches no registry id/alias`);
+      addFinding(null, `pricing PROVIDER_PRICING.${prov} — provider key matches no registry id/alias`);
       continue;
     }
     for (const key of Object.keys(pricing.provider[prov])) {
       if (!ids.has(key)) {
-        findings.push(`pricing PROVIDER_PRICING.${prov}["${key}"] matches no model id in that provider`);
+        addFinding(null, `pricing PROVIDER_PRICING.${prov}["${key}"] matches no model id in that provider`);
       }
     }
   }
@@ -186,7 +222,7 @@ export async function localAudit(registryOverride, formatsOverride, pricingOverr
       }
     }
     if (!hit) {
-      findings.push(`pricing PATTERN_PRICING "${row.pattern}" matches no registry model id`);
+      addFinding(`pricing-pattern:${row.pattern}`, `pricing PATTERN_PRICING "${row.pattern}" matches no registry model id`);
     }
   }
 
@@ -510,12 +546,13 @@ export async function comparisonReport(upstreamRef, omnirouteRef) {
 
 // ── CLI ────────────────────────────────────────────────────────────────────
 function parseArgs(argv) {
-  const out = { upstreamRef: null, omnirouteRef: null, out: "model-catalog-report.md" };
+  const out = { upstreamRef: null, omnirouteRef: null, out: "model-catalog-report.md", strict: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--upstream-ref") out.upstreamRef = argv[++i];
     else if (a === "--omniroute-ref") out.omnirouteRef = argv[++i];
     else if (a === "--out") out.out = argv[++i];
+    else if (a === "--strict") out.strict = true;
     else if (a === "--help" || a === "-h") out.help = true;
   }
   return out;
@@ -524,7 +561,8 @@ function parseArgs(argv) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
-    console.log("usage: node scripts/model-catalog-diff.mjs [--upstream-ref REF] [--omniroute-ref REF] [--out FILE]");
+    console.log("usage: node scripts/model-catalog-diff.mjs [--strict] [--upstream-ref REF] [--omniroute-ref REF] [--out FILE]");
+    console.log("  --strict   show every finding, ignoring the reviewed allowlist (open-sse/config/catalogAllowlist.js)");
     process.exit(0);
   }
 
@@ -535,10 +573,13 @@ async function main() {
     return;
   }
 
-  // Local audit.
-  const findings = await localAudit();
+  // Local audit. Default mode skips reviewed-intentional findings (allowlist);
+  // --strict shows everything. Exit 0 when no un-reviewed findings remain.
+  const findings = await localAudit(undefined, undefined, undefined, { strict: args.strict });
   if (findings.length === 0) {
-    console.log("catalog audit: clean (no findings)");
+    console.log(args.strict
+      ? "catalog audit: clean (no findings)"
+      : "catalog audit: clean (no unreviewed findings)");
     process.exit(0);
   }
   console.error(`catalog audit: ${findings.length} finding(s):`);

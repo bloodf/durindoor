@@ -16,11 +16,10 @@ function getTimeString() {
  * @param {string} options.provider - Provider name
  * @param {string} options.model - Model name
  */
-export function createStreamController({ onDisconnect, onError, onComplete, log, provider, model, reqTag = "" } = {}) {
+export function createStreamController({ onDisconnect, onError, onComplete, onActivity, log, provider, model, reqTag = "" } = {}) {
   const abortController = new AbortController();
   const startTime = Date.now();
   let disconnected = false;
-  let abortTimeout = null;
 
   // Only abnormal terminations are logged; normal completion is covered by "📊 done".
   // isError uses errorLine (always shown, ignores LOG_LEVEL) so failures survive quiet levels.
@@ -37,6 +36,10 @@ export function createStreamController({ onDisconnect, onError, onComplete, log,
 
     isConnected: () => !disconnected,
 
+    // Raw upstream activity keeps persistent reservation leases alive. The
+    // callback owns throttling so this remains cheap for token-heavy streams.
+    handleActivity: () => onActivity?.(),
+
     // Call when client disconnects
     handleDisconnect: (reason = "client_closed") => {
       if (disconnected) return;
@@ -45,11 +48,9 @@ export function createStreamController({ onDisconnect, onError, onComplete, log,
       logStream("⚡", `DISCONNECT: ${reason}`);
       dbg("CTRL", `${provider}/${model} | disconnect=${reason} | dur=${Date.now() - startTime}ms`);
 
-      // Delay abort to allow cleanup
-      abortTimeout = setTimeout(() => {
-        abortController.abort();
-      }, 500);
-
+      // Stop upstream work before releasing persistent quota capacity. A delayed
+      // abort can re-offer the final slot while the old request still consumes it.
+      abortController.abort(reason);
       onDisconnect?.({ reason, duration: Date.now() - startTime });
     },
 
@@ -58,10 +59,6 @@ export function createStreamController({ onDisconnect, onError, onComplete, log,
       if (disconnected) return;
       disconnected = true;
 
-      if (abortTimeout) {
-        clearTimeout(abortTimeout);
-        abortTimeout = null;
-      }
       onComplete?.();
     },
 
@@ -69,11 +66,6 @@ export function createStreamController({ onDisconnect, onError, onComplete, log,
     handleError: (error) => {
       if (disconnected) return;
       disconnected = true;
-
-      if (abortTimeout) {
-        clearTimeout(abortTimeout);
-        abortTimeout = null;
-      }
 
       onError?.(error);
 
@@ -221,7 +213,8 @@ export function pipeWithDisconnect(providerResponse, transformStream, streamCont
     handleComplete: () => { dbg(tag, `complete | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`); clearStall(); streamController.handleComplete(); },
     handleError: (e) => { dbg(tag, `error: ${e?.message} | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`); clearStall(); streamController.handleError(e); },
     handleDisconnect: (r) => { dbg(tag, `disconnect: ${r} | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`); clearStall(); streamController.handleDisconnect(r); },
-    abort: () => { clearStall(); streamController.abort(); }
+    abort: () => { clearStall(); streamController.abort(); },
+    handleActivity: () => streamController.handleActivity?.(),
   };
 
   armStall();
@@ -235,6 +228,7 @@ export function pipeWithDisconnect(providerResponse, transformStream, streamCont
       const now = Date.now();
       const gap = now - lastChunkAt;
       lastChunkAt = now;
+      wrappedController.handleActivity();
       if (isDebugEnabled && (chunkCount <= 5 || chunkCount % 20 === 0 || gap > 5000)) {
         dbg(tag, `chunk #${chunkCount} | size=${sz}B | gap=${gap}ms | total=${totalBytes}B`);
       }

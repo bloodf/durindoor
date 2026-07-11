@@ -19,6 +19,11 @@ import { SSE_DONE, SSE_HEADERS } from "../utils/sseConstants.js";
 import { chatChunkSse } from "../utils/sse.js";
 import { FORMATS } from "../translator/formats.js";
 import { proxyAwareFetch, shouldUseProxyAwareTransport } from "../utils/proxyFetch.js";
+import {
+  runProviderAttemptDispatch,
+  runQuotaBearingProviderRequest,
+} from "../services/providerAttemptContext.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import zlib from "zlib";
 
 // Detect cloud environment
@@ -287,12 +292,12 @@ export class CursorExecutor extends BaseExecutor {
     );
     let response;
     try {
-      response = await proxyAwareFetch(url, {
+      response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, {
         method: "POST",
         headers,
         body,
         signal: connectController.signal,
-      }, proxyOptions);
+      }, proxyOptions));
     } finally {
       clearTimeout(timeout);
       signal?.removeEventListener?.("abort", onAbort);
@@ -423,7 +428,9 @@ export class CursorExecutor extends BaseExecutor {
     try {
       const shouldForceFetch = shouldUseProxyAwareTransport(url, proxyOptions);
       const response = (http2 && !shouldForceFetch)
-        ? await this.makeHttp2Request(url, headers, transformedBody, signal)
+        ? await runQuotaBearingProviderRequest(() => runProviderAttemptDispatch(
+            () => this.makeHttp2Request(url, headers, transformedBody, signal),
+          ))
         : await this.makeFetchRequest(url, headers, transformedBody, signal, proxyOptions);
 
       if (response.status !== 200) {
@@ -453,6 +460,7 @@ export class CursorExecutor extends BaseExecutor {
         terminalProvenance: "validated",
       };
     } catch (error) {
+      if (isQuotaDispatchUnavailable(error)) throw error;
       if (error?.name === "AbortError") {
         error.providerAttemptStartedAt = providerAttemptStartedAt;
         throw error;

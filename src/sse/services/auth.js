@@ -1,4 +1,8 @@
-import { getProviderConnections, getApiKeyByKey, validateApiKey, updateProviderConnection, getSettings, getProxyPools } from "@/lib/localDb";
+import {
+  getProviderConnections, getApiKeyByKey, validateApiKey,
+  updateProviderConnection, getSettings, getProxyPools,
+  getQuotaReservationPressure,
+} from "@/lib/localDb";
 import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
 import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, buildModelLockUpdate, getActiveModelLockUntil } from "open-sse/services/accountFallback.js";
@@ -18,6 +22,8 @@ import {
 import { resolveFallbackModelScope } from "open-sse/services/fallbackScope.js";
 import { getProviderQuotaConfig } from "open-sse/config/providerQuota.js";
 import { getModelQuotaFamily, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
+import { rankQuotaConnections } from "@/shared/services/quotaSelection";
+import { quotaDecisionDiagnostic } from "open-sse/services/quota/scoring.js";
 
 const CLI_AUTH_SALT = "9r-cli-auth";
 
@@ -30,10 +36,18 @@ export async function hasValidCliToken(request) {
   return suppliedBytes.length === expectedBytes.length && timingSafeEqual(suppliedBytes, expectedBytes);
 }
 
-// Mutex to prevent race conditions during account selection
-let selectionMutex = Promise.resolve();
+// Round-robin metadata still needs ordered selection within one provider, but
+// unrelated providers must never queue behind each other's quota/settings I/O.
+const selectionMutexes = new Map();
 
 const NO_AUTH_STORED_DATA_PROVIDERS = new Set(["mimocode"]);
+
+/** Whether auth may replace an unavailable saved key with the public credential. */
+export function providerAllowsPublicNoAuthFallback(provider) {
+  const providerId = resolveProviderId(provider);
+  return AI_PROVIDERS[providerId]?.noAuth === true
+    && !NO_AUTH_STORED_DATA_PROVIDERS.has(providerId);
+}
 
 function buildNoAuthCredential(providerSpecificData = {}, resolvedProxy = {}, connection = null) {
   return {
@@ -120,6 +134,12 @@ function requestedLockScopes(rawModel, boundedModel) {
 
 function requestedModelLockActive(connection, rawModel, boundedModel, now) {
   return requestedModelLockUntil(connection, rawModel, boundedModel, now) !== null;
+}
+
+/** Shared read-only eligibility predicate used by combo preview and auth. */
+export function isProviderConnectionModelLocked(connection, provider, model, now = Date.now()) {
+  const boundedModel = resolveFallbackModelScope(resolveProviderId(provider), model);
+  return requestedModelLockActive(connection, model, boundedModel, now);
 }
 
 function requestedModelLockUntil(connection, rawModel, boundedModel, now) {
@@ -220,16 +240,24 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
   const signal = options?.signal || null;
   const selectionNow = options?.now ?? Date.now();
   throwIfAborted(signal);
+  // Resolve alias before coordination so aliases for one provider share a turn
+  // while independent provider identities remain concurrent.
+  const providerId = resolveProviderId(provider);
   // Normalize to Set for consistent handling
   const excludeSet = excludeConnectionIds instanceof Set
     ? excludeConnectionIds
     : (excludeConnectionIds ? new Set([excludeConnectionIds]) : new Set());
   const preferredConnectionId = options?.preferredConnectionId || null;
-  // Acquire mutex to prevent race conditions
-  const currentMutex = selectionMutex;
+  // Acquire the provider-scoped selection turn. SQLite reservations, not this
+  // mutex, remain the global capacity authority at dispatch time.
+  const currentMutex = selectionMutexes.get(providerId) || Promise.resolve();
   let resolveMutex;
   let releaseAfterPredecessor = false;
-  selectionMutex = new Promise(resolve => { resolveMutex = resolve; });
+  const ownMutex = new Promise(resolve => { resolveMutex = resolve; });
+  selectionMutexes.set(providerId, ownMutex);
+  ownMutex.then(() => {
+    if (selectionMutexes.get(providerId) === ownMutex) selectionMutexes.delete(providerId);
+  });
 
   try {
     try {
@@ -243,8 +271,6 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     }
     throwIfAborted(signal);
 
-    // Resolve alias to provider ID (e.g., "kc" -> "kilocode")
-    const providerId = resolveProviderId(provider);
     const boundedModel = resolveFallbackModelScope(providerId, model);
 
     const connections = await getProviderConnections({ provider: providerId, isActive: true });
@@ -318,7 +344,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       return null;
     }
     // Filter out model-locked and excluded connections
-    const availableConnections = connections.filter(c => {
+    let availableConnections = connections.filter(c => {
       if (excludeSet.has(c.id)) return false;
       if (requestedModelLockActive(c, model, boundedModel, selectionNow)) return false;
       if (quotaDecisions.get(c.id)?.skip) return false;
@@ -367,6 +393,47 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     // Per-provider strategy overrides global setting
     const providerOverride = (settings.providerStrategies || {})[providerId] || {};
     const strategy = providerOverride.fallbackStrategy || settings.fallbackStrategy || "fill-first";
+    let quotaRanked = false;
+    if (availableConnections.some((candidate) => quotaDecisions.get(candidate.id)?.quotaProfile?.tracked)) {
+      try {
+        const pressure = await getQuotaReservationPressure({
+          provider: providerId,
+          connectionIds: availableConnections.map((candidate) => candidate.id),
+          now: selectionNow,
+        });
+        const ranked = rankQuotaConnections(availableConnections, quotaDecisions, pressure, {
+          now: selectionNow,
+          provider: providerId,
+          config: settings.quotaSelection || {},
+        });
+        for (const candidate of ranked) {
+          log.debug("QUOTA", `${provider} account candidate`, quotaDecisionDiagnostic(candidate.quotaDecision));
+        }
+        const eligibleRanked = ranked.filter((candidate) => candidate.quotaDecision?.eligible !== false);
+        const floorBlocked = ranked.filter((candidate) => (
+          candidate.quotaDecision?.eligible === false
+          && candidate.quotaDecision?.reasons?.includes("below_routing_floor")
+        ));
+        if (eligibleRanked.length === 0 && floorBlocked.length > 0) {
+          return {
+            allRateLimited: true,
+            retryAfter: null,
+            retryAfterHuman: "",
+            lastError: "Provider quota routing floor reached",
+            lastErrorCode: 503,
+            localQuotaFloor: true,
+          };
+        }
+        quotaRanked = eligibleRanked.some((candidate) => candidate.quotaDecision?.comparable);
+        if (quotaRanked || floorBlocked.length > 0) {
+          availableConnections = eligibleRanked.map((candidate) => candidate.value);
+        }
+      } catch {
+        // Operational pressure is an optimization over provider observations.
+        // Repository errors preserve the established selection order.
+        quotaRanked = false;
+      }
+    }
 
     let connection;
     // Pin to preferred connection if specified and available
@@ -378,6 +445,10 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     }
     if (connection) {
       // skip strategy
+    } else if (quotaRanked) {
+      // Persistent pressure + last-selection history provide the fairness tier
+      // for quota-comparable accounts. Atomic acquire remains the final arbiter.
+      connection = availableConnections[0];
     } else if (strategy === "round-robin") {
       const stickyLimit = providerOverride.stickyRoundRobinLimit || settings.stickyRoundRobinLimit || 3;
 

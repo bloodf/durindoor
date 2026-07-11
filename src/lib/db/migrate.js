@@ -256,10 +256,18 @@ export async function runMigrationOnce(adapter) {
   // A previously interrupted/unreleased v7 build may have stamped the version
   // without both durable quota tables. Repair only absence; incompatible
   // partial shapes are rejected by verifyPublishedSchemaShapes below.
+  const useLatestQuotaSchema = oldSchemaVersion >= 8;
   const needsQuotaRepair = !fresh
     && oldSchemaVersion >= 7
-    && quotaStorageNeedsAdditiveRepair(adapter);
-  verifyPublishedSchemaShapes(adapter);
+    && quotaStorageNeedsAdditiveRepair(adapter, { useLatest: useLatestQuotaSchema });
+  // A database already stamped at the current quota schema is checked against
+  // that immutable shape before backup or additive sync. Missing objects may be
+  // repaired, but incompatible constraints never get mutated first.
+  // Validate every quota object that already exists, including prematurely
+  // created v8 tables on a v7 stamp. Completeness is still deferred until the
+  // migration/sync pass, but incompatible objects must fail before backup,
+  // version stamping, or any mutation.
+  verifyPublishedSchemaShapes(adapter, { useLatestQuotaSchema: true });
   let preUpgradeBackupDir = null;
   if (needsSchemaUpgrade || needsAppBackup || needsTotalsRepair || needsQuotaRepair) {
     // Strict checkpoint: adapters propagate SQL errors and reject a busy WAL.

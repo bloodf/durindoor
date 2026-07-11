@@ -92,6 +92,14 @@ export const PROVIDER_BODY_TIMEOUT_MS = envMs("PROVIDER_BODY_TIMEOUT_MS", 120 * 
 export const MAX_PROVIDER_BODY_BYTES = envMs("MAX_PROVIDER_BODY_BYTES", 8 * 1024 * 1024);
 export const MAX_RESPONSES_OUTPUT_ITEMS = envMs("MAX_RESPONSES_OUTPUT_ITEMS", 1024);
 
+// Codex inspects a short SSE prefix before handing the body to chatCore. Bound
+// the entire peek (not each chunk) so keepalive/preamble bytes cannot outlive a
+// quota lease. The five-minute ceiling remains below the default lease.
+export const CODEX_SSE_PEEK_TIMEOUT_MS = Math.min(
+  envMs("CODEX_SSE_PEEK_TIMEOUT_MS", 30 * 1000),
+  5 * 60 * 1000,
+);
+
 // Gemini native TTS fetch timeout: abort if Google does not return response headers in time.
 export const GEMINI_NATIVE_TTS_FETCH_TIMEOUT_MS = envMs("GEMINI_NATIVE_TTS_FETCH_TIMEOUT_MS", 45 * 1000);
 

@@ -401,10 +401,16 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       signal,
       maxBytes: MAX_PROVIDER_BODY_BYTES,
       timeoutMs: PROVIDER_BODY_TIMEOUT_MS,
+      throwOnTimeout: true,
     });
   } catch (error) {
-    if (error?.name === "AbortError") return createErrorResult(499, "Request aborted");
-    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Failed to read provider response");
+    if (error?.name === "AbortError") {
+      return { ...createErrorResult(499, "Request aborted"), quotaTerminalReason: "abort" };
+    }
+    return {
+      ...createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Failed to read provider response"),
+      quotaTerminalReason: error?.name === "TimeoutError" ? "timeout" : "stream_error",
+    };
   }
 
   if (contentType.includes("text/event-stream")) {

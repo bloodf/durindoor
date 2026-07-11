@@ -1,4 +1,5 @@
 import { getAdapter } from "../driver.js";
+import { QUOTA_WRITE_LOCK_SQL } from "./quotaSql.js";
 import {
   QuotaSnapshotValidationError,
   canonicalizeQuotaNow,
@@ -115,8 +116,6 @@ function assertConnectionProviderSync(db, connectionId, provider) {
 // Every quota write takes SQLite's writer lock before reading source state.
 // This avoids a deferred-transaction WAL snapshot becoming stale while an
 // independent process commits a competing replacement.
-export const QUOTA_WRITE_LOCK_SQL = `UPDATE _meta SET value = value WHERE key = 'schemaVersion'`;
-
 function acquireQuotaWriteLockSync(db) {
   const result = db.run(QUOTA_WRITE_LOCK_SQL);
   if ((result.changes || 0) !== 1) throw new Error("Quota persistence requires an initialized schema");

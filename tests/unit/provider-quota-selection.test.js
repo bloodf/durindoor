@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { quotaIdentityKey } from "../../src/shared/utils/quotaSnapshot.js";
 
 const mocks = vi.hoisted(() => ({
   getProviderConnections: vi.fn(),
@@ -6,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   getSettings: vi.fn(),
   getProxyPools: vi.fn(),
   getQuotaFetchState: vi.fn(),
+  getQuotaReservationPressure: vi.fn(),
   validateApiKey: vi.fn(),
 }));
 
@@ -16,16 +18,17 @@ vi.mock("@/lib/localDb", () => ({
   getProxyPools: mocks.getProxyPools,
   validateApiKey: mocks.validateApiKey,
   getQuotaFetchState: mocks.getQuotaFetchState,
+  getQuotaReservationPressure: mocks.getQuotaReservationPressure,
 }));
 
 const { getProviderCredentials } = await import("../../src/sse/services/auth.js");
 
 const NOW = Date.parse("2026-07-10T12:00:00.000Z");
 
-function connection(id, priority) {
+function connection(id, priority, provider = "codex") {
   return {
     id,
-    provider: "codex",
+    provider,
     authType: "oauth",
     accessToken: `token-${id}`,
     refreshToken: `refresh-${id}`,
@@ -56,12 +59,47 @@ function snapshot(connectionId, {
   };
 }
 
+function providerRow(connectionId, remaining, {
+  provider = "codex",
+  resourceKey = "model:gpt-5.4",
+  dimensionKey = "requests:session",
+  unit = "requests",
+  sourceId = "codex:wham-usage:v1",
+} = {}) {
+  return {
+    identity: {
+      connectionId,
+      provider,
+      accountKey: "scope:connection",
+      resourceKey,
+      dimensionKey,
+    },
+    state: remaining / 100 <= 0.2 ? "low" : "available",
+    amounts: {
+      limitKind: "bounded",
+      limit: 100,
+      used: 100 - remaining,
+      remaining,
+      remainingRatio: remaining / 100,
+      unit,
+    },
+    timing: {
+      observedAt: new Date(NOW - 1000).toISOString(),
+      staleAt: new Date(NOW + 60_000).toISOString(),
+      resetAt: new Date(NOW + 60_000).toISOString(),
+      cooldownUntil: null,
+    },
+    provenance: { sourceType: "provider_api", sourceId, reasonCode: null, metadata: {} },
+  };
+}
+
 describe("quota-aware provider selection", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getSettings.mockResolvedValue({});
     mocks.getProxyPools.mockResolvedValue([]);
     mocks.getQuotaFetchState.mockResolvedValue(null);
+    mocks.getQuotaReservationPressure.mockResolvedValue(new Map());
     mocks.updateProviderConnection.mockImplementation(async (id, patch) => ({
       ...connection(id, id === "one" ? 1 : 2),
       ...patch,
@@ -209,6 +247,178 @@ describe("quota-aware provider selection", () => {
     expect(selected.connectionId).toBe("one");
     expect(selected._connection.updatedAt).toBe(new Date(NOW).toISOString());
     expect(selected._connection.consecutiveUseCount).toBe(2);
+  });
+
+  it("lets fresh compatible quota dominate fill-first priority", async () => {
+    mocks.getProviderConnections.mockResolvedValue([connection("one", 1), connection("two", 2)]);
+    const selected = await getProviderCredentials("codex", null, "gpt-5.4", {
+      now: NOW,
+      resourceKeys: ["model:gpt-5.4"],
+      quotaSnapshotsLoader: async () => [providerRow("one", 10), providerRow("two", 90)],
+    });
+    expect(selected.connectionId).toBe("two");
+    expect(mocks.getQuotaReservationPressure).toHaveBeenCalledWith(expect.objectContaining({
+      provider: "codex",
+      connectionIds: ["one", "two"],
+    }));
+  });
+
+  it("subtracts committed provisional demand before ranking a final observed slot", async () => {
+    mocks.getProviderConnections.mockResolvedValue([connection("one", 1), connection("two", 2)]);
+    const finalSlot = providerRow("one", 1);
+    finalSlot.amounts = {
+      limitKind: "bounded",
+      limit: 1,
+      used: 0,
+      remaining: 1,
+      remainingRatio: 1,
+      unit: "requests",
+    };
+    finalSlot.state = "available";
+    mocks.getQuotaReservationPressure.mockResolvedValue(new Map([
+      ["one", {
+        activeCount: 0,
+        lastSelectedAt: new Date(NOW - 1_000).toISOString(),
+        debits: new Map([[
+          quotaIdentityKey({
+            connectionId: "one",
+            provider: "codex",
+            accountKey: "scope:connection",
+            resourceKey: "model:gpt-5.4",
+            dimensionKey: "requests:session",
+          }),
+          1,
+        ]]),
+      }],
+      ["two", { activeCount: 0, lastSelectedAt: null, debits: new Map() }],
+    ]));
+
+    const selected = await getProviderCredentials("codex", null, "gpt-5.4", {
+      now: NOW,
+      resourceKeys: ["model:gpt-5.4"],
+      quotaSnapshotsLoader: async () => [finalSlot, providerRow("two", 50)],
+    });
+
+    expect(selected.connectionId).toBe("two");
+  });
+
+  it("filters a below-floor account and selects a compatible account above its floor", async () => {
+    mocks.getSettings.mockResolvedValue({ quotaSelection: { routingFloorEnabled: true, routingFloorRatio: 0.2 } });
+    mocks.getProviderConnections.mockResolvedValue([connection("one", 1), connection("two", 2)]);
+    const selected = await getProviderCredentials("codex", null, "gpt-5.4", {
+      now: NOW,
+      resourceKeys: ["model:gpt-5.4"],
+      quotaSnapshotsLoader: async () => [providerRow("one", 10), providerRow("two", 90)],
+    });
+
+    expect(selected.connectionId).toBe("two");
+  });
+
+  it("returns a fixed local 503 when every comparable account is below its routing floor", async () => {
+    mocks.getSettings.mockResolvedValue({ quotaSelection: { routingFloorEnabled: true, routingFloorRatio: 0.2 } });
+    mocks.getProviderConnections.mockResolvedValue([connection("one", 1), connection("two", 2)]);
+    const selected = await getProviderCredentials("codex", null, "gpt-5.4", {
+      now: NOW,
+      resourceKeys: ["model:gpt-5.4"],
+      quotaSnapshotsLoader: async () => [providerRow("one", 10), providerRow("two", 20)],
+    });
+
+    expect(selected).toMatchObject({
+      allRateLimited: true,
+      localQuotaFloor: true,
+      lastErrorCode: 503,
+      lastError: "Provider quota routing floor reached",
+      retryAfter: null,
+    });
+  });
+
+  it("keeps an untracked sibling eligible when a comparable account is below floor", async () => {
+    mocks.getSettings.mockResolvedValue({ quotaSelection: { routingFloorEnabled: true, routingFloorRatio: 0.2 } });
+    mocks.getProviderConnections.mockResolvedValue([connection("one", 1), connection("two", 2)]);
+    const selected = await getProviderCredentials("codex", null, "gpt-5.4", {
+      now: NOW,
+      resourceKeys: ["model:gpt-5.4"],
+      quotaSnapshotsLoader: async () => [providerRow("one", 10)],
+    });
+
+    expect(selected.connectionId).toBe("two");
+    expect(selected._quotaPreflight.reason).toBe("missing");
+  });
+
+  it("enforces routing floors for ratio-only token windows", async () => {
+    mocks.getSettings.mockResolvedValue({
+      quotaSelection: {
+        providers: {
+          glm: {
+            dimensions: {
+              "tokens:session": { routingFloorEnabled: true, routingFloorRatio: 0.2 },
+            },
+          },
+        },
+      },
+    });
+    mocks.getProviderConnections.mockResolvedValue([
+      connection("one", 1, "glm"),
+      connection("two", 2, "glm"),
+    ]);
+    const selected = await getProviderCredentials("glm", null, "glm-5", {
+      now: NOW,
+      quotaSnapshotsLoader: async () => [
+        providerRow("one", 10, {
+          provider: "glm",
+          resourceKey: "scope:account",
+          dimensionKey: "tokens:session",
+          unit: "tokens",
+          sourceId: "glm:coding-plan-quota:v1",
+        }),
+        providerRow("two", 90, {
+          provider: "glm",
+          resourceKey: "scope:account",
+          dimensionKey: "tokens:session",
+          unit: "tokens",
+          sourceId: "glm:coding-plan-quota:v1",
+        }),
+      ],
+    });
+
+    expect(selected.connectionId).toBe("two");
+    expect(selected._quotaPreflight.quotaProfile.reservationAlternatives).toEqual([]);
+  });
+
+  it("preserves fill-first order when observations are stale or untracked", async () => {
+    mocks.getProviderConnections.mockResolvedValue([connection("one", 1), connection("two", 2)]);
+    const selected = await getProviderCredentials("codex", null, "gpt-5.4", {
+      now: NOW,
+      quotaSnapshotsLoader: async () => [],
+    });
+    expect(selected.connectionId).toBe("one");
+    expect(mocks.getQuotaReservationPressure).not.toHaveBeenCalled();
+  });
+
+  it("does not serialize unrelated providers behind a slow quota lookup", async () => {
+    let releaseCodex;
+    const codexSnapshots = new Promise((resolve) => { releaseCodex = resolve; });
+    const codexLoader = vi.fn(() => codexSnapshots);
+    const claudeLoader = vi.fn().mockResolvedValue([]);
+    mocks.getProviderConnections.mockImplementation(async ({ provider }) => [
+      connection(`${provider}-one`, 1, provider),
+    ]);
+
+    const pendingCodex = getProviderCredentials("codex", null, "gpt-5.4", {
+      now: NOW,
+      quotaSnapshotsLoader: codexLoader,
+    });
+    await vi.waitFor(() => expect(codexLoader).toHaveBeenCalledOnce());
+
+    const claude = await getProviderCredentials("claude", null, "claude-sonnet", {
+      now: NOW,
+      quotaSnapshotsLoader: claudeLoader,
+    });
+    expect(claude.connectionId).toBe("claude-one");
+    expect(claudeLoader).toHaveBeenCalledOnce();
+
+    releaseCodex([]);
+    expect((await pendingCodex).connectionId).toBe("codex-one");
   });
 
   it("performs no credential or quota work for a pre-aborted request", async () => {

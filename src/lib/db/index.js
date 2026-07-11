@@ -15,6 +15,7 @@ import {
   QUOTA_PORTABLE_VERSION,
 } from "@/shared/constants/quota";
 import { readQuotaPortableStateSync, writeQuotaPortableStateSync } from "./repos/quotaSnapshotsRepo.js";
+import { assertNoActiveQuotaReservationsSync } from "./repos/quotaReservationsRepo.js";
 
 function assertUniqueNonEmpty(rows, field, label, { revealDuplicate = true } = {}) {
   const seen = new Set();
@@ -207,6 +208,17 @@ export {
   pruneProviderQuotaSnapshots,
 } from "./repos/quotaSnapshotsRepo.js";
 
+// Local operational quota reservations. These rows are deliberately excluded
+// from portable export/import because they describe one running process epoch.
+export {
+  acquireQuotaReservation, markQuotaReservationDispatched,
+  heartbeatQuotaReservation, commitQuotaReservation, releaseQuotaReservation,
+  reapExpiredQuotaReservations, getQuotaReservationPressure,
+  hasActiveDispatchedQuotaReservations, hashQuotaRoute,
+  assertNoActiveQuotaReservationsSync,
+  QuotaReservationError, QuotaCapacityUnavailableError,
+} from "./repos/quotaReservationsRepo.js";
+
 // Combos
 export {
   getCombos, getComboById, getComboByName,
@@ -322,6 +334,9 @@ export async function importDb(payload, { now = Date.now() } = {}) {
   const db = await getAdapter();
 
   db.transaction(() => {
+    // Acquire SQLite's writer lock and recheck inside the destructive
+    // transaction so another process cannot reserve between guard and wipe.
+    assertNoActiveQuotaReservationsSync(db, { now: quotaNow });
     // Wipe all tables (keep _meta)
     // Usage history is intentionally retained for operator analytics, but its
     // literal-secret attribution belongs to the pre-import key set. Detach it
@@ -337,6 +352,8 @@ export async function importDb(payload, { now = Date.now() } = {}) {
       }
     }
     db.run(`DELETE FROM settings`);
+    db.run(`DELETE FROM quotaReservationItems`);
+    db.run(`DELETE FROM quotaReservations`);
     db.run(`DELETE FROM quotaFetchStates`);
     db.run(`DELETE FROM providerQuotaSnapshots`);
     db.run(`DELETE FROM providerConnections`);

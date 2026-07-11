@@ -97,8 +97,8 @@ concurrent flow ownership as 409, expired/cancelled/replayed sessions as 410,
 and provider exchange or polling failures as 502.
 
 OAuth login is supported by the local, single-process DurinDoor runtime. The
-server rejects new OAuth flows when a known distributed/serverless runtime is
-detected because PKCE verifiers, device codes, one-shot claims, and fixed-port
+server accepts new OAuth flows only when the official launcher establishes its
+single-process capability because PKCE verifiers, device codes, one-shot claims, and fixed-port
 callbacks must share one trusted process. Run one DurinDoor process per data
 directory; do not load-balance OAuth routes across replicas. Independent
 browser sessions receive separate owner scopes, so starting a second login

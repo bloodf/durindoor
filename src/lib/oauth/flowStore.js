@@ -6,7 +6,7 @@ const flows = new Map();
 const stateAliases = new Map();
 const providerIntentGenerations = new Map();
 const FLOW_KINDS = new Set(["authorization", "device"]);
-const UNSUPPORTED_DISTRIBUTED_RUNTIMES = ["VERCEL", "AWS_LAMBDA_FUNCTION_NAME", "NETLIFY"];
+const SINGLE_PROCESS_RUNTIME_ENV = "DURINDOOR_SINGLE_PROCESS_RUNTIME";
 
 function cloneAndFreeze(value) {
   if (value === undefined) return undefined;
@@ -146,7 +146,7 @@ export function createOAuthFlow({
  * work begins. A slower prior request cannot create a flow after this point.
  */
 export function beginOAuthFlowIntent(provider, ownerId = null) {
-  if (UNSUPPORTED_DISTRIBUTED_RUNTIMES.some((name) => process.env[name])) {
+  if (process.env.NODE_ENV !== "test" && process.env[SINGLE_PROCESS_RUNTIME_ENV] !== "1") {
     throw new Error("OAuth login requires the local single-process DurinDoor runtime");
   }
   const normalizedProvider = normalizeRequiredString(provider, "provider");

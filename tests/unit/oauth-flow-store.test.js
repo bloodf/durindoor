@@ -165,12 +165,19 @@ describe("OAuth flow store", () => {
     expect(getOAuthFlow({ flowId: second.flowId, provider: "codex" })).not.toBeNull();
   });
 
-  it("rejects distributed runtimes before creating secret-bearing flow state", () => {
-    process.env.VERCEL = "1";
+  it("requires the official single-process runtime capability in production", () => {
+    const oldNodeEnv = process.env.NODE_ENV;
+    const oldCapability = process.env.DURINDOOR_SINGLE_PROCESS_RUNTIME;
+    process.env.NODE_ENV = "production";
+    delete process.env.DURINDOOR_SINGLE_PROCESS_RUNTIME;
     try {
       expect(() => beginOAuthFlowIntent("codex", "owner-1")).toThrow(/single-process/i);
+      process.env.DURINDOOR_SINGLE_PROCESS_RUNTIME = "1";
+      expect(beginOAuthFlowIntent("codex", "owner-1")).toMatchObject({ ownerId: "owner-1" });
     } finally {
-      delete process.env.VERCEL;
+      process.env.NODE_ENV = oldNodeEnv;
+      if (oldCapability === undefined) delete process.env.DURINDOOR_SINGLE_PROCESS_RUNTIME;
+      else process.env.DURINDOOR_SINGLE_PROCESS_RUNTIME = oldCapability;
     }
   });
 });

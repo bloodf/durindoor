@@ -68,6 +68,7 @@ const PUBLIC_DEVICE_FIELDS = [
   "interval",
 ];
 const fixedProxyOperations = new Map();
+const SAFE_GET_META_KEYS = new Set(["baseUrl", "clientId"]);
 const OAUTH_ERROR_STATUS = Object.freeze({
   OAUTH_VALIDATION_FAILED: 400,
   OAUTH_STATE_MISMATCH: 400,
@@ -689,10 +690,10 @@ export async function GET(request, { params }) {
       const reserved = new Set(["redirect_uri", "proxyMode", "proxyPoolId", "ownerId"]);
       const meta = {};
       searchParams.forEach((value, key) => {
-        if (/secret|token|password|authorization|code_verifier/i.test(key)) {
+        if (!reserved.has(key) && !SAFE_GET_META_KEYS.has(key)) {
           throw oauthRouteError(
             "OAUTH_VALIDATION_FAILED",
-            "Secret OAuth metadata must be submitted in a POST body",
+            "OAuth metadata must be submitted in a POST body",
           );
         }
         if (!reserved.has(key)) meta[key] = value;

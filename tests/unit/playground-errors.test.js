@@ -31,6 +31,20 @@ describe("sanitizeErrorText", () => {
       .toBe("Boom at gone");
   });
 
+  it("strips punctuation-adjacent POSIX paths", () => {
+    expect(sanitizeErrorText("failed (/private/x)")).toBe("failed ()");
+    expect(sanitizeErrorText('err:"/etc/passwd"')).toBe('err:""');
+    expect(sanitizeErrorText("path=/tmp/foo")).toBe("path=");
+    expect(sanitizeErrorText("mid(/a/b)mid")).toBe("mid()mid");
+  });
+
+  it("preserves http and https URLs", () => {
+    expect(sanitizeErrorText("see http://example.com/api for docs"))
+      .toBe("see http://example.com/api for docs");
+    expect(sanitizeErrorText("see https://example.com/api/v1/chat for docs"))
+      .toBe("see https://example.com/api/v1/chat for docs");
+  });
+
   it("drops stack-frame lines beginning with `at`", () => {
     const input = "Request failed\n    at handler (/home/cortexos/app/route.js:12:3)\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)";
     expect(sanitizeErrorText(input)).toBe("Request failed");

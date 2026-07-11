@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge, Button } from "@/shared/components";
 import { getModelsByProviderId } from "@/shared/constants/models";
 import { isAnthropicCompatibleProvider, isOpenAICompatibleProvider } from "@/shared/constants/providers";
+import { createSseParser } from "@/lib/playground/sse";
 
 const STORAGE_KEYS = {
   sessions: "basic-chat.sessions",
@@ -166,7 +167,7 @@ function dedupeModels(models) {
   return Array.from(map.values());
 }
 
-export default function BasicChatPageClient() {
+export default function PlaygroundPageClient() {
   const [providerGroups, setProviderGroups] = useState([]);
   const [loadingData, setLoadingData] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -636,7 +637,7 @@ export default function BasicChatPageClient() {
       }));
 
     try {
-      const response = await fetch("/api/dashboard/chat/completions", {
+      const response = await fetch("/v1/chat/completions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -668,41 +669,34 @@ export default function BasicChatPageClient() {
       }
 
       const decoder = new TextDecoder();
-      let buffer = "";
       let assistantText = "";
+
+      const parser = createSseParser(({ data }) => {
+        let chunk;
+        try {
+          chunk = JSON.parse(data);
+        } catch {
+          return; // Ignore malformed chunks.
+        }
+        const text = readAssistantText(chunk);
+        if (!text) return;
+
+        assistantText += text;
+        setStreamingText(assistantText);
+        updateSession(sessionId, (currentSession) => ({
+          ...currentSession,
+          messages: currentSession.messages.map((message) => (message.id === assistantMessageId ? { ...message, content: assistantText, status: "streaming" } : message)),
+          updatedAt: new Date().toISOString(),
+        }));
+      });
 
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split(/\r?\n/);
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith("data:")) continue;
-
-          const payload = trimmed.slice(5).trim();
-          if (!payload || payload === "[DONE]") continue;
-
-          try {
-            const chunk = JSON.parse(payload);
-            const text = readAssistantText(chunk);
-            if (!text) continue;
-
-            assistantText += text;
-            setStreamingText(assistantText);
-            updateSession(sessionId, (currentSession) => ({
-              ...currentSession,
-              messages: currentSession.messages.map((message) => (message.id === assistantMessageId ? { ...message, content: assistantText, status: "streaming" } : message)),
-              updatedAt: new Date().toISOString(),
-            }));
-          } catch {
-            // Ignore malformed chunks.
-          }
-        }
+        parser.push(decoder.decode(value, { stream: true }));
       }
+      parser.push(decoder.decode()); // flush any pending multibyte fragment
+      parser.flush();
 
       updateSession(sessionId, (currentSession) => ({
         ...currentSession,
@@ -864,9 +858,9 @@ export default function BasicChatPageClient() {
                     <span className="material-symbols-outlined text-[30px]">chat</span>
                   </div>
                   <div className="space-y-2">
-                    <h2 className="text-2xl font-semibold text-white">Start a conversation</h2>
+                    <h2 className="text-2xl font-semibold text-white">Playground</h2>
                     <p className="text-sm leading-6 text-white/60">
-                      Simple chat interface to interact with any AI model from connected providers. Select a model and start chatting!
+                      Chat against the local /v1 endpoint with any model from connected providers. Select a model and start streaming.
                     </p>
                   </div>
                 </div>

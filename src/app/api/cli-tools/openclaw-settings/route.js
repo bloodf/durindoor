@@ -6,6 +6,7 @@ import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { redactSecrets } from "@/shared/utils/secretRedaction";
 
 const execAsync = promisify(exec);
 
@@ -103,7 +104,7 @@ export async function GET() {
 
     return NextResponse.json({
       installed: true,
-      settings,
+      settings: redactSecrets(settings),
       agents: enrichedAgents,
       has9Router: has9RouterConfig(settings),
       settingsPath: getOpenClawSettingsPath(),
@@ -125,9 +126,10 @@ const writeAgentModels = async (agentDir, model, baseUrl, apiKey) => {
   } catch { /* No existing */ }
 
   if (!existing.providers) existing.providers = {};
+  const keyToUse = apiKey || existing.providers["9router"]?.apiKey || "your_api_key";
   existing.providers["9router"] = {
     baseUrl,
-    apiKey: apiKey || "your_api_key",
+    apiKey: keyToUse,
     api: "openai-completions",
     models: [{ id: model, name: model.split("/").pop() || model }],
   };
@@ -164,6 +166,7 @@ export async function POST(request) {
 
     const normalizedBaseUrl = baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
     const fullModelId = `9router/${model}`;
+    const keyToUse = apiKey || settings.models.providers["9router"]?.apiKey || "your_api_key";
 
     // Remove all old 9router/* entries from agents.defaults.models
     Object.keys(settings.agents.defaults.models)
@@ -197,7 +200,7 @@ export async function POST(request) {
     // Update models.providers.9router with all models
     settings.models.providers["9router"] = {
       baseUrl: normalizedBaseUrl,
-      apiKey: apiKey || "your_api_key",
+      apiKey: keyToUse,
       api: "openai-completions",
       models: [...allModelIds].map((m) => ({ id: m, name: m.split("/").pop() || m })),
     };
@@ -216,7 +219,7 @@ export async function POST(request) {
           if (!agent.agentDir) return;
           const agentModel = agentModels[agent.id];
           const modelToWrite = agentModel || model; // fallback to default
-          await writeAgentModels(agent.agentDir, modelToWrite, normalizedBaseUrl, apiKey);
+          await writeAgentModels(agent.agentDir, modelToWrite, normalizedBaseUrl, keyToUse);
         })
       );
     }

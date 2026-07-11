@@ -11,10 +11,18 @@ const SECRET_HEADER_NAMES = new Set([
   "x-subscription-token",
   "xi-api-key",
   "x-arcjet-key",
+  "x-amz-security-token",
+  "x-amz-session-token",
+  "x-auth-token",
+  "x-access-token",
+  "x-client-secret",
+  "proxy-authenticate",
 ]);
 
 function isSecretHeader(name) {
-  return SECRET_HEADER_NAMES.has(String(name || "").toLowerCase());
+  const normalized = String(name || "").toLowerCase();
+  return SECRET_HEADER_NAMES.has(normalized)
+    || /(?:^|[-_])(authorization|cookie|token|api[-_]?key|secret)(?:$|[-_])/.test(normalized);
 }
 
 function sanitizeHeaders(headers = {}) {
@@ -29,4 +37,4 @@ function sanitizeHeaders(headers = {}) {
   return result;
 }
 
-module.exports = { sanitizeHeaders };
+module.exports = { isSecretHeader, sanitizeHeaders };

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { getProviderCredentials, markAccountUnavailable } from "../../src/sse/services/auth.js";
 
 const mocks = vi.hoisted(() => ({
   getProviderConnections: vi.fn(),
@@ -24,7 +25,6 @@ describe("Antigravity capacity fallback", () => {
   });
 
   it("falls back without writing model cooldown for agy capacity errors", async () => {
-    const { markAccountUnavailable } = await import("../../src/sse/services/auth.js");
     const result = await markAccountUnavailable(
       "agy-1",
       503,
@@ -38,7 +38,6 @@ describe("Antigravity capacity fallback", () => {
   });
 
   it("falls back without writing model cooldown for MODEL_CAPACITY_EXHAUSTED", async () => {
-    const { markAccountUnavailable } = await import("../../src/sse/services/auth.js");
     const result = await markAccountUnavailable(
       "ag-1",
       503,
@@ -52,7 +51,6 @@ describe("Antigravity capacity fallback", () => {
   });
 
   it("keeps normal cooldown behavior for non-Antigravity capacity text", async () => {
-    const { markAccountUnavailable } = await import("../../src/sse/services/auth.js");
     const result = await markAccountUnavailable(
       "ag-1",
       503,
@@ -73,7 +71,6 @@ describe("Antigravity capacity fallback", () => {
   });
 
   it("falls back without cooldown for recoverable Antigravity project 403", async () => {
-    const { markAccountUnavailable } = await import("../../src/sse/services/auth.js");
     const result = await markAccountUnavailable(
       "ag-1",
       403,
@@ -90,5 +87,68 @@ describe("Antigravity capacity fallback", () => {
 
     expect(result).toEqual({ shouldFallback: true, cooldownMs: 0 });
     expect(mocks.updateProviderConnection).not.toHaveBeenCalled();
+  });
+});
+
+// U-16 #2514: end-to-end account selection. A stateful connection store backs
+// the localDb mock so a markAccountUnavailable(modelLock) written for the
+// primary is observed by the next getProviderCredentials call.
+describe("Antigravity secondary-account quota fallback (U-16 #2514)", () => {
+  let connections;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    connections = [
+      {
+        id: "agy-primary", provider: "agy", email: "primary@example.com",
+        isActive: true, authType: "oauth", accessToken: "tok-primary", priority: 1,
+      },
+      {
+        id: "agy-secondary", provider: "agy", email: "secondary@example.com",
+        isActive: true, authType: "oauth", accessToken: "tok-secondary", priority: 2,
+      },
+    ];
+    mocks.getProviderConnections.mockImplementation(async ({ provider } = {}) => {
+      const rows = provider ? connections.filter((c) => c.provider === provider) : connections;
+      return rows.map((c) => ({ ...c }));
+    });
+    mocks.updateProviderConnection.mockImplementation(async (id, patch) => {
+      const row = connections.find((c) => c.id === id);
+      if (row) Object.assign(row, patch);
+      return row;
+    });
+    mocks.getSettings.mockResolvedValue({});
+  });
+
+  it("locks primary on quota-exhausted 429 and selects the secondary account", async () => {
+    const model = "claude-opus-4-6-thinking";
+
+    const first = await getProviderCredentials("agy", null, model);
+    expect(first.connectionId).toBe("agy-primary");
+
+    const resetMs = Date.now() + 160 * 3600 * 1000;
+    const body = "individual quota reached";
+    const mark = await markAccountUnavailable("agy-primary", 429, body, "agy", model, resetMs);
+
+    expect(mark.shouldFallback).toBe(true);
+    // Core behavior: AGY quota windows (~160h) exceed the old 30-min cap.
+    expect(mark.cooldownMs).toBeGreaterThan(30 * 60 * 1000);
+    expect(mark.cooldownMs).toBeLessThanOrEqual(7 * 24 * 60 * 60 * 1000);
+
+    const primaryAfter = connections.find((c) => c.id === "agy-primary");
+    const lockExpiry = new Date(primaryAfter[`modelLock_${model}`]).getTime();
+    expect(Math.abs(lockExpiry - resetMs)).toBeLessThan(5000);
+    expect(mocks.updateProviderConnection).toHaveBeenCalledWith(
+      "agy-primary",
+      expect.objectContaining({
+        testStatus: "unavailable",
+        errorCode: 429,
+        [`modelLock_${model}`]: expect.anything(),
+      }),
+    );
+
+    const second = await getProviderCredentials("agy", null, model);
+    expect(second.connectionId).toBe("agy-secondary");
+    expect(second.accessToken).toBe("tok-secondary");
   });
 });

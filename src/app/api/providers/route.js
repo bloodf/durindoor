@@ -9,6 +9,8 @@ import {
 import { APIKEY_PROVIDERS } from "@/shared/constants/config";
 import { AI_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, FREE_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider, isHiddenProvider } from "@/shared/constants/providers";
 import { normalizeProviderId, normalizeProviderSpecificData } from "@/lib/providerNormalization";
+import { requiresProviderAccountId } from "@/lib/providerAccountIds";
+import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 
 export const dynamic = "force-dynamic";
 
@@ -143,6 +145,16 @@ export async function POST(request) {
     }
 
     let providerSpecificData = normalizeProviderSpecificData(provider, body, body.providerSpecificData);
+    if (requiresProviderAccountId(provider)) {
+      try {
+        providerSpecificData = {
+          ...(providerSpecificData || {}),
+          accountId: normalizeAccountIdPlaceholder(provider, providerSpecificData?.accountId),
+        };
+      } catch (error) {
+        return NextResponse.json({ error: error.message }, { status: 400 });
+      }
+    }
     if (provider === "google-pse" && !providerSpecificData?.cx) {
       return NextResponse.json({ error: "Programmable Search Engine ID (cx) is required" }, { status: 400 });
     }

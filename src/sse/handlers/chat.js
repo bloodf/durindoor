@@ -5,27 +5,48 @@ import {
   markAccountUnavailable,
   clearAccountError,
   extractApiKey,
-  isValidApiKey,
+  evaluateApiKeyAuth,
 } from "../services/auth.js";
 import { cacheClaudeHeaders } from "open-sse/utils/claudeHeaderCache.js";
 import { getSettings, getApiKeyByKey, getApiKeyUsageLimitStatus } from "@/lib/localDb";
 import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
 import { appendPxpipeEvent } from "@/lib/pxpipe/events.js";
 import { getModelInfo, getComboModels } from "../services/model.js";
+import { applyVisionBridgeReroute } from "open-sse/services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { handleComboChat, handleFusionChat } from "open-sse/services/combo.js";
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
+import { handlePonytailCommands, DEFAULT_PONYTAIL_HELP, resolvePonytailStream } from "open-sse/utils/tokenSaverBridge.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
+import { detectFormat } from "open-sse/services/provider.js";
 import { isAntigravityCapacityError } from "open-sse/services/accountFallback.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
+import REGISTRY from "open-sse/providers/registry/index.js";
+import { validateChatRequestBody } from "open-sse/translator/validate.js";
 
 const ANTIGRAVITY_CAPACITY_SWEEP_RETRIES = 2;
+
+/**
+ * #6457 / OmniRoute#6525: resolved registry model kind === "image" means the
+ * model is image-only and belongs on /v1/images/generations, not the chat
+ * endpoint. Forwarding it to a chat upstream yields a confusing raw provider
+ * 400 (e.g. HuggingFace: "not a chat model"). Per-model kind is used (not the
+ * provider-level serviceKinds) because mixed providers like Cloudflare serve
+ * both chat and image models.
+ */
+export function isImageOnlyModel(provider, model) {
+  const entry = REGISTRY.find(
+    (e) => e.id === provider || e.alias === provider || e.aliases?.includes(provider)
+  );
+  const m = entry?.models?.find((x) => x.id === model);
+  return (m?.kind ?? m?.type) === "image";
+}
 
 /**
  * Strip reasoning_content from assistant messages in conversation history.
@@ -74,6 +95,16 @@ export async function handleChat(request, clientRawRequest = null) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
   }
 
+  // Inbound schema guard (OmniRoute O-A): reject malformed `messages` / `model`
+  // / scalar params with a clear 400 BEFORE auth + model resolution, so a bad
+  // body never surfaces as a misleading `model_not_found` 404 or an unsanitized
+  // 500. See open-sse/translator/validate.js (ports #6515/#6433/#6437).
+  const earlyRejection = validateChatRequestBody(body);
+  if (earlyRejection) {
+    log.warn("CHAT", "Rejecting schema-invalid request body");
+    return earlyRejection;
+  }
+
   // Build clientRawRequest for logging (if not provided)
   if (!clientRawRequest) {
     const url = new URL(request.url);
@@ -85,18 +116,9 @@ export async function handleChat(request, clientRawRequest = null) {
   }
   cacheClaudeHeaders(clientRawRequest.headers);
 
-  // Strip reasoning_content from conversation history (providers like Mistral reject it)
+  let modelStr = body.model;
 
-
-  // Log request endpoint and model
-  const url = new URL(request.url);
-  const modelStr = body.model;
-
-  // Count messages (support both messages[] and input[] formats)
-  const msgCount = body.messages?.length || body.input?.length || 0;
-  const toolCount = body.tools?.length || 0;
-  const effort = body.reasoning_effort || body.reasoning?.effort || null;
-  log.request("POST", `${url.pathname} | ${modelStr} | ${msgCount} msgs${toolCount ? ` | ${toolCount} tools` : ""}${effort ? ` | effort=${effort}` : ""}`);
+  // Request summary is emitted as the unified "▶" line in chatCore (has fmt/thinking/account)
 
   // Log API key (masked)
   const authHeader = request.headers.get("Authorization");
@@ -108,27 +130,28 @@ export async function handleChat(request, clientRawRequest = null) {
     log.debug("AUTH", "No API key provided (local mode)");
   }
 
-  // Enforce API key if enabled in settings
+  // Stored credentials are always validated; local mode only permits unknown
+  // placeholders when API-key enforcement is disabled.
   const settings = await getSettings();
-  if (settings.requireApiKey) {
-    if (!apiKey) {
+  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true });
+  if (!apiKeyAuth.ok) {
+    if (apiKeyAuth.reason === "missing") {
       log.warn("AUTH", "Missing API key (requireApiKey=true)");
       return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
     }
-    const valid = await isValidApiKey(apiKey);
-    if (!valid) {
-      log.warn("AUTH", "Invalid API key (requireApiKey=true)");
-      return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
-    }
+    log.warn("AUTH", "Invalid API key");
+    return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
   }
 
-  // Per-key combo access control
+  // Per-key combo access control. Retain the authenticated record so local
+  // commands can expose only this key's own lifetime totals.
+  let authenticatedKeyRecord = null;
   if (apiKey && modelStr) {
-    const keyData = await getApiKeyByKey(apiKey);
-    if (keyData && Array.isArray(keyData.allowedCombos) && keyData.allowedCombos.length > 0) {
+    authenticatedKeyRecord = await getApiKeyByKey(apiKey);
+    if (authenticatedKeyRecord && Array.isArray(authenticatedKeyRecord.allowedCombos) && authenticatedKeyRecord.allowedCombos.length > 0) {
       const comboCheck = await getComboModels(modelStr);
-      if (comboCheck && !keyData.allowedCombos.includes(modelStr)) {
-        log.warn("AUTH", `API key "${keyData.name}" not allowed to access combo "${modelStr}"`);
+      if (comboCheck && !authenticatedKeyRecord.allowedCombos.includes(modelStr)) {
+        log.warn("AUTH", `API key "${authenticatedKeyRecord.name}" not allowed to access combo "${modelStr}"`);
         return errorResponse(HTTP_STATUS.FORBIDDEN, `Access denied: combo "${modelStr}" is not allowed for this API key`);
       }
     }
@@ -149,9 +172,51 @@ export async function handleChat(request, clientRawRequest = null) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   }
 
-  // Enforce per-API-key model policy
-  const policyError = await enforceApiKeyModelPolicy(request, modelStr);
-  if (policyError) return policyError;
+  // Vision Bridge (#6640): when the request carries image parts on its current
+  // user turn and the requested model cannot accept vision natively, swap to
+  // the operator-configured vision-capable model before combo/dispatch. Applied
+  // after settings + auth are loaded (so parseModel stays sync/pure) and before
+  // combo resolution. The rerouted target is policy-rechecked — a vision model
+  // the caller's API key is not allowed to use must not be reachable via the
+  // bridge; on denial we keep the original model and let normal policy gates run.
+  const vb = applyVisionBridgeReroute({ body, modelStr, settings });
+  if (vb.rerouted) {
+    const policyError = await enforceApiKeyModelPolicy(request, vb.modelStr);
+    if (policyError) {
+      log.warn("CHAT", `Vision Bridge target "${vb.toModel}" denied by API key policy; keeping "${modelStr}"`);
+    } else {
+      log.info("CHAT", `Vision Bridge reroute: ${vb.fromModel} -> ${vb.toModel}`);
+      body = vb.body;
+      modelStr = vb.modelStr;
+      // clientRawRequest intentionally keeps the ORIGINAL client body so usage
+      // logs record the model the caller actually asked for; the reroute only
+      // changes what we dispatch upstream.
+    }
+  }
+
+  // Ponytail slash commands are local-only: respond before any account/credential lookup.
+  const sourceFormat = detectFormatByEndpoint(
+    clientRawRequest?.endpoint || new URL(request.url).pathname,
+    body,
+  ) || detectFormat(body);
+  const acceptHeader = clientRawRequest?.headers?.accept || "";
+  const ponytailResponse = await handlePonytailCommands(body, modelStr, {
+    fetchStats: authenticatedKeyRecord
+      ? async () => {
+          const { getApiKeyUsageTotals } = await import("@/lib/localDb");
+          return {
+            ...(await getApiKeyUsageTotals(authenticatedKeyRecord.id)),
+            scope: "this API key",
+          };
+        }
+      : null,
+    helpText: DEFAULT_PONYTAIL_HELP,
+    sourceFormatOverride: sourceFormat,
+    streamOverride: resolvePonytailStream(body, sourceFormat, acceptHeader),
+  });
+  if (ponytailResponse?.success && ponytailResponse.response) {
+    return ponytailResponse.response;
+  }
 
   // Bypass naming/warmup requests before combo rotation to avoid wasting rotation slots
   const userAgent = request?.headers?.get("user-agent") || "";
@@ -260,6 +325,18 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
   const { provider, model } = modelInfo;
 
+  // Reject image-only models routed to /v1/chat/completions (#6457 / #6525).
+  // getModelInfo already resolved the registry {provider, model}; a kind:"image"
+  // entry belongs on /v1/images/generations. Guard fires before credentials /
+  // dispatch so the upstream is never called.
+  if (isImageOnlyModel(provider, model)) {
+    log.warn("CHAT", `Rejecting image-generation model on chat endpoint: ${provider}/${model}`);
+    return errorResponse(
+      HTTP_STATUS.BAD_REQUEST,
+      `Model '${provider}/${model}' is an image-generation model and cannot be used on /v1/chat/completions. Use POST /v1/images/generations instead.`
+    );
+  }
+
   // Enforce per-API-key model policy against the resolved underlying model when
   // the request started as a combo; the top-level combo name is not a model id.
   const policyError2 = await enforceApiKeyModelPolicy(request, `${provider}/${model}`);
@@ -273,12 +350,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   // Fix message ordering for all providers (prefix: true for last assistant)
   fixMessageOrdering(body.messages);
 
-  // Log model routing (alias → actual model)
-  if (modelStr !== `${provider}/${model}`) {
-    log.info("ROUTING", `${modelStr} → ${provider}/${model}`);
-  } else {
-    log.info("ROUTING", `Provider: ${provider}, Model: ${model}`);
-  }
+  // Routing shown in the unified "▶" line (client model → provider/model)
 
   // Extract userAgent from request
   const userAgent = request?.headers?.get("user-agent") || "";
@@ -318,14 +390,16 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
     }
 
-    // Log account selection
-    log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
-
+    // Account selection shown in the unified "▶" line (acc:...)
     const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
 
     // Ensure real project ID is available for providers that need it (P0 fix: cold miss)
     if ((provider === "antigravity" || provider === "agy" || provider === "gemini-cli") && !refreshedCredentials.projectId) {
-      const pid = await getProjectIdForConnection(credentials.connectionId, refreshedCredentials.accessToken);
+      const pid = await getProjectIdForConnection(
+        credentials.connectionId,
+        refreshedCredentials.accessToken,
+        refreshedCredentials.providerSpecificData,
+      );
       if (pid) {
         refreshedCredentials.projectId = pid;
         // Persist to DB in background so subsequent requests have it immediately
@@ -337,7 +411,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     const chatSettings = await getSettings();
     const providerThinking = (chatSettings.providerThinking || {})[provider] || null;
     const result = await handleChatCore({
-      body: { ...body, model: `${provider}/${model}` },
+      body: { ...structuredClone(body), model: `${provider}/${model}` },
       modelInfo: { provider, model },
       credentials: refreshedCredentials,
       log,
@@ -373,6 +447,13 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       },
       onRequestSuccess: async () => {
         await clearAccountError(credentials.connectionId, credentials, model);
+      },
+      // Empty-stream retries exhausted mid-stream (headers already sent, so no
+      // pre-stream fallback is possible): bench the account so the client's
+      // automatic retry of the in-stream error lands on the next one. Quota
+      // exhaustion passes a precise resetsAtMs instead of the generic cooldown.
+      onUpstreamEmptyExhausted: async (reason, resetsAtMs) => {
+        await markAccountUnavailable(credentials.connectionId, HTTP_STATUS.BAD_GATEWAY, reason, provider, model, resetsAtMs);
       }
     });
 
@@ -382,7 +463,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, result.resetsAtMs);
 
     if (shouldFallback) {
-      log.warn("AUTH", `Account ${credentials.connectionName} unavailable (${result.status}), trying fallback`);
+      log.warn("FALLBACK", `⇄ ACC:${credentials.connectionName} UNAVAILABLE (${result.status}) → NEXT ACCOUNT`);
       excludeConnectionIds.add(credentials.connectionId);
       lastError = result.error;
       lastStatus = result.status;

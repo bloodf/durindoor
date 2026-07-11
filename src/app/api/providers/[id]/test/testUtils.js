@@ -6,6 +6,7 @@ import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, PROVIDERS, resolveXiaomiTokenplanBaseUrl } from "open-sse/config/providers.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
 import { buildZenmuxAnthropicBody, extractZenmuxCtoken, normalizeZenmuxCookie, ZENMUX_FREE_CHAT_URL } from "open-sse/executors/zenmux-free.js";
+import { resolveConnectionParams } from "open-sse/executors/copilot-m365-connection.js";
 import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
 import {
   refreshProviderCredentials,
@@ -22,6 +23,8 @@ import {
   KIMCHI_CONFIG,
 } from "@/lib/oauth/constants/oauth";
 import { buildClineHeaders } from "@/shared/utils/clineAuth";
+import { applyCodexAccountHeader } from "open-sse/shared/codexAccountId.js";
+import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 
 // OAuth provider test endpoints
 export const OAUTH_TEST_CONFIG = {
@@ -141,13 +144,13 @@ export const OAUTH_TEST_CONFIG = {
   },
 };
 
-async function probeClineAccessToken(accessToken) {
-  const res = await fetch("https://api.cline.bot/api/v1/users/me", {
+async function probeClineAccessToken(accessToken, effectiveProxy) {
+  const res = await fetchWithConnectionProxy("https://api.cline.bot/api/v1/users/me", {
     method: "GET",
     headers: buildClineHeaders(accessToken, {
       Accept: "application/json",
     }),
-  });
+  }, effectiveProxy);
 
   return res;
 }
@@ -199,7 +202,7 @@ async function probeCloudCodeAssistAccess(connection, accessToken, effectiveProx
   };
 }
 
-async function refreshOAuthToken(connection) {
+async function refreshOAuthToken(connection, effectiveProxy = null) {
   const provider = connection.provider;
   const refreshToken = connection.refreshToken;
   if (!refreshToken) return null;
@@ -207,7 +210,7 @@ async function refreshOAuthToken(connection) {
   try {
     if (provider === "gemini-cli" || provider === "antigravity" || provider === "agy") {
       const config = provider === "gemini-cli" ? GEMINI_CONFIG : ANTIGRAVITY_CONFIG;
-      const response = await fetch("https://oauth2.googleapis.com/token", {
+      const response = await fetchWithConnectionProxy("https://oauth2.googleapis.com/token", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
@@ -216,18 +219,18 @@ async function refreshOAuthToken(connection) {
           grant_type: "refresh_token",
           refresh_token: refreshToken,
         }),
-      });
+      }, effectiveProxy);
       if (!response.ok) return null;
       const data = await response.json();
       return { accessToken: data.access_token, expiresIn: data.expires_in, refreshToken: data.refresh_token || refreshToken };
     }
 
     if (provider === "codex" || provider === "grok-cli") {
-      return await refreshProviderCredentials(provider, connection, console);
+      return await refreshProviderCredentials(provider, connection, console, effectiveProxy);
     }
 
     if (provider === "claude") {
-      const response = await fetch(CLAUDE_CONFIG.tokenUrl, {
+      const response = await fetchWithConnectionProxy(CLAUDE_CONFIG.tokenUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Accept": "application/json" },
         body: JSON.stringify({
@@ -235,7 +238,7 @@ async function refreshOAuthToken(connection) {
           refresh_token: refreshToken,
           client_id: CLAUDE_CONFIG.clientId,
         }),
-      });
+      }, effectiveProxy);
       if (!response.ok) return null;
       const data = await response.json();
       return { accessToken: data.access_token, expiresIn: data.expires_in, refreshToken: data.refresh_token || refreshToken };
@@ -248,27 +251,27 @@ async function refreshOAuthToken(connection) {
       const region = psd.region || connection.region;
       if (clientId && clientSecret) {
         const endpoint = `https://oidc.${region || "us-east-1"}.amazonaws.com/token`;
-        const response = await fetch(endpoint, {
+        const response = await fetchWithConnectionProxy(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ clientId, clientSecret, refreshToken, grantType: "refresh_token" }),
-        });
+        }, effectiveProxy);
         if (!response.ok) return null;
         const data = await response.json();
         return { accessToken: data.accessToken, expiresIn: data.expiresIn || 3600, refreshToken: data.refreshToken || refreshToken };
       }
-      const response = await fetch(KIRO_CONFIG.socialRefreshUrl, {
+      const response = await fetchWithConnectionProxy(KIRO_CONFIG.socialRefreshUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json", "User-Agent": "kiro-cli/1.0.0" },
         body: JSON.stringify({ refreshToken }),
-      });
+      }, effectiveProxy);
       if (!response.ok) return null;
       const data = await response.json();
       return { accessToken: data.accessToken, expiresIn: data.expiresIn || 3600, refreshToken: data.refreshToken || refreshToken };
     }
 
     if (provider === "qwen") {
-      const response = await fetch(QWEN_CONFIG.tokenUrl, {
+      const response = await fetchWithConnectionProxy(QWEN_CONFIG.tokenUrl, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" },
         body: new URLSearchParams({
@@ -276,14 +279,14 @@ async function refreshOAuthToken(connection) {
           refresh_token: refreshToken,
           client_id: QWEN_CONFIG.clientId,
         }),
-      });
+      }, effectiveProxy);
       if (!response.ok) return null;
       const data = await response.json();
       return { accessToken: data.access_token, expiresIn: data.expires_in, refreshToken: data.refresh_token || refreshToken };
     }
 
     if (provider === "cline") {
-      const response = await fetch(CLINE_CONFIG.refreshUrl, {
+      const response = await fetchWithConnectionProxy(CLINE_CONFIG.refreshUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({
@@ -291,7 +294,7 @@ async function refreshOAuthToken(connection) {
           grantType: "refresh_token",
           clientType: "extension",
         }),
-      });
+      }, effectiveProxy);
       if (!response.ok) return null;
       const payload = await response.json();
       const data = payload?.data || payload;
@@ -332,7 +335,7 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
 
   const tokenExpired = isTokenExpired(connection);
   if (config.refreshable && tokenExpired && connection.refreshToken) {
-    const tokens = await refreshOAuthToken(connection);
+    const tokens = await refreshOAuthToken(connection, effectiveProxy);
     if (tokens) {
       accessToken = tokens.accessToken;
       refreshed = true;
@@ -353,7 +356,7 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
     if (initial.valid) return { valid: true, error: null, refreshed, newTokens };
 
     if (initial.status === 401 && config.refreshable && !refreshed && connection.refreshToken) {
-      const tokens = await refreshOAuthToken(connection);
+      const tokens = await refreshOAuthToken(connection, effectiveProxy);
       if (tokens?.accessToken) {
         const retry = await probeCloudCodeAssistAccess(connection, tokens.accessToken, effectiveProxy);
         if (retry.valid) return { valid: true, error: null, refreshed: true, newTokens: tokens };
@@ -367,7 +370,7 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
 
   if (connection.provider === "cline") {
     const tryProbe = async (token) => {
-      const res = await probeClineAccessToken(token);
+      const res = await probeClineAccessToken(token, effectiveProxy);
       if (res.ok) return { valid: true, error: null, refreshed, newTokens };
       if (res.status === 401) return { valid: false, error: "Token invalid or revoked", refreshed };
       if (res.status === 403) return { valid: false, error: "Access denied", refreshed };
@@ -379,7 +382,7 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
       return initial;
     }
 
-    const tokens = await refreshOAuthToken(connection);
+    const tokens = await refreshOAuthToken(connection, effectiveProxy);
     if (!tokens?.accessToken) {
       return { valid: false, error: "Token invalid or revoked", refreshed: false };
     }
@@ -395,6 +398,9 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
     const headers = config.noAuth
       ? { ...config.extraHeaders }
       : { [config.authHeader]: `${config.authPrefix}${accessToken}`, ...config.extraHeaders };
+    if (connection.provider === "codex") {
+      applyCodexAccountHeader(headers, connection.providerSpecificData);
+    }
     const fetchOpts = { method: config.method, headers };
     if (config.body) fetchOpts.body = config.body;
     const res = await fetchWithConnectionProxy(testUrl, fetchOpts, effectiveProxy);
@@ -403,12 +409,15 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
     if (accepted) return { valid: true, error: null, refreshed, newTokens };
 
     if (res.status === 401 && config.refreshable && !refreshed && connection.refreshToken) {
-      const tokens = await refreshOAuthToken(connection);
+      const tokens = await refreshOAuthToken(connection, effectiveProxy);
       if (tokens) {
         const retryUrl = config.buildUrl ? config.buildUrl(tokens.accessToken, connection) : testUrl;
         const retryHeaders = config.noAuth
           ? { ...config.extraHeaders }
           : { [config.authHeader]: `${config.authPrefix}${tokens.accessToken}`, ...config.extraHeaders };
+        if (connection.provider === "codex") {
+          applyCodexAccountHeader(retryHeaders, connection.providerSpecificData);
+        }
         const retryOpts = { method: config.method, headers: retryHeaders };
         if (config.body) retryOpts.body = config.body;
         const retryRes = await fetchWithConnectionProxy(retryUrl, retryOpts, effectiveProxy);
@@ -426,25 +435,19 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
   }
 }
 
+let providerTestFetchOverride = null;
+
+/** Test seam for asserting that validation retains its resolved proxy context. */
+export function __setProviderTestFetchForTesting(fetchFn) {
+  const previous = providerTestFetchOverride;
+  providerTestFetchOverride = fetchFn;
+  return () => { providerTestFetchOverride = previous; };
+}
+
 async function fetchWithConnectionProxy(url, options = {}, effectiveProxy = null) {
-  // Vercel relay: forward via relay URL
-  if (effectiveProxy?.vercelRelayUrl) {
-    const { proxyAwareFetch } = await import("open-sse/utils/proxyFetch.js");
-    return proxyAwareFetch(url, options, {
-      vercelRelayUrl: effectiveProxy.vercelRelayUrl,
-    });
-  }
-
-  if (!effectiveProxy?.connectionProxyEnabled || !effectiveProxy?.connectionProxyUrl) {
-    return fetch(url, options);
-  }
-
+  if (providerTestFetchOverride) return providerTestFetchOverride(url, options, effectiveProxy);
   const { proxyAwareFetch } = await import("open-sse/utils/proxyFetch.js");
-  return proxyAwareFetch(url, options, {
-    connectionProxyEnabled: true,
-    connectionProxyUrl: effectiveProxy.connectionProxyUrl,
-    connectionNoProxy: effectiveProxy.connectionNoProxy || "",
-  });
+  return proxyAwareFetch(url, options, effectiveProxy);
 }
 
 const LOCAL_OPENAI_COMPATIBLE_PROVIDERS = new Set([
@@ -868,20 +871,11 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
       }
 
       case "copilot-m365-web": {
-        const credential = String(connection.apiKey || "").trim();
-        const hasAccessToken = /(^|[?&;\s])access_token=([^;&\s]+)/.test(credential) || (
-          credential &&
-          !credential.includes("access_token=") &&
-          !/^(?:chathubPath|userTenant)\s*=/i.test(credential) &&
-          !/^wss:\/\/substrate\.office\.com\/m365Copilot\/Chathub\//i.test(credential)
-        );
-        const hasChathubPath =
-          /(^|[;\s])(?:chathubPath|userTenant)=([^;@\s]+@[^;\s]+)/.test(credential) ||
-          /^wss:\/\/substrate\.office\.com\/m365Copilot\/Chathub\/[^?]+(?:@|%40)[^?]+\?/i.test(credential);
-        if (hasAccessToken && hasChathubPath) {
+        const params = resolveConnectionParams(connection);
+        if (!("error" in params)) {
           return { valid: true, error: null, refreshed: false, newTokens: null };
         }
-        return { valid: false, error: "Paste the M365 Copilot access_token and Chathub path from the Chathub WebSocket URL", refreshed: false, newTokens: null };
+        return { valid: false, error: params.error, refreshed: false, newTokens: null };
       }
 
       case "perplexity-web": {
@@ -1037,7 +1031,12 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           (url, options) => fetchWithConnectionProxy(url, options, effectiveProxy),
           connection.providerSpecificData || {},
         );
-        if (result) return { valid: result.valid, error: result.valid ? null : "Invalid API key" };
+        if (result) {
+          return {
+            valid: result.valid,
+            error: result.valid ? null : (result.error || "Invalid API key"),
+          };
+        }
         return { valid: false, error: "Provider test not supported" };
       }
     }
@@ -1058,7 +1057,9 @@ export async function testSingleConnection(id) {
   if (effectiveProxy.connectionProxyEnabled && effectiveProxy.connectionProxyUrl && !effectiveProxy.vercelRelayUrl) {
     const proxyResult = await testProxyUrl({ proxyUrl: effectiveProxy.connectionProxyUrl });
     if (!proxyResult.ok) {
-      const proxyError = proxyResult.error || `Proxy test failed with status ${proxyResult.status}`;
+      const proxyError = sanitizeErrorMessage(
+        proxyResult.error || `Proxy test failed with status ${proxyResult.status}`,
+      );
       await updateProviderConnection(id, {
         testStatus: "error",
         lastError: proxyError,
@@ -1078,10 +1079,13 @@ export async function testSingleConnection(id) {
   }
 
   const latencyMs = Date.now() - start;
+  const resultError = result.valid
+    ? null
+    : sanitizeErrorMessage(result.error || "Connection validation failed");
 
   const updateData = {
     testStatus: result.valid ? "active" : "error",
-    lastError: result.valid ? null : result.error,
+    lastError: resultError,
     lastErrorAt: result.valid ? null : new Date().toISOString(),
   };
 
@@ -1106,5 +1110,5 @@ export async function testSingleConnection(id) {
 
   await updateProviderConnection(id, updateData);
 
-  return { valid: result.valid, error: result.error, refreshed: !!result.refreshed, latencyMs, testedAt: new Date().toISOString() };
+  return { valid: result.valid, error: resultError, refreshed: !!result.refreshed, latencyMs, testedAt: new Date().toISOString() };
 }

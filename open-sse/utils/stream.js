@@ -5,6 +5,10 @@ import { extractUsage, mergeUsage, hasValidUsage, estimateUsage, logUsage, addBu
 import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE } from "./streamHelpers.js";
 import { getOpenAIResponsesEventName, isOpenAIResponsesTerminalEvent, formatIncompleteOpenAIResponsesStreamFailure } from "./responsesStreamHelpers.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
+import { createThinkTagStreamExtractor } from "./thinkStripper.js";
+import { resolveInlineThinkingFormat } from "../handlers/chatCore/inlineThinking.js";
+import { INLINE_THINKING_FORMATS } from "../providers/schema.js";
+import { appendReasoningText } from "../translator/concerns/reasoning.js";
 
 import { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER } from "./sseConstants.js";
 
@@ -21,6 +25,7 @@ const STREAM_MODE = {
   TRANSLATE: "translate",    // Full translation between formats
   PASSTHROUGH: "passthrough" // No translation, normalize output, extract usage
 };
+const GEMINI_PASSTHROUGH_PROVIDERS = new Set(["antigravity", "agy", "gemini", "gemini-cli", "gc", "vertex"]);
 
 /**
  * Create unified SSE transform stream
@@ -66,6 +71,7 @@ export function createSSEStream(options = {}) {
   let sseLineCount = 0;
   let sseEmittedCount = 0;
   const eventTypeCounts = {};
+  let onStreamCompleteFired = false;  // guard so terminal-chunk completion + flush() both fire onStreamComplete only once
 
   // Track Responses API event framing for same-format passthrough (codex)
   let currentOpenAIResponsesEvent = null;
@@ -73,9 +79,84 @@ export function createSSEStream(options = {}) {
   let openAIResponsesDoneSent = false;
   let streamDoneSent = false;  // track duplicate [DONE] across transform + flush
 
-  // State for extracting <think>...</think> to reasoning_content across SSE chunks
-  let thinkBuf = "";
-  let inThink = false;
+  // The compatibility parser is enabled only by exact provider transport/model
+  // metadata. State is isolated by OpenAI choice index.
+  const extractInlineThinking = mode === STREAM_MODE.PASSTHROUGH
+    && resolveInlineThinkingFormat(provider, model, targetFormat) === INLINE_THINKING_FORMATS.THINK_TAGS;
+  const inlineThinkingStates = new Map();
+  let inlineThinkingChunkMeta = null;
+
+  const getInlineThinkingState = (choiceIndex) => {
+    if (!inlineThinkingStates.has(choiceIndex)) {
+      inlineThinkingStates.set(choiceIndex, {
+        extractor: createThinkTagStreamExtractor(),
+        bypass: false,
+        reasoningSeen: false,
+        reasoningEndsWithNewline: false,
+        lastReasoningSource: null,
+      });
+    }
+    return inlineThinkingStates.get(choiceIndex);
+  };
+
+  const appendInlineThinkingReasoning = (choiceState, existing, addition) => {
+    if (typeof addition !== "string" || addition.length === 0) return existing;
+    if (typeof existing === "string" && existing.length > 0) {
+      return appendReasoningText(existing, addition);
+    }
+    if (choiceState.reasoningSeen) {
+      const separator = choiceState.reasoningEndsWithNewline || addition.startsWith("\n") ? "" : "\n";
+      return `${existing || ""}${separator}${addition}`;
+    }
+    return appendReasoningText(existing, addition);
+  };
+
+  const trackInlineThinkingReasoning = (choiceState, value, source) => {
+    if (typeof value !== "string" || value.length === 0) return;
+    choiceState.reasoningSeen = true;
+    choiceState.reasoningEndsWithNewline = value.endsWith("\n");
+    if (source) choiceState.lastReasoningSource = source;
+  };
+
+  const normalizeNativeReasoningAfterInline = (choiceState, value) => {
+    if (typeof value !== "string" || value.length === 0) return value;
+    if (choiceState.lastReasoningSource !== "inline") return value;
+    const separator = choiceState.reasoningEndsWithNewline || value.startsWith("\n") ? "" : "\n";
+    return `${separator}${value}`;
+  };
+
+  const flushInlineThinkingStates = () => {
+    if (!extractInlineThinking || inlineThinkingStates.size === 0) return "";
+    const choices = [];
+    for (const [index, choiceState] of inlineThinkingStates) {
+      const pending = choiceState.extractor.flush();
+      const delta = {};
+      if (pending.content) {
+        delta.content = pending.content;
+        totalContentLength += pending.content.length;
+        accumulatedContent += pending.content;
+      }
+      if (pending.reasoning) {
+        delta.reasoning_content = appendInlineThinkingReasoning(choiceState, undefined, pending.reasoning);
+        trackInlineThinkingReasoning(choiceState, delta.reasoning_content, "inline");
+        totalContentLength += delta.reasoning_content.length;
+        accumulatedThinking += delta.reasoning_content;
+      }
+      if (Object.keys(delta).length > 0) {
+        choices.push({ index, delta, finish_reason: null });
+      }
+    }
+    inlineThinkingStates.clear();
+    if (choices.length === 0) return "";
+    const chunk = {
+      id: inlineThinkingChunkMeta?.id || `chatcmpl-${Date.now()}`,
+      object: inlineThinkingChunkMeta?.object || "chat.completion.chunk",
+      created: inlineThinkingChunkMeta?.created || Math.floor(Date.now() / 1000),
+      model: inlineThinkingChunkMeta?.model || model || "unknown",
+      choices,
+    };
+    return `data: ${JSON.stringify(chunk)}\n\n`;
+  };
 
   return new TransformStream({
     transform(chunk, controller) {
@@ -106,10 +187,26 @@ export function createSSEStream(options = {}) {
         if (mode === STREAM_MODE.PASSTHROUGH) {
           let output;
           let injectedUsage = false;
+          let pendingInlineThinkingOutput = "";
+          const inlineThinkingRecoveryChoices = [];
+
+          if (trimmed === "data: [DONE]") {
+            pendingInlineThinkingOutput = flushInlineThinkingStates();
+            streamDoneSent = true;
+          }
 
           if (trimmed.startsWith("data:") && trimmed.slice(5).trim() !== "[DONE]") {
             try {
               const parsed = JSON.parse(trimmed.slice(5).trim());
+
+              if (Array.isArray(parsed?.choices)) {
+                inlineThinkingChunkMeta = {
+                  id: parsed.id,
+                  object: parsed.object,
+                  created: parsed.created,
+                  model: parsed.model,
+                };
+              }
 
               const idFixed = fixInvalidId(parsed);
 
@@ -161,62 +258,152 @@ export function createSSEStream(options = {}) {
                 }
               }
 
-              if (!hasValuableContent(parsed, FORMATS.OPENAI)) {
-                continue;
-              }
-
-              const delta = parsed.choices?.[0]?.delta;
-              // Extract <think>...</think> from content to reasoning_content (MiniMax M3)
-              if (typeof delta?.content === "string") {
-                let t = delta.content;
-                let gotThink = false;
-                if (inThink) {
-                  let ei = t.indexOf("</think>");
-                  if (ei >= 0) {
-                    thinkBuf += t.slice(0, ei);
-                    delta.reasoning_content = thinkBuf.trim();
-                    thinkBuf = ""; inThink = false;
-                    t = t.slice(ei + 8).trimStart();
-                    gotThink = true;
-                  } else { thinkBuf += t; t = ""; gotThink = true; }
-                }
-                if (!inThink) {
-                  let si = t.indexOf("<think>");
-                  if (si >= 0) {
-                    let aft = t.slice(si + 7), ei = aft.indexOf("</think>");
-                    if (ei >= 0) {
-                      delta.reasoning_content = aft.slice(0, ei).trim();
-                      t = t.slice(0, si) + aft.slice(ei + 8).trimStart();
-                    } else { inThink = true; thinkBuf = aft; t = t.slice(0, si); }
-                    gotThink = true;
-                  }
-                }
-                if (gotThink) { fieldsInjected = true; }
-                if (delta.reasoning_content && (!t || !t.trim())) delete delta.content;
-                else delta.content = t || "";
-              }
-              const content = delta?.content;
-              const reasoning = delta?.reasoning_content;
-              if (content && typeof content === "string") {
-                totalContentLength += content.length;
-                accumulatedContent += content;
-              }
-              if (reasoning && typeof reasoning === "string") {
-                totalContentLength += reasoning.length;
-                accumulatedThinking += reasoning;
-              }
-
+              // Usage-only OpenAI chunks have choices:[] and would otherwise
+              // be discarded as empty before accounting sees them.
               const extracted = extractUsage(parsed);
               if (extracted) {
                 usage = mergeUsage(usage, extracted);
               }
+              if (!hasValuableContent(parsed, FORMATS.OPENAI) && !extracted) {
+                continue;
+              }
 
-              const isFinishChunk = parsed.choices?.[0]?.finish_reason;
-              if (isFinishChunk && !hasValidUsage(parsed.usage)) {
+              if (extractInlineThinking && Array.isArray(parsed.choices)) {
+                for (const [position, choice] of parsed.choices.entries()) {
+                  const choiceIndex = Number.isInteger(choice?.index) ? choice.index : position;
+                  const choiceState = getInlineThinkingState(choiceIndex);
+                  const extractor = choiceState.extractor;
+                  const delta = choice.delta || (choice.delta = {});
+                  let nextContent = typeof delta.content === "string" ? delta.content : "";
+                  let changed = false;
+                  let emittedInlineReasoning = false;
+
+                  const hasStructuredReasoning = delta.reasoning_content != null
+                    && typeof delta.reasoning_content !== "string";
+                  const hasNativeReasoning = typeof delta.reasoning_content === "string"
+                    && delta.reasoning_content.length > 0;
+
+                  if (!choiceState.bypass && hasNativeReasoning) {
+                    const normalizedNativeReasoning = normalizeNativeReasoningAfterInline(
+                      choiceState,
+                      delta.reasoning_content,
+                    );
+                    if (normalizedNativeReasoning !== delta.reasoning_content) {
+                      delta.reasoning_content = normalizedNativeReasoning;
+                      changed = true;
+                    }
+                  }
+
+                  if (!choiceState.bypass && hasStructuredReasoning) {
+                    const pending = extractor.failOpen();
+                    choiceState.bypass = true;
+                    if (pending.content) {
+                      if (typeof delta.content === "string") {
+                        nextContent = `${pending.content}${delta.content}`;
+                        changed = true;
+                      } else if (delta.content == null) {
+                        nextContent = pending.content;
+                        changed = true;
+                      } else {
+                        inlineThinkingRecoveryChoices.push({
+                          index: choiceIndex,
+                          delta: { content: pending.content },
+                          finish_reason: null,
+                        });
+                        totalContentLength += pending.content.length;
+                        accumulatedContent += pending.content;
+                      }
+                    }
+                  } else if (!choiceState.bypass && typeof delta.content === "string") {
+                    const extractedThink = extractor.process(delta.content);
+                    nextContent = extractedThink.content;
+                    changed = extractedThink.changed || extractedThink.content !== delta.content;
+                    if (extractedThink.reasoning) {
+                      delta.reasoning_content = appendInlineThinkingReasoning(
+                        choiceState,
+                        delta.reasoning_content,
+                        extractedThink.reasoning,
+                      );
+                      changed = true;
+                      emittedInlineReasoning = true;
+                    }
+                  }
+
+                  if (choice.finish_reason) {
+                    const pending = extractor.flush();
+                    if (pending.content) {
+                      nextContent += pending.content;
+                      changed = true;
+                    }
+                    if (pending.reasoning) {
+                      delta.reasoning_content = appendInlineThinkingReasoning(
+                        choiceState,
+                        delta.reasoning_content,
+                        pending.reasoning,
+                      );
+                      changed = true;
+                      emittedInlineReasoning = true;
+                    }
+                    inlineThinkingStates.delete(choiceIndex);
+                  }
+
+                  if (changed) {
+                    fieldsInjected = true;
+                    if (nextContent.length > 0) delta.content = nextContent;
+                    else delete delta.content;
+                  }
+
+                  trackInlineThinkingReasoning(
+                    choiceState,
+                    delta.reasoning_content,
+                    emittedInlineReasoning ? "inline" : (hasNativeReasoning ? "native" : null),
+                  );
+                }
+              }
+
+              if (inlineThinkingRecoveryChoices.length > 0) {
+                const recoveryChunk = {
+                  id: inlineThinkingChunkMeta?.id || parsed.id || `chatcmpl-${Date.now()}`,
+                  object: inlineThinkingChunkMeta?.object || parsed.object || "chat.completion.chunk",
+                  created: inlineThinkingChunkMeta?.created || parsed.created || Math.floor(Date.now() / 1000),
+                  model: inlineThinkingChunkMeta?.model || parsed.model || model || "unknown",
+                  choices: inlineThinkingRecoveryChoices,
+                };
+                pendingInlineThinkingOutput += `data: ${JSON.stringify(recoveryChunk)}\n\n`;
+              }
+
+              for (const choice of (parsed.choices || [])) {
+                const content = choice?.delta?.content;
+                const reasoning = choice?.delta?.reasoning_content;
+                if (content && typeof content === "string") {
+                  totalContentLength += content.length;
+                  accumulatedContent += content;
+                }
+                if (reasoning && typeof reasoning === "string") {
+                  totalContentLength += reasoning.length;
+                  accumulatedThinking += reasoning;
+                }
+              }
+
+              // Gemini-family passthrough accumulation (e.g. Antigravity Responses streaming).
+              const geminiPartsPassthrough =
+                parsed.candidates?.[0]?.content?.parts || parsed.response?.candidates?.[0]?.content?.parts || [];
+              for (const part of geminiPartsPassthrough) {
+                if (part.text && typeof part.text === "string") {
+                  totalContentLength += part.text.length;
+                  if (part.thought === true) accumulatedThinking += part.text;
+                  else accumulatedContent += part.text;
+                }
+              }
+
+              // Detect terminal chunk in both OpenAI (choices[0].finish_reason) and
+              // Gemini-family (response.candidates[0].finishReason) passthrough shapes.
+              const isFinishChunk = parsed.choices?.some?.(choice => choice?.finish_reason)
+                || parsed.response?.candidates?.[0]?.finishReason;
+              if (isFinishChunk && !hasValidUsage(usage)) {
                 const estimated = estimateUsage(body, totalContentLength, FORMATS.OPENAI);
                 parsed.usage = filterUsageForFormat(estimated, FORMATS.OPENAI);
                 output = `data: ${JSON.stringify(parsed)}\n`;
-                usage = estimated;
                 injectedUsage = true;
               } else if (isFinishChunk && usage) {
                 const buffered = addBufferToUsage(usage);
@@ -226,6 +413,24 @@ export function createSSEStream(options = {}) {
               } else if (idFixed || fieldsInjected) {
                 output = `data: ${JSON.stringify(parsed)}\n`;
                 injectedUsage = true;
+              }
+
+              // Only Gemini-family terminal markers are safe for early
+              // completion. OpenAI sends finish_reason before an optional
+              // trailing usage-only chunk, so its callback must wait for
+              // stream flush to preserve authoritative usage.
+              const passthroughGeminiTerminal =
+                parsed.candidates?.some?.((candidate) => candidate?.finishReason) ||
+                parsed.response?.candidates?.some?.((candidate) => candidate?.finishReason);
+              if (passthroughGeminiTerminal && onStreamComplete && !onStreamCompleteFired) {
+                if (!hasValidUsage(usage) && totalContentLength > 0) {
+                  usage = estimateUsage(body, totalContentLength, FORMATS.GEMINI);
+                }
+                onStreamCompleteFired = true;
+                onStreamComplete({
+                  content: accumulatedContent,
+                  thinking: accumulatedThinking,
+                }, usage, ttftAt);
               }
               if (toolNameDecloaked && !injectedUsage) {
                 output = `data: ${JSON.stringify(parsed)}\n`;
@@ -246,6 +451,8 @@ export function createSSEStream(options = {}) {
               output = line + "\n";
             }
           }
+
+          if (pendingInlineThinkingOutput) output = pendingInlineThinkingOutput + output;
 
           reqLogger?.appendConvertedChunk?.(output);
           controller.enqueue(sharedEncoder.encode(output));
@@ -314,8 +521,9 @@ export function createSSEStream(options = {}) {
         }
         
         // Gemini format
-        if (parsed.candidates?.[0]?.content?.parts) {
-          for (const part of parsed.candidates[0].content.parts) {
+        if (parsed.candidates?.[0]?.content?.parts || parsed.response?.candidates?.[0]?.content?.parts) {
+          const geminiParts = parsed.candidates?.[0]?.content?.parts || parsed.response?.candidates?.[0]?.content.parts || [];
+          for (const part of geminiParts) {
             if (part.text && typeof part.text === "string") {
               totalContentLength += part.text.length;
               // Check if this is thinking content
@@ -330,7 +538,53 @@ export function createSSEStream(options = {}) {
 
         // Extract usage
         const extracted = extractUsage(parsed);
-        if (extracted) state.usage = mergeUsage(state.usage, extracted); // Keep original usage for logging
+        if (extracted) state.usage = mergeUsage(state.usage, extracted);
+
+        // Fire onStreamComplete early on terminal chunk (raw parsed shape) for providers
+        // that never reach the flush() path. The translated item may not be terminal-detectable;
+        // detect the terminal marker on the raw parsed object instead.
+        // Restrict raw early completion to wrapped Gemini/Antigravity only.
+        // OpenAI include_usage streams send finish_reason BEFORE a trailing
+        // usage-only chunk; firing on finish_reason would lose the real usage.
+        const rawGeminiTerminal =
+          parsed.candidates?.some?.((candidate) => candidate?.finishReason) ||
+          parsed.response?.candidates?.some?.((candidate) => candidate?.finishReason);
+        if (rawGeminiTerminal && onStreamComplete && !onStreamCompleteFired) {
+          onStreamCompleteFired = true;
+          // Fallback to estimated usage when no real usage was extracted (e.g. wrapped Gemini
+          // Responses without usageMetadata). Use state.format if available, else infer from parse shape.
+          const rawFormat = state?.format || FORMATS.GEMINI;
+          let rawUsage = state.usage;
+          if (!hasValidUsage(rawUsage) && totalContentLength > 0) {
+            rawUsage = estimateUsage(body, totalContentLength, rawFormat);
+            state.usage = rawUsage;
+          }
+          // Raw content fallback: read text directly from parsed.response.candidates when
+          // accumulatedContent is empty (the Gemini accumulation may not be hit by the test's
+          // parse shape). Mirror the normal content/thinking split: thought parts go to thinking,
+          // non-thought parts go to content.
+          // Raw content fallback: only used when the normal accumulator did not capture
+          // the text. Reading parsed.response.candidates directly appends to whatever the
+          // translate path already accumulated, so guard with emptiness check.
+          let rawContent = '';
+          let rawThinking = '';
+          const rawCandidates = parsed.candidates || parsed.response?.candidates || [];
+          if (!accumulatedContent && rawCandidates.length > 0) {
+            for (const cand of rawCandidates) {
+              const parts = cand.content?.parts || [];
+              for (const part of parts) {
+                if (part.text && typeof part.text === 'string') {
+                  if (part.thought === true) rawThinking += part.text;
+                  else rawContent += part.text;
+                }
+              }
+            }
+          }
+          onStreamComplete({
+            content: rawContent || accumulatedContent,
+            thinking: rawThinking || accumulatedThinking,
+          }, rawUsage, ttftAt);
+        } // Keep original usage for logging
 
         // Responses same-format passthrough: re-emit with original event framing
         if (keepsOpenAIResponsesFormat && openAIResponsesEventName) {
@@ -368,7 +622,6 @@ export function createSSEStream(options = {}) {
             if (state.finishReason && isFinishChunk && !hasValidUsage(item.usage) && totalContentLength > 0) {
               const estimated = estimateUsage(body, totalContentLength, sourceFormat);
               item.usage = filterUsageForFormat(estimated, sourceFormat); // Filter + already has buffer
-              state.usage = estimated;
             } else if (state.finishReason && isFinishChunk && state.usage) {
               // Add buffer and filter usage for client (but keep original in state.usage for logging)
               const buffered = addBufferToUsage(state.usage);
@@ -393,10 +646,24 @@ export function createSSEStream(options = {}) {
         if (remaining) buffer += remaining;
 
         if (mode === STREAM_MODE.PASSTHROUGH) {
+          const pendingInlineThinkingOutput = flushInlineThinkingStates();
+          if (pendingInlineThinkingOutput) {
+            reqLogger?.appendConvertedChunk?.(pendingInlineThinkingOutput);
+            controller.enqueue(sharedEncoder.encode(pendingInlineThinkingOutput));
+          }
+
           if (buffer) {
-            let output = buffer;
-            if (buffer.startsWith("data:") && !buffer.startsWith("data: ")) {
-              output = "data: " + buffer.slice(5);
+            const trimmedBuffer = buffer.trim();
+            let output;
+            if (/^data:\s*\[DONE\]$/.test(trimmedBuffer)) {
+              output = "data: [DONE]\n\n";
+              streamDoneSent = true;
+            } else {
+              output = buffer;
+              if (buffer.startsWith("data:") && !buffer.startsWith("data: ")) {
+                output = "data: " + buffer.slice(5);
+              }
+              if (!/\r?\n\r?\n$/.test(output)) output = `${output.replace(/\s+$/, "")}\n\n`;
             }
             reqLogger?.appendConvertedChunk?.(output);
             controller.enqueue(sharedEncoder.encode(output));
@@ -417,14 +684,15 @@ export function createSSEStream(options = {}) {
           //   data: [DONE]\n\n
           // Without it they can hang until timeout and trigger failover.
           // Gemini-family clients (Antigravity, Vertex, Gemini) reject this sentinel with 400 syntax errors.
-          const isGeminiFamily = provider === "antigravity" || provider === "gemini" || provider === "vertex";
+          const isGeminiFamily = GEMINI_PASSTHROUGH_PROVIDERS.has(provider);
           if (!streamDoneSent && !isGeminiFamily) {
             const doneOutput = "data: [DONE]\n\n";
             reqLogger?.appendConvertedChunk?.(doneOutput);
             controller.enqueue(sharedEncoder.encode(doneOutput));
           }
 
-          if (onStreamComplete) {
+          if (onStreamComplete && !onStreamCompleteFired) {
+            onStreamCompleteFired = true;
             onStreamComplete({
               content: accumulatedContent,
               thinking: accumulatedThinking
@@ -501,7 +769,8 @@ export function createSSEStream(options = {}) {
           appendRequestLog({ model, provider, connectionId, tokens: null, status: "200 OK" }).catch(() => { });
         }
         
-        if (onStreamComplete) {
+        if (onStreamComplete && !onStreamCompleteFired) {
+          onStreamCompleteFired = true;
           onStreamComplete({
             content: accumulatedContent,
             thinking: accumulatedThinking
@@ -530,9 +799,10 @@ export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, p
   });
 }
 
-export function createPassthroughStreamWithLogger(provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null) {
+export function createPassthroughStreamWithLogger(provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, targetFormat = null) {
   return createSSEStream({
     mode: STREAM_MODE.PASSTHROUGH,
+    targetFormat,
     provider,
     reqLogger,
     toolNameMap,

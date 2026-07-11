@@ -1,6 +1,13 @@
 // Provider transport schema: shared defaults + endpoint defaults + resolver (skeleton, not wired)
 import { DEFAULT_RETRY_CONFIG, FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 
+// Provider-declared response compatibility formats. These are deliberately
+// transport metadata, not model-name heuristics, so unrelated providers that
+// host a similarly named model keep their response bytes unchanged.
+export const INLINE_THINKING_FORMATS = Object.freeze({
+  THINK_TAGS: "think-tags",
+});
+
 /**
  * RegistryEntry shape — full contract for registry/{id}.js. See REGISTRY_TEMPLATE.js for a worked example.
  * Only `id` + `category` are strictly required; everything else is optional/derived.
@@ -26,8 +33,10 @@ import { DEFAULT_RETRY_CONFIG, FETCH_CONNECT_TIMEOUT_MS } from "../config/runtim
  *
  * TransportConfig: { baseUrl, format, headers, auth, forceStream, urlSuffix, quirks, retry, timeoutMs,
  *   executor, clientId, clientSecret, tokenUrl, refreshUrl, usage, cliVersion, apiClient, regions,
- *   defaultRegion, modelsFetcher, validateUrl, responsesUrl } — clientId/clientSecret/tokenUrl are
+ *   defaultRegion, modelsFetcher, validateUrl, validationModelId, responsesUrl } — clientId/clientSecret/tokenUrl are
  *   injected from `oauth` automatically (single source); declare them in `oauth`, not here.
+ * `quirks.inlineThinking` is `{ format, models }` and applies only to that
+ * transport and the exact listed model ids.
  *
  * OAuthConfig: { clientId, authorizeUrl, tokenUrl, deviceCodeUrl, refreshUrl, scope|scopes, redirectUri,
  *   callbackPath, fixedPort, codeChallengeMethod, extraParams, refresh:{encoding,scope}, refreshLeadMs,

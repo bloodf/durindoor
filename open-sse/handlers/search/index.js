@@ -10,6 +10,9 @@
 import { buildSearchRequest } from "./callers.js";
 import { normalizeSearchResponse } from "./normalizers.js";
 import { handleChatSearch } from "./chatSearch.js";
+import { resolveCredentialProxyOptions } from "../../services/oauthCredentialManager.js";
+import { proxyAwareFetch } from "../../utils/proxyFetch.js";
+import { sanitizeErrorMessage } from "../../utils/error.js";
 
 const GLOBAL_TIMEOUT_MS = 15000;
 const NON_RETRIABLE = new Set([400, 401, 403, 404]);
@@ -61,7 +64,15 @@ function successResult(data) {
  * Run a single dedicated search provider attempt.
  * @returns {Promise<{success:boolean, status?:number, error?:string, data?:object}>}
  */
-async function tryDedicatedProvider({ provider, providerConfig, body, credentials, log, globalStartTime }) {
+async function tryDedicatedProvider({
+  provider,
+  providerConfig,
+  body,
+  credentials,
+  proxyOptions,
+  log,
+  globalStartTime,
+}) {
   const startTime = Date.now();
   const token = credentials?.apiKey || credentials?.accessToken || undefined;
 
@@ -100,12 +111,21 @@ async function tryDedicatedProvider({ provider, providerConfig, body, credential
   log?.info?.("SEARCH", `${provider.id} | "${params.query.slice(0, 80)}" | type=${params.searchType}`);
 
   try {
-    const resp = await fetch(url, { ...init, headers: sanitizeHeaders(init.headers), signal: controller.signal });
+    const resp = await proxyAwareFetch(
+      url,
+      { ...init, headers: sanitizeHeaders(init.headers), signal: controller.signal },
+      proxyOptions
+    );
     clearTimeout(timer);
     if (!resp.ok) {
       const errText = await resp.text().catch(() => "");
-      log?.error?.("SEARCH", `${provider.id} ${resp.status}: ${errText.slice(0, 200)}`);
-      return { success: false, status: resp.status, error: `${provider.id} returned ${resp.status}: ${errText.slice(0, 200)}` };
+      const safeError = sanitizeErrorMessage(errText).slice(0, 200);
+      log?.error?.("SEARCH", `${provider.id} ${resp.status}: ${safeError}`);
+      return {
+        success: false,
+        status: resp.status,
+        error: `${provider.id} returned ${resp.status}: ${safeError}`,
+      };
     }
     const data = await resp.json();
     const normalized = normalizeSearchResponse(provider.id, data, params.query, params.searchType);
@@ -128,8 +148,13 @@ async function tryDedicatedProvider({ provider, providerConfig, body, credential
     clearTimeout(timer);
     const isTimeout = err.name === "AbortError";
     const status = isTimeout ? 504 : 502;
-    log?.error?.("SEARCH", `${provider.id} ${isTimeout ? "timeout" : "error"}: ${err.message}`);
-    return { success: false, status, error: `${provider.id} ${isTimeout ? "timeout" : "error"}: ${err.message}` };
+    const safeError = sanitizeErrorMessage(err?.message);
+    log?.error?.("SEARCH", `${provider.id} ${isTimeout ? "timeout" : "error"}: ${safeError}`);
+    return {
+      success: false,
+      status,
+      error: `${provider.id} ${isTimeout ? "timeout" : "error"}: ${safeError}`,
+    };
   }
 }
 
@@ -146,6 +171,7 @@ async function tryDedicatedProvider({ provider, providerConfig, body, credential
  */
 export async function handleSearchCore({ body, provider, providerConfig, credentials, log }) {
   const globalStartTime = Date.now();
+  const proxyOptions = resolveCredentialProxyOptions(credentials);
 
   // 1. Sanitize query
   const { clean, error: sanitizeError } = sanitizeQuery(body.query || "");
@@ -160,6 +186,7 @@ export async function handleSearchCore({ body, provider, providerConfig, credent
       providerConfig,
       body: normalizedBody,
       credentials,
+      proxyOptions,
       log,
       globalStartTime
     });
@@ -170,6 +197,7 @@ export async function handleSearchCore({ body, provider, providerConfig, credent
       maxResults: normalizedBody.max_results,
       model: provider.searchViaChat.defaultModel,
       credentials,
+      proxyOptions,
       log
     });
   } else {
@@ -192,6 +220,7 @@ export async function handleSearchCore({ body, provider, providerConfig, credent
       maxResults: normalizedBody.max_results,
       model: provider.searchViaChat.defaultModel,
       credentials,
+      proxyOptions,
       log
     });
     if (fallback.success) return successResult(fallback.data);

@@ -54,6 +54,75 @@ describe("GOLDEN request: OpenAI → Gemini", () => {
     const out = translateRequest(FORMATS.OPENAI, FORMATS.GEMINI, "gemini-3-pro", baseBody(), true, { apiKey: "k" }, "gemini");
     expect(clean(out)).toMatchSnapshot();
   });
+
+  it("Gemini CLI tool requests include validated toolConfig and enough output for high thinking", () => {
+    const body = {
+      messages: [{ role: "user", content: "Call add with 7 and 35." }],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "add",
+            description: "Add two numbers",
+            parameters: {
+              type: "object",
+              properties: {
+                a: { type: "number" },
+                b: { type: "number" },
+              },
+              required: ["a", "b"],
+            },
+          },
+        },
+      ],
+      reasoning_effort: "high",
+      max_tokens: 128,
+    };
+    const out = translateRequest(
+      FORMATS.OPENAI,
+      FORMATS.GEMINI_CLI,
+      "gemini-3.1-pro-preview",
+      body,
+      true,
+      { accessToken: "t", projectId: "p" },
+      "gemini-cli"
+    );
+
+    expect(out.request.toolConfig).toEqual({ functionCallingConfig: { mode: "VALIDATED" } });
+    expect(out.request.safetySettings).toBeDefined();
+    expect(out.request.generationConfig.thinkingConfig).toEqual({ thinkingLevel: "high", includeThoughts: true });
+    expect(out.request.generationConfig.maxOutputTokens).toBe(65535);
+  });
+
+  it("Gemini CLI drops toolConfig when tools are malformed/empty", () => {
+    const base = {
+      messages: [{ role: "user", content: "Just say hi." }],
+    };
+    const call = (tools) =>
+      translateRequest(
+        FORMATS.OPENAI,
+        FORMATS.GEMINI_CLI,
+        "gemini-3.1-pro-preview",
+        { ...base, tools },
+        true,
+        { accessToken: "t", projectId: "p" },
+        "gemini-cli"
+      );
+
+    // Empty tools array → no tools, no toolConfig.
+    const empty = call([]);
+    expect(empty.request.tools).toBeUndefined();
+    expect(empty.request.toolConfig).toBeUndefined();
+
+    // Unusable tool entries (no type and no name/input_schema) → dropped by the
+    // existing filter, so tools and toolConfig must both be absent.
+    const malformed = call([
+      { foo: "bar" },
+      { type: "not-a-function" },
+    ]);
+    expect(malformed.request.tools).toBeUndefined();
+    expect(malformed.request.toolConfig).toBeUndefined();
+  });
 });
 
 describe("GOLDEN request: OpenAI → Kiro", () => {

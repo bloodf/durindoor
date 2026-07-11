@@ -22,3 +22,13 @@ export function extractReasoningText(delta) {
   }
   return "";
 }
+
+// Append independently sourced reasoning without replacing an existing native
+// reasoning string. Non-string native fields are preserved rather than coerced.
+export function appendReasoningText(existing, addition) {
+  if (typeof addition !== "string" || addition.length === 0) return existing;
+  if (existing == null || existing === "") return addition;
+  if (typeof existing !== "string") return existing;
+  const separator = existing.endsWith("\n") || addition.startsWith("\n") ? "" : "\n";
+  return `${existing}${separator}${addition}`;
+}

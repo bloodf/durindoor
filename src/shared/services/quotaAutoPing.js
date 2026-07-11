@@ -20,7 +20,8 @@ const providerHandlers = {
     sendPing: sendClaudePing,
   },
   codex: {
-    getUsage: getCodexUsage,
+    getUsage: (accessToken, proxyOptions, connection) =>
+      getCodexUsage(accessToken, connection?.providerSpecificData, proxyOptions),
     sendPing: sendCodexPing,
   },
 };
@@ -31,6 +32,8 @@ const g = (global.__quotaAutoPing ??= {
   running: false,
   resetCache: {},
   failureCache: {},
+  inflightControllers: {},
+  rerunRequested: false,
 });
 
 function cacheKey(provider, connectionId) {
@@ -99,11 +102,12 @@ function buildProxyOptions(cfg) {
     connectionProxyUrl: cfg.connectionProxyUrl || "",
     connectionNoProxy: cfg.connectionNoProxy || "",
     vercelRelayUrl: cfg.vercelRelayUrl || "",
-    strictProxy: false,
+    strictProxy: cfg.strictProxy === true,
+    disableEnvProxy: cfg.disableEnvProxy === true,
   };
 }
 
-async function sendClaudePing(connection, providerConfig, proxyOptions, deps) {
+async function sendClaudePing(connection, providerConfig, proxyOptions, deps, signal) {
   const res = await deps.proxyAwareFetch(CLAUDE_PING_URL, {
     method: "POST",
     headers: {
@@ -116,8 +120,14 @@ async function sendClaudePing(connection, providerConfig, proxyOptions, deps) {
       max_tokens: providerConfig.pingMaxTokens,
       messages: [{ role: "user", content: providerConfig.pingText }],
     }),
+    signal,
   }, proxyOptions);
-  return res.ok;
+  if (!res.ok) {
+    await cancelResponseBody(res, signal);
+    return false;
+  }
+  await drainResponseBody(res, signal);
+  return true;
 }
 
 function buildCodexPingInput(text) {
@@ -128,26 +138,37 @@ function buildCodexPingInput(text) {
   }];
 }
 
-async function drainResponseBody(response) {
-  if (typeof response?.text === "function") {
-    await response.text();
+async function drainResponseBody(response, signal) {
+  const reader = response?.body?.getReader?.();
+  if (!reader) {
+    if (typeof response?.text === "function") {
+      await awaitWithSignal(response.text(), signal);
+    }
     return;
   }
 
-  const reader = response?.body?.getReader?.();
-  if (!reader) return;
-
   try {
     while (true) {
-      const { done } = await reader.read();
+      const { done } = await awaitWithSignal(reader.read(), signal);
       if (done) return;
     }
+  } catch (error) {
+    if (signal?.aborted) {
+      try { await reader.cancel?.(signal.reason); } catch { /* noop */ }
+    }
+    throw error;
   } finally {
     reader.releaseLock?.();
   }
 }
 
-async function sendCodexPing(connection, providerConfig, proxyOptions, deps) {
+async function cancelResponseBody(response, signal) {
+  const cancel = response?.body?.cancel;
+  if (typeof cancel !== "function") return;
+  await awaitWithSignal(cancel.call(response.body, signal?.reason), signal);
+}
+
+async function sendCodexPing(connection, providerConfig, proxyOptions, deps, signal) {
   const executor = deps.getExecutor("codex");
   const { response } = await executor.execute({
     model: providerConfig.pingModel,
@@ -158,6 +179,7 @@ async function sendCodexPing(connection, providerConfig, proxyOptions, deps) {
       providerSpecificData: connection.providerSpecificData,
     },
     proxyOptions,
+    signal,
     log: console,
     body: {
       model: providerConfig.pingModel,
@@ -171,12 +193,12 @@ async function sendCodexPing(connection, providerConfig, proxyOptions, deps) {
     },
   });
   if (!response.ok) {
-    try { await response.body?.cancel?.(); } catch { /* noop */ }
+    try { await cancelResponseBody(response, signal); } catch { /* noop */ }
     return false;
   }
 
   // Codex only starts the 5h window after the streaming response completes.
-  await drainResponseBody(response);
+  await drainResponseBody(response, signal);
   return true;
 }
 
@@ -185,7 +207,7 @@ function shouldSkipAfterFailure(state, key, nowMs = Date.now()) {
   return failedAt && nowMs - failedAt < C.failureCooldownMs;
 }
 
-async function pingConnection(conn, provider, providerConfig, handler, deps, state = g) {
+async function pingConnectionCore(conn, provider, providerConfig, handler, deps, state, signal) {
   const key = cacheKey(provider, conn.id);
 
   // resetAt is stable for time-based windows; Codex polls every tick because inactive windows slide forward.
@@ -196,19 +218,23 @@ async function pingConnection(conn, provider, providerConfig, handler, deps, sta
   if (shouldSkipAfterFailure(state, key)) return;
 
   const proxyCfg = await deps.resolveConnectionProxyConfig(conn.providerSpecificData);
+  signal.throwIfAborted();
   const proxyOptions = buildProxyOptions(proxyCfg);
 
   let connection = conn;
   try {
     const r = await deps.refreshAndUpdateCredentials(connection, false, proxyOptions);
+    signal.throwIfAborted();
     connection = r.connection;
   } catch (e) {
+    if (signal.aborted || e?.name === "AbortError") throw signal.reason || e;
     state.failureCache[key] = Date.now();
     console.warn(`[AutoPing] ${provider}:${conn.id}: refresh failed: ${e.message}`);
     return;
   }
 
-  const usage = await handler.getUsage(connection.accessToken, proxyOptions);
+  const usage = await handler.getUsage(connection.accessToken, proxyOptions, connection);
+  signal.throwIfAborted();
   const quotas = usage?.quotas || {};
   const quota = quotas?.[providerConfig.quotaKey];
   const resetAt = quota?.resetAt;
@@ -228,7 +254,18 @@ async function pingConnection(conn, provider, providerConfig, handler, deps, sta
   if (wasPingedRecently(connection, providerConfig.minPingIntervalMs, now)) return;
   if (lastPingedResetKey === resetKey) return;
 
-  const ok = await handler.sendPing(connection, providerConfig, proxyOptions, deps);
+  // Settings and connection rows can change while quota/credential lookups are
+  // in flight. Revalidate immediately before the paid outbound request.
+  const latestSettings = await deps.getSettings();
+  signal.throwIfAborted();
+  const latestConnections = await deps.getProviderConnections({ provider, isActive: true });
+  signal.throwIfAborted();
+  const latestConnection = latestConnections.find((candidate) => candidate.id === connection.id);
+  if (latestSettings?.[providerConfig.settingsKey]?.connections?.[connection.id] !== true
+    || latestConnection?.authType !== "oauth") return;
+
+  const ok = await handler.sendPing(latestConnection, providerConfig, proxyOptions, deps, signal);
+  signal.throwIfAborted();
   if (!ok) {
     // Do not mark reset as pinged unless upstream accepted the tiny request.
     state.failureCache[key] = Date.now();
@@ -237,6 +274,7 @@ async function pingConnection(conn, provider, providerConfig, handler, deps, sta
   }
 
   delete state.failureCache[key];
+  signal.throwIfAborted();
   await deps.updateProviderConnection(connection.id, {
     lastPingedResetAt: resetAt,
     lastPingedResetKey: resetKey,
@@ -244,6 +282,36 @@ async function pingConnection(conn, provider, providerConfig, handler, deps, sta
     updatedAt: new Date().toISOString(),
   });
   console.log(`[AutoPing] ${provider}:${connection.id}: ping sent (reset ${resetAt})`);
+}
+
+function awaitWithSignal(promise, signal) {
+  if (signal.aborted) return Promise.reject(signal.reason || new Error("Auto-ping aborted"));
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(signal.reason || new Error("Auto-ping aborted"));
+    signal.addEventListener("abort", onAbort, { once: true });
+    Promise.resolve(promise).then(
+      (value) => { signal.removeEventListener("abort", onAbort); resolve(value); },
+      (error) => { signal.removeEventListener("abort", onAbort); reject(error); },
+    );
+  });
+}
+
+async function pingConnection(conn, provider, providerConfig, handler, deps, state = g) {
+  const key = cacheKey(provider, conn.id);
+  const controller = new AbortController();
+  const timeoutSignal = AbortSignal.timeout(C.pingTimeoutMs || 45000);
+  const signal = AbortSignal.any([controller.signal, timeoutSignal]);
+  state.inflightControllers ||= {};
+  state.inflightControllers[key]?.abort(new DOMException("Superseded auto-ping attempt", "AbortError"));
+  state.inflightControllers[key] = controller;
+  try {
+    return await awaitWithSignal(
+      pingConnectionCore(conn, provider, providerConfig, handler, deps, state, signal),
+      signal,
+    );
+  } finally {
+    if (state.inflightControllers[key] === controller) delete state.inflightControllers[key];
+  }
 }
 
 function createDefaultDeps() {
@@ -259,7 +327,10 @@ function createDefaultDeps() {
 }
 
 export async function runQuotaAutoPingTick(deps = createDefaultDeps(), state = g) {
-  if (state.running) return;
+  if (state.running) {
+    state.rerunRequested = true;
+    return;
+  }
   state.running = true;
   try {
     const settings = await deps.getSettings();
@@ -277,7 +348,7 @@ export async function runQuotaAutoPingTick(deps = createDefaultDeps(), state = g
         try {
           await pingConnection(conn, provider, providerConfig, handler, deps, state);
         } catch (e) {
-          state.failureCache[cacheKey(provider, conn.id)] = Date.now();
+          if (e?.name !== "AbortError") state.failureCache[cacheKey(provider, conn.id)] = Date.now();
           console.warn(`[AutoPing] ${provider}:${conn.id}: ${e.message}`);
         }
       }
@@ -286,7 +357,24 @@ export async function runQuotaAutoPingTick(deps = createDefaultDeps(), state = g
     console.warn("[AutoPing] tick error:", e.message);
   } finally {
     state.running = false;
+    if (state.rerunRequested) {
+      state.rerunRequested = false;
+      queueMicrotask(() => { runQuotaAutoPingTick(deps, state).catch(() => {}); });
+    }
   }
+}
+
+export function notifyQuotaAutoPingSettingChanged(provider, connectionId, enabled, state = g) {
+  const key = cacheKey(provider, connectionId);
+  state.inflightControllers ||= {};
+  state.resetCache ||= {};
+  state.failureCache ||= {};
+  if (enabled !== true) {
+    state.inflightControllers[key]?.abort(new DOMException("Auto-ping disabled", "AbortError"));
+  }
+  delete state.resetCache[key];
+  delete state.failureCache[key];
+  if (enabled === true) runQuotaAutoPingTick().catch(() => {});
 }
 
 export function startQuotaAutoPing() {

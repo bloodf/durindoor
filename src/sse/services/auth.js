@@ -1,8 +1,9 @@
-import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings, getProxyPools } from "@/lib/localDb";
+import { getProviderConnections, getApiKeyByKey, validateApiKey, updateProviderConnection, getSettings, getProxyPools } from "@/lib/localDb";
+import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
 import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
-import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
+import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
 import * as log from "../utils/logger.js";
 
 // Mutex to prevent race conditions during account selection
@@ -23,6 +24,8 @@ function buildNoAuthCredential(providerSpecificData = {}, resolvedProxy = {}, co
       connectionNoProxy: resolvedProxy.connectionNoProxy,
       connectionProxyPoolId: resolvedProxy.proxyPoolId || null,
       vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
+      strictProxy: resolvedProxy.strictProxy === true,
+      disableEnvProxy: resolvedProxy.disableEnvProxy === true,
     },
     connectionId: connection?.id || "noauth",
     _connection: connection || null,
@@ -70,7 +73,8 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     const connections = await getProviderConnections({ provider: providerId, isActive: true });
     log.debug("AUTH", `${provider} | total connections: ${connections.length}, excludeIds: ${excludeSet.size > 0 ? [...excludeSet].join(",") : "none"}, model: ${model || "any"}`);
 
-    const isNoAuthProvider = !!FREE_PROVIDERS[providerId]?.noAuth;
+    const isNoAuthProvider = AI_PROVIDERS[providerId]?.noAuth === true;
+    const publicFallbackAllowed = !excludeSet.has("noauth");
 
     if (isNoAuthProvider) {
       // Stored-data no-auth providers (e.g., mimocode) use saved connections first
@@ -112,7 +116,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
 
       // Inject a public no-auth credential only when no real connection exists.
       if (connections.length === 0) {
-        return buildPublicNoAuthCredential(providerId);
+        return publicFallbackAllowed ? buildPublicNoAuthCredential(providerId) : null;
       }
     }
 
@@ -141,7 +145,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       // For no-auth providers with a real saved key that is now excluded/locked,
       // fall back to the public no-auth credential instead of failing outright —
       // Pollinations (and similar) still serve unauthenticated traffic.
-      if (isNoAuthProvider) {
+      if (isNoAuthProvider && publicFallbackAllowed) {
         log.warn("AUTH", `${provider} | saved key unavailable, falling back to public no-auth`);
         return buildPublicNoAuthCredential(providerId);
       }
@@ -245,6 +249,11 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         connectionNoProxy: resolvedProxy.connectionNoProxy,
         connectionProxyPoolId: resolvedProxy.proxyPoolId || null,
         vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
+        // Preserve the resolver's route policy alongside its endpoint. The
+        // chat request, proactive refresh, 401/403 refresh, and retry all read
+        // these immutable fields from the selected credential.
+        strictProxy: resolvedProxy.strictProxy === true,
+        disableEnvProxy: resolvedProxy.disableEnvProxy === true,
       },
       connectionId: connection.id,
       // Include current status for optimization check
@@ -409,4 +418,26 @@ export function extractApiKey(request) {
 export async function isValidApiKey(apiKey) {
   if (!apiKey) return false;
   return await validateApiKey(apiKey);
+}
+
+/**
+ * Evaluate a caller credential before any model/provider work.
+ *
+ * Local mode still permits an unknown placeholder credential for compatibility,
+ * but once a credential matches a stored row it must be active and unexpired.
+ * This prevents an expired or malformed stored key from becoming a policy/usage
+ * identity when global API-key enforcement is disabled.
+ */
+export async function evaluateApiKeyAuth(apiKey, { required = false, now = Date.now() } = {}) {
+  if (!apiKey) {
+    return { ok: !required, reason: required ? "missing" : null, stored: false };
+  }
+
+  const record = await getApiKeyByKey(apiKey);
+  if (!record) {
+    return { ok: !required, reason: required ? "invalid" : null, stored: false };
+  }
+
+  const valid = record.isActive === true && !isApiKeyExpired(record.expiresAt, now);
+  return { ok: valid, reason: valid ? null : "invalid", stored: true };
 }

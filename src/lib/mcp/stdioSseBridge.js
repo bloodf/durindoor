@@ -136,7 +136,9 @@ function getOrSpawn(name) {
   proc.stderr.on("data", (d) => console.log(`[mcp:${name}]`, d.toString().trim()));
   proc.on("exit", (code) => {
     console.log(`[mcp:${name}] exited`, code);
-    store.delete(name);
+    // Only clear the store if this is still the live child. A late exit from a
+    // killed child must not delete a freshly-spawned replacement entry.
+    if (store.get(name)?.proc === proc) store.delete(name);
   });
 
   return entry;
@@ -153,6 +155,24 @@ function unregisterSession(name, sid) {
   const entry = getStore().get(name);
   if (!entry) return;
   entry.sessions.delete(sid);
+  // No sessions left → kill child to avoid idle orphan process leak.
+  if (entry.sessions.size === 0) {
+    try { entry.proc.kill(); } catch { /* ignore */ }
+    getStore().delete(name);
+  }
+}
+
+/**
+ * Kill every spawned MCP child and clear the bridge store.
+ * Called on app shutdown (SIGINT/SIGTERM) so child processes do not outlive
+ * the parent as orphans. Best-effort: individual kill failures are ignored.
+ */
+function killAllBridges() {
+  const store = getStore();
+  for (const [name, entry] of store) {
+    try { entry.proc.kill(); } catch { /* ignore */ }
+    store.delete(name);
+  }
 }
 
 function sendToChild(name, jsonRpc) {
@@ -166,4 +186,4 @@ function isRunning(name) {
   return !!(entry?.proc && !entry.proc.killed && entry.proc.exitCode === null);
 }
 
-module.exports = { getOrSpawn, registerSession, unregisterSession, sendToChild, isRunning, findPlugin };
+module.exports = { getOrSpawn, registerSession, unregisterSession, sendToChild, isRunning, findPlugin, killAllBridges };

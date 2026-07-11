@@ -1,56 +1,57 @@
+import "open-sse/utils/proxyFetch.js";
+
+import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { NextResponse } from "next/server";
+
+import {
+  resolveFlowProxySelection,
+  saveOAuthConnection,
+} from "@/lib/oauth/flowCompletion.js";
+import { claimOAuthFlow, consumeOAuthFlow } from "@/lib/oauth/flowStore.js";
 import { KiroService } from "@/lib/oauth/services/kiro";
-import { createProviderConnection } from "@/models";
+import { ensureOutboundProxyInitialized } from "@/lib/network/initOutboundProxy";
 
-/**
- * POST /api/oauth/kiro/social-exchange
- * Exchange authorization code for tokens (Google/GitHub social login)
- * Callback URL will be in format: kiro://kiro.kiroAgent/authenticate-success?code=XXX&state=YYY
- */
+/** Exchange a Kiro social code using only server-bound flow metadata. */
 export async function POST(request) {
+  let claim = null;
   try {
-    const { code, codeVerifier, provider } = await request.json();
+    await ensureOutboundProxyInitialized();
+    const body = await request.json();
+    const code = typeof body?.code === "string" ? body.code.trim() : "";
+    const state = typeof body?.state === "string" ? body.state.trim() : "";
+    const flowId = typeof body?.flowId === "string" ? body.flowId.trim() : "";
+    if (!code || !state || !flowId) throw new Error("Missing required fields");
 
-    if (!code || !codeVerifier) {
-      return NextResponse.json(
-        { error: "Missing required fields" },
-        { status: 400 }
-      );
+    claim = claimOAuthFlow({ flowId, state, provider: "kiro" });
+    if (!claim || claim.kind !== "authorization" || !claim.payload.socialProvider) {
+      throw new Error("OAuth session expired, was cancelled, or was already used");
     }
-
-    if (!provider || !["google", "github"].includes(provider)) {
-      return NextResponse.json(
-        { error: "Invalid provider" },
-        { status: 400 }
-      );
-    }
-
-    const kiroService = new KiroService();
-
-    // Exchange code for tokens (redirect_uri handled internally)
-    const tokenData = await kiroService.exchangeSocialCode(
+    const resolvedProxy = await resolveFlowProxySelection(claim);
+    const service = new KiroService();
+    const tokens = await service.exchangeSocialCode(
       code,
-      codeVerifier
+      claim.payload.codeVerifier,
+      resolvedProxy.proxyOptions,
     );
-
-    // Extract email from JWT if available
-    const email = kiroService.extractEmailFromJWT(tokenData.accessToken);
-
-    // Save to database
-    const connection = await createProviderConnection({
-      provider: "kiro",
-      authType: "oauth",
-      accessToken: tokenData.accessToken,
-      refreshToken: tokenData.refreshToken,
-      expiresAt: new Date(Date.now() + tokenData.expiresIn * 1000).toISOString(),
-      email: email || null,
-      providerSpecificData: {
-        profileArn: tokenData.profileArn,
-        authMethod: provider, // "google" or "github"
-        provider: provider.charAt(0).toUpperCase() + provider.slice(1),
+    const email = service.extractEmailFromJWT(tokens.accessToken);
+    const socialProvider = claim.payload.socialProvider;
+    const connection = await saveOAuthConnection(
+      "kiro",
+      {
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+        expiresIn: tokens.expiresIn,
+        email: email || null,
+        providerSpecificData: {
+          profileArn: tokens.profileArn,
+          authMethod: socialProvider,
+          provider: socialProvider.charAt(0).toUpperCase() + socialProvider.slice(1),
+        },
       },
-      testStatus: "active",
-    });
+      resolvedProxy,
+      {},
+      claim,
+    );
 
     return NextResponse.json({
       success: true,
@@ -61,7 +62,10 @@ export async function POST(request) {
       },
     });
   } catch (error) {
-    console.log("Kiro social exchange error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const message = sanitizeErrorMessage(error?.message || "Social token exchange failed");
+    console.error(`[OAuth] kiro/social-exchange failed: ${message}`);
+    return NextResponse.json({ error: message }, { status: 400 });
+  } finally {
+    if (claim) consumeOAuthFlow(claim);
   }
 }

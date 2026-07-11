@@ -9,6 +9,26 @@ import { FORMATS } from "../../open-sse/translator/formats.js";
 const C2K = (body) =>
   translateRequest(FORMATS.CLAUDE, FORMATS.KIRO, "claude-sonnet-4.5", body, true, null, "kiro");
 
+describe("public translateRequest suffix fallback", () => {
+  it("cleans same-format body.model while applying the suffix intent", () => {
+    const out = translateRequest(
+      FORMATS.OPENAI,
+      FORMATS.OPENAI,
+      "gpt-5(high)",
+      {
+        model: "gpt-5(high)",
+        messages: [{ role: "user", content: "hello" }],
+      },
+      true,
+      null,
+      "openai",
+    );
+
+    expect(out.model).toBe("gpt-5");
+    expect(out.reasoning_effort).toBe("high");
+  });
+});
+
 describe("Claude → Kiro (direct route)", () => {
   it("produces a Kiro conversationState payload", () => {
     const out = C2K({ messages: [{ role: "user", content: "hello" }] });
@@ -74,6 +94,80 @@ describe("Claude → Kiro (direct route)", () => {
     expect(out.conversationState.currentMessage.userInputMessage.content).toContain(
       "<max_thinking_length>24576</max_thinking_length>"
     );
+  });
+
+  it("threads a parsed suffix intent without leaking it into nested model IDs", () => {
+    const out = translateRequest(
+      FORMATS.CLAUDE,
+      FORMATS.KIRO,
+      "claude-sonnet-4.5",
+      {
+        messages: [
+          { role: "user", content: "first" },
+          { role: "assistant", content: "answer" },
+          { role: "user", content: "next" },
+        ],
+      },
+      true,
+      { rawHeaders: { "x-session-id": "kiro-session-144" } },
+      "kiro",
+      null,
+      [],
+      "connection-144",
+      null,
+      { thinkingIntent: { mode: "level", level: "high" }, capabilityModel: "claude-sonnet-4.5" },
+    );
+
+    expect(out.conversationState.conversationId).toBe("kiro-session-144");
+    expect(out.conversationState.currentMessage.userInputMessage.content).toContain(
+      "<max_thinking_length>24576</max_thinking_length>",
+    );
+    const serialized = JSON.stringify(out);
+    expect(serialized).not.toContain("(high)");
+    expect(serialized).not.toContain("_kiro");
+  });
+
+  it("keeps the public translateRequest entry point safe without explicit context", () => {
+    const out = translateRequest(
+      FORMATS.CLAUDE,
+      FORMATS.KIRO,
+      "claude-sonnet-4.5(high)",
+      { messages: [{ role: "user", content: "hello" }] },
+      true,
+      null,
+      "kiro",
+    );
+
+    expect(out.conversationState.currentMessage.userInputMessage.modelId).toBe(
+      "claude-sonnet-4.5",
+    );
+    expect(out.conversationState.currentMessage.userInputMessage.content).toContain(
+      "<max_thinking_length>24576</max_thinking_length>",
+    );
+  });
+
+  it("lets an explicit none suffix suppress body/header/model thinking fallbacks", () => {
+    const out = translateRequest(
+      FORMATS.CLAUDE,
+      FORMATS.KIRO,
+      "claude-sonnet-4.5-thinking",
+      {
+        thinking: { type: "enabled", budget_tokens: 8192 },
+        messages: [{ role: "user", content: "do not think" }],
+      },
+      true,
+      { rawHeaders: { "anthropic-beta": "interleaved-thinking-2025-05-14" } },
+      "kiro",
+      null,
+      [],
+      null,
+      null,
+      { thinkingIntent: { mode: "none" }, capabilityModel: "claude-sonnet-4.5-thinking" },
+    );
+
+    const content = out.conversationState.currentMessage.userInputMessage.content;
+    expect(content).not.toContain("<thinking_mode>");
+    expect(content).not.toContain("<max_thinking_length>");
   });
 });
 

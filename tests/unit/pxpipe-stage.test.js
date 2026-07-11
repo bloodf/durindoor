@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { compressWithPxpipe, formatPxpipeLog } from "../../open-sse/rtk/pxpipe.js";
+import { compressWithPxpipe, formatPxpipeLog, normalizePxpipeResult } from "../../open-sse/rtk/pxpipe.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 
 const LONG_TEXT = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(400);
@@ -19,17 +19,27 @@ describe("compressWithPxpipe", () => {
     expect(JSON.stringify(body)).toBe(original);
   });
 
-  it("applies or reports a skip reason for a large blackbox OpenAI-format Fable body", async () => {
+  it("reaches the transformer for a large blackbox OpenAI-format Fable body", async () => {
     const body = JSON.parse(JSON.stringify(LARGE_BODY));
     const originalModel = "blackboxai/anthropic/claude-fable-5";
     body.model = originalModel;
-    const res = await compressWithPxpipe(body, { enabled: true, model: originalModel, format: FORMATS.OPENAI, diagnostics: {} });
-    if (res?.applied) {
-      expect(JSON.stringify(body)).toContain('"type":"image"');
-      expect(body.model).toBe(originalModel);
-    } else {
-      expect(["not_profitable", "below_min_chars", "below_min_tokens", "parse_error", "image_limit"]).toContain(res?.reason || "not_profitable");
-    }
+    const transformed = { ...body, messages: [{ role: "user", content: [{ type: "image_url", image_url: { url: "data:image/png;base64,AA==" } }] }] };
+    const transform = async () => ({
+      applied: true,
+      body: new TextEncoder().encode(JSON.stringify(transformed)),
+      info: { compressedChars: 1000, imageCount: 1, imageTokens: 100 },
+    });
+    const res = await compressWithPxpipe(body, {
+      enabled: true,
+      model: originalModel,
+      format: FORMATS.OPENAI,
+      minChars: 1,
+      transform,
+      diagnostics: {},
+    });
+    expect(res?.applied).toBe(true);
+    expect(res.body.model).toBe(originalModel);
+    expect(res.body.messages[0].content[0].type).toBe("image_url");
   });
 
   it("returns unsupported_model for blackbox non-anthropic OpenAI aliases", async () => {
@@ -46,6 +56,13 @@ describe("compressWithPxpipe", () => {
     const res = await compressWithPxpipe(body, { enabled: true, model: "claude-haiku-4-5", format: FORMATS.CLAUDE, diagnostics });
     expect(res).toBeNull();
     expect(diagnostics.reason).toBe("unsupported_model");
+  });
+
+  it("normalizes null early skips for the request pipeline", () => {
+    expect(normalizePxpipeResult(null, { reason: "unsupported_model" })).toMatchObject({
+      body: null,
+      summary: { applied: false, reason: "unsupported_model" },
+    });
   });
 
   it("applies or reports an allowed skip reason for a large supported claude body", async () => {

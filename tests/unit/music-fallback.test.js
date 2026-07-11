@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   getProviderCredentials: vi.fn(),
   markAccountUnavailable: vi.fn(),
   extractApiKey: vi.fn(),
-  isValidApiKey: vi.fn(),
+  evaluateApiKeyAuth: vi.fn(),
   handleMusicGenerationCore: vi.fn(),
 }));
 
@@ -22,7 +22,7 @@ vi.mock("../../src/sse/services/auth.js", () => ({
   getProviderCredentials: mocks.getProviderCredentials,
   markAccountUnavailable: mocks.markAccountUnavailable,
   extractApiKey: mocks.extractApiKey,
-  isValidApiKey: mocks.isValidApiKey,
+  evaluateApiKeyAuth: mocks.evaluateApiKeyAuth,
 }));
 
 vi.mock("../../open-sse/handlers/musicGenerationCore.js", () => ({
@@ -53,7 +53,7 @@ describe("music handler credential fallback", () => {
     mocks.getSettings.mockResolvedValue({ requireApiKey: false });
     mocks.getModelInfo.mockResolvedValue({ provider: "suno", model: "suno-override" });
     mocks.extractApiKey.mockReturnValue(null);
-    mocks.isValidApiKey.mockResolvedValue(false);
+    mocks.evaluateApiKeyAuth.mockResolvedValue({ ok: true, reason: null, stored: false });
   });
 
   it("passes x-connection-id to getProviderCredentials as preferred connection", async () => {

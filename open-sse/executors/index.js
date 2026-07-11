@@ -36,6 +36,10 @@ import { TraeExecutor } from "./trae.js";
 import { DevinCliExecutor } from "./devin-cli.js";
 import { WindsurfExecutor } from "./windsurf.js";
 import { DefaultExecutor } from "./default.js";
+import { CopilotWebExecutor } from "./copilot-web.js";
+import { CopilotM365WebExecutor } from "./copilot-m365-web.js";
+import { VeoAIFreeWebExecutor } from "./veoaifree-web.js";
+import { ZenmuxFreeExecutor } from "./zenmux-free.js";
 import {
   UnsupportedOmniRouteWebSessionExecutor,
   BLOCKED_OMNIROUTE_PROVIDERS,
@@ -74,6 +78,7 @@ const executors = {
   commandcode: new CommandCodeExecutor(),
   "command-code": new CommandCodeExecutor("command-code"),
   pollinations: new PollinationsExecutor(),
+  pol: new PollinationsExecutor(),
   puter: new PuterExecutor(),
   theoldllm: new TheOldLlmExecutor(),
   "xiaomi-tokenplan": new XiaomiTokenplanExecutor(),
@@ -90,6 +95,14 @@ const executors = {
   trae: new TraeExecutor(),
   "devin-cli": new DevinCliExecutor(),
   windsurf: new WindsurfExecutor(),
+  "copilot-web": new CopilotWebExecutor(),
+  copilot: new CopilotWebExecutor(),
+  "copilot-m365-web": new CopilotM365WebExecutor(),
+  m365copilot: new CopilotM365WebExecutor(),
+  "veoaifree-web": new VeoAIFreeWebExecutor(),
+  "veo-free": new VeoAIFreeWebExecutor(),
+  "zenmux-free": new ZenmuxFreeExecutor(),
+  zmf: new ZenmuxFreeExecutor(),
   ...Object.fromEntries(
     Object.keys(BLOCKED_OMNIROUTE_PROVIDERS).map((provider) => [
       provider,
@@ -155,6 +168,10 @@ export { GitlabExecutor } from "./gitlab.js";
 export { TraeExecutor } from "./trae.js";
 export { DevinCliExecutor } from "./devin-cli.js";
 export { WindsurfExecutor } from "./windsurf.js";
+export { CopilotWebExecutor } from "./copilot-web.js";
+export { CopilotM365WebExecutor } from "./copilot-m365-web.js";
+export { VeoAIFreeWebExecutor } from "./veoaifree-web.js";
+export { ZenmuxFreeExecutor } from "./zenmux-free.js";
 export {
   UnsupportedOmniRouteWebSessionExecutor,
   BLOCKED_OMNIROUTE_PROVIDERS,

@@ -509,6 +509,65 @@ export class AntigravityExecutor extends BaseExecutor {
       toolNameMap
     };
   }
+
+  /**
+   * Parse Antigravity quota-exhausted errors to extract precise reset time.
+   * AG returns quotaResetDelay ("160h19m55s") or quotaResetTimeStamp (ISO string)
+   * in error.details[].metadata. We surface this as resetsAtMs so markAccountUnavailable
+   * can lock the account for the real duration instead of the MAX_RATE_LIMIT_COOLDOWN_MS cap.
+   * When a secondary account is available this precise cooldown lets the router fall over
+   * to it for the full quota window rather than retrying the exhausted primary.
+   *
+   * @param {Response} response - Upstream response
+   * @param {string} bodyText - Raw response body
+   * @returns {{status: number, message: string, resetsAtMs?: number}}
+   */
+  parseError(response, bodyText) {
+    if (response.status !== 429) return super.parseError(response, bodyText);
+
+    try {
+      const errorJson = JSON.parse(bodyText);
+      const details = errorJson?.error?.details || [];
+
+      for (const detail of details) {
+        const meta = detail?.metadata || {};
+
+        // quotaResetTimeStamp: ISO string — most precise
+        if (meta.quotaResetTimeStamp) {
+          const ms = new Date(meta.quotaResetTimeStamp).getTime();
+          if (ms > Date.now()) {
+            return {
+              status: 429,
+              message: errorJson?.error?.message || bodyText,
+              resetsAtMs: ms,
+            };
+          }
+        }
+
+        // quotaResetDelay: duration string e.g. "160h19m55s"
+        if (meta.quotaResetDelay) {
+          const match = meta.quotaResetDelay.match(/(?:(\d+)h)?(?:(\d+)m)?(?:(\d+(?:\.\d+)?)s)?/);
+          if (match) {
+            const h = parseFloat(match[1] || 0);
+            const m = parseFloat(match[2] || 0);
+            const s = parseFloat(match[3] || 0);
+            const delayMs = (h * 3600 + m * 60 + s) * 1000;
+            if (delayMs > 0) {
+              return {
+                status: 429,
+                message: errorJson?.error?.message || bodyText,
+                resetsAtMs: Date.now() + delayMs,
+              };
+            }
+          }
+        }
+      }
+    } catch {
+      // fall through to base
+    }
+
+    return super.parseError(response, bodyText);
+  }
 }
 
 // AG decoy tools — same names as AG native defaults, redirect to _ide suffixed tools

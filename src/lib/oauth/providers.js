@@ -31,6 +31,7 @@ import {
   WINDSURF_CONFIG,
   CODEBUDDY_CONFIG,
   KIMCHI_CONFIG,
+  GROK_CLI_CONFIG,
   getOAuthClientMetadata,
 } from "./constants/oauth";
 import { XAI_CONFIG, XAI_PKCE_VERIFIER_BYTES } from "./constants/xai";
@@ -44,92 +45,16 @@ import {
 
 export { extractCodexAccountInfo, fetchKiroProfileArn };
 
-function decodeJwtPayload(jwt) {
-  try {
-    if (!jwt || typeof jwt !== "string") return null;
-    const parts = jwt.split(".");
-    if (parts.length !== 3) return null;
-    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
-    return JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
-  } catch {
-    return null;
-  }
-}
-
-function extractGrokCliToken(input) {
-  if (typeof input === "string") {
-    return { accessToken: input, refreshToken: null, rawAuthJson: null, expiresAt: null };
-  }
-
-  if (input && typeof input === "object") {
-    const obj = input;
-    const inner = obj.accessToken && typeof obj.accessToken === "object" ? obj.accessToken : obj;
-
-    if (inner && typeof inner === "object") {
-      for (const entry of Object.values(inner)) {
-        if (!entry || typeof entry !== "object") continue;
-        if (typeof entry.key === "string" && entry.key.startsWith("eyJ")) {
-          return {
-            accessToken: entry.key,
-            refreshToken: typeof entry.refresh_token === "string" ? entry.refresh_token : null,
-            rawAuthJson: inner,
-            expiresAt: typeof entry.expires_at === "string" ? entry.expires_at : null,
-          };
-        }
-      }
-    }
-
-    if (typeof obj.accessToken === "string" && obj.accessToken.length > 0) {
-      return {
-        accessToken: obj.accessToken,
-        refreshToken: typeof obj.refreshToken === "string" ? obj.refreshToken : null,
-        rawAuthJson: null,
-        expiresAt: null,
-      };
-    }
-  }
-
-  return { accessToken: "", refreshToken: null, rawAuthJson: null, expiresAt: null };
-}
-
-export function mapGrokCliTokens(tokens) {
-  const { accessToken, refreshToken, rawAuthJson, expiresAt } = extractGrokCliToken(tokens);
-  const payload = decodeJwtPayload(accessToken) || {};
-  const currentSec = Math.floor(Date.now() / 1000);
-  let expiresIn = 21600;
-
-  if (expiresAt) {
-    const parsed = Date.parse(expiresAt);
-    if (Number.isFinite(parsed)) expiresIn = Math.floor(parsed / 1000) - currentSec;
-  } else if (typeof payload.exp === "number" && payload.exp > 0) {
-    expiresIn = payload.exp - currentSec;
-  }
-
-  expiresIn = Math.max(1, expiresIn);
-
-  return {
-    accessToken,
-    refreshToken,
-    expiresIn,
-    email: payload.email || null,
-    providerSpecificData: {
-      userId: payload.sub || null,
-      teamId: payload.team_id || null,
-      tier: payload.tier || 1,
-      principalType: payload.principal_type || "User",
-      rawAuthJson: rawAuthJson || undefined,
-    },
-  };
-}
-
 // Inlined from services/xai.js to keep web route bundle free of `open` (CLI-only) package
 let cachedXaiDiscovery = null;
 
-async function discoverXaiEndpoints() {
+async function discoverXaiEndpoints(proxyOptions = null) {
   if (cachedXaiDiscovery) return cachedXaiDiscovery;
   try {
-    const res = await fetch(XAI_CONFIG.discoveryUrl, { headers: { Accept: "application/json" } });
+    const res = await fetch(XAI_CONFIG.discoveryUrl, {
+      headers: { Accept: "application/json" },
+      proxyOptions,
+    });
     if (res.ok) {
       const data = await res.json();
       cachedXaiDiscovery = {
@@ -161,7 +86,7 @@ const PROVIDERS = {
       });
       return `${config.authorizeUrl}?${params.toString()}`;
     },
-    exchangeToken: async (config, code, redirectUri, codeVerifier, state) => {
+    exchangeToken: async (config, code, redirectUri, codeVerifier, state, meta, proxyOptions) => {
       // Parse code - may contain state after #
       let authCode = code;
       let codeState = "";
@@ -185,6 +110,7 @@ const PROVIDERS = {
           redirect_uri: redirectUri,
           code_verifier: codeVerifier,
         }),
+        proxyOptions,
       });
 
       if (!response.ok) {
@@ -223,12 +149,13 @@ const PROVIDERS = {
         .join("&");
       return `${config.authorizeUrl}?${queryString}`;
     },
-    exchangeToken: async (config, code, redirectUri, codeVerifier) => {
-      const response = await fetch(config.tokenUrl, {
+    exchangeToken: async (config, code, redirectUri, codeVerifier, state, meta, proxyOptions) => {
+      const buildRequest = (nextProxyOptions) => ({
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
           Accept: "application/json",
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         },
         body: new URLSearchParams({
           grant_type: "authorization_code",
@@ -236,11 +163,23 @@ const PROVIDERS = {
           code: code,
           redirect_uri: redirectUri,
           code_verifier: codeVerifier,
-        }),
+        }).toString(),
+        proxyOptions: nextProxyOptions,
       });
 
+      let response = await fetch(config.tokenUrl, buildRequest(proxyOptions));
       if (!response.ok) {
         const error = await response.text();
+        if (
+          isCloudflareHtmlBadRequest(response.status, error) &&
+          proxyOptions?.disableEnvProxy !== true &&
+          proxyOptions?.strictProxy !== true
+        ) {
+          response = await fetch(config.tokenUrl, buildRequest({ disableEnvProxy: true }));
+          if (response.ok) return await response.json();
+          const directError = await response.text();
+          throw new Error(`Token exchange failed: ${directError}`);
+        }
         throw new Error(`Token exchange failed: ${error}`);
       }
 
@@ -273,8 +212,8 @@ const PROVIDERS = {
     fixedPort: XAI_CONFIG.loopbackPort,
     callbackPath: XAI_CONFIG.callbackPath,
     pkceVerifierBytes: XAI_PKCE_VERIFIER_BYTES,
-    prepareConfig: async (config) => {
-      const endpoints = await discoverXaiEndpoints();
+    prepareConfig: async (config, meta, proxyOptions) => {
+      const endpoints = await discoverXaiEndpoints(proxyOptions);
       return {
         ...config,
         authorizeUrl: endpoints.authorizeUrl,
@@ -301,7 +240,7 @@ const PROVIDERS = {
         .join("&");
       return `${config.authorizeUrl}?${qs}`;
     },
-    exchangeToken: async (config, code, redirectUri, codeVerifier) => {
+    exchangeToken: async (config, code, redirectUri, codeVerifier, state, meta, proxyOptions) => {
       const response = await fetch(config.tokenUrl, {
         method: "POST",
         headers: {
@@ -315,6 +254,7 @@ const PROVIDERS = {
           redirect_uri: redirectUri,
           code_verifier: codeVerifier,
         }),
+        proxyOptions,
       });
       if (!response.ok) {
         const error = await response.text();
@@ -339,12 +279,108 @@ const PROVIDERS = {
   },
 
   "grok-cli": {
-    config: {
-      clientId: XAI_CONFIG.clientId,
-      tokenUrl: "https://auth.x.ai/oauth2/token",
+    config: GROK_CLI_CONFIG,
+    flowType: "device_code",
+    // Grok CLI / Grok Build — device code flow to auth.x.ai, inference on cli-chat-proxy.grok.com
+    requestDeviceCode: async (config, codeChallenge, options, proxyOptions) => {
+      const body = new URLSearchParams({
+        client_id: config.clientId,
+        scope: config.scope,
+      });
+      // Official CLI sends referrer=grok-build
+      if (config.referrer) body.set("referrer", config.referrer);
+
+      const response = await fetch(config.deviceCodeUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+          "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)",
+        },
+        body,
+        proxyOptions,
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Grok CLI device code request failed: ${error}`);
+      }
+
+      return await response.json();
     },
-    flowType: "import_token",
-    mapTokens: mapGrokCliTokens,
+    pollToken: async (config, deviceCode, codeVerifier, extraData, proxyOptions) => {
+      const response = await fetch(config.tokenUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+          "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)",
+        },
+        body: new URLSearchParams({
+          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+          device_code: deviceCode,
+          client_id: config.clientId,
+        }),
+        proxyOptions,
+      });
+
+      let data;
+      const text = await response.text();
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        data = { error: "invalid_response", error_description: text };
+      }
+
+      // Device flow: 400 + authorization_pending / slow_down is expected while the user authorizes.
+      const pending = data?.error === "authorization_pending" || data?.error === "slow_down";
+      return { ok: response.ok || pending, data };
+    },
+    postExchange: async (tokens, proxyOptions) => {
+      // Best-effort user profile from cli-chat-proxy (non-fatal).
+      try {
+        const res = await fetch("https://cli-chat-proxy.grok.com/v1/user", {
+          headers: {
+            Authorization: `Bearer ${tokens.access_token}`,
+            Accept: "application/json",
+            "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)",
+            "x-xai-token-auth": "xai-grok-cli",
+            "x-grok-client-version": "0.2.93",
+          },
+          proxyOptions,
+        });
+        if (res.ok) return { user: await res.json() };
+      } catch {
+        /* ignore */
+      }
+      return { user: null };
+    },
+    mapTokens: (tokens, extra) => {
+      const email =
+        decodeXaiIdTokenEmail(tokens.id_token) ||
+        extractEmailFromAccessToken(tokens.access_token) ||
+        extra?.user?.email ||
+        null;
+      const userId = extra?.user?.userId || extra?.user?.principalId || null;
+      const displayName =
+        [extra?.user?.firstName, extra?.user?.lastName].filter(Boolean).join(" ").trim() || null;
+
+      return {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token || null,
+        expiresIn: tokens.expires_in,
+        scope: tokens.scope,
+        // Top-level for dashboard connection cards.
+        email,
+        ...(displayName ? { displayName } : {}),
+        providerSpecificData: {
+          authMethod: "device_code",
+          ...(tokens.id_token ? { idToken: tokens.id_token } : {}),
+          ...(email ? { email } : {}),
+          ...(userId ? { userId } : {}),
+        },
+      };
+    },
   },
 
   "gemini-cli": {
@@ -362,7 +398,7 @@ const PROVIDERS = {
       });
       return `${config.authorizeUrl}?${params.toString()}`;
     },
-    exchangeToken: async (config, code, redirectUri) => {
+    exchangeToken: async (config, code, redirectUri, codeVerifier, state, meta, proxyOptions) => {
       const response = await fetch(config.tokenUrl, {
         method: "POST",
         headers: {
@@ -376,6 +412,7 @@ const PROVIDERS = {
           code: code,
           redirect_uri: redirectUri,
         }),
+        proxyOptions,
       });
 
       if (!response.ok) {
@@ -385,10 +422,11 @@ const PROVIDERS = {
 
       return await response.json();
     },
-    postExchange: async (tokens) => {
+    postExchange: async (tokens, proxyOptions) => {
       // Fetch user info
       const userInfoRes = await fetch(`${GEMINI_CONFIG.userInfoUrl}?alt=json`, {
         headers: { Authorization: `Bearer ${tokens.access_token}` },
+        proxyOptions,
       });
       const userInfo = userInfoRes.ok ? await userInfoRes.json() : {};
 
@@ -407,6 +445,7 @@ const PROVIDERS = {
               metadata: getOAuthClientMetadata(),
               mode: 1,
             }),
+            proxyOptions,
           }
         );
         if (projectRes.ok) {
@@ -444,7 +483,7 @@ const PROVIDERS = {
       });
       return `${config.authorizeUrl}?${params.toString()}`;
     },
-    exchangeToken: async (config, code, redirectUri) => {
+    exchangeToken: async (config, code, redirectUri, codeVerifier, state, meta, proxyOptions) => {
       const response = await fetch(config.tokenUrl, {
         method: "POST",
         headers: {
@@ -458,6 +497,7 @@ const PROVIDERS = {
           code: code,
           redirect_uri: redirectUri,
         }),
+        proxyOptions,
       });
 
       if (!response.ok) {
@@ -467,7 +507,7 @@ const PROVIDERS = {
 
       return await response.json();
     },
-    postExchange: async (tokens) => {
+    postExchange: async (tokens, proxyOptions) => {
       // Numeric enums matching Antigravity binary ClientMetadata
       const loadHeaders = {
         "Authorization": `Bearer ${tokens.access_token}`,
@@ -485,6 +525,7 @@ const PROVIDERS = {
           Authorization: `Bearer ${tokens.access_token}`,
           "x-request-source": "local",
         },
+        proxyOptions,
       });
       const userInfo = userInfoRes.ok ? await userInfoRes.json() : {};
 
@@ -496,6 +537,7 @@ const PROVIDERS = {
           method: "POST",
           headers: loadHeaders,
           body: JSON.stringify({ metadata }),
+          proxyOptions,
         });
         if (loadRes.ok) {
           const data = await loadRes.json();
@@ -522,6 +564,7 @@ const PROVIDERS = {
                 method: "POST",
                 headers: loadHeaders,
                 body: JSON.stringify({ tierId, metadata }),
+                proxyOptions,
               });
               if (onboardRes.ok) {
                 const result = await onboardRes.json();
@@ -561,7 +604,7 @@ const PROVIDERS = {
       });
       return `${config.authorizeUrl}?${params.toString()}`;
     },
-    exchangeToken: async (config, code, redirectUri) => {
+    exchangeToken: async (config, code, redirectUri, codeVerifier, state, meta, proxyOptions) => {
       // Create Basic Auth header
       const basicAuth = Buffer.from(
         `${config.clientId}:${config.clientSecret}`
@@ -581,6 +624,7 @@ const PROVIDERS = {
           client_id: config.clientId,
           client_secret: config.clientSecret,
         }),
+        proxyOptions,
       });
 
       if (!response.ok) {
@@ -590,7 +634,7 @@ const PROVIDERS = {
 
       return await response.json();
     },
-    postExchange: async (tokens) => {
+    postExchange: async (tokens, proxyOptions) => {
       // Fetch user info (MUST succeed to get API key)
       const userInfoRes = await fetch(
         `${IFLOW_CONFIG.userInfoUrl}?accessToken=${encodeURIComponent(tokens.access_token)}`,
@@ -598,6 +642,7 @@ const PROVIDERS = {
           headers: {
             Accept: "application/json",
           },
+          proxyOptions,
         }
       );
       
@@ -663,7 +708,7 @@ const PROVIDERS = {
         _qoderMachineId: flow.machineId,
       };
     },
-    pollToken: async (config, deviceCode, codeVerifier, extraData) => {
+    pollToken: async (config, deviceCode, codeVerifier, extraData, proxyOptions) => {
       const { QoderService } = await import("@/lib/oauth/services/qoder");
       const svc = new QoderService();
       const nonce = deviceCode || extraData?._qoderNonce;
@@ -676,7 +721,7 @@ const PROVIDERS = {
       }
       let result;
       try {
-        result = await svc.pollDeviceToken({ nonce, codeVerifier: verifier });
+        result = await svc.pollDeviceToken({ nonce, codeVerifier: verifier, proxyOptions });
       } catch (err) {
         return {
           ok: false,
@@ -687,7 +732,7 @@ const PROVIDERS = {
         return { ok: false, data: { error: "authorization_pending" } };
       }
       // Best-effort profile lookup so we have a name/email to display.
-      const userInfo = await svc.fetchUserInfo(result.accessToken);
+      const userInfo = await svc.fetchUserInfo(result.accessToken, proxyOptions);
       // expireTime is a Unix-ms timestamp from QoderService.parseExpiry,
       // which already falls back to "now + 30 days" when the upstream
       // omits expiry. Floor to a sane minimum (1 day) so a stale or
@@ -738,7 +783,7 @@ const PROVIDERS = {
   qwen: {
     config: QWEN_CONFIG,
     flowType: "device_code",
-    requestDeviceCode: async (config, codeChallenge) => {
+    requestDeviceCode: async (config, codeChallenge, options = {}, proxyOptions) => {
       const response = await fetch(config.deviceCodeUrl, {
         method: "POST",
         headers: {
@@ -751,6 +796,7 @@ const PROVIDERS = {
           code_challenge: codeChallenge,
           code_challenge_method: config.codeChallengeMethod,
         }),
+        proxyOptions,
       });
 
       if (!response.ok) {
@@ -760,7 +806,7 @@ const PROVIDERS = {
 
       return await response.json();
     },
-    pollToken: async (config, deviceCode, codeVerifier) => {
+    pollToken: async (config, deviceCode, codeVerifier, extraData, proxyOptions) => {
       const response = await fetch(config.tokenUrl, {
         method: "POST",
         headers: {
@@ -773,6 +819,7 @@ const PROVIDERS = {
           device_code: deviceCode,
           code_verifier: codeVerifier,
         }),
+        proxyOptions,
       });
 
       return {
@@ -791,7 +838,7 @@ const PROVIDERS = {
   github: {
     config: GITHUB_CONFIG,
     flowType: "device_code",
-    requestDeviceCode: async (config) => {
+    requestDeviceCode: async (config, codeChallenge, options = {}, proxyOptions) => {
       const response = await fetch(config.deviceCodeUrl, {
         method: "POST",
         headers: {
@@ -802,6 +849,7 @@ const PROVIDERS = {
           client_id: config.clientId,
           scope: config.scopes,
         }),
+        proxyOptions,
       });
 
       if (!response.ok) {
@@ -811,7 +859,7 @@ const PROVIDERS = {
 
       return await response.json();
     },
-    pollToken: async (config, deviceCode) => {
+    pollToken: async (config, deviceCode, codeVerifier, extraData, proxyOptions) => {
       const response = await fetch(config.tokenUrl, {
         method: "POST",
         headers: {
@@ -823,6 +871,7 @@ const PROVIDERS = {
           device_code: deviceCode,
           grant_type: "urn:ietf:params:oauth:grant-type:device_code",
         }),
+        proxyOptions,
       });
 
       // Handle response properly - if not ok, try to get error as text first
@@ -840,7 +889,7 @@ const PROVIDERS = {
         data: data,
       };
     },
-    postExchange: async (tokens) => {
+    postExchange: async (tokens, proxyOptions) => {
       // Get Copilot token using GitHub access token
       const copilotRes = await fetch(GITHUB_CONFIG.copilotTokenUrl, {
         headers: {
@@ -849,6 +898,7 @@ const PROVIDERS = {
           "X-GitHub-Api-Version": GITHUB_CONFIG.apiVersion,
           "User-Agent": GITHUB_CONFIG.userAgent,
         },
+        proxyOptions,
       });
       const copilotToken = copilotRes.ok ? await copilotRes.json() : {};
 
@@ -860,6 +910,7 @@ const PROVIDERS = {
           "X-GitHub-Api-Version": GITHUB_CONFIG.apiVersion,
           "User-Agent": GITHUB_CONFIG.userAgent,
         },
+        proxyOptions,
       });
       const userInfo = userRes.ok ? await userRes.json() : {};
 
@@ -869,6 +920,9 @@ const PROVIDERS = {
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token,
       expiresIn: tokens.expires_in,
+      name: extra?.userInfo?.login || extra?.userInfo?.name,
+      displayName: extra?.userInfo?.name || extra?.userInfo?.login,
+      email: extra?.userInfo?.email || null,
       providerSpecificData: {
         copilotToken: extra?.copilotToken?.token,
         copilotTokenExpiresAt: extra?.copilotToken?.expires_at,
@@ -884,7 +938,7 @@ const PROVIDERS = {
     config: KIRO_CONFIG,
     flowType: "device_code",
     // Kiro uses AWS SSO OIDC - requires client registration first
-    requestDeviceCode: async (config, codeChallenge, options = {}) => {
+    requestDeviceCode: async (config, codeChallenge, options = {}, proxyOptions) => {
       const trimmedRegion = typeof options.region === "string" ? options.region.trim() : "";
       const region = trimmedRegion || "us-east-1";
       assertValidAwsRegion(region);
@@ -908,6 +962,7 @@ const PROVIDERS = {
           grantTypes: config.grantTypes,
           issuerUrl: config.issuerUrl,
         }),
+        proxyOptions,
       });
 
       if (!registerRes.ok) {
@@ -929,6 +984,7 @@ const PROVIDERS = {
           clientSecret: clientInfo.clientSecret,
           startUrl,
         }),
+        proxyOptions,
       });
 
       if (!deviceRes.ok) {
@@ -954,7 +1010,7 @@ const PROVIDERS = {
         _startUrl: startUrl,
       };
     },
-    pollToken: async (config, deviceCode, codeVerifier, extraData) => {
+    pollToken: async (config, deviceCode, codeVerifier, extraData, proxyOptions) => {
       const region = extraData?._region || "us-east-1";
       assertValidAwsRegion(region);
       const tokenUrl = `https://oidc.${region}.amazonaws.com/token`;
@@ -970,6 +1026,7 @@ const PROVIDERS = {
           deviceCode: deviceCode,
           grantType: "urn:ietf:params:oauth:grant-type:device_code",
         }),
+        proxyOptions,
       });
 
       let data;
@@ -1046,11 +1103,12 @@ const PROVIDERS = {
   "kimi-coding": {
     config: KIMI_CODING_CONFIG,
     flowType: "device_code",
-    requestDeviceCode: async (config) => {
+    requestDeviceCode: async (config, codeChallenge, options = {}, proxyOptions) => {
       const response = await fetch(config.deviceCodeUrl, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
         body: new URLSearchParams({ client_id: config.clientId }),
+        proxyOptions,
       });
       if (!response.ok) {
         const error = await response.text();
@@ -1068,7 +1126,7 @@ const PROVIDERS = {
         interval: data.interval || 5,
       };
     },
-    pollToken: async (config, deviceCode) => {
+    pollToken: async (config, deviceCode, codeVerifier, extraData, proxyOptions) => {
       const response = await fetch(config.tokenUrl, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
@@ -1077,6 +1135,7 @@ const PROVIDERS = {
           client_id: config.clientId,
           device_code: deviceCode,
         }),
+        proxyOptions,
       });
       let data;
       try {
@@ -1097,10 +1156,11 @@ const PROVIDERS = {
   kilocode: {
     config: KILOCODE_CONFIG,
     flowType: "device_code",
-    requestDeviceCode: async (config) => {
+    requestDeviceCode: async (config, codeChallenge, options = {}, proxyOptions) => {
       const response = await fetch(config.initiateUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        proxyOptions,
       });
       if (!response.ok) {
         if (response.status === 429) {
@@ -1119,8 +1179,8 @@ const PROVIDERS = {
         interval: 3,
       };
     },
-    pollToken: async (config, deviceCode) => {
-      const response = await fetch(`${config.pollUrlBase}/${deviceCode}`);
+    pollToken: async (config, deviceCode, codeVerifier, extraData, proxyOptions) => {
+      const response = await fetch(`${config.pollUrlBase}/${deviceCode}`, { proxyOptions });
       if (response.status === 202) return { ok: false, data: { error: "authorization_pending" } };
       if (response.status === 403) return { ok: false, data: { error: "access_denied", error_description: "Authorization denied by user" } };
       if (response.status === 410) return { ok: false, data: { error: "expired_token", error_description: "Authorization code expired" } };
@@ -1131,7 +1191,8 @@ const PROVIDERS = {
         let orgId = null;
         try {
           const profileRes = await fetch(`${config.apiBaseUrl}/api/profile`, {
-            headers: { "Authorization": `Bearer ${data.token}` }
+            headers: { "Authorization": `Bearer ${data.token}` },
+            proxyOptions,
           });
           if (profileRes.ok) {
             const profile = await profileRes.json();
@@ -1154,15 +1215,16 @@ const PROVIDERS = {
   cline: {
     config: CLINE_CONFIG,
     flowType: "authorization_code",
-    buildAuthUrl: (config, redirectUri) => {
+    buildAuthUrl: (config, redirectUri, state) => {
       const params = new URLSearchParams({
         client_type: "extension",
         callback_url: redirectUri,
         redirect_uri: redirectUri,
+        state,
       });
       return `${config.authorizeUrl}?${params.toString()}`;
     },
-    exchangeToken: async (config, code, redirectUri) => {
+    exchangeToken: async (config, code, redirectUri, codeVerifier, state, meta, proxyOptions) => {
       try {
         // Cline encodes token data as base64 in the code param
         let base64 = code;
@@ -1185,6 +1247,7 @@ const PROVIDERS = {
           method: "POST",
           headers: { "Content-Type": "application/json", Accept: "application/json" },
           body: JSON.stringify({ grant_type: "authorization_code", code, client_type: "extension", redirect_uri: redirectUri }),
+          proxyOptions,
         });
         if (!response.ok) {
           const error = await response.text();
@@ -1212,15 +1275,16 @@ const PROVIDERS = {
   clinepass: {
     config: CLINEPASS_CONFIG,
     flowType: "authorization_code",
-    buildAuthUrl: (config, redirectUri) => {
+    buildAuthUrl: (config, redirectUri, state) => {
       const params = new URLSearchParams({
         client_type: "extension",
         callback_url: redirectUri,
         redirect_uri: redirectUri,
+        state,
       });
       return `${config.authorizeUrl}?${params.toString()}`;
     },
-    exchangeToken: async (config, code, redirectUri) => {
+    exchangeToken: async (config, code, redirectUri, codeVerifier, state, meta, proxyOptions) => {
       try {
         // Cline encodes token data as base64 in the code param
         let base64 = code;
@@ -1243,6 +1307,7 @@ const PROVIDERS = {
           method: "POST",
           headers: { "Content-Type": "application/json", Accept: "application/json" },
           body: JSON.stringify({ grant_type: "authorization_code", code, client_type: "extension", redirect_uri: redirectUri }),
+          proxyOptions,
         });
         if (!response.ok) {
           const error = await response.text();
@@ -1286,7 +1351,7 @@ const PROVIDERS = {
       });
       return `${baseUrl}${config.authorizeUrlPath}?${params.toString()}`;
     },
-    exchangeToken: async (config, code, redirectUri, codeVerifier, state, meta = {}) => {
+    exchangeToken: async (config, code, redirectUri, codeVerifier, state, meta = {}, proxyOptions) => {
       const baseUrl = meta.baseUrl || config.defaultBaseUrl;
       const clientId = meta.clientId || "";
       const clientSecret = meta.clientSecret || "";
@@ -1302,12 +1367,14 @@ const PROVIDERS = {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
         body: body.toString(),
+        proxyOptions,
       });
       if (!response.ok) throw new Error(`GitLab token exchange failed: ${await response.text()}`);
       const tokens = await response.json();
       // Fetch user info
       const userRes = await fetch(`${baseUrl}${config.userInfoUrlPath}`, {
         headers: { Authorization: `Bearer ${tokens.access_token}` },
+        proxyOptions,
       });
       const user = userRes.ok ? await userRes.json() : {};
       return { ...tokens, _user: user, _baseUrl: baseUrl, _clientId: clientId };
@@ -1346,7 +1413,7 @@ const PROVIDERS = {
       });
       return `${baseUrl}${config.authorizeUrlPath}?${params.toString()}`;
     },
-    exchangeToken: async (config, code, redirectUri, codeVerifier, state, meta = {}) => {
+    exchangeToken: async (config, code, redirectUri, codeVerifier, state, meta = {}, proxyOptions) => {
       const baseUrl = (meta.baseUrl || config.defaultBaseUrl || "https://gitlab.com").replace(/\/$/, "");
       const clientId = meta.clientId || config.clientId || "";
       const clientSecret = meta.clientSecret || config.clientSecret || "";
@@ -1362,11 +1429,13 @@ const PROVIDERS = {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
         body: body.toString(),
+        proxyOptions,
       });
       if (!response.ok) throw new Error(`GitLab Duo token exchange failed: ${await response.text()}`);
       const tokens = await response.json();
       const userRes = await fetch(`${baseUrl}${config.userInfoUrlPath}`, {
         headers: { Authorization: `Bearer ${tokens.access_token}` },
+        proxyOptions,
       });
       const user = userRes.ok ? await userRes.json() : {};
       return { ...tokens, _user: user, _baseUrl: baseUrl, _clientId: clientId };
@@ -1437,7 +1506,7 @@ const PROVIDERS = {
   "codebuddy-cn": {
     config: CODEBUDDY_CONFIG,
     flowType: "device_code",
-    requestDeviceCode: async (config) => {
+    requestDeviceCode: async (config, codeChallenge, options = {}, proxyOptions) => {
       const response = await fetch(`${config.stateUrl}?platform=${config.platform}`, {
         method: "POST",
         headers: {
@@ -1451,6 +1520,7 @@ const PROVIDERS = {
           "X-Product": "SaaS",
         },
         body: "{}",
+        proxyOptions,
       });
       if (!response.ok) throw new Error(`CodeBuddy state request failed: ${await response.text()}`);
       const data = await response.json();
@@ -1465,7 +1535,7 @@ const PROVIDERS = {
         _isCodeBuddy: true,
       };
     },
-    pollToken: async (config, deviceCode) => {
+    pollToken: async (config, deviceCode, codeVerifier, extraData, proxyOptions) => {
       // CodeBuddy polls the token endpoint via GET with the state as a query
       // param (not POST/body) — matches the official CLI's /v2/plugin/auth/token?state=...
       const response = await fetch(`${config.tokenUrl}?state=${encodeURIComponent(deviceCode)}`, {
@@ -1481,6 +1551,7 @@ const PROVIDERS = {
           "X-No-Department-Info": "true",
           "X-Product": "SaaS",
         },
+        proxyOptions,
       });
       if (!response.ok) return { ok: false, data: { error: "request_failed" } };
       const data = await response.json();
@@ -1518,7 +1589,7 @@ const PROVIDERS = {
       });
       return `${baseUrl}/cli-auth?${params.toString()}`;
     },
-    exchangeToken: async (config, token) => {
+    exchangeToken: async (config, token, redirectUri, codeVerifier, state, meta, proxyOptions) => {
       const accessToken = String(token || "").trim();
       if (!accessToken) {
         throw new Error("Missing Kimchi token");
@@ -1531,6 +1602,7 @@ const PROVIDERS = {
           Accept: "application/json",
           Authorization: `Bearer ${accessToken}`,
         },
+        proxyOptions,
       });
       if (!validationRes.ok) {
         throw new Error(`Kimchi token validation failed: ${validationRes.status}`);
@@ -1545,6 +1617,7 @@ const PROVIDERS = {
               Accept: "application/json",
               Authorization: `Bearer ${accessToken}`,
             },
+            proxyOptions,
           });
           if (userRes.ok) {
             userInfo = await userRes.json();
@@ -1580,6 +1653,10 @@ const PROVIDERS = {
   },
 };
 
+function isCloudflareHtmlBadRequest(status, body) {
+  return status === 400 && /<html/i.test(body || "") && /cloudflare/i.test(body || "");
+}
+
 /**
  * Get provider handler
  */
@@ -1602,10 +1679,10 @@ export function getProviderNames() {
  * Generate auth data for a provider
  * @param {object} [meta] - Provider-specific metadata (e.g. gitlab clientId/baseUrl)
  */
-export async function generateAuthData(providerName, redirectUri, meta) {
+export async function generateAuthData(providerName, redirectUri, meta, proxyOptions = null) {
   const provider = getProvider(providerName);
   const config = provider.prepareConfig
-    ? await provider.prepareConfig(provider.config, meta || {})
+    ? await provider.prepareConfig(provider.config, meta || {}, proxyOptions)
     : provider.config;
   const { codeVerifier, codeChallenge, state } = generatePKCE(provider.pkceVerifierBytes);
 
@@ -1635,17 +1712,17 @@ export async function generateAuthData(providerName, redirectUri, meta) {
  * Exchange code for tokens
  * @param {object} [meta] - Provider-specific metadata (e.g. gitlab clientId/baseUrl)
  */
-export async function exchangeTokens(providerName, code, redirectUri, codeVerifier, state, meta) {
+export async function exchangeTokens(providerName, code, redirectUri, codeVerifier, state, meta, proxyOptions = null) {
   const provider = getProvider(providerName);
   const config = provider.prepareConfig
-    ? await provider.prepareConfig(provider.config, meta || {})
+    ? await provider.prepareConfig(provider.config, meta || {}, proxyOptions)
     : provider.config;
 
-  const tokens = await provider.exchangeToken(config, code, redirectUri, codeVerifier, state, meta || {});
+  const tokens = await provider.exchangeToken(config, code, redirectUri, codeVerifier, state, meta || {}, proxyOptions);
 
   let extra = null;
   if (provider.postExchange) {
-    extra = await provider.postExchange(tokens);
+    extra = await provider.postExchange(tokens, proxyOptions);
   }
 
   return provider.mapTokens(tokens, extra);
@@ -1654,12 +1731,12 @@ export async function exchangeTokens(providerName, code, redirectUri, codeVerifi
 /**
  * Request device code (for device_code flow)
  */
-export async function requestDeviceCode(providerName, codeChallenge, options) {
+export async function requestDeviceCode(providerName, codeChallenge, options, proxyOptions = null) {
   const provider = getProvider(providerName);
   if (provider.flowType !== "device_code") {
     throw new Error(`Provider ${providerName} does not support device code flow`);
   }
-  return await provider.requestDeviceCode(provider.config, codeChallenge, options || {});
+  return await provider.requestDeviceCode(provider.config, codeChallenge, options || {}, proxyOptions);
 }
 
 /**
@@ -1669,13 +1746,13 @@ export async function requestDeviceCode(providerName, codeChallenge, options) {
  * @param {string} codeVerifier - PKCE code verifier (optional for some providers)
  * @param {object} extraData - Extra data from device code response (e.g. clientId/clientSecret for Kiro)
  */
-export async function pollForToken(providerName, deviceCode, codeVerifier, extraData) {
+export async function pollForToken(providerName, deviceCode, codeVerifier, extraData, proxyOptions = null) {
   const provider = getProvider(providerName);
   if (provider.flowType !== "device_code") {
     throw new Error(`Provider ${providerName} does not support device code flow`);
   }
 
-  const result = await provider.pollToken(provider.config, deviceCode, codeVerifier, extraData);
+  const result = await provider.pollToken(provider.config, deviceCode, codeVerifier, extraData, proxyOptions);
 
   if (result.ok) {
     // For device code flows, success is only when we have an access token
@@ -1683,7 +1760,7 @@ export async function pollForToken(providerName, deviceCode, codeVerifier, extra
       // Call postExchange to get additional data (copilotToken, userInfo, etc.)
       let extra = null;
       if (provider.postExchange) {
-        extra = await provider.postExchange(result.data);
+        extra = await provider.postExchange(result.data, proxyOptions);
       }
       const tokens = provider.mapTokens(result.data, extra);
       // Kiro IDC/Builder-ID tokens lack profileArn; resolve it to avoid 403.
@@ -1691,8 +1768,11 @@ export async function pollForToken(providerName, deviceCode, codeVerifier, extra
       // eu-west-1 / ap-southeast-1 hit their regional CodeWhisperer endpoint.
       if (providerName === "kiro" && !tokens.providerSpecificData?.profileArn) {
         const region = tokens.providerSpecificData?.region || "us-east-1";
-        const profileArn = await fetchKiroProfileArn(tokens.accessToken, region);
-        if (profileArn) tokens.providerSpecificData.profileArn = profileArn;
+        const profileArn = await fetchKiroProfileArn(tokens.accessToken, region, proxyOptions);
+        if (!profileArn) {
+          throw new Error("Kiro profile discovery returned no usable profile");
+        }
+        tokens.providerSpecificData.profileArn = profileArn;
       }
       return { success: true, tokens };
     } else {

@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { getProviderConnectionById } from "@/models";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { PROVIDER_MODELS_CONFIG, resolveQwenModelsUrl, parseOpenAIStyleModels } from "./modelsConfig.js";
+import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
+import { applyCodexAccountHeader } from "open-sse/shared/codexAccountId.js";
+import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
+import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 
 /**
  * GET /api/providers/[id]/models - Get models list from provider
@@ -15,6 +19,10 @@ export async function GET(request, { params }) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
     }
 
+    // Model discovery is connection traffic too. Resolve the durable OAuth
+    // egress contract once and reuse it for initial, refresh, and retry calls.
+    const proxyOptions = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
+
     if (isOpenAICompatibleProvider(connection.provider)) {
       const baseUrl = connection.providerSpecificData?.baseUrl;
       if (!baseUrl) {
@@ -26,18 +34,21 @@ export async function GET(request, { params }) {
         return NextResponse.json({ error: "No valid token found" }, { status: 401 });
       }
 
-      const res = await fetch(`${baseUrl.replace(/\/$/, "")}/v1/models`, {
+      const res = await proxyAwareFetch(`${baseUrl.replace(/\/$/, "")}/v1/models`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
         cache: "no-store",
-      });
+      }, proxyOptions);
 
       if (!res.ok) {
         const text = await res.text();
-        return NextResponse.json({ error: text || res.statusText }, { status: res.status });
+        return NextResponse.json(
+          { error: sanitizeErrorMessage(text || res.statusText) },
+          { status: res.status }
+        );
       }
 
       const data = await res.json();
@@ -56,7 +67,7 @@ export async function GET(request, { params }) {
         return NextResponse.json({ error: "No valid token found" }, { status: 401 });
       }
 
-      const res = await fetch(`${baseUrl.replace(/\/$/, "")}/v1/models`, {
+      const res = await proxyAwareFetch(`${baseUrl.replace(/\/$/, "")}/v1/models`, {
         method: "GET",
         headers: {
           "x-api-key": token,
@@ -64,11 +75,14 @@ export async function GET(request, { params }) {
           "Content-Type": "application/json",
         },
         cache: "no-store",
-      });
+      }, proxyOptions);
 
       if (!res.ok) {
         const text = await res.text();
-        return NextResponse.json({ error: text || res.statusText }, { status: res.status });
+        return NextResponse.json(
+          { error: sanitizeErrorMessage(text || res.statusText) },
+          { status: res.status }
+        );
       }
 
       const data = await res.json();
@@ -87,14 +101,17 @@ export async function GET(request, { params }) {
           headers.Authorization = `Bearer ${connection.apiKey}`;
         }
         try {
-          const response = await fetch(fetcher.url, {
+          const response = await proxyAwareFetch(fetcher.url, {
             method: "GET",
             headers,
             signal: AbortSignal.timeout(8000),
-          });
+          }, proxyOptions);
           if (!response.ok) {
             const errorText = await response.text();
-            console.log(`Error fetching models from ${connection.provider}:`, errorText);
+            console.log(
+              `Error fetching models from ${connection.provider}:`,
+              sanitizeErrorMessage(errorText)
+            );
             return NextResponse.json(
               { error: `Failed to fetch models: ${response.status}` },
               { status: response.status }
@@ -108,7 +125,10 @@ export async function GET(request, { params }) {
             models,
           });
         } catch (error) {
-          console.log(`Error fetching models from ${connection.provider}:`, error.message);
+          console.log(
+            `Error fetching models from ${connection.provider}:`,
+            sanitizeErrorMessage(error?.message)
+          );
           return NextResponse.json({ error: "Failed to fetch models" }, { status: 500 });
         }
       }
@@ -121,7 +141,7 @@ export async function GET(request, { params }) {
 
     // Config-driven custom resolver path (OAuth refresh, non-OpenAI shape, etc.)
     if (typeof config.customResolver === "function") {
-      const result = await config.customResolver(connection);
+      const result = await config.customResolver(connection, proxyOptions);
       if (result.error) {
         return NextResponse.json({ error: result.error }, { status: result.status || 500 });
       }
@@ -148,6 +168,9 @@ export async function GET(request, { params }) {
     if (config.authHeader && !config.authQuery) {
       headers[config.authHeader] = (config.authPrefix || "") + token;
     }
+    if (connection.provider === "codex") {
+      applyCodexAccountHeader(headers, connection.providerSpecificData);
+    }
 
     // Make request
     const fetchOptions = {
@@ -160,11 +183,14 @@ export async function GET(request, { params }) {
       fetchOptions.body = JSON.stringify(config.body);
     }
 
-    const response = await fetch(url, fetchOptions);
+    const response = await proxyAwareFetch(url, fetchOptions, proxyOptions);
 
     if (!response.ok) {
       const text = await response.text();
-      return NextResponse.json({ error: text || response.statusText }, { status: response.status });
+      return NextResponse.json(
+        { error: sanitizeErrorMessage(text || response.statusText) },
+        { status: response.status }
+      );
     }
 
     const data = await response.json();
@@ -172,7 +198,8 @@ export async function GET(request, { params }) {
 
     return NextResponse.json({ models: models || [] });
   } catch (error) {
-    console.error("Error fetching provider models:", error);
-    return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
+    const safeMessage = sanitizeErrorMessage(error?.message || "Internal server error");
+    console.error("Error fetching provider models:", safeMessage);
+    return NextResponse.json({ error: safeMessage }, { status: 500 });
   }
 }

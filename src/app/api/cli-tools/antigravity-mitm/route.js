@@ -10,6 +10,8 @@ import {
   setCachedPassword,
   loadEncryptedPassword,
   isSudoPasswordRequired,
+  hasMitmCleanupState,
+  isAdmin as checkIsAdmin,
   initDbHooks,
 } from "@/mitm/manager";
 import { getSettings, updateSettings } from "@/lib/localDb";
@@ -45,21 +47,9 @@ function requiresSudoPassword(pwd) {
   return !isWin && !pwd && isSudoPasswordRequired();
 }
 
-function checkIsAdmin() {
-  if (isWin) {
-    try {
-      require("child_process").execSync("fltmc", { windowsHide: true, stdio: "ignore" });
-      return true;
-    } catch {
-      return false;
-    }
-  }
-  return typeof process.getuid === "function" && process.getuid() === 0;
-}
-
 function checkPrivilege(pwd) {
-  if (checkIsAdmin()) return true;
-  if (isWin) return false;
+  if (isWin) return !checkIsAdmin();
+  if (checkIsAdmin()) return false;
   if (!isSudoPasswordRequired()) return true;
   return !!pwd;
 }
@@ -69,7 +59,8 @@ export async function GET() {
   try {
     const status = await getMitmStatus();
     const settings = await getSettings();
-    const hasCachedPassword = !!getCachedPassword() || !!(await loadEncryptedPassword());
+    await loadEncryptedPassword();
+    const hasCachedPassword = !!getCachedPassword();
     return NextResponse.json({
       running: status.running,
       pid: status.pid || null,
@@ -94,7 +85,8 @@ export async function GET() {
 export async function POST(request) {
   try {
     const { apiKey, sudoPassword, mitmRouterBaseUrl, forceKillPort443 } = await request.json();
-    const pwd = getPassword(sudoPassword) || await loadEncryptedPassword() || "";
+    await loadEncryptedPassword();
+    const pwd = getPassword(sudoPassword) || "";
 
     if (!apiKey || requiresSudoPassword(pwd)) {
       return NextResponse.json(
@@ -105,7 +97,9 @@ export async function POST(request) {
 
     if (!checkPrivilege(pwd)) {
       return NextResponse.json(
-        { error: isWin ? "Administrator required — restart 9Router as Administrator" : "Root or sudo password required to start MITM" },
+        { error: checkIsAdmin()
+          ? "Run DurinDoor as a standard user; elevation is requested only for the local redirect, certificate, and hosts entries"
+          : "Sudo password required to configure the local MITM redirect" },
         { status: 403 }
       );
     }
@@ -134,6 +128,12 @@ export async function POST(request) {
         { status: 409 }
       );
     }
+    if (error.code === "MITM_START_IN_PROGRESS") {
+      return NextResponse.json(
+        { error: error.message, code: "MITM_START_IN_PROGRESS" },
+        { status: 409 }
+      );
+    }
     return NextResponse.json({ error: error.message || "Failed to start MITM server" }, { status: 500 });
   }
 }
@@ -142,15 +142,15 @@ export async function POST(request) {
 export async function DELETE(request) {
   try {
     const body = await request.json().catch(() => ({}));
-    const { sudoPassword } = body;
-    const pwd = getPassword(sudoPassword) || await loadEncryptedPassword() || "";
+    const { sudoPassword, preserveDesiredState = false } = body;
+    await loadEncryptedPassword();
+    const pwd = getPassword(sudoPassword) || "";
 
-    if (requiresSudoPassword(pwd)) {
+    if (hasMitmCleanupState() && requiresSudoPassword(pwd)) {
       return NextResponse.json({ error: "Missing sudoPassword" }, { status: 400 });
     }
 
-    await stopServer(pwd);
-    if (!isWin && sudoPassword) setCachedPassword(sudoPassword);
+    await stopServer(pwd, { preserveDesiredState: preserveDesiredState === true });
 
     return NextResponse.json({ success: true, running: false });
   } catch (error) {
@@ -163,17 +163,23 @@ export async function DELETE(request) {
 export async function PATCH(request) {
   try {
     const { tool, action, sudoPassword } = await request.json();
-    const pwd = getPassword(sudoPassword) || await loadEncryptedPassword() || "";
+    await loadEncryptedPassword();
+    const pwd = getPassword(sudoPassword) || "";
 
-    if (!tool || !action) {
-      return NextResponse.json({ error: "tool and action required" }, { status: 400 });
+    if (!action) {
+      return NextResponse.json({ error: "action required" }, { status: 400 });
+    }
+    if (action !== "trust-cert" && !tool) {
+      return NextResponse.json({ error: "tool required for DNS changes" }, { status: 400 });
     }
     if (requiresSudoPassword(pwd)) {
       return NextResponse.json({ error: "Missing sudoPassword" }, { status: 400 });
     }
     if (!checkPrivilege(pwd)) {
       return NextResponse.json(
-        { error: isWin ? "Administrator required — restart 9Router as Administrator" : "Root or sudo password required to modify DNS" },
+        { error: isWin
+          ? "Run DurinDoor as a standard user; Windows will request UAC only for the hosts-file change"
+          : "Root or sudo password required to modify DNS" },
         { status: 403 }
       );
     }

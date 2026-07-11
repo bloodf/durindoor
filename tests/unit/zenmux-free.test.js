@@ -91,6 +91,8 @@ describe("zenmux-free registry", () => {
   it("uses the specialized executor", () => {
     expect(hasSpecializedExecutor("zenmux-free")).toBe(true);
     expect(getExecutor("zenmux-free")).toBeInstanceOf(ZenmuxFreeExecutor);
+    expect(hasSpecializedExecutor("zmf")).toBe(true);
+    expect(getExecutor("zmf")).toBeInstanceOf(ZenmuxFreeExecutor);
   });
 });
 
@@ -105,6 +107,10 @@ describe("zenmux-free credential helpers", () => {
 
   it("returns an empty ctoken when the required cookie is missing", () => {
     expect(extractZenmuxCtoken("foo=1; bar=2")).toBe("");
+  });
+
+  it("treats malformed percent-encoded ctoken values as invalid", () => {
+    expect(extractZenmuxCtoken("foo=1; ctoken=%E0%A4%A; bar=2")).toBe("");
   });
 });
 
@@ -245,6 +251,9 @@ describe("ZenmuxFreeExecutor.execute", () => {
     expect(options.headers["anthropic-version"]).toBe("2023-06-01");
     expect(JSON.parse(options.body).messages[0].content[0].text).toBe("hi");
     expect(result.transformedBody.model).toBe("deepseek/deepseek-chat");
+    expect(result.url).toBe(ZENMUX_FREE_CHAT_URL);
+    expect(result.headers.Cookie).toBe("[redacted]");
+    expect(JSON.stringify(result)).not.toContain("tok123");
   });
 
   it("rethrows AbortError instead of converting it to a 502", async () => {
@@ -260,6 +269,29 @@ describe("ZenmuxFreeExecutor.execute", () => {
         stream: false,
       }),
     ).rejects.toBe(abortError);
+  });
+
+  it("redacts ctoken and cookie values from fetch failures", async () => {
+    proxyAwareFetch.mockRejectedValueOnce(new Error(
+      `request ${ZENMUX_FREE_CHAT_URL}?ctoken=tok123 failed; Cookie: foo=1; ctoken=tok123`,
+    ));
+    const exec = new ZenmuxFreeExecutor();
+
+    const result = await exec.execute({
+      body: { model: "deepseek/deepseek-chat", messages: [{ role: "user", content: "hi" }] },
+      credentials: { apiKey: "foo=1; ctoken=tok123" },
+      stream: false,
+    });
+    const serialized = JSON.stringify({
+      body: await result.response.json(),
+      url: result.url,
+      headers: result.headers,
+    });
+
+    expect(result.response.status).toBe(502);
+    expect(serialized).toContain("[redacted]");
+    expect(serialized).not.toContain("tok123");
+    expect(serialized).not.toContain("foo=1");
   });
   it("passes configured proxy options through the proxy-aware fetch helper", async () => {
     global.fetch.mockResolvedValueOnce(zenmuxSse(["ok"]));
@@ -419,5 +451,68 @@ describe("ZenmuxFreeExecutor.execute", () => {
     });
 
     await expect(readText(result.response)).rejects.toThrow("socket reset");
+  });
+
+  it("cancels and settles a streaming response when the request is aborted", async () => {
+    let settleRead;
+    const reader = {
+      read: vi.fn(() => new Promise((resolve) => { settleRead = resolve; })),
+      cancel: vi.fn(() => {
+        settleRead?.({ done: true, value: undefined });
+        return Promise.resolve();
+      }),
+      releaseLock: vi.fn(),
+    };
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: { getReader: () => reader },
+    });
+    const controller = new AbortController();
+    const exec = new ZenmuxFreeExecutor();
+    const result = await exec.execute({
+      body: { model: "deepseek/deepseek-chat", messages: [{ role: "user", content: "hi" }] },
+      credentials: { apiKey: "ctoken=tok123" },
+      signal: controller.signal,
+      stream: true,
+    });
+
+    const rejection = expect(readText(result.response)).rejects.toThrow("client aborted");
+    controller.abort(new Error("client aborted"));
+    await rejection;
+    expect(reader.cancel).toHaveBeenCalledTimes(1);
+    expect(reader.releaseLock).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels and rejects a non-stream response when the request is aborted mid-body", async () => {
+    let settleRead;
+    const reader = {
+      read: vi.fn(() => new Promise((resolve) => { settleRead = resolve; })),
+      cancel: vi.fn(() => {
+        settleRead?.({ done: true, value: undefined });
+        return Promise.resolve();
+      }),
+      releaseLock: vi.fn(),
+    };
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: { getReader: () => reader },
+    });
+    const controller = new AbortController();
+    const abortError = new Error("client aborted");
+    const exec = new ZenmuxFreeExecutor();
+    const pending = exec.execute({
+      body: { model: "deepseek/deepseek-chat", messages: [{ role: "user", content: "hi" }] },
+      credentials: { apiKey: "ctoken=tok123" },
+      signal: controller.signal,
+      stream: false,
+    });
+
+    const rejection = expect(pending).rejects.toBe(abortError);
+    controller.abort(abortError);
+    await rejection;
+    expect(reader.cancel).toHaveBeenCalledTimes(1);
+    expect(reader.releaseLock).toHaveBeenCalledTimes(1);
   });
 });

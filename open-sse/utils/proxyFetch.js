@@ -2,6 +2,8 @@ import { Readable } from "stream";
 import { Agent, setGlobalDispatcher } from "undici";
 import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
 import { dbg } from "./debugLog.js";
+import { sanitizeErrorMessage } from "./error.js";
+import { digestMemoryKey } from "./memoryKey.js";
 
 let originalFetch = globalThis.fetch;
 const proxyDispatchers = new Map();
@@ -11,6 +13,23 @@ export function __setOriginalFetchForTesting(fn) {
   const prev = originalFetch;
   originalFetch = fn;
   return () => { originalFetch = prev; };
+}
+
+export function __setProxyDispatcherForTesting(proxyUrl, dispatcher) {
+  const normalized = normalizeProxyUrl(proxyUrl);
+  if (normalized) proxyDispatchers.set(proxyDispatcherKey(normalized), dispatcher);
+}
+
+export function __clearProxyDispatchersForTesting() {
+  proxyDispatchers.clear();
+}
+
+export function __getProxyDispatcherCacheSnapshotForTesting() {
+  return {
+    keys: [...proxyDispatchers.keys()],
+    size: proxyDispatchers.size,
+    maxSize: MEMORY_CONFIG.proxyDispatchersMaxSize,
+  };
 }
 
 // Happy Eyeballs (RFC 8305) for direct egress — avoids 30s+ stalls on broken-IPv6 hosts.
@@ -128,6 +147,10 @@ function normalizeString(value) {
   return String(value).trim();
 }
 
+function safeTransportError(error) {
+  return sanitizeErrorMessage(error?.message || error);
+}
+
 /**
  * Resolve real IP using Google DNS (bypass system DNS)
  */
@@ -145,7 +168,7 @@ async function resolveRealIP(hostname) {
     DNS_CACHE.set(hostname, { ip: addresses[0], expiry: Date.now() + MEMORY_CONFIG.dnsCacheTtlMs });
     return addresses[0];
   } catch (error) {
-    console.warn(`[ProxyFetch] DNS resolve failed for ${hostname}:`, error.message);
+    console.warn(`[ProxyFetch] DNS resolve failed for ${hostname}:`, safeTransportError(error));
     return null;
   }
 }
@@ -208,6 +231,10 @@ function normalizeProxyUrl(proxyUrl) {
     // Allow "127.0.0.1:7890" style values
     return `http://${normalizedInput}`;
   }
+}
+
+function proxyDispatcherKey(normalizedProxyUrl) {
+  return digestMemoryKey("proxy-dispatcher", normalizedProxyUrl);
 }
 
 /**
@@ -377,17 +404,34 @@ function resolveConnectionProxyUrl(targetUrl, proxyOptions) {
 async function getDispatcher(proxyUrl) {
   const normalized = normalizeProxyUrl(proxyUrl);
   if (!normalized) return null;
+  const cacheKey = proxyDispatcherKey(normalized);
 
-  if (!proxyDispatchers.has(normalized)) {
+  if (!proxyDispatchers.has(cacheKey)) {
     // Evict oldest entry if max size reached
     if (proxyDispatchers.size >= MEMORY_CONFIG.proxyDispatchersMaxSize) {
-      proxyDispatchers.delete(proxyDispatchers.keys().next().value);
+      const oldestKey = proxyDispatchers.keys().next().value;
+      const oldestDispatcher = proxyDispatchers.get(oldestKey);
+      proxyDispatchers.delete(oldestKey);
+      try {
+        // `Dispatcher.close()` waits for active streams. Eviction must not
+        // block a new route merely because an older SSE request is long-lived.
+        Promise.resolve(oldestDispatcher?.close?.()).catch(() => {});
+      } catch {
+        // The entry is already detached; cleanup must not prevent replacement.
+      }
     }
     const { ProxyAgent } = await import("undici");
-    proxyDispatchers.set(normalized, new ProxyAgent({ uri: normalized }));
+    // proxyTunnel: true forces a CONNECT tunnel even for plain-HTTP targets.
+    // undici 8.6+ defaults to forwarding plain-HTTP as an origin request
+    // (GET http://host/…) which CONNECT-only proxies reject with 501. Safe on
+    // undici <8.6: unknown option, ignored (those versions already tunneled).
+    proxyDispatchers.set(
+      cacheKey,
+      new ProxyAgent({ uri: normalized, proxyTunnel: true }),
+    );
   }
 
-  return proxyDispatchers.get(normalized);
+  return proxyDispatchers.get(cacheKey);
 }
 
 export function getDirectDispatcherOptionsForTest() {
@@ -486,7 +530,18 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
     return originalFetch(vercelRelayUrl, { ...options, headers: relayHeaders });
   }
 
-  const proxyUrl = getProxyUrl(targetUrl, proxyOptions);
+  const connectionProxyUrl = resolveConnectionProxyUrl(targetUrl, proxyOptions);
+  const envProxyUrl = connectionProxyUrl || proxyOptions?.disableEnvProxy === true
+    ? null
+    : normalizeProxyUrl(getEnvProxyUrl(targetUrl));
+  const proxyUrl = connectionProxyUrl || envProxyUrl;
+
+  // A strict OAuth pool is an egress boundary, not a preference. If the
+  // selected route cannot be used (including a NO_PROXY match), never allow
+  // ambient or direct networking to take over.
+  if (proxyOptions?.strictProxy === true && !proxyUrl) {
+    throw new Error("[ProxyFetch] Proxy required but unavailable (strictProxy=true)");
+  }
 
   // MITM DNS bypass: for known MITM-intercepted hosts, resolve real IP to avoid DNS spoof
   if (shouldBypassMitmDns(targetUrl)) {
@@ -497,9 +552,9 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
         return await originalFetch(url, { ...options, dispatcher });
       } catch (proxyError) {
         if (proxyOptions?.strictProxy === true) {
-          throw new Error(`[ProxyFetch] Proxy required but failed (strictProxy=true): ${proxyError.message}`);
+          throw new Error("[ProxyFetch] Proxy required but failed (strictProxy=true)");
         }
-        console.warn(`[ProxyFetch] Proxy failed, falling back to direct bypass: ${proxyError.message}`);
+        console.warn(`[ProxyFetch] Proxy failed, falling back to direct bypass: ${safeTransportError(proxyError)}`);
       }
     }
     // No proxy — manually resolve real IP to bypass DNS spoof
@@ -508,7 +563,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
       const realIP = await resolveRealIP(parsedUrl.hostname);
       if (realIP) return await createBypassRequest(parsedUrl, realIP, options);
     } catch (error) {
-      console.warn(`[ProxyFetch] MITM bypass failed: ${error.message}`);
+      console.warn(`[ProxyFetch] MITM bypass failed: ${safeTransportError(error)}`);
     }
   }
 
@@ -519,9 +574,9 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
     } catch (proxyError) {
       // If strictProxy is enabled, fail hard instead of falling back to direct
       if (proxyOptions?.strictProxy === true) {
-        throw new Error(`[ProxyFetch] Proxy required but failed (strictProxy=true): ${proxyError.message}`);
+        throw new Error("[ProxyFetch] Proxy required but failed (strictProxy=true)");
       }
-      console.warn(`[ProxyFetch] Proxy failed, falling back to direct: ${proxyError.message}`);
+      console.warn(`[ProxyFetch] Proxy failed, falling back to direct: ${safeTransportError(proxyError)}`);
       return directFetch(url, options);
     }
   }
@@ -535,7 +590,8 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
  * Patched global fetch with env-proxy support and MITM DNS bypass
  */
 async function patchedFetch(url, options = {}) {
-  return proxyAwareFetch(url, options, null);
+  const { proxyOptions, ...restOptions } = options;
+  return proxyAwareFetch(url, restOptions, proxyOptions || null);
 }
 
 // Idempotency guard — only patch once to avoid wrapping multiple times

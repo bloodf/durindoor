@@ -15,7 +15,7 @@ vi.mock("@/models", () => ({
 
 import { POST } from "../../src/app/api/providers/validate/route.js";
 import { normalizeProviderId } from "../../src/lib/providerNormalization.js";
-import { getDefaultModel } from "../../open-sse/config/providerModels.js";
+import { PROVIDERS } from "../../open-sse/config/providers.js";
 
 const originalFetch = global.fetch;
 
@@ -59,9 +59,8 @@ describe("POST /api/providers/validate - CommandCode dispatch", () => {
     );
     const [, callOpts] = global.fetch.mock.calls[0];
     const payload = JSON.parse(callOpts.body);
-    // getDefaultModel("command-code") is null (PROVIDER_MODELS is keyed by the
-    // "cmd" alias); the fallback in the route must still supply a real model.
-    expect(payload.params.model).toBe(getDefaultModel("cmd"));
+    expect(payload.params.model).toBe(PROVIDERS["command-code"].validationModelId);
+    expect(payload.params.model).toBe("deepseek/deepseek-v4-flash");
     expect(data).toEqual({ valid: true, error: null });
   });
 
@@ -77,7 +76,7 @@ describe("POST /api/providers/validate - CommandCode dispatch", () => {
     );
     const [, callOpts] = global.fetch.mock.calls[0];
     const payload = JSON.parse(callOpts.body);
-    expect(payload.params.model).toBeTruthy();
+    expect(payload.params.model).toBe(PROVIDERS["command-code"].validationModelId);
     expect(data).toEqual({ valid: true, error: null });
   });
   it("reports invalid on 401/403 for 'command-code' (not 'not supported')", async () => {
@@ -90,12 +89,38 @@ describe("POST /api/providers/validate - CommandCode dispatch", () => {
     expect(data.error).not.toMatch(/not supported/i);
   });
 
+  it.each([400, 422, 429])(
+    "accepts %d as proof that Command Code authenticated and parsed the probe",
+    async (status) => {
+      global.fetch = vi.fn().mockResolvedValue({ status });
+      const data = await (await POST(postRequest({
+        provider: "command-code",
+        apiKey: "user_test",
+      }))).json();
+      expect(data).toEqual({ valid: true, error: null });
+    },
+  );
+
+  it.each([404, 405, 500])(
+    "does not mark an unusable Command Code endpoint response %d as valid",
+    async (status) => {
+      global.fetch = vi.fn().mockResolvedValue({ status });
+      const data = await (await POST(postRequest({
+        provider: "command-code",
+        apiKey: "user_test",
+      }))).json();
+      expect(data.valid).toBe(false);
+    },
+  );
+
   it("still validates the original 'commandcode' id (no regression)", async () => {
     global.fetch = vi.fn().mockResolvedValue({ status: 200 });
 
     const res = await POST(postRequest({ provider: "commandcode", apiKey: "user_test" }));
     const data = await res.json();
 
+    const [, callOpts] = global.fetch.mock.calls[0];
+    expect(JSON.parse(callOpts.body).params.model).toBe(PROVIDERS.commandcode.validationModelId);
     expect(data).toEqual({ valid: true, error: null });
   });
 });

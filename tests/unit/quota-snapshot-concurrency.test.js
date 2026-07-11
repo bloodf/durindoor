@@ -9,8 +9,8 @@ import m007 from "../../src/lib/db/migrations/007-provider-quota-snapshots.js";
 import {
   FETCH_SUCCESS_UPSERT_SQL,
   PROVIDER_QUOTA_SNAPSHOT_UPSERT_SQL,
-  QUOTA_WRITE_LOCK_SQL,
 } from "../../src/lib/db/repos/quotaSnapshotsRepo.js";
+import { QUOTA_WRITE_LOCK_SQL } from "../../src/lib/db/repos/quotaSql.js";
 
 const require = createRequire(import.meta.url);
 const betterSqlitePath = require.resolve("better-sqlite3");

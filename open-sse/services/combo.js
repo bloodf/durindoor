@@ -197,6 +197,14 @@ function _getScore(comboName, modelStr) {
   return state.score;
 }
 
+/** Map legacy smart-scoring evidence into the shared quota scorer's health band. */
+export function getComboModelQuotaHealth(comboName, modelStr) {
+  const score = _getScore(comboName, modelStr);
+  if (score <= 50) return "unhealthy";
+  if (score < 95) return "degraded";
+  return "healthy";
+}
+
 /** Update a model's score after a request attempt. */
 function _updateScore(comboName, modelStr, success, httpStatus) {
   if (!comboScoringState.has(comboName)) comboScoringState.set(comboName, new Map());
@@ -782,7 +790,37 @@ export function getComboModelsFromData(modelStr, combosData, options = {}) {
  * @param {number|string} [options.comboStickyLimit=1] - Requests per combo model before switching
  * @returns {Promise<Response>}
  */
-export async function handleComboChat({ body, models, handleSingleModel, log, comboName, comboStrategy, comboStickyLimit = 1, autoSwitch = true }) {
+export async function handleComboChat({
+  body,
+  models,
+  handleSingleModel,
+  log,
+  comboName,
+  comboStrategy,
+  comboStickyLimit = 1,
+  autoSwitch = true,
+  quotaRanker = null,
+  signal = null,
+}) {
+  const abortedResponse = () => new Response(
+    JSON.stringify({ error: { message: "Request aborted" } }),
+    { status: 499, headers: { "Content-Type": "application/json" } },
+  );
+  const waitForCooldown = (milliseconds) => {
+    if (signal?.aborted) return Promise.reject(new DOMException("Request aborted", "AbortError"));
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(finish, milliseconds);
+      const onAbort = () => finish(new DOMException("Request aborted", "AbortError"));
+      function finish(error = null) {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+        if (error) reject(error);
+        else resolve();
+      }
+      signal?.addEventListener("abort", onAbort, { once: true });
+    });
+  };
+  if (signal?.aborted) return abortedResponse();
   // #6546 (#6458): fail fast on an empty pool instead of looping zero times and
   // leaking a generic "all models failed" after the fact.
   if (!Array.isArray(models) || models.length === 0) {
@@ -825,6 +863,17 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
       rotatedModels = taskReordered;
     }
   }
+  if (typeof quotaRanker === "function") {
+    try {
+      const quotaOrdered = await quotaRanker(rotatedModels);
+      if (Array.isArray(quotaOrdered) && quotaOrdered.length === rotatedModels.length) {
+        rotatedModels = quotaOrdered;
+      }
+    } catch {
+      // Quota diagnostics are fail-open for unknown/repository errors; account
+      // selection still applies the authoritative atomic capacity gate.
+    }
+  }
   
   let lastError = null;
   let earliestRetryAfter = null;
@@ -855,6 +904,7 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
   };
 
   for (let i = 0; i < rotatedModels.length; i++) {
+    if (signal?.aborted) return abortedResponse();
     const modelStr = rotatedModels[i];
     log.info("COMBO", `Trying model ${i + 1}/${rotatedModels.length}: ${modelStr}`);
 
@@ -913,7 +963,12 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
       if (cooldownMs && cooldownMs > 0 && cooldownMs <= 5000 &&
           (result.status === 503 || result.status === 502 || result.status === 504)) {
         log.info("COMBO", `Model ${modelStr} transient ${result.status}, waiting ${cooldownMs}ms before next`);
-        await new Promise(r => setTimeout(r, cooldownMs));
+        try {
+          await waitForCooldown(cooldownMs);
+        } catch (error) {
+          if (error?.name === "AbortError") return abortedResponse();
+          throw error;
+        }
       }
 
       // Fallback to next model
@@ -922,6 +977,7 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
       if (!lastStatus) lastStatus = result.status;
       log.warn("COMBO", `Model ${modelStr} failed, trying next`, { status: result.status });
     } catch (error) {
+      if (error?.name === "AbortError" || signal?.aborted) return abortedResponse();
       // Catch unexpected exceptions to ensure fallback continues
       releaseFailedAffinity(modelStr, i);
       lastError = error.message || String(error);
@@ -1043,24 +1099,16 @@ const FUSION_DEFAULTS = {
   minPanel: 2,             // answers needed before stragglers get a grace window
   stragglerGraceMs: 8000,  // wait this long for laggards once quorum is reached
   panelHardTimeoutMs: 90000, // absolute cap so one hung model can't stall forever
+  panelCancelDrainTimeoutMs: 5000, // wait for canceled calls to release quota before judge
 };
-
-// Resolve a Response (or {__error}) within ms; the loser keeps running but is ignored.
-function withTimeout(promise, ms) {
-  return new Promise((resolve) => {
-    const t = setTimeout(() => resolve({ __timeout: true }), ms);
-    Promise.resolve(promise)
-      .then((v) => { clearTimeout(t); resolve(v); })
-      .catch((e) => { clearTimeout(t); resolve({ __error: e }); });
-  });
-}
 
 /**
  * Collect panel responses with quorum-grace: as soon as `minPanel` calls succeed,
  * start a short grace timer for the rest, then proceed with whatever arrived. This
  * caps the straggler penalty (the slowest model otherwise dominates wall time) while
  * still preferring a full panel when everyone is fast. Bounded by a hard timeout.
- * Returns a sparse array aligned to `calls` (undefined = not yet / dropped).
+ * Returns a stable sparse snapshot plus the indexes still running at cutoff.
+ * Late settlements must not mutate the panel that will be sent to the judge.
  */
 function collectPanel(calls, { minPanel, stragglerGraceMs, panelHardTimeoutMs }) {
   return new Promise((resolve) => {
@@ -1074,7 +1122,11 @@ function collectPanel(calls, { minPanel, stragglerGraceMs, panelHardTimeoutMs })
       finished = true;
       clearTimeout(hardTimer);
       if (graceTimer) clearTimeout(graceTimer);
-      resolve(out);
+      const results = out.slice();
+      const pendingIndexes = Array.from({ length: results.length }, (_, index) => (
+        results[index] === undefined ? index : null
+      )).filter((index) => index !== null);
+      resolve({ results, pendingIndexes });
     };
     const hardTimer = setTimeout(finish, panelHardTimeoutMs);
     calls.forEach((p, i) => {
@@ -1089,6 +1141,20 @@ function collectPanel(calls, { minPanel, stragglerGraceMs, panelHardTimeoutMs })
         });
     });
   });
+}
+
+async function drainCancelledPanelCalls(calls, pendingIndexes, timeoutMs) {
+  if (pendingIndexes.length === 0) return true;
+  let timer = null;
+  const drained = Promise.allSettled(pendingIndexes.map((index) => calls[index])).then(() => true);
+  const timedOut = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(false), timeoutMs);
+  });
+  try {
+    return await Promise.race([drained, timedOut]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 /**
@@ -1159,8 +1225,28 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
   }
 
   const t0 = Date.now();
-  const calls = panel.map((m) => withTimeout(handleSingleModel(panelBody, m, true), cfg.panelHardTimeoutMs));
-  const settled = await collectPanel(calls, { ...cfg, minPanel });
+  const panelControllers = panel.map(() => new AbortController());
+  const calls = panel.map((m, index) => Promise.resolve()
+    .then(() => handleSingleModel(panelBody, m, true, panelControllers[index].signal)));
+  const { results: settled, pendingIndexes } = await collectPanel(calls, { ...cfg, minPanel });
+  for (const index of pendingIndexes) {
+    const controller = panelControllers[index];
+    if (!controller.signal.aborted) controller.abort("fusion_panel_complete");
+  }
+  if (pendingIndexes.length > 0) {
+    const rawDrainTimeout = Number(cfg.panelCancelDrainTimeoutMs);
+    const drainTimeoutMs = Number.isFinite(rawDrainTimeout) && rawDrainTimeout > 0
+      ? Math.min(Math.floor(rawDrainTimeout), FUSION_DEFAULTS.panelCancelDrainTimeoutMs)
+      : FUSION_DEFAULTS.panelCancelDrainTimeoutMs;
+    const drained = await drainCancelledPanelCalls(calls, pendingIndexes, drainTimeoutMs);
+    if (!drained) {
+      log.warn("FUSION", "Canceled panel calls did not acknowledge cleanup before the drain deadline");
+      return new Response(
+        JSON.stringify({ error: { message: "Fusion panel cleanup timed out" } }),
+        { status: 503, headers: { "Content-Type": "application/json" } },
+      );
+    }
+  }
   log.info("FUSION", `fan-out collected in ${Date.now() - t0}ms`);
 
   // 2. Collect successful answers.

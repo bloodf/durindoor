@@ -38,5 +38,6 @@ describe("db migrations registry", () => {
 
   it("registers provider quota persistence after the immutable policy migration", () => {
     expect(MIGRATIONS.find(({ version }) => version === 7)?.name).toBe("provider-quota-snapshots");
+    expect(MIGRATIONS.find(({ version }) => version === 8)?.name).toBe("quota-reservations");
   });
 });

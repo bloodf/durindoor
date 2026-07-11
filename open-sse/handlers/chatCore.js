@@ -15,7 +15,11 @@ import { handleBypassRequest } from "../utils/bypassHandler.js";
 import { handlePonytailCommands, DEFAULT_PONYTAIL_HELP, resolvePonytailStream } from "../utils/tokenSaverBridge.js";
 import { trackPendingRequest, appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { acquireSlot, releaseSlot, getConcurrencyLimit, ConcurrencyGateTimeoutError } from "../services/concurrencyGate.js";
-import { runWithProviderAttemptContext } from "../services/providerAttemptContext.js";
+import {
+  runWithProviderAttemptContext,
+  settleProviderAttemptDispatch,
+} from "../services/providerAttemptContext.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 
 import { getExecutor } from "../executors/index.js";
 import { buildRequestDetail, extractRequestConfig } from "./chatCore/requestDetail.js";
@@ -190,10 +194,35 @@ async function cancelResponseBody(response) {
  *   errors. Legacy `info`/`debug`/`warn`/`error` remain supported.
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onProviderAttempt, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, compressionEnabled, compressionEngines, skipPonytailCommands = false, claudeClassifierCompat }) {
+export async function handleChatCore({ body, modelInfo, credentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, compressionEnabled, compressionEngines, skipPonytailCommands = false, claudeClassifierCompat }) {
   if (abortSignal?.aborted) return createErrorResult(499, "Request aborted");
   const { provider, model: requestedModel } = modelInfo;
   const requestStartTime = Date.now();
+  let quotaReservationActive = quotaReservation?.tracked === true;
+  let quotaTerminalSettled = false;
+  let quotaTerminalSettlement = null;
+  const settleQuota = async (success, reason) => {
+    if (!quotaReservationActive) return { changed: false };
+    if (quotaTerminalSettlement) return quotaTerminalSettlement;
+    if (quotaTerminalSettled) return { changed: false };
+    quotaTerminalSettled = true;
+    quotaTerminalSettlement = (async () => {
+      try {
+        return await quotaReservation.settle({ success, reason });
+      } catch {
+        // A persistence cleanup failure must not leak identifiers or replace the
+        // provider result. The bounded lease remains a conservative backstop.
+        console.error("[QUOTA] reservation settlement failed");
+        return { changed: false };
+      }
+    })();
+    return quotaTerminalSettlement;
+  };
+  const quotaUnavailable = (reason) => ({
+    ...createErrorResult(HTTP_STATUS.SERVICE_UNAVAILABLE, "Provider quota capacity unavailable"),
+    quotaCapacityUnavailable: true,
+    quotaReason: reason || "capacity_exhausted",
+  });
   const requestContext = captureRequestContext(body, clientRawRequest);
   ({ body, clientRawRequest } = stripLegacyCompactMarker(body, clientRawRequest));
 
@@ -557,10 +586,23 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
   const streamController = createStreamController({
     onDisconnect: (reason) => {
       finishProviderRequest();
+      settleQuota(false, "stream_cancel");
       if (onDisconnect) onDisconnect(reason);
     },
-    onError: finishProviderRequest,
-    onComplete: finishProviderRequest,
+    onError: (error) => {
+      finishProviderRequest();
+      const reason = error?.name === "AbortError"
+        ? "abort"
+        : String(error?.message || "").includes("timeout") ? "timeout" : "stream_error";
+      settleQuota(false, reason);
+    },
+    onComplete: () => {
+      finishProviderRequest();
+      // Coherent terminals settle success first. A plain EOF without one is a
+      // malformed terminal and the lifecycle's local idempotency resolves races.
+      settleQuota(false, "malformed_terminal");
+    },
+    onActivity: () => { if (quotaReservationActive) quotaReservation?.heartbeat?.(); },
     log, provider, model: cleanModel, reqTag
   });
   const providerSignal = composeAbortSignals(abortSignal, streamController.signal);
@@ -671,7 +713,11 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
           requestContext,
           attemptStartedAt: initialAttempt,
           onProviderAttempt: beginProviderAttempt,
-        }));
+        }), {
+          beginQuotaDispatch: quotaReservationActive
+            ? () => quotaReservation.beginDispatch()
+            : null,
+        });
       if (
         Number.isSafeInteger(result?.attemptStartedAt)
         && result.attemptStartedAt > (latestProviderAttemptStartedAt || 0)
@@ -719,8 +765,19 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
     terminalProvenance = result.terminalProvenance || null;
     reqLogger.logTargetRequest(providerUrl, providerHeaders, finalBody);
   } catch (error) {
+    if (isQuotaDispatchUnavailable(error)) {
+      finishProviderRequest();
+      return { ...quotaUnavailable(error.reason), attemptStartedAt: latestProviderAttemptStartedAt };
+    }
     trackPendingRequest(cleanModel, provider, connectionId, false, true);
     finishProviderRequest();
+    const terminalReason = error.name === "AbortError"
+      ? "abort"
+      : error.name === "TimeoutError"
+        || String(error?.message || "").toLowerCase().includes("timeout")
+        ? "timeout"
+        : "transport_error";
+    await settleQuota(false, terminalReason);
     appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${error.name === "AbortError" ? 499 : HTTP_STATUS.BAD_GATEWAY}` }).catch(() => { });
     saveRequestDetail(buildRequestDetail({
       provider, model: cleanModel, connectionId,
@@ -752,6 +809,14 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
   // Handle 401/403 - try token refresh (skip for noAuth providers)
   if (!executor.noAuth && (providerResponse.status === HTTP_STATUS.UNAUTHORIZED || providerResponse.status === HTTP_STATUS.FORBIDDEN)) {
     try {
+      await settleProviderAttemptDispatch(providerResponse, { success: false, reason: "fallback" });
+      // Some custom executors wrap the mapped transport response. Release any
+      // remaining ticket directly from the request coordinator before refresh;
+      // unlike settleQuota(), this does not close the request terminal and a
+      // refreshed physical dispatch may acquire a new ticket.
+      if (quotaReservationActive) {
+        await quotaReservation.settle({ success: false, reason: "fallback" });
+      }
       await cancelResponseBody(providerResponse);
       if (providerSignal?.aborted) throw requestAbortError(providerSignal.reason);
       // Refresh and retry must use the same immutable route as the failed
@@ -775,6 +840,10 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
           finalBody = retryResult.transformedBody;
           terminalProvenance = retryResult.terminalProvenance || null;
         } catch (error) {
+          if (isQuotaDispatchUnavailable(error)) {
+            finishProviderRequest();
+            return { ...quotaUnavailable(error.reason), attemptStartedAt: latestProviderAttemptStartedAt };
+          }
           if (error?.name === "AbortError") throw error;
           log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`);
         }
@@ -782,6 +851,10 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
         log?.warn?.("TOKEN", `${provider.toUpperCase()} | refresh failed`);
       }
     } catch (error) {
+      if (isQuotaDispatchUnavailable(error)) {
+        finishProviderRequest();
+        return { ...quotaUnavailable(error.reason), attemptStartedAt: latestProviderAttemptStartedAt };
+      }
       if (error?.name === "AbortError") {
         streamController.handleError(error);
         return { ...createErrorResult(499, "Request aborted"), attemptStartedAt: latestProviderAttemptStartedAt };
@@ -805,6 +878,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
     } finally {
       finishProviderRequest();
     }
+    await settleQuota(false, "upstream_error");
     const { statusCode, message, resetsAtMs, rateLimitEvidence } = parsedError;
     appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${statusCode}` }).catch(() => { });
     saveRequestDetail(buildRequestDetail({
@@ -843,10 +917,14 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
     const reexecute = async () => {
       const retryResult = await executeProvider();
       if (!retryResult.response.ok) {
+        await settleProviderAttemptDispatch(retryResult.response, { success: false, reason: "upstream_error" });
         const { statusCode, message } = await parseUpstreamError(retryResult.response, executor, { signal: providerSignal });
         throw new Error(`[${statusCode}] ${message}`);
       }
-      if (!retryResult.response.body) throw new Error("upstream returned no body");
+      if (!retryResult.response.body) {
+        await settleProviderAttemptDispatch(retryResult.response, { success: false, reason: "upstream_error" });
+        throw new Error("upstream returned no body");
+      }
       return retryResult.response.body;
     };
     providerResponse = new Response(
@@ -855,6 +933,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
         reexecute,
         signal: providerSignal,
         log,
+        onAttemptDiscarded: (attemptBody, _reason, { final } = {}) => (
+          settleProviderAttemptDispatch(attemptBody, {
+            success: false,
+            reason: final ? "upstream_error" : "fallback",
+          })
+        ),
         onExhausted: (reason, { upstreamError } = {}) => {
           if (!onUpstreamEmptyExhausted) return;
           // Quota-style exhaustion carries the reset time only inside the error
@@ -882,10 +966,13 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
     connectionId,
     apiKey,
     clientRawRequest,
-    onRequestSuccess: (context = {}) => onRequestSuccess?.({
-      ...context,
-      attemptStartedAt: context.attemptStartedAt || latestProviderAttemptStartedAt,
-    }),
+    onRequestSuccess: async (context = {}) => {
+      await settleQuota(true, "success");
+      return onRequestSuccess?.({
+        ...context,
+        attemptStartedAt: context.attemptStartedAt || latestProviderAttemptStartedAt,
+      });
+    },
     getProviderAttemptStartedAt: () => latestProviderAttemptStartedAt,
     pxpipe: pxpipeSummary,
     reqTag,
@@ -899,11 +986,51 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
   const trackDone = () => {
     finishProviderRequest();
   };
+  const finalizeBufferedResult = async (result) => {
+    if (!result?.success && result?.quotaTerminalReason) {
+      const error = new Error(result.quotaTerminalReason);
+      error.name = result.quotaTerminalReason === "abort"
+        ? "AbortError"
+        : result.quotaTerminalReason === "timeout" ? "TimeoutError" : "Error";
+      // Buffered callers (including fusion panels) treat handler resolution as
+      // cancellation acknowledgement. Persist the release before resolving so
+      // a subsequent fallback/judge cannot race the still-active ticket.
+      await settleQuota(false, result.quotaTerminalReason);
+      streamController.handleError(error);
+    } else {
+      // A trusted coherent terminal already committed through
+      // onRequestSuccess. Otherwise this closes the response as malformed.
+      await settleQuota(false, "malformed_terminal");
+      streamController.handleComplete();
+    }
+    return result;
+  };
+  const failPostResponseHandling = async (error) => {
+    const aborted = error?.name === "AbortError" || providerSignal?.aborted;
+    const timedOut = error?.name === "TimeoutError"
+      || String(error?.message || "").toLowerCase().includes("timeout");
+    const reason = aborted ? "abort" : timedOut ? "timeout" : "stream_error";
+    // Await the durable terminal before closing the request controller. The
+    // controller invokes the same transition as a safety net, and the local
+    // compare-and-set keeps the duplicate callback harmless.
+    await settleQuota(false, reason);
+    streamController.handleError(error instanceof Error ? error : new Error("provider response handling failed"));
+    return withCompressionHeader(
+      createErrorResult(aborted ? 499 : HTTP_STATUS.BAD_GATEWAY, aborted
+        ? "Request aborted"
+        : "Failed to process provider response"),
+      compressionHeaderValue,
+    );
+  };
 
   // Provider forced streaming but client wants JSON
   if (!clientRequestedStreaming && providerRequiresStreaming) {
-    const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, trackDone, appendLog, signal: providerSignal });
-    if (result) { streamController.handleComplete(); return withCompressionHeader(result, compressionHeaderValue); }
+    try {
+      const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, trackDone, appendLog, signal: providerSignal });
+      if (result) return withCompressionHeader(await finalizeBufferedResult(result), compressionHeaderValue);
+    } catch (error) {
+      return failPostResponseHandling(error);
+    }
   }
 
   // True non-streaming response. When the client asked for streaming but the
@@ -911,17 +1038,23 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
   // body inside handleNonStreamingResponse so the SSE client contract holds.
   if (!stream) {
     const streamToClient = clientRequestedStreaming === true;
-    const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, reqLogger, toolNameMap, trackDone, appendLog, streamToClient, signal: providerSignal });
-    streamController.handleComplete();
-    return withCompressionHeader(result, compressionHeaderValue);
+    try {
+      const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, reqLogger, toolNameMap, trackDone, appendLog, streamToClient, signal: providerSignal });
+      return withCompressionHeader(await finalizeBufferedResult(result), compressionHeaderValue);
+    } catch (error) {
+      return failPostResponseHandling(error);
+    }
   }
 
   // Streaming response
   const { onStreamComplete, onCoherentTerminal, streamDetailId } = buildOnStreamComplete({ ...sharedCtx });
-  return withCompressionHeader(
-    await handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, streamController, onStreamComplete, onCoherentTerminal, streamDetailId, signal: providerSignal }),
-    compressionHeaderValue
-  );
+  try {
+    const result = await handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, streamController, onStreamComplete, onCoherentTerminal, streamDetailId, signal: providerSignal });
+    if (!result?.success) await settleQuota(false, "stream_error");
+    return withCompressionHeader(result, compressionHeaderValue);
+  } catch (error) {
+    return failPostResponseHandling(error);
+  }
 }
 
 // Minimal Claude message the auto-mode classifier parses as ALLOW.

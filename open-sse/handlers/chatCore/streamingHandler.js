@@ -144,13 +144,15 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
     const attemptStartedAt = typeof getProviderAttemptStartedAt === "function"
       ? getProviderAttemptStartedAt()
       : null;
-    Promise.resolve()
-      .then(() => onRequestSuccess({ attemptStartedAt }))
-      .catch(() => {
+    try {
+      Promise.resolve(onRequestSuccess({ attemptStartedAt })).catch(() => {
         // Runtime health cleanup is fail-open and must not break a completed
         // provider stream or echo repository details to the client/logs.
         console.error("[ChatCore] completed-stream cleanup failed");
       });
+    } catch {
+      console.error("[ChatCore] completed-stream cleanup failed");
+    }
   };
 
   const onStreamComplete = (contentObj, usage, ttftAt) => {

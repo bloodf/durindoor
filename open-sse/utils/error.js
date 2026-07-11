@@ -260,7 +260,13 @@ export async function readBoundedResponseText(response, {
   signal = null,
   maxBytes = 64 * 1024,
   timeoutMs = 2_000,
+  throwOnTimeout = false,
 } = {}) {
+  const timeoutFailure = () => {
+    const error = new Error("Provider response body timed out");
+    error.name = "TimeoutError";
+    return error;
+  };
   const abortFailure = () => signal?.reason instanceof Error && signal.reason.name === "AbortError"
     ? signal.reason
     : new DOMException("Request aborted", "AbortError");
@@ -292,7 +298,11 @@ export async function readBoundedResponseText(response, {
         abortPromise,
       ]);
       if (signal?.aborted) throw abortFailure();
-      if (result?.timedOut || typeof result?.text !== "string") return "";
+      if (result?.timedOut) {
+        if (throwOnTimeout) throw timeoutFailure();
+        return "";
+      }
+      if (typeof result?.text !== "string") return "";
       return new TextEncoder().encode(result.text).byteLength <= maxBytes ? result.text : "";
     } finally {
       if (timeout) clearTimeout(timeout);
@@ -322,6 +332,7 @@ export async function readBoundedResponseText(response, {
       if (signal?.aborted) throw abortFailure();
       if (result?.timedOut) {
         void reader.cancel("provider error body timeout").catch(() => {});
+        if (throwOnTimeout) throw timeoutFailure();
         return "";
       }
       if (result.done) break;

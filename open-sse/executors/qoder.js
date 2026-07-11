@@ -32,7 +32,10 @@ import { SSE_DONE } from "../utils/sseConstants.js";
 import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { FORMATS } from "../translator/formats.js";
 import { createUpstreamTerminalTracker } from "../utils/streamTerminal.js";
-import { getCurrentProviderAttemptTimestamp } from "../services/providerAttemptContext.js";
+import {
+  getCurrentProviderAttemptTimestamp,
+  runQuotaBearingProviderRequest,
+} from "../services/providerAttemptContext.js";
 import {
   QODER_CHAT_URL_ENCODED,
   QODER_MODEL_MAP,
@@ -443,11 +446,11 @@ export class QoderExecutor extends BaseExecutor {
 
     let response;
     try {
-      response = await proxyAwareFetch(
+      response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(
         url,
         { method: "POST", headers, body: encodedBodyBuf, signal: mergedSignal },
         proxyOptions,
-      );
+      ));
     } finally {
       clearTimeout(connectTimer);
     }

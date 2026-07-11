@@ -12,6 +12,20 @@ describe("sanitizeErrorText", () => {
       .toBe("Boom at failed");
   });
 
+  it("strips any absolute POSIX path, not only allowlisted roots", () => {
+    expect(sanitizeErrorText("leak /private/project/secret.js done"))
+      .toBe("leak done");
+    expect(sanitizeErrorText("leak /mnt/build/x.js done"))
+      .toBe("leak done");
+    expect(sanitizeErrorText("leak /custom/path done"))
+      .toBe("leak done");
+  });
+
+  it("preserves URLs (does not strip scheme paths)", () => {
+    expect(sanitizeErrorText("see https://example.com/api/v1/chat for docs"))
+      .toBe("see https://example.com/api/v1/chat for docs");
+  });
+
   it("strips Windows paths", () => {
     expect(sanitizeErrorText("Boom at C:\\Users\\me\\src\\x.js gone"))
       .toBe("Boom at gone");

@@ -2,6 +2,7 @@ import { FORMATS } from "../../translator/formats.js";
 import { needsTranslation } from "../../translator/index.js";
 import { fromOpenAIFinish } from "../../translator/concerns/finishReason.js";
 import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.js";
+import { unwrapClinepassEnvelope } from "../../utils/clinepassEnvelope.js";
 import { addBufferToUsage, filterUsageForFormat } from "../../utils/usageTracking.js";
 import { createErrorResult } from "../../utils/error.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
@@ -354,6 +355,19 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   }
 
   reqLogger.logProviderResponse(providerResponse.status, providerResponse.statusText, providerResponse.headers, responseBody);
+
+  // Unwrap ClinePass {success, data} envelope before marking success: a
+  // {success:false, error} body must surface as a 502, never as a successful call.
+  // Source: decolua/9router#2332 @ 005d970f49.
+  {
+    const { body: unwrapped, error: envError } = unwrapClinepassEnvelope(responseBody, provider);
+    if (envError) {
+      appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
+      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, envError.message);
+    }
+    responseBody = unwrapped;
+  }
+
   if (onRequestSuccess) {
     Promise.resolve()
       .then(onRequestSuccess)

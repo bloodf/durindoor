@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import Database from "better-sqlite3";
+import { SCHEMA_VERSION } from "../../src/lib/db/schema.js";
 
 let tempDir;
 const originalDataDir = process.env.DATA_DIR;
@@ -36,7 +37,8 @@ describe("Schema migrations", () => {
     const tables = db.all(`SELECT name FROM sqlite_master WHERE type='table'`).map(t => t.name);
     expect(tables).toEqual(expect.arrayContaining([
       "_meta", "settings", "providerConnections", "providerNodes",
-      "proxyPools", "apiKeys", "apiKeyUsageTotals", "combos", "kv", "usageHistory", "usageDaily", "requestDetails",
+      "providerQuotaSnapshots", "quotaFetchStates", "proxyPools", "apiKeys",
+      "apiKeyUsageTotals", "combos", "kv", "usageHistory", "usageDaily", "requestDetails",
     ]));
     expect(db.all(`PRAGMA table_info(usageHistory)`).map((column) => column.name)).toContain("usageEventId");
     expect(db.all(`PRAGMA index_list(usageHistory)`).some((index) => index.name === "idx_uh_usage_event" && index.unique === 1)).toBe(true);
@@ -117,7 +119,7 @@ describe("Schema migrations", () => {
       const { getAdapter } = await import("@/lib/db/driver.js");
       const db = await getAdapter();
 
-      expect(db.get(`SELECT value FROM _meta WHERE key='schemaVersion'`).value).toBe("6");
+      expect(db.get(`SELECT value FROM _meta WHERE key='schemaVersion'`).value).toBe(String(SCHEMA_VERSION));
       expect(db.get(`SELECT value FROM _meta WHERE key='appVersion'`)?.value).toBeTruthy();
       const key = db.get(`SELECT * FROM apiKeys WHERE id = 'key-1'`);
       expect(key.key).toBe(secret);
@@ -346,7 +348,7 @@ describe("Schema migrations", () => {
 
     const { getAdapter } = await import("@/lib/db/driver.js");
     const db = await getAdapter();
-    expect(db.get(`SELECT value FROM _meta WHERE key='schemaVersion'`).value).toBe("6");
+    expect(db.get(`SELECT value FROM _meta WHERE key='schemaVersion'`).value).toBe(String(SCHEMA_VERSION));
     expect(db.all(`PRAGMA table_info(apiKeys)`).map((row) => row.name)).toContain("expiresAt");
     expect(db.get(`SELECT key, expiresAt FROM apiKeys WHERE id='key-1'`)).toEqual({
       key: "sk-deadbeef",
@@ -379,7 +381,7 @@ describe("Schema migrations", () => {
 
     const { getAdapter } = await import("@/lib/db/driver.js");
     const db = await getAdapter();
-    expect(db.get(`SELECT value FROM _meta WHERE key='schemaVersion'`).value).toBe("6");
+    expect(db.get(`SELECT value FROM _meta WHERE key='schemaVersion'`).value).toBe(String(SCHEMA_VERSION));
     expect(db.get(`SELECT key, expiresAt FROM apiKeys WHERE id='key-1'`)).toEqual({
       key: "sk-deadbeef",
       expiresAt: "2030-01-01T00:00:00.000Z",

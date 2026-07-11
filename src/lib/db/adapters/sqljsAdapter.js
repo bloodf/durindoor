@@ -91,7 +91,6 @@ export async function createSqlJsAdapter(filePath) {
     try {
       const result = fn();
       db.exec(`RELEASE ${sp}`);
-      scheduleSave();
       return result;
     } catch (e) {
       try { db.exec(`ROLLBACK TO ${sp}`); db.exec(`RELEASE ${sp}`); } catch {}

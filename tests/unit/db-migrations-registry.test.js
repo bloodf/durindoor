@@ -29,10 +29,14 @@ describe("db migrations registry", () => {
   });
 
   it("keeps the published v4 daily-limit, v5 expiry, and v6 policy sequence", () => {
-    expect(MIGRATIONS.slice(-3).map(({ version, name }) => [version, name])).toEqual([
+    expect(MIGRATIONS.filter(({ version }) => version >= 4 && version <= 6).map(({ version, name }) => [version, name])).toEqual([
       [4, "add-daily-token-limit-to-api-keys"],
       [5, "api-key-expiry"],
       [6, "api-key-policy"],
     ]);
+  });
+
+  it("registers provider quota persistence after the immutable policy migration", () => {
+    expect(MIGRATIONS.find(({ version }) => version === 7)?.name).toBe("provider-quota-snapshots");
   });
 });

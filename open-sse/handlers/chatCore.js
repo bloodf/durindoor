@@ -33,10 +33,57 @@ import { compressMessages } from "../rtk/index.js";
 import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadroomPhantomSavings } from "../rtk/headroom.js";
 import { compressWithPxpipe, normalizePxpipeResult } from "../rtk/pxpipe.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
+import { estimateTokens } from "./countTokensCore.js";
+import { runCompressionSeam } from "./chatCore/compressionHook.js";
 import { stripUnsupportedModalities } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
 import { extractThinking } from "../translator/concerns/thinkingUnified.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
+
+// Neutral adaptive config forwarded to the compression seam. mode:"off" short-
+// circuits resolveAdaptivePlan before it dereferences budget fields, but the
+// object is kept complete so a later adaptive mode flip already has the full
+// computeTarget() contract (outputReserve/safetyMargin/pct/absoluteBudget).
+const COMPRESSION_ADAPTIVE_CONFIG = Object.freeze({
+  mode: "off",
+  policy: "reserve-output",
+  outputReserve: 4096,
+  safetyMargin: 1024,
+  pct: 0.85,
+  absoluteBudget: 0,
+});
+
+const COMPRESSION_HEADER = "X-DurinDoor-Compression";
+
+/**
+ * Stamp the X-DurinDoor-Compression response header onto a handler result.
+ *
+ * chatCore's terminal handlers (forced-SSE→JSON, non-stream, stream) each build
+ * a fresh `Response` with fixed headers, so mutating `providerResponse.headers`
+ * upstream would not reach the client. This helper rebuilds the final response
+ * with a mutable Headers copy carrying the compression marker.
+ *
+ * No-op when there is nothing to advertise (disabled / no engine compressed /
+ * fail-open) or when the result is an upstream error — error responses must not
+ * claim the request body was compressed.
+ *
+ * @param {{success?: boolean, response: Response}|null|undefined} result
+ * @param {string|null} headerValue
+ * @returns {typeof result}
+ */
+export function withCompressionHeader(result, headerValue) {
+  if (!headerValue || !result || result.success === false || !result.response) return result;
+  const headers = new Headers(result.response.headers);
+  headers.set(COMPRESSION_HEADER, headerValue);
+  return {
+    ...result,
+    response: new Response(result.response.body, {
+      status: result.response.status,
+      statusText: result.response.statusText,
+      headers,
+    }),
+  };
+}
 
 /**
  * Whether a request targets the Codex compact-responses endpoint.
@@ -118,7 +165,7 @@ function proxyEndpointLogLabel(value) {
  *   errors. Legacy `info`/`debug`/`warn`/`error` remain supported.
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, skipPonytailCommands = false, claudeClassifierCompat }) {
+export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, compressionEnabled, compressionEngines, skipPonytailCommands = false, claudeClassifierCompat }) {
   const { provider, model: requestedModel } = modelInfo;
   const requestStartTime = Date.now();
   const requestContext = captureRequestContext(body, clientRawRequest);
@@ -368,6 +415,38 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     }
   } else if (headroomEnabled) {
     log?.warn?.("HEADROOM", `skipped: ${headroomDiagnostics.reason || "compression unavailable"}${headroomDiagnostics.endpoint ? ` (${headroomDiagnostics.endpoint})` : ""}`);
+  }
+
+  // Compression engine stack (F-1b): runs AFTER rtk/headroom, BEFORE salvage/caveman/pxpipe.
+  // Single execution path: runCompressionSeam owns plan derivation + per-engine
+  // fail-open and reports which engines actually compressed plus overall savings
+  // as a response-header value. Catastrophic seam failure restores the pre-stack
+  // snapshot and emits no header. Fail-open throughout.
+  let compressionHeaderValue = null;
+  if (compressionEnabled) {
+    const preStackSnapshot = structuredClone(translatedBody);
+    try {
+      const { body: compressedBody, headerValue } = await runCompressionSeam(translatedBody, undefined, {
+        enabled: true,
+        engines: compressionEngines ?? {},
+        applyOpts: COMPRESSION_ADAPTIVE_CONFIG,
+        adaptive: {
+          ...COMPRESSION_ADAPTIVE_CONFIG,
+          estimatedTokens: estimateTokens(translatedBody),
+          modelContextLimit: getCapabilitiesForModel(provider, cleanModel).contextWindow,
+          requestMaxTokens: translatedBody?.max_tokens ?? translatedBody?.max_completion_tokens ?? null,
+        },
+        log,
+      });
+      translatedBody = compressedBody;
+      if (headerValue) {
+        compressionHeaderValue = headerValue;
+        xf.push(`COMPRESS:${headerValue}`);
+      }
+    } catch (err) {
+      translatedBody = preStackSnapshot;
+      log?.warn?.("COMPRESS", `stack failed, passthrough: ${err?.message || err}`);
+    }
   }
 
   // Re-run salvage + fixMissing after RTK/Headroom compression — both
@@ -716,7 +795,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // Provider forced streaming but client wants JSON
   if (!clientRequestedStreaming && providerRequiresStreaming) {
     const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, trackDone, appendLog });
-    if (result) { streamController.handleComplete(); return result; }
+    if (result) { streamController.handleComplete(); return withCompressionHeader(result, compressionHeaderValue); }
   }
 
   // True non-streaming response. When the client asked for streaming but the
@@ -726,12 +805,15 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     const streamToClient = clientRequestedStreaming === true;
     const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, reqLogger, toolNameMap, trackDone, appendLog, streamToClient });
     streamController.handleComplete();
-    return result;
+    return withCompressionHeader(result, compressionHeaderValue);
   }
 
   // Streaming response
   const { onStreamComplete, streamDetailId } = buildOnStreamComplete({ ...sharedCtx });
-  return handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, streamController, onStreamComplete, streamDetailId });
+  return withCompressionHeader(
+    await handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, streamController, onStreamComplete, streamDetailId }),
+    compressionHeaderValue
+  );
 }
 
 // Minimal Claude message the auto-mode classifier parses as ALLOW.

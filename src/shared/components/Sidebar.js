@@ -26,6 +26,7 @@ const navItems = [
   { href: "/dashboard/health", label: "Provider Health", icon: "monitor_heart" },
   { href: "/dashboard/free-provider-rankings", label: "Free Providers", icon: "leaderboard" },
   { href: "/dashboard/token-saver", label: "Token Saver", icon: "savings" },
+  { href: "/dashboard/compression-studio", label: "Compression Studio", icon: "compress" },
   { href: "/dashboard/pxpipe", label: "PXPIPE", icon: "image" },
   { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal" },
   { href: "/dashboard/mcp-gateway", label: "MCP Gateway", icon: "hub" },

@@ -44,6 +44,26 @@ Common reset patterns:
 
 Treat displayed reset windows as operational hints unless the provider explicitly guarantees them.
 
+## Durable Provider Quota Contract
+
+Schema version 7 adds the runtime-neutral persistence boundary used by the quota integration program. It stores provider-reported observations separately from local request accounting:
+
+- `providerQuotaSnapshots` keeps one current row for a stable connection, account/resource, and quota dimension.
+- `quotaFetchStates` records whether the latest refresh succeeded, was missing or malformed, failed authentication, was rate-limited, timed out, or hit a network/provider error. Its `lastObservedAt` value is the durable whole-source watermark, including a successful refresh that returned an empty set.
+- `usageHistory`, `usageDaily`, and API-key lifetime totals remain local accounting. Provider snapshots never absorb those counters, and this schema does not yet create in-flight reservations.
+
+A snapshot distinguishes `bounded`, `unlimited`, and `unknown` limits. Missing data never silently means unlimited or exhausted. Zero is a valid limit, used amount, remaining amount, or remaining ratio. Absolute amounts and ratios are stored separately, timestamps are canonical UTC values, and a snapshot is fresh only while `observedAt <= now < staleAt`. Write and import boundaries accept at most five minutes of clock skew for observation and fetch-attempt times; retry deadlines are limited to 24 hours. Reset and cooldown timestamps can shorten freshness, but they do not make a stale observation available again without a new provider refresh.
+
+Stable identity is based on the non-secret provider-connection ID plus namespaced account, resource, dimension, and source keys. Missing account/resource scope is represented internally as `scope:connection` / `scope:account`; provider input cannot supply or collide with that reserved namespace. Identity fields inspect both namespace and payload, reject credential, URL, email, header, query-string, opaque-token, and raw-body shapes, and never use an API key, OAuth token, token hash, display name, or array position. Each write acquires SQLite's writer lock before reading source state, so competing processes cannot upgrade a stale WAL read snapshot. A strictly newer observation replaces the source set; equal or older observations leave snapshot rows unchanged, while a newer successful attempt still updates the latest fetch outcome and success time. A delayed response cannot resurrect rows removed by a newer empty refresh. The single-row write API is an authoritative one-row source replacement; multi-dimension sources use the batch replacement API. Failures retain the last successful observation and success time. Deleting a provider connection cascades its quota state, while changing an existing connection ID to a different provider is rejected.
+
+This first persistence batch does not change account selection, fallback, combo scoring, quota fetches, dashboard surfaces, or request accounting. Those consumers land in later serial quota batches and must use this same contract rather than creating parallel caches or truth sources.
+
+### Backup and retention behavior
+
+Portable database exports include a versioned `quota` section with normalized snapshots and sanitized fetch outcomes. The entire export is captured in one SQLite read transaction and fails closed on orphaned rows or snapshots that do not exactly match their durable source watermark, so its connections and quota references always describe one database snapshot. Older exports without that section remain valid and import with no provider quota state. A present but unsupported, malformed, duplicate, dangling, provider-mismatched, future-poisoned, source-inconsistent, or aggregate-over-20,000-row quota payload is rejected before any destructive import work. The authenticated HTTP import reader also enforces a 16 MiB streaming byte limit, including chunked bodies. One authoritative source refresh is capped at 5,000 snapshots before normalization. SQLite safety backups include both quota tables automatically.
+
+Quota metadata is a small scalar allowlist; raw provider responses, URLs, headers, cookies, authorization values, API keys, and tokens are not stored there. The full database export still contains the existing provider/API-key credentials needed for restore, so protect it as a secret. Snapshot retention is distinct from freshness: stale rows remain available for diagnostics until the configured pruning boundary, which defaults to 90 days.
+
 ## Claude and Codex Auto-ping
 
 Auto-ping is an opt-in setting for each active Claude or Codex OAuth connection. Enable it from the connection row on the provider page, the Provider Limits view, or the CLI connection actions. DurinDoor persists the choice with that connection and sends a minimal request only when the provider reports that the five-hour session window is ready to restart. Codex auto-ping also waits when a longer blocking quota is exhausted.

@@ -1,5 +1,7 @@
+import { QUOTA_V7_TABLES } from "./migrations/quota-v7-schema.js";
+
 // Latest schema version — bumped when a migration is added in ./migrations/
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 export const PRAGMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -46,6 +48,8 @@ export const TABLES = {
       "CREATE INDEX IF NOT EXISTS idx_pc_priority ON providerConnections(provider, priority)",
     ],
   },
+  providerQuotaSnapshots: QUOTA_V7_TABLES.providerQuotaSnapshots,
+  quotaFetchStates: QUOTA_V7_TABLES.quotaFetchStates,
   providerNodes: {
     columns: {
       id: "TEXT PRIMARY KEY",

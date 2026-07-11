@@ -11,6 +11,9 @@ export {
   getProxyPools, getProxyPoolById,
   createProxyPool, updateProxyPool, deleteProxyPool,
   getApiKeys, getApiKeyById, getApiKeyByKey, getApiKeyUsageTotals, getAllApiKeyUsageTotals, incrementApiKeyUsageSync, createApiKey, updateApiKey, deleteApiKey, validateApiKey, getApiKeyUsageLimitStatus,
+  upsertProviderQuotaSnapshot, replaceProviderQuotaSnapshotsForSource,
+  recordQuotaFetchFailure, getProviderQuotaSnapshot,
+  listProviderQuotaSnapshots, getQuotaFetchState, pruneProviderQuotaSnapshots,
   getCombos, getComboById, getComboByName,
   createCombo, updateCombo, deleteCombo,
   // MCP gateway

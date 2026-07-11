@@ -245,6 +245,11 @@ export async function updateProviderConnection(id, data) {
     const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
     if (!row) { result = null; return; }
     const existing = rowToConn(row);
+    if (Object.hasOwn(data, "provider") && data.provider !== existing.provider) {
+      const error = new Error("A provider connection cannot change provider identity in place");
+      error.code = "PROVIDER_IDENTITY_IMMUTABLE";
+      throw error;
+    }
     const merged = { ...mergeProviderConnection(existing, data), updatedAt: new Date().toISOString() };
     upsert(db, merged);
     if (data.isActive === false) updateAutoPingEntryInTx(db, existing.provider, id, false);

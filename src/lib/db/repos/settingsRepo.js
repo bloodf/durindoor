@@ -76,6 +76,12 @@ const DEFAULT_SETTINGS = {
   // When enabled, classifier requests are short-circuited to "<block>no</block>"
   // (ALLOW) and `thinking` blocks are suppressed on Claude-shaped responses.
   claudeClassifierCompat: "off",
+  // Compression engine stack (F-1b). Master switch is off by default; enabling
+  // runs the configured engine(s) after RTK/headroom and before caveman/pxpipe.
+  // compressionEngines is a per-id toggle map: { [engineId]: { enabled, level? } }.
+  // Any engine throw fail-opens and restores the body; the loop never throws.
+  compressionEnabled: false,
+  compressionEngines: {},
 };
 
 async function readRaw() {

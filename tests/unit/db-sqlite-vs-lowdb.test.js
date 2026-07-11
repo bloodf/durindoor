@@ -95,7 +95,7 @@ describe("DB SQLite layer — public API parity", () => {
   });
 
   it("apiKeys: daily usage limit status uses today's API-key tokens", async () => {
-    const k = await sqliteDb.createApiKey("limited-key", "machine-abc", [], 100);
+    const k = await sqliteDb.createApiKey("limited-key", "machine-abc", [], 90);
     let status = await sqliteDb.getApiKeyUsageLimitStatus(k.key);
     expect(status.enforced).toBe(true);
     expect(status.exceeded).toBe(false);
@@ -108,7 +108,7 @@ describe("DB SQLite layer — public API parity", () => {
     });
 
     status = await sqliteDb.getApiKeyUsageLimitStatus(k.key);
-    expect(status.usedTokens).toBe(110);
+    expect(status.usedTokens).toBe(90);
     expect(status.exceeded).toBe(true);
 
     await sqliteDb.updateApiKey(k.id, { dailyLimitTokens: null });
@@ -450,7 +450,7 @@ describe("DB SQLite layer — public API parity", () => {
       expect(serialized).not.toContain("sk-dead");
       expect(serialized).not.toContain(hexHash);
     }
-    expect(payloads[0][0].apiKeyMasked).toBe("***");
+    expect(payloads[0].some((row) => row.apiKeyMasked === "***")).toBe(true);
     for (const stats of payloads.slice(1)) {
       const entry = Object.values(stats.byApiKey).find((row) => row.apiKeyKey === "api-key:legacy-key-id");
       expect(entry).toMatchObject({

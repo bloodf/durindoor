@@ -1,7 +1,6 @@
 // Public API barrel — all DB functions
 import { getAdapter } from "./driver.js";
 import { stringifyJson, parseJson } from "./helpers/jsonCol.js";
-import { backfillApiKeyUsageTotals } from "./helpers/apiKeyUsageTotals.js";
 import { normalizeApiKeyPolicy } from "./helpers/apiKeyPolicy.js";
 import { canonicalizeApiKeyExpiresAt } from "@/shared/utils/apiKeyExpiry";
 
@@ -55,9 +54,16 @@ function validateApiKeyImport(payload) {
   for (const total of totals) {
     if (!ids.has(total.apiKeyId)) throw new Error(`API-key total references missing key: ${total.apiKeyId}`);
     for (const field of ["totalTokens", "totalCost", "totalRequests"]) {
-      const value = Number(total[field] ?? 0);
-      if (!Number.isFinite(value) || value < 0 || (field !== "totalCost" && !Number.isSafeInteger(value))) {
+      const value = total[field];
+      if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || (field !== "totalCost" && !Number.isSafeInteger(value))) {
         throw new Error(`API-key total ${total.apiKeyId} ${field} is invalid`);
+      }
+    }
+    if (total.updatedAt != null) {
+      const updatedAt = total.updatedAt;
+      const hasTimezone = typeof updatedAt === "string" && /(Z|[+-]\d{2}:\d{2})$/i.test(updatedAt);
+      if (!hasTimezone || !Number.isFinite(Date.parse(updatedAt))) {
+        throw new Error(`API-key total ${total.apiKeyId} updatedAt is invalid`);
       }
     }
   }
@@ -94,7 +100,7 @@ export {
   getApiKeys, getApiKeyById, getApiKeyByKey, createApiKey, updateApiKey, deleteApiKey, validateApiKey, getApiKeyUsageLimitStatus,
 } from "./repos/apiKeysRepo.js";
 export {
-  getApiKeyUsageTotals, incrementApiKeyUsageSync,
+  getApiKeyUsageTotals, getAllApiKeyUsageTotals, incrementApiKeyUsageSync,
 } from "./repos/apiKeyUsageTotalsRepo.js";
 
 // Combos
@@ -208,6 +214,19 @@ export async function importDb(payload) {
 
   db.transaction(() => {
     // Wipe all tables (keep _meta)
+    // Usage history is intentionally retained for operator analytics, but its
+    // literal-secret attribution belongs to the pre-import key set. Detach it
+    // so an imported key reusing the same secret cannot inherit daily limits.
+    db.run(`UPDATE usageHistory SET apiKey = NULL WHERE apiKey IS NOT NULL`);
+    for (const row of db.all(`SELECT dateKey, data FROM usageDaily`)) {
+      const day = parseJson(row.data, {});
+      if (day?.byApiKey && Object.keys(day.byApiKey).length > 0) {
+        // Preserve aggregate/provider/model analytics while removing the
+        // secret-derived per-key buckets from the pre-import identity set.
+        day.byApiKey = {};
+        db.run(`UPDATE usageDaily SET data = ? WHERE dateKey = ?`, [stringifyJson(day), row.dateKey]);
+      }
+    }
     db.run(`DELETE FROM settings`);
     db.run(`DELETE FROM providerConnections`);
     db.run(`DELETE FROM providerNodes`);
@@ -258,9 +277,16 @@ export async function importDb(payload) {
         );
       }
     } else {
-      // Older backups predate durable totals. Rebuild from retained history
-      // instead of silently resetting policy enforcement to zero.
-      backfillApiKeyUsageTotals(db);
+      // Full backups created before durable totals cannot prove historical
+      // usage. The import intentionally clears local history attribution and
+      // starts each imported key at zero rather than attaching unrelated rows
+      // that happen to reuse the same literal secret.
+      for (const key of apiKeys) {
+        db.run(
+          `INSERT INTO apiKeyUsageTotals(apiKeyId, totalTokens, totalCost, totalRequests, updatedAt) VALUES(?, 0, 0, 0, NULL)`,
+          [key.id],
+        );
+      }
     }
     for (const c of payload.combos || []) {
       db.run(

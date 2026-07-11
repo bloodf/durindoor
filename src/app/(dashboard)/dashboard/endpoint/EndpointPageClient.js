@@ -17,6 +17,15 @@ import EndpointRow from "./components/EndpointRow";
 import StatusAlert from "./components/StatusAlert";
 import Tooltip from "./components/Tooltip";
 import SecurityWarning from "./components/SecurityWarning";
+import ApiKeyPolicyFields from "./components/ApiKeyPolicyFields";
+import {
+  apiKeyPolicyDraftToPayload,
+  apiKeyPolicyPatchFromDraft,
+  apiKeyPolicyToDraft,
+  emptyApiKeyPolicyDraft,
+  formatPolicyUsage,
+  isEditableApiKeyPolicy,
+} from "./apiKeyPolicy";
 import {
   API_KEY_EXPIRY_PRESETS,
   expiryFromSelection,
@@ -38,11 +47,16 @@ export default function APIPageClient({ machineId }) {
   const [confirmState, setConfirmState] = useState(null);
   const [combos, setCombos] = useState([]);
   const [newKeyAllowedCombos, setNewKeyAllowedCombos] = useState([]);
+  const [policyCatalog, setPolicyCatalog] = useState([]);
+  const [policyCatalogLoading, setPolicyCatalogLoading] = useState(true);
+  const [newKeyPolicy, setNewKeyPolicy] = useState(emptyApiKeyPolicyDraft);
   const [editKey, setEditKey] = useState(null);
   const [editKeyAllowedCombos, setEditKeyAllowedCombos] = useState([]);
   const [editKeyExpiryPreset, setEditKeyExpiryPreset] = useState("never");
   const [editKeyCustomExpiresAt, setEditKeyCustomExpiresAt] = useState("");
   const [editKeyStatus, setEditKeyStatus] = useState(null);
+  const [editKeyPolicy, setEditKeyPolicy] = useState(emptyApiKeyPolicyDraft);
+  const [editKeyPolicyDirty, setEditKeyPolicyDirty] = useState(false);
 
   const [requireApiKey, setRequireApiKey] = useState(false);
   const [requireLogin, setRequireLogin] = useState(true);
@@ -115,6 +129,7 @@ export default function APIPageClient({ machineId }) {
 
   useEffect(() => {
     fetchData();
+    fetchPolicyCatalog();
     loadSettings();
   }, []);
 
@@ -289,6 +304,20 @@ export default function APIPageClient({ machineId }) {
       setLoading(false);
     }
   };
+
+  async function fetchPolicyCatalog() {
+    try {
+      const response = await fetch("/api/keys/policy-catalog");
+      if (response.ok) {
+        const data = await response.json();
+        setPolicyCatalog(data.models || []);
+      }
+    } catch (error) {
+      console.log("Error fetching API-key policy catalog:", error);
+    } finally {
+      setPolicyCatalogLoading(false);
+    }
+  }
 
   // u2500u2500u2500 Cloudflare Tunnel handlers
   // Ping tunnel health until reachable. Race multiple URLs (shortlink + direct) — 1 OK is enough.
@@ -638,8 +667,10 @@ export default function APIPageClient({ machineId }) {
       if (dailyLimitTokens !== null && (!Number.isSafeInteger(dailyLimitTokens) || dailyLimitTokens < 0)) return;
 
       let expiresAt;
+      let policy;
       try {
         expiresAt = expiryFromSelection(newKeyExpiryPreset, newKeyCustomExpiresAt);
+        policy = apiKeyPolicyDraftToPayload(newKeyPolicy);
       } catch (error) {
         setKeyStatus({ type: "error", message: error.message });
         return;
@@ -648,7 +679,7 @@ export default function APIPageClient({ machineId }) {
       const res = await fetch("/api/keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newKeyName, allowedCombos: newKeyAllowedCombos, dailyLimitTokens, expiresAt }),
+        body: JSON.stringify({ name: newKeyName, allowedCombos: newKeyAllowedCombos, dailyLimitTokens, expiresAt, policy }),
       });
       const data = await res.json();
 
@@ -661,6 +692,7 @@ export default function APIPageClient({ machineId }) {
         setNewKeyExpiryPreset("never");
         setNewKeyCustomExpiresAt("");
         setNewKeyAllowedCombos([]);
+        setNewKeyPolicy(emptyApiKeyPolicyDraft());
         setKeyStatus(null);
         setShowAddModal(false);
       } else {
@@ -705,12 +737,16 @@ export default function APIPageClient({ machineId }) {
     }
   };
 
-  const handleUpdateKeyDetails = async (id, allowedCombos, expiresAt) => {
+  const handleUpdateKeyDetails = async (id, allowedCombos, expiresAt, policyPatch) => {
     try {
+      const payload = { allowedCombos, expiresAt };
+      // Edit sends field patches, not a replacement policy envelope. This
+      // preserves forward-compatible fields that this UI does not understand.
+      if (policyPatch) Object.assign(payload, policyPatch);
       const res = await fetch(`/api/keys/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ allowedCombos, expiresAt }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (res.ok) {
@@ -748,6 +784,8 @@ export default function APIPageClient({ machineId }) {
     setEditKeyAllowedCombos(Array.isArray(key.allowedCombos) ? [...key.allowedCombos] : []);
     setEditKeyExpiryPreset(expiry.selection);
     setEditKeyCustomExpiresAt(expiry.customLocalValue);
+    setEditKeyPolicy(apiKeyPolicyToDraft(key.policy));
+    setEditKeyPolicyDirty(false);
     setEditKeyStatus(null);
   };
 
@@ -1062,7 +1100,10 @@ export default function APIPageClient({ machineId }) {
           </div>
         ) : (
           <div className="flex flex-col">
-            {keys.map((key) => (
+            {keys.map((key) => {
+              const policyUsage = formatPolicyUsage(key.usage, key.policy);
+              const policyInvalid = !isEditableApiKeyPolicy(key.policy);
+              return (
               <div
                 key={key.id}
                 className={`group flex items-center justify-between py-3 border-b border-black/[0.03] dark:border-white/[0.03] last:border-b-0 ${key.isActive === false ? "opacity-60" : ""}`}
@@ -1083,6 +1124,12 @@ export default function APIPageClient({ machineId }) {
                   )}
                   <p className={`text-xs mt-1 ${formatKeyExpiry(key.expiresAt).danger ? "text-red-500" : "text-text-muted"}`}>
                     {formatKeyExpiry(key.expiresAt).text}
+                  </p>
+                  <p className={`text-xs mt-1 ${policyInvalid || policyUsage.tokensExceeded || policyUsage.costExceeded ? "text-red-500" : "text-text-muted"}`}>
+                    Models: {policyInvalid ? "Invalid policy" : (key.policy?.allowedModels?.length ? `${key.policy.allowedModels.length} selected` : "All")}
+                    {" · "}Tokens: {policyUsage.tokens}
+                    {" · "}Cost: {policyUsage.cost}
+                    {(policyUsage.tokensExceeded || policyUsage.costExceeded) && " · Limit reached"}
                   </p>
                   <div className="flex flex-wrap items-center gap-1 mt-1">
                     <span className="text-xs text-text-muted">Daily limit:</span>
@@ -1143,7 +1190,8 @@ export default function APIPageClient({ machineId }) {
                   </button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </Card>
@@ -1158,6 +1206,7 @@ export default function APIPageClient({ machineId }) {
           setNewKeyDailyLimitTokens("");
           setNewKeyExpiryPreset("never");
           setNewKeyCustomExpiresAt("");
+          setNewKeyPolicy(emptyApiKeyPolicyDraft());
           setKeyStatus(null);
         }}
       >
@@ -1223,6 +1272,12 @@ export default function APIPageClient({ machineId }) {
               </div>
             </div>
           )}
+          <ApiKeyPolicyFields
+            draft={newKeyPolicy}
+            onChange={setNewKeyPolicy}
+            catalog={policyCatalog}
+            loading={policyCatalogLoading}
+          />
           {keyStatus && <StatusAlert status={keyStatus} />}
           <div className="flex gap-2">
             <Button onClick={handleCreateKey} fullWidth disabled={!newKeyName.trim()}>
@@ -1236,6 +1291,7 @@ export default function APIPageClient({ machineId }) {
                 setNewKeyExpiryPreset("never");
                 setNewKeyCustomExpiresAt("");
                 setNewKeyAllowedCombos([]);
+                setNewKeyPolicy(emptyApiKeyPolicyDraft());
                 setKeyStatus(null);
               }}
               variant="ghost"
@@ -1435,7 +1491,7 @@ export default function APIPageClient({ machineId }) {
       <Modal
         isOpen={!!editKey}
         title={`Edit API Key — ${editKey?.name || ""}`}
-        onClose={() => { setEditKey(null); setEditKeyAllowedCombos([]); setEditKeyStatus(null); }}
+        onClose={() => { setEditKey(null); setEditKeyAllowedCombos([]); setEditKeyPolicy(emptyApiKeyPolicyDraft()); setEditKeyPolicyDirty(false); setEditKeyStatus(null); }}
       >
         <div className="flex flex-col gap-4">
           <label className="flex flex-col gap-1.5 text-sm font-medium">
@@ -1486,22 +1542,37 @@ export default function APIPageClient({ machineId }) {
           ) : (
             <p className="text-sm text-text-muted">No combos available.</p>
           )}
+          {isEditableApiKeyPolicy(editKey?.policy) ? (
+            <ApiKeyPolicyFields
+              draft={editKeyPolicy}
+              onChange={(next) => { setEditKeyPolicy(next); setEditKeyPolicyDirty(true); }}
+              catalog={policyCatalog}
+              loading={policyCatalogLoading}
+              usage={editKey?.usage}
+            />
+          ) : (
+            <StatusAlert status={{ type: "error", message: "This key has malformed stored policy data. Other key details can be saved safely, but repair or clear the policy through the management API before editing it here." }} />
+          )}
           {editKeyStatus && <StatusAlert status={editKeyStatus} />}
           <div className="flex gap-2">
             <Button
               onClick={async () => {
                 if (editKey) {
                   let expiresAt;
+                  let policy;
                   try {
                     expiresAt = expiryFromSelection(editKeyExpiryPreset, editKeyCustomExpiresAt);
+                    policy = apiKeyPolicyPatchFromDraft(editKeyPolicy, editKeyPolicyDirty);
                   } catch (error) {
                     setEditKeyStatus({ type: "error", message: error.message });
                     return;
                   }
-                  const updated = await handleUpdateKeyDetails(editKey.id, editKeyAllowedCombos, expiresAt);
+                  const updated = await handleUpdateKeyDetails(editKey.id, editKeyAllowedCombos, expiresAt, policy);
                   if (!updated) return;
                   setEditKey(null);
                   setEditKeyAllowedCombos([]);
+                  setEditKeyPolicy(emptyApiKeyPolicyDraft());
+                  setEditKeyPolicyDirty(false);
                   setEditKeyStatus(null);
                 }
               }}
@@ -1509,7 +1580,7 @@ export default function APIPageClient({ machineId }) {
             >
               Save
             </Button>
-            <Button onClick={() => { setEditKey(null); setEditKeyAllowedCombos([]); setEditKeyStatus(null); }} variant="ghost" fullWidth>Cancel</Button>
+            <Button onClick={() => { setEditKey(null); setEditKeyAllowedCombos([]); setEditKeyPolicy(emptyApiKeyPolicyDraft()); setEditKeyPolicyDirty(false); setEditKeyStatus(null); }} variant="ghost" fullWidth>Cancel</Button>
           </div>
         </div>
       </Modal>

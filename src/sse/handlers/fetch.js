@@ -49,7 +49,7 @@ export async function handleFetch(request) {
   }
 
   const settings = await getSettings();
-  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true });
+  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true, request });
   if (!apiKeyAuth.ok) {
     if (apiKeyAuth.reason === "missing") {
       log.warn("AUTH", "Missing API key (requireApiKey=true)");
@@ -151,7 +151,7 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
     return errorResponse(HTTP_STATUS.BAD_REQUEST, `Unknown provider: ${providerInput}`);
   }
 
-  const resolvedPolicyError = await enforceApiKeyModelPolicy(request, providerId);
+  const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${providerId}/fetch`);
   if (resolvedPolicyError) return resolvedPolicyError;
 
   const providerConfig = resolvedProvider.fetchConfig;

@@ -19,6 +19,6 @@ export default {
     // Backfill lifetime totals from historical usage. Pre-existing databases
     // would otherwise enforce new limits from zero instead of real usage.
 
-    backfillApiKeyUsageTotals(db);
+    backfillApiKeyUsageTotals(db, { overwrite: true });
   },
 };

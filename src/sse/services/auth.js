@@ -5,6 +5,19 @@ import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRec
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
 import * as log from "../utils/logger.js";
+import { timingSafeEqual } from "node:crypto";
+import { getConsistentMachineId } from "@/shared/utils/machineId";
+
+const CLI_AUTH_SALT = "9r-cli-auth";
+
+export async function hasValidCliToken(request) {
+  const supplied = request?.headers?.get?.("x-9r-cli-token");
+  if (!supplied) return false;
+  const expected = await getConsistentMachineId(CLI_AUTH_SALT);
+  const suppliedBytes = Buffer.from(String(supplied));
+  const expectedBytes = Buffer.from(String(expected));
+  return suppliedBytes.length === expectedBytes.length && timingSafeEqual(suppliedBytes, expectedBytes);
+}
 
 // Mutex to prevent race conditions during account selection
 let selectionMutex = Promise.resolve();
@@ -428,7 +441,10 @@ export async function isValidApiKey(apiKey) {
  * This prevents an expired or malformed stored key from becoming a policy/usage
  * identity when global API-key enforcement is disabled.
  */
-export async function evaluateApiKeyAuth(apiKey, { required = false, now = Date.now() } = {}) {
+export async function evaluateApiKeyAuth(apiKey, { required = false, now = Date.now(), request = null } = {}) {
+  if (await hasValidCliToken(request)) {
+    return { ok: true, reason: null, stored: false, operator: true };
+  }
   if (!apiKey) {
     return { ok: !required, reason: required ? "missing" : null, stored: false };
   }

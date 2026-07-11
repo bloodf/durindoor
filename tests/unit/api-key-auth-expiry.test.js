@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getApiKeyByKey: vi.fn(),
+  getConsistentMachineId: vi.fn(),
 }));
+vi.mock("@/shared/utils/machineId", () => ({ getConsistentMachineId: mocks.getConsistentMachineId }));
 
 vi.mock("@/lib/localDb", () => ({
   getApiKeyByKey: mocks.getApiKeyByKey,
@@ -18,6 +20,16 @@ const { evaluateApiKeyAuth, extractApiKey } = await import("../../src/sse/servic
 describe("API-key authentication expiry", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.getConsistentMachineId.mockResolvedValue("operator-token");
+  });
+
+  it("accepts only the valid operator token without borrowing a stored API key", async () => {
+    const request = new Request("http://localhost/v1/chat", { headers: { "x-9r-cli-token": "operator-token" } });
+    await expect(evaluateApiKeyAuth(null, { required: true, request })).resolves.toMatchObject({ ok: true, operator: true, stored: false });
+    expect(mocks.getApiKeyByKey).not.toHaveBeenCalled();
+
+    const invalid = new Request("http://localhost/v1/chat", { headers: { "x-9r-cli-token": "wrong" } });
+    await expect(evaluateApiKeyAuth(null, { required: true, request: invalid })).resolves.toMatchObject({ ok: false, reason: "missing" });
   });
 
   it.each([

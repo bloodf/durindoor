@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { isApiKeyExpiryValidationError } from "@/shared/utils/apiKeyExpiry";
 import { toApiKeyManagementView } from "@/shared/utils/apiKeyManagement";
-import { deleteApiKey, getApiKeyById, updateApiKey } from "@/lib/localDb";
+import { isApiKeyPolicyInputError, resolveApiKeyPolicyInput } from "@/shared/utils/apiKeyPolicyManagement";
+import { deleteApiKey, getApiKeyById, getApiKeyUsageTotals, updateApiKey } from "@/lib/localDb";
 
 // GET /api/keys/[id] - Get single key
 export async function GET(request, { params }) {
@@ -11,7 +12,8 @@ export async function GET(request, { params }) {
     if (!key) {
       return NextResponse.json({ error: "Key not found" }, { status: 404 });
     }
-    return NextResponse.json({ key: toApiKeyManagementView(key) });
+    const usage = await getApiKeyUsageTotals(id);
+    return NextResponse.json({ key: { ...toApiKeyManagementView(key), usage } });
   } catch (error) {
     console.log("Error fetching key:", error);
     return NextResponse.json({ error: "Failed to fetch key" }, { status: 500 });
@@ -20,9 +22,17 @@ export async function GET(request, { params }) {
 
 // PUT /api/keys/[id] - Update key
 export async function PUT(request, { params }) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   try {
     const { id } = await params;
-    const body = await request.json();
     const { name, isActive, allowedCombos, dailyLimitTokens, expiresAt } = body;
 
     const existing = await getApiKeyById(id);
@@ -40,16 +50,22 @@ export async function PUT(request, { params }) {
     if (allowedCombos !== undefined) updateData.allowedCombos = allowedCombos;
     if ("dailyLimitTokens" in body) updateData.dailyLimitTokens = dailyLimitTokens;
     if ("expiresAt" in body) updateData.expiresAt = expiresAt;
+    const policyInput = await resolveApiKeyPolicyInput(body);
+    if (policyInput.present) {
+      if (Object.hasOwn(policyInput, "value")) updateData.policy = policyInput.value;
+      else updateData.policyPatch = policyInput.patch;
+    }
 
     const updated = await updateApiKey(id, updateData);
     if (!updated) {
       return NextResponse.json({ error: "Key not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ key: toApiKeyManagementView(updated) });
+    const usage = await getApiKeyUsageTotals(id);
+    return NextResponse.json({ key: { ...toApiKeyManagementView(updated), usage } });
   } catch (error) {
     console.log("Error updating key:", error);
-    const status = /dailyLimitTokens/.test(error.message) || isApiKeyExpiryValidationError(error) ? 400 : 500;
+    const status = /dailyLimitTokens/.test(error.message) || isApiKeyExpiryValidationError(error) || isApiKeyPolicyInputError(error) ? 400 : 500;
     return NextResponse.json({ error: status === 400 ? error.message : "Failed to update key" }, { status });
   }
 }

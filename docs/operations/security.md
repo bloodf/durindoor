@@ -43,6 +43,20 @@ Best practices:
 
 The full key is returned once, in the creation response. Management list/detail responses and CLI-tool status responses redact stored credentials. Keep the creation output in a password manager; the dashboard and CLI cannot reveal an old key again.
 
+### Model policy and committed limits
+
+Each API key can restrict canonical runtime model identities and set lifetime committed token/cost caps. Policy enforcement runs after alias/provider/combo resolution but before provider credentials or network work. It applies to chat, Responses, images, embeddings, audio, moderation, rerank, web, music, video, native Gemini audio, batch rows, and realtime session models. Web search and fetch use distinct `provider/search` and `provider/fetch` identities; a legacy bare-provider policy remains a compatibility grant for both.
+
+An empty `allowedModels` list is explicitly unrestricted. A non-empty list is an allowlist. Combo names are rejected from this list, because a combo is separately authorized by `allowedCombos` and each selected concrete member is checked against the model policy. Malformed stored policy fails closed. Dashboard edits omit untouched policy data and send field patches, so an expiry or combo edit cannot silently clear malformed restrictions or erase forward-compatible policy fields.
+
+Token/cost caps are committed counters, not reservations. Requests are denied once a committed counter has reached its cap; a request already in flight can finish and cross the cap. Retry-safe server event IDs ensure the same chat completion is committed once. Reasoning is a subset of completion, cached input is a subset of input, and dedicated pricing is applied to each subset once. Direct non-negative provider cost wins over local price calculation.
+
+The v6 backfill reconciles v3/v4/v5 history once during migration, preserves literal key bytes, and uses historical stored cost rather than recalculating it with current prices. Existing stamped-v6 databases receive missing totals without overwriting live counters. Imports with explicit totals validate non-negative numeric values and timestamps atomically. Older full backups without totals start imported keys at zero; retained analytics history has its old key attribution removed so a reused secret cannot inherit a daily or lifetime limit.
+
+Files and local batch resources are owned by the stable API-key row ID. Other keys receive a not-found response for list/detail/content/delete/cancel/results access. The machine-bound CLI operator token has deliberate cross-owner administration. Ownerless pre-upgrade files remain local-only, and local placeholder keys remain compatible only while global API-key enforcement is disabled. Batch row execution forwards the creator's normalized credential and does not accept auth from a row body.
+
+Current daily token limits are enforced by the chat history path. The quota program extends authoritative daily/lifetime accounting and reservation semantics across every non-chat modality; do not treat a daily-only cap as a universal media/web budget until that stage is deployed.
+
 Expiry values are stored as canonical UTC timestamps. Custom dashboard/CLI input is interpreted in the operator's local timezone, and displays use local time. Selecting **Never expires** during an edit explicitly clears the value. Enforcement uses server time and treats `now == expiresAt` as expired. Missing expiry on an older key means it never expires; malformed stored expiry fails closed. Expired, inactive, and otherwise invalid credentials intentionally share the same generic unauthorized response.
 
 ### Upgrade and backup compatibility

@@ -35,7 +35,19 @@ const USAGE_EXTRACTORS = {
       candidates = total - prompt - thoughts;
       if (candidates < 0) candidates = 0;
     }
-    return { promptTokens: prompt, completionTokens: candidates + thoughts, totalTokens: total, cachedTokens: cached, reasoningTokens: thoughts };
+    // Some Gemini surfaces report candidates excluding thoughts while others
+    // include them. When total is present it is authoritative, so derive the
+    // canonical completion from total-input and keep thoughts as a subset.
+    const canonicalCompletion = total > 0
+      ? Math.max(0, total - prompt)
+      : candidates + thoughts;
+    return {
+      promptTokens: prompt,
+      completionTokens: canonicalCompletion,
+      totalTokens: total > 0 ? total : prompt + canonicalCompletion,
+      cachedTokens: cached,
+      reasoningTokens: thoughts,
+    };
   },
   kiro(raw) {
     const input = n(raw.inputTokens), output = n(raw.outputTokens);

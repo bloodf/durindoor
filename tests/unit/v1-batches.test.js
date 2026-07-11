@@ -61,6 +61,16 @@ describe("files", () => {
   it("returns null for missing file", async () => {
     expect(await getFile("file_" + "0".repeat(24), { filesRoot: tmp })).toBeNull();
   });
+
+  it("isolates file metadata, content, listing, and deletion by stable owner", async () => {
+    const meta = await uploadFile({ filename: "private.jsonl", bytes: "secret", purpose: "batch" }, { filesRoot: tmp, ownerId: "key-a" });
+    expect(meta).not.toHaveProperty("ownerId");
+    expect(await getFile(meta.id, { filesRoot: tmp, ownerId: "key-b" })).toBeNull();
+    expect(await getFileContent(meta.id, { filesRoot: tmp, ownerId: "key-b" })).toBeNull();
+    expect((await listFiles({ filesRoot: tmp, ownerId: "key-b" })).data).toHaveLength(0);
+    expect(await deleteFile(meta.id, { filesRoot: tmp, ownerId: "key-b" })).toBeNull();
+    expect(await getFile(meta.id, { filesRoot: tmp, allowAllOwners: true })).toMatchObject({ id: meta.id });
+  });
 });
 
 describe("validateOpenAIJsonl", () => {
@@ -125,6 +135,19 @@ describe("OpenAI batches", () => {
   it("404 on unknown input file", async () => {
     await expect(createOpenAIBatch({ input_file_id: "file_" + "0".repeat(24) }, { filesRoot: tmp, executor: okExecutor }))
       .rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it("isolates input, detail, cancel, and output resources by owner", async () => {
+    const text = JSON.stringify({ custom_id: "r1", method: "POST", url: "/v1/chat/completions", body: { model: "m" } }) + "\n";
+    const file = await uploadFile({ filename: "owned.jsonl", bytes: text, purpose: "batch" }, { filesRoot: tmp, ownerId: "key-a" });
+    await expect(createOpenAIBatch({ input_file_id: file.id }, { filesRoot: tmp, executor: okExecutor, ownerId: "key-b" }))
+      .rejects.toMatchObject({ statusCode: 404 });
+    const view = await createOpenAIBatch({ input_file_id: file.id }, { filesRoot: tmp, executor: okExecutor, ownerId: "key-a" });
+    await _waitForBatch(view.id);
+    expect(await getBatch(view.id, { filesRoot: tmp, surface: "openai", ownerId: "key-b" })).toBeNull();
+    expect(await cancelBatch(view.id, { filesRoot: tmp, surface: "openai", ownerId: "key-b" })).toBeNull();
+    expect(await getBatchOutputText(view.id, "output", { filesRoot: tmp, ownerId: "key-b" })).toBeNull();
+    expect(await getBatch(view.id, { filesRoot: tmp, surface: "openai", allowAllOwners: true })).toMatchObject({ id: view.id });
   });
 
   it("mid-run cancel stops scheduling, finishes active row, finalizes cancelled", async () => {

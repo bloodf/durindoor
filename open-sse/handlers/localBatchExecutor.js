@@ -20,13 +20,20 @@ async function ensureInit() {
  * @param {Headers|object} authHeaders - headers to forward on each row request
  * @returns {(row:{url,method,body,custom_id}) => Promise<{status_code,body}>}
  */
-export function makeDefaultExecutor(authHeaders) {
+export function makeDefaultExecutor(authSource) {
   // Snapshot only the auth-relevant headers; never trust row bodies to set them.
   const forward = new Headers();
-  const src = authHeaders instanceof Headers ? authHeaders : new Headers(authHeaders || {});
-  for (const name of ["authorization", "x-api-key", "anthropic-version", "user-agent"]) {
+  const sourceRequest = authSource instanceof Request ? authSource : null;
+  const src = sourceRequest
+    ? sourceRequest.headers
+    : (authSource instanceof Headers ? authSource : new Headers(authSource || {}));
+  for (const name of ["authorization", "x-api-key", "x-goog-api-key", "x-9r-cli-token", "anthropic-version", "user-agent"]) {
     const v = src.get(name);
     if (v) forward.set(name, v);
+  }
+  if (sourceRequest && !forward.has("authorization") && !forward.has("x-api-key") && !forward.has("x-goog-api-key")) {
+    const queryKey = new URL(sourceRequest.url).searchParams.get("key");
+    if (queryKey) forward.set("x-goog-api-key", queryKey);
   }
 
   return async ({ url, body }) => {

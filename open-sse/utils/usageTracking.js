@@ -169,7 +169,7 @@ export function canonicalizeUsage(usage) {
 
   const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
   const completion = num(usage.completion_tokens ?? usage.output_tokens);
-  const reasoning = num(usage.reasoning_tokens);
+  const reasoning = num(usage.reasoning_tokens ?? usage.completion_tokens_details?.reasoning_tokens);
   // Fall back to the nested prompt_tokens_details.cache_creation_tokens shape
   // (buildUsage()'s OpenAI-forwarding format) when the top-level field is
   // absent, so callers that pass a buildUsage() object through don't silently
@@ -187,21 +187,25 @@ export function canonicalizeUsage(usage) {
   // Guard on the absence of `cached_tokens`: our own canonical output always
   // sets that key (even to 0), so re-running canonicalizeUsage on an already-
   // folded result takes the passthrough branch instead of folding again.
-  if (usage.cached_tokens === undefined &&
-      (usage.cache_read_input_tokens !== undefined || usage.cache_creation_input_tokens !== undefined)) {
+  const foldsExclusiveCache = usage.cached_tokens === undefined &&
+      (usage.cache_read_input_tokens !== undefined || usage.cache_creation_input_tokens !== undefined);
+  if (foldsExclusiveCache) {
     cached = num(usage.cache_read_input_tokens);
     prompt = prompt + cached + cacheCreation;
   } else {
     // OpenAI/Gemini path (or already-canonical input): prompt already includes cached_tokens.
-    cached = num(usage.cached_tokens);
+    cached = num(usage.cached_tokens ?? usage.prompt_tokens_details?.cached_tokens);
   }
+
+  const componentTotal = prompt + completion;
+  const explicitTotal = num(usage.total_tokens);
 
   const result = {
     prompt_tokens: prompt,
     completion_tokens: completion,
-    // Recompute rather than pass through: when the fold branch ran above,
-    // an upstream total_tokens (cache-exclusive) would otherwise be stale.
-    total_tokens: prompt + completion,
+    // Claude's exclusive cache fold changes the component sum, so its incoming
+    // total becomes stale. Other providers' explicit totals are authoritative.
+    total_tokens: foldsExclusiveCache ? componentTotal : (explicitTotal > 0 ? explicitTotal : componentTotal),
     cached_tokens: cached,
     cache_creation_input_tokens: cacheCreation,
   };

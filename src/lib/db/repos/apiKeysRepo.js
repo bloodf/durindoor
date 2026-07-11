@@ -1,6 +1,8 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 import { isApiKeyExpired, normalizeApiKeyExpiresAt } from "@/shared/utils/apiKeyExpiry";
+import { mergeApiKeyPolicy, normalizeApiKeyPolicy } from "../helpers/apiKeyPolicy.js";
+import { getCommittedTokenCount } from "../helpers/committedTokens.js";
 
 /**
  * API key repository.
@@ -71,10 +73,13 @@ export async function getApiKeyByKey(key) {
   return rowToKey(row);
 }
 
-export async function createApiKey(name, machineId, allowedCombos = [], dailyLimitTokens = null, expiresAt = null, now = Date.now()) {
+export async function createApiKey(name, machineId, allowedCombos = [], dailyLimitTokens = null, expiresAt = null, optionsOrNow = {}) {
   if (!machineId) throw new Error("machineId is required");
+  const options = typeof optionsOrNow === "number" ? { now: optionsOrNow } : (optionsOrNow || {});
+  const now = options.now ?? Date.now();
   const tokenLimit = normalizeDailyLimitTokens(dailyLimitTokens);
   const expiry = normalizeApiKeyExpiresAt(expiresAt, now);
+  const policy = normalizeApiKeyPolicy(options.policy ?? null);
   const db = await getAdapter();
   const { generateApiKeyWithMachine } = await import("@/shared/utils/apiKey");
   const result = generateApiKeyWithMachine(machineId);
@@ -86,12 +91,13 @@ export async function createApiKey(name, machineId, allowedCombos = [], dailyLim
     isActive: true,
     allowedCombos: Array.isArray(allowedCombos) ? allowedCombos : [],
     dailyLimitTokens: tokenLimit ?? null,
+    policy,
     expiresAt: expiry,
     createdAt: new Date(Number(now)).toISOString(),
   };
   db.run(
-    `INSERT INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, dailyLimitTokens, expiresAt, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, JSON.stringify(apiKey.allowedCombos), apiKey.dailyLimitTokens, apiKey.expiresAt, apiKey.createdAt]
+    `INSERT INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, dailyLimitTokens, policy, expiresAt, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, JSON.stringify(apiKey.allowedCombos), apiKey.dailyLimitTokens, policy == null ? null : JSON.stringify(policy), apiKey.expiresAt, apiKey.createdAt]
   );
   return apiKey;
 }
@@ -108,9 +114,15 @@ export async function updateApiKey(id, data, now = Date.now()) {
     if (Object.hasOwn(data, "allowedCombos")) merged.allowedCombos = Array.isArray(data.allowedCombos) ? [...data.allowedCombos] : [];
     if (Object.hasOwn(data, "dailyLimitTokens")) merged.dailyLimitTokens = normalizeDailyLimitTokens(data.dailyLimitTokens);
     if (Object.hasOwn(data, "expiresAt")) merged.expiresAt = normalizeApiKeyExpiresAt(data.expiresAt, now);
+    const updatesPolicy = Object.hasOwn(data, "policy") || Object.hasOwn(data, "policyPatch");
+    if (Object.hasOwn(data, "policy")) merged.policy = normalizeApiKeyPolicy(data.policy);
+    if (Object.hasOwn(data, "policyPatch")) merged.policy = mergeApiKeyPolicy(merged.policy, data.policyPatch);
+    const policyStorage = updatesPolicy
+      ? (merged.policy == null ? null : JSON.stringify(merged.policy))
+      : row.policy;
     db.run(
-      `UPDATE apiKeys SET name = ?, isActive = ?, allowedCombos = ?, dailyLimitTokens = ?, expiresAt = ? WHERE id = ?`,
-      [merged.name, merged.isActive ? 1 : 0, JSON.stringify(merged.allowedCombos || []), merged.dailyLimitTokens ?? null, merged.expiresAt ?? null, id]
+      `UPDATE apiKeys SET name = ?, isActive = ?, allowedCombos = ?, dailyLimitTokens = ?, policy = ?, expiresAt = ? WHERE id = ?`,
+      [merged.name, merged.isActive ? 1 : 0, JSON.stringify(merged.allowedCombos || []), merged.dailyLimitTokens ?? null, policyStorage, merged.expiresAt ?? null, id]
     );
     result = merged;
   });
@@ -133,10 +145,14 @@ export async function getApiKeyUsageLimitStatus(key, now = new Date()) {
   const limit = normalizeDailyLimitTokens(row.dailyLimitTokens);
   if (limit === null || limit === undefined) return { enforced: false, exceeded: false };
   const start = getLocalDayStartIso(now);
-  const usedTokens = Number(db.get(
-    `SELECT COALESCE(SUM(COALESCE(promptTokens, 0) + COALESCE(completionTokens, 0) + COALESCE(json_extract(tokens, '$.reasoning_tokens'), 0)), 0) as usedTokens FROM usageHistory WHERE apiKey = ? AND timestamp >= ?`,
-    [key, start]
-  )?.usedTokens || 0);
+  const usedTokens = db.all(
+    `SELECT promptTokens, completionTokens, tokens FROM usageHistory WHERE apiKey = ? AND timestamp >= ?`,
+    [key, start],
+  ).reduce((total, usage) => {
+    let tokens = {};
+    try { tokens = usage.tokens ? JSON.parse(usage.tokens) : {}; } catch { tokens = {}; }
+    return total + getCommittedTokenCount(tokens, usage);
+  }, 0);
   return {
     enforced: true,
     exceeded: usedTokens >= limit,

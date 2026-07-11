@@ -32,7 +32,7 @@ export async function handleSearch(request) {
 
   const url = new URL(request.url);
   // Accept either `provider` or `model` (UI sends `model` since provider IS the model for webSearch)
-  const providerInput = body.provider || body.model;
+  const providerInput = normalizeSearchProviderInput(body.provider || body.model);
   const query = body.query;
 
   log.request("POST", `${url.pathname} | ${providerInput}`);
@@ -46,7 +46,7 @@ export async function handleSearch(request) {
   }
 
   const settings = await getSettings();
-  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true });
+  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true, request });
   if (!apiKeyAuth.ok) {
     if (apiKeyAuth.reason === "missing") {
       log.warn("AUTH", "Missing API key (requireApiKey=true)");
@@ -110,7 +110,7 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
     return errorResponse(HTTP_STATUS.BAD_REQUEST, `Unknown provider: ${providerInput}`);
   }
 
-  const resolvedPolicyError = await enforceApiKeyModelPolicy(request, providerId);
+  const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${providerId}/search`);
   if (resolvedPolicyError) return resolvedPolicyError;
 
   const providerConfig = resolvedProvider.searchConfig;
@@ -228,4 +228,16 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
 
     return result.response;
   }
+}
+
+/** Normalize advertised `<alias>/search` model IDs to their provider alias. */
+export function normalizeSearchProviderInput(providerInput) {
+  if (typeof providerInput !== "string" || !providerInput.endsWith("/search")) return providerInput;
+  const stripped = providerInput.slice(0, -"/search".length);
+  const rawProvider = AI_PROVIDERS[resolveProviderId(providerInput)];
+  const strippedProvider = AI_PROVIDERS[resolveProviderId(stripped)];
+  if (!rawProvider?.searchConfig && !rawProvider?.searchViaChat && (strippedProvider?.searchConfig || strippedProvider?.searchViaChat)) {
+    return stripped;
+  }
+  return providerInput;
 }

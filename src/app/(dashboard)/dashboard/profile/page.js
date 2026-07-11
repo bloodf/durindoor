@@ -364,6 +364,22 @@ export default function ProfilePage() {
     }
   };
 
+  const updateHidePaidModels = async (hidePaidModels) => {
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hidePaidModels }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSettings(prev => ({ ...prev, hidePaidModels: data.hidePaidModels === true }));
+      }
+    } catch (err) {
+      console.error("Failed to update hide paid models:", err);
+    }
+  };
+
   const updateRequireLogin = async (requireLogin) => {
     try {
       const res = await fetch("/api/settings", {
@@ -739,6 +755,29 @@ export default function ProfilePage() {
             <span className="text-sm text-text-muted">Display language</span>
             <span className="text-2xl">{LOCALE_FLAGS[locale] || "🌐"}</span>
           </button>
+        </Card>
+
+        {/* Model catalog */}
+        <Card>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 rounded-lg bg-primary/10 text-primary shrink-0">
+              <span className="material-symbols-outlined text-[20px]">sell</span>
+            </div>
+            <h3 className="text-base sm:text-lg font-semibold">Model catalog</h3>
+          </div>
+          <div className="flex items-start sm:items-center justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <p className="font-medium text-sm sm:text-base">Hide paid models</p>
+              <p className="text-xs sm:text-sm text-text-muted">
+                When ON, /v1/models, dashboard pickers, and combo pools only show free or unpriced models.
+              </p>
+            </div>
+            <Toggle
+              checked={settings.hidePaidModels === true}
+              disabled={loading}
+              onChange={() => updateHidePaidModels(!(settings.hidePaidModels === true))}
+            />
+          </div>
         </Card>
 
         {/* Security */}

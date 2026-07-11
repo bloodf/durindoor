@@ -57,7 +57,10 @@ export async function handleTts(request) {
   if (!body.input) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: input");
 
   // Combo expansion: model may be a combo name → run fallback/round-robin across models
-  const comboModels = await getComboModels(modelStr);
+  // #6495 / F-4: filter paid members when the toggle is on. Auth ACL check
+  // above calls getComboModels without the flag so combo existence/ACL stay
+  // against the real member list.
+  const comboModels = await getComboModels(modelStr, settings.hidePaidModels === true);
   if (comboModels) {
     const comboStrategies = settings.comboStrategies || {};
     const comboStrategy = comboStrategies[modelStr]?.fallbackStrategy || settings.comboStrategy || "fallback";

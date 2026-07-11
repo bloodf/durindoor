@@ -224,7 +224,10 @@ export async function handleChat(request, clientRawRequest = null) {
   if (bypassResponse) return bypassResponse.response || bypassResponse;
 
   // Check if model is a combo (has multiple models with fallback)
-  const comboModels = await getComboModels(modelStr);
+  // #6495 / F-4: filter paid members when the toggle is on. The auth ACL check
+  // above intentionally calls getComboModels without the flag so combo
+  // existence/ACL still see the real, unfiltered member list.
+  const comboModels = await getComboModels(modelStr, settings.hidePaidModels === true);
   if (comboModels) {
     // Check for combo-specific strategy first, fallback to global
     const comboStrategies = settings.comboStrategies || {};
@@ -279,9 +282,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
   // If provider is null, this might be a combo name - check and handle
   if (!modelInfo.provider) {
-    const comboModels = await getComboModels(modelStr);
+    const chatSettings = await getSettings();
+    // #6495 / F-4: filter paid members when the toggle is on.
+    const comboModels = await getComboModels(modelStr, chatSettings.hidePaidModels === true);
     if (comboModels) {
-      const chatSettings = await getSettings();
       // Check for combo-specific strategy first, fallback to global
       const comboStrategies = chatSettings.comboStrategies || {};
       const comboSpecificStrategy = comboStrategies[modelStr]?.fallbackStrategy;

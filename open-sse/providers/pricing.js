@@ -440,11 +440,14 @@ export function formatCost(cost) {
  * @returns {number} cost in dollars
  */
 export function calculateCostFromTokens(tokens, pricing) {
-  if (!tokens || !pricing) return 0;
+  if (!tokens) return 0;
 
   const directCost = tokens.cost_usd ?? tokens.cost_in_usd;
-  if (Number.isFinite(Number(directCost))) return Number(directCost);
-  if (Number.isFinite(Number(tokens.cost_in_usd_ticks))) return Number(tokens.cost_in_usd_ticks) / 1_000_000_000_000;
+  if (Number.isFinite(Number(directCost)) && Number(directCost) >= 0) return Number(directCost);
+  if (Number.isFinite(Number(tokens.cost_in_usd_ticks)) && Number(tokens.cost_in_usd_ticks) >= 0) {
+    return Number(tokens.cost_in_usd_ticks) / 1_000_000_000_000;
+  }
+  if (!pricing) return 0;
 
   let cost = 0;
 
@@ -462,11 +465,17 @@ export function calculateCostFromTokens(tokens, pricing) {
   }
 
   const outputTokens = tokens.completion_tokens || tokens.output_tokens || 0;
-  cost += outputTokens * (pricing.output / 1000000);
-
   const reasoningTokens = tokens.reasoning_tokens || 0;
-  if (reasoningTokens > 0) {
-    cost += reasoningTokens * ((pricing.reasoning || pricing.output) / 1000000);
+  // Reasoning detail is a subset of completion/output in the canonical usage
+  // contract. Price the visible remainder at the ordinary output rate, then
+  // price the reasoning subset once at its dedicated rate (or output fallback).
+  const billedReasoningTokens = outputTokens > 0
+    ? Math.min(outputTokens, reasoningTokens)
+    : reasoningTokens;
+  const visibleOutputTokens = Math.max(0, outputTokens - billedReasoningTokens);
+  cost += visibleOutputTokens * (pricing.output / 1000000);
+  if (billedReasoningTokens > 0) {
+    cost += billedReasoningTokens * ((pricing.reasoning || pricing.output) / 1000000);
   }
 
   if (cacheCreationTokens > 0) {

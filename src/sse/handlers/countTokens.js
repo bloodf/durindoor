@@ -23,7 +23,7 @@ export async function handleCountTokens(request) {
 
   const settings = await getSettings();
   const apiKey = extractApiKey(request);
-  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true });
+  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true, request });
   if (!apiKeyAuth.ok) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
 
   const modelStr = body.model;

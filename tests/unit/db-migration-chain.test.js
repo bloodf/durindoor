@@ -38,6 +38,8 @@ describe("Schema migrations", () => {
       "_meta", "settings", "providerConnections", "providerNodes",
       "proxyPools", "apiKeys", "apiKeyUsageTotals", "combos", "kv", "usageHistory", "usageDaily", "requestDetails",
     ]));
+    expect(db.all(`PRAGMA table_info(usageHistory)`).map((column) => column.name)).toContain("usageEventId");
+    expect(db.all(`PRAGMA index_list(usageHistory)`).some((index) => index.name === "idx_uh_usage_event" && index.unique === 1)).toBe(true);
   });
 
   it.each([3, 4, 5])(
@@ -81,10 +83,22 @@ describe("Schema migrations", () => {
       const insertColumns = ["id", "key", "name", "isActive", "allowedCombos", ...(schemaVersion >= 4 ? ["dailyLimitTokens"] : []), ...(schemaVersion >= 5 ? ["expiresAt"] : []), "createdAt"];
       const insertValues = ["key-1", secret, "Existing", 1, "[]", ...(schemaVersion >= 4 ? [9000] : []), ...(schemaVersion >= 5 ? ["2030-01-01T00:00:00.000Z"] : []), "2026-01-01T00:00:00.000Z"];
       seeded.prepare(`INSERT INTO apiKeys(${insertColumns.join(", ")}) VALUES(${insertColumns.map(() => "?").join(", ")})`).run(...insertValues);
-      seeded.prepare(`
+      const insertUsage = seeded.prepare(`
         INSERT INTO usageHistory(timestamp, provider, model, apiKey, promptTokens, completionTokens, cost, status, tokens, meta)
-        VALUES(?, 'openai', 'gpt-test', ?, 11, 7, 0.25, 'ok', '{}', '{}')
-      `).run("2026-01-02T00:00:00.000Z", secret);
+        VALUES(?, ?, ?, ?, ?, ?, ?, 'ok', ?, '{}')
+      `);
+      insertUsage.run(
+        "2026-01-02T00:00:00.000Z", "openai", "gpt-test", secret, 11, 7, 0.25,
+        JSON.stringify({ prompt_tokens: 11, completion_tokens: 7, total_tokens: 18, reasoning_tokens: 3 }),
+      );
+      insertUsage.run(
+        "2026-01-02T00:00:01.000Z", "gemini", "gemini-test", secret, 0, 0, 0.1,
+        JSON.stringify({ promptTokenCount: 5, candidatesTokenCount: 4, thoughtsTokenCount: 3 }),
+      );
+      insertUsage.run(
+        "2026-01-02T00:00:02.000Z", "anthropic", "claude-test", secret, 0, 0, 0.2,
+        JSON.stringify({ input_tokens: 2, output_tokens: 1, cache_read_input_tokens: 4, cache_creation_input_tokens: 1 }),
+      );
       // Seed a large observability row to prove the lite backup EXCLUDES
       // requestDetails while preserving critical tables.
       seeded.exec(`
@@ -111,9 +125,9 @@ describe("Schema migrations", () => {
       expect(key.expiresAt).toBe(schemaVersion >= 5 ? "2030-01-01T00:00:00.000Z" : null);
       expect(db.all(`PRAGMA table_info(apiKeys)`).map((row) => row.name)).toContain("policy");
       expect(db.get(`SELECT * FROM apiKeyUsageTotals WHERE apiKeyId = 'key-1'`)).toMatchObject({
-        totalTokens: 18,
-        totalCost: 0.25,
-        totalRequests: 1,
+        totalTokens: 38,
+        totalCost: 0.55,
+        totalRequests: 3,
       });
 
       const backupDirs = fs.readdirSync(path.join(tempDir, "db", "backups"));
@@ -177,6 +191,7 @@ describe("Schema migrations", () => {
     const secret = "sk-deadbeef";
     seeded.prepare(`INSERT INTO apiKeys(id, key, name, isActive, allowedCombos, createdAt) VALUES('key-1', ?, 'Existing', 1, '[]', '2026-01-01T00:00:00.000Z')`).run(secret);
     seeded.prepare(`INSERT INTO usageHistory(timestamp, apiKey, promptTokens, completionTokens, cost, tokens, meta) VALUES('2026-01-02T00:00:00.000Z', ?, 10, 6, 0.4, '{}', '{}')`).run(secret);
+    seeded.prepare(`INSERT INTO usageHistory(timestamp, apiKey, promptTokens, completionTokens, cost, tokens, meta) VALUES('2026-01-02T00:00:01.000Z', ?, 0, 0, -9, '{}', '{}')`).run(secret);
     seeded.close();
 
     delete global._dbAdapter;
@@ -187,8 +202,10 @@ describe("Schema migrations", () => {
     expect(db.get(`SELECT * FROM apiKeyUsageTotals WHERE apiKeyId='key-1'`)).toMatchObject({
       totalTokens: 16,
       totalCost: 0.4,
-      totalRequests: 1,
+      totalRequests: 2,
     });
+    expect(db.all(`PRAGMA table_info(usageHistory)`).map((column) => column.name)).toContain("usageEventId");
+    expect(db.all(`PRAGMA index_list(usageHistory)`).some((index) => index.name === "idx_uh_usage_event" && index.unique === 1)).toBe(true);
     expect(db.get(`SELECT key FROM apiKeys WHERE id='key-1'`).key).toBe(secret);
     const [backupDir] = fs.readdirSync(path.join(tempDir, "db", "backups"));
     const backup = new Database(path.join(tempDir, "db", "backups", backupDir, "data.sqlite"), { readonly: true });

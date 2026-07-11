@@ -42,3 +42,12 @@ export function validateApiKeyPolicy(value) {
     return { ok: false, value: null, error: error instanceof Error ? error.message : String(error) };
   }
 }
+
+/** Merge a management patch against the latest stored policy. */
+export function mergeApiKeyPolicy(existing, patch) {
+  const base = normalizeApiKeyPolicy(existing) || {};
+  if (!patch || typeof patch !== "object" || Array.isArray(patch)) {
+    throw new TypeError("API-key policy patch must be an object");
+  }
+  return normalizeApiKeyPolicy({ ...base, ...patch });
+}

@@ -1,6 +1,7 @@
 import { saveRequestUsage, appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { COLORS } from "../../utils/stream.js";
 import { canonicalizeUsage } from "../../utils/usageTracking.js";
+import { toOpenAIUsage } from "../../translator/concerns/usage.js";
 
 const OPTIONAL_PARAMS = [
   "temperature", "top_p", "top_k",
@@ -54,12 +55,7 @@ export function extractUsageFromResponse(responseBody) {
   // under `response`, so usage can be either top-level or nested.
   const usageMetadata = responseBody.usageMetadata || responseBody.response?.usageMetadata;
   if (usageMetadata) {
-    return {
-      prompt_tokens: usageMetadata.promptTokenCount || 0,
-      completion_tokens: usageMetadata.candidatesTokenCount || 0,
-      cached_tokens: usageMetadata.cachedContentTokenCount || 0,
-      reasoning_tokens: usageMetadata.thoughtsTokenCount || 0
-    };
+    return toOpenAIUsage(usageMetadata, "gemini");
   }
 
   return null;
@@ -111,26 +107,28 @@ export function formatDoneLine({ usage, latency }) {
   return `DONE ${latency?.total ?? 0}ms${ttftStr} · ${inStr} · OUT ${outTok}`;
 }
 
-export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, label = "USAGE", silent = false }) {
+export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, usageEventId, label = "USAGE", silent = false }) {
   if (!tokens || typeof tokens !== "object") return;
 
-  const inTokens = tokens.input_tokens ?? tokens.prompt_tokens ?? 0;
-  const outTokens = tokens.output_tokens ?? tokens.completion_tokens ?? 0;
+  const providerNormalized = tokens.promptTokenCount !== undefined || tokens.totalTokenCount !== undefined
+    ? toOpenAIUsage(tokens, "gemini")
+    : tokens;
 
-  if (inTokens === 0 && outTokens === 0) return;
+  // Canonicalize before deciding what to persist. Cache-only, reasoning-only,
+  // total-only, cost-only, and zero-token successful requests are all valid
+  // committed events even when their visible input/output counters are zero.
+  const normalized = canonicalizeUsage(providerNormalized) || {
+    prompt_tokens: tokens.prompt_tokens ?? tokens.input_tokens ?? 0,
+    completion_tokens: tokens.completion_tokens ?? tokens.output_tokens ?? 0,
+  };
+  const inTokens = normalized.prompt_tokens ?? 0;
+  const outTokens = normalized.completion_tokens ?? 0;
 
   if (!silent) {
     const time = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
     const accountSuffix = connectionId ? ` | account=${connectionId.slice(0, 8)}...` : "";
     console.log(`${COLORS.green}[${time}] 📊 [${label}] ${provider.toUpperCase()} | in=${inTokens} | out=${outTokens}${accountSuffix}${COLORS.reset}`);
   }
-
-  // Canonicalize to one storage convention (prompt_tokens cache-inclusive) so
-  // cached/cache-creation tokens survive to cost calc + stats. See canonicalizeUsage.
-  const normalized = canonicalizeUsage(tokens) || {
-    prompt_tokens: tokens.prompt_tokens ?? tokens.input_tokens ?? 0,
-    completion_tokens: tokens.completion_tokens ?? tokens.output_tokens ?? 0
-  };
 
   saveRequestUsage({
     provider: provider || "unknown",
@@ -139,6 +137,7 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
     timestamp: new Date().toISOString(),
     connectionId: connectionId || undefined,
     apiKey: apiKey || undefined,
-    endpoint: endpoint || null
+    endpoint: endpoint || null,
+    usageEventId: usageEventId || undefined,
   }).catch(() => {});
 }

@@ -14,6 +14,7 @@ import {
   toLocalDateKey,
 } from "../../usagePeriods.js";
 import { incrementApiKeyUsageSync } from "./apiKeyUsageTotalsRepo.js";
+import { getCommittedTokenCount } from "../helpers/committedTokens.js";
 
 function maskApiKey(key) {
   if (!key || typeof key !== "string") return null;
@@ -161,16 +162,16 @@ async function ensureRingInitialized() {
 }
 
 async function calculateCost(provider, model, tokens) {
-  if (!tokens || !provider || !model) return 0;
+  if (!tokens) return 0;
   try {
+    const { calculateCostFromTokens } = await import("open-sse/providers/pricing.js");
+    if (!provider || !model) return calculateCostFromTokens(tokens, null);
     const { getPricingForModel } = await import("./pricingRepo.js");
     const pricing = await getPricingForModel(provider, model);
-    if (!pricing) return 0;
 
     // Delegate the actual math to the single source of truth (avoids the two
     // copies drifting apart — see open-sse/providers/pricing.js for the
     // cache-inclusive prompt_tokens convention this assumes).
-    const { calculateCostFromTokens } = await import("open-sse/providers/pricing.js");
     return calculateCostFromTokens(tokens, pricing);
   } catch (e) {
     console.error("Error calculating cost:", e);
@@ -283,7 +284,9 @@ export async function saveRequestUsage(entry) {
     // All 3 writes (history insert, daily upsert, lifetime counter) in ONE transaction.
     // better-sqlite3 is sync → no JS yield mid-transaction → no race in same process.
     db.transaction(() => {
-      const existing = db.get(
+      const existing = entry.usageEventId
+        ? db.get(`SELECT id, endpoint FROM usageHistory WHERE usageEventId = ?`, [entry.usageEventId])
+        : db.get(
         `SELECT id, endpoint FROM usageHistory
          WHERE timestamp = ?
            AND COALESCE(provider, '') = COALESCE(?, '')
@@ -307,15 +310,16 @@ export async function saveRequestUsage(entry) {
         return;
       }
 
-      db.run(
-        `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      const insert = db.run(
+        `INSERT OR IGNORE INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta, usageEventId) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           entry.timestamp, entry.provider || null, entry.model || null,
           entry.connectionId || null, entry.apiKey || null, entry.endpoint || null,
           promptTokens, completionTokens, entry.cost || 0, entry.status || "ok",
-          stringifyJson(tokens), stringifyJson({}),
+          stringifyJson(tokens), stringifyJson({}), entry.usageEventId || null,
         ]
       );
+      if ((insert?.changes ?? 0) === 0) return;
 
       const dateKey = toLocalDateKey(entry.timestamp);
       const row = db.get(`SELECT data FROM usageDaily WHERE dateKey = ?`, [dateKey]);
@@ -338,7 +342,7 @@ export async function saveRequestUsage(entry) {
       db.run(`INSERT INTO _meta(key, value) VALUES('totalRequestsLifetime', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [String(next)]);
       if (apiKeyId) {
         incrementApiKeyUsageSync(db, apiKeyId, {
-          tokens: promptTokens + completionTokens,
+          tokens: getCommittedTokenCount(tokens, { promptTokens, completionTokens }),
           cost: entry.cost || 0,
         });
       }

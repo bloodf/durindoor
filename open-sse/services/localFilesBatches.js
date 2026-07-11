@@ -55,11 +55,28 @@ function readMeta(root, id) {
   }
 }
 
+function canAccessOwner(resourceOwnerId, ownerId, allowAllOwners) {
+  if (allowAllOwners === true) return true;
+
+  // Metadata written before ownership was introduced has no owner field. Keep
+  // those local resources available to the local/no-key identity, but never to
+  // a stored API key. New resources always persist their explicit owner.
+  const resourceOwner = resourceOwnerId ?? "local";
+  const callerOwner = ownerId ?? "local";
+  return resourceOwner === callerOwner;
+}
+
+function publicFileMeta(meta) {
+  if (!meta) return null;
+  const { ownerId: _ownerId, ...view } = meta;
+  return view;
+}
+
 /**
  * Upload a file. bytes is Buffer/Uint8Array/string.
  * @returns {{id,object:'file',bytes,created_at,filename,purpose}}
  */
-export async function uploadFile({ filename, bytes, purpose }, { filesRoot } = {}) {
+export async function uploadFile({ filename, bytes, purpose }, { filesRoot, ownerId = null } = {}) {
   const root = resolveRoot(filesRoot);
   if (typeof filename !== "string" || !filename) throw statusError("filename is required", 400);
   const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes ?? "");
@@ -73,31 +90,33 @@ export async function uploadFile({ filename, bytes, purpose }, { filesRoot } = {
     created_at: nowSeconds(),
     filename,
     purpose: purpose || "batch",
+    ownerId,
   };
   fs.writeFileSync(metaPath(root, id), JSON.stringify(meta));
-  return meta;
+  return publicFileMeta(meta);
 }
 
-export async function getFile(id, { filesRoot } = {}) {
+export async function getFile(id, { filesRoot, ownerId = null, allowAllOwners = false } = {}) {
   assertSafeId(id);
-  return readMeta(resolveRoot(filesRoot), id);
+  const meta = readMeta(resolveRoot(filesRoot), id);
+  return meta && canAccessOwner(meta.ownerId, ownerId, allowAllOwners) ? publicFileMeta(meta) : null;
 }
 
-export async function getFileContent(id, { filesRoot } = {}) {
+export async function getFileContent(id, { filesRoot, ownerId = null, allowAllOwners = false } = {}) {
   assertSafeId(id);
   const root = resolveRoot(filesRoot);
   const meta = readMeta(root, id);
-  if (!meta) return null;
+  if (!meta || !canAccessOwner(meta.ownerId, ownerId, allowAllOwners)) return null;
   let buffer;
   try {
     buffer = fs.readFileSync(contentPath(root, id));
   } catch {
     return null;
   }
-  return { meta, buffer };
+  return { meta: publicFileMeta(meta), buffer };
 }
 
-export async function listFiles({ filesRoot } = {}) {
+export async function listFiles({ filesRoot, ownerId = null, allowAllOwners = false } = {}) {
   const root = resolveRoot(filesRoot);
   let entries = [];
   try {
@@ -109,17 +128,17 @@ export async function listFiles({ filesRoot } = {}) {
   for (const e of entries) {
     if (!e.isDirectory() || !SAFE_ID.test(e.name)) continue;
     const m = readMeta(root, e.name);
-    if (m) data.push(m);
+    if (m && canAccessOwner(m.ownerId, ownerId, allowAllOwners)) data.push(publicFileMeta(m));
   }
   data.sort((a, b) => b.created_at - a.created_at);
   return { object: "list", data };
 }
 
-export async function deleteFile(id, { filesRoot } = {}) {
+export async function deleteFile(id, { filesRoot, ownerId = null, allowAllOwners = false } = {}) {
   assertSafeId(id);
   const root = resolveRoot(filesRoot);
   const meta = readMeta(root, id);
-  if (!meta) return null;
+  if (!meta || !canAccessOwner(meta.ownerId, ownerId, allowAllOwners)) return null;
   try {
     fs.rmSync(fileDir(root, id), { recursive: true, force: true });
   } catch {
@@ -246,10 +265,10 @@ function anthropicPublicView(b) {
 }
 
 /** Register already-written JSONL bytes as a file object; return its id. */
-async function registerResultsFile(id, suffix, lines, root) {
+async function registerResultsFile(id, suffix, lines, root, ownerId) {
   if (!lines.length) return null;
   const buf = Buffer.from(lines.join("\n") + "\n");
-  const meta = await uploadFile({ filename: `${id}-${suffix}.jsonl`, bytes: buf, purpose: `batch_${suffix}` }, { filesRoot: root });
+  const meta = await uploadFile({ filename: `${id}-${suffix}.jsonl`, bytes: buf, purpose: `batch_${suffix}` }, { filesRoot: root, ownerId });
   return meta.id;
 }
 
@@ -308,8 +327,8 @@ async function runBatch(id, { filesRoot, executor, concurrency = 2 } = {}) {
 
   outRecords.sort((a, b) => a.index - b.index);
   errRecords.sort((a, b) => a.index - b.index);
-  b.output_file_id = await registerResultsFile(id, "output", outRecords.map((r) => r.line), root);
-  b.error_file_id = await registerResultsFile(id, "error", errRecords.map((r) => r.line), root);
+  b.output_file_id = await registerResultsFile(id, "output", outRecords.map((r) => r.line), root, b.ownerId);
+  b.error_file_id = await registerResultsFile(id, "error", errRecords.map((r) => r.line), root, b.ownerId);
   b.finalizing_at = nowSeconds();
 
   const { total, completed, failed } = b.request_counts;
@@ -327,7 +346,7 @@ async function runBatch(id, { filesRoot, executor, concurrency = 2 } = {}) {
   }
 }
 
-function newBatchRecord({ surface, id, endpoint, input_file_id, rows, metadata }) {
+function newBatchRecord({ surface, id, endpoint, input_file_id, rows, metadata, ownerId }) {
   const created = nowSeconds();
   return {
     surface,
@@ -350,6 +369,7 @@ function newBatchRecord({ surface, id, endpoint, input_file_id, rows, metadata }
     request_counts: { total: rows.length, completed: 0, failed: 0, canceled: 0 },
     metadata: metadata || null,
     errors: null,
+    ownerId,
     rows,
     cancelRequested: false,
     _runner: null,
@@ -372,10 +392,10 @@ function startBatch(b, { filesRoot, executor, concurrency }) {
 }
 
 /** Create + start an OpenAI batch from an uploaded input file id. */
-export async function createOpenAIBatch({ input_file_id, endpoint, completion_window = "24h", metadata }, { filesRoot, executor, concurrency } = {}) {
+export async function createOpenAIBatch({ input_file_id, endpoint, completion_window = "24h", metadata }, { filesRoot, executor, concurrency, ownerId = null, allowAllOwners = false } = {}) {
   assertSafeId(input_file_id);
   if (completion_window !== "24h") throw statusError("completion_window must be '24h'", 400);
-  const file = await getFileContent(input_file_id, { filesRoot });
+  const file = await getFileContent(input_file_id, { filesRoot, ownerId, allowAllOwners });
   if (!file) throw statusError("input_file not found", 404);
   const { rows, errors } = validateOpenAIJsonl(file.buffer.toString("utf8"));
   if (errors.length) {
@@ -389,13 +409,13 @@ export async function createOpenAIBatch({ input_file_id, endpoint, completion_wi
   for (const r of rows) {
     if (r.url !== endpointUrl) throw statusError(`row ${r.custom_id} url ${r.url} does not match endpoint ${endpointUrl}`, 400);
   }
-  const b = newBatchRecord({ surface: "openai", id: newId("batch"), endpoint: endpointUrl, input_file_id, rows, metadata });
+  const b = newBatchRecord({ surface: "openai", id: newId("batch"), endpoint: endpointUrl, input_file_id, rows, metadata, ownerId });
   b.completion_window = completion_window;
   return openAIPublicView(startBatch(b, { filesRoot, executor, concurrency }));
 }
 
 /** Create + start an Anthropic batch from {requests:[{custom_id,params}]}. */
-export async function createAnthropicBatch({ requests }, { filesRoot, executor, concurrency } = {}) {
+export async function createAnthropicBatch({ requests }, { filesRoot, executor, concurrency, ownerId = null } = {}) {
   const { rows, errors } = validateAnthropicRequests(requests);
   if (errors.length) {
     const e = statusError(`invalid requests: ${errors[0].error}`, 400);
@@ -403,33 +423,36 @@ export async function createAnthropicBatch({ requests }, { filesRoot, executor, 
     throw e;
   }
   if (!rows.length) throw statusError("requests has no valid entries", 400);
-  const b = newBatchRecord({ surface: "anthropic", id: newId("msgbatch"), endpoint: "/v1/messages", input_file_id: null, rows, metadata: null });
+  const b = newBatchRecord({ surface: "anthropic", id: newId("msgbatch"), endpoint: "/v1/messages", input_file_id: null, rows, metadata: null, ownerId });
   return anthropicPublicView(startBatch(b, { filesRoot, executor, concurrency }));
 }
 
-export async function getBatch(id, { filesRoot, surface } = {}) {
+export async function getBatch(id, { filesRoot, surface, ownerId = null, allowAllOwners = false } = {}) {
   assertSafeId(id);
   const b = batches.get(id);
   if (!b) return null;
   if (surface && b.surface !== surface) return null;
+  if (!canAccessOwner(b.ownerId, ownerId, allowAllOwners)) return null;
   return b.surface === "anthropic" ? anthropicPublicView(b) : openAIPublicView(b);
 }
 
-export async function listBatches({ filesRoot, surface } = {}) {
+export async function listBatches({ filesRoot, surface, ownerId = null, allowAllOwners = false } = {}) {
   const data = [];
   for (const b of batches.values()) {
     if (surface && b.surface !== surface) continue;
+    if (!canAccessOwner(b.ownerId, ownerId, allowAllOwners)) continue;
     data.push(b.surface === "anthropic" ? anthropicPublicView(b) : openAIPublicView(b));
   }
   data.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
   return { object: "list", data, has_more: false };
 }
 
-export async function cancelBatch(id, { filesRoot, surface } = {}) {
+export async function cancelBatch(id, { filesRoot, surface, ownerId = null, allowAllOwners = false } = {}) {
   assertSafeId(id);
   const b = batches.get(id);
   if (!b) return null;
   if (surface && b.surface !== surface) return null;
+  if (!canAccessOwner(b.ownerId, ownerId, allowAllOwners)) return null;
   const terminal = ["completed", "failed", "cancelled", "expired"];
   if (!terminal.includes(b.status)) {
     b.cancelRequested = true;
@@ -445,13 +468,13 @@ export async function cancelBatch(id, { filesRoot, surface } = {}) {
 }
 
 /** Output/error JSONL text for an OpenAI batch (which = "output" | "error"). */
-export async function getBatchOutputText(id, which = "output", { filesRoot } = {}) {
+export async function getBatchOutputText(id, which = "output", { filesRoot, ownerId = null, allowAllOwners = false } = {}) {
   assertSafeId(id);
   const b = batches.get(id);
-  if (!b) return null;
+  if (!b || !canAccessOwner(b.ownerId, ownerId, allowAllOwners)) return null;
   const fileId = which === "error" ? b.error_file_id : b.output_file_id;
   if (!fileId) return null;
-  const fc = await getFileContent(fileId, { filesRoot });
+  const fc = await getFileContent(fileId, { filesRoot, ownerId, allowAllOwners });
   return fc ? fc.buffer.toString("utf8") : null;
 }
 
@@ -461,10 +484,10 @@ export async function getBatchOutputText(id, which = "output", { filesRoot } = {
  *  Returns null ONLY when the id is missing or not an Anthropic batch (route → 404).
  *  Throws 409 when the batch exists but has not reached a terminal status yet,
  *  so callers cannot read partial results mid-run (route → 4xx, distinct from 404). */
-export async function getAnthropicResultsJsonl(id, { filesRoot } = {}) {
+export async function getAnthropicResultsJsonl(id, { filesRoot, ownerId = null, allowAllOwners = false } = {}) {
   assertSafeId(id);
   const b = batches.get(id);
-  if (!b || b.surface !== "anthropic") return null;
+  if (!b || b.surface !== "anthropic" || !canAccessOwner(b.ownerId, ownerId, allowAllOwners)) return null;
   const terminal = ["completed", "failed", "cancelled", "expired"];
   if (!terminal.includes(b.status)) {
     throw statusError("message batch has not ended yet", 409);
@@ -479,8 +502,8 @@ export async function getAnthropicResultsJsonl(id, { filesRoot } = {}) {
       byCustomId.set(rec.custom_id, { rec, fromErrorFile });
     }
   };
-  ingest(await getBatchOutputText(id, "output", { filesRoot }), false);
-  ingest(await getBatchOutputText(id, "error", { filesRoot }), true);
+  ingest(await getBatchOutputText(id, "output", { filesRoot, ownerId, allowAllOwners }), false);
+  ingest(await getBatchOutputText(id, "error", { filesRoot, ownerId, allowAllOwners }), true);
   // Emit in original input order; rows that never produced a record (e.g. canceled
   // before running) are skipped — they have no result to report.
   const lines = [];

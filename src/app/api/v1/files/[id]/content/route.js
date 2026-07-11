@@ -3,6 +3,7 @@ import path from "node:path";
 import { getFileContent } from "open-sse/services/localFilesBatches.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
+import { resolveResourceOwner } from "@/sse/services/resourceOwnership.js";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -15,11 +16,13 @@ export async function OPTIONS() {
 }
 
 /** GET /v1/files/<id>/content — raw file bytes. */
-export async function GET(_request, context) {
+export async function GET(request, context) {
+  const ownership = await resolveResourceOwner(request);
+  if (!ownership.authorized) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
   const { id } = await context.params;
   let found;
   try {
-    found = await getFileContent(id);
+    found = await getFileContent(id, ownership);
   } catch (e) {
     return errorResponse(e.statusCode || HTTP_STATUS.BAD_REQUEST, e.message);
   }

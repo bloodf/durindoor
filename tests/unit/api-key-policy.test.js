@@ -7,7 +7,7 @@ const {
   incrementApiKeyUsageSyncMock,
   getAdapterMock,
   extractApiKeyMock,
-  getConsistentMachineIdMock,
+  hasValidCliTokenMock,
   errorResponseMock,
 } = vi.hoisted(() => ({
   getApiKeyByKeyMock: vi.fn(),
@@ -15,7 +15,7 @@ const {
   incrementApiKeyUsageSyncMock: vi.fn(),
   getAdapterMock: vi.fn(),
   extractApiKeyMock: vi.fn(),
-  getConsistentMachineIdMock: vi.fn(),
+  hasValidCliTokenMock: vi.fn(),
   errorResponseMock: vi.fn((status, message) => ({ status, message })),
 }));
 
@@ -28,10 +28,7 @@ vi.mock("@/lib/localDb", () => ({
 
 vi.mock("../../src/sse/services/auth.js", () => ({
   extractApiKey: extractApiKeyMock,
-}));
-
-vi.mock("@/shared/utils/machineId", () => ({
-  getConsistentMachineId: getConsistentMachineIdMock,
+  hasValidCliToken: hasValidCliTokenMock,
 }));
 
 vi.mock("@/lib/db/driver.js", () => ({
@@ -47,6 +44,10 @@ vi.mock("open-sse/config/runtimeConfig.js", () => ({
     FORBIDDEN: 403,
     RATE_LIMITED: 429,
   },
+}));
+
+vi.mock("../../src/sse/services/apiKeyPolicyIdentity.js", () => ({
+  canonicalizePolicyModelIdentity: (value) => value,
 }));
 
 const load = () => import("../../src/sse/services/apiKeyPolicy.js");
@@ -65,13 +66,14 @@ function makeQuery(url, key) {
   return `${url}${sep}key=${key}`;
 }
 
-const CLI_SALT = "9r-cli-auth";
 const VALID_CLI_TOKEN = "valid-cli-token";
 
 describe("api-key-policy", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    getConsistentMachineIdMock.mockResolvedValue(VALID_CLI_TOKEN);
+    hasValidCliTokenMock.mockImplementation(
+      async (request) => request?.headers?.get?.("x-9r-cli-token") === VALID_CLI_TOKEN
+    );
   });
 
   it("denies a model not in the allowedModels allowlist", async () => {
@@ -150,7 +152,7 @@ describe("api-key-policy", () => {
       "any-model"
     );
 
-    expect(getConsistentMachineIdMock).toHaveBeenCalledWith(CLI_SALT);
+    expect(hasValidCliTokenMock).toHaveBeenCalledWith(expect.anything());
     expect(extractApiKeyMock).not.toHaveBeenCalled();
     expect(result).toBeNull();
   });
@@ -158,7 +160,6 @@ describe("api-key-policy", () => {
   it("enforces policy when an arbitrary non-empty x-9r-cli-token is supplied", async () => {
     const apiKey = "key-arbitrary-cli";
     const model = "allowed-model";
-    getConsistentMachineIdMock.mockResolvedValue("valid-cli-token");
     extractApiKeyMock.mockReturnValue(apiKey);
     getApiKeyByKeyMock.mockResolvedValue({
       id: "k4",
@@ -173,7 +174,7 @@ describe("api-key-policy", () => {
       model
     );
 
-    expect(getConsistentMachineIdMock).toHaveBeenCalledWith(CLI_SALT);
+    expect(hasValidCliTokenMock).toHaveBeenCalledWith(expect.anything());
     expect(extractApiKeyMock).toHaveBeenCalledWith(expect.anything());
     expect(result).toBeNull();
   });
@@ -218,6 +219,14 @@ describe("api-key-policy", () => {
 
     expect(extractApiKeyMock).toHaveBeenCalledWith(expect.anything());
     expect(result).toBeNull();
+  });
+
+  it("keeps web search and fetch identities least-privilege with bare-provider compatibility", async () => {
+    const { isModelAllowed } = await load();
+    expect(isModelAllowed({ allowedModels: ["tinyfish/fetch"] }, "tinyfish/fetch")).toBe(true);
+    expect(isModelAllowed({ allowedModels: ["tinyfish/fetch"] }, "tinyfish/search")).toBe(false);
+    expect(isModelAllowed({ allowedModels: ["tinyfish"] }, "tinyfish/fetch")).toBe(true);
+    expect(isModelAllowed({ allowedModels: ["tinyfish"] }, "tinyfish/search")).toBe(true);
   });
 
   it("records non-chat usage by looking up the key and incrementing its usage totals", async () => {

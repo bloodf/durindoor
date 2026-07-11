@@ -133,7 +133,7 @@ export async function handleChat(request, clientRawRequest = null) {
   // Stored credentials are always validated; local mode only permits unknown
   // placeholders when API-key enforcement is disabled.
   const settings = await getSettings();
-  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true });
+  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true, request });
   if (!apiKeyAuth.ok) {
     if (apiKeyAuth.reason === "missing") {
       log.warn("AUTH", "Missing API key (requireApiKey=true)");

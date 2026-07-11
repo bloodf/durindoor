@@ -80,7 +80,6 @@ describe("API-key repository expiry", () => {
       isActive: false,
       key: "sk-rewritten",
       machineId: "machine-rewritten",
-      policy: null,
       createdAt: "2999-01-01T00:00:00.000Z",
     }, now);
 
@@ -99,6 +98,9 @@ describe("API-key repository expiry", () => {
 
     await database.updateApiKey(key.id, { expiresAt: null }, now);
     expect((await database.getApiKeyById(key.id)).expiresAt).toBeNull();
+
+    await database.updateApiKey(key.id, { policy: null }, now);
+    expect((await database.getApiKeyById(key.id)).policy).toBeNull();
   });
 
   it("fails closed for inactive, expired, boundary, and malformed stored expiry", async () => {
@@ -133,6 +135,8 @@ describe("API-key repository expiry", () => {
       database.updateApiKey(key.id, { dailyLimitTokens: 1_234 }, now),
       database.updateApiKey(key.id, { expiresAt: "2030-03-01T00:00:00.000Z" }, now),
       database.updateApiKey(key.id, { isActive: false }, now),
+      database.updateApiKey(key.id, { policyPatch: { maxTokens: 500 } }, now),
+      database.updateApiKey(key.id, { policyPatch: { maxCostUsd: 3.5 } }, now),
     ]);
 
     expect(await database.getApiKeyById(key.id)).toMatchObject({
@@ -144,6 +148,7 @@ describe("API-key repository expiry", () => {
       dailyLimitTokens: 1_234,
       expiresAt: "2030-03-01T00:00:00.000Z",
       createdAt: "2030-01-01T00:00:00.000Z",
+      policy: { maxTokens: 500, maxCostUsd: 3.5 },
     });
   });
 

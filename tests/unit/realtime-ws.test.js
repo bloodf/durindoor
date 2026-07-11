@@ -174,6 +174,14 @@ describe("wsHandshake primitives", () => {
     const down = await wsHandshake.probeApiKey({ key: "k", authUrl: "http://x", fetchFn: async () => { throw new Error("ECONNREFUSED"); } });
     expect(down).toMatchObject({ ok: false, status: 503 });
   });
+
+  it("probeApiKey forwards the machine-bound CLI token without inventing a user key", async () => {
+    const fetchFn = vi.fn(async (_url, options) => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    await wsHandshake.probeApiKey({ key: null, cliToken: "operator-token", authUrl: "http://x", fetchFn });
+    expect(fetchFn).toHaveBeenCalledWith("http://x", expect.objectContaining({
+      headers: { "x-9r-cli-token": "operator-token" },
+    }));
+  });
 });
 
 describe("realtimeCore — text modality bridge", () => {
@@ -285,6 +293,47 @@ describe("integration: eager client frames survive the auth window, in order", (
     expect(seen[0].messages[0]).toEqual({ role: "system", content: "be terse" });
     expect(seen[0].messages.some((m) => m.role === "user" && m.content === "say ok")).toBe(true);
     expect(events.find((e) => e.type === "session.created")).toBeTruthy();
+  });
+
+  it("forwards CLI operator identity through both auth probe and realtime chat", async () => {
+    const seen = [];
+    server = http.createServer((req, res) => {
+      if (req.url === "/api/v1/realtime/auth") {
+        seen.push(["auth", req.headers["x-9r-cli-token"]]);
+        res.writeHead(req.headers["x-9r-cli-token"] === "operator-token" ? 200 : 401, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: req.headers["x-9r-cli-token"] === "operator-token" }));
+        return;
+      }
+      if (req.url === "/api/v1/chat/completions") {
+        seen.push(["chat", req.headers["x-9r-cli-token"]]);
+        req.resume();
+        req.on("end", () => {
+          res.writeHead(200, { "content-type": "text/event-stream" });
+          res.end('data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n');
+        });
+        return;
+      }
+      res.writeHead(404); res.end();
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = server.address().port;
+    cs.installRealtimeUpgradeDispatcher(server, { dashboardPort: port });
+    await tick();
+
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/v1/realtime`, {
+      headers: { "x-9r-cli-token": "operator-token" },
+    });
+    const events = [];
+    ws.on("message", (data) => events.push(JSON.parse(data.toString())));
+    await once(ws, "open");
+    await waitFor(() => events.some((event) => event.type === "session.created"), 3000);
+    ws.send(JSON.stringify({ type: "conversation.item.create", item: { type: "message", role: "user", content: "go" } }));
+    ws.send(JSON.stringify({ type: "response.create" }));
+    await waitFor(() => events.some((event) => event.type === "response.done"), 3000);
+    ws.close();
+
+    expect(seen).toContainEqual(["auth", "operator-token"]);
+    expect(seen).toContainEqual(["chat", "operator-token"]);
   });
 
   it("bad key → close 4001 with invalid_api_key (not server_error)", async () => {

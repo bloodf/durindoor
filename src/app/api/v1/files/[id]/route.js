@@ -2,6 +2,7 @@
 import { getFile, deleteFile } from "open-sse/services/localFilesBatches.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
+import { resolveResourceOwner } from "@/sse/services/resourceOwnership.js";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -16,18 +17,22 @@ export async function OPTIONS() {
   return new Response(null, { headers: CORS });
 }
 
-export async function HEAD(_request, context) {
+export async function HEAD(request, context) {
+  const ownership = await resolveResourceOwner(request);
+  if (!ownership.authorized) return new Response(null, { status: 401, headers: CORS });
   const { id } = await context.params;
-  const meta = await getFile(id).catch(() => null);
+  const meta = await getFile(id, ownership).catch(() => null);
   return new Response(null, { status: meta ? 200 : 404, headers: CORS });
 }
 
 /** GET /v1/files/<id> — metadata. */
-export async function GET(_request, context) {
+export async function GET(request, context) {
+  const ownership = await resolveResourceOwner(request);
+  if (!ownership.authorized) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
   const { id } = await context.params;
   let meta;
   try {
-    meta = await getFile(id);
+    meta = await getFile(id, ownership);
   } catch (e) {
     return errorResponse(e.statusCode || HTTP_STATUS.BAD_REQUEST, e.message);
   }
@@ -36,11 +41,13 @@ export async function GET(_request, context) {
 }
 
 /** DELETE /v1/files/<id>. */
-export async function DELETE(_request, context) {
+export async function DELETE(request, context) {
+  const ownership = await resolveResourceOwner(request);
+  if (!ownership.authorized) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
   const { id } = await context.params;
   let result;
   try {
-    result = await deleteFile(id);
+    result = await deleteFile(id, ownership);
   } catch (e) {
     return errorResponse(e.statusCode || HTTP_STATUS.BAD_REQUEST, e.message);
   }

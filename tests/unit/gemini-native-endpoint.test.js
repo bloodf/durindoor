@@ -7,6 +7,9 @@ const mocks = vi.hoisted(() => ({
   getProviderCredentials: vi.fn(),
   markAccountUnavailable: vi.fn(),
   clearAccountError: vi.fn(),
+  extractApiKey: vi.fn(),
+  enforceApiKeyModelPolicy: vi.fn(),
+  recordApiKeyUsageForResponse: vi.fn(),
 }));
 
 vi.mock("@/sse/handlers/chat.js", () => ({
@@ -18,6 +21,11 @@ vi.mock("@/sse/services/auth.js", () => ({
   evaluateApiKeyAuth: mocks.evaluateApiKeyAuth,
   markAccountUnavailable: mocks.markAccountUnavailable,
   clearAccountError: mocks.clearAccountError,
+  extractApiKey: mocks.extractApiKey,
+}));
+vi.mock("@/sse/services/apiKeyPolicy.js", () => ({
+  enforceApiKeyModelPolicy: mocks.enforceApiKeyModelPolicy,
+  recordApiKeyUsageForResponse: mocks.recordApiKeyUsageForResponse,
 }));
 
 vi.mock("@/lib/localDb", () => ({
@@ -61,6 +69,12 @@ describe("Gemini native v1beta endpoint", () => {
     vi.clearAllMocks();
     mocks.getSettings.mockResolvedValue({ requireApiKey: true });
     mocks.evaluateApiKeyAuth.mockResolvedValue({ ok: true, reason: null, stored: true });
+    mocks.extractApiKey.mockImplementation((request) => {
+      const auth = request.headers.get("authorization");
+      return auth?.startsWith("Bearer ") ? auth.slice(7) : request.headers.get("x-api-key") || request.headers.get("x-goog-api-key") || new URL(request.url).searchParams.get("key");
+    });
+    mocks.enforceApiKeyModelPolicy.mockResolvedValue(null);
+    mocks.recordApiKeyUsageForResponse.mockImplementation(async (_apiKey, response) => response);
     mocks.getProviderCredentials.mockResolvedValue({
       apiKey: "real-gemini-key",
       connectionId: "gemini-conn",
@@ -107,6 +121,11 @@ describe("Gemini native v1beta endpoint", () => {
     expect(JSON.parse(options.body)).toEqual(body);
     expect(options.headers["x-goog-api-key"]).toBe("real-gemini-key");
     expect(options.headers.Authorization).toBeUndefined();
+    expect(mocks.recordApiKeyUsageForResponse).toHaveBeenCalledWith(
+      "router-client-key",
+      expect.objectContaining({ status: 200 }),
+      expect.objectContaining({ tokens: expect.any(Number), cost: 0 }),
+    );
   });
 
   it("accepts Google-style client keys without forwarding them upstream", async () => {
@@ -122,9 +141,19 @@ describe("Gemini native v1beta endpoint", () => {
       params: Promise.resolve({ path: ["gemini-2.5-flash-preview-tts:generateContent"] }),
     });
 
-    expect(mocks.evaluateApiKeyAuth).toHaveBeenCalledWith("client-router-key", { required: true });
+    expect(mocks.evaluateApiKeyAuth).toHaveBeenCalledWith("client-router-key", { required: true, request });
     expect(global.fetch.mock.calls[0][1].headers["x-goog-api-key"]).toBe("real-gemini-key");
     expect(global.fetch.mock.calls[0][1].headers["x-goog-api-key"]).not.toBe("client-router-key");
+  });
+
+  it("enforces the canonical Gemini TTS model before credentials or fetch", async () => {
+    mocks.enforceApiKeyModelPolicy.mockResolvedValueOnce(new Response("denied", { status: 403 }));
+    const request = makeGeminiRequest("gemini-3.1-flash-tts-preview:generateContent", audioBody());
+    const response = await POST(request, { params: Promise.resolve({ path: ["gemini-3.1-flash-tts-preview:generateContent"] }) });
+    expect(response.status).toBe(403);
+    expect(mocks.enforceApiKeyModelPolicy).toHaveBeenCalledWith(request, "gemini/gemini-3.1-flash-tts-preview");
+    expect(mocks.getProviderCredentials).not.toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   it("rejects an invalid stored key before native provider work when global enforcement is disabled", async () => {

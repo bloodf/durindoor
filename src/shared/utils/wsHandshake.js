@@ -115,18 +115,22 @@ function extractRealtimeKey(req) {
  *
  * @param {object} opts
  * @param {string|null} opts.key
+ * @param {string|null} [opts.cliToken] - machine-bound operator token
  * @param {string} opts.authUrl - absolute URL of the bridge
  * @param {typeof fetch} [opts.fetchFn] - injectable for tests
  * @param {number} [opts.timeoutMs]
  * @returns {Promise<{ ok: boolean, status: number, reason?: string }>}
  */
-async function probeApiKey({ key, authUrl, fetchFn = fetch, timeoutMs = 5000 }) {
+async function probeApiKey({ key, cliToken = null, authUrl, fetchFn = fetch, timeoutMs = 5000 }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
+    const headers = {};
+    if (key) headers.Authorization = `Bearer ${key}`;
+    if (cliToken) headers["x-9r-cli-token"] = cliToken;
     const res = await fetchFn(authUrl, {
       method: "GET",
-      headers: key ? { Authorization: `Bearer ${key}` } : {},
+      headers,
       signal: controller.signal,
     });
     let body = null;

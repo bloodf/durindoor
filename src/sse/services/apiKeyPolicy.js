@@ -1,18 +1,10 @@
 import { getApiKeyByKey, getApiKeyUsageTotals, getApiKeyById, incrementApiKeyUsageSync } from "@/lib/localDb";
-import { extractApiKey } from "./auth.js";
+import { extractApiKey, hasValidCliToken } from "./auth.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
-import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { validateApiKeyPolicy } from "@/lib/db/helpers/apiKeyPolicy.js";
-
-const CLI_AUTH_SALT = "9r-cli-auth";
-
-async function hasValidCliToken(request) {
-  const token = request?.headers?.get("x-9r-cli-token");
-  if (!token) return false;
-  return token === await getConsistentMachineId(CLI_AUTH_SALT);
-}
+import { canonicalizePolicyModelIdentity } from "./apiKeyPolicyIdentity.js";
 
 /**
  * Check if a model is allowed by the API key policy.
@@ -27,7 +19,17 @@ export function isModelAllowed(policy, modelStr) {
   if (!policy || !policy.allowedModels || policy.allowedModels.length === 0) {
     return true;
   }
-  return policy.allowedModels.includes(modelStr);
+  const candidate = canonicalizePolicyModelIdentity(modelStr);
+  return policy.allowedModels.some((allowed) => {
+    const canonicalAllowed = canonicalizePolicyModelIdentity(allowed);
+    if (canonicalAllowed === candidate) return true;
+    // Compatibility for policies created before web operations gained
+    // least-privilege identities: a bare provider grants both web operations.
+    if (candidate.endsWith("/search") || candidate.endsWith("/fetch")) {
+      return canonicalAllowed === candidate.slice(0, candidate.lastIndexOf("/"));
+    }
+    return false;
+  });
 }
 
 /**

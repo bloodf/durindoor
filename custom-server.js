@@ -310,7 +310,10 @@ function handleRealtimeUpgrade(req, socket, head, { port } = {}) {
 
     try {
       const { key } = extractRealtimeKey(req);
-      const auth = await probeApiKey({ key, authUrl: loopbackAuthUrl(port) });
+      const cliToken = typeof req.headers?.["x-9r-cli-token"] === "string"
+        ? req.headers["x-9r-cli-token"]
+        : null;
+      const auth = await probeApiKey({ key, cliToken, authUrl: loopbackAuthUrl(port) });
       if (closed) return;
       if (!auth.ok) {
         queue.length = 0; // discard anything the optimistic client already sent
@@ -342,7 +345,9 @@ function handleRealtimeUpgrade(req, socket, head, { port } = {}) {
         maxOutputTokens: undefined,
         items: [],
       };
-      const headers = key ? { Authorization: `Bearer ${key}` } : {};
+      const headers = {};
+      if (key) headers.Authorization = `Bearer ${key}`;
+      if (cliToken) headers["x-9r-cli-token"] = cliToken;
       const chat = async ({ body, headers: h, signal }) => fetch(loopbackChatUrl(port), {
         method: "POST",
         headers: { "content-type": "application/json", ...h },

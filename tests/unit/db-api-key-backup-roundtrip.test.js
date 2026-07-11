@@ -88,7 +88,7 @@ describe("API-key database backup", () => {
     });
   });
 
-  it("backfills totals when importing a pre-totals backup", async () => {
+  it("starts pre-totals full backups at zero instead of attaching retained local history", async () => {
     const database = await import("@/lib/db/index.js");
     const { getAdapter } = await import("@/lib/db/driver.js");
     const db = await getAdapter();
@@ -97,6 +97,10 @@ describe("API-key database backup", () => {
       `INSERT INTO usageHistory(timestamp, provider, model, apiKey, promptTokens, completionTokens, cost, status, tokens, meta)
        VALUES(?, 'openai', 'gpt-test', ?, 8, 5, 0.75, 'ok', '{}', '{}')`,
       ["2026-01-02T00:00:00.000Z", secret],
+    );
+    db.run(
+      `INSERT INTO usageDaily(dateKey, data) VALUES(?, ?)`,
+      ["2026-01-02", JSON.stringify({ requests: 1, promptTokens: 8, completionTokens: 5, byProvider: { openai: {} }, byModel: {}, byApiKey: { legacy: { apiKey: secret, requests: 1 } } })],
     );
 
     await database.importDb({
@@ -107,16 +111,24 @@ describe("API-key database backup", () => {
         name: "Legacy backup key",
         isActive: true,
         allowedCombos: [],
+        dailyLimitTokens: 10,
         policy: { maxTokens: 100 },
       }],
     });
 
     expect(await database.getApiKeyUsageTotals("key-legacy")).toMatchObject({
-      totalTokens: 13,
-      totalCost: 0.75,
-      totalRequests: 1,
+      totalTokens: 0,
+      totalCost: 0,
+      totalRequests: 0,
     });
     expect(db.get(`SELECT key FROM apiKeys WHERE id = 'key-legacy'`).key).toBe(secret);
+    await expect(database.getApiKeyUsageLimitStatus(secret, new Date("2026-01-02T12:00:00.000Z"))).resolves.toMatchObject({
+      enforced: true,
+      exceeded: false,
+      usedTokens: 0,
+    });
+    expect(db.get(`SELECT apiKey FROM usageHistory LIMIT 1`).apiKey).toBeNull();
+    expect(JSON.parse(db.get(`SELECT data FROM usageDaily WHERE dateKey = '2026-01-02'`).data).byApiKey).toEqual({});
   });
 
   it("rounds fractional non-chat estimates so its own export remains importable", async () => {
@@ -164,6 +176,28 @@ describe("API-key database backup", () => {
     await expect(database.importDb({
       apiKeys: [{ id: "one", key: "sk-deadbeef", expiresAt: "2030-01-01T00:00:00" }],
     })).rejects.toThrow("absolute ISO-8601");
+    expect(db.get(`SELECT key FROM apiKeys WHERE id = 'existing'`).key).toBe("sk-cafebabe");
+  });
+
+  it.each([
+    [{ totalTokens: "1", totalCost: 0, totalRequests: 1 }, "totalTokens"],
+    [{ totalTokens: 1, totalCost: Number.NaN, totalRequests: 1 }, "totalCost"],
+    [{ totalTokens: 1, totalCost: 0, totalRequests: 1.5 }, "totalRequests"],
+    [{ totalTokens: 1, totalCost: 0, totalRequests: 1, updatedAt: "2030-01-01T00:00:00" }, "updatedAt"],
+  ])("rejects malformed imported usage totals atomically %#", async (invalidTotal, field) => {
+    const database = await import("@/lib/db/index.js");
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const db = await getAdapter();
+    db.run(
+      `INSERT INTO apiKeys(id, key, name, isActive, allowedCombos, createdAt) VALUES(?, ?, ?, 1, '[]', ?)`,
+      ["existing", "sk-cafebabe", "Existing", "2026-01-01T00:00:00.000Z"],
+    );
+
+    await expect(database.importDb({
+      apiKeys: [{ id: "imported", key: "sk-deadbeef" }],
+      apiKeyUsageTotals: [{ apiKeyId: "imported", ...invalidTotal }],
+    })).rejects.toThrow(field);
+
     expect(db.get(`SELECT key FROM apiKeys WHERE id = 'existing'`).key).toBe("sk-cafebabe");
   });
 

@@ -19,7 +19,7 @@ import { getSettings } from "@/lib/localDb";
 export async function GET(request) {
   const apiKey = extractApiKey(request);
   const settings = await getSettings();
-  const auth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true });
+  const auth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true, request });
   if (auth.ok) {
     return Response.json({ ok: true }, { headers: { "Access-Control-Allow-Origin": "*" } });
   }

@@ -104,6 +104,16 @@ export const MODEL_CAPABILITIES = {
  * Provider-specific capability overrides. Keyed by provider alias/id.
  */
 export const PROVIDER_CAPABILITIES = {
+  // ClinePass proxies through Vercel's OpenAI Chat Completions API, which only
+  // accepts reasoning.effort in {none,minimal,low,medium,high,xhigh}. Force
+  // "openai" so thinkingUnified.js emits valid Vercel enum values. Keys are the
+  // WIRE ids (`cline-pass/...`) because transformRequest → ensureThinkingBudget
+  // receives getModelUpstreamId()'s cleanUpstreamModel, not the short registry id.
+  // Source: decolua/9router#2332 @ 005d970f49.
+  clinepass: {
+    "cline-pass/deepseek-v4-pro":   { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 50000 },
+    "cline-pass/deepseek-v4-flash": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 50000 },
+  },
   // ZenMux Free exposes text streaming through its Anthropic-compatible web
   // endpoint but does not return structured tool_use blocks.
   "zenmux-free": {

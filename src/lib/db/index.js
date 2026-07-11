@@ -3,6 +3,18 @@ import { getAdapter } from "./driver.js";
 import { stringifyJson, parseJson } from "./helpers/jsonCol.js";
 import { normalizeApiKeyPolicy } from "./helpers/apiKeyPolicy.js";
 import { canonicalizeApiKeyExpiresAt } from "@/shared/utils/apiKeyExpiry";
+import {
+  canonicalizeQuotaNow,
+  normalizeQuotaFetchState,
+  normalizeQuotaSnapshot,
+  quotaIdentityKey,
+} from "@/shared/utils/quotaSnapshot";
+import {
+  QUOTA_MAX_IMPORT_ROWS,
+  QUOTA_MAX_SOURCE_SNAPSHOTS,
+  QUOTA_PORTABLE_VERSION,
+} from "@/shared/constants/quota";
+import { readQuotaPortableStateSync, writeQuotaPortableStateSync } from "./repos/quotaSnapshotsRepo.js";
 
 function assertUniqueNonEmpty(rows, field, label, { revealDuplicate = true } = {}) {
   const seen = new Set();
@@ -70,6 +82,89 @@ function validateApiKeyImport(payload) {
   return { apiKeys: normalizedApiKeys, totals, totalIds };
 }
 
+function validateQuotaImport(payload, { now }) {
+  if (!Object.hasOwn(payload, "quota")) {
+    return { present: false, quota: { version: QUOTA_PORTABLE_VERSION, snapshots: [], fetchStates: [] } };
+  }
+  const quota = payload.quota;
+  if (!quota || typeof quota !== "object" || Array.isArray(quota)) throw new Error("quota must be an object");
+  const allowedKeys = new Set(["version", "snapshots", "fetchStates"]);
+  for (const key of Object.keys(quota)) {
+    if (!allowedKeys.has(key)) throw new Error("quota contains an unsupported field");
+  }
+  if (quota.version !== QUOTA_PORTABLE_VERSION) throw new Error("Unsupported quota payload version");
+  if (!Array.isArray(quota.snapshots)) throw new Error("quota.snapshots must be an array");
+  if (!Array.isArray(quota.fetchStates)) throw new Error("quota.fetchStates must be an array");
+  if (quota.snapshots.length + quota.fetchStates.length > QUOTA_MAX_IMPORT_ROWS) {
+    throw new Error(`quota payload exceeds the ${QUOTA_MAX_IMPORT_ROWS}-row safety limit`);
+  }
+  const rawSourceCounts = new Map();
+  for (const snapshot of quota.snapshots) {
+    const connectionId = snapshot?.identity?.connectionId;
+    const sourceId = snapshot?.provenance?.sourceId;
+    if (typeof connectionId !== "string" || typeof sourceId !== "string") continue;
+    const key = JSON.stringify([connectionId, sourceId]);
+    const count = (rawSourceCounts.get(key) || 0) + 1;
+    if (count > QUOTA_MAX_SOURCE_SNAPSHOTS) throw new Error("quota payload exceeds the per-source row safety limit");
+    rawSourceCounts.set(key, count);
+  }
+
+  const connections = payload.providerConnections ?? [];
+  if (!Array.isArray(connections)) throw new Error("providerConnections must be an array");
+  const connectionProviders = new Map();
+  for (const [index, connection] of connections.entries()) {
+    if (typeof connection?.id !== "string" || !connection.id.trim()) throw new Error(`Provider connection at index ${index} must have an id`);
+    if (typeof connection?.provider !== "string" || !connection.provider.trim()) throw new Error(`Provider connection at index ${index} must have a provider`);
+    if (connectionProviders.has(connection.id)) throw new Error(`Duplicate provider connection at index ${index}`);
+    connectionProviders.set(connection.id, connection.provider);
+  }
+
+  const snapshots = quota.snapshots.map((snapshot, index) => {
+    try {
+      return normalizeQuotaSnapshot(snapshot, { allowCanonicalSentinels: true, now });
+    } catch (error) {
+      throw new Error(`quota.snapshots[${index}] is invalid: ${error.message}`);
+    }
+  });
+  const snapshotKeys = new Set();
+  for (const [index, snapshot] of snapshots.entries()) {
+    const provider = connectionProviders.get(snapshot.identity.connectionId);
+    if (!provider) throw new Error(`Quota snapshot at index ${index} references a missing provider connection`);
+    if (provider !== snapshot.identity.provider) throw new Error(`Quota snapshot at index ${index} has a provider mismatch`);
+    const key = quotaIdentityKey(snapshot.identity);
+    if (snapshotKeys.has(key)) throw new Error("Duplicate quota snapshot identity");
+    snapshotKeys.add(key);
+  }
+
+  const fetchStates = quota.fetchStates.map((state, index) => {
+    try {
+      return normalizeQuotaFetchState(state, { now });
+    } catch (error) {
+      throw new Error(`quota.fetchStates[${index}] is invalid: ${error.message}`);
+    }
+  });
+  const fetchKeys = new Set();
+  const fetchBySource = new Map();
+  for (const [index, state] of fetchStates.entries()) {
+    const provider = connectionProviders.get(state.connectionId);
+    if (!provider) throw new Error(`Quota fetch state at index ${index} references a missing provider connection`);
+    if (provider !== state.provider) throw new Error(`Quota fetch state at index ${index} has a provider mismatch`);
+    const key = JSON.stringify([state.connectionId, state.sourceId]);
+    if (fetchKeys.has(key)) throw new Error("Duplicate quota fetch-state identity");
+    fetchKeys.add(key);
+    fetchBySource.set(key, state);
+  }
+  for (const [index, snapshot] of snapshots.entries()) {
+    const key = JSON.stringify([snapshot.identity.connectionId, snapshot.provenance.sourceId]);
+    const fetchState = fetchBySource.get(key);
+    if (!fetchState?.lastObservedAt || fetchState.lastObservedAt !== snapshot.timing.observedAt) {
+      throw new Error(`Quota snapshot at index ${index} does not match its source watermark`);
+    }
+  }
+
+  return { present: true, quota: { version: QUOTA_PORTABLE_VERSION, snapshots, fetchStates } };
+}
+
 // Settings
 export {
   getSettings, updateSettings, isCloudEnabled, getCloudUrl, exportSettings,
@@ -102,6 +197,14 @@ export {
 export {
   getApiKeyUsageTotals, getAllApiKeyUsageTotals, incrementApiKeyUsageSync,
 } from "./repos/apiKeyUsageTotalsRepo.js";
+
+// Provider-reported quota snapshots (runtime-neutral persistence boundary)
+export {
+  upsertProviderQuotaSnapshot, replaceProviderQuotaSnapshotsForSource,
+  recordQuotaFetchFailure, getProviderQuotaSnapshot,
+  listProviderQuotaSnapshots, getQuotaFetchState,
+  pruneProviderQuotaSnapshots,
+} from "./repos/quotaSnapshotsRepo.js";
 
 // Combos
 export {
@@ -150,12 +253,13 @@ export {
 } from "./repos/requestDetailsRepo.js";
 
 // Export/import full DB
-export async function exportDb() {
+export async function exportDb({ now = Date.now() } = {}) {
   const db = await getAdapter();
-  const { exportSettings } = await import("./repos/settingsRepo.js");
-
-  const out = {
-    settings: await exportSettings(),
+  const quotaNow = canonicalizeQuotaNow(now).timestamp;
+  return db.transaction(() => {
+    const settingsRow = db.get(`SELECT data FROM settings WHERE id = 1`);
+    const out = {
+    settings: settingsRow ? parseJson(settingsRow.data, {}) : {},
     providerConnections: db.all(`SELECT * FROM providerConnections`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, provider: r.provider, authType: r.authType, name: r.name, email: r.email, priority: r.priority, isActive: r.isActive === 1, createdAt: r.createdAt, updatedAt: r.updatedAt })),
     providerNodes: db.all(`SELECT * FROM providerNodes`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, type: r.type, name: r.name, createdAt: r.createdAt, updatedAt: r.updatedAt })),
     proxyPools: db.all(`SELECT * FROM proxyPools`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, isActive: r.isActive === 1, testStatus: r.testStatus, createdAt: r.createdAt, updatedAt: r.updatedAt })),
@@ -187,6 +291,7 @@ export async function exportDb() {
       totalRequests: Number(r.totalRequests) || 0,
       updatedAt: r.updatedAt || null,
     })),
+    quota: readQuotaPortableStateSync(db, { now: quotaNow }),
     combos: db.all(`SELECT * FROM combos`).map((r) => ({ id: r.id, name: r.name, kind: r.kind, models: parseJson(r.models, []), createdAt: r.createdAt, updatedAt: r.updatedAt })),
     modelAliases: {},
     customModels: [],
@@ -199,10 +304,11 @@ export async function exportDb() {
   for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'mitmAlias'`)) out.mitmAlias[r.key] = parseJson(r.value);
   for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'pricing'`)) out.pricing[r.key] = parseJson(r.value);
 
-  return out;
+    return out;
+  });
 }
 
-export async function importDb(payload) {
+export async function importDb(payload, { now = Date.now() } = {}) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new Error("Invalid database payload");
   }
@@ -210,6 +316,8 @@ export async function importDb(payload) {
   // This makes duplicate keys, dangling totals, and malformed policies a hard
   // import error instead of silently collapsing or weakening enforcement.
   const { apiKeys, totals } = validateApiKeyImport(payload);
+  const quotaNow = canonicalizeQuotaNow(now).timestamp;
+  const { quota } = validateQuotaImport(payload, { now: quotaNow });
   const db = await getAdapter();
 
   db.transaction(() => {
@@ -228,6 +336,8 @@ export async function importDb(payload) {
       }
     }
     db.run(`DELETE FROM settings`);
+    db.run(`DELETE FROM quotaFetchStates`);
+    db.run(`DELETE FROM providerQuotaSnapshots`);
     db.run(`DELETE FROM providerConnections`);
     db.run(`DELETE FROM providerNodes`);
     db.run(`DELETE FROM proxyPools`);
@@ -262,6 +372,7 @@ export async function importDb(payload) {
         [id, isActive === false ? 0 : 1, testStatus || "unknown", stringifyJson(rest), createdAt || new Date().toISOString(), updatedAt || new Date().toISOString()]
       );
     }
+    writeQuotaPortableStateSync(db, quota);
     for (const k of apiKeys) {
       db.run(
         `INSERT INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, dailyLimitTokens, policy, expiresAt, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -309,7 +420,7 @@ export async function importDb(payload) {
     }
   });
 
-  return await exportDb();
+  return await exportDb({ now: quotaNow });
 }
 
 // Eager init helper (optional)

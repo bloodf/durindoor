@@ -8,7 +8,7 @@ import { makeBackupDir, backupFile, backupDbLite, pruneOldBackups } from "./back
 import { getAppVersion } from "./version.js";
 import { stringifyJson } from "./helpers/jsonCol.js";
 import { backfillApiKeyUsageTotals } from "./helpers/apiKeyUsageTotals.js";
-import { verifyPublishedSchemaShapes } from "./helpers/schemaVerifier.js";
+import { quotaStorageNeedsAdditiveRepair, verifyPublishedSchemaShapes } from "./helpers/schemaVerifier.js";
 import { canonicalizeApiKeyExpiresAt } from "../../shared/utils/apiKeyExpiry.js";
 
 // Marker file: prevents re-importing legacy JSON when user wipes data.sqlite.
@@ -253,9 +253,15 @@ export async function runMigrationOnce(adapter) {
   const needsTotalsRepair = !fresh
     && oldSchemaVersion >= 6
     && adapter.all(`PRAGMA table_info(apiKeyUsageTotals)`).length === 0;
+  // A previously interrupted/unreleased v7 build may have stamped the version
+  // without both durable quota tables. Repair only absence; incompatible
+  // partial shapes are rejected by verifyPublishedSchemaShapes below.
+  const needsQuotaRepair = !fresh
+    && oldSchemaVersion >= 7
+    && quotaStorageNeedsAdditiveRepair(adapter);
   verifyPublishedSchemaShapes(adapter);
   let preUpgradeBackupDir = null;
-  if (needsSchemaUpgrade || needsAppBackup || needsTotalsRepair) {
+  if (needsSchemaUpgrade || needsAppBackup || needsTotalsRepair || needsQuotaRepair) {
     // Strict checkpoint: adapters propagate SQL errors and reject a busy WAL.
     // Migration must stop before copying or mutating if committed pages cannot
     // be proven present in data.sqlite.
@@ -264,6 +270,8 @@ export async function runMigrationOnce(adapter) {
       ? `schema-${oldSchemaVersion}-to-${latestVersion()}`
       : needsTotalsRepair
         ? `schema-${oldSchemaVersion}-totals-repair`
+        : needsQuotaRepair
+          ? `schema-${oldSchemaVersion}-quota-repair`
         : `upgrade-${oldAppVersion}-to-${newAppVersion}`;
     preUpgradeBackupDir = makeBackupDir(label);
     const source = currentDataFile();
@@ -288,6 +296,7 @@ export async function runMigrationOnce(adapter) {
 
   // 2. Additive sync (auto add missing columns/indexes declared in TABLES)
   syncSchemaFromTables(adapter);
+  verifyPublishedSchemaShapes(adapter, { requireQuotaComplete: true, useLatestQuotaSchema: true });
   if (needsTotalsRepair) backfillApiKeyUsageTotals(adapter);
 
   // 3. One-time legacy JSON import (only if DB was fresh on entry)
@@ -334,9 +343,14 @@ export async function runMigrationOnce(adapter) {
     setMetaSync(adapter, "appVersion", newAppVersion);
     pruneOldBackups();
     console.log(`[DB][migrate] App ${oldAppVersion} → ${newAppVersion} | schema ${migInfo.from} → ${migInfo.to} | backup: ${preUpgradeBackupDir}`);
-  } else if (migInfo.applied > 0 || needsTotalsRepair) {
+  } else if (migInfo.applied > 0 || needsTotalsRepair || needsQuotaRepair) {
     pruneOldBackups();
-    console.log(`[DB][migrate] Schema ${migInfo.from} → ${migInfo.to}${needsTotalsRepair ? " | repaired API-key totals" : ""} | backup: ${preUpgradeBackupDir}`);
+    const repair = needsTotalsRepair
+      ? " | repaired API-key totals"
+      : needsQuotaRepair
+        ? " | repaired quota storage"
+        : "";
+    console.log(`[DB][migrate] Schema ${migInfo.from} → ${migInfo.to}${repair} | backup: ${preUpgradeBackupDir}`);
   }
   _migratedAdapters.add(adapter);
 }

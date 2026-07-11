@@ -12,6 +12,7 @@ import { getSettings, getApiKeyByKey, getApiKeyUsageLimitStatus } from "@/lib/lo
 import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
 import { appendPxpipeEvent } from "@/lib/pxpipe/events.js";
 import { getModelInfo, getComboModels } from "../services/model.js";
+import { applyVisionBridgeReroute } from "open-sse/services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
@@ -115,7 +116,7 @@ export async function handleChat(request, clientRawRequest = null) {
   }
   cacheClaudeHeaders(clientRawRequest.headers);
 
-  const modelStr = body.model;
+  let modelStr = body.model;
 
   // Request summary is emitted as the unified "▶" line in chatCore (has fmt/thinking/account)
 
@@ -169,6 +170,28 @@ export async function handleChat(request, clientRawRequest = null) {
   if (!modelStr) {
     log.warn("CHAT", "Missing model");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
+  }
+
+  // Vision Bridge (#6640): when the request carries image parts on its current
+  // user turn and the requested model cannot accept vision natively, swap to
+  // the operator-configured vision-capable model before combo/dispatch. Applied
+  // after settings + auth are loaded (so parseModel stays sync/pure) and before
+  // combo resolution. The rerouted target is policy-rechecked — a vision model
+  // the caller's API key is not allowed to use must not be reachable via the
+  // bridge; on denial we keep the original model and let normal policy gates run.
+  const vb = applyVisionBridgeReroute({ body, modelStr, settings });
+  if (vb.rerouted) {
+    const policyError = await enforceApiKeyModelPolicy(request, vb.modelStr);
+    if (policyError) {
+      log.warn("CHAT", `Vision Bridge target "${vb.toModel}" denied by API key policy; keeping "${modelStr}"`);
+    } else {
+      log.info("CHAT", `Vision Bridge reroute: ${vb.fromModel} -> ${vb.toModel}`);
+      body = vb.body;
+      modelStr = vb.modelStr;
+      // clientRawRequest intentionally keeps the ORIGINAL client body so usage
+      // logs record the model the caller actually asked for; the reroute only
+      // changes what we dispatch upstream.
+    }
   }
 
   // Ponytail slash commands are local-only: respond before any account/credential lookup.

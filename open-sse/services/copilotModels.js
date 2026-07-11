@@ -11,6 +11,7 @@
  */
 
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { sanitizeErrorMessage } from "../utils/error.js";
 import { GITHUB_COPILOT } from "../config/appConstants.js";
 import { refreshCopilotToken } from "./tokenRefresh.js";
 
@@ -21,10 +22,11 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes per credential
 /** @type {Map<string, { expiresAt: number, models: any[] }>} */
 const catalogCache = new Map();
 
-function cacheKey(credentials) {
-  return credentials?.providerSpecificData?.copilotToken
+function cacheKey(credentials, includeMetadata = false) {
+  const credentialKey = credentials?.providerSpecificData?.copilotToken
     || credentials?.accessToken
     || "copilot-anonymous";
+  return `${credentialKey}:${includeMetadata ? "metadata" : "basic"}`;
 }
 
 function buildHeaders(token) {
@@ -39,7 +41,7 @@ function buildHeaders(token) {
   };
 }
 
-async function fetchCatalogRaw(token, signal) {
+async function fetchCatalogRaw(token, signal, proxyOptions = null) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
@@ -48,7 +50,7 @@ async function fetchCatalogRaw(token, signal) {
       headers: buildHeaders(token),
       cache: "no-store",
       signal: signal || controller.signal,
-    });
+    }, proxyOptions);
     if (!response.ok) {
       const err = new Error(`Copilot /models returned ${response.status}`);
       err.status = response.status;
@@ -63,7 +65,7 @@ async function fetchCatalogRaw(token, signal) {
 
 // Keep only chat models the account is allowed to use. The static registry
 // surfaced disabled/embedding entries inconsistently; here we trust upstream.
-function expandCatalog(raw) {
+function expandCatalog(raw, includeMetadata = false) {
   const seen = new Set();
   const models = [];
   for (const m of raw) {
@@ -73,7 +75,13 @@ function expandCatalog(raw) {
     const id = m.id;
     if (!id || seen.has(id)) continue;
     seen.add(id);
-    models.push({ id, name: m.name || id });
+    const model = { id, name: m.name || id };
+    if (includeMetadata) {
+      model.version = m.version;
+      model.capabilities = m.capabilities;
+      model.isDefault = m.model_picker_enabled === true;
+    }
+    models.push(model);
   }
   return models;
 }
@@ -85,7 +93,9 @@ function expandCatalog(raw) {
  *   providerSpecificData {copilotToken, copilotTokenExpiresAt}).
  * @param {object} [options]
  * @param {boolean} [options.forceRefresh] Bypass the per-credential cache.
+ * @param {boolean} [options.includeMetadata] Include dashboard catalog metadata.
  * @param {object}  [options.log] Logger.
+ * @param {object|null} [options.proxyOptions] Resolved connection egress route.
  * @param {function} [options.onCredentialsRefreshed] Persist a refreshed
  *   Copilot token back to your store. Called with `{ copilotToken,
  *   copilotTokenExpiresAt }` whenever a 401 triggers a refresh.
@@ -98,7 +108,7 @@ export async function resolveCopilotModels(credentials, options = {}) {
     return null;
   }
 
-  const key = cacheKey(credentials);
+  const key = cacheKey(credentials, options.includeMetadata === true);
   const now = Date.now();
   if (!options.forceRefresh) {
     const cached = catalogCache.get(key);
@@ -109,13 +119,17 @@ export async function resolveCopilotModels(credentials, options = {}) {
 
   let raw;
   try {
-    raw = await fetchCatalogRaw(token, options.signal);
+    raw = await fetchCatalogRaw(token, options.signal, options.proxyOptions);
   } catch (err) {
     // A 401/403 means the Copilot token is stale — refresh from the GitHub
     // access token and retry once.
     if (err && (err.status === 401 || err.status === 403) && credentials.accessToken) {
       options.log?.info?.("COPILOT_MODELS", `Got ${err.status}; refreshing Copilot token`);
-      const refreshed = await refreshCopilotToken(credentials.accessToken);
+      const refreshed = await refreshCopilotToken(
+        credentials.accessToken,
+        options.log,
+        options.proxyOptions
+      );
       if (refreshed?.token) {
         if (typeof options.onCredentialsRefreshed === "function") {
           try {
@@ -124,13 +138,19 @@ export async function resolveCopilotModels(credentials, options = {}) {
               copilotTokenExpiresAt: refreshed.expiresAt,
             });
           } catch (e) {
-            options.log?.warn?.("COPILOT_MODELS", `onCredentialsRefreshed failed: ${e?.message || e}`);
+            options.log?.warn?.(
+              "COPILOT_MODELS",
+              `onCredentialsRefreshed failed: ${sanitizeErrorMessage(e?.message || e)}`
+            );
           }
         }
         try {
-          raw = await fetchCatalogRaw(refreshed.token, options.signal);
+          raw = await fetchCatalogRaw(refreshed.token, options.signal, options.proxyOptions);
         } catch (err2) {
-          options.log?.warn?.("COPILOT_MODELS", `Retry after refresh failed: ${err2?.message || err2}`);
+          options.log?.warn?.(
+            "COPILOT_MODELS",
+            `Retry after refresh failed: ${sanitizeErrorMessage(err2?.message || err2)}`
+          );
           return null;
         }
       } else {
@@ -138,12 +158,15 @@ export async function resolveCopilotModels(credentials, options = {}) {
         return null;
       }
     } else {
-      options.log?.warn?.("COPILOT_MODELS", `Live model fetch failed: ${err?.message || err}`);
+      options.log?.warn?.(
+        "COPILOT_MODELS",
+        `Live model fetch failed: ${sanitizeErrorMessage(err?.message || err)}`
+      );
       return null;
     }
   }
 
-  const models = expandCatalog(raw);
+  const models = expandCatalog(raw, options.includeMetadata === true);
   if (!models.length) return null;
 
   catalogCache.set(key, { expiresAt: now + CACHE_TTL_MS, models });

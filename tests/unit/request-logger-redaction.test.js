@@ -133,4 +133,18 @@ describe("request logger credential redaction", () => {
       "X-Subscription-Token: [redacted]",
     );
   });
+
+  it("redacts OAuth callback values and proxy URL credentials", () => {
+    const message = sanitizeErrorMessage(
+      "exchange failed https://alice:proxy-pass@proxy.example:8443/callback?code=oauth-code&state=oauth-state",
+    );
+
+    expect(message).not.toContain("alice");
+    expect(message).not.toContain("proxy-pass");
+    expect(message).not.toContain("oauth-code");
+    expect(message).not.toContain("oauth-state");
+    expect(message).toContain("https://[redacted]@proxy.example:8443");
+    expect(message).toContain("code=[redacted]");
+    expect(message).toContain("state=[redacted]");
+  });
 });

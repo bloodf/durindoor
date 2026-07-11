@@ -3,6 +3,8 @@
  * /v1/search response format. Supports gemini, openai, xai, kimi, minimax, perplexity.
  */
 import { PROVIDER_MEDIA } from "../../providers/index.js";
+import { proxyAwareFetch } from "../../utils/proxyFetch.js";
+import { sanitizeErrorMessage } from "../../utils/error.js";
 
 // Default search model + endpoint derive from registry searchViaChat (single source)
 const searchModel = (id) => PROVIDER_MEDIA[id]?.searchViaChat?.defaultModel;
@@ -284,6 +286,7 @@ const CHAT_SEARCH_CONFIG = {
  * @param {number} [params.maxResults]
  * @param {string} [params.model]
  * @param {{apiKey?:string, accessToken?:string}} params.credentials
+ * @param {object|null} [params.proxyOptions] Resolved connection egress route.
  * @param {{info?:Function, warn?:Function, error?:Function}} [params.log]
  * @returns {Promise<{success:boolean, status?:number, error?:string, data?:object}>}
  */
@@ -293,6 +296,7 @@ export async function handleChatSearch({
   maxResults,
   model,
   credentials,
+  proxyOptions,
   log
 }) {
   const startTime = Date.now();
@@ -334,23 +338,24 @@ export async function handleChatSearch({
   let upstreamStart = Date.now();
   let resp;
   try {
-    resp = await fetch(url, {
+    resp = await proxyAwareFetch(url, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
       signal: controller.signal
-    });
+    }, proxyOptions);
   } catch (err) {
     clearTimeout(timer);
     if (err?.name === "AbortError") {
       log?.warn?.(`[chatSearch] timeout provider=${provider}`);
       return { success: false, status: 504, error: "Upstream timeout" };
     }
-    log?.error?.(`[chatSearch] network error provider=${provider}: ${err?.message}`);
+    const safeError = sanitizeErrorMessage(err?.message || "unknown");
+    log?.error?.(`[chatSearch] network error provider=${provider}: ${safeError}`);
     return {
       success: false,
       status: 502,
-      error: `Network error: ${err?.message || "unknown"}`
+      error: `Network error: ${safeError}`
     };
   }
   clearTimeout(timer);
@@ -374,10 +379,13 @@ export async function handleChatSearch({
       data?.message ||
       `Upstream HTTP ${resp.status}`;
     log?.warn?.(`[chatSearch] upstream error provider=${provider} status=${resp.status}`);
+    const safeError = sanitizeErrorMessage(
+      typeof errMsg === "string" ? errMsg : JSON.stringify(errMsg)
+    );
     return {
       success: false,
       status: resp.status,
-      error: typeof errMsg === "string" ? errMsg : JSON.stringify(errMsg)
+      error: safeError
     };
   }
 

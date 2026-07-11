@@ -1,5 +1,7 @@
 import { getProviderConnections, updateProviderConnection } from "@/lib/localDb.js";
+import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy.js";
 import { getExecutor } from "open-sse/index.js";
+import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 
 async function persistRefreshedCredentials(connection, newCredentials) {
   const updateData = {};
@@ -45,6 +47,15 @@ export async function POST(request) {
     if (!connection) {
       return Response.json({ success: false, error: `No active connection for provider: ${provider}` }, { status: 400 });
     }
+    const resolvedProxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
+    const proxyOptions = {
+      connectionProxyEnabled: resolvedProxy.connectionProxyEnabled === true,
+      connectionProxyUrl: resolvedProxy.connectionProxyUrl || "",
+      connectionNoProxy: resolvedProxy.connectionNoProxy || "",
+      vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
+      strictProxy: resolvedProxy.strictProxy === true,
+      disableEnvProxy: resolvedProxy.disableEnvProxy === true,
+    };
 
     const credentials = {
       apiKey: connection.apiKey,
@@ -56,21 +67,24 @@ export async function POST(request) {
       copilotToken: connection.providerSpecificData?.copilotToken,
       copilotTokenExpiresAt: connection.providerSpecificData?.copilotTokenExpiresAt,
       projectId: connection.projectId,
-      providerSpecificData: connection.providerSpecificData
+      providerSpecificData: {
+        ...(connection.providerSpecificData || {}),
+        ...proxyOptions,
+      }
     };
 
     const executor = getExecutor(provider);
     const stream = body.stream !== false;
 
-    let { response } = await executor.execute({ model, body, stream, credentials });
+    let { response } = await executor.execute({ model, body, stream, credentials, proxyOptions });
 
     // Auto-refresh token on 401/403 and retry (same as chatCore.js)
     if (response.status === 401 || response.status === 403) {
-      const newCredentials = await executor.refreshCredentials(credentials, console);
+      const newCredentials = await executor.refreshCredentials(credentials, console, proxyOptions);
       if (newCredentials?.accessToken || newCredentials?.copilotToken) {
         Object.assign(credentials, newCredentials);
         await persistRefreshedCredentials(connection, newCredentials);
-        ({ response } = await executor.execute({ model, body, stream, credentials }));
+        ({ response } = await executor.execute({ model, body, stream, credentials, proxyOptions }));
       }
     }
 
@@ -88,7 +102,8 @@ export async function POST(request) {
       }
     });
   } catch (error) {
-    console.error("[Translator] Send error:", error);
-    return Response.json({ success: false, error: error.message }, { status: 500 });
+    const message = sanitizeErrorMessage(error?.message || "Translator request failed");
+    console.error(`[Translator] Send error: ${message}`);
+    return Response.json({ success: false, error: message }, { status: 500 });
   }
 }

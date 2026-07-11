@@ -137,6 +137,64 @@ describe("Codex compact request context in chatCore", () => {
     expect(options.credentials).not.toHaveProperty("_isCompact");
   });
 
+  it("keeps strict-pool routing on the 401 refresh and request retry", async () => {
+    mocks.execute
+      .mockResolvedValueOnce(providerResult(401))
+      .mockResolvedValueOnce(providerResult(200));
+    mocks.refreshCredentials.mockResolvedValueOnce({ accessToken: "new-token" });
+    mocks.refreshWithRetry.mockImplementationOnce((refreshFn) => refreshFn());
+    const options = makeOptions();
+    options.credentials.providerSpecificData = {
+      oauthProxy: { mode: "strict-pool", poolId: "pool-chat" },
+      connectionProxyEnabled: true,
+      connectionProxyUrl: "http://chat-proxy.test:8080",
+      connectionNoProxy: "localhost",
+      connectionProxyPoolId: "pool-chat",
+      strictProxy: true,
+      disableEnvProxy: true,
+    };
+
+    await handleChatCore(options);
+
+    const firstRoute = mocks.execute.mock.calls[0][0].proxyOptions;
+    const retryRoute = mocks.execute.mock.calls[1][0].proxyOptions;
+    expect(firstRoute).toBe(retryRoute);
+    expect(firstRoute).toMatchObject({
+      proxyMode: "strict-pool",
+      proxyPoolId: "pool-chat",
+      connectionProxyEnabled: true,
+      connectionProxyUrl: "http://chat-proxy.test:8080",
+      strictProxy: true,
+      disableEnvProxy: true,
+    });
+    expect(mocks.refreshCredentials).toHaveBeenCalledWith(
+      options.credentials,
+      options.log,
+      firstRoute
+    );
+    const proxyLogs = options.log.info.mock.calls.flat().join(" ");
+    expect(proxyLogs).toContain("http://chat-proxy.test:8080");
+    expect(proxyLogs).not.toContain("@chat-proxy.test");
+  });
+
+  it("never logs proxy userinfo or relay query secrets", async () => {
+    mocks.execute.mockResolvedValue(providerResult(200));
+    const proxied = makeOptions();
+    proxied.credentials.providerSpecificData = {
+      connectionProxyEnabled: true,
+      connectionProxyUrl: "http://alice:proxy-secret@proxy.test:8443/private?token=relay-secret",
+      connectionProxyPoolId: "pool-secret-test",
+    };
+
+    await handleChatCore(proxied);
+
+    const logs = proxied.log.info.mock.calls.flat().join(" ");
+    expect(logs).toContain("http://proxy.test:8443");
+    expect(logs).not.toContain("alice");
+    expect(logs).not.toContain("proxy-secret");
+    expect(logs).not.toContain("relay-secret");
+  });
+
   it("accepts but strips the legacy marker before logs, dispatch, and persistence", async () => {
     mocks.execute.mockResolvedValueOnce(providerResult(200));
     const options = makeOptions({ endpoint: "/v1/responses", legacyMarker: true });

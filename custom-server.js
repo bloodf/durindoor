@@ -23,6 +23,7 @@ const { MAX_REALTIME_FRAME_BYTES } = require("./src/shared/utils/realtimeConfig"
 const MITM_CONTROL_PATH = "/api/cli-tools/antigravity-mitm";
 const STANDALONE_ROOT_ENV = "DURINDOOR_STANDALONE_ROOT";
 const REALTIME_DISPATCHER = Symbol.for("durindoor.realtimeDispatcher");
+const SINGLE_PROCESS_RUNTIME_ENV = "DURINDOOR_SINGLE_PROCESS_RUNTIME";
 
 // One WS server shared across every http server we wrap (noServer so we own the
 // upgrade handshake). `handleProtocols` selects a safe subprotocol and never
@@ -38,6 +39,7 @@ function canonicalizeRuntimePaths() {
   const { DATA_DIR } = require("./src/mitm/paths");
   process.env.DATA_DIR = DATA_DIR;
   process.env[STANDALONE_ROOT_ENV] = require("fs").realpathSync(__dirname);
+  process.env[SINGLE_PROCESS_RUNTIME_ENV] = "1";
   return DATA_DIR;
 }
 

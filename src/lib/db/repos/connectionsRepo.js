@@ -135,8 +135,14 @@ function reorderInTx(db, providerId) {
   });
 }
 
-export async function createProviderConnection(data) {
+export async function createProviderConnection(data, { shouldCommit } = {}) {
   const db = await getAdapter();
+  // OAuth flows can be cancelled while an upstream exchange is in flight.
+  // Check after the async adapter lookup and immediately before the synchronous
+  // transaction so a superseded flow cannot persist a late credential.
+  if (typeof shouldCommit === "function" && !shouldCommit()) {
+    throw new Error("OAuth flow was cancelled or superseded before commit");
+  }
   const now = new Date().toISOString();
   let result;
 

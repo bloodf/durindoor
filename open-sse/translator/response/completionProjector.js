@@ -33,14 +33,14 @@ function openAIToGeminiFinish(reason) {
   }
 }
 
-function openAICompletionToClaudeMessage(completion) {
+function openAICompletionToClaudeMessage(completion, { claudeCompat = false } = {}) {
   if (!completion?.choices?.[0]) return completion;
   const choice = getChoice(completion);
   const message = getMessage(completion);
   const content = [];
 
   const reasoning = message.reasoning_content || message.provider_specific_fields?.reasoning_content || "";
-  if (reasoning) content.push({ type: "thinking", thinking: reasoning });
+  if (reasoning && !claudeCompat) content.push({ type: "thinking", thinking: reasoning });
   if (typeof message.content === "string" && message.content.length > 0) {
     content.push({ type: "text", text: message.content });
   }
@@ -260,10 +260,10 @@ function openAICompletionToResponsesOutput(completion) {
   };
 }
 
-export function projectCompletionToClientFormat(completion, sourceFormat) {
+export function projectCompletionToClientFormat(completion, sourceFormat, options = {}) {
   switch (sourceFormat) {
     case FORMATS.CLAUDE:
-      return openAICompletionToClaudeMessage(completion);
+      return openAICompletionToClaudeMessage(completion, options);
     case FORMATS.GEMINI:
     case FORMATS.GEMINI_CLI:
     case FORMATS.ANTIGRAVITY:

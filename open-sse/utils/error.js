@@ -1,4 +1,5 @@
 import { ERROR_TYPES, DEFAULT_ERROR_MESSAGES } from "../config/errorConfig.js";
+import { unwrapClinepassEnvelope } from "./clinepassEnvelope.js";
 
 /**
  * Build OpenAI-compatible error response body
@@ -82,7 +83,14 @@ export async function parseUpstreamError(response, executor = null) {
   let message = "";
   try {
     const json = JSON.parse(bodyText);
-    message = json.error?.message || json.message || json.error || bodyText;
+    // ClinePass wraps failures as {success:false, error}; surface the inner
+    // message instead of the wrapper. Source: decolua/9router#2332 @ 005d970f49.
+    const { error: envError } = unwrapClinepassEnvelope(json, executor?.getProvider?.() || executor?.provider);
+    if (envError) {
+      message = envError.message;
+    } else {
+      message = json.error?.message || json.message || json.error || bodyText;
+    }
   } catch {
     message = bodyText;
   }

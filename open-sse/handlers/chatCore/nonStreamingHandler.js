@@ -2,6 +2,7 @@ import { FORMATS } from "../../translator/formats.js";
 import { needsTranslation } from "../../translator/index.js";
 import { fromOpenAIFinish } from "../../translator/concerns/finishReason.js";
 import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.js";
+import { unwrapClinepassEnvelope } from "../../utils/clinepassEnvelope.js";
 import { addBufferToUsage, filterUsageForFormat } from "../../utils/usageTracking.js";
 import { createErrorResult } from "../../utils/error.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
@@ -23,6 +24,51 @@ const GEMINI_FAMILY_FORMATS = new Set([
   FORMATS.ANTIGRAVITY,
   FORMATS.VERTEX,
 ]);
+
+// Claude Code classifier compat: detect classifier-shaped requests by the
+// security-monitor system prompt or the "</block>" stop sequence, gated by the
+// claudeClassifierCompat setting ("off" | "auto" | "always").
+function shouldEnableClaudeCompat(mode, sourceFormat, body) {
+  if (sourceFormat !== FORMATS.CLAUDE) return false;
+  if (mode === "always") return true;
+  if (mode !== "auto") return false;
+  const systemTexts = Array.isArray(body?.system)
+    ? body.system.map((part) => (typeof part?.text === "string" ? part.text : "")).filter(Boolean)
+    : [];
+  const stopSequences = Array.isArray(body?.stop_sequences) ? body.stop_sequences : [];
+  return systemTexts.some((text) => text.includes("You are a security monitor for autonomous AI coding agents"))
+    || stopSequences.includes("</block>");
+}
+
+// Reconstruct Claude cache usage the Chat converter drops, unconditionally.
+// Matches Responses semantics: input_tokens = total - cacheRead - cacheCreate.
+function normalizeClaudeCacheUsage(claudeMsg, originalBody) {
+  if (!claudeMsg || claudeMsg.type !== "message") return claudeMsg;
+  const src = originalBody?.usage || {};
+  const cached = src.prompt_tokens_details?.cached_tokens
+    ?? src.input_tokens_details?.cached_tokens
+    ?? src.cache_read_input_tokens
+    ?? 0;
+  const cacheCreation = src.cache_creation_input_tokens ?? 0;
+  claudeMsg.usage = claudeMsg.usage || {};
+  if (cached > 0) claudeMsg.usage.cache_read_input_tokens = cached;
+  if (cacheCreation > 0) claudeMsg.usage.cache_creation_input_tokens = cacheCreation;
+  if (typeof claudeMsg.usage.input_tokens === "number") {
+    claudeMsg.usage.input_tokens = Math.max(0, claudeMsg.usage.input_tokens - cached - cacheCreation);
+  }
+  return claudeMsg;
+}
+
+// Strip thinking blocks from a Claude message for classifier clients that
+// reject content_block_start {thinking}. Conditional on compat mode.
+function stripClaudeThinking(claudeMsg) {
+  if (!claudeMsg || claudeMsg.type !== "message") return claudeMsg;
+  if (Array.isArray(claudeMsg.content)) {
+    claudeMsg.content = claudeMsg.content.filter((block) => block?.type !== "thinking");
+    if (claudeMsg.content.length === 0) claudeMsg.content.push({ type: "text", text: "" });
+  }
+  return claudeMsg;
+}
 
 function parseToolArguments(value) {
   if (!value) return {};
@@ -125,14 +171,14 @@ function openAICompletionToClientSSE(responseBody, fallbackModel, sourceFormat) 
   return output;
 }
 
-function openAICompletionToClaudeMessage(responseBody) {
+function openAICompletionToClaudeMessage(responseBody, options = {}) {
   if (!responseBody?.choices?.[0]) return responseBody;
   const choice = responseBody.choices[0];
   const message = choice.message || {};
   const content = [];
 
   const reasoning = message.reasoning_content || message.provider_specific_fields?.reasoning_content || "";
-  if (reasoning) {
+  if (reasoning && !options.claudeCompat) {
     content.push({ type: "thinking", thinking: reasoning });
   }
   if (typeof message.content === "string" && message.content.length > 0) {
@@ -150,6 +196,18 @@ function openAICompletionToClaudeMessage(responseBody) {
   if (content.length === 0) content.push({ type: "text", text: "" });
 
   const usage = responseBody.usage || {};
+  const claudeUsage = {
+    input_tokens: usage.prompt_tokens || usage.input_tokens || 0,
+    output_tokens: usage.completion_tokens || usage.output_tokens || 0,
+  };
+  if (usage.cache_read_input_tokens || usage.cache_creation_input_tokens) {
+    if (usage.cache_read_input_tokens) claudeUsage.cache_read_input_tokens = usage.cache_read_input_tokens;
+    if (usage.cache_creation_input_tokens) claudeUsage.cache_creation_input_tokens = usage.cache_creation_input_tokens;
+  }
+  const details = usage.prompt_tokens_details || usage.input_tokens_details;
+  if (details && typeof details.cached_tokens === "number") {
+    claudeUsage.cache_read_input_tokens = details.cached_tokens;
+  }
   return {
     id: String(responseBody.id || `msg_${Date.now()}`).replace(/^chatcmpl-/, ""),
     type: "message",
@@ -158,10 +216,7 @@ function openAICompletionToClaudeMessage(responseBody) {
     content,
     stop_reason: fromOpenAIFinish(choice.finish_reason, FORMATS.CLAUDE),
     stop_sequence: null,
-    usage: {
-      input_tokens: usage.prompt_tokens || usage.input_tokens || 0,
-      output_tokens: usage.completion_tokens || usage.output_tokens || 0,
-    },
+    usage: claudeUsage,
   };
 }
 
@@ -182,7 +237,7 @@ function openAICompletionToClaudeMessage(responseBody) {
  * Streaming responses go through translateResponse() — this function only
  * handles non-streaming JSON bodies.
  */
-export function translateNonStreamingResponse(responseBody, targetFormat, sourceFormat) {
+export function translateNonStreamingResponse(responseBody, targetFormat, sourceFormat, options = {}) {
   if (targetFormat === sourceFormat) return responseBody;
 
   // When the client spoke Claude but the upstream spoke OpenAI (e.g. gpt-5.5-9router
@@ -190,7 +245,9 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
   // Messages shape so the Claude client gets a parseable content[] block
   // instead of a leaked {object:"chat.completion",choices:[...]} payload.
   if (sourceFormat === FORMATS.CLAUDE && targetFormat === FORMATS.OPENAI) {
-    return translateOpenAIToClaudeIfNeeded(responseBody, sourceFormat);
+    let claudeMsg = translateOpenAIToClaudeIfNeeded(responseBody, sourceFormat);
+    claudeMsg = normalizeClaudeCacheUsage(claudeMsg, responseBody);
+    return options.claudeCompat ? stripClaudeThinking(claudeMsg) : claudeMsg;
   }
   if (targetFormat === FORMATS.OPENAI) return responseBody;
 
@@ -199,7 +256,10 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
   // body-level conversion so clients always receive the shape they requested,
   // including a usage object (some clients validate `usage.input_tokens`).
   if (targetFormat === FORMATS.OPENAI_RESPONSES) {
-    if (sourceFormat === FORMATS.CLAUDE) return openAIResponsesBodyToClaude(responseBody);
+    if (sourceFormat === FORMATS.CLAUDE) {
+      const claudeMsg = openAIResponsesBodyToClaude(responseBody);
+      return options.claudeCompat ? stripClaudeThinking(claudeMsg) : claudeMsg;
+    }
     if (sourceFormat === FORMATS.OPENAI) return openAIResponsesBodyToOpenAI(responseBody);
   }
 
@@ -324,7 +384,7 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
 /**
  * Handle non-streaming response from provider.
  */
-export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, streamToClient, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, trackDone, appendLog, pxpipe, reqTag, log, usageEventId }) {
+export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, streamToClient, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, trackDone, appendLog, pxpipe, reqTag, log, usageEventId, claudeClassifierCompat }) {
   trackDone();
   const contentType = providerResponse.headers.get("content-type") || "";
   let responseBody;
@@ -348,6 +408,19 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   }
 
   reqLogger.logProviderResponse(providerResponse.status, providerResponse.statusText, providerResponse.headers, responseBody);
+
+  // Unwrap ClinePass {success, data} envelope before marking success: a
+  // {success:false, error} body must surface as a 502, never as a successful call.
+  // Source: decolua/9router#2332 @ 005d970f49.
+  {
+    const { body: unwrapped, error: envError } = unwrapClinepassEnvelope(responseBody, provider);
+    if (envError) {
+      appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
+      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, envError.message);
+    }
+    responseBody = unwrapped;
+  }
+
   if (onRequestSuccess) {
     Promise.resolve()
       .then(onRequestSuccess)
@@ -371,7 +444,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime } }));
 
   const translatedResponse = needsTranslation(targetFormat, sourceFormat)
-    ? translateNonStreamingResponse(responseBody, targetFormat, sourceFormat)
+    ? translateNonStreamingResponse(responseBody, targetFormat, sourceFormat, { claudeCompat: shouldEnableClaudeCompat(claudeClassifierCompat, sourceFormat, body) })
     : responseBody;
   const isClaudeMessageResponse = sourceFormat === FORMATS.CLAUDE && translatedResponse?.type === "message";
 

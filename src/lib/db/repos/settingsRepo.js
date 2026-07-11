@@ -71,6 +71,10 @@ const DEFAULT_SETTINGS = {
   // caller may not have credentials for).
   visionBridgeEnabled: false,
   visionBridgeModel: "",
+  // Claude Code auto-mode classifier compat: "off" | "auto" | "always".
+  // When enabled, classifier requests are short-circuited to "<block>no</block>"
+  // (ALLOW) and `thinking` blocks are suppressed on Claude-shaped responses.
+  claudeClassifierCompat: "off",
 };
 
 async function readRaw() {

@@ -13,6 +13,23 @@ import { normalizeInlineThinkingResponse } from "./inlineThinking.js";
 const isResponsesProvider = (p) => PROVIDERS[p]?.format === FORMATS.OPENAI_RESPONSES;
 import { saveRequestDetail, appendRequestLog } from "@/lib/usageDb.js";
 
+// Claude Code classifier compat: detect classifier-shaped requests by the
+// security-monitor system prompt or the "</block>" stop sequence, gated by the
+// claudeClassifierCompat setting ("off" | "auto" | "always"). When enabled,
+// Claude-shaped projections suppress the reasoning `thinking` block so the
+// classifier's allow/deny decision is the only visible content.
+function shouldEnableClaudeCompat(mode, sourceFormat, body) {
+  if (sourceFormat !== FORMATS.CLAUDE) return false;
+  if (mode === "always") return true;
+  if (mode !== "auto") return false;
+  const systemTexts = Array.isArray(body?.system)
+    ? body.system.map((part) => (typeof part?.text === "string" ? part.text : "")).filter(Boolean)
+    : [];
+  const stopSequences = Array.isArray(body?.stop_sequences) ? body.stop_sequences : [];
+  return systemTexts.some((text) => text.includes("You are a security monitor for autonomous AI coding agents"))
+    || stopSequences.includes("</block>");
+}
+
 /**
  * Parse OpenAI-style SSE text into a single chat completion JSON.
  * Used when provider forces streaming but client wants non-streaming.
@@ -126,7 +143,7 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
  * Handle case: provider forced streaming but client wants JSON.
  * Supports both Codex/Responses API SSE and standard Chat Completions SSE.
  */
-export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, trackDone, appendLog, toolNameMap, reqTag, log, usageEventId }) {
+export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, trackDone, appendLog, toolNameMap, reqTag, log, usageEventId, claudeClassifierCompat }) {
   const contentType = providerResponse.headers.get("content-type") || "";
   const isSSE = contentType.includes("text/event-stream") || (contentType === "" && isResponsesProvider(provider));
   if (!isSSE) return null; // not handled here
@@ -169,7 +186,8 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       }
 
       const openAICompletion = responsesApiToOpenAICompletion(jsonResponse, model);
-      const finalResp = projectCompletionToClientFormat(openAICompletion, sourceFormat);
+      const claudeCompat = shouldEnableClaudeCompat(claudeClassifierCompat, sourceFormat, body);
+      const finalResp = projectCompletionToClientFormat(openAICompletion, sourceFormat, { claudeCompat });
       logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "sse-json-responses", requestBody: body, translatedBody, providerBody: jsonResponse, clientBody: finalResp });
 
       const totalLatency = Date.now() - requestStartTime;
@@ -221,7 +239,11 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
     // When content is empty (e.g. thinking models that used all tokens for reasoning),
     // reasoning_content is the only useful output and must be preserved.
     // Previously this was unconditional, which broke Qwen3.5, Claude extended thinking, etc.
-    if (!inlineThinking.configured && parsed?.choices) {
+    // For Claude source, the projector decides whether to surface reasoning as a
+    // `thinking` block based on claudeCompat — preserve reasoning_content here so
+    // the projector can emit it when compat is off (and suppress it when on).
+    const claudeCompat = shouldEnableClaudeCompat(claudeClassifierCompat, sourceFormat, body);
+    if (!inlineThinking.configured && sourceFormat !== FORMATS.CLAUDE && parsed?.choices) {
       for (const choice of parsed.choices) {
         if (choice?.message?.reasoning_content && choice.message.content) {
           delete choice.message.reasoning_content;
@@ -229,7 +251,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       }
     }
 
-    const finalResp = projectCompletionToClientFormat(parsed, sourceFormat);
+    const finalResp = projectCompletionToClientFormat(parsed, sourceFormat, { claudeCompat });
     logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "sse-json-chat", requestBody: body, translatedBody, providerBody: parsed, clientBody: finalResp });
 
     return { success: true, response: new Response(JSON.stringify(finalResp), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };

@@ -64,6 +64,7 @@ export default {
     { id: "oswe-vscode-prime", name: "Raptor Mini" },
     { id: "text-embedding-3-small", name: "Text Embedding 3 Small (GitHub)", kind: "embedding" },
     { id: "text-embedding-3-large", name: "Text Embedding 3 Large (GitHub)", kind: "embedding" },
+    { id: "claude-fable-5", name: "Claude Fable 5" },
   ],
   serviceKinds: ["llm","embedding"],
   embeddingConfig: { baseUrl: "https://models.github.ai/inference/embeddings", authType: "apikey", authHeader: "bearer" },

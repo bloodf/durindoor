@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge, Button } from "@/shared/components";
 import { getModelsByProviderId } from "@/shared/constants/models";
 import { isAnthropicCompatibleProvider, isOpenAICompatibleProvider } from "@/shared/constants/providers";
+import { createSseParser } from "@/lib/playground/sse";
+import { sanitizeErrorText } from "@/lib/playground/errors";
 
 const STORAGE_KEYS = {
   sessions: "basic-chat.sessions",
@@ -166,7 +168,7 @@ function dedupeModels(models) {
   return Array.from(map.values());
 }
 
-export default function BasicChatPageClient() {
+export default function PlaygroundPageClient() {
   const [providerGroups, setProviderGroups] = useState([]);
   const [loadingData, setLoadingData] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -202,6 +204,7 @@ export default function BasicChatPageClient() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const fileInputRef = useRef(null);
   const abortRef = useRef(null);
+  const loadAbortRef = useRef(null);
   const initializedRef = useRef(false);
   const modelMenuRef = useRef(null);
   const historyMenuRef = useRef(null);
@@ -212,13 +215,16 @@ export default function BasicChatPageClient() {
 
   useEffect(() => {
     let cancelled = false;
+    loadAbortRef.current?.abort();
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
 
     async function loadData() {
       setLoadingData(true);
       setLoadError("");
 
       try {
-        const providersRes = await fetch("/api/providers", { cache: "no-store" });
+        const providersRes = await fetch("/api/providers", { cache: "no-store", signal: controller.signal });
         const providersData = await providersRes.json().catch(() => ({}));
         const connections = Array.isArray(providersData.connections)
           ? providersData.connections.filter((connection) => connection?.isActive !== false)
@@ -267,7 +273,7 @@ export default function BasicChatPageClient() {
         const liveResults = await Promise.all(
           connections.map(async (connection) => {
             try {
-              const response = await fetch(`/api/providers/${connection.id}/models`, { cache: "no-store" });
+              const response = await fetch(`/api/providers/${connection.id}/models`, { cache: "no-store", signal: controller.signal });
               const data = await response.json().catch(() => ({}));
               if (!response.ok) return { connection, models: [] };
               const models = parseProviderModelsPayload(data)
@@ -302,8 +308,9 @@ export default function BasicChatPageClient() {
           }
         }
       } catch (error) {
+        if (error?.name === "AbortError") return;
         if (!cancelled) {
-          setLoadError(textValue(error?.message) || "Failed to load providers/models.");
+          setLoadError(sanitizeErrorText(error?.message) || "Failed to load providers/models.");
           setProviderGroups([]);
         }
       } finally {
@@ -314,6 +321,8 @@ export default function BasicChatPageClient() {
     loadData();
     return () => {
       cancelled = true;
+      controller.abort();
+      if (loadAbortRef.current === controller) loadAbortRef.current = null;
     };
   }, []);
 
@@ -330,6 +339,10 @@ export default function BasicChatPageClient() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // Abort any in-flight chat request when the component unmounts so a
+  // navigation away mid-stream can't setState on an unmounted tree.
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   const modelIndex = useMemo(() => {
     const map = new Map();
@@ -626,7 +639,8 @@ export default function BasicChatPageClient() {
     setStreamingMessageId(assistantMessageId);
     setStreamingText("");
     abortRef.current?.abort();
-    abortRef.current = new AbortController();
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     const requestMessages = nextMessages
       .filter((message) => !(message.role === "assistant" && message.id === assistantMessageId))
@@ -636,7 +650,7 @@ export default function BasicChatPageClient() {
       }));
 
     try {
-      const response = await fetch("/api/dashboard/chat/completions", {
+      const response = await fetch("/v1/chat/completions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -647,7 +661,7 @@ export default function BasicChatPageClient() {
           messages: requestMessages,
           stream: true,
         }),
-        signal: abortRef.current.signal,
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -668,41 +682,34 @@ export default function BasicChatPageClient() {
       }
 
       const decoder = new TextDecoder();
-      let buffer = "";
       let assistantText = "";
+
+      const parser = createSseParser(({ data }) => {
+        let chunk;
+        try {
+          chunk = JSON.parse(data);
+        } catch {
+          return; // Ignore malformed chunks.
+        }
+        const text = readAssistantText(chunk);
+        if (!text) return;
+
+        assistantText += text;
+        setStreamingText(assistantText);
+        updateSession(sessionId, (currentSession) => ({
+          ...currentSession,
+          messages: currentSession.messages.map((message) => (message.id === assistantMessageId ? { ...message, content: assistantText, status: "streaming" } : message)),
+          updatedAt: new Date().toISOString(),
+        }));
+      });
 
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split(/\r?\n/);
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith("data:")) continue;
-
-          const payload = trimmed.slice(5).trim();
-          if (!payload || payload === "[DONE]") continue;
-
-          try {
-            const chunk = JSON.parse(payload);
-            const text = readAssistantText(chunk);
-            if (!text) continue;
-
-            assistantText += text;
-            setStreamingText(assistantText);
-            updateSession(sessionId, (currentSession) => ({
-              ...currentSession,
-              messages: currentSession.messages.map((message) => (message.id === assistantMessageId ? { ...message, content: assistantText, status: "streaming" } : message)),
-              updatedAt: new Date().toISOString(),
-            }));
-          } catch {
-            // Ignore malformed chunks.
-          }
-        }
+        parser.push(decoder.decode(value, { stream: true }));
       }
+      parser.push(decoder.decode()); // flush any pending multibyte fragment
+      parser.flush();
 
       updateSession(sessionId, (currentSession) => ({
         ...currentSession,
@@ -712,7 +719,7 @@ export default function BasicChatPageClient() {
       finalizeSessionTitle(sessionId, userText);
     } catch (error) {
       if (error.name !== "AbortError") {
-        const errorText = textValue(error?.message || error);
+        const errorText = sanitizeErrorText(error?.message || error);
         updateSession(sessionId, (currentSession) => ({
           ...currentSession,
           messages: currentSession.messages.map((message) => (message.id === assistantMessageId ? { ...message, content: message.content || `Error: ${errorText}`, status: "error" } : message)),
@@ -724,7 +731,7 @@ export default function BasicChatPageClient() {
       setIsSending(false);
       setStreamingMessageId("");
       setStreamingText("");
-      abortRef.current = null;
+      if (abortRef.current === controller) abortRef.current = null;
     }
   };
 
@@ -864,9 +871,9 @@ export default function BasicChatPageClient() {
                     <span className="material-symbols-outlined text-[30px]">chat</span>
                   </div>
                   <div className="space-y-2">
-                    <h2 className="text-2xl font-semibold text-white">Start a conversation</h2>
+                    <h2 className="text-2xl font-semibold text-white">Playground</h2>
                     <p className="text-sm leading-6 text-white/60">
-                      Simple chat interface to interact with any AI model from connected providers. Select a model and start chatting!
+                      Chat against the local /v1 endpoint with any model from connected providers. Select a model and start streaming.
                     </p>
                   </div>
                 </div>

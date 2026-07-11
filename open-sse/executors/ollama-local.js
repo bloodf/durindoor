@@ -19,8 +19,10 @@ export class OllamaLocalExecutor extends DefaultExecutor {
       let url = rt.baseUrl;
       try {
         const u = new URL(rt.baseUrl);
-        const host = resolveOllamaLocalHost(credentials).replace(/\/$/, "");
-        url = host + u.pathname + u.search;
+        const configured = new URL(resolveOllamaLocalHost(credentials));
+        // Stored local values may be origins or complete Ollama endpoints.
+        // Runtime transport owns the endpoint path, so retain only the configured origin.
+        url = configured.origin + u.pathname + u.search;
       } catch {
         url = rt.baseUrl;
       }

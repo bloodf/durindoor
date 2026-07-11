@@ -18,6 +18,12 @@ export default {
     },
   },
   category: "freeTier",
+  quirks: {
+    preserveNativeClaudeThinking: true,
+    normalizeNativeClaudeTransport: true,
+    dropClaudeCacheControl: true,
+    claudeImagesRequireBase64: true,
+  },
   transport: {
     baseUrl: "https://ollama.com/api/chat",
     validateUrl: "https://ollama.com/api/tags",

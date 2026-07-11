@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import "../translator/registerAll.js";
 import { resolveTransport, detectFormat, getTargetFormat } from "../../open-sse/services/provider.js";
 import OllamaLocalExecutor from "../../open-sse/executors/ollama-local.js";
 import { translateRequest } from "../../open-sse/translator/index.js";

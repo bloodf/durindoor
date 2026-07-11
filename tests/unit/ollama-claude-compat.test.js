@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import "../translator/registerAll.js";
 import { translateRequest, translateResponse } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 import { extractUsage, mergeUsage } from "../../open-sse/utils/usageTracking.js";
@@ -90,13 +91,12 @@ describe("Phase 3: ollama claude compatibility contracts", () => {
       "ollama"
     );
 
-    // prepareClaudeRequest strips cache_control from all but last system block,
-    // then rewrites the last as { type: "ephemeral", ttl: "1h" }. Proves tolerate-
-    // don't-strip: cache_control survives in the canonical rewritten form.
+    // Ollama's Messages compatibility endpoint does not support Anthropic
+    // prompt-caching metadata, so every cache_control marker is removed.
     expect(Array.isArray(result.system)).toBe(true);
     expect(result.system.length).toBe(2);
     expect(result.system[0].cache_control).toBeUndefined();
-    expect(result.system[1].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
+    expect(result.system[1].cache_control).toBeUndefined();
   });
 
   // WR-03: covers the message-block cache_control path (claude.js:241-280) —
@@ -130,8 +130,8 @@ describe("Phase 3: ollama claude compatibility contracts", () => {
     const assistant = result.messages.find(m => m.role === "assistant");
     // First (non-last) block: cache_control stripped, not re-added.
     expect(assistant.content[0].cache_control).toBeUndefined();
-    // Last non-thinking block of the last assistant: re-added as ephemeral, NO ttl.
-    expect(assistant.content[1].cache_control).toEqual({ type: "ephemeral" });
+    // No cache marker is synthesized for Ollama's native Claude transport.
+    expect(assistant.content[1].cache_control).toBeUndefined();
   });
 
   // WR-02: same-format response identity passthrough (provider-agnostic).

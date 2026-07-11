@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import "../translator/registerAll.js";
 import { translateRequest, translateResponse } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 

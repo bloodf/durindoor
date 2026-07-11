@@ -13,6 +13,12 @@ export default {
     website: "https://ollama.com",
   },
   category: "apikey",
+  quirks: {
+    preserveNativeClaudeThinking: true,
+    normalizeNativeClaudeTransport: true,
+    dropClaudeCacheControl: true,
+    claudeImagesRequireBase64: true,
+  },
   transport: {
     baseUrl: "http://localhost:11434",
     format: "ollama",

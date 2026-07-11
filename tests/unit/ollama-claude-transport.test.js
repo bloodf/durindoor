@@ -40,6 +40,20 @@ describe("Phase 1: Claude passthrough transport", () => {
     expect(exec.buildUrl("", true, 0, creds)).toBe("http://192.168.1.5:11434/v1/messages");
   });
 
+  it.each([
+    "http://192.168.1.5:11434",
+    "http://192.168.1.5:11434/",
+    "http://192.168.1.5:11434/api/chat",
+    "http://192.168.1.5:11434/v1/messages",
+  ])("normalizes configured endpoint %s before appending the Claude route", (baseUrl) => {
+    const exec = new OllamaLocalExecutor();
+    const creds = {
+      runtimeTransport: { baseUrl: "http://localhost:11434/v1/messages", format: "claude" },
+      providerSpecificData: { baseUrl },
+    };
+    expect(exec.buildUrl("", true, 0, creds)).toBe("http://192.168.1.5:11434/v1/messages");
+  });
+
   it("Contract C fallback: buildUrl returns /api/chat without runtimeTransport", () => {
     const exec = new OllamaLocalExecutor();
     expect(exec.buildUrl("", true, 0, null)).toBe("http://localhost:11434/api/chat");

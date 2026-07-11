@@ -332,6 +332,300 @@ describe("integration: eager client frames survive the auth window, in order", (
   });
 });
 
+describe("realtimeCore — WSAUD gaps: validation, limits, dispose", () => {
+  // 1. Malformed wire frames --------------------------------------------------
+  it("malformed JSON → error, no throw", async () => {
+    const { rt, events } = makeCore();
+    await rt.handleClientEvent("{not json");
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe("error");
+  });
+
+  it("session.update with malformed session shape (null/array/primitive) → error, no mutation, no session.updated", async () => {
+    for (const bad of [null, ["text"], "x", 1]) {
+      const session = baseSession({ instructions: "keep" });
+      const { rt, events } = makeCore({ session });
+      await rt.handleClientEvent(JSON.stringify({ type: "session.update", session: bad }));
+      expect(events.map((e) => e.type)).toEqual(["error"]);
+      expect(events[0].error.code).toBe("invalid_session_update");
+      expect(session.instructions).toBe("keep");
+    }
+  });
+
+  it("item.create with malformed item shape (null/array/primitive) → error, nothing stored", async () => {
+    for (const bad of [null, ["x"], "x"]) {
+      const session = baseSession();
+      const { rt, events } = makeCore({ session });
+      await rt.handleClientEvent(JSON.stringify({ type: "conversation.item.create", item: bad }));
+      expect(events.map((e) => e.type)).toEqual(["error"]);
+      expect(events[0].error.code).toBe("invalid_item");
+      expect(session.items).toHaveLength(0);
+    }
+  });
+
+  // 2. Known-field validation (table-driven, incl. explicit JSON null) ---------
+  const badSessionFields = [
+    ["temperature", null], ["temperature", 0.5], ["temperature", 1.3], ["temperature", "0.8"],
+    ["max_output_tokens", null], ["max_output_tokens", 0], ["max_output_tokens", 4097], ["max_output_tokens", 1.5], ["max_output_tokens", "inf"],
+    ["modalities", null], ["modalities", "text"], ["modalities", ["video"]], ["modalities", [1]],
+    ["model", null], ["model", 5],
+    ["instructions", null], ["instructions", 5],
+  ];
+  it.each(badSessionFields)("session.update rejects %s=%j (no mutation, no session.updated)", async (field, value) => {
+    const session = baseSession({ instructions: "orig", model: "m0", modalities: ["text"] });
+    const before = JSON.stringify({ m: session.model, i: session.instructions, mod: session.modalities, t: session.temperature, mot: session.maxOutputTokens });
+    const { rt, events } = makeCore({ session });
+    await rt.handleClientEvent(JSON.stringify({ type: "session.update", session: { [field]: value } }));
+    expect(events.map((e) => e.type)).toEqual(["error"]);
+    expect(events[0].error.code).toBe("invalid_session_update");
+    const after = JSON.stringify({ m: session.model, i: session.instructions, mod: session.modalities, t: session.temperature, mot: session.maxOutputTokens });
+    expect(after).toBe(before);
+  });
+
+  const goodSessionFields = [
+    ["temperature", 0.6], ["temperature", 1.2],
+    ["max_output_tokens", 1], ["max_output_tokens", 4096],
+    ["modalities", ["text"]], ["modalities", ["text", "audio"]], ["modalities", []],
+    ["model", "openai/gpt-4o-mini"], ["instructions", "hi"],
+  ];
+  it.each(goodSessionFields)("session.update accepts %s=%j → session.updated", async (field, value) => {
+    const { rt, events } = makeCore();
+    await rt.handleClientEvent(JSON.stringify({ type: "session.update", session: { [field]: value } }));
+    expect(events.map((e) => e.type)).toEqual(["session.updated"]);
+  });
+
+  it("session.update is atomic: one bad field rejects the whole update (no partial apply)", async () => {
+    const session = baseSession({ instructions: "orig", temperature: 0.8 });
+    const { rt, events } = makeCore({ session });
+    await rt.handleClientEvent(JSON.stringify({ type: "session.update", session: { instructions: "NEW", temperature: 5 } }));
+    expect(events.map((e) => e.type)).toEqual(["error"]);
+    expect(session.instructions).toBe("orig"); // valid field NOT applied
+    expect(session.temperature).toBe(0.8);
+  });
+
+  it("session.update accepts unknown fields (ignored) alongside valid ones", async () => {
+    const session = baseSession();
+    const { rt, events } = makeCore({ session });
+    await rt.handleClientEvent(JSON.stringify({ type: "session.update", session: { instructions: "hi", future_extension: { x: 1 } } }));
+    expect(events.map((e) => e.type)).toEqual(["session.updated"]);
+    expect(session.instructions).toBe("hi");
+    expect(session.future_extension).toBeUndefined(); // not stored
+  });
+
+  it("session.update with omitted session key is a valid no-op → session.updated", async () => {
+    const { rt, events } = makeCore();
+    await rt.handleClientEvent(JSON.stringify({ type: "session.update" }));
+    expect(events.map((e) => e.type)).toEqual(["session.updated"]);
+  });
+
+  it("item.create role: valid roles accepted; out-of-set and explicit null rejected; absent defaults to user", async () => {
+    // valid
+    for (const role of ["user", "assistant", "system"]) {
+      const { rt, events } = makeCore();
+      await rt.handleClientEvent(JSON.stringify({ type: "conversation.item.create", item: { type: "message", role, content: "x" } }));
+      expect(events.at(-1).type).toBe("conversation.item.created");
+    }
+    // invalid string + null → rejected, nothing stored
+    for (const role of ["tool", null, 5]) {
+      const session = baseSession();
+      const { rt, events } = makeCore({ session });
+      await rt.handleClientEvent(JSON.stringify({ type: "conversation.item.create", item: { type: "message", role, content: "x" } }));
+      expect(events.map((e) => e.type)).toEqual(["error"]);
+      expect(events[0].error.code).toBe("invalid_item_role");
+      expect(session.items).toHaveLength(0);
+    }
+    // absent → defaults user
+    const session = baseSession();
+    const { rt, events } = makeCore({ session });
+    await rt.handleClientEvent(JSON.stringify({ type: "conversation.item.create", item: { type: "message", content: "no-role" } }));
+    expect(events.at(-1).type).toBe("conversation.item.created");
+    expect(session.items[0].role).toBe("user");
+  });
+
+  // 3. Resource limit ---------------------------------------------------------
+  it("caps session.items at maxItems: system preserved, oldest non-system dropped", async () => {
+    const session = baseSession();
+    const { rt } = makeCore({ session, maxItems: 2 });
+    for (const [role, content] of [["system", "S"], ["user", "u1"], ["user", "u2"], ["user", "u3"]]) {
+      await rt.handleClientEvent(JSON.stringify({ type: "conversation.item.create", item: { type: "message", role, content } }));
+    }
+    expect(session.items).toHaveLength(2);
+    expect(session.items.map((i) => `${i.role}:${i.content}`)).toEqual(["system:S", "user:u3"]);
+  });
+
+  it("all-system history at cap rejects further item.create (no created event, no mutation)", async () => {
+    const session = baseSession();
+    const { rt, events } = makeCore({ session, maxItems: 2 });
+    await rt.handleClientEvent(JSON.stringify({ type: "conversation.item.create", item: { type: "message", role: "system", content: "S1" } }));
+    await rt.handleClientEvent(JSON.stringify({ type: "conversation.item.create", item: { type: "message", role: "system", content: "S2" } }));
+    await rt.handleClientEvent(JSON.stringify({ type: "conversation.item.create", item: { type: "message", role: "user", content: "u" } }));
+    const last = events.at(-1);
+    expect(last.type).toBe("error");
+    expect(last.error.code).toBe("session_item_limit");
+    expect(session.items).toHaveLength(2);
+    expect(session.items.every((i) => i.role === "system")).toBe(true);
+  });
+
+  it("response.create trims history after assistant turn (cap holds across responses)", async () => {
+    const sse = 'data: {"choices":[{"delta":{"content":"a"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n';
+    const chat = vi.fn(async () => new Response(sseStream(sse), { status: 200, headers: { "content-type": "text/event-stream" } }));
+    const session = baseSession();
+    const { rt } = makeCore({ session, chat, maxItems: 3 });
+    // Seed 2 system + 1 user = at cap; response.create appends assistant and
+    // must drop the oldest non-system (the user) to honor the cap.
+    session.items.push({ type: "message", role: "system", content: "S" });
+    session.items.push({ type: "message", role: "user", content: "u1" });
+    await rt.handleClientEvent(JSON.stringify({ type: "response.create" }));
+    await rt.handleClientEvent(JSON.stringify({ type: "response.create" }));
+    expect(session.items.length).toBeLessThanOrEqual(3);
+  });
+
+  // 4. Disconnect cleanup / upstream error -----------------------------------
+  it("dispose() aborts an in-flight upstream chat → response.done cancelled", async () => {
+    let aborted = false;
+    const chat = ({ signal }) => new Promise((res, rej) => {
+      signal.addEventListener("abort", () => { aborted = true; rej(Object.assign(new Error("aborted"), { name: "AbortError" })); });
+    });
+    const session = baseSession({ items: [{ type: "message", role: "user", content: "x" }] });
+    const { rt, events } = makeCore({ session, chat });
+    const p = rt.handleClientEvent(JSON.stringify({ type: "response.create" }));
+    rt.dispose();
+    await p;
+    expect(aborted).toBe(true);
+    expect(events.find((e) => e.type === "response.done").response.status).toBe("cancelled");
+  });
+
+  it("upstream chat rejection → error event + response.done failed", async () => {
+    const chat = vi.fn(async () => new Response(JSON.stringify({ error: { message: "boom" } }), { status: 500, headers: { "content-type": "application/json" } }));
+    const session = baseSession({ items: [{ type: "message", role: "user", content: "x" }] });
+    const { rt, events } = makeCore({ session, chat });
+    await rt.handleClientEvent(JSON.stringify({ type: "response.create" }));
+    const err = events.find((e) => e.type === "error");
+    const done = events.find((e) => e.type === "response.done");
+    expect(err.error.message).toBe("boom");
+    expect(err.error.type).toBe("server_error");
+    expect(done.response.status).toBe("failed");
+  });
+
+  it("upstream chat throw → error event + response.done failed", async () => {
+    const chat = vi.fn(async () => { throw new Error("socket hang up"); });
+    const session = baseSession({ items: [{ type: "message", role: "user", content: "x" }] });
+    const { rt, events } = makeCore({ session, chat });
+    await rt.handleClientEvent(JSON.stringify({ type: "response.create" }));
+    expect(events.find((e) => e.type === "error").error.message).toBe("socket hang up");
+    expect(events.find((e) => e.type === "response.done").response.status).toBe("failed");
+  });
+});
+
+describe("integration: realtime disconnect cleanup + oversize frame", () => {
+  let server;
+  afterEach(() => { if (server) { try { server.close(); } catch {} server = null; } });
+
+  /**
+   * Boot a server whose /api/v1/chat/completions hangs until the request signal
+   * aborts. Returns the abort flag observed by the chat handler.
+   */
+  async function bootHangingChat() {
+    let aborted = false;
+    server = http.createServer((req, res) => {
+      if (req.url === "/api/v1/realtime/auth") {
+        res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ ok: true })); return;
+      }
+      if (req.url === "/api/v1/chat/completions") {
+        req.on("data", () => {});
+        req.on("end", () => {
+          res.writeHead(200, { "content-type": "text/event-stream" });
+          // Hang until aborted; never write [DONE].
+          const onAbort = () => { aborted = true; try { res.end(); } catch {} };
+          req.on("aborted", onAbort);
+          req.on("close", () => { if (!res.writableEnded) onAbort(); });
+          // keep the socket open
+          const keep = setInterval(() => { try { res.write(": ping\n\n"); } catch { clearInterval(keep); } }, 50);
+          res.on("close", () => clearInterval(keep));
+        });
+        return;
+      }
+      res.writeHead(404); res.end();
+    });
+    await new Promise((r) => server.listen(0, "127.0.0.1", r));
+    const port = server.address().port;
+    cs.installRealtimeUpgradeDispatcher(server, { dashboardPort: port });
+    await tick();
+    return { port, wasAborted: () => aborted };
+  }
+
+  async function openEstablishedSession(port) {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/v1/realtime?model=openai/gpt-4o-mini`);
+    const events = [];
+    ws.on("message", (d) => events.push(JSON.parse(d.toString())));
+    await once(ws, "open");
+    await waitFor(() => events.some((e) => e.type === "session.created"), 3000);
+    // user turn so response.create is valid, then start a hanging response.
+    ws.send(JSON.stringify({ type: "conversation.item.create", item: { type: "message", role: "user", content: "go" } }));
+    await waitFor(() => events.some((e) => e.type === "conversation.item.created"), 3000);
+    ws.send(JSON.stringify({ type: "response.create" }));
+    await waitFor(() => events.some((e) => e.type === "response.created"), 3000);
+    return { ws, events };
+  }
+
+  it("client close aborts the in-flight upstream chat", async () => {
+    const { port, wasAborted } = await bootHangingChat();
+    const { ws } = await openEstablishedSession(port);
+    ws.close();
+    await waitFor(() => wasAborted(), 3000);
+    expect(wasAborted()).toBe(true);
+  });
+
+  it("induced socket error aborts the in-flight upstream chat", async () => {
+    const { port, wasAborted } = await bootHangingChat();
+    const { ws } = await openEstablishedSession(port);
+    // Force an error on the underlying socket; ws emits error then close. The
+    // server-side error handler must dispose() the session, aborting upstream.
+    try { ws._socket.destroy(new Error("boom")); } catch {}
+    await waitFor(() => wasAborted(), 3000);
+    expect(wasAborted()).toBe(true);
+  });
+
+  it("oversize frame during in-flight response → server error path aborts upstream AND closes 1009", async () => {
+    const { port, wasAborted } = await bootHangingChat();
+    const { ws } = await openEstablishedSession(port);
+    // One frame > MAX_REALTIME_FRAME_BYTES makes ws emit `error`
+    // (WS_ERR_MESSAGE_TOO_BIG) on the SERVER, which our handler turns into
+    // rt.dispose() (aborting the hanging chat) and a 1009 close. This is the
+    // only deterministic way to exercise the server-side ws error path.
+    const closed = new Promise((resolve) => ws.on("close", (code) => resolve(code)));
+    const big = "x".repeat(2 * 1024 * 1024);
+    ws.send(JSON.stringify({ type: "conversation.item.create", item: { type: "message", role: "user", content: big } }));
+    const code = await closed;
+    expect(code).toBe(1009);
+    await waitFor(() => wasAborted(), 3000);
+    expect(wasAborted()).toBe(true);
+  });
+
+  it("oversize frame on idle session → ws closes 1009 (maxPayload)", async () => {
+    server = http.createServer((req, res) => {
+      if (req.url === "/api/v1/realtime/auth") { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ ok: true })); return; }
+      res.writeHead(404); res.end();
+    });
+    await new Promise((r) => server.listen(0, "127.0.0.1", r));
+    const port = server.address().port;
+    cs.installRealtimeUpgradeDispatcher(server, { dashboardPort: port });
+    await tick();
+
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/v1/realtime?model=openai/gpt-4o-mini`);
+    const events = [];
+    ws.on("message", (d) => events.push(JSON.parse(d.toString())));
+    await once(ws, "open");
+    await waitFor(() => events.some((e) => e.type === "session.created"), 3000);
+    // 2 MiB payload >> MAX_REALTIME_FRAME_BYTES (1 MiB default).
+    const big = "x".repeat(2 * 1024 * 1024);
+    const closed = new Promise((resolve) => ws.on("close", (code) => resolve(code)));
+    ws.send(JSON.stringify({ type: "conversation.item.create", item: { type: "message", role: "user", content: big } }));
+    const code = await closed;
+    expect(code).toBe(1009);
+  });
+});
+
 // --- tiny test helpers ---
 
 function fakeWs(onEvent) {
@@ -342,6 +636,23 @@ function fakeWs(onEvent) {
     on: () => {},
     close: () => {},
   };
+}
+
+function baseSession(over = {}) {
+  return { id: "s", model: "m", instructions: "", modalities: ["text"], temperature: undefined, maxOutputTokens: undefined, items: [], ...over };
+}
+
+function makeCore({ events, session, chat, maxItems } = {}) {
+  const ev = events || [];
+  const ws = fakeWs((e) => ev.push(e));
+  const rt = realtimeCore.createRealtimeSession({
+    ws,
+    session: session || baseSession(),
+    chat: chat || (async () => {}),
+    headers: {},
+    ...(maxItems != null ? { maxItems } : {}),
+  });
+  return { rt, ws, session: rt.session, events: ev };
 }
 
 function sseStream(text) {

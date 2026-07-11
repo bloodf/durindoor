@@ -30,6 +30,20 @@ describe("healthMonitor cache", () => {
     expect(p2.summary.healthy).toBe(1);
   });
 
+  it("rebuilds exactly at the TTL boundary (strict < comparison)", async () => {
+    const clock = fakeClock();
+    let probes = 0;
+    const loader = async () => [CONN("a")];
+    const prober = async () => { probes += 1; return { valid: true, status: 200 }; };
+
+    await getHealthPayload({ now: clock.now, connectionsLoader: loader, prober });
+    expect(probes).toBe(1);
+    // Advance exactly to expiresAt — the entry must be treated as expired.
+    clock.advance(HEALTH_PAYLOAD_TTL_MS);
+    await getHealthPayload({ now: clock.now, connectionsLoader: loader, prober });
+    expect(probes).toBe(2);
+  });
+
   it("rebuilds after TTL expires", async () => {
     const clock = fakeClock();
     let probes = 0;
@@ -92,6 +106,45 @@ describe("healthMonitor cache", () => {
 
     // Build that started before invalidation must NOT repopulate the cache.
     expect(getHealthCacheEntry()).toBeNull();
+  });
+
+  it("normal read after DELETE during an in-flight probe gets fresh data", async () => {
+    const clock = fakeClock();
+    let releaseStale;
+    const staleGate = new Promise((r) => { releaseStale = r; });
+    let loaderCalls = 0;
+    let proberCalls = 0;
+    const loader = async () => { loaderCalls += 1; return [CONN("a")]; };
+    const prober = async () => {
+      proberCalls += 1;
+      if (proberCalls === 1) {
+        // First (stale) probe: block until we release it AFTER the fresh read.
+        await staleGate;
+        return { valid: false, status: 503, error: "stale-down" };
+      }
+      return { valid: true, status: 200 };
+    };
+
+    // Kick off the in-flight build; it blocks inside the first probe.
+    const stale = getHealthPayload({ now: clock.now, connectionsLoader: loader, prober });
+    // Let the microtask queue run so the build has registered its pending slot.
+    await Promise.resolve();
+
+    // DELETE invalidates while the first probe is still blocked.
+    invalidateHealthCache();
+
+    // A normal read now must NOT await the stale build — it starts a fresh one.
+    const fresh = await getHealthPayload({ now: clock.now, connectionsLoader: loader, prober });
+    expect(loaderCalls).toBe(2);   // fresh build re-ran the loader
+    expect(proberCalls).toBe(2);   // fresh build re-ran the prober
+    expect(fresh.summary.healthy).toBe(1);
+    expect(getHealthCacheEntry()?.payload.summary.healthy).toBe(1);
+
+    // Now release the stale build; its finally must not clobber the fresh cache
+    // or the fresh pending slot.
+    releaseStale();
+    await stale;
+    expect(getHealthCacheEntry()?.payload.summary.healthy).toBe(1);
   });
 
   it("force rebuild publishes and a slower normal build cannot overwrite it", async () => {

@@ -48,6 +48,51 @@ describe("probeConnectionHealth", () => {
     expect(calls[0].options.redirect).toBe("manual");
   });
 
+  it("blocks a private Anthropic-compatible base URL via the SSRF guard", async () => {
+    const fetcher = async () => { throw new Error("fetch must not be called for blocked URL"); };
+    const conn = {
+      id: "ac1",
+      provider: "anthropic-compatible-evil",
+      name: "evil",
+      apiKey: "k",
+      providerSpecificData: { baseUrl: "http://169.254.169.254/latest/meta-data" },
+    };
+    const result = await probeConnectionHealth(conn, { fetcher, proxyConfig: null });
+    expect(result.blocked).toBe(true);
+    expect(result.valid).toBe(false);
+  });
+
+  it("blocks a private local OpenAI-compatible (lm-studio) base URL via the SSRF guard", async () => {
+    const fetcher = async () => { throw new Error("fetch must not be called for blocked URL"); };
+    const conn = {
+      id: "ls1",
+      provider: "lm-studio",
+      name: "evil-lm",
+      apiKey: "k",
+      providerSpecificData: { baseUrl: "http://169.254.169.254/latest/meta-data" },
+    };
+    const result = await probeConnectionHealth(conn, { fetcher, proxyConfig: null });
+    expect(result.blocked).toBe(true);
+    expect(result.valid).toBe(false);
+  });
+
+  it("blocks a private registry noAuth (auggie) base URL via the SSRF guard", async () => {
+    // auggie's registry baseUrl is the non-HTTP auggie:// scheme (skipped by
+    // httpProbeTarget); supplying a private HTTP baseUrl routes through
+    // probeRegistryNoAuth, which must still be SSRF-guarded.
+    const fetcher = async () => { throw new Error("fetch must not be called for blocked URL"); };
+    const conn = {
+      id: "ag1",
+      provider: "auggie",
+      name: "evil-aug",
+      apiKey: "k",
+      providerSpecificData: { baseUrl: "http://169.254.169.254/latest/meta-data" },
+    };
+    const result = await probeConnectionHealth(conn, { fetcher, proxyConfig: null });
+    expect(result.blocked).toBe(true);
+    expect(result.valid).toBe(false);
+  });
+
   it("returns an error result for a connection with no probe target", async () => {
     const result = await probeConnectionHealth(null);
     expect(result.valid).toBe(false);

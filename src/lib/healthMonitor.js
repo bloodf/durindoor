@@ -52,10 +52,11 @@ let pendingBuild = /** @type {Promise<object> | null} */ (null);
 // cache with stale data (probes themselves cannot be cancelled).
 let buildGeneration = 0;
 
-/** Drop the cached payload and mark in-flight builds stale. */
+/** Drop the cached payload and detach any in-flight build so reads rebuild. */
 export function invalidateHealthCache() {
   payloadCache = null;
   buildGeneration += 1;
+  pendingBuild = null;
 }
 
 /** Test/diagnostic hook — current cache entry (or null). */
@@ -161,7 +162,7 @@ async function buildPayload(opts) {
  */
 export async function getHealthPayload(opts = {}) {
   const now = opts.now ?? Date.now;
-  if (!opts.force && payloadCache && now() <= payloadCache.expiresAt) {
+  if (!opts.force && payloadCache && now() < payloadCache.expiresAt) {
     return payloadCache.payload;
   }
   if (!opts.force && pendingBuild) return pendingBuild;

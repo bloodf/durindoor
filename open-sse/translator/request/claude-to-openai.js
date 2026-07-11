@@ -2,7 +2,7 @@ import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { adjustMaxTokens } from "../formats/maxTokens.js";
 import { encodeDataUri } from "../concerns/image.js";
-import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK } from "../schema/index.js";
+import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, CLAUDE_REDACTED_THINKING_BLOCKS } from "../schema/index.js";
 import { collapseTextParts } from "../concerns/message.js";
 
 function stripAnthropicBillingHeader(text) {
@@ -157,6 +157,21 @@ function systemReminderText(content) {
   return `<instructions>\n${text}\n</instructions>`;
 }
 
+// Attach stashed redacted_thinking blocks to an intermediate OpenAI assistant
+// message as a non-enumerable symbol property: visible to the in-process
+// openai->claude pivot, invisible to JSON.stringify and to key-spread copies
+// (`{ ...msg }`) that would forward it onto the wire.
+function attachRedactedThinking(message, redactedThinking) {
+  if (redactedThinking.length === 0) return message;
+  Object.defineProperty(message, CLAUDE_REDACTED_THINKING_BLOCKS, {
+    value: redactedThinking,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  });
+  return message;
+}
+
 // Convert single Claude message - returns single message or array of messages
 function convertClaudeMessage(msg) {
   // Mid-conversation system message -> user (per Anthropic placement rules)
@@ -178,6 +193,7 @@ function convertClaudeMessage(msg) {
     const toolCalls = [];
     const toolResults = [];
     let reasoningContent = "";
+    const redactedThinking = [];
 
     for (const block of msg.content) {
       switch (block.type) {
@@ -187,6 +203,14 @@ function convertClaudeMessage(msg) {
 
         case CLAUDE_BLOCK.THINKING:
           if (block.thinking) reasoningContent += block.thinking;
+          break;
+
+        // Stash under a non-enumerable symbol: the OpenAI wire format cannot
+        // carry opaque redacted payloads, and flattening into reasoning_content
+        // would leak encrypted bytes as plain text. Only well-formed blocks
+        // (type + string data) survive the bridge.
+        case CLAUDE_BLOCK.REDACTED_THINKING:
+          if (typeof block.data === "string") redactedThinking.push({ ...block });
           break;
 
         case CLAUDE_BLOCK.IMAGE:
@@ -266,11 +290,12 @@ function convertClaudeMessage(msg) {
         result.reasoning_content = reasoningContent;
       }
       result.tool_calls = toolCalls;
-      return result;
+      return attachRedactedThinking(result, redactedThinking);
     }
 
-    // Return content
-    if (parts.length > 0 || reasoningContent) {
+    // Return content (redactedThinking alone must also keep the message
+    // alive — otherwise a redacted-only assistant turn would return null).
+    if (parts.length > 0 || reasoningContent || redactedThinking.length > 0) {
       const result2 = { role };
       if (parts.length > 0) {
         result2.content = collapseTextParts(parts);
@@ -278,12 +303,12 @@ function convertClaudeMessage(msg) {
       if (reasoningContent) {
         result2.reasoning_content = reasoningContent;
       }
-      return result2;
+      return attachRedactedThinking(result2, redactedThinking);
     }
     
     // Empty content array
     if (msg.content.length === 0) {
-      return { role, content: "" };
+      return attachRedactedThinking({ role, content: "" }, redactedThinking);
     }
   }
 

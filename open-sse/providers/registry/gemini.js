@@ -55,7 +55,6 @@ export default {
     { id: "gemini-3.1-flash-tts-preview", name: "Gemini 3.1 Flash TTS", kind: "tts" },
     { id: "gemini-2.5-flash-preview-tts", name: "Gemini 2.5 Flash TTS", kind: "tts" },
     { id: "gemini-2.5-pro-preview-tts", name: "Gemini 2.5 Pro TTS", kind: "tts" },
-    { id: "gemini-3.1-flash-tts-preview", name: "Gemini 3.1 Flash TTS", kind: "tts" },
     { id: "embedding-001", name: "Embedding 001", dimensions: 768, kind: "embedding" },
   ],
   serviceKinds: ["llm","embedding","image","imageToText","webSearch","tts","stt"],

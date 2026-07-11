@@ -49,12 +49,13 @@ export function validateOAuthEndpoint(rawUrl, field) {
 /**
  * Discover authorization + token endpoints. Cached process-wide.
  */
-export async function discoverEndpoints() {
+export async function discoverEndpoints(proxyOptions = null) {
   if (cachedDiscovery) return cachedDiscovery;
 
   try {
     const res = await fetch(XAI_CONFIG.discoveryUrl, {
       headers: { Accept: "application/json" },
+      proxyOptions,
     });
     if (res.ok) {
       const data = await res.json();
@@ -126,7 +127,7 @@ export class XaiService extends OAuthService {
    * Exchange authorization code for tokens.
    * xAI is a public PKCE client — no client_secret.
    */
-  async exchangeXaiCode({ tokenUrl, code, redirectUri, codeVerifier }) {
+  async exchangeXaiCode({ tokenUrl, code, redirectUri, codeVerifier, proxyOptions = null }) {
     const res = await fetch(tokenUrl, {
       method: "POST",
       headers: {
@@ -140,6 +141,7 @@ export class XaiService extends OAuthService {
         redirect_uri: redirectUri,
         code_verifier: codeVerifier,
       }),
+      proxyOptions,
     });
 
     if (!res.ok) {
@@ -152,8 +154,8 @@ export class XaiService extends OAuthService {
   /**
    * Refresh an access token using a refresh_token.
    */
-  async refreshAccessToken(refreshToken) {
-    const { tokenUrl } = await discoverEndpoints();
+  async refreshAccessToken(refreshToken, proxyOptions = null) {
+    const { tokenUrl } = await discoverEndpoints(proxyOptions);
     const res = await fetch(tokenUrl, {
       method: "POST",
       headers: {
@@ -165,6 +167,7 @@ export class XaiService extends OAuthService {
         client_id: XAI_CONFIG.clientId,
         refresh_token: refreshToken,
       }),
+      proxyOptions,
     });
     if (!res.ok) {
       const err = await res.text();

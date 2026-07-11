@@ -1,17 +1,56 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import { Modal, Button, Input } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import {
+  createOAuthFlowLifecycle,
+  oauthProxySelection,
+} from "@/shared/utils/oauthFlowLifecycle";
+
+const DEVICE_CODE_PROVIDERS = new Set([
+  "github",
+  "qwen",
+  "kiro",
+  "kimi-coding",
+  "kilocode",
+  "codebuddy-cn",
+  "qoder",
+  "grok-cli",
+]);
+const FIXED_PORT_PROVIDERS = new Set(["codex", "xai"]);
+const STATELESS_CALLBACK_PROVIDERS = new Set(["cline", "clinepass"]);
+
+function errorMessage(error, fallback = "Authentication failed") {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
+async function readJson(response) {
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `Authentication failed (${response.status})`);
+  return data;
+}
 
 /**
- * OAuth Modal Component
- * - Localhost: Auto callback via popup message
- * - Remote: Manual paste callback URL
+ * Runs an OAuth attempt as a single cancellable generation.
+ *
+ * Proxy selection is captured when the generation starts. Later callbacks use
+ * only the server-issued flow id, so a stale render or browser event cannot
+ * replace routing, PKCE, redirect, or provider metadata during exchange.
  */
-export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, onClose, oauthMeta, idcConfig, proxyPools = [] }) {
-  const [step, setStep] = useState("waiting"); // waiting | input | success | error
+export default function OAuthModal({
+  isOpen,
+  provider,
+  providerInfo,
+  onSuccess,
+  onClose,
+  oauthMeta,
+  idcConfig,
+  proxyPools = [],
+  proxyPoolsReady = false,
+}) {
+  const [step, setStep] = useState("waiting");
   const [authData, setAuthData] = useState(null);
   const [callbackUrl, setCallbackUrl] = useState("");
   const [error, setError] = useState(null);
@@ -19,564 +58,478 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
   const [deviceData, setDeviceData] = useState(null);
   const [polling, setPolling] = useState(false);
   const [selectedProxyPoolId, setSelectedProxyPoolId] = useState("");
-  const popupRef = useRef(null);
-  const pollingAbortRef = useRef(false);
-  const openedRef = useRef(false);
   const { copied, copy } = useCopyToClipboard();
 
-  // State for client-only values to avoid hydration mismatch
-  const [isLocalhost, setIsLocalhost] = useState(false);
-  const [placeholderUrl, setPlaceholderUrl] = useState("/callback?code=...");
-  const callbackProcessedRef = useRef(false);
+  const lifecycleRef = useRef(null);
+  const selectedProxyPoolIdRef = useRef("");
+  const closingRef = useRef(false);
+  const stopChainRef = useRef(Promise.resolve());
+  const latestRef = useRef(null);
+  if (lifecycleRef.current === null) lifecycleRef.current = createOAuthFlowLifecycle();
 
-  // Detect if running on localhost (client-side only)
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      setIsLocalhost(
-        window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
-      );
-      setPlaceholderUrl(`${window.location.origin}/callback?code=...`);
-    }
+    latestRef.current = {
+      idcConfig,
+      isOpen,
+      oauthMeta,
+      onClose,
+      onSuccess,
+      provider,
+      proxyPoolsReady,
+    };
+  }, [idcConfig, isOpen, oauthMeta, onClose, onSuccess, provider, proxyPoolsReady]);
+
+  const resetView = useCallback(() => {
+    setAuthData(null);
+    setCallbackUrl("");
+    setDeviceData(null);
+    setError(null);
+    setIsDeviceCode(false);
+    setPolling(false);
+    setStep("waiting");
   }, []);
 
-  // Define all useCallback hooks BEFORE the useEffects that reference them
+  const stopFixedProxy = useCallback((flow) => {
+    const stop = async () => {
+      if (!flow?.flowId) return;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5_000);
+      try {
+        const action = FIXED_PORT_PROVIDERS.has(flow.provider) ? "stop-proxy" : "cancel";
+        await fetch(`/api/oauth/${flow.provider}/${action}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            flowId: flow.flowId,
+            state: flow.expectedState,
+          }),
+          signal: controller.signal,
+        });
+      } catch {
+        // The flow may already be consumed, or the callback server may have
+        // stopped itself. Cancellation is bounded so a restart cannot hang.
+      } finally {
+        clearTimeout(timeout);
+      }
+    };
+    stopChainRef.current = stopChainRef.current.then(stop, stop);
+    return stopChainRef.current;
+  }, []);
 
-  // Exchange tokens
-  const exchangeTokens = useCallback(async (code, state) => {
-    if (!authData) return;
+  const finishSuccess = useCallback((flow) => {
+    if (lifecycleRef.current.settle(flow, () => {
+      setPolling(false);
+      setStep("success");
+      latestRef.current.onSuccess?.();
+    })) {
+      void stopFixedProxy(flow);
+    }
+  }, [stopFixedProxy]);
+
+  const finishError = useCallback((flow, message) => {
+    if (lifecycleRef.current.settle(flow, () => {
+      setPolling(false);
+      setError(message);
+      setStep("error");
+    })) {
+      void stopFixedProxy(flow);
+    }
+  }, [stopFixedProxy]);
+
+  const exchangeClaimedCallback = useCallback(async (flow, code, state, endpoint = "exchange") => {
+    const lifecycle = lifecycleRef.current;
     try {
-      const res = await fetch(`/api/oauth/${provider}/exchange`, {
+      const response = await fetch(`/api/oauth/${flow.provider}/${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, state, flowId: flow.flowId }),
+        signal: flow.controller.signal,
+      });
+      await readJson(response);
+      if (lifecycle.isActive(flow)) finishSuccess(flow);
+    } catch (exchangeError) {
+      if (lifecycle.isActive(flow)) finishError(flow, errorMessage(exchangeError));
+    }
+  }, [finishError, finishSuccess]);
+
+  const processCallback = useCallback((flow, data, options) => {
+    const lifecycle = lifecycleRef.current;
+    if (!lifecycle.claimCallback(flow, data, options)) return;
+    if (data.error) {
+      finishError(flow, data.errorDescription || data.error);
+      return;
+    }
+    const code = data.token || data.code;
+    if (!code) {
+      finishError(flow, "OAuth callback did not contain an authorization code");
+      return;
+    }
+    void exchangeClaimedCallback(flow, code, data.state);
+  }, [exchangeClaimedCallback, finishError]);
+
+  const pollDeviceCode = useCallback(async (flow, initialInterval, expiresInSeconds) => {
+    const lifecycle = lifecycleRef.current;
+    let interval = Number.isFinite(initialInterval) && initialInterval > 0 ? initialInterval : 5;
+    const durationMs = Number.isFinite(expiresInSeconds) && expiresInSeconds > 0
+      ? expiresInSeconds * 1000
+      : 120_000;
+    const deadline = Date.now() + durationMs;
+    setPolling(true);
+
+    while (lifecycle.isActive(flow) && Date.now() < deadline) {
+      if (!await lifecycle.wait(flow, interval * 1000)) return;
+      try {
+        const response = await fetch(`/api/oauth/${flow.provider}/poll`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ flowId: flow.flowId }),
+          signal: flow.controller.signal,
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!lifecycle.isActive(flow)) return;
+        if (data.success) {
+          finishSuccess(flow);
+          return;
+        }
+        if (data.error === "slow_down") {
+          interval = Math.min(interval + 5, 30);
+          continue;
+        }
+        if (data.error === "authorization_pending" || (!data.error && response.ok)) continue;
+        throw new Error(data.errorDescription || data.error || `Authentication failed (${response.status})`);
+      } catch (pollError) {
+        if (lifecycle.isActive(flow)) finishError(flow, errorMessage(pollError));
+        return;
+      }
+    }
+    if (lifecycle.isActive(flow)) finishError(flow, "Authorization timeout");
+  }, [finishError, finishSuccess]);
+
+  const pollFixedPortStatus = useCallback(async (flow) => {
+    const lifecycle = lifecycleRef.current;
+    for (let attempt = 0; attempt < 200 && lifecycle.isActive(flow); attempt += 1) {
+      if (!await lifecycle.wait(flow, 1500)) return;
+      try {
+        const response = await fetch(`/api/oauth/${flow.provider}/poll-status`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            flowId: flow.flowId,
+            state: flow.expectedState,
+          }),
+          signal: flow.controller.signal,
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!lifecycle.isActive(flow)) return;
+        if (data.status === "done") {
+          finishSuccess(flow);
+          return;
+        }
+        if (data.status === "error") {
+          finishError(flow, data.error || "Authentication failed");
+          return;
+        }
+      } catch (pollError) {
+        if (pollError?.name === "AbortError") return;
+        // A temporary local-server/network error should not end the flow.
+      }
+    }
+    if (lifecycle.isActive(flow)) finishError(flow, "Authentication timeout");
+  }, [finishError, finishSuccess]);
+
+  const startOAuthFlow = useCallback(async (flow) => {
+    const lifecycle = lifecycleRef.current;
+    const options = latestRef.current;
+    const selection = oauthProxySelection(flow.proxyPoolId);
+    try {
+      if (DEVICE_CODE_PROVIDERS.has(flow.provider)) {
+        setIsDeviceCode(true);
+        const request = {
+          ...selection,
+          ownerId: flow.ownerId,
+          ...(flow.provider === "kiro" && options.idcConfig?.startUrl
+            ? {
+                startUrl: options.idcConfig.startUrl,
+                region: options.idcConfig.region,
+                authMethod: "idc",
+              }
+            : {}),
+        };
+        const response = await fetch(`/api/oauth/${flow.provider}/device-code`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(request),
+          signal: flow.controller.signal,
+        });
+        const data = await readJson(response);
+        if (!lifecycle.isActive(flow)) return;
+        if (!lifecycle.bindFlowId(flow, data.flowId)) {
+          throw new Error("OAuth server did not return a flow id");
+        }
+        setDeviceData(data);
+        const verificationUrl = data.verification_uri_complete || data.verification_uri;
+        if (verificationUrl) window.open(verificationUrl, "_blank", "noopener,noreferrer");
+        void pollDeviceCode(flow, data.interval, data.expires_in);
+        return;
+      }
+
+      const appPort = window.location.port || (window.location.protocol === "https:" ? "443" : "80");
+      const redirectUri = flow.provider === "codex"
+        ? "http://localhost:1455/auth/callback"
+        : flow.provider === "xai"
+          ? "http://127.0.0.1:56121/callback"
+          : `http://localhost:${appPort}/callback`;
+      const response = await fetch(`/api/oauth/${flow.provider}/authorize`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          code,
-          redirectUri: authData.redirectUri,
-          codeVerifier: authData.codeVerifier,
-          state,
-          proxyPoolId: selectedProxyPoolId,
-          ...(oauthMeta ? { meta: oauthMeta } : {}),
+          redirectUri,
+          ownerId: flow.ownerId,
+          ...selection,
+          ...(options.oauthMeta ? { meta: options.oauthMeta } : {}),
         }),
+        signal: flow.controller.signal,
       });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-
-      setStep("success");
-      onSuccess?.();
-    } catch (err) {
-      setError(err.message);
-      setStep("error");
-    }
-  }, [authData, provider, onSuccess, oauthMeta, selectedProxyPoolId]);
-
-  const completeXaiManualCode = useCallback(async (code) => {
-    if (!authData?.state) return;
-    try {
-      const res = await fetch("/api/oauth/xai/manual-code", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, state: authData.state, proxyPoolId: selectedProxyPoolId }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-
-      setStep("success");
-      onSuccess?.();
-    } catch (err) {
-      setError(err.message);
-      setStep("error");
-    }
-  }, [authData, onSuccess, selectedProxyPoolId]);
-
-  // Poll for device code token
-  const startPolling = useCallback(async (deviceCode, codeVerifier, interval, extraData, deadlineMs, proxyPoolId) => {
-    pollingAbortRef.current = false;
-    setPolling(true);
-    // Honor the upstream's expires_in when supplied (qoder sets 300s) so we
-    // don't time out earlier than the device code itself. Default 120s
-    // matches the prior behavior for providers that don't surface a value.
-    const startedAt = Date.now();
-    const deadline = startedAt + (Number.isFinite(deadlineMs) && deadlineMs > 0 ? deadlineMs : 120_000);
-
-    while (Date.now() < deadline) {
-      // Check if polling should be aborted
-      if (pollingAbortRef.current) {
-        console.log("[OAuthModal] Polling aborted");
-        setPolling(false);
-        return;
+      const data = await readJson(response);
+      if (!lifecycle.isActive(flow)) return;
+      if (!lifecycle.bindState(flow, data.state) || !lifecycle.bindFlowId(flow, data.flowId)) {
+        throw new Error("OAuth server returned an incomplete flow");
       }
-
-      await new Promise((r) => setTimeout(r, interval * 1000));
-
-      // Check again after sleep
-      if (pollingAbortRef.current) {
-        console.log("[OAuthModal] Polling aborted after sleep");
-        setPolling(false);
-        return;
-      }
-
-      try {
-        const res = await fetch(`/api/oauth/${provider}/poll`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ deviceCode, codeVerifier, extraData, proxyPoolId }),
-        });
-
-        const data = await res.json();
-
-        if (data.success) {
-          pollingAbortRef.current = true; // Stop polling immediately
-          setStep("success");
-          setPolling(false);
-          onSuccess?.();
-          return;
-        }
-
-        if (data.error === "expired_token" || data.error === "access_denied") {
-          throw new Error(data.errorDescription || data.error);
-        }
-
-        if (data.error === "slow_down") {
-          interval = Math.min(interval + 5, 30);
-        }
-      } catch (err) {
-        setError(err.message);
-        setStep("error");
-        setPolling(false);
-        return;
-      }
-    }
-
-    setError("Authorization timeout");
-    setStep("error");
-    setPolling(false);
-  }, [provider, onSuccess]);
-
-  // Start OAuth flow
-  const startOAuthFlow = useCallback(async (proxyPoolId = selectedProxyPoolId) => {
-    if (!provider) return;
-    try {
-      setError(null);
-
-      // Device code flow providers (must match oauth providers with flowType: "device_code")
-      const deviceCodeProviders = [
-        "github",
-        "qwen",
-        "kiro",
-        "kimi-coding",
-        "kilocode",
-        "codebuddy-cn",
-        "qoder",
-        "grok-cli",
-      ];
-      if (deviceCodeProviders.includes(provider)) {
-        setIsDeviceCode(true);
-        setStep("waiting");
-
-        const deviceCodeUrl = new URL(`/api/oauth/${provider}/device-code`, window.location.origin);
-        if (proxyPoolId) {
-          deviceCodeUrl.searchParams.set("proxyPoolId", proxyPoolId);
-        }
-        if (provider === "kiro" && idcConfig?.startUrl) {
-          deviceCodeUrl.searchParams.set("start_url", idcConfig.startUrl);
-          if (idcConfig.region) {
-            deviceCodeUrl.searchParams.set("region", idcConfig.region);
-          }
-          deviceCodeUrl.searchParams.set("auth_method", "idc");
-        }
-        const res = await fetch(deviceCodeUrl.toString());
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
-
-        setDeviceData(data);
-
-        // Auto-open verification URL in new tab
-        const verifyUrl = data.verification_uri_complete || data.verification_uri;
-        if (verifyUrl) window.open(verifyUrl, "_blank", "noopener,noreferrer");
-
-        // Pass extraData for Kiro (contains _clientId, _clientSecret) and
-        // Qoder (contains _qoderMachineId / _qoderNonce — needed so mapTokens
-        // can persist the machine id alongside the token).
-        const extraData = provider === "kiro"
-          ? {
-              _clientId: data._clientId,
-              _clientSecret: data._clientSecret,
-              _region: data._region,
-              _authMethod: data._authMethod,
-              _startUrl: data._startUrl,
-            }
-          : provider === "qoder"
-          ? {
-              _qoderNonce: data._qoderNonce,
-              _qoderMachineId: data._qoderMachineId,
-              _qoderVerifier: data.codeVerifier,
-            }
-          : null;
-        startPolling(
-          data.device_code,
-          data.codeVerifier,
-          data.interval || 5,
-          extraData,
-          // Use the upstream's expires_in if present so we don't time out
-          // before the device code itself (qoder gives 300s).
-          Number.isFinite(data.expires_in) && data.expires_in > 0
-            ? data.expires_in * 1000
-            : undefined,
-          proxyPoolId,
-        );
-        return;
-      }
-
-      // Authorization code flow - build redirect URI (some providers require fixed ports)
-      const appPort = window.location.port || (window.location.protocol === "https:" ? "443" : "80");
-      let redirectUri;
-      if (provider === "codex") {
-        redirectUri = "http://localhost:1455/auth/callback";
-      } else if (provider === "xai") {
-        redirectUri = "http://127.0.0.1:56121/callback";
-      } else {
-        redirectUri = `http://localhost:${appPort}/callback`;
-      }
-
-      // Build authorize URL first to get codeVerifier/state for codex server-side mode
-      const authorizeUrl = new URL(`/api/oauth/${provider}/authorize`, window.location.origin);
-      authorizeUrl.searchParams.set("redirect_uri", redirectUri);
-      if (proxyPoolId) {
-        authorizeUrl.searchParams.set("proxyPoolId", proxyPoolId);
-      }
-      if (oauthMeta) {
-        Object.entries(oauthMeta).forEach(([k, v]) => { if (v) authorizeUrl.searchParams.set(k, v); });
-      }
-      const res = await fetch(authorizeUrl.toString());
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setAuthData({ ...data, redirectUri, codexServerSide: false, xaiServerSide: false });
-
-      // Codex: start proxy with server-side session (auto-exchange) + fallback to channels
-      let codexProxyActive = false;
-      let codexServerSide = false;
-      if (provider === "codex") {
-        try {
-          const proxyUrl = new URL(`/api/oauth/codex/start-proxy`, window.location.origin);
-          proxyUrl.searchParams.set("app_port", appPort);
-          proxyUrl.searchParams.set("state", data.state);
-          proxyUrl.searchParams.set("code_verifier", data.codeVerifier);
-          proxyUrl.searchParams.set("redirect_uri", redirectUri);
-          if (proxyPoolId) {
-            proxyUrl.searchParams.set("proxyPoolId", proxyPoolId);
-          }
-          const proxyRes = await fetch(proxyUrl.toString());
-          const proxyData = await proxyRes.json();
-          codexProxyActive = proxyData.success;
-          codexServerSide = !!proxyData.serverSide;
-        } catch {
-          codexProxyActive = false;
-        }
-      }
-
-      // xAI: same fixed-port server-side proxy pattern as codex (port 56121)
-      let xaiProxyActive = false;
-      let xaiServerSide = false;
-      if (provider === "xai") {
-        try {
-          const proxyUrl = new URL(`/api/oauth/xai/start-proxy`, window.location.origin);
-          proxyUrl.searchParams.set("app_port", appPort);
-          proxyUrl.searchParams.set("state", data.state);
-          proxyUrl.searchParams.set("code_verifier", data.codeVerifier);
-          proxyUrl.searchParams.set("redirect_uri", redirectUri);
-          if (proxyPoolId) {
-            proxyUrl.searchParams.set("proxyPoolId", proxyPoolId);
-          }
-          const proxyRes = await fetch(proxyUrl.toString());
-          const proxyData = await proxyRes.json();
-          xaiProxyActive = proxyData.success;
-          xaiServerSide = !!proxyData.serverSide;
-          if (!xaiProxyActive && proxyData.reason === "port_busy") {
-            throw new Error("Port 56121 in use; close the conflicting process and retry");
-          }
-        } catch (e) {
-          if (e?.message) throw e;
-          xaiProxyActive = false;
-        }
-      }
-
-      setAuthData({ ...data, redirectUri, codexServerSide, xaiServerSide });
-
-      // Guard: device_code providers return authUrl:null from /authorize. Never window.open(null)
-      // (browsers coerce it to the relative path ".../null").
       if (!data.authUrl) {
         if (data.flowType === "device_code") {
-          throw new Error(
-            `Provider ${provider} uses device-code login but is not wired in the OAuth modal device-code list`,
-          );
+          throw new Error(`Provider ${flow.provider} uses device login but is not wired in the OAuth modal`);
         }
         throw new Error("No authorization URL returned from OAuth provider");
       }
 
-      if (provider === "codex" && codexProxyActive) {
-        // Proxy active: callback will be handled server-side (auto-exchange) or via channels (fallback)
-        setStep("waiting");
-        popupRef.current = window.open(data.authUrl, "oauth_popup", "width=600,height=700");
-        if (!popupRef.current) {
-          setStep("input");
+      let fixedProxyActive = false;
+      let serverSide = false;
+      if (FIXED_PORT_PROVIDERS.has(flow.provider)) {
+        const proxyResponse = await fetch(`/api/oauth/${flow.provider}/start-proxy`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ flowId: flow.flowId, appPort }),
+          signal: flow.controller.signal,
+        });
+        const proxyData = await proxyResponse.json().catch(() => ({}));
+        if (!lifecycle.isActive(flow)) {
+          await stopFixedProxy(flow);
+          return;
         }
-      } else if (provider === "xai" && xaiProxyActive) {
-        setStep("waiting");
-        popupRef.current = window.open(data.authUrl, "oauth_popup", "width=600,height=700");
-        if (!popupRef.current) {
-          setStep("input");
+        if (proxyData.success !== true || proxyData.serverSide !== true) {
+          const port = flow.provider === "xai" ? "56121" : "1455";
+          const reason = proxyData.reason === "port_busy"
+            ? `Port ${port} is in use; close the conflicting process and retry`
+            : "Could not bind the fixed OAuth callback to this login attempt";
+          throw new Error(reason);
         }
-      } else if (!isLocalhost || provider === "codex" || provider === "xai") {
-        // Non-localhost or proxy failed: manual input mode
-        setStep("input");
-        window.open(data.authUrl, "_blank");
+        fixedProxyActive = proxyData.success === true;
+        serverSide = proxyData.serverSide === true;
+        flow.fixedProxySession = fixedProxyActive && serverSide;
+      }
+
+      setAuthData({
+        authUrl: data.authUrl,
+        flowId: flow.flowId,
+        state: data.state,
+        codexServerSide: flow.provider === "codex" && serverSide,
+        xaiServerSide: flow.provider === "xai" && serverSide,
+      });
+      const isLocalhost = window.location.hostname === "localhost"
+        || window.location.hostname === "127.0.0.1";
+      const canUsePopup = fixedProxyActive
+        || (!FIXED_PORT_PROVIDERS.has(flow.provider) && isLocalhost);
+      if (canUsePopup) {
+        const popup = window.open(data.authUrl, "oauth_popup", "width=600,height=700");
+        lifecycle.bindPopup(flow, popup);
+        setStep(popup ? "waiting" : "input");
       } else {
-        // Localhost (non-Codex/xAI): Open popup and wait for message
-        setStep("waiting");
-        popupRef.current = window.open(data.authUrl, "oauth_popup", "width=600,height=700");
-        if (!popupRef.current) {
-          setStep("input");
-        }
+        setStep("input");
+        window.open(data.authUrl, "_blank", "noopener,noreferrer");
       }
-    } catch (err) {
-      setError(err.message);
-      setStep("error");
+      if (serverSide) void pollFixedPortStatus(flow);
+    } catch (startError) {
+      if (lifecycle.isActive(flow)) finishError(flow, errorMessage(startError));
     }
-  }, [provider, isLocalhost, startPolling, oauthMeta, idcConfig, selectedProxyPoolId]);
+  }, [finishError, pollDeviceCode, pollFixedPortStatus, stopFixedProxy]);
 
-  // Reset state and start OAuth when modal opens
-  useEffect(() => {
-    if (isOpen && provider) {
-      // Guard against StrictMode/effect re-runs auto-opening multiple tabs.
-      if (openedRef.current) return;
-      openedRef.current = true;
-      setAuthData(null);
-      setCallbackUrl("");
-      setError(null);
-      setIsDeviceCode(false);
-      setDeviceData(null);
-      setPolling(false);
-      const initialProxyPoolId = proxyPools.find((pool) => pool.isActive === true)?.id || "";
-      setSelectedProxyPoolId(initialProxyPoolId);
-      pollingAbortRef.current = false;
-      startOAuthFlow(initialProxyPoolId);
-    } else if (!isOpen) {
-      // Abort polling and cleanup proxy when modal closes
-      pollingAbortRef.current = true;
-      openedRef.current = false;
-      if (provider === "codex") {
-        fetch("/api/oauth/codex/stop-proxy").catch(() => {});
-      } else if (provider === "xai") {
-        fetch("/api/oauth/xai/stop-proxy").catch(() => {});
-      }
-    }
-  }, [isOpen, provider, startOAuthFlow, proxyPools]);
-
-  const handleProxyPoolChange = async (event) => {
-    const proxyPoolId = event.target.value;
+  const restartFlow = useCallback(async (proxyPoolId) => {
+    const options = latestRef.current;
+    if (!options.isOpen || !options.provider || !options.proxyPoolsReady) return;
+    selectedProxyPoolIdRef.current = proxyPoolId;
     setSelectedProxyPoolId(proxyPoolId);
-    pollingAbortRef.current = true;
-    setPolling(false);
+    resetView();
+    const { flow, previous } = lifecycleRef.current.begin({
+      provider: options.provider,
+      proxyPoolId,
+    });
+    await stopFixedProxy(previous);
+    if (!lifecycleRef.current.isActive(flow)) return;
+    await startOAuthFlow(flow);
+  }, [resetView, startOAuthFlow, stopFixedProxy]);
 
-    if (provider === "codex") {
-      fetch("/api/oauth/codex/stop-proxy").catch(() => {});
-    } else if (provider === "xai") {
-      fetch("/api/oauth/xai/stop-proxy").catch(() => {});
+  useEffect(() => {
+    if (isOpen && provider && proxyPoolsReady) {
+      // Deferring one task lets React StrictMode run its probe cleanup before
+      // any irreversible device-code/provider request leaves the browser.
+      const timer = setTimeout(() => { void restartFlow(""); }, 0);
+      return () => {
+        clearTimeout(timer);
+        const previous = lifecycleRef.current.cancel("flow-context-changed");
+        void stopFixedProxy(previous);
+      };
     }
+    if (!isOpen) {
+      selectedProxyPoolIdRef.current = "";
+      const previous = lifecycleRef.current.cancel("modal-closed");
+      void stopFixedProxy(previous);
+    }
+    return undefined;
+  }, [isOpen, provider, proxyPoolsReady, restartFlow, stopFixedProxy]);
 
-    setAuthData(null);
-    setCallbackUrl("");
-    setError(null);
-    setIsDeviceCode(false);
-    setDeviceData(null);
-    pollingAbortRef.current = false;
-    await startOAuthFlow(proxyPoolId);
-  };
+  useEffect(() => () => {
+    const previous = lifecycleRef.current.cancel("unmounted");
+    void stopFixedProxy(previous);
+  }, [stopFixedProxy]);
 
-  // Fixed-port server-side mode: poll status (proxy auto-exchanges + saves DB)
   useEffect(() => {
-    const pollProvider = authData?.codexServerSide ? "codex" : authData?.xaiServerSide ? "xai" : null;
-    if (!pollProvider || !authData?.state) return;
-    if (callbackProcessedRef.current) return;
-    let cancelled = false;
-    const POLL_INTERVAL_MS = 1500;
-    const MAX_ATTEMPTS = 200; // ~5 minutes
-    let attempts = 0;
-
-    const tick = async () => {
-      if (cancelled || callbackProcessedRef.current) return;
-      attempts += 1;
-      try {
-          const res = await fetch(`/api/oauth/${pollProvider}/poll-status?state=${encodeURIComponent(authData.state)}`);
-        const data = await res.json();
-        if (cancelled || callbackProcessedRef.current) return;
-        if (data.status === "done") {
-          callbackProcessedRef.current = true;
-          setStep("success");
-          onSuccess?.();
-          return;
-        }
-        if (data.status === "error") {
-          callbackProcessedRef.current = true;
-          setError(data.error || "Authentication failed");
-          setStep("error");
-          return;
-        }
-      } catch {
-        // Network error, keep polling
-      }
-      if (attempts >= MAX_ATTEMPTS) {
-        callbackProcessedRef.current = true;
-        setError("Authentication timeout");
-        setStep("error");
-        return;
-      }
-      setTimeout(tick, POLL_INTERVAL_MS);
-    };
-    setTimeout(tick, POLL_INTERVAL_MS);
-    return () => { cancelled = true; };
-  }, [authData, onSuccess]);
-
-  // Listen for OAuth callback via multiple methods
-  useEffect(() => {
-    if (!authData) return;
-    callbackProcessedRef.current = false; // Reset when authData changes
-
-    // Handler for callback data - only process once
-    const handleCallback = async (data) => {
-      if (callbackProcessedRef.current) return; // Already processed
-
-      const { code, token, state, error: callbackError, errorDescription } = data;
-
-      if (callbackError) {
-        callbackProcessedRef.current = true;
-        setError(errorDescription || callbackError);
-        setStep("error");
-        return;
-      }
-
-      if (token || code) {
-        callbackProcessedRef.current = true;
-        await exchangeTokens(token || code, state);
-      }
-    };
-
-    // Method 1: postMessage from popup
+    if (!isOpen) return undefined;
     const handleMessage = (event) => {
-      // Allow messages from same origin or localhost (any port)
-      const isLocalhost = event.origin.includes("localhost") || event.origin.includes("127.0.0.1");
-      const isSameOrigin = event.origin === window.location.origin;
-      if (!isLocalhost && !isSameOrigin) return;
-      
-      if (event.data?.type === "oauth_callback") {
-        handleCallback(event.data.data);
+      const lifecycle = lifecycleRef.current;
+      const flow = lifecycle.current();
+      let callbackEvent = event;
+      if (
+        flow &&
+        STATELESS_CALLBACK_PROVIDERS.has(flow.provider) &&
+        !event?.data?.data?.state &&
+        event?.origin === window.location.origin &&
+        event?.source === flow.popup &&
+        event?.data?.type === "oauth_callback"
+      ) {
+        callbackEvent = {
+          ...event,
+          data: {
+            ...event.data,
+            data: { ...event.data.data, state: flow.expectedState },
+          },
+        };
       }
+      if (!lifecycle.acceptsPostMessage(flow, callbackEvent, window.location.origin)) return;
+      processCallback(flow, callbackEvent.data.data);
     };
-    window.addEventListener("message", handleMessage);
-
-    // Method 2: BroadcastChannel
-    let channel;
-    try {
-      channel = new BroadcastChannel("oauth_callback");
-      channel.onmessage = (event) => handleCallback(event.data);
-    } catch (e) {
-      console.log("BroadcastChannel not supported");
-    }
-
-    // Method 3: localStorage event
+    const handleFreshCallback = (data) => {
+      const lifecycle = lifecycleRef.current;
+      const flow = lifecycle.current();
+      if (!lifecycle.acceptsCallback(flow, data, { requireFresh: true })) return;
+      processCallback(flow, data, { requireFresh: true });
+    };
     const handleStorage = (event) => {
-      if (event.key === "oauth_callback" && event.newValue) {
-        try {
-          const data = JSON.parse(event.newValue);
-          handleCallback(data);
-          localStorage.removeItem("oauth_callback");
-        } catch (e) {
-          console.log("Failed to parse localStorage data");
-        }
-      }
-    };
-    window.addEventListener("storage", handleStorage);
-
-    // Also check localStorage on mount (in case callback already happened)
-    try {
-      const stored = localStorage.getItem("oauth_callback");
-      if (stored) {
-        const data = JSON.parse(stored);
-        if (data.timestamp && Date.now() - data.timestamp < 30000) {
-          handleCallback(data);
-        }
+      if (event.key !== "oauth_callback" || !event.newValue) return;
+      try {
+        handleFreshCallback(JSON.parse(event.newValue));
+      } catch {
+        // Ignore malformed cross-tab callback data.
+      } finally {
         localStorage.removeItem("oauth_callback");
       }
+    };
+
+    window.addEventListener("message", handleMessage);
+    window.addEventListener("storage", handleStorage);
+    let channel = null;
+    try {
+      channel = new BroadcastChannel("oauth_callback");
+      channel.onmessage = (event) => handleFreshCallback(event.data);
     } catch {
-      // localStorage may be unavailable or data may be malformed - ignore silently
+      // BroadcastChannel is optional; postMessage/localStorage remain available.
+    }
+    try {
+      const stored = localStorage.getItem("oauth_callback");
+      if (stored) handleFreshCallback(JSON.parse(stored));
+      localStorage.removeItem("oauth_callback");
+    } catch {
+      // localStorage may be disabled.
     }
 
     return () => {
       window.removeEventListener("message", handleMessage);
       window.removeEventListener("storage", handleStorage);
-      if (channel) channel.close();
+      channel?.close();
     };
-  }, [authData, exchangeTokens]);
+  }, [isOpen, processCallback]);
 
-  // Handle manual URL input
+  const handleProxyPoolChange = (event) => {
+    const proxyPoolId = event.target.value;
+    void restartFlow(proxyPoolId);
+  };
+
   const handleManualSubmit = async () => {
+    const lifecycle = lifecycleRef.current;
+    const flow = lifecycle.current();
+    if (!flow?.expectedState) return;
     try {
       setError(null);
-
       const input = callbackUrl.trim();
-
-      // Detect raw JWT access token (starts with eyJ) — skip URL parsing
       if (input.startsWith("eyJ") && input.includes(".")) {
-        await exchangeTokens(input, null);
+        const callback = { code: input, state: flow.expectedState };
+        if (lifecycle.claimCallback(flow, callback)) {
+          await exchangeClaimedCallback(flow, input, flow.expectedState);
+        }
         return;
       }
-
       if (provider === "xai" && input && !input.includes("://") && !input.includes("?") && !input.includes("code=")) {
-        await completeXaiManualCode(input);
+        const callback = { code: input, state: flow.expectedState };
+        if (lifecycle.claimCallback(flow, callback)) {
+          await exchangeClaimedCallback(
+            flow,
+            input,
+            flow.expectedState,
+            flow.fixedProxySession ? "manual-code" : "exchange",
+          );
+        }
         return;
       }
-
       if (provider === "kimchi" && input && !input.includes("://") && !input.includes("?")) {
-        await exchangeTokens(input, null);
+        const callback = { code: input, state: flow.expectedState };
+        if (lifecycle.claimCallback(flow, callback)) {
+          await exchangeClaimedCallback(flow, input, flow.expectedState);
+        }
         return;
       }
 
       const url = new URL(input);
       const code = url.searchParams.get("code");
       const token = url.searchParams.get("token");
-      const state = url.searchParams.get("state");
-      const errorParam = url.searchParams.get("error");
-
-      if (errorParam) {
-        throw new Error(url.searchParams.get("error_description") || errorParam);
-      }
-
+      const state = url.searchParams.get("state") ||
+        (STATELESS_CALLBACK_PROVIDERS.has(provider) ? flow.expectedState : null);
+      const callbackError = url.searchParams.get("error");
+      if (callbackError) throw new Error(url.searchParams.get("error_description") || callbackError);
       if (!code && !token) {
         throw new Error(
           provider === "xai"
             ? "Paste the callback URL or copied xAI code"
             : provider === "kimchi"
               ? "No Kimchi token found in URL"
-              : "No authorization code found in URL"
+              : "No authorization code found in URL",
         );
       }
-
-      await exchangeTokens(token || code, state);
-    } catch (err) {
-      setError(err.message);
-      setStep("error");
+      if (state !== flow.expectedState) {
+        throw new Error("OAuth callback state did not match this login attempt");
+      }
+      processCallback(flow, { code: token || code, state });
+    } catch (manualError) {
+      if (lifecycle.isActive(flow)) finishError(flow, errorMessage(manualError));
     }
   };
 
-  // Clear session on modal close + cleanup proxy
-  const handleClose = useCallback(() => {
-    if (provider === "codex") {
-      fetch("/api/oauth/codex/stop-proxy").catch(() => {});
-    } else if (provider === "xai") {
-      fetch("/api/oauth/xai/stop-proxy").catch(() => {});
-    }
-    onClose();
-  }, [onClose, provider]);
+  const handleClose = useCallback(async () => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    const previous = lifecycleRef.current.cancel("user-closed");
+    await stopFixedProxy(previous);
+    closingRef.current = false;
+    latestRef.current.onClose();
+  }, [stopFixedProxy]);
 
   if (!provider || !providerInfo) return null;
   const isXaiProvider = provider === "xai";
@@ -586,41 +539,43 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
   const manualPlaceholder = isXaiProvider
     ? "http://127.0.0.1:56121/callback?code=... or copied code"
     : isKimchiProvider
-      ? `${placeholderUrl.replace("code=...", "token=...")} or copied token`
-      : placeholderUrl;
+      ? "/callback?token=... or copied token"
+      : "/callback?code=...";
+  const activeProxyPools = proxyPools.filter((pool) => pool.isActive === true);
 
   return (
-    <Modal isOpen={isOpen} title={modalTitle} onClose={handleClose} size="lg">
+    <Modal isOpen={isOpen} title={modalTitle} onClose={() => { void handleClose(); }} size="lg">
       <div className="flex flex-col gap-4">
-        {proxyPools.length > 0 && (step === "waiting" || step === "input") && (
-          <div className="flex flex-col gap-1.5 p-3 border border-border rounded-lg bg-sidebar/30">
-            <label className="text-xs font-medium text-text-muted uppercase tracking-wider">
+        {!proxyPoolsReady && (
+          <div className="flex items-center gap-2 text-sm text-text-muted">
+            <span className="material-symbols-outlined animate-spin">progress_activity</span>
+            Loading routing options…
+          </div>
+        )}
+
+        {proxyPoolsReady && activeProxyPools.length > 0 && (step === "waiting" || step === "input") && (
+          <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-sidebar/30 p-3">
+            <label className="text-xs font-medium uppercase tracking-wider text-text-muted">
               Routing Proxy Pool
             </label>
             <select
               value={selectedProxyPoolId}
               onChange={handleProxyPoolChange}
-              className="w-full bg-input text-sm border border-border rounded-lg px-3 py-2 outline-none focus:border-primary"
+              className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm outline-none focus:border-primary"
             >
               <option value="">Direct Connection</option>
-              {proxyPools.map((pool) => (
-                <option key={pool.id} value={pool.id}>
-                  {pool.name}
-                </option>
+              {activeProxyPools.map((pool) => (
+                <option key={pool.id} value={pool.id}>{pool.name}</option>
               ))}
             </select>
           </div>
         )}
 
-        {/* Waiting + Manual Input combined (non-device-code) */}
-        {(step === "waiting" || step === "input") && !isDeviceCode && (
+        {proxyPoolsReady && (step === "waiting" || step === "input") && !isDeviceCode && (
           <>
-            {/* Option A: Auto via popup */}
-            <div className="flex flex-col gap-2 px-3 py-2 border border-border rounded-lg bg-sidebar/50">
+            <div className="flex flex-col gap-2 rounded-lg border border-border bg-sidebar/50 px-3 py-2">
               <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-base text-primary animate-spin">
-                  progress_activity
-                </span>
+                <span className="material-symbols-outlined animate-spin text-base text-primary">progress_activity</span>
                 <span className="text-sm">
                   {isXaiProvider ? "Waiting for Grok Build OAuth…" : "Waiting for popup authorization…"}
                 </span>
@@ -628,65 +583,68 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
               {authData?.authUrl && (
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <Input value={authData.authUrl} readOnly className="min-w-0 flex-1 font-mono text-xs" />
-                  <Button variant="secondary" icon={copied === "auth_url" ? "check" : "content_copy"} onClick={() => copy(authData.authUrl, "auth_url")}>
+                  <Button
+                    variant="secondary"
+                    icon={copied === "auth_url" ? "check" : "content_copy"}
+                    onClick={() => copy(authData.authUrl, "auth_url")}
+                  >
                     Copy
                   </Button>
-                  <Button variant="ghost" icon="open_in_new" onClick={() => window.open(authData.authUrl, "_blank", "noopener,noreferrer")}>
+                  <Button
+                    variant="ghost"
+                    icon="open_in_new"
+                    onClick={() => window.open(authData.authUrl, "_blank", "noopener,noreferrer")}
+                  >
                     Open
                   </Button>
                 </div>
               )}
             </div>
 
-            {/* Divider */}
             <div className="flex items-center gap-3 my-1">
-              <div className="flex-1 h-px bg-border" />
-              <span className="text-xs text-text-muted uppercase tracking-wider">Paste callback URL manually</span>
-              <div className="flex-1 h-px bg-border" />
+              <div className="h-px flex-1 bg-border" />
+              <span className="text-xs uppercase tracking-wider text-text-muted">Paste callback URL manually</span>
+              <div className="h-px flex-1 bg-border" />
             </div>
 
-            {/* Option B: Manual paste */}
             <div>
-              <p className="text-sm font-medium mb-2">
+              <p className="mb-2 text-sm font-medium">
                 Paste the {provider === "xai" ? "callback URL or copied code" : isKimchiProvider ? "callback URL or copied token" : "callback URL"} here
               </p>
-              <p className="text-xs text-text-muted mb-2">
+              <p className="mb-2 text-xs text-text-muted">
                 {provider === "xai"
                   ? "If xAI shows a code instead of redirecting, paste that code here."
                   : isKimchiProvider
                     ? "After authorization, copy the full callback URL or token from your browser."
-                  : "After authorization, copy the full URL from your browser."}
+                    : "After authorization, copy the full URL from your browser."}
               </p>
               <Input
                 value={callbackUrl}
-                onChange={(e) => setCallbackUrl(e.target.value)}
+                onChange={(event) => setCallbackUrl(event.target.value)}
                 placeholder={manualPlaceholder}
                 className="font-mono text-xs"
               />
             </div>
 
             <div className="flex gap-2">
-              <Button onClick={handleManualSubmit} fullWidth disabled={!callbackUrl}>
+              <Button onClick={() => { void handleManualSubmit(); }} fullWidth disabled={!callbackUrl || !authData}>
                 Connect
               </Button>
-              <Button onClick={handleClose} variant="ghost" fullWidth>
+              <Button onClick={() => { void handleClose(); }} variant="ghost" fullWidth>
                 Cancel
               </Button>
             </div>
           </>
         )}
 
-        {/* Device Code Flow - Waiting */}
-        {step === "waiting" && isDeviceCode && deviceData && (
+        {proxyPoolsReady && step === "waiting" && isDeviceCode && deviceData && (
           <>
-            <div className="text-center py-4">
-              <p className="text-sm text-text-muted mb-4">
-                Visit the login URL below and authorize:
-              </p>
-              <div className="bg-sidebar p-4 rounded-lg mb-4">
-                <p className="text-xs text-text-muted mb-1">Login URL</p>
+            <div className="py-4 text-center">
+              <p className="mb-4 text-sm text-text-muted">Visit the login URL below and authorize:</p>
+              <div className="mb-4 rounded-lg bg-sidebar p-4">
+                <p className="mb-1 text-xs text-text-muted">Login URL</p>
                 <div className="flex items-center gap-2">
-                  <code className="flex-1 text-sm break-all">{deviceLoginUrl}</code>
+                  <code className="flex-1 break-all text-sm">{deviceLoginUrl}</code>
                   <Button
                     size="sm"
                     variant="ghost"
@@ -705,10 +663,10 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
                   </Button>
                 </div>
               </div>
-              <div className="bg-primary/10 p-4 rounded-lg">
-                <p className="text-xs text-text-muted mb-1">Your Code</p>
+              <div className="rounded-lg bg-primary/10 p-4">
+                <p className="mb-1 text-xs text-text-muted">Your Code</p>
                 <div className="flex items-center justify-center gap-2">
-                  <p className="text-2xl font-mono font-bold text-primary">{deviceData.user_code}</p>
+                  <p className="font-mono text-2xl font-bold text-primary">{deviceData.user_code}</p>
                   <Button
                     size="sm"
                     variant="ghost"
@@ -721,43 +679,40 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
             {polling && (
               <div className="flex items-center justify-center gap-2 text-sm text-text-muted">
                 <span className="material-symbols-outlined animate-spin">progress_activity</span>
-                Waiting for authorization...
+                Waiting for authorization…
               </div>
             )}
+            <Button onClick={() => { void handleClose(); }} variant="ghost" fullWidth>Cancel</Button>
           </>
         )}
 
-        {/* Success Step */}
         {step === "success" && (
-          <div className="text-center py-6">
-            <div className="size-16 mx-auto mb-4 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+          <div className="py-6 text-center">
+            <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
               <span className="material-symbols-outlined text-3xl text-green-600">check_circle</span>
             </div>
-            <h3 className="text-lg font-semibold mb-2">Connected Successfully!</h3>
-            <p className="text-sm text-text-muted mb-4">
-              Your {providerInfo.name} account has been connected.
-            </p>
-            <Button onClick={handleClose} fullWidth>
-              Done
-            </Button>
+            <h3 className="mb-2 text-lg font-semibold">Connected Successfully!</h3>
+            <p className="mb-4 text-sm text-text-muted">Your {providerInfo.name} account has been connected.</p>
+            <Button onClick={() => { void handleClose(); }} fullWidth>Done</Button>
           </div>
         )}
 
-        {/* Error Step */}
         {step === "error" && (
-          <div className="text-center py-6">
-            <div className="size-16 mx-auto mb-4 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+          <div className="py-6 text-center">
+            <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
               <span className="material-symbols-outlined text-3xl text-red-600">error</span>
             </div>
-            <h3 className="text-lg font-semibold mb-2">Connection Failed</h3>
-            <p className="text-sm text-red-600 mb-4">{error}</p>
+            <h3 className="mb-2 text-lg font-semibold">Connection Failed</h3>
+            <p className="mb-4 text-sm text-red-600">{error}</p>
             <div className="flex gap-2">
-              <Button onClick={startOAuthFlow} variant="secondary" fullWidth>
+              <Button
+                onClick={() => { void restartFlow(selectedProxyPoolIdRef.current); }}
+                variant="secondary"
+                fullWidth
+              >
                 Try Again
               </Button>
-              <Button onClick={handleClose} variant="ghost" fullWidth>
-                Cancel
-              </Button>
+              <Button onClick={() => { void handleClose(); }} variant="ghost" fullWidth>Cancel</Button>
             </div>
           </div>
         )}
@@ -772,16 +727,19 @@ OAuthModal.propTypes = {
   providerInfo: PropTypes.shape({ name: PropTypes.string }),
   onSuccess: PropTypes.func,
   onClose: PropTypes.func.isRequired,
-  /** Extra metadata passed to /authorize and /exchange (e.g. gitlab clientId/baseUrl) */
+  /** Extra metadata bound to the server-side flow during authorization. */
   oauthMeta: PropTypes.object,
-  /** Optional Kiro IDC config for AWS IAM Identity Center device flow */
+  /** Optional Kiro IAM Identity Center device-flow configuration. */
   idcConfig: PropTypes.shape({
     startUrl: PropTypes.string,
     region: PropTypes.string,
   }),
+  /** Active proxy pools offered as explicit strict-routing choices. */
   proxyPools: PropTypes.arrayOf(PropTypes.shape({
     id: PropTypes.string,
     name: PropTypes.string,
     isActive: PropTypes.bool,
   })),
+  /** Prevents a flow from starting before the async pool lookup completes. */
+  proxyPoolsReady: PropTypes.bool,
 };

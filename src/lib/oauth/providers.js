@@ -170,7 +170,11 @@ const PROVIDERS = {
       let response = await fetch(config.tokenUrl, buildRequest(proxyOptions));
       if (!response.ok) {
         const error = await response.text();
-        if (isCloudflareHtmlBadRequest(response.status, error) && proxyOptions?.disableEnvProxy !== true) {
+        if (
+          isCloudflareHtmlBadRequest(response.status, error) &&
+          proxyOptions?.disableEnvProxy !== true &&
+          proxyOptions?.strictProxy !== true
+        ) {
           response = await fetch(config.tokenUrl, buildRequest({ disableEnvProxy: true }));
           if (response.ok) return await response.json();
           const directError = await response.text();
@@ -278,7 +282,7 @@ const PROVIDERS = {
     config: GROK_CLI_CONFIG,
     flowType: "device_code",
     // Grok CLI / Grok Build — device code flow to auth.x.ai, inference on cli-chat-proxy.grok.com
-    requestDeviceCode: async (config) => {
+    requestDeviceCode: async (config, codeChallenge, options, proxyOptions) => {
       const body = new URLSearchParams({
         client_id: config.clientId,
         scope: config.scope,
@@ -294,6 +298,7 @@ const PROVIDERS = {
           "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)",
         },
         body,
+        proxyOptions,
       });
 
       if (!response.ok) {
@@ -303,7 +308,7 @@ const PROVIDERS = {
 
       return await response.json();
     },
-    pollToken: async (config, deviceCode) => {
+    pollToken: async (config, deviceCode, codeVerifier, extraData, proxyOptions) => {
       const response = await fetch(config.tokenUrl, {
         method: "POST",
         headers: {
@@ -316,6 +321,7 @@ const PROVIDERS = {
           device_code: deviceCode,
           client_id: config.clientId,
         }),
+        proxyOptions,
       });
 
       let data;
@@ -330,7 +336,7 @@ const PROVIDERS = {
       const pending = data?.error === "authorization_pending" || data?.error === "slow_down";
       return { ok: response.ok || pending, data };
     },
-    postExchange: async (tokens) => {
+    postExchange: async (tokens, proxyOptions) => {
       // Best-effort user profile from cli-chat-proxy (non-fatal).
       try {
         const res = await fetch("https://cli-chat-proxy.grok.com/v1/user", {
@@ -341,6 +347,7 @@ const PROVIDERS = {
             "x-xai-token-auth": "xai-grok-cli",
             "x-grok-client-version": "0.2.93",
           },
+          proxyOptions,
         });
         if (res.ok) return { user: await res.json() };
       } catch {
@@ -1208,11 +1215,12 @@ const PROVIDERS = {
   cline: {
     config: CLINE_CONFIG,
     flowType: "authorization_code",
-    buildAuthUrl: (config, redirectUri) => {
+    buildAuthUrl: (config, redirectUri, state) => {
       const params = new URLSearchParams({
         client_type: "extension",
         callback_url: redirectUri,
         redirect_uri: redirectUri,
+        state,
       });
       return `${config.authorizeUrl}?${params.toString()}`;
     },
@@ -1267,11 +1275,12 @@ const PROVIDERS = {
   clinepass: {
     config: CLINEPASS_CONFIG,
     flowType: "authorization_code",
-    buildAuthUrl: (config, redirectUri) => {
+    buildAuthUrl: (config, redirectUri, state) => {
       const params = new URLSearchParams({
         client_type: "extension",
         callback_url: redirectUri,
         redirect_uri: redirectUri,
+        state,
       });
       return `${config.authorizeUrl}?${params.toString()}`;
     },
@@ -1404,7 +1413,7 @@ const PROVIDERS = {
       });
       return `${baseUrl}${config.authorizeUrlPath}?${params.toString()}`;
     },
-    exchangeToken: async (config, code, redirectUri, codeVerifier, state, meta = {}) => {
+    exchangeToken: async (config, code, redirectUri, codeVerifier, state, meta = {}, proxyOptions) => {
       const baseUrl = (meta.baseUrl || config.defaultBaseUrl || "https://gitlab.com").replace(/\/$/, "");
       const clientId = meta.clientId || config.clientId || "";
       const clientSecret = meta.clientSecret || config.clientSecret || "";
@@ -1420,11 +1429,13 @@ const PROVIDERS = {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
         body: body.toString(),
+        proxyOptions,
       });
       if (!response.ok) throw new Error(`GitLab Duo token exchange failed: ${await response.text()}`);
       const tokens = await response.json();
       const userRes = await fetch(`${baseUrl}${config.userInfoUrlPath}`, {
         headers: { Authorization: `Bearer ${tokens.access_token}` },
+        proxyOptions,
       });
       const user = userRes.ok ? await userRes.json() : {};
       return { ...tokens, _user: user, _baseUrl: baseUrl, _clientId: clientId };
@@ -1758,7 +1769,10 @@ export async function pollForToken(providerName, deviceCode, codeVerifier, extra
       if (providerName === "kiro" && !tokens.providerSpecificData?.profileArn) {
         const region = tokens.providerSpecificData?.region || "us-east-1";
         const profileArn = await fetchKiroProfileArn(tokens.accessToken, region, proxyOptions);
-        if (profileArn) tokens.providerSpecificData.profileArn = profileArn;
+        if (!profileArn) {
+          throw new Error("Kiro profile discovery returned no usable profile");
+        }
+        tokens.providerSpecificData.profileArn = profileArn;
       }
       return { success: true, tokens };
     } else {

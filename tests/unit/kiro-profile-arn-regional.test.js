@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { fetchKiroProfileArn } from "../../src/lib/oauth/providerHelpers.js";
+import { pollForToken } from "../../src/lib/oauth/providers.js";
 
 /**
  * Regression tests for regional Kiro profileArn discovery.
@@ -116,6 +117,44 @@ describe("fetchKiroProfileArn — regional endpoint + dispatch shape", () => {
     });
     const arn = await fetchKiroProfileArn("token", "eu-west-1");
     expect(arn).toBeNull();
+  });
+
+  it("fails a strict flow on a non-2xx profile response", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 403,
+    });
+    await expect(fetchKiroProfileArn(
+      "token",
+      "eu-west-1",
+      { disableEnvProxy: true, strictProxy: true },
+    )).rejects.toThrow(/profile discovery failed: HTTP 403/i);
+  });
+
+  it("does not complete Kiro device OAuth without a profile ARN", async () => {
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          accessToken: "kiro-access",
+          refreshToken: "kiro-refresh",
+          expiresIn: 3600,
+        }),
+      })
+      .mockResolvedValueOnce({ ok: false, status: 403 });
+
+    await expect(pollForToken(
+      "kiro",
+      "device-code",
+      null,
+      {
+        _clientId: "client-id",
+        _clientSecret: "client-secret",
+        _region: "eu-west-1",
+        _authMethod: "idc",
+      },
+      { disableEnvProxy: true, strictProxy: false },
+    )).rejects.toThrow(/no usable profile/i);
   });
 
   it("returns null on network failure without throwing", async () => {

@@ -212,9 +212,11 @@ export class GrokCliExecutor extends BaseExecutor {
 
   // Refresh goes through the shared manager: rotation, dedup lock, merge and
   // invalid-grant classification all live there. No duplicate fetch logic here.
-  async refreshCredentials(credentials, log) {
+  async refreshCredentials(credentials, log, proxyOptions = null) {
     if (!credentials?.refreshToken) return null;
-    return refreshProviderCredentials("grok-cli", credentials, log);
+    return proxyOptions
+      ? refreshProviderCredentials("grok-cli", credentials, log, proxyOptions)
+      : refreshProviderCredentials("grok-cli", credentials, log);
   }
 
   needsRefresh(credentials) {

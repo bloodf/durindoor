@@ -20,6 +20,7 @@ import { sessionDedupEngine } from "./engines/session-dedup/index.js";
 import { cavemanEngine } from "./engines/cavemanAdapter.js";
 import { headroomEngine } from "./engines/headroomAdapter.js";
 import { ENGINE_IDS, engineMeta, isEngineAvailable } from "./engineCatalog.js";
+import { SINGLE_MODE_OF } from "./deriveDefaultPlan.js";
 
 const BUILTIN_ENGINES = new Map();
 
@@ -74,5 +75,31 @@ export function getEngine(id) {
 
 // Back-compat alias (omniroute's session-dedup.test.ts uses getCompressionEngine).
 export const getCompressionEngine = getEngine;
+
+/**
+ * Map a compression plan (raw or `{ plan }`-wrapped) to the ordered engine id
+ * list it would dispatch. Stacked plans return their pipeline engine ids in
+ * pipeline order (falsy engines filtered out); a single-mode plan reverse-maps
+ * its `mode` to the matching single-mode engine id. Unknown/off/empty plans
+ * resolve to []. Used by F1g to drive the pre-translate compression pipeline.
+ *
+ * @param {object} [plan] - Compression plan, or `{ plan }` wrapper.
+ * @returns {string[]} Ordered engine ids the plan would run.
+ */
+export function planToEngineIds(plan) {
+  if (!plan) return [];
+  const p = plan.plan || plan;
+  if (p.stackedPipeline && p.stackedPipeline.length > 0) {
+    return p.stackedPipeline.map((step) => step.engine).filter(Boolean);
+  }
+  // Single-mode reverse mapping
+  const mode = p.mode;
+  if (mode && SINGLE_MODE_OF) {
+    for (const [id, m] of Object.entries(SINGLE_MODE_OF)) {
+      if (m === mode) return [id];
+    }
+  }
+  return [];
+}
 
 export { ENGINE_IDS, engineMeta, isEngineAvailable };

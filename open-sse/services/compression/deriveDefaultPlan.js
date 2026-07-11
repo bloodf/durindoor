@@ -1,7 +1,7 @@
 import { ENGINE_CATALOG, engineMeta } from "./engineCatalog.js";
 
 /** Maps single-mode engine ids to the effective CompressionMode name. */
-const SINGLE_MODE_OF = {
+export const SINGLE_MODE_OF = {
   lite: "lite",
   caveman: "standard",
   aggressive: "aggressive",

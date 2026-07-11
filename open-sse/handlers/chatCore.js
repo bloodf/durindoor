@@ -33,10 +33,38 @@ import { compressMessages } from "../rtk/index.js";
 import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadroomPhantomSavings } from "../rtk/headroom.js";
 import { compressWithPxpipe, normalizePxpipeResult } from "../rtk/pxpipe.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
+import { estimateTokens } from "./countTokensCore.js";
+import {
+  getEngine,
+  isEngineAvailable,
+  registerBuiltinEngines,
+  planToEngineIds,
+} from "../services/compression/index.js";
+import { deriveDefaultPlan } from "../services/compression/deriveDefaultPlan.js";
+import { resolveAdaptivePlan } from "../services/compression/adaptiveCompression/resolveAdaptivePlan.js";
 import { stripUnsupportedModalities } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
 import { extractThinking } from "../translator/concerns/thinkingUnified.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
+
+// F-1b: register the compression engines that ship in this tree at module load.
+// Idempotent; getEngine() also registers lazily. Surfaced eagerly so a broken
+// engine module fails at import time rather than mid-request.
+registerBuiltinEngines();
+
+// Neutral adaptive config for the engine loop. resolveAdaptivePlan dereferences
+// these fields unconditionally once a model context limit is known, so they must
+// be complete even though mode:"off" short-circuits escalation and returns the
+// base plan unchanged. F-1b wires the engine loop only — adaptive policy is a
+// later surface; here the resolved plan always equals deriveDefaultPlan's base.
+const COMPRESSION_ADAPTIVE_CONFIG = Object.freeze({
+  mode: "off",
+  policy: "reserve-output",
+  outputReserve: 4096,
+  safetyMargin: 1024,
+  pct: 0.85,
+  absoluteBudget: 0,
+});
 
 /**
  * Whether a request targets the Codex compact-responses endpoint.
@@ -118,7 +146,7 @@ function proxyEndpointLogLabel(value) {
  *   errors. Legacy `info`/`debug`/`warn`/`error` remain supported.
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, skipPonytailCommands = false, claudeClassifierCompat }) {
+export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, compressionEnabled, compressionEngines, skipPonytailCommands = false, claudeClassifierCompat }) {
   const { provider, model: requestedModel } = modelInfo;
   const requestStartTime = Date.now();
   const requestContext = captureRequestContext(body, clientRawRequest);
@@ -368,6 +396,46 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     }
   } else if (headroomEnabled) {
     log?.warn?.("HEADROOM", `skipped: ${headroomDiagnostics.reason || "compression unavailable"}${headroomDiagnostics.endpoint ? ` (${headroomDiagnostics.endpoint})` : ""}`);
+  }
+
+  // Compression engine stack (F-1b): runs AFTER rtk/headroom, BEFORE salvage/caveman/pxpipe.
+  // Plan derives from the per-engine toggle map; adaptive resolver is neutralized
+  // (mode "off") so the resolved plan equals the base plan. Each engine runs in
+  // its own try/catch with a per-step deep-clone snapshot so a throwing engine
+  // cannot leave partial mutations. A catastrophic failure of the loop itself
+  // restores the whole body to the pre-stack snapshot. Fail-open throughout.
+  if (compressionEnabled) {
+    const preStackSnapshot = structuredClone(translatedBody);
+    try {
+      const basePlan = deriveDefaultPlan(compressionEngines ?? {}, compressionEnabled);
+      const { contextWindow: modelContextLimit } = getCapabilitiesForModel(provider, cleanModel);
+      const requestMaxTokens = translatedBody?.max_tokens ?? translatedBody?.max_completion_tokens ?? null;
+      const resolved = resolveAdaptivePlan({
+        basePlan,
+        estimatedTokens: estimateTokens(translatedBody),
+        modelContextLimit,
+        requestMaxTokens,
+        config: COMPRESSION_ADAPTIVE_CONFIG,
+      });
+      const engineIds = planToEngineIds(resolved.plan);
+      let workingBody = translatedBody;
+      for (const id of engineIds) {
+        if (!isEngineAvailable(id)) continue;
+        const stepSnapshot = structuredClone(workingBody);
+        try {
+          const result = await getEngine(id).apply(workingBody, { config: COMPRESSION_ADAPTIVE_CONFIG });
+          if (result && result.body) workingBody = result.body;
+          xf.push(`COMPRESS:${id}`);
+        } catch (err) {
+          workingBody = stepSnapshot;
+          log?.warn?.("COMPRESS", `${id} failed, skipped: ${err?.message || err}`);
+        }
+      }
+      translatedBody = workingBody;
+    } catch (err) {
+      translatedBody = preStackSnapshot;
+      log?.warn?.("COMPRESS", `stack failed, passthrough: ${err?.message || err}`);
+    }
   }
 
   // Re-run salvage + fixMissing after RTK/Headroom compression — both

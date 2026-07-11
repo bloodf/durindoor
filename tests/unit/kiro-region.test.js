@@ -53,12 +53,17 @@ describe("KiroExecutor.buildUrl region routing", () => {
     expect(url).toBe("https://runtime.us-east-1.kiro.dev/generateAssistantResponse");
   });
 
-  it("routes to the regional Amazon Q endpoint for a non-default region", () => {
+  it("routes to the regional Amazon Q endpoint for a non-default region, keeping runtime as failover", () => {
     const ex = new KiroExecutor();
-    const url = ex.buildUrl("claude-opus-4.8", true, 0, {
-      providerSpecificData: { region: "eu-central-1" },
-    });
-    expect(url).toBe("https://q.eu-central-1.amazonaws.com/generateAssistantResponse");
+    const creds = { providerSpecificData: { region: "eu-central-1" } };
+    expect(ex.buildUrl("claude-opus-4.8", true, 0, creds)).toBe(
+      "https://q.eu-central-1.amazonaws.com/generateAssistantResponse"
+    );
+    // Index rotation: q.<region> leads, runtime.<region>.kiro.dev retained as failover.
+    expect(ex.getOrderedBaseUrls(creds)).toEqual([
+      "https://q.eu-central-1.amazonaws.com/generateAssistantResponse",
+      "https://runtime.eu-central-1.kiro.dev/generateAssistantResponse",
+    ]);
   });
 });
 

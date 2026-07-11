@@ -43,11 +43,13 @@ describe("probeNoAuthLocalProvider", () => {
     expect(result).toEqual({ valid: false, error: "Endpoint unreachable or rejected" });
   });
 
-  it("rejects network failures", async () => {
+  it("sanitizes network failures", async () => {
     global.fetch = vi.fn().mockRejectedValue(new Error("fetch failed"));
 
     const result = await probeNoAuthLocalProvider("http://localhost:1234/v1");
-    expect(result).toEqual({ valid: false, error: "fetch failed" });
+    // The SSRF guard wraps the probe and sanitizes ALL thrown failures to a
+    // generic client message — the raw fetch error must not be echoed back.
+    expect(result).toEqual({ valid: false, error: "URL validation failed" });
   });
 
   it("strips /api/chat suffix from Ollama-style base URL", async () => {

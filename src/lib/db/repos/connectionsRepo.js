@@ -3,6 +3,8 @@ import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { mergeProviderConnection } from "../helpers/mergeProviderMetadata.js";
 import { hasConflictingCodexAccountIds, resolveCodexAccountId } from "open-sse/shared/codexAccountId.js";
+import { providerRefreshContextMatches } from "@/shared/utils/providerCredentialContext";
+import { QUOTA_WRITE_LOCK_SQL } from "./quotaSnapshotsRepo.js";
 
 const OPTIONAL_FIELDS = [
   "displayName", "email", "globalPriority", "defaultModel",
@@ -238,13 +240,39 @@ export async function createProviderConnection(data, { shouldCommit } = {}) {
 }
 
 // Critical: OAuth refresh token race — atomic merge inside transaction
-export async function updateProviderConnection(id, data) {
+export async function updateProviderConnection(id, data, {
+  expectedUpdatedAt = null,
+  expectedRefreshContext = null,
+  returnCommitResult = false,
+  signal = null,
+  shouldCommit = null,
+} = {}) {
   const db = await getAdapter();
   let result;
   db.transaction(() => {
+    if (signal?.aborted) throw new DOMException("Provider connection update aborted", "AbortError");
+    if (typeof shouldCommit === "function" && !shouldCommit()) {
+      const error = new Error("Provider connection update superseded");
+      error.code = "PROVIDER_CONNECTION_UPDATE_SUPERSEDED";
+      throw error;
+    }
+    // Acquire SQLite's writer lock before reading the compare-and-swap state.
+    // In WAL mode a deferred read snapshot cannot otherwise be upgraded after
+    // another process commits a competing token rotation.
+    const lock = db.run(QUOTA_WRITE_LOCK_SQL);
+    if ((lock.changes || 0) !== 1) throw new Error("Provider credential update requires an initialized schema");
     const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
     if (!row) { result = null; return; }
     const existing = rowToConn(row);
+    if (expectedUpdatedAt && existing.updatedAt !== expectedUpdatedAt) {
+      const error = new Error("Provider connection changed during credential refresh");
+      error.code = "PROVIDER_CONNECTION_REVISION_CONFLICT";
+      throw error;
+    }
+    if (!providerRefreshContextMatches(existing, expectedRefreshContext)) {
+      result = returnCommitResult ? { applied: false, connection: existing } : existing;
+      return;
+    }
     if (Object.hasOwn(data, "provider") && data.provider !== existing.provider) {
       const error = new Error("A provider connection cannot change provider identity in place");
       error.code = "PROVIDER_IDENTITY_IMMUTABLE";
@@ -254,7 +282,7 @@ export async function updateProviderConnection(id, data) {
     upsert(db, merged);
     if (data.isActive === false) updateAutoPingEntryInTx(db, existing.provider, id, false);
     if (data.priority !== undefined) reorderInTx(db, existing.provider);
-    result = merged;
+    result = returnCommitResult ? { applied: true, connection: merged } : merged;
   });
   return result;
 }

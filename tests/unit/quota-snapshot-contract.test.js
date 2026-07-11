@@ -167,6 +167,7 @@ describe("provider quota snapshot contract", () => {
     ["whitespace-prefixed JSON metadata", { provenance: { metadata: { plan: '  {"quota":1}' } } }],
     ["blank identity", { identity: { connectionId: "" } }],
     ["control characters", { identity: { accountKey: "acct\n1" } }],
+    ["credential-like units", { amounts: { unit: "sk-secret-unit-123456" } }],
   ])("rejects %s", (_label, overrides) => {
     expect(() => normalizeQuotaSnapshot(makeSnapshot(overrides))).toThrow(QuotaSnapshotValidationError);
   });

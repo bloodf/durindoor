@@ -192,6 +192,7 @@ export function sanitizeErrorMessage(message) {
   return firstLine
     .replace(/\b(https?|socks5h?):\/\/[^@\s/]+@/gi, "$1://[redacted]@")
     .replace(/\bBearer\s+\S+/gi, "Bearer [redacted]")
+    .replace(/\b(?:sk[-_][A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{12,}|ya29\.[A-Za-z0-9._-]{12,}|AIza[A-Za-z0-9_-]{20,})\b/gi, "[redacted]")
     .replace(
       /("(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|authorization[-_]?code|oauth[-_]?code|code[-_]?verifier|oauth[-_]?state|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)"\s*:\s*")[^"]*"/gi,
       '$1[redacted]"',

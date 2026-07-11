@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   refreshProviderCredentials: vi.fn(),
   refreshVertexToken: vi.fn(),
   refreshGoogleToken: vi.fn(),
+  refreshCodebuddyToken: vi.fn(),
 }));
 
 vi.mock("../../open-sse/services/oauthCredentialManager.js", () => ({
@@ -15,6 +16,7 @@ vi.mock("../../open-sse/services/tokenRefresh.js", async (importOriginal) => ({
   parseVertexSaJson: vi.fn(() => ({ client_email: "vertex@example.test" })),
   refreshVertexToken: mocks.refreshVertexToken,
   refreshGoogleToken: mocks.refreshGoogleToken,
+  refreshCodebuddyToken: mocks.refreshCodebuddyToken,
 }));
 
 describe("specialized OAuth executor refresh routing", () => {
@@ -24,6 +26,11 @@ describe("specialized OAuth executor refresh routing", () => {
     mocks.refreshVertexToken.mockResolvedValue({
       accessToken: "vertex-rotated",
       expiresAt: "2026-07-11T00:00:00.000Z",
+    });
+    mocks.refreshCodebuddyToken.mockResolvedValue({
+      accessToken: "codebuddy-access",
+      refreshToken: "codebuddy-refresh-rotated",
+      expiresIn: 3600,
     });
   });
 
@@ -68,5 +75,44 @@ describe("specialized OAuth executor refresh routing", () => {
       null,
       proxyOptions,
     );
+  });
+
+  it("routes the shared coordinator through the real CodeBuddy executor shape", async () => {
+    const { CodeBuddyExecutor } = await import("../../open-sse/executors/codebuddy-cn.js");
+    const { refreshAndUpdateCredentials } = await import("../../src/shared/services/providerCredentials.js");
+    const executor = new CodeBuddyExecutor();
+    const proxyOptions = { disableEnvProxy: true, strictProxy: true };
+    const original = {
+      id: "codebuddy-connection",
+      provider: "codebuddy-cn",
+      authType: "oauth",
+      accessToken: "codebuddy-access-old",
+      refreshToken: "codebuddy-refresh-old",
+      providerSpecificData: {},
+    };
+    const updateProviderConnectionImpl = vi.fn().mockResolvedValue(undefined);
+
+    const result = await refreshAndUpdateCredentials(original, true, proxyOptions, {
+      getExecutorImpl: () => executor,
+      updateProviderConnectionImpl,
+      now: () => Date.parse("2026-07-10T00:00:00.000Z"),
+      log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    expect(mocks.refreshCodebuddyToken).toHaveBeenCalledWith(
+      "codebuddy-refresh-old",
+      expect.objectContaining({ info: expect.any(Function) }),
+      proxyOptions,
+    );
+    expect(updateProviderConnectionImpl).toHaveBeenCalledWith(
+      "codebuddy-connection",
+      expect.objectContaining({
+        accessToken: "codebuddy-access",
+        refreshToken: "codebuddy-refresh-rotated",
+        expiresIn: 3600,
+      }),
+      expect.objectContaining({ returnCommitResult: true }),
+    );
+    expect(result).toMatchObject({ refreshed: true, connection: { accessToken: "codebuddy-access" } });
   });
 });

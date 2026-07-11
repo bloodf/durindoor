@@ -23,7 +23,7 @@ vi.mock("@/lib/network/connectionProxy", () => ({
   resolveConnectionProxyConfig: mocks.resolveConnectionProxyConfig,
 }));
 
-vi.mock("@/app/api/usage/[connectionId]/route.js", () => ({
+vi.mock("@/shared/services/providerCredentials", () => ({
   refreshAndUpdateCredentials: mocks.refreshAndUpdateCredentials,
 }));
 

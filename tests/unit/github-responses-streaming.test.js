@@ -32,4 +32,18 @@ describe("GithubExecutor /responses escalation streaming", () => {
     const [, init] = proxyAwareFetchMock.mock.calls[0];
     expect(JSON.parse(init.body).stream).toBe(true);
   });
+
+  it("never logs an arbitrary Copilot token error body", async () => {
+    const canary = "opaque-copilot-error-body-987654321";
+    const response = new Response(canary, { status: 401 });
+    const cancel = vi.spyOn(response.body, "cancel");
+    proxyAwareFetchMock.mockResolvedValueOnce(response);
+    const log = { info: vi.fn(), error: vi.fn() };
+
+    await expect(new GithubExecutor().refreshCopilotToken("github-access", log)).resolves.toBeNull();
+
+    expect(log.error).toHaveBeenCalledWith("TOKEN", "Copilot token refresh failed with HTTP 401");
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(log.error.mock.calls)).not.toContain(canary);
+  });
 });

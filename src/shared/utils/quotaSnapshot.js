@@ -135,7 +135,7 @@ function normalizeRatio(value) {
 
 function normalizeUnit(value) {
   if (value === undefined || value === null) return null;
-  if (typeof value !== "string" || !UNIT_PATTERN.test(value)) {
+  if (typeof value !== "string" || !UNIT_PATTERN.test(value) || looksSecretOrRaw(value)) {
     invalid("amounts.unit must be a short ASCII unit identifier or null");
   }
   return value;

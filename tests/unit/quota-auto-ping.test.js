@@ -12,7 +12,7 @@ vi.mock("@/lib/network/connectionProxy", () => ({
   resolveConnectionProxyConfig: vi.fn(),
 }));
 
-vi.mock("@/app/api/usage/[connectionId]/route.js", () => ({
+vi.mock("@/shared/services/providerCredentials", () => ({
   refreshAndUpdateCredentials: vi.fn(),
 }));
 
@@ -513,6 +513,60 @@ describe("quota auto-ping", () => {
     deps.getSettings.mockResolvedValue({});
     await expect(runQuotaAutoPingTick(deps, state)).resolves.toBeUndefined();
     expect(state.running).toBe(false);
+  });
+
+  it("redacts credential refresh failures before logging", async () => {
+    const canary = "opaqueautopingcredential987654321";
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    deps.getSettings.mockResolvedValue({ claudeAutoPing: { connections: { "claude-1": true } } });
+    deps.getProviderConnections.mockResolvedValue([
+      { id: "claude-1", provider: "claude", authType: "oauth", accessToken: "token" },
+    ]);
+    deps.refreshAndUpdateCredentials.mockRejectedValue(new Error(`refresh failed ${canary}`));
+
+    try {
+      await runQuotaAutoPingTick(deps, state);
+      expect(warn).toHaveBeenCalled();
+      expect(JSON.stringify(warn.mock.calls)).not.toContain(canary);
+      expect(JSON.stringify(warn.mock.calls)).toContain("credential refresh failed");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it.each(["usage", "proxy"])("never logs an arbitrary %s failure body", async (failureSite) => {
+    const canary = `opaque-${failureSite}-body-987654321`;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    deps.getSettings.mockResolvedValue({ claudeAutoPing: { connections: { "claude-1": true } } });
+    deps.getProviderConnections.mockResolvedValue([
+      { id: "claude-1", provider: "claude", authType: "oauth", accessToken: "token" },
+    ]);
+    if (failureSite === "usage") getClaudeUsage.mockRejectedValue(new Error(canary));
+    else deps.resolveConnectionProxyConfig.mockRejectedValue(new Error(canary));
+
+    try {
+      await runQuotaAutoPingTick(deps, state);
+      expect(warn).toHaveBeenCalled();
+      expect(JSON.stringify(warn.mock.calls)).not.toContain(canary);
+      expect(JSON.stringify(warn.mock.calls)).toContain("provider ping failed");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("never logs an arbitrary scheduler failure body", async () => {
+    const canary = "opaque-scheduler-body-987654321";
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    deps.getSettings.mockRejectedValue(new Error(canary));
+
+    try {
+      await runQuotaAutoPingTick(deps, state);
+      expect(warn).toHaveBeenCalled();
+      expect(JSON.stringify(warn.mock.calls)).not.toContain(canary);
+      expect(JSON.stringify(warn.mock.calls)).toContain("scheduler tick failed");
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("coalesces overlapping ticks into one follow-up run", async () => {

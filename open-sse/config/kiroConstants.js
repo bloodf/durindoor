@@ -22,6 +22,7 @@ import {
   resolveKiroRegion as resolveKiroRegionFromCredentials,
   alignProfileArnRegion,
   KIRO_DEFAULT_REGION,
+  normalizeKiroRegion,
 } from "./kiroRegions.js";
 
 // Backwards-compat shim: legacy callers (and tests) pass the region as
@@ -32,7 +33,7 @@ import {
 export function resolveKiroRegion(arg) {
   if (typeof arg === "string") {
     const t = arg.trim();
-    return t || KIRO_DEFAULT_REGION;
+    return normalizeKiroRegion(t || KIRO_DEFAULT_REGION);
   }
   if (arg && typeof arg === "object") {
     return resolveKiroRegionFromCredentials(arg);
@@ -99,6 +100,9 @@ export function resolveKiroDataPlaneUrl(region) {
  */
 export function resolveKiroControlPlaneHost(region) {
   const r = resolveKiroRegion(region);
+  // This host carries bearer/API-key credentials. Never interpolate an
+  // untrusted stored region without the same validation as the data plane.
+  assertValidAwsRegion(r);
   return r === KIRO_DEFAULT_REGION
     ? "https://codewhisperer.us-east-1.amazonaws.com"
     : `https://q.${r}.amazonaws.com`;

@@ -17,7 +17,7 @@ export class KiroService {
    * Register OIDC client with AWS SSO
    * Returns clientId and clientSecret for device code flow
    */
-  async registerClient(region = "us-east-1") {
+  async registerClient(region = "us-east-1", proxyOptions = null) {
     assertValidAwsRegion(region);
     const endpoint = `https://oidc.${region}.amazonaws.com/client/register`;
 
@@ -33,6 +33,7 @@ export class KiroService {
         grantTypes: KIRO_CONFIG.grantTypes,
         issuerUrl: KIRO_CONFIG.issuerUrl,
       }),
+      proxyOptions,
     });
 
     if (!response.ok) {
@@ -51,7 +52,7 @@ export class KiroService {
   /**
    * Start device authorization for AWS Builder ID or IDC
    */
-  async startDeviceAuthorization(clientId, clientSecret, startUrl, region = "us-east-1") {
+  async startDeviceAuthorization(clientId, clientSecret, startUrl, region = "us-east-1", proxyOptions = null) {
     assertValidAwsRegion(region);
     const endpoint = `https://oidc.${region}.amazonaws.com/device_authorization`;
 
@@ -65,6 +66,7 @@ export class KiroService {
         clientSecret,
         startUrl,
       }),
+      proxyOptions,
     });
 
     if (!response.ok) {
@@ -86,7 +88,7 @@ export class KiroService {
   /**
    * Poll for token using device code (AWS Builder ID/IDC)
    */
-  async pollDeviceToken(clientId, clientSecret, deviceCode, region = "us-east-1") {
+  async pollDeviceToken(clientId, clientSecret, deviceCode, region = "us-east-1", proxyOptions = null) {
     assertValidAwsRegion(region);
     const endpoint = `https://oidc.${region}.amazonaws.com/token`;
 
@@ -101,6 +103,7 @@ export class KiroService {
         deviceCode,
         grantType: "urn:ietf:params:oauth:grant-type:device_code",
       }),
+      proxyOptions,
     });
 
     const data = await response.json();
@@ -142,7 +145,7 @@ export class KiroService {
    * Exchange authorization code for tokens (Social Login)
    * Must use same redirect_uri as authorization request
    */
-  async exchangeSocialCode(code, codeVerifier) {
+  async exchangeSocialCode(code, codeVerifier, proxyOptions = null) {
     // Must match the redirect_uri used in buildSocialLoginUrl
     const redirectUri = "kiro://kiro.kiroAgent/authenticate-success";
 
@@ -156,6 +159,7 @@ export class KiroService {
         code_verifier: codeVerifier,
         redirect_uri: redirectUri,
       }),
+      proxyOptions,
     });
 
     if (!response.ok) {
@@ -175,7 +179,7 @@ export class KiroService {
   /**
    * Refresh token using refresh token
    */
-  async refreshToken(refreshToken, providerSpecificData = {}) {
+  async refreshToken(refreshToken, providerSpecificData = {}, proxyOptions = null) {
     const { authMethod, clientId, clientSecret, region } = providerSpecificData;
 
     // AWS SSO OIDC refresh (Builder ID or IDC)
@@ -195,6 +199,7 @@ export class KiroService {
           refreshToken,
           grantType: "refresh_token",
         }),
+        proxyOptions,
       });
 
       if (!response.ok) {
@@ -220,6 +225,7 @@ export class KiroService {
       body: JSON.stringify({
         refreshToken,
       }),
+      proxyOptions,
     });
 
     if (!response.ok) {
@@ -239,7 +245,7 @@ export class KiroService {
   /**
    * Validate and import refresh token
    */
-  async validateImportToken(refreshToken) {
+  async validateImportToken(refreshToken, proxyOptions = null) {
     // Validate token format
     if (!refreshToken.startsWith("aorAAAAAG")) {
       throw new Error("Invalid token format. Token should start with aorAAAAAG...");
@@ -247,7 +253,7 @@ export class KiroService {
 
     // Try to refresh to validate
     try {
-      const result = await this.refreshToken(refreshToken);
+      const result = await this.refreshToken(refreshToken, {}, proxyOptions);
       return {
         accessToken: result.accessToken,
         refreshToken: result.refreshToken || refreshToken,
@@ -274,7 +280,7 @@ export class KiroService {
    * regions, and return the first profile found (preferring one whose region
    * matches the queried region). port(upstream): #2355.
    */
-  async listAvailableProfiles(accessToken, region = "us-east-1") {
+  async listAvailableProfiles(accessToken, region = "us-east-1", proxyOptions = null) {
     // Trust boundary: the requested region is interpolated into the control-plane
     // host. Reject anything that is not a valid AWS region id (SSRF guard).
     assertValidAwsRegion(region);
@@ -291,6 +297,7 @@ export class KiroService {
             "Accept": "application/json",
           },
           body: JSON.stringify({ maxResults: 10 }),
+          proxyOptions,
         });
         if (!response.ok) {
           lastError = new Error(`ListAvailableProfiles ${r} failed: ${await response.text()}`);

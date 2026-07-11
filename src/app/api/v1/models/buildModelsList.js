@@ -7,6 +7,7 @@ import {
 } from "@/shared/constants/providers";
 import { getProviderConnections, getCombos, getCustomModels, getModelAliases } from "@/lib/localDb";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
+import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
@@ -38,12 +39,14 @@ function isRecord(value) {
 const LIVE_MODEL_RESOLVERS = {
   kiro: async (conn) => {
     const psd = isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {};
+    const proxyOptions = await resolveConnectionProxyConfig(psd);
     const result = await resolveKiroModels({
       accessToken: typeof conn.accessToken === "string" ? conn.accessToken : undefined,
       refreshToken: typeof conn.refreshToken === "string" ? conn.refreshToken : undefined,
       providerSpecificData: psd,
     }, {
       log: console,
+      proxyOptions,
       onCredentialsRefreshed: async (refreshed) => {
         if (!refreshed?.accessToken || !conn.id) return;
         await updateProviderCredentials(conn.id, {
@@ -85,18 +88,21 @@ const LIVE_MODEL_RESOLVERS = {
     };
   },
   github: async (conn) => {
+    const psd = isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {};
+    const proxyOptions = await resolveConnectionProxyConfig(psd);
     const result = await resolveCopilotModels({
       accessToken: typeof conn.accessToken === "string" ? conn.accessToken : undefined,
       refreshToken: typeof conn.refreshToken === "string" ? conn.refreshToken : undefined,
-      providerSpecificData: isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {},
+      providerSpecificData: psd,
     }, {
       log: console,
+      proxyOptions,
       onCredentialsRefreshed: async (refreshed) => {
         if (!conn.id) return;
         await updateProviderCredentials(conn.id, {
           copilotToken: refreshed.copilotToken,
           copilotTokenExpiresAt: refreshed.copilotTokenExpiresAt,
-          existingProviderSpecificData: conn.providerSpecificData || {},
+          existingProviderSpecificData: psd,
         });
       },
     });

@@ -295,6 +295,39 @@ export default function ProfilePage() {
     }
   };
 
+  const updateVisionBridge = async (patch) => {
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (res.ok) {
+        setSettings(prev => ({ ...prev, ...patch }));
+      }
+    } catch (err) {
+      console.error("Failed to update Vision Bridge settings:", err);
+    }
+  };
+
+  const handleVisionBridgeToggle = async () => {
+    const enabling = !(settings.visionBridgeEnabled === true);
+    const target = (settings.visionBridgeModel || "").trim();
+    // Guard against a silent no-op: enabling with an empty target never reroutes
+    // (the helper passes through when visionBridgeModel is empty/invalid). Clear
+    // any in-flight draft into the committed value first so a typed-but-not-
+    // blurred target still enables.
+    const input = typeof document !== "undefined"
+      ? document.getElementById("vision-bridge-model-input")
+      : null;
+    const draft = (input?.value || "").trim();
+    if (enabling && !target && !draft) return;
+    const patch = draft && draft !== target
+      ? { visionBridgeModel: draft, visionBridgeEnabled: enabling }
+      : { visionBridgeEnabled: enabling };
+    await updateVisionBridge(patch);
+  };
+
   const updateStickyLimit = async (limit) => {
     const numLimit = parseInt(limit);
     if (isNaN(numLimit) || numLimit < 1) return;
@@ -1032,6 +1065,41 @@ export default function ProfilePage() {
                 />
               </div>
             )}
+
+            {/* Vision Bridge (#6640) */}
+            <div className="flex flex-col gap-3 pt-4 border-t border-border/50">
+              <div className="flex items-start sm:items-center justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm sm:text-base">Vision Model</p>
+                  <p className="text-xs sm:text-sm text-text-muted">
+                    Target as provider/model (e.g. openai/gpt-4o). Must be vision-capable; empty or invalid keeps the original model.
+                  </p>
+                </div>
+                <Input
+                  id="vision-bridge-model-input"
+                  type="text"
+                  placeholder="openai/gpt-4o"
+                  key={settings.visionBridgeModel || ""}
+                  defaultValue={settings.visionBridgeModel || ""}
+                  onBlur={(e) => updateVisionBridge({ visionBridgeModel: e.target.value.trim() })}
+                  disabled={loading}
+                  className="w-48 sm:w-64 shrink-0"
+                />
+              </div>
+              <div className="flex items-start sm:items-center justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm sm:text-base">Vision Bridge</p>
+                  <p className="text-xs sm:text-sm text-text-muted">
+                    Reroute image-bearing requests on a text-only model to the vision model above. Set a target first.
+                  </p>
+                </div>
+                <Toggle
+                  checked={settings.visionBridgeEnabled === true}
+                  onChange={handleVisionBridgeToggle}
+                  disabled={loading}
+                />
+              </div>
+            </div>
 
             <p className="text-xs text-text-muted italic pt-2 border-t border-border/50">
               {settings.fallbackStrategy === "round-robin"

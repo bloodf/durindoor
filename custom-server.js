@@ -18,17 +18,19 @@ const {
   selectProtocol,
 } = require("./src/shared/utils/wsHandshake");
 const { createRealtimeSession, publicSession: publicRealtimeSession } = require("./open-sse/handlers/realtimeCore");
+const { MAX_REALTIME_FRAME_BYTES } = require("./src/shared/utils/realtimeConfig");
 
 const MITM_CONTROL_PATH = "/api/cli-tools/antigravity-mitm";
 const STANDALONE_ROOT_ENV = "DURINDOOR_STANDALONE_ROOT";
 const REALTIME_DISPATCHER = Symbol.for("durindoor.realtimeDispatcher");
+const SINGLE_PROCESS_RUNTIME_ENV = "DURINDOOR_SINGLE_PROCESS_RUNTIME";
 
 // One WS server shared across every http server we wrap (noServer so we own the
 // upgrade handshake). `handleProtocols` selects a safe subprotocol and never
 // echoes the key-bearing `openai-insecure-api-key.<key>` token back to the
 // client. `verifyClient` is deliberately NOT used — auth is enforced after the
 // upgrade via probeApiKey so a 401 maps cleanly to ws close code 4001.
-const realtimeWss = new WebSocketServer({ noServer: true, handleProtocols: selectProtocol });
+const realtimeWss = new WebSocketServer({ noServer: true, maxPayload: MAX_REALTIME_FRAME_BYTES, handleProtocols: selectProtocol });
 
 function canonicalizeRuntimePaths() {
   // Resolve before Next's generated server can change cwd. Every bundled
@@ -37,6 +39,7 @@ function canonicalizeRuntimePaths() {
   const { DATA_DIR } = require("./src/mitm/paths");
   process.env.DATA_DIR = DATA_DIR;
   process.env[STANDALONE_ROOT_ENV] = require("fs").realpathSync(__dirname);
+  process.env[SINGLE_PROCESS_RUNTIME_ENV] = "1";
   return DATA_DIR;
 }
 
@@ -255,7 +258,14 @@ function handleRealtimeUpgrade(req, socket, head, { port } = {}) {
     // pass the `inFlight` gate. This is the only place that dispatches frames.
     let processing = Promise.resolve();
     const enqueue = (data) => {
-      processing = processing.then(() => (rt ? rt.handleClientEvent(data) : undefined)).catch((error) => {
+      processing = processing.then(() => {
+        // Drop frames that were already chained before close/error fired — the
+        // `queue` array only holds not-yet-enqueued frames, so without this
+        // guard a queued `response.create` could still start upstream work
+        // after dispose() ran.
+        if (closed || !rt) return undefined;
+        return rt.handleClientEvent(data);
+      }).catch((error) => {
         process.stderr.write(`[custom-server] realtime event failed: ${error?.message || error}\n`);
       });
     };
@@ -274,7 +284,29 @@ function handleRealtimeUpgrade(req, socket, head, { port } = {}) {
       }
       enqueue(data);
     });
-    ws.on("close", () => { closed = true; queue.length = 0; });
+    ws.on("close", () => {
+      closed = true;
+      queue.length = 0;
+      // Abort any upstream chat still streaming for this session so provider
+      // connections / tokens aren't stranded after the client goes away.
+      // Idempotent and abort-only (owner clears its controller), so it is safe
+      // to run from both `close` and `error`.
+      if (rt) rt.dispose();
+    });
+    ws.on("error", (error) => {
+      // Covers frame-oversize (ws emits error then closes 1009), protocol
+      // violations, and socket errors. `maxPayload` oversize trips here first;
+      // the subsequent `close` also runs the same cleanup — both are safe /
+      // idempotent. Mark closed + drain the queue HERE too: if the close event
+      // is delayed or absent, this stops setup/session creation from continuing
+      // on a dead socket and drops frames held across the auth window. Never
+      // close or send from here: the ws stack already initiates the close with
+      // the correct code (e.g. 1009), and a duplicate close/send can throw.
+      closed = true;
+      queue.length = 0;
+      process.stderr.write(`[custom-server] realtime socket error: ${error?.message || error}\n`);
+      if (rt) rt.dispose();
+    });
 
     try {
       const { key } = extractRealtimeKey(req);

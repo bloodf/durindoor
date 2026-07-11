@@ -21,6 +21,22 @@
 "use strict";
 
 const { randomUUID } = require("crypto");
+const { MAX_SESSION_ITEMS } = require("../../src/shared/utils/realtimeConfig");
+
+// Allowed Realtime modalities for this bridge. `audio` is a recognized protocol
+// value (so session.update accepts it and response.create can refuse it with a
+// clear error) but is never actually synthesized.
+const ALLOWED_MODALITIES = new Set(["text", "audio"]);
+const ALLOWED_ROLES = new Set(["user", "assistant", "system"]);
+
+// Realtime scalar ranges (OpenAI Realtime protocol). Values outside are
+// rejected at session.update rather than forwarded upstream where they'd 400
+// with a less actionable message. `max_output_tokens` also accepts the literal
+// string "inf" on the wire, but this bridge requires finite integers per spec.
+const TEMP_MIN = 0.6;
+const TEMP_MAX = 1.2;
+const MAX_OUTPUT_TOKENS_MIN = 1;
+const MAX_OUTPUT_TOKENS_MAX = 4096;
 
 /** Default OpenAI chat completion body built from a realtime session + user turn. */
 function buildChatBody(session) {
@@ -63,10 +79,99 @@ function sendError(ws, message, { type = "invalid_request_error", code = null, e
  * @param {object} [opts.headers] - headers forwarded to chat (must include Authorization for policy enforcement)
  * @returns {{ session: object, handleClientEvent: (raw: string|Buffer) => Promise<void> }}
  */
-function createRealtimeSession({ ws, session, chat, headers = {} }) {
+function createRealtimeSession({ ws, session, chat, headers = {}, maxItems = MAX_SESSION_ITEMS }) {
   if (typeof chat !== "function") throw new Error("createRealtimeSession requires an injected chat() dispatcher");
 
   let inFlight = null; // AbortController for the active response
+
+  /**
+   * Enforce the session.items cap while NEVER evicting system items (they carry
+   * instructions). Drops the oldest non-system items until the length is at or
+   * below `maxItems`, or until only system items remain. Returns `true` if the
+   * list is now within the cap, `false` if it could not be brought under the
+   * cap because only system items are left (caller must reject the growth).
+   *
+   * Called after EVERY mutation that grows `session.items` — client
+   * `conversation.item.create` AND the assistant turn appended at the end of
+   * `response.create` — so a run of back-to-back responses cannot drift past
+   * the cap. The assistant-turn path always has the triggering user item as a
+   * non-system eviction candidate, so it never hits the `false` branch in
+   * practice; the guard exists for client-driven growth.
+   */
+  function trimSessionItems() {
+    const cap = Number.isFinite(maxItems) && maxItems > 0 ? maxItems : MAX_SESSION_ITEMS;
+    while (session.items.length > cap) {
+      const idx = session.items.findIndex((it) => it.role !== "system");
+      if (idx === -1) return false; // only system items remain; cannot evict further
+      session.items.splice(idx, 1);
+    }
+    return true;
+  }
+
+  /**
+   * Abort any in-flight upstream response. Idempotent: safe to call from both
+   * the `close` and `error` ws handlers, and more than once. The abort surfaces
+   * inside `runResponseCreate` as an `AbortError`, mapped to a `response.done`
+   * with status `"cancelled"`. We deliberately do NOT null `inFlight` here: the
+   * owning `runResponseCreate` clears it in its `finally` (guarded by identity)
+   * so an abort racing a newer `response.create` can never clobber the newer
+   * request's controller.
+   */
+  function dispose() {
+    if (inFlight) {
+      try { inFlight.abort(); } catch { /* ignore */ }
+    }
+  }
+
+  /**
+   * Validate the known fields of a `session.update` payload WITHOUT mutating
+   * the session. Unknown fields are accepted and ignored (not stored) — we only
+   * police the fields we understand. Returns `{ patch }` on success, where
+   * `patch` contains only the validated, coercible known fields; or `{ error }`
+   * on the first invalid known field. Atomicity lives in the caller: nothing is
+   * applied unless every supplied known field validates.
+   *
+   * Field PRESENCE is detected with hasOwnProperty (not `!= null`) so an
+   * explicit JSON `null` — e.g. `"temperature": null` over the wire — is
+   * rejected as wrong-type rather than silently treated as "not supplied".
+   */
+  function validateSessionUpdate(s) {
+    const has = (k) => Object.prototype.hasOwnProperty.call(s, k);
+    const patch = {};
+    if (has("model")) {
+      if (typeof s.model !== "string") return { error: "session.model must be a string" };
+      patch.model = s.model;
+    }
+    if (has("instructions")) {
+      if (typeof s.instructions !== "string") return { error: "session.instructions must be a string" };
+      patch.instructions = s.instructions;
+    }
+    if (has("modalities")) {
+      if (!Array.isArray(s.modalities) || !s.modalities.every((m) => typeof m === "string" && ALLOWED_MODALITIES.has(m))) {
+        return { error: "session.modalities must be an array of: text, audio" };
+      }
+      patch.modalities = s.modalities.slice();
+    }
+    if (has("temperature")) {
+      if (typeof s.temperature !== "number" || !Number.isFinite(s.temperature) || s.temperature < TEMP_MIN || s.temperature > TEMP_MAX) {
+        return { error: `session.temperature must be a finite number in [${TEMP_MIN}, ${TEMP_MAX}]` };
+      }
+      patch.temperature = s.temperature;
+    }
+    if (has("max_output_tokens")) {
+      if (
+        typeof s.max_output_tokens !== "number" ||
+        !Number.isFinite(s.max_output_tokens) ||
+        !Number.isInteger(s.max_output_tokens) ||
+        s.max_output_tokens < MAX_OUTPUT_TOKENS_MIN ||
+        s.max_output_tokens > MAX_OUTPUT_TOKENS_MAX
+      ) {
+        return { error: `session.max_output_tokens must be an integer in [${MAX_OUTPUT_TOKENS_MIN}, ${MAX_OUTPUT_TOKENS_MAX}]` };
+      }
+      patch.maxOutputTokens = s.max_output_tokens;
+    }
+    return { patch };
+  }
 
   async function runResponseCreate() {
     const modalities = session.modalities || ["text"];
@@ -161,8 +266,12 @@ function createRealtimeSession({ ws, session, chat, headers = {} }) {
       });
 
       // Persist assistant turn into the session conversation so subsequent
-      // response.create calls see it.
+      // response.create calls see it, then enforce the item cap (a run of
+      // back-to-back responses otherwise grows history unboundedly). The
+      // triggering user item is always present as a non-system eviction
+      // candidate, so trimming here cannot strand this assistant turn.
       session.items.push({ id: itemId, type: "message", role: "assistant", content: accumulated });
+      trimSessionItems();
 
       send(ws, {
         type: "response.done",
@@ -183,7 +292,11 @@ function createRealtimeSession({ ws, session, chat, headers = {} }) {
         send(ws, { type: "response.done", event_id: `evt_${randomUUID()}`, response: { id: responseId, status: "failed" } });
       }
     } finally {
-      inFlight = null;
+      // Only release the handle if WE are still the active request. A cancel/
+      // close may have aborted us and a newer response.create may already hold
+      // a fresh controller — clearing unconditionally would drop that newer
+      // request's abort handle and defeat dispose() on a later close.
+      if (inFlight === controller) inFlight = null;
     }
   }
 
@@ -198,24 +311,72 @@ function createRealtimeSession({ ws, session, chat, headers = {} }) {
     const type = event?.type;
     switch (type) {
       case "session.update": {
+        // `session`, when PRESENT, must be a non-null, non-array object. Use
+        // hasOwnProperty so an explicit `session: null` is rejected (a bare
+        // `!= null` check would let it through as a no-op `{}`). An omitted
+        // `session` key remains a valid no-op update → emits `session.updated`.
+        const hasSession = Object.prototype.hasOwnProperty.call(event, "session");
+        if (hasSession && (event.session === null || typeof event.session !== "object" || Array.isArray(event.session))) {
+          sendError(ws, "session.update session must be an object", { type: "invalid_request_error", code: "invalid_session_update", eventId: event.event_id || null });
+          break;
+        }
         const s = event.session || {};
-        if (typeof s.model === "string") session.model = s.model;
-        if (typeof s.instructions === "string") session.instructions = s.instructions;
-        if (Array.isArray(s.modalities)) session.modalities = s.modalities;
-        if (s.temperature != null) session.temperature = s.temperature;
-        if (s.max_output_tokens != null) session.maxOutputTokens = s.max_output_tokens;
+        // Validate ALL known fields before mutating anything. Unknown keys in
+        // `s` are accepted and ignored (not stored). On any invalid known
+        // field: emit error, apply NOTHING, send no `session.updated`.
+        const { patch, error } = validateSessionUpdate(s);
+        if (error) {
+          sendError(ws, error, { type: "invalid_request_error", code: "invalid_session_update", eventId: event.event_id || null });
+          break;
+        }
+        if (patch.model != null) session.model = patch.model;
+        if (patch.instructions != null) session.instructions = patch.instructions;
+        if (patch.modalities != null) session.modalities = patch.modalities;
+        if (patch.temperature != null) session.temperature = patch.temperature;
+        if (patch.maxOutputTokens != null) session.maxOutputTokens = patch.maxOutputTokens;
         send(ws, { type: "session.updated", event_id: `evt_${randomUUID()}`, session: publicSession(session) });
         break;
       }
       case "conversation.item.create": {
+        // `item`, when PRESENT, must be a non-null, non-array object. A
+        // malformed shape (null / array / string) must not be coerced into a
+        // default `{role:"user"}` message — reject at the trust boundary.
+        const hasItem = Object.prototype.hasOwnProperty.call(event, "item");
+        if (hasItem && (event.item === null || typeof event.item !== "object" || Array.isArray(event.item))) {
+          sendError(ws, "conversation.item.create item must be an object", { type: "invalid_request_error", code: "invalid_item", eventId: event.event_id || null });
+          break;
+        }
         const item = event.item || {};
+        // Validate only known fields; unknown fields (future protocol
+        // extensions — e.g. function/tool call items that carry no `role`) are
+        // accepted and ignored, NOT preserved on the stored/emitted item.
+        // `role` defaults to "user" when the KEY is absent; an explicit
+        // `role: null` (JSON null over the wire) or any non-string / out-of-set
+        // value is rejected. Presence is detected with hasOwnProperty so null is
+        // not mistaken for "not supplied".
+        const hasRole = Object.prototype.hasOwnProperty.call(item, "role");
+        if (hasRole && (typeof item.role !== "string" || !ALLOWED_ROLES.has(item.role))) {
+          sendError(ws, "item.role must be one of: user, assistant, system", { type: "invalid_request_error", code: "invalid_item_role", eventId: event.event_id || null });
+          break;
+        }
         const stored = {
           id: item.id || `item_${randomUUID()}`,
           type: item.type || "message",
-          role: item.role || "user",
+          role: hasRole ? item.role : "user",
           content: flattenContent(item.content),
         };
+        // Preflight: if the history is already at the cap and EVERY existing
+        // item is a system item, there is nothing evictable (system items are
+        // never dropped) — any push would either overflow or immediately evict
+        // the very item we just added. Reject before mutating state, regardless
+        // of the new item's role. No `conversation.item.created` is emitted.
+        const cap = Number.isFinite(maxItems) && maxItems > 0 ? maxItems : MAX_SESSION_ITEMS;
+        if (session.items.length >= cap && session.items.every((it) => it.role === "system")) {
+          sendError(ws, `session item limit (${cap}) reached`, { type: "invalid_request_error", code: "session_item_limit", eventId: event.event_id || null });
+          break;
+        }
         session.items.push(stored);
+        trimSessionItems();
         send(ws, { type: "conversation.item.created", event_id: `evt_${randomUUID()}`, item: stored });
         break;
       }
@@ -225,7 +386,7 @@ function createRealtimeSession({ ws, session, chat, headers = {} }) {
         break;
       }
       case "response.cancel": {
-        if (inFlight) { try { inFlight.abort(); } catch { /* ignore */ } }
+        dispose();
         break;
       }
       default:
@@ -233,7 +394,7 @@ function createRealtimeSession({ ws, session, chat, headers = {} }) {
     }
   }
 
-  return { session, handleClientEvent };
+  return { session, handleClientEvent, dispose };
 }
 
 function flattenContent(content) {

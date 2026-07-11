@@ -4,6 +4,7 @@ import {
 } from "../services/auth.js";
 import { getSettings, getApiKeyByKey } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
+import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
 import { handleTtsCore } from "open-sse/handlers/ttsCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
@@ -63,7 +64,11 @@ export async function handleTts(request) {
   const comboModels = await getComboModels(modelStr, settings.hidePaidModels === true);
   if (comboModels) {
     const comboStrategies = settings.comboStrategies || {};
-    const comboStrategy = comboStrategies[modelStr]?.fallbackStrategy || settings.comboStrategy || "fallback";
+    const perCombo = comboStrategies[modelStr] || {};
+    const comboSpecificStrategy = isAutoComboId(modelStr)
+      ? (perCombo.strategy ?? perCombo.fallbackStrategy)
+      : perCombo.fallbackStrategy;
+    const comboStrategy = comboSpecificStrategy || settings.comboStrategy || "fallback";
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
     log.info("TTS", `Combo "${modelStr}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
     return handleComboChat({

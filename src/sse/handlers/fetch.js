@@ -13,6 +13,8 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
+import { getAutoComboCatalog } from "../services/model.js";
+import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
 import { filterPaidModels } from "open-sse/providers/pricing.js";
 import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
@@ -86,12 +88,15 @@ export async function handleFetch(request) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, err.message);
   }
 
-  // Per-key combo access control
+  // Per-key combo access control. Auto-combo catalog computed lazily — only
+  // for `auto/<family>` ids — so named-combo traffic keeps its current DB cost.
+  const autoCatalog = isAutoComboId(providerInput) ? await getAutoComboCatalog() : null;
+  const autoOptions = autoCatalog ? { catalog: autoCatalog, settings } : { settings };
   if (apiKey && providerInput) {
     const keyData = await getApiKeyByKey(apiKey);
     if (keyData && Array.isArray(keyData.allowedCombos) && keyData.allowedCombos.length > 0) {
       const combosData = await getCombos();
-      const isCombo = getComboModelsFromData(providerInput, combosData);
+      const isCombo = getComboModelsFromData(providerInput, combosData, autoOptions);
       if (isCombo && !keyData.allowedCombos.includes(providerInput)) {
         log.warn("AUTH", `API key "${keyData.name}" not allowed to access combo "${providerInput}"`);
         return errorResponse(HTTP_STATUS.FORBIDDEN, `Access denied: combo "${providerInput}" is not allowed for this API key`);
@@ -105,12 +110,16 @@ export async function handleFetch(request) {
   // above calls getComboModelsFromData without filtering so combo existence/ACL
   // stay against the real member list.
   const comboModels = filterPaidModels(
-    getComboModelsFromData(providerInput, combos),
+    getComboModelsFromData(providerInput, combos, autoOptions),
     settings.hidePaidModels === true,
   );
   if (comboModels) {
     const comboStrategies = settings.comboStrategies || {};
-    const comboStrategy = comboStrategies[providerInput]?.fallbackStrategy || settings.comboStrategy || "fallback";
+    const perCombo = comboStrategies[providerInput] || {};
+    const comboSpecificStrategy = isAutoComboId(providerInput)
+      ? (perCombo.strategy ?? perCombo.fallbackStrategy)
+      : perCombo.fallbackStrategy;
+    const comboStrategy = comboSpecificStrategy || settings.comboStrategy || "fallback";
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
     log.info("FETCH", `Combo "${providerInput}" with ${comboModels.length} providers (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
     return handleComboChat({

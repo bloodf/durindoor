@@ -7,6 +7,7 @@ import { checkFallbackError, formatRetryAfter } from "./accountFallback.js";
 import { unavailableResponse } from "../utils/error.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { extractTextContent } from "../translator/formats/gemini.js";
+import { isAutoComboId, familyOfAutoId, resolveAutoCombo } from "./autoComboResolver.js";
 
 // Hard capabilities = input modalities; missing one drops request data (e.g. image
 // stripped). Must be prioritized. Soft (e.g. search) only degrades a feature.
@@ -37,62 +38,16 @@ export function splitFingerprintPin(id) {
 }
 
 // ─── Model-family detection (auto-combo family helpers, #6509 / #6453) ───────
-// Pure, dependency-free primitives ported verbatim in shape from
-// omniroute open-sse/services/autoCombo/modelFamily.ts so the auto-combo
-// resolver seam (F-2) can import just these without engine.ts.
-//
-// MODEL_FAMILIES is the ordered list of family ids. AUTO_FAMILY_IDS are the
-// advertised `auto/<family>` catalog ids. detectModelFamily matches the BARE
-// model id (everything after the LAST slash) against anchored prefixes; `zai`
-// is intentionally NOT detectable from a model id — it is a provider-override
-// family ("route to my z.ai backend"), distinct from `glm` ("any GLM backend").
-export const MODEL_FAMILIES = Object.freeze([
-  "glm",
-  "minimax",
-  "mimo",
-  "zai",
-  "gemma",
-  "llama",
-  "gemini",
-]);
-
-const MODEL_FAMILY_SET = new Set(MODEL_FAMILIES);
-
-// Model-id prefix → family, matched against the bare id (provider prefix
-// stripped). Order matters: first match wins.
-const FAMILY_ID_PATTERNS = Object.freeze([
-  { family: "glm", pattern: /^glm-/i },
-  { family: "minimax", pattern: /^minimax-/i },
-  { family: "mimo", pattern: /^mimo-/i },
-  { family: "gemma", pattern: /^gemma-/i },
-  { family: "llama", pattern: /^llama-/i },
-  { family: "gemini", pattern: /^gemini-/i },
-]);
-
-// Advertised `auto/<family>` catalog ids (#6453), e.g. `auto/glm`, `auto/minimax`.
-export const AUTO_FAMILY_IDS = Object.freeze(MODEL_FAMILIES.map((f) => `auto/${f}`));
-
-/** @returns {boolean} whether `value` is a known family id (incl. `zai`). */
-export function isValidModelFamily(value) {
-  return typeof value === "string" && MODEL_FAMILY_SET.has(value);
-}
-
-/**
- * Detect the model family from a bare or provider-prefixed model id.
- * Returns null when the id matches no known prefix — including `zai`, which is
- * never detected from a model id (provider-override family; see above).
- *
- * @param {string} modelId - bare id or "provider/model"
- * @returns {string|null} family id from MODEL_FAMILIES (never "zai"), or null
- */
-export function detectModelFamily(modelId) {
-  if (typeof modelId !== "string" || modelId.trim().length === 0) return null;
-  const bare = modelId.includes("/") ? modelId.slice(modelId.lastIndexOf("/") + 1) : modelId;
-  for (const { family, pattern } of FAMILY_ID_PATTERNS) {
-    if (pattern.test(bare)) return family;
-  }
-  return null;
-}
+// Canonical surface lives in the dependency-free autoComboFamilies module so
+// combo.js and the resolver share it without a cycle. Re-exported here for
+// existing importers (tests + downstream combo code).
+export {
+  MODEL_FAMILIES,
+  AUTO_FAMILY_IDS,
+  isValidModelFamily,
+  detectModelFamily,
+  isProviderOverrideFamily,
+} from "./autoComboFamilies.js";
 
 // Flatten tool turns into prose so panel models keep the context but can't loop
 // on tools: drop the request's tools, turn tool/function results into assistant
@@ -781,12 +736,27 @@ export function resetComboScoring(comboName) {
 }
 
 /**
- * Get combo models from combos data
+ * Get combo models from combos data. `auto/<family>` resolves BEFORE the slash
+ * guard and the combos-data lookup: a recognized auto id always returns an array
+ * (possibly empty) — never null — so callers enter the combo path and fail fast
+ * (handleComboChat emits a controlled 503) rather than falling through to a
+ * literal "auto" provider or a combos-data miss.
  * @param {string} modelStr - Model string to check
  * @param {Array|Object} combosData - Array of combos or object with combos
- * @returns {string[]|null} Array of models or null if not a combo
+ * @param {Object} [options] - { catalog, settings } for auto/* resolution
+ * @returns {string[]|null} Array of models (empty for empty auto pool), or null if not a combo
  */
-export function getComboModelsFromData(modelStr, combosData) {
+export function getComboModelsFromData(modelStr, combosData, options = {}) {
+  // `auto/<family>` resolves BEFORE the slash guard and the combos-data lookup.
+  // With a catalog supplied it materializes the family pool; with no catalog the
+  // recognized auto id still short-circuits to [] (fail-fast) rather than
+  // falling through to a literal "auto" provider or a combos-data miss. A
+  // recognized auto id always returns an array (possibly empty) — never null.
+  if (isAutoComboId(modelStr)) {
+    const family = familyOfAutoId(modelStr);
+    return resolveAutoCombo(family, options.catalog || {}, options.settings);
+  }
+
   // Don't check if it's in provider/model format
   if (modelStr.includes("/")) return null;
   

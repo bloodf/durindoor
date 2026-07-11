@@ -1,8 +1,10 @@
 // Re-export from open-sse with localDb integration
-import { getModelAliases, getComboByName, getProviderNodes } from "@/lib/localDb";
+import { getModelAliases, getComboByName, getProviderNodes, getProviderConnections } from "@/lib/localDb";
 import { parseModel as parseModelCore, resolveModelAliasFromMap, getModelInfoCore } from "open-sse/services/model.js";
 import { filterPaidModels } from "open-sse/providers/pricing.js";
+import { isAutoComboId, familyOfAutoId, resolveAutoCombo } from "open-sse/services/autoComboResolver.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
+import { PROVIDER_MODELS } from "open-sse/providers/index.js";
 
 // Local provider alias overrides (HMR-friendly, applied on top of open-sse map)
 const LOCAL_PROVIDER_ALIASES = {
@@ -81,22 +83,73 @@ export async function getModelInfo(modelStr) {
 }
 
 /**
+ * Build the auto-combo catalog: the subset of PROVIDER_MODELS served by
+ * currently-active provider connections. Auto-combo pools span whatever is
+ * actually connected — never the full bundled registry (which lists every
+ * provider we support, connected or not).
+ *
+ * Connection rows carry `provider` (registry id) + `isActive`. PROVIDER_MODELS
+ * is keyed by registry alias/id. We map active connection provider ids through
+ * the registry so ids and aliases both resolve, then intersect.
+ *
+ * @returns {Promise<Object>} PROVIDER_MODELS-shaped map { [alias]: Array<{id}> }
+ */
+export async function getAutoComboCatalog() {
+  // DB errors propagate: a connection-store failure must not masquerade as an
+  // empty auto-combo pool (which would fail a request the caller might have
+  // served). Callers handle/report the error at their layer.
+  const connections = (await getProviderConnections()) || [];
+  // Registry id → alias used as PROVIDER_MODELS key.
+  const idToKey = new Map();
+  for (const entry of REGISTRY) {
+    const key = entry.alias || entry.id;
+    idToKey.set(entry.id, key);
+    if (entry.alias) idToKey.set(entry.alias, key);
+  }
+  const catalog = {};
+  for (const conn of connections) {
+    if (!conn || conn.isActive === false) continue;
+    const key = idToKey.get(conn.provider) || conn.provider;
+    const models = PROVIDER_MODELS[key];
+    if (!Array.isArray(models) || models.length === 0) continue;
+    if (!catalog[key]) catalog[key] = models;
+  }
+  return catalog;
+}
+
+/**
  * Check if model is a combo and get models list.
  *
- * When `hidePaidModels` is true, paid members are filtered out via pricing.js
- * so chat/image/TTS combo routing honor the toggle. The saved combo object is
- * never mutated. Default is `false` so ACL existence checks (which must see the
- * real combo) and any caller that did not load settings behave as a passthrough
- * and trigger NO settings DB read. Routing handlers already hold `settings` and
- * pass `settings.hidePaidModels === true`. Toggle off (default) returns the
+ * `auto/<family>` ids (F-2 auto-combo) resolve BEFORE the slash guard and DB
+ * lookup: virtual combos materialized from the active-connections catalog. A
+ * recognized auto id always returns an array (possibly empty) — never null — so
+ * callers enter the combo path and fail fast on an empty pool rather than
+ * falling through to a literal "auto" provider or a DB miss. `resolveAutoCombo`
+ * is pure over the catalog (settings ignored), so the second argument stays the
+ * F-4 boolean.
+ *
+ * When `hidePaidModels` is true (#6495 / F-4), paid members of a SAVED combo are
+ * filtered out via pricing.js so chat/image/TTS combo routing honor the toggle.
+ * The saved combo object is never mutated. Default `false` keeps ACL existence
+ * checks (which must see the real combo) and any caller that did not load
+ * settings a passthrough with NO settings DB read. Routing handlers already hold
+ * `settings` and pass `settings.hidePaidModels === true`. Toggle off returns the
  * original array reference so identity-sensitive callers and the "off === full
  * list" contract hold.
  *
  * @param {string} modelStr
  * @param {boolean} [hidePaidModels=false]
- * @returns {Promise<string[]|null>} Array of models or null if not a combo
+ * @returns {Promise<string[]|null>} Array of models (empty for empty auto pool), or null if not a combo
  */
 export async function getComboModels(modelStr, hidePaidModels = false) {
+  if (isAutoComboId(modelStr)) {
+    const family = familyOfAutoId(modelStr);
+    const catalog = await getAutoComboCatalog();
+    // F-4 #6495: filter paid auto-combo members through the same toggle as saved
+    // combos so chat/image/TTS routing honors `hidePaidModels` uniformly.
+    return filterPaidModels(resolveAutoCombo(family, catalog), hidePaidModels === true);
+  }
+
   // Only check if it's not in provider/model format
   if (modelStr.includes("/")) return null;
 

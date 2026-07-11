@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getSettings: vi.fn(),
   getComboModels: vi.fn(),
+  getComboResolution: vi.fn(),
   getModelInfo: vi.fn(),
   getProviderCredentials: vi.fn(),
   markAccountUnavailable: vi.fn(),
@@ -18,6 +19,7 @@ vi.mock("@/lib/localDb", () => ({
 
 vi.mock("../../src/sse/services/model.js", () => ({
   getComboModels: mocks.getComboModels,
+  getComboResolution: mocks.getComboResolution,
   getModelInfo: mocks.getModelInfo,
 }));
 
@@ -84,6 +86,11 @@ describe("Antigravity combo capacity cycling", () => {
     mocks.getComboModels.mockImplementation(async (model) => (
       model === "combo-ag"
         ? ["ag/claude-opus-4-6-thinking", "kiro/claude-sonnet-4.5"]
+        : null
+    ));
+    mocks.getComboResolution.mockImplementation(async (model) => (
+      model === "combo-ag"
+        ? { kind: "combo", models: ["ag/claude-opus-4-6-thinking", "kiro/claude-sonnet-4.5"] }
         : null
     ));
     mocks.getModelInfo.mockImplementation(async (modelStr) => {

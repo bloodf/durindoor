@@ -3,7 +3,7 @@ import {
   getProviderCredentials, markAccountUnavailable,
 } from "../services/auth.js";
 import { getSettings, getApiKeyByKey } from "@/lib/localDb";
-import { getModelInfo, getComboModels } from "../services/model.js";
+import { getModelInfo, getComboResolution } from "../services/model.js";
 import { handleTtsCore } from "open-sse/handlers/ttsCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
@@ -41,23 +41,28 @@ export async function handleTts(request) {
     apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
   );
 
-  // Per-key combo access control
-  if (apiKey && modelStr) {
-    const keyData = await getApiKeyByKey(apiKey);
-    if (keyData && Array.isArray(keyData.allowedCombos) && keyData.allowedCombos.length > 0) {
-      const comboCheck = await getComboModels(modelStr);
-      if (comboCheck && !keyData.allowedCombos.includes(modelStr)) {
-        log.warn("AUTH", `API key "${keyData.name}" not allowed to access combo "${modelStr}"`);
-        return errorResponse(HTTP_STATUS.FORBIDDEN, `Access denied: combo "${modelStr}" is not allowed for this API key`);
-      }
-    }
-  }
-
   if (!modelStr) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   if (!body.input) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: input");
 
-  // Combo expansion: model may be a combo name → run fallback/round-robin across models
-  const comboModels = await getComboModels(modelStr);
+  // Combo expansion (resolved once, reused for allowlist + dispatch).
+  const comboResolution = await getComboResolution(modelStr, settings);
+  const comboModels = comboResolution?.kind === "combo" ? comboResolution.models : null;
+
+  // Per-key combo access control: any combo (named OR auto/*) is gated, even
+  // when the auto pool is empty, so denied keys get 403 not 503.
+  if (comboResolution && apiKey) {
+    const keyData = await getApiKeyByKey(apiKey);
+    if (keyData && Array.isArray(keyData.allowedCombos) && keyData.allowedCombos.length > 0 && !keyData.allowedCombos.includes(modelStr)) {
+      log.warn("AUTH", `API key "${keyData.name}" not allowed to access combo "${modelStr}"`);
+      return errorResponse(HTTP_STATUS.FORBIDDEN, `Access denied: combo "${modelStr}" is not allowed for this API key`);
+    }
+  }
+
+  // Auto-combos resolving to an empty/disabled installed pool fail fast (#6546).
+  if (comboResolution?.kind === "auto-empty") {
+    log.warn("TTS", `Auto-combo "${modelStr}" ${comboResolution.reason}`);
+    return errorResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, comboResolution.reason);
+  }
   if (comboModels) {
     const comboStrategies = settings.comboStrategies || {};
     const comboStrategy = comboStrategies[modelStr]?.fallbackStrategy || settings.comboStrategy || "fallback";

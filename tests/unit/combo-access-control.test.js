@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   getApiKeyByKey: vi.fn(),
   getApiKeyUsageLimitStatus: vi.fn(),
   getComboModels: vi.fn(),
+  getComboResolution: vi.fn(),
   getModelInfo: vi.fn(),
   extractApiKey: vi.fn(),
   evaluateApiKeyAuth: vi.fn(),
@@ -28,6 +29,7 @@ vi.mock("@/lib/localDb", () => ({
 
 vi.mock("../../src/sse/services/model.js", () => ({
   getComboModels: mocks.getComboModels,
+  getComboResolution: mocks.getComboResolution,
   getModelInfo: mocks.getModelInfo,
 }));
 
@@ -91,6 +93,11 @@ describe("per-key combo access control (#2203)", () => {
     mocks.enforceApiKeyModelPolicy.mockResolvedValue(null);
     mocks.getComboModels.mockImplementation(async (model) =>
       model === "combo-privileged" ? ["prov/model-a", "prov/model-b"] : null
+    );
+    mocks.getComboResolution.mockImplementation(async (model) =>
+      model === "combo-privileged"
+        ? { kind: "combo", models: ["prov/model-a", "prov/model-b"] }
+        : null
     );
     mocks.getModelInfo.mockImplementation(async (modelStr) => ({ provider: "prov", model: modelStr }));
     mocks.handleComboChat.mockResolvedValue(new Response("ok", { status: 200 }));

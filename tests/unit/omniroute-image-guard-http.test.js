@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getSettings: vi.fn(),
   getComboModels: vi.fn(),
+  getComboResolution: vi.fn(),
   getModelInfo: vi.fn(),
   getProviderCredentials: vi.fn(),
   handleChatCore: vi.fn(),
@@ -17,6 +18,7 @@ vi.mock("@/lib/localDb", () => ({
 
 vi.mock("../../src/sse/services/model.js", () => ({
   getComboModels: mocks.getComboModels,
+  getComboResolution: mocks.getComboResolution,
   getModelInfo: mocks.getModelInfo,
 }));
 
@@ -64,6 +66,7 @@ describe("#6525 /v1/chat/completions rejects image-only models before dispatch",
       comboStickyRoundRobinLimit: 1,
     });
     mocks.getComboModels.mockResolvedValue(null);
+    mocks.getComboResolution.mockResolvedValue(null);
     mocks.enforceApiKeyModelPolicy.mockResolvedValue(null);
   });
 

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getSettings: vi.fn(),
   getComboModels: vi.fn(),
+  getComboResolution: vi.fn(),
   getModelInfo: vi.fn(),
   getProviderCredentials: vi.fn(),
   handleChatCore: vi.fn(),
@@ -17,6 +18,7 @@ vi.mock("@/lib/localDb", () => ({
 
 vi.mock("../../src/sse/services/model.js", () => ({
   getComboModels: mocks.getComboModels,
+  getComboResolution: mocks.getComboResolution,
   getModelInfo: mocks.getModelInfo,
 }));
 
@@ -85,6 +87,7 @@ describe("Vision Bridge (#6640) chat wiring", () => {
     vi.clearAllMocks();
     mocks.getSettings.mockResolvedValue(baseSettings());
     mocks.getComboModels.mockResolvedValue(null);
+    mocks.getComboResolution.mockResolvedValue(null);
     mocks.enforceApiKeyModelPolicy.mockResolvedValue(null);
     mocks.getProviderCredentials.mockResolvedValue({ apiKey: "k", providerSpecificData: {} });
     mocks.handleChatCore.mockResolvedValue({ success: true, response: new Response("ok", { status: 200 }) });

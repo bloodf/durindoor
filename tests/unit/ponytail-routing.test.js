@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   getApiKeyUsageLimitStatus: vi.fn(),
   getApiKeyUsageTotals: vi.fn(),
   getComboModels: vi.fn(),
+  getComboResolution: vi.fn(),
   getModelInfo: vi.fn(),
   getProviderCredentials: vi.fn(),
   handleChatCore: vi.fn(),
@@ -20,6 +21,7 @@ vi.mock("@/lib/localDb", () => ({
 }));
 vi.mock("../../src/sse/services/model.js", () => ({
   getComboModels: mocks.getComboModels,
+  getComboResolution: mocks.getComboResolution,
   getModelInfo: mocks.getModelInfo,
 }));
 vi.mock("../../src/sse/services/auth.js", () => ({
@@ -100,6 +102,7 @@ describe("Ponytail route integration", () => {
       totalCost: 0.5,
     });
     mocks.getComboModels.mockResolvedValue(null);
+    mocks.getComboResolution.mockResolvedValue(null);
     mocks.getModelInfo.mockResolvedValue({ provider: "openai", model: "gpt-4o" });
     mocks.enforceApiKeyModelPolicy.mockResolvedValue(null);
   });

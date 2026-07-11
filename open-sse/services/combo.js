@@ -7,6 +7,7 @@ import { checkFallbackError, formatRetryAfter } from "./accountFallback.js";
 import { unavailableResponse } from "../utils/error.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { extractTextContent } from "../translator/formats/gemini.js";
+import { PROVIDER_MODELS } from "../providers/index.js";
 
 // Hard capabilities = input modalities; missing one drops request data (e.g. image
 // stripped). Must be prioritized. Soft (e.g. search) only degrades a feature.
@@ -707,7 +708,16 @@ export function resetComboScoring(comboName) {
  * @param {Array|Object} combosData - Array of combos or object with combos
  * @returns {string[]|null} Array of models or null if not a combo
  */
-export function getComboModelsFromData(modelStr, combosData) {
+// Combo resolver for the fetch/search call sites. The handlers are async and
+// MUST pass options = { catalog, settings } (buildInstalledProviderCatalog +
+// getSettings) so auto/* resolves identically to the chat path and never leaks
+// unconfigured providers. With no catalog supplied, auto/* resolves to []
+// (fail-fast) — there is no bundled-registry fallback here.
+export function getComboModelsFromData(modelStr, combosData, options = {}) {
+  if (isAutoComboId(modelStr)) {
+    const resolved = resolveAutoCombo(modelStr, { ...options, catalog: options.catalog ?? {} });
+    return resolved ? resolved.members : null;
+  }
   // Don't check if it's in provider/model format
   if (modelStr.includes("/")) return null;
   
@@ -721,6 +731,155 @@ export function getComboModelsFromData(modelStr, combosData) {
   return null;
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// Auto-combo engine — provider-family auto combos (auto/glm, auto/minimax, …)
+// ────────────────────────────────────────────────────────────────────────────
+// A family auto-combo materializes an on-demand virtual combo spanning whatever
+// installed providers currently expose that model family. Resolution is pure
+// over the catalog: it never touches the DB, so it works in both the sync
+// (fetch/search) and async (chat/image/tts) dispatch paths. The resolved
+// members flow back through the existing combo strategies (fallback /
+// round-robin / smart-scoring / fusion) — auto-combo adds WHERE the pool comes
+// from, not a new selection algorithm.
+//
+// Families and their match boundaries (#6453). Anchored prefix rules only — no
+// substring matching — so e.g. `glm` never matches an arbitrary id that merely
+// contains "glm".
+
+export const MODEL_FAMILIES = Object.freeze(["glm", "minimax", "mimo", "zai", "gemma", "llama", "gemini"]);
+const MODEL_FAMILY_SET = new Set(MODEL_FAMILIES);
+
+// Bare model-id prefix → family. Matched against the id with any provider prefix
+// stripped, so `glm-5.2` and `zai/glm-5.2` resolve identically.
+const FAMILY_ID_PATTERNS = Object.freeze([
+  { family: "glm", pattern: /^glm-/i },
+  { family: "minimax", pattern: /^minimax-/i },
+  { family: "mimo", pattern: /^mimo-/i },
+  { family: "gemma", pattern: /^gemma-/i },
+  { family: "llama", pattern: /^llama-/i },
+  { family: "gemini", pattern: /^gemini-/i },
+]);
+
+// `zai` is NOT a model-id prefix: z.ai serves the same `glm-*` ids as every other
+// GLM backend, so `auto/zai` resolves by PROVIDER alias ("route to my z.ai
+// backend"), distinct from `auto/glm` ("any provider serving a GLM model").
+const FAMILY_PROVIDER_OVERRIDE = Object.freeze({ zai: "zai" });
+
+export function isValidModelFamily(value) {
+  return typeof value === "string" && MODEL_FAMILY_SET.has(value);
+}
+
+export function detectModelFamily(modelId) {
+  if (typeof modelId !== "string" || modelId.trim().length === 0) return null;
+  const bare = modelId.includes("/") ? modelId.slice(modelId.lastIndexOf("/") + 1) : modelId;
+  for (const { family, pattern } of FAMILY_ID_PATTERNS) {
+    if (pattern.test(bare)) return family;
+  }
+  return null;
+}
+
+// Advertised auto-combo ids, e.g. `auto/glm`.
+export const AUTO_FAMILY_IDS = Object.freeze(MODEL_FAMILIES.map((f) => `auto/${f}`));
+
+const AUTO_COMBO_PREFIX = "auto/";
+
+export function isAutoComboId(modelStr) {
+  if (typeof modelStr !== "string" || !modelStr.startsWith(AUTO_COMBO_PREFIX)) return false;
+  return isValidModelFamily(modelStr.slice(AUTO_COMBO_PREFIX.length).toLowerCase());
+}
+
+function familyOfAutoId(modelStr) {
+  return modelStr.slice(AUTO_COMBO_PREFIX.length).toLowerCase();
+}
+
+/**
+ * Build the candidate filter for `auto/<family>`.
+ * - provider-override families (zai) match by provider alias;
+ * - every other family matches by `detectModelFamily(model) === family`.
+ */
+export function buildFamilyCandidateFilter(family) {
+  const override = FAMILY_PROVIDER_OVERRIDE[family];
+  if (override) return (candidate) => candidate.provider === override;
+  return (candidate) => detectModelFamily(candidate.model) === family;
+}
+
+// Normalize a catalog entry into a flat list of {provider, model} candidates.
+// Accepts either:
+//   - PROVIDER_MODELS shape: { [alias]: Array<{id}|string> }
+//   - an explicit array: [{ provider, model }]
+// Provider-qualified output (`alias/modelId`) is what the dispatch path expects.
+function catalogToCandidates(catalog) {
+  if (!catalog) return [];
+  if (Array.isArray(catalog)) {
+    return catalog
+      .filter((c) => c && typeof c.provider === "string" && typeof c.model === "string")
+      .map((c) => ({ provider: c.provider, model: c.model }));
+  }
+  const out = [];
+  for (const [alias, models] of Object.entries(catalog)) {
+    if (!Array.isArray(models)) continue;
+    for (const entry of models) {
+      const id = typeof entry === "string" ? entry : entry?.id;
+      if (typeof id === "string" && id.length > 0) out.push({ provider: alias, model: id });
+    }
+  }
+  return out;
+}
+
+/**
+ * Resolve `auto/<family>` to its live member model strings.
+ *
+ * @param {string} modelStr - e.g. "auto/glm"
+ * @param {Object} [options]
+ * @param {Object|Array} [options.catalog] - PROVIDER_MODELS map or [{provider,model}] list.
+ *   Defaults to the bundled registry catalog (PROVIDER_MODELS).
+ * @param {Object} [options.settings] - settings slice carrying comboStrategies.
+ * @returns {null|{ family:string, members:string[], judgeModel:string|null, strategy:string }}
+ *   null when modelStr is not an auto-combo id. members is [] (never null) when the
+ *   family matches zero installed providers — callers fail fast on that.
+ */
+export function resolveAutoCombo(modelStr, options = {}) {
+  if (!isAutoComboId(modelStr)) return null;
+  const family = familyOfAutoId(modelStr);
+
+  // Explicit enable/disable (persisted by the dashboard, F-2b). Resolution
+  // short-circuits to a disabled marker so callers fail fast with a clear 503
+  // rather than silently falling through to a literal "auto/<family>" provider.
+  const autoCombo = options.settings?.autoCombo;
+  if (autoCombo && autoCombo.enabled === false) {
+    return { family, members: [], judgeModel: null, strategy: "smart-scoring", disabled: true, reason: "auto-combo disabled" };
+  }
+  const perFamily = autoCombo?.families?.[modelStr];
+  if (perFamily && perFamily.enabled === false) {
+    return { family, members: [], judgeModel: null, strategy: "smart-scoring", disabled: true, reason: `auto-combo family "${family}" disabled` };
+  }
+
+  const catalog = options.catalog ?? PROVIDER_MODELS;
+  const candidates = catalogToCandidates(catalog);
+  const filter = buildFamilyCandidateFilter(family);
+
+  // Deterministic order + dedupe: same provider/model from two aliases collapses.
+  const seen = new Set();
+  const members = [];
+  for (const c of candidates) {
+    if (!filter(c)) continue;
+    const qualified = `${c.provider}/${c.model}`;
+    if (seen.has(qualified)) continue;
+    seen.add(qualified);
+    members.push(qualified);
+  }
+
+  const comboStrategies = options.settings?.comboStrategies || {};
+  const perCombo = comboStrategies[modelStr] || {};
+  const strategy = perCombo.fallbackStrategy || options.settings?.comboStrategy || "smart-scoring";
+  const judgeModel = typeof perCombo.judgeModel === "string" && perCombo.judgeModel.trim()
+    ? perCombo.judgeModel.trim()
+    : null;
+
+  return { family, members, judgeModel, strategy };
+}
+
+
 /**
  * Handle combo chat with fallback
  * @param {Object} options
@@ -733,6 +892,18 @@ export function getComboModelsFromData(modelStr, combosData) {
  * @param {number|string} [options.comboStickyLimit=1] - Requests per combo model before switching
  * @returns {Promise<Response>}
  */
+// #6733: when a sticky round-robin pins a conversation to a model and that model
+// fails (fallback, non-fallback early-return, or thrown exception), release the
+// conversation affinity so the next turn isn't re-pinned to a dead model —
+// otherwise failover is permanently defeated for that conversation. No-op when
+// stickyLimit<=1 (no affinity) or when there is no cache key.
+function releaseStickyAffinity(comboName, conversationCacheKey, comboStickyLimit) {
+  if (!conversationCacheKey) return;
+  if (normalizeStickyLimit(comboStickyLimit) <= 1) return;
+  const rotationKey = comboName || "__default__";
+  comboConversationAffinity.delete(`${rotationKey}:${conversationCacheKey}`);
+}
+
 export async function handleComboChat({ body, models, handleSingleModel, log, comboName, comboStrategy, comboStickyLimit = 1, autoSwitch = true }) {
   // Apply rotation/scoring strategy
   const conversationCacheKey = getConversationCacheKey(body);
@@ -816,11 +987,13 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
 
       if (!shouldFallback) {
         if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, false, result.status);
+        releaseStickyAffinity(comboName, conversationCacheKey, comboStickyLimit);
         log.warn("COMBO", `Model ${modelStr} failed (no fallback)`, { status: result.status });
         return result;
       }
 
       if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, false, result.status);
+      releaseStickyAffinity(comboName, conversationCacheKey, comboStickyLimit);
 
       // For transient errors (503/502/504), wait for cooldown before falling through
       // so a briefly-overloaded provider gets a chance to recover rather than being
@@ -837,6 +1010,7 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
       log.warn("COMBO", `Model ${modelStr} failed, trying next`, { status: result.status });
     } catch (error) {
       // Catch unexpected exceptions to ensure fallback continues
+      releaseStickyAffinity(comboName, conversationCacheKey, comboStickyLimit);
       lastError = error.message || String(error);
       if (!lastStatus) lastStatus = 500;
       log.warn("COMBO", `Model ${modelStr} threw error, trying next`, { error: lastError });
@@ -1042,8 +1216,14 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
   }
 
   const cfg = { ...FUSION_DEFAULTS, ...(tuning || {}) };
-  const minPanel = Math.min(Math.max(2, cfg.minPanel), panel.length);
-  const judge = judgeModel && judgeModel.trim() ? judgeModel.trim() : panel[0];
+  // #6521: honor user-supplied minPanel down to 1. With 1 survivor we still
+  // degrade gracefully via the answers.length===1 branch below.
+  const minPanel = Math.min(Math.max(1, cfg.minPanel), panel.length);
+  // #6607: track whether the operator explicitly configured a judgeModel so a
+  // lone surviving answer is still synthesized through the configured judge
+  // rather than silently substituted by the surviving panel member.
+  const hasExplicitJudge = Boolean(judgeModel && judgeModel.trim());
+  const judge = hasExplicitJudge ? judgeModel.trim() : panel[0];
   log.info("FUSION", `Combo "${comboName}" | panel=${panel.length} [${panel.join(", ")}] | judge=${judge} | quorum=${minPanel}`);
 
   // 1. Fan out to the panel in parallel: non-streaming, tools stripped (we want prose).
@@ -1062,15 +1242,16 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
   const settled = await collectPanel(calls, { ...cfg, minPanel });
   log.info("FUSION", `fan-out collected in ${Date.now() - t0}ms`);
 
-  // 2. Collect successful answers.
+  // 2. Collect successful answers + per-member failure reasons (#6521).
   const answers = [];
+  const failures = [];
   for (let i = 0; i < settled.length; i++) {
     const res = settled[i];
     const model = panel[i];
-    if (!res) { log.warn("FUSION", `Panel ${model} dropped (straggler/timeout)`); continue; }
-    if (res.__timeout) { log.warn("FUSION", `Panel ${model} timed out`); continue; }
-    if (res.__error) { log.warn("FUSION", `Panel ${model} threw`, { error: res.__error?.message || String(res.__error) }); continue; }
-    if (!res.ok) { log.warn("FUSION", `Panel ${model} failed`, { status: res.status }); continue; }
+    if (!res) { log.warn("FUSION", `Panel ${model} dropped (straggler/timeout)`); failures.push({ model, reason: "straggler_dropped" }); continue; }
+    if (res.__timeout) { log.warn("FUSION", `Panel ${model} timed out`); failures.push({ model, reason: "timeout" }); continue; }
+    if (res.__error) { log.warn("FUSION", `Panel ${model} threw`, { error: res.__error?.message || String(res.__error) }); failures.push({ model, reason: "threw" }); continue; }
+    if (!res.ok) { log.warn("FUSION", `Panel ${model} failed`, { status: res.status }); failures.push({ model, reason: `status_${res.status}` }); continue; }
     try {
       const json = await res.clone().json();
       const text = extractPanelText(json);
@@ -1079,23 +1260,34 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
         log.info("FUSION", `Panel ${model} ok (${text.length} chars)`);
       } else {
         log.warn("FUSION", `Panel ${model} returned empty content`);
+        failures.push({ model, reason: "empty_content" });
       }
     } catch (e) {
       log.warn("FUSION", `Panel ${model} unparseable`, { error: e.message || String(e) });
+      failures.push({ model, reason: "unparseable" });
     }
   }
 
   // 3. Degrade gracefully when the panel is too thin to fuse.
   if (answers.length === 0) {
-    log.warn("FUSION", "All panel models failed");
+    // #6521: surface per-member reasons so a rate-limit fan-fail (status_429) is
+    // distinguishable from an outage — strictly more informative than an aggregate.
+    const detail = failures.map((f) => `${f.model}=${f.reason}`).join(", ");
+    log.warn("FUSION", `No live models: ${detail}`);
     return new Response(
-      JSON.stringify({ error: { message: "All fusion panel models failed" } }),
+      JSON.stringify({ error: { message: detail ? `All fusion panel models failed: ${detail}` : "All fusion panel models failed" } }),
       { status: 503, headers: { "Content-Type": "application/json" } }
     );
   }
-  if (answers.length === 1) {
+  if (answers.length === 1 && !hasExplicitJudge) {
+    // No explicit judgeModel: the implicit "judge" is panel[0], so synthesizing
+    // a single source through itself is redundant — answer directly (#6521).
     log.info("FUSION", `Only ${answers[0].model} succeeded — answering directly (no fusion)`);
     return handleSingleModel(body, answers[0].model);
+  }
+  if (answers.length === 1) {
+    // #6607: explicit judgeModel configured — honor it even with one survivor.
+    log.info("FUSION", `Only ${answers[0].model} succeeded — judging single answer with ${judge}`);
   }
 
   // 4. Judge analyzes + writes one final answer (streams to client if requested).

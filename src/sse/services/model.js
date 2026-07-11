@@ -1,7 +1,35 @@
 // Re-export from open-sse with localDb integration
-import { getModelAliases, getComboByName, getProviderNodes } from "@/lib/localDb";
+import { getModelAliases, getComboByName, getProviderNodes, getProviderConnections } from "@/lib/localDb";
 import { parseModel as parseModelCore, resolveModelAliasFromMap, getModelInfoCore } from "open-sse/services/model.js";
+import { resolveAutoCombo, isAutoComboId } from "open-sse/services/combo.js";
+import { PROVIDER_MODELS } from "open-sse/providers/index.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
+
+// Build the installed-provider catalog: active connections ∩ registry models.
+// Auto-combo families must pool only providers the operator actually configured,
+// never the full bundled registry (which lists every provider we support).
+// Returns a { [alias]: Array<{id}|string> } map compatible with resolveAutoCombo.
+export async function buildInstalledProviderCatalog() {
+  let active = [];
+  try {
+    active = await getProviderConnections({ isActive: true });
+  } catch {
+    return {};
+  }
+  // Connections store the registry provider id; PROVIDER_MODELS is keyed by
+  // entry.alias||entry.id. Map installed ids → their dispatch catalog key so a
+  // provider whose alias differs from its id (e.g. alias="cf", id="cloudflare-ai")
+  // is still recognised. Preserve the PROVIDER_MODELS key: downstream parseModel
+  // expects that exact alias on the resolved `provider/model` string.
+  const installedIds = new Set(active.map((c) => c.provider).filter(Boolean));
+  const catalog = {};
+  for (const entry of REGISTRY) {
+    if (!installedIds.has(entry.id)) continue;
+    const key = entry.alias || entry.id;
+    if (PROVIDER_MODELS[key]) catalog[key] = PROVIDER_MODELS[key];
+  }
+  return catalog;
+}
 
 // Local provider alias overrides (HMR-friendly, applied on top of open-sse map)
 const LOCAL_PROVIDER_ALIASES = {
@@ -80,16 +108,68 @@ export async function getModelInfo(modelStr) {
 }
 
 /**
- * Check if model is a combo and get models list
- * @returns {Promise<string[]|null>} Array of models or null if not a combo
+ * Check if model is a combo and get models list.
+ * Recognises `auto/<family>` ids (auto/glm, auto/zai, …) which carry a slash
+ * but are family auto-combos, not provider/model strings: they resolve against
+ * the installed provider catalog. Honors settings.autoCombo enable/disable.
+ * @param {string} modelStr
+ * @param {Object} [settings] - settings slice (so autoCombo.enabled applies)
+ * @returns {Promise<string[]|null>} Array of models, null if not a combo
  */
-export async function getComboModels(modelStr) {
-  // Only check if it's not in provider/model format
-  if (modelStr.includes("/")) return null;
+// Internal: resolve an auto-combo id against the installed catalog.
+async function resolveAutoInstalled(modelStr, settings) {
+  const installedCatalog = await buildInstalledProviderCatalog();
+  return resolveAutoCombo(modelStr, { settings, catalog: installedCatalog });
+}
 
+// Internal: named (user-defined) combo lookup. Plain provider/model strings
+// (slash-bearing, non-auto) return null.
+async function resolveNamedCombo(modelStr) {
+  if (modelStr.includes("/")) return null;
   const combo = await getComboByName(modelStr);
-  if (combo && combo.models && combo.models.length > 0) {
-    return combo.models;
+  if (combo && combo.models && combo.models.length > 0) return combo.models;
+  return null;
+}
+
+/**
+ * Check if model is a combo and get models list (legacy string[]/null contract).
+ * Recognises `auto/<family>` ids (auto/glm, auto/zai, …) which carry a slash
+ * but are family auto-combos, not provider/model strings: they resolve against
+ * the installed provider catalog. Honors settings.autoCombo enable/disable.
+ * @param {string} modelStr
+ * @param {Object} [settings] - settings slice (so autoCombo.enabled applies)
+ * @returns {Promise<string[]|null>} Array of models, null if not a combo or the
+ *   auto-combo is disabled / resolves to an empty installed pool.
+ */
+export async function getComboModels(modelStr, settings) {
+  if (isAutoComboId(modelStr)) {
+    const auto = await resolveAutoInstalled(modelStr, settings);
+    return auto && auto.members.length > 0 ? auto.members : null;
   }
+  return resolveNamedCombo(modelStr);
+}
+
+/**
+ * Single result shape for combo resolution. Unlike getComboModels (which keeps
+ * the legacy string[]/null contract for named combos), this preserves the
+ * auto-combo distinction between "not a combo", "disabled", and "empty pool"
+ * so handlers can emit a precise 503 instead of a misleading provider 404.
+ *
+ * @returns {Promise<
+ *   { kind: "combo", models: string[] } |
+ *   { kind: "auto-empty", family: string, reason: string } |
+ *   null
+ * >}
+ */
+export async function getComboResolution(modelStr, settings) {
+  if (isAutoComboId(modelStr)) {
+    const auto = await resolveAutoInstalled(modelStr, settings);
+    if (auto && auto.members.length > 0) return { kind: "combo", models: auto.members };
+    const family = modelStr.slice("auto/".length);
+    const reason = auto?.reason || `auto-combo "${family}" has no installed providers`;
+    return { kind: "auto-empty", family, reason };
+  }
+  const models = await resolveNamedCombo(modelStr);
+  if (models) return { kind: "combo", models };
   return null;
 }

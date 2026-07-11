@@ -5,14 +5,15 @@ import {
   extractApiKey,
   evaluateApiKeyAuth,
 } from "../services/auth.js";
-import { getSettings, getCombos, getApiKeyByKey } from "@/lib/localDb";
+import { getSettings, getApiKeyByKey } from "@/lib/localDb";
 import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
 import { handleSearchCore } from "open-sse/handlers/search/index.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
-import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
+import { handleComboChat } from "open-sse/services/combo.js";
+import { getComboResolution } from "../services/model.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 
 /**
@@ -66,23 +67,31 @@ export async function handleSearch(request) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: query");
   }
 
-  // Per-key combo access control
+  // Combo resolution via the single shared seam: builds the installed catalog
+  // (gated on auto/*), honors settings.autoCombo enable/disable, and preserves
+  // the auto-empty reason. Allowlist gates auto/* even when the pool is empty
+  // so a denied key can't probe combo existence via the error channel.
+  const resolution = await getComboResolution(providerInput, settings);
+
   if (apiKey && providerInput) {
     const keyData = await getApiKeyByKey(apiKey);
     if (keyData && Array.isArray(keyData.allowedCombos) && keyData.allowedCombos.length > 0) {
-      const combosData = await getCombos();
-      const isCombo = getComboModelsFromData(providerInput, combosData);
-      if (isCombo && !keyData.allowedCombos.includes(providerInput)) {
+      // resolution !== null covers named combos, resolved auto-combos, and the
+      // auto-empty fail-fast case — one seam, no extra DB read.
+      if (resolution !== null && !keyData.allowedCombos.includes(providerInput)) {
         log.warn("AUTH", `API key "${keyData.name}" not allowed to access combo "${providerInput}"`);
         return errorResponse(HTTP_STATUS.FORBIDDEN, `Access denied: combo "${providerInput}" is not allowed for this API key`);
       }
     }
   }
 
-  // Combo expansion: providerInput may be a combo name → run fallback/round-robin across providers
-  const combos = await getCombos();
-  const comboModels = getComboModelsFromData(providerInput, combos);
-  if (comboModels) {
+  if (resolution?.kind === "auto-empty") {
+    log.warn("SEARCH", resolution.reason);
+    return errorResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, resolution.reason);
+  }
+
+  if (resolution?.kind === "combo") {
+    const comboModels = resolution.models;
     const comboStrategies = settings.comboStrategies || {};
     const comboStrategy = comboStrategies[providerInput]?.fallbackStrategy || settings.comboStrategy || "fallback";
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
@@ -97,6 +106,7 @@ export async function handleSearch(request) {
       comboStickyLimit
     });
   }
+
   return handleSingleProviderSearch(body, providerInput, request, apiKey, settings);
 }
 

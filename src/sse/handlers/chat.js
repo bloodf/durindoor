@@ -11,12 +11,12 @@ import { cacheClaudeHeaders } from "open-sse/utils/claudeHeaderCache.js";
 import { getSettings, getApiKeyByKey, getApiKeyUsageLimitStatus } from "@/lib/localDb";
 import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
 import { appendPxpipeEvent } from "@/lib/pxpipe/events.js";
-import { getModelInfo, getComboModels } from "../services/model.js";
+import { getModelInfo, getComboModels, getComboResolution } from "../services/model.js";
 import { applyVisionBridgeReroute } from "open-sse/services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
-import { handleComboChat, handleFusionChat } from "open-sse/services/combo.js";
+import { handleComboChat, handleFusionChat, isAutoComboId } from "open-sse/services/combo.js";
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
 import { handlePonytailCommands, DEFAULT_PONYTAIL_HELP, resolvePonytailStream } from "open-sse/utils/tokenSaverBridge.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
@@ -143,18 +143,13 @@ export async function handleChat(request, clientRawRequest = null) {
     return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
   }
 
-  // Per-key combo access control. Retain the authenticated record so local
-  // commands can expose only this key's own lifetime totals.
+  // Per-key combo access control is enforced AFTER the vision-bridge reroute
+  // below (modelStr may change), resolving once and reusing for dispatch. Here
+  // we only retain the authenticated record so local commands can expose only
+  // this key's own lifetime totals.
   let authenticatedKeyRecord = null;
   if (apiKey && modelStr) {
     authenticatedKeyRecord = await getApiKeyByKey(apiKey);
-    if (authenticatedKeyRecord && Array.isArray(authenticatedKeyRecord.allowedCombos) && authenticatedKeyRecord.allowedCombos.length > 0) {
-      const comboCheck = await getComboModels(modelStr);
-      if (comboCheck && !authenticatedKeyRecord.allowedCombos.includes(modelStr)) {
-        log.warn("AUTH", `API key "${authenticatedKeyRecord.name}" not allowed to access combo "${modelStr}"`);
-        return errorResponse(HTTP_STATUS.FORBIDDEN, `Access denied: combo "${modelStr}" is not allowed for this API key`);
-      }
-    }
   }
 
   if (apiKey) {
@@ -218,18 +213,49 @@ export async function handleChat(request, clientRawRequest = null) {
     return ponytailResponse.response;
   }
 
+  // Check if model is a combo (has multiple models with fallback). Resolved ONCE
+  // after the vision-bridge reroute (which may change modelStr) and BEFORE the
+  // bypass short-circuit so a restricted key cannot slip a combo through a
+  // naming/warmup probe. The same cached result drives dispatch below.
+  const comboResolution = await getComboResolution(modelStr, settings);
+  const comboModels = comboResolution?.kind === "combo" ? comboResolution.models : null;
+
+  // Per-key combo access control: any combo (named OR auto/*, regardless of
+  // member count) is gated here. auto/* counts as a combo even when its pool is
+  // empty/disabled, so a denied key learns 403, not 503, and can't probe combo
+  // existence via the error channel.
+  if (comboResolution && authenticatedKeyRecord && Array.isArray(authenticatedKeyRecord.allowedCombos) && authenticatedKeyRecord.allowedCombos.length > 0) {
+    if (!authenticatedKeyRecord.allowedCombos.includes(modelStr)) {
+      log.warn("AUTH", `API key "${authenticatedKeyRecord.name}" not allowed to access combo "${modelStr}"`);
+      return errorResponse(HTTP_STATUS.FORBIDDEN, `Access denied: combo "${modelStr}" is not allowed for this API key`);
+    }
+  }
+
   // Bypass naming/warmup requests before combo rotation to avoid wasting rotation slots
   const userAgent = request?.headers?.get("user-agent") || "";
   const bypassResponse = handleBypassRequest(body, modelStr, userAgent, !!settings.ccFilterNaming);
   if (bypassResponse) return bypassResponse.response || bypassResponse;
 
-  // Check if model is a combo (has multiple models with fallback)
-  const comboModels = await getComboModels(modelStr);
+  // Auto-combo ids (auto/<family>) that resolve to an empty/disabled pool fail
+  // fast (#6546) rather than timing out or falling through to a literal provider.
+  if (comboResolution?.kind === "auto-empty") {
+    log.warn("CHAT", `Auto-combo "${modelStr}" ${comboResolution.reason}`);
+    return errorResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, comboResolution.reason);
+  }
   if (comboModels) {
     // Check for combo-specific strategy first, fallback to global
     const comboStrategies = settings.comboStrategies || {};
     const comboSpecificStrategy = comboStrategies[modelStr]?.fallbackStrategy;
     const comboStrategy = comboSpecificStrategy || settings.comboStrategy || "fallback";
+    const comboJudgeModel = comboStrategies[modelStr]?.judgeModel;
+    const comboFusionTuning = comboStrategies[modelStr]?.fusionTuning;
+
+    // #6532: judgeModel/fusionTuning only affect the fusion strategy. Warn when
+    // an operator configured them on a non-fusion combo so a silent no-op does
+    // not masquerade as "judge not honored".
+    if (comboStrategy !== "fusion" && (comboJudgeModel || comboFusionTuning)) {
+      log.warn("CHAT", `Combo "${modelStr}" sets judgeModel/fusionTuning but strategy is "${comboStrategy}" (ignored)`);
+    }
 
     // Combo names are intentionally excluded from the model allowlist; the allowlist
     // is enforced against each concrete underlying model during expansion. Combo-level
@@ -249,8 +275,8 @@ export async function handleChat(request, clientRawRequest = null) {
         },
         log,
         comboName: modelStr,
-        judgeModel: comboStrategies[modelStr]?.judgeModel,
-        tuning: comboStrategies[modelStr]?.fusionTuning,
+        judgeModel: comboJudgeModel,
+        tuning: comboFusionTuning,
       });
     }
 

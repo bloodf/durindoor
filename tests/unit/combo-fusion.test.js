@@ -112,7 +112,7 @@ describe("fusion combo", () => {
     expect(judgeText).not.toContain("slow");
   });
 
-  it("returns the lone survivor directly when only one panel model succeeds", async () => {
+  it("returns the lone survivor directly when only one panel model succeeds and no judge is configured", async () => {
     const handleSingleModel = vi.fn(async (_body, model) => {
       if (model === "p/ok") return okResponse("lone");
       return errResponse(500);
@@ -122,10 +122,10 @@ describe("fusion combo", () => {
       models: ["p/ok", "p/bad"],
       handleSingleModel,
       log,
-      judgeModel: "p/judge",
+      // No judgeModel: implicit judge is panel[0] === survivor, so a separate
+      // judge pass over a single source would be redundant (#6521).
       tuning: { minPanel: 2, stragglerGraceMs: 50, panelHardTimeoutMs: 5000 },
     });
-    // No judge call — single answer means there is nothing to fuse.
     const judged = handleSingleModel.mock.calls.some(([, m]) => m === "p/judge");
     expect(judged).toBe(false);
   });

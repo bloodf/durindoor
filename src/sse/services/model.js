@@ -1,6 +1,7 @@
 // Re-export from open-sse with localDb integration
 import { getModelAliases, getComboByName, getProviderNodes } from "@/lib/localDb";
 import { parseModel as parseModelCore, resolveModelAliasFromMap, getModelInfoCore } from "open-sse/services/model.js";
+import { filterPaidModels } from "open-sse/providers/pricing.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
 
 // Local provider alias overrides (HMR-friendly, applied on top of open-sse map)
@@ -80,16 +81,28 @@ export async function getModelInfo(modelStr) {
 }
 
 /**
- * Check if model is a combo and get models list
+ * Check if model is a combo and get models list.
+ *
+ * When `hidePaidModels` is true, paid members are filtered out via pricing.js
+ * so chat/image/TTS combo routing honor the toggle. The saved combo object is
+ * never mutated. Default is `false` so ACL existence checks (which must see the
+ * real combo) and any caller that did not load settings behave as a passthrough
+ * and trigger NO settings DB read. Routing handlers already hold `settings` and
+ * pass `settings.hidePaidModels === true`. Toggle off (default) returns the
+ * original array reference so identity-sensitive callers and the "off === full
+ * list" contract hold.
+ *
+ * @param {string} modelStr
+ * @param {boolean} [hidePaidModels=false]
  * @returns {Promise<string[]|null>} Array of models or null if not a combo
  */
-export async function getComboModels(modelStr) {
+export async function getComboModels(modelStr, hidePaidModels = false) {
   // Only check if it's not in provider/model format
   if (modelStr.includes("/")) return null;
 
   const combo = await getComboByName(modelStr);
   if (combo && combo.models && combo.models.length > 0) {
-    return combo.models;
+    return filterPaidModels(combo.models, hidePaidModels === true);
   }
   return null;
 }

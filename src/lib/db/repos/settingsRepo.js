@@ -15,6 +15,7 @@ const DEFAULT_QUOTA_TRACKER_STATE = {
 
 const DEFAULT_SETTINGS = {
   cloudEnabled: false,
+  hidePaidModels: false,
   tunnelEnabled: false,
   tunnelUrl: "",
   tunnelProvider: "cloudflare",

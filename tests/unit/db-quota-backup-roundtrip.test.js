@@ -148,6 +148,7 @@ describe("portable quota backup", () => {
     ["provider mismatch", (payload) => { payload.quota.snapshots[0].identity.provider = "codex"; }],
     ["malformed amount", (payload) => { payload.quota.snapshots[0].amounts.remaining = Number.NaN; }],
     ["secret metadata", (payload) => { payload.quota.snapshots[0].provenance.metadata = { plan: "Bearer abcdefghijklmnop" }; }],
+    ["secret-shaped unit", (payload) => { payload.quota.snapshots[0].amounts.unit = "sk-secret-unit-123456"; }],
     ["missing source watermark", (payload) => { payload.quota.fetchStates = []; }],
     ["newer empty-source watermark with an old row", (payload) => {
       payload.quota.fetchStates[0].lastObservedAt = "2026-01-01T00:20:00.000Z";

@@ -68,7 +68,11 @@ export async function resolveKiroProfileArnAcrossRegions(
   fetchImpl = proxyAwareFetch,
 ) {
   if (!accessToken) return null;
-  const rawCandidates = [...new Set([preferredRegion, ...KIRO_PROFILE_FALLBACK_REGIONS].filter(Boolean))];
+  const rawCandidates = [...new Set(
+    [preferredRegion, ...KIRO_PROFILE_FALLBACK_REGIONS]
+      .filter(Boolean)
+      .map((region) => typeof region === "string" ? region.trim().toLowerCase() : region),
+  )];
   // Trust boundary: providerSpecificData.region is stored from user input and is
   // interpolated into the control-plane host. Drop anything that isn't a valid
   // AWS region id rather than building an arbitrary `q.<x>.amazonaws.com` URL.

@@ -8,7 +8,7 @@ import { getExecutor } from "open-sse/executors/index.js";
 import { CLAUDE_CLI_SPOOF_HEADERS } from "open-sse/providers/shared.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
-import { refreshAndUpdateCredentials } from "@/app/api/usage/[connectionId]/route.js";
+import { refreshAndUpdateCredentials } from "@/shared/services/providerCredentials";
 import { QUOTA_AUTOPING_CONFIG } from "@/shared/constants/config";
 
 const C = QUOTA_AUTOPING_CONFIG;
@@ -229,7 +229,7 @@ async function pingConnectionCore(conn, provider, providerConfig, handler, deps,
   } catch (e) {
     if (signal.aborted || e?.name === "AbortError") throw signal.reason || e;
     state.failureCache[key] = Date.now();
-    console.warn(`[AutoPing] ${provider}:${conn.id}: refresh failed: ${e.message}`);
+    console.warn(`[AutoPing] ${provider}:${conn.id}: credential refresh failed`);
     return;
   }
 
@@ -349,12 +349,12 @@ export async function runQuotaAutoPingTick(deps = createDefaultDeps(), state = g
           await pingConnection(conn, provider, providerConfig, handler, deps, state);
         } catch (e) {
           if (e?.name !== "AbortError") state.failureCache[cacheKey(provider, conn.id)] = Date.now();
-          console.warn(`[AutoPing] ${provider}:${conn.id}: ${e.message}`);
+          console.warn(`[AutoPing] ${provider}:${conn.id}: provider ping failed`);
         }
       }
     }
   } catch (e) {
-    console.warn("[AutoPing] tick error:", e.message);
+    console.warn("[AutoPing] scheduler tick failed");
   } finally {
     state.running = false;
     if (state.rerunRequested) {

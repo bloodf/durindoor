@@ -285,15 +285,15 @@ export class GithubExecutor extends BaseExecutor {
         }
       }, proxyOptions);
       if (!response.ok) {
-        const errorText = await response.text();
-        log?.error?.("TOKEN", `Copilot token refresh failed: ${response.status} ${errorText}`);
+        try { await response.body?.cancel?.(); } catch { /* best effort */ }
+        log?.error?.("TOKEN", `Copilot token refresh failed with HTTP ${response.status}`);
         return null;
       }
       const data = await response.json();
       log?.info?.("TOKEN", "Copilot token refreshed");
       return { token: data.token, expiresAt: data.expires_at };
-    } catch (error) {
-      log?.error?.("TOKEN", `Copilot refresh error: ${error.message}`);
+    } catch {
+      log?.error?.("TOKEN", "Copilot token refresh request failed");
       return null;
     }
   }
@@ -314,7 +314,10 @@ export class GithubExecutor extends BaseExecutor {
         headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" },
         body: new URLSearchParams(params)
       }, proxyOptions);
-      if (!response.ok) return null;
+      if (!response.ok) {
+        try { await response.body?.cancel?.(); } catch { /* best effort */ }
+        return null;
+      }
       const tokens = await response.json();
       log?.info?.("TOKEN", "GitHub token refreshed");
       return { accessToken: tokens.access_token, refreshToken: tokens.refresh_token || refreshToken, expiresIn: tokens.expires_in };

@@ -16,6 +16,15 @@ import {
   QUOTA_PORTABLE_VERSION,
 } from "../../../shared/constants/quota.js";
 
+function assertRuntimeCommitAllowed({ signal = null, shouldCommit = null } = {}) {
+  if (signal?.aborted) throw new DOMException("Provider quota persistence aborted", "AbortError");
+  if (typeof shouldCommit === "function" && !shouldCommit()) {
+    const error = new Error("Provider quota persistence superseded");
+    error.code = "PROVIDER_QUOTA_PERSISTENCE_SUPERSEDED";
+    throw error;
+  }
+}
+
 export const PROVIDER_QUOTA_SNAPSHOT_UPSERT_SQL = `
   INSERT INTO providerQuotaSnapshots(
     connectionId, accountKey, resourceKey, dimensionKey, state, limitKind,
@@ -307,7 +316,13 @@ export async function upsertProviderQuotaSnapshot(value, { now = Date.now() } = 
   return rowToSnapshot(row, { now });
 }
 
-export async function replaceProviderQuotaSnapshotsForSource(value, { now = Date.now() } = {}) {
+export async function replaceProviderQuotaSnapshotsForSource(value, {
+  now = Date.now(),
+  signal = null,
+  shouldCommit = null,
+  returnCommitResult = false,
+  allowCanonicalSentinels = false,
+} = {}) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new QuotaSnapshotValidationError("Quota source replacement must be an object");
   rejectUnknownKeys(value, new Set(["connectionId", "provider", "sourceId", "observedAt", "snapshots", "fetchState"]), "quota source replacement");
   const connectionId = normalizeQuotaIdentifier(value.connectionId, "connectionId");
@@ -318,7 +333,7 @@ export async function replaceProviderQuotaSnapshotsForSource(value, { now = Date
   if (value.snapshots.length > QUOTA_MAX_SOURCE_SNAPSHOTS) {
     throw new QuotaSnapshotValidationError(`snapshots exceeds the ${QUOTA_MAX_SOURCE_SNAPSHOTS}-row source limit`);
   }
-  const snapshots = value.snapshots.map((snapshot) => normalizeQuotaSnapshot(snapshot, { now }));
+  const snapshots = value.snapshots.map((snapshot) => normalizeQuotaSnapshot(snapshot, { now, allowCanonicalSentinels }));
   const seen = new Set();
   for (const snapshot of snapshots) {
     if (snapshot.identity.connectionId !== connectionId || snapshot.identity.provider !== provider) {
@@ -343,11 +358,16 @@ export async function replaceProviderQuotaSnapshotsForSource(value, { now = Date
   }
 
   const db = await getAdapter();
+  assertRuntimeCommitAllowed({ signal, shouldCommit });
+  let accepted = false;
+  let currentObservedAt = observedAt;
   db.transaction(() => {
+    assertRuntimeCommitAllowed({ signal, shouldCommit });
     acquireQuotaWriteLockSync(db);
     assertConnectionProviderSync(db, connectionId, provider);
     const stored = readSourceStateSync(db, connectionId, sourceId);
     if (!stored?.lastObservedAt || observedAt > stored.lastObservedAt) {
+      accepted = true;
       db.run(
         `DELETE FROM providerQuotaSnapshots WHERE connectionId = ? AND sourceId = ?`,
         [connectionId, sourceId],
@@ -355,6 +375,7 @@ export async function replaceProviderQuotaSnapshotsForSource(value, { now = Date
       for (const snapshot of snapshots) insertSnapshotSync(db, snapshot);
     }
     upsertFetchSuccessSync(db, fetchState);
+    currentObservedAt = readSourceStateSync(db, connectionId, sourceId)?.lastObservedAt || observedAt;
     const storedSourceCount = db.get(
       `SELECT COUNT(*) AS count FROM providerQuotaSnapshots WHERE connectionId = ? AND sourceId = ?`,
       [connectionId, sourceId],
@@ -363,10 +384,22 @@ export async function replaceProviderQuotaSnapshotsForSource(value, { now = Date
       throw new QuotaSnapshotValidationError("Stored quota source exceeds its row limit");
     }
   });
-  return listProviderQuotaSnapshots({ connectionId, provider, includeStale: true, now });
+  const resultNow = Math.max(canonicalizeQuotaNow(now).timestamp, Date.parse(currentObservedAt) || 0);
+  const persisted = await listProviderQuotaSnapshots({ connectionId, provider, includeStale: true, now: resultNow });
+  if (returnCommitResult) {
+    return {
+      accepted,
+      snapshots: persisted.filter((snapshot) => snapshot.provenance.sourceId === sourceId),
+    };
+  }
+  return persisted;
 }
 
-export async function recordQuotaFetchFailure(value, { now = Date.now() } = {}) {
+export async function recordQuotaFetchFailure(value, {
+  now = Date.now(),
+  signal = null,
+  shouldCommit = null,
+} = {}) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new QuotaSnapshotValidationError("Quota fetch failure must be an object");
   if (value.fetchState !== undefined) {
     rejectUnknownKeys(value, new Set(["connectionId", "provider", "sourceId", "fetchState"]), "quota fetch failure");
@@ -394,7 +427,9 @@ export async function recordQuotaFetchFailure(value, { now = Date.now() } = {}) 
   const state = normalizeQuotaFetchState(candidate, { now });
   if (state.outcome === "success") throw new QuotaSnapshotValidationError("recordQuotaFetchFailure requires a non-success outcome");
   const db = await getAdapter();
+  assertRuntimeCommitAllowed({ signal, shouldCommit });
   db.transaction(() => {
+    assertRuntimeCommitAllowed({ signal, shouldCommit });
     acquireQuotaWriteLockSync(db);
     assertConnectionProviderSync(db, state.connectionId, state.provider);
     upsertFetchFailureSync(db, state);

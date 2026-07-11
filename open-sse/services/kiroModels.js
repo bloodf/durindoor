@@ -24,6 +24,11 @@ import { createHash } from "crypto";
 import { refreshKiroToken } from "./tokenRefresh.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
+import {
+  KIRO_DEFAULT_REGION,
+  regionFromProfileArn,
+  resolveKiroRegion,
+} from "../config/kiroRegions.js";
 
 const KIRO_RUNTIME_SDK_VERSION = "1.0.0";
 const KIRO_AGENT_OS = "windows";
@@ -31,7 +36,6 @@ const KIRO_AGENT_OS_VERSION = "10.0.26200";
 const KIRO_NODE_VERSION = "22.21.1";
 const KIRO_VERSION = "0.10.32";
 
-const DEFAULT_REGION = "us-east-1";
 const FETCH_TIMEOUT_MS = 30_000;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes per credential
 
@@ -48,17 +52,6 @@ function stripSyntheticSuffixes(id) {
   if (out.endsWith("-agentic")) out = out.slice(0, -"-agentic".length);
   if (out.endsWith("-thinking")) out = out.slice(0, -"-thinking".length);
   return out;
-}
-
-/**
- * Extract region from a profileArn like
- *   arn:aws:codewhisperer:us-east-1:123456789012:profile/ABC
- */
-function regionFromProfileArn(profileArn) {
-  if (!profileArn || typeof profileArn !== "string") return DEFAULT_REGION;
-  const parts = profileArn.split(":");
-  if (parts.length >= 4 && parts[3]) return parts[3];
-  return DEFAULT_REGION;
 }
 
 /**
@@ -160,7 +153,7 @@ function formatDisplayName(modelName, modelId, rateMultiplier) {
  */
 async function fetchKiroCatalogRaw(credentials, signal, proxyOptions = null) {
   const profileArn = credentials?.providerSpecificData?.profileArn || "";
-  const region = regionFromProfileArn(profileArn);
+  const region = regionFromProfileArn(profileArn) || resolveKiroRegion(credentials) || KIRO_DEFAULT_REGION;
   const params = new URLSearchParams();
   params.set("origin", "AI_EDITOR");
   if (profileArn) params.set("profileArn", profileArn);

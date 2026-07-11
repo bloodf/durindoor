@@ -10,6 +10,7 @@ import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { getOpenAICompatibleType } from "../services/provider.js";
+import { refreshCodebuddyToken } from "../services/tokenRefresh.js";
 
 // Opt-in prompt-cache key injection for openai-compatible providers.
 // OpenAI-style upstreams (Chat Completions + Responses) accept an optional
@@ -438,6 +439,7 @@ export class DefaultExecutor extends BaseExecutor {
       iflow: () => this.refreshIflow(credentials.refreshToken, proxyOptions),
       gemini: () => this.refreshFromGrant(credentials, proxyOptions),
       kiro: () => this.refreshKiro(credentials.refreshToken, proxyOptions),
+      "codebuddy-cn": () => refreshCodebuddyToken(credentials.refreshToken, log, proxyOptions),
       cline: () => this.refreshCline(credentials.refreshToken, proxyOptions),
       clinepass: () => this.refreshCline(credentials.refreshToken, proxyOptions),
       "kimi-coding": () => this.refreshKimiCoding(credentials.refreshToken, proxyOptions),

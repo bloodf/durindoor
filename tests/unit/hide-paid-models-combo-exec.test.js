@@ -15,12 +15,14 @@ const mocks = vi.hoisted(() => ({
   getComboByName: vi.fn(),
   getModelAliases: vi.fn(),
   getProviderNodes: vi.fn(),
+  getProviderConnections: vi.fn(),
 }));
 
 vi.mock("@/lib/localDb", () => ({
   getComboByName: mocks.getComboByName,
   getModelAliases: mocks.getModelAliases,
   getProviderNodes: mocks.getProviderNodes,
+  getProviderConnections: mocks.getProviderConnections,
 }));
 
 async function loadGetComboModels() {
@@ -37,6 +39,7 @@ describe("getComboModels hidePaidModels wiring", () => {
     vi.clearAllMocks();
     mocks.getModelAliases.mockResolvedValue({});
     mocks.getProviderNodes.mockResolvedValue([]);
+    mocks.getProviderConnections.mockResolvedValue([]);
   });
 
   it("returns null for non-combo / provider-slash input regardless of toggle", async () => {
@@ -92,5 +95,34 @@ describe("getComboModels hidePaidModels wiring", () => {
     const getComboModels = await loadGetComboModels();
     await getComboModels("c", true);
     expect(combo.models).toEqual([PAID, FREE]); // original intact
+  });
+
+  it("auto-combo pool is filtered through the same hidePaidModels toggle (F-2 + F-4 seam)", async () => {
+    // Active connection to the `glm` provider (paid roster — not in the free
+    // catalog). auto/glm resolves its pool from getAutoComboCatalog, which
+    // reads getProviderConnections. The resolved pool is then run through
+    // filterPaidModels exactly like a saved combo, so hidePaidModels must drop
+    // paid auto members rather than leaking them to chat/image/TTS routing.
+    mocks.getProviderConnections.mockResolvedValue([{ provider: "glm", isActive: true }]);
+    const getComboModels = await loadGetComboModels();
+
+    const off = await getComboModels("auto/glm", false);
+    expect(Array.isArray(off)).toBe(true);
+    expect(off.length).toBeGreaterThan(0); // catalog materialized a pool
+    expect(off.every((m) => m.startsWith("glm/"))).toBe(true);
+
+    const on = await getComboModels("auto/glm", true);
+    expect(Array.isArray(on)).toBe(true);
+    // glm provider has no free roster → every auto member is paid → all hidden.
+    expect(on).toEqual([]);
+    // Off-pool is a strict superset; proves the toggle actually filtered.
+    expect(off.length).toBeGreaterThan(on.length);
+  });
+
+  it("auto-combo toggle off is a passthrough (no paid filtering)", async () => {
+    mocks.getProviderConnections.mockResolvedValue([{ provider: "glm", isActive: true }]);
+    const getComboModels = await loadGetComboModels();
+    const off = await getComboModels("auto/glm");
+    expect(off.length).toBeGreaterThan(0);
   });
 });

@@ -7,6 +7,7 @@ import { checkFallbackError, formatRetryAfter } from "./accountFallback.js";
 import { unavailableResponse } from "../utils/error.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { extractTextContent } from "../translator/formats/gemini.js";
+import { isAutoComboId, familyOfAutoId, resolveAutoCombo } from "./autoComboResolver.js";
 
 // Hard capabilities = input modalities; missing one drops request data (e.g. image
 // stripped). Must be prioritized. Soft (e.g. search) only degrades a feature.
@@ -15,6 +16,38 @@ const HARD_CAPS = new Set(["vision", "pdf", "audioInput", "videoInput"]);
 // Prefixes used when flattening tool turns into plain prose for panel models.
 const TOOL_CALL_PREFIX = "[Called tools: ";
 const TOOL_RESULT_PREFIX = "[Tool result: ";
+
+// ─── Fingerprint account pin (#6696) ─────────────────────────────────────────
+// The combo builder UI pins a specific account for fingerprint providers
+// (mimocode/mcode/opencode) by encoding it as a composite model/connection id:
+// `${realConnectionId}|fp|${fingerprint}`
+// splitFingerprintPin parses that composite back into { realConnectionId,
+// pinnedFingerprint } so the executor can resolve the exact account. Malformed
+// (empty id or empty fingerprint) return null so callers fall through to the
+// unpinned path unchanged — mirroring upstream splitFingerprintPin (#6696).
+export const FP_PIN_SEPARATOR = "|fp|";
+
+export function splitFingerprintPin(id) {
+  if (typeof id !== "string") return null;
+  const idx = id.indexOf(FP_PIN_SEPARATOR);
+  if (idx === -1) return null;
+  const realConnectionId = id.slice(0, idx);
+  const pinnedFingerprint = id.slice(idx + FP_PIN_SEPARATOR.length);
+  if (!realConnectionId || !pinnedFingerprint) return null;
+  return { realConnectionId, pinnedFingerprint };
+}
+
+// ─── Model-family detection (auto-combo family helpers, #6509 / #6453) ───────
+// Canonical surface lives in the dependency-free autoComboFamilies module so
+// combo.js and the resolver share it without a cycle. Re-exported here for
+// existing importers (tests + downstream combo code).
+export {
+  MODEL_FAMILIES,
+  AUTO_FAMILY_IDS,
+  isValidModelFamily,
+  detectModelFamily,
+  isProviderOverrideFamily,
+} from "./autoComboFamilies.js";
 
 // Flatten tool turns into prose so panel models keep the context but can't loop
 // on tools: drop the request's tools, turn tool/function results into assistant
@@ -131,6 +164,7 @@ const comboRotationState = new Map();
  * @type {Map<string, { index: number, lastUsed: number }>}
  */
 const comboConversationAffinity = new Map();
+export { comboConversationAffinity }; // test access to round-robin sticky pin state (#6733)
 const CONVERSATION_AFFINITY_TTL_MS = 60 * 60 * 1000;
 const MAX_CONVERSATION_AFFINITY_ENTRIES = 1000;
 /**
@@ -702,12 +736,27 @@ export function resetComboScoring(comboName) {
 }
 
 /**
- * Get combo models from combos data
+ * Get combo models from combos data. `auto/<family>` resolves BEFORE the slash
+ * guard and the combos-data lookup: a recognized auto id always returns an array
+ * (possibly empty) — never null — so callers enter the combo path and fail fast
+ * (handleComboChat emits a controlled 503) rather than falling through to a
+ * literal "auto" provider or a combos-data miss.
  * @param {string} modelStr - Model string to check
  * @param {Array|Object} combosData - Array of combos or object with combos
- * @returns {string[]|null} Array of models or null if not a combo
+ * @param {Object} [options] - { catalog, settings } for auto/* resolution
+ * @returns {string[]|null} Array of models (empty for empty auto pool), or null if not a combo
  */
-export function getComboModelsFromData(modelStr, combosData) {
+export function getComboModelsFromData(modelStr, combosData, options = {}) {
+  // `auto/<family>` resolves BEFORE the slash guard and the combos-data lookup.
+  // With a catalog supplied it materializes the family pool; with no catalog the
+  // recognized auto id still short-circuits to [] (fail-fast) rather than
+  // falling through to a literal "auto" provider or a combos-data miss. A
+  // recognized auto id always returns an array (possibly empty) — never null.
+  if (isAutoComboId(modelStr)) {
+    const family = familyOfAutoId(modelStr);
+    return resolveAutoCombo(family, options.catalog || {}, options.settings);
+  }
+
   // Don't check if it's in provider/model format
   if (modelStr.includes("/")) return null;
   
@@ -734,6 +783,17 @@ export function getComboModelsFromData(modelStr, combosData) {
  * @returns {Promise<Response>}
  */
 export async function handleComboChat({ body, models, handleSingleModel, log, comboName, comboStrategy, comboStickyLimit = 1, autoSwitch = true }) {
+  // #6546 (#6458): fail fast on an empty pool instead of looping zero times and
+  // leaking a generic "all models failed" after the fact.
+  if (!Array.isArray(models) || models.length === 0) {
+    const msg = `Combo "${comboName}" has no models`;
+    log.warn("COMBO", msg);
+    return new Response(
+      JSON.stringify({ error: { message: msg } }),
+      { status: 503, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   // Apply rotation/scoring strategy
   const conversationCacheKey = getConversationCacheKey(body);
   let rotatedModels;
@@ -770,12 +830,37 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
   let earliestRetryAfter = null;
   let lastStatus = null;
 
+  // #6733: release the round-robin conversation-affinity pin when the
+  // affinity-pinned FIRST member fails. Affinity only exists when the sticky
+  // limit keeps >1 request on the same model, and the key is exactly
+  // `${comboName || "__default__"}:${conversationCacheKey}` (mirrors
+  // getRotatedModels). Release only when i===0 (the pinned first member) AND
+  // the stored index still maps to the failed model — guards against a race
+  // that re-pointed the entry to a different member. Idempotent per request.
+  const stickyLimit = normalizeStickyLimit(comboStickyLimit);
+  const rrRotationKey = comboName || "__default__";
+  const rrAffinityKey =
+    comboStrategy === "round-robin" && stickyLimit > 1 && conversationCacheKey
+      ? `${rrRotationKey}:${conversationCacheKey}`
+      : null;
+  let affinityReleased = false;
+  const releaseFailedAffinity = (failedModelStr, idx) => {
+    if (affinityReleased || !rrAffinityKey) return;
+    if (idx !== 0) return;
+    const pinned = comboConversationAffinity.get(rrAffinityKey);
+    if (pinned && models[pinned.index % models.length] === failedModelStr) {
+      comboConversationAffinity.delete(rrAffinityKey);
+    }
+    affinityReleased = true;
+  };
+
   for (let i = 0; i < rotatedModels.length; i++) {
     const modelStr = rotatedModels[i];
     log.info("COMBO", `Trying model ${i + 1}/${rotatedModels.length}: ${modelStr}`);
 
     try {
       const result = await handleSingleModel(body, modelStr);
+
       
       // Success (2xx) - return response
       if (result.ok) {
@@ -832,11 +917,13 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
       }
 
       // Fallback to next model
+      releaseFailedAffinity(modelStr, i);
       lastError = errorText || String(result.status);
       if (!lastStatus) lastStatus = result.status;
       log.warn("COMBO", `Model ${modelStr} failed, trying next`, { status: result.status });
     } catch (error) {
       // Catch unexpected exceptions to ensure fallback continues
+      releaseFailedAffinity(modelStr, i);
       lastError = error.message || String(error);
       if (!lastStatus) lastStatus = 500;
       log.warn("COMBO", `Model ${modelStr} threw error, trying next`, { error: lastError });
@@ -1036,13 +1123,27 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
     );
   }
 
-  // A single-model fusion has nothing to fuse — just answer directly.
+  // A single-model fusion has nothing to fuse — unless the operator pinned an
+  // explicit judgeModel (#6607 / #6455): then that lone model becomes the
+  // panel-of-one and the configured judge still synthesizes the answer, so a
+  // persisted judgeModel is never silently discarded. Without an explicit
+  // judge, answer directly (judge would equal panel[0], nothing to fuse).
   if (panel.length === 1) {
-    return handleSingleModel(body, panel[0]);
+    if (judgeModel && judgeModel.trim()) {
+      // fall through to shared fan-out/judge path with a one-member panel
+    } else {
+      return handleSingleModel(body, panel[0]);
+    }
   }
 
   const cfg = { ...FUSION_DEFAULTS, ...(tuning || {}) };
-  const minPanel = Math.min(Math.max(2, cfg.minPanel), panel.length);
+  // #6521 (#6454): allow minPanel as low as 1 (was floor 2) so a 2-model panel
+  // can proceed on a single answer instead of waiting for a quorum that never
+  // arrives. Sanitize non-finite/fractional tuning so a NaN/Infinity value
+  // can't disable the grace timer and stall until the hard timeout.
+  const rawMin = Number(cfg.minPanel);
+  const safeMin = Number.isFinite(rawMin) ? Math.floor(rawMin) : FUSION_DEFAULTS.minPanel;
+  const minPanel = Math.min(Math.max(1, safeMin), panel.length);
   const judge = judgeModel && judgeModel.trim() ? judgeModel.trim() : panel[0];
   log.info("FUSION", `Combo "${comboName}" | panel=${panel.length} [${panel.join(", ")}] | judge=${judge} | quorum=${minPanel}`);
 
@@ -1094,8 +1195,18 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
     );
   }
   if (answers.length === 1) {
-    log.info("FUSION", `Only ${answers[0].model} succeeded — answering directly (no fusion)`);
-    return handleSingleModel(body, answers[0].model);
+    // #6607 (#6455): with a single surviving panel answer, the cheap shortcut
+    // (return that answer directly) is only valid when the judge WOULD have
+    // been that same model anyway (judge === panel[0], i.e. no explicit
+    // judgeModel). When the operator configured an explicit judgeModel, honor
+    // it: run the judge over the lone collected answer instead of silently
+    // replaying the survivor and discarding the judge configuration.
+    const explicitJudge = judgeModel && judgeModel.trim();
+    if (!explicitJudge) {
+      log.info("FUSION", `Only ${answers[0].model} succeeded — answering directly (no fusion)`);
+      return handleSingleModel(body, answers[0].model);
+    }
+    log.info("FUSION", `Only ${answers[0].model} succeeded — still judging with explicit ${judge}`);
   }
 
   // 4. Judge analyzes + writes one final answer (streams to client if requested).

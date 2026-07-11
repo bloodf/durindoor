@@ -12,6 +12,7 @@ import { getSettings, getApiKeyByKey, getApiKeyUsageLimitStatus } from "@/lib/lo
 import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
 import { appendPxpipeEvent } from "@/lib/pxpipe/events.js";
 import { getModelInfo, getComboModels } from "../services/model.js";
+import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
 import { applyVisionBridgeReroute } from "open-sse/services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
@@ -229,9 +230,17 @@ export async function handleChat(request, clientRawRequest = null) {
   // existence/ACL still see the real, unfiltered member list.
   const comboModels = await getComboModels(modelStr, settings.hidePaidModels === true);
   if (comboModels) {
-    // Check for combo-specific strategy first, fallback to global
+    // Check for combo-specific strategy first, fallback to global. Auto-combo
+    // ids (`auto/<family>`) honor the F-2 `comboStrategies[modelStr].strategy`
+    // shape; named combos keep the legacy `.fallbackStrategy`. Auto IDs fall
+    // through to `.fallbackStrategy` when `.strategy` is absent so partial config
+    // still works. A stray `.strategy` on a named-combo config never changes
+    // legacy behavior.
     const comboStrategies = settings.comboStrategies || {};
-    const comboSpecificStrategy = comboStrategies[modelStr]?.fallbackStrategy;
+    const perCombo = comboStrategies[modelStr] || {};
+    const comboSpecificStrategy = isAutoComboId(modelStr)
+      ? (perCombo.strategy ?? perCombo.fallbackStrategy)
+      : perCombo.fallbackStrategy;
     const comboStrategy = comboSpecificStrategy || settings.comboStrategy || "fallback";
 
     // Combo names are intentionally excluded from the model allowlist; the allowlist
@@ -286,9 +295,13 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     // #6495 / F-4: filter paid members when the toggle is on.
     const comboModels = await getComboModels(modelStr, chatSettings.hidePaidModels === true);
     if (comboModels) {
-      // Check for combo-specific strategy first, fallback to global
+      // Check for combo-specific strategy first, fallback to global. Auto-combo
+      // ids honor the F-2 `.strategy` shape; named combos keep `.fallbackStrategy`.
       const comboStrategies = chatSettings.comboStrategies || {};
-      const comboSpecificStrategy = comboStrategies[modelStr]?.fallbackStrategy;
+      const perCombo = comboStrategies[modelStr] || {};
+      const comboSpecificStrategy = isAutoComboId(modelStr)
+        ? (perCombo.strategy ?? perCombo.fallbackStrategy)
+        : perCombo.fallbackStrategy;
       const comboStrategy = comboSpecificStrategy || chatSettings.comboStrategy || "fallback";
 
       if (comboStrategy === "fusion") {

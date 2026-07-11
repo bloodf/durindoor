@@ -20,6 +20,22 @@ const PROVIDER_ORDER = [
 // Providers that need no auth — always show in model selector
 const NO_AUTH_PROVIDER_IDS = Object.keys(FREE_PROVIDERS).filter(id => FREE_PROVIDERS[id].noAuth);
 
+// kindFilter (UI service kind) → /api/v1/models slug. webSearch/webFetch share
+// the `web` slug server-side. null/absent → root LLM list.
+const KIND_TO_SLUG = {
+  image: "image",
+  tts: "tts",
+  stt: "stt",
+  embedding: "embedding",
+  imageToText: "image-to-text",
+  webSearch: "web",
+  webFetch: "web",
+};
+
+// Web provider-as-model rows are routed by providerId but cataloged as
+// `<alias>/search` and `<alias>/fetch`; map the UI kind to its catalog suffix.
+const WEB_KIND_SUFFIX = { webSearch: "search", webFetch: "fetch" };
+
 export default function ModelSelectModal({
   isOpen,
   onClose,
@@ -49,6 +65,50 @@ export default function ModelSelectModal({
   const [customModels, setCustomModels] = useState([]);
   const [disabledModels, setDisabledModels] = useState({});
   const [fetchedModels, setFetchedModels] = useState({});
+  // #6495 / F-4: ids the server catalog currently exposes. /api/v1/models is
+  // already filtered by the hide-paid toggle server-side, so intersecting the
+  // modal's locally-built entries with this set enforces the toggle without
+  // bundling the pricing catalog into the dashboard chunk. A null set means
+  // "not loaded / fetch failed" → fail open (no client filtering). When the
+  // toggle is off the server returns the full catalog, so the intersection is a
+  // no-op for known models and still keeps custom/unknown entries visible.
+  const [visibleModelIds, setVisibleModelIds] = useState(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    // Clear any stale set so a kind/toggle change never filters the freshly
+    // rendered picker with the previous catalog while the new fetch is in
+    // flight; an ignore flag drops a slow prior response from overwriting a
+    // newer one.
+    let ignore = false;
+    setVisibleModelIds(null);
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const settingsRes = await fetch("/api/settings", { signal: controller.signal });
+        if (!settingsRes.ok) throw new Error(`settings ${settingsRes.status}`);
+        const settingsData = await settingsRes.json();
+        if (settingsData?.hidePaidModels !== true) return;
+        const slug = kindFilter ? KIND_TO_SLUG[kindFilter] : null;
+        const url = slug ? `/api/v1/models/${slug}` : "/api/v1/models";
+        const modelsRes = await fetch(url, { signal: controller.signal });
+        if (!modelsRes.ok) throw new Error(`models ${modelsRes.status}`);
+        const modelsData = await modelsRes.json();
+        if (!Array.isArray(modelsData?.data) || ignore) return;
+        const ids = modelsData.data
+          .map((m) => m.id)
+          .filter((id) => typeof id === "string");
+        setVisibleModelIds(new Set(ids));
+      } catch (error) {
+        if (error?.name === "AbortError") return;
+        console.error("Error fetching visible model ids:", error);
+      }
+    })();
+    return () => {
+      ignore = true;
+      controller.abort();
+    };
+  }, [isOpen, kindFilter]);
 
   const fetchCombos = async () => {
     try {
@@ -446,16 +506,43 @@ export default function ModelSelectModal({
       if (group.models.length === 0) delete groups[providerId];
     });
 
+    // #6495 / F-4: intersect with the server catalog's visible ids so the
+    // hide-paid toggle (applied server-side) propagates to every picker. A null
+    // set = not loaded / fetch failed → fail open (no filtering). The fetched
+    // catalog matches the current kindFilter (root LLM list for the default
+    // selector, /api/v1/models/{kind} for typed pickers). Synthetic
+    // placeholders are not catalog rows and not evidence of paid status, so
+    // they stay visible. Web provider-as-model rows are routed by providerId
+    // but cataloged as `<alias>/search` / `<alias>/fetch`, so they match
+    // against the cataloged id, not `m.value`.
+    if (visibleModelIds) {
+      const webSuffix = WEB_KIND_SUFFIX[kindFilter];
+      Object.entries(groups).forEach(([providerId, group]) => {
+        group.models = group.models.filter((m) => {
+          if (m.isPlaceholder) return true;
+          if (webSuffix) return visibleModelIds.has(`${group.alias}/${webSuffix}`);
+          return visibleModelIds.has(m.value);
+        });
+        if (group.models.length === 0) delete groups[providerId];
+      });
+    }
+
     return groups;
-  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders, fetchedModels]);
+  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders, fetchedModels, visibleModelIds]);
 
   // Filter combos by search query (and hide combos when kindFilter is set — combos are LLM-only by design)
   const filteredCombos = useMemo(() => {
     if (kindFilter) return [];
-    if (!searchQuery.trim()) return combos;
+    // #6495 / F-4: intersect with the server catalog's visible ids. The catalog
+    // already omits all-paid combos and keeps mixed ones (with paid members
+    // filtered), so a combo name present in the set is a visible combo. A null
+    // set = not loaded / fetch failed → fail open (no filtering).
+    let list = combos;
+    if (visibleModelIds) list = list.filter((c) => visibleModelIds.has(c.name));
+    if (!searchQuery.trim()) return list;
     const query = searchQuery.toLowerCase();
-    return combos.filter(c => c.name.toLowerCase().includes(query));
-  }, [combos, searchQuery, kindFilter]);
+    return list.filter(c => c.name.toLowerCase().includes(query));
+  }, [combos, searchQuery, kindFilter, visibleModelIds]);
 
   // Sort models alphabetically, with added models floated to top
   const sortModels = (models) => {

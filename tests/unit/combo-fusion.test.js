@@ -18,6 +18,38 @@ function errResponse(status = 500) {
 }
 
 describe("fusion combo", () => {
+  // #6495 / F-4: when the hide-paid toggle filters an all-paid fusion combo
+  // down to an empty panel, handleFusionChat must fail fast (400) rather than
+  // fall through to `panel[0]` === undefined and route a judge turn with no
+  // model. The chat handler reaches here via `if (comboModels)` because an
+  // empty array is truthy — so the engine guard is the load-bearing defense.
+  it("returns 400 and never calls handleSingleModel when the panel is empty", async () => {
+    const handleSingleModel = vi.fn(async () => okResponse("should-not-run"));
+    const res = await handleFusionChat({
+      body: { messages: [{ role: "user", content: "Q" }] },
+      models: [],
+      handleSingleModel,
+      log,
+      comboName: "all-paid-fusion",
+    });
+    expect(res.status).toBe(400);
+    expect(handleSingleModel).not.toHaveBeenCalled();
+    const body = await res.json();
+    expect(body.error.message).toMatch(/no models/i);
+  });
+
+  it("treats a null/undefined models arg as an empty panel (400)", async () => {
+    const handleSingleModel = vi.fn(async () => okResponse("should-not-run"));
+    const res = await handleFusionChat({
+      body: { messages: [{ role: "user", content: "Q" }] },
+      models: null,
+      handleSingleModel,
+      log,
+    });
+    expect(res.status).toBe(400);
+    expect(handleSingleModel).not.toHaveBeenCalled();
+  });
+
   it("answers directly with a single-model panel (nothing to fuse)", async () => {
     const handleSingleModel = vi.fn(async () => okResponse("solo"));
     await handleFusionChat({

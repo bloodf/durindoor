@@ -13,6 +13,7 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
+import { filterPaidModels } from "open-sse/providers/pricing.js";
 import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 
@@ -100,7 +101,13 @@ export async function handleFetch(request) {
 
   // Combo expansion: providerInput may be a combo name → run fallback/round-robin across providers
   const combos = await getCombos();
-  const comboModels = getComboModelsFromData(providerInput, combos);
+  // #6495 / F-4: filter paid members when the toggle is on. The auth ACL check
+  // above calls getComboModelsFromData without filtering so combo existence/ACL
+  // stay against the real member list.
+  const comboModels = filterPaidModels(
+    getComboModelsFromData(providerInput, combos),
+    settings.hidePaidModels === true,
+  );
   if (comboModels) {
     const comboStrategies = settings.comboStrategies || {};
     const comboStrategy = comboStrategies[providerInput]?.fallbackStrategy || settings.comboStrategy || "fallback";

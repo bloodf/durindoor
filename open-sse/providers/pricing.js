@@ -1,9 +1,132 @@
+import REGISTRY from "./registry/index.js";
+import {
+  isFreeModel as catalogIsFreeModel,
+  providerHasFreeModels,
+} from "../config/freeModelCatalog.js";
+
 // Pricing rates for AI models — all rates in $/1M tokens
 //
 // Fallback order (first match wins):
 //   1. PROVIDER_PRICING[provider][model]  — provider-specific override
 //   2. MODEL_PRICING[model]               — canonical model price (provider-agnostic)
 //   3. PATTERN_PRICING                    — glob pattern match (e.g. "codex-*")
+
+// Alias→id and id→entry maps for resolving the provider half of a model string
+// when classifying paid vs free. Built once from the registry single-source so
+// per-model classification is O(1) (the /v1/models list carries hundreds).
+const ALIAS_TO_PROVIDER_ID = {};
+const PROVIDER_BY_ID = {};
+for (const entry of REGISTRY) {
+  PROVIDER_BY_ID[entry.id] = entry;
+  ALIAS_TO_PROVIDER_ID[entry.id] = entry.id;
+  if (entry.alias) ALIAS_TO_PROVIDER_ID[entry.alias] = entry.id;
+  if (entry.uiAlias && entry.uiAlias !== entry.alias) ALIAS_TO_PROVIDER_ID[entry.uiAlias] = entry.id;
+  for (const a of entry.aliases || []) ALIAS_TO_PROVIDER_ID[a] = entry.id;
+}
+
+/**
+ * Split a "provider/model" string at the FIRST slash, preserving nested model
+ * ids like "fireworks/accounts/fireworks/models/glm-5p2".
+ */
+function splitProviderModel(modelStr) {
+  if (typeof modelStr !== "string") return { provider: "", model: "" };
+  const slash = modelStr.indexOf("/");
+  if (slash <= 0) return { provider: "", model: modelStr };
+  return {
+    provider: modelStr.slice(0, slash),
+    model: modelStr.slice(slash + 1),
+  };
+}
+
+function resolveProviderId(providerOrAlias) {
+  return ALIAS_TO_PROVIDER_ID[providerOrAlias] || providerOrAlias;
+}
+
+function registryEntry(providerId) {
+  return PROVIDER_BY_ID[providerId] || null;
+}
+
+function registryModel(entry, modelId) {
+  if (!entry?.models) return null;
+  return entry.models.find((m) => m.id === modelId) || null;
+}
+
+/**
+ * Whether the registry entry for (provider, model) is explicitly marked free.
+ * Honors per-model markers (name "(Free)", id ending in ":free"/"-free") and
+ * provider-level no-auth/category:"free". Provider-wide `hasFree` is NOT an
+ * exemption — a provider can mix free and priced models, so exemption needs
+ * per-model evidence. Returns `null` when there is no signal either way so
+ * callers fall through to pricing.
+ */
+function registryFreeSignal(providerId, modelId) {
+  const entry = registryEntry(providerId);
+  if (!entry) return null;
+  if (entry.noAuth === true || entry.category === "free") return true;
+  const m = registryModel(entry, modelId);
+  if (!m) return null;
+  if (m.free === true || m.isFree === true) return true;
+  if (typeof m.name === "string" && /\(Free\)\s*$/i.test(m.name)) return true;
+  if (typeof m.id === "string" && /(:free|-free)$/i.test(m.id)) return true;
+  return null;
+}
+
+/**
+ * Classify a model string as PAID for the `hidePaidModels` filter.
+ *
+ * Mirrors OmniRoute #6495 `shouldHidePaid(provider, modelId, pricing)` exactly:
+ *   - toggle off → caller skips this (returns false here only when nothing hides);
+ *   - provider NOT in curated free catalog → PAID (whole provider paid-only);
+ *   - provider in catalog → PAID unless `isFreeModel(provider, {id, pricing})`
+ *     says free (`:free` suffix, zero prompt+completion price, catalog id match).
+ * One deliberate extension beyond upstream: an explicit registry free marker
+ * (no-auth provider, `category:"free"`, per-model `free`/`(Free)`/`:free`/`-free`)
+ * wins first — DurinDoor lists free routes (api-airforce `(Free)`, auggie) that
+ * are not in the curated catalog, and those must stay visible. Unknown/unpriced
+ * on a non-free provider is PAID (matches upstream: the catalog is the
+ * authority, not the pricing table).
+ *
+ * @param {string} modelStr "alias/model" or "provider/model" (nested ids ok).
+ * @returns {boolean}
+ */
+export function isPaidModel(modelStr) {
+  const { provider: providerOrAlias, model } = splitProviderModel(modelStr);
+  // Bare / providerless IDs (custom/providerless rows in buildModelsList) have
+  // no curated catalog entry and must stay visible — never classify as paid.
+  if (!providerOrAlias || !model) return false;
+  const provider = resolveProviderId(providerOrAlias);
+
+  if (registryFreeSignal(provider, model) === true) return false;
+
+  // OmniRoute shouldHidePaid: provider with no curated free roster → hide all.
+  if (!providerHasFreeModels(provider)) return true;
+
+  // Provider has a free roster → keep only the models the catalog marks free
+  // (or an explicit zero-price row). Pricing is resolved raw-alias-first so
+  // alias-keyed overrides (PROVIDER_PRICING.gh) still feed zero-price detection.
+  const pricing =
+    getPricingForModel(providerOrAlias, model) ?? getPricingForModel(provider, model);
+  return !catalogIsFreeModel(provider, { id: model, pricing });
+}
+
+/**
+ * Filter an array of model strings/objects down to the free ones when the
+ * hide-paid toggle is on. Passes the array through unchanged when disabled.
+ * Object entries are classified by their `id` (string) field.
+ *
+ * @template T
+ * @param {T[]} models
+ * @param {boolean} enabled
+ * @param {(m: T) => string} [toModelStr] defaults to `m.id ?? m`
+ * @returns {T[]}
+ */
+export function filterPaidModels(models, enabled, toModelStr = (m) => (typeof m === "string" ? m : m?.id)) {
+  if (!enabled || !Array.isArray(models)) return models;
+  return models.filter((m) => {
+    const s = toModelStr(m);
+    return typeof s !== "string" || !isPaidModel(s);
+  });
+}
 
 /**
  * Canonical model pricing — provider-agnostic.

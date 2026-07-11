@@ -3,7 +3,7 @@ import {
   markAccountUnavailable,
   clearAccountError,
   extractApiKey,
-  isValidApiKey,
+  evaluateApiKeyAuth,
 } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
@@ -12,7 +12,7 @@ import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
-import { enforceApiKeyModelPolicy, recordApiKeyUsage } from "../services/apiKeyPolicy.js";
+import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 
 /**
  * Handle embeddings request for the SSE/Next.js server.
@@ -42,31 +42,20 @@ export async function handleEmbeddings(request) {
     log.debug("AUTH", "No API key provided (local mode)");
   }
 
-  // Enforce API key if enabled in settings
   const settings = await getSettings();
-  if (settings.requireApiKey) {
-    if (!apiKey) {
+  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true });
+  if (!apiKeyAuth.ok) {
+    if (apiKeyAuth.reason === "missing") {
       log.warn("AUTH", "Missing API key (requireApiKey=true)");
       return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
     }
-    const valid = await isValidApiKey(apiKey);
-    if (!valid) {
-      log.warn("AUTH", "Invalid API key (requireApiKey=true)");
-      return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
-    }
+    log.warn("AUTH", "Invalid API key");
+    return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
   }
 
   if (!modelStr) {
     log.warn("EMBEDDINGS", "Missing model");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
-  }
-
-  const policyError = await enforceApiKeyModelPolicy(request, modelStr);
-  if (policyError) return policyError;
-
-  if (apiKey) {
-    const tokens = body.input ? JSON.stringify(body.input).length / 4 : 0;
-    await recordApiKeyUsage(apiKey, { tokens, cost: 0 });
   }
 
   if (!body.input) {
@@ -81,6 +70,9 @@ export async function handleEmbeddings(request) {
   }
 
   const { provider, model } = modelInfo;
+  const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`);
+  if (resolvedPolicyError) return resolvedPolicyError;
+  const estimatedTokens = JSON.stringify(body.input).length / 4;
 
   if (modelStr !== `${provider}/${model}`) {
     log.info("ROUTING", `${modelStr} → ${provider}/${model}`);
@@ -133,7 +125,9 @@ export async function handleEmbeddings(request) {
       }
     });
 
-    if (result.success) return result.response;
+    if (result.success) {
+      return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
+    }
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model);
 

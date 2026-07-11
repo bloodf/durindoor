@@ -1,18 +1,23 @@
 const esbuild = require("esbuild");
 const fs = require("fs");
 const path = require("path");
+const { resolveCliAppDir } = require("./cliBuildPaths");
 
 // ── Build config ─────────────────────────────────────────
 const BUILD_CONFIG = {
   bundle: true,
   minify: true,
-  cleanPlainFiles: true,
+  // custom-server.js and the bundled Next manager load peer-owner, control
+  // proof, and lifecycle modules from this directory at runtime. Preserve the
+  // copied source closure and overwrite only server.js with its portable bundle.
+  cleanPlainFiles: false,
 };
 // ─────────────────────────────────────────────────────────
 
 const cliDir = path.resolve(__dirname, "..");
 const appDir = path.resolve(cliDir, "..");
-const cliMitmDir = path.join(cliDir, "app", "src", "mitm");
+const cliAppDir = resolveCliAppDir(cliDir);
+const cliMitmDir = path.join(cliAppDir, "src", "mitm");
 // Bundle everything — no externals. This keeps MITM runtime self-contained so
 // it can be copied to DATA_DIR/runtime/ and spawned from there (escapes
 // node_modules file locks that block `npm i -g durindoor@latest` on Windows).
@@ -40,7 +45,7 @@ async function buildEntry(entry) {
       bundle: true,
       minify: BUILD_CONFIG.minify,
       platform: "node",
-      target: "node18",
+      target: "node20",
       external: EXTERNALS,
       plugins: [buildPlugin],
       outfile: output,

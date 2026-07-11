@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import PropTypes from "prop-types";
-import { Card, Button, Input, Modal, CardSkeleton, Toggle, ConfirmModal, ModelSelectModal } from "@/shared/components";
+import { Card, Button, Input, Modal, CardSkeleton, Toggle, ConfirmModal } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import {
   TUNNEL_BENEFITS,
@@ -17,23 +17,32 @@ import EndpointRow from "./components/EndpointRow";
 import StatusAlert from "./components/StatusAlert";
 import Tooltip from "./components/Tooltip";
 import SecurityWarning from "./components/SecurityWarning";
+import {
+  API_KEY_EXPIRY_PRESETS,
+  expiryFromSelection,
+  expirySelectionFromValue,
+  formatKeyExpiry,
+} from "./apiKeyExpiry";
+
 export default function APIPageClient({ machineId }) {
   const [keys, setKeys] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newKeyName, setNewKeyName] = useState("");
   const [newKeyDailyLimitTokens, setNewKeyDailyLimitTokens] = useState("");
-  const [newKeyPolicy, setNewKeyPolicy] = useState({ allowedModels: [], maxTokens: null, maxCostUsd: null });
+  const [newKeyExpiryPreset, setNewKeyExpiryPreset] = useState("never");
+  const [newKeyCustomExpiresAt, setNewKeyCustomExpiresAt] = useState("");
+  const [keyStatus, setKeyStatus] = useState(null);
   const [createdKey, setCreatedKey] = useState(null);
+  const [createdKeyExpiresAt, setCreatedKeyExpiresAt] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
   const [combos, setCombos] = useState([]);
   const [newKeyAllowedCombos, setNewKeyAllowedCombos] = useState([]);
   const [editKey, setEditKey] = useState(null);
   const [editKeyAllowedCombos, setEditKeyAllowedCombos] = useState([]);
-  const [editPolicyKey, setEditPolicyKey] = useState(null);
-  const [connections, setConnections] = useState([]);
-  const [modelAliases, setModelAliases] = useState({});
-  const [showModelModal, setShowModelModal] = useState(false);
+  const [editKeyExpiryPreset, setEditKeyExpiryPreset] = useState("never");
+  const [editKeyCustomExpiresAt, setEditKeyCustomExpiresAt] = useState("");
+  const [editKeyStatus, setEditKeyStatus] = useState(null);
 
   const [requireApiKey, setRequireApiKey] = useState(false);
   const [requireLogin, setRequireLogin] = useState(true);
@@ -83,9 +92,6 @@ export default function APIPageClient({ machineId }) {
   const tsEverReachableRef = useRef(false);
   const [tunnelEverReachable, setTunnelEverReachable] = useState(false);
   const [tsEverReachable, setTsEverReachable] = useState(false);
-
-  // API key visibility toggle state
-  const [visibleKeys, setVisibleKeys] = useState(new Set());
 
   // Client-side local/remote detection (UI hint only, not a security gate)
   const [isRemoteHost, setIsRemoteHost] = useState(false);
@@ -265,11 +271,9 @@ export default function APIPageClient({ machineId }) {
 
   const fetchData = async () => {
     try {
-      const [keysRes, combosRes, provRes, aliasRes] = await Promise.all([
+      const [keysRes, combosRes] = await Promise.all([
         fetch("/api/keys"),
         fetch("/api/combos"),
-        fetch("/api/providers"),
-        fetch("/api/models/alias"),
       ]);
       const keysData = await keysRes.json();
       if (keysRes.ok) {
@@ -278,14 +282,6 @@ export default function APIPageClient({ machineId }) {
       if (combosRes.ok) {
         const combosData = await combosRes.json();
         setCombos(combosData.combos || combosData || []);
-      }
-      if (provRes.ok) {
-        const provData = await provRes.json();
-        setConnections(provData.connections || []);
-      }
-      if (aliasRes.ok) {
-        const aliasData = await aliasRes.json();
-        setModelAliases(aliasData.aliases || {});
       }
     } catch (error) {
       console.log("Error fetching data:", error);
@@ -640,31 +636,39 @@ export default function APIPageClient({ machineId }) {
     try {
       const dailyLimitTokens = newKeyDailyLimitTokens.trim() === "" ? null : Number(newKeyDailyLimitTokens);
       if (dailyLimitTokens !== null && (!Number.isSafeInteger(dailyLimitTokens) || dailyLimitTokens < 0)) return;
+
+      let expiresAt;
+      try {
+        expiresAt = expiryFromSelection(newKeyExpiryPreset, newKeyCustomExpiresAt);
+      } catch (error) {
+        setKeyStatus({ type: "error", message: error.message });
+        return;
+      }
+
       const res = await fetch("/api/keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: newKeyName,
-          allowedCombos: newKeyAllowedCombos,
-          dailyLimitTokens,
-          allowedModels: newKeyPolicy.allowedModels || [],
-          maxTokens: newKeyPolicy.maxTokens ?? null,
-          maxCostUsd: newKeyPolicy.maxCostUsd ?? null,
-        }),
+        body: JSON.stringify({ name: newKeyName, allowedCombos: newKeyAllowedCombos, dailyLimitTokens, expiresAt }),
       });
       const data = await res.json();
 
       if (res.ok) {
         setCreatedKey(data.key);
+        setCreatedKeyExpiresAt(data.expiresAt || null);
         await fetchData();
         setNewKeyName("");
         setNewKeyDailyLimitTokens("");
+        setNewKeyExpiryPreset("never");
+        setNewKeyCustomExpiresAt("");
         setNewKeyAllowedCombos([]);
-        setNewKeyPolicy({ allowedModels: [], maxTokens: null, maxCostUsd: null });
+        setKeyStatus(null);
         setShowAddModal(false);
+      } else {
+        setKeyStatus({ type: "error", message: data.error || "Failed to create key" });
       }
     } catch (error) {
       console.log("Error creating key:", error);
+      setKeyStatus({ type: "error", message: "Failed to create key" });
     }
   };
 
@@ -678,11 +682,6 @@ export default function APIPageClient({ machineId }) {
           const res = await fetch(`/api/keys/${id}`, { method: "DELETE" });
           if (res.ok) {
             setKeys(keys.filter((k) => k.id !== id));
-            setVisibleKeys(prev => {
-              const next = new Set(prev);
-              next.delete(id);
-              return next;
-            });
           }
         } catch (error) {
           console.log("Error deleting key:", error);
@@ -706,41 +705,24 @@ export default function APIPageClient({ machineId }) {
     }
   };
 
-  const handleUpdateKeyCombos = async (id, allowedCombos) => {
+  const handleUpdateKeyDetails = async (id, allowedCombos, expiresAt) => {
     try {
       const res = await fetch(`/api/keys/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ allowedCombos }),
+        body: JSON.stringify({ allowedCombos, expiresAt }),
       });
+      const data = await res.json();
       if (res.ok) {
-        const data = await res.json();
-        setKeys(prev => prev.map(k => k.id === id ? { ...k, allowedCombos: data.key?.allowedCombos || allowedCombos } : k));
+        setKeys(prev => prev.map(k => k.id === id ? data.key : k));
+        return true;
       }
+      setEditKeyStatus({ type: "error", message: data.error || "Failed to update API key" });
     } catch (error) {
-      console.log("Error updating key combos:", error);
+      console.log("Error updating key details:", error);
+      setEditKeyStatus({ type: "error", message: "Failed to update API key" });
     }
-  };
-
-  const handleUpdateKeyPolicy = async (id, policy) => {
-    try {
-      const body = {
-        allowedModels: policy?.allowedModels || [],
-        maxTokens: policy?.maxTokens ?? null,
-        maxCostUsd: policy?.maxCostUsd ?? null,
-      };
-      const res = await fetch(`/api/keys/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setKeys(prev => prev.map(k => k.id === id ? { ...k, policy: data.key?.policy || policy } : k));
-      }
-    } catch (error) {
-      console.log("Error updating key policy:", error);
-    }
+    return false;
   };
 
   const handleUpdateKeyLimit = async (id, value) => {
@@ -760,18 +742,13 @@ export default function APIPageClient({ machineId }) {
     }
   };
 
-  const maskKey = (fullKey) => {
-    if (!fullKey || fullKey.length <= 10) return fullKey || "";
-    return fullKey.slice(0, 6) + "•".repeat(fullKey.length - 10) + fullKey.slice(-4);
-  };
-
-  const toggleKeyVisibility = (keyId) => {
-    setVisibleKeys(prev => {
-      const next = new Set(prev);
-      if (next.has(keyId)) next.delete(keyId);
-      else next.add(keyId);
-      return next;
-    });
+  const beginEditKey = (key) => {
+    const expiry = expirySelectionFromValue(key.expiresAt);
+    setEditKey(key);
+    setEditKeyAllowedCombos(Array.isArray(key.allowedCombos) ? [...key.allowedCombos] : []);
+    setEditKeyExpiryPreset(expiry.selection);
+    setEditKeyCustomExpiresAt(expiry.customLocalValue);
+    setEditKeyStatus(null);
   };
 
   const [baseUrl, setBaseUrl] = useState("/v1");
@@ -1094,58 +1071,19 @@ export default function APIPageClient({ machineId }) {
                   <p className="text-sm font-medium">{key.name}</p>
                   <div className="flex items-center gap-2 mt-1">
                     <code className="text-xs text-text-muted font-mono">
-                      {visibleKeys.has(key.id) ? key.key : maskKey(key.key)}
+                      {key.maskedKey || "***"}
                     </code>
-                    <button
-                      onClick={() => toggleKeyVisibility(key.id)}
-                      className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
-                      title={visibleKeys.has(key.id) ? "Hide key" : "Show key"}
-                    >
-                      <span className="material-symbols-outlined text-[14px]">
-                        {visibleKeys.has(key.id) ? "visibility_off" : "visibility"}
-                      </span>
-                    </button>
-                    <button
-                      onClick={() => copy(key.key, key.id)}
-                      className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
-                    >
-                      <span className="material-symbols-outlined text-[14px]">
-                        {copied === key.id ? "check" : "content_copy"}
-                      </span>
-                    </button>
+                    <span className="text-[11px] text-text-muted">Secret shown only at creation</span>
                   </div>
                   <p className="text-xs text-text-muted mt-1">
                     Created {new Date(key.createdAt).toLocaleDateString()}
                   </p>
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <span className="text-xs text-text-muted">Models:</span>
-                    <button
-                      onClick={() => { setEditPolicyKey(key); }}
-                      className="text-xs text-text-muted hover:text-primary transition-colors"
-                    >
-                      {key.policy?.allowedModels?.length > 0
-                        ? `${key.policy.allowedModels.length} model${key.policy.allowedModels.length > 1 ? "s" : ""} allowed`
-                        : "All models"}
-                    </button>
-                    <span className="material-symbols-outlined text-[12px] text-text-muted">tune</span>
-                  </div>
-                  {(key.policy?.maxTokens != null || key.policy?.maxCostUsd != null) && (
-                    <div className="flex flex-wrap items-center gap-2 mt-1">
-                      {key.policy?.maxTokens != null && (
-                        <span className={`text-xs ${key.usage?.totalTokens >= key.policy.maxTokens ? "text-red-500" : "text-text-muted"}`}>
-                          {key.usage?.totalTokens?.toLocaleString() || 0} / {key.policy.maxTokens.toLocaleString()} tokens
-                        </span>
-                      )}
-                      {key.policy?.maxCostUsd != null && (
-                        <span className={`text-xs ${key.usage?.totalCost >= key.policy.maxCostUsd ? "text-red-500" : "text-text-muted"}`}>
-                          ${key.usage?.totalCost?.toFixed(4) || "0.0000"} / ${key.policy.maxCostUsd} cost
-                        </span>
-                      )}
-                    </div>
-                  )}
                   {key.isActive === false && (
                     <p className="text-xs text-orange-500 mt-1">Paused</p>
                   )}
+                  <p className={`text-xs mt-1 ${formatKeyExpiry(key.expiresAt).danger ? "text-red-500" : "text-text-muted"}`}>
+                    {formatKeyExpiry(key.expiresAt).text}
+                  </p>
                   <div className="flex flex-wrap items-center gap-1 mt-1">
                     <span className="text-xs text-text-muted">Daily limit:</span>
                     <Input
@@ -1169,9 +1107,9 @@ export default function APIPageClient({ machineId }) {
                       <span className="text-xs text-text-muted">All</span>
                     )}
                     <button
-                      onClick={() => { setEditKey(key); setEditKeyAllowedCombos(Array.isArray(key.allowedCombos) ? [...key.allowedCombos] : []); }}
+                      onClick={() => beginEditKey(key)}
                       className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
-                      title="Edit combo access"
+                      title="Edit key access and expiry"
                     >
                       <span className="material-symbols-outlined text-[14px]">edit</span>
                     </button>
@@ -1218,6 +1156,9 @@ export default function APIPageClient({ machineId }) {
           setShowAddModal(false);
           setNewKeyName("");
           setNewKeyDailyLimitTokens("");
+          setNewKeyExpiryPreset("never");
+          setNewKeyCustomExpiresAt("");
+          setKeyStatus(null);
         }}
       >
         <div className="flex flex-col gap-4">
@@ -1236,77 +1177,26 @@ export default function APIPageClient({ machineId }) {
             onChange={(e) => setNewKeyDailyLimitTokens(e.target.value)}
             placeholder="Unlimited"
           />
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-medium">Allowed Models</p>
-              <Button
-                size="sm"
-                variant="ghost"
-                icon="add"
-                onClick={() => setShowModelModal(true)}
-                disabled={connections.filter((c) => c.isActive !== false).length === 0}
-              >
-                Select Models
-              </Button>
-            </div>
-            <p className="text-xs text-text-muted mb-2">Leave empty to allow all models.</p>
-            {(newKeyPolicy.allowedModels || []).length > 0 ? (
-              <div className="flex flex-wrap gap-1.5 p-2 rounded-lg bg-bg-secondary border border-border min-h-[40px]">
-                {(newKeyPolicy.allowedModels || []).map((model) => (
-                  <span
-                    key={model}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs bg-primary/10 text-primary border border-primary/20"
-                  >
-                    {model}
-                    <button
-                      onClick={() => {
-                        setNewKeyPolicy({
-                          ...newKeyPolicy,
-                          allowedModels: newKeyPolicy.allowedModels.filter((m) => m !== model),
-                        });
-                      }}
-                      className="hover:text-red-500 transition-colors"
-                    >
-                      <span className="material-symbols-outlined text-[12px]">close</span>
-                    </button>
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <div className="p-2 rounded-lg bg-bg-secondary border border-border text-xs text-text-muted">All models allowed</div>
-            )}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-sm font-medium mb-1 block">Max Tokens (lifetime)</label>
-              <input
-                type="number"
-                className="w-full px-3 py-1.5 rounded-lg bg-bg-secondary border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                value={newKeyPolicy.maxTokens ?? ""}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setNewKeyPolicy({ ...newKeyPolicy, maxTokens: val === "" ? null : Number(val) });
-                }}
-                placeholder="Unlimited"
-                min="0"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-1 block">Max Cost USD (lifetime)</label>
-              <input
-                type="number"
-                step="0.01"
-                className="w-full px-3 py-1.5 rounded-lg bg-bg-secondary border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                value={newKeyPolicy.maxCostUsd ?? ""}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setNewKeyPolicy({ ...newKeyPolicy, maxCostUsd: val === "" ? null : Number(val) });
-                }}
-                placeholder="Unlimited"
-                min="0"
-              />
-            </div>
-          </div>
+          <label className="flex flex-col gap-1.5 text-sm font-medium">
+            Expiry
+            <select
+              value={newKeyExpiryPreset}
+              onChange={(event) => { setNewKeyExpiryPreset(event.target.value); setKeyStatus(null); }}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+            >
+              {API_KEY_EXPIRY_PRESETS.map((preset) => (
+                <option key={preset.value} value={preset.value}>{preset.label}</option>
+              ))}
+            </select>
+          </label>
+          {newKeyExpiryPreset === "custom" && (
+            <Input
+              label="Custom expiry (local time)"
+              type="datetime-local"
+              value={newKeyCustomExpiresAt}
+              onChange={(event) => { setNewKeyCustomExpiresAt(event.target.value); setKeyStatus(null); }}
+            />
+          )}
           {combos.length > 0 && (
             <div>
               <p className="text-sm font-medium mb-2">Allowed Combos</p>
@@ -1333,6 +1223,7 @@ export default function APIPageClient({ machineId }) {
               </div>
             </div>
           )}
+          {keyStatus && <StatusAlert status={keyStatus} />}
           <div className="flex gap-2">
             <Button onClick={handleCreateKey} fullWidth disabled={!newKeyName.trim()}>
               Create
@@ -1342,8 +1233,10 @@ export default function APIPageClient({ machineId }) {
                 setShowAddModal(false);
                 setNewKeyName("");
                 setNewKeyDailyLimitTokens("");
+                setNewKeyExpiryPreset("never");
+                setNewKeyCustomExpiresAt("");
                 setNewKeyAllowedCombos([]);
-                setNewKeyPolicy({ allowedModels: [], maxTokens: null, maxCostUsd: null });
+                setKeyStatus(null);
               }}
               variant="ghost"
               fullWidth
@@ -1358,7 +1251,7 @@ export default function APIPageClient({ machineId }) {
       <Modal
         isOpen={!!createdKey}
         title="API Key Created"
-        onClose={() => setCreatedKey(null)}
+        onClose={() => { setCreatedKey(null); setCreatedKeyExpiresAt(null); }}
       >
         <div className="flex flex-col gap-4">
           <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
@@ -1383,7 +1276,10 @@ export default function APIPageClient({ machineId }) {
               {copied === "created_key" ? "Copied!" : "Copy"}
             </Button>
           </div>
-          <Button onClick={() => setCreatedKey(null)} fullWidth>
+          <p className="text-sm text-text-muted">
+            Expiry: {createdKeyExpiresAt ? new Date(createdKeyExpiresAt).toLocaleString() : "Never expires"}
+          </p>
+          <Button onClick={() => { setCreatedKey(null); setCreatedKeyExpiresAt(null); }} fullWidth>
             Done
           </Button>
         </div>
@@ -1535,13 +1431,34 @@ export default function APIPageClient({ machineId }) {
         </div>
       </Modal>
 
-      {/* Edit Combo Access Modal */}
+      {/* Edit key access and expiry */}
       <Modal
         isOpen={!!editKey}
-        title={`Edit Combo Access — ${editKey?.name || ""}`}
-        onClose={() => { setEditKey(null); setEditKeyAllowedCombos([]); }}
+        title={`Edit API Key — ${editKey?.name || ""}`}
+        onClose={() => { setEditKey(null); setEditKeyAllowedCombos([]); setEditKeyStatus(null); }}
       >
         <div className="flex flex-col gap-4">
+          <label className="flex flex-col gap-1.5 text-sm font-medium">
+            Expiry
+            <select
+              value={editKeyExpiryPreset}
+              onChange={(event) => { setEditKeyExpiryPreset(event.target.value); setEditKeyStatus(null); }}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+            >
+              {API_KEY_EXPIRY_PRESETS.map((preset) => (
+                <option key={preset.value} value={preset.value}>{preset.label}</option>
+              ))}
+            </select>
+          </label>
+          {editKeyExpiryPreset === "custom" && (
+            <Input
+              label="Custom expiry (local time)"
+              type="datetime-local"
+              value={editKeyCustomExpiresAt}
+              onChange={(event) => { setEditKeyCustomExpiresAt(event.target.value); setEditKeyStatus(null); }}
+            />
+          )}
+          <p className="text-xs text-text-muted">Choose Never expires and save to clear the current expiry.</p>
           {combos.length > 0 ? (
             <div>
               <p className="text-sm text-text-muted mb-2">Select which combos this key can access. Leave empty to allow all.</p>
@@ -1569,160 +1486,33 @@ export default function APIPageClient({ machineId }) {
           ) : (
             <p className="text-sm text-text-muted">No combos available.</p>
           )}
+          {editKeyStatus && <StatusAlert status={editKeyStatus} />}
           <div className="flex gap-2">
             <Button
               onClick={async () => {
                 if (editKey) {
-                  await handleUpdateKeyCombos(editKey.id, editKeyAllowedCombos);
+                  let expiresAt;
+                  try {
+                    expiresAt = expiryFromSelection(editKeyExpiryPreset, editKeyCustomExpiresAt);
+                  } catch (error) {
+                    setEditKeyStatus({ type: "error", message: error.message });
+                    return;
+                  }
+                  const updated = await handleUpdateKeyDetails(editKey.id, editKeyAllowedCombos, expiresAt);
+                  if (!updated) return;
                   setEditKey(null);
                   setEditKeyAllowedCombos([]);
+                  setEditKeyStatus(null);
                 }
               }}
               fullWidth
             >
               Save
             </Button>
-            <Button onClick={() => { setEditKey(null); setEditKeyAllowedCombos([]); }} variant="ghost" fullWidth>Cancel</Button>
+            <Button onClick={() => { setEditKey(null); setEditKeyAllowedCombos([]); setEditKeyStatus(null); }} variant="ghost" fullWidth>Cancel</Button>
           </div>
         </div>
       </Modal>
-
-      <Modal
-        isOpen={!!editPolicyKey}
-        title={`API Key Policy — ${editPolicyKey?.name || ""}`}
-        onClose={() => setEditPolicyKey(null)}
-      >
-        <div className="flex flex-col gap-4">
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-medium">Allowed Models</p>
-              <Button
-                size="sm"
-                variant="ghost"
-                icon="add"
-                onClick={() => setShowModelModal(true)}
-                disabled={connections.filter((c) => c.isActive !== false).length === 0}
-              >
-                Select Models
-              </Button>
-            </div>
-            <p className="text-xs text-text-muted mb-2">Leave empty to allow all models. Click a model chip to remove.</p>
-            {(editPolicyKey?.policy?.allowedModels || []).length > 0 ? (
-              <div className="flex flex-wrap gap-1.5 p-2 rounded-lg bg-bg-secondary border border-border min-h-[40px]">
-                {(editPolicyKey?.policy?.allowedModels || []).map((model) => (
-                  <span
-                    key={model}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs bg-primary/10 text-primary border border-primary/20"
-                  >
-                    {model}
-                    <button
-                      onClick={() => {
-                        const updated = (editPolicyKey?.policy?.allowedModels || []).filter((m) => m !== model);
-                        setEditPolicyKey({ ...editPolicyKey, policy: { ...editPolicyKey.policy, allowedModels: updated } });
-                      }}
-                      className="hover:text-red-500 transition-colors"
-                    >
-                      <span className="material-symbols-outlined text-[12px]">close</span>
-                    </button>
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <div className="p-2 rounded-lg bg-bg-secondary border border-border text-xs text-text-muted">All models allowed</div>
-            )}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-sm font-medium mb-1 block">Max Tokens (lifetime)</label>
-              <input
-                type="number"
-                className="w-full px-3 py-1.5 rounded-lg bg-bg-secondary border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                value={editPolicyKey?.policy?.maxTokens ?? ""}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setEditPolicyKey({
-                    ...editPolicyKey,
-                    policy: { ...editPolicyKey?.policy, maxTokens: val === "" ? null : Number(val) },
-                  });
-                }}
-                placeholder="Unlimited"
-                min="0"
-              />
-              {editPolicyKey?.usage && editPolicyKey?.policy?.maxTokens != null && (
-                <p className="text-xs text-text-muted mt-1">Used: {editPolicyKey.usage.totalTokens?.toLocaleString() || 0}</p>
-              )}
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-1 block">Max Cost USD (lifetime)</label>
-              <input
-                type="number"
-                step="0.01"
-                className="w-full px-3 py-1.5 rounded-lg bg-bg-secondary border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                value={editPolicyKey?.policy?.maxCostUsd ?? ""}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setEditPolicyKey({
-                    ...editPolicyKey,
-                    policy: { ...editPolicyKey?.policy, maxCostUsd: val === "" ? null : Number(val) },
-                  });
-                }}
-                placeholder="Unlimited"
-                min="0"
-              />
-              {editPolicyKey?.usage && editPolicyKey?.policy?.maxCostUsd != null && (
-                <p className="text-xs text-text-muted mt-1">Used: ${editPolicyKey.usage.totalCost?.toFixed(4) || "0.0000"}</p>
-              )}
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              onClick={async () => {
-                if (editPolicyKey) {
-                  await handleUpdateKeyPolicy(editPolicyKey.id, editPolicyKey.policy);
-                  setEditPolicyKey(null);
-                }
-              }}
-              fullWidth
-            >
-              Save
-            </Button>
-            <Button onClick={() => setEditPolicyKey(null)} variant="ghost" fullWidth>Cancel</Button>
-          </div>
-        </div>
-      </Modal>
-
-      <ModelSelectModal
-        isOpen={showModelModal}
-        onClose={() => setShowModelModal(false)}
-        onSelect={(model) => {
-          if (editPolicyKey) {
-            const current = editPolicyKey?.policy?.allowedModels || [];
-            if (!current.includes(model.value)) {
-              setEditPolicyKey({ ...editPolicyKey, policy: { ...editPolicyKey.policy, allowedModels: [...current, model.value] } });
-            }
-          } else {
-            const current = newKeyPolicy.allowedModels || [];
-            if (!current.includes(model.value)) {
-              setNewKeyPolicy({ ...newKeyPolicy, allowedModels: [...current, model.value] });
-            }
-          }
-        }}
-        onDeselect={(model) => {
-          if (editPolicyKey) {
-            const current = editPolicyKey?.policy?.allowedModels || [];
-            setEditPolicyKey({ ...editPolicyKey, policy: { ...editPolicyKey.policy, allowedModels: current.filter((m) => m !== model.value) } });
-          } else {
-            const current = newKeyPolicy.allowedModels || [];
-            setNewKeyPolicy({ ...newKeyPolicy, allowedModels: current.filter((m) => m !== model.value) });
-          }
-        }}
-        selectedModel={null}
-        activeProviders={connections.filter((c) => c.isActive !== false)}
-        modelAliases={modelAliases}
-        addedModelValues={editPolicyKey ? (editPolicyKey.policy?.allowedModels || []) : (newKeyPolicy.allowedModels || [])}
-        closeOnSelect={false}
-        title="Select Allowed Models"
-      />
 
       {/* Confirm Modal */}
       <ConfirmModal

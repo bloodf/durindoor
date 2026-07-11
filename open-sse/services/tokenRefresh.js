@@ -15,6 +15,8 @@ import {
   refreshGitLabDuoToken,
   classifyOAuthRefreshError,
 } from "./tokenRefresh/providers.js";
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { sanitizeErrorMessage } from "../utils/error.js";
 
 // Re-export all provider refresh functions (preserves public API for all consumers)
 export {
@@ -65,7 +67,7 @@ export function parseVertexSaJson(apiKey) {
 // Cache Vertex tokens keyed by service account email { token, expiresAt }
 const vertexTokenCache = new Map();
 
-export async function refreshVertexToken(saJson, log) {
+export async function refreshVertexToken(saJson, log, proxyOptions = null) {
   const cacheKey = saJson.client_email;
   const cached = vertexTokenCache.get(cacheKey);
 
@@ -87,18 +89,18 @@ export async function refreshVertexToken(saJson, log) {
       .setExpirationTime(now + 3600)
       .sign(privateKey);
 
-    const res = await fetch(OAUTH_ENDPOINTS.google.token, {
+    const res = await proxyAwareFetch(OAUTH_ENDPOINTS.google.token, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
         assertion: jwt,
       }),
-    });
+    }, proxyOptions);
 
     if (!res.ok) {
       const err = await res.text();
-      log?.error?.("TOKEN_REFRESH", `Vertex token mint failed: ${err}`);
+      log?.error?.("TOKEN_REFRESH", `Vertex token mint failed: ${sanitizeErrorMessage(err)}`);
       return null;
     }
 
@@ -110,59 +112,66 @@ export async function refreshVertexToken(saJson, log) {
 
     return { accessToken: access_token, expiresAt };
   } catch (error) {
-    log?.error?.("TOKEN_REFRESH", `Vertex token error: ${error.message}`);
+    log?.error?.("TOKEN_REFRESH", `Vertex token error: ${sanitizeErrorMessage(error?.message || error)}`);
     return null;
   }
 }
 
-function vertexRefreshHandler(c, log) {
+function vertexRefreshHandler(c, log, proxyOptions) {
   const saJson = parseVertexSaJson(c.apiKey);
   if (!saJson) return null;
-  return refreshVertexToken(saJson, log);
+  return refreshVertexToken(saJson, log, proxyOptions);
 }
 
 const REFRESH_HANDLERS = {
-  "gemini-cli": (c, log) => refreshGoogleToken(c.refreshToken, PROVIDERS["gemini-cli"].clientId, PROVIDERS["gemini-cli"].clientSecret, log),
-  antigravity: (c, log) => refreshGoogleToken(c.refreshToken, PROVIDERS.antigravity.clientId, PROVIDERS.antigravity.clientSecret, log),
-  agy: (c, log) => refreshGoogleToken(c.refreshToken, PROVIDERS.agy.clientId, PROVIDERS.agy.clientSecret, log),
-  claude: (c, log) => refreshClaudeOAuthToken(c.refreshToken, log),
-  codex: (c, log) => refreshCodexToken(c.refreshToken, log),
-  qwen: (c, log) => refreshQwenToken(c.refreshToken, log),
-  iflow: (c, log) => refreshIflowToken(c.refreshToken, log),
-  github: (c, log) => refreshGitHubToken(c.refreshToken, log),
-  kiro: (c, log) => refreshKiroToken(c.refreshToken, c.providerSpecificData, log),
-  xai: (c, log) => refreshXaiToken(c.refreshToken, log),
-  "grok-cli": (c, log) => refreshXaiToken(c.refreshToken, log),
-  "codebuddy-cn": (c, log) => refreshCodebuddyToken(c.refreshToken, log),
-  "gitlab-duo": (c, log) => refreshGitLabDuoToken(c.refreshToken, c, log),
+  "gemini-cli": (c, log, p) => refreshGoogleToken(c.refreshToken, PROVIDERS["gemini-cli"].clientId, PROVIDERS["gemini-cli"].clientSecret, log, p),
+  antigravity: (c, log, p) => refreshGoogleToken(c.refreshToken, PROVIDERS.antigravity.clientId, PROVIDERS.antigravity.clientSecret, log, p),
+  agy: (c, log, p) => refreshGoogleToken(c.refreshToken, PROVIDERS.agy.clientId, PROVIDERS.agy.clientSecret, log, p),
+  claude: (c, log, p) => refreshClaudeOAuthToken(c.refreshToken, log, p),
+  codex: (c, log, p) => refreshCodexToken(c.refreshToken, log, p),
+  qwen: (c, log, p) => refreshQwenToken(c.refreshToken, log, p),
+  iflow: (c, log, p) => refreshIflowToken(c.refreshToken, log, p),
+  github: (c, log, p) => refreshGitHubToken(c.refreshToken, log, p),
+  kiro: (c, log, p) => refreshKiroToken(c.refreshToken, c.providerSpecificData, log, p),
+  xai: (c, log, p) => refreshXaiToken(c.refreshToken, log, p),
+  "grok-cli": (c, log, p) => refreshXaiToken(c.refreshToken, log, p),
+  "codebuddy-cn": (c, log, p) => refreshCodebuddyToken(c.refreshToken, log, p),
+  "gitlab-duo": (c, log, p) => refreshGitLabDuoToken(c.refreshToken, c, log, p),
   vertex: vertexRefreshHandler,
   "vertex-partner": vertexRefreshHandler
 };
 
-export async function getAccessToken(provider, credentials, log) {
+export async function getAccessToken(provider, credentials, log, proxyOptions = null) {
   if (!credentials || !credentials.refreshToken || typeof credentials.refreshToken !== "string") {
     log?.warn?.("TOKEN_REFRESH", `No valid refresh token available for provider: ${provider}`);
     return null;
   }
-  return _getAccessTokenInternal(provider, credentials, log);
+  return _getAccessTokenInternal(provider, credentials, log, proxyOptions);
 }
 
-async function _getAccessTokenInternal(provider, credentials, log) {
+async function _getAccessTokenInternal(provider, credentials, log, proxyOptions) {
   if (provider === "gemini") {
-    return refreshGoogleToken(credentials.refreshToken, PROVIDERS.gemini.clientId, PROVIDERS.gemini.clientSecret, log);
+    return refreshGoogleToken(credentials.refreshToken, PROVIDERS.gemini.clientId, PROVIDERS.gemini.clientSecret, log, proxyOptions);
   }
   const handler = REFRESH_HANDLERS[provider];
   if (!handler) {
     log?.warn?.("TOKEN_REFRESH", `Unsupported provider for token refresh: ${provider}`);
     return null;
   }
-  return handler(credentials, log);
+  return handler(credentials, log, proxyOptions);
 }
 
-export async function refreshTokenByProvider(provider, credentials, log) {
+/**
+ * Refresh credentials using the caller's immutable egress contract.
+ * `proxyOptions` is intentionally trailing so existing integrations remain
+ * source-compatible while proactive and reactive refresh paths can opt in.
+ */
+export async function refreshTokenByProvider(provider, credentials, log, proxyOptions = null) {
   if (!credentials.refreshToken) return null;
   const handler = REFRESH_HANDLERS[provider];
-  return handler ? handler(credentials, log) : refreshAccessToken(provider, credentials.refreshToken, credentials, log);
+  return handler
+    ? handler(credentials, log, proxyOptions)
+    : refreshAccessToken(provider, credentials.refreshToken, credentials, log, proxyOptions);
 }
 
 export function formatProviderCredentials(provider, credentials, log) {
@@ -248,7 +257,10 @@ export async function refreshWithRetry(refreshFn, maxRetries = 3, log = null) {
       const result = await refreshFn();
       if (result) return result;
     } catch (error) {
-      log?.warn?.("TOKEN_REFRESH", `Attempt ${attempt + 1}/${maxRetries} failed: ${error.message}`);
+      log?.warn?.(
+        "TOKEN_REFRESH",
+        `Attempt ${attempt + 1}/${maxRetries} failed: ${sanitizeErrorMessage(error?.message || error)}`,
+      );
     }
   }
 

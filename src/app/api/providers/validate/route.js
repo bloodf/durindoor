@@ -7,8 +7,19 @@ import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
 import { buildZenmuxAnthropicBody, extractZenmuxCtoken, normalizeZenmuxCookie, ZENMUX_FREE_CHAT_URL } from "open-sse/executors/zenmux-free.js";
 import { normalizeProviderId } from "@/lib/providerNormalization";
-import { isRedactedToken, isStructuredPathOnlyCredential, isStructuredWsUrlCredential } from "open-sse/executors/copilot-m365-connection.js";
+import { resolveConnectionParams } from "open-sse/executors/copilot-m365-connection.js";
 import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
+import { guardedProbeFetch, assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
+
+const CLIENT_VALIDATION_ERROR = "URL validation failed";
+
+function guardBlockedResponse(err) {
+  if (err) console.log("Provider URL blocked by SSRF guard:", err?.message, "url=", err?.url);
+  return NextResponse.json(
+    { valid: false, error: CLIENT_VALIDATION_ERROR, blocked: true },
+    { status: 403 },
+  );
+}
 
 function applyConfiguredAuthHeader(headers, cfg, apiKey) {
   const auth = cfg?.auth;
@@ -32,13 +43,15 @@ export async function probeNoAuthLocalProvider(baseUrl, apiKey = undefined) {
     .replace(/\/api\/chat$/, "");
   if (!normalized) return { valid: false, error: "Base URL required for no-auth provider" };
   try {
-    const res = await fetch(`${normalized}/models`, {
+    const res = await guardedProbeFetch(`${normalized}/models`, {
       ...(apiKey ? { headers: { Authorization: `Bearer ${apiKey}` } } : {}),
       signal: AbortSignal.timeout(8000),
     });
     return { valid: res.ok, error: res.ok ? null : "Endpoint unreachable or rejected" };
   } catch (err) {
-    return { valid: false, error: err.message };
+    console.log("probeNoAuthLocalProvider error:", err);
+    if (err instanceof OutboundUrlGuardError) return { valid: false, error: CLIENT_VALIDATION_ERROR, blocked: true };
+    return { valid: false, error: CLIENT_VALIDATION_ERROR };
   }
 }
 
@@ -139,38 +152,6 @@ async function exchangeGigaChatApiKey(apiKey) {
   return token?.access_token || null;
 }
 
-async function probeOpenAICompatibleRegistryProvider(provider, apiKey) {
-  const cfg = PROVIDERS[provider];
-  if (!cfg || cfg.format !== "openai" || !cfg.baseUrl) return null;
-  if (cfg.noAuth) return true;
-
-  const headers = { "Content-Type": "application/json", ...(cfg.headers || {}) };
-  if (cfg.authHeader === "x-api-key") headers["X-API-Key"] = apiKey;
-  else headers["Authorization"] = `Bearer ${apiKey}`;
-
-  // Prefer explicit model-list URLs because some OpenAI-compatible providers
-  // mount chat completions under a scoped path that does not imply /models.
-  const modelsUrl = cfg.modelsUrl || cfg.baseUrl.replace(/\/chat\/completions$/, "/models").replace(/\/chatbot$/, "/models");
-  let probeOk = null;
-  try {
-    const probeRes = await fetch(modelsUrl, { headers, signal: AbortSignal.timeout(8000) });
-    if (probeRes.status === 401 || probeRes.status === 403) probeOk = false;
-    else if (probeRes.ok) probeOk = true;
-  } catch {
-    // Fall back to a minimal chat probe below.
-  }
-  if (probeOk !== null) return probeOk;
-
-  const defaultModel = getDefaultModel(provider) || "test";
-  const chatRes = await fetch(cfg.baseUrl, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ model: defaultModel, messages: [{ role: "user", content: "ping" }], max_tokens: 1, stream: false }),
-    signal: AbortSignal.timeout(10000),
-  });
-  return chatRes.status !== 401 && chatRes.status !== 403;
-}
-
 // POST /api/providers/validate - Validate API key with provider
 export async function POST(request) {
   try {
@@ -198,9 +179,15 @@ export async function POST(request) {
           return NextResponse.json({ error: "OpenAI Compatible node not found" }, { status: 404 });
         }
         const modelsUrl = `${node.baseUrl?.replace(/\/$/, "")}/models`;
-        const res = await fetch(modelsUrl, {
-          headers: { "Authorization": `Bearer ${apiKey}` },
-        });
+        let res;
+        try {
+          res = await guardedProbeFetch(modelsUrl, {
+            headers: { "Authorization": `Bearer ${apiKey}` },
+          });
+        } catch (err) {
+          if (err instanceof OutboundUrlGuardError) return guardBlockedResponse(err);
+          throw err;
+        }
         isValid = res.ok;
         return NextResponse.json({
           valid: isValid,
@@ -215,8 +202,21 @@ export async function POST(request) {
           return NextResponse.json({ error: "Custom Embedding node not found" }, { status: 404 });
         }
         const baseUrl = node.baseUrl?.replace(/\/$/, "");
-        const modelsRes = await fetch(`${baseUrl}/models`, {
+        const modelsUrl = `${baseUrl}/models`;
+        const embedUrl = `${baseUrl}/embeddings`;
+        // Validate BOTH URLs before any socket opens (#6542): a provider that
+        // lacks /models falls through to /embeddings, so both must pass the
+        // SSRF guard up front (the guard also forces redirect:"manual").
+        try {
+          assertOutboundUrlAllowed(modelsUrl);
+          assertOutboundUrlAllowed(embedUrl);
+        } catch (err) {
+          if (err instanceof OutboundUrlGuardError) return guardBlockedResponse(err);
+          throw err;
+        }
+        const modelsRes = await fetch(modelsUrl, {
           headers: { "Authorization": `Bearer ${apiKey}` },
+          redirect: "manual",
         });
         if (modelsRes.ok) {
           return NextResponse.json({ valid: true });
@@ -226,10 +226,11 @@ export async function POST(request) {
           return NextResponse.json({ valid: false, error: "Invalid API key" });
         }
         // Fallback: probe /embeddings with a common test model — many providers lack /models
-        const embedRes = await fetch(`${baseUrl}/embeddings`, {
+        const embedRes = await fetch(embedUrl, {
           method: "POST",
           headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({ model: "test", input: "ping" }),
+          redirect: "manual",
         });
         // 401/403 = bad key; anything else (including 400 "model not found") means key works
         isValid = embedRes.status !== 401 && embedRes.status !== 403;
@@ -253,20 +254,26 @@ export async function POST(request) {
         const messagesUrl = `${normalizedBase}/v1/messages`;
         const model = node.defaultModel || "claude-3-haiku-20240307";
 
-        const res = await fetch(messagesUrl, {
-          method: "POST",
-          headers: {
-            "x-api-key": apiKey,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-            "Authorization": `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model,
-            max_tokens: 1,
-            messages: [{ role: "user", content: "test" }],
-          }),
-        });
+        let res;
+        try {
+          res = await guardedProbeFetch(messagesUrl, {
+            method: "POST",
+            headers: {
+              "x-api-key": apiKey,
+              "anthropic-version": "2023-06-01",
+              "content-type": "application/json",
+              "Authorization": `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+              model,
+              max_tokens: 1,
+              messages: [{ role: "user", content: "test" }],
+            }),
+          });
+        } catch (err) {
+          if (err instanceof OutboundUrlGuardError) return guardBlockedResponse(err);
+          throw err;
+        }
 
         // 400/529 still confirms key accepted; only 401/403 = bad key
         isValid = res.status !== 401 && res.status !== 403;
@@ -321,7 +328,8 @@ export async function POST(request) {
         try {
           accountId = normalizeAccountIdPlaceholder("snowflake", providerSpecificData?.accountId);
         } catch (err) {
-          return NextResponse.json({ valid: false, error: err.message });
+          console.log("snowflake accountId normalization error:", err?.message);
+          return NextResponse.json({ valid: false, error: CLIENT_VALIDATION_ERROR });
         }
         const url = `https://${accountId}.snowflakecomputing.com/api/v2/cortex/v1/chat/completions`;
         const snowflakeRes = await fetch(url, {
@@ -355,14 +363,21 @@ export async function POST(request) {
         };
         if (organization) headers["OpenAI-Organization"] = organization;
 
-        const azureRes = await fetch(url, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            messages: [{ role: "user", content: "test" }],
-            max_tokens: 1,
-          }),
-        });
+        // SSRF guard (#6542): azureEndpoint is fully caller-controllable.
+        let azureRes;
+        try {
+          azureRes = await guardedProbeFetch(url, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              messages: [{ role: "user", content: "test" }],
+              max_tokens: 1,
+            }),
+          });
+        } catch (err) {
+          if (err instanceof OutboundUrlGuardError) return guardBlockedResponse(err);
+          throw err;
+        }
         isValid = azureRes.status !== 401 && azureRes.status !== 403;
         return NextResponse.json({
           valid: isValid,
@@ -549,8 +564,9 @@ export async function POST(request) {
 
         case "commandcode":
         case "command-code": {
-          const cfg = PROVIDERS.commandcode;
-          const model = getDefaultModel("commandcode");
+          const cfg = PROVIDERS[provider];
+          const modelKey = provider === "command-code" ? "cmd" : "commandcode";
+          const model = cfg.validationModelId || getDefaultModel(modelKey);
           const payload = openaiToCommandCodeRequest(model, {
             messages: [{ role: "user", content: "ping" }],
             max_tokens: 1,
@@ -566,7 +582,13 @@ export async function POST(request) {
             },
             body: JSON.stringify(payload),
           });
-          isValid = res.status !== 401 && res.status !== 403;
+          // A schema/rate-limit response proves the key reached Command Code.
+          // Missing endpoints, unsupported methods, and upstream failures do
+          // not prove either credential validity or a usable integration.
+          isValid = res.status >= 200 && res.status < 300
+            || res.status === 400
+            || res.status === 422
+            || res.status === 429;
           break;
         }
 
@@ -718,23 +740,9 @@ export async function POST(request) {
         }
 
         case "copilot-m365-web": {
-          const credential = String(apiKey || "").trim();
-          const structuredAccessTokenMatch = credential.match(/(^|[?&;\s])access_token=([^;&\s]*)/);
-          const structuredAccessToken = structuredAccessTokenMatch?.[2] ?? "";
-          const hasEmptyOrRedactedAccessToken = structuredAccessTokenMatch && (!structuredAccessToken || isRedactedToken(structuredAccessToken));
-          const hasAccessToken = (structuredAccessTokenMatch && structuredAccessToken && !isRedactedToken(structuredAccessToken)) || (
-            credential &&
-            !credential.includes("access_token=") &&
-            !isStructuredPathOnlyCredential(credential) &&
-            !isStructuredWsUrlCredential(credential)
-          );
-          const hasChathubPath =
-            /(^|[;\s])(?:chathubPath|userTenant)=([^;@\s]+@[^;\s]+)/.test(credential) ||
-            /^wss:\/\/substrate\.office\.com\/m365Copilot\/Chathub\/[^?]+(?:@|%40)[^?]+\?/i.test(credential);
-          isValid = hasAccessToken && hasChathubPath && !hasEmptyOrRedactedAccessToken;
-          error = isValid
-            ? null
-            : "Paste the M365 Copilot access_token and Chathub path from the Chathub WebSocket URL";
+          const params = resolveConnectionParams({ apiKey, providerSpecificData });
+          isValid = !("error" in params);
+          error = isValid ? null : params.error;
           break;
         }
 
@@ -823,11 +831,13 @@ export async function POST(request) {
             return NextResponse.json({ error: "Provider validation not supported" }, { status: 400 });
           }
           isValid = registryResult.valid;
+          if (!isValid && registryResult.error) error = registryResult.error;
           break;
         }
       }
     } catch (err) {
-      error = err.message;
+      console.log("provider validation probe error:", err?.message);
+      error = CLIENT_VALIDATION_ERROR;
       isValid = false;
     }
 

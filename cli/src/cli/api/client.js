@@ -3,8 +3,8 @@ const https = require("https");
 const crypto = require("crypto");
 const fs = require("node:fs");
 const path = require("node:path");
-const os = require("node:os");
 const { machineIdSync } = require("node-machine-id");
+const { getAppDataDir } = require("../appDataDir");
 
 // Default configuration
 const DEFAULT_CONFIG = {
@@ -15,18 +15,9 @@ const DEFAULT_CONFIG = {
 
 const CLI_TOKEN_HEADER = "x-9r-cli-token";
 const CLI_TOKEN_SALT = "9r-cli-auth";
-const APP_NAME = "9router";
-
-function getDataDir() {
-  if (process.env.DATA_DIR) return process.env.DATA_DIR;
-  if (process.platform === "win32") {
-    return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), APP_NAME);
-  }
-  return path.join(os.homedir(), `.${APP_NAME}`);
-}
-
-const MACHINE_ID_FILE = path.join(getDataDir(), "machine-id");
-const AUTH_DIR = path.join(getDataDir(), "auth");
+const DATA_DIR = getAppDataDir();
+const MACHINE_ID_FILE = path.join(DATA_DIR, "machine-id");
+const AUTH_DIR = path.join(DATA_DIR, "auth");
 const CLI_SECRET_FILE = path.join(AUTH_DIR, "cli-secret");
 
 let config = { ...DEFAULT_CONFIG };
@@ -293,10 +284,16 @@ async function getApiKeys() {
 /**
  * Create new API key
  * @param {string} name - Key name
- * @returns {Promise<Object>} { success, data: { key, name, id, machineId } }
+ * @param {string|null} expiresAt - Optional ISO expiry timestamp
+ * @returns {Promise<Object>} { success, data: { key, name, id, machineId, expiresAt } }
  */
-async function createApiKey(name) {
-  return makeRequest("POST", "/api/keys", { name });
+async function createApiKey(name, expiresAt = null) {
+  return makeRequest("POST", "/api/keys", { name, expiresAt });
+}
+
+/** Update mutable API-key management fields without retrieving its secret. */
+async function updateApiKey(id, data) {
+  return makeRequest("PUT", `/api/keys/${id}`, data);
 }
 
 /**
@@ -410,6 +407,10 @@ async function updateSettings(data) {
   return makeRequest("PATCH", "/api/settings", data);
 }
 
+async function updateConnectionAutoPing(connectionId, enabled) {
+  return makeRequest("PATCH", `/api/providers/${encodeURIComponent(connectionId)}/auto-ping`, { enabled });
+}
+
 /**
  * Reset dashboard password to default (clears stored hash server-side)
  * @returns {Promise<Object>} { success }
@@ -496,6 +497,7 @@ async function disableTunnel() {
 
 module.exports = {
   configure,
+  getCliToken,
   
   // Providers
   getProviders,
@@ -519,6 +521,7 @@ module.exports = {
   // API Keys
   getApiKeys,
   createApiKey,
+  updateApiKey,
   deleteApiKey,
   
   // Combos
@@ -536,6 +539,7 @@ module.exports = {
   // Settings
   getSettings,
   updateSettings,
+  updateConnectionAutoPing,
   resetPassword,
   
   // Tunnel

@@ -268,10 +268,65 @@ export async function getQoderUsage(accessToken, proxyOptions = null) {
   }
 }
 
-export async function getXaiUsage() {
+/**
+ * Aggregate xAI usage from local usageHistory scoped to a connection.
+ * xAI does not currently expose a stable usage API for consumer accounts, so
+ * the quota view falls back to per-request totals captured by the proxy.
+ */
+export async function getXaiUsage(connectionId) {
+  const plan = "xAI / Grok Build";
+  if (!connectionId) {
+    return {
+      message: "xAI usage requires a connection id.",
+      plan,
+      quotas: {},
+    };
+  }
+
+  let rows = [];
+  try {
+    const { getUsageHistory } = await import("../../../src/lib/db/index.js");
+    const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    rows = await getUsageHistory({ provider: "xai", connectionId, startDate });
+  } catch {
+    rows = [];
+  }
+
+  if (rows.length === 0) {
+    return {
+      message: "No requests recorded for this xAI connection in the last 30 days.",
+      plan,
+      quotas: {},
+    };
+  }
+
+  let totalTokens = 0;
+  let totalCost = 0;
+  const perModel = new Map();
+  for (const r of rows) {
+    const prompt = Number(r.promptTokens || 0);
+    const completion = Number(r.completionTokens || 0);
+    const tokens = prompt + completion;
+    const cost = Number(r.cost || 0);
+    totalTokens += tokens;
+    totalCost += cost;
+    const bucket = perModel.get(r.model) || { used: 0, cost: 0 };
+    bucket.used += tokens;
+    bucket.cost += cost;
+    perModel.set(r.model, bucket);
+  }
+
+  const quotas = {
+    "Total tokens (30d)": { used: totalTokens, limit: null, unit: "tokens" },
+    "Total spend (30d)": { used: totalCost, limit: null, unit: "usd" },
+  };
+  for (const [model, agg] of perModel) {
+    quotas[`${model} (30d)`] = { used: agg.used, limit: null, unit: "tokens" };
+  }
   return {
-    message: "xAI connected. Per-request usage/cost is tracked from API responses; account quota requires xAI Management API credentials.",
-    quotas: {},
+    message: `Aggregated ${rows.length} request${rows.length === 1 ? "" : "s"} for this xAI connection.`,
+    plan,
+    quotas,
   };
 }
 

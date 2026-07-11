@@ -84,7 +84,8 @@ describe("OmniRoute missing API-key cloud provider ports", () => {
     expect(providerById["github-models"].models.some((model) => model.kind === "embedding")).toBe(false);
 
     expect(PROVIDERS["gitlawb-gmi"]).toMatchObject({
-      baseUrl: "https://opengateway.gitlawb.com/v1/chat/completions",
+      baseUrl: "https://opengateway.gitlawb.com/v1/gmi-cloud/chat/completions",
+      modelsUrl: "https://opengateway.gitlawb.com/v1/gmi-cloud/models",
       headers: {
         "User-Agent": "OpenClaude/1.0 (linux; x86_64)",
         "X-Title": "OpenClaude CLI",

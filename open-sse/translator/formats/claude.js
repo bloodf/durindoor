@@ -16,7 +16,11 @@ export function hasValidContent(msg) {
     return msg.content.some(block =>
       (block.type === CLAUDE_BLOCK.TEXT && block.text?.trim()) ||
       block.type === CLAUDE_BLOCK.TOOL_USE ||
-      block.type === CLAUDE_BLOCK.TOOL_RESULT
+      block.type === CLAUDE_BLOCK.TOOL_RESULT ||
+      block.type === CLAUDE_BLOCK.IMAGE ||
+      block.type === CLAUDE_BLOCK.DOCUMENT ||
+      block.type === CLAUDE_BLOCK.THINKING ||
+      block.type === CLAUDE_BLOCK.REDACTED_THINKING
     );
   }
   return false;
@@ -103,12 +107,37 @@ function buildThinkingPlaceholder(provider) {
   return block;
 }
 
+/**
+ * Keep Anthropic's strict token contract valid after unified thinking has
+ * applied a budget. Shared by translated requests and native Claude
+ * passthrough so neither path can send `budget_tokens >= max_tokens`.
+ */
+export function reconcileClaudeThinkingBudget(body, provider = "claude") {
+  if (!body || typeof body !== "object" || !body.max_tokens) return body;
+
+  const ceiling = getCapabilitiesForModel(provider, body.model).maxOutput || DEFAULT_MAX_TOKENS;
+  if (body.max_tokens > ceiling) body.max_tokens = ceiling;
+
+  if (
+    body.thinking?.type === "enabled"
+    && body.thinking.budget_tokens
+    && body.thinking.budget_tokens >= body.max_tokens
+  ) {
+    body.max_tokens = Math.min(body.thinking.budget_tokens + 1024, ceiling);
+    if (body.thinking.budget_tokens >= body.max_tokens) {
+      body.thinking.budget_tokens = Math.max(1024, body.max_tokens - 1024);
+    }
+  }
+
+  return body;
+}
+
 // Normalize a native Claude passthrough body to match Anthropic Messages API spec.
 // Newer Cowork/Claude Code clients emit beta-only shapes that OAuth endpoints reject:
 // 1. thinking.type "adaptive" → unsupported on Haiku
 // 2. output_config.effort → unsupported on Haiku
 // 3. role "system" messages (mid-conversation-system beta) → only top-level system is allowed
-export function normalizeClaudePassthrough(body, model = "") {
+export function normalizeClaudePassthrough(body, model = "", provider = "claude") {
   if (!body || typeof body !== "object") return body;
 
   // 1. Downgrade adaptive thinking for models that don't support it
@@ -161,7 +190,7 @@ export function normalizeClaudePassthrough(body, model = "") {
       const kept = [];
       for (const block of msg.content) {
         if (block.type === CLAUDE_BLOCK.THINKING || block.type === CLAUDE_BLOCK.REDACTED_THINKING) {
-          if (isValidClaudeSignature(block.signature)) {
+          if (provider !== "claude" || isValidClaudeSignature(block.signature)) {
             hasKeptThinking = true;
             kept.push(block);
           }
@@ -177,7 +206,7 @@ export function normalizeClaudePassthrough(body, model = "") {
     }
   }
 
-  return body;
+  return reconcileClaudeThinkingBudget(body, provider);
 }
 
 // Prepare request for Claude format endpoints
@@ -187,39 +216,22 @@ export function normalizeClaudePassthrough(body, model = "") {
 // - Fix tool_use/tool_result ordering
 // - Apply cloaking (billing header + fake user ID) for OAuth tokens
 export function prepareClaudeRequest(body, provider = null, apiKey = null, connectionId = null, rawHeaders = null, sessionId = null) {
+  const dropsClaudeCacheControl = PROVIDERS[provider]?.quirks?.dropClaudeCacheControl
+    || provider === "ollama"
+    || provider === "ollama-local";
+  const allowCacheControl = !dropsClaudeCacheControl;
   // quirk: MiniMax's Claude-compatible endpoint rejects Anthropic's output_config (400 invalid params)
   if (PROVIDERS[provider]?.quirks?.dropOutputConfig) {
     delete body.output_config;
   }
 
-  // Clamp max_tokens to the model's real output ceiling. Models whose caps
-  // declare a higher maxOutput (e.g. Opus 4.8 / Sonnet 4.6 = 128000) are allowed
-  // up to it, so max-effort thinking gets full budget; others fall back to the
-  // conservative 64000 default.
-  if (body.max_tokens) {
-    const ceiling = getCapabilitiesForModel(provider, body.model).maxOutput || DEFAULT_MAX_TOKENS;
-    if (body.max_tokens > ceiling) body.max_tokens = ceiling;
-
-    // Reconcile against thinking budget. applyThinking (thinkingUnified.js) runs
-    // AFTER adjustMaxTokens capped max_tokens, and the claude-budget format maps
-    // max effort → budget_tokens 128000 — larger than the clamped max_tokens.
-    // Anthropic requires max_tokens strictly greater than budget_tokens (else 400).
-    // Prefer raising max_tokens to preserve the requested thinking depth; if the
-    // budget alone meets/exceeds the ceiling, cap output and shrink the budget so
-    // some tokens remain for the answer.
-    if (body.thinking?.type === "enabled" && body.thinking.budget_tokens && body.thinking.budget_tokens >= body.max_tokens) {
-      body.max_tokens = Math.min(body.thinking.budget_tokens + 1024, ceiling);
-      if (body.thinking.budget_tokens >= body.max_tokens) {
-        body.thinking.budget_tokens = Math.max(1024, body.max_tokens - 1024);
-      }
-    }
-  }
+  reconcileClaudeThinkingBudget(body, provider);
 
   // 1. System: remove all cache_control, add only to last block with ttl 1h
   if (body.system && Array.isArray(body.system)) {
     body.system = body.system.map((block, i) => {
       const { cache_control, ...rest } = block;
-      if (i === body.system.length - 1) {
+      if (allowCacheControl && i === body.system.length - 1) {
         return { ...rest, cache_control: { type: "ephemeral", ttl: "1h" } };
       }
       return rest;
@@ -268,7 +280,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
       if (msg.role === "assistant" && Array.isArray(msg.content)) {
         // Add cache_control to last non-thinking block of first (from end) assistant with content
         // thinking/redacted_thinking blocks do not support cache_control
-        if (!lastAssistantProcessed && msg.content.length > 0) {
+        if (allowCacheControl && !lastAssistantProcessed && msg.content.length > 0) {
           for (let j = msg.content.length - 1; j >= 0; j--) {
             const block = msg.content[j];
             if (block.type !== CLAUDE_BLOCK.THINKING && block.type !== CLAUDE_BLOCK.REDACTED_THINKING) {
@@ -288,12 +300,16 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
           // anthropic-compatible: replace with default (safe fallback for lenient upstreams).
           // DeepSeek: keep existing thinking as-is; add an unsigned placeholder only if missing.
           const isClaudeNative = provider === "claude";
+          const preservesNativeThinkingBlocks = provider === "ollama" || provider === "ollama-local";
           const isDeepSeek = provider === "deepseek";
           const kept = [];
           for (const block of msg.content) {
             const isThinking = block.type === CLAUDE_BLOCK.THINKING || block.type === CLAUDE_BLOCK.REDACTED_THINKING;
             if (isThinking) {
-              if (isClaudeNative) {
+              if (preservesNativeThinkingBlocks) {
+                hasKeptThinking = true;
+                kept.push(block);
+              } else if (isClaudeNative) {
                 if (isValidClaudeSignature(block.signature)) {
                   hasKeptThinking = true;
                   kept.push(block);
@@ -344,7 +360,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
 
     body.tools = body.tools.map((tool, i) => {
       const { cache_control, ...rest } = tool;
-      if (i === body.tools.length - 1) {
+      if (allowCacheControl && i === body.tools.length - 1) {
         return { ...rest, cache_control: { type: "ephemeral", ttl: "1h" } };
       }
       return rest;

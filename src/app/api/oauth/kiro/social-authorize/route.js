@@ -1,43 +1,84 @@
-import { NextResponse } from "next/server";
-import { generatePKCE } from "@/lib/oauth/utils/pkce";
-import { KiroService } from "@/lib/oauth/services/kiro";
+import "open-sse/utils/proxyFetch.js";
 
-/**
- * GET /api/oauth/kiro/social-authorize
- * Generate Google/GitHub social login URL for manual callback flow
- * Uses kiro:// custom protocol as required by AWS Cognito
- */
+import { sanitizeErrorMessage } from "open-sse/utils/error.js";
+import { NextResponse } from "next/server";
+
+import {
+  beginOAuthFlowIntent,
+  createOAuthFlow,
+} from "@/lib/oauth/flowStore.js";
+import { resolveOAuthProxySelection } from "@/lib/oauth/proxySelection.js";
+import { KiroService } from "@/lib/oauth/services/kiro";
+import { generatePKCE } from "@/lib/oauth/utils/pkce";
+import { ensureOutboundProxyInitialized } from "@/lib/network/initOutboundProxy";
+
+function hasOwn(object, key) {
+  return Object.prototype.hasOwnProperty.call(object || {}, key);
+}
+
+async function beginSocialAuthorization(input) {
+  const socialProvider = input.provider;
+  if (!['google', 'github'].includes(socialProvider)) {
+    throw new Error("Invalid provider. Use 'google' or 'github'");
+  }
+  const intent = beginOAuthFlowIntent("kiro", input.ownerId);
+  const selectionInput = {};
+  if (hasOwn(input, "proxyMode")) selectionInput.proxyMode = input.proxyMode;
+  if (hasOwn(input, "proxyPoolId")) selectionInput.proxyPoolId = input.proxyPoolId;
+  const resolvedProxy = await resolveOAuthProxySelection(selectionInput);
+  const { codeVerifier, codeChallenge, state } = generatePKCE();
+  const authUrl = new KiroService().buildSocialLoginUrl(
+    socialProvider,
+    codeChallenge,
+    state,
+  );
+
+  const flow = createOAuthFlow({
+    provider: "kiro",
+    state,
+    kind: "authorization",
+    payload: {
+      codeVerifier,
+      socialProvider,
+      proxySelection: resolvedProxy.selection,
+    },
+    intent,
+  });
+  return {
+    authUrl,
+    state,
+    flowId: flow.flowId,
+    expiresAt: flow.expiresAt,
+    provider: socialProvider,
+  };
+}
+
+/** Legacy GET compatibility; the dashboard uses POST to avoid query secrets. */
 export async function GET(request) {
   try {
+    await ensureOutboundProxyInitialized();
     const { searchParams } = new URL(request.url);
-    const provider = searchParams.get("provider"); // "google" or "github"
-
-    if (!provider || !["google", "github"].includes(provider)) {
-      return NextResponse.json(
-        { error: "Invalid provider. Use 'google' or 'github'" },
-        { status: 400 }
-      );
-    }
-
-    // Generate PKCE for social auth
-    const { codeVerifier, codeChallenge, state } = generatePKCE();
-
-    const kiroService = new KiroService();
-    const authUrl = kiroService.buildSocialLoginUrl(
-      provider,
-      codeChallenge,
-      state
-    );
-
-    return NextResponse.json({
-      authUrl,
-      state,
-      codeVerifier,
-      codeChallenge,
-      provider,
-    });
+    return NextResponse.json(await beginSocialAuthorization({
+      provider: searchParams.get("provider"),
+      ...(searchParams.has("proxyMode") ? { proxyMode: searchParams.get("proxyMode") } : {}),
+      ...(searchParams.has("proxyPoolId") ? { proxyPoolId: searchParams.get("proxyPoolId") } : {}),
+    }));
   } catch (error) {
-    console.log("Kiro social authorize error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const message = sanitizeErrorMessage(error?.message || "Social authorization failed");
+    console.error(`[OAuth] kiro/social-authorize failed: ${message}`);
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+}
+
+/** Start a server-bound Kiro social OAuth flow. */
+export async function POST(request) {
+  try {
+    await ensureOutboundProxyInitialized();
+    const body = await request.json();
+    return NextResponse.json(await beginSocialAuthorization(body || {}));
+  } catch (error) {
+    const message = sanitizeErrorMessage(error?.message || "Social authorization failed");
+    console.error(`[OAuth] kiro/social-authorize failed: ${message}`);
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 }

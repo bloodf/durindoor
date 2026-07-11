@@ -1,9 +1,44 @@
 import { getProxyPoolById } from "@/models";
 
+const OAUTH_PROXY_MODES = new Set(["legacy", "direct", "strict-pool"]);
+
 // Safely normalize any value into a trimmed string.
 function normalizeString(value) {
   if (value === undefined || value === null) return "";
   return String(value).trim();
+}
+
+function hasOwn(object, key) {
+  return Object.prototype.hasOwnProperty.call(object || {}, key);
+}
+
+function directProxyConfig() {
+  return {
+    source: "direct",
+    proxyPoolId: null,
+    proxyPool: null,
+    connectionProxyEnabled: false,
+    connectionProxyUrl: "",
+    connectionNoProxy: "",
+    vercelRelayUrl: "",
+    strictProxy: false,
+    disableEnvProxy: true,
+  };
+}
+
+function failedStrictProxyConfig(proxyPoolId, reason) {
+  return {
+    source: "error",
+    reason,
+    proxyPoolId: proxyPoolId || null,
+    proxyPool: null,
+    connectionProxyEnabled: false,
+    connectionProxyUrl: "",
+    connectionNoProxy: "",
+    vercelRelayUrl: "",
+    strictProxy: true,
+    disableEnvProxy: true,
+  };
 }
 
 // ─── Proxy pool rotation state (in-memory) ─────────────────────────
@@ -58,22 +93,41 @@ function normalizeLegacyProxy(providerSpecificData = {}) {
 /**
  * Resolve final proxy configuration.
  *
- * Priority:
- * 1. Proxy Pool
- * 2. Legacy Proxy
- * 3. No Proxy
+ * Nested `oauthProxy` metadata takes precedence over legacy fields. OAuth has
+ * three durable modes: legacy (best effort), direct (environment proxies are
+ * disabled), and strict-pool (the selected active pool must resolve).
+ *
+ * Outside OAuth metadata, the historical priority remains proxy pool, legacy
+ * proxy, then no configured proxy.
  */
 export async function resolveConnectionProxyConfig(
   providerSpecificData = {}
 ) {
-  try {
-    const proxyPoolIdRaw = normalizeString(
-      providerSpecificData?.proxyPoolId
-    );
+  const oauthProxy = providerSpecificData?.oauthProxy;
+  const hasOAuthMode = oauthProxy && typeof oauthProxy === "object" && hasOwn(oauthProxy, "mode");
+  const oauthMode = hasOAuthMode ? normalizeString(oauthProxy.mode) : null;
 
-    // "__none__" means explicitly disabled
-    const proxyPoolId =
-      proxyPoolIdRaw === "__none__" ? "" : proxyPoolIdRaw;
+  if (hasOAuthMode && !OAUTH_PROXY_MODES.has(oauthMode)) {
+    return failedStrictProxyConfig(null, "invalid_proxy_mode");
+  }
+
+  if (oauthMode === "direct") {
+    return directProxyConfig();
+  }
+
+  try {
+    const strictOAuthPool = oauthMode === "strict-pool";
+    const proxyPoolIdRaw = strictOAuthPool
+      ? normalizeString(oauthProxy?.poolId)
+      : oauthMode === "legacy"
+        ? ""
+        : normalizeString(providerSpecificData?.proxyPoolId);
+
+    if (strictOAuthPool && (!proxyPoolIdRaw || proxyPoolIdRaw === "__none__")) {
+      return failedStrictProxyConfig(null, "proxy_pool_unavailable");
+    }
+
+    const proxyPoolId = proxyPoolIdRaw === "__none__" ? "" : proxyPoolIdRaw;
 
     const legacy = normalizeLegacyProxy(providerSpecificData);
 
@@ -109,7 +163,8 @@ export async function resolveConnectionProxyConfig(
             connectionProxyUrl: "",
             connectionNoProxy: noProxy,
 
-            strictProxy: proxyPool.strictProxy === true,
+            strictProxy: strictOAuthPool || proxyPool.strictProxy === true,
+            disableEnvProxy: strictOAuthPool,
 
             vercelRelayUrl: proxyUrl, // Still mapped to vercelRelayUrl in the unified payload since they use the exact same header spec
           };
@@ -128,8 +183,13 @@ export async function resolveConnectionProxyConfig(
           connectionProxyUrl: proxyUrl,
           connectionNoProxy: noProxy,
 
-          strictProxy: proxyPool.strictProxy === true,
+          strictProxy: strictOAuthPool || proxyPool.strictProxy === true,
+          disableEnvProxy: strictOAuthPool,
         };
+      }
+
+      if (strictOAuthPool) {
+        return failedStrictProxyConfig(proxyPoolId, "proxy_pool_unavailable");
       }
     }
 
@@ -138,7 +198,7 @@ export async function resolveConnectionProxyConfig(
      * Legacy Proxy Fallback
      * -----------------------------
      */
-    if (
+    if (oauthMode !== "direct" &&
       legacy.connectionProxyEnabled &&
       legacy.connectionProxyUrl
     ) {
@@ -149,6 +209,8 @@ export async function resolveConnectionProxyConfig(
         proxyPool: null,
 
         ...legacy,
+        strictProxy: false,
+        disableEnvProxy: false,
       };
     }
 
@@ -164,12 +226,20 @@ export async function resolveConnectionProxyConfig(
       proxyPool: null,
 
       ...legacy,
+      strictProxy: false,
+      disableEnvProxy: false,
     };
-  } catch (error) {
-    console.error(
-      "[resolveConnectionProxyConfig] Failed to resolve proxy config:",
-      error
-    );
+  } catch {
+    if (oauthMode === "strict-pool") {
+      return failedStrictProxyConfig(
+        normalizeString(oauthProxy?.poolId),
+        "proxy_pool_unavailable"
+      );
+    }
+
+    // Do not log database errors with user-controlled proxy URLs or
+    // credentials. Legacy routing remains fail-open for compatibility.
+    console.error("[resolveConnectionProxyConfig] Failed to resolve proxy config");
 
     return {
       source: "error",
@@ -182,6 +252,7 @@ export async function resolveConnectionProxyConfig(
       connectionNoProxy: "",
 
       strictProxy: false,
+      disableEnvProxy: false,
     };
   }
 }

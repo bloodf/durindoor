@@ -17,6 +17,11 @@ const KNOWN_FREE_OPENCODE_MODELS = [
   "meta-llama/llama-3.3-70b-instruct",
 ];
 
+// Catalogs do not consistently label chat models, and some valid providers
+// return opaque IDs. Reject only explicit non-chat families; an unknown string
+// ID remains selectable so providers such as B.ai do not render an empty list.
+const NON_CHAT_MODEL_RE = /(?:dall-e|whisper|text-embedding|tts(?:-|$)|moderation|rerank|embed|image|audio|speech|(?:^|[/_-])bge(?:[/_-]|$))/i;
+
 export const FILTERS = {
   // OpenRouter /api/v1/models — returns standard OpenAI-style objects; keep free ones.
   "openrouter-free": (models) =>
@@ -38,15 +43,10 @@ export const FILTERS = {
     const raw = Array.isArray(models) ? models : [];
     return raw
       .filter((m) => {
-        if (typeof m.id !== "string") return false;
+        if (typeof m.id !== "string" || !m.id) return false;
         const kind = String(m.type || m.kind || m.task || "").toLowerCase();
         const id = m.id.toLowerCase();
-        if (kind.includes("embedding") || kind.includes("image") || kind.includes("tts") || kind.includes("audio") || kind.includes("speech") || kind.includes("moderation") || kind.includes("rerank")) return false;
-        if (id.includes("embed") || id.includes("image") || id.includes("tts") || id.includes("audio") || id.includes("speech") || id.includes("moderation") || id.includes("rerank")) return false;
-        const chatPrefixes = ["gpt-", "chat-", "deepseek-", "qwen", "claude", "llama", "mistral", "gemini", "mixtral", "yi-", "internlm", "command-r", "command", "orca", "phi", "solar", "starling", "vicuna", "wizardlm", "zephyr"];
-        const isChat = chatPrefixes.some((prefix) => new RegExp("(^|[/-])" + prefix).test(id));
-        if (kind.includes("chat") || kind.includes("llm") || kind.includes("text-generation") || kind.includes("language-model") || isChat) return true;
-        return false; // reject unknown model kinds to avoid offering non-chat ids in chat picker
+        return !NON_CHAT_MODEL_RE.test(kind) && !NON_CHAT_MODEL_RE.test(id);
       })
       .map((m) => ({ id: m.id, name: m.name || m.id, ...(m.context_length != null ? { contextLength: m.context_length } : {}) }));
   },

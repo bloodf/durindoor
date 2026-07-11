@@ -44,7 +44,10 @@ function sanitize(headers) {
       .replace(/kimi-\d{10,}/g, "kimi-<TS>")
       .replace(/9Router\/\d+\.\d+\.\d+\S*/g, "9Router/<VER>")
       .replaceAll(process.version, "<NODEVER>")        // e.g. v20.20.2
-      .replaceAll(process.platform, "<PLATFORM>")      // e.g. linux / darwin
+      // Some provider fingerprints deliberately advertise a fixed platform
+      // (for example Gitlawb always sends `linux`) rather than the runner OS.
+      // Normalize the supported Node platform literals, not only process.platform.
+      .replace(/\b(?:aix|android|darwin|freebsd|haiku|linux|openbsd|sunos|win32)\b/g, "<PLATFORM>")
       .replaceAll(process.arch, "<ARCH>");             // e.g. x64 / arm64
     // App version cũng xuất hiện trần trong các header này.
     if (k === "X-CLIENT-VERSION" || k === "X-CORE-VERSION") s = "<VER>";

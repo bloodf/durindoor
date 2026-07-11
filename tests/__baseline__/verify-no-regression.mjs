@@ -1,36 +1,69 @@
-// Gate: so kết quả test hiện tại với baseline known-fails.
-// PASS nếu KHÔNG có test nào pass(baseline) → fail(now). Test mới được phép.
-// Usage: node tests/__baseline__/verify-no-regression.mjs <current-results.json>
-import { readFileSync } from "fs";
-import { relative } from "path";
-import { fileURLToPath } from "url";
+import { readFileSync } from "node:fs";
+import path, { relative } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const knownFails = new Set(
-  readFileSync(new URL("./known-fails.txt", import.meta.url), "utf8")
-    .split("\n").map(s => s.trim()).filter(Boolean)
-);
-
-const resultsPath = process.argv[2];
-if (!resultsPath) { console.error("Missing results.json path"); process.exit(2); }
-
-// Repo root = two levels up from tests/__baseline__/. Turns vitest's absolute
-// file paths into repo-relative keys so the gate is portable across CWD
-// (local, Docker /app, GitHub Actions runners) — not hardcoded to /app.
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
-const relKey = (absPath) => relative(repoRoot, absPath).split("\\").join("/");
+const relKey = (file) => relative(repoRoot, file).split("\\").join("/");
 
-const r = JSON.parse(readFileSync(resultsPath, "utf8"));
-const nowFails = r.testResults.flatMap(f =>
-  f.assertionResults.filter(a => a.status === "failed")
-    .map(a => relKey(f.name) + " :: " + a.fullName)
-);
-
-// Regression = fail bây giờ NHƯNG không có trong baseline known-fails
-const regressions = nowFails.filter(f => !knownFails.has(f));
-
-if (regressions.length) {
-  console.error(`\n❌ REGRESSION: ${regressions.length} test pass→fail:\n`);
-  regressions.forEach(f => console.error("  - " + f));
-  process.exit(1);
+export function readKnownFails() {
+  return new Set(
+    readFileSync(new URL("./known-fails.txt", import.meta.url), "utf8")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean),
+  );
 }
-console.log(`✅ No regression. (now fails=${nowFails.length}, baseline known=${knownFails.size}, all known)`);
+
+export function analyzeVitestReport(report, knownFails = readKnownFails()) {
+  if (!report || !Array.isArray(report.testResults)) {
+    throw new Error("Vitest JSON report is missing testResults[]");
+  }
+  const rawFailures = report.testResults.flatMap((file) => {
+    if (!Array.isArray(file.assertionResults)) {
+      throw new Error(`Vitest result for ${file.name || "unknown file"} is missing assertionResults[]`);
+    }
+    return file.assertionResults
+      .filter((assertion) => assertion.status === "failed")
+      .map((assertion) => `${relKey(file.name)} :: ${assertion.fullName || assertion.title || "unnamed test"}`);
+  });
+  const rawFailureSet = new Set(rawFailures);
+  return {
+    rawFailures,
+    knownFailures: rawFailures.filter((failure) => knownFails.has(failure)),
+    regressions: rawFailures.filter((failure) => !knownFails.has(failure)),
+    staleBaseline: [...knownFails].filter((failure) => !rawFailureSet.has(failure)),
+    knownCount: knownFails.size,
+  };
+}
+
+export function printAnalysis(analysis) {
+  console.log(`Raw failures: ${analysis.rawFailures.length}`);
+  console.log(`Known failures still failing: ${analysis.knownFailures.length}`);
+  console.log(`Stale baseline entries now passing: ${analysis.staleBaseline.length}`);
+  if (analysis.regressions.length > 0) {
+    console.error(`\nRegressions outside the baseline (${analysis.regressions.length}):`);
+    for (const failure of analysis.regressions) console.error(`  - ${failure}`);
+  }
+  if (analysis.staleBaseline.length > 0) {
+    console.log("\nBaseline entries eligible for deletion:");
+    for (const failure of analysis.staleBaseline) console.log(`  - ${failure}`);
+  }
+}
+
+const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : "";
+if (invokedPath === fileURLToPath(import.meta.url)) {
+  const resultsPath = process.argv[2];
+  if (!resultsPath) {
+    console.error("Missing results.json path");
+    process.exit(2);
+  }
+  try {
+    const report = JSON.parse(readFileSync(resultsPath, "utf8"));
+    const analysis = analyzeVitestReport(report);
+    printAnalysis(analysis);
+    process.exit(analysis.regressions.length > 0 ? 1 : 0);
+  } catch (error) {
+    console.error(`Invalid Vitest report: ${error.message}`);
+    process.exit(2);
+  }
+}

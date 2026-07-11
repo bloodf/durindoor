@@ -2,6 +2,7 @@
 import { randomUUID } from "node:crypto";
 import { nowSec } from "./_base.js";
 import { PROVIDERS } from "../../config/providers.js";
+import { resolveCodexAccountId } from "../../shared/codexAccountId.js";
 
 const CODEX_RESPONSES_URL = PROVIDERS["codex"].baseUrl;
 const CODEX_USER_AGENT = "codex_cli_rs/0.136.0";
@@ -148,11 +149,10 @@ export default {
   stream: true,
   buildUrl: () => CODEX_RESPONSES_URL,
   buildHeaders: (creds) => {
-    const accountId = creds?.providerSpecificData?.chatgptAccountId || decodeAccountId(creds?.idToken);
-    return {
+    const accountId = resolveCodexAccountId(creds?.providerSpecificData) || decodeAccountId(creds?.idToken);
+    const headers = {
       "accept": "text/event-stream, application/json",
       "authorization": `Bearer ${creds?.accessToken || ""}`,
-      "chatgpt-account-id": accountId || "",
       "content-type": "application/json",
       "originator": CODEX_ORIGINATOR,
       "session_id": randomUUID(),
@@ -160,6 +160,8 @@ export default {
       "version": CODEX_VERSION,
       "x-client-request-id": randomUUID(),
     };
+    if (accountId) headers["chatgpt-account-id"] = accountId;
+    return headers;
   },
   buildBody: (model, body) => {
     const refs = [];

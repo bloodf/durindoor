@@ -64,19 +64,14 @@ export default function ComboDetailPage() {
 
   const fetchAll = async () => {
     try {
-      const [comboRes, settingsRes, logsRes, keysRes, connsRes, aliasesRes] = await Promise.all([
+      const [comboRes, settingsRes, logsRes, connsRes, aliasesRes] = await Promise.all([
         fetch(`/api/combos/${id}`, { cache: "no-store" }),
         fetch("/api/settings", { cache: "no-store" }),
         fetch("/api/usage/logs", { cache: "no-store" }),
-        fetch("/api/keys", { cache: "no-store" }),
         fetch("/api/providers", { cache: "no-store" }),
         fetch("/api/models/alias", { cache: "no-store" }),
       ]);
       if (aliasesRes.ok) setModelAliases((await aliasesRes.json()).aliases || {});
-      if (keysRes.ok) {
-        const k = await keysRes.json();
-        setApiKey((k.keys || []).find((x) => x.isActive !== false)?.key || "");
-      }
       if (connsRes.ok) setConnections((await connsRes.json()).connections || []);
       if (!comboRes.ok) { setCombo(null); setLoading(false); return; }
       const c = await comboRes.json();
@@ -338,6 +333,17 @@ export default function ComboDetailPage() {
               {testing ? "Running..." : "Run"}
             </Button>
           </div>
+          <label className="mb-3 block text-xs text-text-muted">
+            API key secret
+            <input
+              type="password"
+              value={apiKey}
+              onChange={(event) => setApiKey(event.target.value)}
+              autoComplete="off"
+              placeholder="Paste a saved API key secret"
+              className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm text-text-main focus:border-primary focus:outline-none"
+            />
+          </label>
           <pre className="text-xs font-mono bg-black/[0.03] dark:bg-white/[0.03] p-3 rounded-lg overflow-x-auto whitespace-pre-wrap break-all">
             {curlExample}
           </pre>

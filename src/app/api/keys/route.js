@@ -1,53 +1,36 @@
 import { NextResponse } from "next/server";
-import { getApiKeys, createApiKey, getAllApiKeyUsageTotals } from "@/lib/localDb";
+import { getApiKeys, createApiKey } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
+import { isApiKeyExpiryValidationError } from "@/shared/utils/apiKeyExpiry";
+import { toApiKeyManagementView } from "@/shared/utils/apiKeyManagement";
 
 export const dynamic = "force-dynamic";
 
 // GET /api/keys - List API keys
 export async function GET() {
   try {
-    const [keys, usageTotals] = await Promise.all([
-      getApiKeys(),
-      getAllApiKeyUsageTotals(),
-    ]);
-    const keysWithUsage = keys.map((k) => ({
-      ...k,
-      usage: usageTotals[k.id] || { totalTokens: 0, totalCost: 0, totalRequests: 0 },
-    }));
-    return NextResponse.json({ keys: keysWithUsage });
+    const keys = await getApiKeys();
+    return NextResponse.json({ keys: keys.map(toApiKeyManagementView) });
   } catch (error) {
     console.log("Error fetching keys:", error);
     return NextResponse.json({ error: "Failed to fetch keys" }, { status: 500 });
   }
 }
 
-function normalizePolicyNumber(value) {
-  if (value === null || value === undefined || value === "") return null;
-  const n = Number(value);
-  if (!Number.isFinite(n) || n < 0) return null;
-  return n;
-}
-
 // POST /api/keys - Create new API key
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { name, allowedCombos, dailyLimitTokens, allowedModels, maxTokens, maxCostUsd } = body;
+    const { name, allowedCombos, dailyLimitTokens, expiresAt } = body;
+    const trimmedName = typeof name === "string" ? name.trim() : "";
 
-    if (!name) {
+    if (!trimmedName) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
-    const policy = {
-      allowedModels: Array.isArray(allowedModels) ? allowedModels : [],
-      maxTokens: normalizePolicyNumber(maxTokens),
-      maxCostUsd: normalizePolicyNumber(maxCostUsd),
-    };
-
     // Always get machineId from server
     const machineId = await getConsistentMachineId();
-    const apiKey = await createApiKey(name, machineId, allowedCombos || [], dailyLimitTokens, policy);
+    const apiKey = await createApiKey(trimmedName, machineId, allowedCombos || [], dailyLimitTokens, expiresAt);
 
     return NextResponse.json({
       key: apiKey.key,
@@ -56,11 +39,11 @@ export async function POST(request) {
       machineId: apiKey.machineId,
       allowedCombos: apiKey.allowedCombos,
       dailyLimitTokens: apiKey.dailyLimitTokens,
-      policy: apiKey.policy,
+      expiresAt: apiKey.expiresAt,
     }, { status: 201 });
   } catch (error) {
     console.log("Error creating key:", error);
-    const status = /dailyLimitTokens/.test(error.message) ? 400 : 500;
+    const status = /dailyLimitTokens/.test(error.message) || isApiKeyExpiryValidationError(error) ? 400 : 500;
     return NextResponse.json({ error: status === 400 ? error.message : "Failed to create key" }, { status });
   }
 }

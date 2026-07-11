@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { redactSecrets } from "@/shared/utils/secretRedaction";
 
 // Resolve chatLanguageModels.json path per OS
 const getConfigPath = () => {
@@ -48,7 +49,7 @@ export async function GET() {
 
     return NextResponse.json({
       installed: true,
-      config,
+      config: redactSecrets(config),
       has9Router: has9RouterConfig(config),
       configPath: getConfigPath(),
       currentModel: entry?.models?.[0]?.id || null,
@@ -81,7 +82,8 @@ export async function POST(request) {
     } catch { /* No existing config */ }
 
     const endpointUrl = `${baseUrl}/chat/completions#models.ai.azure.com`;
-    const keyToUse = apiKey || "sk_durindoor";
+    const idx = config.findIndex((entry) => entry.name === "9Router");
+    const keyToUse = apiKey || (idx >= 0 ? config[idx]?.apiKey : null) || "sk_durindoor";
 
     const newEntry = {
       name: "9Router",
@@ -99,7 +101,6 @@ export async function POST(request) {
     };
 
     // Replace existing 9Router entry or append
-    const idx = config.findIndex((e) => e.name === "9Router");
     if (idx >= 0) {
       config[idx] = newEntry;
     } else {

@@ -1,9 +1,18 @@
-import { getDefaultModel } from "open-sse/config/providerModels.js";
+import { getDefaultModel, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
 import { PROVIDERS } from "open-sse/config/providers.js";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
+import { assertOutboundUrlAllowed, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 
 const AUTH_FAILURE_STATUSES = new Set([401, 403]);
+const CHAT_PROBE_ACCEPT_STATUSES = new Set([400, 422, 429]);
+
+function getChatProbeError(status) {
+  if (AUTH_FAILURE_STATUSES.has(status)) return "Invalid API key";
+  if (status === 404) return "Provider validation endpoint not found";
+  if (status >= 500) return "Provider unavailable - try again later";
+  return `Provider validation failed (HTTP ${status ?? "unknown"})`;
+}
 
 function appendUrlSuffix(url, suffix) {
   if (!suffix) return url;
@@ -64,7 +73,8 @@ export function buildRegistryProviderProbe(provider, apiKey, providerSpecificDat
   }
 
   if (cfg.format === "commandcode") {
-    const model = getDefaultModel(provider) || "command-code";
+    const alias = PROVIDER_ID_TO_ALIAS[provider] ?? provider;
+    const model = cfg.validationModelId || getDefaultModel(alias) || "command-code";
     return {
       url: baseUrl,
       options: {
@@ -83,14 +93,53 @@ export function buildRegistryProviderProbe(provider, apiKey, providerSpecificDat
         ),
         signal: AbortSignal.timeout(10000),
       },
-      accepts: "non-auth-failure",
+      accepts: "chat-auth",
     };
   }
 
   if (cfg.format !== "openai") return null;
 
+  if (cfg.validateUrl) {
+    return {
+      url: cfg.validateUrl,
+      options: { headers, signal: AbortSignal.timeout(8000) },
+      fallback: {
+        url: baseUrl,
+        options: {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            model: getDefaultModel(provider) || "test",
+            messages: [{ role: "user", content: "ping" }],
+            max_tokens: 1,
+          }),
+          signal: AbortSignal.timeout(10000),
+        },
+      },
+      accepts: "ok",
+    };
+  }
+
+  if (cfg.probeUsesBaseUrl) {
+    const alias = PROVIDER_ID_TO_ALIAS[provider] ?? provider;
+    return {
+      url: baseUrl,
+      options: {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          model: getDefaultModel(alias) || "test",
+          messages: [{ role: "user", content: "ping" }],
+          max_tokens: 1,
+        }),
+        signal: AbortSignal.timeout(10000),
+      },
+      accepts: "chat-auth",
+    };
+  }
+
   return {
-    url: cfg.validateUrl || baseUrl.replace(/\/chat\/completions$/, "/models").replace(/\/chatbot$/, "/models"),
+    url: baseUrl.replace(/\/chat\/completions$/, "/models").replace(/\/chatbot$/, "/models"),
     options: { headers, signal: AbortSignal.timeout(8000) },
     fallback: {
       url: baseUrl,
@@ -114,14 +163,46 @@ export async function probeRegistryProvider(provider, apiKey, fetcher = fetch, p
   if (!probe) return null;
   if (probe.accepts === "always") return { valid: true, status: 200 };
 
+  // SSRF guard (#6542): provider validation hits a caller-controllable baseUrl
+  // (e.g. OpenAI-compatible `${baseUrl}/models` + the chat fallback). Validate
+  // BOTH URLs before any socket opens, and forbid 3xx redirects so a provider
+  // cannot redirect the probe to cloud-metadata past the initial-URL check.
+  const guard = getProviderValidationGuard();
+  try {
+    assertOutboundUrlAllowed(probe.url, guard);
+    if (probe.fallback?.url) assertOutboundUrlAllowed(probe.fallback.url, guard);
+  } catch (err) {
+    return {
+      valid: false,
+      status: null,
+      error: err?.message || "Provider URL blocked by SSRF guard",
+      blocked: true,
+    };
+  }
+  const noRedirect = { redirect: "manual" };
+  probe.options = { ...probe.options, ...noRedirect };
+  if (probe.fallback?.options) probe.fallback.options = { ...probe.fallback.options, ...noRedirect };
+
   let res;
   try {
     res = await fetcher(probe.url, probe.options);
   } catch (err) {
+    if (probe.accepts === "chat-auth") {
+      return {
+        valid: false,
+        status: null,
+        error: "Provider unavailable - network request failed",
+      };
+    }
     if (!probe.fallback) throw err;
   }
   if (probe.accepts === "non-auth-failure") {
     return { valid: !AUTH_FAILURE_STATUSES.has(res.status), status: res.status };
+  }
+  if (probe.accepts === "chat-auth") {
+    const valid = Boolean(res?.ok || CHAT_PROBE_ACCEPT_STATUSES.has(res?.status));
+    if (valid) return { valid: true, status: res?.status };
+    return { valid: false, status: res?.status, error: getChatProbeError(res?.status) };
   }
   if (res && (res.ok || !probe.fallback || AUTH_FAILURE_STATUSES.has(res.status))) {
     return { valid: res.ok, status: res.status };

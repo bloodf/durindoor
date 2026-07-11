@@ -11,6 +11,7 @@ import apiAirforce from "../../open-sse/providers/registry/api-airforce.js";
 import bailianCodingPlan from "../../open-sse/providers/registry/bailian-coding-plan.js";
 import bai from "../../open-sse/providers/registry/bai.js";
 import { FILTERS } from "../../src/app/api/providers/suggested-models/filters.js";
+import { buildRegistryProviderProbe } from "../../src/app/api/providers/providerProbe.js";
 import { PROVIDERS } from "../../open-sse/providers/index.js";
 
 const repoRoot = resolve(import.meta.dirname, "../..");
@@ -22,11 +23,14 @@ describe("PR #48 review: api-airforce validateUrl", () => {
   });
 
   it("src/app/api/providers/validate/route.js prefers cfg.validateUrl in the generic OpenAI probe", () => {
+    const probe = buildRegistryProviderProbe("api-airforce", "airforce-key");
+    expect(probe.url).toBe("https://api.airforce/v1/models");
+    expect(probe.options.headers.Authorization).toBe("Bearer airforce-key");
+
     const source = readFileSync(
       resolve(repoRoot, "src/app/api/providers/validate/route.js"),
       "utf8",
     );
-    expect(source).toMatch(/const\s+modelsUrl\s*=\s*cfg\.validateUrl\s*\|\|/);
     expect(source).toContain('case "bailian-coding-plan"');
     expect(source).toContain('provider === "bailian-coding-plan"');
     expect(source).toContain('"Authorization": `Bearer ${apiKey}`');

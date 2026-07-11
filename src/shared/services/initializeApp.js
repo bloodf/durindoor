@@ -13,9 +13,10 @@ import {
   RESTART_COOLDOWN_MS, NETWORK_SETTLE_MS,
   WATCHDOG_INTERVAL_MS, NETWORK_CHECK_INTERVAL_MS, VIRTUAL_IFACE_REGEX,
 } from "@/lib/tunnel";
-import { getMitmStatus, startMitm, loadEncryptedPassword, initDbHooks, restoreToolDNS, removeAllDNSEntriesSync } from "@/mitm/manager";
+import { getMitmStatus, startMitm, stopMitm, loadEncryptedPassword, initDbHooks, restoreToolDNS, isSudoPasswordRequired } from "@/mitm/manager";
 import { startQuotaAutoPing } from "@/shared/services/quotaAutoPing";
 import { syncToJson as syncMitmAliasCache } from "@/lib/mitmAliasCache";
+import { killAllBridges } from "@/lib/mcp/stdioSseBridge";
 
 // Inject correct paths and DB hooks into manager.js (CJS) from ESM context
 (function bootstrapMitm() {
@@ -65,14 +66,28 @@ export async function initializeApp() {
     }
 
     if (!g.signalHandlersRegistered) {
-      const cleanup = () => {
-        try { removeAllDNSEntriesSync(); } catch { /* best effort */ }
-        killCloudflared();
-        process.exit();
+      let cleanupInProgress = false;
+      const cleanup = async () => {
+        if (cleanupInProgress) return;
+        cleanupInProgress = true;
+        try {
+          // The manager gives each privileged helper its own bounded deadline
+          // and quarantines any unconfirmed outcome. Do not abandon this
+          // promise with an outer race: Windows stop can require two serial UAC
+          // operations, and a late success must still reach the exit path.
+          await stopMitm(undefined, { preserveDesiredState: true });
+          try { killAllBridges(); } catch { /* best effort */ }
+          killCloudflared();
+          process.exit(0);
+        } catch (error) {
+          // Do not exit and orphan system-wide hosts/firewall/PF state. The CLI
+          // parent can retry the authenticated manager stop.
+          cleanupInProgress = false;
+          console.error("[InitApp] Refusing unsafe shutdown:", error.message);
+        }
       };
-      process.on("SIGINT", cleanup);
-      process.on("SIGTERM", cleanup);
-      process.on("exit", () => { try { removeAllDNSEntriesSync(); } catch { /* ignore */ } });
+      process.on("SIGINT", () => { void cleanup(); });
+      process.on("SIGTERM", () => { void cleanup(); });
       g.signalHandlersRegistered = true;
     }
 
@@ -99,14 +114,22 @@ async function autoStartMitm() {
   if (g.mitmStartInProgress) return;
   g.mitmStartInProgress = true;
   try {
+    // Purge legacy ciphertext on every startup, even when MITM is disabled.
+    await loadEncryptedPassword();
     const settings = await getSettings();
     if (!settings.mitmEnabled) return;
     const mitmStatus = await getMitmStatus();
     if (mitmStatus.running) return;
 
-    const password = await loadEncryptedPassword();
-    if (!password && process.platform !== "win32") {
-      console.log("[InitApp] MITM was enabled but no saved password found, skipping auto-start");
+    // Clear any legacy stored ciphertext; sudo/UAC credentials are never
+    // persisted. Cold Windows starts require an explicit user-approved UAC
+    // action, and Unix starts proceed only when sudo is passwordless.
+    if (process.platform === "win32") {
+      console.log("[InitApp] MITM requires a fresh UAC-approved start after app restart");
+      return;
+    }
+    if (isSudoPasswordRequired()) {
+      console.log("[InitApp] MITM requires a fresh in-memory sudo credential after app restart");
       return;
     }
 
@@ -114,10 +137,10 @@ async function autoStartMitm() {
     const activeKey = keys.find(k => k.isActive !== false);
 
     console.log("[InitApp] MITM was enabled, auto-starting...");
-    await startMitm(activeKey?.key || "sk_9router", password);
+    await startMitm(activeKey?.key || "sk_9router", "");
     console.log("[InitApp] MITM auto-started");
     try {
-      await restoreToolDNS(password);
+      await restoreToolDNS("");
       console.log("[InitApp] DNS restored from saved state");
     } catch (e) {
       console.log("[InitApp] DNS restore failed:", e.message);

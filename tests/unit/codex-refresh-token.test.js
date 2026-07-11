@@ -9,6 +9,14 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+const { proxyAwareFetchMock } = vi.hoisted(() => ({
+  proxyAwareFetchMock: vi.fn(),
+}));
+
+vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
+  proxyAwareFetch: proxyAwareFetchMock,
+}));
+
 const originalFetch = global.fetch;
 
 describe("Codex Refresh Token", () => {
@@ -16,6 +24,11 @@ describe("Codex Refresh Token", () => {
     vi.clearAllMocks();
     vi.resetModules();
     global.fetch = originalFetch;
+    // Keep the network mock observable while also exposing the third,
+    // request-local proxy argument used by the production implementation.
+    proxyAwareFetchMock.mockImplementation((url, init, proxyOptions) =>
+      global.fetch(url, { ...init, proxyOptions })
+    );
   });
 
   afterEach(() => {
@@ -47,7 +60,7 @@ describe("Codex Refresh Token", () => {
       expect(result.accessToken).toBe("new-access");
       expect(result.idToken).toBe("new-id-token");
       expect(fetchMock).toHaveBeenCalledWith(
-        "https://auth.openai.com/oauth/token",
+        "https://auth.openai.com/api/accounts/oauth/token",
         expect.objectContaining({
           method: "POST",
           headers: expect.objectContaining({
@@ -73,6 +86,32 @@ describe("Codex Refresh Token", () => {
       const result = await refreshCodexToken("old-refresh-token-without-rotation", null);
 
       expect(result.refreshToken).toBe("old-refresh-token-without-rotation");
+    });
+
+    it("uses the caller's strict-pool route without forcing direct egress", async () => {
+      mockFetchWithJson({
+        access_token: "strict-access",
+        refresh_token: "strict-rotated",
+        expires_in: 3600,
+      });
+      const proxyOptions = {
+        proxyMode: "strict-pool",
+        proxyPoolId: "pool-a",
+        connectionProxyEnabled: true,
+        connectionProxyUrl: "http://proxy-a.test:8080",
+        strictProxy: true,
+        disableEnvProxy: true,
+      };
+
+      const { refreshCodexToken } = await import("../../open-sse/services/tokenRefresh.js");
+      const result = await refreshCodexToken("strict-route-refresh", null, proxyOptions);
+
+      expect(result.accessToken).toBe("strict-access");
+      expect(proxyAwareFetchMock).toHaveBeenCalledWith(
+        "https://auth.openai.com/api/accounts/oauth/token",
+        expect.objectContaining({ method: "POST" }),
+        proxyOptions
+      );
     });
   });
 
@@ -140,6 +179,78 @@ describe("Codex Refresh Token", () => {
       expect(first.accessToken).toBe("new-access");
       expect(second.accessToken).toBe("new-access");
       expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not coalesce the same credential across different proxy routes", async () => {
+      const fetchMock = mockFetchWithJson({
+        access_token: "new-access",
+        refresh_token: "rotated-refresh-token",
+        expires_in: 3600,
+      });
+      const { refreshProviderCredentials } = await import("../../open-sse/services/oauthCredentialManager.js");
+      const credentials = {
+        connectionId: "codex-route-isolation",
+        refreshToken: "route-isolation-refresh-token",
+      };
+      const direct = { proxyMode: "direct", disableEnvProxy: true };
+      const strictPool = {
+        proxyMode: "strict-pool",
+        proxyPoolId: "pool-b",
+        connectionProxyEnabled: true,
+        connectionProxyUrl: "http://proxy-b.test:8080",
+        strictProxy: true,
+        disableEnvProxy: true,
+      };
+
+      await Promise.all([
+        refreshProviderCredentials("codex", credentials, null, direct),
+        refreshProviderCredentials("codex", credentials, null, strictPool),
+      ]);
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(proxyAwareFetchMock.mock.calls.map((call) => call[2])).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining(direct),
+          expect.objectContaining(strictPool),
+        ])
+      );
+    });
+
+    it("reconstructs durable direct and strict-pool policy for proactive refresh", async () => {
+      const { resolveCredentialProxyOptions } = await import("../../open-sse/services/oauthCredentialManager.js");
+
+      expect(resolveCredentialProxyOptions({
+        providerSpecificData: {
+          oauthProxy: { mode: "direct" },
+          connectionProxyEnabled: true,
+          connectionProxyUrl: "http://stale-proxy.test:8080",
+        },
+      }, {
+        proxyMode: "strict-pool",
+        connectionProxyEnabled: true,
+        connectionProxyUrl: "http://replacement-proxy.test:8080",
+        strictProxy: true,
+      })).toMatchObject({
+        proxyMode: "direct",
+        connectionProxyEnabled: false,
+        connectionProxyUrl: "",
+        disableEnvProxy: true,
+        strictProxy: false,
+      });
+
+      expect(resolveCredentialProxyOptions({
+        providerSpecificData: {
+          oauthProxy: { mode: "strict-pool", poolId: "pool-c" },
+          connectionProxyEnabled: true,
+          connectionProxyUrl: "http://proxy-c.test:8080",
+        },
+      })).toMatchObject({
+        proxyMode: "strict-pool",
+        proxyPoolId: "pool-c",
+        connectionProxyUrl: "http://proxy-c.test:8080",
+        disableEnvProxy: true,
+        strictProxy: true,
+      });
     });
   });
 

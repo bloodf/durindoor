@@ -250,4 +250,44 @@ describe("handleChatCore Headroom diagnostics", () => {
       expect.stringContaining("reported token delta, but outbound JSON shrank <5%; provider may bill near-original payload")
     );
   });
+
+  it.each([
+    ["gemini", "gemini", "gemini-2.5-flash"],
+    ["vertex", "vertex", "gemini-2.5-flash"],
+  ])("preserves standalone %s functionResponse content through provider dispatch", async (sourceFormat, provider, model) => {
+    const log = { debug: vi.fn(), info: vi.fn(), warn: vi.fn() };
+    const functionResponse = {
+      id: "call_from_trimmed_history",
+      name: "lookup",
+      response: { result: { answer: 42 } },
+    };
+
+    await handleChatCore({
+      body: {
+        model,
+        contents: [{ role: "user", parts: [{ functionResponse }] }],
+      },
+      modelInfo: { provider, model },
+      credentials: { apiKey: "test-key", providerSpecificData: {} },
+      log,
+      connectionId: "gemini-connection",
+      rtkEnabled: false,
+      headroomEnabled: false,
+      cavemanEnabled: false,
+      ponytailEnabled: false,
+      pxpipeEnabled: false,
+      sourceFormatOverride: sourceFormat,
+      clientRawRequest: {
+        endpoint: "/v1beta/models/gemini-2.5-flash:generateContent",
+        body: {},
+        headers: { accept: "application/json" },
+      },
+    });
+
+    expect(executeMock).toHaveBeenCalledWith(expect.objectContaining({
+      body: expect.objectContaining({
+        contents: [{ role: "user", parts: [{ functionResponse }] }],
+      }),
+    }));
+  });
 });

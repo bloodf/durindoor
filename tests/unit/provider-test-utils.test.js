@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getProviderConnectionById: vi.fn(),
   updateProviderConnection: vi.fn(),
+  resolveConnectionProxyConfig: vi.fn(),
+  testProxyUrl: vi.fn(),
 }));
 
 vi.mock("@/lib/localDb", () => ({
@@ -15,11 +17,10 @@ vi.mock("@/lib/localDb", () => ({
 }));
 
 vi.mock("@/lib/network/connectionProxy", () => ({
-  resolveConnectionProxyConfig: vi.fn().mockResolvedValue({
-    connectionProxyEnabled: false,
-    connectionProxyUrl: "",
-    vercelRelayUrl: "",
-  }),
+  resolveConnectionProxyConfig: mocks.resolveConnectionProxyConfig,
+}));
+vi.mock("@/lib/network/proxyTest", () => ({
+  testProxyUrl: mocks.testProxyUrl,
 }));
 
 const originalFetch = global.fetch;
@@ -48,6 +49,12 @@ describe("testApiKeyConnection generic fallback (new batch providers)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.updateProviderConnection.mockResolvedValue(undefined);
+    mocks.resolveConnectionProxyConfig.mockResolvedValue({
+      connectionProxyEnabled: false,
+      connectionProxyUrl: "",
+      vercelRelayUrl: "",
+    });
+    mocks.testProxyUrl.mockResolvedValue({ ok: true });
   });
 
   afterEach(() => {
@@ -64,6 +71,43 @@ describe("testApiKeyConnection generic fallback (new batch providers)", () => {
     expect(result.valid).toBe(true);
     expect(result.error).not.toBe("Provider test not supported");
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("binds Codex OAuth validation to the selected account", async () => {
+    const strictProxy = {
+      connectionProxyEnabled: true,
+      connectionProxyUrl: "http://proxy.test:8080",
+      proxyMode: "strict-pool",
+      strictProxy: true,
+    };
+    mocks.resolveConnectionProxyConfig.mockResolvedValue(strictProxy);
+    mocks.getProviderConnectionById.mockResolvedValue({
+      id: "conn-codex",
+      provider: "codex",
+      authType: "oauth",
+      accessToken: "token",
+      providerSpecificData: { workspaceId: " account-probe " },
+    });
+    const { __setProviderTestFetchForTesting, testSingleConnection } = await import(
+      "../../src/app/api/providers/[id]/test/testUtils.js"
+    );
+    const proxyFetch = vi.fn(async (_url, options) => {
+      expect(options.headers["ChatGPT-Account-ID"]).toBe("account-probe");
+      return new Response("{}", { status: 200 });
+    });
+    const restoreFetch = __setProviderTestFetchForTesting(proxyFetch);
+
+    const result = await testSingleConnection("conn-codex");
+
+    try {
+      expect(result.valid, JSON.stringify(result)).toBe(true);
+      expect(proxyFetch).toHaveBeenCalledWith(expect.any(String), expect.any(Object), strictProxy);
+      expect(mocks.resolveConnectionProxyConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ workspaceId: " account-probe " }),
+      );
+    } finally {
+      restoreFetch();
+    }
   });
 
   it("probes api-airforce via registry validateUrl", async () => {

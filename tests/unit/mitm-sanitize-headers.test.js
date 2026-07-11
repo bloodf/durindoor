@@ -28,6 +28,9 @@ describe("MITM sanitizeHeaders", () => {
       "x-goog-api-key": "google-key",
       "x-subscription-token": "sub-token",
       "xi-api-key": "xi-key",
+      "x-amz-security-token": "aws-session",
+      "x-client-secret": "oauth-client-secret",
+      "custom-auth-token": "custom-token",
       "content-type": "application/json",
     });
     expect(out.authorization).toBe("[REDACTED]");
@@ -37,6 +40,9 @@ describe("MITM sanitizeHeaders", () => {
     expect(out["x-goog-api-key"]).toBe("[REDACTED]");
     expect(out["x-subscription-token"]).toBe("[REDACTED]");
     expect(out["xi-api-key"]).toBe("[REDACTED]");
+    expect(out["x-amz-security-token"]).toBe("[REDACTED]");
+    expect(out["x-client-secret"]).toBe("[REDACTED]");
+    expect(out["custom-auth-token"]).toBe("[REDACTED]");
     expect(out["content-type"]).toBe("application/json");
   });
 });

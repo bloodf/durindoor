@@ -1,24 +1,16 @@
 name: Nightly
 
-# Two-branch release model:
-#   dev   → nightly pre-releases (this workflow, daily)
-#   main  → controlled production releases (release.yml on published)
-#
-# Baselines note: the project's `tests/__baseline__/known-fails.txt` is
-# currently stale (~27 pre-existing failures unrelated to current work —
-# see migration plan §7/§8). Until that is triaged, the no-regression gate
-# runs in advisory mode (`continue-on-error: true`) so that daily cron
-# continues to emit nightly pre-releases. Once the baseline is fixed,
-# promote the gate to blocking.
-
+# The schedule is disabled in repository settings during dev recovery. When it
+# is re-enabled after the zero-test stage, every gate below is blocking and the
+# release step cannot run after a failed install, lint, build, or test.
 on:
   schedule:
-    - cron: '0 2 * * *'   # 02:00 UTC daily
+    - cron: '0 2 * * *'
   workflow_dispatch:
 
 concurrency:
   group: nightly-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   nightly:
@@ -29,11 +21,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: dev
-          fetch-depth: 1
-          # `persist-credentials: false` keeps the default GITHUB_TOKEN out
-          # of .git/config — `contents: write` alone is enough for
-          # softprops/action-gh-release to publish a tag/release, and we
-          # don't run any further git push from this workflow.
+          fetch-depth: 2
           persist-credentials: false
 
       - name: Pin target commit SHA
@@ -44,37 +32,60 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          # No `cache: npm` — repo gitignores package-lock.json
-          # (`.gitignore` ~line 63), and setup-node v4 throws
-          # `Dependencies lock file is not found ...` when the cache key
-          # requires a lockfile that doesn't exist. Mirrors test.yml pattern.
+          node-version: 20.20.2
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            tests/package-lock.json
 
-      # Repo intentionally gitignores package-lock.json, so `npm ci` would
-      # fail; use `npm install` instead.
+      - name: Pin npm
+        run: |
+          npm install --global npm@10.8.2
+          test "$(npm --version)" = "10.8.2"
+
       - name: Install app dependencies
-        run: npm install --no-audit --no-fund
-
-      - name: Build
-        run: npm run build
+        run: npm ci --no-audit --no-fund
 
       - name: Install test dependencies
         working-directory: tests
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
-      # `continue-on-error: true` here is temporary until the baseline rot
-      # (see file header) is triaged. Vitest still emits JSON; the no-
-      # regression gate below reads that JSON. We do NOT want a daily
-      # silent failure to suppress nightly releases.
-      - name: Run vitest suite (JSON)
-        continue-on-error: true
-        working-directory: tests
-        run: npm run test:json || true
+      - name: Lint
+        run: npm run lint
 
-      - name: No-regression gate (advisory — see file header)
-        continue-on-error: true
+      - name: Agent index drift gate
+        run: npm run check:agent-index
+
+      - name: Build with isolated application state
+        env:
+          HOME: ${{ runner.temp }}/durindoor-build-home
+          DATA_DIR: ${{ runner.temp }}/durindoor-build-data
+        run: mkdir -p "$HOME" "$DATA_DIR" && npm run build
+
+      - name: Run blocking Vitest gate
         working-directory: tests
-        run: npm run gate
+        env:
+          BASELINE_BASE_REF: HEAD^
+          HOME: ${{ runner.temp }}/durindoor-home
+          DATA_DIR: ${{ runner.temp }}/durindoor-data
+        run: mkdir -p "$HOME" "$DATA_DIR" && npm run test:ci
+
+      - name: Verify test reports
+        if: always()
+        run: |
+          test -s tests/.test-results.json
+          test -s tests/.test-results.junit.xml
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-vitest-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            tests/.test-results.json
+            tests/.test-results.junit.xml
+          include-hidden-files: true
+          if-no-files-found: error
 
       - name: Check nightly tag
         id: check
@@ -90,12 +101,8 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # softprops/action-gh-release creates the tag implicitly from
-      # `tag_name`. `target_commitish` is set to the checked-out SHA so the
-      # release is anchored to an immutable commit (not a moving branch
-      # ref), and the tag/release survives later `dev` history rewrites.
       - name: Publish nightly pre-release
-        if: steps.check.outputs.exists == 'false'
+        if: ${{ success() && steps.check.outputs.exists == 'false' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.check.outputs.tag }}

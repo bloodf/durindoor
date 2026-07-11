@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import PropTypes from "prop-types";
 import OAuthModal from "./OAuthModal";
 import KiroAuthModal from "./KiroAuthModal";
@@ -10,10 +10,25 @@ import KiroSocialOAuthModal from "./KiroSocialOAuthModal";
  * Kiro OAuth Wrapper
  * Orchestrates between method selection, device code flow, and social login flow
  */
-export default function KiroOAuthWrapper({ isOpen, providerInfo, onSuccess, onClose }) {
+export default function KiroOAuthWrapper({
+  isOpen,
+  providerInfo,
+  onSuccess,
+  onClose,
+  proxyPools = [],
+  proxyPoolsReady = false,
+}) {
   const [authMethod, setAuthMethod] = useState(null); // null | "builder-id" | "idc" | "social" | "import"
   const [socialProvider, setSocialProvider] = useState(null); // "google" | "github"
   const [idcConfig, setIdcConfig] = useState(null);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setAuthMethod(null);
+      setSocialProvider(null);
+      setIdcConfig(null);
+    }
+  }, [isOpen]);
 
   const handleMethodSelect = useCallback((method, config) => {
     if (method === "builder-id") {
@@ -74,6 +89,8 @@ export default function KiroOAuthWrapper({ isOpen, providerInfo, onSuccess, onCl
         onSuccess={handleDeviceSuccess}
         onClose={handleBack}
         idcConfig={idcConfig}
+        proxyPools={proxyPools}
+        proxyPoolsReady={proxyPoolsReady}
       />
     );
   }
@@ -86,6 +103,8 @@ export default function KiroOAuthWrapper({ isOpen, providerInfo, onSuccess, onCl
         provider={socialProvider}
         onSuccess={handleSocialSuccess}
         onClose={handleBack}
+        proxyPools={proxyPools}
+        proxyPoolsReady={proxyPoolsReady}
       />
     );
   }
@@ -100,4 +119,10 @@ KiroOAuthWrapper.propTypes = {
   }),
   onSuccess: PropTypes.func,
   onClose: PropTypes.func.isRequired,
+  proxyPools: PropTypes.arrayOf(PropTypes.shape({
+    id: PropTypes.string,
+    name: PropTypes.string,
+    isActive: PropTypes.bool,
+  })),
+  proxyPoolsReady: PropTypes.bool,
 };

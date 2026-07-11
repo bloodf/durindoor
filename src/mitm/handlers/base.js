@@ -6,21 +6,37 @@ const ROUTER_BASE = String(process.env.MITM_ROUTER_BASE || DEFAULT_LOCAL_ROUTER)
   .replace(/\/+$/, "") || DEFAULT_LOCAL_ROUTER;
 const API_KEY = process.env.ROUTER_API_KEY;
 
-// Headers that must not be forwarded to 9Router
-const STRIP_HEADERS = new Set([
-  "host", "content-length", "connection", "transfer-encoding",
-  "content-type", "authorization"
+// The intercepted client can carry upstream credentials in many non-standard
+// headers. Forward only harmless request metadata; DurinDoor supplies its own
+// content type and API authorization below.
+const FORWARDED_CLIENT_HEADERS = new Set([
+  "accept",
+  "accept-language",
+  "anthropic-beta",
+  "anthropic-version",
+  "openai-intent",
+  "user-agent",
+  "x-app",
+  "x-correlation-id",
+  "x-initiator",
+  "x-request-id",
 ]);
+
+function selectForwardedClientHeaders(clientHeaders = {}) {
+  const forwarded = {};
+  for (const [key, value] of Object.entries(clientHeaders || {})) {
+    if (value == null || !FORWARDED_CLIENT_HEADERS.has(key.toLowerCase())) continue;
+    forwarded[key] = Array.isArray(value) ? value.join(", ") : String(value);
+  }
+  return forwarded;
+}
 
 /**
  * Send body to 9Router at the given path and return the fetch Response object.
  * Optionally forwards client headers (stripped of hop-by-hop / overridden keys).
  */
 async function fetchRouter(openaiBody, path = "/v1/chat/completions", clientHeaders = {}) {
-  const forwarded = {};
-  for (const [k, v] of Object.entries(clientHeaders)) {
-    if (!STRIP_HEADERS.has(k.toLowerCase())) forwarded[k] = v;
-  }
+  const forwarded = selectForwardedClientHeaders(clientHeaders);
 
   const response = await fetch(`${ROUTER_BASE}${path}`, {
     method: "POST",
@@ -223,4 +239,10 @@ async function pipeTransformedEventStream(routerRes, res, transformFn, state) {
   res.end();
 }
 
-module.exports = { fetchRouter, pipeSSE, pipeTransformedSSE, pipeTransformedEventStream };
+module.exports = {
+  fetchRouter,
+  pipeSSE,
+  pipeTransformedSSE,
+  pipeTransformedEventStream,
+  selectForwardedClientHeaders,
+};

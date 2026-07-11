@@ -1,5 +1,5 @@
 // Latest schema version — bumped when a migration is added in ./migrations/
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export const PRAGMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -81,9 +81,19 @@ export const TABLES = {
       allowedCombos: "TEXT",
       dailyLimitTokens: "INTEGER",
       policy: "TEXT",
+      expiresAt: "TEXT",
       createdAt: "TEXT NOT NULL",
     },
     indexes: ["CREATE INDEX IF NOT EXISTS idx_ak_key ON apiKeys(key)"],
+  },
+  apiKeyUsageTotals: {
+    columns: {
+      apiKeyId: "TEXT PRIMARY KEY REFERENCES apiKeys(id) ON DELETE CASCADE",
+      totalTokens: "INTEGER NOT NULL DEFAULT 0",
+      totalCost: "REAL NOT NULL DEFAULT 0",
+      totalRequests: "INTEGER NOT NULL DEFAULT 0",
+      updatedAt: "TEXT",
+    },
   },
   combos: {
     columns: {
@@ -192,15 +202,6 @@ export const TABLES = {
       "CREATE INDEX IF NOT EXISTS idx_rd_model ON requestDetails(model)",
       "CREATE INDEX IF NOT EXISTS idx_rd_conn ON requestDetails(connectionId)",
     ],
-  },
-  apiKeyUsageTotals: {
-    columns: {
-      apiKeyId: "TEXT PRIMARY KEY",
-      totalTokens: "INTEGER DEFAULT 0",
-      totalCost: "REAL DEFAULT 0",
-      totalRequests: "INTEGER DEFAULT 0",
-      updatedAt: "TEXT NOT NULL",
-    },
   },
 };
 

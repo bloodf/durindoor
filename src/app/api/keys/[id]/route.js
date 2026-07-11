@@ -1,12 +1,7 @@
 import { NextResponse } from "next/server";
-import { deleteApiKey, getApiKeyById, updateApiKey, getApiKeyUsageTotals } from "@/lib/localDb";
-
-function normalizePolicyNumber(value) {
-  if (value === null || value === undefined || value === "") return null;
-  const n = Number(value);
-  if (!Number.isFinite(n) || n < 0) return null;
-  return n;
-}
+import { isApiKeyExpiryValidationError } from "@/shared/utils/apiKeyExpiry";
+import { toApiKeyManagementView } from "@/shared/utils/apiKeyManagement";
+import { deleteApiKey, getApiKeyById, updateApiKey } from "@/lib/localDb";
 
 // GET /api/keys/[id] - Get single key
 export async function GET(request, { params }) {
@@ -16,8 +11,7 @@ export async function GET(request, { params }) {
     if (!key) {
       return NextResponse.json({ error: "Key not found" }, { status: 404 });
     }
-    const usage = await getApiKeyUsageTotals(id);
-    return NextResponse.json({ key: { ...key, usage } });
+    return NextResponse.json({ key: toApiKeyManagementView(key) });
   } catch (error) {
     console.log("Error fetching key:", error);
     return NextResponse.json({ error: "Failed to fetch key" }, { status: 500 });
@@ -29,7 +23,7 @@ export async function PUT(request, { params }) {
   try {
     const { id } = await params;
     const body = await request.json();
-    const { isActive, allowedCombos, dailyLimitTokens, allowedModels, maxTokens, maxCostUsd } = body;
+    const { name, isActive, allowedCombos, dailyLimitTokens, expiresAt } = body;
 
     const existing = await getApiKeyById(id);
     if (!existing) {
@@ -37,24 +31,25 @@ export async function PUT(request, { params }) {
     }
 
     const updateData = {};
+    if ("name" in body) {
+      const trimmedName = typeof name === "string" ? name.trim() : "";
+      if (!trimmedName) return NextResponse.json({ error: "Name is required" }, { status: 400 });
+      updateData.name = trimmedName;
+    }
     if (isActive !== undefined) updateData.isActive = isActive;
     if (allowedCombos !== undefined) updateData.allowedCombos = allowedCombos;
     if ("dailyLimitTokens" in body) updateData.dailyLimitTokens = dailyLimitTokens;
-
-    const policyUpdate = {};
-    if (Array.isArray(allowedModels)) policyUpdate.allowedModels = allowedModels;
-    if (maxTokens !== undefined) policyUpdate.maxTokens = normalizePolicyNumber(maxTokens);
-    if (maxCostUsd !== undefined) policyUpdate.maxCostUsd = normalizePolicyNumber(maxCostUsd);
-    if (Object.keys(policyUpdate).length > 0) {
-      updateData.policy = { ...existing.policy, ...policyUpdate };
-    }
+    if ("expiresAt" in body) updateData.expiresAt = expiresAt;
 
     const updated = await updateApiKey(id, updateData);
+    if (!updated) {
+      return NextResponse.json({ error: "Key not found" }, { status: 404 });
+    }
 
-    return NextResponse.json({ key: updated });
+    return NextResponse.json({ key: toApiKeyManagementView(updated) });
   } catch (error) {
     console.log("Error updating key:", error);
-    const status = /dailyLimitTokens/.test(error.message) ? 400 : 500;
+    const status = /dailyLimitTokens/.test(error.message) || isApiKeyExpiryValidationError(error) ? 400 : 500;
     return NextResponse.json({ error: status === 400 ? error.message : "Failed to update key" }, { status });
   }
 }

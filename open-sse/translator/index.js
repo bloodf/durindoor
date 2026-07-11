@@ -1,6 +1,6 @@
 import { FORMATS } from "./formats.js";
 import { ensureToolCallIds, fixMissingToolResponses, salvageOrphanedToolResults } from "./concerns/toolCall.js";
-import { prepareClaudeRequest } from "./formats/claude.js";
+import { normalizeClaudePassthrough, prepareClaudeRequest } from "./formats/claude.js";
 import { cloakClaudeTools } from "../utils/claudeCloaking.js";
 import { filterToOpenAIFormat } from "./formats/openai.js";
 import { normalizeThinkingConfig } from "../services/provider.js";
@@ -169,6 +169,15 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
 
   // Final step: prepare request for Claude format endpoints
   if (targetFormat === FORMATS.CLAUDE) {
+    const normalizesNativeClaudeTransport = PROVIDERS[provider]?.quirks?.normalizeNativeClaudeTransport
+      || provider === "ollama"
+      || provider === "ollama-local";
+    if (normalizesNativeClaudeTransport) {
+      // Ollama implements the Messages wire contract but not Anthropic's
+      // model-specific beta matrix. Normalize system turns without applying
+      // Claude-family model downgrades to the upstream Ollama model id.
+      result = normalizeClaudePassthrough(result, "", provider);
+    }
     const apiKey = credentials?.accessToken || credentials?.apiKey || null;
     result = prepareClaudeRequest(result, provider, apiKey, connectionId, credentials?.rawHeaders, clientSessionId);
   }

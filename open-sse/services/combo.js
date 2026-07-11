@@ -16,6 +16,84 @@ const HARD_CAPS = new Set(["vision", "pdf", "audioInput", "videoInput"]);
 const TOOL_CALL_PREFIX = "[Called tools: ";
 const TOOL_RESULT_PREFIX = "[Tool result: ";
 
+// ─── Fingerprint account pin (#6696) ─────────────────────────────────────────
+// The combo builder UI pins a specific account for fingerprint providers
+// (mimocode/mcode/opencode) by encoding it as a composite model/connection id:
+// `${realConnectionId}|fp|${fingerprint}`
+// splitFingerprintPin parses that composite back into { realConnectionId,
+// pinnedFingerprint } so the executor can resolve the exact account. Malformed
+// (empty id or empty fingerprint) return null so callers fall through to the
+// unpinned path unchanged — mirroring upstream splitFingerprintPin (#6696).
+export const FP_PIN_SEPARATOR = "|fp|";
+
+export function splitFingerprintPin(id) {
+  if (typeof id !== "string") return null;
+  const idx = id.indexOf(FP_PIN_SEPARATOR);
+  if (idx === -1) return null;
+  const realConnectionId = id.slice(0, idx);
+  const pinnedFingerprint = id.slice(idx + FP_PIN_SEPARATOR.length);
+  if (!realConnectionId || !pinnedFingerprint) return null;
+  return { realConnectionId, pinnedFingerprint };
+}
+
+// ─── Model-family detection (auto-combo family helpers, #6509 / #6453) ───────
+// Pure, dependency-free primitives ported verbatim in shape from
+// omniroute open-sse/services/autoCombo/modelFamily.ts so the auto-combo
+// resolver seam (F-2) can import just these without engine.ts.
+//
+// MODEL_FAMILIES is the ordered list of family ids. AUTO_FAMILY_IDS are the
+// advertised `auto/<family>` catalog ids. detectModelFamily matches the BARE
+// model id (everything after the LAST slash) against anchored prefixes; `zai`
+// is intentionally NOT detectable from a model id — it is a provider-override
+// family ("route to my z.ai backend"), distinct from `glm` ("any GLM backend").
+export const MODEL_FAMILIES = Object.freeze([
+  "glm",
+  "minimax",
+  "mimo",
+  "zai",
+  "gemma",
+  "llama",
+  "gemini",
+]);
+
+const MODEL_FAMILY_SET = new Set(MODEL_FAMILIES);
+
+// Model-id prefix → family, matched against the bare id (provider prefix
+// stripped). Order matters: first match wins.
+const FAMILY_ID_PATTERNS = Object.freeze([
+  { family: "glm", pattern: /^glm-/i },
+  { family: "minimax", pattern: /^minimax-/i },
+  { family: "mimo", pattern: /^mimo-/i },
+  { family: "gemma", pattern: /^gemma-/i },
+  { family: "llama", pattern: /^llama-/i },
+  { family: "gemini", pattern: /^gemini-/i },
+]);
+
+// Advertised `auto/<family>` catalog ids (#6453), e.g. `auto/glm`, `auto/minimax`.
+export const AUTO_FAMILY_IDS = Object.freeze(MODEL_FAMILIES.map((f) => `auto/${f}`));
+
+/** @returns {boolean} whether `value` is a known family id (incl. `zai`). */
+export function isValidModelFamily(value) {
+  return typeof value === "string" && MODEL_FAMILY_SET.has(value);
+}
+
+/**
+ * Detect the model family from a bare or provider-prefixed model id.
+ * Returns null when the id matches no known prefix — including `zai`, which is
+ * never detected from a model id (provider-override family; see above).
+ *
+ * @param {string} modelId - bare id or "provider/model"
+ * @returns {string|null} family id from MODEL_FAMILIES (never "zai"), or null
+ */
+export function detectModelFamily(modelId) {
+  if (typeof modelId !== "string" || modelId.trim().length === 0) return null;
+  const bare = modelId.includes("/") ? modelId.slice(modelId.lastIndexOf("/") + 1) : modelId;
+  for (const { family, pattern } of FAMILY_ID_PATTERNS) {
+    if (pattern.test(bare)) return family;
+  }
+  return null;
+}
+
 // Flatten tool turns into prose so panel models keep the context but can't loop
 // on tools: drop the request's tools, turn tool/function results into assistant
 // text, and inline assistant tool_calls names instead of the structured field.
@@ -131,6 +209,7 @@ const comboRotationState = new Map();
  * @type {Map<string, { index: number, lastUsed: number }>}
  */
 const comboConversationAffinity = new Map();
+export { comboConversationAffinity }; // test access to round-robin sticky pin state (#6733)
 const CONVERSATION_AFFINITY_TTL_MS = 60 * 60 * 1000;
 const MAX_CONVERSATION_AFFINITY_ENTRIES = 1000;
 /**
@@ -734,6 +813,17 @@ export function getComboModelsFromData(modelStr, combosData) {
  * @returns {Promise<Response>}
  */
 export async function handleComboChat({ body, models, handleSingleModel, log, comboName, comboStrategy, comboStickyLimit = 1, autoSwitch = true }) {
+  // #6546 (#6458): fail fast on an empty pool instead of looping zero times and
+  // leaking a generic "all models failed" after the fact.
+  if (!Array.isArray(models) || models.length === 0) {
+    const msg = `Combo "${comboName}" has no models`;
+    log.warn("COMBO", msg);
+    return new Response(
+      JSON.stringify({ error: { message: msg } }),
+      { status: 503, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   // Apply rotation/scoring strategy
   const conversationCacheKey = getConversationCacheKey(body);
   let rotatedModels;
@@ -770,12 +860,37 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
   let earliestRetryAfter = null;
   let lastStatus = null;
 
+  // #6733: release the round-robin conversation-affinity pin when the
+  // affinity-pinned FIRST member fails. Affinity only exists when the sticky
+  // limit keeps >1 request on the same model, and the key is exactly
+  // `${comboName || "__default__"}:${conversationCacheKey}` (mirrors
+  // getRotatedModels). Release only when i===0 (the pinned first member) AND
+  // the stored index still maps to the failed model — guards against a race
+  // that re-pointed the entry to a different member. Idempotent per request.
+  const stickyLimit = normalizeStickyLimit(comboStickyLimit);
+  const rrRotationKey = comboName || "__default__";
+  const rrAffinityKey =
+    comboStrategy === "round-robin" && stickyLimit > 1 && conversationCacheKey
+      ? `${rrRotationKey}:${conversationCacheKey}`
+      : null;
+  let affinityReleased = false;
+  const releaseFailedAffinity = (failedModelStr, idx) => {
+    if (affinityReleased || !rrAffinityKey) return;
+    if (idx !== 0) return;
+    const pinned = comboConversationAffinity.get(rrAffinityKey);
+    if (pinned && models[pinned.index % models.length] === failedModelStr) {
+      comboConversationAffinity.delete(rrAffinityKey);
+    }
+    affinityReleased = true;
+  };
+
   for (let i = 0; i < rotatedModels.length; i++) {
     const modelStr = rotatedModels[i];
     log.info("COMBO", `Trying model ${i + 1}/${rotatedModels.length}: ${modelStr}`);
 
     try {
       const result = await handleSingleModel(body, modelStr);
+
       
       // Success (2xx) - return response
       if (result.ok) {
@@ -832,11 +947,13 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
       }
 
       // Fallback to next model
+      releaseFailedAffinity(modelStr, i);
       lastError = errorText || String(result.status);
       if (!lastStatus) lastStatus = result.status;
       log.warn("COMBO", `Model ${modelStr} failed, trying next`, { status: result.status });
     } catch (error) {
       // Catch unexpected exceptions to ensure fallback continues
+      releaseFailedAffinity(modelStr, i);
       lastError = error.message || String(error);
       if (!lastStatus) lastStatus = 500;
       log.warn("COMBO", `Model ${modelStr} threw error, trying next`, { error: lastError });
@@ -1036,13 +1153,27 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
     );
   }
 
-  // A single-model fusion has nothing to fuse — just answer directly.
+  // A single-model fusion has nothing to fuse — unless the operator pinned an
+  // explicit judgeModel (#6607 / #6455): then that lone model becomes the
+  // panel-of-one and the configured judge still synthesizes the answer, so a
+  // persisted judgeModel is never silently discarded. Without an explicit
+  // judge, answer directly (judge would equal panel[0], nothing to fuse).
   if (panel.length === 1) {
-    return handleSingleModel(body, panel[0]);
+    if (judgeModel && judgeModel.trim()) {
+      // fall through to shared fan-out/judge path with a one-member panel
+    } else {
+      return handleSingleModel(body, panel[0]);
+    }
   }
 
   const cfg = { ...FUSION_DEFAULTS, ...(tuning || {}) };
-  const minPanel = Math.min(Math.max(2, cfg.minPanel), panel.length);
+  // #6521 (#6454): allow minPanel as low as 1 (was floor 2) so a 2-model panel
+  // can proceed on a single answer instead of waiting for a quorum that never
+  // arrives. Sanitize non-finite/fractional tuning so a NaN/Infinity value
+  // can't disable the grace timer and stall until the hard timeout.
+  const rawMin = Number(cfg.minPanel);
+  const safeMin = Number.isFinite(rawMin) ? Math.floor(rawMin) : FUSION_DEFAULTS.minPanel;
+  const minPanel = Math.min(Math.max(1, safeMin), panel.length);
   const judge = judgeModel && judgeModel.trim() ? judgeModel.trim() : panel[0];
   log.info("FUSION", `Combo "${comboName}" | panel=${panel.length} [${panel.join(", ")}] | judge=${judge} | quorum=${minPanel}`);
 
@@ -1094,8 +1225,18 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
     );
   }
   if (answers.length === 1) {
-    log.info("FUSION", `Only ${answers[0].model} succeeded — answering directly (no fusion)`);
-    return handleSingleModel(body, answers[0].model);
+    // #6607 (#6455): with a single surviving panel answer, the cheap shortcut
+    // (return that answer directly) is only valid when the judge WOULD have
+    // been that same model anyway (judge === panel[0], i.e. no explicit
+    // judgeModel). When the operator configured an explicit judgeModel, honor
+    // it: run the judge over the lone collected answer instead of silently
+    // replaying the survivor and discarding the judge configuration.
+    const explicitJudge = judgeModel && judgeModel.trim();
+    if (!explicitJudge) {
+      log.info("FUSION", `Only ${answers[0].model} succeeded — answering directly (no fusion)`);
+      return handleSingleModel(body, answers[0].model);
+    }
+    log.info("FUSION", `Only ${answers[0].model} succeeded — still judging with explicit ${judge}`);
   }
 
   // 4. Judge analyzes + writes one final answer (streams to client if requested).

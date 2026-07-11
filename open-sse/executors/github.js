@@ -12,7 +12,11 @@ import { stripUnsupportedParams } from "../translator/concerns/paramSupport.js";
 import { SSE_DONE } from "../utils/sseConstants.js";
 import { FORMATS } from "../translator/formats.js";
 import { createUpstreamTerminalTracker } from "../utils/streamTerminal.js";
-import { getCurrentProviderAttemptTimestamp } from "../services/providerAttemptContext.js";
+import {
+  getCurrentProviderAttemptTimestamp,
+  runQuotaBearingProviderRequest,
+  settleProviderAttemptDispatch,
+} from "../services/providerAttemptContext.js";
 import crypto from "crypto";
 
 export class GithubExecutor extends BaseExecutor {
@@ -188,6 +192,7 @@ export class GithubExecutor extends BaseExecutor {
       if (errorBody.includes("not accessible via the /chat/completions endpoint") || errorBody.includes("The requested model is not supported")) {
         log?.warn("GITHUB", `Model ${model} requires /responses. Switching...`);
         this.knownCodexModels.add(model);
+        await settleProviderAttemptDispatch(result.response, { success: false, reason: "fallback" });
         try {
           const cancellation = result.response.body?.cancel?.("switching GitHub route");
           if (cancellation?.catch) void cancellation.catch(() => {});
@@ -211,12 +216,12 @@ export class GithubExecutor extends BaseExecutor {
 
     log?.debug("GITHUB", "Sending translated request to /responses");
 
-    const response = await proxyAwareFetch(url, {
+    const response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, {
       method: "POST",
       headers,
       body: JSON.stringify(transformedBody),
       signal
-    }, proxyOptions);
+    }, proxyOptions));
 
     if (!response.ok) {
       return { response, url, headers, transformedBody, attemptStartedAt: getCurrentProviderAttemptTimestamp() };

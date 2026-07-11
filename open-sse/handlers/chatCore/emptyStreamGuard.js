@@ -18,6 +18,7 @@
 // finish, which Anthropic clients treat as retryable.
 import { GEMINI_FINISH, GEMINI_ERROR_FINISH_REASONS, GEMINI_CONTENT_FILTER_FINISH_REASONS } from "../../translator/schema/finishReasons.js";
 import { STREAM_STALL_TIMEOUT_MS } from "../../config/runtimeConfig.js";
+import { isQuotaDispatchUnavailable } from "../../services/quota/dispatch.js";
 
 // Mirrors oh-my-pi's empty-response policy: 2 retries, 500ms * 2^attempt backoff.
 export const EMPTY_STREAM_MAX_RETRIES = 2;
@@ -103,9 +104,19 @@ function classifyEvent(parsed, meaningfulSeen) {
  *   handed the held upstream error object so quota reset times can be parsed
  * @returns {ReadableStream} byte stream for the SSE transform pipeline
  */
-export function createEmptyRetryStream({ body, reexecute, signal, log, stallTimeoutMs = STREAM_STALL_TIMEOUT_MS, baseDelayMs = EMPTY_STREAM_BASE_DELAY_MS, onExhausted }) {
+export function createEmptyRetryStream({
+  body,
+  reexecute,
+  signal,
+  log,
+  stallTimeoutMs = STREAM_STALL_TIMEOUT_MS,
+  baseDelayMs = EMPTY_STREAM_BASE_DELAY_MS,
+  onAttemptDiscarded,
+  onExhausted,
+}) {
   const encoder = new TextEncoder();
   let currentReader = null;
+  let currentBody = body;
   let downstreamGone = false;
 
   return new ReadableStream({
@@ -130,12 +141,14 @@ export function createEmptyRetryStream({ body, reexecute, signal, log, stallTime
         err.name = "AbortError";
         try { controller.error(err); } catch { /* already closed */ }
       };
-      const exhaust = async (reason) => {
+      const exhaust = async (reason, { notifyProvider = true } = {}) => {
         // Bench-before-emit: the error event triggers the client's automatic
         // retry, so the observer (account bench) must complete first or the
         // retry can land on the account that just failed.
         try {
-          await Promise.resolve(onExhausted?.(reason, { upstreamError: lastHeld?.error || null }));
+          if (notifyProvider) {
+            await Promise.resolve(onExhausted?.(reason, { upstreamError: lastHeld?.error || null }));
+          }
         } catch { /* observer must not break the stream */ }
         // Re-emit the real upstream error when we held one (true status/message,
         // e.g. RESOURCE_EXHAUSTED); otherwise synthesize an embedded error. The
@@ -230,6 +243,14 @@ export function createEmptyRetryStream({ body, reexecute, signal, log, stallTime
         const reason = held ? held.reason : endReason;
         log?.warn?.("STREAM", `ANTIGRAVITY | empty (${reason}) | attempt ${attempt + 1}/${EMPTY_STREAM_MAX_RETRIES + 1}`);
 
+        try {
+          await Promise.resolve(onAttemptDiscarded?.(currentBody, reason, {
+            final: attempt >= EMPTY_STREAM_MAX_RETRIES,
+          }));
+        } catch (error) {
+          return exhaust("local quota reservation settlement failed", { notifyProvider: false });
+        }
+
         if (attempt >= EMPTY_STREAM_MAX_RETRIES) {
           return exhaust(`empty response from upstream (${reason}) after ${attempt + 1} attempts`);
         }
@@ -242,10 +263,13 @@ export function createEmptyRetryStream({ body, reexecute, signal, log, stallTime
         if (signal?.aborted) return abortStream();
 
         try {
-          currentReader = (await reexecute()).getReader();
+          currentBody = await reexecute();
+          currentReader = currentBody.getReader();
         } catch (error) {
           if (error?.name === "AbortError" || signal?.aborted) return abortStream();
-          return exhaust(error?.message || "retry request failed");
+          return exhaust(error?.message || "retry request failed", {
+            notifyProvider: !isQuotaDispatchUnavailable(error),
+          });
         }
       }
     },

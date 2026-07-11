@@ -37,7 +37,8 @@ describe("Schema migrations", () => {
     const tables = db.all(`SELECT name FROM sqlite_master WHERE type='table'`).map(t => t.name);
     expect(tables).toEqual(expect.arrayContaining([
       "_meta", "settings", "providerConnections", "providerNodes",
-      "providerQuotaSnapshots", "quotaFetchStates", "proxyPools", "apiKeys",
+      "providerQuotaSnapshots", "quotaFetchStates", "quotaReservations",
+      "quotaReservationItems", "proxyPools", "apiKeys",
       "apiKeyUsageTotals", "combos", "kv", "usageHistory", "usageDaily", "requestDetails",
     ]));
     expect(db.all(`PRAGMA table_info(usageHistory)`).map((column) => column.name)).toContain("usageEventId");

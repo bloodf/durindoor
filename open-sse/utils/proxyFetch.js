@@ -4,7 +4,11 @@ import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
 import { dbg } from "./debugLog.js";
 import { sanitizeErrorMessage } from "./error.js";
 import { digestMemoryKey } from "./memoryKey.js";
-import { markProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import {
+  isQuotaBearingProviderRequest,
+  runProviderAttemptDispatch,
+} from "../services/providerAttemptContext.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 
 let originalFetch = globalThis.fetch;
 const DURINDOOR_FETCH_PATCH = Symbol.for("durindoor.proxyFetch.patched");
@@ -529,8 +533,7 @@ async function directFetch(url, options) {
     || isNextPatchedFetch
     ? originalFetch
     : currentFetch;
-  markProviderAttemptDispatch();
-  return fetchImpl(url, { ...options, dispatcher });
+  return runProviderAttemptDispatch(() => fetchImpl(url, { ...options, dispatcher }));
 }
 
 /**
@@ -652,6 +655,11 @@ export async function serializeBypassRequestBody(body) {
 }
 
 export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
+  // Native fetch can hide method-preserving 307/308 redirects inside one call,
+  // which would send a second quota-bearing request under the first dispatch
+  // ticket. Provider runtime endpoints are fixed configuration, so redirects
+  // fail closed and must never be enabled by caller-controlled options.
+  if (isQuotaBearingProviderRequest()) options = { ...options, redirect: "error" };
   const targetUrl = typeof url === "string" ? url : url.toString();
 
   // Vercel relay: forward request via relay headers
@@ -663,8 +671,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
       "x-relay-target": `${parsed.protocol}//${parsed.host}`,
       "x-relay-path": `${parsed.pathname}${parsed.search}`,
     };
-    markProviderAttemptDispatch();
-    return originalFetch(vercelRelayUrl, { ...options, headers: relayHeaders });
+    return runProviderAttemptDispatch(() => originalFetch(vercelRelayUrl, { ...options, headers: relayHeaders }));
   }
 
   const connectionProxyUrl = resolveConnectionProxyUrl(targetUrl, proxyOptions);
@@ -686,9 +693,9 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
       // Proxy resolves DNS externally (not affected by /etc/hosts) — use proxy directly
       try {
         const dispatcher = await getDispatcher(proxyUrl);
-        markProviderAttemptDispatch();
-        return await originalFetch(url, { ...options, dispatcher });
+        return await runProviderAttemptDispatch(() => originalFetch(url, { ...options, dispatcher }));
       } catch (proxyError) {
+        if (isQuotaDispatchUnavailable(proxyError)) throw proxyError;
         rethrowTransportAbort(proxyError, options.signal);
         if (proxyOptions?.strictProxy === true) {
           throw new Error("[ProxyFetch] Proxy required but failed (strictProxy=true)");
@@ -706,10 +713,10 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
             ? options.signal.reason
             : new DOMException("Provider request aborted", "AbortError");
         }
-        markProviderAttemptDispatch();
-        return await createBypassRequest(parsedUrl, realIP, options);
+        return await runProviderAttemptDispatch(() => createBypassRequest(parsedUrl, realIP, options));
       }
     } catch (error) {
+      if (isQuotaDispatchUnavailable(error)) throw error;
       rethrowTransportAbort(error, options.signal);
       console.warn(`[ProxyFetch] MITM bypass failed: ${safeTransportError(error)}`);
     }
@@ -718,9 +725,9 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
   if (proxyUrl) {
     try {
       const dispatcher = await getDispatcher(proxyUrl);
-      markProviderAttemptDispatch();
-      return await originalFetch(url, { ...options, dispatcher });
+      return await runProviderAttemptDispatch(() => originalFetch(url, { ...options, dispatcher }));
     } catch (proxyError) {
+      if (isQuotaDispatchUnavailable(proxyError)) throw proxyError;
       rethrowTransportAbort(proxyError, options.signal);
       // If strictProxy is enabled, fail hard instead of falling back to direct
       if (proxyOptions?.strictProxy === true) {

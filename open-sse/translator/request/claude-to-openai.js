@@ -230,6 +230,9 @@ function convertClaudeMessage(msg) {
             type: OPENAI_BLOCK.FUNCTION,
             function: {
               name: block.name,
+              // A string `input` is already serialized JSON (e.g. produced by a
+              // prior bridge pass) — pass it through verbatim; re-stringifying
+              // would double-encode it into a quoted blob downstream.
               arguments: typeof block.input === "string" ? block.input : JSON.stringify(block.input || {})
             }
           });

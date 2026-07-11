@@ -436,6 +436,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       onPxpipeEvent: appendPxpipeEvent,
       providerThinking,
       providerConcurrencyLimit: chatSettings.providerConcurrencyLimits,
+      claudeClassifierCompat: ["off", "auto", "always"].includes(chatSettings.claudeClassifierCompat)
+        ? chatSettings.claudeClassifierCompat
+        : "off",
       // Detect source format by endpoint + body
       sourceFormatOverride: request?.url ? detectFormatByEndpoint(new URL(request.url).pathname, body) : null,
       onCredentialsRefreshed: async (newCreds) => {

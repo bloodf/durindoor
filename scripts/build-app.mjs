@@ -42,6 +42,12 @@ try {
       path.join(process.cwd(), "src", "shared", "utils", "wsHandshake.js"),
       wsHandshakeDest,
     );
+    // Realtime resource limits (CJS source of truth) — required at import time
+    // by both custom-server.js (maxPayload) and realtimeCore.js (item cap).
+    fs.copyFileSync(
+      path.join(process.cwd(), "src", "shared", "utils", "realtimeConfig.js"),
+      path.join(standaloneDir, "src", "shared", "utils", "realtimeConfig.js"),
+    );
     fs.mkdirSync(path.join(standaloneDir, "open-sse", "handlers"), { recursive: true });
     fs.copyFileSync(
       path.join(process.cwd(), "open-sse", "handlers", "realtimeCore.js"),

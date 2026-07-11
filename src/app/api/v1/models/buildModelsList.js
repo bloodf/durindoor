@@ -343,10 +343,23 @@ function comboMatchesKinds(combo, kindFilter) {
  * @param {string[]} kindFilter - List of service kinds to include (e.g. ["llm"], ["webSearch","webFetch"]).
  * @returns {Promise<object[]>} OpenAI-format model entries.
  */
-async function buildModelsListImpl(kindFilter, { hidePaidModels = false } = {}) {
+async function buildModelsListImpl(kindFilter) {
+  // Start the real aggregation FIRST so `getProviderConnections()` is called
+  // synchronously — required by the #6440 coalescing identity test, which holds
+  // the first in-flight promise open via mockReturnValueOnce and asserts it was
+  // called exactly once in this tick. Read the #6495/F-4 opt-in concurrently
+  // (fail-closed to off so a settings DB error never hides paid models).
+  const connectionsPromise = getProviderConnections();
+  let hidePaidModels = false;
+  try {
+    hidePaidModels = (await getSettings())?.hidePaidModels === true;
+  } catch (e) {
+    hidePaidModels = false;
+  }
+
   let connections = [];
   try {
-    connections = await getProviderConnections();
+    connections = await connectionsPromise;
     connections = connections.filter((c) => c.isActive !== false);
   } catch (e) {
     console.log("Could not fetch providers, returning all models");
@@ -722,28 +735,20 @@ async function buildModelsListImpl(kindFilter, { hidePaidModels = false } = {}) 
  * @returns {Promise<object[]>} OpenAI-format model entries.
  */
 export function buildModelsList(kindFilter) {
-  // #6495 / F-4: read the opt-in once per list build (fail closed to off —
-  // settings DB errors must not hide paid models by surprise). The stored
-  // promise is the SAME object returned to coalesced callers (settings read
-  // chained inside), preserving the #6440 identity contract. The coalescing
-  // key intentionally omits the flag: one shared settings read resolves it
-  // inside the single in-flight build, so concurrent same-kind callers share
-  // work AND see a consistent on/off result. The key/existing check runs
-  // BEFORE getSettings() so concurrent callers coalesce onto one shared
-  // settings read instead of each starting their own.
+  // #6440: store the impl promise itself so concurrent same-kind callers get
+  // the SAME reference and the aggregation (whose first await is
+  // getProviderConnections) starts in this tick. #6495/F-4 hide-paid filtering
+  // is resolved inside the impl, so the flag does not affect the coalescing key
+  // and one shared build serves all concurrent same-kind callers consistently.
   const pendingKey = kindFilterKey(kindFilter);
   const existing = modelsInFlight.get(pendingKey);
   if (existing) return existing;
 
-  const promise = getSettings()
-    .then((s) => s?.hidePaidModels === true)
-    .catch(() => false)
-    .then((hidePaidModels) => buildModelsListImpl(kindFilter, { hidePaidModels }))
-    .finally(() => {
-      // Only delete if still the same promise (guards against a stale entry if
-      // the map is ever manipulated elsewhere).
-      if (modelsInFlight.get(pendingKey) === promise) modelsInFlight.delete(pendingKey);
-    });
+  const promise = buildModelsListImpl(kindFilter).finally(() => {
+    // Only delete if still the same promise (guards against a stale entry if
+    // the map is ever manipulated elsewhere).
+    if (modelsInFlight.get(pendingKey) === promise) modelsInFlight.delete(pendingKey);
+  });
   modelsInFlight.set(pendingKey, promise);
   return promise;
 }

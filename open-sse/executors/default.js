@@ -6,6 +6,7 @@ import { OAUTH_ENDPOINTS, buildKimiHeaders } from "../config/appConstants.js";
 import { buildClineHeaders } from "../shared/clineAuth.js";
 import { getCachedClaudeHeaders } from "../utils/claudeHeaderCache.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { getOpenAICompatibleType } from "../services/provider.js";
@@ -184,6 +185,22 @@ function applyGlmtModelAlias(provider, model, body) {
   return body;
 }
 
+// Floor for clinepass thinking models so reasoning does not consume the entire
+// output budget and return finish_reason:"length" with empty content (#2332).
+export const THINKING_BUDGET_FLOOR = 4096;
+
+// Pure budget decision mirroring upstream #2332: returns the token count to
+// write, or null to leave as-is. Never lowers a positive budget; bumps an
+// undersized one only when the cap allows reaching the full floor.
+export function computeThinkingBudget(current, cap) {
+  const maxOutput = typeof cap === "number" && cap > 0 ? cap : THINKING_BUDGET_FLOOR;
+  const target = Math.min(THINKING_BUDGET_FLOOR, maxOutput);
+  if (typeof current !== "number" || current <= 0) return target;
+  // Never lower a positive budget; only bump when the cap can reach the floor.
+  if (current < THINKING_BUDGET_FLOOR && maxOutput >= THINKING_BUDGET_FLOOR) return THINKING_BUDGET_FLOOR;
+  return null;
+}
+
 export class DefaultExecutor extends BaseExecutor {
   constructor(provider) {
     super(provider, PROVIDERS[provider] || PROVIDERS.openai);
@@ -235,7 +252,29 @@ export class DefaultExecutor extends BaseExecutor {
       stripUnsupportedParams(this.provider, model, transformed);
     }
 
-    return injectReasoningContent({ provider: this.provider, model, body: transformed });
+    return this.ensureThinkingBudget(injectReasoningContent({ provider: this.provider, model, body: transformed }), model);
+  }
+
+  // ClinePass / OpenRouter-style thinking models burn all of max_tokens on reasoning
+  // when the budget is too small, leaving content empty (finish_reason: "length").
+  // Bump max_tokens to a safe minimum only when reasoning is enabled and budget undersized.
+  // Source: decolua/9router#2332 @ 005d970f49.
+  ensureThinkingBudget(body, model) {
+    if (!body || this.provider !== "clinepass") return body;
+    const caps = getCapabilitiesForModel(this.provider, model);
+    if (!caps?.reasoning) return body;
+
+    const reasoningEnabled = body.extra_body?.thinking?.type === "enabled"
+      || (typeof body.reasoning_effort === "string" && body.reasoning_effort !== "none" && body.reasoning_effort !== "off")
+      || body.reasoning_effort === true;
+    if (!reasoningEnabled) return body;
+
+    const cap = typeof caps.maxOutput === "number" && caps.maxOutput > 0 ? caps.maxOutput : THINKING_BUDGET_FLOOR;
+    // Preserve whichever token field the caller used; never introduce the other.
+    const field = typeof body.max_completion_tokens === "number" ? "max_completion_tokens" : "max_tokens";
+    const next = computeThinkingBudget(body[field], cap);
+    if (next != null) body[field] = next;
+    return body;
   }
 
   // Some Responses-compatible upstreams (e.g. LM Studio) reject a request whose

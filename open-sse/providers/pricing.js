@@ -1,6 +1,6 @@
 import REGISTRY from "./registry/index.js";
 import {
-  isFreeModel as catalogIsFreeModel,
+  isFreeModel,
   providerHasFreeModels,
 } from "../config/freeModelCatalog.js";
 
@@ -106,7 +106,7 @@ export function isPaidModel(modelStr) {
   // alias-keyed overrides (PROVIDER_PRICING.gh) still feed zero-price detection.
   const pricing =
     getPricingForModel(providerOrAlias, model) ?? getPricingForModel(provider, model);
-  return !catalogIsFreeModel(provider, { id: model, pricing });
+  return !isFreeModel(provider, { id: model, pricing });
 }
 
 /**
@@ -127,6 +127,22 @@ export function filterPaidModels(models, enabled, toModelStr = (m) => (typeof m 
     return typeof s !== "string" || !isPaidModel(s);
   });
 }
+
+/**
+ * Whether a single model qualifies as FREE for `provider` (OmniRoute #6495).
+ * Canonical definition lives in `open-sse/config/freeModelCatalog.js`; it is
+ * re-exported here so the hide-paid classifier surface — `isPaidModel`,
+ * `filterPaidModels`, `isFreeModel` — is addressable from one module.
+ *
+ * Free when ANY of: `model.id` ends with `:free`; pricing is zero prompt AND
+ * zero completion (`{prompt,completion}` or `{input,output}`); or `model.id` is
+ * on the curated free roster for `provider`. No-pricing / unknown is NOT free.
+ *
+ * @param {string} provider canonical provider id (aliases resolved by caller).
+ * @param {{ id?: string, pricing?: object }} model
+ * @returns {boolean}
+ */
+export { isFreeModel };
 
 /**
  * Canonical model pricing — provider-agnostic.

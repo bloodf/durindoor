@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   isPaidModel,
   filterPaidModels,
+  isFreeModel,
   getPricingForModel,
   PROVIDER_PRICING,
 } from "../../open-sse/providers/pricing.js";
+import { isFreeModel as catalogIsFreeModel } from "../../open-sse/config/freeModelCatalog.js";
 
 // #6495 / F-4 — `hidePaidModels` classifier. Authority is the curated free
 // catalog (open-sse/config/freeModelCatalog.js): provider absent from it →
@@ -118,5 +120,11 @@ describe("filterPaidModels", () => {
     expect(filterPaidModels(all, true).map((m) => m.id)).toEqual([
       "af/anthropic/claude-3.7-sonnet",
     ]);
+  });
+});
+
+describe("isFreeModel (pricing.js re-export)", () => {
+  it("is the canonical catalog function (no wrapper, no drift)", () => {
+    expect(isFreeModel).toBe(catalogIsFreeModel);
   });
 });

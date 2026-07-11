@@ -69,9 +69,12 @@ export default function ModelSelectModal({
   // already filtered by the hide-paid toggle server-side, so intersecting the
   // modal's locally-built entries with this set enforces the toggle without
   // bundling the pricing catalog into the dashboard chunk. A null set means
-  // "not loaded / fetch failed" → fail open (no client filtering). When the
-  // toggle is off the server returns the full catalog, so the intersection is a
-  // no-op for known models and still keeps custom/unknown entries visible.
+  // "toggle off / not yet checked" → no client filtering. Once the toggle is
+  // confirmed ON the set is seeded EMPTY (fail-closed) and only replaced with
+  // real ids after a valid catalog fetch, so a fetch error or malformed body
+  // hides paid models rather than leaking them. When the toggle is off the
+  // server returns the full catalog and the intersection is a no-op for known
+  // models while still keeping custom/unknown entries visible.
   const [visibleModelIds, setVisibleModelIds] = useState(null);
 
   useEffect(() => {
@@ -88,7 +91,12 @@ export default function ModelSelectModal({
         const settingsRes = await fetch("/api/settings", { signal: controller.signal });
         if (!settingsRes.ok) throw new Error(`settings ${settingsRes.status}`);
         const settingsData = await settingsRes.json();
-        if (settingsData?.hidePaidModels !== true) return;
+        if (settingsData?.hidePaidModels !== true || ignore) return;
+        // Fail-closed: from this point the toggle is confirmed ON. Hide
+        // everything until a VALID catalog response replaces this set — non-OK
+        // status, thrown fetch, or a malformed `data` payload must NOT fall
+        // back to showing paid ids (A200 leakage fix).
+        setVisibleModelIds(new Set());
         const slug = kindFilter ? KIND_TO_SLUG[kindFilter] : null;
         const url = slug ? `/api/v1/models/${slug}` : "/api/v1/models";
         const modelsRes = await fetch(url, { signal: controller.signal });

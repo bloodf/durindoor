@@ -3,7 +3,14 @@
 // Methodology: honest pool-deduped recurring tokens. "recurring-uncapped" = permanently free but no
 // published token cap (rate/concurrency-limited) — NOT summed into the steady headline (see freeModelCatalog.ts).
 // Deposit-unlock boosts (e.g. OpenRouter $10 -> 1000 RPD) live in FREE_TIER_BOOSTS, not per-record.
-// Do not edit by hand — re-run the patch generator to refresh.
+//
+// PROVENANCE (A200): this file is a one-shot snapshot produced by the 2026-06-17
+// research pass named above. There is NO checked-in generator script that
+// reproduces it; the referenced `_tasks/...raw.json` and patch generator are
+// not part of this repo. The table is therefore manually curated thereafter:
+// additions and removals are hand-edited against current provider free-tier
+// docs, and reviewers should treat it as a maintained source of truth, not a
+// build artifact.
 
 export const FREE_MODEL_BUDGETS = [
   { provider: "agentrouter", modelId: "claude-opus-4-6", displayName: "Claude 4.6 Opus", monthlyTokens: 0, creditTokens: 200000000, freeType: "one-time-initial", poolKey: "agentrouter", tos: "caution" },

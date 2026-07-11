@@ -194,6 +194,25 @@ describe("chatCore classifier default-allow dispatch", () => {
     expect(mocks.execute).toHaveBeenCalledTimes(1);
   });
 
+  it("threads classifier compatibility and one durable usage event through normal dispatch", async () => {
+    mocks.execute.mockResolvedValueOnce({
+      response: new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }),
+      url: "https://upstream.test",
+      headers: {},
+      transformedBody: {},
+    });
+
+    await handleChatCore(makeOptions({ claudeClassifierCompat: "auto" }));
+
+    expect(mocks.handleNonStreamingResponse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        claudeClassifierCompat: "auto",
+        usageEventId: expect.any(String),
+      }),
+    );
+    expect(mocks.handleNonStreamingResponse.mock.calls[0][0].usageEventId).not.toHaveLength(0);
+  });
+
   it("off mode never short-circuits even with marker", async () => {
     mocks.execute.mockResolvedValueOnce({
       response: new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }),

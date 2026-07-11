@@ -4,7 +4,8 @@ import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { mergeProviderConnection } from "../helpers/mergeProviderMetadata.js";
 import { hasConflictingCodexAccountIds, resolveCodexAccountId } from "open-sse/shared/codexAccountId.js";
 import { providerRefreshContextMatches } from "@/shared/utils/providerCredentialContext";
-import { QUOTA_WRITE_LOCK_SQL } from "./quotaSnapshotsRepo.js";
+import { QUOTA_WRITE_LOCK_SQL } from "./quotaSql.js";
+import { assertNoActiveQuotaReservationsForTargetSync } from "./quotaReservationsRepo.js";
 import { resolveFallbackModelScope } from "open-sse/services/fallbackScope.js";
 import { QUOTA_MAX_CLOCK_SKEW_MS } from "@/shared/constants/quota";
 
@@ -445,6 +446,7 @@ export async function deleteProviderConnection(id) {
   const db = await getAdapter();
   let ok = false;
   db.transaction(() => {
+    assertNoActiveQuotaReservationsForTargetSync(db, { connectionIds: [id] });
     const row = db.get(`SELECT provider FROM providerConnections WHERE id = ?`, [id]);
     if (!row) return;
     updateAutoPingEntryInTx(db, row.provider, id, false);
@@ -487,6 +489,7 @@ export async function deleteProviderConnectionsByProvider(providerId) {
   const db = await getAdapter();
   let count = 0;
   db.transaction(() => {
+    assertNoActiveQuotaReservationsForTargetSync(db, { provider: providerId });
     const rows = db.all(`SELECT id FROM providerConnections WHERE provider = ?`, [providerId]);
     for (const row of rows) updateAutoPingEntryInTx(db, providerId, row.id, false);
     db.run(`DELETE FROM providerConnections WHERE provider = ?`, [providerId]);

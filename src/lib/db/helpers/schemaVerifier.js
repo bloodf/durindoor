@@ -24,7 +24,12 @@ export function verifyApiKeyExpiryColumnShape(db) {
   }
 }
 
-const QUOTA_TABLE_NAMES = ["providerQuotaSnapshots", "quotaFetchStates"];
+const QUOTA_V7_TABLE_NAMES = ["providerQuotaSnapshots", "quotaFetchStates"];
+const QUOTA_LATEST_TABLE_NAMES = [
+  ...QUOTA_V7_TABLE_NAMES,
+  "quotaReservations",
+  "quotaReservationItems",
+];
 
 /**
  * Tokenize SQLite schema DDL so harmless formatting and identifier quoting do
@@ -134,14 +139,32 @@ function expectedIndexName(sql) {
 
 function quotaSchema(useLatest) {
   return useLatest
-    ? { definitions: TABLES, buildTableSql: (name) => buildCreateTableSql(name, TABLES[name]) }
-    : { definitions: QUOTA_V7_TABLES, buildTableSql: buildQuotaV7TableSql };
+    ? {
+        definitions: TABLES,
+        tableNames: QUOTA_LATEST_TABLE_NAMES,
+        buildTableSql: (name) => buildCreateTableSql(name, TABLES[name]),
+      }
+    : {
+        definitions: QUOTA_V7_TABLES,
+        tableNames: QUOTA_V7_TABLE_NAMES,
+        buildTableSql: buildQuotaV7TableSql,
+      };
 }
 
 function verifyQuotaTable(db, tableName, { requireComplete, definitions, buildTableSql }) {
   const definition = definitions[tableName];
   const table = db.get(`SELECT sql FROM sqlite_master WHERE type = 'table' AND lower(name) = lower(?)`, [tableName]);
   if (!table) {
+    for (const expectedSql of definition.indexes || []) {
+      const name = expectedIndexName(expectedSql);
+      const collision = db.get(
+        `SELECT 1 AS present FROM sqlite_master WHERE type='index' AND lower(name)=lower(?)`,
+        [name],
+      );
+      if (collision) {
+        throw new Error(`Published schema mismatch: ${tableName}.${name} exists without its table`);
+      }
+    }
     if (requireComplete) throw new Error(`Published schema mismatch: ${tableName} is missing`);
     return;
   }
@@ -176,16 +199,36 @@ function verifyQuotaTable(db, tableName, { requireComplete, definitions, buildTa
 /** Reject incompatible quota objects before mutation and verify completeness after sync. */
 export function verifyQuotaStorageShapes(db, { requireComplete = false, useLatest = false } = {}) {
   const schema = quotaSchema(useLatest);
-  for (const tableName of QUOTA_TABLE_NAMES) verifyQuotaTable(db, tableName, { requireComplete, ...schema });
-  const quotaTables = new Set(QUOTA_TABLE_NAMES.map((tableName) => tableName.toLowerCase()));
+  for (const tableName of schema.tableNames) verifyQuotaTable(db, tableName, { requireComplete, ...schema });
+  const quotaTables = new Set(schema.tableNames.map((tableName) => tableName.toLowerCase()));
   const violations = db.all(`PRAGMA foreign_key_check`)
     .filter((row) => quotaTables.has(String(row.table).toLowerCase()));
   if (violations.length > 0) throw new Error("Published schema mismatch: quota storage contains orphan rows");
+  if (useLatest) {
+    const reservations = db.get(
+      `SELECT 1 AS present FROM sqlite_master WHERE type='table' AND lower(name)=lower('quotaReservations')`,
+    );
+    const connections = db.get(
+      `SELECT 1 AS present FROM sqlite_master WHERE type='table' AND lower(name)=lower('providerConnections')`,
+    );
+    if (reservations && connections) {
+      const mismatch = db.get(
+        `SELECT 1 AS present
+         FROM quotaReservations r
+         JOIN providerConnections c ON c.id=r.connectionId
+         WHERE r.provider <> c.provider
+         LIMIT 1`,
+      );
+      if (mismatch) {
+        throw new Error("Published schema mismatch: quota reservation provider does not match its connection");
+      }
+    }
+  }
 }
 
 export function quotaStorageNeedsAdditiveRepair(db, { useLatest = false } = {}) {
-  const { definitions } = quotaSchema(useLatest);
-  for (const tableName of QUOTA_TABLE_NAMES) {
+  const { definitions, tableNames } = quotaSchema(useLatest);
+  for (const tableName of tableNames) {
     const table = db.get(`SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND lower(name) = lower(?)`, [tableName]);
     if (!table) return true;
     for (const indexSql of definitions[tableName].indexes || []) {

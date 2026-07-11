@@ -5,7 +5,12 @@ import { dbg } from "../utils/debugLog.js";
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE } from "../providers/shared.js";
 import { findOffendingField } from "../config/providerFieldStrips.js";
 import { readBoundedResponseText } from "../utils/error.js";
-import { prepareProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import {
+  prepareProviderAttemptDispatch,
+  runQuotaBearingProviderRequest,
+  settleProviderAttemptDispatch,
+} from "../services/providerAttemptContext.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 
 function removeBetaFlag(headers, flag) {
   for (const key of ["anthropic-beta", "Anthropic-Beta"]) {
@@ -188,6 +193,7 @@ export class BaseExecutor {
             timeoutMs: 2_000,
           });
         } catch (error) {
+          await settleProviderAttemptDispatch(response, { success: false, reason: "upstream_error" });
           cancelDiscardedResponse(response);
           throw error;
         }
@@ -196,6 +202,7 @@ export class BaseExecutor {
       }
       retryAttemptsByUrl[urlIndex]++;
       log?.debug?.("RETRY", `${reason} retry ${retryAttemptsByUrl[urlIndex]}/${attempts} after ${waitMs / 1000}s`);
+      await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
       cancelDiscardedResponse(response);
       await waitForRetryDelay(waitMs, signal);
       return true;
@@ -227,12 +234,12 @@ export class BaseExecutor {
         const fetchT0 = Date.now();
         dbg("FETCH", `${this.provider.toUpperCase()} → ${url} | body=${bodyStr.length}B | connectTimeout=${timeoutMs}ms`);
         beginDispatch();
-        let response = await proxyAwareFetch(url, {
+        let response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, {
           method: "POST",
           headers,
           body: bodyStr,
           signal: mergedSignal
-        }, proxyOptions);
+        }, proxyOptions));
         if (response.status === 400) {
           const clone = response.clone?.();
           const errorText = clone
@@ -250,6 +257,7 @@ export class BaseExecutor {
             delete requestBody[field];
             bodyStr = JSON.stringify(requestBody);
             log?.debug?.("RETRY", `400 mentioned unsupported field ${field}; stripping and retrying once`);
+            await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
             cancelDiscardedResponse(response);
             // Reset the connect timeout for the new upstream request.
             clearTimeout(connectTimer);
@@ -257,12 +265,12 @@ export class BaseExecutor {
             connectTimer = setTimeout(() => connectCtrl.abort(new Error("fetch connect timeout")), timeoutMs);
             mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
             beginDispatch();
-            response = await proxyAwareFetch(url, {
+            response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, {
               method: "POST",
               headers,
               body: bodyStr,
               signal: mergedSignal
-            }, proxyOptions);
+            }, proxyOptions));
           }
         }
         clearTimeout(connectTimer);
@@ -275,6 +283,7 @@ export class BaseExecutor {
         if (this.shouldRetry(response.status, urlIndex)) {
           log?.debug?.("RETRY", `${response.status} on ${url}, trying fallback ${urlIndex + 1}`);
           lastStatus = response.status;
+          await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
           cancelDiscardedResponse(response);
           continue;
         }
@@ -289,6 +298,7 @@ export class BaseExecutor {
         };
       } catch (error) {
         clearTimeout(connectTimer);
+        if (isQuotaDispatchUnavailable(error)) throw error;
         lastError = error;
         const isConnectTimeout = connectCtrl.signal.aborted && error.name === "AbortError";
         dbg("FETCH", `${this.provider.toUpperCase()} ✖ ${error.name}: ${error.message}${isConnectTimeout ? " (connect timeout)" : ""}`);

@@ -8,10 +8,16 @@ import {
 import { normalizeResponsesInput } from "../translator/formats/responsesApi.js";
 import { fetchImageAsBase64 } from "../translator/concerns/image.js";
 import { getModelUpstreamId } from "../config/providerModels.js";
-import { DEFAULT_RETRY_CONFIG, HTTP_STATUS, resolveRetryEntry } from "../config/runtimeConfig.js";
+import {
+  CODEX_SSE_PEEK_TIMEOUT_MS,
+  DEFAULT_RETRY_CONFIG,
+  HTTP_STATUS,
+  resolveRetryEntry,
+} from "../config/runtimeConfig.js";
 import { dbg } from "../utils/debugLog.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { applyCodexAccountHeader } from "../shared/codexAccountId.js";
+import { settleProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 
 // SSE error patterns inside 200-OK bodies. Some retry same account first; capacity rotates accounts.
 const CODEX_SSE_RETRY_PATTERNS = ["server_is_overloaded", "service_unavailable_error"];
@@ -358,8 +364,47 @@ function releaseReader(reader) {
 }
 
 async function cancelAndReleaseReader(reader, reason) {
-  try { await reader.cancel(reason); } catch { /* cancellation is best-effort */ }
-  finally { releaseReader(reader); }
+  let timer = null;
+  try {
+    const cancellation = Promise.resolve(reader.cancel(reason)).catch(() => {});
+    await Promise.race([
+      cancellation,
+      new Promise((resolve) => { timer = setTimeout(resolve, 250); }),
+    ]);
+  } catch { /* cancellation is best-effort */ }
+  finally {
+    if (timer) clearTimeout(timer);
+    releaseReader(reader);
+  }
+}
+
+function peekTimeoutError() {
+  const error = new Error("Codex SSE prefix timeout");
+  error.name = "TimeoutError";
+  return error;
+}
+
+async function readBeforeDeadline(reader, { signal = null, deadlineAt }) {
+  throwIfAborted(signal);
+  const remaining = deadlineAt - Date.now();
+  if (remaining <= 0) throw peekTimeoutError();
+  let timer = null;
+  let onAbort = null;
+  try {
+    return await Promise.race([
+      reader.read(),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(peekTimeoutError()), remaining);
+        if (signal) {
+          onAbort = () => reject(abortReason(signal));
+          signal.addEventListener("abort", onAbort, { once: true });
+        }
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+    if (onAbort) signal?.removeEventListener?.("abort", onAbort);
+  }
 }
 
 /** Replay consumed bytes under backpressure, then continue the same reader. */
@@ -517,7 +562,16 @@ export class CodexExecutor extends BaseExecutor {
         body: cloneRequestBody(requestBody),
         requestContext,
       });
-      const peek = await this._peekSseTransientError(result.response);
+      let peek;
+      try {
+        peek = await this._peekSseTransientError(result.response, args.signal);
+      } catch (error) {
+        const reason = error?.name === "AbortError"
+          ? "abort"
+          : error?.name === "TimeoutError" ? "timeout" : "stream_error";
+        await settleProviderAttemptDispatch(result.response, { success: false, reason });
+        throw error;
+      }
       if (!peek.matched) {
         // Replace body with re-assembled stream (prefix bytes already read + rest)
         if (peek.replacementBody) {
@@ -531,17 +585,20 @@ export class CodexExecutor extends BaseExecutor {
       }
       if (peek.accountFallback) {
         args.log?.warn?.("RETRY", `CODEX | SSE account fallback "${peek.message}"`);
+        await settleProviderAttemptDispatch(result.response, { success: false, reason: "upstream_error" });
         result.response = codexSseErrorResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, peek.message || CODEX_MODEL_CAPACITY_MESSAGE);
         return result;
       }
       if (attempt >= attempts) {
         args.log?.warn?.("RETRY", `CODEX | SSE overloaded "${peek.matched}" — retries exhausted (${attempt}/${attempts})`);
+        await settleProviderAttemptDispatch(result.response, { success: false, reason: "upstream_error" });
         result.response = codexSseErrorResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, peek.message || peek.matched);
         return result;
       }
       attempt++;
       args.log?.debug?.("RETRY", `CODEX | SSE "${peek.matched}" retry ${attempt}/${attempts} after ${delayMs / 1000}s`);
       dbg("CODEX", `SSE overloaded "${peek.matched}" → retry ${attempt}/${attempts} in ${delayMs}ms`);
+      await settleProviderAttemptDispatch(result.response, { success: false, reason: "fallback" });
       await waitForRetry(delayMs, args.signal);
     }
   }
@@ -550,9 +607,10 @@ export class CodexExecutor extends BaseExecutor {
    * Inspect complete SSE frames within a bounded byte prefix. Non-matches are
    * replayed byte-for-byte through a stream that retains the original reader.
    */
-  async _peekSseTransientError(response) {
+  async _peekSseTransientError(response, signal = null) {
     if (!response || !response.ok || !response.body) return { matched: null, message: null, accountFallback: false, replacementBody: null };
     const reader = response.body.getReader();
+    const deadlineAt = Date.now() + CODEX_SSE_PEEK_TIMEOUT_MS;
     const decoder = new TextDecoder();
     const chunks = [];
     let buffer = "";
@@ -563,8 +621,12 @@ export class CodexExecutor extends BaseExecutor {
     while (inspectedBytes < CODEX_SSE_PEEK_BYTES) {
       let read;
       try {
-        read = await reader.read();
+        read = await readBeforeDeadline(reader, { signal, deadlineAt });
       } catch (error) {
+        if (error?.name === "AbortError" || error?.name === "TimeoutError") {
+          await cancelAndReleaseReader(reader, error.name);
+          throw error;
+        }
         terminalError = error;
         dbg("CODEX", `peek read error: ${error.message}`);
         break;

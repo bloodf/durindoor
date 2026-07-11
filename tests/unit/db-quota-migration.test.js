@@ -142,7 +142,7 @@ describe("quota schema migration", () => {
 
     const { getAdapter } = await import("@/lib/db/driver.js");
     const db = await getAdapter();
-    expect(db.get(`SELECT value FROM _meta WHERE key='schemaVersion'`).value).toBe("7");
+    expect(db.get(`SELECT value FROM _meta WHERE key='schemaVersion'`).value).toBe("8");
     expect(db.get(`SELECT data FROM providerConnections WHERE id='conn-1'`).data).toBe('{"accessToken":"token-canary"}');
     expect(db.get(`SELECT key FROM apiKeys WHERE id='key-1'`).key).toBe("sk-deadbeef");
     expect(db.all(`PRAGMA table_info(providerQuotaSnapshots)`)).not.toHaveLength(0);
@@ -171,7 +171,7 @@ describe("quota schema migration", () => {
     const db = await getAdapter();
     expect(db.all(`PRAGMA table_info(providerQuotaSnapshots)`)).not.toHaveLength(0);
     expect(db.all(`PRAGMA table_info(quotaFetchStates)`)).not.toHaveLength(0);
-    expect(db.get(`SELECT value FROM _meta WHERE key='schemaVersion'`).value).toBe("7");
+    expect(db.get(`SELECT value FROM _meta WHERE key='schemaVersion'`).value).toBe("8");
     expect(fs.readdirSync(path.join(dbDir, "backups"))).toHaveLength(1);
   });
 

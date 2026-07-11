@@ -46,6 +46,74 @@ describe("#6546 empty pool fail-fast", () => {
   });
 });
 
+describe("quota-aware combo ordering", () => {
+  it("applies the shared quota order after legacy strategy routing", async () => {
+    const seen = [];
+    const quotaRanker = vi.fn(async () => ["p/high", "p/low"]);
+    const response = await handleComboChat({
+      body: { messages: [{ role: "user", content: "hi" }] },
+      models: ["p/low", "p/high"],
+      handleSingleModel: async (_body, model) => {
+        seen.push(model);
+        return okResponse(model);
+      },
+      log,
+      comboName: "quota",
+      comboStrategy: "fallback",
+      quotaRanker,
+    });
+    expect(response.ok).toBe(true);
+    expect(seen).toEqual(["p/high"]);
+    expect(quotaRanker).toHaveBeenCalledWith(["p/low", "p/high"]);
+  });
+
+  it("preserves legacy order when quota ranking is unavailable", async () => {
+    const seen = [];
+    await handleComboChat({
+      body: { messages: [{ role: "user", content: "hi" }] },
+      models: ["p/first", "p/second"],
+      handleSingleModel: async (_body, model) => {
+        seen.push(model);
+        return okResponse(model);
+      },
+      log,
+      comboName: "quota-unavailable",
+      comboStrategy: "fallback",
+      quotaRanker: async () => { throw new Error("repository unavailable"); },
+    });
+    expect(seen).toEqual(["p/first"]);
+  });
+
+  it("cancels a transient fallback cooldown without invoking the next model", async () => {
+    vi.useFakeTimers();
+    try {
+      const controller = new AbortController();
+      const handleSingleModel = vi.fn(async (_body, model) => (
+        model === "p/first" ? errResponse(503) : okResponse(model)
+      ));
+      const pending = handleComboChat({
+        body: { messages: [{ role: "user", content: "hi" }] },
+        models: ["p/first", "p/second"],
+        handleSingleModel,
+        log,
+        comboName: "abort-cooldown",
+        comboStrategy: "fallback",
+        signal: controller.signal,
+      });
+      await Promise.resolve();
+      expect(handleSingleModel).toHaveBeenCalledTimes(1);
+
+      controller.abort();
+      const response = await pending;
+      expect(response.status).toBe(499);
+      expect(handleSingleModel).toHaveBeenCalledTimes(1);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("#6696 fingerprint pin parser", () => {
   it("splits a composite pin into realConnectionId + pinnedFingerprint", () => {
     expect(FP_PIN_SEPARATOR).toBe("|fp|");
@@ -143,11 +211,14 @@ describe("#6733 release stickiness pin on first-member failure", () => {
 
 describe("#6521 minPanel floor is 1 (not 2)", () => {
   it("a 2-model panel proceeds once a single answer arrives (minPanel clamped to 1)", async () => {
-    const handleSingleModel = vi.fn(async (_b, m) => {
+    const handleSingleModel = vi.fn(async (_b, m, isPanel, signal) => {
       if (m === "j/judge") return okResponse("FINAL");
       if (m === "p/fast") return okResponse("fast-ans");
-      // p/slow hangs past the grace window — must NOT block the judge.
-      return new Promise(() => {});
+      // p/slow acknowledges cancellation only after its request cleanup path.
+      return new Promise((_resolve, reject) => {
+        if (!isPanel) return;
+        signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+      });
     });
 
     const res = await handleFusionChat({

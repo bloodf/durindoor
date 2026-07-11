@@ -15,6 +15,12 @@ export {
   upsertProviderQuotaSnapshot, replaceProviderQuotaSnapshotsForSource,
   recordQuotaFetchFailure, getProviderQuotaSnapshot,
   listProviderQuotaSnapshots, getQuotaFetchState, pruneProviderQuotaSnapshots,
+  acquireQuotaReservation, markQuotaReservationDispatched,
+  heartbeatQuotaReservation, commitQuotaReservation, releaseQuotaReservation,
+  reapExpiredQuotaReservations, getQuotaReservationPressure,
+  hasActiveDispatchedQuotaReservations, hashQuotaRoute,
+  assertNoActiveQuotaReservationsSync,
+  QuotaReservationError, QuotaCapacityUnavailableError,
   getCombos, getComboById, getComboByName,
   createCombo, updateCombo, deleteCombo,
   // MCP gateway

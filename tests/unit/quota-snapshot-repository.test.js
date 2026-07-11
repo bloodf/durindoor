@@ -508,4 +508,49 @@ describe("provider quota snapshot repository", () => {
     expect(db.get(`SELECT COUNT(*) AS count FROM quotaFetchStates`).count).toBe(0);
     expect(db.all(`PRAGMA foreign_key_check`)).toEqual([]);
   });
+
+  it("rejects single and provider-wide deletion while targeted reservations are active", async () => {
+    const database = await import("@/lib/db/index.js");
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const db = await getAdapter();
+    seedConnection(db, "conn-1", "gemini");
+    seedConnection(db, "conn-2", "gemini");
+    const now = Date.now();
+    const insertReservation = (id, connectionId) => db.run(
+      `INSERT INTO quotaReservations(
+        id, connectionId, provider, routeKeyHash, state, ownerEpoch,
+        acquiredAt, dispatchedAt, leaseExpiresAt, lastHeartbeatAt
+      ) VALUES(?, ?, 'gemini', ?, 'active', ?, ?, ?, ?, ?)`,
+      [
+        id,
+        connectionId,
+        "a".repeat(64),
+        "b".repeat(64),
+        new Date(now).toISOString(),
+        new Date(now).toISOString(),
+        new Date(now + 60_000).toISOString(),
+        new Date(now).toISOString(),
+      ],
+    );
+    const releaseReservation = (id) => db.run(
+      `UPDATE quotaReservations
+       SET state='released', terminalAt=?, terminalReason='pre_dispatch'
+       WHERE id=?`,
+      [new Date(now + 1).toISOString(), id],
+    );
+
+    insertReservation("reservation-one", "conn-1");
+    await expect(database.deleteProviderConnection("conn-1"))
+      .rejects.toMatchObject({ code: "ACTIVE_QUOTA_RESERVATIONS" });
+    expect(db.get(`SELECT 1 AS present FROM providerConnections WHERE id='conn-1'`)).toBeTruthy();
+    releaseReservation("reservation-one");
+    await expect(database.deleteProviderConnection("conn-1")).resolves.toBe(true);
+
+    insertReservation("reservation-two", "conn-2");
+    await expect(database.deleteProviderConnectionsByProvider("gemini"))
+      .rejects.toMatchObject({ code: "ACTIVE_QUOTA_RESERVATIONS" });
+    expect(db.get(`SELECT 1 AS present FROM providerConnections WHERE id='conn-2'`)).toBeTruthy();
+    releaseReservation("reservation-two");
+    await expect(database.deleteProviderConnectionsByProvider("gemini")).resolves.toBe(1);
+  });
 });

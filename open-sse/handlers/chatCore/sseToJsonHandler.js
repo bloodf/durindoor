@@ -195,6 +195,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         signal,
         maxBytes: MAX_PROVIDER_BODY_BYTES,
         timeoutMs: PROVIDER_BODY_TIMEOUT_MS,
+        throwOnTimeout: true,
       });
       if (!["completed", "incomplete"].includes(jsonResponse?.status)) {
         return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Provider stream ended before a coherent terminal");
@@ -240,7 +241,12 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       return { success: true, response: new Response(JSON.stringify(finalResp), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
     } catch (err) {
       console.error(`[ChatCore] Responses API SSE→JSON failed: ${err?.name || "Error"}`);
-      return createErrorResult(err?.name === "AbortError" ? 499 : HTTP_STATUS.BAD_GATEWAY, err?.name === "AbortError" ? "Request aborted" : "Failed to convert streaming response to JSON");
+      return {
+        ...createErrorResult(err?.name === "AbortError" ? 499 : HTTP_STATUS.BAD_GATEWAY, err?.name === "AbortError" ? "Request aborted" : "Failed to convert streaming response to JSON"),
+        quotaTerminalReason: err?.name === "AbortError"
+          ? "abort"
+          : err?.name === "TimeoutError" ? "timeout" : "stream_error",
+      };
     }
   }
 
@@ -250,6 +256,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       signal,
       maxBytes: MAX_PROVIDER_BODY_BYTES,
       timeoutMs: PROVIDER_BODY_TIMEOUT_MS,
+      throwOnTimeout: true,
     });
     const terminalFormat = [FORMATS.KIRO, FORMATS.COMMANDCODE, FORMATS.CURSOR].includes(targetFormat)
       ? targetFormat
@@ -304,7 +311,12 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
     return { success: true, response: new Response(JSON.stringify(finalResp), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
     } catch (err) {
       console.error(`[ChatCore] Chat Completions SSE→JSON failed: ${err?.name || "Error"}`);
-      return createErrorResult(err?.name === "AbortError" ? 499 : HTTP_STATUS.BAD_GATEWAY, err?.name === "AbortError" ? "Request aborted" : "Failed to convert streaming response to JSON");
+      return {
+        ...createErrorResult(err?.name === "AbortError" ? 499 : HTTP_STATUS.BAD_GATEWAY, err?.name === "AbortError" ? "Request aborted" : "Failed to convert streaming response to JSON"),
+        quotaTerminalReason: err?.name === "AbortError"
+          ? "abort"
+          : err?.name === "TimeoutError" ? "timeout" : "stream_error",
+      };
     }
   } finally {
     trackDone();

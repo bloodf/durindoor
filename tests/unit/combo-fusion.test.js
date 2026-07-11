@@ -117,8 +117,12 @@ describe("fusion combo", () => {
   });
 
   it("proceeds on quorum without waiting for a straggler (grace window)", async () => {
-    const handleSingleModel = vi.fn(async (_body, model) => {
-      if (model === "p/slow") return okResponse("slow", { delayMs: 5000 });
+    const handleSingleModel = vi.fn(async (_body, model, isPanel, signal) => {
+      if (model === "p/slow" && isPanel) {
+        return new Promise((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+        });
+      }
       if (model === "p/judge") return okResponse("FINAL");
       return okResponse(`fast-${model}`);
     });
@@ -245,5 +249,89 @@ describe("fusion combo", () => {
     
     // Flattened tool_result
     expect(panelBody.messages[2].content).toBe("[Tool result: done]");
+  });
+
+  it("waits for an aborted panel release before starting the judge", async () => {
+    vi.useFakeTimers();
+    try {
+      let stragglerSignal;
+      const events = [];
+      const handleSingleModel = vi.fn(async (_body, model, isPanel, signal) => {
+        if (model === "p/fast") return okResponse("fast answer");
+        if (model === "p/slow" && isPanel) {
+          stragglerSignal = signal;
+          return new Promise((_resolve, reject) => {
+            signal.addEventListener("abort", () => {
+              events.push("abort:slow");
+              setTimeout(() => {
+                events.push("release:slow");
+                reject(new DOMException("aborted", "AbortError"));
+              }, 20);
+            }, { once: true });
+          });
+        }
+        events.push(`start:${model}`);
+        return okResponse("judge answer");
+      });
+      const pending = handleFusionChat({
+        body: { messages: [{ role: "user", content: "Q" }] },
+        models: ["p/fast", "p/slow"],
+        handleSingleModel,
+        log,
+        judgeModel: "p/judge",
+        tuning: {
+          minPanel: 1,
+          stragglerGraceMs: 10,
+          panelHardTimeoutMs: 1000,
+          panelCancelDrainTimeoutMs: 100,
+        },
+      });
+      await vi.advanceTimersByTimeAsync(11);
+      expect(events).toEqual(["abort:slow"]);
+      await vi.advanceTimersByTimeAsync(20);
+      const response = await pending;
+      expect(response.ok).toBe(true);
+      expect(stragglerSignal.aborted).toBe(true);
+      expect(events).toEqual(["abort:slow", "release:slow", "start:p/judge"]);
+      expect(handleSingleModel).toHaveBeenCalledWith(expect.any(Object), "p/slow", true, expect.any(AbortSignal));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("fails locally without a judge when canceled panel cleanup misses its deadline", async () => {
+    vi.useFakeTimers();
+    try {
+      const handleSingleModel = vi.fn(async (_body, model, isPanel, signal) => {
+        if (model === "p/fast") return okResponse("fast answer");
+        if (model === "p/slow" && isPanel) {
+          return new Promise(() => {
+            signal.addEventListener("abort", () => {}, { once: true });
+          });
+        }
+        return okResponse("judge must not run");
+      });
+      const pending = handleFusionChat({
+        body: { messages: [{ role: "user", content: "Q" }] },
+        models: ["p/fast", "p/slow"],
+        handleSingleModel,
+        log,
+        judgeModel: "p/judge",
+        tuning: {
+          minPanel: 1,
+          stragglerGraceMs: 10,
+          panelHardTimeoutMs: 1000,
+          panelCancelDrainTimeoutMs: 25,
+        },
+      });
+
+      await vi.advanceTimersByTimeAsync(36);
+      const response = await pending;
+
+      expect(response.status).toBe(503);
+      expect(handleSingleModel.mock.calls.some(([, model]) => model === "p/judge")).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

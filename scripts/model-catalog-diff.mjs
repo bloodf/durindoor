@@ -115,7 +115,7 @@ export async function localAudit(registryOverride, formatsOverride, pricingOverr
   for (const entry of registry) {
     const provider = entry.id || entry.alias || "<unknown>";
     const models = entry.models || [];
-    const seen = new Map(); // id → first index
+    const seen = new Map(); // composite key `${id}\0${effectiveKind}` → first index
     const idSet = new Set();
 
     for (let i = 0; i < models.length; i++) {
@@ -127,12 +127,22 @@ export async function localAudit(registryOverride, formatsOverride, pricingOverr
         findings.push(`[${provider}] model[${i}] has empty/non-string id (${JSON.stringify(id)})`);
         continue;
       }
+      const kind = m.kind || m.type || "llm";
+      const dedupKey = `${id}\0${kind}`;
       idSet.add(id);
       allIds.add(id);
-      if (seen.has(id)) {
-        findings.push(`[${provider}] duplicate model id "${id}" (indices ${seen.get(id)}, ${i})`);
+      // Same id is allowed across distinct kinds (e.g. gemini-2.5-pro as llm + stt).
+      // A true duplicate is the same id repeated within the SAME effective kind.
+      // Kind resolution matches runtime: `m.kind || m.type || "llm"` (see
+      // open-sse/providers/models/schema.js#modelKind). Chat rows carry no kind
+      // and resolve to the llm default; a bare duplicate chat row still flags.
+      if (seen.has(dedupKey)) {
+        const kindNote = kind ? `, kind "${kind}"` : " (no kind)";
+        findings.push(
+          `[${provider}] duplicate model id "${id}"${kindNote} (indices ${seen.get(dedupKey)}, ${i})`
+        );
       } else {
-        seen.set(id, i);
+        seen.set(dedupKey, i);
       }
 
       if (m.targetFormat != null && !formats.has(m.targetFormat)) {

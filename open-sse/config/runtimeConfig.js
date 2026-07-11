@@ -38,6 +38,9 @@ export const MEMORY_CONFIG = {
   sessionCleanupIntervalMs: 30 * 60 * 1000,
   dnsCacheTtlMs: 5 * 60 * 1000,
   proxyDispatchersMaxSize: 20,
+  refreshDedupMaxSize: 256,
+  refreshDedupInFlightTtlMs: 2 * 60 * 1000,
+  refreshDedupResultTtlMs: 10 * 1000,
 };
 
 // Parse a positive integer env override, falling back to a default.

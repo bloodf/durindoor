@@ -165,3 +165,25 @@ Check:
 - Test tool calls before using a model in coding-agent workflows.
 - Keep detailed request logging disabled unless debugging.
 - Back up `DATA_DIR` before major upgrades.
+
+## Choose OAuth routing
+
+When connecting an OAuth provider, DurinDoor loads the available proxy pools
+before starting the login. The default is **Direct Connection**, which also
+suppresses proxy environment variables for that connection.
+
+Choose an active pool in **Routing Proxy Pool** when the provider's authorize,
+token, profile, and refresh traffic must use that egress. Pool-backed OAuth is
+strict: if the pool is removed, disabled, or cannot connect, authentication and
+later refreshes fail with a routing error instead of silently using another
+path.
+
+Changing the selection restarts the login and invalidates the previous callback.
+If a browser tab from an earlier attempt completes afterward, its state is
+rejected. Re-open the provider login after editing or replacing a pool.
+
+Reassigning an existing OAuth connection from its provider detail page updates
+the same durable policy. Selecting a pool makes routing strict to that pool;
+clearing the selection explicitly switches the connection to direct routing.
+Other provider edits that omit the proxy selection leave the routing policy
+unchanged.

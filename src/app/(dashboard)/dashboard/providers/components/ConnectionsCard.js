@@ -388,7 +388,10 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
   const handleUpdateProxy = async (connId, proxyPoolId) => {
     try {
       const res = await fetch(`/api/providers/${connId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ proxyPoolId: proxyPoolId || null }) });
-      if (res.ok) setConnections((prev) => prev.map((c) => c.id === connId ? { ...c, providerSpecificData: { ...c.providerSpecificData, proxyPoolId: proxyPoolId || null } } : c));
+      if (res.ok) {
+        const { connection: updatedConnection } = await res.json();
+        setConnections((prev) => prev.map((c) => c.id === connId ? (updatedConnection || c) : c));
+      }
     } catch (e) { console.log("proxy error:", e); }
   };
 

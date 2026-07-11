@@ -53,7 +53,7 @@ function extractEmailFromAccessToken(accessToken) {
   return payload.email || payload.preferred_username || payload.sub || undefined;
 }
 
-export async function fetchKiroProfileArn(accessToken, region = "us-east-1") {
+export async function fetchKiroProfileArn(accessToken, region = "us-east-1", proxyOptions = null) {
   if (!accessToken) return null;
   const safeRegion = typeof region === "string" && AWS_REGION_PATTERN.test(region) ? region : "us-east-1";
   const endpoint = `${buildKiroProfileEndpoint(safeRegion)}`;
@@ -67,8 +67,15 @@ export async function fetchKiroProfileArn(accessToken, region = "us-east-1") {
         Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({ maxResults: 10 }),
+      // Route Kiro profile discovery through the OAuth-selected proxy pool.
+      proxyOptions,
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      if (proxyOptions?.strictProxy === true) {
+        throw new Error(`Kiro profile discovery failed: HTTP ${response.status}`);
+      }
+      return null;
+    }
     const data = await response.json();
     const profiles = Array.isArray(data?.profiles) ? data.profiles : [];
     // Prefer a profile whose ARN region matches the caller's region — IDC users
@@ -76,7 +83,10 @@ export async function fetchKiroProfileArn(accessToken, region = "us-east-1") {
     const arnOf = (p) => (p?.arn || p?.profileArn || "").trim() || null;
     const inRegion = profiles.find((p) => arnOf(p)?.split(":")[3] === safeRegion);
     return arnOf(inRegion) || arnOf(profiles[0]) || null;
-  } catch {
+  } catch (error) {
+    // A selected strict pool is a security boundary: transport failures must
+    // abort the OAuth flow instead of being converted into a best-effort miss.
+    if (proxyOptions?.strictProxy === true) throw error;
     return null;
   }
 }

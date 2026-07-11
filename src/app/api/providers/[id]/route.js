@@ -6,6 +6,8 @@ import {
   deleteProviderConnection,
 } from "@/models";
 import { requiresProviderAccountId } from "@/lib/providerAccountIds";
+import { mergeProviderSpecificData } from "@/lib/db/helpers/mergeProviderMetadata.js";
+import { buildOAuthProxyMetadataPatch } from "@/lib/oauth/proxySelection.js";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { notifyQuotaAutoPingSettingChanged } from "@/shared/services/quotaAutoPing";
 
@@ -83,6 +85,33 @@ function shouldMergeProviderSpecificData(existing, incoming, hasLegacyProxy, has
   return existing !== undefined || incoming !== undefined || hasLegacyProxy || hasProxyPoolField;
 }
 
+function hasDurableOAuthProxyPolicy(connection) {
+  return connection?.authType === "oauth" ||
+    connection?.authType === "access_token" ||
+    (connection?.providerSpecificData?.oauthProxy &&
+      typeof connection.providerSpecificData.oauthProxy === "object");
+}
+
+/**
+ * Keep the legacy top-level pool binding and the authoritative OAuth policy in
+ * sync. A null assignment is persisted (rather than deleting the key) so the
+ * DB metadata merge cannot resurrect a previously selected pool.
+ */
+function applyProxyPoolMetadataUpdate(metadata, proxyPoolId, connection) {
+  if (!hasDurableOAuthProxyPolicy(connection)) {
+    return { ...metadata, proxyPoolId };
+  }
+
+  return mergeProviderSpecificData(
+    metadata,
+    buildOAuthProxyMetadataPatch(
+      proxyPoolId === null
+        ? { proxyMode: "direct" }
+        : { proxyMode: "strict-pool", proxyPoolId },
+    ),
+  );
+}
+
 // GET /api/providers/[id] - Get single connection
 export async function GET(request, { params }) {
   try {
@@ -155,10 +184,10 @@ export async function PUT(request, { params }) {
         proxyPoolResult.hasProxyPoolField
       )
     ) {
-      updateData.providerSpecificData = {
-        ...(existing.providerSpecificData || {}),
-        ...(providerSpecificData || {}),
-      };
+      updateData.providerSpecificData = mergeProviderSpecificData(
+        existing.providerSpecificData,
+        providerSpecificData,
+      );
 
       if (proxyConfig.hasAnyProxyField) {
         updateData.providerSpecificData.connectionProxyEnabled = proxyConfig.connectionProxyEnabled;
@@ -167,11 +196,11 @@ export async function PUT(request, { params }) {
       }
 
       if (proxyPoolResult.hasProxyPoolField) {
-        if (proxyPoolResult.proxyPoolId === null) {
-          delete updateData.providerSpecificData.proxyPoolId;
-        } else {
-          updateData.providerSpecificData.proxyPoolId = proxyPoolResult.proxyPoolId;
-        }
+        updateData.providerSpecificData = applyProxyPoolMetadataUpdate(
+          updateData.providerSpecificData,
+          proxyPoolResult.proxyPoolId,
+          existing,
+        );
       }
     }
 

@@ -8,6 +8,7 @@ import { getExecutor } from "open-sse/executors/index.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { USAGE_APIKEY_PROVIDERS } from "@/shared/constants/providers";
 import { backfillCursorConnectionIdentity } from "@/lib/oauth/services/cursorLocalStore.js";
+import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 
 // Detect auth-expired messages returned by usage providers instead of throwing
 const AUTH_EXPIRED_PATTERNS = ["expired", "authentication", "unauthorized", "401", "re-authorize"];
@@ -152,14 +153,15 @@ export async function GET(request, { params }) {
       return Response.json({ message: "Usage not available for this connection" });
     }
 
-    // Resolve connection proxy config; force strictProxy=false so quota/refresh fall back to direct on failure
+    // Usage and refresh share the connection's durable OAuth egress policy.
     const proxyConfig = await resolveConnectionProxyConfig(connection.providerSpecificData);
     const proxyOptions = {
       connectionProxyEnabled: proxyConfig.connectionProxyEnabled === true,
       connectionProxyUrl: proxyConfig.connectionProxyUrl || "",
       connectionNoProxy: proxyConfig.connectionNoProxy || "",
       vercelRelayUrl: proxyConfig.vercelRelayUrl || "",
-      strictProxy: false,
+      strictProxy: proxyConfig.strictProxy === true,
+      disableEnvProxy: proxyConfig.disableEnvProxy === true,
     };
 
     // Refresh credentials only for OAuth connections (apikey has no token refresh)
@@ -197,15 +199,18 @@ export async function GET(request, { params }) {
         connection = retryResult.connection;
         usage = await getUsageForProvider(connection, proxyOptions);
       } catch (retryError) {
-        console.warn(`[Usage] ${connection.provider}: force refresh failed: ${retryError.message}`);
+        console.warn(
+          `[Usage] ${connection.provider}: force refresh failed: ${sanitizeErrorMessage(retryError?.message || retryError)}`,
+        );
       }
     }
 
     return Response.json(usage);
   } catch (error) {
     const provider = connection?.provider ?? "unknown";
-    console.warn(`[Usage] ${provider}: ${error.message}`);
-    return Response.json({ error: error.message }, { status: 500 });
+    const safeMessage = sanitizeErrorMessage(error?.message || error);
+    console.warn(`[Usage] ${provider}: ${safeMessage}`);
+    return Response.json({ error: safeMessage }, { status: 500 });
   }
 }
 
@@ -282,4 +287,3 @@ async function aggregateLocalUsage(connection, label) {
     quotas,
   };
 }
-

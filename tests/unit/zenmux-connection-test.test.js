@@ -77,4 +77,28 @@ describe("zenmux-free saved connection test", () => {
       lastError: null,
     }));
   });
+
+  it("redacts proxy validation errors before returning or persisting them", async () => {
+    mocks.resolveConnectionProxyConfig.mockResolvedValue({
+      connectionProxyEnabled: true,
+      connectionProxyUrl: "http://alice:proxy-secret@proxy.local:8080",
+      connectionNoProxy: "",
+    });
+    mocks.testProxyUrl.mockResolvedValue({
+      ok: false,
+      status: 500,
+      error: "connect http://alice:proxy-secret@proxy.local:8080?token=query-secret",
+    });
+    const { testSingleConnection } = await import("../../src/app/api/providers/[id]/test/testUtils.js");
+
+    const result = await testSingleConnection("conn-zmf");
+
+    expect(result.error).toContain("[redacted]");
+    expect(result.error).not.toContain("proxy-secret");
+    expect(result.error).not.toContain("query-secret");
+    expect(mocks.updateProviderConnection).toHaveBeenCalledWith("conn-zmf", expect.objectContaining({
+      testStatus: "error",
+      lastError: result.error,
+    }));
+  });
 });

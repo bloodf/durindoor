@@ -24,6 +24,7 @@ vi.mock("@/sse/services/auth.js", () => ({
 // focused test can run in isolation.
 vi.mock("open-sse/services/compression/index.js", () => ({
   ENGINE_IDS: ["engine-a", "engine-b", "engine-missing"],
+  isEngineAvailable: vi.fn((id) => id === "engine-a" || id === "engine-b"),
   getEngine: vi.fn((id) => {
     if (id === "engine-a") return { apply: mocks.applyA };
     if (id === "engine-b") return { apply: mocks.applyB };
@@ -71,22 +72,32 @@ describe("POST /api/compression/preview", () => {
     const json = await res.json();
     expect(json.engines).toEqual(["engine-a", "engine-b", "engine-missing"]);
     expect(json.results).toEqual({
-      "engine-a": { compressed: true, savingsPercent: 42.5 },
-      "engine-b": { compressed: true, savingsPercent: 75 },
-      "engine-missing": { compressed: false, savingsPercent: 0 },
+      "engine-a": { status: "compressed", compressed: true, savingsPercent: 42.5 },
+      "engine-b": { status: "compressed", compressed: true, savingsPercent: 75 },
+      "engine-missing": { status: "unavailable" },
     });
     expect(mocks.applyA).toHaveBeenCalledWith({ model: "x", messages: [] }, {});
     expect(mocks.applyB).toHaveBeenCalledWith({ model: "x", messages: [] }, {});
   });
 
-  it("reports compressed:false and zero savings when an engine does not change the body", async () => {
+  it("labels an available engine that throws as error, not unavailable", async () => {
+    mocks.applyA.mockRejectedValue(new Error("boom"));
+    mocks.applyB.mockResolvedValue({ body: {}, compressed: false, stats: null });
+
+    const json = await (await POST(jsonRequest({}))).json();
+
+    expect(json.results["engine-a"]).toEqual({ status: "error" });
+    expect(json.results["engine-missing"]).toEqual({ status: "unavailable" });
+  });
+
+  it("reports unchanged status and zero savings when an engine does not change the body", async () => {
     mocks.applyA.mockResolvedValue({ body: {}, compressed: false, stats: null });
     mocks.applyB.mockResolvedValue({ body: {}, compressed: false, stats: null });
 
     const json = await (await POST(jsonRequest({}))).json();
 
-    expect(json.results["engine-a"]).toEqual({ compressed: false, savingsPercent: 0 });
-    expect(json.results["engine-b"]).toEqual({ compressed: false, savingsPercent: 0 });
+    expect(json.results["engine-a"]).toEqual({ status: "unchanged", compressed: false, savingsPercent: 0 });
+    expect(json.results["engine-b"]).toEqual({ status: "unchanged", compressed: false, savingsPercent: 0 });
   });
 
   it("returns 401 when the API key is rejected", async () => {

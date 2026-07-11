@@ -85,11 +85,17 @@ export default function CompressionStudioPage() {
               <tbody>
                 {engines.map((id) => {
                   const r = results[id] || {};
+                  const unavailable = r.status === "unavailable";
+                  const errored = r.status === "error";
                   return (
                     <tr key={id} className="border-b last:border-0">
                       <td className="py-2 font-mono">{id}</td>
-                      <td className="py-2">{r.compressed ? "yes" : "no"}</td>
-                      <td className="py-2">{Number(r.savingsPercent || 0).toFixed(2)}%</td>
+                      <td className="py-2">
+                        {unavailable ? "unavailable" : errored ? "error" : r.compressed ? "yes" : "no"}
+                      </td>
+                      <td className="py-2">
+                        {unavailable || errored ? "—" : `${Number(r.savingsPercent || 0).toFixed(2)}%`}
+                      </td>
                     </tr>
                   );
                 })}

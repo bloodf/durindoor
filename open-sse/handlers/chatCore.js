@@ -34,29 +34,16 @@ import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadr
 import { compressWithPxpipe, normalizePxpipeResult } from "../rtk/pxpipe.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { estimateTokens } from "./countTokensCore.js";
-import {
-  getEngine,
-  isEngineAvailable,
-  registerBuiltinEngines,
-  planToEngineIds,
-} from "../services/compression/index.js";
-import { deriveDefaultPlan } from "../services/compression/deriveDefaultPlan.js";
-import { resolveAdaptivePlan } from "../services/compression/adaptiveCompression/resolveAdaptivePlan.js";
+import { runCompressionSeam } from "./chatCore/compressionHook.js";
 import { stripUnsupportedModalities } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
 import { extractThinking } from "../translator/concerns/thinkingUnified.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 
-// F-1b: register the compression engines that ship in this tree at module load.
-// Idempotent; getEngine() also registers lazily. Surfaced eagerly so a broken
-// engine module fails at import time rather than mid-request.
-registerBuiltinEngines();
-
-// Neutral adaptive config for the engine loop. resolveAdaptivePlan dereferences
-// these fields unconditionally once a model context limit is known, so they must
-// be complete even though mode:"off" short-circuits escalation and returns the
-// base plan unchanged. F-1b wires the engine loop only — adaptive policy is a
-// later surface; here the resolved plan always equals deriveDefaultPlan's base.
+// Neutral adaptive config forwarded to the compression seam. mode:"off" short-
+// circuits resolveAdaptivePlan before it dereferences budget fields, but the
+// object is kept complete so a later adaptive mode flip already has the full
+// computeTarget() contract (outputReserve/safetyMargin/pct/absoluteBudget).
 const COMPRESSION_ADAPTIVE_CONFIG = Object.freeze({
   mode: "off",
   policy: "reserve-output",
@@ -65,6 +52,38 @@ const COMPRESSION_ADAPTIVE_CONFIG = Object.freeze({
   pct: 0.85,
   absoluteBudget: 0,
 });
+
+const COMPRESSION_HEADER = "X-DurinDoor-Compression";
+
+/**
+ * Stamp the X-DurinDoor-Compression response header onto a handler result.
+ *
+ * chatCore's terminal handlers (forced-SSE→JSON, non-stream, stream) each build
+ * a fresh `Response` with fixed headers, so mutating `providerResponse.headers`
+ * upstream would not reach the client. This helper rebuilds the final response
+ * with a mutable Headers copy carrying the compression marker.
+ *
+ * No-op when there is nothing to advertise (disabled / no engine compressed /
+ * fail-open) or when the result is an upstream error — error responses must not
+ * claim the request body was compressed.
+ *
+ * @param {{success?: boolean, response: Response}|null|undefined} result
+ * @param {string|null} headerValue
+ * @returns {typeof result}
+ */
+export function withCompressionHeader(result, headerValue) {
+  if (!headerValue || !result || result.success === false || !result.response) return result;
+  const headers = new Headers(result.response.headers);
+  headers.set(COMPRESSION_HEADER, headerValue);
+  return {
+    ...result,
+    response: new Response(result.response.body, {
+      status: result.response.status,
+      statusText: result.response.statusText,
+      headers,
+    }),
+  };
+}
 
 /**
  * Whether a request targets the Codex compact-responses endpoint.
@@ -399,39 +418,31 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   }
 
   // Compression engine stack (F-1b): runs AFTER rtk/headroom, BEFORE salvage/caveman/pxpipe.
-  // Plan derives from the per-engine toggle map; adaptive resolver is neutralized
-  // (mode "off") so the resolved plan equals the base plan. Each engine runs in
-  // its own try/catch with a per-step deep-clone snapshot so a throwing engine
-  // cannot leave partial mutations. A catastrophic failure of the loop itself
-  // restores the whole body to the pre-stack snapshot. Fail-open throughout.
+  // Single execution path: runCompressionSeam owns plan derivation + per-engine
+  // fail-open and reports which engines actually compressed plus overall savings
+  // as a response-header value. Catastrophic seam failure restores the pre-stack
+  // snapshot and emits no header. Fail-open throughout.
+  let compressionHeaderValue = null;
   if (compressionEnabled) {
     const preStackSnapshot = structuredClone(translatedBody);
     try {
-      const basePlan = deriveDefaultPlan(compressionEngines ?? {}, compressionEnabled);
-      const { contextWindow: modelContextLimit } = getCapabilitiesForModel(provider, cleanModel);
-      const requestMaxTokens = translatedBody?.max_tokens ?? translatedBody?.max_completion_tokens ?? null;
-      const resolved = resolveAdaptivePlan({
-        basePlan,
-        estimatedTokens: estimateTokens(translatedBody),
-        modelContextLimit,
-        requestMaxTokens,
-        config: COMPRESSION_ADAPTIVE_CONFIG,
+      const { body: compressedBody, headerValue } = await runCompressionSeam(translatedBody, undefined, {
+        enabled: true,
+        engines: compressionEngines ?? {},
+        applyOpts: COMPRESSION_ADAPTIVE_CONFIG,
+        adaptive: {
+          ...COMPRESSION_ADAPTIVE_CONFIG,
+          estimatedTokens: estimateTokens(translatedBody),
+          modelContextLimit: getCapabilitiesForModel(provider, cleanModel).contextWindow,
+          requestMaxTokens: translatedBody?.max_tokens ?? translatedBody?.max_completion_tokens ?? null,
+        },
+        log,
       });
-      const engineIds = planToEngineIds(resolved.plan);
-      let workingBody = translatedBody;
-      for (const id of engineIds) {
-        if (!isEngineAvailable(id)) continue;
-        const stepSnapshot = structuredClone(workingBody);
-        try {
-          const result = await getEngine(id).apply(workingBody, { config: COMPRESSION_ADAPTIVE_CONFIG });
-          if (result && result.body) workingBody = result.body;
-          xf.push(`COMPRESS:${id}`);
-        } catch (err) {
-          workingBody = stepSnapshot;
-          log?.warn?.("COMPRESS", `${id} failed, skipped: ${err?.message || err}`);
-        }
+      translatedBody = compressedBody;
+      if (headerValue) {
+        compressionHeaderValue = headerValue;
+        xf.push(`COMPRESS:${headerValue}`);
       }
-      translatedBody = workingBody;
     } catch (err) {
       translatedBody = preStackSnapshot;
       log?.warn?.("COMPRESS", `stack failed, passthrough: ${err?.message || err}`);
@@ -784,7 +795,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // Provider forced streaming but client wants JSON
   if (!clientRequestedStreaming && providerRequiresStreaming) {
     const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, trackDone, appendLog });
-    if (result) { streamController.handleComplete(); return result; }
+    if (result) { streamController.handleComplete(); return withCompressionHeader(result, compressionHeaderValue); }
   }
 
   // True non-streaming response. When the client asked for streaming but the
@@ -794,12 +805,15 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     const streamToClient = clientRequestedStreaming === true;
     const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, reqLogger, toolNameMap, trackDone, appendLog, streamToClient });
     streamController.handleComplete();
-    return result;
+    return withCompressionHeader(result, compressionHeaderValue);
   }
 
   // Streaming response
   const { onStreamComplete, streamDetailId } = buildOnStreamComplete({ ...sharedCtx });
-  return handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, streamController, onStreamComplete, streamDetailId });
+  return withCompressionHeader(
+    await handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, streamController, onStreamComplete, streamDetailId }),
+    compressionHeaderValue
+  );
 }
 
 // Minimal Claude message the auto-mode classifier parses as ALLOW.

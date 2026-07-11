@@ -27,6 +27,7 @@ export function sanitizeErrorText(value) {
     .join(" ");
   text = text.replace(/[A-Za-z]:(?!\/\/)[\\/][^\s)]+/g, "");
   text = text.replace(/(?:^|\s)\/(?!\/)[^\s)]*/g, "");
+  text = text.replace(/([[\("'=:\s])\/(?!\/)[^\s)\]"']*/g, "$1");
   text = text.replace(/\s+/g, " ").trim();
   if (text.length > 200) text = `${text.slice(0, 199).trimEnd()}…`;
   return text;

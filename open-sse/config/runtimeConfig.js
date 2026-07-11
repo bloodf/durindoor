@@ -17,6 +17,15 @@ export const HTTP_STATUS = {
 // Re-export error config (backward compat)
 export { ERROR_TYPES, DEFAULT_ERROR_MESSAGES, BACKOFF_CONFIG, COOLDOWN_MS } from "./errorConfig.js";
 
+// Realtime WebSocket resource limits. Source-of-truth constants live here on the
+// documented config surface; the VALUES are backed by the CJS module
+// `src/shared/utils/realtimeConfig.js` so bare-Node CJS consumers
+// (`custom-server.js`, `realtimeCore.js`) read the identical numbers without
+// importing ESM. Edit the CJS module to change a limit — this re-export tracks it.
+import realtimeLimits from "../../src/shared/utils/realtimeConfig.js";
+export const MAX_SESSION_ITEMS = realtimeLimits.MAX_SESSION_ITEMS;
+export const MAX_REALTIME_FRAME_BYTES = realtimeLimits.MAX_REALTIME_FRAME_BYTES;
+
 // Cache TTLs (seconds)
 export const CACHE_TTL = {
   userInfo: 300,    // 5 minutes

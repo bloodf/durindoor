@@ -5,6 +5,7 @@ import { Badge, Button } from "@/shared/components";
 import { getModelsByProviderId } from "@/shared/constants/models";
 import { isAnthropicCompatibleProvider, isOpenAICompatibleProvider } from "@/shared/constants/providers";
 import { createSseParser } from "@/lib/playground/sse";
+import { sanitizeErrorText } from "@/lib/playground/errors";
 
 const STORAGE_KEYS = {
   sessions: "basic-chat.sessions",
@@ -203,6 +204,7 @@ export default function PlaygroundPageClient() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const fileInputRef = useRef(null);
   const abortRef = useRef(null);
+  const loadAbortRef = useRef(null);
   const initializedRef = useRef(false);
   const modelMenuRef = useRef(null);
   const historyMenuRef = useRef(null);
@@ -213,13 +215,16 @@ export default function PlaygroundPageClient() {
 
   useEffect(() => {
     let cancelled = false;
+    loadAbortRef.current?.abort();
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
 
     async function loadData() {
       setLoadingData(true);
       setLoadError("");
 
       try {
-        const providersRes = await fetch("/api/providers", { cache: "no-store" });
+        const providersRes = await fetch("/api/providers", { cache: "no-store", signal: controller.signal });
         const providersData = await providersRes.json().catch(() => ({}));
         const connections = Array.isArray(providersData.connections)
           ? providersData.connections.filter((connection) => connection?.isActive !== false)
@@ -268,7 +273,7 @@ export default function PlaygroundPageClient() {
         const liveResults = await Promise.all(
           connections.map(async (connection) => {
             try {
-              const response = await fetch(`/api/providers/${connection.id}/models`, { cache: "no-store" });
+              const response = await fetch(`/api/providers/${connection.id}/models`, { cache: "no-store", signal: controller.signal });
               const data = await response.json().catch(() => ({}));
               if (!response.ok) return { connection, models: [] };
               const models = parseProviderModelsPayload(data)
@@ -303,8 +308,9 @@ export default function PlaygroundPageClient() {
           }
         }
       } catch (error) {
+        if (error?.name === "AbortError") return;
         if (!cancelled) {
-          setLoadError(textValue(error?.message) || "Failed to load providers/models.");
+          setLoadError(sanitizeErrorText(error?.message) || "Failed to load providers/models.");
           setProviderGroups([]);
         }
       } finally {
@@ -315,6 +321,8 @@ export default function PlaygroundPageClient() {
     loadData();
     return () => {
       cancelled = true;
+      controller.abort();
+      if (loadAbortRef.current === controller) loadAbortRef.current = null;
     };
   }, []);
 
@@ -331,6 +339,10 @@ export default function PlaygroundPageClient() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // Abort any in-flight chat request when the component unmounts so a
+  // navigation away mid-stream can't setState on an unmounted tree.
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   const modelIndex = useMemo(() => {
     const map = new Map();
@@ -627,7 +639,8 @@ export default function PlaygroundPageClient() {
     setStreamingMessageId(assistantMessageId);
     setStreamingText("");
     abortRef.current?.abort();
-    abortRef.current = new AbortController();
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     const requestMessages = nextMessages
       .filter((message) => !(message.role === "assistant" && message.id === assistantMessageId))
@@ -648,7 +661,7 @@ export default function PlaygroundPageClient() {
           messages: requestMessages,
           stream: true,
         }),
-        signal: abortRef.current.signal,
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -706,7 +719,7 @@ export default function PlaygroundPageClient() {
       finalizeSessionTitle(sessionId, userText);
     } catch (error) {
       if (error.name !== "AbortError") {
-        const errorText = textValue(error?.message || error);
+        const errorText = sanitizeErrorText(error?.message || error);
         updateSession(sessionId, (currentSession) => ({
           ...currentSession,
           messages: currentSession.messages.map((message) => (message.id === assistantMessageId ? { ...message, content: message.content || `Error: ${errorText}`, status: "error" } : message)),
@@ -718,7 +731,7 @@ export default function PlaygroundPageClient() {
       setIsSending(false);
       setStreamingMessageId("");
       setStreamingText("");
-      abortRef.current = null;
+      if (abortRef.current === controller) abortRef.current = null;
     }
   };
 

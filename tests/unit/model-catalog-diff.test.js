@@ -187,6 +187,50 @@ describe("localAudit", () => {
   });
 });
 
+describe("allowlist", () => {
+  it("skips reviewed orphan findings by default, resurfaces them with strict", async () => {
+    // blackbox proxy upstreamModelId is on the reviewed allowlist
+    // ("blackbox:claude-fable-5"). Same for one MODEL_PRICING alias.
+    const registry = [
+      { id: "blackbox", models: [{ id: "claude-fable-5", upstreamModelId: "blackboxai/anthropic/claude-fable-5" }] },
+    ];
+    const pricing = {
+      model: { "claude-opus-4-5-20251101": { input: 1 } },
+      provider: {},
+      pattern: [],
+    };
+    const defaultFindings = await localAudit(registry, FORMATS, pricing);
+    expect(defaultFindings).toEqual([]);
+
+    const strictFindings = await localAudit(registry, FORMATS, pricing, { strict: true });
+    expect(strictFindings.some((f) => /upstreamModelId "blackboxai\/anthropic\/claude-fable-5"/.test(f))).toBe(true);
+    expect(strictFindings.some((f) => /MODEL_PRICING\["claude-opus-4-5-20251101"\]/.test(f))).toBe(true);
+    expect(strictFindings).toHaveLength(2);
+  });
+
+  it("honors a caller-supplied allowlist map and never filters non-allowlisted defects", async () => {
+    const registry = [
+      { id: "demo", models: [{ id: "m-a", upstreamModelId: "proxy/wire-id" }] },
+    ];
+    const pricing = {
+      model: { "ghost-model": { input: 1 } },
+      provider: {},
+      pattern: [{ pattern: "never-matches-*", pricing: { input: 1 } }],
+    };
+    const custom = new Map([
+      ["demo:m-a", "proxy upstreamModelId"],
+      ["pricing:ghost-model", "priced alias present in upstream"],
+      ["pricing-pattern:never-matches-*", "intentional forward glob"],
+    ]);
+    expect(await localAudit(registry, FORMATS, pricing, { allowlist: custom })).toEqual([]);
+
+    // Empty allowlist (or strict) keeps all three findings.
+    const unfiltered = await localAudit(registry, FORMATS, pricing, { allowlist: new Map() });
+    expect(unfiltered).toHaveLength(3);
+    expect(await localAudit(registry, FORMATS, pricing, { allowlist: custom, strict: true })).toHaveLength(3);
+  });
+});
+
 describe("renderReport", () => {
   const ours = new Map([
     ["codex", new Set(["gpt-5.5", "gpt-5.4"])],

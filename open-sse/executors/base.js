@@ -4,6 +4,8 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { dbg } from "../utils/debugLog.js";
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE } from "../providers/shared.js";
 import { findOffendingField } from "../config/providerFieldStrips.js";
+import { readBoundedResponseText } from "../utils/error.js";
+import { prepareProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 
 function removeBetaFlag(headers, flag) {
   for (const key of ["anthropic-beta", "Anthropic-Beta"]) {
@@ -17,6 +19,37 @@ function removeBetaFlag(headers, flag) {
     if (filtered) headers[key] = filtered;
     else delete headers[key];
   }
+}
+
+function requestAbortError(reason) {
+  if (reason instanceof Error && reason.name === "AbortError") return reason;
+  return new DOMException("Provider request aborted", "AbortError");
+}
+
+/** Release a discarded response without trusting provider-controlled cancel latency. */
+function cancelDiscardedResponse(response) {
+  try {
+    const cancellation = response?.body?.cancel?.("discarded provider response");
+    if (cancellation?.catch) void cancellation.catch(() => {});
+  } catch { /* body may already be locked or closed */ }
+}
+
+/** Abort-aware retry delay with deterministic listener/timer cleanup. */
+export function waitForRetryDelay(delayMs, signal = null) {
+  if (signal?.aborted) return Promise.reject(requestAbortError(signal.reason));
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener?.("abort", onAbort);
+      callback(value);
+    };
+    const onAbort = () => finish(reject, requestAbortError(signal?.reason));
+    const timer = setTimeout(() => finish(resolve), Math.max(0, delayMs));
+    signal?.addEventListener?.("abort", onAbort, { once: true });
+  });
 }
 
 /**
@@ -111,11 +144,30 @@ export class BaseExecutor {
     return { status: response.status, message: bodyText || `HTTP ${response.status}` };
   }
 
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null }) {
+  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null, attemptStartedAt = null, onProviderAttempt = null }) {
+    if (signal?.aborted) throw requestAbortError(signal.reason);
     const fallbackCount = this.getFallbackCount();
     let lastError = null;
     let lastStatus = 0;
     const retryAttemptsByUrl = {};
+    let providerAttemptStartedAt = Number.isSafeInteger(attemptStartedAt) && attemptStartedAt > 0
+      ? attemptStartedAt
+      : null;
+    let dispatchCount = 0;
+    const beginDispatch = () => {
+      const contextual = prepareProviderAttemptDispatch();
+      if (Number.isSafeInteger(contextual) && contextual > 0) {
+        providerAttemptStartedAt = contextual;
+        dispatchCount += 1;
+        return providerAttemptStartedAt;
+      }
+      if (dispatchCount > 0 || providerAttemptStartedAt === null) {
+        const allocated = typeof onProviderAttempt === "function" ? onProviderAttempt() : Date.now();
+        if (Number.isSafeInteger(allocated) && allocated > 0) providerAttemptStartedAt = allocated;
+      }
+      dispatchCount += 1;
+      return providerAttemptStartedAt;
+    };
 
     // Merge default retry config with provider-specific config
     const retryConfig = { ...DEFAULT_RETRY_CONFIG, ...this.config.retry };
@@ -128,17 +180,29 @@ export class BaseExecutor {
       // Hook: subclass may derive delay from the response (headers/body). null → skip retry, use fallback.
       let waitMs = delayMs;
       if (response && this.computeRetryDelay) {
-        const dynamic = await this.computeRetryDelay(response, retryAttemptsByUrl[urlIndex] + 1, delayMs);
+        let dynamic;
+        try {
+          dynamic = await this.computeRetryDelay(response, retryAttemptsByUrl[urlIndex] + 1, delayMs, {
+            signal,
+            maxBytes: 64 * 1024,
+            timeoutMs: 2_000,
+          });
+        } catch (error) {
+          cancelDiscardedResponse(response);
+          throw error;
+        }
         if (dynamic === false) return false; // hook vetoes retry (e.g. Retry-After too long)
         if (dynamic != null) waitMs = dynamic;
       }
       retryAttemptsByUrl[urlIndex]++;
       log?.debug?.("RETRY", `${reason} retry ${retryAttemptsByUrl[urlIndex]}/${attempts} after ${waitMs / 1000}s`);
-      await new Promise(resolve => setTimeout(resolve, waitMs));
+      cancelDiscardedResponse(response);
+      await waitForRetryDelay(waitMs, signal);
       return true;
     };
 
     for (let urlIndex = 0; urlIndex < fallbackCount; urlIndex++) {
+      if (signal?.aborted) throw requestAbortError(signal.reason);
       // Request context carries internal, request-scoped routing metadata without
       // placing private markers on provider credentials or outbound JSON bodies.
       // Extra arguments are backward-compatible with executors that do not use it.
@@ -162,6 +226,7 @@ export class BaseExecutor {
         let bodyStr = JSON.stringify(requestBody);
         const fetchT0 = Date.now();
         dbg("FETCH", `${this.provider.toUpperCase()} → ${url} | body=${bodyStr.length}B | connectTimeout=${timeoutMs}ms`);
+        beginDispatch();
         let response = await proxyAwareFetch(url, {
           method: "POST",
           headers,
@@ -170,7 +235,9 @@ export class BaseExecutor {
         }, proxyOptions);
         if (response.status === 400) {
           const clone = response.clone?.();
-          const errorText = clone?.text ? await clone.text() : "";
+          const errorText = clone
+            ? await readBoundedResponseText(clone, { signal, maxBytes: 64 * 1024, timeoutMs: 2_000 })
+            : "";
           const field = findOffendingField(errorText);
           if (
             field &&
@@ -183,11 +250,13 @@ export class BaseExecutor {
             delete requestBody[field];
             bodyStr = JSON.stringify(requestBody);
             log?.debug?.("RETRY", `400 mentioned unsupported field ${field}; stripping and retrying once`);
+            cancelDiscardedResponse(response);
             // Reset the connect timeout for the new upstream request.
             clearTimeout(connectTimer);
             connectCtrl = new AbortController();
             connectTimer = setTimeout(() => connectCtrl.abort(new Error("fetch connect timeout")), timeoutMs);
             mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
+            beginDispatch();
             response = await proxyAwareFetch(url, {
               method: "POST",
               headers,
@@ -206,17 +275,28 @@ export class BaseExecutor {
         if (this.shouldRetry(response.status, urlIndex)) {
           log?.debug?.("RETRY", `${response.status} on ${url}, trying fallback ${urlIndex + 1}`);
           lastStatus = response.status;
+          cancelDiscardedResponse(response);
           continue;
         }
 
-        return { response, url, headers, transformedBody: requestBody };
+        return {
+          response,
+          url,
+          headers,
+          transformedBody: requestBody,
+          attemptStartedAt: providerAttemptStartedAt,
+          terminalProvenance: "upstream",
+        };
       } catch (error) {
         clearTimeout(connectTimer);
         lastError = error;
         const isConnectTimeout = connectCtrl.signal.aborted && error.name === "AbortError";
         dbg("FETCH", `${this.provider.toUpperCase()} ✖ ${error.name}: ${error.message}${isConnectTimeout ? " (connect timeout)" : ""}`);
         // Connect timeout is internal — convert to retryable network error, don't propagate AbortError
-        if (error.name === "AbortError" && !isConnectTimeout) throw error;
+        if (error.name === "AbortError" && !isConnectTimeout) {
+          error.providerAttemptStartedAt = providerAttemptStartedAt;
+          throw error;
+        }
 
         // Map network/fetch exceptions to 502 retry config
         if (await tryRetry(urlIndex, HTTP_STATUS.BAD_GATEWAY, `network "${error.message}"`)) { urlIndex--; continue; }
@@ -225,11 +305,14 @@ export class BaseExecutor {
           log?.debug?.("RETRY", `Error on ${url}, trying fallback ${urlIndex + 1}`);
           continue;
         }
+        error.providerAttemptStartedAt = providerAttemptStartedAt;
         throw error;
       }
     }
 
-    throw lastError || new Error(`All ${fallbackCount} URLs failed with status ${lastStatus}`);
+    const error = lastError || new Error(`All ${fallbackCount} URLs failed with status ${lastStatus}`);
+    error.providerAttemptStartedAt = providerAttemptStartedAt;
+    throw error;
   }
 }
 

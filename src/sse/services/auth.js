@@ -1,12 +1,23 @@
 import { getProviderConnections, getApiKeyByKey, validateApiKey, updateProviderConnection, getSettings, getProxyPools } from "@/lib/localDb";
 import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
-import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
+import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, buildModelLockUpdate, getActiveModelLockUntil } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
 import * as log from "../utils/logger.js";
 import { timingSafeEqual } from "node:crypto";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
+import {
+  buildQuotaResourceKeys,
+  inspectProviderQuota,
+} from "@/shared/services/providerQuotaPreflight";
+import {
+  clearProviderRateLimitEvidence,
+  recordProviderRateLimitEvidence,
+} from "@/shared/services/providerRateLimitEvidence";
+import { resolveFallbackModelScope } from "open-sse/services/fallbackScope.js";
+import { getProviderQuotaConfig } from "open-sse/config/providerQuota.js";
+import { getModelQuotaFamily, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
 
 const CLI_AUTH_SALT = "9r-cli-auth";
 
@@ -45,6 +56,145 @@ function buildNoAuthCredential(providerSpecificData = {}, resolvedProxy = {}, co
   };
 }
 
+function throwIfAborted(signal) {
+  if (signal?.aborted) throw new DOMException("Provider request aborted", "AbortError");
+}
+
+function waitForSelectionTurn(promise, signal) {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(new DOMException("Provider request aborted", "AbortError"));
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener("abort", onAbort);
+      callback(value);
+    };
+    const onAbort = () => finish(reject, new DOMException("Provider request aborted", "AbortError"));
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => finish(resolve, value),
+      (error) => finish(reject, error),
+    );
+  });
+}
+
+/** Project a stored connection into the credential shape consumed by open-sse. */
+export async function projectProviderCredentials(connection, quotaPreflight = null) {
+  if (!connection) return null;
+  const resolvedProxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
+  return {
+    authType: connection.authType,
+    apiKey: connection.apiKey,
+    accessToken: connection.accessToken,
+    refreshToken: connection.refreshToken,
+    idToken: connection.idToken,
+    expiresAt: connection.expiresAt,
+    expiresIn: connection.expiresIn,
+    lastRefreshAt: connection.lastRefreshAt,
+    projectId: connection.projectId,
+    connectionName: connection.displayName || connection.name || connection.email || connection.id,
+    copilotToken: connection.providerSpecificData?.copilotToken,
+    providerSpecificData: {
+      ...(connection.providerSpecificData || {}),
+      connectionProxyEnabled: resolvedProxy.connectionProxyEnabled,
+      connectionProxyUrl: resolvedProxy.connectionProxyUrl,
+      connectionNoProxy: resolvedProxy.connectionNoProxy,
+      connectionProxyPoolId: resolvedProxy.proxyPoolId || null,
+      vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
+      strictProxy: resolvedProxy.strictProxy === true,
+      disableEnvProxy: resolvedProxy.disableEnvProxy === true,
+    },
+    connectionId: connection.id,
+    testStatus: connection.testStatus,
+    lastError: connection.lastError,
+    _connection: connection,
+    _quotaPreflight: quotaPreflight,
+  };
+}
+
+function requestedLockScopes(rawModel, boundedModel) {
+  return [...new Set([boundedModel, rawModel].filter((value) => value !== undefined))];
+}
+
+function requestedModelLockActive(connection, rawModel, boundedModel, now) {
+  return requestedModelLockUntil(connection, rawModel, boundedModel, now) !== null;
+}
+
+function requestedModelLockUntil(connection, rawModel, boundedModel, now) {
+  const deadlines = requestedLockScopes(rawModel, boundedModel)
+    .map((scope) => getActiveModelLockUntil(connection, scope, now))
+    .filter(Boolean)
+    .sort((left, right) => Date.parse(right) - Date.parse(left));
+  return deadlines[0] || null;
+}
+
+function blockedRetryAt(connection, decision, rawModel, boundedModel, now) {
+  const deadlines = [];
+  let unknown = false;
+  if (requestedModelLockActive(connection, rawModel, boundedModel, now)) {
+    const deadline = requestedModelLockUntil(connection, rawModel, boundedModel, now);
+    if (deadline) deadlines.push(deadline);
+    else unknown = true;
+  }
+  if (decision?.skip) {
+    if (decision.retryAt) deadlines.push(decision.retryAt);
+    else unknown = true;
+  }
+  if (unknown || deadlines.length === 0) return null;
+  return deadlines.sort((a, b) => Date.parse(b) - Date.parse(a))[0];
+}
+
+function summarizeBlockedConnections(connections, decisions, rawModel, boundedModel, now) {
+  const blocked = connections.filter((connection) =>
+    requestedModelLockActive(connection, rawModel, boundedModel, now) || decisions.get(connection.id)?.skip,
+  );
+  const legacyLocked = blocked.filter(
+    (connection) => requestedModelLockActive(connection, rawModel, boundedModel, now),
+  );
+  // Authentication failures must not be hidden by an earlier priority account's
+  // rate-limit lock. Legacy 429 deadlines are combined with quota decisions
+  // below so a no-reset exhaustion cannot expose the local breaker as provider
+  // Retry-After evidence.
+  const legacy = legacyLocked.find((connection) => [401, 403].includes(Number(connection.errorCode)))
+    || legacyLocked.find((connection) => Number(connection.errorCode) !== 429);
+  if (legacy) {
+    const code = Number(legacy.errorCode);
+    const status = code >= 400 && code <= 599 ? code : 503;
+    const message = status === 429
+      ? "Rate limited"
+      : status === 401
+      ? "Authentication failed"
+      : status === 403
+        ? "Access forbidden"
+        : "Provider unavailable";
+    const retryAfter = status === 429
+      ? requestedModelLockUntil(legacy, rawModel, boundedModel, now)
+      : null;
+    return {
+      status,
+      message,
+      retryAfter,
+      retryAfterHuman: retryAfter ? formatRetryAfter(retryAfter, now) : "",
+    };
+  }
+  const retries = blocked.map((connection) => blockedRetryAt(
+    connection,
+    decisions.get(connection.id),
+    rawModel,
+    boundedModel,
+    now,
+  ));
+  const earliest = retries.length > 0 && retries.every(Boolean) ? retries.sort()[0] : null;
+  return {
+    status: 429,
+    message: "Rate limited",
+    retryAfter: earliest,
+    retryAfterHuman: earliest ? formatRetryAfter(earliest, now) : "",
+  };
+}
+
 async function buildPublicNoAuthCredential(providerId) {
   const settings = await getSettings();
   const override = (settings.providerStrategies || {})[providerId] || {};
@@ -67,6 +217,9 @@ async function buildPublicNoAuthCredential(providerId) {
  * @param {string|null} model - Model name for per-model rate limit filtering
  */
 export async function getProviderCredentials(provider, excludeConnectionIds = null, model = null, options = {}) {
+  const signal = options?.signal || null;
+  const selectionNow = options?.now ?? Date.now();
+  throwIfAborted(signal);
   // Normalize to Set for consistent handling
   const excludeSet = excludeConnectionIds instanceof Set
     ? excludeConnectionIds
@@ -75,16 +228,42 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
   // Acquire mutex to prevent race conditions
   const currentMutex = selectionMutex;
   let resolveMutex;
+  let releaseAfterPredecessor = false;
   selectionMutex = new Promise(resolve => { resolveMutex = resolve; });
 
   try {
-    await currentMutex;
+    try {
+      await waitForSelectionTurn(currentMutex, signal);
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        releaseAfterPredecessor = true;
+        currentMutex.finally(() => resolveMutex?.());
+      }
+      throw error;
+    }
+    throwIfAborted(signal);
 
     // Resolve alias to provider ID (e.g., "kc" -> "kilocode")
     const providerId = resolveProviderId(provider);
+    const boundedModel = resolveFallbackModelScope(providerId, model);
 
     const connections = await getProviderConnections({ provider: providerId, isActive: true });
+    throwIfAborted(signal);
     log.debug("AUTH", `${provider} | total connections: ${connections.length}, excludeIds: ${excludeSet.size > 0 ? [...excludeSet].join(",") : "none"}, model: ${model || "any"}`);
+
+    const resourceKeys = options?.resourceKeys || buildQuotaResourceKeys({
+      provider: providerId,
+      modelCandidates: options?.modelCandidates || (model ? [model] : []),
+      quotaFamily: options?.quotaFamily || null,
+    });
+    const quotaDecisions = await inspectProviderQuota(connections, {
+      provider: providerId,
+      resourceKeys,
+      now: selectionNow,
+      snapshotsLoader: options?.quotaSnapshotsLoader || null,
+      fetchStateLoader: options?.quotaFetchStateLoader || null,
+    });
+    throwIfAborted(signal);
 
     const isNoAuthProvider = AI_PROVIDERS[providerId]?.noAuth === true;
     const publicFallbackAllowed = !excludeSet.has("noauth");
@@ -94,30 +273,31 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       // and never fall back to the public no-auth credential.
       if (NO_AUTH_STORED_DATA_PROVIDERS.has(providerId) && connections.length > 0) {
         const availableStoredConnections = connections.filter(
-          (c) => !excludeSet.has(c.id) && !isModelLockActive(c, model)
+          (c) => !excludeSet.has(c.id) && !requestedModelLockActive(c, model, boundedModel, selectionNow) && !quotaDecisions.get(c.id)?.skip
         );
         const connection = preferredConnectionId
           ? availableStoredConnections.find((c) => c.id === preferredConnectionId)
           : availableStoredConnections[0];
         if (connection) {
           const resolvedProxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
-          return buildNoAuthCredential(connection.providerSpecificData || {}, resolvedProxy, connection);
+          return {
+            ...buildNoAuthCredential(connection.providerSpecificData || {}, resolvedProxy, connection),
+            _quotaPreflight: quotaDecisions.get(connection.id) || null,
+          };
         }
         // If all stored connections are model-locked, surface the earliest retry time so callers can back off.
-        const lockedConnections = connections.filter(
-          (c) => !excludeSet.has(c.id) && isModelLockActive(c, model)
+        const blockedConnections = connections.filter(
+          (c) => !excludeSet.has(c.id) && (requestedModelLockActive(c, model, boundedModel, selectionNow) || quotaDecisions.get(c.id)?.skip)
         );
-        const expiries = lockedConnections.map((c) => getEarliestModelLockUntil(c)).filter(Boolean);
-        const earliest = expiries.sort()[0] || null;
-        if (earliest) {
-          const earliestConn = lockedConnections[0];
-          log.warn("AUTH", `${provider} | all ${connections.length} stored ${providerId} accounts locked for ${model || "all"} (${formatRetryAfter(earliest)}) | lastError=${earliestConn?.lastError?.slice(0, 50)}`);
+        if (blockedConnections.length > 0) {
+          const summary = summarizeBlockedConnections(blockedConnections, quotaDecisions, model, boundedModel, selectionNow);
+          log.warn("AUTH", `${provider} | all stored accounts unavailable for requested scope`);
           return {
             allRateLimited: true,
-            retryAfter: earliest,
-            retryAfterHuman: formatRetryAfter(earliest),
-            lastError: earliestConn?.lastError || null,
-            lastErrorCode: earliestConn?.errorCode || null,
+            retryAfter: summary.retryAfter,
+            retryAfterHuman: summary.retryAfterHuman,
+            lastError: summary.message,
+            lastErrorCode: summary.status,
           };
         }
         // Stored connections exist but all are excluded or unavailable; do not fall back to the public credential.
@@ -140,17 +320,18 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     // Filter out model-locked and excluded connections
     const availableConnections = connections.filter(c => {
       if (excludeSet.has(c.id)) return false;
-      if (isModelLockActive(c, model)) return false;
+      if (requestedModelLockActive(c, model, boundedModel, selectionNow)) return false;
+      if (quotaDecisions.get(c.id)?.skip) return false;
       return true;
     });
 
     log.debug("AUTH", `${provider} | available: ${availableConnections.length}/${connections.length}`);
     connections.forEach(c => {
       const excluded = excludeSet.has(c.id);
-      const locked = isModelLockActive(c, model);
-      if (excluded || locked) {
-        const lockUntil = getEarliestModelLockUntil(c);
-        log.debug("AUTH", `  → ${c.id?.slice(0, 8)} | ${excluded ? "excluded" : ""} ${locked ? `modelLocked(${model}) until ${lockUntil}` : ""}`);
+      const locked = requestedModelLockActive(c, model, boundedModel, selectionNow);
+      const quotaBlocked = quotaDecisions.get(c.id)?.skip === true;
+      if (excluded || locked || quotaBlocked) {
+        log.debug("AUTH", `  → ${c.id?.slice(0, 8)} | ${excluded ? "excluded" : ""} ${locked ? "legacy_lock" : ""} ${quotaBlocked ? `quota_${quotaDecisions.get(c.id).reason}` : ""}`);
       }
     });
 
@@ -163,18 +344,18 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         return buildPublicNoAuthCredential(providerId);
       }
       // Find earliest lock expiry across all connections for retry timing
-      const lockedConns = connections.filter(c => isModelLockActive(c, model));
-      const expiries = lockedConns.map(c => getEarliestModelLockUntil(c)).filter(Boolean);
-      const earliest = expiries.sort()[0] || null;
-      if (earliest) {
-        const earliestConn = lockedConns[0];
-        log.warn("AUTH", `${provider} | all ${connections.length} accounts locked for ${model || "all"} (${formatRetryAfter(earliest)}) | lastError=${earliestConn?.lastError?.slice(0, 50)}`);
+      const blockedConns = connections.filter(
+        (c) => !excludeSet.has(c.id) && (requestedModelLockActive(c, model, boundedModel, selectionNow) || quotaDecisions.get(c.id)?.skip)
+      );
+      if (blockedConns.length > 0) {
+        const summary = summarizeBlockedConnections(blockedConns, quotaDecisions, model, boundedModel, selectionNow);
+        log.warn("AUTH", `${provider} | all accounts unavailable for requested scope`);
         return {
           allRateLimited: true,
-          retryAfter: earliest,
-          retryAfterHuman: formatRetryAfter(earliest),
-          lastError: earliestConn?.lastError || null,
-          lastErrorCode: earliestConn?.errorCode || null
+          retryAfter: summary.retryAfter,
+          retryAfterHuman: summary.retryAfterHuman,
+          lastError: summary.message,
+          lastErrorCode: summary.status,
         };
       }
       log.warn("AUTH", `${provider} | all ${connections.length} accounts unavailable`);
@@ -215,10 +396,10 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         // Stay with current account
         connection = current;
         // Update lastUsedAt and increment count (await to ensure persistence)
-        await updateProviderConnection(connection.id, {
+        connection = await updateProviderConnection(connection.id, {
           lastUsedAt: new Date().toISOString(),
           consecutiveUseCount: (connection.consecutiveUseCount || 0) + 1
-        });
+        }) || connection;
       } else {
         // Pick the least recently used (excluding current if possible)
         const sortedByOldest = [...availableConnections].sort((a, b) => {
@@ -231,52 +412,20 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         connection = sortedByOldest[0];
 
         // Update lastUsedAt and reset count to 1 (await to ensure persistence)
-        await updateProviderConnection(connection.id, {
+        connection = await updateProviderConnection(connection.id, {
           lastUsedAt: new Date().toISOString(),
           consecutiveUseCount: 1
-        });
+        }) || connection;
       }
     } else {
       // Default: fill-first (already sorted by priority in getProviderConnections)
       connection = availableConnections[0];
     }
 
-    const resolvedProxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
-
-    return {
-      authType: connection.authType,
-      apiKey: connection.apiKey,
-      accessToken: connection.accessToken,
-      refreshToken: connection.refreshToken,
-      idToken: connection.idToken,
-      expiresAt: connection.expiresAt,
-      expiresIn: connection.expiresIn,
-      lastRefreshAt: connection.lastRefreshAt,
-      projectId: connection.projectId,
-      connectionName: connection.displayName || connection.name || connection.email || connection.id,
-      copilotToken: connection.providerSpecificData?.copilotToken,
-      providerSpecificData: {
-        ...(connection.providerSpecificData || {}),
-        connectionProxyEnabled: resolvedProxy.connectionProxyEnabled,
-        connectionProxyUrl: resolvedProxy.connectionProxyUrl,
-        connectionNoProxy: resolvedProxy.connectionNoProxy,
-        connectionProxyPoolId: resolvedProxy.proxyPoolId || null,
-        vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
-        // Preserve the resolver's route policy alongside its endpoint. The
-        // chat request, proactive refresh, 401/403 refresh, and retry all read
-        // these immutable fields from the selected credential.
-        strictProxy: resolvedProxy.strictProxy === true,
-        disableEnvProxy: resolvedProxy.disableEnvProxy === true,
-      },
-      connectionId: connection.id,
-      // Include current status for optimization check
-      testStatus: connection.testStatus,
-      lastError: connection.lastError,
-      // Pass full connection for clearAccountError to read modelLock_* keys
-      _connection: connection
-    };
+    throwIfAborted(signal);
+    return projectProviderCredentials(connection, quotaDecisions.get(connection.id) || null);
   } finally {
-    if (resolveMutex) resolveMutex();
+    if (!releaseAfterPredecessor && resolveMutex) resolveMutex();
   }
 }
 
@@ -290,56 +439,136 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
  * @param {string|null} model - The specific model that triggered the error
  * @returns {{ shouldFallback: boolean, cooldownMs: number }}
  */
-export async function markAccountUnavailable(connectionId, status, errorText, provider = null, model = null, resetsAtMs = null) {
+export async function markAccountUnavailable(connectionId, status, errorText, provider = null, model = null, resetsAtMs = null, context = {}) {
   if (!connectionId || connectionId === "noauth") return { shouldFallback: false, cooldownMs: 0 };
+  const signal = context?.signal || null;
+  throwIfAborted(signal);
+  const observedAt = Number.isSafeInteger(context?.attemptStartedAt)
+    ? context.attemptStartedAt
+    : Date.now();
   const connections = await getProviderConnections({ provider });
+  throwIfAborted(signal);
   const conn = connections.find(c => c.id === connectionId);
   const backoffLevel = conn?.backoffLevel || 0;
 
   if ((provider === "antigravity" || provider === "agy") && isAntigravityCapacityError(status, errorText)) {
-    const connName = conn?.displayName || conn?.name || conn?.email || connectionId.slice(0, 8);
-    log.warn("AUTH", `${connName} hit Antigravity capacity for ${model || "unknown model"}; fallback without cooldown [${status}]`);
+    log.warn("AUTH", `${connectionId.slice(0, 8)} hit Antigravity capacity; fallback without cooldown [${status}]`);
     return { shouldFallback: true, cooldownMs: 0 };
   }
 
   if (isRecoverableCloudCodeProject403(provider, status, errorText)) {
-    const connName = conn?.displayName || conn?.name || conn?.email || connectionId.slice(0, 8);
-    log.warn("AUTH", `${connName} hit recoverable Cloud Code project 403 for ${model || "unknown model"}; fallback without cooldown`);
+    log.warn("AUTH", `${connectionId.slice(0, 8)} hit recoverable Cloud Code project 403; fallback without cooldown`);
     return { shouldFallback: true, cooldownMs: 0 };
   }
 
   // Provider-specific precise cooldown (e.g. codex usage_limit_reached resets_at) overrides backoff
   let shouldFallback, cooldownMs, newBackoffLevel;
-  if (resetsAtMs && resetsAtMs > Date.now()) {
+  const now = Date.now();
+  const evidenceState = context?.rateLimitEvidence?.state === "exhausted" ? "exhausted" : "cooldown";
+  // When bounded evidence exists, its null reset is authoritative. The legacy
+  // argument is consulted only for callers that have no normalized evidence.
+  const hasRateLimitEvidence = Boolean(
+    context?.rateLimitEvidence && typeof context.rateLimitEvidence === "object",
+  );
+  const rawProviderReset = hasRateLimitEvidence
+    ? context.rateLimitEvidence.resetAtMs
+    : resetsAtMs;
+  const providerReset = Number(rawProviderReset);
+  const normalizedReset = Number.isFinite(providerReset) && providerReset > now
+    ? Math.min(providerReset, now + MAX_RATE_LIMIT_COOLDOWN_MS)
+    : null;
+  if (normalizedReset !== null) {
     shouldFallback = true;
-    cooldownMs = Math.min(resetsAtMs - Date.now(), MAX_RATE_LIMIT_COOLDOWN_MS);
+    cooldownMs = Math.ceil(Math.min(normalizedReset - now, MAX_RATE_LIMIT_COOLDOWN_MS));
     newBackoffLevel = 0;
   } else {
     ({ shouldFallback, cooldownMs, newBackoffLevel } = checkFallbackError(status, errorText, backoffLevel));
   }
   if (!shouldFallback) return { shouldFallback: false, cooldownMs: 0 };
 
-  const reason = typeof errorText === "string" ? errorText.slice(0, 100) : "Provider error";
-  const lockUpdate = buildModelLockUpdate(model, cooldownMs);
-
-  await updateProviderConnection(connectionId, {
-    ...lockUpdate,
-    testStatus: "unavailable",
-    lastError: reason,
-    errorCode: status,
-    lastErrorAt: new Date().toISOString(),
-    backoffLevel: newBackoffLevel ?? backoffLevel
-  });
-
-  const lockKey = Object.keys(lockUpdate)[0];
-  const connName = conn?.displayName || conn?.name || conn?.email || connectionId.slice(0, 8);
-  log.warn("AUTH", `${connName} locked ${lockKey} for ${Math.round(cooldownMs / 1000)}s [${status}]`);
-
-  if (provider && status && reason) {
-    console.error(`❌ ${provider} [${status}]: ${reason}`);
+  cooldownMs = Math.max(0, Math.ceil(cooldownMs));
+  const deadline = normalizedReset !== null
+    ? normalizedReset
+    : now + cooldownMs;
+  const legacyCooldownMs = Math.max(
+    0,
+    Math.min(Math.ceil(deadline - observedAt), MAX_RATE_LIMIT_COOLDOWN_MS),
+  );
+  const reasonCode = Number(status) === 429
+    ? "rate_limited"
+    : (Number(status) === 401 || Number(status) === 403)
+      ? "authentication_error"
+      : Number(status) === 502
+        ? "network_error"
+        : "provider_error";
+  const alias = PROVIDER_ID_TO_ALIAS[provider] || provider;
+  const quotaFamily = getModelQuotaFamily(alias, model);
+  const hasFamilyScope = Boolean(quotaFamily && getProviderQuotaConfig(provider)?.preflightScopes?.quotaFamilies?.[quotaFamily]);
+  const accountWideRuntime = Number(status) === 429
+    && evidenceState === "exhausted"
+    && !hasFamilyScope
+    && getProviderQuotaConfig(provider)?.runtimeScopes?.exhausted === "account";
+  const fallbackModel = resolveFallbackModelScope(provider, model, { accountWide: accountWideRuntime });
+  let atomicApplied = false;
+  try {
+    const db = await import("@/lib/localDb");
+    if (typeof db.recordProviderConnectionFallbackState === "function") {
+      await db.recordProviderConnectionFallbackState(connectionId, {
+        model: fallbackModel,
+        status,
+        reasonCode,
+        cooldownMs: legacyCooldownMs,
+        backoffLevel: newBackoffLevel ?? backoffLevel,
+        observedAt,
+      }, { signal });
+      atomicApplied = true;
+    }
+  } catch (error) {
+    if (error?.name === "AbortError") throw error;
+    log.warn("AUTH", "Atomic fallback-state update failed; using compatibility update");
+  }
+  if (!atomicApplied) {
+    const lockUpdate = buildModelLockUpdate(fallbackModel, legacyCooldownMs);
+    await updateProviderConnection(connectionId, {
+      ...lockUpdate,
+      testStatus: "unavailable",
+      lastError: reasonCode === "rate_limited" ? "Rate limited" : "Provider unavailable",
+      errorCode: status,
+      lastErrorAt: new Date(observedAt).toISOString(),
+      backoffLevel: newBackoffLevel ?? backoffLevel,
+    });
   }
 
-  return { shouldFallback: true, cooldownMs };
+  if (Number(status) === 429) {
+    try {
+      await recordProviderRateLimitEvidence({
+        connectionId,
+        provider,
+        model,
+        attemptStartedAt: observedAt,
+        state: evidenceState,
+        // A no-reset plan exhaustion is persisted without inventing the short
+        // compatibility breaker as a provider reset. Generic cooldown evidence
+        // may use that bounded local deadline.
+        resetAtMs: evidenceState === "exhausted" ? normalizedReset : (normalizedReset || deadline),
+        signal,
+      });
+    } catch (error) {
+      if (error?.name === "AbortError") throw error;
+      log.warn("QUOTA", "Runtime rate-limit evidence could not be persisted");
+    }
+  }
+
+  log.warn("AUTH", `${connectionId.slice(0, 8)} locked requested scope for ${Math.round(cooldownMs / 1000)}s [${status}]`);
+
+  const retryAtKnown = !(Number(status) === 429 && evidenceState === "exhausted" && normalizedReset === null);
+  return {
+    shouldFallback: true,
+    cooldownMs,
+    retryAt: retryAtKnown ? new Date(deadline).toISOString() : null,
+    retryAtKnown,
+    status: Number(status) || 503,
+  };
 }
 
 /**
@@ -351,39 +580,61 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
  * @param {object} currentConnection - credentials object (has _connection) or raw connection
  * @param {string|null} model - model that succeeded
  */
-export async function clearAccountError(connectionId, currentConnection, model = null) {
+export async function clearAccountError(connectionId, currentConnection, model = null, context = {}) {
   if (!connectionId || connectionId === "noauth") return;
   const conn = currentConnection._connection || currentConnection;
-  const now = Date.now();
-  const allLockKeys = Object.keys(conn).filter(k => k.startsWith("modelLock_"));
-
-  if (!conn.testStatus && !conn.lastError && allLockKeys.length === 0) return;
-
-  // Keys to clear: current model's lock + all expired locks
-  const keysToClear = allLockKeys.filter(k => {
-    if (model && k === `modelLock_${model}`) return true; // succeeded model
-    if (model && k === "modelLock___all") return true;    // account-level lock
-    const expiry = conn[k];
-    return expiry && new Date(expiry).getTime() <= now;   // expired
-  });
-
-  if (keysToClear.length === 0 && conn.testStatus !== "unavailable" && !conn.lastError) return;
-
-  // Check if any active locks remain after clearing
-  const remainingActiveLocks = allLockKeys.filter(k => {
-    if (keysToClear.includes(k)) return false;
-    const expiry = conn[k];
-    return expiry && new Date(expiry).getTime() > now;
-  });
-
-  const clearObj = Object.fromEntries(keysToClear.map(k => [k, null]));
-
-  // Only reset error state if no active locks remain
-  if (remainingActiveLocks.length === 0) {
-    Object.assign(clearObj, { testStatus: "active", lastError: null, lastErrorAt: null, backoffLevel: 0 });
+  const signal = context?.signal || null;
+  throwIfAborted(signal);
+  const now = Number.isSafeInteger(context?.attemptStartedAt)
+    ? context.attemptStartedAt
+    : Date.now();
+  const provider = context?.provider || conn?.provider;
+  const fallbackModel = resolveFallbackModelScope(provider, model);
+  let atomicApplied = false;
+  try {
+    const db = await import("@/lib/localDb");
+    if (typeof db.clearProviderConnectionFallbackState === "function") {
+      await db.clearProviderConnectionFallbackState(connectionId, { model: fallbackModel, observedAt: now }, { signal });
+      atomicApplied = true;
+    }
+  } catch (error) {
+    if (error?.name === "AbortError") throw error;
+    log.warn("AUTH", "Atomic fallback-state clear failed; using compatibility update");
   }
 
-  await updateProviderConnection(connectionId, clearObj);
+  const allLockKeys = Object.keys(conn).filter(k => k.startsWith("modelLock_"));
+  if (!atomicApplied && (conn.testStatus || conn.lastError || allLockKeys.length > 0)) {
+    const keysToClear = allLockKeys.filter(k => {
+      if (fallbackModel && k === `modelLock_${fallbackModel}`) return true;
+      if (model && k === `modelLock_${model}`) return true;
+      if (model && k === "modelLock___all") return true;
+      const expiry = conn[k];
+      return expiry && new Date(expiry).getTime() <= now;
+    });
+    const remainingActiveLocks = allLockKeys.filter(k => {
+      if (keysToClear.includes(k)) return false;
+      const expiry = conn[k];
+      return expiry && new Date(expiry).getTime() > now;
+    });
+    const clearObj = Object.fromEntries(keysToClear.map(k => [k, null]));
+    if (remainingActiveLocks.length === 0) {
+      Object.assign(clearObj, { testStatus: "active", lastError: null, lastErrorAt: null, backoffLevel: 0 });
+    }
+    if (Object.keys(clearObj).length > 0) await updateProviderConnection(connectionId, clearObj);
+  }
+
+  try {
+    await clearProviderRateLimitEvidence({
+      connectionId,
+      provider,
+      model,
+      attemptStartedAt: now,
+      signal,
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") throw error;
+    log.warn("QUOTA", "Runtime rate-limit evidence could not be cleared");
+  }
 }
 
 /**

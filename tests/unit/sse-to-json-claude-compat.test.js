@@ -34,7 +34,7 @@ function sseResponse(chunks) {
 const STREAM_WITH_THINKING = [
   { id: "chatcmpl-x", object: "chat.completion.chunk", created: 1, model: "upstream-m", choices: [{ index: 0, delta: { role: "assistant", reasoning_content: "secret chain" }, finish_reason: null }] },
   { id: "chatcmpl-x", object: "chat.completion.chunk", created: 1, model: "upstream-m", choices: [{ index: 0, delta: { content: "ALLOW" }, finish_reason: "stop" }] },
-  { id: "chatcmpl-x", object: "chat.completion.chunk", created: 1, model: "upstream-m", choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 } },
+  { id: "chatcmpl-x", object: "chat.completion.chunk", created: 1, model: "upstream-m", choices: [], usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 } },
 ];
 
 function baseOpts(overrides = {}) {

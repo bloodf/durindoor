@@ -217,4 +217,31 @@ describe("healthMonitor cache", () => {
     expect(summary.healthy).toBe(0);
     expect(summary.down).toBe(0);
   });
+
+  it("keeps transport health separate while exposing the shared quota decision", async () => {
+    const clock = fakeClock();
+    const loader = async () => [CONN("quota-blocked", "codex"), CONN("quota-open", "codex")];
+    const quotaInspector = async (connections) => new Map(connections.map((connection) => [
+      connection.id,
+      connection.id === "quota-blocked"
+        ? { eligible: false, skip: true, reason: "cooldown", freshness: "fresh", retryAt: "SECRET_RESET_NOT_PUBLIC" }
+        : { eligible: true, skip: false, reason: "available", freshness: "fresh" },
+    ]));
+    const payload = await getHealthPayload({
+      now: clock.now,
+      connectionsLoader: loader,
+      prober: async () => ({ valid: true, status: 200 }),
+      quotaInspector,
+    });
+
+    expect(payload.providers.map((provider) => provider.state)).toEqual(["healthy", "healthy"]);
+    expect(payload.providers[0].quota).toEqual({
+      eligible: false,
+      skip: true,
+      reason: "cooldown",
+      freshness: "fresh",
+    });
+    expect(payload.summary).toMatchObject({ healthy: 2, quotaUnavailable: 1 });
+    expect(JSON.stringify(payload)).not.toContain("SECRET_RESET_NOT_PUBLIC");
+  });
 });

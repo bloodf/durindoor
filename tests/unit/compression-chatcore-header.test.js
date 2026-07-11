@@ -107,6 +107,21 @@ describe("handleChatCore compression header wiring", () => {
       },
       headerValue: "caveman|12.5%",
     }));
+    executeMock.mockResolvedValueOnce({
+      response: new Response(JSON.stringify({
+        model: "llama3",
+        created_at: "2026-07-10T12:00:00.000Z",
+        message: { role: "assistant", content: "ok" },
+        done: true,
+        done_reason: "stop",
+        prompt_eval_count: 2,
+        eval_count: 1,
+      }), { status: 200, headers: { "content-type": "application/json" } }),
+      url: "http://localhost:11434/api/chat",
+      headers: {},
+      transformedBody: null,
+      terminalProvenance: "upstream",
+    });
 
     // ollama-local has no forceStream/forceNonStreaming, body.stream=false,
     // so chatCore naturally routes through handleNonStreamingResponse (JSON).

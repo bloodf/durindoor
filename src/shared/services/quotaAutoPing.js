@@ -1,37 +1,42 @@
 // Quota auto-ping scheduler: warms 5h windows by sending tiny opt-in requests right after reset.
 import "open-sse/index.js";
 
-import { getSettings, getProviderConnections, updateProviderConnection } from "@/lib/localDb";
-import { getClaudeUsage } from "open-sse/services/usage/claude.js";
-import { getCodexUsage } from "open-sse/services/usage/codex.js";
+import {
+  getSettings,
+  getProviderConnections,
+  updateProviderConnection,
+  listProviderQuotaSnapshots,
+  getQuotaFetchState,
+} from "@/lib/localDb";
 import { getExecutor } from "open-sse/executors/index.js";
 import { CLAUDE_CLI_SPOOF_HEADERS } from "open-sse/providers/shared.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { refreshAndUpdateCredentials } from "@/shared/services/providerCredentials";
+import { refreshProviderQuota } from "@/shared/services/providerQuotaTracker";
+import {
+  buildQuotaResourceKeys,
+  evaluateProviderQuotaPreflight,
+  inspectProviderQuota,
+} from "@/shared/services/providerQuotaPreflight";
 import { QUOTA_AUTOPING_CONFIG } from "@/shared/constants/config";
+import { readBoundedResponseText } from "open-sse/utils/error.js";
+import { createUpstreamTerminalTracker } from "open-sse/utils/streamTerminal.js";
+import { FORMATS } from "open-sse/translator/formats.js";
 
 const C = QUOTA_AUTOPING_CONFIG;
 const CLAUDE_PING_URL = "https://api.anthropic.com/v1/messages?beta=true";
 
 const providerHandlers = {
-  claude: {
-    getUsage: getClaudeUsage,
-    sendPing: sendClaudePing,
-  },
-  codex: {
-    getUsage: (accessToken, proxyOptions, connection) =>
-      getCodexUsage(accessToken, connection?.providerSpecificData, proxyOptions),
-    sendPing: sendCodexPing,
-  },
+  claude: { sendPing: sendClaudePing },
+  codex: { sendPing: sendCodexPing },
 };
 
 // Survive Next.js hot reload and keep one scheduler per server process.
 const g = (global.__quotaAutoPing ??= {
   interval: null,
   running: false,
-  resetCache: {},
-  failureCache: {},
+  pingFailureUntil: {},
   inflightControllers: {},
   rerunRequested: false,
 });
@@ -53,38 +58,50 @@ function getResetDriftMs(previousResetAt, nextResetAt) {
   return nextMs - previousMs;
 }
 
-function toFiniteNumber(value, fallback = null) {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return fallback;
-}
-
-function isQuotaExhausted(quota) {
-  if (!quota || quota.unlimited === true) return false;
-  const remaining = toFiniteNumber(quota.remaining);
-  if (remaining !== null) return remaining <= 0;
-
-  const used = toFiniteNumber(quota.used);
-  const total = toFiniteNumber(quota.total);
-  return total !== null && total > 0 && used !== null && used >= total;
-}
-
 function wasPingedRecently(connection, intervalMs, nowMs = Date.now()) {
   if (!intervalMs) return false;
   const lastPingAtMs = new Date(connection.lastPingAt).getTime();
   return Number.isFinite(lastPingAtMs) && nowMs - lastPingAtMs < intervalMs;
 }
 
-function isBlockingQuotaName(name, sessionKey) {
-  if (name === sessionKey) return false;
-  return !String(name).toLowerCase().includes("session");
+function isFreshSnapshot(snapshot, now = Date.now()) {
+  const observedAt = Date.parse(snapshot?.timing?.observedAt || "");
+  const staleAt = Date.parse(snapshot?.timing?.staleAt || "");
+  return Number.isFinite(observedAt) && observedAt <= now && Number.isFinite(staleAt) && staleAt > now;
 }
 
-function hasExhaustedBlockingQuota(quotas, sessionKey) {
-  return Object.entries(quotas || {}).some(([name, quota]) => isBlockingQuotaName(name, sessionKey) && isQuotaExhausted(quota));
+function sessionSnapshot(snapshots, connectionId) {
+  return (snapshots || [])
+    .filter((snapshot) => (
+      snapshot?.identity?.connectionId === connectionId
+      && snapshot?.identity?.resourceKey === "scope:account"
+      && snapshot?.identity?.dimensionKey === "requests:session"
+    ))
+    .sort((a, b) => Date.parse(b.timing.observedAt) - Date.parse(a.timing.observedAt))[0] || null;
+}
+
+function hasBlockingLongWindow(snapshots, connectionId, provider, model, now) {
+  const nonSession = (snapshots || []).filter(
+    (snapshot) => snapshot?.identity?.dimensionKey !== "requests:session",
+  );
+  return evaluateProviderQuotaPreflight(nonSession, {
+    connectionId,
+    provider,
+    resourceKeys: buildQuotaResourceKeys({ provider, modelCandidates: [model] }),
+    now,
+  }).skip;
+}
+
+function prunePingFailures(state, now = Date.now()) {
+  state.pingFailureUntil ||= {};
+  for (const [key, deadline] of Object.entries(state.pingFailureUntil)) {
+    if (!Number.isFinite(deadline) || deadline <= now) delete state.pingFailureUntil[key];
+  }
+  const entries = Object.entries(state.pingFailureUntil).sort((left, right) => left[1] - right[1]);
+  while (entries.length > 512) {
+    const [key] = entries.shift();
+    delete state.pingFailureUntil[key];
+  }
 }
 
 function shouldPingForReset(providerConfig, cachedReset, resetAt, now) {
@@ -114,11 +131,13 @@ async function sendClaudePing(connection, providerConfig, proxyOptions, deps, si
       ...CLAUDE_CLI_SPOOF_HEADERS,
       "Authorization": `Bearer ${connection.accessToken}`,
       "content-type": "application/json",
+      "accept": "text/event-stream",
     },
     body: JSON.stringify({
       model: providerConfig.pingModel,
       max_tokens: providerConfig.pingMaxTokens,
       messages: [{ role: "user", content: providerConfig.pingText }],
+      stream: true,
     }),
     signal,
   }, proxyOptions);
@@ -126,8 +145,7 @@ async function sendClaudePing(connection, providerConfig, proxyOptions, deps, si
     await cancelResponseBody(res, signal);
     return false;
   }
-  await drainResponseBody(res, signal);
-  return true;
+  return validatePingTerminal(res, FORMATS.CLAUDE, signal);
 }
 
 function buildCodexPingInput(text) {
@@ -138,28 +156,49 @@ function buildCodexPingInput(text) {
   }];
 }
 
-async function drainResponseBody(response, signal) {
-  const reader = response?.body?.getReader?.();
-  if (!reader) {
-    if (typeof response?.text === "function") {
-      await awaitWithSignal(response.text(), signal);
+async function validatePingTerminal(response, format, signal) {
+  const text = await readBoundedResponseText(response, {
+    signal,
+    maxBytes: 64 * 1024,
+    timeoutMs: Math.min(C.pingTimeoutMs || 45_000, 10_000),
+  });
+  if (!text.trim()) return false;
+
+  const terminal = createUpstreamTerminalTracker({ format });
+  let eventName = null;
+  let sawData = false;
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith(":")) continue;
+    if (trimmed.startsWith("event:")) {
+      eventName = trimmed.slice(6).trim() || null;
+      continue;
     }
-    return;
+    if (!trimmed.startsWith("data:")) continue;
+    sawData = true;
+    const payload = trimmed.slice(5).trim();
+    if (!payload) return false;
+    if (payload === "[DONE]") {
+      terminal.observe({ rawDone: true, eventName });
+      eventName = null;
+      continue;
+    }
+    let chunk;
+    try { chunk = JSON.parse(payload); }
+    catch { return false; }
+    terminal.observe({ chunk, eventName });
+    eventName = null;
   }
 
-  try {
-    while (true) {
-      const { done } = await awaitWithSignal(reader.read(), signal);
-      if (done) return;
+  if (!sawData) {
+    try {
+      const chunk = JSON.parse(text);
+      terminal.observe({ chunk, eventName: chunk?.type || null });
+    } catch {
+      return false;
     }
-  } catch (error) {
-    if (signal?.aborted) {
-      try { await reader.cancel?.(signal.reason); } catch { /* noop */ }
-    }
-    throw error;
-  } finally {
-    reader.releaseLock?.();
   }
+  return terminal.outcome === "success";
 }
 
 async function cancelResponseBody(response, signal) {
@@ -198,90 +237,210 @@ async function sendCodexPing(connection, providerConfig, proxyOptions, deps, sig
   }
 
   // Codex only starts the 5h window after the streaming response completes.
-  await drainResponseBody(response, signal);
-  return true;
+  return validatePingTerminal(response, FORMATS.OPENAI_RESPONSES, signal);
 }
 
 function shouldSkipAfterFailure(state, key, nowMs = Date.now()) {
-  const failedAt = state.failureCache[key];
-  return failedAt && nowMs - failedAt < C.failureCooldownMs;
+  const retryAt = state.pingFailureUntil?.[key];
+  return Number.isFinite(retryAt) && retryAt > nowMs;
 }
 
 async function pingConnectionCore(conn, provider, providerConfig, handler, deps, state, signal) {
   const key = cacheKey(provider, conn.id);
-
-  // resetAt is stable for time-based windows; Codex polls every tick because inactive windows slide forward.
-  const cachedReset = state.resetCache[key];
-  if (!providerConfig.pingWhenResetAtSlides && cachedReset && Date.now() < new Date(cachedReset).getTime() - C.refreshAheadMs) return;
-
-  // Avoid hammering provider auth/quota endpoints if a ping failed recently.
+  state.pingFailureUntil ||= {};
+  prunePingFailures(state);
+  // The breaker protects only the optional paid ping path. Provider-quota fetch
+  // throttling and failure state belong to the Batch-2 tracker/repository.
   if (shouldSkipAfterFailure(state, key)) return;
 
-  const proxyCfg = await deps.resolveConnectionProxyConfig(conn.providerSpecificData);
-  signal.throwIfAborted();
-  const proxyOptions = buildProxyOptions(proxyCfg);
-
-  let connection = conn;
+  const nowBeforeRefresh = Date.now();
+  let priorSnapshots;
   try {
-    const r = await deps.refreshAndUpdateCredentials(connection, false, proxyOptions);
+    priorSnapshots = await deps.listProviderQuotaSnapshots({
+      connectionId: conn.id,
+      provider,
+      includeStale: true,
+      now: nowBeforeRefresh,
+    });
+  } catch {
+    console.warn(`[AutoPing] ${provider}:${conn.id}: quota state read failed`);
+    return;
+  }
+  signal.throwIfAborted();
+  const priorSession = sessionSnapshot(priorSnapshots, conn.id);
+  const priorResetAt = priorSession?.timing?.resetAt || null;
+  const preflight = await inspectProviderQuota([conn], {
+    provider,
+    resourceKeys: buildQuotaResourceKeys({ provider, modelCandidates: [providerConfig.pingModel] }),
+    now: nowBeforeRefresh,
+    snapshotsLoader: async () => priorSnapshots,
+    fetchStateLoader: deps.getQuotaFetchState
+      ? (query) => deps.getQuotaFetchState(query, { now: nowBeforeRefresh })
+      : async () => null,
+  });
+  const priorDecision = preflight.get(conn.id);
+  if (priorDecision?.reason === "tracker_error" && priorDecision.shouldRefresh === false) return;
+  // Time-based windows do not need another upstream read until close to reset.
+  // Codex is intentionally refreshed each tick because an inactive 5h window
+  // slides forward and that drift is the signal to ping.
+  if (
+    !providerConfig.pingWhenResetAtSlides
+    && priorResetAt
+    && nowBeforeRefresh < Date.parse(priorResetAt) - C.refreshAheadMs
+  ) return;
+
+  let refreshedQuota;
+  try {
+    refreshedQuota = await deps.refreshProviderQuota(conn, { signal, force: true });
     signal.throwIfAborted();
-    connection = r.connection;
   } catch (e) {
     if (signal.aborted || e?.name === "AbortError") throw signal.reason || e;
-    state.failureCache[key] = Date.now();
+    console.warn(`[AutoPing] ${provider}:${conn.id}: quota refresh failed`);
+    return;
+  }
+  if (!["success", "superseded"].includes(refreshedQuota?.outcome)) return;
+  let snapshots;
+  try {
+    // Always reload the repository so response-header/runtime sources remain
+    // visible beside the freshly replaced provider-API source.
+    snapshots = await deps.listProviderQuotaSnapshots({
+      connectionId: conn.id,
+      provider,
+      includeStale: true,
+      now: Date.now(),
+    });
+  } catch {
+    console.warn(`[AutoPing] ${provider}:${conn.id}: quota state read failed`);
+    return;
+  }
+  signal.throwIfAborted();
+  const session = sessionSnapshot(snapshots, conn.id);
+  const resetAt = session?.timing?.resetAt || null;
+  if (providerConfig.pingWhenResetAtSlides && !resetAt) return;
+
+  const now = Date.now();
+  if (hasBlockingLongWindow(
+    snapshots,
+    conn.id,
+    provider,
+    providerConfig.pingModel,
+    now,
+  )) return;
+  if (!isFreshSnapshot(session, now) || session.state === "exhausted" || session.state === "cooldown") return;
+
+  const triggerResetAt = providerConfig.pingWhenResetAtSlides
+    ? resetAt
+    : (priorResetAt || resetAt);
+  if (!triggerResetAt) return;
+  const resetKey = normalizeResetKey(triggerResetAt);
+  const lastPingedResetKey = conn.lastPingedResetKey || normalizeResetKey(conn.lastPingedResetAt);
+
+  // Claude waits for reset. Codex pings only when resetAt slides, which means the 5h window is inactive.
+  if (!shouldPingForReset(providerConfig, priorResetAt, triggerResetAt, now)) return;
+  if (wasPingedRecently(conn, providerConfig.minPingIntervalMs, now)) return;
+  if (lastPingedResetKey === resetKey) return;
+
+  // Re-read, refresh through the shared CAS coordinator, and then re-read again
+  // immediately before the paid outbound request. This prevents a setting,
+  // credential, or proxy-route change during quota lookup from leaking through.
+  let latestSettings = await deps.getSettings();
+  signal.throwIfAborted();
+  let latestConnections = await deps.getProviderConnections({ provider, isActive: true });
+  signal.throwIfAborted();
+  let latestConnection = latestConnections.find((candidate) => candidate.id === conn.id);
+  if (latestSettings?.[providerConfig.settingsKey]?.connections?.[conn.id] !== true
+    || latestConnection?.authType !== "oauth") return;
+
+  try {
+    const refreshProxy = buildProxyOptions(
+      await deps.resolveConnectionProxyConfig(latestConnection.providerSpecificData),
+    );
+    signal.throwIfAborted();
+    const refreshed = await deps.refreshAndUpdateCredentials(
+      latestConnection,
+      false,
+      refreshProxy,
+      { signal },
+    );
+    signal.throwIfAborted();
+    latestConnection = refreshed.connection;
+  } catch (e) {
+    if (signal.aborted || e?.name === "AbortError") throw signal.reason || e;
+    state.pingFailureUntil[key] = Date.now() + C.failureCooldownMs;
     console.warn(`[AutoPing] ${provider}:${conn.id}: credential refresh failed`);
     return;
   }
 
-  const usage = await handler.getUsage(connection.accessToken, proxyOptions, connection);
+  latestSettings = await deps.getSettings();
   signal.throwIfAborted();
-  const quotas = usage?.quotas || {};
-  const quota = quotas?.[providerConfig.quotaKey];
-  const resetAt = quota?.resetAt;
-  if (!resetAt) return;
-
-  state.resetCache[key] = resetAt;
-
-  if (providerConfig.skipWhenBlockingQuotaExhausted && hasExhaustedBlockingQuota(quotas, providerConfig.quotaKey)) return;
-  if (isQuotaExhausted(quota)) return;
-
-  const now = Date.now();
-  const resetKey = normalizeResetKey(resetAt);
-  const lastPingedResetKey = connection.lastPingedResetKey || normalizeResetKey(connection.lastPingedResetAt);
-
-  // Claude waits for reset. Codex pings only when resetAt slides, which means the 5h window is inactive.
-  if (!shouldPingForReset(providerConfig, cachedReset, resetAt, now)) return;
-  if (wasPingedRecently(connection, providerConfig.minPingIntervalMs, now)) return;
-  if (lastPingedResetKey === resetKey) return;
-
-  // Settings and connection rows can change while quota/credential lookups are
-  // in flight. Revalidate immediately before the paid outbound request.
-  const latestSettings = await deps.getSettings();
+  latestConnections = await deps.getProviderConnections({ provider, isActive: true });
   signal.throwIfAborted();
-  const latestConnections = await deps.getProviderConnections({ provider, isActive: true });
-  signal.throwIfAborted();
-  const latestConnection = latestConnections.find((candidate) => candidate.id === connection.id);
-  if (latestSettings?.[providerConfig.settingsKey]?.connections?.[connection.id] !== true
+  latestConnection = latestConnections.find((candidate) => candidate.id === conn.id);
+  if (latestSettings?.[providerConfig.settingsKey]?.connections?.[conn.id] !== true
     || latestConnection?.authType !== "oauth") return;
+  const proxyOptions = buildProxyOptions(
+    await deps.resolveConnectionProxyConfig(latestConnection.providerSpecificData),
+  );
+  signal.throwIfAborted();
+
+  let finalSnapshots;
+  try {
+    finalSnapshots = await deps.listProviderQuotaSnapshots({
+      connectionId: conn.id,
+      provider,
+      includeStale: true,
+      now: Date.now(),
+    });
+  } catch {
+    console.warn(`[AutoPing] ${provider}:${conn.id}: final quota state read failed`);
+    return;
+  }
+  signal.throwIfAborted();
+  const finalSession = sessionSnapshot(finalSnapshots, conn.id);
+  const finalResetAt = finalSession?.timing?.resetAt || null;
+  const finalNow = Date.now();
+  const refreshedObservedAt = Date.parse(session?.timing?.observedAt || "");
+  const finalObservedAt = Date.parse(finalSession?.timing?.observedAt || "");
+  if (
+    !finalSession
+    || !isFreshSnapshot(finalSession, finalNow)
+    || ["exhausted", "cooldown"].includes(finalSession.state)
+    || !Number.isFinite(finalObservedAt)
+    || (Number.isFinite(refreshedObservedAt) && finalObservedAt < refreshedObservedAt)
+  ) return;
+  if (providerConfig.pingWhenResetAtSlides) {
+    if (
+      !finalResetAt
+      || normalizeResetKey(finalResetAt) !== normalizeResetKey(resetAt)
+      || !shouldPingForReset(providerConfig, priorResetAt, finalResetAt, finalNow)
+    ) return;
+  } else if (!shouldPingForReset(providerConfig, priorResetAt, triggerResetAt, finalNow)) return;
+  if (hasBlockingLongWindow(
+    finalSnapshots,
+    conn.id,
+    provider,
+    providerConfig.pingModel,
+    finalNow,
+  )) return;
 
   const ok = await handler.sendPing(latestConnection, providerConfig, proxyOptions, deps, signal);
   signal.throwIfAborted();
   if (!ok) {
     // Do not mark reset as pinged unless upstream accepted the tiny request.
-    state.failureCache[key] = Date.now();
-    console.warn(`[AutoPing] ${provider}:${connection.id}: ping failed (reset ${resetAt})`);
+    state.pingFailureUntil[key] = Date.now() + C.failureCooldownMs;
+    console.warn(`[AutoPing] ${provider}:${conn.id}: ping failed`);
     return;
   }
 
-  delete state.failureCache[key];
+  delete state.pingFailureUntil[key];
   signal.throwIfAborted();
-  await deps.updateProviderConnection(connection.id, {
-    lastPingedResetAt: resetAt,
+  await deps.updateProviderConnection(conn.id, {
+    lastPingedResetAt: triggerResetAt,
     lastPingedResetKey: resetKey,
     lastPingAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   });
-  console.log(`[AutoPing] ${provider}:${connection.id}: ping sent (reset ${resetAt})`);
+  console.log(`[AutoPing] ${provider}:${conn.id}: ping sent`);
 }
 
 function awaitWithSignal(promise, signal) {
@@ -321,6 +480,9 @@ function createDefaultDeps() {
     updateProviderConnection,
     resolveConnectionProxyConfig,
     refreshAndUpdateCredentials,
+    refreshProviderQuota,
+    listProviderQuotaSnapshots,
+    getQuotaFetchState,
     proxyAwareFetch,
     getExecutor,
   };
@@ -348,7 +510,8 @@ export async function runQuotaAutoPingTick(deps = createDefaultDeps(), state = g
         try {
           await pingConnection(conn, provider, providerConfig, handler, deps, state);
         } catch (e) {
-          if (e?.name !== "AbortError") state.failureCache[cacheKey(provider, conn.id)] = Date.now();
+          state.pingFailureUntil ||= {};
+          if (e?.name !== "AbortError") state.pingFailureUntil[cacheKey(provider, conn.id)] = Date.now() + C.failureCooldownMs;
           console.warn(`[AutoPing] ${provider}:${conn.id}: provider ping failed`);
         }
       }
@@ -367,13 +530,11 @@ export async function runQuotaAutoPingTick(deps = createDefaultDeps(), state = g
 export function notifyQuotaAutoPingSettingChanged(provider, connectionId, enabled, state = g) {
   const key = cacheKey(provider, connectionId);
   state.inflightControllers ||= {};
-  state.resetCache ||= {};
-  state.failureCache ||= {};
+  state.pingFailureUntil ||= {};
   if (enabled !== true) {
     state.inflightControllers[key]?.abort(new DOMException("Auto-ping disabled", "AbortError"));
   }
-  delete state.resetCache[key];
-  delete state.failureCache[key];
+  delete state.pingFailureUntil[key];
   if (enabled === true) runQuotaAutoPingTick().catch(() => {});
 }
 

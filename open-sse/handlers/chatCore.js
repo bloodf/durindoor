@@ -6,16 +6,16 @@ import { normalizeClaudePassthrough } from "../translator/formats/claude.js";
 import { validateOutboundPayload, stripInternalKeys, normalizeToolSchemaRoots } from "../translator/validate.js";
 import { COLORS } from "../utils/stream.js";
 import { createStreamController } from "../utils/streamHandler.js";
-import { refreshWithRetry } from "../services/tokenRefresh.js";
 import { createRequestLogger } from "../utils/requestLogger.js";
 import { getModelTargetFormat, getModelStrip, getModelUpstreamId, getModelType, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
 import { PROVIDERS } from "../config/providers.js";
-import { createErrorResult, parseUpstreamError, formatProviderError } from "../utils/error.js";
+import { createErrorResult, parseUpstreamError, formatProviderError, sanitizeErrorMessage } from "../utils/error.js";
 import { HTTP_STATUS, VALIDATE_OUTBOUND } from "../config/runtimeConfig.js";
 import { handleBypassRequest } from "../utils/bypassHandler.js";
 import { handlePonytailCommands, DEFAULT_PONYTAIL_HELP, resolvePonytailStream } from "../utils/tokenSaverBridge.js";
 import { trackPendingRequest, appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { acquireSlot, releaseSlot, getConcurrencyLimit, ConcurrencyGateTimeoutError } from "../services/concurrencyGate.js";
+import { runWithProviderAttemptContext } from "../services/providerAttemptContext.js";
 
 import { getExecutor } from "../executors/index.js";
 import { buildRequestDetail, extractRequestConfig } from "./chatCore/requestDetail.js";
@@ -39,6 +39,7 @@ import { stripUnsupportedModalities } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
 import { extractThinking } from "../translator/concerns/thinkingUnified.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
+import { maskSensitiveUrl } from "../utils/requestLogger.js";
 
 // Neutral adaptive config forwarded to the compression seam. mode:"off" short-
 // circuits resolveAdaptivePlan before it dereferences budget fields, but the
@@ -144,6 +145,30 @@ function proxyEndpointLogLabel(value) {
   }
 }
 
+function requestAbortError(reason = null) {
+  if (reason instanceof Error && reason.name === "AbortError") return reason;
+  return new DOMException("Request aborted", "AbortError");
+}
+
+function composeAbortSignals(...signals) {
+  const active = signals.filter((signal) => signal && typeof signal.aborted === "boolean");
+  if (active.length === 0) return null;
+  if (active.length === 1) return active[0];
+  return AbortSignal.any(active);
+}
+
+async function cancelResponseBody(response) {
+  if (!response?.body || response.body.locked) return;
+  let timer = null;
+  try {
+    await Promise.race([
+      response.body.cancel("retrying after credential refresh"),
+      new Promise((resolve) => { timer = setTimeout(resolve, 250); }),
+    ]);
+  } catch { /* best-effort connection release */ }
+  finally { if (timer) clearTimeout(timer); }
+}
+
 /**
  * Core chat handler - shared between SSE and Worker
  *
@@ -165,7 +190,8 @@ function proxyEndpointLogLabel(value) {
  *   errors. Legacy `info`/`debug`/`warn`/`error` remain supported.
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, compressionEnabled, compressionEngines, skipPonytailCommands = false, claudeClassifierCompat }) {
+export async function handleChatCore({ body, modelInfo, credentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onProviderAttempt, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, compressionEnabled, compressionEngines, skipPonytailCommands = false, claudeClassifierCompat }) {
+  if (abortSignal?.aborted) return createErrorResult(499, "Request aborted");
   const { provider, model: requestedModel } = modelInfo;
   const requestStartTime = Date.now();
   const requestContext = captureRequestContext(body, clientRawRequest);
@@ -297,9 +323,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
         && targetFormat === FORMATS.CLAUDE
         ? FORMATS.OLLAMA
         : targetFormat;
-      const n = await prefetchRemoteImages(body, sourceFormat, imageTargetFormat, { signal: undefined });
+      const n = await prefetchRemoteImages(body, sourceFormat, imageTargetFormat, { signal: abortSignal });
       if (n > 0) log?.debug?.("MODALITY", `prefetched ${n} remote image(s) for ${targetFormat}`);
-    } catch (e) { log?.warn?.("MODALITY", `image prefetch failed: ${e.message}`); }
+    } catch (e) {
+      if (e?.name === "AbortError" || abortSignal?.aborted) return createErrorResult(499, "Request aborted");
+      log?.warn?.("MODALITY", `image prefetch failed: ${sanitizeErrorMessage(e?.message)}`);
+    }
   }
 
   // Salvage orphaned tool results before translation so the translator never
@@ -514,19 +543,27 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // --- Per-provider concurrency gate (declaration before streamController closures) ---
   const concurrencyLimit = getConcurrencyLimit(provider, providerConcurrencyLimit);
   let slotAcquired = false;
+  let providerRequestFinished = false;
+  const finishProviderRequest = () => {
+    if (providerRequestFinished) return;
+    providerRequestFinished = true;
+    trackPendingRequest(cleanModel, provider, connectionId, false);
+    if (slotAcquired) {
+      releaseSlot(provider);
+      slotAcquired = false;
+    }
+  };
 
   const streamController = createStreamController({
     onDisconnect: (reason) => {
-      trackPendingRequest(cleanModel, provider, connectionId, false);
-      if (slotAcquired) releaseSlot(provider);
+      finishProviderRequest();
       if (onDisconnect) onDisconnect(reason);
     },
-    onError: () => {
-      trackPendingRequest(cleanModel, provider, connectionId, false);
-      if (slotAcquired) releaseSlot(provider);
-    },
+    onError: finishProviderRequest,
+    onComplete: finishProviderRequest,
     log, provider, model: cleanModel, reqTag
   });
+  const providerSignal = composeAbortSignals(abortSignal, streamController.signal);
 
   const proxyData = credentials?.providerSpecificData || {};
   const oauthProxy = proxyData.oauthProxy && typeof proxyData.oauthProxy === "object"
@@ -612,6 +649,46 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   // Execute request
   let providerResponse, providerUrl, providerHeaders, finalBody;
+  let terminalProvenance = null;
+  let latestProviderAttemptStartedAt = null;
+  const beginProviderAttempt = () => {
+    const allocated = typeof onProviderAttempt === "function" ? onProviderAttempt() : Date.now();
+    if (Number.isSafeInteger(allocated) && allocated > 0) latestProviderAttemptStartedAt = allocated;
+    return latestProviderAttemptStartedAt;
+  };
+  const executeProvider = async () => {
+    if (providerSignal?.aborted) throw requestAbortError(providerSignal.reason);
+    const initialAttempt = beginProviderAttempt();
+    try {
+      const result = await runWithProviderAttemptContext(beginProviderAttempt, () => executor.execute({
+          model: cleanUpstreamModel,
+          body: translatedBody,
+          stream,
+          credentials,
+          signal: providerSignal,
+          log,
+          proxyOptions,
+          requestContext,
+          attemptStartedAt: initialAttempt,
+          onProviderAttempt: beginProviderAttempt,
+        }));
+      if (
+        Number.isSafeInteger(result?.attemptStartedAt)
+        && result.attemptStartedAt > (latestProviderAttemptStartedAt || 0)
+      ) {
+        latestProviderAttemptStartedAt = result.attemptStartedAt;
+      }
+      return result;
+    } catch (error) {
+      if (
+        Number.isSafeInteger(error?.providerAttemptStartedAt)
+        && error.providerAttemptStartedAt > (latestProviderAttemptStartedAt || 0)
+      ) {
+        latestProviderAttemptStartedAt = error.providerAttemptStartedAt;
+      }
+      throw error;
+    }
+  };
 
   // --- Per-provider concurrency gate ---
   // Acquire a slot before sending the upstream request.  This proactively
@@ -619,28 +696,31 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // they happen.  If the slot can't be acquired within the timeout, return 503.
   if (concurrencyLimit > 0) {
     try {
-      await acquireSlot(provider, concurrencyLimit);
+      await acquireSlot(provider, concurrencyLimit, undefined, providerSignal);
       slotAcquired = true;
       log?.debug?.("CONCURRENCY", `${provider} | slot acquired (${concurrencyLimit} max)`);
     } catch (e) {
+      finishProviderRequest();
       if (e instanceof ConcurrencyGateTimeoutError) {
         log?.warn?.("CONCURRENCY", `${provider} | gate timeout after ${e.timeoutMs}ms (${e.limit} max)`);
         return createErrorResult(HTTP_STATUS.SERVICE_UNAVAILABLE, e.message);
       }
+      if (e?.name === "AbortError") return createErrorResult(499, "Request aborted");
       throw e;
     }
   }
 
   try {
-    const result = await executor.execute({ model: cleanUpstreamModel, body: translatedBody, stream, credentials, signal: streamController.signal, log, proxyOptions, requestContext });
+    const result = await executeProvider();
     providerResponse = result.response;
     providerUrl = result.url;
     providerHeaders = result.headers;
     finalBody = result.transformedBody;
+    terminalProvenance = result.terminalProvenance || null;
     reqLogger.logTargetRequest(providerUrl, providerHeaders, finalBody);
   } catch (error) {
     trackPendingRequest(cleanModel, provider, connectionId, false, true);
-    if (slotAcquired) releaseSlot(provider);
+    finishProviderRequest();
     appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${error.name === "AbortError" ? 499 : HTTP_STATUS.BAD_GATEWAY}` }).catch(() => { });
     saveRequestDetail(buildRequestDetail({
       provider, model: cleanModel, connectionId,
@@ -648,14 +728,14 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       tokens: { prompt_tokens: 0, completion_tokens: 0 },
       request: extractRequestConfig(body, stream),
       providerRequest: translatedBody || null,
-      response: { error: error.message || String(error), status: error.name === "AbortError" ? 499 : 502, thinking: null },
+      response: { error: sanitizeErrorMessage(error.message || String(error)), status: error.name === "AbortError" ? 499 : 502, thinking: null },
       pxpipe: pxpipeSummary,
       status: "error"
     })).catch(() => { });
 
     if (error.name === "AbortError") {
       streamController.handleError(error);
-      return createErrorResult(499, "Request aborted");
+      return { ...createErrorResult(499, "Request aborted"), attemptStartedAt: latestProviderAttemptStartedAt };
     }
     const errMsg = formatProviderError(error, provider, requestedModel, HTTP_STATUS.BAD_GATEWAY);
     if (shouldDefaultAllowClassifier(sourceFormat, body, claudeClassifierCompat)) {
@@ -664,44 +744,68 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       return buildDefaultAllowClaudeMessage();
     }
     if (log?.errorLine) {
-      log.errorLine(reqTag, "✗", `ERROR 502 · ${provider}/${cleanModel} · ${Date.now() - requestStartTime}ms\n    ${errMsg}${error.stack ? `\n    ${error.stack}` : ""}`);
+      log.errorLine(reqTag, "✗", `ERROR 502 · ${provider}/${cleanModel} · ${Date.now() - requestStartTime}ms\n    ${errMsg}`);
     }
-    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, errMsg);
+    return { ...createErrorResult(HTTP_STATUS.BAD_GATEWAY, errMsg), attemptStartedAt: latestProviderAttemptStartedAt };
   }
 
   // Handle 401/403 - try token refresh (skip for noAuth providers)
   if (!executor.noAuth && (providerResponse.status === HTTP_STATUS.UNAUTHORIZED || providerResponse.status === HTTP_STATUS.FORBIDDEN)) {
     try {
+      await cancelResponseBody(providerResponse);
+      if (providerSignal?.aborted) throw requestAbortError(providerSignal.reason);
       // Refresh and retry must use the same immutable route as the failed
-      // request. In particular, strict-pool may never fall back to direct.
-      const newCredentials = await refreshWithRetry(
-        () => executor.refreshCredentials(credentials, log, proxyOptions),
-        3,
-        log
-      );
+      // request. The application injects its CAS-backed coordinator; standalone
+      // open-sse callers retain one legacy refresh attempt without persistence.
+      // In particular, strict-pool may never fall back to direct.
+      const newCredentials = typeof refreshCredentials === "function"
+        ? await refreshCredentials({ signal: providerSignal, force: true })
+        : await executor.refreshCredentials(credentials, log, proxyOptions);
       if (newCredentials?.accessToken || newCredentials?.copilotToken) {
         if (log?.line) log.line(reqTag, "🔑", `TOKEN REFRESHED · ${provider}/${cleanModel}`);
         Object.assign(credentials, newCredentials);
-        if (onCredentialsRefreshed) {
+        if (!refreshCredentials && onCredentialsRefreshed) {
           try { await onCredentialsRefreshed(newCredentials); } catch (e) { log?.warn?.("TOKEN", `onCredentialsRefreshed failed: ${e.message}`); }
         }
         try {
-          const retryResult = await executor.execute({ model: cleanUpstreamModel, body: translatedBody, stream, credentials, signal: streamController.signal, log, proxyOptions, requestContext });
-          if (retryResult.response.ok) { providerResponse = retryResult.response; providerUrl = retryResult.url; }
-        } catch { log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`); }
+          const retryResult = await executeProvider();
+          providerResponse = retryResult.response;
+          providerUrl = retryResult.url;
+          providerHeaders = retryResult.headers;
+          finalBody = retryResult.transformedBody;
+          terminalProvenance = retryResult.terminalProvenance || null;
+        } catch (error) {
+          if (error?.name === "AbortError") throw error;
+          log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`);
+        }
       } else {
         log?.warn?.("TOKEN", `${provider.toUpperCase()} | refresh failed`);
       }
-    } catch (e) {
-      log?.warn?.("TOKEN", `${provider.toUpperCase()} | refresh threw: ${e.message}`);
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        streamController.handleError(error);
+        return { ...createErrorResult(499, "Request aborted"), attemptStartedAt: latestProviderAttemptStartedAt };
+      }
+      log?.warn?.("TOKEN", `${provider.toUpperCase()} | refresh failed`);
     }
   }
 
   // Provider returned error
   if (!providerResponse.ok) {
     trackPendingRequest(cleanModel, provider, connectionId, false, true);
-    if (slotAcquired) releaseSlot(provider);
-    const { statusCode, message, resetsAtMs } = await parseUpstreamError(providerResponse, executor);
+    let parsedError;
+    try {
+      parsedError = await parseUpstreamError(providerResponse, executor, { signal: providerSignal });
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        streamController.handleError(error);
+        return { ...createErrorResult(499, "Request aborted"), attemptStartedAt: latestProviderAttemptStartedAt };
+      }
+      parsedError = { statusCode: providerResponse.status || 502, message: "Upstream provider error", resetsAtMs: null, rateLimitEvidence: null };
+    } finally {
+      finishProviderRequest();
+    }
+    const { statusCode, message, resetsAtMs, rateLimitEvidence } = parsedError;
     appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${statusCode}` }).catch(() => { });
     saveRequestDetail(buildRequestDetail({
       provider, model: cleanModel, connectionId,
@@ -721,11 +825,11 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       return buildDefaultAllowClaudeMessage();
     }
     if (log?.errorLine) {
-      const urlStr = providerUrl ? `\n    URL: ${providerUrl}` : "";
+      const urlStr = providerUrl ? `\n    URL: ${maskSensitiveUrl(providerUrl)}` : "";
       log.errorLine(reqTag, "✗", `ERROR ${statusCode} · ${provider}/${cleanModel} · ${Date.now() - requestStartTime}ms${urlStr}\n    ${errMsg}`);
     }
     reqLogger.logError(new Error(message), finalBody || translatedBody);
-    return createErrorResult(statusCode, errMsg, resetsAtMs);
+    return { ...createErrorResult(statusCode, errMsg, resetsAtMs, undefined, rateLimitEvidence), attemptStartedAt: latestProviderAttemptStartedAt };
   }
 
   // Antigravity/AGY empty-stream guard — oh-my-pi parity: bytes (thinking included)
@@ -737,9 +841,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // one (#2188, #2229, #2250, #2259).
   if ((provider === "antigravity" || provider === "agy") && stream && providerResponse.body) {
     const reexecute = async () => {
-      const retryResult = await executor.execute({ model: cleanUpstreamModel, body: translatedBody, stream, credentials, signal: streamController.signal, log, proxyOptions, requestContext });
+      const retryResult = await executeProvider();
       if (!retryResult.response.ok) {
-        const { statusCode, message } = await parseUpstreamError(retryResult.response, executor);
+        const { statusCode, message } = await parseUpstreamError(retryResult.response, executor, { signal: providerSignal });
         throw new Error(`[${statusCode}] ${message}`);
       }
       if (!retryResult.response.body) throw new Error("upstream returned no body");
@@ -749,7 +853,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       createEmptyRetryStream({
         body: providerResponse.body,
         reexecute,
-        signal: streamController.signal,
+        signal: providerSignal,
         log,
         onExhausted: (reason, { upstreamError } = {}) => {
           if (!onUpstreamEmptyExhausted) return;
@@ -778,23 +882,27 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     connectionId,
     apiKey,
     clientRawRequest,
-    onRequestSuccess,
+    onRequestSuccess: (context = {}) => onRequestSuccess?.({
+      ...context,
+      attemptStartedAt: context.attemptStartedAt || latestProviderAttemptStartedAt,
+    }),
+    getProviderAttemptStartedAt: () => latestProviderAttemptStartedAt,
     pxpipe: pxpipeSummary,
     reqTag,
     log,
     usageEventId,
     claudeClassifierCompat,
+    terminalProvenance,
   };
   const appendLog = (extra) => appendRequestLog({ model: cleanModel, provider, connectionId, ...extra }).catch(() => { });
   // Release the concurrency slot when the request completes (covers streaming + non-streaming + disconnect)
   const trackDone = () => {
-    trackPendingRequest(cleanModel, provider, connectionId, false);
-    if (slotAcquired) releaseSlot(provider);
+    finishProviderRequest();
   };
 
   // Provider forced streaming but client wants JSON
   if (!clientRequestedStreaming && providerRequiresStreaming) {
-    const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, trackDone, appendLog });
+    const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, trackDone, appendLog, signal: providerSignal });
     if (result) { streamController.handleComplete(); return withCompressionHeader(result, compressionHeaderValue); }
   }
 
@@ -803,15 +911,15 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // body inside handleNonStreamingResponse so the SSE client contract holds.
   if (!stream) {
     const streamToClient = clientRequestedStreaming === true;
-    const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, reqLogger, toolNameMap, trackDone, appendLog, streamToClient });
+    const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, reqLogger, toolNameMap, trackDone, appendLog, streamToClient, signal: providerSignal });
     streamController.handleComplete();
     return withCompressionHeader(result, compressionHeaderValue);
   }
 
   // Streaming response
-  const { onStreamComplete, streamDetailId } = buildOnStreamComplete({ ...sharedCtx });
+  const { onStreamComplete, onCoherentTerminal, streamDetailId } = buildOnStreamComplete({ ...sharedCtx });
   return withCompressionHeader(
-    await handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, streamController, onStreamComplete, streamDetailId }),
+    await handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, streamController, onStreamComplete, onCoherentTerminal, streamDetailId, signal: providerSignal }),
     compressionHeaderValue
   );
 }

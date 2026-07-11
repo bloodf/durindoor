@@ -10,6 +10,7 @@ vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
 
 import {
   getProjectIdForConnection,
+  invalidateProjectId,
   removeConnection,
   stopCacheCleanup,
 } from "../../open-sse/services/projectId.js";
@@ -118,5 +119,164 @@ describe("project-id proxy routing", () => {
     expect(warning).not.toContain("project-refresh-secret");
     expect(warning).not.toContain("proxy-secret");
     expect(warning).not.toContain("query-secret");
+  });
+
+  it("aborts project discovery when its last subscriber disconnects", async () => {
+    const controller = new AbortController();
+    let upstreamSignal;
+    mocks.proxyAwareFetch.mockImplementation((_url, options) => {
+      upstreamSignal = options.signal;
+      return new Promise((_resolve, reject) => {
+        options.signal.addEventListener("abort", () => reject(options.signal.reason), { once: true });
+      });
+    });
+
+    const pending = getProjectIdForConnection(
+      "connection-direct",
+      "access-direct",
+      { disableEnvProxy: true },
+      controller.signal,
+    );
+    await vi.waitFor(() => expect(mocks.proxyAwareFetch).toHaveBeenCalledOnce());
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(upstreamSignal.aborted).toBe(true);
+  });
+
+  it("cancels a stalled loadCodeAssist response body", async () => {
+    const controller = new AbortController();
+    const cancel = vi.fn();
+    mocks.proxyAwareFetch.mockResolvedValue(new Response(new ReadableStream({
+      pull: () => new Promise(() => {}),
+      cancel,
+    }), { status: 200 }));
+
+    const pending = getProjectIdForConnection(
+      "connection-direct",
+      "access-direct",
+      { disableEnvProxy: true },
+      controller.signal,
+    );
+    await vi.waitFor(() => expect(mocks.proxyAwareFetch).toHaveBeenCalledOnce());
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
+  });
+
+  it("rejects an oversized loadCodeAssist response without caching it", async () => {
+    mocks.proxyAwareFetch.mockResolvedValue(new Response(
+      JSON.stringify({ cloudaicompanionProject: `project-${"x".repeat(260 * 1024)}` }),
+      { status: 200 },
+    ));
+
+    await expect(getProjectIdForConnection(
+      "connection-direct",
+      "access-direct",
+      { disableEnvProxy: true },
+    )).resolves.toBeNull();
+    await expect(getProjectIdForConnection(
+      "connection-direct",
+      "access-direct",
+      { disableEnvProxy: true },
+    )).resolves.toBeNull();
+    expect(mocks.proxyAwareFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("starts fresh discovery after the previous last subscriber aborts", async () => {
+    const controller = new AbortController();
+    let resolveOld;
+    let resolveFresh;
+    mocks.proxyAwareFetch
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFresh = resolve; }));
+
+    const abandoned = getProjectIdForConnection(
+      "connection-shared",
+      "access-shared",
+      { disableEnvProxy: true },
+      controller.signal,
+    );
+    await vi.waitFor(() => expect(mocks.proxyAwareFetch).toHaveBeenCalledOnce());
+    controller.abort();
+    await expect(abandoned).rejects.toMatchObject({ name: "AbortError" });
+
+    const fresh = getProjectIdForConnection(
+      "connection-shared",
+      "access-shared",
+      { disableEnvProxy: true },
+    );
+    await vi.waitFor(() => expect(mocks.proxyAwareFetch).toHaveBeenCalledTimes(2));
+    resolveOld(projectResponse("project-old"));
+    await Promise.resolve();
+    const coalesced = getProjectIdForConnection(
+      "connection-shared",
+      "access-shared",
+      { disableEnvProxy: true },
+    );
+    resolveFresh(projectResponse("project-fresh"));
+    await expect(Promise.all([fresh, coalesced])).resolves.toEqual(["project-fresh", "project-fresh"]);
+    expect(mocks.proxyAwareFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops onboarding after request cancellation", async () => {
+    const controller = new AbortController();
+    const cancel = vi.fn();
+    mocks.proxyAwareFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ allowedTiers: [{ id: "default", isDefault: true }] }),
+      })
+      .mockResolvedValueOnce(new Response(new ReadableStream({
+        pull: () => new Promise(() => {}),
+        cancel,
+      }), { status: 200 }));
+
+    const pending = getProjectIdForConnection(
+      "connection-strict",
+      "access-strict",
+      { strictProxy: true },
+      controller.signal,
+    );
+    await vi.waitFor(() => expect(mocks.proxyAwareFetch).toHaveBeenCalledTimes(2));
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
+    expect(mocks.proxyAwareFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not coalesce or cache project discovery across token invalidation", async () => {
+    let resolveOld;
+    let resolveFresh;
+    mocks.proxyAwareFetch
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFresh = resolve; }));
+
+    const oldRequest = getProjectIdForConnection(
+      "connection-shared",
+      "token-old",
+      { disableEnvProxy: true },
+    );
+    await vi.waitFor(() => expect(mocks.proxyAwareFetch).toHaveBeenCalledOnce());
+    invalidateProjectId("connection-shared");
+    const freshRequest = getProjectIdForConnection(
+      "connection-shared",
+      "token-new",
+      { disableEnvProxy: true },
+    );
+    await vi.waitFor(() => expect(mocks.proxyAwareFetch).toHaveBeenCalledTimes(2));
+
+    resolveOld(projectResponse("project-old"));
+    resolveFresh(projectResponse("project-fresh"));
+    await expect(oldRequest).resolves.toBeNull();
+    await expect(freshRequest).resolves.toBe("project-fresh");
+
+    await expect(getProjectIdForConnection(
+      "connection-shared",
+      "token-new",
+      { disableEnvProxy: true },
+    )).resolves.toBe("project-fresh");
+    expect(mocks.proxyAwareFetch).toHaveBeenCalledTimes(2);
   });
 });

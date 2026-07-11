@@ -29,6 +29,7 @@
  */
 import { getProviderConnections } from "@/lib/db/repos/connectionsRepo";
 import { probeConnectionHealth, sanitizeErrorMessage, AUTH_FAILURE_STATUSES } from "@/lib/providerHealthProbe";
+import { inspectProviderQuota } from "@/shared/services/providerQuotaPreflight";
 
 /** @typedef {"healthy"|"degraded"|"down"|"blocked"|"unconfigured"|"unknown"} HealthState */
 
@@ -44,6 +45,8 @@ import { probeConnectionHealth, sanitizeErrorMessage, AUTH_FAILURE_STATUSES } fr
  */
 
 export const HEALTH_PAYLOAD_TTL_MS = 1000;
+const PUBLIC_QUOTA_REASONS = new Set(["available", "low", "exhausted", "cooldown", "unknown", "stale", "tracker_error", "missing"]);
+const PUBLIC_QUOTA_FRESHNESS = new Set(["fresh", "stale", "missing"]);
 
 let payloadCache = /** @type {{ payload: object, expiresAt: number } | null} */ (null);
 let pendingBuild = /** @type {Promise<object> | null} */ (null);
@@ -64,10 +67,20 @@ export function getHealthCacheEntry() {
   return payloadCache;
 }
 
-function mapResult(conn, result, latencyMs) {
+function publicQuotaDecision(decision) {
+  return {
+    eligible: decision?.eligible !== false,
+    skip: decision?.skip === true,
+    reason: PUBLIC_QUOTA_REASONS.has(decision?.reason) ? decision.reason : "missing",
+    freshness: PUBLIC_QUOTA_FRESHNESS.has(decision?.freshness) ? decision.freshness : "missing",
+  };
+}
+
+function mapResult(conn, result, latencyMs, quotaDecision) {
   const name = conn.name || conn.provider;
+  const quota = publicQuotaDecision(quotaDecision);
   if (!result) {
-    return { id: conn.id, provider: conn.provider, name, state: "unconfigured", latencyMs, statusCode: null, error: null };
+    return { id: conn.id, provider: conn.provider, name, state: "unconfigured", latencyMs, statusCode: null, error: null, quota };
   }
   if (result.blocked) {
     return {
@@ -78,6 +91,7 @@ function mapResult(conn, result, latencyMs) {
       latencyMs,
       statusCode: null,
       error: sanitizeErrorMessage(result.error || "blocked by SSRF guard"),
+      quota,
     };
   }
   if (result.unconfigured) {
@@ -89,6 +103,7 @@ function mapResult(conn, result, latencyMs) {
       latencyMs,
       statusCode: null,
       error: sanitizeErrorMessage(result.error || null),
+      quota,
     };
   }
   const status = result.status ?? null;
@@ -106,16 +121,17 @@ function mapResult(conn, result, latencyMs) {
     latencyMs,
     statusCode: status,
     error: result.valid ? null : sanitizeErrorMessage(result.error || null),
+    quota,
   };
 }
 
-async function probeOne(conn, opts) {
+async function probeOne(conn, opts, quotaDecision) {
   const start = (opts.now ?? Date.now)();
   try {
     const prober = opts.prober ?? probeConnectionHealth;
     const result = await prober(conn, { fetcher: opts.fetcher });
-    return mapResult(conn, result, (opts.now ?? Date.now)() - start);
-  } catch (err) {
+    return mapResult(conn, result, (opts.now ?? Date.now)() - start, quotaDecision);
+  } catch {
     return {
       id: conn.id,
       provider: conn.provider,
@@ -123,7 +139,8 @@ async function probeOne(conn, opts) {
       state: "down",
       latencyMs: (opts.now ?? Date.now)() - start,
       statusCode: null,
-      error: sanitizeErrorMessage(err?.message || "probe failed"),
+      error: "probe failed",
+      quota: publicQuotaDecision(quotaDecision),
     };
   }
 }
@@ -133,7 +150,36 @@ async function buildPayload(opts) {
   const loader = opts.connectionsLoader ?? (() => getProviderConnections({ isActive: true }));
   const connections = (await loader()) || [];
 
-  const settled = await Promise.allSettled(connections.map((c) => probeOne(c, opts)));
+  const quotaDecisions = new Map();
+  const byProvider = new Map();
+  for (const connection of connections) {
+    const group = byProvider.get(connection.provider) || [];
+    group.push(connection);
+    byProvider.set(connection.provider, group);
+  }
+  const quotaInspector = opts.quotaInspector ?? inspectProviderQuota;
+  await Promise.all([...byProvider.entries()].map(async ([provider, group]) => {
+    try {
+      const decisions = await quotaInspector(group, {
+        provider,
+        now: now(),
+        connectionWide: true,
+        snapshotsLoader: opts.quotaSnapshotsLoader || null,
+      });
+      for (const connection of group) quotaDecisions.set(connection.id, decisions.get(connection.id));
+    } catch {
+      for (const connection of group) {
+        quotaDecisions.set(connection.id, {
+          eligible: true,
+          skip: false,
+          reason: "tracker_error",
+          freshness: "missing",
+        });
+      }
+    }
+  }));
+
+  const settled = await Promise.allSettled(connections.map((c) => probeOne(c, opts, quotaDecisions.get(c.id))));
   const providers = settled.map((r, i) =>
     r.status === "fulfilled"
       ? r.value
@@ -144,12 +190,16 @@ async function buildPayload(opts) {
           state: "unknown",
           latencyMs: null,
           statusCode: null,
-          error: sanitizeErrorMessage(String(r.reason)),
+          error: "probe failed",
+          quota: publicQuotaDecision(quotaDecisions.get(connections[i]?.id)),
         }
   );
 
-  const summary = { healthy: 0, degraded: 0, down: 0, blocked: 0, unconfigured: 0, unknown: 0, total: providers.length };
-  for (const p of providers) summary[p.state] = (summary[p.state] || 0) + 1;
+  const summary = { healthy: 0, degraded: 0, down: 0, blocked: 0, unconfigured: 0, unknown: 0, quotaUnavailable: 0, total: providers.length };
+  for (const p of providers) {
+    summary[p.state] = (summary[p.state] || 0) + 1;
+    if (p.quota?.skip) summary.quotaUnavailable += 1;
+  }
 
   return { timestamp: new Date(now()).toISOString(), summary, providers };
 }

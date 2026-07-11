@@ -137,6 +137,18 @@ describe("acquireSlot timeout", () => {
 
     await waiter;
   });
+
+  it("removes an aborted waiter without consuming or leaking a slot", async () => {
+    await acquireSlot("abort-p", 1);
+    const controller = new AbortController();
+    const waiter = acquireSlot("abort-p", 1, 5_000, controller.signal);
+    expect(getGateStats()["abort-p"].queued).toBe(1);
+    controller.abort();
+    await expect(waiter).rejects.toMatchObject({ name: "AbortError" });
+    expect(getGateStats()["abort-p"]).toEqual({ current: 1, queued: 0 });
+    releaseSlot("abort-p");
+    expect(getGateStats()).toEqual({});
+  });
 });
 
 describe("getGateStats", () => {

@@ -30,6 +30,9 @@ import { PROVIDERS } from "../config/providers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { SSE_DONE } from "../utils/sseConstants.js";
 import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
+import { FORMATS } from "../translator/formats.js";
+import { createUpstreamTerminalTracker } from "../utils/streamTerminal.js";
+import { getCurrentProviderAttemptTimestamp } from "../services/providerAttemptContext.js";
 import {
   QODER_CHAT_URL_ENCODED,
   QODER_MODEL_MAP,
@@ -220,8 +223,8 @@ async function buildQoderRequestBody({ model, body, credentials, log, proxyOptio
  * Each upstream line looks like:
  *   data: {"statusCodeValue":200,"body":"{\"choices\":[{\"delta\":{...}}]}"}
  * The inner body is an OpenAI streaming chunk (or "[DONE]"). We unwrap it
- * and re-emit as `data: <inner>\n\n`. Errors become `data: [DONE]\n\n` plus
- * a synthetic OpenAI error chunk.
+ * and re-emit as `data: <inner>\n\n`. Only a raw OpenAI finish plus `[DONE]`
+ * is allowed to produce a successful terminal.
  */
 function wrapQoderSSE(response, model) {
   if (!response.ok || !response.body) return response;
@@ -229,7 +232,28 @@ function wrapQoderSSE(response, model) {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
   let buffer = "";
-  let doneEmitted = false;
+  let rawDoneSeen = false;
+  let downstreamDoneEmitted = false;
+  let failureEmitted = false;
+  const rawTerminal = createUpstreamTerminalTracker({ format: FORMATS.OPENAI });
+
+  const emitFailure = (controller) => {
+    rawTerminal.fail();
+    if (failureEmitted) return;
+    failureEmitted = true;
+    controller.enqueue(encoder.encode(
+      `data: ${JSON.stringify({ error: { message: "Qoder upstream stream failed", type: "stream_error" } })}\n\n`,
+    ));
+  };
+
+  const observeRawDone = (controller) => {
+    rawTerminal.observe({ rawDone: true });
+    if (rawTerminal.outcome !== "success") {
+      emitFailure(controller);
+      return;
+    }
+    rawDoneSeen = true;
+  };
 
   // Process one already-extracted SSE line (no trailing newline). Returns
   // false when the line indicated end-of-stream so the caller can stop
@@ -238,37 +262,28 @@ function wrapQoderSSE(response, model) {
     const trimmed = line.replace(/\r$/, "").trim();
     if (!trimmed) return;
     if (!trimmed.startsWith("data:")) return;
-    if (doneEmitted) return; // never forward chunks past stream end
+    if (rawDoneSeen) {
+      emitFailure(controller);
+      return;
+    }
 
     const data = trimmed.slice(5).trimStart();
     if (data === "[DONE]") {
-      controller.enqueue(encoder.encode(SSE_DONE));
-      doneEmitted = true;
+      observeRawDone(controller);
       return;
     }
 
     let envelope;
-    try { envelope = JSON.parse(data); } catch { return; }
+    try { envelope = JSON.parse(data); } catch { emitFailure(controller); return; }
     const statusVal = typeof envelope.statusCodeValue === "number" ? envelope.statusCodeValue : 200;
     const inner = typeof envelope.body === "string" ? envelope.body : "";
     if (statusVal !== 200) {
-      const msg = inner || `upstream status ${statusVal}`;
-      const errChunk = JSON.stringify({
-        id: `qoder-error-${Date.now()}`,
-        object: "chat.completion.chunk",
-        created: Math.floor(Date.now() / 1000),
-        model,
-        choices: [{ index: 0, delta: { content: `\n[qoder error ${statusVal}: ${truncate(msg, 200)}]` }, finish_reason: "stop" }],
-      });
-      controller.enqueue(encoder.encode(`data: ${errChunk}\n\n`));
-      controller.enqueue(encoder.encode(SSE_DONE));
-      doneEmitted = true;
+      emitFailure(controller);
       return;
     }
     if (!inner) return;
     if (inner === "[DONE]") {
-      controller.enqueue(encoder.encode(SSE_DONE));
-      doneEmitted = true;
+      observeRawDone(controller);
       return;
     }
     // Inner is an OpenAI-shaped chunk. Strip any embedded newlines so the
@@ -276,6 +291,14 @@ function wrapQoderSSE(response, model) {
     // otherwise split the frame across multiple data: lines and downstream
     // parsers would reassemble them as separate events).
     const sanitized = inner.replace(/\r?\n/g, "");
+    let parsed;
+    try { parsed = JSON.parse(sanitized); }
+    catch { emitFailure(controller); return; }
+    rawTerminal.observe({ chunk: parsed });
+    if (rawTerminal.outcome === "failure") {
+      emitFailure(controller);
+      return;
+    }
     controller.enqueue(encoder.encode(`data: ${sanitized}\n\n`));
   };
 
@@ -301,9 +324,12 @@ function wrapQoderSSE(response, model) {
         processLine(buffer, controller);
         buffer = "";
       }
-      if (!doneEmitted) {
+      if (!failureEmitted && rawDoneSeen && rawTerminal.outcome === "success") {
         controller.enqueue(encoder.encode(SSE_DONE));
-        doneEmitted = true;
+        downstreamDoneEmitted = true;
+      }
+      if (!downstreamDoneEmitted) {
+        emitFailure(controller);
       }
     },
   });
@@ -432,7 +458,14 @@ export class QoderExecutor extends BaseExecutor {
     }
 
     const wrapped = wrapQoderSSE(response, `qoder/${qoderKey}`);
-    return { response: wrapped, url, headers, transformedBody: payload };
+    return {
+      response: wrapped,
+      url,
+      headers,
+      transformedBody: payload,
+      attemptStartedAt: getCurrentProviderAttemptTimestamp(),
+      terminalProvenance: "validated",
+    };
   }
 
   // Qoder device tokens don't refresh through OAuth — the upstream returns

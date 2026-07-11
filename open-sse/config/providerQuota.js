@@ -19,6 +19,21 @@ export const PROVIDER_QUOTA_DEFAULTS = deepFreeze({
   maxResponseBytes: 1024 * 1024,
 });
 
+const PREFLIGHT_POLICY = deepFreeze({
+  google: { gates: [{ aggregate: "all-required", selectors: [{ resource: "requested", dimensionNamespaces: ["requests"] }] }] },
+  codex: { gates: [{ choose: "first-present", aggregate: "all-required", selectors: [{ resource: "requested", dimensionNamespaces: ["requests"] }, { resource: "account", dimensionNamespaces: ["requests"] }] }] },
+  accountRequests: { gates: [{ aggregate: "all-required", selectors: [{ resource: "account", dimensionNamespaces: ["requests"] }, { resource: "requested", dimensionNamespaces: ["requests"] }] }] },
+  github: { gates: [{ aggregate: "all-required", selectors: [{ resource: "account", dimensionKeys: ["requests:chat"] }] }] },
+  cursor: { gates: [{ aggregate: "all-required", selectors: [{ resource: "account", dimensionKeys: ["requests:api"] }] }] },
+  kiro: { gates: [{ aggregate: "any-sufficient", selectors: [{ resourceKey: "resource:agentic_request", dimensionNamespaces: ["requests"] }] }] },
+  glm: { gates: [{ aggregate: "all-required", selectors: [{ resource: "account", dimensionNamespaces: ["tokens"] }, { resourceNamespace: "project", dimensionNamespaces: ["tokens"] }] }] },
+  codebuddy: { gates: [{ aggregate: "any-sufficient", selectors: [{ resourceNamespace: "package", dimensionNamespaces: ["credits"] }] }] },
+  qoderLegacy: { gates: [{ aggregate: "any-sufficient", selectors: [{ resourceNamespace: "scope", dimensionNamespaces: ["credits"] }] }] },
+  balance: { gates: [{ aggregate: "all-required", selectors: [{ resource: "account", dimensionNamespaces: ["balance"] }] }] },
+  crof: { gates: [{ choose: "first-present", aggregate: "all-required", selectors: [{ resource: "account", dimensionKeys: ["requests:daily"] }, { resource: "account", dimensionKeys: ["balance:usd"] }] }] },
+  deepseek: { gates: [{ aggregate: "any-sufficient", selectors: [{ resourceNamespace: "currency", dimensionKeys: ["balance:available"] }] }] },
+});
+
 const GOOGLE_QUOTA_URL = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota";
 const GOOGLE_PROJECT_URL = "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist";
 
@@ -29,6 +44,7 @@ export const PROVIDER_QUOTA_CONFIG = deepFreeze({
     sourceId: "gemini-cli:retrieve-user-quota:v1",
     quotaUrl: GOOGLE_QUOTA_URL,
     projectUrl: GOOGLE_PROJECT_URL,
+    preflightPolicy: PREFLIGHT_POLICY.google,
   },
   antigravity: {
     adapter: "google",
@@ -36,6 +52,7 @@ export const PROVIDER_QUOTA_CONFIG = deepFreeze({
     sourceId: "antigravity:retrieve-user-quota:v1",
     quotaUrl: GOOGLE_QUOTA_URL,
     projectUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:loadCodeAssist",
+    preflightPolicy: PREFLIGHT_POLICY.google,
   },
   agy: {
     adapter: "google",
@@ -43,11 +60,21 @@ export const PROVIDER_QUOTA_CONFIG = deepFreeze({
     sourceId: "agy:retrieve-user-quota:v1",
     quotaUrl: GOOGLE_QUOTA_URL,
     projectUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:loadCodeAssist",
+    preflightPolicy: PREFLIGHT_POLICY.google,
   },
   codex: {
     adapter: "codex",
     sourceId: "codex:wham-usage:v1",
     url: "https://chatgpt.com/backend-api/wham/usage",
+    // Explicit aliases used by quota preflight. These are deliberately exact:
+    // quota families and provider resource names must never be inferred with
+    // substring matching from an untrusted passthrough model ID.
+    preflightScopes: {
+      quotaFamilies: { review: "feature:code-review" },
+      models: { "gpt-5.3-codex-spark": "model:codex-spark" },
+    },
+    runtimeScopes: { cooldown: "model", exhausted: "account" },
+    preflightPolicy: PREFLIGHT_POLICY.codex,
   },
   claude: {
     adapter: "claude",
@@ -55,6 +82,8 @@ export const PROVIDER_QUOTA_CONFIG = deepFreeze({
     oauthUrl: "https://api.anthropic.com/api/oauth/usage",
     settingsUrl: "https://api.anthropic.com/v1/settings",
     orgUsageUrl: "https://api.anthropic.com/v1/organizations/{org_id}/usage",
+    runtimeScopes: { cooldown: "model", exhausted: "account" },
+    preflightPolicy: PREFLIGHT_POLICY.accountRequests,
   },
   github: {
     adapter: "github",
@@ -64,6 +93,7 @@ export const PROVIDER_QUOTA_CONFIG = deepFreeze({
     editorVersion: "vscode/1.126.0",
     pluginVersion: "copilot-chat/0.54.0",
     userAgent: "GitHubCopilotChat/0.54.0",
+    preflightPolicy: PREFLIGHT_POLICY.github,
   },
   cursor: {
     adapter: "cursor",
@@ -72,10 +102,13 @@ export const PROVIDER_QUOTA_CONFIG = deepFreeze({
     origin: "https://cursor.com",
     referer: "https://cursor.com/dashboard/spending",
     userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/149.0.0.0 Safari/537.36",
+    preflightPolicy: PREFLIGHT_POLICY.cursor,
   },
   kiro: {
     adapter: "kiro",
     sourceId: "kiro:get-usage-limits:v1",
+    runtimeScopes: { cooldown: "model", exhausted: "account" },
+    preflightPolicy: PREFLIGHT_POLICY.kiro,
   },
   "kimi-coding": {
     adapter: "kimi",
@@ -83,6 +116,8 @@ export const PROVIDER_QUOTA_CONFIG = deepFreeze({
     url: "https://api.kimi.com/coding/v1/usages",
     platform: "omniroute",
     version: "2.1.2",
+    runtimeScopes: { cooldown: "model", exhausted: "account" },
+    preflightPolicy: PREFLIGHT_POLICY.accountRequests,
   },
   "kimi-coding-apikey": {
     adapter: "kimi",
@@ -90,26 +125,36 @@ export const PROVIDER_QUOTA_CONFIG = deepFreeze({
     url: "https://api.kimi.com/coding/v1/usages",
     platform: "omniroute",
     version: "2.1.2",
+    runtimeScopes: { cooldown: "model", exhausted: "account" },
+    preflightPolicy: PREFLIGHT_POLICY.accountRequests,
   },
   glm: {
     adapter: "glm",
     sourceId: "glm:coding-plan-quota:v1",
     url: "https://api.z.ai/api/monitor/usage/quota/limit",
+    runtimeScopes: { cooldown: "model", exhausted: "account" },
+    preflightPolicy: PREFLIGHT_POLICY.glm,
   },
   "glm-cn": {
     adapter: "glm",
     sourceId: "glm-cn:coding-plan-quota:v1",
     url: "https://open.bigmodel.cn/api/monitor/usage/quota/limit",
+    runtimeScopes: { cooldown: "model", exhausted: "account" },
+    preflightPolicy: PREFLIGHT_POLICY.glm,
   },
   zai: {
     adapter: "glm",
     sourceId: "zai:coding-plan-quota:v1",
     url: "https://api.z.ai/api/monitor/usage/quota/limit",
+    runtimeScopes: { cooldown: "model", exhausted: "account" },
+    preflightPolicy: PREFLIGHT_POLICY.glm,
   },
   glmt: {
     adapter: "glm",
     sourceId: "glmt:coding-plan-quota:v1",
     url: "https://api.z.ai/api/monitor/usage/quota/limit",
+    runtimeScopes: { cooldown: "model", exhausted: "account" },
+    preflightPolicy: PREFLIGHT_POLICY.glm,
   },
   minimax: {
     adapter: "minimax",
@@ -118,6 +163,8 @@ export const PROVIDER_QUOTA_CONFIG = deepFreeze({
       { url: "https://www.minimax.io/v1/token_plan/remains" },
       { url: "https://api.minimax.io/v1/api/openplatform/coding_plan/remains" },
     ],
+    runtimeScopes: { cooldown: "model", exhausted: "account" },
+    preflightPolicy: PREFLIGHT_POLICY.accountRequests,
   },
   "minimax-cn": {
     adapter: "minimax",
@@ -126,11 +173,15 @@ export const PROVIDER_QUOTA_CONFIG = deepFreeze({
       { url: "https://www.minimaxi.com/v1/api/openplatform/coding_plan/remains" },
       { url: "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains" },
     ],
+    runtimeScopes: { cooldown: "model", exhausted: "account" },
+    preflightPolicy: PREFLIGHT_POLICY.accountRequests,
   },
   "codebuddy-cn": {
     adapter: "codebuddy",
     sourceId: "codebuddy-cn:billing-meter:v1",
     url: "https://copilot.tencent.com/v2/billing/meter/get-user-resource",
+    runtimeScopes: { cooldown: "model", exhausted: "account" },
+    preflightPolicy: PREFLIGHT_POLICY.codebuddy,
   },
   "bailian-coding-plan": {
     adapter: "bailian",
@@ -139,6 +190,8 @@ export const PROVIDER_QUOTA_CONFIG = deepFreeze({
       "https://modelstudio.console.alibabacloud.com/data/api.json?action=zeldaEasy.broadscope-bailian.codingPlan.queryCodingPlanInstanceInfoV2&product=broadscope-bailian&api=queryCodingPlanInstanceInfoV2",
       "https://bailian.console.aliyun.com/data/api.json?action=zeldaEasy.broadscope-bailian.codingPlan.queryCodingPlanInstanceInfoV2&product=broadscope-bailian&api=queryCodingPlanInstanceInfoV2",
     ],
+    runtimeScopes: { cooldown: "model", exhausted: "account" },
+    preflightPolicy: PREFLIGHT_POLICY.accountRequests,
   },
   qoder: {
     adapter: "qoder",
@@ -146,27 +199,37 @@ export const PROVIDER_QUOTA_CONFIG = deepFreeze({
     sourceId: "qoder:user-status:v1",
     exchangeUrl: "https://openapi.qoder.sh/api/v1/jobToken/exchange",
     url: "https://openapi.qoder.sh/api/v3/user/status",
+    runtimeScopes: { cooldown: "model", exhausted: "account" },
+    preflightPolicy: PREFLIGHT_POLICY.accountRequests,
   },
   "qoder-cn": {
     adapter: "qoder",
     mode: "legacy-oauth",
     sourceId: "qoder-cn:quota-usage-legacy:v1",
     url: "https://openapi.qoder.com.cn/api/v2/quota/usage",
+    runtimeScopes: { cooldown: "model", exhausted: "account" },
+    preflightPolicy: PREFLIGHT_POLICY.qoderLegacy,
   },
   "vercel-ai-gateway": {
     adapter: "vercel",
     sourceId: "vercel-ai-gateway:credits:v1",
     url: "https://ai-gateway.vercel.sh/v1/credits",
+    runtimeScopes: { cooldown: "model", exhausted: "account" },
+    preflightPolicy: PREFLIGHT_POLICY.balance,
   },
   crof: {
     adapter: "crof",
     sourceId: "crof:usage-api:v1",
     url: "https://crof.ai/usage_api/",
+    runtimeScopes: { cooldown: "model", exhausted: "account" },
+    preflightPolicy: PREFLIGHT_POLICY.crof,
   },
   deepseek: {
     adapter: "deepseek",
     sourceId: "deepseek:balance:v1",
     url: "https://api.deepseek.com/user/balance",
+    runtimeScopes: { cooldown: "model", exhausted: "account" },
+    preflightPolicy: PREFLIGHT_POLICY.deepseek,
   },
 });
 

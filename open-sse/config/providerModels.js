@@ -91,9 +91,17 @@ export function getModelUpstreamId(aliasOrId, modelId) {
   return baseId;
 }
 
-export function getModelQuotaFamily(aliasOrId, modelId) {
+/** Return the configured catalog id for a request model, or null for passthrough input. */
+export function getCanonicalModelId(aliasOrId, modelId) {
+  const { cleanModel } = parseSuffix(modelId);
   const models = PROVIDER_MODELS[aliasOrId];
-  return modelQuotaFamily(findModel(models, modelId, aliasOrId));
+  return findModel(models, cleanModel, aliasOrId)?.id || null;
+}
+
+export function getModelQuotaFamily(aliasOrId, modelId) {
+  const { cleanModel } = parseSuffix(modelId);
+  const models = PROVIDER_MODELS[aliasOrId];
+  return modelQuotaFamily(findModel(models, cleanModel, aliasOrId));
 }
 
 // Short aliases are derived from the full registry, including transportless media

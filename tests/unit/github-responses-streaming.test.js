@@ -33,6 +33,99 @@ describe("GithubExecutor /responses escalation streaming", () => {
     expect(JSON.parse(init.body).stream).toBe(true);
   });
 
+  it("marks a raw Responses completion as validated", async () => {
+    const raw = [
+      `event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response: { status: "completed" } })}`,
+      "data: [DONE]",
+      "",
+    ].join("\n\n");
+    proxyAwareFetchMock.mockResolvedValueOnce(new Response(raw, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    }));
+    const result = await new GithubExecutor().executeWithResponsesEndpoint({
+      model: "gpt-5.5-codex",
+      body: { messages: [{ role: "user", content: "hello" }] },
+      stream: true,
+      credentials: { copilotToken: "ghu_test" },
+      log: { debug: vi.fn() },
+    });
+    expect(result.terminalProvenance).toBe("validated");
+    expect(await result.response.text()).toContain("data: [DONE]");
+  });
+
+  it("rejects contradictory Responses terminal framing without DONE", async () => {
+    const raw = [
+      `event: response.completed\ndata: ${JSON.stringify({ type: "response.failed", response: { status: "failed" } })}`,
+      "data: [DONE]",
+      "",
+    ].join("\n\n");
+    proxyAwareFetchMock.mockResolvedValueOnce(new Response(raw, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    }));
+    const result = await new GithubExecutor().executeWithResponsesEndpoint({
+      model: "gpt-5.5-codex",
+      body: { messages: [] },
+      stream: true,
+      credentials: { copilotToken: "ghu_test" },
+      log: { debug: vi.fn() },
+    });
+    const text = await result.response.text();
+    expect(text).toContain("GitHub Responses stream failed");
+    expect(text).not.toContain("data: [DONE]");
+  });
+
+  it("converts response.incomplete into a coherent length terminal", async () => {
+    const raw = [
+      `event: response.created\ndata: ${JSON.stringify({ type: "response.created", response: { id: "resp-incomplete" } })}`,
+      `event: response.incomplete\ndata: ${JSON.stringify({ type: "response.incomplete", response: { status: "incomplete" } })}`,
+      "data: [DONE]",
+      "",
+    ].join("\n\n");
+    proxyAwareFetchMock.mockResolvedValueOnce(new Response(raw, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    }));
+    const result = await new GithubExecutor().executeWithResponsesEndpoint({
+      model: "gpt-5.5-codex",
+      body: { messages: [] },
+      stream: true,
+      credentials: { copilotToken: "ghu_test" },
+      log: { debug: vi.fn() },
+    });
+    const text = await result.response.text();
+    expect(text).toContain('"finish_reason":"length"');
+    expect(text).toContain("data: [DONE]");
+  });
+
+  it.each([
+    ["completed then failed", [
+      `event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response: { status: "completed" } })}`,
+      `event: response.failed\ndata: ${JSON.stringify({ type: "response.failed", response: { status: "failed" } })}`,
+    ]],
+    ["DONE then data", [
+      `event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response: { status: "completed" } })}`,
+      "data: [DONE]",
+      `event: response.output_text.delta\ndata: ${JSON.stringify({ type: "response.output_text.delta", delta: "late" })}`,
+    ]],
+  ])("rejects post-terminal frames: %s", async (_label, frames) => {
+    proxyAwareFetchMock.mockResolvedValueOnce(new Response(`${frames.join("\n\n")}\n\n`, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    }));
+    const result = await new GithubExecutor().executeWithResponsesEndpoint({
+      model: "gpt-5.5-codex",
+      body: { messages: [] },
+      stream: true,
+      credentials: { copilotToken: "ghu_test" },
+      log: { debug: vi.fn() },
+    });
+    const text = await result.response.text();
+    expect(text).toContain("GitHub Responses stream failed");
+    expect(text).not.toContain("data: [DONE]");
+  });
+
   it("never logs an arbitrary Copilot token error body", async () => {
     const canary = "opaque-copilot-error-body-987654321";
     const response = new Response(canary, { status: 401 });

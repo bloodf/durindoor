@@ -106,6 +106,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `cerebras` |  | apikey | `https://api.cerebras.ai/v1/chat/completions` |
 | `charm-hyper` |  | apikey | `https://hyper.charm.land/v1/chat/completions` |
 | `chatgpt-web` | openai | webCookie | `https://chatgpt.com/backend-api/conversation` |
+| `chenzk` | openai | apikey | `https://chenzk.top/v1/chat/completions` |
 | `chipotle` | openai | free | `https://amelia.chipotle.com` |
 | `chutes` |  | apikey | `https://llm.chutes.ai/v1/chat/completions` |
 | `clarifai` |  | apikey | `https://api.clarifai.com/v2/ext/openai/v1/chat/completions` |
@@ -245,6 +246,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `qianfan` |  | apikey | `https://qianfan.baidubce.com/v2/chat/completions` |
 | `qiniu` |  | apikey | `https://api.qnaigc.com/v1/chat/completions` |
 | `qoder` |  | free | `https://api3.qoder.sh/algo/api/v2/service/pro/sse/agent_chat_generation` |
+| `qoder-cn` |  | free | `https://gateway.qoder.com.cn/algo/api/v2/service/pro/sse/agent_chat_generation` |
 | `qwen` |  | oauth | `https://portal.qwen.ai/v1/chat/completions` |
 | `recraft` |  | apikey | `` |
 | `reka` |  | freeTier | `https://api.reka.ai/v1/chat/completions` |

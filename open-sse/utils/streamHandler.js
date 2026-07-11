@@ -1,6 +1,7 @@
 // Stream handler with disconnect detection - shared for all providers
 import { STREAM_STALL_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
+import { sanitizeErrorMessage } from "./error.js";
 
 // Get HH:MM:SS timestamp
 function getTimeString() {
@@ -15,7 +16,7 @@ function getTimeString() {
  * @param {string} options.provider - Provider name
  * @param {string} options.model - Model name
  */
-export function createStreamController({ onDisconnect, onError, log, provider, model, reqTag = "" } = {}) {
+export function createStreamController({ onDisconnect, onError, onComplete, log, provider, model, reqTag = "" } = {}) {
   const abortController = new AbortController();
   const startTime = Date.now();
   let disconnected = false;
@@ -61,6 +62,7 @@ export function createStreamController({ onDisconnect, onError, log, provider, m
         clearTimeout(abortTimeout);
         abortTimeout = null;
       }
+      onComplete?.();
     },
 
     // Call on error
@@ -73,13 +75,14 @@ export function createStreamController({ onDisconnect, onError, log, provider, m
         abortTimeout = null;
       }
 
+      onError?.(error);
+
       if (error.name === "AbortError") {
         logStream("⚡", "ABORTED");
         return;
       }
 
-      logStream("✗", `ERROR: ${error.message}${error.stack ? `\n    ${error.stack}` : ""}`, true);
-      onError?.(error);
+      logStream("✗", `ERROR: ${sanitizeErrorMessage(error?.message || "stream failed")}`, true);
     },
 
     abort: () => abortController.abort()
@@ -251,4 +254,3 @@ export function pipeWithDisconnect(providerResponse, transformStream, streamCont
     onAbortTerminal
   );
 }
-

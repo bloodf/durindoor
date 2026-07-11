@@ -107,6 +107,8 @@ vi.mock("../../open-sse/utils/error.js", () => ({
   createErrorResult: vi.fn((status, message) => ({ success: false, status, error: message })),
   formatProviderError: vi.fn((error) => error.message),
   parseUpstreamError: vi.fn(),
+  sanitizeErrorMessage: vi.fn((message) => String(message || "")),
+  readBoundedResponseText: vi.fn((response) => response.text()),
 }));
 
 vi.mock("@/lib/usageDb.js", () => ({

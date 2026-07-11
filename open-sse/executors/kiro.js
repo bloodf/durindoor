@@ -40,6 +40,25 @@ function resolveKiroRuntimeRegion(credentials) {
 // only hit ListAvailableProfiles once per token when the stored credential has
 // none (typical for IDC/Organization accounts outside us-east-1).
 const KIRO_PROFILE_ARN_CACHE = new Map();
+const KIRO_MAX_EVENTSTREAM_FRAME_BYTES = 16 * 1024 * 1024;
+const KIRO_MAX_EVENTSTREAM_HEADERS_BYTES = 128 * 1024;
+const KIRO_POST_STOP_EVENT_TYPES = new Set(["contextUsageEvent", "meteringEvent", "metricsEvent"]);
+const KIRO_EVENTSTREAM_CRC_TABLE = new Uint32Array(256);
+for (let index = 0; index < KIRO_EVENTSTREAM_CRC_TABLE.length; index++) {
+  let value = index;
+  for (let bit = 0; bit < 8; bit++) {
+    value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+  }
+  KIRO_EVENTSTREAM_CRC_TABLE[index] = value >>> 0;
+}
+
+function eventStreamCrc32(bytes) {
+  let checksum = 0xffffffff;
+  for (const byte of bytes) {
+    checksum = (checksum >>> 8) ^ KIRO_EVENTSTREAM_CRC_TABLE[(checksum ^ byte) & 0xff];
+  }
+  return (checksum ^ 0xffffffff) >>> 0;
+}
 
 /** Well-known regions to probe when the credential region yields no profile. */
 const KIRO_PROFILE_FALLBACK_REGIONS = ["us-east-1", "eu-central-1"];
@@ -66,6 +85,7 @@ export async function resolveKiroProfileArnAcrossRegions(
   proxyOptions = null,
   log = null,
   fetchImpl = proxyAwareFetch,
+  signal = null,
 ) {
   if (!accessToken) return null;
   const rawCandidates = [...new Set(
@@ -78,6 +98,9 @@ export async function resolveKiroProfileArnAcrossRegions(
   // AWS region id rather than building an arbitrary `q.<x>.amazonaws.com` URL.
   const candidates = rawCandidates.filter(isValidAwsRegion);
   for (const region of candidates) {
+    if (signal?.aborted) throw signal.reason instanceof Error
+      ? signal.reason
+      : new DOMException("Kiro profile discovery aborted", "AbortError");
     try {
       const response = await fetchImpl(buildKiroProfileEndpoint(region), {
         method: "POST",
@@ -88,9 +111,11 @@ export async function resolveKiroProfileArnAcrossRegions(
           "Accept": "application/json",
         },
         body: JSON.stringify({ maxResults: 10 }),
+        signal,
       }, proxyOptions);
       if (!response?.ok) {
         log?.debug?.("KIRO", `ListAvailableProfiles ${region} → ${response?.status}`);
+        try { void response?.body?.cancel?.().catch?.(() => {}); } catch { /* already closed */ }
         continue;
       }
       const data = await response.json().catch(() => null);
@@ -101,6 +126,7 @@ export async function resolveKiroProfileArnAcrossRegions(
       const arn = arnOf(match);
       if (arn) return arn;
     } catch (e) {
+      if (e?.name === "AbortError") throw e;
       log?.debug?.("KIRO", `ListAvailableProfiles ${region} error: ${e?.message || e}`);
     }
   }
@@ -218,9 +244,13 @@ export class KiroExecutor extends BaseExecutor {
     // one and there is no shared default outside us-east-1). Resolve it on the
     // real request path so connections self-heal.
     await this.ensureKiroProfileArn(args);
-    const result = await super.execute(args);
+    // Profile discovery is not the quota-bearing runtime request. Allocate a
+    // fresh fencing clock immediately before BaseExecutor begins dispatch so a
+    // slow discovery cannot make later 429 evidence appear older than it is.
+    const result = await super.execute({ ...args, attemptStartedAt: null });
     if (result?.response?.ok) {
       result.response = this.transformEventStreamToSSE(result.response, args.model);
+      result.terminalProvenance = "validated";
     }
     return result;
   }
@@ -253,7 +283,10 @@ export class KiroExecutor extends BaseExecutor {
     const preferredRegion = isValidAwsRegion(psd.region)
       ? psd.region
       : (regionFromProfileArn(psd.profileArn) || KIRO_DEFAULT_REGION);
-    const arn = await resolveKiroProfileArnAcrossRegions(accessToken, preferredRegion, proxyOptions, log);
+    const arn = await resolveKiroProfileArnAcrossRegions(accessToken, preferredRegion, proxyOptions, log, proxyAwareFetch, args?.signal || null);
+    if (args?.signal?.aborted) throw args.signal.reason instanceof Error
+      ? args.signal.reason
+      : new DOMException("Kiro profile discovery aborted", "AbortError");
     if (arn) {
       KIRO_PROFILE_ARN_CACHE.set(accessToken, arn);
       body.profileArn = arn;
@@ -280,6 +313,8 @@ export class KiroExecutor extends BaseExecutor {
     const state = {
       endDetected: false,
       finishEmitted: false,
+      rawTerminalSeen: false,
+      failureSeen: false,
       hasToolCalls: false,
       hasReasoningContent: false,
       reasoningChunkCount: 0,
@@ -287,9 +322,18 @@ export class KiroExecutor extends BaseExecutor {
       seenToolIds: new Map(),
       inThinking: false
     };
+    const rejectFraming = (controller) => {
+      if (state.failureSeen) return;
+      state.failureSeen = true;
+      buffer = new Uint8Array(0);
+      controller.enqueue(new TextEncoder().encode(
+        `data: ${JSON.stringify({ error: { message: "Kiro returned an invalid EventStream frame", type: "stream_error" } })}\n\n`,
+      ));
+    };
 
     const transformStream = new TransformStream({
       async transform(chunk, controller) {
+        if (state.failureSeen) return;
              // Track output so we can emit a keepalive if this frame yields no chunk.
         const enqueueCountBefore = chunkIndex;
         // Append to buffer
@@ -305,16 +349,41 @@ export class KiroExecutor extends BaseExecutor {
           iterations++;
           const view = new DataView(buffer.buffer, buffer.byteOffset);
           const totalLength = view.getUint32(0, false);
+          const headersLength = view.getUint32(4, false);
 
-          if (totalLength < 16 || totalLength > buffer.length || buffer.length < totalLength) break;
+          if (
+            totalLength < 16
+            || totalLength > KIRO_MAX_EVENTSTREAM_FRAME_BYTES
+            || headersLength > KIRO_MAX_EVENTSTREAM_HEADERS_BYTES
+            || headersLength > totalLength - 16
+          ) {
+            rejectFraming(controller);
+            break;
+          }
+          if (buffer.length < totalLength) break;
 
           const eventData = buffer.slice(0, totalLength);
           buffer = buffer.slice(totalLength);
 
           const event = parseEventFrame(eventData);
-          if (!event) continue;
+          if (!event) {
+            rejectFraming(controller);
+            break;
+          }
 
           const eventType = event.headers[":event-type"] || "";
+          const messageType = event.headers[":message-type"] || "";
+          if (messageType === "error" || messageType === "exception" || /(?:Error|Exception)$/.test(eventType)) {
+            state.failureSeen = true;
+            controller.enqueue(new TextEncoder().encode(
+              `data: ${JSON.stringify({ error: { message: "Kiro upstream stream failed", type: "provider_error" } })}\n\n`,
+            ));
+            continue;
+          }
+          if (state.rawTerminalSeen && !KIRO_POST_STOP_EVENT_TYPES.has(eventType)) {
+            rejectFraming(controller);
+            break;
+          }
 
           // Track total content length for token estimation
           if (!state.totalContentLength) state.totalContentLength = 0;
@@ -506,19 +575,7 @@ export class KiroExecutor extends BaseExecutor {
 
           // Handle messageStopEvent
           if (eventType === "messageStopEvent") {
-            const chunk = {
-              id: responseId,
-              object: "chat.completion.chunk",
-              created,
-              model,
-              choices: [{
-                index: 0,
-                delta: {},
-                finish_reason: state.hasToolCalls ? "tool_calls" : "stop"
-              }]
-            };
-            state.finishEmitted = true;
-            controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(chunk)}\n\n`));
+            state.rawTerminalSeen = true;
           }
 
           // Handle contextUsageEvent to extract contextUsagePercentage
@@ -563,7 +620,7 @@ export class KiroExecutor extends BaseExecutor {
           }
 
           // Emit final chunk only after receiving BOTH meteringEvent AND contextUsageEvent
-          if (state.hasMeteringEvent && state.hasContextUsage && !state.finishEmitted) {
+          if (state.rawTerminalSeen && state.hasMeteringEvent && state.hasContextUsage && !state.finishEmitted) {
             state.finishEmitted = true;
 
             // Estimate tokens if not available from events
@@ -612,15 +669,38 @@ export class KiroExecutor extends BaseExecutor {
 
         // No client chunk produced this frame — emit an SSE comment keepalive
                 // so the stall watchdog sees upstream activity (ignored by parser/client).
-                if (chunkIndex === enqueueCountBefore && !state.finishEmitted) {
+                if (chunkIndex === enqueueCountBefore && !state.finishEmitted && !state.failureSeen) {
                   controller.enqueue(new TextEncoder().encode(": ka\n\n"));
                 }
       },
 
       flush(controller) {
-        // Emit finish chunk if not already sent
-        if (!state.finishEmitted) {
+        if (buffer.length > 0) {
+          state.failureSeen = true;
+          controller.enqueue(new TextEncoder().encode(
+            `data: ${JSON.stringify({ error: { message: "Kiro stream ended with a truncated EventStream frame", type: "stream_error" } })}\n\n`,
+          ));
+        } else if (!state.rawTerminalSeen && !state.failureSeen) {
+          state.failureSeen = true;
+          controller.enqueue(new TextEncoder().encode(
+            `data: ${JSON.stringify({ error: { message: "Kiro stream ended before messageStopEvent", type: "stream_error" } })}\n\n`,
+          ));
+        }
+
+        // Emit finish only for a raw application terminal, never arbitrary EOF.
+        if (state.rawTerminalSeen && !state.failureSeen && !state.finishEmitted) {
           state.finishEmitted = true;
+          if (!state.usage && state.totalContentLength > 0) {
+            const completionTokens = Math.max(1, Math.floor(state.totalContentLength / 4));
+            const promptTokens = state.contextUsagePercentage > 0
+              ? Math.floor(state.contextUsagePercentage * contextWindow / 100)
+              : 0;
+            state.usage = {
+              prompt_tokens: promptTokens,
+              completion_tokens: completionTokens,
+              total_tokens: promptTokens + completionTokens,
+            };
+          }
           const finishChunk = {
             id: responseId,
             object: "chat.completion.chunk",
@@ -630,19 +710,24 @@ export class KiroExecutor extends BaseExecutor {
               index: 0,
               delta: {},
               finish_reason: state.hasToolCalls ? "tool_calls" : "stop"
-            }]
+              }]
           };
+          if (state.usage) finishChunk.usage = state.usage;
           controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(finishChunk)}\n\n`));
         }
 
-        // Send final done message
-        controller.enqueue(new TextEncoder().encode(SSE_DONE));
+        if (state.rawTerminalSeen && !state.failureSeen) {
+          controller.enqueue(new TextEncoder().encode(SSE_DONE));
+        }
       }
     });
 
     // Pipe response body through transform stream
     if (!response.body) {
-      return new Response(SSE_DONE, { status: response.status, headers: { "Content-Type": "text/event-stream" } });
+      return new Response(JSON.stringify({ error: { message: "Kiro upstream returned no response body" } }), {
+        status: 502,
+        headers: { "Content-Type": "application/json" },
+      });
     }
     const transformedStream = response.body.pipeThrough(transformStream);
 
@@ -678,58 +763,60 @@ export class KiroExecutor extends BaseExecutor {
  */
 function parseEventFrame(data) {
   try {
-    const view = new DataView(data.buffer, data.byteOffset);
+    if (!(data instanceof Uint8Array) || data.byteLength < 16) return null;
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    const totalLength = view.getUint32(0, false);
     const headersLength = view.getUint32(4, false);
+    if (
+      totalLength !== data.byteLength
+      || headersLength > KIRO_MAX_EVENTSTREAM_HEADERS_BYTES
+      || headersLength > totalLength - 16
+    ) return null;
+    if (view.getUint32(8, false) !== eventStreamCrc32(data.subarray(0, 8))) return null;
+    if (
+      view.getUint32(totalLength - 4, false)
+      !== eventStreamCrc32(data.subarray(0, totalLength - 4))
+    ) return null;
 
-    // Parse headers
     const headers = {};
     let offset = 12; // After prelude
     const headerEnd = 12 + headersLength;
+    const decoder = new TextDecoder("utf-8", { fatal: true });
 
-    while (offset < headerEnd && offset < data.length) {
+    while (offset < headerEnd) {
       const nameLen = data[offset];
       offset++;
-      if (offset + nameLen > data.length) break;
+      if (nameLen === 0 || offset + nameLen + 1 > headerEnd) return null;
 
-      const name = new TextDecoder().decode(data.slice(offset, offset + nameLen));
+      const name = decoder.decode(data.subarray(offset, offset + nameLen));
       offset += nameLen;
+      if (Object.prototype.hasOwnProperty.call(headers, name)) return null;
 
       const headerType = data[offset];
       offset++;
-
-      if (headerType === 7) { // String type
-        const valueLen = (data[offset] << 8) | data[offset + 1];
-        offset += 2;
-        if (offset + valueLen > data.length) break;
-
-        const value = new TextDecoder().decode(data.slice(offset, offset + valueLen));
-        offset += valueLen;
-        headers[name] = value;
-      } else {
-        break;
-      }
+      // Kiro's application headers are strings. Reject unknown encodings rather
+      // than partially accepting a frame with ambiguous header boundaries.
+      if (headerType !== 7 || offset + 2 > headerEnd) return null;
+      const valueLen = view.getUint16(offset, false);
+      offset += 2;
+      if (offset + valueLen > headerEnd) return null;
+      headers[name] = decoder.decode(data.subarray(offset, offset + valueLen));
+      offset += valueLen;
     }
+    if (offset !== headerEnd) return null;
 
-    // Parse payload
-    const payloadStart = 12 + headersLength;
+    const payloadStart = headerEnd;
     const payloadEnd = data.length - 4; // Exclude message CRC
 
     let payload = null;
     if (payloadEnd > payloadStart) {
-      const payloadStr = new TextDecoder().decode(data.slice(payloadStart, payloadEnd));
+      const payloadStr = decoder.decode(data.subarray(payloadStart, payloadEnd));
 
       // Skip empty or whitespace-only payloads
       if (!payloadStr || !payloadStr.trim()) {
         return { headers, payload: null };
       }
-
-      try {
-        payload = JSON.parse(payloadStr);
-      } catch (parseError) {
-        // Log parse error for debugging
-        console.warn(`[Kiro] Failed to parse payload: ${parseError.message} | payload: ${payloadStr.substring(0, 100)}`);
-        payload = { raw: payloadStr };
-      }
+      payload = JSON.parse(payloadStr);
     }
 
     return { headers, payload };

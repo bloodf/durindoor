@@ -2,6 +2,7 @@ import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { parseVertexSaJson, refreshVertexToken, refreshGoogleToken } from "../services/tokenRefresh.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { getCurrentProviderAttemptTimestamp } from "../services/providerAttemptContext.js";
 
 // Cache project IDs resolved from raw API keys { apiKey → projectId }
 const projectIdCache = new Map();
@@ -171,7 +172,14 @@ export class VertexExecutor extends BaseExecutor {
       signal,
     }, proxyOptions);
 
-    return { response, url, headers, transformedBody };
+    return {
+      response,
+      url,
+      headers,
+      transformedBody,
+      attemptStartedAt: getCurrentProviderAttemptTimestamp(),
+      terminalProvenance: "upstream",
+    };
   }
 }
 

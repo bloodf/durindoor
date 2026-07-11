@@ -146,9 +146,9 @@ export function getEarliestRateLimitedUntil(accounts) {
  * @param {string} rateLimitedUntil - ISO timestamp
  * @returns {string} e.g. "reset after 2m 30s"
  */
-export function formatRetryAfter(rateLimitedUntil) {
+export function formatRetryAfter(rateLimitedUntil, now = Date.now()) {
   if (!rateLimitedUntil) return "";
-  const diffMs = new Date(rateLimitedUntil).getTime() - Date.now();
+  const diffMs = new Date(rateLimitedUntil).getTime() - now;
   if (diffMs <= 0) return "reset after 0s";
   const totalSec = Math.ceil(diffMs / 1000);
   const h = Math.floor(totalSec / 3600);
@@ -181,6 +181,17 @@ export function isModelLockActive(connection, model) {
   const expiry = connection[key] || connection[MODEL_LOCK_ALL];
   if (!expiry) return false;
   return new Date(expiry).getTime() > Date.now();
+}
+
+/** Return the later applicable exact/account lock for one requested model. */
+export function getActiveModelLockUntil(connection, model, now = Date.now()) {
+  if (!connection) return null;
+  const candidates = [connection[getModelLockKey(model)], connection[MODEL_LOCK_ALL]]
+    .map((value) => ({ value, timestamp: new Date(value || "").getTime() }))
+    .filter((entry) => Number.isFinite(entry.timestamp) && entry.timestamp > now);
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => b.timestamp - a.timestamp);
+  return new Date(candidates[0].timestamp).toISOString();
 }
 
 /**

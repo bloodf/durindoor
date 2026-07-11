@@ -174,6 +174,7 @@ export {
 export {
   getProviderConnections, getProviderConnectionById,
   createProviderConnection, updateProviderConnection,
+  recordProviderConnectionFallbackState, clearProviderConnectionFallbackState,
   deleteProviderConnection, deleteProviderConnectionsByProvider, setProviderConnectionAutoPing,
   reorderProviderConnections, cleanupProviderConnections,
 } from "./repos/connectionsRepo.js";

@@ -71,7 +71,8 @@ export function getConcurrencyLimit(provider, limitsMap) {
  * @returns {Promise<void>}
  * @throws {ConcurrencyGateTimeoutError}
  */
-export function acquireSlot(provider, limit, timeoutMs = DEFAULT_TIMEOUT_MS) {
+export function acquireSlot(provider, limit, timeoutMs = DEFAULT_TIMEOUT_MS, signal = null) {
+  if (signal?.aborted) return Promise.reject(new DOMException("Concurrency wait aborted", "AbortError"));
   if (!limit || limit <= 0) return Promise.resolve();
 
   const gate = getGate(provider);
@@ -84,18 +85,32 @@ export function acquireSlot(provider, limit, timeoutMs = DEFAULT_TIMEOUT_MS) {
 
   // Slow path: queue and wait
   return new Promise((resolve, reject) => {
-    const entry = { resolve, reject, timer: null };
+    const entry = { resolve, reject, timer: null, onAbort: null, signal };
+
+    const cleanup = () => {
+      clearTimeout(entry.timer);
+      signal?.removeEventListener?.("abort", entry.onAbort);
+    };
 
     entry.timer = setTimeout(() => {
       const idx = gate.queue.indexOf(entry);
       if (idx !== -1) gate.queue.splice(idx, 1);
+      cleanup();
       reject(new ConcurrencyGateTimeoutError(provider, limit, timeoutMs));
     }, timeoutMs);
 
     // Allow the process to exit even if the timer is pending
     entry.timer.unref?.();
 
+    entry.onAbort = () => {
+      const idx = gate.queue.indexOf(entry);
+      if (idx !== -1) gate.queue.splice(idx, 1);
+      cleanup();
+      reject(new DOMException("Concurrency wait aborted", "AbortError"));
+    };
     gate.queue.push(entry);
+    signal?.addEventListener?.("abort", entry.onAbort, { once: true });
+    if (signal?.aborted) entry.onAbort();
   });
 }
 
@@ -115,6 +130,7 @@ export function releaseSlot(provider) {
   if (gate.queue.length > 0) {
     const next = gate.queue.shift();
     clearTimeout(next.timer);
+    next.onAbort && next.signal?.removeEventListener?.("abort", next.onAbort);
     // current stays the same — slot is handed off
     next.resolve();
     return;
@@ -146,6 +162,7 @@ export function _resetGates() {
   for (const [, g] of gates) {
     for (const entry of g.queue) {
       clearTimeout(entry.timer);
+      entry.onAbort && entry.signal?.removeEventListener?.("abort", entry.onAbort);
       entry.reject(new Error("Gate reset"));
     }
   }

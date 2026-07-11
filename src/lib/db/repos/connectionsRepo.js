@@ -5,6 +5,8 @@ import { mergeProviderConnection } from "../helpers/mergeProviderMetadata.js";
 import { hasConflictingCodexAccountIds, resolveCodexAccountId } from "open-sse/shared/codexAccountId.js";
 import { providerRefreshContextMatches } from "@/shared/utils/providerCredentialContext";
 import { QUOTA_WRITE_LOCK_SQL } from "./quotaSnapshotsRepo.js";
+import { resolveFallbackModelScope } from "open-sse/services/fallbackScope.js";
+import { QUOTA_MAX_CLOCK_SKEW_MS } from "@/shared/constants/quota";
 
 const OPTIONAL_FIELDS = [
   "displayName", "email", "globalPriority", "defaultModel",
@@ -283,6 +285,158 @@ export async function updateProviderConnection(id, data, {
     if (data.isActive === false) updateAutoPingEntryInTx(db, existing.provider, id, false);
     if (data.priority !== undefined) reorderInTx(db, existing.provider);
     result = returnCommitResult ? { applied: true, connection: merged } : merged;
+  });
+  return result;
+}
+
+const MODEL_LOCK_PREFIX = "modelLock_";
+const MODEL_STATE_VERSION_PREFIX = "modelStateObserved_";
+
+function boundedModelScope(provider, model) {
+  return resolveFallbackModelScope(provider, model) || "__all";
+}
+
+function eventTimestamp(value, now = Date.now()) {
+  const parsed = typeof value === "number" ? value : Date.parse(value || "");
+  const clock = Number(now);
+  if (
+    !Number.isSafeInteger(parsed)
+    || parsed <= 0
+    || !Number.isFinite(clock)
+    || parsed > clock + QUOTA_MAX_CLOCK_SKEW_MS
+  ) throw new TypeError("Provider fallback event timestamp is invalid");
+  return parsed;
+}
+
+function activeTimestamp(value, now) {
+  const parsed = Date.parse(value || "");
+  return Number.isFinite(parsed) && parsed > now ? parsed : null;
+}
+
+/**
+ * Atomically extend one legacy model lock. The attempt-start watermark fences
+ * late completions and the max-expiry merge prevents concurrent 429s from
+ * shortening an already accepted cooldown.
+ */
+export async function recordProviderConnectionFallbackState(id, {
+  model = null,
+  status,
+  reasonCode = "provider_error",
+  cooldownMs,
+  backoffLevel = 0,
+  observedAt,
+} = {}, { signal = null, now = Date.now() } = {}) {
+  const eventMs = eventTimestamp(observedAt, now);
+  if (!Number.isSafeInteger(cooldownMs) || cooldownMs < 0 || cooldownMs > 7 * 24 * 60 * 60 * 1000) {
+    throw new TypeError("Provider fallback cooldown is invalid");
+  }
+  const safeReasons = {
+    rate_limited: "Rate limited",
+    authentication_error: "Authentication failed",
+    provider_error: "Provider unavailable",
+    network_error: "Provider network error",
+  };
+  const reason = safeReasons[reasonCode] || safeReasons.provider_error;
+  const db = await getAdapter();
+  let result = null;
+  db.transaction(() => {
+    if (signal?.aborted) throw new DOMException("Provider fallback update aborted", "AbortError");
+    const lock = db.run(QUOTA_WRITE_LOCK_SQL);
+    if ((lock.changes || 0) !== 1) throw new Error("Provider fallback update requires an initialized schema");
+    const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
+    if (!row) return;
+    const existing = rowToConn(row);
+    const scope = boundedModelScope(existing.provider, model);
+    const lockKey = `${MODEL_LOCK_PREFIX}${scope}`;
+    const versionKey = `${MODEL_STATE_VERSION_PREFIX}${scope}`;
+    const storedVersion = Date.parse(existing[versionKey] || "") || 0;
+    if (eventMs <= storedVersion) {
+      result = { applied: false, connection: existing };
+      return;
+    }
+    const proposedExpiry = eventMs + cooldownMs;
+    const storedExpiry = Date.parse(existing[lockKey] || "") || 0;
+    const expiry = Math.max(proposedExpiry, storedExpiry);
+    const merged = {
+      ...existing,
+      [lockKey]: new Date(expiry).toISOString(),
+      [versionKey]: new Date(eventMs).toISOString(),
+      testStatus: "unavailable",
+      lastError: reason,
+      errorCode: Number(status) || null,
+      lastErrorAt: new Date(eventMs).toISOString(),
+      backoffLevel: Math.max(Number(existing.backoffLevel) || 0, Number(backoffLevel) || 0),
+      // Runtime health is not a credential revision. Keeping updatedAt stable
+      // prevents successful/failing traffic from invalidating quota fetch
+      // dedupe and OAuth compare-and-swap keys.
+      updatedAt: existing.updatedAt,
+    };
+    upsert(db, merged);
+    result = { applied: true, connection: merged };
+  });
+  return result;
+}
+
+/**
+ * Clear compatible legacy health state after a fully completed request. A
+ * newer attempt watermark always wins, so a late old success cannot erase a
+ * newer 429/auth failure.
+ */
+export async function clearProviderConnectionFallbackState(id, {
+  model = null,
+  observedAt,
+} = {}, { signal = null, now = Date.now() } = {}) {
+  const eventMs = eventTimestamp(observedAt, now);
+  const db = await getAdapter();
+  let result = null;
+  db.transaction(() => {
+    if (signal?.aborted) throw new DOMException("Provider fallback clear aborted", "AbortError");
+    const lock = db.run(QUOTA_WRITE_LOCK_SQL);
+    if ((lock.changes || 0) !== 1) throw new Error("Provider fallback clear requires an initialized schema");
+    const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
+    if (!row) return;
+    const existing = rowToConn(row);
+    const scope = boundedModelScope(existing.provider, model);
+    const relevantScopes = scope === "__all" ? [scope] : [scope, "__all"];
+    const primaryVersion = Date.parse(existing[`${MODEL_STATE_VERSION_PREFIX}${scope}`] || "") || 0;
+    if (eventMs <= primaryVersion) {
+      result = { applied: false, connection: existing };
+      return;
+    }
+    const scopes = relevantScopes;
+    const acceptedScopes = scopes.filter((candidate) => {
+      const version = Date.parse(existing[`${MODEL_STATE_VERSION_PREFIX}${candidate}`] || "") || 0;
+      return eventMs > version;
+    });
+    if (acceptedScopes.length === 0) {
+      result = { applied: false, connection: existing };
+      return;
+    }
+
+    const merged = { ...existing };
+    for (const candidate of acceptedScopes) {
+      merged[`${MODEL_LOCK_PREFIX}${candidate}`] = null;
+      merged[`${MODEL_STATE_VERSION_PREFIX}${candidate}`] = new Date(eventMs).toISOString();
+    }
+    for (const [key, value] of Object.entries(existing)) {
+      if (!key.startsWith(MODEL_LOCK_PREFIX) || acceptedScopes.some((candidate) => key === `${MODEL_LOCK_PREFIX}${candidate}`)) continue;
+      if (Date.parse(value || "") <= eventMs) merged[key] = null;
+    }
+    const activeLocks = Object.entries(merged).some(
+      ([key, value]) => key.startsWith(MODEL_LOCK_PREFIX) && activeTimestamp(value, eventMs),
+    );
+    if (!activeLocks && (Date.parse(existing.lastErrorAt || "") || 0) <= eventMs) {
+      Object.assign(merged, {
+        testStatus: "active",
+        lastError: null,
+        lastErrorAt: null,
+        errorCode: null,
+        backoffLevel: 0,
+      });
+    }
+    merged.updatedAt = existing.updatedAt;
+    upsert(db, merged);
+    result = { applied: true, connection: merged };
   });
   return result;
 }

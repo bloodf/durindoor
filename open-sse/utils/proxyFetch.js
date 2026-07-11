@@ -4,15 +4,26 @@ import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
 import { dbg } from "./debugLog.js";
 import { sanitizeErrorMessage } from "./error.js";
 import { digestMemoryKey } from "./memoryKey.js";
+import { markProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 
 let originalFetch = globalThis.fetch;
+const DURINDOOR_FETCH_PATCH = Symbol.for("durindoor.proxyFetch.patched");
+const NEXT_FETCH_PATCH = Symbol.for("next-patch");
+const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 const proxyDispatchers = new Map();
 let directDispatcher = null;
+let bypassTransportForTesting = null;
 
 export function __setOriginalFetchForTesting(fn) {
   const prev = originalFetch;
   originalFetch = fn;
   return () => { originalFetch = prev; };
+}
+
+export function __setBypassTransportForTesting(transport) {
+  const previous = bypassTransportForTesting;
+  bypassTransportForTesting = transport;
+  return () => { bypassTransportForTesting = previous; };
 }
 
 export function __setProxyDispatcherForTesting(proxyUrl, dispatcher) {
@@ -151,6 +162,37 @@ function safeTransportError(error) {
   return sanitizeErrorMessage(error?.message || error);
 }
 
+function signalAbortError(signal) {
+  return signal?.reason instanceof Error
+    ? signal.reason
+    : new DOMException("Provider request aborted", "AbortError");
+}
+
+function rethrowTransportAbort(error, signal) {
+  if (signal?.aborted) throw signalAbortError(signal);
+  if (error?.name === "AbortError") throw error;
+}
+
+function raceWithSignal(promise, signal) {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(signalAbortError(signal));
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener("abort", onAbort);
+      callback(value);
+    };
+    const onAbort = () => finish(reject, signalAbortError(signal));
+    signal.addEventListener("abort", onAbort, { once: true });
+    Promise.resolve(promise).then(
+      (value) => finish(resolve, value),
+      (error) => finish(reject, error),
+    );
+  });
+}
+
 /**
  * Resolve real IP using Google DNS (bypass system DNS)
  */
@@ -215,6 +257,18 @@ function getEnvProxyUrl(targetUrl) {
 
   return process.env.HTTP_PROXY || process.env.http_proxy ||
     process.env.ALL_PROXY || process.env.all_proxy;
+}
+
+/** Whether a custom transport must delegate routing to proxyAwareFetch. */
+export function shouldUseProxyAwareTransport(targetUrl, proxyOptions = null) {
+  if (
+    proxyOptions?.strictProxy === true
+    || proxyOptions?.enabled === true
+    || proxyOptions?.connectionProxyEnabled === true
+    || Boolean(normalizeString(proxyOptions?.vercelRelayUrl))
+  ) return true;
+  if (proxyOptions?.disableEnvProxy === true) return false;
+  return Boolean(normalizeProxyUrl(getEnvProxyUrl(targetUrl)));
 }
 
 /**
@@ -452,42 +506,95 @@ async function getDirectDispatcher() {
 
 async function directFetch(url, options) {
   const dispatcher = options?.dispatcher || (await getDirectDispatcher());
-  const fetchImpl = globalThis.fetch === patchedFetch ? originalFetch : globalThis.fetch;
+  const currentFetch = globalThis.fetch;
+  const isDurinDoorPatchedFetch = typeof currentFetch === "function"
+    && hasOwn(currentFetch, DURINDOOR_FETCH_PATCH)
+    && currentFetch[DURINDOOR_FETCH_PATCH] === true;
+  const isNextPatchedFetch = typeof currentFetch === "function"
+    && globalThis[NEXT_FETCH_PATCH] === true
+    && hasOwn(currentFetch, "__nextPatched")
+    && currentFetch.__nextPatched === true
+    && hasOwn(currentFetch, "__nextGetStaticStore")
+    && typeof currentFetch.__nextGetStaticStore === "function"
+    && hasOwn(currentFetch, "_nextOriginalFetch")
+    && typeof currentFetch._nextOriginalFetch === "function";
+  // A later Next wrapper can retain this module's patch through a dedupe
+  // wrapper, and a second bundled module instance can install another DurinDoor
+  // patch. Both identities must cross through this instance's captured fetch
+  // to avoid A -> B -> A recursion. Ordinary unmarked replacements remain
+  // supported for embedders and tests.
+  const fetchImpl = typeof currentFetch !== "function"
+    || currentFetch === patchedFetch
+    || isDurinDoorPatchedFetch
+    || isNextPatchedFetch
+    ? originalFetch
+    : currentFetch;
+  markProviderAttemptDispatch();
   return fetchImpl(url, { ...options, dispatcher });
 }
 
 /**
  * Create HTTPS request with manual socket connection (bypass DNS)
  */
-async function createBypassRequest(parsedUrl, realIP, options) {
-  const httpsModule = await import("https");
-  const netModule = await import("net");
+export async function createBypassRequest(parsedUrl, realIP, options) {
+  const abortError = () => signalAbortError(options?.signal);
+  if (options?.signal?.aborted) throw abortError();
+  const requestBody = await serializeBypassRequestBody(options?.body);
+  const httpsModule = bypassTransportForTesting?.https ? null : await import("https");
+  const tlsModule = bypassTransportForTesting?.tls ? null : await import("tls");
   // CJS modules expose exports via .default in ESM dynamic import context
-  const https = httpsModule.default ?? httpsModule;
-  const net = netModule.default ?? netModule;
+  const https = bypassTransportForTesting?.https ?? httpsModule.default ?? httpsModule;
+  const tls = bypassTransportForTesting?.tls ?? tlsModule.default ?? tlsModule;
+  if (options?.signal?.aborted) throw abortError();
 
   return new Promise((resolve, reject) => {
-    const socket = new net.Socket();
+    let socket = null;
+    let req = null;
+    let responseStream = null;
+    let resolved = false;
+    let settled = false;
+    const cleanup = () => options?.signal?.removeEventListener?.("abort", onAbort);
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const onAbort = () => {
+      const error = abortError();
+      try { responseStream?.destroy?.(error); } catch { /* noop */ }
+      try { req?.destroy?.(error); } catch { /* noop */ }
+      try { socket?.destroy?.(error); } catch { /* noop */ }
+      if (!resolved) fail(error);
+    };
+    options?.signal?.addEventListener?.("abort", onAbort, { once: true });
+    if (options?.signal?.aborted) {
+      onAbort();
+      return;
+    }
 
-    socket.connect(HTTPS_PORT, realIP, () => {
-      const reqOptions = {
-        socket,
-        // SNI + cert hostname are validated against the hostname the caller
-        // asked for, not the IP we connected to. This keeps the DNS-bypass
-        // (avoiding /etc/hosts MITM) while still rejecting on-path attackers
-        // that present a different cert. The MITM_BYPASS_HOSTS targets are
-        // all public-CA-issued (Google / GitHub / AWS / Cursor) so default
-        // verification works without any extra trust store.
-        servername: parsedUrl.hostname,
-        path: parsedUrl.pathname + parsedUrl.search,
-        method: options.method || "POST",
-        headers: {
-          ...options.headers,
-          Host: parsedUrl.hostname,
-        },
-      };
+    const reqOptions = {
+      // Connect to the independently resolved address while authenticating
+      // the certificate and SNI against the caller's original host.
+      hostname: realIP,
+      port: parsedUrl.port || HTTPS_PORT,
+      servername: parsedUrl.hostname,
+      checkServerIdentity: (_hostname, certificate) => (
+        tls.checkServerIdentity(parsedUrl.hostname, certificate)
+      ),
+      rejectUnauthorized: true,
+      agent: false,
+      path: parsedUrl.pathname + parsedUrl.search,
+      method: options.method || "POST",
+      headers: {
+        ...options.headers,
+        Host: parsedUrl.host,
+      },
+    };
 
-      const req = https.request(reqOptions, (res) => {
+    try {
+      req = https.request(reqOptions, (res) => {
+        responseStream = res;
         const response = {
           ok: res.statusCode >= HTTP_SUCCESS_MIN && res.statusCode < HTTP_SUCCESS_MAX,
           status: res.statusCode,
@@ -501,18 +608,47 @@ async function createBypassRequest(parsedUrl, realIP, options) {
           },
           json: async () => JSON.parse(await response.text()),
         };
+        resolved = true;
+        settled = true;
+        const finishBody = () => cleanup();
+        res.once("end", finishBody);
+        res.once("close", finishBody);
         resolve(response);
       });
-
-      req.on("error", reject);
-      if (options.body) {
-        req.write(typeof options.body === "string" ? options.body : JSON.stringify(options.body));
+      req.once?.("socket", (activeSocket) => { socket = activeSocket; });
+      req.on("error", (error) => {
+        if (!resolved) fail(error);
+      });
+      if (options?.signal?.aborted) {
+        onAbort();
+        return;
+      }
+      if (requestBody !== undefined) {
+        req.write(requestBody);
       }
       req.end();
-    });
-
-    socket.on("error", reject);
+    } catch (error) {
+      fail(error);
+    }
   });
+}
+
+/** Preserve fetch BodyInit bytes when the DNS-bypass transport uses https.request. */
+export async function serializeBypassRequestBody(body) {
+  if (body == null) return undefined;
+  if (typeof body === "string" || Buffer.isBuffer(body)) return body;
+  if (body instanceof ArrayBuffer) return Buffer.from(body);
+  if (ArrayBuffer.isView(body)) {
+    return Buffer.from(body.buffer, body.byteOffset, body.byteLength);
+  }
+  if (typeof Blob !== "undefined" && body instanceof Blob) {
+    return Buffer.from(await body.arrayBuffer());
+  }
+  if (body instanceof URLSearchParams) return body.toString();
+  if (typeof body?.getReader === "function" || typeof body?.pipe === "function") {
+    throw new TypeError("Streaming request bodies are not supported by the DNS-bypass transport");
+  }
+  return JSON.stringify(body);
 }
 
 export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
@@ -527,6 +663,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
       "x-relay-target": `${parsed.protocol}//${parsed.host}`,
       "x-relay-path": `${parsed.pathname}${parsed.search}`,
     };
+    markProviderAttemptDispatch();
     return originalFetch(vercelRelayUrl, { ...options, headers: relayHeaders });
   }
 
@@ -549,8 +686,10 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
       // Proxy resolves DNS externally (not affected by /etc/hosts) — use proxy directly
       try {
         const dispatcher = await getDispatcher(proxyUrl);
+        markProviderAttemptDispatch();
         return await originalFetch(url, { ...options, dispatcher });
       } catch (proxyError) {
+        rethrowTransportAbort(proxyError, options.signal);
         if (proxyOptions?.strictProxy === true) {
           throw new Error("[ProxyFetch] Proxy required but failed (strictProxy=true)");
         }
@@ -560,9 +699,18 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
     // No proxy — manually resolve real IP to bypass DNS spoof
     try {
       const parsedUrl = new URL(targetUrl);
-      const realIP = await resolveRealIP(parsedUrl.hostname);
-      if (realIP) return await createBypassRequest(parsedUrl, realIP, options);
+      const realIP = await raceWithSignal(resolveRealIP(parsedUrl.hostname), options.signal);
+      if (realIP) {
+        if (options.signal?.aborted) {
+          throw options.signal.reason instanceof Error
+            ? options.signal.reason
+            : new DOMException("Provider request aborted", "AbortError");
+        }
+        markProviderAttemptDispatch();
+        return await createBypassRequest(parsedUrl, realIP, options);
+      }
     } catch (error) {
+      rethrowTransportAbort(error, options.signal);
       console.warn(`[ProxyFetch] MITM bypass failed: ${safeTransportError(error)}`);
     }
   }
@@ -570,8 +718,10 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
   if (proxyUrl) {
     try {
       const dispatcher = await getDispatcher(proxyUrl);
+      markProviderAttemptDispatch();
       return await originalFetch(url, { ...options, dispatcher });
     } catch (proxyError) {
+      rethrowTransportAbort(proxyError, options.signal);
       // If strictProxy is enabled, fail hard instead of falling back to direct
       if (proxyOptions?.strictProxy === true) {
         throw new Error("[ProxyFetch] Proxy required but failed (strictProxy=true)");
@@ -593,6 +743,13 @@ async function patchedFetch(url, options = {}) {
   const { proxyOptions, ...restOptions } = options;
   return proxyAwareFetch(url, restOptions, proxyOptions || null);
 }
+
+Object.defineProperty(patchedFetch, DURINDOOR_FETCH_PATCH, {
+  value: true,
+  enumerable: false,
+  configurable: false,
+  writable: false,
+});
 
 // Idempotency guard — only patch once to avoid wrapping multiple times
 if (globalThis.fetch !== patchedFetch) {

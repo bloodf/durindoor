@@ -9,6 +9,7 @@ import { createThinkTagStreamExtractor } from "./thinkStripper.js";
 import { resolveInlineThinkingFormat } from "../handlers/chatCore/inlineThinking.js";
 import { INLINE_THINKING_FORMATS } from "../providers/schema.js";
 import { appendReasoningText } from "../translator/concerns/reasoning.js";
+import { createUpstreamTerminalTracker } from "./streamTerminal.js";
 
 import { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER } from "./sseConstants.js";
 
@@ -53,6 +54,8 @@ export function createSSEStream(options = {}) {
     connectionId = null,
     body = null,
     onStreamComplete = null,
+    onCoherentTerminal = null,
+    providerBody = null,
     apiKey = null,
     claudeClassifierCompat = "off"
   } = options;
@@ -93,10 +96,46 @@ export function createSSEStream(options = {}) {
 
   // Track Responses API event framing for same-format passthrough (codex)
   let currentOpenAIResponsesEvent = null;
+  let currentUpstreamEvent = null;
   let openAIResponsesTerminalSeen = false;
   let openAIResponsesDoneSent = false;
   let streamDoneSent = false;  // track duplicate [DONE] across transform + flush
   let claudeTerminalSeen = false;
+  const terminalBody = providerBody || body;
+  const upstreamTerminal = createUpstreamTerminalTracker({
+    format: targetFormat,
+    onCoherentTerminal,
+    deferSuccessCallback: true,
+    expectedChoiceCount: terminalBody?.n,
+    expectedCandidateCount: terminalBody?.candidate_count
+      ?? terminalBody?.candidateCount
+      ?? terminalBody?.generationConfig?.candidateCount
+      ?? terminalBody?.generation_config?.candidate_count,
+  });
+  const observeBufferedUpstream = (text, pendingEventName = null) => {
+    let eventName = pendingEventName;
+    for (const rawLine of String(text || "").split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (line.startsWith("event:")) {
+        eventName = line.slice(6).trim() || null;
+        continue;
+      }
+      if (!line.startsWith("data:") && !line.startsWith("{")) continue;
+      const parsed = parseSSELine(line, targetFormat);
+      if (parsed?.done) upstreamTerminal.observe({ rawDone: true, eventName });
+      else if (parsed) {
+        upstreamTerminal.observe({ chunk: parsed, eventName });
+        if (
+          targetFormat === FORMATS.CLAUDE
+          && parsed?.type === "message_stop"
+          && upstreamTerminal.outcome === "success"
+        ) claudeTerminalSeen = true;
+      }
+      else if (line.startsWith("{") || line.slice(5).trim()) upstreamTerminal.fail();
+      eventName = null;
+    }
+    return eventName;
+  };
 
   // The compatibility parser is enabled only by exact provider transport/model
   // metadata. State is isolated by OpenAI choice index.
@@ -197,9 +236,14 @@ export function createSSEStream(options = {}) {
           }
         }
 
-        // Capture Responses API event name to preserve framing in same-format passthrough
-        if (mode === STREAM_MODE.TRANSLATE && targetFormat === FORMATS.OPENAI_RESPONSES && trimmed.startsWith("event:")) {
-          currentOpenAIResponsesEvent = trimmed.slice(6).trim();
+        // SSE event labels are part of the upstream terminal contract. Keep the
+        // next label in every mode/format so event/payload contradictions cannot
+        // be hidden by passthrough normalization.
+        if (trimmed.startsWith("event:")) {
+          currentUpstreamEvent = trimmed.slice(6).trim() || null;
+          if (mode === STREAM_MODE.TRANSLATE && targetFormat === FORMATS.OPENAI_RESPONSES) {
+            currentOpenAIResponsesEvent = currentUpstreamEvent;
+          }
         }
 
         // Passthrough mode: normalize and forward
@@ -209,17 +253,25 @@ export function createSSEStream(options = {}) {
           let pendingInlineThinkingOutput = "";
           const inlineThinkingRecoveryChoices = [];
 
-          if (trimmed === "data: [DONE]") {
+          const isDoneLine = /^data:\s*\[DONE\]\s*$/.test(trimmed);
+          const isDataLine = trimmed.startsWith("data:");
+          const upstreamEventForLine = isDataLine ? currentUpstreamEvent : null;
+          if (isDataLine) currentUpstreamEvent = null;
+          if (isDoneLine) {
             pendingInlineThinkingOutput = flushInlineThinkingStates();
             streamDoneSent = true;
+            upstreamTerminal.observe({ rawDone: true, eventName: upstreamEventForLine });
           }
 
-          if (trimmed.startsWith("data:") && trimmed.slice(5).trim() !== "[DONE]") {
+          if (trimmed.startsWith("data:") && !isDoneLine && trimmed.slice(5).trim()) {
             try {
               const parsed = JSON.parse(trimmed.slice(5).trim());
-              if (targetFormat === FORMATS.CLAUDE && parsed?.type === "message_stop") {
-                claudeTerminalSeen = true;
-              }
+              upstreamTerminal.observe({ chunk: parsed, eventName: upstreamEventForLine });
+              if (
+                targetFormat === FORMATS.CLAUDE
+                && parsed?.type === "message_stop"
+                && upstreamTerminal.outcome === "success"
+              ) claudeTerminalSeen = true;
 
               if (Array.isArray(parsed?.choices)) {
                 inlineThinkingChunkMeta = {
@@ -459,6 +511,7 @@ export function createSSEStream(options = {}) {
                 injectedUsage = true;
               }
             } catch {
+              upstreamTerminal.fail();
               // Skip non-JSON data lines silently — don't forward garbage to clients.
               // Upstream providers sometimes return plain-text errors (HTML, rate-limit
               // messages) in the SSE stream that would break downstream JSON decoders.
@@ -485,14 +538,24 @@ export function createSSEStream(options = {}) {
         if (!trimmed) continue;
 
         const parsed = parseSSELine(trimmed, targetFormat);
-        if (!parsed) continue;
+        if (!parsed) {
+          if (trimmed.startsWith("data:") && trimmed.slice(5).trim()) upstreamTerminal.fail();
+          continue;
+        }
 
         // Responses API same-format passthrough: preserve event framing + track terminal state
         const isOpenAIResponsesStream = targetFormat === FORMATS.OPENAI_RESPONSES;
         const keepsOpenAIResponsesFormat = isOpenAIResponsesStream && sourceFormat === FORMATS.OPENAI_RESPONSES;
         const openAIResponsesEventName = isOpenAIResponsesStream
           ? getOpenAIResponsesEventName(currentOpenAIResponsesEvent, parsed)
-          : null;
+          : currentUpstreamEvent;
+
+        upstreamTerminal.observe({
+          chunk: parsed,
+          eventName: openAIResponsesEventName,
+          rawDone: parsed?.done === true,
+        });
+        currentUpstreamEvent = null;
 
         if (isOpenAIResponsesStream && isOpenAIResponsesTerminalEvent(openAIResponsesEventName, parsed)) {
           openAIResponsesTerminalSeen = true;
@@ -676,6 +739,7 @@ export function createSSEStream(options = {}) {
 
           if (buffer) {
             const trimmedBuffer = buffer.trim();
+            currentUpstreamEvent = observeBufferedUpstream(trimmedBuffer, currentUpstreamEvent);
             let output;
             if (/^data:\s*\[DONE\]$/.test(trimmedBuffer)) {
               output = "data: [DONE]\n\n";
@@ -708,10 +772,25 @@ export function createSSEStream(options = {}) {
           // Gemini-family clients (Antigravity, Vertex, Gemini) reject this sentinel with 400 syntax errors.
           const isGeminiFamily = GEMINI_PASSTHROUGH_PROVIDERS.has(provider);
           const isClaudeStream = targetFormat === FORMATS.CLAUDE;
+          const isResponsesStream = targetFormat === FORMATS.OPENAI_RESPONSES;
           if (isClaudeStream && !claudeTerminalSeen) {
             throw new Error("Claude passthrough stream ended before message_stop");
           }
-          if (!streamDoneSent && !isGeminiFamily && !isClaudeStream) {
+          if (isResponsesStream && upstreamTerminal.outcome !== "success") {
+            const failedOutput = formatIncompleteOpenAIResponsesStreamFailure();
+            upstreamTerminal.observe({
+              eventName: "response.failed",
+              chunk: { type: "response.failed", response: { status: "failed" } },
+            });
+            reqLogger?.appendConvertedChunk?.(failedOutput);
+            controller.enqueue(sharedEncoder.encode(failedOutput));
+          }
+          if (
+            !streamDoneSent
+            && !isGeminiFamily
+            && !isClaudeStream
+            && upstreamTerminal.outcome !== "failure"
+          ) {
             const doneOutput = "data: [DONE]\n\n";
             reqLogger?.appendConvertedChunk?.(doneOutput);
             controller.enqueue(sharedEncoder.encode(doneOutput));
@@ -729,6 +808,7 @@ export function createSSEStream(options = {}) {
 
         if (buffer.trim()) {
           const parsed = parseSSELine(buffer.trim());
+          currentUpstreamEvent = observeBufferedUpstream(buffer.trim(), currentUpstreamEvent);
           if (parsed && !parsed.done) {
             const translated = translateResponse(targetFormat, sourceFormat, parsed, state);
 
@@ -809,12 +889,14 @@ export function createSSEStream(options = {}) {
         if (mode === STREAM_MODE.PASSTHROUGH && targetFormat === FORMATS.CLAUDE) {
           throw error;
         }
+      } finally {
+        upstreamTerminal.finalize();
       }
     }
   });
 }
 
-export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, claudeClassifierCompat = "off") {
+export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, claudeClassifierCompat = "off", onCoherentTerminal = null, providerBody = null) {
   return createSSEStream({
     mode: STREAM_MODE.TRANSLATE,
     targetFormat,
@@ -826,12 +908,14 @@ export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, p
     connectionId,
     body,
     onStreamComplete,
+    onCoherentTerminal,
+    providerBody,
     apiKey,
     claudeClassifierCompat
   });
 }
 
-export function createPassthroughStreamWithLogger(provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, targetFormat = null) {
+export function createPassthroughStreamWithLogger(provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, targetFormat = null, onCoherentTerminal = null, providerBody = null) {
   return createSSEStream({
     mode: STREAM_MODE.PASSTHROUGH,
     targetFormat,
@@ -842,6 +926,8 @@ export function createPassthroughStreamWithLogger(provider = null, reqLogger = n
     connectionId,
     body,
     onStreamComplete,
+    onCoherentTerminal,
+    providerBody,
     apiKey
   });
 }

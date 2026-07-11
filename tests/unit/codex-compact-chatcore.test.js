@@ -119,6 +119,7 @@ describe("Codex compact request context in chatCore", () => {
       .mockResolvedValueOnce(providerResult(401))
       .mockResolvedValueOnce(providerResult(200));
     const options = makeOptions();
+    options.refreshCredentials = vi.fn().mockResolvedValue({ accessToken: "new-token" });
 
     await handleChatCore(options);
 
@@ -141,9 +142,9 @@ describe("Codex compact request context in chatCore", () => {
     mocks.execute
       .mockResolvedValueOnce(providerResult(401))
       .mockResolvedValueOnce(providerResult(200));
-    mocks.refreshCredentials.mockResolvedValueOnce({ accessToken: "new-token" });
-    mocks.refreshWithRetry.mockImplementationOnce((refreshFn) => refreshFn());
     const options = makeOptions();
+    const sharedRefresh = vi.fn().mockResolvedValue({ accessToken: "new-token" });
+    options.refreshCredentials = sharedRefresh;
     options.credentials.providerSpecificData = {
       oauthProxy: { mode: "strict-pool", poolId: "pool-chat" },
       connectionProxyEnabled: true,
@@ -167,11 +168,8 @@ describe("Codex compact request context in chatCore", () => {
       strictProxy: true,
       disableEnvProxy: true,
     });
-    expect(mocks.refreshCredentials).toHaveBeenCalledWith(
-      options.credentials,
-      options.log,
-      firstRoute
-    );
+    expect(sharedRefresh).toHaveBeenCalledWith({ signal: null, force: true });
+    expect(mocks.refreshCredentials).not.toHaveBeenCalled();
     const proxyLogs = options.log.info.mock.calls.flat().join(" ");
     expect(proxyLogs).toContain("http://chat-proxy.test:8080");
     expect(proxyLogs).not.toContain("@chat-proxy.test");

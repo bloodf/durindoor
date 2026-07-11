@@ -4,8 +4,8 @@ import { fromOpenAIFinish } from "../../translator/concerns/finishReason.js";
 import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.js";
 import { unwrapClinepassEnvelope } from "../../utils/clinepassEnvelope.js";
 import { addBufferToUsage, filterUsageForFormat } from "../../utils/usageTracking.js";
-import { createErrorResult } from "../../utils/error.js";
-import { HTTP_STATUS } from "../../config/runtimeConfig.js";
+import { createErrorResult, readBoundedResponseText } from "../../utils/error.js";
+import { HTTP_STATUS, MAX_PROVIDER_BODY_BYTES, PROVIDER_BODY_TIMEOUT_MS } from "../../config/runtimeConfig.js";
 import { parseSSEToOpenAIResponse } from "./sseToJsonHandler.js";
 import { buildRequestDetail, extractRequestConfig, extractUsageFromResponse, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { translateOpenAIToClaudeIfNeeded } from "../../translator/response/openai-to-claude-json.js";
@@ -17,6 +17,7 @@ import { formatSSE } from "../../utils/streamHelpers.js";
 import { SSE_HEADERS_CORS } from "../../utils/sseConstants.js";
 import { normalizeInlineThinkingResponse } from "./inlineThinking.js";
 import { toOpenAIUsage } from "../../translator/concerns/usage.js";
+import { isCoherentNonStreamingResponse } from "../../utils/streamTerminal.js";
 
 const GEMINI_FAMILY_FORMATS = new Set([
   FORMATS.GEMINI,
@@ -384,14 +385,37 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
 /**
  * Handle non-streaming response from provider.
  */
-export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, streamToClient, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, trackDone, appendLog, pxpipe, reqTag, log, usageEventId, claudeClassifierCompat }) {
-  trackDone();
-  const contentType = providerResponse.headers.get("content-type") || "";
-  let responseBody;
+export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, streamToClient, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, trackDone, appendLog, pxpipe, reqTag, log, usageEventId, claudeClassifierCompat, signal = null, terminalProvenance = null }) {
+  try {
+    const markSuccess = async () => {
+      if (!onRequestSuccess || !["upstream", "validated"].includes(terminalProvenance)) return;
+      try { await onRequestSuccess(); }
+      catch { console.error("[ChatCore] completed-response cleanup failed"); }
+    };
+    const contentType = providerResponse.headers.get("content-type") || "";
+    let responseBody;
+
+  let responseText;
+  try {
+    responseText = await readBoundedResponseText(providerResponse, {
+      signal,
+      maxBytes: MAX_PROVIDER_BODY_BYTES,
+      timeoutMs: PROVIDER_BODY_TIMEOUT_MS,
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") return createErrorResult(499, "Request aborted");
+    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Failed to read provider response");
+  }
 
   if (contentType.includes("text/event-stream")) {
-    const sseText = await providerResponse.text();
-    const parsed = parseSSEToOpenAIResponse(sseText, model);
+    const sseText = responseText;
+    const terminalFormat = [FORMATS.KIRO, FORMATS.COMMANDCODE, FORMATS.CURSOR].includes(targetFormat)
+      ? targetFormat
+      : FORMATS.OPENAI;
+    const parsed = parseSSEToOpenAIResponse(sseText, model, {
+      format: terminalFormat,
+      providerBody: finalBody || translatedBody,
+    });
     if (!parsed) {
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
       return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
@@ -399,15 +423,13 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     responseBody = parsed;
   } else {
     try {
-      responseBody = await providerResponse.json();
+      responseBody = JSON.parse(responseText);
     } catch (err) {
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
-      console.error(`[ChatCore] Failed to parse JSON from ${provider}:`, err.message);
+      console.error(`[ChatCore] Failed to parse JSON from ${provider}: ${err?.name || "Error"}`);
       return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
     }
   }
-
-  reqLogger.logProviderResponse(providerResponse.status, providerResponse.statusText, providerResponse.headers, responseBody);
 
   // Unwrap ClinePass {success, data} envelope before marking success: a
   // {success:false, error} body must surface as a 502, never as a successful call.
@@ -421,13 +443,12 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     responseBody = unwrapped;
   }
 
-  if (onRequestSuccess) {
-    Promise.resolve()
-      .then(onRequestSuccess)
-      .catch(err => {
-        console.error("[ChatCore] onRequestSuccess failed:", err?.message || err);
-      });
+  if (!isCoherentNonStreamingResponse(responseBody, targetFormat)) {
+    appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
+    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Provider returned an incoherent non-streaming response");
   }
+
+  reqLogger.logProviderResponse(providerResponse.status, providerResponse.statusText, providerResponse.headers, responseBody);
 
   // Decloak tool_use names once on raw Claude body, before any translation (INPUT side)
   responseBody = decloakToolNames(responseBody, toolNameMap);
@@ -520,6 +541,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       && GEMINI_FAMILY_FORMATS.has(sourceFormat)
       && (Array.isArray(translatedResponse?.candidates) || Array.isArray(translatedResponse?.response?.candidates));
     if (isNativeGeminiResponse) {
+      await markSuccess();
       return {
         success: true,
         response: new Response(formatSSE(translatedResponse, sourceFormat), {
@@ -546,6 +568,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     }
     const sseText = openAICompletionToClientSSE(openAIIntermediate, model, sourceFormat);
 
+    await markSuccess();
     return {
       success: true,
       response: new Response(sseText, {
@@ -557,10 +580,14 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     };
   }
 
-  return {
-    success: true,
-    response: new Response(JSON.stringify(translatedResponse), {
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-    })
-  };
+    await markSuccess();
+    return {
+      success: true,
+      response: new Response(JSON.stringify(translatedResponse), {
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+      })
+    };
+  } finally {
+    trackDone();
+  }
 }

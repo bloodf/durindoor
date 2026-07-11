@@ -2,6 +2,7 @@ import "open-sse/index.js";
 
 import {
   getProviderCredentials,
+  projectProviderCredentials,
   markAccountUnavailable,
   clearAccountError,
   extractApiKey,
@@ -25,13 +26,49 @@ import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
 import { detectFormat } from "open-sse/services/provider.js";
 import { isAntigravityCapacityError } from "open-sse/services/accountFallback.js";
 import * as log from "../utils/logger.js";
-import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
+import { updateProviderCredentials } from "../services/tokenRefresh.js";
+import { refreshAndUpdateCredentials } from "@/shared/services/providerCredentials";
+import { refreshProviderQuota } from "@/shared/services/providerQuotaTracker";
+import { allocateProviderAttemptTimestamp } from "@/shared/services/providerRateLimitEvidence";
+import {
+  getModelQuotaFamily,
+  getModelUpstreamId,
+  PROVIDER_ID_TO_ALIAS,
+} from "open-sse/config/providerModels.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
 import { validateChatRequestBody } from "open-sse/translator/validate.js";
 
 const ANTIGRAVITY_CAPACITY_SWEEP_RETRIES = 2;
+const MAX_ACCOUNT_ATTEMPTS_PER_REQUEST = 1024;
+
+function requestAborted(request) {
+  return request?.signal?.aborted === true;
+}
+
+function aggregateRateLimitBlockers(blockers, extra = null) {
+  const entries = [...blockers.values()];
+  if (extra) entries.push(extra);
+  if (entries.length === 0 || entries.some((entry) => Number(entry.status) !== 429)) return null;
+  const complete = entries.every((entry) => entry.retryAtKnown !== false && Boolean(entry.retryAt));
+  const retryAt = complete
+    ? entries.map((entry) => entry.retryAt).sort((left, right) => Date.parse(left) - Date.parse(right))[0]
+    : null;
+  return { status: 429, retryAt };
+}
+
+function proxyOptionsFromCredentials(credentials) {
+  const config = credentials?.providerSpecificData || {};
+  return {
+    connectionProxyEnabled: config.connectionProxyEnabled === true,
+    connectionProxyUrl: config.connectionProxyUrl || "",
+    connectionNoProxy: config.connectionNoProxy || "",
+    vercelRelayUrl: config.vercelRelayUrl || "",
+    strictProxy: config.strictProxy === true,
+    disableEnvProxy: config.disableEnvProxy === true,
+  };
+}
 
 /**
  * #6457 / OmniRoute#6525: resolved registry model kind === "image" means the
@@ -88,6 +125,7 @@ function fixMessageOrdering(messages) {
  * Format detection and translation handled by translator
  */
 export async function handleChat(request, clientRawRequest = null) {
+  if (requestAborted(request)) return errorResponse(499, "Request aborted");
   let body;
   try {
     body = await request.json();
@@ -287,6 +325,7 @@ export async function handleChat(request, clientRawRequest = null) {
  * Handle single model chat request
  */
 async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null) {
+  if (requestAborted(request)) return errorResponse(499, "Request aborted");
   const modelInfo = await getModelInfo(modelStr);
 
   // If provider is null, this might be a combo name - check and handle
@@ -374,20 +413,48 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
   // Try with available accounts (fallback on errors)
   const excludeConnectionIds = new Set();
+  const attemptCounts = new Map();
+  const attemptedBlockers = new Map();
   let lastError = null;
   let lastStatus = null;
   let antigravityCapacitySweeps = 0;
+  let totalAttempts = 0;
+  const providerAlias = PROVIDER_ID_TO_ALIAS[provider] || provider;
+  const upstreamModel = getModelUpstreamId(providerAlias, model);
+  const quotaFamily = getModelQuotaFamily(providerAlias, model);
+  const modelCandidates = [...new Set([model, upstreamModel].filter(Boolean))];
 
   while (true) {
-    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model);
+    if (requestAborted(request)) return errorResponse(499, "Request aborted");
+    let credentials;
+    try {
+      credentials = await getProviderCredentials(provider, excludeConnectionIds, model, {
+        signal: request?.signal || null,
+        modelCandidates,
+        quotaFamily,
+      });
+    } catch (error) {
+      if (error?.name === "AbortError" || requestAborted(request)) return errorResponse(499, "Request aborted");
+      throw error;
+    }
 
     // All accounts unavailable
     if (!credentials || credentials.allRateLimited) {
       if (credentials?.allRateLimited) {
-        const errorMsg = lastError || credentials.lastError || "Unavailable";
-        const status = lastStatus || Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;
-        log.warn("CHAT", `[${provider}/${model}] ${errorMsg} (${credentials.retryAfterHuman})`);
-        return unavailableResponse(status, `[${provider}/${model}] ${errorMsg}`, credentials.retryAfter, credentials.retryAfterHuman);
+        const storedStatus = Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;
+        const combinedRateLimit = aggregateRateLimitBlockers(attemptedBlockers, {
+          status: storedStatus,
+          retryAt: credentials.retryAfter || null,
+          retryAtKnown: Boolean(credentials.retryAfter),
+        });
+        const status = combinedRateLimit?.status
+          || (storedStatus !== 429 ? storedStatus : (lastStatus || storedStatus));
+        const errorMsg = status === storedStatus
+          ? (credentials.lastError || "Unavailable")
+          : (lastError || credentials.lastError || "Unavailable");
+        const retryAfter = combinedRateLimit ? combinedRateLimit.retryAt : credentials.retryAfter;
+        log.warn("CHAT", `[${provider}/${model}] all accounts unavailable`);
+        return unavailableResponse(status, `[${provider}/${model}] ${errorMsg}`, retryAfter, retryAfter ? credentials.retryAfterHuman : "");
       }
       if (excludeConnectionIds.size === 0) {
         log.warn("AUTH", `No active credentials for provider: ${provider}`);
@@ -404,29 +471,95 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         continue;
       }
       log.warn("CHAT", "No more accounts available", { provider });
+      const attemptedRateLimit = aggregateRateLimitBlockers(attemptedBlockers);
+      if (attemptedRateLimit) {
+        return unavailableResponse(429, `[${provider}/${model}] ${lastError || "Rate limit exceeded"}`, attemptedRateLimit.retryAt, "");
+      }
       return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
     }
 
-    // Account selection shown in the unified "▶" line (acc:...)
-    const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
+    const allowedAttempts = (provider === "antigravity" || provider === "agy")
+      ? ANTIGRAVITY_CAPACITY_SWEEP_RETRIES + 1
+      : 1;
+    const priorAttempts = attemptCounts.get(credentials.connectionId) || 0;
+    if (priorAttempts >= allowedAttempts || totalAttempts >= MAX_ACCOUNT_ATTEMPTS_PER_REQUEST) {
+      excludeConnectionIds.add(credentials.connectionId);
+      if (totalAttempts >= MAX_ACCOUNT_ATTEMPTS_PER_REQUEST) {
+        log.warn("FALLBACK", "Provider fallback attempt bound reached");
+        const attemptedRateLimit = aggregateRateLimitBlockers(attemptedBlockers);
+        if (attemptedRateLimit) {
+          return unavailableResponse(429, `[${provider}/${model}] ${lastError || "Rate limit exceeded"}`, attemptedRateLimit.retryAt, "");
+        }
+        return errorResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, "All accounts unavailable");
+      }
+      continue;
+    }
+    attemptCounts.set(credentials.connectionId, priorAttempts + 1);
+    totalAttempts += 1;
 
-    // Ensure real project ID is available for providers that need it (P0 fix: cold miss)
-    if ((provider === "antigravity" || provider === "agy" || provider === "gemini-cli") && !refreshedCredentials.projectId) {
-      const pid = await getProjectIdForConnection(
-        credentials.connectionId,
-        refreshedCredentials.accessToken,
-        refreshedCredentials.providerSpecificData,
-      );
-      if (pid) {
-        refreshedCredentials.projectId = pid;
-        // Persist to DB in background so subsequent requests have it immediately
-        updateProviderCredentials(credentials.connectionId, { projectId: pid }).catch(() => { });
+    // Refresh stale/missing provider quota outside the credential-selection
+    // mutex. Batch 2 deduplicates concurrent subscribers and fences late work.
+    if (credentials._quotaPreflight?.shouldRefresh && credentials._connection) {
+      refreshProviderQuota(credentials._connection, { signal: request?.signal || null }).catch((error) => {
+        if (error?.name !== "AbortError") log.warn("QUOTA", "Background quota refresh failed");
+      });
+    }
+
+    if (requestAborted(request)) return errorResponse(499, "Request aborted");
+
+    // Account selection shown in the unified "▶" line (acc:...). OAuth
+    // rotation goes through the shared CAS coordinator used by quota refresh.
+    let activeConnection = credentials._connection || null;
+    let refreshedCredentials = credentials;
+    if (activeConnection?.authType === "oauth") {
+      try {
+        const refreshed = await refreshAndUpdateCredentials(
+          activeConnection,
+          false,
+          proxyOptionsFromCredentials(credentials),
+          { signal: request?.signal || null, log },
+        );
+        activeConnection = refreshed.connection;
+        refreshedCredentials = await projectProviderCredentials(activeConnection, credentials._quotaPreflight);
+      } catch (error) {
+        if (error?.name === "AbortError") return errorResponse(499, "Request aborted");
+        log.warn("TOKEN", "Proactive credential refresh failed; attempting existing credential");
       }
     }
 
+    if (requestAborted(request)) return errorResponse(499, "Request aborted");
+
+    // Ensure real project ID is available for providers that need it (P0 fix: cold miss)
+    if ((provider === "antigravity" || provider === "agy" || provider === "gemini-cli") && !refreshedCredentials.projectId) {
+      try {
+        const pid = await getProjectIdForConnection(
+          credentials.connectionId,
+          refreshedCredentials.accessToken,
+          refreshedCredentials.providerSpecificData,
+          request?.signal || null,
+        );
+        if (requestAborted(request)) return errorResponse(499, "Request aborted");
+        if (pid) {
+          refreshedCredentials.projectId = pid;
+          // Persist only after the subscriber is still live; a disconnected
+          // request must not schedule a late credential write.
+          updateProviderCredentials(credentials.connectionId, { projectId: pid }).catch(() => { });
+        }
+      } catch (error) {
+        if (error?.name === "AbortError" || requestAborted(request)) {
+          return errorResponse(499, "Request aborted");
+        }
+      }
+    }
+    if (requestAborted(request)) return errorResponse(499, "Request aborted");
+
     // Use shared chatCore
     const chatSettings = await getSettings();
+    if (requestAborted(request)) return errorResponse(499, "Request aborted");
     const providerThinking = (chatSettings.providerThinking || {})[provider] || null;
+    const pxpipeTransform = chatSettings.pxpipeEnabled ? await getPxpipeTransform() : null;
+    if (requestAborted(request)) return errorResponse(499, "Request aborted");
+    let latestAttemptStartedAt = null;
     const result = await handleChatCore({
       body: { ...structuredClone(body), model: `${provider}/${model}` },
       modelInfo: { provider, model },
@@ -436,6 +569,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       connectionId: credentials.connectionId,
       userAgent,
       apiKey,
+      abortSignal: request?.signal || null,
+      onProviderAttempt: () => {
+        latestAttemptStartedAt = allocateProviderAttemptTimestamp();
+        return latestAttemptStartedAt;
+      },
       ccFilterNaming: !!chatSettings.ccFilterNaming,
       rtkEnabled: !!chatSettings.rtkEnabled,
       headroomEnabled: !!chatSettings.headroomEnabled,
@@ -449,7 +587,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       pxpipeEnabled: !!chatSettings.pxpipeEnabled,
       pxpipeMinChars: chatSettings.pxpipeMinChars,
       pxpipeTimeoutMs: chatSettings.pxpipeTimeoutMs,
-      pxpipeTransform: chatSettings.pxpipeEnabled ? await getPxpipeTransform() : null,
+      pxpipeTransform,
       onPxpipeEvent: appendPxpipeEvent,
       providerThinking,
       providerConcurrencyLimit: chatSettings.providerConcurrencyLimits,
@@ -460,32 +598,61 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       compressionEngines: chatSettings.compressionEngines || {},
       // Detect source format by endpoint + body
       sourceFormatOverride: request?.url ? detectFormatByEndpoint(new URL(request.url).pathname, body) : null,
-      onCredentialsRefreshed: async (newCreds) => {
-        await updateProviderCredentials(credentials.connectionId, {
-          ...newCreds,
-          existingProviderSpecificData: credentials.providerSpecificData,
-          testStatus: "active"
+      ...(activeConnection?.authType === "oauth" ? {
+        refreshCredentials: async ({ signal, force = true } = {}) => {
+          const refreshed = await refreshAndUpdateCredentials(
+            activeConnection,
+            force,
+            proxyOptionsFromCredentials(refreshedCredentials),
+            { signal, log },
+          );
+          activeConnection = refreshed.connection;
+          refreshedCredentials = await projectProviderCredentials(activeConnection, credentials._quotaPreflight);
+          return refreshedCredentials;
+        },
+      } : {}),
+      onRequestSuccess: async ({ attemptStartedAt = latestAttemptStartedAt } = {}) => {
+        if (!Number.isSafeInteger(attemptStartedAt) || attemptStartedAt <= 0) return;
+        await clearAccountError(credentials.connectionId, refreshedCredentials, model, {
+          provider,
+          attemptStartedAt,
+          signal: request?.signal || null,
         });
-      },
-      onRequestSuccess: async () => {
-        await clearAccountError(credentials.connectionId, credentials, model);
       },
       // Empty-stream retries exhausted mid-stream (headers already sent, so no
       // pre-stream fallback is possible): bench the account so the client's
       // automatic retry of the in-stream error lands on the next one. Quota
       // exhaustion passes a precise resetsAtMs instead of the generic cooldown.
       onUpstreamEmptyExhausted: async (reason, resetsAtMs) => {
-        await markAccountUnavailable(credentials.connectionId, HTTP_STATUS.BAD_GATEWAY, reason, provider, model, resetsAtMs);
+        if (!Number.isSafeInteger(latestAttemptStartedAt) || latestAttemptStartedAt <= 0) return;
+        await markAccountUnavailable(credentials.connectionId, HTTP_STATUS.BAD_GATEWAY, reason, provider, model, resetsAtMs, {
+          attemptStartedAt: latestAttemptStartedAt,
+          signal: request?.signal || null,
+        });
       }
     });
 
     if (result.success) return result.response;
+    if (requestAborted(request) || result.status === 499) return result.response;
 
     // Mark account unavailable (auto-calculates cooldown with exponential backoff, or precise resetsAtMs)
-    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, result.resetsAtMs);
+    const resultAttemptStartedAt = Number.isSafeInteger(result.attemptStartedAt) && result.attemptStartedAt > 0
+      ? result.attemptStartedAt
+      : latestAttemptStartedAt;
+    const fallbackState = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, result.resetsAtMs, {
+      attemptStartedAt: resultAttemptStartedAt,
+      rateLimitEvidence: result.rateLimitEvidence || null,
+      signal: request?.signal || null,
+    });
+    const { shouldFallback } = fallbackState;
 
     if (shouldFallback) {
-      log.warn("FALLBACK", `⇄ ACC:${credentials.connectionName} UNAVAILABLE (${result.status}) → NEXT ACCOUNT`);
+      attemptedBlockers.set(credentials.connectionId, {
+        status: Number(result.status) || 503,
+        retryAt: fallbackState.retryAt || null,
+        retryAtKnown: fallbackState.retryAtKnown !== false,
+      });
+      log.warn("FALLBACK", `⇄ ACC:${credentials.connectionId.slice(0, 8)} UNAVAILABLE (${result.status}) → NEXT ACCOUNT`);
       excludeConnectionIds.add(credentials.connectionId);
       lastError = result.error;
       lastStatus = result.status;

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getProviderCredentials, markAccountUnavailable } from "../../src/sse/services/auth.js";
+import { MAX_RATE_LIMIT_COOLDOWN_MS } from "../../open-sse/config/errorConfig.js";
 
 const mocks = vi.hoisted(() => ({
   getProviderConnections: vi.fn(),
@@ -68,6 +69,42 @@ describe("Antigravity capacity fallback", () => {
         errorCode: 503,
       }),
     );
+  });
+
+  it("uses short local backoff when normalized evidence rejects a legacy reset", async () => {
+    const now = Date.now();
+    const rawResetAtMs = now + MAX_RATE_LIMIT_COOLDOWN_MS + 60_000;
+    const result = await markAccountUnavailable(
+      "ag-1",
+      429,
+      "Rate limit exceeded",
+      "codex",
+      "gpt-5.4",
+      rawResetAtMs,
+      {
+        attemptStartedAt: now,
+        rateLimitEvidence: {
+          state: "cooldown",
+          resetAtMs: null,
+          source: "local_policy",
+        },
+      },
+    );
+
+    expect(result.shouldFallback).toBe(true);
+    expect(result.cooldownMs).toBeGreaterThan(0);
+    expect(result.cooldownMs).toBeLessThan(60_000);
+    expect(new Date(result.retryAt).getTime() - now).toBeLessThan(60_000);
+    expect(mocks.updateProviderConnection).toHaveBeenCalledWith(
+      "ag-1",
+      expect.objectContaining({
+        "modelLock_gpt-5.4": expect.any(String),
+      }),
+    );
+    const persistedReset = new Date(
+      mocks.updateProviderConnection.mock.calls.at(-1)[1]["modelLock_gpt-5.4"],
+    ).getTime();
+    expect(persistedReset - now).toBeLessThan(60_000);
   });
 
   it("falls back without cooldown for recoverable Antigravity project 403", async () => {

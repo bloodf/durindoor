@@ -1,4 +1,5 @@
 import { BaseExecutor } from "./base.js";
+import { readBoundedResponseText } from "../utils/error.js";
 import { PROVIDERS } from "../config/providers.js";
 import { OAUTH_ENDPOINTS, GITHUB_COPILOT } from "../config/appConstants.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
@@ -9,6 +10,9 @@ import { parseSSELine, formatSSE } from "../utils/streamHelpers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { stripUnsupportedParams } from "../translator/concerns/paramSupport.js";
 import { SSE_DONE } from "../utils/sseConstants.js";
+import { FORMATS } from "../translator/formats.js";
+import { createUpstreamTerminalTracker } from "../utils/streamTerminal.js";
+import { getCurrentProviderAttemptTimestamp } from "../services/providerAttemptContext.js";
 import crypto from "crypto";
 
 export class GithubExecutor extends BaseExecutor {
@@ -175,11 +179,19 @@ export class GithubExecutor extends BaseExecutor {
     // Gemini/Claude would otherwise loop into a misleading "does not support
     // Responses API" 400 instead of surfacing the real /chat/completions error (#1062).
     if (result.response.status === HTTP_STATUS.BAD_REQUEST && this.supportsResponsesEndpoint(model)) {
-      const errorBody = await result.response.clone().text();
+      const errorBody = await readBoundedResponseText(result.response.clone(), {
+        signal: options.signal,
+        maxBytes: 64 * 1024,
+        timeoutMs: 2_000,
+      });
 
       if (errorBody.includes("not accessible via the /chat/completions endpoint") || errorBody.includes("The requested model is not supported")) {
         log?.warn("GITHUB", `Model ${model} requires /responses. Switching...`);
         this.knownCodexModels.add(model);
+        try {
+          const cancellation = result.response.body?.cancel?.("switching GitHub route");
+          if (cancellation?.catch) void cancellation.catch(() => {});
+        } catch { /* noop */ }
         return this.executeWithResponsesEndpoint(options);
       }
     }
@@ -207,7 +219,7 @@ export class GithubExecutor extends BaseExecutor {
     }, proxyOptions);
 
     if (!response.ok) {
-      return { response, url, headers, transformedBody };
+      return { response, url, headers, transformedBody, attemptStartedAt: getCurrentProviderAttemptTimestamp() };
     }
 
     const state = initState("openai-responses");
@@ -215,6 +227,56 @@ export class GithubExecutor extends BaseExecutor {
 
     const decoder = new TextDecoder();
     let buffer = "";
+    let currentEvent = null;
+    let doneEmitted = false;
+    let failureEmitted = false;
+    let applicationTerminalSeen = false;
+    let rawDoneSeen = false;
+    const rawTerminal = createUpstreamTerminalTracker({ format: FORMATS.OPENAI_RESPONSES });
+
+    const emitFailure = (controller) => {
+      rawTerminal.fail();
+      if (failureEmitted) return;
+      failureEmitted = true;
+      controller.enqueue(new TextEncoder().encode(
+        `data: ${JSON.stringify({ error: { message: "GitHub Responses stream failed", type: "stream_error" } })}\n\n`,
+      ));
+    };
+
+    const processLine = (line, controller) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith(":")) return;
+      if (trimmed.startsWith("event:")) {
+        currentEvent = trimmed.slice(6).trim() || null;
+        return;
+      }
+      if (!trimmed.startsWith("data:")) return;
+      const parsed = parseSSELine(trimmed);
+      if (!parsed) {
+        emitFailure(controller);
+        currentEvent = null;
+        return;
+      }
+      if (rawDoneSeen || (applicationTerminalSeen && !parsed.done)) {
+        emitFailure(controller);
+        currentEvent = null;
+        return;
+      }
+      rawTerminal.observe({ chunk: parsed, eventName: currentEvent, rawDone: parsed.done === true });
+      currentEvent = null;
+      if (rawTerminal.outcome === "failure") {
+        emitFailure(controller);
+        return;
+      }
+      if (parsed.done) {
+        if (rawTerminal.outcome === "success" && !failureEmitted) rawDoneSeen = true;
+        else emitFailure(controller);
+        return;
+      }
+      if (rawTerminal.outcome === "success") applicationTerminalSeen = true;
+      const converted = openaiResponsesToOpenAIResponse(parsed, state);
+      if (converted) controller.enqueue(new TextEncoder().encode(formatSSE(converted, "openai")));
+    };
 
     const transformStream = new TransformStream({
       async transform(chunk, controller) {
@@ -224,32 +286,19 @@ export class GithubExecutor extends BaseExecutor {
         buffer = lines.pop() || "";
 
         for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-
-          const parsed = parseSSELine(trimmed);
-          if (!parsed) continue;
-
-          if (parsed.done && stream === true) {
-            controller.enqueue(new TextEncoder().encode(SSE_DONE));
-            continue;
-          }
-
-          const converted = openaiResponsesToOpenAIResponse(parsed, state);
-          if (converted) {
-            const sseString = formatSSE(converted, "openai");
-            controller.enqueue(new TextEncoder().encode(sseString));
-          }
+          processLine(line, controller);
         }
       },
       flush(controller) {
         if (buffer.trim()) {
-          const parsed = parseSSELine(buffer.trim());
-          if (parsed && !parsed.done) {
-            const converted = openaiResponsesToOpenAIResponse(parsed, state);
-            if (converted) {
-              controller.enqueue(new TextEncoder().encode(formatSSE(converted, "openai")));
-            }
+          processLine(buffer, controller);
+        }
+        if (!doneEmitted) {
+          if (rawTerminal.outcome === "success" && !failureEmitted) {
+            controller.enqueue(new TextEncoder().encode(SSE_DONE));
+            doneEmitted = true;
+          } else {
+            emitFailure(controller);
           }
         }
       }
@@ -268,7 +317,9 @@ export class GithubExecutor extends BaseExecutor {
       }),
       url,
       headers,
-      transformedBody
+      transformedBody,
+      attemptStartedAt: getCurrentProviderAttemptTimestamp(),
+      terminalProvenance: "validated",
     };
   }
 

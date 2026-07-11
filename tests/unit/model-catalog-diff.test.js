@@ -185,6 +185,39 @@ describe("localAudit", () => {
     };
     expect(await localAudit(registry, FORMATS, pricing)).toEqual([]);
   });
+
+  it("allows same id across distinct kinds but flags same id within the same kind", async () => {
+    // Gemini shape: a chat id reused for stt is fine; two rows of the same
+    // (id, kind) pair are a genuine duplicate and must still be reported.
+    const crossKind = [
+      {
+        id: "gemini",
+        models: [
+          { id: "gemini-2.5-pro" },
+          { id: "gemini-2.5-pro", kind: "stt" },
+          { id: "gemini-2.5-flash" },
+          { id: "gemini-2.5-flash", kind: "stt" },
+        ],
+      },
+    ];
+    expect(
+      await localAudit(crossKind, FORMATS, { model: {}, provider: {}, pattern: [] })
+    ).toEqual([]);
+
+    const sameKind = [
+      {
+        id: "gemini",
+        models: [
+          { id: "gemini-3.1-flash-tts-preview", kind: "tts" },
+          { id: "gemini-3.1-flash-tts-preview", kind: "tts" },
+        ],
+      },
+    ];
+    const findings = await localAudit(sameKind, FORMATS, { model: {}, provider: {}, pattern: [] });
+    expect(
+      findings.some((f) => /duplicate model id "gemini-3.1-flash-tts-preview", kind "tts"/.test(f))
+    ).toBe(true);
+  });
 });
 
 describe("allowlist", () => {

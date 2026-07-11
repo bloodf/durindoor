@@ -249,6 +249,7 @@ function openAICompletionToResponsesOutput(completion) {
     id: completion.id ? `resp_${completion.id}` : `resp_${Date.now()}`,
     object: "response",
     created_at: completion.created || Math.floor(Date.now() / 1000),
+    model: completion.model || "unknown",
     status: finishReason === "stop" || finishReason === "tool_calls" ? "completed" : finishReason,
     output,
     usage: {

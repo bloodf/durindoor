@@ -78,6 +78,7 @@ export function createSSEStream(options = {}) {
   let openAIResponsesTerminalSeen = false;
   let openAIResponsesDoneSent = false;
   let streamDoneSent = false;  // track duplicate [DONE] across transform + flush
+  let claudeTerminalSeen = false;
 
   // The compatibility parser is enabled only by exact provider transport/model
   // metadata. State is isolated by OpenAI choice index.
@@ -198,6 +199,9 @@ export function createSSEStream(options = {}) {
           if (trimmed.startsWith("data:") && trimmed.slice(5).trim() !== "[DONE]") {
             try {
               const parsed = JSON.parse(trimmed.slice(5).trim());
+              if (targetFormat === FORMATS.CLAUDE && parsed?.type === "message_stop") {
+                claudeTerminalSeen = true;
+              }
 
               if (Array.isArray(parsed?.choices)) {
                 inlineThinkingChunkMeta = {
@@ -264,7 +268,7 @@ export function createSSEStream(options = {}) {
               if (extracted) {
                 usage = mergeUsage(usage, extracted);
               }
-              if (!hasValuableContent(parsed, FORMATS.OPENAI) && !extracted) {
+              if (!hasValuableContent(parsed, targetFormat || FORMATS.OPENAI) && !extracted) {
                 continue;
               }
 
@@ -685,7 +689,11 @@ export function createSSEStream(options = {}) {
           // Without it they can hang until timeout and trigger failover.
           // Gemini-family clients (Antigravity, Vertex, Gemini) reject this sentinel with 400 syntax errors.
           const isGeminiFamily = GEMINI_PASSTHROUGH_PROVIDERS.has(provider);
-          if (!streamDoneSent && !isGeminiFamily) {
+          const isClaudeStream = targetFormat === FORMATS.CLAUDE;
+          if (isClaudeStream && !claudeTerminalSeen) {
+            throw new Error("Claude passthrough stream ended before message_stop");
+          }
+          if (!streamDoneSent && !isGeminiFamily && !isClaudeStream) {
             const doneOutput = "data: [DONE]\n\n";
             reqLogger?.appendConvertedChunk?.(doneOutput);
             controller.enqueue(sharedEncoder.encode(doneOutput));
@@ -778,6 +786,11 @@ export function createSSEStream(options = {}) {
         }
       } catch (error) {
         console.log("Error in flush:", error);
+        // A native Claude stream without message_stop is truncated, not a
+        // successful response. Propagate that failure to the HTTP pipeline.
+        if (mode === STREAM_MODE.PASSTHROUGH && targetFormat === FORMATS.CLAUDE) {
+          throw error;
+        }
       }
     }
   });

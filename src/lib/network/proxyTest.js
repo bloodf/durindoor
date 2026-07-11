@@ -1,4 +1,5 @@
 import { ProxyAgent, fetch as undiciFetch } from "undici";
+import { sanitizeErrorMessage } from "../../../open-sse/utils/error.js";
 
 const DEFAULT_TEST_URL = "https://google.com/";
 const DEFAULT_TIMEOUT_MS = 8000;
@@ -117,21 +118,26 @@ function parseProxyUrls(proxyUrls) {
   return parsedUrls;
 }
 
-function getErrorMessage(err) {
+export function getErrorMessage(err) {
   if (!err) return "Unknown error";
   const base = err?.message || String(err);
   const causeCode = err?.cause?.code || err?.code;
   const causeMessage = err?.cause?.message;
+  const safeBase = sanitizeErrorMessage(base);
+  const safeCauseMessage = causeMessage ? sanitizeErrorMessage(causeMessage) : "";
+  const safeCauseCode = causeCode ? sanitizeErrorMessage(causeCode) : "";
 
   if (causeMessage && causeMessage !== base) {
-    return causeCode ? `${base}: ${causeMessage} (${causeCode})` : `${base}: ${causeMessage}`;
+    return safeCauseCode
+      ? `${safeBase}: ${safeCauseMessage} (${safeCauseCode})`
+      : `${safeBase}: ${safeCauseMessage}`;
   }
 
   if (causeCode && !base.includes(causeCode)) {
-    return `${base} (${causeCode})`;
+    return `${safeBase} (${safeCauseCode})`;
   }
 
-  return base;
+  return safeBase;
 }
 
 function normalizeString(value) {
@@ -167,7 +173,7 @@ export async function testProxyUrl({ proxyUrl, testUrl, timeoutMs } = {}) {
       return {
         ok: false,
         status: 400,
-        error: `Invalid proxy URL: ${err?.message || String(err)}`,
+        error: `Invalid proxy URL: ${sanitizeErrorMessage(err?.message || err)}`,
       };
     }
 

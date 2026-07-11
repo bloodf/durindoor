@@ -42,12 +42,19 @@ export default function ProviderDetailPage() {
   const params = useParams();
   const router = useRouter();
   const providerId = params.id;
+  const currentProviderIdRef = useRef(null);
+  const fetchConnectionsGenerationRef = useRef(0);
+  useEffect(() => {
+    currentProviderIdRef.current = providerId;
+  }, [providerId]);
   const { getCaps } = useModelCaps();
   const [connections, setConnections] = useState([]);
   const [globalApiKeyConnectionNames, setGlobalApiKeyConnectionNames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [providerNode, setProviderNode] = useState(null);
   const [proxyPools, setProxyPools] = useState([]);
+  const [proxyPoolsReadyForProvider, setProxyPoolsReadyForProvider] = useState(null);
+  const proxyPoolsReady = proxyPoolsReadyForProvider === providerId;
   const [showOAuthModal, setShowOAuthModal] = useState(false);
   const [showIFlowCookieModal, setShowIFlowCookieModal] = useState(false);
   const [showImportTokenModal, setShowImportTokenModal] = useState(false);
@@ -324,6 +331,11 @@ export default function ProviderDetailPage() {
   }, [providerId]);
 
   const fetchConnections = useCallback(async () => {
+    const requestProviderId = providerId;
+    const requestGeneration = ++fetchConnectionsGenerationRef.current;
+    const isCurrentRequest = () =>
+      fetchConnectionsGenerationRef.current === requestGeneration &&
+      currentProviderIdRef.current === requestProviderId;
     try {
       const [connectionsRes, nodesRes, proxyPoolsRes, settingsRes] = await Promise.all([
         fetch("/api/providers", { cache: "no-store" }),
@@ -335,6 +347,7 @@ export default function ProviderDetailPage() {
       const nodesData = await nodesRes.json();
       const proxyPoolsData = await proxyPoolsRes.json();
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
+      if (!isCurrentRequest()) return;
       if (connectionsRes.ok) {
         const allConnections = connectionsData.connections || [];
         const filtered = allConnections.filter(c => c.provider === providerId);
@@ -368,6 +381,7 @@ export default function ProviderDetailPage() {
         if (!node && isCompatible) {
           for (let attempt = 0; attempt < 3; attempt += 1) {
             await new Promise((resolve) => setTimeout(resolve, 150));
+            if (!isCurrentRequest()) return;
             const retryRes = await fetch("/api/provider-nodes", { cache: "no-store" });
             if (!retryRes.ok) continue;
             const retryData = await retryRes.json();
@@ -376,12 +390,17 @@ export default function ProviderDetailPage() {
           }
         }
 
-        setProviderNode(node);
+        if (isCurrentRequest()) setProviderNode(node);
       }
     } catch (error) {
-      console.log("Error fetching connections:", error);
+      if (isCurrentRequest()) console.log("Error fetching connections:", error);
     } finally {
-      setLoading(false);
+      // OAuth defaults to an explicit direct route, but must not start before
+      // the selectable strict pools have either loaded or definitively failed.
+      if (isCurrentRequest()) {
+        setProxyPoolsReadyForProvider(requestProviderId);
+        setLoading(false);
+      }
     }
   }, [providerId, isCompatible, autoPingQueue]);
 
@@ -1074,9 +1093,10 @@ export default function ProviderDetailPage() {
                       body: JSON.stringify({ proxyPoolId: proxyPoolId || null }),
                     });
                     if (res.ok) {
+                      const { connection: updatedConnection } = await res.json();
                       setConnections(prev => prev.map(c =>
                         c.id === conn.id
-                          ? { ...c, providerSpecificData: { ...c.providerSpecificData, proxyPoolId: proxyPoolId || null } }
+                          ? (updatedConnection || c)
                           : c
                       ));
                     }
@@ -1830,6 +1850,8 @@ export default function ProviderDetailPage() {
           providerInfo={providerInfo}
           onSuccess={handleOAuthSuccess}
           onClose={() => setShowOAuthModal(false)}
+          proxyPools={proxyPools}
+          proxyPoolsReady={proxyPoolsReady}
         />
       ) : providerId === "cursor" ? (
         <CursorAuthModal
@@ -1844,6 +1866,8 @@ export default function ProviderDetailPage() {
           providerInfo={providerInfo}
           onSuccess={handleOAuthSuccess}
           onClose={() => setShowOAuthModal(false)}
+          proxyPools={proxyPools}
+          proxyPoolsReady={proxyPoolsReady}
         />
       ) : isImportToken ? (
         <ImportTokenModal
@@ -1860,6 +1884,8 @@ export default function ProviderDetailPage() {
           providerInfo={providerInfo}
           onSuccess={handleOAuthSuccess}
           onClose={() => setShowOAuthModal(false)}
+          proxyPools={proxyPools}
+          proxyPoolsReady={proxyPoolsReady}
         />
       )}
       {providerId === "iflow" && (

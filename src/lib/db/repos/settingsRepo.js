@@ -64,6 +64,13 @@ const DEFAULT_SETTINGS = {
   // { [providerId]: { enabled, mode: "native"|"cliproxyapi"|"fallback", cliproxyapiModelMapping } }
   upstreamProxyConfig: {},
   cliproxyapi_fallback_codes: "429,500,502,503,504",
+  // Vision Bridge (OmniRoute #6640): reroute image-bearing requests on a
+  // non-vision model to a configured vision-capable target. Requires an
+  // explicit, vision-capable visionBridgeModel; an empty/invalid target leaves
+  // the request on its original model (no unsafe auto-pick to a provider the
+  // caller may not have credentials for).
+  visionBridgeEnabled: false,
+  visionBridgeModel: "",
 };
 
 async function readRaw() {

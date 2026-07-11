@@ -3,10 +3,105 @@ import { PROVIDERS } from "../config/providers.js";
 import { resolveKiroModel } from "../config/kiroConstants.js";
 import { v4 as uuidv4 } from "uuid";
 import { refreshKiroToken } from "../services/tokenRefresh.js";
-import { resolveKiroDataPlaneUrl } from "../config/kiroConstants.js";
 import { SSE_DONE, SSE_HEADERS } from "../utils/sseConstants.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
-import { resolveKiroRegion, buildKiroBaseUrls } from "../config/kiroRegions.js";
+import {
+  resolveKiroRegion,
+  buildKiroBaseUrls,
+  buildKiroProfileEndpoint,
+  regionFromProfileArn,
+  KIRO_DEFAULT_REGION,
+} from "../config/kiroRegions.js";
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
+
+// Strict AWS region id allowlist (incl. GovCloud partition `us-gov-west-1`),
+// matching the Bedrock validator shape. Used as a trust-boundary guard before
+// interpolating a stored/ARN-derived region into a `q.<region>.amazonaws.com`
+// host (SSRF). Stored credentials and ARN segments are untrusted input.
+const AWS_REGION_PATTERN = /^[a-z]{2}(?:-gov)?-[a-z]+-\d+$/;
+function isValidAwsRegion(r) {
+  return typeof r === "string" && AWS_REGION_PATTERN.test(r.toLowerCase());
+}
+
+// Region the data plane must target: the profile's own region is authoritative
+// (Q Developer profile can live in a different region than the Identity Center
+// that minted the token), then explicit credential region, then default.
+// Each candidate is validated before it can be interpolated into a host.
+function resolveKiroRuntimeRegion(credentials) {
+  const psd = credentials?.providerSpecificData || {};
+  const fromArn = regionFromProfileArn(psd.profileArn);
+  if (isValidAwsRegion(fromArn)) return fromArn.toLowerCase();
+  const fromCred = resolveKiroRegion(credentials);
+  if (isValidAwsRegion(fromCred)) return fromCred.toLowerCase();
+  return KIRO_DEFAULT_REGION;
+}
+
+// Process-lifetime cache of resolved profileArns keyed by access token, so we
+// only hit ListAvailableProfiles once per token when the stored credential has
+// none (typical for IDC/Organization accounts outside us-east-1).
+const KIRO_PROFILE_ARN_CACHE = new Map();
+
+/** Well-known regions to probe when the credential region yields no profile. */
+const KIRO_PROFILE_FALLBACK_REGIONS = ["us-east-1", "eu-central-1"];
+
+/**
+ * Resolve a Kiro/CodeWhisperer profileArn for a bearer token via
+ * ListAvailableProfiles, trying the credential's own region first and then the
+ * well-known Q Developer regions. The Q Developer profile can live in a
+ * different region than the IAM Identity Center that minted the token (e.g. IDC
+ * in eu-north-1 but the profile in eu-central-1 — Q Developer is not hosted in
+ * every SSO region). Returns the first ARN found (preferring one whose region
+ * matches the queried region) or null. Exported for unit testing.
+ *
+ * @param {string} accessToken Bearer token for CodeWhisperer.
+ * @param {string} preferredRegion Credential / SSO region to try first.
+ * @param {object} [proxyOptions] Proxy passthrough for proxyAwareFetch.
+ * @param {object} [log] Optional logger with debug/info/warn.
+ * @param {Function} [fetchImpl] Injected fetch (defaults to proxyAwareFetch).
+ * @returns {Promise<string|null>}
+ */
+export async function resolveKiroProfileArnAcrossRegions(
+  accessToken,
+  preferredRegion,
+  proxyOptions = null,
+  log = null,
+  fetchImpl = proxyAwareFetch,
+) {
+  if (!accessToken) return null;
+  const rawCandidates = [...new Set([preferredRegion, ...KIRO_PROFILE_FALLBACK_REGIONS].filter(Boolean))];
+  // Trust boundary: providerSpecificData.region is stored from user input and is
+  // interpolated into the control-plane host. Drop anything that isn't a valid
+  // AWS region id rather than building an arbitrary `q.<x>.amazonaws.com` URL.
+  const candidates = rawCandidates.filter(isValidAwsRegion);
+  for (const region of candidates) {
+    try {
+      const response = await fetchImpl(buildKiroProfileEndpoint(region), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-amz-json-1.0",
+          "x-amz-target": "AmazonCodeWhispererService.ListAvailableProfiles",
+          "Authorization": `Bearer ${accessToken}`,
+          "Accept": "application/json",
+        },
+        body: JSON.stringify({ maxResults: 10 }),
+      }, proxyOptions);
+      if (!response?.ok) {
+        log?.debug?.("KIRO", `ListAvailableProfiles ${region} → ${response?.status}`);
+        continue;
+      }
+      const data = await response.json().catch(() => null);
+      const profiles = Array.isArray(data?.profiles) ? data.profiles : [];
+      if (profiles.length === 0) continue;
+      const arnOf = (p) => (p?.arn || p?.profileArn || "").trim();
+      const match = profiles.find((p) => regionFromProfileArn(arnOf(p)) === region) || profiles[0];
+      const arn = arnOf(match);
+      if (arn) return arn;
+    } catch (e) {
+      log?.debug?.("KIRO", `ListAvailableProfiles ${region} error: ${e?.message || e}`);
+    }
+  }
+  return null;
+}
 
 /**
  * KiroExecutor - Executor for Kiro AI (AWS CodeWhisperer)
@@ -64,31 +159,25 @@ export class KiroExecutor extends BaseExecutor {
    * tokens are what that gateway accepts.
    */
   getOrderedBaseUrls(credentials) {
-    // IAM Identity Center accounts can be homed outside us-east-1. Their token is
-    // rejected by the hardcoded us-east-1 registry baseUrls (403 "bearer token
-    // invalid"), so route to the account's regional Amazon Q endpoint. us-east-1
-    // (Builder ID / social / unset) keeps the registry baseUrls + 429 rotation.
-    const regional = resolveKiroDataPlaneUrl(credentials?.providerSpecificData?.region);
-    if (regional) return [regional];
-
-    const baseUrls = this.getBaseUrls();
+    // Region is derived from ONE source of truth: explicit credential region,
+    // then the profileArn's region (authoritative — Q Developer profile can live
+    // in a different region than the IAM Identity Center that minted the token),
+    // then us-east-1. buildKiroBaseUrls encodes the only real asymmetry (the
+    // legacy codewhisperer.* host exists only in us-east-1) as data.
+    const region = resolveKiroRuntimeRegion(credentials);
+    const baseUrls = buildKiroBaseUrls(region);
     const authMethod = credentials?.providerSpecificData?.authMethod;
-    // IAM Identity Center (idc) tokens are AWS SSO access tokens — the same
-    // family as external_idp/api_key. The kiro.dev gateway rejects them with
-    // 403 "bearer token invalid", so they must hit the CodeWhisperer
-    // *.amazonaws.com surface, and in the region the token was minted in
-    // (the baseUrls are hardcoded us-east-1).
+    // api_key / external_idp / idc tokens are rejected by the kiro.dev IDE
+    // gateway (403 "bearer token invalid") and must hit the CodeWhisperer
+    // *.amazonaws.com surface first. For non-default regions we likewise prefer
+    // the regional q.<region> data plane (the legacy us-east-1 codewhisperer host
+    // does not exist elsewhere); the kiro.dev host stays as a failover. us-east-1
+    // OAuth/social keeps kiro.dev-first order.
     const isCodeWhispererSurface =
       authMethod === "api_key" || authMethod === "external_idp" || authMethod === "idc";
-    if (!isCodeWhispererSurface) return baseUrls;
-
-    const region = (credentials?.providerSpecificData?.region || "us-east-1").trim();
-    const regionalize = (u) =>
-      region && region !== "us-east-1" && u.includes("amazonaws.com")
-        ? u.replace(/([a-z]+)\.[a-z0-9-]+\.amazonaws\.com/, `$1.${region}.amazonaws.com`)
-        : u;
-
-    const amazon = baseUrls.filter((u) => u.includes("amazonaws.com")).map(regionalize);
+    const amazonFirst = isCodeWhispererSurface || region !== KIRO_DEFAULT_REGION;
+    if (!amazonFirst) return baseUrls;
+    const amazon = [...new Set(baseUrls.filter((u) => u.includes("amazonaws.com")))];
     const others = baseUrls.filter((u) => !u.includes("amazonaws.com"));
     return amazon.length > 0 ? [...amazon, ...others] : baseUrls;
   }
@@ -119,11 +208,58 @@ export class KiroExecutor extends BaseExecutor {
    * classify the status, and trigger account fallback/cooldown.
    */
   async execute(args) {
+    // Kiro/CodeWhisperer rejects IDC/Builder-ID requests lacking a profileArn
+    // with 400 "profileArn is required". IDC/Organization logins outside
+    // us-east-1 frequently land with no profileArn (AWS SSO OIDC doesn't mint
+    // one and there is no shared default outside us-east-1). Resolve it on the
+    // real request path so connections self-heal.
+    await this.ensureKiroProfileArn(args);
     const result = await super.execute(args);
     if (result?.response?.ok) {
       result.response = this.transformEventStreamToSSE(result.response, args.model);
     }
     return result;
+  }
+
+  /**
+   * Ensure the outgoing Kiro payload carries a profileArn. The translator sets
+   * it from the stored credential; when that is empty (typical for IDC/Org
+   * accounts outside us-east-1) we resolve it live via ListAvailableProfiles,
+   * trying the credential's own region first and then known Q Developer regions
+   * (the profile can live in a different region than the Identity Center). The
+   * resolved ARN is written onto BOTH the payload and the credential so
+   * getOrderedBaseUrls routes the runtime to the profile's region. Cached per
+   * access token. api_key auth is skipped — it must use its own account ARN.
+   */
+  async ensureKiroProfileArn(args) {
+    const { body, credentials, log, proxyOptions = null } = args || {};
+    if (!body || typeof body !== "object" || body.profileArn) return;
+    const psd = credentials?.providerSpecificData || {};
+    if (psd.authMethod === "api_key") return;
+    const accessToken = credentials?.accessToken;
+    if (!accessToken) return;
+
+    const cached = KIRO_PROFILE_ARN_CACHE.get(accessToken);
+    if (cached) {
+      body.profileArn = cached;
+      if (credentials.providerSpecificData) credentials.providerSpecificData.profileArn = cached;
+      return;
+    }
+
+    const preferredRegion = isValidAwsRegion(psd.region)
+      ? psd.region
+      : (regionFromProfileArn(psd.profileArn) || KIRO_DEFAULT_REGION);
+    const arn = await resolveKiroProfileArnAcrossRegions(accessToken, preferredRegion, proxyOptions, log);
+    if (arn) {
+      KIRO_PROFILE_ARN_CACHE.set(accessToken, arn);
+      body.profileArn = arn;
+      // Stamp the credential so getOrderedBaseUrls routes runtime to the ARN's
+      // (profile) region — which may differ from the SSO region.
+      if (credentials.providerSpecificData) credentials.providerSpecificData.profileArn = arn;
+      log?.info?.("KIRO", `Resolved missing profileArn at request time (region=${regionFromProfileArn(arn) || preferredRegion}): ${arn}`);
+    } else {
+      log?.warn?.("KIRO", `Could not resolve a profileArn (region=${preferredRegion}). Upstream will reject with 400 "profileArn is required". Confirm Amazon Q Developer Pro is enabled for this IAM Identity Center account.`);
+    }
   }
 
   /**

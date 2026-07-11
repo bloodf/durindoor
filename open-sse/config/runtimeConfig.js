@@ -17,6 +17,15 @@ export const HTTP_STATUS = {
 // Re-export error config (backward compat)
 export { ERROR_TYPES, DEFAULT_ERROR_MESSAGES, BACKOFF_CONFIG, COOLDOWN_MS } from "./errorConfig.js";
 
+// Realtime WebSocket resource limits. Source-of-truth constants live here on the
+// documented config surface; the VALUES are backed by the CJS module
+// `src/shared/utils/realtimeConfig.js` so bare-Node CJS consumers
+// (`custom-server.js`, `realtimeCore.js`) read the identical numbers without
+// importing ESM. Edit the CJS module to change a limit — this re-export tracks it.
+import realtimeLimits from "../../src/shared/utils/realtimeConfig.js";
+export const MAX_SESSION_ITEMS = realtimeLimits.MAX_SESSION_ITEMS;
+export const MAX_REALTIME_FRAME_BYTES = realtimeLimits.MAX_REALTIME_FRAME_BYTES;
+
 // Cache TTLs (seconds)
 export const CACHE_TTL = {
   userInfo: 300,    // 5 minutes
@@ -29,6 +38,9 @@ export const MEMORY_CONFIG = {
   sessionCleanupIntervalMs: 30 * 60 * 1000,
   dnsCacheTtlMs: 5 * 60 * 1000,
   proxyDispatchersMaxSize: 20,
+  refreshDedupMaxSize: 256,
+  refreshDedupInFlightTtlMs: 2 * 60 * 1000,
+  refreshDedupResultTtlMs: 10 * 1000,
 };
 
 // Parse a positive integer env override, falling back to a default.
@@ -108,6 +120,54 @@ export function resolveRetryEntry(entry) {
 // Outbound payload validation gate. Set VALIDATE_OUTBOUND=false to disable
 // the gate in an emergency (keys are still stripped).
 export const VALIDATE_OUTBOUND = process.env.VALIDATE_OUTBOUND !== "false";
+
+// ─── SSRF guard for provider VALIDATION probes (OmniRoute #6542) ────────────
+// Env var names, defaults, and mode selection copied verbatim from OmniRoute
+// `src/shared/network/outboundUrlGuard.ts` — only the DB-backed feature-flag
+// source is dropped (DurinDoor has no `resolveFeatureFlag`; env-only here).
+// Local-first default: validation allows LAN/localhost providers but ALWAYS
+// blocks cloud-metadata / link-local endpoints (SSRF→IAM-credential pivot).
+export const PRIVATE_PROVIDER_URLS_ENV = "OMNIROUTE_ALLOW_PRIVATE_PROVIDER_URLS";
+export const LOCAL_PROVIDER_URLS_ENV = "OMNIROUTE_ALLOW_LOCAL_PROVIDER_URLS";
+
+const _TRUE_ENV = new Set(["1", "true", "yes", "on"]);
+function _isTrueEnv(raw) {
+  return typeof raw === "string" && _TRUE_ENV.has(raw.trim().toLowerCase());
+}
+
+// Full opt-out: allow every private URL (and legacy OUTBOUND_SSRF_GUARD_ENABLED=false
+// implies disabling the guard). Power users only. Exported (matches source).
+export function arePrivateProviderUrlsAllowed() {
+  if (_isTrueEnv(process.env[PRIVATE_PROVIDER_URLS_ENV])) return true;
+  const legacy = process.env.OUTBOUND_SSRF_GUARD_ENABLED;
+  if (typeof legacy === "string" && ["false", "0", "no", "off"].includes(legacy.trim().toLowerCase())) {
+    return true;
+  }
+  return false;
+}
+
+// Local-first default ON: allow LAN/localhost providers. Note: under mode
+// "none" (full opt-in) the guard skips ALL checks including metadata — that is
+// the operator's explicit trust decision. Metadata is only unconditionally
+// blocked while a guard mode is active. Exported (matches source).
+export function areLocalProviderUrlsAllowed() {
+  const v = process.env[LOCAL_PROVIDER_URLS_ENV];
+  if (typeof v === "string" && v !== "") return _isTrueEnv(v);
+  return true;
+}
+
+/**
+ * Guard mode for the provider VALIDATION path.
+ *   1. explicit full opt-in → "none" (no checks).
+ *   2. local-first default  → "block-metadata" (allow LAN, block IMDS).
+ *   3. otherwise            → "public-only" (strict).
+ * @returns {"none"|"public-only"|"block-metadata"}
+ */
+export function getProviderValidationGuard() {
+  if (arePrivateProviderUrlsAllowed()) return "none";
+  if (areLocalProviderUrlsAllowed()) return "block-metadata";
+  return "public-only";
+}
 
 // Requests containing these texts will bypass provider
 export const SKIP_PATTERNS = [

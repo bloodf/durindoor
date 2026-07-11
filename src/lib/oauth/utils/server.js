@@ -1,6 +1,13 @@
 import http from "http";
 import { URL } from "url";
-import { CODEX_CONFIG } from "../constants/oauth.js";
+import { sanitizeErrorMessage } from "../../../../open-sse/utils/error.js";
+import {
+  cancelOAuthFlow,
+  claimOAuthFlow,
+  consumeOAuthFlow,
+  getOAuthFlow,
+} from "../flowStore.js";
+import { CODEX_CONFIG, OAUTH_TIMEOUT } from "../constants/oauth.js";
 
 /**
  * Start a local HTTP server to receive OAuth callback
@@ -118,25 +125,50 @@ export function waitForCallback(timeoutMs = 300000) {
 // Singleton proxy server for Codex OAuth callback on fixed port
 let codexProxyServer = null;
 let codexProxyTimeout = null;
+let codexProxyGeneration = 0;
 
-const CODEX_PROXY_TIMEOUT_MS = 300000; // 5 minutes
+const CODEX_PROXY_TIMEOUT_MS = OAUTH_TIMEOUT;
 const CODEX_PORT = CODEX_CONFIG.fixedPort;
 
 // Pending exchange sessions keyed by state — used by server-side exchange mode
 const pendingExchanges = new Map();
 
+function armCodexProxyTimeout(server, generation) {
+  if (codexProxyTimeout) clearTimeout(codexProxyTimeout);
+  codexProxyTimeout = setTimeout(() => {
+    for (const session of pendingExchanges.values()) {
+      if (
+        session.generation !== generation ||
+        (session.status !== "pending" && session.status !== "processing")
+      ) continue;
+      cancelOAuthFlow({ flowId: session.flowId, provider: "codex" });
+      session.status = "error";
+      session.error = "Authentication timeout";
+    }
+    stopCodexProxy(server).catch(() => {});
+  }, CODEX_PROXY_TIMEOUT_MS);
+}
+
 /**
  * Register a pending exchange session for server-side mode.
  * Modal client calls this before opening popup.
  */
-export function registerCodexSession({ state, codeVerifier, redirectUri }) {
-  if (!state || !codeVerifier || !redirectUri) return false;
+export function registerCodexSession({ state, flowId }) {
+  const flow = getOAuthFlow({ state, flowId, provider: "codex" });
+  if (!flow || flow.kind !== "authorization" || !codexProxyServer) return false;
+  for (const oldSession of pendingExchanges.values()) {
+    cancelOAuthFlow({ flowId: oldSession.flowId, provider: "codex" });
+  }
+  pendingExchanges.clear();
   pendingExchanges.set(state, {
-    codeVerifier,
-    redirectUri,
+    flowId,
+    generation: codexProxyGeneration,
     status: "pending",
     createdAt: Date.now(),
   });
+  // A reused fixed-port listener belongs to the newest registered attempt.
+  // Restart its deadline so an earlier attempt cannot expire the successor.
+  armCodexProxyTimeout(codexProxyServer, codexProxyGeneration);
   return true;
 }
 
@@ -144,7 +176,19 @@ export function registerCodexSession({ state, codeVerifier, redirectUri }) {
  * Read session status (modal polls this).
  */
 export function getCodexSessionStatus(state) {
-  return pendingExchanges.get(state) || null;
+  const session = pendingExchanges.get(state);
+  if (!session) return null;
+  if (Date.now() - session.createdAt >= OAUTH_TIMEOUT) {
+    pendingExchanges.delete(state);
+    return null;
+  }
+  return {
+    flowId: session.flowId,
+    status: session.status,
+    connectionId: session.connectionId,
+    email: session.email,
+    error: session.error,
+  };
 }
 
 /**
@@ -188,6 +232,7 @@ export function startCodexProxy(appPort) {
       return;
     }
 
+    const generation = ++codexProxyGeneration;
     const server = http.createServer(async (req, res) => {
       const url = new URL(req.url, "http://localhost");
 
@@ -200,36 +245,37 @@ export function startCodexProxy(appPort) {
       const code = url.searchParams.get("code");
       const state = url.searchParams.get("state");
       const errorParam = url.searchParams.get("error");
-      const session = state ? pendingExchanges.get(state) : null;
+      const candidateSession = state ? pendingExchanges.get(state) : null;
+      const session = candidateSession?.generation === generation ? candidateSession : null;
 
       // Mode A: server-side exchange (session registered)
       if (session) {
+        let claim = null;
         try {
+          if (session.status !== "pending") {
+            throw new Error("OAuth callback was already processed");
+          }
+          session.status = "processing";
+          claim = claimOAuthFlow({
+            flowId: session.flowId,
+            state,
+            provider: "codex",
+          });
+          if (!claim) throw new Error("OAuth session expired or was already used");
           if (errorParam) {
             throw new Error(url.searchParams.get("error_description") || errorParam);
           }
           if (!code) throw new Error("No authorization code received");
 
-          // Lazy import to avoid circular deps
-          const { exchangeTokens } = await import("../providers.js");
-          const { createProviderConnection } = await import("@/models");
-
-          const tokenData = await exchangeTokens(
+          // Lazy load the provider graph only inside an actual callback. This
+          // keeps importing generic OAuth services from patching global fetch.
+          const { exchangeAndSaveAuthorizationCode } = await import("../flowCompletion.js");
+          const { connection } = await exchangeAndSaveAuthorizationCode(
             "codex",
             code,
-            session.redirectUri,
-            session.codeVerifier,
-            state
+            state,
+            claim,
           );
-          const connection = await createProviderConnection({
-            provider: "codex",
-            authType: "oauth",
-            ...tokenData,
-            expiresAt: tokenData.expiresIn
-              ? new Date(Date.now() + tokenData.expiresIn * 1000).toISOString()
-              : null,
-            testStatus: "active",
-          });
 
           session.status = "done";
           session.connectionId = connection.id;
@@ -239,12 +285,28 @@ export function startCodexProxy(appPort) {
           res.end(renderCodexResultPage(true, "You can close this window."));
         } catch (err) {
           session.status = "error";
-          session.error = err.message;
+          session.error = sanitizeErrorMessage(err?.message || "Authentication failed");
           res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-          res.end(renderCodexResultPage(false, err.message));
+          res.end(renderCodexResultPage(false, session.error));
         } finally {
-          stopCodexProxy();
+          if (claim) consumeOAuthFlow(claim);
+          // A newer attempt may have registered while this exchange was in
+          // flight. Only the session still owned by this callback may stop the
+          // shared listener.
+          if (pendingExchanges.get(state) === session) {
+            await stopCodexProxy(server);
+          }
         }
+        return;
+      }
+
+      const hasServerSideSession = [...pendingExchanges.values()].some(
+        (item) => item.generation === generation &&
+          (item.status === "pending" || item.status === "processing"),
+      );
+      if (hasServerSideSession) {
+        res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(renderCodexResultPage(false, "OAuth session was not recognized."));
         return;
       }
 
@@ -252,12 +314,12 @@ export function startCodexProxy(appPort) {
       const redirectUrl = `http://localhost:${appPort}/callback${url.search}`;
       res.writeHead(302, { Location: redirectUrl });
       res.end();
-      stopCodexProxy();
+      await stopCodexProxy(server);
     });
 
     server.listen(CODEX_PORT, "127.0.0.1", () => {
       codexProxyServer = server;
-      codexProxyTimeout = setTimeout(() => stopCodexProxy(), CODEX_PROXY_TIMEOUT_MS);
+      armCodexProxyTimeout(server, generation);
       resolve({ success: true });
     });
 
@@ -274,15 +336,21 @@ export function startCodexProxy(appPort) {
 /**
  * Stop the Codex proxy server and cleanup
  */
-export function stopCodexProxy() {
+export async function stopCodexProxy(expectedServer = null) {
+  if (expectedServer && codexProxyServer !== expectedServer) return false;
   if (codexProxyTimeout) {
     clearTimeout(codexProxyTimeout);
     codexProxyTimeout = null;
   }
   if (codexProxyServer) {
-    codexProxyServer.close();
+    const server = codexProxyServer;
     codexProxyServer = null;
+    await new Promise((resolve) => {
+      if (!server.listening) return resolve();
+      server.close(() => resolve());
+    });
   }
+  return true;
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -293,23 +361,58 @@ export function stopCodexProxy() {
 
 let xaiProxyServer = null;
 let xaiProxyTimeout = null;
-const XAI_PROXY_TIMEOUT_MS = 300000; // 5 minutes
+let xaiProxyGeneration = 0;
+const XAI_PROXY_TIMEOUT_MS = OAUTH_TIMEOUT;
 const XAI_PROXY_PORT = 56121;
 const xaiPendingExchanges = new Map();
 
-export function registerXaiSession({ state, codeVerifier, redirectUri }) {
-  if (!state || !codeVerifier || !redirectUri) return false;
+function armXaiProxyTimeout(server, generation) {
+  if (xaiProxyTimeout) clearTimeout(xaiProxyTimeout);
+  xaiProxyTimeout = setTimeout(() => {
+    for (const session of xaiPendingExchanges.values()) {
+      if (
+        session.generation !== generation ||
+        (session.status !== "pending" && session.status !== "processing")
+      ) continue;
+      cancelOAuthFlow({ flowId: session.flowId, provider: "xai" });
+      session.status = "error";
+      session.error = "Authentication timeout";
+    }
+    stopXaiProxy(server).catch(() => {});
+  }, XAI_PROXY_TIMEOUT_MS);
+}
+
+export function registerXaiSession({ state, flowId }) {
+  const flow = getOAuthFlow({ state, flowId, provider: "xai" });
+  if (!flow || flow.kind !== "authorization" || !xaiProxyServer) return false;
+  for (const oldSession of xaiPendingExchanges.values()) {
+    cancelOAuthFlow({ flowId: oldSession.flowId, provider: "xai" });
+  }
+  xaiPendingExchanges.clear();
   xaiPendingExchanges.set(state, {
-    codeVerifier,
-    redirectUri,
+    flowId,
+    generation: xaiProxyGeneration,
     status: "pending",
     createdAt: Date.now(),
   });
+  armXaiProxyTimeout(xaiProxyServer, xaiProxyGeneration);
   return true;
 }
 
 export function getXaiSessionStatus(state) {
-  return xaiPendingExchanges.get(state) || null;
+  const session = xaiPendingExchanges.get(state);
+  if (!session) return null;
+  if (Date.now() - session.createdAt >= OAUTH_TIMEOUT) {
+    xaiPendingExchanges.delete(state);
+    return null;
+  }
+  return {
+    flowId: session.flowId,
+    status: session.status,
+    connectionId: session.connectionId,
+    email: session.email,
+    error: session.error,
+  };
 }
 
 export function clearXaiSession(state) {
@@ -332,6 +435,7 @@ export function startXaiProxy(appPort) {
       return;
     }
 
+    const generation = ++xaiProxyGeneration;
     const server = http.createServer(async (req, res) => {
       const url = new URL(req.url, "http://localhost");
       if (url.pathname !== "/callback" && url.pathname !== "/auth/callback") {
@@ -343,35 +447,37 @@ export function startXaiProxy(appPort) {
       const code = url.searchParams.get("code");
       const state = url.searchParams.get("state");
       const errorParam = url.searchParams.get("error");
-      const session = state ? xaiPendingExchanges.get(state) : null;
+      const candidateSession = state ? xaiPendingExchanges.get(state) : null;
+      const session = candidateSession?.generation === generation ? candidateSession : null;
 
       // Mode A: server-side exchange
       if (session) {
+        let claim = null;
         try {
+          if (session.status !== "pending") {
+            throw new Error("OAuth callback was already processed");
+          }
+          session.status = "processing";
+          claim = claimOAuthFlow({
+            flowId: session.flowId,
+            state,
+            provider: "xai",
+          });
+          if (!claim) throw new Error("OAuth session expired or was already used");
           if (errorParam) {
             throw new Error(url.searchParams.get("error_description") || errorParam);
           }
           if (!code) throw new Error("No authorization code received");
 
-          const { exchangeTokens } = await import("../providers.js");
-          const { createProviderConnection } = await import("@/models");
-
-          const tokenData = await exchangeTokens(
+          // Lazy load the provider graph only inside an actual callback. This
+          // keeps importing generic OAuth services from patching global fetch.
+          const { exchangeAndSaveAuthorizationCode } = await import("../flowCompletion.js");
+          const { connection } = await exchangeAndSaveAuthorizationCode(
             "xai",
             code,
-            session.redirectUri,
-            session.codeVerifier,
-            state
+            state,
+            claim,
           );
-          const connection = await createProviderConnection({
-            provider: "xai",
-            authType: "oauth",
-            ...tokenData,
-            expiresAt: tokenData.expiresIn
-              ? new Date(Date.now() + tokenData.expiresIn * 1000).toISOString()
-              : null,
-            testStatus: "active",
-          });
 
           session.status = "done";
           session.connectionId = connection.id;
@@ -381,12 +487,25 @@ export function startXaiProxy(appPort) {
           res.end(renderXaiResultPage(true, "You can close this window."));
         } catch (err) {
           session.status = "error";
-          session.error = err.message;
+          session.error = sanitizeErrorMessage(err?.message || "Authentication failed");
           res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-          res.end(renderXaiResultPage(false, err.message));
+          res.end(renderXaiResultPage(false, session.error));
         } finally {
-          stopXaiProxy();
+          if (claim) consumeOAuthFlow(claim);
+          if (xaiPendingExchanges.get(state) === session) {
+            await stopXaiProxy(server);
+          }
         }
+        return;
+      }
+
+      const hasServerSideSession = [...xaiPendingExchanges.values()].some(
+        (item) => item.generation === generation &&
+          (item.status === "pending" || item.status === "processing"),
+      );
+      if (hasServerSideSession) {
+        res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(renderXaiResultPage(false, "OAuth session was not recognized."));
         return;
       }
 
@@ -394,12 +513,12 @@ export function startXaiProxy(appPort) {
       const redirectUrl = `http://localhost:${appPort}/callback${url.search}`;
       res.writeHead(302, { Location: redirectUrl });
       res.end();
-      stopXaiProxy();
+      await stopXaiProxy(server);
     });
 
     server.listen(XAI_PROXY_PORT, "127.0.0.1", () => {
       xaiProxyServer = server;
-      xaiProxyTimeout = setTimeout(() => stopXaiProxy(), XAI_PROXY_TIMEOUT_MS);
+      armXaiProxyTimeout(server, generation);
       resolve({ success: true });
     });
 
@@ -413,15 +532,21 @@ export function startXaiProxy(appPort) {
   });
 }
 
-export function stopXaiProxy() {
+export async function stopXaiProxy(expectedServer = null) {
+  if (expectedServer && xaiProxyServer !== expectedServer) return false;
   if (xaiProxyTimeout) {
     clearTimeout(xaiProxyTimeout);
     xaiProxyTimeout = null;
   }
   if (xaiProxyServer) {
-    xaiProxyServer.close();
+    const server = xaiProxyServer;
     xaiProxyServer = null;
+    await new Promise((resolve) => {
+      if (!server.listening) return resolve();
+      server.close(() => resolve());
+    });
   }
+  return true;
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -468,4 +593,3 @@ export function completeMcpSession(instanceId, state, result) {
 export function clearMcpSession(instanceId, state) {
   mcpPendingExchanges.delete(mcpSessionKey(instanceId, state));
 }
-

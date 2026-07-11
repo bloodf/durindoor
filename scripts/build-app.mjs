@@ -31,6 +31,37 @@ try {
     fs.cpSync(path.join(process.cwd(), "src", "mitm"), path.join(standaloneDir, "src", "mitm"), {
       recursive: true,
     });
+    // Realtime WebSocket bridge: custom-server.js `require()`s these CJS helpers
+    // from bare Node where `@/` / `open-sse/` aliases don't resolve, and NFT
+    // does not trace dynamic `require()` paths of a post-build entry. Copy the
+    // sources preserving their on-disk relative layout so the `require(...)`
+    // specifiers inside custom-server.js still resolve.
+    const wsHandshakeDest = path.join(standaloneDir, "src", "shared", "utils", "wsHandshake.js");
+    fs.mkdirSync(path.dirname(wsHandshakeDest), { recursive: true });
+    fs.copyFileSync(
+      path.join(process.cwd(), "src", "shared", "utils", "wsHandshake.js"),
+      wsHandshakeDest,
+    );
+    // Realtime resource limits (CJS source of truth) — required at import time
+    // by both custom-server.js (maxPayload) and realtimeCore.js (item cap).
+    fs.copyFileSync(
+      path.join(process.cwd(), "src", "shared", "utils", "realtimeConfig.js"),
+      path.join(standaloneDir, "src", "shared", "utils", "realtimeConfig.js"),
+    );
+    fs.mkdirSync(path.join(standaloneDir, "open-sse", "handlers"), { recursive: true });
+    fs.copyFileSync(
+      path.join(process.cwd(), "open-sse", "handlers", "realtimeCore.js"),
+      path.join(standaloneDir, "open-sse", "handlers", "realtimeCore.js"),
+    );
+    // Ensure `require("ws")` resolves inside the standalone bundle. Next's NFT
+    // typically already traces ws (server-side fetch/WS deps), but a post-build
+    // entry is outside the trace — copy the resolved package if it is missing
+    // so the built entry can boot on a clean machine.
+    const standaloneWs = path.join(standaloneDir, "node_modules", "ws");
+    if (!fs.existsSync(standaloneWs)) {
+      const wsRoot = path.dirname(require.resolve("ws/package.json"));
+      fs.cpSync(wsRoot, standaloneWs, { recursive: true });
+    }
     const sharedConstantsDir = path.join(standaloneDir, "src", "shared", "constants");
     fs.mkdirSync(sharedConstantsDir, { recursive: true });
     fs.copyFileSync(

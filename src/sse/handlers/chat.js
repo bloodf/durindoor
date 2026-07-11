@@ -12,13 +12,16 @@ import { getSettings, getApiKeyByKey, getApiKeyUsageLimitStatus } from "@/lib/lo
 import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
 import { appendPxpipeEvent } from "@/lib/pxpipe/events.js";
 import { getModelInfo, getComboModels } from "../services/model.js";
+import { applyVisionBridgeReroute } from "open-sse/services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { handleComboChat, handleFusionChat } from "open-sse/services/combo.js";
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
+import { handlePonytailCommands, DEFAULT_PONYTAIL_HELP, resolvePonytailStream } from "open-sse/utils/tokenSaverBridge.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
+import { detectFormat } from "open-sse/services/provider.js";
 import { isAntigravityCapacityError } from "open-sse/services/accountFallback.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
@@ -113,7 +116,7 @@ export async function handleChat(request, clientRawRequest = null) {
   }
   cacheClaudeHeaders(clientRawRequest.headers);
 
-  const modelStr = body.model;
+  let modelStr = body.model;
 
   // Request summary is emitted as the unified "▶" line in chatCore (has fmt/thinking/account)
 
@@ -140,13 +143,15 @@ export async function handleChat(request, clientRawRequest = null) {
     return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
   }
 
-  // Per-key combo access control
+  // Per-key combo access control. Retain the authenticated record so local
+  // commands can expose only this key's own lifetime totals.
+  let authenticatedKeyRecord = null;
   if (apiKey && modelStr) {
-    const keyData = await getApiKeyByKey(apiKey);
-    if (keyData && Array.isArray(keyData.allowedCombos) && keyData.allowedCombos.length > 0) {
+    authenticatedKeyRecord = await getApiKeyByKey(apiKey);
+    if (authenticatedKeyRecord && Array.isArray(authenticatedKeyRecord.allowedCombos) && authenticatedKeyRecord.allowedCombos.length > 0) {
       const comboCheck = await getComboModels(modelStr);
-      if (comboCheck && !keyData.allowedCombos.includes(modelStr)) {
-        log.warn("AUTH", `API key "${keyData.name}" not allowed to access combo "${modelStr}"`);
+      if (comboCheck && !authenticatedKeyRecord.allowedCombos.includes(modelStr)) {
+        log.warn("AUTH", `API key "${authenticatedKeyRecord.name}" not allowed to access combo "${modelStr}"`);
         return errorResponse(HTTP_STATUS.FORBIDDEN, `Access denied: combo "${modelStr}" is not allowed for this API key`);
       }
     }
@@ -165,6 +170,52 @@ export async function handleChat(request, clientRawRequest = null) {
   if (!modelStr) {
     log.warn("CHAT", "Missing model");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
+  }
+
+  // Vision Bridge (#6640): when the request carries image parts on its current
+  // user turn and the requested model cannot accept vision natively, swap to
+  // the operator-configured vision-capable model before combo/dispatch. Applied
+  // after settings + auth are loaded (so parseModel stays sync/pure) and before
+  // combo resolution. The rerouted target is policy-rechecked — a vision model
+  // the caller's API key is not allowed to use must not be reachable via the
+  // bridge; on denial we keep the original model and let normal policy gates run.
+  const vb = applyVisionBridgeReroute({ body, modelStr, settings });
+  if (vb.rerouted) {
+    const policyError = await enforceApiKeyModelPolicy(request, vb.modelStr);
+    if (policyError) {
+      log.warn("CHAT", `Vision Bridge target "${vb.toModel}" denied by API key policy; keeping "${modelStr}"`);
+    } else {
+      log.info("CHAT", `Vision Bridge reroute: ${vb.fromModel} -> ${vb.toModel}`);
+      body = vb.body;
+      modelStr = vb.modelStr;
+      // clientRawRequest intentionally keeps the ORIGINAL client body so usage
+      // logs record the model the caller actually asked for; the reroute only
+      // changes what we dispatch upstream.
+    }
+  }
+
+  // Ponytail slash commands are local-only: respond before any account/credential lookup.
+  const sourceFormat = detectFormatByEndpoint(
+    clientRawRequest?.endpoint || new URL(request.url).pathname,
+    body,
+  ) || detectFormat(body);
+  const acceptHeader = clientRawRequest?.headers?.accept || "";
+  const ponytailResponse = await handlePonytailCommands(body, modelStr, {
+    fetchStats: authenticatedKeyRecord
+      ? async () => {
+          const { getApiKeyUsageTotals } = await import("@/lib/localDb");
+          return {
+            ...(await getApiKeyUsageTotals(authenticatedKeyRecord.id)),
+            scope: "this API key",
+          };
+        }
+      : null,
+    helpText: DEFAULT_PONYTAIL_HELP,
+    sourceFormatOverride: sourceFormat,
+    streamOverride: resolvePonytailStream(body, sourceFormat, acceptHeader),
+  });
+  if (ponytailResponse?.success && ponytailResponse.response) {
+    return ponytailResponse.response;
   }
 
   // Bypass naming/warmup requests before combo rotation to avoid wasting rotation slots
@@ -344,7 +395,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
     // Ensure real project ID is available for providers that need it (P0 fix: cold miss)
     if ((provider === "antigravity" || provider === "agy" || provider === "gemini-cli") && !refreshedCredentials.projectId) {
-      const pid = await getProjectIdForConnection(credentials.connectionId, refreshedCredentials.accessToken);
+      const pid = await getProjectIdForConnection(
+        credentials.connectionId,
+        refreshedCredentials.accessToken,
+        refreshedCredentials.providerSpecificData,
+      );
       if (pid) {
         refreshedCredentials.projectId = pid;
         // Persist to DB in background so subsequent requests have it immediately

@@ -24,6 +24,8 @@ function buildNoAuthCredential(providerSpecificData = {}, resolvedProxy = {}, co
       connectionNoProxy: resolvedProxy.connectionNoProxy,
       connectionProxyPoolId: resolvedProxy.proxyPoolId || null,
       vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
+      strictProxy: resolvedProxy.strictProxy === true,
+      disableEnvProxy: resolvedProxy.disableEnvProxy === true,
     },
     connectionId: connection?.id || "noauth",
     _connection: connection || null,
@@ -247,6 +249,11 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         connectionNoProxy: resolvedProxy.connectionNoProxy,
         connectionProxyPoolId: resolvedProxy.proxyPoolId || null,
         vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
+        // Preserve the resolver's route policy alongside its endpoint. The
+        // chat request, proactive refresh, 401/403 refresh, and retry all read
+        // these immutable fields from the selected credential.
+        strictProxy: resolvedProxy.strictProxy === true,
+        disableEnvProxy: resolvedProxy.disableEnvProxy === true,
       },
       connectionId: connection.id,
       // Include current status for optimization check

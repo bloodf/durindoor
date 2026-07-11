@@ -16,7 +16,11 @@ export function hasValidContent(msg) {
     return msg.content.some(block =>
       (block.type === CLAUDE_BLOCK.TEXT && block.text?.trim()) ||
       block.type === CLAUDE_BLOCK.TOOL_USE ||
-      block.type === CLAUDE_BLOCK.TOOL_RESULT
+      block.type === CLAUDE_BLOCK.TOOL_RESULT ||
+      block.type === CLAUDE_BLOCK.IMAGE ||
+      block.type === CLAUDE_BLOCK.DOCUMENT ||
+      block.type === CLAUDE_BLOCK.THINKING ||
+      block.type === CLAUDE_BLOCK.REDACTED_THINKING
     );
   }
   return false;
@@ -186,7 +190,7 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
       const kept = [];
       for (const block of msg.content) {
         if (block.type === CLAUDE_BLOCK.THINKING || block.type === CLAUDE_BLOCK.REDACTED_THINKING) {
-          if (isValidClaudeSignature(block.signature)) {
+          if (provider !== "claude" || isValidClaudeSignature(block.signature)) {
             hasKeptThinking = true;
             kept.push(block);
           }
@@ -212,6 +216,10 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
 // - Fix tool_use/tool_result ordering
 // - Apply cloaking (billing header + fake user ID) for OAuth tokens
 export function prepareClaudeRequest(body, provider = null, apiKey = null, connectionId = null, rawHeaders = null, sessionId = null) {
+  const dropsClaudeCacheControl = PROVIDERS[provider]?.quirks?.dropClaudeCacheControl
+    || provider === "ollama"
+    || provider === "ollama-local";
+  const allowCacheControl = !dropsClaudeCacheControl;
   // quirk: MiniMax's Claude-compatible endpoint rejects Anthropic's output_config (400 invalid params)
   if (PROVIDERS[provider]?.quirks?.dropOutputConfig) {
     delete body.output_config;
@@ -223,7 +231,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
   if (body.system && Array.isArray(body.system)) {
     body.system = body.system.map((block, i) => {
       const { cache_control, ...rest } = block;
-      if (i === body.system.length - 1) {
+      if (allowCacheControl && i === body.system.length - 1) {
         return { ...rest, cache_control: { type: "ephemeral", ttl: "1h" } };
       }
       return rest;
@@ -272,7 +280,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
       if (msg.role === "assistant" && Array.isArray(msg.content)) {
         // Add cache_control to last non-thinking block of first (from end) assistant with content
         // thinking/redacted_thinking blocks do not support cache_control
-        if (!lastAssistantProcessed && msg.content.length > 0) {
+        if (allowCacheControl && !lastAssistantProcessed && msg.content.length > 0) {
           for (let j = msg.content.length - 1; j >= 0; j--) {
             const block = msg.content[j];
             if (block.type !== CLAUDE_BLOCK.THINKING && block.type !== CLAUDE_BLOCK.REDACTED_THINKING) {
@@ -292,12 +300,16 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
           // anthropic-compatible: replace with default (safe fallback for lenient upstreams).
           // DeepSeek: keep existing thinking as-is; add an unsigned placeholder only if missing.
           const isClaudeNative = provider === "claude";
+          const preservesNativeThinkingBlocks = provider === "ollama" || provider === "ollama-local";
           const isDeepSeek = provider === "deepseek";
           const kept = [];
           for (const block of msg.content) {
             const isThinking = block.type === CLAUDE_BLOCK.THINKING || block.type === CLAUDE_BLOCK.REDACTED_THINKING;
             if (isThinking) {
-              if (isClaudeNative) {
+              if (preservesNativeThinkingBlocks) {
+                hasKeptThinking = true;
+                kept.push(block);
+              } else if (isClaudeNative) {
                 if (isValidClaudeSignature(block.signature)) {
                   hasKeptThinking = true;
                   kept.push(block);
@@ -348,7 +360,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
 
     body.tools = body.tools.map((tool, i) => {
       const { cache_control, ...rest } = tool;
-      if (i === body.tools.length - 1) {
+      if (allowCacheControl && i === body.tools.length - 1) {
         return { ...rest, cache_control: { type: "ephemeral", ttl: "1h" } };
       }
       return rest;

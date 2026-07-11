@@ -13,8 +13,10 @@ import { PROVIDERS } from "../config/providers.js";
 import { createErrorResult, parseUpstreamError, formatProviderError } from "../utils/error.js";
 import { HTTP_STATUS, VALIDATE_OUTBOUND } from "../config/runtimeConfig.js";
 import { handleBypassRequest } from "../utils/bypassHandler.js";
+import { handlePonytailCommands, DEFAULT_PONYTAIL_HELP, resolvePonytailStream } from "../utils/tokenSaverBridge.js";
 import { trackPendingRequest, appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { acquireSlot, releaseSlot, getConcurrencyLimit, ConcurrencyGateTimeoutError } from "../services/concurrencyGate.js";
+
 import { getExecutor } from "../executors/index.js";
 import { buildRequestDetail, extractRequestConfig } from "./chatCore/requestDetail.js";
 import { handleForcedSSEToJson } from "./chatCore/sseToJsonHandler.js";
@@ -82,6 +84,19 @@ function stripLegacyCompactMarker(body, clientRawRequest) {
   return { body: cleanBody, clientRawRequest: cleanRawRequest };
 }
 
+/** Return a diagnostic-only proxy label with credentials, paths, and queries removed. */
+function proxyEndpointLogLabel(value) {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw) return "[unavailable]";
+  try {
+    const parsed = new URL(raw.includes("://") ? raw : `http://${raw}`);
+    if (!parsed.hostname) return "[invalid proxy URL]";
+    return `${parsed.protocol}//${parsed.hostname}${parsed.port ? `:${parsed.port}` : ""}`;
+  } catch {
+    return "[invalid proxy URL]";
+  }
+}
+
 /**
  * Core chat handler - shared between SSE and Worker
  *
@@ -103,7 +118,7 @@ function stripLegacyCompactMarker(body, clientRawRequest) {
  *   errors. Legacy `info`/`debug`/`warn`/`error` remain supported.
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit }) {
+export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, skipPonytailCommands = false }) {
   const { provider, model: requestedModel } = modelInfo;
   const requestStartTime = Date.now();
   const requestContext = captureRequestContext(body, clientRawRequest);
@@ -120,6 +135,23 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const reqTag = log?.tagForSession ? log.tagForSession(sessionSeed) : (log?.nextTag ? log.nextTag() : "");
 
   const sourceFormat = sourceFormatOverride || detectFormat(body);
+
+  // Ponytail slash commands — must run before bypass heuristics.
+  // Honor sourceFormatOverride and header-driven non-streaming requests.
+  const acceptHeader = clientRawRequest?.headers?.accept || "";
+  const clientPrefersJson = acceptHeader.includes("application/json");
+  const clientPrefersSSE = acceptHeader.includes("text/event-stream");
+  if (!skipPonytailCommands) {
+    const ponytailResponse = await handlePonytailCommands(body, requestedModel, {
+      // Worker/core fallbacks have no authenticated API-key record, so gain
+      // deliberately returns the dashboard hint instead of aggregate stats.
+      fetchStats: null,
+      helpText: DEFAULT_PONYTAIL_HELP,
+      sourceFormatOverride: sourceFormat,
+      streamOverride: resolvePonytailStream(body, sourceFormat, acceptHeader),
+    });
+    if (ponytailResponse) return ponytailResponse;
+  }
 
   // Check for bypass patterns (warmup, skip, cc naming)
   const bypassResponse = handleBypassRequest(body, requestedModel, userAgent, ccFilterNaming);
@@ -172,12 +204,6 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // Non-interactive mode (-p flag) sends without stream and can't parse SSE.
   const detectedTool = detectClientTool(clientRawRequest?.headers || {}, body);
 
-  // Client Accept header preference (AI SDK sends Accept: application/json for
-  // non-streaming responses).
-  const acceptHeader = clientRawRequest?.headers?.accept || "";
-  const clientPrefersJson = acceptHeader.includes("application/json");
-  const clientPrefersSSE = acceptHeader.includes("text/event-stream");
-
   // Stream-only providers (forceStream) must keep streaming even when the client
   // asked for JSON; the accumulated stream is converted to JSON downstream. (#2031)
   // Provider-declared forceNonStreaming (e.g. Galadriel's verified API
@@ -217,7 +243,14 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     }
     // Convert remote image URLs to base64 for targets that can't fetch URLs.
     try {
-      const n = await prefetchRemoteImages(body, sourceFormat, targetFormat, { signal: undefined });
+      const claudeImagesRequireBase64 = PROVIDERS[provider]?.quirks?.claudeImagesRequireBase64
+        || provider === "ollama"
+        || provider === "ollama-local";
+      const imageTargetFormat = claudeImagesRequireBase64
+        && targetFormat === FORMATS.CLAUDE
+        ? FORMATS.OLLAMA
+        : targetFormat;
+      const n = await prefetchRemoteImages(body, sourceFormat, imageTargetFormat, { signal: undefined });
       if (n > 0) log?.debug?.("MODALITY", `prefetched ${n} remote image(s) for ${targetFormat}`);
     } catch (e) { log?.warn?.("MODALITY", `image prefetch failed: ${e.message}`); }
   }
@@ -402,28 +435,42 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     log, provider, model: cleanModel, reqTag
   });
 
+  const proxyData = credentials?.providerSpecificData || {};
+  const oauthProxy = proxyData.oauthProxy && typeof proxyData.oauthProxy === "object"
+    ? proxyData.oauthProxy
+    : {};
+  const proxyMode = oauthProxy.mode || proxyData.proxyMode || "legacy";
   const proxyOptions = {
-    connectionProxyEnabled: credentials?.providerSpecificData?.connectionProxyEnabled === true,
-    connectionProxyUrl: credentials?.providerSpecificData?.connectionProxyUrl || "",
-    connectionNoProxy: credentials?.providerSpecificData?.connectionNoProxy || "",
-    vercelRelayUrl: credentials?.providerSpecificData?.vercelRelayUrl || "",
+    oauthProxy,
+    proxyMode,
+    proxyPoolId: oauthProxy.poolId || proxyData.proxyPoolId || proxyData.connectionProxyPoolId || null,
+    connectionProxyPoolId: proxyData.connectionProxyPoolId || proxyData.proxyPoolId || oauthProxy.poolId || null,
+    connectionProxyEnabled: proxyData.connectionProxyEnabled === true,
+    connectionProxyUrl: proxyData.connectionProxyUrl || "",
+    connectionNoProxy: proxyData.connectionNoProxy || "",
+    vercelRelayUrl: proxyData.vercelRelayUrl || "",
+    strictProxy: proxyMode === "strict-pool" || proxyData.strictProxy === true,
+    disableEnvProxy:
+      proxyMode === "direct" ||
+      proxyMode === "strict-pool" ||
+      proxyData.disableEnvProxy === true,
   };
+  if (proxyMode === "direct") {
+    proxyOptions.proxyPoolId = null;
+    proxyOptions.connectionProxyPoolId = null;
+    proxyOptions.connectionProxyEnabled = false;
+    proxyOptions.connectionProxyUrl = "";
+    proxyOptions.connectionNoProxy = "";
+    proxyOptions.vercelRelayUrl = "";
+  }
 
   if (proxyOptions.vercelRelayUrl) {
     const connectionName = credentials?.connectionName || credentials?.connectionId || "unknown";
     const poolId = credentials?.providerSpecificData?.connectionProxyPoolId || "none";
-    log?.info?.("PROXY", `${provider.toUpperCase()} | ${cleanModel} | conn=${connectionName} | pool=${poolId} | vercel-relay=${proxyOptions.vercelRelayUrl}`);
+    const relayLabel = proxyEndpointLogLabel(proxyOptions.vercelRelayUrl);
+    log?.info?.("PROXY", `${provider.toUpperCase()} | ${cleanModel} | conn=${connectionName} | pool=${poolId} | vercel-relay=${relayLabel}`);
   } else if (proxyOptions.connectionProxyEnabled && proxyOptions.connectionProxyUrl) {
-    let maskedProxyUrl = proxyOptions.connectionProxyUrl;
-    try {
-      const parsed = new URL(proxyOptions.connectionProxyUrl);
-      const host = parsed.hostname || "";
-      const port = parsed.port ? `:${parsed.port}` : "";
-      const protocol = parsed.protocol || "http:";
-      maskedProxyUrl = `${protocol}//${host}${port}`;
-    } catch {
-      // Keep raw if URL parsing fails
-    }
+    const maskedProxyUrl = proxyEndpointLogLabel(proxyOptions.connectionProxyUrl);
 
     const poolId = credentials?.providerSpecificData?.connectionProxyPoolId || "none";
     const connectionName = credentials?.connectionName || credentials?.connectionId || "unknown";
@@ -527,7 +574,13 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // Handle 401/403 - try token refresh (skip for noAuth providers)
   if (!executor.noAuth && (providerResponse.status === HTTP_STATUS.UNAUTHORIZED || providerResponse.status === HTTP_STATUS.FORBIDDEN)) {
     try {
-      const newCredentials = await refreshWithRetry(() => executor.refreshCredentials(credentials, log), 3, log);
+      // Refresh and retry must use the same immutable route as the failed
+      // request. In particular, strict-pool may never fall back to direct.
+      const newCredentials = await refreshWithRetry(
+        () => executor.refreshCredentials(credentials, log, proxyOptions),
+        3,
+        log
+      );
       if (newCredentials?.accessToken || newCredentials?.copilotToken) {
         if (log?.line) log.line(reqTag, "🔑", `TOKEN REFRESHED · ${provider}/${cleanModel}`);
         Object.assign(credentials, newCredentials);

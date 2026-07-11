@@ -1,4 +1,5 @@
 import { ERROR_TYPES, DEFAULT_ERROR_MESSAGES } from "../config/errorConfig.js";
+import { unwrapClinepassEnvelope } from "./clinepassEnvelope.js";
 
 /**
  * Build OpenAI-compatible error response body
@@ -82,7 +83,14 @@ export async function parseUpstreamError(response, executor = null) {
   let message = "";
   try {
     const json = JSON.parse(bodyText);
-    message = json.error?.message || json.message || json.error || bodyText;
+    // ClinePass wraps failures as {success:false, error}; surface the inner
+    // message instead of the wrapper. Source: decolua/9router#2332 @ 005d970f49.
+    const { error: envError } = unwrapClinepassEnvelope(json, executor?.getProvider?.() || executor?.provider);
+    if (envError) {
+      message = envError.message;
+    } else {
+      message = json.error?.message || json.message || json.error || bodyText;
+    }
   } catch {
     message = bodyText;
   }
@@ -182,14 +190,15 @@ export function formatProviderError(error, provider, model, statusCode) {
 export function sanitizeErrorMessage(message) {
   const firstLine = String(message || "Upstream provider error").split(/\r?\n/)[0].trim();
   return firstLine
+    .replace(/\b(https?|socks5h?):\/\/[^@\s/]+@/gi, "$1://[redacted]@")
     .replace(/\bBearer\s+\S+/gi, "Bearer [redacted]")
     .replace(
-      /("(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)"\s*:\s*")[^"]*"/gi,
+      /("(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|authorization[-_]?code|oauth[-_]?code|code[-_]?verifier|oauth[-_]?state|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)"\s*:\s*")[^"]*"/gi,
       '$1[redacted]"',
     )
     .replace(/([A-Za-z0-9_-]*(?:auth(?:orization)?|cookie|token|key|secret|signature|password|credential)[A-Za-z0-9_-]*\s*:\s*)[^\r\n]+/gi, "$1[redacted]")
     .replace(
-      /((?:[?&;#]\s*|^)(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)=)[^&;\s]+/gi,
+      /((?:[?&;#]\s*|^)(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|authorization[-_]?code|oauth[-_]?code|code|code[-_]?verifier|state|oauth[-_]?state|cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)=)[^&;\s]+/gi,
       "$1[redacted]",
     )
     .replace(/file:\/\/\S+/g, "[path]")

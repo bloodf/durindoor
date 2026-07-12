@@ -96,6 +96,30 @@ export async function PATCH(request) {
       body.firecrawlBaseUrl = raw;
     }
 
+    /**
+     * Validate PXPIPE settings. Bounds rationale: minChars must be a
+     * positive integer; timeout floor 1s (below it a transform can never
+     * round-trip), ceiling 120s (2x the largest shipped default so a stuck
+     * pipeline cannot hold a request open indefinitely); booleans for flags.
+     */
+    if (Object.prototype.hasOwnProperty.call(body, "pxpipeMinChars")) {
+      const v = body.pxpipeMinChars;
+      if (!Number.isSafeInteger(v) || v <= 0) {
+        return NextResponse.json({ error: "Invalid pxpipeMinChars" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "pxpipeTimeoutMs")) {
+      const v = body.pxpipeTimeoutMs;
+      if (!Number.isSafeInteger(v) || v < 1000 || v > 120000) {
+        return NextResponse.json({ error: "Invalid pxpipeTimeoutMs" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
+    }
+    for (const key of ["pxpipeEnabled", "pxpipeAutoInstall"]) {
+      if (Object.prototype.hasOwnProperty.call(body, key) && typeof body[key] !== "boolean") {
+        return NextResponse.json({ error: `Invalid ${key}` }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
+    }
+
     const settings = await updateSettings(body);
 
     // Apply outbound proxy settings immediately (no restart required)

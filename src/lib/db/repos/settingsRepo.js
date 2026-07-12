@@ -56,7 +56,6 @@ const DEFAULT_SETTINGS = {
   quotaTrackerState: DEFAULT_QUOTA_TRACKER_STATE,
   ponytailEnabled: false,
   ponytailLevel: "full",
-  pxpipeEnabled: false,
   pxpipeAutoInstall: true,
   pxpipeMinChars: 25000,
   pxpipeTimeoutMs: 15000,

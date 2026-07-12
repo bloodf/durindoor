@@ -317,7 +317,7 @@ function TabbedDetailCard({ title, icon, tabs, detail, copyKey, defaultTab }) {
   );
 }
 
-export default function RequestDetailsTab() {
+export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
   const [details, setDetails] = useState([]);
   const [pagination, setPagination] = useState({
     page: 1,
@@ -378,7 +378,7 @@ export default function RequestDetailsTab() {
 
   useEffect(() => {
     fetchDetails();
-  }, [fetchDetails]);
+  }, [fetchDetails, resetNonce]);
 
   const handleViewDetail = (detail) => {
     setSelectedDetail(detail);

@@ -36,6 +36,7 @@ function UsageContent() {
   const [resetModalOpen, setResetModalOpen] = useState(false);
   const [resetPeriod, setResetPeriod] = useState("all");
   const [resetting, setResetting] = useState(false);
+  const [resetNonce, setResetNonce] = useState(0);
 
   const tabFromUrl = searchParams.get("tab");
   const activeTab = tabFromUrl && ["overview", "logs", "details"].includes(tabFromUrl)
@@ -59,8 +60,8 @@ function UsageContent() {
       });
       if (!res.ok) throw new Error("Reset failed");
       setResetModalOpen(false);
-      // Force a re-render by toggling the period slightly
-      setPeriod((p) => p === "today" ? "24h" : "today");
+      // Force all usage tabs to refetch without touching the selected period
+      setResetNonce((n) => n + 1);
     } catch (e) {
       console.error("Reset failed:", e);
     } finally {
@@ -114,11 +115,11 @@ function UsageContent() {
 
       {activeTab === "overview" && (
         <Suspense fallback={<CardSkeleton />}>
-          <UsageStats period={period} setPeriod={setPeriod} hidePeriodSelector />
+          <UsageStats period={period} setPeriod={setPeriod} hidePeriodSelector resetNonce={resetNonce} />
         </Suspense>
       )}
-      {activeTab === "logs" && <RequestLogger />}
-      {activeTab === "details" && <RequestDetailsTab />}
+      {activeTab === "logs" && <RequestLogger resetNonce={resetNonce} />}
+      {activeTab === "details" && <RequestDetailsTab resetNonce={resetNonce} />}
 
       {/* Reset Confirmation Modal */}
       <ConfirmModal

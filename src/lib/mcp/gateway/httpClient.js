@@ -9,6 +9,13 @@ const TIMEOUT_MS = 30_000;
 const DEFAULT_PROTOCOL_VERSION = "2025-06-18";
 const HTTP_SESSION_KEY = "__9routerGatewayHttpSessions";
 
+// JSON-RPC request ids. `initialize` hardcodes id 1 (spec: ids only need to
+// be unique within a connection); every post-init request allocates from the
+// per-connection counter on the session entry (see getSessionEntry). The
+// counter lives in the globalThis-backed store, not module scope, so HMR /
+// worker module reloads can never reset it back onto in-flight ids.
+const INITIALIZE_ID = 1;
+
 function getSessionStore() {
   if (!globalThis[HTTP_SESSION_KEY]) {
     globalThis[HTTP_SESSION_KEY] = new Map();
@@ -19,7 +26,13 @@ function getSessionStore() {
 function getSessionEntry(instance) {
   const store = getSessionStore();
   if (!store.has(instance.id)) {
-    store.set(instance.id, { sessionId: null, protocolVersion: null, serverInfo: null, initPromise: null });
+    store.set(instance.id, {
+      sessionId: null,
+      protocolVersion: null,
+      serverInfo: null,
+      initPromise: null,
+      nextRequestId: INITIALIZE_ID + 1,
+    });
   }
   return store.get(instance.id);
 }
@@ -224,7 +237,7 @@ export async function ensureInitialized(instance, opts = {}) {
         clientInfo: { name: "9router-gateway", version: "1" },
       };
       const resp = await mcpRequest(instance, {
-        jsonrpc: "2.0", id: 0, method: "initialize", params: initParams,
+        jsonrpc: "2.0", id: INITIALIZE_ID, method: "initialize", params: initParams,
       });
 
       if ("error" in resp && resp.error !== undefined) {
@@ -248,10 +261,12 @@ export async function ensureInitialized(instance, opts = {}) {
         ...(resp.sessionId ? { sessionId: resp.sessionId } : {}),
       };
 
-      entry.sessionId = info.sessionId ?? null;
-      entry.protocolVersion = info.protocolVersion;
-      entry.serverInfo = info.serverInfo;
-      entry.initPromise = null;
+    // Commit session state before clearing initPromise, so a concurrent
+    // caller that awaited our initPromise sees a fully initialized entry.
+    entry.sessionId = info.sessionId ?? null;
+    entry.protocolVersion = info.protocolVersion;
+    entry.serverInfo = info.serverInfo;
+    entry.initPromise = null;
 
       return info;
     } catch (e) {
@@ -265,8 +280,9 @@ export async function ensureInitialized(instance, opts = {}) {
 
 export async function listTools(instance, opts = {}) {
   const init = await ensureInitialized(instance, opts);
+  const entry = getSessionEntry(instance);
   const resp = await mcpRequest(instance, {
-    jsonrpc: "2.0", id: 1, method: "tools/list", params: opts.params ?? {},
+    jsonrpc: "2.0", id: entry.nextRequestId++, method: "tools/list", params: opts.params ?? {},
   }, { ...(init.sessionId !== undefined ? { sessionId: init.sessionId } : {}) });
   if ("error" in resp && resp.error !== undefined) {
     const errVal = resp.error;
@@ -279,9 +295,10 @@ export async function listTools(instance, opts = {}) {
 
 export async function callTool(instance, name, args, opts = {}) {
   const init = await ensureInitialized(instance, opts);
+  const entry = getSessionEntry(instance);
   const resp = await mcpRequest(instance, {
     jsonrpc: "2.0",
-    id: 2,
+    id: entry.nextRequestId++,
     method: "tools/call",
     params: { name, arguments: args ?? {} },
   }, { ...(init.sessionId !== undefined ? { sessionId: init.sessionId } : {}) });

@@ -10,6 +10,14 @@ import { resolveInlineThinkingFormat } from "../handlers/chatCore/inlineThinking
 import { INLINE_THINKING_FORMATS } from "../providers/schema.js";
 import { appendReasoningText } from "../translator/concerns/reasoning.js";
 import { createUpstreamTerminalTracker } from "./streamTerminal.js";
+import {
+  createMinimaxThinkingStreamState,
+  flushMinimaxThinkingStreamState,
+  isMinimaxThinkingProvider,
+  sanitizeMinimaxDelta,
+  shouldOmitStreamReasoning,
+  stripClientReasoningDelta,
+} from "./minimaxThinkingStream.js";
 
 import { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER } from "./sseConstants.js";
 
@@ -81,6 +89,25 @@ export function createSSEStream(options = {}) {
       claudeCompatMode === "always" ||
       (claudeCompatMode === "auto" && isClaudeClassifierRequest)
     );
+  // MiniMax M3 passthrough: peel leaked thinking markers from delta.content into
+  // reasoning_content, then (openai transport only) strip reasoning fields so
+  // OpenAI clients (OpenCode) don't render them. Ported from upstream PR #2525.
+  const minimaxThinkingState = mode === STREAM_MODE.PASSTHROUGH
+    && isMinimaxThinkingProvider(provider)
+    && targetFormat === FORMATS.OPENAI
+    ? createMinimaxThinkingStreamState()
+    : null;
+
+  // The compatibility parser is enabled only by exact provider transport/model
+  // metadata. State is isolated by OpenAI choice index.
+  const extractInlineThinking = mode === STREAM_MODE.PASSTHROUGH
+    && resolveInlineThinkingFormat(provider, model, targetFormat) === INLINE_THINKING_FORMATS.THINK_TAGS;
+  // When the inline-thinking extractor owns <think> peeling for this provider/model
+  // (registry quirks.inlineThinking), the upstream-#2525 sanitizer must not also
+  // rewrite delta.content — the extractor's fail-open byte-for-byte contract wins.
+  const sanitizeMinimaxThinking = minimaxThinkingState && !extractInlineThinking;
+  const omitStreamReasoning = sanitizeMinimaxThinking && shouldOmitStreamReasoning(provider);
+
   const state = mode === STREAM_MODE.TRANSLATE
     ? { ...initState(sourceFormat), provider, toolNameMap, model, ...(claudeCompat && { claudeCompat: true }) }
     : null;
@@ -139,8 +166,6 @@ export function createSSEStream(options = {}) {
 
   // The compatibility parser is enabled only by exact provider transport/model
   // metadata. State is isolated by OpenAI choice index.
-  const extractInlineThinking = mode === STREAM_MODE.PASSTHROUGH
-    && resolveInlineThinkingFormat(provider, model, targetFormat) === INLINE_THINKING_FORMATS.THINK_TAGS;
   const inlineThinkingStates = new Map();
   let inlineThinkingChunkMeta = null;
 
@@ -332,6 +357,15 @@ export function createSSEStream(options = {}) {
                 }
               }
 
+              // Peel leaked MiniMax thinking markers out of delta.content into
+              // reasoning_content before the inline-thinking extractor and content
+              // accounting see them (upstream PR #2525).
+              if (sanitizeMinimaxThinking && parsed?.choices?.[0]?.delta) {
+                if (sanitizeMinimaxDelta(parsed.choices[0].delta, minimaxThinkingState)) {
+                  fieldsInjected = true;
+                }
+              }
+
               // Usage-only OpenAI chunks have choices:[] and would otherwise
               // be discarded as empty before accounting sees them.
               const extracted = extractUsage(parsed);
@@ -340,6 +374,25 @@ export function createSSEStream(options = {}) {
               }
               if (!hasValuableContent(parsed, targetFormat || FORMATS.OPENAI) && !extracted) {
                 continue;
+              }
+
+              if (minimaxThinkingState) {
+                const delta = parsed.choices?.[0]?.delta;
+                const content = delta?.content;
+                const reasoning = delta?.reasoning_content;
+                if (content && typeof content === "string") {
+                  totalContentLength += content.length;
+                  accumulatedContent += content;
+                }
+                if (reasoning && typeof reasoning === "string") {
+                  totalContentLength += reasoning.length;
+                  accumulatedThinking += reasoning;
+                }
+                // Upstream still reasons; don't forward thinking fields to OpenAI
+                // clients (OpenCode renders them).
+                if (omitStreamReasoning && delta && stripClientReasoningDelta(delta)) {
+                  fieldsInjected = true;
+                }
               }
 
               if (extractInlineThinking && Array.isArray(parsed.choices)) {
@@ -731,6 +784,35 @@ export function createSSEStream(options = {}) {
         if (remaining) buffer += remaining;
 
         if (mode === STREAM_MODE.PASSTHROUGH) {
+          if (sanitizeMinimaxThinking) {
+            const tail = flushMinimaxThinkingStreamState(minimaxThinkingState);
+            if (tail.content || tail.reasoning) {
+              if (tail.reasoning) {
+                totalContentLength += tail.reasoning.length;
+                accumulatedThinking += tail.reasoning;
+              }
+              if (tail.content) {
+                totalContentLength += tail.content.length;
+                accumulatedContent += tail.content;
+              }
+              const flushedDelta = {
+                ...(tail.content ? { content: tail.content } : {}),
+                ...(!omitStreamReasoning && tail.reasoning ? { reasoning_content: tail.reasoning } : {}),
+              };
+              if (Object.keys(flushedDelta).length > 0) {
+                const flushed = {
+                  object: "chat.completion.chunk",
+                  created: Math.floor(Date.now() / 1000),
+                  model: model || "unknown",
+                  choices: [{ index: 0, delta: flushedDelta }],
+                };
+                const flushedOutput = `data: ${JSON.stringify(flushed)}\n`;
+                reqLogger?.appendConvertedChunk?.(flushedOutput);
+                controller.enqueue(sharedEncoder.encode(flushedOutput));
+              }
+            }
+          }
+
           const pendingInlineThinkingOutput = flushInlineThinkingStates();
           if (pendingInlineThinkingOutput) {
             reqLogger?.appendConvertedChunk?.(pendingInlineThinkingOutput);

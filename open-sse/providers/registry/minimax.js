@@ -51,6 +51,11 @@ export default {
       baseUrl: "https://api.minimax.io/v1/chat/completions",
       auth: { combined: true, header: "Authorization", scheme: "bearer" },
       quirks: { inlineThinking: M3_OPENAI_INLINE_THINKING },
+      // MiniMax OpenAI API: split thinking into reasoning_details (vendor-recommended for OpenAI clients).
+      // Ported from upstream decolua/9router PR #2525 (head 72385571c6).
+      requestDefaults: { reasoning_split: true },
+      // Upstream still reasons; don't forward thinking fields to OpenAI clients (OpenCode shows them).
+      omitStreamReasoning: true,
     },
     {
       format: "claude",

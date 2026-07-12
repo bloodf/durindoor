@@ -1,6 +1,6 @@
 import { detectFormat, getTargetFormat, resolveTransport } from "../services/provider.js";
 import { translateRequest } from "../translator/index.js";
-import { applyThinking, parseSuffix } from "../translator/concerns/thinkingUnified.js";
+import { applyThinking, applyTransportRequestDefaults, parseSuffix } from "../translator/concerns/thinkingUnified.js";
 import { FORMATS } from "../translator/formats.js";
 import { normalizeClaudePassthrough } from "../translator/formats/claude.js";
 import { validateOutboundPayload, stripInternalKeys, normalizeToolSchemaRoots } from "../translator/validate.js";
@@ -380,6 +380,8 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
     log?.debug?.("PASSTHROUGH", `${clientTool} → ${provider} | native lossless`);
     translatedBody = { ...structuredClone(body), model: cleanUpstreamModel };
     applyThinking(targetFormat, cleanModel, translatedBody, provider, modelThinkingIntent);
+    // Per-transport registry defaults (e.g. MiniMax openai transport → reasoning_split).
+    applyTransportRequestDefaults(targetFormat, translatedBody, provider);
     // Normalize newer Cowork/CC beta shapes (adaptive thinking, mid-conversation system) the API rejects
     if (clientTool === "claude") normalizeClaudePassthrough(translatedBody, translatedBody.model, provider);
   } else {

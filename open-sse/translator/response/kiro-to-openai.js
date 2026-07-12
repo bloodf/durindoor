@@ -112,10 +112,16 @@ export function kiroToOpenAIResponse(chunk, state) {
     const toolName = toolUse.name || "";
     const toolInput = toolUse.input || {};
 
+    // Each toolUseEvent in a turn must carry a unique index so downstream
+    // translators (openai-to-claude) can keep distinct open tool blocks per call.
+    state.toolCallIndex = state.toolCallIndex ?? 0;
+    const idx = state.toolCallIndex;
+    state.toolCallIndex = idx + 1;
+
     const openaiChunk = buildChunk(chunkMeta(state), {
       ...(state.chunkIndex === 0 ? { role: ROLE.ASSISTANT } : {}),
       tool_calls: [{
-        index: 0,
+        index: idx,
         id: toolCallId,
         type: OPENAI_BLOCK.FUNCTION,
         function: {

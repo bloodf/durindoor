@@ -15,6 +15,11 @@ export default function TokenSaverClient() {
   const [pxpipeEnabled, setPxpipeEnabled] = useState(false);
   const [pxpipeMinChars, setPxpipeMinChars] = useState("25000");
   const [pxpipeInputValue, setPxpipeInputValue] = useState("25000");
+  const [pxpipeMinCharsError, setPxpipeMinCharsError] = useState("");
+  const [pxpipeTimeoutMs, setPxpipeTimeoutMs] = useState("15000");
+  const [pxpipeTimeoutInputValue, setPxpipeTimeoutInputValue] = useState("15000");
+  const [pxpipeTimeoutError, setPxpipeTimeoutError] = useState("");
+  const [pxpipeAutoInstall, setPxpipeAutoInstall] = useState(true);
   const [pxpipeStatus, setPxpipeStatus] = useState({
     installed: false,
     installing: false,
@@ -72,15 +77,20 @@ export default function TokenSaverClient() {
     }
   }, [isWenyanLocale, cavemanLevel]);
 
+  /**
+   * PATCH one or more settings. Returns the fetch Response (or null on
+   * network error) so callers can revert optimistic local state on !res.ok.
+   */
   const patchSetting = async (patch) => {
     try {
-      await fetch("/api/settings", {
+      return await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
       });
     } catch (error) {
       console.log("Error updating setting:", error);
+      return null;
     }
   };
 
@@ -288,15 +298,28 @@ export default function TokenSaverClient() {
     }
   }, [refreshPxpipeStatus, runPxpipeHealth]);
 
-  const handlePxpipeEnabled = (value) => {
+  /**
+   * Toggle PXPIPE optimistically; revert local state if the PATCH is
+   * rejected (e.g. validation 400) or the request fails.
+   */
+  const handlePxpipeEnabled = async (value) => {
     setPxpipeEnabled(value);
-    patchSetting({ pxpipeEnabled: value });
+    const res = await patchSetting({ pxpipeEnabled: value });
+    if (!res?.ok) setPxpipeEnabled(!value);
+  };
+
+  const handlePxpipeAutoInstall = async (value) => {
+    setPxpipeAutoInstall(value);
+    const res = await patchSetting({ pxpipeAutoInstall: value });
+    if (!res?.ok) setPxpipeAutoInstall(!value);
   };
 
   const handlePxpipeMinChars = (value) => {
     setPxpipeInputValue(value);
+    setPxpipeMinCharsError("");
   };
 
+  /** Persist pxpipeMinChars on blur; show inline error on invalid input. */
   const handlePxpipeMinCharsBlur = () => {
     if (pxpipeInputValue === "") {
       setPxpipeInputValue(pxpipeMinChars);
@@ -305,9 +328,28 @@ export default function TokenSaverClient() {
     const n = Number(pxpipeInputValue);
     if (Number.isSafeInteger(n) && n > 0) {
       setPxpipeMinChars(pxpipeInputValue);
+      setPxpipeMinCharsError("");
       patchSetting({ pxpipeMinChars: n });
     } else {
       setPxpipeInputValue(pxpipeMinChars);
+      setPxpipeMinCharsError("Must be a positive whole number");
+    }
+  };
+
+  /** Persist pxpipeTimeoutMs on blur; inline error outside 1000–120000. */
+  const handlePxpipeTimeoutBlur = () => {
+    if (pxpipeTimeoutInputValue === "") {
+      setPxpipeTimeoutInputValue(pxpipeTimeoutMs);
+      return;
+    }
+    const n = Number(pxpipeTimeoutInputValue);
+    if (Number.isSafeInteger(n) && n >= 1000 && n <= 120000) {
+      setPxpipeTimeoutMs(pxpipeTimeoutInputValue);
+      setPxpipeTimeoutError("");
+      patchSetting({ pxpipeTimeoutMs: n });
+    } else {
+      setPxpipeTimeoutInputValue(pxpipeTimeoutMs);
+      setPxpipeTimeoutError("Must be a whole number 1000–120000");
     }
   };
 
@@ -325,8 +367,11 @@ export default function TokenSaverClient() {
           setPonytailEnabled(!!data.ponytailEnabled);
           setPonytailLevel(data.ponytailLevel || "full");
           setPxpipeEnabled(!!data.pxpipeEnabled);
+          setPxpipeAutoInstall(data.pxpipeAutoInstall !== false);
           setPxpipeMinChars(String(data.pxpipeMinChars ?? 25000));
           setPxpipeInputValue(String(data.pxpipeMinChars ?? 25000));
+          setPxpipeTimeoutMs(String(data.pxpipeTimeoutMs ?? 15000));
+          setPxpipeTimeoutInputValue(String(data.pxpipeTimeoutMs ?? 15000));
           refreshHeadroomStatus();
           refreshPxpipeStatus();
         }
@@ -618,8 +663,12 @@ export default function TokenSaverClient() {
               Renders large text context as dense PNGs for vision-capable models. Fail-open.
             </p>
           </div>
-          <div className="shrink-0">
-            <Toggle checked={pxpipeEnabled} onChange={() => handlePxpipeEnabled(!pxpipeEnabled)} />
+          <div className="shrink-0" title={pxpipeStatus.installed === false ? "Install PXPIPE first" : undefined}>
+            <Toggle
+              checked={pxpipeEnabled}
+              disabled={pxpipeStatus.installed === false}
+              onChange={() => handlePxpipeEnabled(!pxpipeEnabled)}
+            />
           </div>
         </div>
         <div className="pt-4 space-y-4">
@@ -691,6 +740,40 @@ export default function TokenSaverClient() {
               onChange={(e) => handlePxpipeMinChars(e.target.value)}
               onBlur={handlePxpipeMinCharsBlur}
               className="w-32 text-sm"
+            />
+          </div>
+          {pxpipeMinCharsError && (
+            <p className="text-sm text-warning">{pxpipeMinCharsError}</p>
+          )}
+          <div className="flex items-center gap-3">
+            <label className="text-sm text-text-muted shrink-0">Timeout (ms)</label>
+            <Input
+              type="number"
+              min="1000"
+              max="120000"
+              step="1000"
+              value={pxpipeTimeoutInputValue}
+              onChange={(e) => {
+                setPxpipeTimeoutInputValue(e.target.value);
+                setPxpipeTimeoutError("");
+              }}
+              onBlur={handlePxpipeTimeoutBlur}
+              className="w-32 text-sm"
+            />
+          </div>
+          {pxpipeTimeoutError && (
+            <p className="text-sm text-warning">{pxpipeTimeoutError}</p>
+          )}
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium">Auto-install</p>
+              <p className="text-sm text-text-muted">
+                Install PXPIPE automatically on first use when enabled.
+              </p>
+            </div>
+            <Toggle
+              checked={pxpipeAutoInstall}
+              onChange={() => handlePxpipeAutoInstall(!pxpipeAutoInstall)}
             />
           </div>
           {pxpipeHealth && (

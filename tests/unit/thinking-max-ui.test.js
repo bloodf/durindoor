@@ -79,6 +79,7 @@ describe("getProviderThinkingLevels", () => {
       "xhigh",
       "minimal",
       "max",
+      "ultra",
     ]);
     expect(out.filter((l) => l === "xhigh")).toHaveLength(1);
   });

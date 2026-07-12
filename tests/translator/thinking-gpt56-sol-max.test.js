@@ -24,7 +24,7 @@ describe("gpt-5.6-sol (max) thinking suffix → OpenAI wire", () => {
       null,
       "openai",
     );
-    expect(out.reasoning_effort).toBe("xhigh");
+    expect(out.reasoning_effort).toBe("max");
     expect(out.model).toBe("gpt-5.6-sol");
   });
 

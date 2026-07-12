@@ -44,6 +44,14 @@ function toIsoDate(value) {
   return Number.isFinite(time) ? date.toISOString() : null;
 }
 
+/**
+ * Upstream provenance: reset-credit expiry parsing and multi-field account-id
+ * resolution were ported from decolua/9router PR #2345
+ * ("fix(codex): parse reset credit expiry details", upstream head
+ * 465e3e52b728636eabeb05950dd72d21a8f1400f). dev additionally hardens
+ * account-id resolution via open-sse/shared/codexAccountId.js (256-char
+ * limit, rejects NUL/CR/LF) — do not regress to the plain trim().
+ */
 export const getCodexAccountId = resolveCodexAccountId;
 
 function looksLikeProxyOptions(value) {

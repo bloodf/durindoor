@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { refreshAndUpdateCredentials } from "../../src/shared/services/providerCredentials.js";
+import { rotationGroupFor } from "../../open-sse/services/refreshSerializer.js";
 import { providerRefreshContext } from "../../src/shared/utils/providerCredentialContext.js";
 
 const NOW = Date.parse("2026-01-01T00:00:00.000Z");
@@ -458,5 +459,93 @@ describe("provider credential refresh service", () => {
 
     await expect(refreshAndUpdateCredentials(original, false, null, deps)).rejects.toThrow("database unavailable");
     expect(original).toEqual(before);
+  });
+
+  it("serializes concurrent refreshes for sibling providers in the same rotation group", async () => {
+    // Codex and OpenAI share one Auth0 client_id: sibling refreshes must
+    // never overlap or the whole refresh_token family is revoked.
+    expect(rotationGroupFor("codex")).toBe("openai-auth0");
+    expect(rotationGroupFor("openai")).toBe("openai-auth0");
+
+    // Opt out of the inter-sibling settle gap so this test stays fast.
+    process.env.CODEX_REFRESH_SPACING_MS = "0";
+    try {
+    let active = 0;
+    let maxActive = 0;
+    const executor = {
+      needsRefresh: vi.fn(() => true),
+      refreshCredentials: vi.fn(async () => {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        active -= 1;
+        return { accessToken: `access-${crypto.randomUUID()}` };
+      }),
+    };
+
+    await Promise.all([
+      refreshAndUpdateCredentials(
+        connection({ id: "conn-codex", provider: "codex" }),
+        false,
+        null,
+        dependencies(executor),
+      ),
+      refreshAndUpdateCredentials(
+        connection({ id: "conn-openai", provider: "openai" }),
+        false,
+        null,
+        dependencies(executor),
+      ),
+    ]);
+
+    expect(executor.refreshCredentials).toHaveBeenCalledTimes(2);
+    expect(maxActive).toBe(1);
+    } finally {
+      delete process.env.CODEX_REFRESH_SPACING_MS;
+    }
+  });
+
+  it("runs refreshes concurrently for providers in different rotation groups", async () => {
+    expect(rotationGroupFor("codex")).not.toBe(rotationGroupFor("claude"));
+
+    let releaseClaude;
+    let markClaudeStarted;
+    const claudeGate = new Promise((resolve) => { releaseClaude = resolve; });
+    const claudeStarted = new Promise((resolve) => { markClaudeStarted = resolve; });
+    const claudeExecutor = {
+      needsRefresh: vi.fn(() => true),
+      refreshCredentials: vi.fn(async () => {
+        markClaudeStarted();
+        await claudeGate;
+        return { accessToken: "access-claude" };
+      }),
+    };
+    const codexExecutor = {
+      needsRefresh: vi.fn(() => true),
+      refreshCredentials: vi.fn(async () => ({ accessToken: "access-codex" })),
+    };
+
+    const claudeRefresh = refreshAndUpdateCredentials(
+      connection({ id: "conn-claude", provider: "claude" }),
+      false,
+      null,
+      dependencies(claudeExecutor),
+    );
+    // Wait until the claude refresh is actually inside its executor.
+    await claudeStarted;
+
+    const codexRefresh = refreshAndUpdateCredentials(
+      connection({ id: "conn-codex", provider: "codex" }),
+      false,
+      null,
+      dependencies(codexExecutor),
+    );
+
+    // Codex completes without waiting for the blocked claude lane.
+    await expect(codexRefresh).resolves.toMatchObject({ refreshed: true });
+    releaseClaude();
+    await expect(claudeRefresh).resolves.toMatchObject({ refreshed: true });
+    expect(claudeExecutor.refreshCredentials).toHaveBeenCalledTimes(1);
+    expect(codexExecutor.refreshCredentials).toHaveBeenCalledTimes(1);
   });
 });

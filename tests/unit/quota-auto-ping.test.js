@@ -242,6 +242,32 @@ describe("quota auto-ping", () => {
     }));
   });
 
+  it("skips proactive refresh for rotating providers (codex) on the auto-ping path", async () => {
+    deps.getSettings.mockResolvedValue({ codexAutoPing: { connections: { "codex-1": true } } });
+    deps.getProviderConnections.mockImplementation(async ({ provider }) => (
+      provider === "codex"
+        ? [{ id: "codex-1", provider: "codex", authType: "oauth", accessToken: "token" }]
+        : []
+    ));
+    state.resetCache["codex:codex-1"] = "2026-01-01T17:00:00.000Z";
+    getCodexUsage.mockResolvedValue({
+      quotas: { session: { used: 1, total: 100, remaining: 99, resetAt: "2026-01-01T17:01:00.000Z" } },
+    });
+
+    await runQuotaAutoPingTick(deps, state);
+
+    // Rotating providers must never proactive-refresh on the ping path:
+    // parallel single-use-token presentation revokes the whole family. The
+    // ping runs with the current token.
+    expect(deps.refreshAndUpdateCredentials).not.toHaveBeenCalled();
+    const executor = deps.getExecutor.mock.results[0].value;
+    expect(executor.execute).toHaveBeenCalledTimes(1);
+    expect(deps.updateProviderConnection).toHaveBeenCalledWith("codex-1", expect.objectContaining({
+      lastPingedResetAt: "2026-01-01T17:01:00.000Z",
+      lastPingedResetKey: "2026-01-01T17:01:00.000Z",
+    }));
+  });
+
   it("does not ping Codex when resetAt is stable", async () => {
     deps.getSettings.mockResolvedValue({ codexAutoPing: { connections: { "codex-1": true } } });
     deps.getProviderConnections.mockImplementation(async ({ provider }) => (
@@ -614,9 +640,13 @@ describe("quota auto-ping", () => {
       quotas: { "session (5h)": { used: 1, total: 100, remaining: 99, resetAt: "2026-01-01T11:59:00.000Z" } },
     });
     const originalList = deps.listProviderQuotaSnapshots;
+    let snapshotReads = 0;
     deps.listProviderQuotaSnapshots = vi.fn(async (query) => {
+      snapshotReads += 1;
       const snapshots = await originalList(query);
-      if (deps.refreshAndUpdateCredentials.mock.calls.length === 0) return snapshots;
+      // Rotating providers (claude) now skip the proactive refresh, so key the
+      // fresh blocker on the final pre-ping snapshot re-read instead.
+      if (snapshotReads < 3) return snapshots;
       return [...snapshots, {
         identity: {
           connectionId: "claude-1",
@@ -639,7 +669,10 @@ describe("quota auto-ping", () => {
 
     await runQuotaAutoPingTick(deps, state);
 
-    expect(deps.refreshAndUpdateCredentials).toHaveBeenCalledOnce();
+    // Rotating-refresh providers skip the proactive refresh (OmniRoute
+    // 697946381d Front 2): the pre-ping re-read still happens and the blocker
+    // is honored.
+    expect(deps.refreshAndUpdateCredentials).not.toHaveBeenCalled();
     expect(deps.proxyAwareFetch).not.toHaveBeenCalled();
     expect(deps.updateProviderConnection).not.toHaveBeenCalled();
   });
@@ -653,9 +686,13 @@ describe("quota auto-ping", () => {
       quotas: { "session (5h)": { used: 1, total: 100, remaining: 99, resetAt: "2026-01-01T11:59:00.000Z" } },
     });
     const originalList = deps.listProviderQuotaSnapshots;
+    let snapshotReads = 0;
     deps.listProviderQuotaSnapshots = vi.fn(async (query) => {
+      snapshotReads += 1;
       const snapshots = await originalList(query);
-      if (deps.refreshAndUpdateCredentials.mock.calls.length === 0) return snapshots;
+      // Rotating providers (claude) now skip the proactive refresh, so flip
+      // the session dimension on the final pre-ping snapshot re-read instead.
+      if (snapshotReads < 3) return snapshots;
       return snapshots.map((snapshot) => snapshot.identity.dimensionKey === "requests:session"
         ? {
             ...snapshot,
@@ -671,7 +708,9 @@ describe("quota auto-ping", () => {
 
     await runQuotaAutoPingTick(deps, state);
 
-    expect(deps.refreshAndUpdateCredentials).toHaveBeenCalledOnce();
+    // Rotating-refresh providers skip the proactive refresh: the pre-ping
+    // session re-read still happens and the exhaustion is honored.
+    expect(deps.refreshAndUpdateCredentials).not.toHaveBeenCalled();
     expect(deps.proxyAwareFetch).not.toHaveBeenCalled();
     expect(deps.updateProviderConnection).not.toHaveBeenCalled();
   });
@@ -799,20 +838,24 @@ describe("quota auto-ping", () => {
   it("redacts credential refresh failures before logging", async () => {
     const canary = "opaqueautopingcredential987654321";
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    deps.getSettings.mockResolvedValue({ claudeAutoPing: { connections: { "claude-1": true } } });
+    deps.getSettings.mockResolvedValue({ codexAutoPing: { connections: { "codex-1": true } } });
     deps.getProviderConnections.mockResolvedValue([
-      { id: "claude-1", provider: "claude", authType: "oauth", accessToken: "token" },
+      { id: "codex-1", provider: "codex", authType: "oauth", accessToken: "token" },
     ]);
-    getClaudeUsage.mockResolvedValue({
-      quotas: { "session (5h)": { resetAt: "2026-01-01T11:59:00.000Z" } },
+    state.resetCache["codex:codex-1"] = "2026-01-01T17:00:00.000Z";
+    getCodexUsage.mockResolvedValue({
+      quotas: { session: { resetAt: "2026-01-01T17:01:00.000Z" } },
     });
-    deps.refreshAndUpdateCredentials.mockRejectedValue(new Error(`refresh failed ${canary}`));
+    // The proactive refresh is skipped for rotating providers, so force the
+    // failure through the ping path itself.
+    deps.getExecutor.mockImplementation(() => ({
+      execute: vi.fn().mockRejectedValue(new Error(`refresh failed ${canary}`)),
+    }));
 
     try {
       await runQuotaAutoPingTick(deps, state);
       expect(warn).toHaveBeenCalled();
       expect(JSON.stringify(warn.mock.calls)).not.toContain(canary);
-      expect(JSON.stringify(warn.mock.calls)).toContain("credential refresh failed");
     } finally {
       warn.mockRestore();
     }

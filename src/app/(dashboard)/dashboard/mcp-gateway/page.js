@@ -204,7 +204,16 @@ export default function McpGatewayPage() {
     setTestResults((m) => ({ ...m, [id]: { loading: true } }));
     try {
       const res = await fetch(`/api/mcp-gateway/instances/${id}/test`, { method: "POST" });
-      const body = await res.json();
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // Error shape per src/app/api/mcp-gateway/instances/[id]/test/route.js:
+        // `{ error: string, ok: false }` with 400/404/502 statuses.
+        const msg = typeof body?.error === "string" && body.error
+          ? body.error
+          : `test failed (HTTP ${res.status})`;
+        setTestResults((m) => ({ ...m, [id]: { ok: false, error: msg, status: res.status } }));
+        return;
+      }
       setTestResults((m) => ({ ...m, [id]: body }));
     } catch (e) {
       const msg = e instanceof Error ? e.message : "test failed";

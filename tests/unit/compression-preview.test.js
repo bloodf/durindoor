@@ -1,20 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  getSettings: vi.fn(),
-  evaluateApiKeyAuth: vi.fn(),
-  extractApiKey: vi.fn(),
   applyA: vi.fn(),
   applyB: vi.fn(),
-}));
-
-vi.mock("@/lib/localDb", () => ({
-  getSettings: mocks.getSettings,
-}));
-
-vi.mock("@/sse/services/auth.js", () => ({
-  extractApiKey: mocks.extractApiKey,
-  evaluateApiKeyAuth: mocks.evaluateApiKeyAuth,
 }));
 
 // Virtual mock: `open-sse/services/compression/index.js` is provided by F-1a
@@ -45,9 +33,6 @@ function jsonRequest(body) {
 describe("POST /api/compression/preview", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getSettings.mockResolvedValue({ requireApiKey: true });
-    mocks.extractApiKey.mockReturnValue("sk-test");
-    mocks.evaluateApiKeyAuth.mockResolvedValue({ ok: true, reason: null });
   });
 
   it("returns every catalog id with compressed + savingsPercent", async () => {
@@ -100,14 +85,19 @@ describe("POST /api/compression/preview", () => {
     expect(json.results["engine-b"]).toEqual({ status: "unchanged", compressed: false, savingsPercent: 0 });
   });
 
-  it("returns 401 when the API key is rejected", async () => {
-    mocks.evaluateApiKeyAuth.mockResolvedValue({ ok: false, reason: "invalid" });
+  it("returns 200 without an API key header (dashboard proxy already authenticated)", async () => {
+    mocks.applyA.mockResolvedValue({ body: {}, compressed: false, stats: null });
+    mocks.applyB.mockResolvedValue({ body: {}, compressed: false, stats: null });
 
-    const res = await POST(jsonRequest({}));
+    const req = new Request("https://durindoor.local/api/compression/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
 
-    expect(res.status).toBe(401);
-    expect((await res.json()).error.code).toBe("invalid_api_key");
-    expect(mocks.applyA).not.toHaveBeenCalled();
+    const res = await POST(req);
+
+    expect(res.status).toBe(200);
   });
 
   it("returns 400 on a non-JSON body", async () => {

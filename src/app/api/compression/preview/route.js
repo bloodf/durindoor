@@ -1,5 +1,3 @@
-import { extractApiKey, evaluateApiKeyAuth } from "@/sse/services/auth.js";
-import { getSettings } from "@/lib/localDb";
 import { getEngine, isEngineAvailable, ENGINE_IDS } from "open-sse/services/compression/index.js";
 
 // POST /api/compression/preview — run each catalog engine against the body and
@@ -9,8 +7,16 @@ import { getEngine, isEngineAvailable, ENGINE_IDS } from "open-sse/services/comp
 //   - { status: "error" }                    available but apply() threw
 // Unavailable engines are NEVER dispatched to getEngine() (which throws on
 // placeholders); available engines that throw are labeled "error", never
-// "unavailable". Auth matches the other /api routes (extractApiKey +
-// evaluateApiKeyAuth gated by requireApiKey).
+// "unavailable".
+//
+// Auth: this handler is internal to the dashboard. `src/dashboardGuard.js:262-289`
+// deny-by-defaults every `/api/*` path that is not on the public allow-list and
+// requires either a valid CLI token or an authenticated dashboard session
+// (dashboard JWT). The Compression Studio page at
+// `src/app/(dashboard)/dashboard/compression-studio/page.js` POSTs here WITHOUT
+// an LLM API key, so re-checking `settings.requireApiKey` in this handler would
+// 401 every dashboard request whenever the global LLM-endpoint enforcement flag
+// is on. Trust the proxy; do not re-authenticate.
 function computeSavingsPercent(stats) {
   if (!stats || typeof stats !== "object") return 0;
   if (typeof stats.savingsPercent === "number") return stats.savingsPercent;
@@ -22,20 +28,6 @@ function computeSavingsPercent(stats) {
 }
 
 export async function POST(request) {
-  const settings = await getSettings();
-  const apiKey = extractApiKey(request);
-  const auth = await evaluateApiKeyAuth(apiKey, {
-    required: settings.requireApiKey === true,
-    request,
-  });
-  if (!auth.ok) {
-    const message = auth.reason === "missing" ? "Missing API key" : "Invalid API key";
-    return Response.json(
-      { error: { message, type: "invalid_request_error", code: "invalid_api_key" } },
-      { status: 401 }
-    );
-  }
-
   let body;
   try {
     body = await request.json();

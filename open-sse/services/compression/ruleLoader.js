@@ -1,3 +1,13 @@
+/**
+ * Caveman file-backed rule pack loader.
+ *
+ * Language packs live under `open-sse/services/compression/rules/<lang>/<category>.json`.
+ * Each JSON file mirrors the omniroute rule-pack schema: `{ language, category, rules[] }`.
+ * The Indonesian pack (`rules/id/*.json`) was ported from omniroute c9b5b1a892.
+ *
+ * Loaded rules are cached per language/category; pass `options.refresh` to bust the cache.
+ * @module ruleLoader
+ */
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";

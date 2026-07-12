@@ -11,12 +11,13 @@ import {
   sanitizeErrorMessage,
   stripCookieInputPrefix,
 } from "./websession-utils.js";
+import yuanbaoWebRegistry from "../providers/registry/yuanbao-web.js";
 
 const YUANBAO_BASE = "https://yuanbao.tencent.com";
 const CREATE_URL = `${YUANBAO_BASE}/api/user/agent/conversation/create`;
 const CHAT_URL = `${YUANBAO_BASE}/api/chat`;
 const DEFAULT_AGENT_ID = "naQivTmsDa";
-const DEFAULT_MODEL = "deepseek-v3";
+const DEFAULT_MODEL = yuanbaoWebRegistry.models?.[0]?.id || "deepseek-v3";
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
 

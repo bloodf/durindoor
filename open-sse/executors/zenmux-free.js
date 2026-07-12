@@ -5,6 +5,9 @@ import { buildErrorBody, errorResponse, sanitizeErrorMessage } from "../utils/er
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { toOpenAIFinish } from "../translator/concerns/finishReason.js";
 import { applyThinking, captureThinking } from "../translator/concerns/thinkingUnified.js";
+import zenmuxFreeRegistry from "../providers/registry/zenmux-free.js";
+
+const DEFAULT_MODEL = zenmuxFreeRegistry.models?.[0]?.id || "deepseek/deepseek-chat";
 
 export const ZENMUX_FREE_CHAT_URL = "https://zenmux.ai/api/anthropic/v1/messages";
 const USER_AGENT =
@@ -68,7 +71,7 @@ function resolveMaxTokens(openAiBody) {
   return Number.isFinite(numericValue) && numericValue > 0 ? numericValue : 4096;
 }
 
-export function buildZenmuxAnthropicBody(openAiBody = {}, modelId = "deepseek/deepseek-chat") {
+export function buildZenmuxAnthropicBody(openAiBody = {}, modelId = DEFAULT_MODEL) {
   const messages = Array.isArray(openAiBody.messages) ? openAiBody.messages : [];
   const systemText = messages
     .filter((message) => message?.role === "system" || message?.role === "developer")
@@ -301,7 +304,7 @@ export class ZenmuxFreeExecutor extends BaseExecutor {
     }
 
     const bodyObj = body || {};
-    const modelId = bodyObj.model || "deepseek/deepseek-chat";
+    const modelId = bodyObj.model || DEFAULT_MODEL;
     const transformedBody = buildZenmuxAnthropicBody(bodyObj, modelId);
     const url = new URL(ZENMUX_FREE_CHAT_URL);
     url.searchParams.set("ctoken", ctoken);

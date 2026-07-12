@@ -18,7 +18,7 @@ describe("getProviderThinkingLevels", () => {
       models: [{ id: "gpt-5.3-codex" }],
       providerStorageAlias: ALIAS,
     });
-    expect(out).toEqual(["auto", "low", "medium", "high", "xhigh"]);
+    expect(out).toEqual(["auto", "none", "low", "medium", "high", "xhigh"]);
   });
 
   it("unions levels from kiloFreeModels even when not in built-in config", () => {
@@ -73,6 +73,7 @@ describe("getProviderThinkingLevels", () => {
     });
     expect(out).toEqual([
       "auto",
+      "none",
       "low",
       "medium",
       "high",

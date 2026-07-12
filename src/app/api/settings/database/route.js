@@ -56,7 +56,13 @@ export async function GET(request) {
     if (!isCliRequest(request) && !(await verifyDashboardPassword(request.headers.get(PASSWORD_HEADER)))) {
       return NextResponse.json({ error: "Invalid password" }, { status: 401 });
     }
-    const payload = await exportDb();
+    // SEC-B-02: credentials are scrubbed from the portable export by default.
+    // Operators who need a full backup (e.g. migrating DATA_DIR to a new
+    // host) pass ?includeSecrets=true. Encrypted blobs are decrypted back to
+    // plaintext in opt-in mode so the backup stays portable across machines.
+    const url = new URL(request.url);
+    const includeSecrets = url.searchParams.get("includeSecrets") === "true";
+    const payload = await exportDb({ includeSecrets });
     return NextResponse.json(payload);
   } catch (error) {
     console.log("Error exporting database:", error);

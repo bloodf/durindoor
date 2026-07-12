@@ -16,6 +16,8 @@ import {
 } from "@/shared/constants/quota";
 import { readQuotaPortableStateSync, writeQuotaPortableStateSync } from "./repos/quotaSnapshotsRepo.js";
 import { assertNoActiveQuotaReservationsSync } from "./repos/quotaReservationsRepo.js";
+import { SENSITIVE_CONNECTION_FIELDS } from "./repos/connectionsRepo.js";
+import { isEncryptedBlob, decryptField } from "../crypto/columnCrypto.js";
 
 function assertUniqueNonEmpty(rows, field, label, { revealDuplicate = true } = {}) {
   const seen = new Set();
@@ -266,14 +268,30 @@ export {
 } from "./repos/requestDetailsRepo.js";
 
 // Export/import full DB
-export async function exportDb({ now = Date.now() } = {}) {
+export async function exportDb({ now = Date.now(), includeSecrets = false } = {}) {
   const db = await getAdapter();
   const quotaNow = canonicalizeQuotaNow(now).timestamp;
   return db.transaction(() => {
     const settingsRow = db.get(`SELECT data FROM settings WHERE id = 1`);
     const out = {
     settings: settingsRow ? parseJson(settingsRow.data, {}) : {},
-    providerConnections: db.all(`SELECT * FROM providerConnections`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, provider: r.provider, authType: r.authType, name: r.name, email: r.email, priority: r.priority, isActive: r.isActive === 1, createdAt: r.createdAt, updatedAt: r.updatedAt })),
+    providerConnections: db.all(`SELECT * FROM providerConnections`).map((r) => {
+      const conn = { ...parseJson(r.data, {}), id: r.id, provider: r.provider, authType: r.authType, name: r.name, email: r.email, priority: r.priority, isActive: r.isActive === 1, createdAt: r.createdAt, updatedAt: r.updatedAt };
+      if (!includeSecrets) {
+        // SEC-B-02: scrub plaintext credentials from portable backups unless
+        // explicitly opted-in. Encrypted blobs pass through but are still
+        // scrubbed here — backups must never contain either form by default.
+        for (const field of SENSITIVE_CONNECTION_FIELDS) delete conn[field];
+      } else {
+        // Opt-in mode: decrypt to plaintext so a backup can be re-imported
+        // into a different DATA_DIR (which has a different master key).
+        for (const field of SENSITIVE_CONNECTION_FIELDS) {
+          const value = conn[field];
+          if (isEncryptedBlob(value)) conn[field] = decryptField(value, r.id);
+        }
+      }
+      return conn;
+    }),
     providerNodes: db.all(`SELECT * FROM providerNodes`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, type: r.type, name: r.name, createdAt: r.createdAt, updatedAt: r.updatedAt })),
     proxyPools: db.all(`SELECT * FROM proxyPools`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, isActive: r.isActive === 1, testStatus: r.testStatus, createdAt: r.createdAt, updatedAt: r.updatedAt })),
     apiKeys: db.all(`SELECT * FROM apiKeys`).map((r) => {

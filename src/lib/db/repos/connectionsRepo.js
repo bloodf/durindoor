@@ -8,6 +8,20 @@ import { QUOTA_WRITE_LOCK_SQL } from "./quotaSql.js";
 import { assertNoActiveQuotaReservationsForTargetSync } from "./quotaReservationsRepo.js";
 import { resolveFallbackModelScope } from "open-sse/services/fallbackScope.js";
 import { QUOTA_MAX_CLOCK_SKEW_MS } from "@/shared/constants/quota";
+import {
+  encryptField,
+  decryptField,
+  isEncryptedBlob,
+} from "@/lib/crypto/columnCrypto.js";
+
+// SEC-B-02: credential fields that must be AES-256-GCM-encrypted at rest
+// inside providerConnections.data. All other fields stay plaintext.
+export const SENSITIVE_CONNECTION_FIELDS = Object.freeze([
+  "accessToken",
+  "refreshToken",
+  "apiKey",
+  "idToken",
+]);
 
 const OPTIONAL_FIELDS = [
   "displayName", "email", "globalPriority", "defaultModel",
@@ -42,6 +56,15 @@ function updateAutoPingEntryInTx(db, provider, connectionId, enabled) {
 function rowToConn(row) {
   if (!row) return null;
   const extra = parseJson(row.data, {});
+  // Decrypt the four sensitive fields. AAD is the row id so a ciphertext
+  // cannot be replayed into a different row. Plaintext values (pre-migration
+  // rows) pass through unchanged so a half-migrated DB still reads cleanly.
+  for (const field of SENSITIVE_CONNECTION_FIELDS) {
+    const value = extra[field];
+    if (isEncryptedBlob(value)) {
+      extra[field] = decryptField(value, row.id);
+    }
+  }
   return {
     ...extra,
     id: row.id,
@@ -58,6 +81,14 @@ function rowToConn(row) {
 
 function connToRow(c) {
   const { id, provider, authType, name, email, priority, isActive, createdAt, updatedAt, ...rest } = c;
+  // Encrypt the four sensitive fields if present. Already-encrypted blobs
+  // pass through so re-writes from rowToConn don't double-encrypt.
+  for (const field of SENSITIVE_CONNECTION_FIELDS) {
+    const value = rest[field];
+    if (typeof value === "string" && value.length > 0 && !isEncryptedBlob(value)) {
+      rest[field] = encryptField(value, id);
+    }
+  }
   return {
     id,
     provider,

@@ -11,6 +11,7 @@ import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { getOpenAICompatibleType } from "../services/provider.js";
 import { refreshCodebuddyToken } from "../services/tokenRefresh.js";
+import { isOfficialAnthropicBaseUrl } from "../utils/anthropicHost.js";
 
 // Opt-in prompt-cache key injection for openai-compatible providers.
 // OpenAI-style upstreams (Chat Completions + Responses) accept an optional
@@ -385,7 +386,15 @@ export class DefaultExecutor extends BaseExecutor {
     // Strip first-party Claude Code identity headers for non-Anthropic anthropic-compatible upstreams
     if (this.provider?.startsWith?.("anthropic-compatible-")) {
       const baseUrl = credentials?.providerSpecificData?.baseUrl || "";
-      const isOfficialAnthropic = baseUrl === "" || baseUrl.includes("api.anthropic.com");
+      /**
+       * Exact-host check (CodeQL js/incomplete-url-substring-sanitization): a substring
+       * `.includes("api.anthropic.com")` would accept look-alike upstreams such as
+       * `https://api.anthropic.com.evil.test`, suppressing the Bearer fallback intended
+       * for third-party gateways. An empty baseUrl means the default official endpoint;
+       * anything else is verified via parsed hostname equality
+       * ({@link isOfficialAnthropicBaseUrl}).
+       */
+      const isOfficialAnthropic = baseUrl === "" || isOfficialAnthropicBaseUrl(baseUrl);
       if (!isOfficialAnthropic) {
         // Some third-party Anthropic-compatible gateways require Bearer auth in
         // addition to x-api-key. Send both (x-api-key already set above) so

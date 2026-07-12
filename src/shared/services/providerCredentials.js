@@ -1,5 +1,6 @@
 import { getProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
 import { getExecutor } from "open-sse/executors/index.js";
+import { serializeRefresh } from "open-sse/services/refreshSerializer.js";
 import { isUnrecoverableRefreshError } from "open-sse/services/tokenRefresh.js";
 import {
   providerRefreshContext,
@@ -244,6 +245,7 @@ export async function refreshAndUpdateCredentials(
   const shared = credentialRefreshInflight.get(key);
   if (shared) return callerWait(shared, signal, shouldCommit, callerTimeoutMs);
 
+
   const executor = getExecutorImpl(connection.provider);
   const providerSpecificData = connection.providerSpecificData && typeof connection.providerSpecificData === "object"
     ? structuredClone(connection.providerSpecificData)
@@ -268,7 +270,16 @@ export async function refreshAndUpdateCredentials(
   // quota subscriber. OAuth providers can rotate a refresh token even when the
   // caller disconnects; dropping that replacement would brick the connection.
   const operation = (async () => {
-    const refreshResult = await executor.refreshCredentials(credentials, createRefreshLogger(log), proxyOptions);
+    // Front 1 (OmniRoute 697946381d): serialize the network refresh across
+    // every connection in the same rotation group (Codex + openai share one
+    // Auth0 client_id) so two sibling accounts never POST to /oauth/token
+    // concurrently and trip Auth0 refresh_token family revocation
+    // (openai/codex#9648). The per-connection inflight dedup above cannot see
+    // cross-connection collisions. Non-rotating providers pass through with no
+    // locking.
+    const refreshResult = await serializeRefresh(connection.provider, () =>
+      executor.refreshCredentials(credentials, createRefreshLogger(log), proxyOptions)
+    );
     if (isUnrecoverableRefreshError(refreshResult)) {
       return reconcileConcurrentRotation(
         connection,

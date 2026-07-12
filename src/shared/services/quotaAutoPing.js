@@ -14,6 +14,7 @@ import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { refreshAndUpdateCredentials } from "@/shared/services/providerCredentials";
 import { refreshProviderQuota } from "@/shared/services/providerQuotaTracker";
+import { rotationGroupFor } from "open-sse/services/refreshSerializer.js";
 import {
   buildQuotaResourceKeys,
   evaluateProviderQuotaPreflight,
@@ -356,14 +357,24 @@ async function pingConnectionCore(conn, provider, providerConfig, handler, deps,
       await deps.resolveConnectionProxyConfig(latestConnection.providerSpecificData),
     );
     signal.throwIfAborted();
-    const refreshed = await deps.refreshAndUpdateCredentials(
-      latestConnection,
-      false,
-      refreshProxy,
-      { signal },
-    );
-    signal.throwIfAborted();
-    latestConnection = refreshed.connection;
+    // Front 2 (OmniRoute 697946381d): rotating-refresh providers (Codex/OpenAI
+    // share one Auth0 client_id) mint a single-use refresh_token on every
+    // refresh. The auto-ping sweep refreshes many connections around the same
+    // reset boundary; proactively refreshing sibling accounts in parallel makes
+    // Auth0 revoke the whole token family (openai/codex#9648) and kills every
+    // account but the last. Never proactively refresh them here — reuse the
+    // current access_token for the ping and let the reactive, serialized 401
+    // path (or the next real request) handle genuine expiry.
+    if (rotationGroupFor(latestConnection.provider) === null) {
+      const refreshed = await deps.refreshAndUpdateCredentials(
+        latestConnection,
+        false,
+        refreshProxy,
+        { signal },
+      );
+      signal.throwIfAborted();
+      latestConnection = refreshed.connection;
+    }
   } catch (e) {
     if (signal.aborted || e?.name === "AbortError") throw signal.reason || e;
     state.pingFailureUntil[key] = Date.now() + C.failureCooldownMs;

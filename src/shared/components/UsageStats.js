@@ -197,7 +197,7 @@ const TABLE_OPTIONS = [
 
 const PERIODS = USAGE_PERIOD_OPTIONS;
 
-export default function UsageStats({ period: periodProp, setPeriod: setPeriodProp, hidePeriodSelector = false } = {}) {
+export default function UsageStats({ period: periodProp, setPeriod: setPeriodProp, hidePeriodSelector = false, resetNonce = 0 } = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -285,7 +285,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
       controller.abort();
       requestToken.cancel();
     };
-  }, [period, statsRequestGuard]);
+  }, [period, statsRequestGuard, resetNonce]);
 
   // SSE connection - real-time updates for activeRequests + recentRequests only
   useEffect(() => {

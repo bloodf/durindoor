@@ -25,6 +25,7 @@ import {
 import { buildClineHeaders } from "@/shared/utils/clineAuth";
 import { applyCodexAccountHeader } from "open-sse/shared/codexAccountId.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
+import { rotationGroupFor } from "open-sse/services/refreshSerializer.js";
 
 // OAuth provider test endpoints
 export const OAUTH_TEST_CONFIG = {
@@ -334,7 +335,20 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
   let newTokens = null;
 
   const tokenExpired = isTokenExpired(connection);
-  if (config.refreshable && tokenExpired && connection.refreshToken) {
+  // Front 2 (OmniRoute 697946381d): rotating-refresh providers (Codex/OpenAI
+  // share one Auth0 client_id) mint a single-use refresh_token on every
+  // refresh. Manually testing sibling accounts back-to-back would refresh them
+  // in parallel and make Auth0 revoke the whole token family
+  // (openai/codex#9648), killing every account but the last. Never
+  // proactively refresh them here — probe with the current access_token and
+  // let the reactive, serialized 401 path (or the next real request) handle
+  // genuine expiry. Same guard as quotaAutoPing.js.
+  if (
+    config.refreshable &&
+    tokenExpired &&
+    connection.refreshToken &&
+    rotationGroupFor(connection.provider) === null
+  ) {
     const tokens = await refreshOAuthToken(connection, effectiveProxy);
     if (tokens) {
       accessToken = tokens.accessToken;

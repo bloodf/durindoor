@@ -222,15 +222,41 @@ export async function GET(request, context) {
       registration_endpoint: rawAs1?.registration_endpoint,
       resource: instance.oauthTokens?.resource,
     };
-    if (!meta.authorization_endpoint) {
-      // Fall back to discovery if registration succeeded but we didn't capture AS.
+    if (!meta.authorization_endpoint || !meta.token_endpoint) {
+      // Partial AS metadata (e.g. a reuse-path that never stored
+      // token_endpoint, or a discovered registration_endpoint that did
+      // not carry an `as` block) must trigger a fresh discovery rather
+      // than proceeding with `token_endpoint: undefined` — the token
+      // exchange in `callback` would otherwise 400 out as
+      // "no token_endpoint stored".
       const discovered = await discoverAuth(instance.url, { wwwAuthenticate: instance.oauthTokens?._lastChallenge });
-      if (!discovered?.authorization_endpoint) {
+      if (!discovered?.authorization_endpoint || !discovered?.token_endpoint) {
         return NextResponse.json({ error: "no authorization_endpoint available" }, { status: 400 });
       }
-      meta.authorization_endpoint = discovered.authorization_endpoint;
-      // Preserve || semantics from original
+      // Preserve any values already stored, fill only the missing fields.
+      meta.authorization_endpoint = meta.authorization_endpoint || discovered.authorization_endpoint;
       meta.token_endpoint = meta.token_endpoint || discovered.token_endpoint;
+      // Persist the completed AS block so future requests do not have to
+      // re-discover. Only fires when we actually filled a gap, and only
+      // when the gap was in the stored instance row. Re-read the row first:
+      // `ensureClient` may have just persisted `oauthTokens.client` + `as`
+      // (DCR/CIMD), and `updateInstance` replaces `oauthTokens` wholesale
+      // (shallow merge), so building from the stale pre-ensureClient row
+      // would erase the client credentials we just registered.
+      const fresh = await getInstanceById(instance.id);
+      const freshTokens = fresh?.oauthTokens || instance.oauthTokens || {};
+      const storedAs = freshTokens.as || {};
+      if (!storedAs.token_endpoint || !storedAs.authorization_endpoint) {
+        const newTokens = {
+          ...freshTokens,
+          as: {
+            ...storedAs,
+            token_endpoint: storedAs.token_endpoint || meta.token_endpoint,
+            authorization_endpoint: storedAs.authorization_endpoint || meta.authorization_endpoint,
+          },
+        };
+        await updateInstance(instance.id, { oauthTokens: newTokens });
+      }
     }
     const pkce = generatePKCE();
     const redirectUri = `${appBase(request)}/api/mcp-gateway/oauth/${instance.id}/callback`;

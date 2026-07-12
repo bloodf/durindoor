@@ -1,6 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
 import { prepareToolMessages, buildToolAwareResult } from "../translator/webTools.js";
+import innerAiRegistry from "../providers/registry/inner-ai.js";
+
+const DEFAULT_MODEL = innerAiRegistry.models?.[0]?.id || "gpt-4o";
 
 const INNER_AI_CHAT_URL = "https://chatapi.innerai.com/chat";
 const INNER_AI_PROFILE_URL = "https://platformapi.innerai.com/api/v1/users/profile";
@@ -342,7 +345,7 @@ export class InnerAiExecutor extends BaseExecutor {
       return makeErrorResult(401, err instanceof Error ? err.message : "Failed to authenticate with Inner.ai", body);
     }
 
-    const requestedModel = String(bodyObj.model ?? "").trim() || "gpt-4o";
+    const requestedModel = String(bodyObj.model ?? "").trim() || DEFAULT_MODEL;
     let models = [];
     try {
       models = await resolveModels(token, creds.deviceId, creds.email, signal);

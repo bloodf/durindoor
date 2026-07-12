@@ -10,12 +10,13 @@ import {
   normalizeSessionCookieHeader,
   sanitizeErrorMessage,
 } from "./websession-utils.js";
+import huggingchatRegistry from "../providers/registry/huggingchat.js";
 
 const HUGGINGFACE_BASE = "https://huggingface.co";
 const CONVERSATION_URL = `${HUGGINGFACE_BASE}/chat/conversation`;
 const API_CONVERSATIONS_URL = `${HUGGINGFACE_BASE}/chat/api/v2/conversations`;
 const DEFAULT_COOKIE_NAME = "hf-chat";
-const DEFAULT_MODEL = "baidu/ERNIE-4.5-VL-424B-A47B-Base-PT";
+const DEFAULT_MODEL = huggingchatRegistry.models?.[0]?.id || "baidu/ERNIE-4.5-VL-424B-A47B-Base-PT";
 const USER_AGENT =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
 

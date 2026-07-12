@@ -91,7 +91,9 @@ function clone(value) {
 describe("portable quota backup", () => {
   it("round-trips normalized quota and zeroes without duplicating credentials", async () => {
     const { database, db, snapshot } = await seedPortableState();
-    const exported = await database.exportDb();
+    // SEC-B-02: credentials scrubbed from default export; round-trip tests
+    // explicitly opt in with includeSecrets so existing semantics hold.
+    const exported = await database.exportDb({ includeSecrets: true });
 
     expect(exported.quota).toEqual({
       version: 1,
@@ -266,7 +268,7 @@ describe("portable quota backup", () => {
 
   it("round-trips quota and credential bytes through a genuinely fresh database", async () => {
     const { database, db } = await seedPortableState();
-    const first = await database.exportDb();
+    const first = await database.exportDb({ includeSecrets: true });
     db.close();
     delete global._dbAdapter;
     process.env.DATA_DIR = path.join(tempDir, "fresh-data");
@@ -276,7 +278,7 @@ describe("portable quota backup", () => {
 
     const freshDatabase = await import("@/lib/db/index.js");
     await freshDatabase.importDb(first);
-    const second = await freshDatabase.exportDb();
+    const second = await freshDatabase.exportDb({ includeSecrets: true });
     expect(second.quota).toEqual(first.quota);
     expect(second.providerConnections[0].accessToken).toBe("access-token-canary");
     expect(second.providerConnections[0].refreshToken).toBe("refresh-token-canary");

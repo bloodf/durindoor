@@ -6,6 +6,7 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { toOpenAIFinish } from "../translator/concerns/finishReason.js";
 import { applyThinking, captureThinking } from "../translator/concerns/thinkingUnified.js";
 import zenmuxFreeRegistry from "../providers/registry/zenmux-free.js";
+import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
 
 const DEFAULT_MODEL = zenmuxFreeRegistry.models?.[0]?.id || "deepseek/deepseek-chat";
 
@@ -314,7 +315,7 @@ export class ZenmuxFreeExecutor extends BaseExecutor {
       Accept: "text/event-stream",
       Origin: "https://zenmux.ai",
       Referer: "https://zenmux.ai/platform/chat",
-      "anthropic-version": "2023-06-01",
+      "anthropic-version": ANTHROPIC_API_VERSION,
       "chat-request-id": randomUUID().replace(/-/g, ""),
       "x-zenmux-accept-processing": "true, true",
       "x-zenmux-apikey-source": "subscription",

@@ -36,7 +36,21 @@ export const DEFAULT_SAFETY_SETTINGS = [
   { category: "HARM_CATEGORY_CIVIC_INTEGRITY", threshold: "OFF" }
 ];
 
-// Convert OpenAI content to Gemini parts
+/**
+ * Convert OpenAI-style content into Gemini/Antigravity parts.
+ *
+ * For `type: "file"` blocks, the following data aliases are accepted in order:
+ *   - top-level: `item.data`, `item.file_data`, `item.fileData`
+ *   - inside `item.file`: `file.data`, `file.file_data`, `file.fileData`
+ *   - inside `item.document`: `document.data`, `document.file_data`, `document.fileData`
+ *
+ * MIME type resolution precedence:
+ *   1. explicit `mime_type` / `mimeType` / `media_type` on the block, `file`, or `document` object
+ *   2. MIME extracted from a `data:` URI prefix
+ *   3. fallback `application/pdf`
+ *
+ * HTTP(S) URIs are intentionally skipped (Gemini inlineData requires inline bytes).
+ */
 export function convertOpenAIContentToParts(content) {
   const parts = [];
 
@@ -79,13 +93,47 @@ export function convertOpenAIContentToParts(content) {
             inlineData: { mime_type: mimeType, data: data }
           });
         }
-      } else if (item.type === OPENAI_BLOCK.FILE && item.file?.file_data?.startsWith("data:")) {
-        const url = item.file.file_data;
-        const commaIndex = url.indexOf(",");
-        if (commaIndex !== -1) {
-          const mimeType = url.substring(5, commaIndex).split(";")[0];
-          const data = url.substring(commaIndex + 1);
-          parts.push({ inlineData: { mime_type: mimeType, data: data } });
+      } else if (item.type === OPENAI_BLOCK.FILE) {
+        const rawDataStr =
+          item.data ||
+          item.file_data ||
+          item.fileData ||
+          item.file?.data ||
+          item.file?.file_data ||
+          item.file?.fileData ||
+          item.document?.data ||
+          item.document?.file_data ||
+          item.document?.fileData;
+
+        const explicitMimeType =
+          item.mime_type ||
+          item.mimeType ||
+          item.media_type ||
+          item.file?.mime_type ||
+          item.file?.mimeType ||
+          item.file?.media_type ||
+          item.document?.mime_type ||
+          item.document?.mimeType ||
+          item.document?.media_type;
+
+        if (typeof rawDataStr === "string" && !rawDataStr.startsWith("http")) {
+          let mimeType = explicitMimeType;
+          let data = rawDataStr;
+
+          if (rawDataStr.startsWith("data:")) {
+            const commaIndex = rawDataStr.indexOf(",");
+            if (commaIndex !== -1) {
+              mimeType = mimeType || rawDataStr.substring(5, commaIndex).split(";")[0];
+              data = rawDataStr.substring(commaIndex + 1);
+            }
+          }
+
+          parts.push({
+            inlineData: {
+              mime_type: String(mimeType || "application/pdf"),
+              data,
+            },
+          });
         }
       }
     }

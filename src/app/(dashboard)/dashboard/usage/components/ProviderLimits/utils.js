@@ -21,6 +21,100 @@ export const QUOTA_SORT_OPTIONS = [
   { value: "remaining-desc", label: "% quota: high to low" },
 ];
 
+export function getRefreshCountdown(nextRefreshAt, now = Date.now()) {
+  if (!Number.isFinite(nextRefreshAt)) return 0;
+  return Math.max(0, Math.ceil((nextRefreshAt - now) / 1000));
+}
+
+export function createAutoRefreshScheduler({
+  intervalMs = REFRESH_INTERVAL_MS,
+  onRefresh,
+  onCountdown = () => {},
+  isHidden = () => typeof document !== "undefined" && document.hidden,
+  now = () => Date.now(),
+  setTimeoutFn = setTimeout,
+  clearTimeoutFn = clearTimeout,
+  setIntervalFn = setInterval,
+  clearIntervalFn = clearInterval,
+}) {
+  let stopped = true;
+  let refreshTimer = null;
+  let countdownTimer = null;
+  let nextRefreshAt = null;
+  let running = null;
+
+  const clearTimers = () => {
+    if (refreshTimer) clearTimeoutFn(refreshTimer);
+    if (countdownTimer) clearIntervalFn(countdownTimer);
+    refreshTimer = null;
+    countdownTimer = null;
+  };
+
+  const publishCountdown = () => {
+    onCountdown(getRefreshCountdown(nextRefreshAt, now()));
+  };
+
+  const schedule = () => {
+    clearTimers();
+    if (stopped || isHidden()) return;
+    if (!Number.isFinite(nextRefreshAt)) nextRefreshAt = now() + intervalMs;
+
+    publishCountdown();
+    refreshTimer = setTimeoutFn(() => {
+      void runRefresh(false).catch(() => {});
+    }, Math.max(0, nextRefreshAt - now()));
+    countdownTimer = setIntervalFn(publishCountdown, 1000);
+  };
+
+  function runRefresh(force) {
+    if (running) return running;
+    if (!force && isHidden()) {
+      clearTimers();
+      return Promise.resolve();
+    }
+
+    clearTimers();
+    running = Promise.resolve()
+      .then(() => onRefresh(force))
+      .finally(() => {
+        running = null;
+        if (stopped) return;
+        nextRefreshAt = now() + intervalMs;
+        schedule();
+      });
+    return running;
+  }
+
+  return {
+    start() {
+      stopped = false;
+      nextRefreshAt = now() + intervalMs;
+      schedule();
+    },
+    pause() {
+      clearTimers();
+      publishCountdown();
+    },
+    resume() {
+      if (stopped) return Promise.resolve();
+      if (!Number.isFinite(nextRefreshAt)) nextRefreshAt = now() + intervalMs;
+      if (nextRefreshAt <= now()) return runRefresh(false);
+      schedule();
+      return Promise.resolve();
+    },
+    refreshNow() {
+      return runRefresh(true);
+    },
+    stop() {
+      stopped = true;
+      clearTimers();
+    },
+    getNextRefreshAt() {
+      return nextRefreshAt;
+    },
+  };
+}
+
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
 // ┌────────────────────────────────────────────────────────────────────────────┐
 // │ Quota-visibility helpers                                                   │

@@ -2,7 +2,7 @@ import { QUOTA_V7_TABLES } from "./migrations/quota-v7-schema.js";
 import { QUOTA_V8_TABLES } from "./migrations/quota-v8-schema.js";
 
 // Latest schema version — bumped when a migration is added in ./migrations/
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 export const PRAGMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -210,6 +210,19 @@ export const TABLES = {
       "CREATE INDEX IF NOT EXISTS idx_rd_provider ON requestDetails(provider)",
       "CREATE INDEX IF NOT EXISTS idx_rd_model ON requestDetails(model)",
       "CREATE INDEX IF NOT EXISTS idx_rd_conn ON requestDetails(connectionId)",
+    ],
+  },
+  modelCapabilityOverrides: {
+    columns: {
+      provider: "TEXT NOT NULL",
+      modelId: "TEXT NOT NULL",
+      overrideKey: "TEXT NOT NULL",
+      overrideValue: "TEXT NOT NULL",
+      refreshedAt: "TEXT NOT NULL DEFAULT (datetime('now'))",
+    },
+    primaryKey: "PRIMARY KEY (provider, modelId, overrideKey)",
+    indexes: [
+      "CREATE INDEX IF NOT EXISTS idx_model_capability_overrides_key ON modelCapabilityOverrides(overrideKey)",
     ],
   },
 };

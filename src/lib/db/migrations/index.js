@@ -10,8 +10,11 @@ import m006 from "./006-api-key-policy.js";
 import m007 from "./007-provider-quota-snapshots.js";
 import m008 from "./008-quota-reservations.js";
 import m009 from "./009-encrypt-credentials.js";
+import m010 from "./010-model-capability-overrides.js";
 
-export const MIGRATIONS = [m001, m002, m003, m004, m005, m006, m007, m008, m009].sort((a, b) => a.version - b.version);
+export const MIGRATIONS = [m001, m002, m003, m004, m005, m006, m007, m008, m009, m010].sort(
+  (a, b) => a.version - b.version
+);
 
 export function latestVersion() {
   return MIGRATIONS.length ? MIGRATIONS[MIGRATIONS.length - 1].version : 0;

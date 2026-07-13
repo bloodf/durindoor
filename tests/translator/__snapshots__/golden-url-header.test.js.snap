@@ -2022,6 +2022,25 @@ exports[`GOLDEN buildHeaders (default executor providers) > kimi-coding-apikey �
 }
 `;
 
+exports[`GOLDEN buildHeaders (default executor providers) > kimi-web → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
 exports[`GOLDEN buildHeaders (default executor providers) > lambda-ai → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -4113,6 +4132,13 @@ exports[`GOLDEN buildUrl (default executor providers) > kimi-coding-apikey → u
 {
   "nonStream": "https://api.kimi.com/coding/v1/messages?beta=true",
   "stream": "https://api.kimi.com/coding/v1/messages?beta=true",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > kimi-web → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://www.kimi.com/apiv2/kimi.gateway.chat.v1.ChatService/Chat",
+  "stream": "https://www.kimi.com/apiv2/kimi.gateway.chat.v1.ChatService/Chat",
 }
 `;
 

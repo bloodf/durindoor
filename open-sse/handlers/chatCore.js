@@ -268,11 +268,10 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
   const modelThinkingIntent = parsedModel.override;
   body = { ...body, model: cleanModel };
   const modelTargetFormat = getModelTargetFormat(alias, cleanModel);
-  // Multi-endpoint providers: pick transport matching sourceFormat → zero translation.
-  // If found, force targetFormat=sourceFormat so we skip translation entirely —
-  // otherwise the body could be translated to modelTargetFormat and sent to a
-  // transport that doesn't understand it.
-  const runtimeTransport = resolveTransport(provider, sourceFormat);
+  // Multi-endpoint providers: model-required formats override client format.
+  // GPT-5.6 tool calls with reasoning must use OpenAI Responses, even when the
+  // client sends Chat Completions format.
+  const runtimeTransport = resolveTransport(provider, modelTargetFormat || sourceFormat);
   const skipTranslation = runtimeTransport?.format === sourceFormat;
   if (skipTranslation && credentials) credentials.runtimeTransport = runtimeTransport;
   const targetFormat = skipTranslation

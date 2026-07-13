@@ -9,6 +9,7 @@ import { normalizeResponsesInput } from "../translator/formats/responsesApi.js";
 import { getModelUpstreamId } from "../config/providerModels.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { getConsistentMachineId } from "../shared/machineId.js";
+import { getCapabilitiesForModel } from "../providers/capabilities.js";
 
 // Server-generated item id prefixes that /responses cannot resolve when store=false.
 const SERVER_ID_PATTERN = /^(rs|fc|resp|msg)_/;
@@ -314,6 +315,11 @@ export class GrokCliExecutor extends BaseExecutor {
     stripStoredItemReferences(body);
     normalizeGrokCliTools(body);
 
+    // xAI cli-chat-proxy enforces a maximum of 200 tools per request. Upstream decolua/9router#2534.
+    if (Array.isArray(body.tools) && body.tools.length > 200) {
+      body.tools = body.tools.slice(0, 200);
+    }
+
     this._currentTurnIdx = resolveGrokCliTurnIdx(this._currentSessionId, body.input);
 
     body.stream = true;
@@ -331,14 +337,20 @@ export class GrokCliExecutor extends BaseExecutor {
     this._currentModel = resolvedModel;
 
     // Reasoning effort priority: explicit > reasoning_effort > model suffix > default high.
-    if (!body.reasoning || typeof body.reasoning !== "object") {
-      const effort = body.reasoning_effort || modelEffort || "high";
-      body.reasoning = { effort, summary: "concise" };
-    } else {
-      if (!body.reasoning.effort) {
-        body.reasoning.effort = body.reasoning_effort || modelEffort || "high";
+    // Non-reasoning models (grok-composer-2.5-fast, grok-build) must not send reasoning. Upstream decolua/9router#2534.
+    const caps = getCapabilitiesForModel("grok-cli", resolvedModel);
+    if (caps.reasoning !== false) {
+      if (!body.reasoning || typeof body.reasoning !== "object") {
+        const effort = body.reasoning_effort || modelEffort || "high";
+        body.reasoning = { effort, summary: "concise" };
+      } else {
+        if (!body.reasoning.effort) {
+          body.reasoning.effort = body.reasoning_effort || modelEffort || "high";
+        }
+        if (!body.reasoning.summary) body.reasoning.summary = "concise";
       }
-      if (!body.reasoning.summary) body.reasoning.summary = "concise";
+    } else {
+      delete body.reasoning;
     }
     delete body.reasoning_effort;
 

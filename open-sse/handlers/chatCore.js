@@ -285,7 +285,13 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
   // on/off → extended type (body.thinking), none/low/medium/high → effort type (body.reasoning_effort)
   if (providerThinking?.mode && providerThinking.mode !== "auto") {
     const mode = providerThinking.mode;
-    if (mode === "on" && !body.thinking) {
+    if (mode === "none") {
+      // Upstream decolua/9router#2534: explicit "none" means strip thinking params entirely
+      // (some upstreams, e.g. xAI grok-composer, 400 if reasoning fields are sent at all).
+      delete body.thinking;
+      delete body.reasoning_effort;
+      delete body.reasoning;
+    } else if (mode === "on" && !body.thinking) {
       console.log("Injecting provider-level thinking config override: on");
       body = { ...body, thinking: { type: "enabled", budget_tokens: 10000 } };
     } else if (mode === "off" && !body.thinking) {

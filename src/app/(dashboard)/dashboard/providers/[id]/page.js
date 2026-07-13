@@ -214,8 +214,9 @@ export default function ProviderDetailPage() {
         : "OAuth";
   const apiKeyConnectionLabel = providerId === "xai" ? "xAI API Key" : "API Key";
   // Resolve suffix "(level)" for a model when a thinking level is picked and the model supports it.
+  // Upstream decolua/9router#2534: "none" suppresses the suffix (explicit strip, not a level label).
   const resolveThinkingSuffix = (modelId) => {
-    if (!thinkingMode || thinkingMode === "auto") return null;
+    if (!thinkingMode || thinkingMode === "auto" || thinkingMode === "none") return null;
     const levels = getThinkingLevels(providerId, modelId);
     return levels && levels.includes(thinkingMode) ? thinkingMode : null;
   };

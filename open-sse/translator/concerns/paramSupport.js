@@ -12,6 +12,9 @@ const STRIP_RULES = [
   { provider: "github", match: /gpt-5\.4/i, drop: ["temperature"] },
   // GitHub Copilot Claude (except opus/sonnet 4.6): thinking + reasoning_effort rejected. #713
   { provider: "github", match: (m) => /claude/i.test(m) && !/claude.*(opus|sonnet).*4\.6/i.test(m), drop: ["thinking", "reasoning_effort"] },
+  // xAI Grok Composer: rejects reasoningEffort entirely (including "none") — omit param upstream.
+  // Upstream: decolua/9router#2534.
+  { provider: "xai", match: /grok-composer/i, drop: ["thinking", "reasoning_effort", "reasoning"] },
   // Cloudflare Workers AI: content must be plain string, rejects OpenAI content-part array (#1926)
   { provider: "cloudflare-ai", flattenContent: true },
   // Mistral: rejects reasoning_content carried in assistant message history with

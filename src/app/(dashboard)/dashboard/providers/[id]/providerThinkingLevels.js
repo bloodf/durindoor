@@ -13,7 +13,10 @@ export function getProviderThinkingLevels({
     if (!modelId || seen.has(modelId)) return;
     seen.add(modelId);
     const lv = getThinkingLevels(providerId, modelId);
-    if (lv) lv.forEach((l) => { if (l !== "none") set.add(l); });
+    // Upstream decolua/9router#2534: include "none" so the dashboard picker
+    // can emit an explicit "strip reasoning" mode for non-reasoning models
+    // (e.g. xAI grok-composer 400s if reasoning_effort is sent at all).
+    if (lv) lv.forEach((l) => set.add(l));
   };
   for (const m of models) addLevels(m.id);
   for (const m of kiloFreeModels) addLevels(m.id);
@@ -22,5 +25,7 @@ export function getProviderThinkingLevels({
     if ((entry.kind || entry.type || "llm") !== "llm") continue;
     addLevels(entry.id);
   }
-  return set.size ? ["auto", ...[...set]] : null;
+  if (!set.size) return null;
+  const rest = [...set].filter((l) => l !== "none");
+  return ["auto", "none", ...rest];
 }

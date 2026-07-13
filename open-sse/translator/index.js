@@ -4,7 +4,7 @@ import { normalizeClaudePassthrough, prepareClaudeRequest } from "./formats/clau
 import { cloakClaudeTools } from "../utils/claudeCloaking.js";
 import { filterToOpenAIFormat } from "./formats/openai.js";
 import { normalizeThinkingConfig } from "../services/provider.js";
-import { applyThinking, captureThinking, parseSuffix } from "./concerns/thinkingUnified.js";
+import { applyThinking, applyTransportRequestDefaults, captureThinking, parseSuffix } from "./concerns/thinkingUnified.js";
 import { captureSessionId } from "../utils/sessionManager.js";
 import { AntigravityExecutor } from "../executors/antigravity.js";
 import { PROVIDERS } from "../providers/index.js";
@@ -158,6 +158,8 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     provider,
     thinkingIntent,
   );
+  // Per-transport registry defaults (e.g. MiniMax openai transport → reasoning_split).
+  applyTransportRequestDefaults(targetFormat, result, provider);
 
   // Always normalize to clean OpenAI format when target is OpenAI
   // This handles hybrid requests (e.g., OpenAI messages + Claude tools)

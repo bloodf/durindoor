@@ -369,3 +369,27 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
   applyFormat(fmt, body, cfg, caps, cleanModel, provider);
   return body;
 }
+
+// Apply per-transport requestDefaults from the provider registry when the client
+// did not set a field. Multi-endpoint providers can scope defaults to a format
+// (e.g. MiniMax openai transport → reasoning_split).
+// Ported from upstream decolua/9router PR #2525 (head 72385571c6).
+export function applyTransportRequestDefaults(targetFormat, body, provider = null) {
+  if (!body || typeof body !== "object" || !provider) return body;
+  const config = PROVIDERS[provider];
+  if (!config) return body;
+
+  let defaults = null;
+  const transports = config.transports;
+  if (Array.isArray(transports) && transports.length) {
+    defaults = transports.find((t) => t.format === targetFormat)?.requestDefaults;
+  } else {
+    defaults = config.requestDefaults ?? config.transport?.requestDefaults;
+  }
+
+  if (!defaults || typeof defaults !== "object") return body;
+  for (const [key, value] of Object.entries(defaults)) {
+    if (body[key] === undefined) body[key] = value;
+  }
+  return body;
+}

@@ -258,7 +258,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `sdwebui` |  | apikey | `` |
 | `searchapi` |  | apikey | `` |
 | `searxng` |  | freeTier | `` |
-| `sensenova` |  | freeTier | `https://api.sensenova.cn/v1/chat/completions` |
+| `sensenova` |  | freeTier | `https://token.sensenova.cn/v1/chat/completions` |
 | `serper` |  | apikey | `` |
 | `siliconflow` |  | apikey | `https://api.siliconflow.com/v1/chat/completions` |
 | `snowflake` |  | apikey | `https://{accountId}.snowflakecomputing.com/api/v2/cortex/v1/chat/completions` |

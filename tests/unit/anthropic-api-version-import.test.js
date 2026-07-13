@@ -53,3 +53,33 @@ describe("executors/index.js duplicate key regression (CR-B-1)", () => {
     expect(occurrences).toHaveLength(1);
   });
 });
+
+// Regression for upstream 9router#2537: the anthropic.js registry entry
+// must declare its version header as `anthropic-version` (lowercase) and
+// must NOT also include the Title-Case `Anthropic-Version` key — merge
+// layers (e.g. `DefaultExecutor.buildHeaders()` header overlay) fold the
+// static `headers` object together with forwarded headers; keeping
+// casing consistent avoids two duplicate logical header entries after the
+// merge. `Anthropic-Beta` keeps Anthropic's documented Title-Case form.
+const anthropicRegistryPath = fileURLToPath(
+  new URL("../../open-sse/providers/registry/anthropic.js", import.meta.url),
+);
+const anthropicRegistrySrc = readFileSync(anthropicRegistryPath, "utf8");
+
+describe("anthropic.js registry headers (9router#2537)", () => {
+  it("declares anthropic-version header", () => {
+    expect(anthropicRegistrySrc).toMatch(
+      /["']anthropic-version["']\s*:\s*["']2023-06-01["']/,
+    );
+  });
+
+  it("does NOT include the Title-Case `Anthropic-Version` key", () => {
+    expect(anthropicRegistrySrc).not.toMatch(/["']Anthropic-Version["']/);
+  });
+
+  it("preserves `Anthropic-Beta` (Anthropic's documented Title-Case)", () => {
+    expect(anthropicRegistrySrc).toMatch(
+      /["']Anthropic-Beta["']\s*:\s*["']claude-code-20250219,interleaved-thinking-2025-05-14["']/,
+    );
+  });
+});

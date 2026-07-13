@@ -38,6 +38,12 @@ export default {
       originator: "codex_cli_rs",
       "User-Agent": "codex_cli_rs/0.136.0",
     },
+    // Official openai/codex: semantic Ultra serializes as Max for requests.
+    // Upstream provenance: decolua/9router#2523 — alias lookup is case-sensitive
+    // ("ULTRA" must not map to "max").
+    quirks: {
+      reasoningEffortAliases: { ultra: "max" },
+    },
     usage: {
       url: "https://chatgpt.com/backend-api/wham/usage",
       resetCreditsUrl: "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits",

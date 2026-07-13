@@ -7,6 +7,7 @@ import {
 } from "../services/oauthCredentialManager.js";
 import { normalizeResponsesInput } from "../translator/formats/responsesApi.js";
 import { fetchImageAsBase64 } from "../translator/concerns/image.js";
+import { resolveOpenAiEffort } from "../translator/concerns/thinkingUnified.js";
 import { getModelUpstreamId } from "../config/providerModels.js";
 import {
   CODEX_SSE_PEEK_TIMEOUT_MS,
@@ -48,6 +49,16 @@ const CODEX_LITE_METADATA_HEADERS = [
   "x-openai-subagent",
   "x-responsesapi-include-timing-metrics",
 ];
+// Apply Codex transport-level effort aliases after model-aware semantic resolution.
+// Official openai/codex serializes semantic Ultra as Max for requests; other efforts identity-map.
+// Upstream provenance: decolua/9router#2523 — aliases are matched case-sensitively (no
+// toLowerCase), so an unknown uppercase effort (e.g. "ULTRA") is never promoted to a wire alias.
+function resolveCodexWireEffort(effort, config) {
+  const aliases = config?.quirks?.reasoningEffortAliases;
+  if (!aliases || effort == null) return effort;
+  return aliases[effort] ?? effort;
+}
+
 const CODEX_LITE_METADATA_MAX_BYTES = 16_384;
 const CODEX_LITE_USER_AGENT_RE = /^codex(?:_cli_rs|_exec|-cli)\//i;
 const CODEX_LITE_ORIGINATOR_RE = /^[A-Za-z0-9_.-]{1,128}$/;
@@ -322,10 +333,6 @@ function resolveCacheSessionId(body, credentials, requestContext = null) {
     workspaceId: credentials?.providerSpecificData?.workspaceId,
     scope: "codex"
   });
-}
-
-function normalizeReasoningEffort(value) {
-  return value === "max" ? "xhigh" : value;
 }
 
 function cloneRequestBody(body) {
@@ -752,8 +759,8 @@ export class CodexExecutor extends BaseExecutor {
     body.model = getModelUpstreamId("cx", body.model || model);
 
     // Extract thinking level from model name suffix
-    // e.g., gpt-5.3-codex-high → high, gpt-5.3-codex → medium (default)
-    const effortLevels = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'];
+    // e.g., gpt-5.3-codex-high → high, gpt-5.3-codex → low (default)
+    const effortLevels = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
     let modelEffort = null;
     for (const level of effortLevels) {
       if (body.model.endsWith(`-${level}`)) {
@@ -764,12 +771,15 @@ export class CodexExecutor extends BaseExecutor {
       }
     }
 
-    // Priority: explicit reasoning.effort > reasoning_effort param > model suffix > default (medium)
+    // Priority: explicit reasoning.effort > reasoning_effort param > model suffix > default (low)
+    // resolveOpenAiEffort keeps model-aware semantic support; resolveCodexWireEffort maps Ultra→Max for wire.
     if (!body.reasoning) {
-      const effort = normalizeReasoningEffort(body.reasoning_effort || modelEffort || 'low');
+      const semantic = resolveOpenAiEffort(body.reasoning_effort || modelEffort || 'low', "codex", body.model);
+      const effort = resolveCodexWireEffort(semantic, this.config);
       body.reasoning = { effort, summary: "auto" };
     } else {
-      body.reasoning.effort = normalizeReasoningEffort(body.reasoning.effort);
+      const semantic = resolveOpenAiEffort(body.reasoning.effort, "codex", body.model);
+      body.reasoning.effort = resolveCodexWireEffort(semantic, this.config);
       if (!body.reasoning.summary) body.reasoning.summary = "auto";
     }
     delete body.reasoning_effort;

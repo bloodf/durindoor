@@ -78,6 +78,11 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
     || connection.email?.trim()
     || connection.displayName?.trim()
     || (isOAuthConnection ? "OAuth Account" : isCookieConnection ? "Cookie Account" : "API Key");
+  // Codex plan label (e.g. "Plus", "Team", "Pro") — shown alongside the
+  // connection badges. Skipped when unknown/empty.
+  const codexPlan = connection.provider === "codex" && typeof connection.providerSpecificData?.chatgptPlanType === "string"
+    ? connection.providerSpecificData.chatgptPlanType.trim()
+    : "";
   const secondaryDisplayName = connection.name?.trim() && connection.email?.trim() && connection.name.trim() !== connection.email.trim()
     ? connection.email.trim()
     : connection.name?.trim() && connection.displayName?.trim() && connection.name.trim() !== connection.displayName.trim()
@@ -170,7 +175,11 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
             <Badge variant="default" size="sm">
               {authLabel}
             </Badge>
-            {hasAnyProxy && (
+            {codexPlan && (
+              <Badge variant="primary" size="sm" className="capitalize">
+                {codexPlan}
+              </Badge>
+            )}
               <Badge variant={proxyBadgeVariant} size="sm">
                 Proxy
               </Badge>
@@ -283,6 +292,10 @@ ConnectionRow.propTypes = {
     name: PropTypes.string,
     email: PropTypes.string,
     displayName: PropTypes.string,
+    provider: PropTypes.string,
+    providerSpecificData: PropTypes.shape({
+      chatgptPlanType: PropTypes.string,
+    }),
     modelLockUntil: PropTypes.string,
     testStatus: PropTypes.string,
     isActive: PropTypes.bool,

@@ -1,4 +1,21 @@
 /**
+ * Static browser headers the www.kimi.com web app sends on its model-discovery
+ * and chat endpoints. Shared by the model-discovery route (modelsConfig.js) and
+ * the connection-validation probe (providerProbe.js) so both present the same
+ * web-app fingerprint; Kimi accepts some valid cookies only with this set.
+ * Auth (`Authorization` / `Cookie`) is added per-request, not here.
+ */
+export const KIMI_WEB_DISCOVERY_HEADERS = {
+  accept: "*/*",
+  "Content-Type": "application/json",
+  "connect-protocol-version": "1",
+  Origin: "https://www.kimi.com",
+  Referer: "https://www.kimi.com/",
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+};
+
+/**
  * Cookie / session helpers for web-session providers.
  *
  * All functions are fail-open: invalid/missing input returns an empty string.

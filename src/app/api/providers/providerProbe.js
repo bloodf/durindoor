@@ -3,7 +3,7 @@ import { PROVIDERS } from "open-sse/config/providers.js";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
 import { assertOutboundUrlAllowed, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
-import { extractKimiJwt } from "@/lib/providers/webCookieAuth.js";
+import { extractKimiJwt, KIMI_WEB_DISCOVERY_HEADERS } from "@/lib/providers/webCookieAuth.js";
 
 const AUTH_FAILURE_STATUSES = new Set([401, 403]);
 const CHAT_PROBE_ACCEPT_STATUSES = new Set([400, 422, 429]);

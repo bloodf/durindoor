@@ -34,6 +34,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `in-ai` | InnerAiExecutor | `./inner-ai.js` |
 | `inner-ai` | InnerAiExecutor | `./inner-ai.js` |
 | `kimchi` | KimchiExecutor | `./kimchi.js` |
+| `kimi-web` | KimiWebExecutor | `./kimi-web.js` |
 | `kiro` | KiroExecutor | `./kiro.js` |
 | `m365copilot` | CopilotM365WebExecutor | `./copilot-m365-web.js` |
 | `mcode` | MimocodeExecutor | `./mimocode.js` |
@@ -198,6 +199,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `kimi` | claude | apikey | `https://api.kimi.com/coding/v1/messages` |
 | `kimi-coding` | claude | oauth | `https://api.kimi.com/coding/v1/messages` |
 | `kimi-coding-apikey` | claude | apikey | `https://api.kimi.com/coding/v1/messages` |
+| `kimi-web` | openai | webCookie | `https://www.kimi.com/apiv2/kimi.gateway.chat.v1.ChatService/Chat` |
 | `kiro` | kiro | free | `https://runtime.us-east-1.kiro.dev/generateAssistantResponse` |
 | `lambda-ai` |  | apikey | `https://api.lambda.ai/v1/chat/completions` |
 | `laozhang` |  | apikey | `https://api.laozhang.ai/v1/chat/completions` |

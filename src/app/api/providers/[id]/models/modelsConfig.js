@@ -1,5 +1,5 @@
 import { refreshGoogleToken, updateProviderCredentials } from "@/sse/services/tokenRefresh";
-import { extractKimiJwt } from "@/lib/providers/webCookieAuth";
+import { extractKimiJwt, KIMI_WEB_DISCOVERY_HEADERS } from "@/lib/providers/webCookieAuth";
 import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
 import { getModelsByProviderId } from "open-sse/config/providerModels.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
@@ -165,13 +165,7 @@ export const PROVIDER_MODELS_CONFIG = {
     buildHeaders: (token) => {
       const jwt = extractKimiJwt(token);
       return {
-        accept: "*/*",
-        "Content-Type": "application/json",
-        "connect-protocol-version": "1",
-        Origin: "https://www.kimi.com",
-        Referer: "https://www.kimi.com/",
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+        ...KIMI_WEB_DISCOVERY_HEADERS,
         ...(jwt
           ? {
               Authorization: `Bearer ${jwt}`,

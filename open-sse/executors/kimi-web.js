@@ -14,6 +14,7 @@
 import { BaseExecutor } from "./base.js";
 import { errorResponse, sanitizeErrorMessage } from "../utils/error.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { extractKimiJwt } from "@/lib/providers/webCookieAuth";
 
 export { extractKimiJwt };
@@ -141,6 +142,24 @@ export function isEndOfStream(msg) {
 }
 
 /**
+ * Detect a Connect end-stream/error trailer. The Connect streaming protocol
+ * marks the final frame with flag bit 0x02; an error envelope carries an
+ * `error` object (`{ code, message }`). Returns the error message when the
+ * trailer signals a failure, or null for a clean end / non-trailer frame — so
+ * callers can surface upstream errors instead of a silent `finish_reason:"stop"`.
+ * @param {number} flags
+ * @param {object|null} msg
+ * @returns {string|null}
+ */
+export function getConnectError(flags, msg) {
+  if (((flags || 0) & 0x02) === 0) return null;
+  const err = msg && (msg.error || msg.Error);
+  if (!err) return null;
+  const detail = typeof err === "string" ? err : (err.message || err.msg || err.code || "upstream error");
+  return String(detail);
+}
+
+/**
  * Render one OpenAI message `content` value to plain text for the Kimi prompt.
  * String content is returned as-is. Array content (multimodal parts) folds
  * `{type:"text", text}` parts joined by newline and annotates any unsupported
@@ -262,7 +281,11 @@ export class KimiWebExecutor extends BaseExecutor {
     }
 
     const messages = bodyObj.messages || [];
-    const modelId = bodyObj.model || "k2d6";
+    // Strip the repo-wide thinking suffix (e.g. `k2d6-thinking(high)`) that
+    // getModelUpstreamId preserves, so resolveModelConfig resolves the correct
+    // tier and wantThinking is not lost. applyThinking has already set
+    // reasoning_effort from the suffix upstream.
+    const modelId = (bodyObj.model || "k2d6").replace(/\((?:low|medium|high|none)\)$/, "");
     const modelConfig = resolveModelConfig(modelId);
     const wantThinking = bodyObj.reasoning_effort === "none" ? false : modelConfig.thinking;
 
@@ -271,13 +294,25 @@ export class KimiWebExecutor extends BaseExecutor {
     const reqHeaders = this.buildKimiHeaders(jwt);
     const framedBody = frameConnectMessage(reqBody);
 
+    // Combine chatCore's client-disconnect signal with a connect timeout so a
+    // stalled TCP/TLS/proxy handshake before response headers cannot hold the
+    // provider slot indefinitely (mirrors BaseExecutor's fetch guard).
+    const connectCtrl = new AbortController();
+    const connectTimer = setTimeout(
+      () => connectCtrl.abort(new Error("fetch connect timeout")),
+      FETCH_CONNECT_TIMEOUT_MS,
+    );
+    const mergedSignal = signal
+      ? AbortSignal.any([signal, connectCtrl.signal])
+      : connectCtrl.signal;
+
     let upstream;
     try {
       upstream = await proxyAwareFetch(CHAT_URL, {
         method: "POST",
         headers: reqHeaders,
         body: new Uint8Array(framedBody),
-        signal,
+        signal: mergedSignal,
       }, proxyOptions);
     } catch (err) {
       return {
@@ -286,12 +321,20 @@ export class KimiWebExecutor extends BaseExecutor {
         headers: {},
         transformedBody: bodyObj,
       };
+    } finally {
+      // Headers have arrived (or fetch rejected) — stop the connect timer so it
+      // cannot abort the body stream mid-read.
+      clearTimeout(connectTimer);
     }
 
     if (!upstream.ok) {
       const errText = await upstream.text().catch(() => "");
+      // The kimi-auth JWT is sent as both Bearer and Cookie; an upstream that
+      // echoes it bare (not behind an Authorization/Cookie key) would slip past
+      // the generic sanitizer, so redact the known credential first.
+      const scrubbed = jwt ? errText.split(jwt).join("[redacted]") : errText;
       return {
-        response: errorResponse(upstream.status, `Kimi error: ${sanitizeErrorMessage(errText)}`),
+        response: errorResponse(upstream.status, `Kimi error: ${sanitizeErrorMessage(scrubbed)}`),
         url: CHAT_URL,
         headers: reqHeaders,
         transformedBody: bodyObj,
@@ -340,6 +383,20 @@ export class KimiWebExecutor extends BaseExecutor {
                   }
                   if (consumed === 0) break;
                   offset += consumed;
+
+                  // Surface a Connect error trailer instead of ending cleanly.
+                  const connectErr = getConnectError(frame?.flags, frame?.message);
+                  if (connectErr) {
+                    if (!emittedRole) {
+                      emittedRole = true;
+                      emitChunk(controller, { role: "assistant", content: "" });
+                    }
+                    emitChunk(controller, { content: `\n[kimi-web upstream error: ${connectErr}]` }, "stop");
+                    controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+                    controller.close();
+                    return;
+                  }
+
                   if (!frame?.message) continue;
 
                   const delta = extractDelta(frame.message);
@@ -401,8 +458,10 @@ export class KimiWebExecutor extends BaseExecutor {
     let reasoning = "";
     const reader = sourceStream.getReader();
     let buffer = new Uint8Array(0);
+    let upstreamError = null;
+    let completed = false;
     try {
-      while (true) {
+      while (!completed) {
         const { done, value } = await reader.read();
         if (done) break;
         if (!value) continue;
@@ -418,6 +477,7 @@ export class KimiWebExecutor extends BaseExecutor {
             // Mirror the streaming path: an oversized Connect frame is fatal
             // rather than leaving it in the buffer where it could be re-parsed
             // indefinitely or produce a partial bogus 200.
+            await reader.cancel().catch(() => {});
             return {
               response: errorResponse(503, "kimi-web oversized frame"),
               url: CHAT_URL,
@@ -427,6 +487,14 @@ export class KimiWebExecutor extends BaseExecutor {
           }
           if (consumed === 0) break;
           offset += consumed;
+
+          // Surface a Connect error trailer instead of returning a clean 200.
+          const connectErr = getConnectError(frame?.flags, frame?.message);
+          if (connectErr) {
+            upstreamError = connectErr;
+            completed = true;
+            break;
+          }
           if (!frame?.message) continue;
           const delta = extractDelta(frame.message);
           if (delta) {
@@ -434,14 +502,30 @@ export class KimiWebExecutor extends BaseExecutor {
             else answer += delta.text;
           }
           if (isEndOfStream(frame.message)) {
-            offset = buffer.length;
+            // Stop the OUTER read loop too: once the assistant message is
+            // complete we have the full answer and must not wait for the
+            // upstream to close the HTTP stream (it may keep it open).
+            completed = true;
             break;
           }
         }
-        buffer = buffer.subarray(offset);
+        buffer = completed ? buffer : buffer.subarray(offset);
       }
     } catch {
       /* best-effort — return what we have */
+    } finally {
+      // Release the upstream connection promptly when we stop early.
+      await reader.cancel().catch(() => {});
+    }
+
+    if (upstreamError) {
+      const scrubbed = jwt ? upstreamError.split(jwt).join("[redacted]") : upstreamError;
+      return {
+        response: errorResponse(502, `Kimi error: ${sanitizeErrorMessage(scrubbed)}`),
+        url: CHAT_URL,
+        headers: reqHeaders,
+        transformedBody: JSON.parse(reqBody),
+      };
     }
 
     const message = { role: "assistant", content: answer };

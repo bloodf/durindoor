@@ -17,6 +17,11 @@ describe("kimi-web reasoning capabilities", () => {
     expect(caps.reasoning).toBe(false);
   });
 
+  it("both kimi-web tiers are toolless until tool mapping exists", () => {
+    expect(getCapabilitiesForModel("kimi-web", "k2d6").tools).toBe(false);
+    expect(getCapabilitiesForModel("kimi-web", "k2d6-thinking").tools).toBe(false);
+  });
+
   it("applyThinking keeps reasoning_effort: none on k2d6-thinking", () => {
     const body = { model: "k2d6-thinking", messages: [{ role: "user", content: "hi" }], reasoning_effort: "none" };
     const result = applyThinking("openai", "k2d6-thinking", body, "kimi-web");

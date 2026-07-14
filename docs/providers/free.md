@@ -46,6 +46,10 @@ Use cookie-backed providers for personal or experimental workflows unless your t
 
 A no-auth provider should only be used when the upstream is protected by the network boundary or runs locally. Do not expose a no-auth upstream to the public internet through DurinDoor without adding an outer access-control layer.
 
+## SenseNova Token Plan
+
+SenseNova routes through the OpenAI-compatible Token Plan endpoint (`https://token.sensenova.cn/v1/chat/completions`). The upstream caps `max_tokens` at 65,536, so DurinDoor clamps requests at that ceiling. Supported chat models are `sensenova-6.7-flash-lite`, `deepseek-v4-flash`, and `glm-5.2`.
+
 ## Local Device Media
 
 Some media providers run on the local device or a local service. They can be useful for speech, transcription, and development workflows where data should not leave the host.

@@ -3,6 +3,7 @@ import { FORMATS } from "../translator/formats.js";
 import { trackPendingRequest, appendRequestLog } from "@/lib/usageDb.js";
 import { extractUsage, mergeUsage, hasValidUsage, estimateUsage, logUsage, addBufferToUsage, filterUsageForFormat, COLORS } from "./usageTracking.js";
 import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE } from "./streamHelpers.js";
+import { PROVIDERS } from "../config/providers.js";
 import { getOpenAIResponsesEventName, isOpenAIResponsesTerminalEvent, formatIncompleteOpenAIResponsesStreamFailure } from "./responsesStreamHelpers.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
 import { createThinkTagStreamExtractor } from "./thinkStripper.js";
@@ -365,6 +366,11 @@ export function createSSEStream(options = {}) {
                   fieldsInjected = true;
                 }
               }
+
+              // Provider-specific stream normalization (e.g. SenseNova maps
+              // delta.reasoning -> delta.reasoning_content) runs before the
+              // hasValuableContent gate so reasoning-only chunks survive.
+              fieldsInjected = PROVIDERS[provider]?.normalizeStreamChunk?.(parsed) || fieldsInjected;
 
               // Usage-only OpenAI chunks have choices:[] and would otherwise
               // be discarded as empty before accounting sees them.
@@ -735,6 +741,12 @@ export function createSSEStream(options = {}) {
         }
 
         currentOpenAIResponsesEvent = null;
+
+        // Provider-specific normalization must also run in TRANSLATE mode:
+        // SenseNova maps delta.reasoning -> delta.reasoning_content so
+        // openai-to-<target> translators (which only read reasoning_content)
+        // don't drop reasoning-only chunks for Gemini/Antigravity/Vertex clients.
+        PROVIDERS[provider]?.normalizeStreamChunk?.(parsed);
 
         // Translate: targetFormat -> openai -> sourceFormat
         const translated = translateResponse(targetFormat, sourceFormat, parsed, state);

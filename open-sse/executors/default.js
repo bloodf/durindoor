@@ -230,6 +230,9 @@ export class DefaultExecutor extends BaseExecutor {
 
   transformRequest(model, body, stream, credentials) {
     this.applyRequestDefaults(body);
+    // Provider-specific request hook (e.g. SenseNova Token Plan clamps
+    // max_tokens / max_completion_tokens above its 65536 ceiling).
+    this.config?.clampRequestBody?.(body);
     applyGlmtModelAlias(this.provider, model, body);
     const transformed = this.applyJsonSchemaFallback(body);
 

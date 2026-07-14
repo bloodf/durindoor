@@ -41,6 +41,7 @@ import {
   ACCOUNT_PAGE_SIZE_MAX,
   ACCOUNT_FILTER_OPTIONS,
   QUOTA_SORT_OPTIONS,
+  createAutoRefreshScheduler,
 } from "./utils";
 import Card from "@/shared/components/Card";
 import { ConfirmModal, EditConnectionModal } from "@/shared/components";
@@ -463,8 +464,8 @@ export default function ProviderLimits() {
     providerFilteredConnections: 0,
   });
 
-  const intervalRef = useRef(null);
-  const countdownRef = useRef(null);
+  const schedulerRef = useRef(null);
+  const refreshAllRef = useRef(null);
   const tickCountRef = useRef(0);
   const filterStateRef = useRef(initialFilterState);
   const lastPersistedFilterStateRef = useRef(null);
@@ -1039,6 +1040,10 @@ export default function ProviderLimits() {
     }
   }, [refreshingAll, fetchConnections, fetchQuota, page]);
 
+  // Keep a stable ref to the latest refreshAll so the scheduler effect does not
+  // resubscribe on every refreshAll identity change (avoids timer churn).
+  refreshAllRef.current = refreshAll;
+
   useEffect(() => {
     if (!hasHydratedSavedState) return;
 
@@ -1175,65 +1180,37 @@ export default function ProviderLimits() {
     processQueue();
   }, [processQueue]);
 
-  // Auto-refresh interval
+  // One scheduler owns refresh + countdown timers and pauses on tab-hidden,
+  // deriving the countdown from an absolute deadline so buffered tunnels stay
+  // stable across visibility changes. Replaces the prior dual-setInterval logic.
   useEffect(() => {
     if (!hasHydratedAutoRefresh || !autoRefresh) {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-      if (countdownRef.current) {
-        clearInterval(countdownRef.current);
-        countdownRef.current = null;
-      }
+      schedulerRef.current?.stop();
+      schedulerRef.current = null;
+      setCountdown(Math.ceil(REFRESH_INTERVAL_MS / 1000));
       return;
     }
 
-    // Main refresh interval
-    intervalRef.current = setInterval(() => {
-      refreshAll();
-    }, REFRESH_INTERVAL_MS);
+    const scheduler = createAutoRefreshScheduler({
+      intervalMs: REFRESH_INTERVAL_MS,
+      onRefresh: (force) => refreshAllRef.current?.(force),
+      onCountdown: setCountdown,
+    });
+    schedulerRef.current = scheduler;
+    scheduler.start();
 
-    // Countdown interval
-    countdownRef.current = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) return 60;
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      if (countdownRef.current) clearInterval(countdownRef.current);
-    };
-  }, [autoRefresh, refreshAll, hasHydratedAutoRefresh]);
-
-  // Pause auto-refresh when tab is hidden (Page Visibility API)
-  useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.hidden) {
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
-          intervalRef.current = null;
-        }
-        if (countdownRef.current) {
-          clearInterval(countdownRef.current);
-          countdownRef.current = null;
-        }
-      } else if (autoRefresh && hasHydratedAutoRefresh) {
-        // Resume auto-refresh when tab becomes visible
-        intervalRef.current = setInterval(() => refreshAll(), REFRESH_INTERVAL_MS);
-        countdownRef.current = setInterval(() => {
-          setCountdown((prev) => (prev <= 1 ? 60 : prev - 1));
-        }, 1000);
-      }
+      if (document.hidden) scheduler.pause();
+      else void scheduler.resume();
     };
-
     document.addEventListener("visibilitychange", handleVisibilityChange);
+
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      scheduler.stop();
+      if (schedulerRef.current === scheduler) schedulerRef.current = null;
     };
-  }, [autoRefresh, refreshAll, hasHydratedAutoRefresh]);
+  }, [autoRefresh, hasHydratedAutoRefresh]);
 
   const sortedConnections = useMemo(
     () =>
@@ -1556,7 +1533,16 @@ export default function ProviderLimits() {
           {/* Refresh all button */}
           <button
             type="button"
-            onClick={() => refreshAll(true)}
+            onClick={() => {
+              // Route through the scheduler so a manual refresh reuses its
+              // in-flight dedupe and resets the countdown deadline; fall back to
+              // a direct call when auto-refresh (and thus the scheduler) is off.
+              if (autoRefresh && schedulerRef.current) {
+                void schedulerRef.current.refreshNow();
+              } else {
+                void refreshAll(true);
+              }
+            }}
             disabled={refreshingAll}
             className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-black/10 px-2 text-xs text-text-primary transition-colors hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/5 disabled:opacity-50"
             title="Refresh all"

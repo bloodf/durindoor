@@ -100,4 +100,6 @@ export default {
     refresh: { encoding: "form" },
     refreshLeadMs: 5 * 60 * 1000,
   },
-};
+  features: { usage: true, oauth: true },
+  usage: { url: "https://cli-chat-proxy.grok.com/v1/billing?format=credits", userUrl: "https://cli-chat-proxy.grok.com/v1/user?include=subscription" },
+}

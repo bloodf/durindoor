@@ -38,6 +38,7 @@ for (const entry of REGISTRY) {
   if (entry.transport) {
     PROVIDERS[entry.id] = buildTransport(entry, entry.oauth);
     if (entry.transports) PROVIDERS[entry.id].transports = entry.transports;
+    if (entry.usage) PROVIDERS[entry.id].usage = entry.usage;
   }
   if (entry.models !== undefined && !(entry.category === "system" && !entry.transport)) {
     PROVIDER_MODELS[entry.alias || entry.id] = entry.models.map(normalizeModel);

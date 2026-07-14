@@ -34,6 +34,25 @@ function normalizeSensenovaStreamChunk(parsed) {
   return changed;
 }
 
+// Non-stream counterpart: SenseNova returns thinking as choices[].message.reasoning
+// on stream:false responses, but Claude/Responses conversion and request-detail
+// logging read message.reasoning_content. Map it in-place so non-stream
+// completions don't silently drop reasoning.
+function normalizeSensenovaResponse(parsed) {
+  const choices = parsed?.choices;
+  if (!Array.isArray(choices)) return false;
+  let changed = false;
+  for (const choice of choices) {
+    const message = choice?.message;
+    if (!message || typeof message !== "object") continue;
+    if (typeof message.reasoning === "string" && message.reasoning && !message.reasoning_content) {
+      message.reasoning_content = message.reasoning;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 export default {
   id: "sensenova",
   alias: "sensenova",
@@ -52,13 +71,14 @@ export default {
   category: "freeTier",
   transport: {
     // SenseNova Token Plan (validated 2026-07-06): OpenAI-compatible endpoint
-    // that enforces max_tokens in [1, 65536]. Do not raise above 65536.
+    // that enforces max_tokens in [1, 65536]. We only CLAMP explicit over-ceiling
+    // values — we do NOT inject a default when both token fields are omitted, so
+    // omitted-token requests keep the Token Plan's own default budget instead of
+    // always asking for the 65536 maximum.
     baseUrl: "https://token.sensenova.cn/v1/chat/completions",
-    requestDefaults: {
-      maxTokens: SENSENOVA_MAX_OUTPUT_TOKENS,
-    },
     clampRequestBody: clampSensenovaMaxTokens,
     normalizeStreamChunk: normalizeSensenovaStreamChunk,
+    normalizeResponse: normalizeSensenovaResponse,
   },
   models: [
     // SenseNova Token Plan chat models (validated 2026-07-06). The /models

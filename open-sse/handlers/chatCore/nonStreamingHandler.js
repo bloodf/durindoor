@@ -18,6 +18,7 @@ import { SSE_HEADERS_CORS } from "../../utils/sseConstants.js";
 import { normalizeInlineThinkingResponse } from "./inlineThinking.js";
 import { toOpenAIUsage } from "../../translator/concerns/usage.js";
 import { isCoherentNonStreamingResponse } from "../../utils/streamTerminal.js";
+import { PROVIDERS } from "../../config/providers.js";
 
 const GEMINI_FAMILY_FORMATS = new Set([
   FORMATS.GEMINI,
@@ -448,6 +449,11 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     }
     responseBody = unwrapped;
   }
+
+  // Provider-specific non-stream normalization (e.g. SenseNova maps
+  // message.reasoning -> message.reasoning_content) must run before request
+  // logging and Claude/Responses translation, which read reasoning_content.
+  PROVIDERS[provider]?.normalizeResponse?.(responseBody);
 
   if (!isCoherentNonStreamingResponse(responseBody, targetFormat)) {
     appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });

@@ -17,9 +17,12 @@ describe("OmniRoute #6330 — SenseNova Token Plan support", () => {
     );
   });
 
-  it("clamps request max_tokens to 65536 at the provider level", () => {
+  it("does not inject a max_tokens default; it only clamps over-ceiling values", () => {
     const entry = getEntry();
-    expect(entry.transport.requestDefaults).toEqual({ maxTokens: 65536 });
+    // Thread 4: omitted-token requests must keep the Token Plan's own default,
+    // so there is no requestDefaults.maxTokens — only a clamp hook.
+    expect(entry.transport.requestDefaults).toBeUndefined();
+    expect(typeof entry.transport.clampRequestBody).toBe("function");
   });
 
   it("exposes only the three validated Token Plan chat models", () => {
@@ -100,11 +103,12 @@ describe("OmniRoute #6330 — SenseNova Token Plan support", () => {
     expect(glm.maxOutput).toBe(65536);
   });
 
-  it("DefaultExecutor applies the 65536 max_tokens ceiling when missing", () => {
+  it("DefaultExecutor leaves both token fields omitted when the client omits them", () => {
     const executor = new DefaultExecutor("sensenova");
     const body = { model: "sensenova-6.7-flash-lite", messages: [] };
     executor.transformRequest("sensenova-6.7-flash-lite", body, true, {});
-    expect(body.max_tokens).toBe(65536);
+    expect("max_tokens" in body).toBe(false);
+    expect("max_completion_tokens" in body).toBe(false);
   });
 
   it("DefaultExecutor leaves an explicit max_tokens value untouched", () => {

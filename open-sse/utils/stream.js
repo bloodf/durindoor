@@ -742,6 +742,12 @@ export function createSSEStream(options = {}) {
 
         currentOpenAIResponsesEvent = null;
 
+        // Provider-specific normalization must also run in TRANSLATE mode:
+        // SenseNova maps delta.reasoning -> delta.reasoning_content so
+        // openai-to-<target> translators (which only read reasoning_content)
+        // don't drop reasoning-only chunks for Gemini/Antigravity/Vertex clients.
+        PROVIDERS[provider]?.normalizeStreamChunk?.(parsed);
+
         // Translate: targetFormat -> openai -> sourceFormat
         const translated = translateResponse(targetFormat, sourceFormat, parsed, state);
 

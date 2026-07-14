@@ -24,11 +24,22 @@ describe("OmniRoute #6330 — SenseNova Token Plan clamp (Thread 1)", () => {
     expect(body.max_completion_tokens).toBe(65536);
   });
 
-  it("applies requestDefaults.maxTokens = 65536 when both token fields are absent", () => {
+  it("leaves both token fields omitted when the client omits them (no default injection)", () => {
     const executor = new DefaultExecutor("sensenova");
     const body = { model: "sensenova-6.7-flash-lite", messages: [] };
     executor.transformRequest("sensenova-6.7-flash-lite", body, true, {});
-    expect(body.max_tokens).toBe(65536);
+    expect("max_tokens" in body).toBe(false);
+    expect("max_completion_tokens" in body).toBe(false);
+  });
+
+  it("clamps 70000 down to the 65536 ceiling but leaves 1000 untouched", () => {
+    const executor = new DefaultExecutor("sensenova");
+    const over = { model: "sensenova-6.7-flash-lite", messages: [], max_tokens: 70000 };
+    executor.transformRequest("sensenova-6.7-flash-lite", over, true, {});
+    expect(over.max_tokens).toBe(65536);
+    const under = { model: "sensenova-6.7-flash-lite", messages: [], max_tokens: 1000 };
+    executor.transformRequest("sensenova-6.7-flash-lite", under, true, {});
+    expect(under.max_tokens).toBe(1000);
   });
 
   it("does not touch an explicit value within the ceiling", () => {

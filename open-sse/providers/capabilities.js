@@ -254,14 +254,22 @@ export const PROVIDER_CAPABILITIES = {
   // SenseNova — SenseChat-Vision is advertised as a vision model; without an
   // override the provider/model id falls through to the default text-only floor
   // and images are stripped before the request reaches the provider.
-  // SenseNova Token Plan (validated 2026-07-06): max output tokens are clamped
-  // to 65536 via the registry requestDefaults. Only the three supported chat
+  // SenseNova Token Plan (validated 2026-07-06): max output tokens are CLAMPED
+  // to 65536 via the registry clampRequestBody hook (explicit over-ceiling values
+  // only — omitted token fields are left untouched). Only the three supported chat
   // models are exposed; sensenova-u1-fast advertises on /models but 404s on
   // chat completions, so it is omitted from the registry.
   sensenova: {
     "sensenova-6.7-flash-lite": {
       vision: true,
       tools: true,
+      // Flash-Lite streams reasoning on the Token Plan endpoint and accepts
+      // OpenAI-style reasoning_effort (incl. "none" to disable), so mark it
+      // reasoning-capable — otherwise applyThinking strips the client's
+      // reasoning_effort/thinking controls for a model that can honour them.
+      reasoning: true,
+      thinkingFormat: "openai",
+      thinkingCanDisable: true,
       contextWindow: 262144,
       maxOutput: 65536,
     },
@@ -269,7 +277,12 @@ export const PROVIDER_CAPABILITIES = {
       reasoning: true,
       contextWindow: 1048576,
       maxOutput: 65536,
-      thinkingFormat: "deepseek",
+      // SenseNova's DeepSeek speaks OpenAI-style reasoning_effort (incl. "none"
+      // to disable), NOT the native-deepseek thinking wire format — using
+      // "deepseek" here would strip a client reasoning_effort. Override to
+      // "openai" so it passes through.
+      thinkingFormat: "openai",
+      thinkingCanDisable: true,
     },
     "glm-5.2": {
       reasoning: true,

@@ -22,6 +22,7 @@ import {
   getXaiUsage,
   getGrokWebUsage,
 } from "./usage/misc.js";
+import { getGrokCliUsage } from "./usage/grok-cli.js";
 
 /**
  * Get usage data for a provider connection
@@ -50,6 +51,7 @@ const USAGE_HANDLERS = {
   cursor: (c) => getCursorUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
   xai: (c) => getXaiUsage(c.connectionId),
   "grok-web": () => getGrokWebUsage(),
+  "grok-cli": (c) => getGrokCliUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
 };
 
 export async function getUsageForProvider(connection, proxyOptions = null) {

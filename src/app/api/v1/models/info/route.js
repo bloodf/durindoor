@@ -12,6 +12,7 @@ const KIND_ENDPOINT = {
   imageToText: "/v1/chat/completions",
   webSearch: "/v1/search",
   webFetch: "/v1/fetch",
+  rerank: "/v1/rerank",
 };
 
 const TTS_VOICES_API = new Set(["elevenlabs", "edge-tts", "deepgram", "inworld", "local-device", "minimax", "minimax-cn"]);

@@ -3,8 +3,10 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { createLatestIntentQueue } from "@/shared/utils/latestIntentQueue";
+import { getCodexPlanLabel } from "@/shared/utils/codexPlanLabel";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import QuotaTable from "./QuotaTable";
+import Badge from "@/shared/components/Badge";
 import Toggle from "@/shared/components/Toggle";
 import Tooltip from "@/shared/components/Tooltip";
 import {
@@ -1585,6 +1587,9 @@ export default function ProviderLimits() {
           // Use table layout for all providers
           const isInactive = conn.isActive === false;
           const isCodex = conn.provider === "codex";
+          // Codex plan label (e.g. "Plus", "Team", "Pro") — shown alongside the
+          // provider badge in the usage row. Hidden for non-Codex, empty, or "unknown".
+          const codexPlan = getCodexPlanLabel(isCodex, quota?.plan);
           const resetCreditCount = getCodexResetCreditCount(quota);
           const isResettingLimit = resettingLimitId === conn.id;
           const rowBusy = deletingId === conn.id || togglingId === conn.id || isResettingLimit;
@@ -1674,6 +1679,11 @@ export default function ProviderLimits() {
                   <div className="flex items-center gap-1 shrink-0">
                     {isCodex && (
                       <>
+                      {codexPlan && (
+                        <Badge variant="primary" size="sm" className="capitalize">
+                          {codexPlan}
+                        </Badge>
+                      )}
                         <Tooltip
                           text={
                             resetCreditCount > 0

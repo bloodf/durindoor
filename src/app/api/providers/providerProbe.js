@@ -3,6 +3,7 @@ import { PROVIDERS } from "open-sse/config/providers.js";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
 import { assertOutboundUrlAllowed, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
+import { extractKimiJwt, KIMI_WEB_DISCOVERY_HEADERS } from "@/lib/providers/webCookieAuth.js";
 
 const AUTH_FAILURE_STATUSES = new Set([401, 403]);
 const CHAT_PROBE_ACCEPT_STATUSES = new Set([400, 422, 429]);
@@ -99,6 +100,29 @@ export function buildRegistryProviderProbe(provider, apiKey, providerSpecificDat
 
   if (cfg.format !== "openai") return null;
 
+  // Kimi Web (www.kimi.com) is a cookie-authed Connect-RPC provider. The user
+  // pastes a full Cookie header; only the extracted `kimi-auth` JWT must reach
+  // the wire — never the raw blob. Probe the same models endpoint the dashboard
+  // discovery route uses so a valid cookie yields 200 and a bad one 401.
+  if (provider === "kimi-web") {
+    const jwt = extractKimiJwt(apiKey);
+    if (!jwt) return null;
+    return {
+      url: "https://www.kimi.com/apiv2/kimi.gateway.config.v1.ConfigService/GetAvailableModels",
+      options: {
+        method: "POST",
+        headers: {
+          ...KIMI_WEB_DISCOVERY_HEADERS,
+          Authorization: `Bearer ${jwt}`,
+          Cookie: `kimi-auth=${jwt}`,
+        },
+        body: "{}",
+        signal: AbortSignal.timeout(8000),
+      },
+      accepts: "ok",
+    };
+  }
+
   if (cfg.validateUrl) {
     return {
       url: cfg.validateUrl,
@@ -137,7 +161,6 @@ export function buildRegistryProviderProbe(provider, apiKey, providerSpecificDat
       accepts: "chat-auth",
     };
   }
-
   return {
     url: baseUrl.replace(/\/chat\/completions$/, "/models").replace(/\/chatbot$/, "/models"),
     options: { headers, signal: AbortSignal.timeout(8000) },

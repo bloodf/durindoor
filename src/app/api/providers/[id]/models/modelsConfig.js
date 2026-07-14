@@ -1,4 +1,5 @@
 import { refreshGoogleToken, updateProviderCredentials } from "@/sse/services/tokenRefresh";
+import { extractKimiJwt, KIMI_WEB_DISCOVERY_HEADERS } from "@/lib/providers/webCookieAuth";
 import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
 import { getModelsByProviderId } from "open-sse/config/providerModels.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
@@ -152,6 +153,38 @@ export const PROVIDER_MODELS_CONFIG = {
     authHeader: "Authorization",
     authPrefix: "Bearer ",
     parseResponse: (data) => data.data || []
+  },
+  // Kimi web discovery uses the same `kimi-auth` JWT as the chat executor.
+  // GET returns an empty list, so POST {} is required; headers mirror the
+  // www.kimi.com web app (Bearer + Cookie replay, connect-protocol-version).
+  "kimi-web": {
+    url: "https://www.kimi.com/apiv2/kimi.gateway.config.v1.ConfigService/GetAvailableModels",
+    method: "POST",
+    headers: { accept: "*/*", "Content-Type": "application/json" },
+    body: {},
+    buildHeaders: (token) => {
+      const jwt = extractKimiJwt(token);
+      return {
+        ...KIMI_WEB_DISCOVERY_HEADERS,
+        ...(jwt
+          ? {
+              Authorization: `Bearer ${jwt}`,
+              Cookie: `kimi-auth=${jwt}`,
+            }
+          : {}),
+      };
+    },
+    parseResponse: (data) => {
+      const allowed = new Set(["k2d6", "k2d6-thinking"]);
+      const list = data?.availableModels || [];
+      return list
+        .filter((m) => m.key && allowed.has(m.key))
+        .map((m) => ({
+          id: m.key,
+          name: m.displayName || m.key,
+          supportsReasoning: m.thinking === true,
+        }));
+    },
   },
   codex: {
     url: "https://chatgpt.com/backend-api/codex/models?client_version=1.0.0",

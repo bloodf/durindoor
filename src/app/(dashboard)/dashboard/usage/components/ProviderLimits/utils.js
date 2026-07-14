@@ -611,6 +611,29 @@ export function parseQuotaData(provider, data) {
           });
         }
         break;
+      case "grok-cli":
+        // Grok CLI / Grok Build (SuperGrok + X Premium+) returns raw.quotas
+        // as a { productName: { used, total, remainingPercentage, resetAt } }
+        // map. The dashboard rows expect used / total / remainingPercentage
+        // (so the percent bar renders); fall back to a derived percent when
+        // the upstream doesn't supply it.
+        if (data.quotas && typeof data.quotas === "object" && !Array.isArray(data.quotas)) {
+          Object.entries(data.quotas).forEach(([name, quota]) => {
+            const used = typeof quota?.used === "number" ? quota.used : 0;
+            const total = typeof quota?.total === "number" ? quota.total : 0;
+            const remainingPercentage = typeof quota?.remainingPercentage === "number"
+              ? quota.remainingPercentage
+              : (total > 0 ? Math.max(0, Math.min(100, Math.round(((total - used) / total) * 100))) : 0);
+            normalizedQuotas.push({
+              name,
+              used,
+              total,
+              remainingPercentage,
+              ...(quota?.resetAt ? { resetAt: quota.resetAt } : {}),
+            });
+          });
+        }
+        break;
 
       default:
         // Generic fallback for unknown providers
@@ -649,3 +672,4 @@ export function parseQuotaData(provider, data) {
 
   return normalizedQuotas;
 }
+

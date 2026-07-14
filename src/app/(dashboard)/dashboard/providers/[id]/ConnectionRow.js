@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { getStatusVariant as getConnectionStatusVariant } from "@/shared/utils/connectionStatus";
+import { getCodexPlanLabel } from "@/shared/utils/codexPlanLabel";
 import PropTypes from "prop-types";
 import { Badge, Toggle, Tooltip } from "@/shared/components";
 import CooldownTimer from "./CooldownTimer";
@@ -79,10 +80,11 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
     || connection.displayName?.trim()
     || (isOAuthConnection ? "OAuth Account" : isCookieConnection ? "Cookie Account" : "API Key");
   // Codex plan label (e.g. "Plus", "Team", "Pro") — shown alongside the
-  // connection badges. Skipped when unknown/empty.
-  const codexPlan = connection.provider === "codex" && typeof connection.providerSpecificData?.chatgptPlanType === "string"
-    ? connection.providerSpecificData.chatgptPlanType.trim()
-    : "";
+  // connection badges. Hidden for non-Codex, empty, or "unknown".
+  const codexPlan = getCodexPlanLabel(
+    connection.provider === "codex",
+    connection.providerSpecificData?.chatgptPlanType,
+  );
   const secondaryDisplayName = connection.name?.trim() && connection.email?.trim() && connection.name.trim() !== connection.email.trim()
     ? connection.email.trim()
     : connection.name?.trim() && connection.displayName?.trim() && connection.name.trim() !== connection.displayName.trim()
@@ -180,6 +182,7 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
                 {codexPlan}
               </Badge>
             )}
+            {hasAnyProxy && (
               <Badge variant={proxyBadgeVariant} size="sm">
                 Proxy
               </Badge>

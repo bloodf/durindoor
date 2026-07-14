@@ -3,7 +3,9 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { createLatestIntentQueue } from "@/shared/utils/latestIntentQueue";
+import { getCodexPlanLabel } from "@/shared/utils/codexPlanLabel";
 import ProviderIcon from "@/shared/components/ProviderIcon";
+import QuotaTable from "./QuotaTable";
 import Badge from "@/shared/components/Badge";
 import Toggle from "@/shared/components/Toggle";
 import Tooltip from "@/shared/components/Tooltip";
@@ -1586,9 +1588,9 @@ export default function ProviderLimits() {
           const isInactive = conn.isActive === false;
           const isCodex = conn.provider === "codex";
           // Codex plan label (e.g. "Plus", "Team", "Pro") — shown alongside the
-          // provider badge in the usage row. Skipped when unknown/empty.
-          const plan = typeof quota?.plan === "string" ? quota.plan.trim() : "";
-          const codexPlan = isCodex && plan && plan.toLowerCase() !== "unknown" ? plan : "";
+          // provider badge in the usage row. Hidden for non-Codex, empty, or "unknown".
+          const codexPlan = getCodexPlanLabel(isCodex, quota?.plan);
+          const resetCreditCount = getCodexResetCreditCount(quota);
           const isResettingLimit = resettingLimitId === conn.id;
           const rowBusy = deletingId === conn.id || togglingId === conn.id || isResettingLimit;
           const { rawQuotas, visibleQuotas, hiddenQuotaRows } = connectionQuotaRows[conn.id] || {

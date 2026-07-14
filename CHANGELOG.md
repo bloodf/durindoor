@@ -1,12 +1,49 @@
-# Unreleased
+# v1.1.0 (2026-07-14)
+
+First published DurinDoor release since v1.0.1. Includes the previously
+unreleased v1.0.2 changelog and version changes (brand + build), which ship
+here for the first time.
+
+## Features
+- **Compression**: token-compression engine catalog wired into chatCore, with a compression-studio preview (#203, #223).
+- **Quota**: atomic quota-aware routing with preflight + fallback and per-provider quota trackers/persistence (#211, #212, #213).
+- **Auto-combo**: combo engine with patches and resolver for multi-provider routing (#205).
+- **Health**: provider health monitoring and free-provider rankings (#198).
+- **Playground**: full chat playground replacing basic-chat (#199).
+- **Realtime**: OpenAI realtime WebSocket bridge (#192).
+- **Catalog**: refreshed model catalog and paid-model filtering across catalog and pickers (#193, #200).
+- **UI**: show Codex plan labels in provider and quota views (#241).
+
+## Providers
+- **Kimi Web**: add the www.kimi.com consumer-chat provider with web-cookie auth (#140).
+- **SenseNova**: Token Plan support with OpenAI-style reasoning and a max-tokens clamp (#138).
+- **OpenRouter**: register the rerank provider and `/v1/rerank` routing (#139).
+- **grok-cli**: cap tools at 200 for the cli-chat-proxy and add usage/quota parsing (#237, #246, #248).
+- **OpenAI**: route GPT-5.6 Sol tools through the Responses API; honor GPT-5.6 effort semantics on the Codex wire (#233, #240).
+- **Ollama**: add a native Claude transport (upstream #2475).
+- **MiniMax**: OpenAI transport passthrough (#234).
+- **Codex**: fast tier, long contexts, capacity SSE, reset-credit expiry, and refresh-token family-revocation cascade (#217, #235, #236).
+- Providers batch (ClinePass, NVIDIA, and more) (#195).
+
+## Security
+- Require `API_KEY_SECRET`; refuse the hardcoded HMAC fallback (SEC-B-01) (#231).
+- Encrypt OAuth tokens and API keys at rest in provider connections (SEC-B-02) (#232).
+- Close SSRF holes in provider-node validation, proxy-test, and the MCP gateway; fail-closed CORS and sanitized errors (SEC-A-01/02/03) (#228, #229, #230, #191).
 
 ## Localization
 - Complete Simplified Chinese UI translations and guard English/zh-CN key parity (#2436).
+- Indonesian caveman language pack (#222).
 
 ## Fixes
 - **Thinking/Kiro**: keep request-only thinking controls out of provider model IDs, validate native Kiro envelopes, preserve direct-route sessions, and reconcile Claude passthrough thinking budgets.
-
-# v1.0.2 (2026-07-08)
+- **Anthropic**: lowercase the `anthropic-version` header to prevent duplication on `/v1/messages` (#238).
+- **Headroom**: allow larger prompt compression to finish (#239).
+- **Dashboard**: support buffered tunnels and stable quota refresh via a single auto-refresh scheduler (#243).
+- **Gemini**: preserve chat `file_data` PDFs through openai-to-gemini translation (#147).
+- **Translator**: preserve reasoning/thinking history across the OpenAI request bridge; prevent doubled tool args OpenAI↔Claude; per-toolUseEvent Kiro tool-call indices (#214, #215, #224).
+- **MCP gateway**: harden stdio/HTTP/SSE transport races and error shapes (#218, #219, #220).
+- **Usage**: validate page bounds and refetch tabs on reset without clobbering the period (#226).
+- **Executors**: source `DEFAULT_MODEL` from the provider registry; dedupe mimocode keys; use `ANTHROPIC_API_VERSION` in zenmux-free (#225, #227).
 
 ## Brand
 - Rebrand all user-facing documentation, GitBook, Docker docs, CLI README, and assets to the DurinDoor identity.
@@ -16,7 +53,7 @@
 - Fix release workflow to publish the `cli` package rather than the private root package.
 
 ## Build
-- Bump root and CLI package versions to 1.0.2.
+- Bump root and CLI package versions to 1.1.0.
 
 # v0.5.18 (2026-07-03)
 

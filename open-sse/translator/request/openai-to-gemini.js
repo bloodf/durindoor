@@ -255,6 +255,12 @@ export function openaiToGeminiRequest(model, body, stream) {
   return openaiToGeminiBase(model, body, stream);
 }
 
+function omitGemma4ThinkingConfig(model, body) {
+  if (model.startsWith("gemma-4")) delete body.generationConfig?.thinkingConfig;
+  return body;
+}
+openaiToGeminiRequest.finalize = omitGemma4ThinkingConfig;
+
 // OpenAI -> Gemini CLI (Cloud Code Assist)
 export function openaiToGeminiCLIRequest(model, body, stream) {
   const gemini = openaiToGeminiBase(model, body, stream, DEFAULT_THINKING_GEMINI_CLI_SIGNATURE);

@@ -106,6 +106,7 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     thinkingIntent,
     clientSessionId,
   });
+  let finalizeTranslatedRequest;
   // Expose to downstream translators (gemini-cli/antigravity envelopes) that run after envelope is stripped
   if (credentials) credentials._clientSessionId = clientSessionId;
 
@@ -117,6 +118,7 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     const directFn = requestRegistry.get(`${sourceFormat}:${targetFormat}`);
     if (directFn) {
       result = directFn(translationModel, result, stream, credentials, resolvedTranslationContext);
+      finalizeTranslatedRequest = directFn.finalize;
     } else {
       // Step 1: source -> openai (if source is not openai)
       if (sourceFormat !== FORMATS.OPENAI) {
@@ -158,6 +160,8 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     provider,
     thinkingIntent,
   );
+  // Translator-local guards run after centralized thinking normalization.
+  finalizeTranslatedRequest?.(translationModel, result);
   // Per-transport registry defaults (e.g. MiniMax openai transport → reasoning_split).
   applyTransportRequestDefaults(targetFormat, result, provider);
 

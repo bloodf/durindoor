@@ -103,29 +103,43 @@ export function stripUnsupportedParams(provider, model, body) {
   return body;
 }
 
-// Model-specific param renames (max_tokens → max_completion_tokens for newer OpenAI models)
-const MODEL_PARAM_RENAMES = {
-  "openai": [
-    { match: /gpt-5|o[134]-/, rename: { max_tokens: "max_completion_tokens" } },
-  ],
-};
+// Model families whose upstream chat-completions endpoint rejects the legacy
+// `max_tokens` field and only accepts `max_completion_tokens` (o1/o3/o4 reasoning
+// models and the gpt-5 line). Direction is decided by the MODEL STRING ALONE,
+// provider-independent — mirroring OmniRoute's `supportsMaxTokens({provider, model})
+// heuristic (modelCapabilities.ts), whose MAX_TOKENS_UNSUPPORTED_PATTERNS carry no
+// provider segment. Gating on provider === "openai" would wrongly reverse-strip
+// `max_completion_tokens` for these same models when reached through a compatible
+// relay (OpenRouter, Azure, Volcengine, …).
+// Match is anchored at a provider-prefix boundary (`^`, `/`, `:`) and a version
+// boundary (`.`, `-`, end) so `gpt-5.4-pro`, `openai/o3-mini`, `azure:o1` match
+// while unrelated ids containing the substring (e.g. `deepseek-v3o1`) do not.
+const MAX_TOKENS_UNSUPPORTED_MODEL = /(?:^|[/:])(?:gpt-5|o[134])(?:[.-]|$)/i;
 
 /**
- * Apply model-specific param renames (e.g. max_tokens → max_completion_tokens for gpt-5+).
+ * Normalize the max-token field name for the target model, in place.
+ * - Family match (o1/o3/o4/gpt-5.x): forward rename `max_tokens` → `max_completion_tokens`.
+ * - Any other model: reverse rename `max_completion_tokens` → `max_tokens`, because
+ *   legacy-compatible providers (Volcengine Ark / DeepSeek, …) silently ignore the
+ *   newer field and would apply no cap (OmniRoute #6912/#6964).
+ * Precedence both directions: an explicitly set destination field always wins;
+ * the source field is still deleted so only one spelling reaches upstream.
  * @param {string} provider
  * @param {string} model
  * @param {object} body
  */
 export function applyParamRenames(provider, model, body) {
-  const rules = MODEL_PARAM_RENAMES[provider] || [];
-  for (const rule of rules) {
-    if (rule.match.test(model)) {
-      for (const [from, to] of Object.entries(rule.rename)) {
-        if (body[from] !== undefined && body[to] === undefined) {
-          body[to] = body[from];
-          delete body[from];
-        }
-      }
+  void provider; // direction is model-driven only (OmniRoute supportsMaxTokens parity)
+  if (MAX_TOKENS_UNSUPPORTED_MODEL.test(model)) {
+    if (body.max_tokens !== undefined) {
+      if (body.max_completion_tokens === undefined) body.max_completion_tokens = body.max_tokens;
+      delete body.max_tokens;
     }
+    return;
+  }
+
+  if (body.max_completion_tokens !== undefined) {
+    if (body.max_tokens === undefined) body.max_tokens = body.max_completion_tokens;
+    delete body.max_completion_tokens;
   }
 }

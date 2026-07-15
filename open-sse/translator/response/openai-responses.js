@@ -10,6 +10,16 @@ import { fallbackToolCallId } from "../concerns/toolCall.js";
 import { reasoningDelta, extractReasoningText } from "../concerns/reasoning.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, OPENAI_FINISH, MODEL_FALLBACK } from "../schema/index.js";
 
+/** Collect events while preserving the stream-wide sequence across deferred completion. */
+function createEventEmitter(state) {
+  const events = [];
+  const emit = (eventType, data) => {
+    data.sequence_number = ++state.seq;
+    events.push({ event: eventType, data });
+  };
+  return { events, emit };
+}
+
 /**
  * Translate OpenAI chunk to Responses API events
  * @returns {Array} Array of events with { event, data } structure
@@ -22,15 +32,19 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
   if (chunk.model) state.model = chunk.model;
   if (chunk.usage && typeof chunk.usage === "object") state.usage = chunk.usage;
   
-  if (!chunk.choices?.length) return [];
-  
-  const events = [];
-  const nextSeq = () => ++state.seq;
-  
-  const emit = (eventType, data) => {
-    data.sequence_number = nextSeq();
-    events.push({ event: eventType, data });
-  };
+  if (!chunk.choices?.length) {
+    // Usage-only chunks trail finish_reason when include_usage is enabled upstream.
+    // Complete only when usage was actually captured — an empty-choices chunk without
+    // usage (or before finish_reason deferred completion) must not complete early.
+    if (state.awaitingTrailingUsage && !state.completedSent && state.usage) {
+      const { events, emit } = createEventEmitter(state);
+      sendCompleted(state, emit);
+      return events;
+    }
+    return [];
+  }
+
+  const { events, emit } = createEventEmitter(state);
 
   const choice = chunk.choices[0];
   const idx = choice.index || 0;
@@ -117,7 +131,11 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     for (const i in state.msgItemAdded) closeMessage(state, emit, i);
     closeReasoning(state, emit);
     for (const i in state.funcCallIds) closeToolCall(state, emit, i);
-    sendCompleted(state, emit);
+    if (state.usage) {
+      sendCompleted(state, emit);
+    } else {
+      state.awaitingTrailingUsage = true;
+    }
   }
 
   return events;
@@ -354,12 +372,7 @@ function sendCompleted(state, emit) {
 function flushEvents(state) {
   if (state.completedSent) return [];
   
-  const events = [];
-  const nextSeq = () => ++state.seq;
-  const emit = (eventType, data) => {
-    data.sequence_number = nextSeq();
-    events.push({ event: eventType, data });
-  };
+  const { events, emit } = createEventEmitter(state);
 
   for (const i in state.msgItemAdded) closeMessage(state, emit, i);
   closeReasoning(state, emit);

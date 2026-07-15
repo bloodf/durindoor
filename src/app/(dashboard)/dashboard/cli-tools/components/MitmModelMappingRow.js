@@ -1,13 +1,4 @@
-const REASONING_OPTIONS = [
-  { value: "", label: "Default" },
-  { value: "none", label: "None" },
-  { value: "minimal", label: "Minimal" },
-  { value: "low", label: "Low" },
-  { value: "medium", label: "Medium" },
-  { value: "high", label: "High" },
-  { value: "xhigh", label: "XHigh" },
-  { value: "max", label: "Max" },
-];
+import { REASONING_OPTIONS } from "@/shared/constants/reasoningEffortOptions";
 
 export default function MitmModelMappingRow({
   model,

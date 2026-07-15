@@ -1,14 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { createRequire } from "module";
 import { MITM_TOOLS } from "../../src/shared/constants/cliTools.js";
+import { REASONING_OPTIONS } from "../../src/shared/constants/reasoningEffortOptions.js";
 
 // config.js is the CJS MITM bundle module (dependency-isolated for the runtime copy).
 const require = createRequire(import.meta.url);
 const { MODEL_NO_MAP } = require("../../src/mitm/config.js");
-const {
-  normalizeAliasMappings,
-  hasInvalidReasoningEffort,
-} = require("../../src/mitm/aliasConfig.js");
+const { REASONING_EFFORTS, normalizeAliasMappings, hasInvalidReasoningEffort } = require("../../src/mitm/aliasConfig.js");
 const { applyRequestOverrides } = require("../../src/mitm/handlers/antigravity.js");
 
 // All assertions below are grounded in a live MITM dump capture of Antigravity's
@@ -45,6 +43,11 @@ describe("Antigravity MITM model handling", () => {
 });
 
 describe("Antigravity MITM alias configuration", () => {
+  it("keeps UI reasoning options in sync with MITM validation", () => {
+    expect(REASONING_OPTIONS[0]).toEqual({ value: "", label: "Default" });
+    expect(REASONING_OPTIONS.map(({ value }) => value).filter(Boolean)).toEqual(REASONING_EFFORTS);
+  });
+
   it("normalizes legacy string mappings without a migration", () => {
     expect(normalizeAliasMappings({ flash: " cx/gpt-5.6-sol " })).toEqual({
       flash: { model: "cx/gpt-5.6-sol" },

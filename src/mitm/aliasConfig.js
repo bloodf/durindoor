@@ -1,4 +1,4 @@
-const REASONING_EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
+const REASONING_EFFORTS = require("../../open-sse/config/reasoningEfforts.json");
 const REASONING_EFFORT_SET = new Set(REASONING_EFFORTS);
 
 function normalizeReasoningEffort(value) {

@@ -225,7 +225,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
 
       const openAICompletion = responsesApiToOpenAICompletion(jsonResponse, model);
       const claudeCompat = shouldEnableClaudeCompat(claudeClassifierCompat, sourceFormat, body);
-      const finalResp = projectCompletionToClientFormat(openAICompletion, sourceFormat, { claudeCompat });
+      const finalResp = projectCompletionToClientFormat(openAICompletion, sourceFormat, { claudeCompat, model });
       logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "sse-json-responses", requestBody: body, translatedBody, providerBody: jsonResponse, clientBody: finalResp });
 
       const totalLatency = Date.now() - requestStartTime;
@@ -292,11 +292,10 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
     // When content is empty (e.g. thinking models that used all tokens for reasoning),
     // reasoning_content is the only useful output and must be preserved.
     // Previously this was unconditional, which broke Qwen3.5, Claude extended thinking, etc.
-    // For Claude source, the projector decides whether to surface reasoning as a
-    // `thinking` block based on claudeCompat — preserve reasoning_content here so
-    // the projector can emit it when compat is off (and suppress it when on).
+    // Match ordinary non-streaming cleanup before client-format projection:
+    // text-bearing completions return text only, while reasoning-only output remains useful.
     const claudeCompat = shouldEnableClaudeCompat(claudeClassifierCompat, sourceFormat, body);
-    if (!inlineThinking.configured && sourceFormat !== FORMATS.CLAUDE && parsed?.choices) {
+    if (sourceFormat !== FORMATS.CLAUDE && !inlineThinking.configured && parsed?.choices) {
       for (const choice of parsed.choices) {
         if (choice?.message?.reasoning_content && choice.message.content) {
           delete choice.message.reasoning_content;
@@ -304,7 +303,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       }
     }
 
-    const finalResp = projectCompletionToClientFormat(parsed, sourceFormat, { claudeCompat });
+    const finalResp = projectCompletionToClientFormat(parsed, sourceFormat, { claudeCompat, model });
     logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "sse-json-chat", requestBody: body, translatedBody, providerBody: parsed, clientBody: finalResp });
 
     await markSuccess();

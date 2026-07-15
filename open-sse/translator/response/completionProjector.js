@@ -1,6 +1,6 @@
 import { FORMATS } from "../formats.js";
 import { fromOpenAIFinish } from "../concerns/finishReason.js";
-import { GEMINI_FINISH, OPENAI_FINISH } from "../schema/finishReasons.js";
+import { CLAUDE_BLOCK, CLAUDE_STOP, GEMINI_FINISH, MODEL_FALLBACK, OPENAI_FINISH, ROLE } from "../schema/index.js";
 
 function parseArgs(value) {
   if (!value) return {};
@@ -33,40 +33,41 @@ function openAIToGeminiFinish(reason) {
   }
 }
 
-function openAICompletionToClaudeMessage(completion, { claudeCompat = false } = {}) {
+function openAICompletionToClaudeMessage(completion, { claudeCompat = false, model } = {}) {
   if (!completion?.choices?.[0]) return completion;
   const choice = getChoice(completion);
   const message = getMessage(completion);
   const content = [];
 
   const reasoning = message.reasoning_content || message.provider_specific_fields?.reasoning_content || "";
-  if (reasoning && !claudeCompat) content.push({ type: "thinking", thinking: reasoning });
+  if (reasoning && !claudeCompat) content.push({ type: CLAUDE_BLOCK.THINKING, thinking: reasoning });
   if (typeof message.content === "string" && message.content.length > 0) {
-    content.push({ type: "text", text: message.content });
+    content.push({ type: CLAUDE_BLOCK.TEXT, text: message.content });
   }
   for (const toolCall of getToolCalls(completion)) {
     const fn = toolCall.function || {};
     content.push({
-      type: "tool_use",
+      type: CLAUDE_BLOCK.TOOL_USE,
       id: toolCall.id || `toolu_${Date.now()}_${content.length}`,
       name: fn.name || toolCall.name || "",
       input: parseArgs(fn.arguments || toolCall.arguments),
     });
   }
-  if (content.length === 0) content.push({ type: "text", text: "" });
+  if (content.length === 0) content.push({ type: CLAUDE_BLOCK.TEXT, text: "" });
 
   const usage = completion.usage || {};
+  const rawId = String(completion.id || `msg_${Date.now()}`);
   return {
-    id: String(completion.id || `msg_${Date.now()}`).replace(/^chatcmpl-/, ""),
+    id: `msg_${rawId.replace(/^(?:msg_|chatcmpl-)/, "")}`,
     type: "message",
-    role: "assistant",
-    model: completion.model || "unknown",
+    role: ROLE.ASSISTANT,
+    model: model || completion.model || MODEL_FALLBACK,
     content,
-    stop_reason: fromOpenAIFinish(choice.finish_reason, FORMATS.CLAUDE),
+    stop_reason: fromOpenAIFinish(choice.finish_reason, FORMATS.CLAUDE) || CLAUDE_STOP.END_TURN,
     stop_sequence: null,
     usage: {
       input_tokens: usage.prompt_tokens || usage.input_tokens || 0,
-      output_tokens: usage.completion_tokens || usage.output_tokens || 0,
+      output_tokens: (usage.completion_tokens || usage.output_tokens || 0) + (usage.completion_tokens_details?.reasoning_tokens || 0),
     },
   };
 }

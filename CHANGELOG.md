@@ -1,3 +1,8 @@
+# Unreleased
+
+## Fixes
+- **Gemini**: omit unsupported thinking config for Gemma 4 on OpenAI-to-Gemini requests (OmniRoute #6708).
+
 # v1.1.0 (2026-07-14)
 
 First published DurinDoor release since v1.0.1. Includes the previously

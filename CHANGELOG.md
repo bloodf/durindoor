@@ -2,6 +2,7 @@
 
 ## Fixes
 - **Gemini**: omit unsupported thinking config for Gemma 4 on OpenAI-to-Gemini requests (OmniRoute #6708).
+- **Routing**: clamp reasoning-token headroom to explicit model output caps and isolate fallback attempts (#6714).
 
 # v1.1.0 (2026-07-14)
 

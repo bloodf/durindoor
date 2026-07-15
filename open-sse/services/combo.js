@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { checkFallbackError, formatRetryAfter } from "./accountFallback.js";
 import { unavailableResponse } from "../utils/error.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
+import { resolveReasoningBufferedMaxTokens } from "./reasoningTokenBuffer.js";
 import { extractTextContent } from "../translator/formats/gemini.js";
 import { isAutoComboId, familyOfAutoId, resolveAutoCombo } from "./autoComboResolver.js";
 
@@ -909,7 +910,14 @@ export async function handleComboChat({
     log.info("COMBO", `Trying model ${i + 1}/${rotatedModels.length}: ${modelStr}`);
 
     try {
-      const result = await handleSingleModel(body, modelStr);
+      // Buffer an isolated per-attempt body so fallbacks always start from the
+      // caller's original max_tokens value.
+      let attemptBody = body;
+      const nextMaxTokens = resolveReasoningBufferedMaxTokens(modelStr, body?.max_tokens);
+      if (nextMaxTokens !== null && nextMaxTokens !== body?.max_tokens) {
+        attemptBody = { ...body, max_tokens: nextMaxTokens };
+      }
+      const result = await handleSingleModel(attemptBody, modelStr);
 
       
       // Success (2xx) - return response

@@ -42,6 +42,26 @@ describe("stripUnsupportedParams", () => {
     ]);
   });
 
+  it.each([
+    ["Opus", "claude-opus-4-6"],
+    ["Sonnet", "claude-sonnet-4-6"],
+    ["Haiku", "claude-haiku-4-5-20251001"],
+  ])("drops temperature from Claude %s models while preserving unrelated fields", (_family, model) => {
+    const body = { temperature: 0.7, top_p: 1 };
+
+    stripUnsupportedParams("anthropic", model, body);
+
+    expect(body).toEqual({ top_p: 1 });
+  });
+
+  it("preserves temperature for GPT-4o", () => {
+    const body = { temperature: 0.7, top_p: 1 };
+
+    stripUnsupportedParams("openai", "gpt-4o", body);
+
+    expect(body).toEqual({ temperature: 0.7, top_p: 1 });
+  });
+
   it("still drops unsupported GitHub model params", () => {
     const body = { temperature: 0.7, top_p: 1 };
 

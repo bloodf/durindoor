@@ -6,13 +6,26 @@
 import { describe, expect, it, vi } from "vitest";
 import "../translator/registerAll.js";
 import { handleNonStreamingResponse } from "../../open-sse/handlers/chatCore/nonStreamingHandler.js";
+import { handleForcedSSEToJson } from "../../open-sse/handlers/chatCore/sseToJsonHandler.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
+import { getDefaultModel } from "../../open-sse/config/providerModels.js";
+import { PROVIDERS } from "../../open-sse/config/providers.js";
+import { CLAUDE_BLOCK } from "../../open-sse/translator/schema/blocks.js";
+import { CLAUDE_STOP, GEMINI_FINISH, OPENAI_FINISH } from "../../open-sse/translator/schema/finishReasons.js";
+import { GEMINI_ROLE, ROLE } from "../../open-sse/translator/schema/roles.js";
 
 vi.mock("@/lib/usageDb.js", () => ({
   appendRequestLog: vi.fn(() => Promise.resolve()),
   saveRequestDetail: vi.fn(() => Promise.resolve()),
   saveRequestUsage: vi.fn(() => Promise.resolve()),
 }));
+
+const GALADRIEL_MODEL = getDefaultModel("galadriel");
+const ROUTED_MODEL = "MiniMax-M3";
+const GEMINI_MODELS = {
+  [FORMATS.GEMINI]: getDefaultModel("gemini"),
+  [FORMATS.ANTIGRAVITY]: getDefaultModel("ag"),
+};
 
 function makeProviderResponse(body) {
   const clone = JSON.parse(JSON.stringify(body));
@@ -218,31 +231,127 @@ describe("handleNonStreamingResponse: synthetic SSE respects client format", () 
     expect(msg.content).toBe("visible answer");
   });
 
-  it("extracts before OpenAI-to-Claude projection", async () => {
+  it("preserves routed Claude metadata, mixed content order, and reasoning usage", async () => {
     const thinkCompletion = {
       ...openaiCompletion,
-      model: "MiniMax-M3",
+      id: "chatcmpl-combo-response",
+      model: "upstream-model",
       choices: [{
         index: 0,
-        message: { role: "assistant", content: "<think>planning step</think>visible answer" },
-        finish_reason: "stop",
+        message: { role: ROLE.ASSISTANT, reasoning_content: "planning step", content: "visible answer" },
+        finish_reason: OPENAI_FINISH.STOP,
       }],
+      usage: {
+        prompt_tokens: 4,
+        completion_tokens: 7,
+        total_tokens: 11,
+        completion_tokens_details: { reasoning_tokens: 5 },
+        prompt_tokens_details: { cached_tokens: 3 },
+      },
     };
     const result = await handleNonStreamingResponse(baseOptions({
       providerResponse: makeProviderResponse(thinkCompletion),
       provider: "minimax-cn",
-      model: "MiniMax-M3",
-      body: { model: "MiniMax-M3", messages: [] },
+      model: ROUTED_MODEL,
+      body: { model: ROUTED_MODEL, messages: [] },
       sourceFormat: FORMATS.CLAUDE,
       targetFormat: FORMATS.OPENAI,
       streamToClient: false,
     }));
     const body = await result.response.json();
-    expect(body.type).toBe("message");
+    expect(body).toMatchObject({
+      id: "msg_combo-response",
+      type: "message",
+      role: ROLE.ASSISTANT,
+      model: ROUTED_MODEL,
+      stop_reason: CLAUDE_STOP.END_TURN,
+    });
+    expect(body.id).toMatch(/^msg_/);
     expect(body.content).toEqual([
-      { type: "text", text: "visible answer" },
-      { type: "thinking", thinking: "planning step" },
+      { type: CLAUDE_BLOCK.THINKING, thinking: "planning step" },
+      { type: CLAUDE_BLOCK.TEXT, text: "visible answer" },
     ]);
+    expect(body.usage).toEqual({ input_tokens: 4, output_tokens: 12, cache_read_input_tokens: 3 });
+  });
+
+  it("passes an existing Claude message through the full handler unchanged", async () => {
+    const claudeMessage = {
+      id: "msg-native",
+      type: "message",
+      role: ROLE.ASSISTANT,
+      model: "claude-native",
+      content: [{ type: CLAUDE_BLOCK.TEXT, text: "native answer" }],
+      stop_reason: CLAUDE_STOP.END_TURN,
+      usage: { input_tokens: 2, output_tokens: 3 },
+    };
+    const result = await handleNonStreamingResponse(baseOptions({
+      providerResponse: makeProviderResponse(claudeMessage),
+      sourceFormat: FORMATS.CLAUDE,
+      targetFormat: FORMATS.CLAUDE,
+      streamToClient: false,
+    }));
+    const response = await result.response.json();
+
+    expect(response.id).toBe(claudeMessage.id);
+    expect(response.model).toBe(claudeMessage.model);
+    expect(response.content).toEqual(claudeMessage.content);
+    expect(response.stop_reason).toBe(claudeMessage.stop_reason);
+    expect(response.usage).toEqual(claudeMessage.usage);
+  });
+
+  it("rejects an upstream response with no choices through the full handler", async () => {
+    const upstreamResponse = { id: "chatcmpl-empty" };
+    const options = baseOptions({
+      providerResponse: makeProviderResponse(upstreamResponse),
+      sourceFormat: FORMATS.CLAUDE,
+      targetFormat: FORMATS.OPENAI,
+      streamToClient: false,
+    });
+
+    const result = await handleNonStreamingResponse(options);
+
+    expect(result).toMatchObject({
+      success: false,
+      status: 502,
+      error: "Provider returned an incoherent non-streaming response",
+    });
+    expect(options.trackDone).toHaveBeenCalledOnce();
+  });
+
+  it("validates before running the SenseNova response normalizer", async () => {
+    const normalizeResponse = vi.spyOn(PROVIDERS.sensenova, "normalizeResponse");
+    try {
+      const malformed = await handleNonStreamingResponse(baseOptions({
+        providerResponse: makeProviderResponse({}),
+        provider: "sensenova",
+        sourceFormat: FORMATS.OPENAI,
+        targetFormat: FORMATS.OPENAI,
+        streamToClient: false,
+      }));
+
+      expect(malformed).toMatchObject({
+        success: false,
+        status: 502,
+        error: "Provider returned an incoherent non-streaming response",
+      });
+      expect(normalizeResponse).not.toHaveBeenCalled();
+
+      const valid = await handleNonStreamingResponse(baseOptions({
+        providerResponse: makeProviderResponse({
+          choices: [{ message: { role: "assistant", content: "", reasoning: "why" }, finish_reason: "stop" }],
+        }),
+        provider: "sensenova",
+        sourceFormat: FORMATS.OPENAI,
+        targetFormat: FORMATS.OPENAI,
+        streamToClient: false,
+      }));
+
+      expect(valid.success).toBe(true);
+      expect(normalizeResponse).toHaveBeenCalledOnce();
+      expect((await valid.response.json()).choices[0].message.reasoning_content).toBe("why");
+    } finally {
+      normalizeResponse.mockRestore();
+    }
   });
 
   it("synthesizes extracted reasoning into SSE exactly once", async () => {
@@ -377,6 +486,110 @@ describe("handleNonStreamingResponse: synthetic SSE respects client format", () 
     expect(body.type).toBe("message");
     expect(body.content).toEqual([{ type: "text", text: "hello" }]);
   });
+
+  it("returns Claude JSON when an OpenAI upstream forces SSE", async () => {
+    const chunks = [
+      {
+        id: "chatcmpl-forced",
+        object: "chat.completion.chunk",
+        created: 123,
+        model: "upstream-forced-model",
+        choices: [{
+          index: 0,
+          delta: { role: "assistant", reasoning_content: "considering" },
+          finish_reason: null,
+        }],
+      },
+      {
+        id: "chatcmpl-forced",
+        object: "chat.completion.chunk",
+        created: 123,
+        model: "upstream-forced-model",
+        choices: [{ index: 0, delta: { content: "forced answer" }, finish_reason: null }],
+      },
+      {
+        id: "chatcmpl-forced",
+        object: "chat.completion.chunk",
+        created: 123,
+        model: "upstream-forced-model",
+        choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+        usage: {
+          prompt_tokens: 4,
+          completion_tokens: 7,
+          total_tokens: 11,
+          completion_tokens_details: { reasoning_tokens: 5 },
+        },
+      },
+    ];
+    const raw = `${chunks.map((chunk) => `data: ${JSON.stringify(chunk)}`).join("\n\n")}\n\ndata: [DONE]\n\n`;
+    const result = await handleForcedSSEToJson({
+      providerResponse: new Response(raw, { headers: { "content-type": "text/event-stream" } }),
+      sourceFormat: FORMATS.CLAUDE,
+      targetFormat: FORMATS.OPENAI,
+      provider: "galadriel",
+      model: ROUTED_MODEL,
+      body: { model: ROUTED_MODEL, messages: [], stream: false },
+      stream: false,
+      translatedBody: null,
+      finalBody: null,
+      requestStartTime: Date.now(),
+      connectionId: "connection-test",
+      apiKey: null,
+      clientRawRequest: { endpoint: "/v1/messages" },
+      onRequestSuccess: vi.fn(() => Promise.resolve()),
+      trackDone: vi.fn(),
+      appendLog: vi.fn(),
+      toolNameMap: null,
+      reqTag: "test",
+      log: null,
+      usageEventId: "usage-test",
+      terminalProvenance: "upstream",
+    });
+
+    expect(result.response.headers.get("Content-Type")).toBe("application/json");
+    const responseBody = await result.response.json();
+    expect(responseBody).toMatchObject({
+      id: "msg_forced",
+      type: "message",
+      role: ROLE.ASSISTANT,
+      model: ROUTED_MODEL,
+      stop_reason: CLAUDE_STOP.END_TURN,
+    });
+    expect(responseBody.content).toEqual([
+      { type: CLAUDE_BLOCK.THINKING, thinking: "considering" },
+      { type: CLAUDE_BLOCK.TEXT, text: "forced answer" },
+    ]);
+    expect(responseBody.usage).toEqual({ input_tokens: 4, output_tokens: 12 });
+  });
+
+  it.each([FORMATS.GEMINI, FORMATS.ANTIGRAVITY])(
+    "returns Claude JSON for a Claude client routed through a %s provider",
+    async (targetFormat) => {
+      const providerBody = {
+        candidates: [{
+          content: { role: GEMINI_ROLE.MODEL, parts: [{ text: "combo answer" }] },
+          finishReason: GEMINI_FINISH.STOP,
+          index: 0,
+        }],
+        usageMetadata: { promptTokenCount: 4, candidatesTokenCount: 2, totalTokenCount: 6 },
+        modelVersion: GEMINI_MODELS[targetFormat],
+        responseId: "combo-response",
+      };
+      const result = await handleNonStreamingResponse(baseOptions({
+        providerResponse: makeProviderResponse(providerBody),
+        sourceFormat: FORMATS.CLAUDE,
+        targetFormat,
+        streamToClient: false,
+      }));
+
+      const responseBody = await result.response.json();
+      expect(responseBody.type).toBe("message");
+      expect(responseBody.content).toEqual([{ type: CLAUDE_BLOCK.TEXT, text: "combo answer" }]);
+      expect(responseBody.stop_reason).toBe(CLAUDE_STOP.END_TURN);
+      expect(responseBody.usage).toEqual({ input_tokens: 4, output_tokens: 2 });
+      expect(responseBody.choices).toBeUndefined();
+    },
+  );
 
   it("normalizes Claude usage and tool terminal semantics for an OpenAI stream", async () => {
     const claudeCompletion = {

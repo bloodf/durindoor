@@ -1,3 +1,8 @@
+import { ROLE } from "../schema/roles.js";
+import { CLAUDE_BLOCK } from "../schema/blocks.js";
+import { CLAUDE_STOP, OPENAI_FINISH } from "../schema/finishReasons.js";
+import { MODEL_FALLBACK } from "../schema/defaults.js";
+
 /**
  * Convert non-streaming OpenAI Chat Completions response to Anthropic Messages format.
  * Used when client speaks Claude format but upstream provider speaks OpenAI format.
@@ -5,23 +10,21 @@
  * Input:  OpenAI Chat Completions JSON  {object:"chat.completion", choices:[{message:{...}}]}
  * Output: Anthropic Messages JSON        {id:"msg_...", type:"message", content:[...]}
  */
-export function translateOpenAIToClaudeIfNeeded(responseBody, sourceFormat) {
+export function translateOpenAIToClaudeIfNeeded(responseBody, sourceFormat, options = {}) {
   if (!responseBody || !responseBody.choices?.[0]) return responseBody;
 
   const choice = responseBody.choices[0];
   const msg = choice.message || {};
-  const finishReason = choice.finish_reason || "stop";
+  const finishReason = choice.finish_reason || OPENAI_FINISH.STOP;
 
   const content = [];
 
-  // Text content
-  if (typeof msg.content === "string" && msg.content.length > 0) {
-    content.push({ type: "text", text: msg.content });
-  }
-
-  // Reasoning / thinking content
+  // Claude emits thinking before visible text for mixed content.
   if (typeof msg.reasoning_content === "string" && msg.reasoning_content.length > 0) {
-    content.push({ type: "thinking", thinking: msg.reasoning_content });
+    content.push({ type: CLAUDE_BLOCK.THINKING, thinking: msg.reasoning_content });
+  }
+  if (typeof msg.content === "string" && msg.content.length > 0) {
+    content.push({ type: CLAUDE_BLOCK.TEXT, text: msg.content });
   }
 
   // Tool calls
@@ -32,7 +35,7 @@ export function translateOpenAIToClaudeIfNeeded(responseBody, sourceFormat) {
         try { input = JSON.parse(tc.function.arguments); } catch { input = {}; }
       }
       content.push({
-        type: "tool_use",
+        type: CLAUDE_BLOCK.TOOL_USE,
         id: tc.id || `call_${tc.function?.name || "unknown"}_${Date.now()}`,
         name: tc.function?.name || "unknown",
         input
@@ -42,29 +45,36 @@ export function translateOpenAIToClaudeIfNeeded(responseBody, sourceFormat) {
 
   // If no content blocks at all, add empty text block (Anthropic requires at least one)
   if (content.length === 0) {
-    content.push({ type: "text", text: "" });
+    content.push({ type: CLAUDE_BLOCK.TEXT, text: "" });
   }
 
   const stopReasonMap = {
-    "stop": "end_turn",
-    "length": "max_tokens",
-    "tool_calls": "tool_use",
-    "content_filter": "end_turn",
+    [OPENAI_FINISH.STOP]: CLAUDE_STOP.END_TURN,
+    [OPENAI_FINISH.LENGTH]: CLAUDE_STOP.MAX_TOKENS,
+    [OPENAI_FINISH.TOOL_CALLS]: CLAUDE_STOP.TOOL_USE,
+    [OPENAI_FINISH.CONTENT_FILTER]: CLAUDE_STOP.END_TURN,
   };
 
   const usage = responseBody.usage || {};
+  const rawId = String(responseBody.id || "").replace(/^chatcmpl-/, "");
+  const claudeUsage = {};
+  if (usage.prompt_tokens != null) {
+    claudeUsage.input_tokens = usage.prompt_tokens;
+    claudeUsage.output_tokens = (usage.completion_tokens || 0)
+      + (usage.completion_tokens_details?.reasoning_tokens || 0);
+    if (usage.prompt_tokens_details?.cached_tokens) {
+      claudeUsage.cache_read_input_tokens = usage.prompt_tokens_details.cached_tokens;
+    }
+  }
 
   return {
-    id: (responseBody.id || `msg_${Date.now()}`).replace(/^chatcmpl-/, "msg_"),
+    id: `msg_${rawId || Date.now()}`,
     type: "message",
-    role: "assistant",
+    role: ROLE.ASSISTANT,
     content,
-    model: responseBody.model || "claude",
-    stop_reason: stopReasonMap[finishReason] || "end_turn",
+    model: options.model || responseBody.model || MODEL_FALLBACK,
+    stop_reason: stopReasonMap[finishReason] || CLAUDE_STOP.END_TURN,
     stop_sequence: null,
-    usage: {
-      input_tokens: usage.prompt_tokens || 0,
-      output_tokens: usage.completion_tokens || 0,
-    }
+    usage: claudeUsage
   };
 }

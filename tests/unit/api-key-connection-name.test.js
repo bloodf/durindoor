@@ -3,7 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 
-import { apiKeyConnectionNames, allocateBulkConnectionName, bulkUsedNameSet, defaultApiKeyConnectionName, shouldResetAddApiKeyModal } from "../../src/app/(dashboard)/dashboard/providers/[id]/apiKeyConnectionName.js";
+import {
+  allocateBulkConnectionName,
+  apiKeyConnectionNames,
+  bulkUsedNameSet,
+  buildAddApiKeyModalReset,
+  defaultApiKeyConnectionName,
+} from "../../src/app/(dashboard)/dashboard/providers/[id]/apiKeyConnectionName.js";
 
 describe("API-key connection default names", () => {
   it("uses main for the first connection", () => {
@@ -229,10 +235,30 @@ describe("POST /api/providers createOnly plumbing", () => {
 });
 
 describe("Add API-key modal reset guard", () => {
-  it("resets only when the modal transitions from closed to open", () => {
-    expect(shouldResetAddApiKeyModal(false, true)).toBe(true);
-    expect(shouldResetAddApiKeyModal(true, true)).toBe(false);
-    expect(shouldResetAddApiKeyModal(true, false)).toBe(false);
-    expect(shouldResetAddApiKeyModal(false, false)).toBe(false);
+  it("returns fresh default state only on closed→open transition", () => {
+    expect(buildAddApiKeyModalReset(false, true, ["main"], "us-east-1")).toMatchObject({
+      formData: {
+        name: "main-2",
+        apiKey: "",
+        defaultModel: "",
+        priority: 1,
+        proxyPoolId: "__none__",
+        ollamaHostUrl: "",
+      },
+      azureData: {
+        azureEndpoint: "",
+        apiVersion: "2024-10-01-preview",
+        deployment: "",
+        organization: "",
+      },
+      accountIdData: { accountId: "" },
+      region: "us-east-1",
+    });
+  });
+
+  it("does not reset when not transitioning from closed to open", () => {
+    expect(buildAddApiKeyModalReset(true, true, ["main"], "us-east-1")).toBeNull();
+    expect(buildAddApiKeyModalReset(true, false, ["main"], "us-east-1")).toBeNull();
+    expect(buildAddApiKeyModalReset(false, false, ["main"], "us-east-1")).toBeNull();
   });
 });

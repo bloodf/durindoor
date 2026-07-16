@@ -19,6 +19,32 @@ export function defaultApiKeyConnectionName(existingConnectionNames = []) {
   }
 }
 
+export function createAddApiKeyModalInitialState(existingConnectionNames = [], defaultRegion = "") {
+  return {
+    formData: {
+      name: defaultApiKeyConnectionName(existingConnectionNames),
+      apiKey: "",
+      defaultModel: "",
+      priority: 1,
+      proxyPoolId: "__none__",
+      ollamaHostUrl: "",
+    },
+    azureData: {
+      azureEndpoint: "",
+      apiVersion: "2024-10-01-preview",
+      deployment: "",
+      organization: "",
+    },
+    accountIdData: { accountId: "" },
+    region: defaultRegion,
+  };
+}
+
+export function buildAddApiKeyModalReset(wasOpen, isOpen, existingConnectionNames = [], defaultRegion = "") {
+  if (!shouldResetAddApiKeyModal(wasOpen, isOpen)) return null;
+  return createAddApiKeyModalInitialState(existingConnectionNames, defaultRegion);
+}
+
 export function shouldResetAddApiKeyModal(previousIsOpen, nextIsOpen) {
   return !previousIsOpen && nextIsOpen;
 }

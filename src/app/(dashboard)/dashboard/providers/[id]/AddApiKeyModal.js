@@ -5,7 +5,12 @@ import PropTypes from "prop-types";
 import { Button, Badge, Input, Modal, Select } from "@/shared/components";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { parseBulkApiKeyLine, requiresProviderAccountId } from "@/lib/providerAccountIds";
-import { allocateBulkConnectionName, bulkUsedNameSet, defaultApiKeyConnectionName, shouldResetAddApiKeyModal } from "./apiKeyConnectionName";
+import {
+  allocateBulkConnectionName,
+  bulkUsedNameSet,
+  buildAddApiKeyModalReset,
+  createAddApiKeyModalInitialState,
+} from "./apiKeyConnectionName";
 
 const BULK_PLACEHOLDER = `name1|sk-key1\nname2|sk-key2\nsk-key-only-auto-named`;
 
@@ -26,22 +31,11 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const providerRegions = AI_PROVIDERS?.[provider]?.regions || null;
   const defaultRegion = AI_PROVIDERS?.[provider]?.defaultRegion || providerRegions?.[0]?.id || "";
 
-  const [formData, setFormData] = useState({
-    name: "",
-    apiKey: "",
-    defaultModel: "",
-    priority: 1,
-    proxyPoolId: NONE_PROXY_POOL_VALUE,
-    ollamaHostUrl: "",
-  });
-  const [azureData, setAzureData] = useState({
-    azureEndpoint: "",
-    apiVersion: "2024-10-01-preview",
-    deployment: "",
-    organization: "",
-  });
-  const [accountIdData, setAccountIdData] = useState({ accountId: "" });
-  const [region, setRegion] = useState(defaultRegion);
+  const initialState = createAddApiKeyModalInitialState(existingConnectionNames, defaultRegion);
+  const [formData, setFormData] = useState(initialState.formData);
+  const [azureData, setAzureData] = useState(initialState.azureData);
+  const [accountIdData, setAccountIdData] = useState(initialState.accountIdData);
+  const [region, setRegion] = useState(initialState.region);
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -53,20 +47,22 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const [bulkText, setBulkText] = useState("");
   const [bulkResult, setBulkResult] = useState(null); // { success, failed }
 
-  // #6499 — pre-fill a unique default name from the provider's existing API-key
-  // connection names ("main", "main-2", …) so the modal doesn't re-offer a
-  // taken name. Reset only on closed→open so a background refetch never
-  // clobbers a typed name. The API enforces create-only (409); this is UX.
+  // #6499 — on closed→open, pre-fill a unique default name and reset all
+  // credential/provider-specific fields so stale secrets cannot create a
+  // duplicate connection. Background refetches while the modal is open do not
+  // trigger this reset, so typed inputs are preserved. The API still enforces
+  // create-only (409); this is UX.
   const wasOpenRef = useRef(false);
   useEffect(() => {
     const wasOpen = wasOpenRef.current;
     wasOpenRef.current = isOpen;
-    if (!shouldResetAddApiKeyModal(wasOpen, isOpen)) return;
-    setFormData((current) => ({
-      ...current,
-      name: defaultApiKeyConnectionName(existingConnectionNames),
-    }));
-  }, [isOpen, existingConnectionNames]);
+    const reset = buildAddApiKeyModalReset(wasOpen, isOpen, existingConnectionNames, defaultRegion);
+    if (!reset) return;
+    setFormData(reset.formData);
+    setAzureData(reset.azureData);
+    setAccountIdData(reset.accountIdData);
+    setRegion(reset.region);
+  }, [isOpen, existingConnectionNames, defaultRegion]);
 
   const buildProviderSpecificData = () => {
     if (isOllamaLocal && formData.ollamaHostUrl.trim()) {

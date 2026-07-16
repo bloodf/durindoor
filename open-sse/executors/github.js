@@ -210,7 +210,14 @@ export class GithubExecutor extends BaseExecutor {
     // client asked for stream:false.
     const headers = this.buildHeaders(credentials, true);
 
-    const transformedBody = translateRequest(FORMATS.OPENAI, FORMATS.CLAUDE, model, body, true, credentials, "github");
+    // Strip params GitHub's Claude route rejects (temperature, and thinking/
+    // reasoning_effort for non-4.6 Claude) BEFORE translating — the normal
+    // /chat/completions path does this in transformRequest() (line ~133); the
+    // /v1/messages path bypasses that, so without this a request carrying
+    // temperature/thinking 400s only on this route. Clone so we never mutate the
+    // caller's body. translateRequest then copies only the fields it knows.
+    const strippedBody = stripUnsupportedParams("github", model, { ...body });
+    const transformedBody = translateRequest(FORMATS.OPENAI, FORMATS.CLAUDE, model, strippedBody, true, credentials, "github");
     // _toolNameMap is internal bookkeeping (see openai-to-claude.js) — chatCore
     // normally strips it before dispatch and threads it into the response state to
     // restore original tool names; do the same here or Anthropic's strict schema

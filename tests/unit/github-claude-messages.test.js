@@ -260,4 +260,101 @@ describe("GithubExecutor native Claude /v1/messages routing (upstream #2608)", (
     expect(out).toContain('"prompt_tokens_details":{"cached_tokens":7}');
     expect(out).toContain("[DONE]");
   });
+
+  it("strips unsupported params before /v1/messages on non-4.6 Claude (Codex P1)", async () => {
+    // Non-4.6 model: temperature dropped for ALL Claude; thinking/reasoning_effort
+    // dropped for github-Claude EXCEPT opus/sonnet 4.6 — use claude-sonnet-4.5 so
+    // all three strip rules fire (a 4.6 model would legitimately keep thinking).
+    proxyAwareFetch.mockResolvedValueOnce(claudeSSE([MSG_START, TEXT_START, TEXT_DELTA("hi"), TEXT_STOP, MSG_DELTA, MSG_STOP]));
+    const exec = new GithubExecutor();
+
+    await exec.execute({
+      model: "claude-sonnet-4.5",
+      body: {
+        model: "claude-sonnet-4.5",
+        messages: [{ role: "user", content: "hi" }],
+        temperature: 0.7,                  // Claude rejects temperature upstream (400)
+        thinking: { budget_tokens: 2048 }, // non-4.6 GitHub Claude rejects thinking
+        reasoning_effort: "high",          // non-4.6 GitHub Claude rejects reasoning_effort
+      },
+      stream: true,
+      credentials,
+      signal: null,
+      log: null,
+    });
+
+    const sent = JSON.parse(proxyAwareFetch.mock.calls[0][1].body);
+    expect(sent.temperature).toBeUndefined();
+    expect(sent.thinking).toBeUndefined();
+    expect(sent.reasoning_effort).toBeUndefined();
+  });
+
+  it("honors max_completion_tokens cap exactly when max_tokens absent (Codex P2)", async () => {
+    proxyAwareFetch.mockResolvedValueOnce(claudeSSE([MSG_START, TEXT_START, TEXT_DELTA("hi"), TEXT_STOP, MSG_DELTA, MSG_STOP]));
+    const exec = new GithubExecutor();
+
+    // No tools → no DEFAULT_MIN_TOKENS bump, so max_tokens must equal the exact cap.
+    await exec.execute({
+      model: "claude-sonnet-4.6",
+      body: {
+        model: "claude-sonnet-4.6",
+        messages: [{ role: "user", content: "hi" }],
+        max_completion_tokens: 32,
+      },
+      stream: true,
+      credentials,
+      signal: null,
+      log: null,
+    });
+
+    const sent = JSON.parse(proxyAwareFetch.mock.calls[0][1].body);
+    expect(sent.max_tokens).toBe(32);
+    expect(sent.max_completion_tokens).toBeUndefined();
+  });
+
+  it("maps stop array and tool_choice \"none\" to Anthropic shapes (Codex P2)", async () => {
+    proxyAwareFetch.mockResolvedValueOnce(claudeSSE([MSG_START, TEXT_START, TEXT_DELTA("hi"), TEXT_STOP, MSG_DELTA, MSG_STOP]));
+    const exec = new GithubExecutor();
+
+    await exec.execute({
+      model: "claude-sonnet-4.6",
+      body: {
+        model: "claude-sonnet-4.6",
+        messages: [{ role: "user", content: "hi" }],
+        stop: ["\n\n", "END"],
+        tools: [{ type: "function", function: { name: "get_time", parameters: { type: "object", properties: {} } } }],
+        tool_choice: "none",
+      },
+      stream: true,
+      credentials,
+      signal: null,
+      log: null,
+    });
+
+    const sent = JSON.parse(proxyAwareFetch.mock.calls[0][1].body);
+    expect(sent.stop_sequences).toEqual(["\n\n", "END"]);
+    expect(sent.stop).toBeUndefined();
+    // tool_choice "none" → Anthropic { type: "none" } (never "auto").
+    expect(sent.tool_choice).toEqual({ type: "none" });
+  });
+
+  it("maps stop given as a bare string and ignores explicit stop:null", async () => {
+    // Fresh Response per call — a single shared Response body is locked/consumed by
+    // the first read, so the second execute must get its own.
+    proxyAwareFetch
+      .mockResolvedValueOnce(claudeSSE([MSG_START, TEXT_START, TEXT_DELTA("hi"), TEXT_STOP, MSG_DELTA, MSG_STOP]))
+      .mockResolvedValueOnce(claudeSSE([MSG_START, TEXT_START, TEXT_DELTA("hi"), TEXT_STOP, MSG_DELTA, MSG_STOP]));
+    const exec = new GithubExecutor();
+    const base = { model: "claude-sonnet-4.6", messages: [{ role: "user", content: "hi" }] };
+
+    // String stop → single-element stop_sequences.
+    await exec.execute({ model: "claude-sonnet-4.6", body: { ...base, stop: "STOP" }, stream: true, credentials, signal: null, log: null });
+    let sent = JSON.parse(proxyAwareFetch.mock.calls[0][1].body);
+    expect(sent.stop_sequences).toEqual(["STOP"]);
+
+    // Explicit stop:null (valid OpenAI, means "no stops") → NO stop_sequences, never [null].
+    await exec.execute({ model: "claude-sonnet-4.6", body: { ...base, stop: null }, stream: true, credentials, signal: null, log: null });
+    sent = JSON.parse(proxyAwareFetch.mock.calls[1][1].body);
+    expect(sent.stop_sequences).toBeUndefined();
+  });
 });

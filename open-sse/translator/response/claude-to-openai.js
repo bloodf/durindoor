@@ -60,6 +60,11 @@ export function claudeToOpenAIResponse(chunk, state) {
       if (block?.type === CLAUDE_BLOCK.TEXT) {
         state.textBlockStarted = true;
       } else if (block?.type === CLAUDE_BLOCK.THINKING) {
+        // Track the thinking block internally only. Thinking text flows through
+        // reasoning_content (see thinking_delta below) — never inject literal
+        // <think>/</think> markers into content. They leak as visible text to any
+        // external OpenAI consumer and displace the thinking block from first
+        // position when a downstream proxy rebuilds a Claude message.
         state.inThinkingBlock = true;
         state.currentBlockIndex = chunk.index;
       } else if (block?.type === CLAUDE_BLOCK.TOOL_USE) {
@@ -112,6 +117,10 @@ export function claudeToOpenAIResponse(chunk, state) {
         break;
       }
       if (state.inThinkingBlock && chunk.index === state.currentBlockIndex) {
+        // End of thinking is signaled by state, not by a literal </think> text
+        // chunk. Consumers that need an explicit "reasoning ended" event (#454)
+        // detect the reasoning_content → content transition instead
+        // (see openai-responses.js).
         state.inThinkingBlock = false;
       }
       state.textBlockStarted = false;

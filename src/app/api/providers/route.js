@@ -103,7 +103,7 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const provider = normalizeProviderId(body.provider);
-    const { apiKey, name, displayName, priority, globalPriority, defaultModel, testStatus } = body;
+    const { apiKey, name, displayName, priority, globalPriority, defaultModel, testStatus, createOnly } = body;
     const proxyConfig = normalizeProxyConfig(body);
     if (proxyConfig.error) {
       return NextResponse.json({ error: proxyConfig.error }, { status: 400 });
@@ -206,6 +206,9 @@ export async function POST(request) {
       mergedProviderSpecificData.proxyPoolId = proxyPoolId;
     }
 
+    // Bulk add sends createOnly so a name collision never silently overwrites
+    // an existing key — the repo throws PROVIDER_CONNECTION_NAME_CONFLICT and
+    // we surface a 409 instead of the default upsert.
     const newConnection = await createProviderConnection({
       provider,
       authType: isWebCookieProvider ? "cookie" : "apikey",
@@ -217,13 +220,16 @@ export async function POST(request) {
       providerSpecificData: mergedProviderSpecificData,
       isActive: true,
       testStatus: testStatus || "unknown",
-    });
+    }, { requireNewName: createOnly === true });
 
     // Hide sensitive fields
     const result = sanitizeProviderConnection(newConnection);
 
     return NextResponse.json({ connection: result }, { status: 201 });
   } catch (error) {
+    if (error?.code === "PROVIDER_CONNECTION_NAME_CONFLICT") {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 409 });
+    }
     console.log("Error creating provider:", error);
     return NextResponse.json({ error: "Failed to create provider" }, { status: 500 });
   }

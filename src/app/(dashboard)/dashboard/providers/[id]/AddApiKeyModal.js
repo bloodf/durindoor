@@ -5,6 +5,7 @@ import PropTypes from "prop-types";
 import { Button, Badge, Input, Modal, Select } from "@/shared/components";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { parseBulkApiKeyLine, requiresProviderAccountId } from "@/lib/providerAccountIds";
+import { allocateBulkConnectionName, bulkUsedNameSet } from "./apiKeyConnectionName";
 
 const BULK_PLACEHOLDER = `name1|sk-key1\nname2|sk-key2\nsk-key-only-auto-named`;
 
@@ -140,29 +141,68 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     if (!lines.length) return;
     setSaving(true);
     setBulkResult(null);
-    let success = 0;
-    let failed = 0;
+
+    // Preflight: fetch this provider's current apikey connection names so the
+    // planner can gap-fill collision-free "<base> <n>" names. The backend
+    // upserts apikey connections by name within a provider, so planning from a
+    // stale/empty list could overwrite an existing key. Abort the whole batch
+    // if the preflight GET fails rather than risk an overwrite.
+    let usedNames;
+    try {
+      const res = await fetch("/api/providers");
+      if (!res.ok) throw new Error("preflight failed");
+      const data = await res.json();
+      // Malformed payload (non-array connections) must abort, not plan from an
+      // empty list — planning blind could overwrite an existing key.
+      if (!data || !Array.isArray(data.connections)) throw new Error("preflight malformed");
+      const existingNames = data.connections
+        .filter((c) => c && c.provider === provider && c.authType === "apikey")
+        .map((c) => c.name);
+      usedNames = bulkUsedNameSet(existingNames);
+    } catch {
+      setSaving(false);
+      setBulkResult({ success: 0, failed: lines.length, preflightError: true });
+      return;
+    }
+
+    // Plan the ENTIRE batch before the first POST: parse + validate every
+    // nonblank line and allocate its collision-free name (against existing
+    // names and names allocated to earlier entries in this same batch). If any
+    // line is invalid, write zero entries and report the failure — no partial
+    // batch caused by a malformed trailing line.
+    const plan = [];
     for (let i = 0; i < lines.length; i++) {
       let parsed;
       try {
         parsed = parseBulkApiKeyLine(lines[i], i, provider);
       } catch {
-        failed++;
-        continue;
+        setSaving(false);
+        setBulkResult({ success: 0, failed: lines.length, planError: true });
+        return;
       }
-      const { name, apiKey, providerSpecificData } = parsed;
+      const base = parsed.name.replace(/ \d+$/, "");
+      plan.push({
+        name: allocateBulkConnectionName(base, usedNames),
+        apiKey: parsed.apiKey,
+        providerSpecificData: parsed.providerSpecificData,
+      });
+    }
 
+    let success = 0;
+    let failed = 0;
+    for (const entry of plan) {
       try {
         const res = await fetch("/api/providers", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             provider,
-            apiKey,
-            name,
+            apiKey: entry.apiKey,
+            name: entry.name,
             priority: 1,
             testStatus: "unknown",
-            ...(providerSpecificData ? { providerSpecificData } : {}),
+            createOnly: true,
+            ...(entry.providerSpecificData ? { providerSpecificData: entry.providerSpecificData } : {}),
           }),
         });
         if (res.ok) success++;

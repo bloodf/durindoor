@@ -132,6 +132,137 @@ export function resolveRetryEntry(entry) {
   };
 }
 
+// ─── Provider skip-error rules + transport retry policy (9router #2588) ─────
+// A skip-rule is { provider, match: { kind?, status?, contains? }, action } with
+// action "skip" | "retry". match conditions are ANDed; an empty match never
+// matches (avoids skip-all). Rules are evaluated in ARRAY ORDER, first match
+// wins. The policy arrives via the upstream execute() argument `requestPolicy`;
+// with NO policy (requestPolicy == null) the executor resolves
+// { maxTransportAttempts: null, skipRules: null } and behavior is byte-identical
+// to the pre-port code (DEFAULT_RETRY_CONFIG attempts, no body reads).
+// DEFAULT_MAX_TRANSPORT_ATTEMPTS / DEFAULT_PROVIDER_SKIP_RULES are the values a
+// caller (settings layer) injects to reproduce upstream production behavior;
+// the executor never auto-applies them.
+//
+// Attempts table (in-place retries on the same base URL, per failure):
+//   rule skip       → 0  (HTTP: return the response; exception: rethrow it)
+//   rule retry      → maxTransportAttempts - 1 (overrides DEFAULT_RETRY_CONFIG)
+//   no rule         → min(DEFAULT_RETRY_CONFIG[status].attempts, maxTransportAttempts - 1)
+//   connect_timeout → 0 unless an explicit retry rule matches it
+// maxTransportAttempts counts the FIRST try, so retries = cap - 1.
+
+// Upstream settings defaults (caller-injected, e.g. upstream chat.js). Exported
+// for the settings/caller layer; NOT auto-applied by the executor.
+export const DEFAULT_MAX_TRANSPORT_ATTEMPTS = 2;
+export const DEFAULT_PROVIDER_SKIP_RULES = [
+  // The legacy Antigravity capacity skip ships as an ordinary seeded rule the
+  // user can edit/delete. `sweep` asks the account loop to re-try the whole
+  // pool after exhausting it (momentary saturation recovery).
+  { provider: "antigravity", match: { status: 503, contains: "capacity" }, action: "skip", sweep: true },
+];
+
+/**
+ * Find the FIRST rule (array order) matching this failure for `provider`, and
+ * return the rule object itself (not a derived shape) — or null. Every present
+ * match condition must hold (AND); at least one usable condition is required
+ * (an empty match never matches — avoids skip-all); the action must be a known
+ * value ("skip" | "retry") — a malformed rule never matches, so it cannot
+ * shadow a later valid rule.
+ * @param {string} provider
+ * @param {{status?: number|string, errorKind?: string, text?: string}} failure
+ * @param {Array} skipRules
+ * @returns {object|null} the matching rule object, or null
+ */
+export function findMatchingSkipRule(provider, failure = {}, skipRules = []) {
+  if (!Array.isArray(skipRules)) return null;
+  const status = failure.status != null ? Number(failure.status) : null;
+  const errorKind = failure.errorKind || null;
+  const text = typeof failure.text === "string" ? failure.text.toLowerCase() : "";
+
+  for (const r of skipRules) {
+    if (!r || r.provider !== provider || !r.match) continue;
+    if (r.action !== "skip" && r.action !== "retry") continue;
+    const m = r.match;
+    let has = false;
+    if (m.kind != null) {
+      has = true;
+      if (errorKind == null || m.kind !== errorKind) continue;
+    }
+    if (m.status != null) {
+      has = true;
+      if (status == null || Number(m.status) !== status) continue;
+    }
+    if (m.contains != null && m.contains !== "") {
+      has = true;
+      if (!text.includes(String(m.contains).toLowerCase())) continue;
+    }
+    if (has) return r;
+  }
+  return null;
+}
+
+/**
+ * Match a skip-rule against a failure, preserving the full rule shape. Unlike
+ * findMatchingSkipRule (raw rule), this returns the derived decision the
+ * transport + account layers act on: { action, headerTimeoutMs?, sweep? }.
+ * `sweep` is only meaningful for skip rules — it asks the account loop to
+ * re-try the whole pool after exhausting it (momentary saturation recovery).
+ * @param {string} provider
+ * @param {{status?: number|string, errorKind?: string, text?: string}} failure
+ * @param {Array} rules
+ * @returns {{action: "skip"|"retry", headerTimeoutMs?: number, sweep?: boolean}|null}
+ */
+export function matchSkipRule(provider, failure = {}, rules = []) {
+  const r = findMatchingSkipRule(provider, failure, rules);
+  if (!r) return null;
+  const out = { action: r.action };
+  if (r.headerTimeoutMs != null) out.headerTimeoutMs = r.headerTimeoutMs;
+  if (r.action === "skip" && r.sweep === true) out.sweep = true;
+  return out;
+}
+
+/**
+ * Resolve the connect/header timeout for one request BEFORE any attempt runs.
+ * Upstream scans this provider's rules for a connect_timeout rule that sets an
+ * explicit headerTimeoutMs — first match in array order wins. This is read from
+ * rule CONFIG (not a live failure), so the timer is armed before the fetch.
+ * Returns null when no such rule exists (caller falls back to its own timeout).
+ */
+export function resolveProviderHeaderTimeout(provider, skipRules = []) {
+  if (!Array.isArray(skipRules)) return null;
+  for (const r of skipRules) {
+    if (!r || r.provider !== provider) continue;
+    if (r.match?.kind === "connect_timeout" && r.headerTimeoutMs != null) {
+      return r.headerTimeoutMs;
+    }
+  }
+  return null;
+}
+
+/**
+ * Resolve the effective retry policy for one execute() call from the upstream
+ * `requestPolicy` argument. No policy → { maxTransportAttempts: null,
+ * skipRules: null, headerTimeoutMs: null, hasContainsRule: false }, i.e. the
+ * pre-port retry behavior with zero body reads and no cap.
+ */
+export function resolveRequestRetryPolicy(provider, requestPolicy = null) {
+  if (requestPolicy == null) {
+    return { maxTransportAttempts: null, skipRules: null, headerTimeoutMs: null, hasContainsRule: false };
+  }
+  const rawCap = requestPolicy.maxTransportAttempts;
+  const maxTransportAttempts = Number.isInteger(rawCap) && rawCap >= 1 ? rawCap : null;
+  const skipRules = Array.isArray(requestPolicy.skipRules) ? requestPolicy.skipRules : null;
+  // Header timeout precedence: an explicit policy-level value wins; otherwise a
+  // connect_timeout rule's headerTimeoutMs (rule config, resolved pre-attempt).
+  const headerTimeoutMs = requestPolicy.headerTimeoutMs || resolveProviderHeaderTimeout(provider, skipRules) || null;
+  // Whether any rule for THIS provider matches on error body text. Only then
+  // does the transport tier pay to clone+read an error response body.
+  const hasContainsRule = Array.isArray(skipRules) && skipRules.some(
+    r => r && r.provider === provider && r.match?.contains != null && r.match?.contains !== ""
+  );
+  return { maxTransportAttempts, skipRules, headerTimeoutMs, hasContainsRule };
+}
+
 // Outbound payload validation gate. Set VALIDATE_OUTBOUND=false to disable
 // the gate in an emergency (keys are still stripped).
 export const VALIDATE_OUTBOUND = process.env.VALIDATE_OUTBOUND !== "false";

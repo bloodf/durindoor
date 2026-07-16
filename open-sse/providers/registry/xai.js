@@ -28,6 +28,12 @@ export default {
   },
   models: [
     { id: "grok-4", name: "Grok 4" },
+    // Port of OmniRoute#6709 (decolua/9router#2439, author: @ryanngit): xAI
+    // serves this id exclusively over its native /v1/responses endpoint. The
+    // targetFormat tag is the single source of truth — chatCore translates the
+    // body to openai-responses and XaiExecutor.buildUrl reads the same tag to
+    // pick transport.responsesUrl.
+    { id: "grok-4.20-multi-agent-0309", name: "Grok 4.20 Multi Agent", targetFormat: "openai-responses" },
     { id: "grok-4-fast-reasoning", name: "Grok 4 Fast Reasoning" },
     { id: "grok-code-fast-1", name: "Grok Code Fast" },
     { id: "grok-3", name: "Grok 3" },

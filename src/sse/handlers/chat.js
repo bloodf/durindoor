@@ -32,7 +32,7 @@ import {
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
 import { handlePonytailCommands, DEFAULT_PONYTAIL_HELP, resolvePonytailStream } from "open-sse/utils/tokenSaverBridge.js";
 import { resolveTokenSaverEnabled } from "open-sse/rtk/index.js";
-import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
+import { HTTP_STATUS, COMBO_MODEL_TIMEOUT_MS } from "open-sse/config/runtimeConfig.js";
 import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
 import { detectFormat } from "open-sse/services/provider.js";
 import { isAntigravityCapacityError } from "open-sse/services/accountFallback.js";
@@ -476,7 +476,8 @@ export async function handleChat(request, clientRawRequest = null) {
     }
 
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
-    log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
+    const comboTimeoutMs = perCombo?.timeoutMs || COMBO_MODEL_TIMEOUT_MS || 0;
+    log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit}, timeout: ${comboTimeoutMs || "off"})`);
     // #2562: combo fallback must persist ONE token-saver row for the whole
     // logical request, not one per fallback attempt. Collect the latest event
     // across attempts and persist after handleComboChat returns.
@@ -484,18 +485,19 @@ export async function handleChat(request, clientRawRequest = null) {
     const comboResult = await handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => {
+      handleSingleModel: (b, m, attemptSignal) => {
         // Reset per attempt so an eventless attempt does not carry forward the
         // previous attempt's event; the collector then holds only the latest
         // emitted event from the attempts that actually fired telemetry.
         tokenSaverCollector.latest = null;
-        return handleSingleModelChat(b, m, clientRawRequest, request, apiKey, null, tokenSaverCollector);
+        return handleSingleModelChat(b, m, clientRawRequest, request, apiKey, combineAbortSignals(request?.signal || null, attemptSignal), tokenSaverCollector);
       },
       log,
       comboName: modelStr,
       comboStrategy,
       comboStickyLimit,
       contextRequirements: perCombo.contextRequirements,
+      comboTimeoutMs,
       quotaRanker: (ordered) => rankComboModelsByQuota(
         ordered,
         settings,
@@ -569,7 +571,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       }
 
       const comboStickyLimit = chatSettings.comboStickyRoundRobinLimit;
-      log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
+      const comboTimeoutMs = perCombo?.timeoutMs || COMBO_MODEL_TIMEOUT_MS || 0;
+      log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit}, timeout: ${comboTimeoutMs || "off"})`);
       // Nested combos inherit the parent's collector if present; otherwise own
       // it so nested fallback attempts do not double-count rows.
       const ownsCollector = !tokenSaverCollector;
@@ -577,7 +580,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       const nestedResult = await handleComboChat({
         body,
         models: comboModels,
-        handleSingleModel: (b, m) => {
+        handleSingleModel: (b, m, attemptSignal) => {
           // Reset per nested attempt so a silent attempt does not replay the
           // previous nested attempt's event.
           nestedCollector.latest = null;
@@ -587,7 +590,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             clientRawRequest,
             request,
             apiKey,
-            requestSignal,
+            combineAbortSignals(requestSignal, attemptSignal),
             nestedCollector,
           );
         },
@@ -596,6 +599,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         comboStrategy,
         comboStickyLimit,
         contextRequirements: perCombo.contextRequirements,
+        comboTimeoutMs,
         quotaRanker: (ordered) => rankComboModelsByQuota(
           ordered,
           chatSettings,

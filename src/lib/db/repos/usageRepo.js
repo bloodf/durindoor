@@ -12,9 +12,11 @@ import {
   getUsagePeriodDays,
   localDateFromKey,
   toLocalDateKey,
+  VALID_USAGE_STATS_PERIODS,
 } from "../../usagePeriods.js";
 import { incrementApiKeyUsageSync } from "./apiKeyUsageTotalsRepo.js";
 import { getCommittedTokenCount } from "../helpers/committedTokens.js";
+import { normalizeTokenSaverEvent, aggregateTokenSaverEvents } from "open-sse/rtk/index.js";
 
 function maskApiKey(key) {
   if (!key || typeof key !== "string") return null;
@@ -51,7 +53,8 @@ if (!global._statsEmitter) {
 if (!global._pendingTimers) global._pendingTimers = {};
 if (!global._recentRing) global._recentRing = { items: [], initialized: false };
 if (!global._connectionMapCache) global._connectionMapCache = { map: {}, ts: 0 };
-if (!global._statsEmitTimers) global._statsEmitTimers = { pending: null, update: null };
+if (!global._statsEmitTimers) global._statsEmitTimers = { pending: null, update: null, tokenSaver: null };
+global._statsEmitTimers.tokenSaver ??= null;
 
 const pendingRequests = global._pendingRequests;
 const lastErrorProvider = global._lastErrorProvider;
@@ -63,7 +66,7 @@ const statsEmitTimers = global._statsEmitTimers;
 export const statsEmitter = global._statsEmitter;
 
 function scheduleStatsEvent(event, delayMs = 150) {
-  const key = event === "update" ? "update" : "pending";
+  const key = event === "update" ? "update" : event === "token-saver" ? "tokenSaver" : "pending";
   if (statsEmitTimers[key]) return;
   statsEmitTimers[key] = setTimeout(() => {
     statsEmitTimers[key] = null;
@@ -804,6 +807,8 @@ export async function getUsageStats(period = "all") {
   }
 
   stats.totalRequests = Object.values(stats.byProvider).reduce((sum, p) => sum + (p.requests || 0), 0);
+  // Aggregate Token Saver telemetry for the dashboard (port of 9router #2562).
+  stats.tokenSaver = await getTokenSaverStats(period);
   return stats;
 }
 
@@ -1050,5 +1055,153 @@ export async function getRecentLogs(limit = 200) {
   } catch (e) {
     console.error("[usageRepo] getRecentLogs failed:", e.message);
     return [];
+  }
+}
+
+// ─── Token Saver telemetry persistence (port of decolua/9router #2562) ─────
+// Durable per-request event store + period aggregation for the dashboard.
+// One row per persisted logical request. The caller (handleSingleModelChat)
+// keeps the LATEST routing attempt's event and persists it ONCE after the
+// final routing decision, so fallback retries supersede in memory instead of
+// double-counting, and fusion panels each persist their own event. The repo
+// generates a fresh row id per persisted event. Aggregation reads the stored
+// per-request event JSON and folds via the pure open-sse aggregator.
+
+const TOKEN_SAVER_TABLE = "tokenSaverEvents";
+// Retention: none. Rows are small (one per request) and the dashboard +
+// /api/usage/stats support an "all" (all-time) period, so we keep full history
+// rather than silently cap it. Pruning can be added later with a documented
+// cap; for now accuracy of the aggregate takes precedence.
+// Schema ownership: the table + indexes are declared in ../schema.js TABLES
+// and created by migration 010 (and the declarative syncSchemaFromTables on
+// fresh DBs), so backups/export include them. No lazy CREATE here.
+
+// Serialize telemetry writes so a burst of concurrent requests completes one
+// insert before the next begins. better-sqlite3 is sync, but this async chain
+// keeps ordering deterministic across the await boundary.
+let tokenSaverWriteChain = Promise.resolve();
+
+/**
+ * Persist one logical request's normalized token-saver event. The caller has
+ * already resolved routing (latest attempt wins), so each call inserts one new
+ * row (DB autoincrement id). Fail-open: telemetry must never break the request
+ * path.
+ * @param {object} event normalized event from normalizeTokenSaverEvent
+ * @param {Date} [now]
+ */
+export async function recordTokenSaverEvent(event, now = new Date()) {
+  if (!event || typeof event !== "object") return;
+  const ts = now instanceof Date ? now : new Date(now);
+  if (!Number.isFinite(ts.getTime())) return; // fail-open; never misdate a row
+  const run = tokenSaverWriteChain.then(async () => {
+    const db = await getAdapter();
+    // Persist only the canonical normalized event (port of 9router #2562).
+    // normalizeTokenSaverEvent strips/allowlists diagnostics (no raw URLs or
+    // upstream error text) and coerces unknown fields to safe zeros, so the
+    // public API can never write attacker-controlled data into the dashboard.
+    db.run(
+      `INSERT INTO ${TOKEN_SAVER_TABLE} (timestamp, dateKey, data) VALUES (?, ?, ?)`,
+      [ts.toISOString(), toLocalDateKey(ts), stringifyJson(normalizeTokenSaverEvent(event))]
+    );
+  });
+  tokenSaverWriteChain = run.catch(() => {});
+  try { await run; } catch (e) { console.warn("[usageRepo] recordTokenSaverEvent failed:", e.message); return; }
+  scheduleStatsEvent("update");
+  // Targeted event for the Token Saver overview live stream (port of 9router
+  // #2562), so its SSE refreshes on token-saver writes without subscribing to
+  // every normal usage update.
+  scheduleStatsEvent("token-saver");
+}
+
+/**
+ * Aggregate token-saver events over a usage period by folding stored
+ * per-request event rows through the pure aggregator. Empty window → zeroed
+ * aggregate. Only event-row JSON is passed (never an aggregate), so
+ * requestsObserved counts one per logical request.
+ *
+ * Period predicates mirror getUsageStats so every visible period option is
+ * correct:
+ *   today     → rows on/after local midnight (timestamp)
+ *   24h       → rolling last-24-hours (exact timestamp)
+ *   Nd (7d…)  → inclusive local-calendar day window (dateKey)
+ *   all       → unfiltered
+ * @param {string} period usage period key
+ * @param {Date} [now] reference time (injectable for tests)
+ * @returns {Promise<object>} aggregate from aggregateTokenSaverEvents
+ */
+export async function getTokenSaverStats(period = "7d", now = new Date()) {
+  if (!VALID_USAGE_STATS_PERIODS.has(period)) {
+    throw new RangeError(`Invalid usage period: ${period}`);
+  }
+  try {
+    const db = await getAdapter();
+    now = now instanceof Date ? now : new Date(now);
+    const nowIso = now.toISOString();
+    let rows;
+    if (period === "today") {
+      const midnight = new Date(now); midnight.setHours(0, 0, 0, 0);
+      rows = db.all(`SELECT dateKey, data FROM ${TOKEN_SAVER_TABLE} WHERE timestamp >= ? AND timestamp <= ?`, [midnight.toISOString(), nowIso]);
+    } else if (period === "24h") {
+      const since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      rows = db.all(`SELECT dateKey, data FROM ${TOKEN_SAVER_TABLE} WHERE timestamp >= ? AND timestamp <= ?`, [since.toISOString(), nowIso]);
+    } else if (period === "all") {
+      rows = db.all(`SELECT dateKey, data FROM ${TOKEN_SAVER_TABLE} WHERE timestamp <= ?`, [nowIso]);
+    } else {
+      const cutoff = getUsageCalendarCutoff(period, now);
+      rows = cutoff
+        ? db.all(`SELECT dateKey, data FROM ${TOKEN_SAVER_TABLE} WHERE dateKey >= ? AND timestamp <= ?`, [toLocalDateKey(cutoff), nowIso])
+        : db.all(`SELECT dateKey, data FROM ${TOKEN_SAVER_TABLE} WHERE timestamp <= ?`, [nowIso]);
+    }
+    const agg = aggregateTokenSaverEvents(rows.map((r) => parseJson(r.data, null)).filter(Boolean));
+    // Daily points for the overview chart: group the same window's events by
+    // local dateKey and fold each day. Ordered by date. Bounded periods are
+    // zero-filled to a contiguous calendar range so the chart doesn't connect
+    // sparse observations; "all" stays observed-only to avoid an unbounded
+    // array (24h spans today + yesterday, the rolling window's observed dates).
+    const byDay = new Map();
+    for (const r of rows) {
+      const ev = parseJson(r.data, null);
+      if (!ev) continue;
+      // Ignore rows with a corrupt/imported dateKey — they'd poison the chart.
+      if (typeof r.dateKey !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(r.dateKey)) continue;
+      if (!byDay.has(r.dateKey)) byDay.set(r.dateKey, []);
+      byDay.get(r.dateKey).push(ev);
+    }
+    const foldDay = (dateKey) => {
+      const day = aggregateTokenSaverEvents(byDay.get(dateKey) || []);
+      return {
+        dateKey,
+        actualBytesSaved: day.totals.actualBytesSaved,
+        rtkBytesSaved: day.rtk.bytesSaved,
+        headroomBodyShrink: Math.max(0, day.headroom.bodyBytesBefore - day.headroom.bodyBytesAfter),
+        headroomTokensSaved: day.headroom.tokensSaved,
+        requestsObserved: day.requestsObserved,
+      };
+    };
+    const nextDateKey = (dateKey) => {
+      const d = new Date(`${dateKey}T00:00:00`);
+      d.setDate(d.getDate() + 1);
+      return toLocalDateKey(d);
+    };
+    const todayKey = toLocalDateKey(now);
+    let fillStart = null;
+    if (period === "today") fillStart = todayKey;
+    else if (period === "24h") fillStart = toLocalDateKey(addLocalCalendarDays(now, -1)); // fixed 2-day window: stable x-axis
+    else if (period !== "all") {
+      const cutoff = getUsageCalendarCutoff(period, now);
+      fillStart = cutoff ? toLocalDateKey(cutoff) : (byDay.size ? [...byDay.keys()].sort()[0] : todayKey);
+    }
+    if (fillStart) {
+      agg.dailyPoints = [];
+      for (let k = fillStart; k <= todayKey; k = nextDateKey(k)) agg.dailyPoints.push(foldDay(k));
+    } else {
+      agg.dailyPoints = [...byDay.keys()].sort().map(foldDay);
+    }
+    return agg;
+  } catch (e) {
+    console.warn("[usageRepo] getTokenSaverStats failed:", e.message);
+    const agg = aggregateTokenSaverEvents([]);
+    agg.dailyPoints = [];
+    return agg;
   }
 }

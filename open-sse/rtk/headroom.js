@@ -419,3 +419,32 @@ export function isHeadroomPhantomSavings(stats, diagnostics, minShrinkRatio = 0.
   if (before <= 0 || after <= 0) return false;
   return after >= before * (1 - minShrinkRatio);
 }
+
+/**
+ * Classify a Headroom outcome into a dashboard-safe category (matches upstream
+ * decolua/9router #2562 exactly). The raw `diagnostics.reason` string can embed
+ * URLs, HTTP statuses, and upstream error text; persisting it would leak that
+ * into the aggregate dashboard. This maps it to one allowlisted enum value.
+ *
+ * @param {object} diagnostics The diagnostics sink passed to compressWithHeadroom.
+ * @param {object|null} stats The compressWithHeadroom return (null on skip).
+ * @param {boolean} enabled Whether Headroom was enabled for the request.
+ * @returns {string} One of: compressed, disabled, missing-proxy-url, timeout,
+ *   http-error, unsafe-responses-input, translation-failed, unsupported-shape,
+ *   invalid-proxy-response, unexpected-error, other-skip.
+ */
+export function classifyHeadroomDiagnostic(diagnostics, stats, enabled) {
+  if (stats) return "compressed";
+  if (!enabled) return "disabled";
+
+  const reason = String(diagnostics?.reason || "").toLowerCase();
+  if (reason.includes("missing proxy url")) return "missing-proxy-url";
+  if (reason.includes("timeout") || reason.includes("abort")) return "timeout";
+  if (reason.includes("proxy returned http")) return "http-error";
+  if (reason.includes("openai-responses tool/reasoning")) return "unsafe-responses-input";
+  if (reason.includes("did not translate") || reason.includes("translate to messages")) return "translation-failed";
+  if (reason.includes("unsupported") || reason.includes("did not project")) return "unsupported-shape";
+  if (reason.includes("proxy response")) return "invalid-proxy-response";
+  if (reason.includes("unexpected error")) return "unexpected-error";
+  return "other-skip";
+}

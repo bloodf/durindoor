@@ -2,7 +2,7 @@ import { QUOTA_V7_TABLES } from "./migrations/quota-v7-schema.js";
 import { QUOTA_V8_TABLES } from "./migrations/quota-v8-schema.js";
 
 // Latest schema version — bumped when a migration is added in ./migrations/
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 export const PRAGMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -194,6 +194,22 @@ export const TABLES = {
       dateKey: "TEXT PRIMARY KEY",
       data: "TEXT NOT NULL",
     },
+  },
+  // Aggregate Token Saver telemetry (port of 9router #2562). One row per
+  // persisted logical request; `data` is the normalized event JSON. DB-native
+  // autoincrement id — no caller/JS key. `timestamp` (ISO) backs today/24h/all
+  // windows; `dateKey` backs inclusive local-calendar N-day windows.
+  tokenSaverEvents: {
+    columns: {
+      id: "INTEGER PRIMARY KEY AUTOINCREMENT",
+      timestamp: "TEXT NOT NULL",
+      dateKey: "TEXT NOT NULL",
+      data: "TEXT NOT NULL",
+    },
+    indexes: [
+      "CREATE INDEX IF NOT EXISTS idx_tse_ts ON tokenSaverEvents(timestamp)",
+      "CREATE INDEX IF NOT EXISTS idx_tse_date ON tokenSaverEvents(dateKey)",
+    ],
   },
   requestDetails: {
     columns: {

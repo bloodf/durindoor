@@ -4,6 +4,7 @@
  */
 
 import { handleChatCore } from "./chatCore.js";
+import { recordTokenSaverEvent } from "@/lib/usageDb.js";
 import { convertResponsesApiFormat } from "../translator/formats/responsesApi.js";
 import { createResponsesApiTransformStream } from "../transformer/responsesTransformer.js";
 import { convertResponsesStreamToJson } from "../transformer/streamToJsonConverter.js";
@@ -46,6 +47,10 @@ export async function handleResponsesCore({ body, modelInfo, credentials, log, o
   }
 
   // Call chat core handler — force sourceFormat so streaming path knows this is a Responses API client
+  // Token Saver telemetry (port of 9router #2562): capture the latest routing
+  // attempt's normalized event; persist it once after the core returns so a
+  // /v1/responses request records compression telemetry exactly like /chat.
+  let lastTokenSaverEvent = null;
   const result = await handleChatCore({
     body: convertedBody,
     modelInfo,
@@ -57,7 +62,14 @@ export async function handleResponsesCore({ body, modelInfo, credentials, log, o
     connectionId,
     sourceFormatOverride: FORMATS.OPENAI_RESPONSES,
     skipPonytailCommands: true,
+    onTokenSaverEvent: (event) => { lastTokenSaverEvent = event; },
   });
+
+  if (lastTokenSaverEvent) {
+    // Awaited so the row is durable before the response returns (fail-open
+    // inside recordTokenSaverEvent; outer try guards a synchronous throw).
+    try { await recordTokenSaverEvent(lastTokenSaverEvent); } catch { /* telemetry must not break requests */ }
+  }
 
   if (!result.success || !result.response) {
     return result;

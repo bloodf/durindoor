@@ -18,6 +18,7 @@ import {
 import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
 import { appendPxpipeEvent } from "@/lib/pxpipe/events.js";
 import { getModelInfo, getComboModels } from "../services/model.js";
+import { recordTokenSaverEvent } from "@/lib/usageDb";
 import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
 import { applyVisionBridgeReroute } from "open-sse/services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
@@ -628,6 +629,12 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   const quotaFamily = getModelQuotaFamily(providerAlias, model);
   const modelCandidates = [...new Set([model, upstreamModel].filter(Boolean))];
 
+  // Token Saver telemetry (port of 9router #2562): capture the LATEST routing
+  // attempt's normalized event; fallback retries overwrite it. Persisted once
+  // in finally (success, terminal error, abort, or throw) so one logical
+  // request = one row and retries never double-count.
+  let lastTokenSaverEvent = null;
+  try {
   while (true) {
     if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
     let credentials;
@@ -792,6 +799,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       pxpipeTimeoutMs: chatSettings.pxpipeTimeoutMs,
       pxpipeTransform,
       onPxpipeEvent: appendPxpipeEvent,
+      onTokenSaverEvent: (event) => { lastTokenSaverEvent = event; },
       providerThinking,
       providerConcurrencyLimit: chatSettings.providerConcurrencyLimits,
       claudeClassifierCompat: ["off", "auto", "always"].includes(chatSettings.claudeClassifierCompat)
@@ -872,5 +880,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     }
 
     return result.response;
+  }
+  } finally {
+    // Persist the latest routing attempt's event once per logical request.
+    // Awaited so the row is durable before the response returns (fail-open
+    // inside recordTokenSaverEvent — it catches DB errors and never throws).
+    if (lastTokenSaverEvent) await recordTokenSaverEvent(lastTokenSaverEvent);
   }
 }

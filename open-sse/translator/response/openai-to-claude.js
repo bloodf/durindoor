@@ -94,8 +94,8 @@ function stopTextBlock(state, results) {
 // Helper: flush buffered tool args + close every open tool_use block
 function flushToolBlocks(state, results) {
   for (const [idx, toolInfo] of state.toolCalls) {
-    // A tool call whose name/args never arrived (only an id chunk was seen) still
-    // reserved a block index but deferred its content_block_start. Emit it now so
+    // A tool call whose name never arrived (with only an id or buffered arguments)
+    // still reserved a block index but deferred its content_block_start. Emit it now so
     // the terminal content_block_stop is not orphaned (OmniRoute#6730 edge case).
     if (!toolInfo.startEmitted) {
       toolInfo.startEmitted = true;
@@ -296,13 +296,15 @@ export function openaiToClaudeResponse(chunk, state) {
       const toolInfo = state.toolCalls.get(idx);
       if (toolInfo) {
         // Capture a late-arriving id or name (streamed after the initial chunk).
+        // A name may arrive after arguments have been buffered; record it before
+        // deciding whether to emit the deferred content_block_start.
         if (tc.id && !toolInfo.id) toolInfo.id = tc.id;
-        if (incomingName && !toolInfo.startEmitted && !toolInfo.name) toolInfo.name = incomingName;
+        if (incomingName && !toolInfo.name) toolInfo.name = incomingName;
 
-        // Emit content_block_start once we have a name. If arguments arrive before
-        // any name was ever seen, start the block anyway with the (empty) name so
-        // the input_json_delta stays well-formed.
-        if (!toolInfo.startEmitted && (toolInfo.name || tc.function?.arguments != null)) {
+        // Emit content_block_start once we have a name. Arguments that arrive
+        // before the name are buffered without opening the block, so the first
+        // emitted content_block_start always carries the correct tool name.
+        if (!toolInfo.startEmitted && toolInfo.name) {
           toolInfo.startEmitted = true;
           results.push({
             type: "content_block_start",
@@ -310,7 +312,7 @@ export function openaiToClaudeResponse(chunk, state) {
             content_block: {
               type: CLAUDE_BLOCK.TOOL_USE,
               id: toolInfo.id,
-              name: toolInfo.name || "",
+              name: toolInfo.name,
               input: {}
             }
           });

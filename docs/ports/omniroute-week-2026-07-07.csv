@@ -424,7 +424,7 @@ number,title,verdict,evidence
 6503,"fix(providers): strip reasoning_effort/reasoning from grok-cli requests (#6288)",SKIP,SKIP:not-selected|files:3
 6502,"fix(providers): stop Antigravity false quota-exhausted (#6295)",SKIP,SKIP:not-selected|files:3
 6501,"fix(compression): add intra-message dedup to session-dedup engine (#6467)",SKIP,SKIP:not-selected|files:6
-6499,"fix(ui): prevent silent overwrite of existing API key connections on …",SKIP,SKIP:not-selected|files:7
+6499,"fix(ui): prevent silent overwrite of existing API key connections on …",PORT,ported:POST create-only 409 + provider-scoped default name|files:8
 commit:fb24740b73,"fix(ci): add the auto-enqueue pull_request_rule to the Mergify config (queue_conditions alone are eligibility-only) (#7179)",SKIP,release-ci-deps-commit
 commit:01ab5d1fd5,"chore(ci): add .mergify.yml to main — Mergify only reads config from the default branch (#7168)",SKIP,release-ci-deps-commit
 commit:7ee5bbc64d,"fix(build): v3.8.48 hotfix — npm tarball head-response-guard (#7065); electron win spawn; Sonar gate zeroed (#7055)",SKIP,release-ci-deps-commit

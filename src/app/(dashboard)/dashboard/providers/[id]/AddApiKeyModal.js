@@ -1,15 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import { Button, Badge, Input, Modal, Select } from "@/shared/components";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { parseBulkApiKeyLine, requiresProviderAccountId } from "@/lib/providerAccountIds";
-import { allocateBulkConnectionName, bulkUsedNameSet } from "./apiKeyConnectionName";
+import { allocateBulkConnectionName, bulkUsedNameSet, defaultApiKeyConnectionName, shouldResetAddApiKeyModal } from "./apiKeyConnectionName";
 
 const BULK_PLACEHOLDER = `name1|sk-key1\nname2|sk-key2\nsk-key-only-auto-named`;
 
-export default function AddApiKeyModal({ isOpen, provider, providerName, isCompatible, isAnthropic, authType, authHint, website, proxyPools, error, onSave, onBulkDone, onClose }) {
+export default function AddApiKeyModal({ isOpen, provider, providerName, isCompatible, isAnthropic, authType, authHint, website, proxyPools, existingConnectionNames, error, onSave, onBulkDone, onClose }) {
   const NONE_PROXY_POOL_VALUE = "__none__";
   const isOllamaLocal = provider === "ollama-local";
   const isCookie = authType === "cookie";
@@ -52,6 +52,21 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const [mode, setMode] = useState("single"); // "single" | "bulk"
   const [bulkText, setBulkText] = useState("");
   const [bulkResult, setBulkResult] = useState(null); // { success, failed }
+
+  // #6499 — pre-fill a unique default name from the provider's existing API-key
+  // connection names ("main", "main-2", …) so the modal doesn't re-offer a
+  // taken name. Reset only on closed→open so a background refetch never
+  // clobbers a typed name. The API enforces create-only (409); this is UX.
+  const wasOpenRef = useRef(false);
+  useEffect(() => {
+    const wasOpen = wasOpenRef.current;
+    wasOpenRef.current = isOpen;
+    if (!shouldResetAddApiKeyModal(wasOpen, isOpen)) return;
+    setFormData((current) => ({
+      ...current,
+      name: defaultApiKeyConnectionName(existingConnectionNames),
+    }));
+  }, [isOpen, existingConnectionNames]);
 
   const buildProviderSpecificData = () => {
     if (isOllamaLocal && formData.ollamaHostUrl.trim()) {
@@ -452,6 +467,7 @@ AddApiKeyModal.propTypes = {
     name: PropTypes.string,
   })),
   error: PropTypes.string,
+  existingConnectionNames: PropTypes.arrayOf(PropTypes.string),
   onSave: PropTypes.func.isRequired,
   onBulkDone: PropTypes.func,
   onClose: PropTypes.func.isRequired,

@@ -26,15 +26,26 @@ describe("API-key connection default names", () => {
     expect(defaultApiKeyConnectionName(undefined)).toBe("main");
   });
 
-  it("uses global API-key names so first hcnsec add avoids another provider's main", () => {
-    const existingNames = apiKeyConnectionNames([
+  it("scopes names to one provider's apikey connections (the DB collision key is provider-local)", () => {
+    // #6499 — createProviderConnection collides on (provider, authType=apikey,
+    // name). Callers filter connections to the CURRENT provider before deriving
+    // a default; another provider's "main" must not force "main-2" here, and
+    // non-apikey rows on this provider must not either.
+    const allConnections = [
       { provider: "openai", authType: "apikey", name: "main" },
-      { provider: "anthropic", authType: "oauth", name: "main-2" },
-      { provider: "hcnsec", authType: "cookie", name: "main-3" },
-    ]);
+      { provider: "openai", authType: "oauth", name: "main-2" },
+      { provider: "openai", authType: "cookie", name: "main-3" },
+      { provider: "anthropic", authType: "apikey", name: "main" },
+    ];
+    const providerFilter = (provider) => allConnections.filter((c) => c.provider === provider);
 
-    expect(existingNames).toEqual(["main"]);
-    expect(defaultApiKeyConnectionName(existingNames)).toBe("main-2");
+    // Current provider "openai": one apikey "main" → next default is "main-2".
+    expect(apiKeyConnectionNames(providerFilter("openai"))).toEqual(["main"]);
+    expect(defaultApiKeyConnectionName(apiKeyConnectionNames(providerFilter("openai")))).toBe("main-2");
+
+    // A provider with no apikey connections gets "main" again even though
+    // other providers already use it — the collision scope is provider-local.
+    expect(defaultApiKeyConnectionName(apiKeyConnectionNames(providerFilter("groq")))).toBe("main");
   });
 });
 
@@ -140,10 +151,12 @@ describe("bulk-add repo guard: requireNewName rejects name collision without ove
   });
 });
 
-// Route-level: POST /api/providers must forward createOnly -> requireNewName
-// and map the repo's PROVIDER_CONNECTION_NAME_CONFLICT to a 409. @/models is
-// mocked (isolated via resetModules + doUnmock) so no broad provider setup is
-// needed; the mock records the create options for the forwarding assertion.
+// Route-level: POST /api/providers forwards bulk createOnly -> requireNewName
+// and single dashboard adds -> createOnly, mapping both repo conflict codes
+// (PROVIDER_CONNECTION_NAME_CONFLICT / PROVIDER_CONNECTION_ALREADY_EXISTS) to
+// 409. @/models is mocked (isolated via resetModules + doUnmock) so no broad
+// provider setup is needed; the mock records the create options for the
+// forwarding assertion.
 describe("POST /api/providers createOnly plumbing", () => {
   function makeRequest(body) {
     return { json: async () => body };
@@ -188,7 +201,7 @@ describe("POST /api/providers createOnly plumbing", () => {
     expect(captured.opts).toEqual({ requireNewName: true });
   });
 
-  it("forwards requireNewName:false when createOnly is absent", async () => {
+  it("forwards createOnly:true (dashboard single add) to the repo", async () => {
     const captured = {};
     const route = await importRouteWithModels((data) => ({ ...data, id: "c1" }), captured);
 
@@ -196,7 +209,22 @@ describe("POST /api/providers createOnly plumbing", () => {
       provider: "openai", apiKey: "sk-NEW", name: "Key 2",
     }));
     expect(res.status).toBe(201);
-    expect(captured.opts).toEqual({ requireNewName: false });
+    expect(captured.opts).toEqual({ createOnly: true });
+  });
+
+  it("maps a dashboard duplicate (PROVIDER_CONNECTION_ALREADY_EXISTS) to 409", async () => {
+    const route = await importRouteWithModels(() => {
+      const err = new Error('A connection named "Key 1" already exists for this provider');
+      err.code = "PROVIDER_CONNECTION_ALREADY_EXISTS";
+      throw err;
+    }, {});
+
+    const res = await route.POST(makeRequest({
+      provider: "openai", apiKey: "sk-DUP", name: "Key 1",
+    }));
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.code).toBe("PROVIDER_CONNECTION_ALREADY_EXISTS");
   });
 });
 

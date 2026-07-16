@@ -153,19 +153,20 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
 // Helper functions
 function startReasoning(state, emit, idx) {
   if (!state.reasoningId) {
+    const outputIndex = state.nextOutputIndex++;
     state.reasoningId = `rs_${state.responseId}_${idx}`;
-    state.reasoningIndex = idx;
+    state.reasoningIndex = outputIndex;
     
     emit("response.output_item.added", {
       type: "response.output_item.added",
-      output_index: idx,
+      output_index: outputIndex,
       item: { id: state.reasoningId, type: RESPONSES_ITEM.REASONING, summary: [] }
     });
 
     emit("response.reasoning_summary_part.added", {
       type: "response.reasoning_summary_part.added",
       item_id: state.reasoningId,
-      output_index: idx,
+      output_index: outputIndex,
       summary_index: 0,
       part: { type: RESPONSES_ITEM.SUMMARY_TEXT, text: "" }
     });
@@ -219,15 +220,19 @@ function closeReasoning(state, emit) {
 
 function emitTextContent(state, emit, idx, content) {
   if (!state.msgItemAdded[idx]) {
+    const outputIndex = state.nextOutputIndex++;
     state.msgItemAdded[idx] = true;
+    state.msgOutputIndexes[idx] = outputIndex;
     const msgId = `msg_${state.responseId}_${idx}`;
     
     emit("response.output_item.added", {
       type: "response.output_item.added",
-      output_index: idx,
+      output_index: outputIndex,
       item: { id: msgId, type: RESPONSES_ITEM.MESSAGE, content: [], role: ROLE.ASSISTANT }
     });
   }
+
+  const outputIndex = state.msgOutputIndexes[idx];
 
   if (!state.msgContentAdded[idx]) {
     state.msgContentAdded[idx] = true;
@@ -235,7 +240,7 @@ function emitTextContent(state, emit, idx, content) {
     emit("response.content_part.added", {
       type: "response.content_part.added",
       item_id: `msg_${state.responseId}_${idx}`,
-      output_index: idx,
+      output_index: outputIndex,
       content_index: 0,
       part: { type: RESPONSES_ITEM.OUTPUT_TEXT, annotations: [], logprobs: [], text: "" }
     });
@@ -244,7 +249,7 @@ function emitTextContent(state, emit, idx, content) {
   emit("response.output_text.delta", {
     type: "response.output_text.delta",
     item_id: `msg_${state.responseId}_${idx}`,
-    output_index: idx,
+    output_index: outputIndex,
     content_index: 0,
     delta: content,
     logprobs: []
@@ -259,11 +264,12 @@ function closeMessage(state, emit, idx) {
     state.msgItemDone[idx] = true;
     const fullText = state.msgTextBuf[idx] || "";
     const msgId = `msg_${state.responseId}_${idx}`;
+    const outputIndex = state.msgOutputIndexes[idx];
 
     emit("response.output_text.done", {
       type: "response.output_text.done",
       item_id: msgId,
-      output_index: parseInt(idx),
+      output_index: outputIndex,
       content_index: 0,
       text: fullText,
       logprobs: []
@@ -272,14 +278,14 @@ function closeMessage(state, emit, idx) {
     emit("response.content_part.done", {
       type: "response.content_part.done",
       item_id: msgId,
-      output_index: parseInt(idx),
+      output_index: outputIndex,
       content_index: 0,
       part: { type: RESPONSES_ITEM.OUTPUT_TEXT, annotations: [], logprobs: [], text: fullText }
     });
 
     emit("response.output_item.done", {
       type: "response.output_item.done",
-      output_index: parseInt(idx),
+      output_index: outputIndex,
       item: {
         id: msgId,
         type: RESPONSES_ITEM.MESSAGE,
@@ -290,107 +296,134 @@ function closeMessage(state, emit, idx) {
   }
 }
 
-// Normalize output_index to a non-negative integer (tool indexes may arrive
-// as object keys/strings).
-function normalizeOutputIndex(outputIndex) {
-  const normalized = Number(outputIndex);
-  return Number.isInteger(normalized) && normalized >= 0 ? normalized : 0;
-}
-
-// #6937: when a reasoning item was emitted it occupies its own output_index,
-// so tool-call items must be offset past it or they collide at index 0.
-function toolCallOutputIndex(state, idx) {
-  return state.reasoningId
-    ? normalizeOutputIndex(state.reasoningIndex) + 1 + normalizeOutputIndex(idx)
-    : normalizeOutputIndex(idx);
-}
-
 function emitToolCall(state, emit, tc) {
   const tcIdx = tc.index ?? 0;
-  const outputIndex = toolCallOutputIndex(state, tcIdx);
+  let outputIndex = state.funcOutputIndexes[tcIdx];
   const newCallId = tc.id;
   const funcName = tc.function?.name;
 
   if (funcName) state.funcNames[tcIdx] = funcName;
 
-  // Codex custom tools (apply_patch) surface as custom_tool_call items and
-  // stream their raw patch via custom_tool_call_input.* events instead of the
-  // function_call_arguments.* events used for regular function tools.
-  const isCustomTool = (state.funcNames[tcIdx] || funcName) === "apply_patch";
+  // Use declared tool type from request metadata when available; otherwise
+  // fall back to the legacy name-based heuristic (apply_patch == custom).
+  const declaredType = state.toolTypes?.[state.funcNames[tcIdx] || funcName || ""] || "";
+  const isCustomTool = declaredType === "custom" ||
+    ((state.funcNames[tcIdx] || funcName) === "apply_patch" && !declaredType);
 
-  if (!state.funcCallIds[tcIdx] && newCallId) {
+  // Save id on first sight; if name hasn't arrived yet, emit nothing yet.
+  if (newCallId && !state.funcCallIds[tcIdx]) {
     state.funcCallIds[tcIdx] = newCallId;
+  }
 
+  // Emit output_item.added only once both id and name are known.
+  const refCallId = state.funcCallIds[tcIdx];
+  const refName = state.funcNames[tcIdx];
+  if (refCallId && refName && !state.funcItemAdded[tcIdx]) {
+    state.funcItemAdded[tcIdx] = true;
+    outputIndex = state.funcOutputIndexes[tcIdx] = state.nextOutputIndex++;
     emit("response.output_item.added", {
       type: "response.output_item.added",
       output_index: outputIndex,
       item: isCustomTool
         ? {
-            id: `fc_${newCallId}`,
+            id: `fc_${refCallId}`,
             type: "custom_tool_call",
             input: "",
-            call_id: newCallId,
-            name: state.funcNames[tcIdx] || "",
+            call_id: refCallId,
+            name: refName,
             status: "in_progress"
           }
         : {
-            id: `fc_${newCallId}`,
+            id: `fc_${refCallId}`,
             type: RESPONSES_ITEM.FUNCTION_CALL,
             arguments: "",
-            call_id: newCallId,
-            name: state.funcNames[tcIdx] || "",
+            call_id: refCallId,
+            name: refName,
             status: "in_progress"
           }
     });
+
+    // Replay any regular argument deltas that arrived while we were waiting for the name.
+    if (!isCustomTool && state.funcPendingArgs[tcIdx]) {
+      for (const delta of state.funcPendingArgs[tcIdx]) {
+        emit("response.function_call_arguments.delta", {
+          type: "response.function_call_arguments.delta",
+          item_id: `fc_${refCallId}`,
+          output_index: outputIndex,
+          delta
+        });
+      }
+      delete state.funcPendingArgs[tcIdx];
+    }
   }
 
-  if (!state.funcArgsBuf[tcIdx]) state.funcArgsBuf[tcIdx] = "";
+  state.funcArgsBuf[tcIdx] ||= "";
 
   if (tc.function?.arguments) {
-    const refCallId = state.funcCallIds[tcIdx] || newCallId;
-    if (refCallId) {
-      const deltaEvent = isCustomTool
-        ? "response.custom_tool_call_input.delta"
-        : "response.function_call_arguments.delta";
-      emit(deltaEvent, {
-        type: deltaEvent,
-        item_id: `fc_${refCallId}`,
-        output_index: outputIndex,
-        delta: tc.function.arguments
-      });
+    const delta = tc.function.arguments;
+    state.funcArgsBuf[tcIdx] += delta;
+
+    if (!isCustomTool) {
+      if (refCallId && refName) {
+        emit("response.function_call_arguments.delta", {
+          type: "response.function_call_arguments.delta",
+          item_id: `fc_${refCallId}`,
+          output_index: outputIndex,
+          delta
+        });
+      } else if (refCallId) {
+        // Name not yet known; queue regular delta for replay once name arrives.
+        (state.funcPendingArgs[tcIdx] ||= []).push(delta);
+      }
     }
-    state.funcArgsBuf[tcIdx] += tc.function.arguments;
   }
+}
+
+function isCustomToolByState(state, tcIdx, funcName) {
+  const declaredType = state.toolTypes?.[state.funcNames[tcIdx] || funcName || ""] || "";
+  return declaredType === "custom" ||
+    ((state.funcNames[tcIdx] || funcName) === "apply_patch" && !declaredType);
 }
 
 function closeToolCall(state, emit, idx) {
   const callId = state.funcCallIds[idx];
+  if (!state.funcItemAdded[idx]) return;
   if (callId && !state.funcItemDone[idx]) {
     const args = state.funcArgsBuf[idx] || "{}";
-    const normalizedIndex = toolCallOutputIndex(state, idx);
-    const isCustomTool = (state.funcNames[idx] || "") === "apply_patch";
+    const outputIndex = state.funcOutputIndexes[idx];
+    const isCustomTool = isCustomToolByState(state, idx, "");
 
     if (isCustomTool) {
-      // The model produced JSON {"input":"..."} against the normalized
-      // custom-tool schema; unwrap it back to the raw patch string.
+      // Codex sends a function-call-shaped stream even for custom tools; the
+      // arguments are a JSON wrapper {"input":"<patch>"} we must unwrap into
+      // raw custom-tool input. Stream the raw input as custom_tool_call_input
+      // deltas so concatenated deltas equal the final done input.
       let rawInput = args;
-      try {
-        const parsed = JSON.parse(args);
-        if (parsed && typeof parsed.input === "string") rawInput = parsed.input;
-      } catch {
-        // Not JSON — fall back to the raw buffered arguments.
+      let parsed = null;
+      try { parsed = JSON.parse(args); } catch { /* not JSON */ }
+      if (parsed && typeof parsed.input === "string") rawInput = parsed.input;
+      state.funcCustomInput[idx] = rawInput;
+
+      if (!state.funcCustomDeltaEmitted[idx]) {
+        state.funcCustomDeltaEmitted[idx] = true;
+        emit("response.custom_tool_call_input.delta", {
+          type: "response.custom_tool_call_input.delta",
+          item_id: `fc_${callId}`,
+          output_index: outputIndex,
+          delta: rawInput
+        });
       }
 
       emit("response.custom_tool_call_input.done", {
         type: "response.custom_tool_call_input.done",
         item_id: `fc_${callId}`,
-        output_index: normalizedIndex,
+        output_index: outputIndex,
         input: rawInput
       });
 
       emit("response.output_item.done", {
         type: "response.output_item.done",
-        output_index: normalizedIndex,
+        output_index: outputIndex,
         item: {
           id: `fc_${callId}`,
           type: "custom_tool_call",
@@ -404,13 +437,13 @@ function closeToolCall(state, emit, idx) {
       emit("response.function_call_arguments.done", {
         type: "response.function_call_arguments.done",
         item_id: `fc_${callId}`,
-        output_index: normalizedIndex,
+        output_index: outputIndex,
         arguments: args
       });
 
       emit("response.output_item.done", {
         type: "response.output_item.done",
-        output_index: normalizedIndex,
+        output_index: outputIndex,
         item: {
           id: `fc_${callId}`,
           type: RESPONSES_ITEM.FUNCTION_CALL,

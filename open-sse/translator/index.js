@@ -303,7 +303,21 @@ export function needsTranslation(sourceFormat, targetFormat) {
 }
 
 // Initialize state for streaming response based on format
-export function initState(sourceFormat) {
+export function initState(sourceFormat, requestBody) {
+  // Build a name → declared type map from the request tools so response
+  // translators can classify custom tools using real metadata instead of
+  // guessing from the tool name (e.g. apply_patch).
+  const toolTypes = {};
+  if (Array.isArray(requestBody?.tools)) {
+    for (const tool of requestBody.tools) {
+      const type = typeof tool?.type === "string" ? tool.type : "";
+      const name = typeof tool?.function?.name === "string"
+        ? tool.function.name
+        : (typeof tool?.name === "string" ? tool.name : "");
+      if (name && type) toolTypes[name] = type;
+    }
+  }
+
   // Base state for all formats
   const base = {
     messageId: null,
@@ -316,7 +330,8 @@ export function initState(sourceFormat) {
     finishReason: null,
     finishReasonSent: false,
     usage: null,
-    contentBlockIndex: -1
+    contentBlockIndex: -1,
+    toolTypes
   };
 
   // Add openai-responses specific fields
@@ -332,6 +347,9 @@ export function initState(sourceFormat) {
       msgContentAdded: {},
       msgItemDone: {},
       reasoningId: "",
+      nextOutputIndex: 0,
+      msgOutputIndexes: {},
+      funcOutputIndexes: {},
       reasoningIndex: -1,
       reasoningBuf: "",
       reasoningPartAdded: false,
@@ -342,6 +360,10 @@ export function initState(sourceFormat) {
       funcCallIds: {},
       funcArgsDone: {},
       funcItemDone: {},
+      funcItemAdded: {},
+      funcPendingArgs: {},
+      funcCustomInput: {},
+      funcCustomDeltaEmitted: {},
       awaitingTrailingUsage: false,
       completedSent: false
     };

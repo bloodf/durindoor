@@ -10,8 +10,8 @@ const chunk = (delta, extra = {}) => ({
   choices: [{ index: 0, delta, ...extra }],
 });
 
-function run(chunks) {
-  const state = initState(FORMATS.OPENAI_RESPONSES);
+function run(chunks, requestBody = null) {
+  const state = initState(FORMATS.OPENAI_RESPONSES, requestBody);
   const events = [];
   for (const c of chunks) {
     events.push(...translateResponse(FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, c, state));
@@ -115,43 +115,87 @@ describe("OpenAI → Responses tool-call shape (#6937)", () => {
       arguments: '{"ok":true}',
       status: "completed",
     });
-    expect(done[1].data.output_index).toBe(0);
+    expect(done[1].data.output_index).toBe(1);
   });
 
-  it("emits apply_patch as custom_tool_call with custom_tool_call_input events", () => {
-    const patch = "*** Begin Patch\n*** Update File: a.js\n*** End Patch";
+  it("uses declared tool type from request body instead of name heuristic", () => {
+    const requestBody = {
+      tools: [
+        { type: "function", function: { name: "apply_patch" } },
+        { type: "custom", function: { name: "custom_tool" } }
+      ]
+    };
+
+    // apply_patch declared as function => function_call, not custom_tool_call
     const events = run([
-      chunk({ tool_calls: [{ index: 0, id: "call_p", type: "function", function: { name: "apply_patch", arguments: "" } }] }),
+      chunk({ tool_calls: [{ index: 0, id: "call_a", type: "function", function: { name: "apply_patch", arguments: "" } }] }),
+      chunk({ tool_calls: [{ index: 0, function: { arguments: JSON.stringify({ input: "patch" }) } }] }),
+      chunk({}, { finish_reason: "tool_calls" }),
+    ], requestBody);
+
+    const added = byType(events, "response.output_item.added");
+    expect(added[0].data.item.type).toBe("function_call");
+    expect(byType(events, "response.function_call_arguments.delta").length).toBe(1);
+    expect(byType(events, "response.custom_tool_call_input.delta").length).toBe(0);
+
+    // custom_tool declared as custom => custom_tool_call, despite name not apply_patch
+    const customEvents = run([
+      chunk({ tool_calls: [{ index: 0, id: "call_c", type: "function", function: { name: "custom_tool", arguments: "" } }] }),
+      chunk({ tool_calls: [{ index: 0, function: { arguments: JSON.stringify({ input: "custom" }) } }] }),
+      chunk({}, { finish_reason: "tool_calls" }),
+    ], requestBody);
+
+    expect(byType(customEvents, "response.output_item.added")[0].data.item.type).toBe("custom_tool_call");
+    expect(byType(customEvents, "response.custom_tool_call_input.delta").map(d => d.data.delta).join("")).toBe("custom");
+    expect(byType(customEvents, "response.custom_tool_call_input.done")[0].data.input).toBe("custom");
+  });
+
+  it("defers output_item.added until tool name arrives after id", () => {
+    const patch = "patch text";
+    const events = run([
+      chunk({ tool_calls: [{ index: 0, id: "call_late", type: "function", function: { arguments: "" } }] }),
       chunk({ tool_calls: [{ index: 0, function: { arguments: JSON.stringify({ input: patch }) } }] }),
+      chunk({ tool_calls: [{ index: 0, function: { name: "apply_patch" } }] }),
       chunk({}, { finish_reason: "tool_calls" }),
     ]);
 
     const added = byType(events, "response.output_item.added");
     expect(added).toHaveLength(1);
-    expect(added[0].data.item).toMatchObject({
-      type: "custom_tool_call",
-      call_id: "call_p",
-      name: "apply_patch",
-      input: "",
-      status: "in_progress",
-    });
+    expect(added[0].data.item.type).toBe("custom_tool_call");
+    expect(added[0].data.item.name).toBe("apply_patch");
+    expect(added[0].data.item.input).toBe("");
 
+    // Buffered argument delta replays after added
     const inputDeltas = byType(events, "response.custom_tool_call_input.delta");
     expect(inputDeltas).toHaveLength(1);
-    expect(inputDeltas[0].data.item_id).toBe("fc_call_p");
+    expect(inputDeltas[0].data.delta).toBe(patch);
+  });
 
-    const inputDone = byType(events, "response.custom_tool_call_input.done");
-    expect(inputDone).toHaveLength(1);
-    expect(inputDone[0].data.input).toBe(patch);
+  it("concatenated custom_tool_call_input deltas equal final done input", () => {
+    const inputA = '{"input":"*** Begin Patch';
+    const inputB = '\\n*** End Patch"}';
+    const events = run([
+      chunk({ tool_calls: [{ index: 0, id: "call_frag", type: "function", function: { name: "apply_patch", arguments: "" } }] }),
+      chunk({ tool_calls: [{ index: 0, function: { arguments: inputA } }] }),
+      chunk({ tool_calls: [{ index: 0, function: { arguments: inputB } }] }),
+      chunk({}, { finish_reason: "tool_calls" }),
+    ]);
 
-    const itemDone = byType(events, "response.output_item.done");
-    expect(itemDone).toHaveLength(1);
-    expect(itemDone[0].data.item).toMatchObject({
-      type: "custom_tool_call",
-      call_id: "call_p",
-      name: "apply_patch",
-      input: patch,
-      status: "completed",
-    });
+    const deltas = byType(events, "response.custom_tool_call_input.delta");
+    const done = byType(events, "response.custom_tool_call_input.done");
+    expect(deltas.map((d) => d.data.delta).join("")).toBe(done[0].data.input);
+  });
+
+  it("allocates monotonic indexes for reasoning, text, and tool calls", () => {
+    const events = run([
+      chunk({ content: "<think>think</think>" }),
+      chunk({ content: "text" }),
+      chunk({ tool_calls: [{ index: 0, id: "call_t", type: "function", function: { name: "noop", arguments: "{}" } }] }),
+      chunk({}, { finish_reason: "tool_calls" }),
+    ]);
+
+    const done = byType(events, "response.output_item.done");
+    expect(done.map((d) => d.data.output_index)).toEqual([0, 1, 2]);
+    expect(done.map((d) => d.data.item.type)).toEqual(["reasoning", "message", "function_call"]);
   });
 });

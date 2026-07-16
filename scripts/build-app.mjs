@@ -57,6 +57,12 @@ try {
       path.join(process.cwd(), "open-sse", "handlers", "realtimeCore.js"),
       path.join(standaloneDir, "open-sse", "handlers", "realtimeCore.js"),
     );
+    // OmniRoute #6828: custom-server.js requires this at its first line to strip
+    // empty-string env vars before app modules snapshot them.
+    fs.copyFileSync(
+      path.join(process.cwd(), "src", "shared", "utils", "normalizeEnv.js"),
+      path.join(standaloneDir, "src", "shared", "utils", "normalizeEnv.js"),
+    );
     // Ensure `require("ws")` resolves inside the standalone bundle. Next's NFT
     // typically already traces ws (server-side fetch/WS deps), but a post-build
     // entry is outside the trace — copy the resolved package if it is missing

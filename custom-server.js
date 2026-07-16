@@ -1,3 +1,7 @@
+// OmniRoute #6828: strip empty-string env vars (Docker `-e KEY=`) before any
+// module below can snapshot them; "" must behave like "not set".
+require("./src/shared/utils/normalizeEnv").normalizeProcessEnv();
+
 const crypto = require("crypto");
 const http = require("http");
 const { WebSocketServer } = require("ws");

@@ -12,5 +12,5 @@
   - `open-sse/utils/error.js` — root-seam routing + `looksLikeAbsolutePath`/`maskSourcePaths` helpers + JSDoc contract (in-code doc artifact).
   - `tests/unit/error-sanitize.test.js` — targeted behavioral test.
   - `docs/ports/omniroute-6886.md` — this note.
-- **Verification:** `node node_modules/vitest/vitest.mjs run unit/error-sanitize.test.js` (from `tests/`, Node 20) → targeted behavioral coverage for source-path masking, safe-URL pass-through, secret redaction (userinfo, JSON field, Bearer, query param, inline `key=value`), cap-truncated standalone credential prefixes, and root-builder routing. No lint/build/gate run in this subtask.
+- **Regression coverage (not run per assignment):** `node node_modules/vitest/vitest.mjs run unit/error-sanitize.test.js` (from `tests/`, Node 20) would exercise source-path masking, safe-URL pass-through, secret redaction (userinfo, JSON field, Bearer, query param, inline `key=value`), cap-truncated standalone credential prefixes, and root-builder routing. No tests, lint, build, gate, or formatters were run in this subtask.
 - **Out of scope:** upstream's `sanitizeUpstreamDetails` recursive projection (durindoor's `upstream_details` field is not rewritten here); per-dashboard-route 500 bodies outside `open-sse` root builders.

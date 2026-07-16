@@ -417,15 +417,21 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
           <h2 className="text-lg font-semibold">Connections</h2>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-text-muted font-medium">Round Robin</span>
-            <Toggle
-              checked={providerStrategy === "round-robin"}
-              onChange={(enabled) => {
-                const strategy = enabled ? "round-robin" : null;
+            <span className="text-xs text-text-muted font-medium">Strategy:</span>
+            <Select
+              value={providerStrategy || "priority"}
+              onChange={(e) => {
+                const strategy = e.target.value === "priority" ? null : e.target.value;
                 setProviderStrategy(strategy);
-                if (enabled && !providerStickyLimit) setProviderStickyLimit("1");
-                saveStrategy(strategy, enabled ? (providerStickyLimit || "1") : providerStickyLimit);
+                if (e.target.value === "round-robin" && !providerStickyLimit) setProviderStickyLimit("1");
+                const sticky = e.target.value === "round-robin" ? (providerStickyLimit || "1") : providerStickyLimit;
+                saveStrategy(strategy, sticky);
               }}
+              options={[
+                { value: "priority", label: "Priority" },
+                { value: "round-robin", label: "Round Robin" },
+                { value: "random-available", label: "Random Available" }
+              ]}
             />
             {providerStrategy === "round-robin" && (
               <div className="flex flex-wrap items-center gap-1.5">

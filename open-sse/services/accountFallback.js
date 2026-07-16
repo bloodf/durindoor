@@ -231,6 +231,32 @@ export function buildClearModelLocksUpdate(connection) {
 }
 
 /**
+ * Random-available strategy: pick uniformly at random from the healthy
+ * (active/success) subset of already-filtered candidates, excluding
+ * unavailable and cooldown accounts.
+ *
+ * `candidates` MUST be pre-filtered by the caller to the auth-selection
+ * pool (excluded ids, active model locks, and quota skips already removed);
+ * this helper additionally drops cooldown (`rateLimitedUntil` in the future)
+ * and non-active statuses. An injected `rng` keeps selection deterministic
+ * under test; production passes nothing and uses Math.random.
+ *
+ * Returns null when no healthy candidate exists — the caller must then fall
+ * through to its existing all-unavailable path, never to a bad account.
+ *
+ * Port of decolua/9router PR #2557 ("random-available connection strategy").
+ */
+export function pickRandomAvailableConnection(candidates, { rng = Math.random, now = Date.now() } = {}) {
+  const healthy = (candidates || []).filter((c) => {
+    if (c.rateLimitedUntil && new Date(c.rateLimitedUntil).getTime() > now) return false;
+    return c.testStatus === "active" || c.testStatus === "success";
+  });
+  if (healthy.length === 0) return null;
+  const index = Math.min(Math.floor(rng() * healthy.length), healthy.length - 1);
+  return healthy[index];
+}
+
+/**
  * Filter available accounts (not in cooldown)
  */
 export function filterAvailableAccounts(accounts, excludeId = null) {

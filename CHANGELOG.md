@@ -1,5 +1,8 @@
 # Unreleased
 
+## Features
+- **Routing**: add a per-provider Random Available connection strategy that picks uniformly among healthy connections, skipping unavailable/cooldown accounts (upstream #2557).
+
 ## Fixes
 - **Gemini**: omit unsupported thinking config for Gemma 4 on OpenAI-to-Gemini requests (OmniRoute #6708).
 - **Routing**: clamp reasoning-token headroom to explicit model output caps and isolate fallback attempts (#6714).

@@ -50,6 +50,18 @@ Common service kinds:
 
 If a provider has multiple connections, DurinDoor selects an available connection and avoids accounts that are temporarily locked, expired, or excluded by the current fallback attempt. Provider-specific code can refresh credentials when the upstream supports refresh.
 
+### Provider connection strategies
+
+The per-provider connection strategy (set on the provider detail page) controls which available connection is picked first:
+
+| Strategy | Selection behavior |
+| --- | --- |
+| Priority (default) | First connection by priority order (fill-first). |
+| Round Robin | Rotates across connections by least-recently-used, with an optional sticky limit. |
+| Random Available | Uniform random pick over healthy connections only. |
+
+Random Available excludes connections that are inactive, marked unavailable/error, model-locked, quota-blocked, or still in cooldown; expired cooldowns are eligible again. If no healthy connection exists, DurinDoor returns the standard provider-unavailable response instead of reviving a bad account.
+
 ## Request Translation
 
 Client tools do not all speak the same format. DurinDoor translates between OpenAI, Anthropic Claude, Gemini, OpenAI Responses, Kiro, Cursor, CommandCode, Ollama, Vertex, and other supported shapes.

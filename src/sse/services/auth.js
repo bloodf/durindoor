@@ -5,7 +5,7 @@ import {
 } from "@/lib/localDb";
 import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
-import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, buildModelLockUpdate, getActiveModelLockUntil } from "open-sse/services/accountFallback.js";
+import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, buildModelLockUpdate, getActiveModelLockUntil, pickRandomAvailableConnection } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
 import * as log from "../utils/logger.js";
@@ -449,6 +449,18 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       // Persistent pressure + last-selection history provide the fairness tier
       // for quota-comparable accounts. Atomic acquire remains the final arbiter.
       connection = availableConnections[0];
+    } else if (strategy === "random-available") {
+      // Uniform random pick over healthy candidates only. An empty healthy
+      // pool returns the standard all-unavailable result so callers follow
+      // the established retry path instead of reviving a connection that is
+      // still in cooldown or marked unavailable.
+      connection = pickRandomAvailableConnection(availableConnections, { now: selectionNow });
+      if (connection) {
+        log.info("AUTH", `${provider} | random-available: picked ${connection.id?.slice(0, 8)}`);
+      } else {
+        log.warn("AUTH", `${provider} | random-available: no healthy candidates (${availableConnections.length} available)`);
+        return { allRateLimited: true, retryAfter: null, retryAfterHuman: "", lastError: "Provider unavailable", lastErrorCode: 503 };
+      }
     } else if (strategy === "round-robin") {
       const stickyLimit = providerOverride.stickyRoundRobinLimit || settings.stickyRoundRobinLimit || 3;
 

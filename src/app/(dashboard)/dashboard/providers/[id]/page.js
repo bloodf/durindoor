@@ -453,12 +453,13 @@ export default function ProviderDetailPage() {
     }
   };
 
-  const handleRoundRobinToggle = (enabled) => {
-    const strategy = enabled ? "round-robin" : null;
-    const sticky = enabled ? (providerStickyLimit || "1") : providerStickyLimit;
-    if (enabled && !providerStickyLimit) setProviderStickyLimit("1");
-    setProviderStrategy(strategy);
-    saveProviderStrategy(strategy, sticky);
+  const handleStrategyChange = (strategy) => {
+    // "priority" means no override (use default fill-first)
+    const normalizedStrategy = strategy === "priority" ? null : strategy;
+    const sticky = strategy === "round-robin" ? (providerStickyLimit || "1") : providerStickyLimit;
+    if (strategy === "round-robin" && !providerStickyLimit) setProviderStickyLimit("1");
+    setProviderStrategy(normalizedStrategy);
+    saveProviderStrategy(normalizedStrategy, sticky);
   };
 
   const handleStickyLimitChange = (value) => {
@@ -1615,12 +1616,17 @@ export default function ProviderDetailPage() {
                   )}
                 </>
               )}
-              {/* Round Robin toggle */}
+              {/* Strategy Selector */}
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs text-text-muted font-medium">Round Robin</span>
-                <Toggle
-                  checked={providerStrategy === "round-robin"}
-                  onChange={handleRoundRobinToggle}
+                <span className="text-xs text-text-muted font-medium">Strategy:</span>
+                <Select
+                  value={providerStrategy || "priority"}
+                  onChange={(e) => handleStrategyChange(e.target.value)}
+                  options={[
+                    { value: "priority", label: "Priority" },
+                    { value: "round-robin", label: "Round Robin" },
+                    { value: "random-available", label: "Random Available" }
+                  ]}
                 />
                 {providerStrategy === "round-robin" && (
                   <div className="flex items-center gap-1.5">

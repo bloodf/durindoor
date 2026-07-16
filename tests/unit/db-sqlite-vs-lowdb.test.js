@@ -256,6 +256,58 @@ describe("DB SQLite layer — public API parity", () => {
     expect(first.id).not.toBe(second.id);
   });
 
+  // Regression port of OmniRoute #6706 (avoid bare-email dedup of Codex OAuth
+  // logins). Same-account merge, different-account isolation, and bare-email
+  // isolation are covered by the Codex tests above; this adds the missing
+  // cross-provider control: a same-email row under another provider must
+  // never merge into or be overwritten by codex logins (the dedup lookup is
+  // scoped by provider).
+  it("providerConnections: same-email row under a different provider stays isolated from Codex OAuth dedup", async () => {
+    const codexLogin = await sqliteDb.createProviderConnection({
+      provider: "codex",
+      authType: "oauth",
+      email: "xprov@example.com",
+      accessToken: "token-codex",
+      refreshToken: "refresh-codex",
+      providerSpecificData: { chatgptAccountId: "user-a" },
+    });
+
+    const other = await sqliteDb.createProviderConnection({
+      provider: "gemini",
+      authType: "oauth",
+      email: "xprov@example.com",
+      accessToken: "token-gemini",
+      refreshToken: "refresh-gemini",
+      providerSpecificData: {},
+    });
+    expect(other.id).not.toBe(codexLogin.id);
+
+    // A second codex login for a DIFFERENT account sharing the email inserts
+    // a new row — it must not collapse onto either existing row.
+    const codexLoginB = await sqliteDb.createProviderConnection({
+      provider: "codex",
+      authType: "oauth",
+      email: "xprov@example.com",
+      accessToken: "token-codex-b",
+      refreshToken: "refresh-codex-b",
+      providerSpecificData: { chatgptAccountId: "user-b" },
+    });
+    expect(codexLoginB.id).not.toBe(codexLogin.id);
+    expect(codexLoginB.id).not.toBe(other.id);
+
+    const codexRows = (await sqliteDb.getProviderConnections({ provider: "codex" }))
+      .filter((row) => row.email === "xprov@example.com");
+    expect(codexRows).toHaveLength(2);
+
+    // Original token pairs on both pre-existing rows are untouched.
+    const rowCodex = await sqliteDb.getProviderConnectionById(codexLogin.id);
+    expect(rowCodex.accessToken).toBe("token-codex");
+    expect(rowCodex.refreshToken).toBe("refresh-codex");
+    const rowOther = await sqliteDb.getProviderConnectionById(other.id);
+    expect(rowOther.accessToken).toBe("token-gemini");
+    expect(rowOther.refreshToken).toBe("refresh-gemini");
+  });
+
   it("providerConnections: optional fields persisted via JSON column", async () => {
     const c = await sqliteDb.createProviderConnection({
       provider: "p2", authType: "oauth", email: "x@y.com",

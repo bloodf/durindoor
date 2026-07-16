@@ -30,6 +30,11 @@ vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
   proxyAwareFetch,
 }));
 
+// Hoisted out of the timed test section: a cold dynamic import under parallel
+// worker load can exceed the per-test timeout and leave stale fetch-mock calls
+// that poison subsequent assertions.
+const { CodexExecutor } = await import("../../open-sse/executors/codex.js");
+
 describe("Codex effort wire encoding (official Ultra→Max)", () => {
   beforeEach(() => {
     proxyAwareFetch.mockClear();
@@ -37,7 +42,6 @@ describe("Codex effort wire encoding (official Ultra→Max)", () => {
   });
 
   async function executeWithEffort(model, effortFields) {
-    const { CodexExecutor } = await import("../../open-sse/executors/codex.js");
     const executor = new CodexExecutor();
     return executor.execute({
       model,

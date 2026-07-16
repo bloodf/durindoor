@@ -20,6 +20,7 @@ import {
   settleProviderAttemptDispatch,
 } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
+import { applyResponseModelEcho, resolveResponsesEchoModel } from "../services/responseModelEcho.js";
 
 import { getExecutor } from "../executors/index.js";
 import { buildRequestDetail, extractRequestConfig } from "./chatCore/requestDetail.js";
@@ -28,7 +29,7 @@ import { handleNonStreamingResponse } from "./chatCore/nonStreamingHandler.js";
 import { handleStreamingResponse, buildOnStreamComplete } from "./chatCore/streamingHandler.js";
 import { resolveStreamFlag } from "./chatCore/streamFlag.js";
 import { createEmptyRetryStream } from "./chatCore/emptyStreamGuard.js";
-import { detectClientTool, isNativePassthrough } from "../utils/clientDetector.js";
+import { detectClientTool, isNativePassthrough, isCodexOriginatedHeaders } from "../utils/clientDetector.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
 import { salvageOrphanedToolResults, fixMissingToolResponses } from "../translator/concerns/toolCall.js";
 import { injectCaveman } from "../rtk/caveman.js";
@@ -1030,11 +1031,27 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
     );
   };
 
+  // OmniRoute #6820 (issue #3697): Codex CLI model echo. Compute the
+  // client-requested model id to reflect back in Responses payloads. Trigger is
+  // exact: Responses source format AND a Codex-originated request header
+  // (`originator`/`user-agent` starts with `codex`), NOT the routed provider —
+  // so a `codex/…` id routed through a combo to a non-Codex upstream still
+  // echoes. Compact requests are excluded: their unary JSON contract must stay
+  // untouched. The echo id comes from the ORIGINAL client body model (never the
+  // routed upstream id), and is empty when there is nothing safe to echo.
+  const responsesEchoModel = (
+    sourceFormat === FORMATS.OPENAI_RESPONSES
+    && requestContext.compact !== true
+    && isCodexOriginatedHeaders(clientRawRequest?.headers)
+  ) ? resolveResponsesEchoModel(clientRawRequest) : null;
+  const finalizeResponse = async (result) =>
+    withCompressionHeader(await applyResponseModelEcho(result, responsesEchoModel), compressionHeaderValue);
+
   // Provider forced streaming but client wants JSON
   if (!clientRequestedStreaming && providerRequiresStreaming) {
     try {
       const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, trackDone, appendLog, signal: providerSignal });
-      if (result) return withCompressionHeader(await finalizeBufferedResult(result), compressionHeaderValue);
+      if (result) return await finalizeResponse(await finalizeBufferedResult(result));
     } catch (error) {
       return failPostResponseHandling(error);
     }
@@ -1047,7 +1064,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
     const streamToClient = clientRequestedStreaming === true;
     try {
       const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, reqLogger, toolNameMap, trackDone, appendLog, streamToClient, signal: providerSignal });
-      return withCompressionHeader(await finalizeBufferedResult(result), compressionHeaderValue);
+      return await finalizeResponse(await finalizeBufferedResult(result));
     } catch (error) {
       return failPostResponseHandling(error);
     }
@@ -1058,7 +1075,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
   try {
     const result = await handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, streamController, onStreamComplete, onCoherentTerminal, streamDetailId, signal: providerSignal });
     if (!result?.success) await settleQuota(false, "stream_error");
-    return withCompressionHeader(result, compressionHeaderValue);
+    return await finalizeResponse(result);
   } catch (error) {
     return failPostResponseHandling(error);
   }

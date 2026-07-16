@@ -26,6 +26,7 @@ vi.mock("../../open-sse/utils/requestLogger.js", () => ({
 vi.mock("../../open-sse/utils/clientDetector.js", () => ({
   detectClientTool: vi.fn(() => null),
   isNativePassthrough: vi.fn(() => false),
+  isCodexOriginatedHeaders: vi.fn(() => false),
 }));
 
 vi.mock("../../open-sse/utils/bypassHandler.js", () => ({

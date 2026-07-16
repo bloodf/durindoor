@@ -19,6 +19,30 @@ import { dbg } from "../utils/debugLog.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { applyCodexAccountHeader } from "../shared/codexAccountId.js";
 import { settleProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import { extractCompleteSseFrames } from "../utils/streamHelpers.js";
+
+// Recognized Codex effort suffixes, lowest-to-highest. Single source of truth for
+// routing normalization: transformRequest strips the suffix from the wire id.
+const CODEX_EFFORT_LEVELS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
+
+/**
+ * Split a Codex model id into its bare upstream id and recognized effort suffix.
+ * e.g. `gpt-5.5-xhigh` → `{ model: "gpt-5.5", effort: "xhigh" }`;
+ * `gpt-5.5` → `{ model: "gpt-5.5", effort: null }`. A trailing segment not in
+ * CODEX_EFFORT_LEVELS is part of the model id, not an effort.
+ *
+ * @param {unknown} modelId Candidate model id.
+ * @returns {{model: string, effort: string|null}} Bare id and effort (null when absent/unrecognized).
+ */
+function splitCodexEffortSuffix(modelId) {
+  const model = typeof modelId === "string" ? modelId : "";
+  for (const level of CODEX_EFFORT_LEVELS) {
+    if (model.endsWith(`-${level}`)) {
+      return { model: model.slice(0, -`-${level}`.length), effort: level };
+    }
+  }
+  return { model, effort: null };
+}
 
 // SSE error patterns inside 200-OK bodies. Some retry same account first; capacity rotates accounts.
 const CODEX_SSE_RETRY_PATTERNS = ["server_is_overloaded", "service_unavailable_error"];
@@ -139,27 +163,6 @@ const COMPACT_API_ALLOWLIST = new Set([
   "model", "input", "instructions", "tools", "parallel_tool_calls", "reasoning",
   "service_tier", "prompt_cache_key", "text"
 ]);
-
-/**
- * Split a streaming chunk buffer into complete SSE frames plus a trailing
- * remainder. Frames are separated by a blank line (`\r?\n\r?\n`); any bytes
- * after the last delimiter are returned as `remainder` so the caller can
- * prepend them to the next chunk without inspecting partial data.
- *
- * @param {string} buffer Accumulated raw SSE text that may contain a partial final frame.
- * @returns {{frames: string[], remainder: string}} Complete frames and the unterminated tail.
- */
-function extractCompleteSseFrames(buffer) {
-  const frames = [];
-  const delimiter = /\r?\n\r?\n/g;
-  let cursor = 0;
-  let match;
-  while ((match = delimiter.exec(buffer)) !== null) {
-    frames.push(buffer.slice(cursor, match.index));
-    cursor = delimiter.lastIndex;
-  }
-  return { frames, remainder: buffer.slice(cursor) };
-}
 
 /**
  * Canonicalize an SSE event name for case-insensitive comparison.
@@ -806,15 +809,11 @@ export class CodexExecutor extends BaseExecutor {
 
     // Extract thinking level from model name suffix
     // e.g., gpt-5.3-codex-high → high, gpt-5.3-codex → low (default)
-    const effortLevels = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
-    let modelEffort = null;
-    for (const level of effortLevels) {
-      if (body.model.endsWith(`-${level}`)) {
-        modelEffort = level;
-        // Strip suffix from model name for actual API call
-        body.model = body.model.replace(`-${level}`, '');
-        break;
-      }
+    const effortSplit = splitCodexEffortSuffix(body.model);
+    const modelEffort = effortSplit.effort;
+    if (modelEffort) {
+      // Strip suffix from model name for actual API call
+      body.model = effortSplit.model;
     }
 
     // Priority: explicit reasoning.effort > reasoning_effort param > model suffix > default (low)

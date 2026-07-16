@@ -61,6 +61,19 @@ const AUTH_DESCRIPTORS = Object.fromEntries(
 // Apply a token to a header per scheme. Missing tokens intentionally leave the
 // header absent so optional local providers do not send "Bearer undefined".
 
+// Upstream decolua/9router#2533: MiniMax documents MiniMax-M3 on the standard
+// OpenAI API endpoint /v1/text/chatcompletion_v2 rather than /v1/chat/completions.
+// Only rewrite the URL when the resolved transport is the OpenAI one for MiniMax-M3
+// — the Claude transport (x-api-key, ?beta=true) and every other MiniMax model
+// keep their URL.
+const MINIMAX_M3_PROVIDERS = new Set(["minimax", "minimax-cn"]);
+
+function resolveMiniMaxM3Url(provider, model, url, transportFormat) {
+  if (!MINIMAX_M3_PROVIDERS.has(provider) || model !== "MiniMax-M3") return url;
+  if (transportFormat !== "openai") return url;
+  return url.replace(/\/v1\/chat\/completions$/, "/v1/text/chatcompletion_v2");
+}
+
 export function normalizeAccountIdPlaceholder(provider, accountId) {
   const trimmed = `${accountId || ""}`.trim();
   if (!trimmed) throw new Error(`${provider} requires accountId in providerSpecificData`);
@@ -319,7 +332,8 @@ export class DefaultExecutor extends BaseExecutor {
     // Runtime transport (multi-endpoint providers): use the resolved endpoint.
     const rt = credentials?.runtimeTransport;
     if (rt?.baseUrl) {
-      return rt.urlSuffix ? `${rt.baseUrl}${rt.urlSuffix}` : rt.baseUrl;
+      const url = rt.urlSuffix ? `${rt.baseUrl}${rt.urlSuffix}` : rt.baseUrl;
+      return resolveMiniMaxM3Url(this.provider, model, url, rt.format);
     }
     if (this.provider === "heroku") {
       return `${resolveHerokuBaseUrl(credentials)}/chat/completions`;

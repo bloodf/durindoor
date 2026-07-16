@@ -56,10 +56,16 @@ function getOpenCodeZenPassthroughTargetFormat(modelId) {
   return null;
 }
 
+// Upstream decolua/9router#2533: MiniMax documents MiniMax-M3 tool calling on the
+// standard OpenAI API surface, so M3 is routed through the OpenAI wire format +
+// chatcompletion_v2 endpoint even for Claude-source clients.
+const OPENAI_FORMAT_MINIMAX_PROVIDERS = new Set(["minimax", "minimax-cn"]);
+
 export function getModelTargetFormat(aliasOrId, modelId) {
   const models = PROVIDER_MODELS[aliasOrId];
   const configuredTargetFormat = models ? modelTargetFormat(findModel(models, modelId, aliasOrId)) : null;
   if (configuredTargetFormat) return configuredTargetFormat;
+  if (OPENAI_FORMAT_MINIMAX_PROVIDERS.has(aliasOrId) && modelId === "MiniMax-M3") return "openai";
   // OpenCode Zen allows passthrough model IDs, but API-family prefixes still need
   // their native translators instead of the provider default Chat Completions route.
   if (aliasOrId === "opencode-zen") return getOpenCodeZenPassthroughTargetFormat(modelId);

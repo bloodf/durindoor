@@ -298,7 +298,11 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
   // client sends Chat Completions format.
   const runtimeTransport = resolveTransport(provider, modelTargetFormat || sourceFormat);
   const skipTranslation = runtimeTransport?.format === sourceFormat;
-  if (skipTranslation && credentials) credentials.runtimeTransport = runtimeTransport;
+  // Attach the selected transport even when it was chosen by a model format override
+  // (e.g. MiniMax-M3 → OpenAI for a Claude-source client, upstream decolua/9router#2533);
+  // otherwise the executor falls back to the provider default endpoint and the override
+  // would only change the translated body, not the destination.
+  if (runtimeTransport && credentials) credentials.runtimeTransport = runtimeTransport;
   const targetFormat = skipTranslation
     ? sourceFormat
     : (modelTargetFormat || runtimeTransport?.format || getTargetFormat(provider, credentials));

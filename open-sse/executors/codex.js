@@ -286,6 +286,29 @@ function convertSystemToDeveloperRole(body) {
   }
 }
 
+// Assistant history in the Responses API must use `output_text` (or `refusal`),
+// never `input_text` (which is user-only). codex-cli replays assistant turns as
+// `input_text` (or legacy `text`); normalize them so the Codex/OpenAI backend
+// accepts the replay. Applies to every Codex model id (bare or prefixed) — the
+// wire contract is model-agnostic. User and function items are untouched.
+// Upstream provenance: diegosouzapw/OmniRoute#6932.
+function normalizeCodexAssistantHistory(body) {
+  if (!Array.isArray(body.input)) return;
+  for (const item of body.input) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    if (item.role !== "assistant" || !Array.isArray(item.content)) continue;
+    for (const part of item.content) {
+      if (!part || typeof part !== "object" || Array.isArray(part)) continue;
+      if (part.type === "input_text" || part.type === "text") {
+        part.type = "output_text";
+        delete part.annotations;
+        delete part.logprobs;
+        delete part.obfuscation;
+      }
+    }
+  }
+}
+
 // Strip server-generated item IDs (rs_/fc_/resp_/msg_) from input — avoids 404 with store=false
 function stripStoredItemReferences(body) {
   if (!Array.isArray(body.input)) return;
@@ -749,6 +772,8 @@ export class CodexExecutor extends BaseExecutor {
 
     // Keep system prompts in body.input as role=developer so they stay in the cacheable prefix
     convertSystemToDeveloperRole(body);
+    // Rewrite replayed assistant history input_text/text parts → output_text (#6932)
+    normalizeCodexAssistantHistory(body);
     // Strip server-generated item IDs (rs_/fc_/resp_/msg_) — Codex /responses can't resolve when store=false
     stripStoredItemReferences(body);
     // Flatten function tools + drop unsupported types

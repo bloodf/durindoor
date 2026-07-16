@@ -3,6 +3,7 @@
 ## Fixes
 - **Bootstrap**: strip empty-string `process.env` values before app modules load so Docker `-e KEY=` no longer overrides real values and crash-loops the container (OmniRoute #6828).
 - **Routing**: the `auto` combo's no-auth candidate pool now honors a disabled provider connection's own `isActive=false` (the main Providers grid toggle), seeding chat-eligible no-auth providers by default and gating them out when their connection row is disabled (OmniRoute #6889, fixes #6557).
+- **Codex**: rewrite replayed assistant history `input_text`/`text` parts to `output_text` (dropping `annotations`/`logprobs`/`obfuscation`) so the Codex/OpenAI backend accepts codex-cli conversation replays; user and function items unchanged (OmniRoute #6932).
 - **Gemini**: omit unsupported thinking config for Gemma 4 on OpenAI-to-Gemini requests (OmniRoute #6708).
 - **Routing**: clamp reasoning-token headroom to explicit model output caps and isolate fallback attempts (#6714).
 - **OAuth**: regression-test Codex OAuth connection dedup — Codex same-email logins remain isolated by account and provider, preventing silent token overwrite (OmniRoute #6706; behavior already enforced by account-id-scoped dedup).

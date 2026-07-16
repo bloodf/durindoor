@@ -354,6 +354,15 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
   }
 
   const { cleanModel, override } = parseSuffix(model);
+
+  // Grok Build (grok-cli) rejects reasoning.effort but still accepts summary/
+  // encrypted-content continuity. Let the executor own the wire normalization so
+  // a caller-supplied summary is not stripped by the reasoning:false capability.
+  // Upstream decolua/9router#2590.
+  if (provider === "grok-cli" && cleanModel === "grok-build") {
+    return body;
+  }
+
   const cfg = override || intent || extractThinking(body);
   const caps = getCapabilitiesForModel(provider, cleanModel);
 

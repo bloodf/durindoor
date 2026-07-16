@@ -115,7 +115,7 @@ export const MODEL_CAPABILITIES = {
 const KIRO_GPT_5_6_PROVIDER_CAPS = Object.fromEntries(
   KIRO_GPT_5_6_FAMILY.flatMap(buildKiroGpt56Variants).map((m) => [m.id, {
     vision: true, reasoning: true, search: true,
-    thinkingFormat: "kiro", contextWindow: m.contextLength, maxOutput: 128000,
+    thinkingFormat: "kiro", contextWindow: m.contextLength, maxOutput: 32000,
   }])
 );
 

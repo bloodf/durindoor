@@ -134,17 +134,26 @@ function isBinaryData(buffer) {
   return (nonPrintable / sample.length) > 0.3;
 }
 
-function getMappedOverride(tool, model) {
+function getMappedOverride(tool, model, aliases) {
   if (!model) return null;
   try {
-    const aliases = getMitmAlias(tool);
+    if (aliases === undefined) aliases = getMitmAlias(tool);
     if (!aliases) return null;
     // Normalize via synonym map (e.g., public AG names -> backend model ids)
     const normalizedModel = String(model).replace(/^models\//, "");
-    const lookup = MODEL_SYNONYMS?.[tool]?.[normalizedModel] || normalizedModel;
+    let lookup = MODEL_SYNONYMS?.[tool]?.[normalizedModel] || normalizedModel;
+    // Kiro GPT-5.6 (#2596): the MITM path reads the native userInputMessage
+    // modelId, which may arrive in digit-dash form (`gpt-5-6-sol`) while picker
+    // aliases are saved dotted (`gpt-5.6-sol`). Unlike provider routing there
+    // is no digit-dash-digit normalization here, so normalize before lookup or
+    // dash-form ids fall through to AWS instead of the configured provider.
+    if (tool === "kiro") lookup = lookup.replace(/^(gpt-)(\d+)-(\d+)(?=-|$)/, "$1$2.$3");
     if (aliases[lookup]) return aliases[lookup];
-    // Prefix match fallback
-    const prefixKey = Object.keys(aliases).find(k => k && aliases[k] && (lookup.startsWith(k) || k.startsWith(lookup)));
+    // Prefix match fallback: longest configured alias that prefixes the
+    // lookup wins (deterministic specificity — a short alias like `gpt-5`
+    // must not hijack `gpt-5.6-sol` by object key order). One-directional:
+    // raw id must start with the configured key, never the reverse.
+    const prefixKey = Object.keys(aliases).filter((k) => k && aliases[k] && lookup.startsWith(k)).sort((a, b) => b.length - a.length)[0];
     if (prefixKey) return aliases[prefixKey];
     // Pattern fallback: catches AG renamed variants (e.g. deprecated pro IDs → gemini-pro-agent)
     const patterns = MODEL_PATTERNS?.[tool] || [];
@@ -483,6 +492,7 @@ if (require.main === module || process.argv.includes(MITM_ENTRY_ARG)) void runMa
 
 module.exports = {
   createMitmServer,
+  getMappedOverride,
   handleRequest,
   registerShutdownHandlers,
   runMain,

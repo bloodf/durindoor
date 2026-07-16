@@ -36,7 +36,8 @@ describe("getCapabilitiesForModel", () => {
   });
 
   // decolua/9router#2596 — every Kiro GPT-5.6 synthetic variant resolves the
-  // family's 272k context / 128k output / Kiro-native thinking under both
+  // family's 272k context / 32k output (the Kiro wire caps inferenceConfig
+  // .maxTokens at 32000) / Kiro-native thinking under both
   // provider keys, a vendor-prefixed id ("openai/gpt-5.6-sol") hits the same
   // provider override as the bare id, and the dash-version form ("gpt-5-6-sol")
   // is normalized to the same 272k row instead of the generic 400k *gpt-5*
@@ -44,7 +45,7 @@ describe("getCapabilitiesForModel", () => {
   // top-level reasoning_effort to the CodeWhisperer payload.
   const kiroGpt56Expected = {
     contextWindow: 272000,
-    maxOutput: 128000,
+    maxOutput: 32000,
     thinkingFormat: "kiro",
     reasoning: true,
     vision: true,

@@ -82,7 +82,7 @@ describe("MITM runtime lifecycle packaging", () => {
     const cli = fs.readFileSync(path.join(repoRoot, "cli/cli.js"), "utf8");
 
     expect(buildMitm).toContain("cleanPlainFiles: false");
-    expect(buildCli).toContain("custom-server.js is required");
+    expect(buildCli).toContain("copyRequiredStandaloneSidecars(appDir, cliAppDir)");
     expect(cli).toContain("owner-aware custom-server.js is missing");
     expect(cli).not.toContain(": path.join(standaloneDir, \"server.js\")");
     expect(cli).toContain('stdio: "ignore"');

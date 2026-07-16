@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
 const { resolveCliAppDir } = require("./cliBuildPaths");
+const { copyRequiredStandaloneSidecars } = require("./standaloneSidecars");
 
 const cliDir = path.resolve(__dirname, "..");
 const appDir = path.resolve(cliDir, "..");
@@ -170,13 +171,16 @@ if (standaloneApp !== standaloneRootToUse && fs.existsSync(standaloneNodeModules
 }
 console.log("✅ Copied standalone build\n");
 
-// Step 3a: Copy custom server (injects real socket IP, strips spoofable XFF).
-const customServerSrc = path.join(appDir, "custom-server.js");
-if (fs.existsSync(customServerSrc)) {
-  fs.copyFileSync(customServerSrc, path.join(cliAppDir, "custom-server.js"));
-  console.log("✅ Copied custom-server.js\n");
-} else {
-  console.error("❌ custom-server.js is required for socket ownership and anti-spoofing checks");
+// Step 3a: Copy custom server + required root sidecars (custom-server.js
+// injects real socket IP / strips spoofable XFF; head-response-guard.cjs is
+// its #6608 HEAD guard). These live outside Next's standalone trace, so a
+// missing copy crashes the shipped CLI at boot (OmniRoute #6908).
+console.log("3️⃣ a Copying custom server + sidecars...");
+try {
+  copyRequiredStandaloneSidecars(appDir, cliAppDir);
+  console.log("✅ Copied custom-server.js + head-response-guard.cjs\n");
+} catch (error) {
+  console.error(`❌ ${error.message}`);
   process.exit(1);
 }
 

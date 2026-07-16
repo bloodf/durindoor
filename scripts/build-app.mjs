@@ -28,6 +28,10 @@ try {
         .find((candidate) => fs.existsSync(path.join(candidate, "server.js")));
     if (!standaloneDir) throw new Error(`Standalone server not found under ${standaloneRoot}`);
     fs.copyFileSync(path.join(process.cwd(), "custom-server.js"), path.join(standaloneDir, "custom-server.js"));
+    // custom-server.js requires ./head-response-guard.cjs (OmniRoute #6908):
+    // a root-level sidecar outside Next's NFT trace, so it must be copied by
+    // hand or the standalone server crashes at boot with MODULE_NOT_FOUND.
+    fs.copyFileSync(path.join(process.cwd(), "head-response-guard.cjs"), path.join(standaloneDir, "head-response-guard.cjs"));
     fs.cpSync(path.join(process.cwd(), "src", "mitm"), path.join(standaloneDir, "src", "mitm"), {
       recursive: true,
     });

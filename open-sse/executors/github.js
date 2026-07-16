@@ -1,8 +1,10 @@
-import { BaseExecutor } from "./base.js";
+import { BaseExecutor, waitForRetryDelay } from "./base.js";
 import { readBoundedResponseText } from "../utils/error.js";
 import { PROVIDERS } from "../config/providers.js";
-import { OAUTH_ENDPOINTS, GITHUB_COPILOT } from "../config/appConstants.js";
-import { HTTP_STATUS } from "../config/runtimeConfig.js";
+import { OAUTH_ENDPOINTS, GITHUB_COPILOT, CLAUDE_SYSTEM_PROMPT } from "../config/appConstants.js";
+import { HTTP_STATUS, DEFAULT_RETRY_CONFIG, resolveRetryEntry, FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
+import { normalizeClaudePassthrough } from "../translator/formats/claude.js";
+import { detectClientTool } from "../utils/clientDetector.js";
 import { openaiToOpenAIResponsesRequest } from "../translator/request/openai-responses.js";
 import { openaiResponsesToOpenAIResponse } from "../translator/response/openai-responses.js";
 import { initState, translateRequest, translateResponse } from "../translator/index.js";
@@ -197,12 +199,23 @@ export class GithubExecutor extends BaseExecutor {
     return result;
   }
 
-  // Claude models arrive here OpenAI-shape (chatCore targets "openai" for github),
-  // so we translate to Anthropic-native ourselves. Hitting /v1/messages directly is
-  // what lets prepareClaudeRequest() (translator/formats/claude.js) inject
-  // cache_control — /chat/completions never gets there, so it never surfaces
-  // prompt-cache token counts.
-  async executeWithMessagesEndpoint({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
+  /**
+   * Native Anthropic Messages dispatch for GitHub Copilot Claude models.
+   *
+   * Claude models arrive here OpenAI-shaped (chatCore targets "openai" for github),
+   * so we translate to Anthropic-native ourselves. Hitting /v1/messages directly is
+   * what lets prepareClaudeRequest() (translator/formats/claude.js) inject
+   * cache_control — /chat/completions never gets there, so it never surfaces
+   * prompt-cache token counts.
+   *
+   * This path bypasses BaseExecutor.execute(), so it must re-apply four behaviors
+   * the normal route gets for free (Codex #291 findings):
+   *   1. stripUnsupportedParams + persona guard + thinking-strip before dispatch;
+   *   2. a per-attempt FETCH_CONNECT_TIMEOUT_MS header-timeout abort;
+   *   3. a transient 502/503/504 (and network-as-502) retry loop honoring
+   *      DEFAULT_RETRY_CONFIG, with connect_timeout getting 0 in-place retries.
+   */
+  async executeWithMessagesEndpoint({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null }) {
     const url = this.config.messagesUrl;
     // Force stream:true upstream regardless of client preference (headers AND body),
     // same as executeWithResponsesEndpoint below — chatCore's non-streaming handler
@@ -225,14 +238,125 @@ export class GithubExecutor extends BaseExecutor {
     const toolNameMap = transformedBody._toolNameMap;
     delete transformedBody._toolNameMap;
 
+    /**
+     * Persona guard (Codex #291 P2): the generic OpenAI→Claude translator prepends
+     * the Claude Code persona (CLAUDE_SYSTEM_PROMPT) as the first system block —
+     * correct for a real Claude Code client, but it silently re-personas a normal
+     * Copilot chat. Detect the client from the frozen per-request headers
+     * (requestContext.clientHeaders, set by chatCore) and remove ONLY the exact
+     * synthetic leading block when the caller is not Claude Code. A caller-supplied
+     * system block with the same text is preserved because we drop strictly the
+     * first block, only when it matches verbatim.
+     */
+    if (detectClientTool(requestContext?.clientHeaders || {}, strippedBody) !== "claude"
+      && Array.isArray(transformedBody.system)
+      && transformedBody.system[0]?.text === CLAUDE_SYSTEM_PROMPT) {
+      transformedBody.system = transformedBody.system.slice(1);
+      if (transformedBody.system.length === 0) delete transformedBody.system;
+    }
+
+    /**
+     * Thinking-strip (Codex #291 P2): an assistant history turn carrying
+     * reasoning_content becomes an unsigned Anthropic `thinking` block. The cleanup
+     * that validates/drops unsigned thinking runs only for provider "claude",
+     * anthropic-compatible providers, and DeepSeek — never "github" — so without
+     * this the native /v1/messages body ships unsigned thinking blocks Anthropic
+     * rejects with a 400. Passing provider "claude" (not "github") is deliberate:
+     * the "github" branch KEEPS unvalidated blocks (see normalizeClaudePassthrough),
+     * so we force the validating path to strip them for this route.
+     */
+    normalizeClaudePassthrough(transformedBody, model, "claude");
+
     log?.debug("GITHUB", "Sending translated request to /v1/messages");
 
-    const response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(transformedBody),
-      signal
-    }, proxyOptions));
+    // Transient-retry policy for this direct fetch. BaseExecutor.execute merges
+    // DEFAULT_RETRY_CONFIG with this.config.retry; do the same so a provider-config
+    // override still wins. connect_timeout gets 0 in-place retries (the account
+    // layer fails over rather than re-hitting a stalled upstream); HTTP 502/503/504
+    // and generic network errors (mapped to 502) retry per their configured entry.
+    const baseRetry = { ...DEFAULT_RETRY_CONFIG, ...this.config.retry };
+    const headerTimeoutMs = this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
+    const transientStatuses = new Set([
+      HTTP_STATUS.BAD_GATEWAY,        // 502
+      HTTP_STATUS.SERVICE_UNAVAILABLE, // 503
+      HTTP_STATUS.GATEWAY_TIMEOUT,     // 504
+    ]);
+
+    let response = null;
+    // Per-route retry counters. Network errors share one counter (all map to the
+    // 502 entry); transient HTTP statuses track attempts per-status so a 502 then
+    // a 503 each honor their own configured attempt budget.
+    let networkRetries = 0;
+    const httpRetriesByStatus = {};
+    for (;;) {
+      /**
+       * Header-timeout abort (Codex #291 P2): BaseExecutor.execute wraps its fetch
+       * in FETCH_CONNECT_TIMEOUT_MS; this direct proxyAwareFetch only used the
+       * caller signal, so a stalled upstream held the provider slot/quota lease
+       * until client disconnect. Arm a fresh AbortController + timer PER ATTEMPT
+       * (never cached across retries) and merge it with the caller signal. The
+       * connectTimedOut flag is authoritative — undici rejects with the exact
+       * reason object we pass abort(), so error.name is not reliable.
+       */
+      const connectCtrl = new AbortController();
+      let connectTimedOut = false;
+      const connectTimer = setTimeout(() => {
+        connectTimedOut = true;
+        connectCtrl.abort(new Error("fetch connect timeout"));
+      }, headerTimeoutMs);
+      const mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
+
+      try {
+        response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(transformedBody),
+          signal: mergedSignal
+        }, proxyOptions));
+      } catch (error) {
+        clearTimeout(connectTimer);
+        // Caller-initiated abort (NOT our connect timer) must propagate unretried.
+        if (!connectTimedOut && (error?.name === "AbortError" || signal?.aborted)) throw error;
+        /**
+         * Transient retry (Codex #291 P2): the old BaseExecutor route retried
+         * transient failures before surfacing an error; this direct fetch returned
+         * them immediately, making Claude noticeably flakier than the unchanged
+         * GitHub models. Network/transport errors map to the 502 entry; our own
+         * connect timeout is NOT retried in place (matches BaseExecutor).
+         */
+        if (!connectTimedOut) {
+          const { attempts, delayMs } = resolveRetryEntry(baseRetry[HTTP_STATUS.BAD_GATEWAY]);
+          if (networkRetries < attempts) {
+            networkRetries++;
+            log?.debug?.("RETRY", `github /v1/messages network "${error.message}" retry ${networkRetries}/${attempts} after ${delayMs / 1000}s`);
+            await waitForRetryDelay(delayMs, signal);
+            continue;
+          }
+        }
+        throw error;
+      }
+      clearTimeout(connectTimer);
+
+      // Retry a transient HTTP status: settle the discarded attempt's quota ticket
+      // and cancel its body BEFORE waiting so no lease leaks across retries.
+      if (transientStatuses.has(response.status)) {
+        const { attempts, delayMs } = resolveRetryEntry(baseRetry[response.status]);
+        const used = httpRetriesByStatus[response.status] || 0;
+        if (used < attempts) {
+          httpRetriesByStatus[response.status] = used + 1;
+          log?.debug?.("RETRY", `github /v1/messages status ${response.status} retry ${used + 1}/${attempts} after ${delayMs / 1000}s`);
+          await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
+          try {
+            const cancellation = response.body?.cancel?.("github /v1/messages transient retry");
+            if (cancellation?.catch) void cancellation.catch(() => {});
+          } catch { /* body may already be locked or closed */ }
+          await waitForRetryDelay(delayMs, signal);
+          continue;
+        }
+      }
+      // Success or a non-transient/exhausted status — stop retrying.
+      break;
+    }
 
     if (!response.ok) {
       return { response, url, headers, transformedBody, attemptStartedAt: getCurrentProviderAttemptTimestamp() };

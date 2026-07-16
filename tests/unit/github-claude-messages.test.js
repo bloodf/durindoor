@@ -357,4 +357,154 @@ describe("GithubExecutor native Claude /v1/messages routing (upstream #2608)", (
     sent = JSON.parse(proxyAwareFetch.mock.calls[1][1].body);
     expect(sent.stop_sequences).toBeUndefined();
   });
+
+  it("aborts a stalled /v1/messages fetch after the connect timeout, with no in-place retry (Codex P2)", async () => {
+    vi.useFakeTimers();
+    try {
+      // Never resolves nor rejects on its own — only our connect-timer abort can
+      // settle it. Honors the abort signal like a real stalled upstream.
+      proxyAwareFetch.mockImplementationOnce((url, options) => new Promise((_, reject) => {
+        options.signal?.addEventListener("abort", () => reject(options.signal.reason ?? new Error("aborted")));
+      }));
+      const exec = new GithubExecutor();
+
+      const pending = exec.execute({
+        model: "claude-sonnet-4.6",
+        body: { model: "claude-sonnet-4.6", messages: [{ role: "user", content: "hi" }] },
+        stream: true,
+        credentials,
+        signal: null,
+        log: null,
+      });
+      const assertion = expect(pending).rejects.toThrow(/connect timeout/i);
+      // Advance past FETCH_CONNECT_TIMEOUT_MS (default 60s) to fire the header timer.
+      await vi.advanceTimersByTimeAsync(61_000);
+      await assertion;
+      // Own connect timeout gets 0 in-place retries → exactly one dispatch.
+      expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("retries a transient 503 the configured number of times then surfaces the failure (Codex P2)", async () => {
+    vi.useFakeTimers();
+    try {
+      // DEFAULT_RETRY_CONFIG[503] = { attempts: 3 } → initial + 3 retries = 4 calls.
+      proxyAwareFetch.mockImplementation(() => Promise.resolve(new Response("upstream busy", { status: 503 })));
+      const exec = new GithubExecutor();
+
+      const pending = exec.execute({
+        model: "claude-sonnet-4.6",
+        body: { model: "claude-sonnet-4.6", messages: [{ role: "user", content: "hi" }] },
+        stream: true,
+        credentials,
+        signal: null,
+        log: null,
+      });
+      // Exhaust every 2s retry wait.
+      await vi.runAllTimersAsync();
+      const result = await pending;
+      expect(proxyAwareFetch).toHaveBeenCalledTimes(4);
+      expect(result.response.status).toBe(503);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("recovers through the transient retry path: 503 then a valid Claude SSE stream (Codex P2)", async () => {
+    vi.useFakeTimers();
+    try {
+      proxyAwareFetch
+        .mockResolvedValueOnce(new Response("busy", { status: 503 }))
+        .mockResolvedValueOnce(claudeSSE([MSG_START, TEXT_START, TEXT_DELTA("hi"), TEXT_STOP, MSG_DELTA, MSG_STOP]));
+      const exec = new GithubExecutor();
+
+      const pending = exec.execute({
+        model: "claude-sonnet-4.6",
+        body: { model: "claude-sonnet-4.6", messages: [{ role: "user", content: "hi" }] },
+        stream: true,
+        credentials,
+        signal: null,
+        log: null,
+      });
+      await vi.runAllTimersAsync();
+      const result = await pending;
+      expect(proxyAwareFetch).toHaveBeenCalledTimes(2);
+      const out = await readStream(result.response);
+      expect(out).toContain('"content":"hi"');
+      expect(out).toContain('"finish_reason":"stop"');
+      expect(out).toContain("[DONE]");
+      expect(out).not.toContain("stream_error");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("omits the Claude Code persona for a non-Claude-Code Copilot client (Codex P2)", async () => {
+    proxyAwareFetch.mockResolvedValueOnce(claudeSSE([MSG_START, TEXT_START, TEXT_DELTA("hi"), TEXT_STOP, MSG_DELTA, MSG_STOP]));
+    const exec = new GithubExecutor();
+
+    await exec.execute({
+      model: "claude-sonnet-4.6",
+      body: { model: "claude-sonnet-4.6", messages: [{ role: "user", content: "hi" }] },
+      stream: true,
+      credentials,
+      signal: null,
+      log: null,
+      // A generic Copilot VS Code chat client — NOT Claude Code.
+      requestContext: { clientHeaders: { "user-agent": "GitHubCopilotChat/0.1", "openai-intent": "conversation-panel" } },
+    });
+
+    const sent = JSON.parse(proxyAwareFetch.mock.calls[0][1].body);
+    const systemBlocks = Array.isArray(sent.system) ? sent.system : [];
+    expect(systemBlocks.some((b) => b?.text === "You are Claude Code, Anthropic's official CLI for Claude.")).toBe(false);
+  });
+
+  it("keeps the Claude Code persona when the caller IS Claude Code (Codex P2)", async () => {
+    proxyAwareFetch.mockResolvedValueOnce(claudeSSE([MSG_START, TEXT_START, TEXT_DELTA("hi"), TEXT_STOP, MSG_DELTA, MSG_STOP]));
+    const exec = new GithubExecutor();
+
+    await exec.execute({
+      model: "claude-sonnet-4.6",
+      body: { model: "claude-sonnet-4.6", messages: [{ role: "user", content: "hi" }] },
+      stream: true,
+      credentials,
+      signal: null,
+      log: null,
+      requestContext: { clientHeaders: { "user-agent": "claude-cli/1.2.3" } },
+    });
+
+    const sent = JSON.parse(proxyAwareFetch.mock.calls[0][1].body);
+    expect(Array.isArray(sent.system)).toBe(true);
+    expect(sent.system[0]?.text).toBe("You are Claude Code, Anthropic's official CLI for Claude.");
+  });
+
+  it("strips unsigned thinking from assistant history before /v1/messages dispatch (Codex P2)", async () => {
+    proxyAwareFetch.mockResolvedValueOnce(claudeSSE([MSG_START, TEXT_START, TEXT_DELTA("hi"), TEXT_STOP, MSG_DELTA, MSG_STOP]));
+    const exec = new GithubExecutor();
+
+    await exec.execute({
+      model: "claude-sonnet-4.6",
+      body: {
+        model: "claude-sonnet-4.6",
+        messages: [
+          { role: "user", content: "hi" },
+          // reasoning_content → an unsigned Anthropic thinking block the upstream rejects.
+          { role: "assistant", content: "prev answer", reasoning_content: "let me think..." },
+          { role: "user", content: "go on" },
+        ],
+      },
+      stream: true,
+      credentials,
+      signal: null,
+      log: null,
+    });
+
+    const sent = JSON.parse(proxyAwareFetch.mock.calls[0][1].body);
+    const assistant = sent.messages.find((m) => m.role === "assistant");
+    expect(assistant).toBeTruthy();
+    const thinkingBlocks = (assistant.content || []).filter((b) => b?.type === "thinking" || b?.type === "redacted_thinking");
+    expect(thinkingBlocks).toEqual([]);
+  });
 });

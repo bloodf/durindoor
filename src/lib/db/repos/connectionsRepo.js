@@ -171,7 +171,7 @@ function reorderInTx(db, providerId) {
   });
 }
 
-export async function createProviderConnection(data, { shouldCommit } = {}) {
+export async function createProviderConnection(data, { shouldCommit, requireNewName } = {}) {
   const db = await getAdapter();
   // OAuth flows can be cancelled while an upstream exchange is in flight.
   // Check after the async adapter lookup and immediately before the synchronous
@@ -230,6 +230,17 @@ export async function createProviderConnection(data, { shouldCommit } = {}) {
       existing = all.find(c => c.authType === "apikey" && c.name === data.name);
     }
     // access_token: never dedup — user manages duplicates manually
+
+    // Bulk add must never overwrite an existing key. When the caller flags a
+    // create-only insert (requireNewName), a name collision is a hard error
+    // instead of the default upsert — the UI planner assigns collision-free
+    // names, and this guard catches any stale/concurrent state that slips past
+    // it. Thrown inside the transaction so nothing is persisted.
+    if (existing && requireNewName && data.authType === "apikey") {
+      const err = new Error(`An API key named "${data.name}" already exists for this provider`);
+      err.code = "PROVIDER_CONNECTION_NAME_CONFLICT";
+      throw err;
+    }
 
     if (existing) {
       const merged = { ...mergeProviderConnection(existing, data), updatedAt: now };

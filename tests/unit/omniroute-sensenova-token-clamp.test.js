@@ -13,7 +13,7 @@ describe("OmniRoute #6330 — SenseNova Token Plan clamp (Thread 1)", () => {
     expect(body.max_tokens).toBe(65536);
   });
 
-  it("clamps an explicit max_completion_tokens above the 65536 ceiling", () => {
+  it("clamps an explicit max_completion_tokens above the 65536 ceiling (normalized to max_tokens)", () => {
     const executor = new DefaultExecutor("sensenova");
     const body = {
       model: "sensenova-6.7-flash-lite",
@@ -21,7 +21,10 @@ describe("OmniRoute #6330 — SenseNova Token Plan clamp (Thread 1)", () => {
       max_completion_tokens: 100000,
     };
     executor.transformRequest("sensenova-6.7-flash-lite", body, true, {});
-    expect(body.max_completion_tokens).toBe(65536);
+    // sensenova is not a max-completion-token family, so #6964 reverse-normalizes
+    // the clamped value to the legacy field and removes the newer spelling.
+    expect(body.max_tokens).toBe(65536);
+    expect("max_completion_tokens" in body).toBe(false);
   });
 
   it("leaves both token fields omitted when the client omits them (no default injection)", () => {

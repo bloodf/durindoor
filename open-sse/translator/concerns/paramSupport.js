@@ -103,22 +103,21 @@ export function stripUnsupportedParams(provider, model, body) {
   return body;
 }
 
-// Model families whose upstream chat-completions endpoint rejects the legacy
-// `max_tokens` field and only accepts `max_completion_tokens` (o1/o3/o4 reasoning
-// models and the gpt-5 line). Direction is decided by the MODEL STRING ALONE,
-// provider-independent — mirroring OmniRoute's `supportsMaxTokens({provider, model})
-// heuristic (modelCapabilities.ts), whose MAX_TOKENS_UNSUPPORTED_PATTERNS carry no
-// provider segment. Gating on provider === "openai" would wrongly reverse-strip
-// `max_completion_tokens` for these same models when reached through a compatible
-// relay (OpenRouter, Azure, Volcengine, …).
-// Match is anchored at a provider-prefix boundary (`^`, `/`, `:`) and a version
-// boundary (`.`, `-`, end) so `gpt-5.4-pro`, `openai/o3-mini`, `azure:o1` match
-// while unrelated ids containing the substring (e.g. `deepseek-v3o1`) do not.
-const MAX_TOKENS_UNSUPPORTED_MODEL = /(?:^|[/:])(?:gpt-5|o[134])(?:[.-]|$)/i;
+// Model families that reject legacy `max_tokens` and only accept
+// `max_completion_tokens`. DurinDoor keeps its dev-parity reasoning-model set
+// (o1/o3/o4 + the whole gpt-5.x family, matching the pre-port GitHub rule
+// `/gpt-5|o[134]-/i`) rather than the source's narrower exact list — so o4-mini
+// and gpt-5.6 keep the forward rename they had before this port.
+// Direction is decided by the MODEL STRING ALONE, provider-independent, mirroring
+// OmniRoute's supportsMaxTokens (modelCapabilities.ts). Source matches by raw
+// substring; DurinDoor anchors at a prefix boundary (`^`, `/`, `:`) and a version
+// boundary (`.`, `-`, end) so `openai/o3-mini`, `azure:o1`, `gpt-5.4-pro`, and
+// `gpt-5.40` (a gpt-5.x version) match while `o3mini`, `deepseek-v3o1`, `o2` do not.
+const MAX_TOKENS_UNSUPPORTED_MODEL = /(?:^|[/:])(?:o[134]|gpt-5(?:\.\d+)?)(?:[.-]|$)/i;
 
 /**
  * Normalize the max-token field name for the target model, in place.
- * - Family match (o1/o3/o4/gpt-5.x): forward rename `max_tokens` → `max_completion_tokens`.
+ * - Family match (o1-family/o3-family/o4-family/gpt-5[.x]): forward rename `max_tokens` → `max_completion_tokens`.
  * - Any other model: reverse rename `max_completion_tokens` → `max_tokens`, because
  *   legacy-compatible providers (Volcengine Ark / DeepSeek, …) silently ignore the
  *   newer field and would apply no cap (OmniRoute #6912/#6964).

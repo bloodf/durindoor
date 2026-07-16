@@ -10,7 +10,7 @@ import { openaiResponsesToOpenAIResponse } from "../translator/response/openai-r
 import { initState, translateRequest, translateResponse } from "../translator/index.js";
 import { parseSSELine, formatSSE } from "../utils/streamHelpers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { stripUnsupportedParams } from "../translator/concerns/paramSupport.js";
+import { stripUnsupportedParams, applyParamRenames } from "../translator/concerns/paramSupport.js";
 import { SSE_DONE } from "../utils/sseConstants.js";
 import { FORMATS } from "../translator/formats.js";
 import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
@@ -113,17 +113,12 @@ export class GithubExecutor extends BaseExecutor {
     return end === messages.length ? messages : messages.slice(0, end);
   }
 
-  // Newer OpenAI models (gpt-5+, o1, o3, o4) require max_completion_tokens instead of max_tokens
-  requiresMaxCompletionTokens(model) {
-    return /gpt-5|o[134]-/i.test(model);
-  }
-
   transformRequest(model, body, stream, credentials) {
     const transformed = { ...body };
-    if (this.requiresMaxCompletionTokens(model) && transformed.max_tokens !== undefined) {
-      transformed.max_completion_tokens = transformed.max_tokens;
-      delete transformed.max_tokens;
-    }
+    // Scoped to /chat/completions: the /responses route bypasses transformRequest
+    // and its converter maps max_tokens but drops max_completion_tokens, so running
+    // the forward rename there would lose the cap. (OmniRoute #6912/#6964)
+    applyParamRenames("github", model, transformed);
     // "none" means no thinking — strip it so models that don't support "none" don't 400
     if (transformed.reasoning_effort === "none") {
       delete transformed.reasoning_effort;

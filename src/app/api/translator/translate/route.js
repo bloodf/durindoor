@@ -4,6 +4,7 @@ import { translateRequest } from "open-sse/translator/index.js";
 import { FORMATS } from "open-sse/translator/formats.js";
 import { parseSuffix } from "open-sse/translator/concerns/thinkingUnified.js";
 import {
+  getCanonicalModelId,
   getModelTargetFormat,
   getModelUpstreamId,
   PROVIDER_ID_TO_ALIAS,
@@ -15,11 +16,24 @@ import { getExecutor } from "open-sse/executors/index.js";
 function resolveRequestModel(provider, requestedModel) {
   const { cleanModel, override } = parseSuffix(requestedModel);
   const alias = PROVIDER_ID_TO_ALIAS[provider] || provider;
+  const upstreamModel = getModelUpstreamId(alias, cleanModel);
+  const targetFormat = getModelTargetFormat(alias, cleanModel) || getTargetFormat(provider);
+  // Kiro GPT-5.6 (#2596): synthetic `-thinking`/`-agentic` variants register an
+  // upstreamModelId set to the bare wire id, so upstreamModel has lost the
+  // suffix by the time translation runs. Mirror chatCore: hand translateRequest
+  // the canonical (suffixed) catalog id on the Kiro seam so the translator can
+  // derive the thinking/agentic flags, then strips the suffix at the wire
+  // boundary. Non-Kiro targets keep the bare upstream id. Leaf import
+  // (providerModels) only — chatCore would drag the DB/executor layer in here.
+  const translationModel = targetFormat === FORMATS.KIRO
+    ? getCanonicalModelId(alias, cleanModel) || upstreamModel
+    : upstreamModel;
   return {
     capabilityModel: cleanModel,
-    upstreamModel: getModelUpstreamId(alias, cleanModel),
+    upstreamModel,
+    translationModel,
     thinkingIntent: override,
-    targetFormat: getModelTargetFormat(alias, cleanModel) || getTargetFormat(provider),
+    targetFormat,
   };
 }
 
@@ -50,7 +64,9 @@ export async function POST(request) {
         const stream = clientBody.stream !== false;
         const resolvedModel = resolveRequestModel(provider, model);
 
-        // translateRequest(source, OPENAI) = only the first half
+        // translateRequest(source, OPENAI) = only the first half; the target
+        // here is OpenAI, so use the bare upstream id (never the Kiro-canonical
+        // translationModel).
         const result = translateRequest(
           sourceFormat,
           FORMATS.OPENAI,
@@ -91,7 +107,7 @@ export async function POST(request) {
         const translated = translateRequest(
           FORMATS.OPENAI,
           targetFormat,
-          resolvedModel.upstreamModel,
+          resolvedModel.translationModel,
           { ...openaiBody, model: resolvedModel.capabilityModel },
           stream,
           null,

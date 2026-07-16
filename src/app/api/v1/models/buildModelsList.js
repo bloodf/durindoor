@@ -411,9 +411,24 @@ async function buildModelsListImpl(kindFilter, guard) {
 
   const models = [];
   const comboByName = Object.fromEntries(combos.map((combo) => [combo.name, combo.models || []]));
-  const aliasToProviderId = Object.fromEntries(
-    Object.entries(PROVIDER_ID_TO_ALIAS).map(([id, alias]) => [alias, id]),
-  );
+  // Model ids below are prefixed with outputAlias (static alias or the active
+  // connection's custom prefix), so map each exposed alias back to the
+  // provider id — needed for combo capability aggregation on ids like
+  // `mykr/<model>` whose prefix is not a registered provider alias.
+  const aliasToProviderId = {};
+  for (const [providerId, conn] of activeConnectionByProvider) {
+    // Byte-for-byte the outputAlias derivation used when emitting model ids
+    // below: same fallback chain, same trim, case preserved (combo member ids
+    // match case-sensitively against these aliases).
+    const staticAlias = PROVIDER_ID_TO_ALIAS[providerId] ?? providerId;
+    const prefix = isRecord(conn.providerSpecificData) ? conn.providerSpecificData.prefix : undefined;
+    const outputAlias = (
+      (typeof prefix === "string" ? prefix : undefined)
+      || getProviderAlias(providerId)
+      || staticAlias
+    ).trim();
+    aliasToProviderId[outputAlias] = providerId;
+  }
 
   const addStaticProviderModels = (providerId, alias, { hasCredentials = false } = {}) => {
     if (!providerMatchesKinds(providerId, kindFilter)) return;
@@ -469,7 +484,7 @@ async function buildModelsListImpl(kindFilter, guard) {
     if (combo.kind === "webSearch" || combo.kind === "webFetch") {
       entry.kind = combo.kind;
     } else {
-      const comboCaps = aggregateComboCapabilities(visibleMembers, comboByName);
+      const comboCaps = aggregateComboCapabilities(visibleMembers, comboByName, aliasToProviderId);
       if (comboCaps) entry.capabilities = comboCaps;
     }
     models.push(entry);

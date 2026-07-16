@@ -505,6 +505,8 @@ export async function handleChat(request, clientRawRequest = null) {
       ),
       signal: request?.signal || null,
     });
+    // One row per logical combo request (collector holds only the latest
+    // attempt's event) — never one per fallback attempt (Codex P2 on #306).
     if (tokenSaverCollector.latest) {
       try { await recordTokenSaverEvent(tokenSaverCollector.latest); } catch { /* telemetry must not break requests */ }
     }

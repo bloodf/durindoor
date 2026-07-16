@@ -117,12 +117,17 @@ function compressKiroFormat(body, enabled) {
   return stats;
 }
 
+// UTF-8 byte length without Node's Buffer so shared open-sse code stays
+// portable to Worker runtimes (Codex P2 on #306).
+const utf8Encoder = new TextEncoder();
+const utf8ByteLength = (s) => utf8Encoder.encode(s).length;
+
 function compressText(text, stats, shape) {
   // Measure UTF-8 content bytes, not UTF-16 code units, so non-ASCII tool
   // output is counted accurately. This is the content size, not provider
   // billing (providers bill tokens) nor full wire size (JSON escaping and HTTP
   // framing differ). The dashboard labels this "content bytes saved".
-  const bytesIn = Buffer.byteLength(text, "utf8");
+  const bytesIn = utf8ByteLength(text);
   stats.bytesBefore += bytesIn;
 
   if (text.length < MIN_COMPRESS_SIZE || bytesIn > RAW_CAP) {
@@ -139,7 +144,7 @@ function compressText(text, stats, shape) {
   const out = safeApply(fn, text);
 
   // Safety: never return empty, never grow the input (compare on bytes)
-  const bytesOut = out ? Buffer.byteLength(out, "utf8") : 0;
+  const bytesOut = out ? utf8ByteLength(out) : 0;
   if (!out || bytesOut === 0 || bytesOut >= bytesIn) {
     stats.bytesAfter += bytesIn;
     return text;

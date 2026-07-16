@@ -999,6 +999,7 @@ export async function resetUsageHistory(period) {
       // Delete everything
       db.run(`DELETE FROM usageHistory`);
       db.run(`DELETE FROM usageDaily`);
+      db.run(`DELETE FROM tokenSaverEvents`);
       db.run(`DELETE FROM _meta WHERE key = 'totalRequestsLifetime'`);
     } else {
       const cutoff = Date.now() - RESET_PERIOD_MS[period];
@@ -1011,6 +1012,9 @@ export async function resetUsageHistory(period) {
 
       // Delete usageDaily entries older than the cutoff
       db.run(`DELETE FROM usageDaily WHERE dateKey < ?`, [cutoffKey]);
+      // Keep token-saver telemetry consistent with the usage windows it is
+      // reported alongside (Codex P2 on #306).
+      db.run(`DELETE FROM tokenSaverEvents WHERE timestamp < ?`, [cutoffIso]);
       rebuildDailyKeyInTx(db, cutoffKey);
 
       // Recalculate totalRequestsLifetime from remaining history

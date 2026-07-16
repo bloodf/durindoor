@@ -25,7 +25,7 @@ afterEach(() => {
 });
 
 describe("API-key lifetime usage accounting", () => {
-  it("increments once with each newly inserted chat usage record", async () => {
+  it("increments for each event without usageEventId", async () => {
     const database = await import("@/lib/db/index.js");
     const { getAdapter } = await import("@/lib/db/driver.js");
     const db = await getAdapter();
@@ -51,12 +51,13 @@ describe("API-key lifetime usage accounting", () => {
       tokens: { prompt_tokens: 2, completion_tokens: 3, reasoning_tokens: 4 },
     });
 
+    // Identical payloads without usageEventId represent distinct events.
     expect(await database.getApiKeyUsageTotals("key-1")).toMatchObject({
-      totalTokens: 23,
+      totalTokens: 41,
       totalCost: 0,
-      totalRequests: 2,
+      totalRequests: 3,
     });
-    expect(db.get(`SELECT COUNT(*) AS count FROM usageHistory WHERE apiKey = ?`, [secret]).count).toBe(2);
+    expect(db.get(`SELECT COUNT(*) AS count FROM usageHistory WHERE apiKey = ?`, [secret]).count).toBe(3);
     expect(db.get(`SELECT key FROM apiKeys WHERE id = 'key-1'`).key).toBe(secret);
   });
 

@@ -281,33 +281,24 @@ export async function saveRequestUsage(entry) {
 
     let inserted = false;
 
-    // All 3 writes (history insert, daily upsert, lifetime counter) in ONE transaction.
-    // better-sqlite3 is sync → no JS yield mid-transaction → no race in same process.
+    // Every request is a distinct event — never deduplicate on identical field
+    // payloads, or parallel writes that share fields (same timestamp + provider +
+    // model + connectionId + tokens) would silently clobber each other (write loss).
+    // Only an explicit idempotency key (`usageEventId`) dedupes — that is a real
+    // retry of the SAME logical event, not a coincidentally-identical new event.
+    // All writes (history insert, daily upsert, lifetime counter) happen in ONE
+    // transaction; better-sqlite3/node:sqlite are synchronous, so no JS yield
+    // occurs mid-transaction and the writes remain atomic/serialized in-process.
     db.transaction(() => {
-      const existing = entry.usageEventId
-        ? db.get(`SELECT id, endpoint FROM usageHistory WHERE usageEventId = ?`, [entry.usageEventId])
-        : db.get(
-        `SELECT id, endpoint FROM usageHistory
-         WHERE timestamp = ?
-           AND COALESCE(provider, '') = COALESCE(?, '')
-           AND COALESCE(model, '') = COALESCE(?, '')
-           AND COALESCE(connectionId, '') = COALESCE(?, '')
-           AND COALESCE(apiKey, '') = COALESCE(?, '')
-           AND promptTokens = ?
-           AND completionTokens = ?
-         ORDER BY id DESC LIMIT 1`,
-        [
-          entry.timestamp, entry.provider || null, entry.model || null,
-          entry.connectionId || null, entry.apiKey || null,
-          promptTokens, completionTokens,
-        ]
-      );
-
-      if (existing) {
-        if (!existing.endpoint && entry.endpoint) {
-          db.run(`UPDATE usageHistory SET endpoint = ? WHERE id = ?`, [entry.endpoint, existing.id]);
+      // Idempotency: only when the caller supplies a real event id.
+      if (entry.usageEventId) {
+        const existing = db.get(`SELECT id, endpoint FROM usageHistory WHERE usageEventId = ?`, [entry.usageEventId]);
+        if (existing) {
+          if (!existing.endpoint && entry.endpoint) {
+            db.run(`UPDATE usageHistory SET endpoint = ? WHERE id = ?`, [entry.endpoint, existing.id]);
+          }
+          return;
         }
-        return;
       }
 
       const insert = db.run(

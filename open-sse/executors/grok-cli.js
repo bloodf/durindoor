@@ -26,6 +26,25 @@ const HOSTED_TOOL_TYPES = new Set([
   "local_shell",
 ]);
 
+// Grok Build subscription protocol fingerprint (wire capture of official
+// @xai-official/grok 0.2.99; upstream decolua/9router#2590). The official
+// Grok Build client omits the legacy grok-pager headers (x-xai-token-auth,
+// x-authenticateresponse, x-compaction-at) and never sends reasoning effort,
+// so requests whose resolved upstream model is grok-build are re-fingerprinted
+// at dispatch to match the captured wire protocol. Non-Build models keep the
+// legacy 0.2.93 header path untouched.
+const GROK_BUILD_MODEL = "grok-build";
+const GROK_BUILD_CLIENT_VERSION = "0.2.99";
+const GROK_BUILD_CLIENT_IDENTIFIER = "grok-shell";
+const GROK_BUILD_USER_AGENT = `grok-shell/${GROK_BUILD_CLIENT_VERSION} (linux; x86_64)`;
+
+// Headers the official 0.2.99 Grok Build client never sends for grok-build.
+const GROK_BUILD_OMITTED_HEADERS = [
+  "x-xai-token-auth",
+  "x-authenticateresponse",
+  "x-compaction-at",
+];
+
 // Fields accepted by the cli-chat-proxy Responses API (Codex allowlist + Grok extras).
 const RESPONSES_API_ALLOWLIST = new Set([
   "model",
@@ -233,11 +252,20 @@ export class GrokCliExecutor extends BaseExecutor {
     }
 
     headers["x-xai-token-auth"] = this.config.tokenAuth || "xai-grok-cli";
-    headers["x-grok-client-identifier"] =
-      this.config.clientIdentifier || headers["x-grok-client-identifier"] || "grok-pager";
-    headers["x-grok-client-version"] =
-      this.config.clientVersion || headers["x-grok-client-version"] || "0.2.93";
-    headers["x-authenticateresponse"] = "authenticate-response";
+    const isGrokBuild = this._currentModel === GROK_BUILD_MODEL;
+    if (isGrokBuild) {
+      // Grok Build subscription protocol: official 0.2.99 wire fingerprint.
+      headers["User-Agent"] = GROK_BUILD_USER_AGENT;
+      headers["x-grok-client-identifier"] = GROK_BUILD_CLIENT_IDENTIFIER;
+      headers["x-grok-client-version"] = GROK_BUILD_CLIENT_VERSION;
+      for (const k of GROK_BUILD_OMITTED_HEADERS) delete headers[k];
+    } else {
+      headers["x-grok-client-identifier"] =
+        this.config.clientIdentifier || headers["x-grok-client-identifier"] || "grok-pager";
+      headers["x-grok-client-version"] =
+        this.config.clientVersion || headers["x-grok-client-version"] || "0.2.93";
+      headers["x-authenticateresponse"] = "authenticate-response";
+    }
     if (!headers.Accept) headers.Accept = "application/json";
 
     const sessionId = this._currentSessionId || credentials?.connectionId || crypto.randomUUID();
@@ -256,7 +284,9 @@ export class GrokCliExecutor extends BaseExecutor {
       this._defaultAgentId;
     if (agentId) headers["x-grok-agent-id"] = agentId;
     if (this._currentModel) headers["x-grok-model-override"] = this._currentModel;
-    if (this.config.compactionAt) headers["x-compaction-at"] = String(this.config.compactionAt);
+    if (!isGrokBuild && this.config.compactionAt) {
+      headers["x-compaction-at"] = String(this.config.compactionAt);
+    }
 
     const psd = credentials?.providerSpecificData || {};
     const email = psd.email || credentials?.email;
@@ -338,8 +368,18 @@ export class GrokCliExecutor extends BaseExecutor {
 
     // Reasoning effort priority: explicit > reasoning_effort > model suffix > default high.
     // Non-reasoning models (grok-composer-2.5-fast, grok-build) must not send reasoning. Upstream decolua/9router#2534.
+    // Grok Build additionally omits `reasoning.effort` on the wire while still
+    // accepting summary + encrypted-content continuity (upstream decolua/9router#2590).
     const caps = getCapabilitiesForModel("grok-cli", resolvedModel);
-    if (caps.reasoning !== false) {
+    if (resolvedModel === GROK_BUILD_MODEL) {
+      // Strip only the effort; preserve a caller-supplied summary.
+      if (body.reasoning && typeof body.reasoning === "object") {
+        delete body.reasoning.effort;
+        if (!body.reasoning.summary) body.reasoning.summary = "concise";
+      } else {
+        body.reasoning = { summary: "concise" };
+      }
+    } else if (caps.reasoning !== false) {
       if (!body.reasoning || typeof body.reasoning !== "object") {
         const effort = body.reasoning_effort || modelEffort || "high";
         body.reasoning = { effort, summary: "concise" };
@@ -355,7 +395,7 @@ export class GrokCliExecutor extends BaseExecutor {
     delete body.reasoning_effort;
 
     // Encrypted reasoning for store=false multi-turn continuity.
-    if (body.reasoning?.effort && body.reasoning.effort !== "none") {
+    if (body.reasoning && body.reasoning.effort !== "none") {
       const include = Array.isArray(body.include) ? body.include : [];
       if (!include.includes("reasoning.encrypted_content")) {
         include.push("reasoning.encrypted_content");

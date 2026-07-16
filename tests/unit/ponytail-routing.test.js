@@ -134,7 +134,7 @@ describe("Ponytail route integration", () => {
         { role: "tool", tool_call_id: "call_1", content: "/ponytail-help" },
         { role: "user", content: "hello" },
       ],
-      tools: [{ type: "function", function: { name: "lookup", parameters: { type: "object" } }],
+      tools: [{ type: "function", function: { name: "lookup", parameters: { type: "object" } } }],
       stream: true,
       temperature: 0.25,
       metadata: { trace: "keep-me" },

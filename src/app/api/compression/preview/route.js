@@ -17,6 +17,28 @@ import { getEngine, isEngineAvailable, ENGINE_IDS } from "open-sse/services/comp
 // an LLM API key, so re-checking `settings.requireApiKey` in this handler would
 // 401 every dashboard request whenever the global LLM-endpoint enforcement flag
 // is on. Trust the proxy; do not re-authenticate.
+// OmniRoute #6461 (PR #6519): when an engine fell back (`stats.fallbackApplied`),
+// surface WHY by synthesizing a deduped reason list from data the pipeline
+// already produces on `stats`: `validationErrors` plus inflation-guard entries
+// in `validationWarnings`. Non-fallback runs get [] / null — zero change on the
+// happy path, even when warnings exist (mirrors the source gating).
+function computeFallbackReasons(stats) {
+  const reasons = [];
+  if (!stats || stats.fallbackApplied !== true) return reasons;
+  const seen = new Set();
+  const push = (s) => {
+    if (typeof s === "string" && s.length > 0 && !seen.has(s)) {
+      seen.add(s);
+      reasons.push(s);
+    }
+  };
+  for (const err of stats.validationErrors ?? []) push(err);
+  for (const warn of stats.validationWarnings ?? []) {
+    if (typeof warn === "string" && warn.startsWith("pipeline-inflation-guard:")) push(warn);
+  }
+  return reasons;
+}
+
 function computeSavingsPercent(stats) {
   if (!stats || typeof stats !== "object") return 0;
   if (typeof stats.savingsPercent === "number") return stats.savingsPercent;
@@ -46,10 +68,23 @@ export async function POST(request) {
     }
     try {
       const result = await getEngine(id).apply(body, {});
+      const fallbackReasons = computeFallbackReasons(result?.stats);
       results[id] = {
         status: result?.compressed === true ? "compressed" : "unchanged",
         compressed: result?.compressed === true,
         savingsPercent: computeSavingsPercent(result?.stats),
+        // Source emits one pipeline-wide list under `skippedReasons` /
+        // `fallbackReasons` / `fallbackReason`; durindoor previews per engine,
+        // so the same fields land on each engine's result. The canonical
+        // `stats.fallbackReason` is honored only on fallback runs (a fallback
+        // may carry it with no synthesizable errors/warnings); non-fallback
+        // runs are strictly [] / [] / null per the source contract.
+        fallbackReasons,
+        skippedReasons: fallbackReasons,
+        fallbackReason:
+          result?.stats?.fallbackApplied === true
+            ? (result.stats.fallbackReason ?? fallbackReasons[0] ?? null)
+            : null,
       };
     } catch {
       results[id] = { status: "error" };

@@ -57,8 +57,22 @@ describe("POST /api/compression/preview", () => {
     const json = await res.json();
     expect(json.engines).toEqual(["engine-a", "engine-b", "engine-missing"]);
     expect(json.results).toEqual({
-      "engine-a": { status: "compressed", compressed: true, savingsPercent: 42.5 },
-      "engine-b": { status: "compressed", compressed: true, savingsPercent: 75 },
+      "engine-a": {
+        status: "compressed",
+        compressed: true,
+        savingsPercent: 42.5,
+        fallbackReasons: [],
+        skippedReasons: [],
+        fallbackReason: null,
+      },
+      "engine-b": {
+        status: "compressed",
+        compressed: true,
+        savingsPercent: 75,
+        fallbackReasons: [],
+        skippedReasons: [],
+        fallbackReason: null,
+      },
       "engine-missing": { status: "unavailable" },
     });
     expect(mocks.applyA).toHaveBeenCalledWith({ model: "x", messages: [] }, {});
@@ -81,8 +95,22 @@ describe("POST /api/compression/preview", () => {
 
     const json = await (await POST(jsonRequest({}))).json();
 
-    expect(json.results["engine-a"]).toEqual({ status: "unchanged", compressed: false, savingsPercent: 0 });
-    expect(json.results["engine-b"]).toEqual({ status: "unchanged", compressed: false, savingsPercent: 0 });
+    expect(json.results["engine-a"]).toEqual({
+      status: "unchanged",
+      compressed: false,
+      savingsPercent: 0,
+      fallbackReasons: [],
+      skippedReasons: [],
+      fallbackReason: null,
+    });
+    expect(json.results["engine-b"]).toEqual({
+      status: "unchanged",
+      compressed: false,
+      savingsPercent: 0,
+      fallbackReasons: [],
+      skippedReasons: [],
+      fallbackReason: null,
+    });
   });
 
   it("returns 200 without an API key header (dashboard proxy already authenticated)", async () => {
@@ -111,5 +139,95 @@ describe("POST /api/compression/preview", () => {
 
     expect(res.status).toBe(400);
     expect(mocks.applyA).not.toHaveBeenCalled();
+  });
+
+  // OmniRoute #6461 (PR #6519): a fallback run must surface WHY — a deduped
+  // reason list built from validationErrors + pipeline-inflation-guard:*
+  // warnings (errors first), mirrored into skippedReasons, with the canonical
+  // stats.fallbackReason preferred over the first synthesized entry.
+  it("surfaces deduped fallback reasons under results[id] on a fallback run", async () => {
+    mocks.applyA.mockResolvedValue({
+      body: {},
+      compressed: false,
+      stats: {
+        fallbackApplied: true,
+        fallbackReason: "canonical reason wins",
+        validationErrors: ["fenced code block lost", "fenced code block lost", "", 42],
+        validationWarnings: [
+          "pipeline-inflation-guard: output exceeded input",
+          "unrelated warning must be filtered",
+          "pipeline-inflation-guard: output exceeded input",
+        ],
+      },
+    });
+    mocks.applyB.mockResolvedValue({ body: {}, compressed: false, stats: null });
+
+    const json = await (await POST(jsonRequest({}))).json();
+    const a = json.results["engine-a"];
+
+    expect(a.fallbackReasons).toEqual([
+      "fenced code block lost",
+      "pipeline-inflation-guard: output exceeded input",
+    ]);
+    expect(a.skippedReasons).toEqual(a.fallbackReasons);
+    // Canonical reason preferred even when the synthesized list is non-empty.
+    expect(a.fallbackReason).toBe("canonical reason wins");
+    // Non-fallback engine stays strictly [] / [] / null.
+    expect(json.results["engine-b"]).toEqual({
+      status: "unchanged",
+      compressed: false,
+      savingsPercent: 0,
+      fallbackReasons: [],
+      skippedReasons: [],
+      fallbackReason: null,
+    });
+  });
+
+  it("uses the first synthesized reason when no canonical fallbackReason exists", async () => {
+    mocks.applyA.mockResolvedValue({
+      body: {},
+      compressed: false,
+      stats: {
+        fallbackApplied: true,
+        validationErrors: ["first error", "second error"],
+      },
+    });
+
+    const json = await (await POST(jsonRequest({}))).json();
+
+    expect(json.results["engine-a"].fallbackReason).toBe("first error");
+  });
+
+  it("surfaces the canonical fallbackReason on a fallback run with no synthesizable data", async () => {
+    mocks.applyA.mockResolvedValue({
+      body: {},
+      compressed: false,
+      stats: { fallbackApplied: true, fallbackReason: "validation received non-string input" },
+    });
+
+    const json = await (await POST(jsonRequest({}))).json();
+    const a = json.results["engine-a"];
+
+    expect(a.fallbackReasons).toEqual([]);
+    expect(a.fallbackReason).toBe("validation received non-string input");
+  });
+
+  it("keeps non-fallback runs at [] / [] / null even with canonical reason and errors present", async () => {
+    mocks.applyA.mockResolvedValue({
+      body: {},
+      compressed: false,
+      stats: {
+        fallbackReason: "stale canonical reason",
+        validationErrors: ["some error"],
+        validationWarnings: ["pipeline-inflation-guard: stray"],
+      },
+    });
+
+    const json = await (await POST(jsonRequest({}))).json();
+    const a = json.results["engine-a"];
+
+    expect(a.fallbackReasons).toEqual([]);
+    expect(a.skippedReasons).toEqual([]);
+    expect(a.fallbackReason).toBeNull();
   });
 });

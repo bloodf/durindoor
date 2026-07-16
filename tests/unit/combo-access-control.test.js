@@ -36,6 +36,7 @@ vi.mock("../../src/sse/services/auth.js", () => ({
   evaluateApiKeyAuth: mocks.evaluateApiKeyAuth,
   isValidApiKey: vi.fn(async () => true),
   getProviderCredentials: vi.fn(),
+  getProviderCredentialsWithQuotaPreflight: vi.fn(),
   markAccountUnavailable: vi.fn(),
   clearAccountError: vi.fn(),
 }));

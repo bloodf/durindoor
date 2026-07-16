@@ -19,6 +19,8 @@ describe("MITM router header forwarding", () => {
       "OpenAI-Intent": "conversation-panel",
       "X-App": "cli",
       "X-Initiator": "user",
+      "X-DurinDoor-Token-Saver": "off",
+      "X-9Router-Token-Saver": "off",
       Cookie: "sid=secret",
       Authorization: "Bearer upstream",
       "Proxy-Authorization": "Basic secret",
@@ -34,6 +36,8 @@ describe("MITM router header forwarding", () => {
       "OpenAI-Intent": "conversation-panel",
       "X-App": "cli",
       "X-Initiator": "user",
+      "X-DurinDoor-Token-Saver": "off",
+      "X-9Router-Token-Saver": "off",
     });
   });
 
@@ -48,6 +52,8 @@ describe("MITM router header forwarding", () => {
       "OpenAI-Intent": "conversation-panel",
       "X-App": "cli",
       "X-Initiator": "user",
+      "X-DurinDoor-Token-Saver": "off",
+      "X-9Router-Token-Saver": "off",
       Cookie: "sid=secret",
       Authorization: "Bearer upstream",
       "X-Api-Key": "provider-secret",
@@ -67,5 +73,7 @@ describe("MITM router header forwarding", () => {
     expect(headers["X-Goog-Api-Key"]).toBeUndefined();
     expect(headers["X-Amz-Security-Token"]).toBeUndefined();
     expect(headers.Authorization).toBeUndefined();
+    expect(headers["X-DurinDoor-Token-Saver"]).toBe("off");
+    expect(headers["X-9Router-Token-Saver"]).toBe("off");
   });
 });

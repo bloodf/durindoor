@@ -134,7 +134,7 @@ describe("Ponytail route integration", () => {
         { role: "tool", tool_call_id: "call_1", content: "/ponytail-help" },
         { role: "user", content: "hello" },
       ],
-      tools: [{ type: "function", function: { name: "lookup", parameters: { type: "object" } } }],
+      tools: [{ type: "function", function: { name: "lookup", parameters: { type: "object" } }],
       stream: true,
       temperature: 0.25,
       metadata: { trace: "keep-me" },
@@ -149,6 +149,43 @@ describe("Ponytail route integration", () => {
       model: "openai/gpt-4o",
       ...requestBody,
     });
+  });
+
+  it("bypasses Ponytail command interception on X-DurinDoor-Token-Saver: off", async () => {
+    mocks.getProviderCredentials.mockResolvedValue({
+      connectionId: "connection-1",
+      connectionName: "test account",
+      accessToken: "token",
+    });
+    mocks.handleChatCore.mockResolvedValue({
+      success: true,
+      response: new Response(JSON.stringify({
+        choices: [{ message: { role: "assistant", content: "upstream" } }],
+      }), { status: 200, headers: { "content-type": "application/json" } }),
+    });
+
+    const response = await handleChat(new Request("http://localhost/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer sk-test",
+        "X-DurinDoor-Token-Saver": "off",
+      },
+      body: JSON.stringify({
+        model: "openai/gpt-4o",
+        messages: [{ role: "user", content: "/ponytail-help" }],
+        stream: false,
+      }),
+    }));
+
+    const body = await response.json();
+    expect(body.choices[0].message.content).toBe("upstream");
+    expect(mocks.getApiKeyUsageTotals).not.toHaveBeenCalled();
+    expect(mocks.getProviderCredentials).toHaveBeenCalledOnce();
+    expect(mocks.handleChatCore).toHaveBeenCalledOnce();
+    expect(mocks.handleChatCore.mock.calls[0][0].body.messages).toEqual([
+      { role: "user", content: "/ponytail-help" },
+    ]);
   });
 
   it("returns native Responses JSON by default on the direct Next route", async () => {

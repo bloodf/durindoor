@@ -222,6 +222,114 @@ describe("Kiro → Claude (direct route, OpenAI-shaped chunks from executor)", (
     expect(events.some((e) => e.type === "message_stop")).toBe(true);
   });
 
+  it("preserves kiro_credits through the final-chunk usage remap", () => {
+    const state = {};
+    R(
+      {
+        id: "chatcmpl-1",
+        object: "chat.completion.chunk",
+        model: "m",
+        choices: [{ index: 0, delta: { content: "x" }, finish_reason: null }],
+      },
+      state
+    );
+    const events = R(
+      {
+        id: "chatcmpl-1",
+        object: "chat.completion.chunk",
+        model: "m",
+        choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+        usage: { prompt_tokens: 5, completion_tokens: 3, kiro_credits: 0.0123, kiro_credit_unit: "credit" },
+      },
+      state
+    );
+    // Credits must survive the { input_tokens, output_tokens } remap so
+    // onStreamComplete persists Kiro credit metering on the Claude route.
+    expect(state.usage.kiro_credits).toBe(0.0123);
+    expect(state.usage.kiro_credit_unit).toBe("credit");
+    expect(state.usage.input_tokens).toBe(5);
+    expect(state.usage.output_tokens).toBe(3);
+    const md = events.find((e) => e.type === "message_delta");
+    expect(md.usage.kiro_credits).toBe(0.0123);
+    expect(md.usage.kiro_credit_unit).toBe("credit");
+  });
+
+  it("preserves estimated marker through the final-chunk usage remap", () => {
+    const state = {};
+    R(
+      {
+        id: "chatcmpl-1",
+        object: "chat.completion.chunk",
+        model: "m",
+        choices: [{ index: 0, delta: { content: "x" }, finish_reason: null }],
+      },
+      state
+    );
+    const events = R(
+      {
+        id: "chatcmpl-1",
+        object: "chat.completion.chunk",
+        model: "m",
+        choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+        usage: {
+          prompt_tokens: 5,
+          completion_tokens: 3,
+          kiro_credits: 0.0123,
+          kiro_credit_unit: "credit",
+          estimated: true,
+        },
+      },
+      state
+    );
+    // Estimated marker must survive the final remap so onStreamComplete does
+    // not persist fallback token counts as authoritative on the Claude route.
+    expect(state.usage.estimated).toBe(true);
+    expect(state.usage.kiro_credits).toBe(0.0123);
+    const md = events.find((e) => e.type === "message_delta");
+    expect(md.usage.estimated).toBe(true);
+    expect(md.usage.kiro_credits).toBe(0.0123);
+    expect(md.usage.kiro_credit_unit).toBe("credit");
+    // Truthy strings like "true" must not be treated as an estimate marker.
+    const stringState = {};
+    R(
+      {
+        id: "chatcmpl-1",
+        object: "chat.completion.chunk",
+        model: "m",
+        choices: [{ index: 0, delta: { content: "x" }, finish_reason: null }],
+      },
+      stringState
+    );
+    const stringEvents = R(
+      {
+        id: "chatcmpl-1",
+        object: "chat.completion.chunk",
+        model: "m",
+        choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+        usage: { prompt_tokens: 5, completion_tokens: 3, estimated: "true" },
+      },
+      stringState
+    );
+    const stringMd = stringEvents.find((e) => e.type === "message_delta");
+    expect(stringMd.usage.estimated).toBeUndefined();
+  });
+
+  it("drops malformed null kiro_credits on the final-chunk remap", () => {
+    const state = {};
+    R(
+      {
+        id: "chatcmpl-1",
+        object: "chat.completion.chunk",
+        model: "m",
+        choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+        usage: { prompt_tokens: 5, completion_tokens: 3, kiro_credits: null },
+      },
+      state
+    );
+    expect(state.usage.kiro_credits).toBeUndefined();
+    expect(state.usage).toEqual({ input_tokens: 5, output_tokens: 3 });
+  });
+
   it("reasoning_content maps to a thinking block", () => {
     const state = {};
     const events = R(

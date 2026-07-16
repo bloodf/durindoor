@@ -303,7 +303,19 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       }
     }
 
-    const finalResp = projectCompletionToClientFormat(parsed, sourceFormat, { claudeCompat, model });
+    // Provider-only metering fields (e.g. Kiro credits) must not reach the
+    // client in any client format — the Claude/Gemini projections rebuild
+    // usage from prompt/completion tokens and would otherwise drop them (and
+    // full format-filtering here would zero Claude's input/output tokens).
+    // Accounting above already consumed the raw usage; strip only the
+    // provider-only keys on a clone used for the client-facing projection.
+    let clientUsage = parsed.usage;
+    if (clientUsage) {
+      const { kiro_credits, kiro_credit_unit, ...rest } = clientUsage;
+      clientUsage = rest;
+    }
+    const clientParsed = clientUsage ? { ...parsed, usage: clientUsage } : parsed;
+    const finalResp = projectCompletionToClientFormat(clientParsed, sourceFormat, { claudeCompat, model });
     logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "sse-json-chat", requestBody: body, translatedBody, providerBody: parsed, clientBody: finalResp });
 
     await markSuccess();

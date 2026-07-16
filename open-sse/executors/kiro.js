@@ -586,9 +586,20 @@ export class KiroExecutor extends BaseExecutor {
             state.hasContextUsage = true;
           }
 
-          // Handle meteringEvent - mark that we received it
+          // Handle meteringEvent - preserve Kiro credit usage on state.usage
           if (eventType === "meteringEvent") {
             state.hasMeteringEvent = true;
+            const metering = event.payload?.meteringEvent || event.payload || {};
+            const credits = metering.usage !== null && metering.usage !== undefined
+              ? Number(metering.usage) : NaN;
+            // Consumption is never negative; ignore malformed values
+            if (Number.isFinite(credits) && credits >= 0) {
+              state.usage = {
+                ...(state.usage || {}),
+                kiro_credits: credits,
+                kiro_credit_unit: typeof metering.unit === "string" ? metering.unit : "credit"
+              };
+            }
           }
 
           // Handle metricsEvent for token usage
@@ -606,6 +617,7 @@ export class KiroExecutor extends BaseExecutor {
 
               if (inputTokens > 0 || outputTokens > 0) {
                 state.usage = {
+                  ...(state.usage || {}),
                   prompt_tokens: inputTokens,
                   completion_tokens: outputTokens,
                   total_tokens: inputTokens + outputTokens
@@ -624,8 +636,12 @@ export class KiroExecutor extends BaseExecutor {
           if (state.rawTerminalSeen && state.hasMeteringEvent && state.hasContextUsage && !state.finishEmitted) {
             state.finishEmitted = true;
 
-            // Estimate tokens if not available from events
-            if (!state.usage) {
+            // Estimate tokens if not available from events. Credit-only
+            // metering (kiro_credits) means we have usage but no token counts,
+            // so estimate whenever token counts are absent, preserving credits.
+            const hasTokenUsage = Number.isFinite(Number(state.usage?.prompt_tokens)) ||
+              Number.isFinite(Number(state.usage?.completion_tokens));
+            if (!hasTokenUsage) {
               // Estimate output tokens from content length
               const estimatedOutputTokens = state.totalContentLength > 0
                 ? Math.max(1, Math.floor(state.totalContentLength / 4))
@@ -637,9 +653,11 @@ export class KiroExecutor extends BaseExecutor {
                 : 0;
 
               state.usage = {
+                ...(state.usage || {}),
                 prompt_tokens: estimatedInputTokens,
                 completion_tokens: estimatedOutputTokens,
-                total_tokens: estimatedInputTokens + estimatedOutputTokens
+                total_tokens: estimatedInputTokens + estimatedOutputTokens,
+                estimated: true
               };
             }
 
@@ -691,15 +709,19 @@ export class KiroExecutor extends BaseExecutor {
         // Emit finish only for a raw application terminal, never arbitrary EOF.
         if (state.rawTerminalSeen && !state.failureSeen && !state.finishEmitted) {
           state.finishEmitted = true;
-          if (!state.usage && state.totalContentLength > 0) {
+          const hasTokenUsage = Number.isFinite(Number(state.usage?.prompt_tokens)) ||
+            Number.isFinite(Number(state.usage?.completion_tokens));
+          if (!hasTokenUsage && state.totalContentLength > 0) {
             const completionTokens = Math.max(1, Math.floor(state.totalContentLength / 4));
             const promptTokens = state.contextUsagePercentage > 0
               ? Math.floor(state.contextUsagePercentage * contextWindow / 100)
               : 0;
             state.usage = {
+              ...(state.usage || {}),
               prompt_tokens: promptTokens,
               completion_tokens: completionTokens,
               total_tokens: promptTokens + completionTokens,
+              estimated: true
             };
           }
           const finishChunk = {

@@ -534,7 +534,7 @@ export function createSSEStream(options = {}) {
               const isFinishChunk = parsed.choices?.some?.(choice => choice?.finish_reason)
                 || parsed.response?.candidates?.[0]?.finishReason;
               if (isFinishChunk && !hasValidUsage(usage)) {
-                const estimated = estimateUsage(body, totalContentLength, FORMATS.OPENAI);
+                const estimated = mergeUsage(usage, estimateUsage(body, totalContentLength, FORMATS.OPENAI));
                 parsed.usage = filterUsageForFormat(estimated, FORMATS.OPENAI);
                 output = `data: ${JSON.stringify(parsed)}\n`;
                 injectedUsage = true;
@@ -557,7 +557,7 @@ export function createSSEStream(options = {}) {
                 parsed.response?.candidates?.some?.((candidate) => candidate?.finishReason);
               if (passthroughGeminiTerminal && onStreamComplete && !onStreamCompleteFired) {
                 if (!hasValidUsage(usage) && totalContentLength > 0) {
-                  usage = estimateUsage(body, totalContentLength, FORMATS.GEMINI);
+                  usage = mergeUsage(usage, estimateUsage(body, totalContentLength, FORMATS.GEMINI));
                 }
                 onStreamCompleteFired = true;
                 onStreamComplete({
@@ -700,7 +700,7 @@ export function createSSEStream(options = {}) {
           const rawFormat = state?.format || FORMATS.GEMINI;
           let rawUsage = state.usage;
           if (!hasValidUsage(rawUsage) && totalContentLength > 0) {
-            rawUsage = estimateUsage(body, totalContentLength, rawFormat);
+            rawUsage = mergeUsage(rawUsage, estimateUsage(body, totalContentLength, rawFormat));
             state.usage = rawUsage;
           }
           // Raw content fallback: read text directly from parsed.response.candidates when
@@ -770,7 +770,7 @@ export function createSSEStream(options = {}) {
             // Inject estimated usage if finish chunk has no valid usage
             const isFinishChunk = item.type === "message_delta" || item.choices?.[0]?.finish_reason;
             if (state.finishReason && isFinishChunk && !hasValidUsage(item.usage) && totalContentLength > 0) {
-              const estimated = estimateUsage(body, totalContentLength, sourceFormat);
+              const estimated = mergeUsage(state.usage ?? item.usage, estimateUsage(body, totalContentLength, sourceFormat));
               item.usage = filterUsageForFormat(estimated, sourceFormat); // Filter + already has buffer
             } else if (state.finishReason && isFinishChunk && state.usage) {
               // Add buffer and filter usage for client (but keep original in state.usage for logging)
@@ -850,7 +850,7 @@ export function createSSEStream(options = {}) {
           }
 
           if (!hasValidUsage(usage) && totalContentLength > 0) {
-            usage = estimateUsage(body, totalContentLength, FORMATS.OPENAI);
+            usage = mergeUsage(usage, estimateUsage(body, totalContentLength, FORMATS.OPENAI));
           }
 
           if (hasValidUsage(usage)) {
@@ -960,7 +960,7 @@ export function createSSEStream(options = {}) {
         }
 
         if (!hasValidUsage(state?.usage) && totalContentLength > 0) {
-          state.usage = estimateUsage(body, totalContentLength, sourceFormat);
+          state.usage = mergeUsage(state.usage, estimateUsage(body, totalContentLength, sourceFormat));
         }
 
         if (hasValidUsage(state?.usage)) {

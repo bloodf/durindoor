@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect } from "vitest";
+import "../translator/registerAll.js";
 import { openaiToKiroRequest } from "../../open-sse/translator/request/openai-to-kiro.js";
 import { getModelUpstreamId } from "../../open-sse/config/providerModels.js";
 import { translateRequest } from "../../open-sse/translator/index.js";

@@ -127,7 +127,7 @@ function convertGeminiContent(content) {
   if (toolCalls.length > 0) {
     const result = { role: ROLE.ASSISTANT };
     if (parts.length > 0) {
-      result.content = parts.length === 1 ? parts[0].text : parts;
+      result.content = collapseTextParts(parts);
     }
     if (reasoningContent) {
       result.reasoning_content = reasoningContent;

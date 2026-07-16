@@ -635,6 +635,13 @@ export function sanitizeErrorMessage(message) {
       /((?:[?&;#]\s*|^)(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|authorization[-_]?code|oauth[-_]?code|code|code[-_]?verifier|state|oauth[-_]?state|cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)=)[^&;\s]+/gi,
       "$1[redacted]",
     )
+    // Inline key=value assignments (e.g. `provider rejected api_key=SECRET` or
+    // `password = SECRET`) using the same explicit credential-key list as the
+    // JSON/query redactors so non-secret words containing `key` stay readable.
+    .replace(
+      /\b(access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|authorization[-_]?code|oauth[-_]?code|code[-_]?verifier|oauth[-_]?state|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)\b(\s*=\s*)[^\s&;]+/gi,
+      "$1$2[redacted]",
+    )
     .replace(/file:\/\/\S+/g, "[path]")
     .replace(/\/(?:Users|home|var|tmp)\/\S+/g, "[path]");
   if (firstLineCut) {
@@ -657,6 +664,12 @@ export function sanitizeErrorMessage(message) {
     // an `@` after offset 4096 before any `/`, `?`, `#`, or whitespace.
     if (firstLineCut && /^[^\s/?#@]*@/.test(full.slice(4096))) {
       out = out.replace(/\b([a-z][a-z0-9+.\-]{1,15}):\/\/[^@\s/]+$/i, "$1://[redacted]@");
+    }
+    // Standalone credential prefixes (ghp_, sk[-_], AIza, …) cut at the cap:
+    // if the omitted suffix continues the same token, the last word in the
+    // capped text is a partial secret and must be redacted.
+    if (firstLineCut && /^[A-Za-z0-9._-]/.test(full.slice(4096))) {
+      out = out.replace(/\b(?:sk[-_]|gh[pousr]_|github_pat_|glpat-|ya29\.|AIza)\S*$/i, "[redacted]");
     }
   }
   return out.slice(0, 4096) || "Upstream provider error";

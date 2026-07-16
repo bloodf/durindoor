@@ -321,4 +321,28 @@ describe("sanitizeErrorMessage — Codex P2 residual leaks", () => {
     expect(out).toContain("src/app.ts");
     expect(out).toContain("db.local");
   });
+
+  it("redacts inline key=value secrets with optional spaces", () => {
+    expect(sanitizeErrorMessage("provider rejected api_key=SECRET")).toBe(
+      "provider rejected api_key=[redacted]",
+    );
+    expect(sanitizeErrorMessage("password = SECRET")).toBe("password = [redacted]");
+    // Words containing `key` must stay readable (regression against broad regex).
+    expect(sanitizeErrorMessage("monkey=banana and keyboard=qwerty")).toBe(
+      "monkey=banana and keyboard=qwerty",
+    );
+    expect(sanitizeErrorMessage("status=ok and code=200")).toBe("status=ok and code=200");
+  });
+
+  it("redacts a standalone credential prefix cut at the 4096 cap", () => {
+    // Align the cap exactly after `ghp_`; the omitted suffix continues the
+    // same token, proving the prefix is a partial secret and must be redacted.
+    const pad = "q".repeat(4091);
+    const token = "ghp_abcdef1234567890abcdef1234567890 trailing";
+    const msg = `${pad} ${token}`;
+    const out = sanitizeErrorMessage(msg);
+    expect(msg.length).toBeGreaterThan(4096);
+    expect(out).not.toContain("ghp_");
+    expect(out).toContain("[redacted]");
+  });
 });

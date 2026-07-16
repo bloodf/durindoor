@@ -48,8 +48,10 @@ arbitrary JSON body and reports a per-id status:
 {
   "engines": ["session-dedup", "ccr", "headroom", "caveman", ...],
   "results": {
-    "caveman":   { "status": "compressed", "compressed": true,  "savingsPercent": 45.0 },
-    "headroom":  { "status": "unchanged",  "compressed": false, "savingsPercent": 0 },
+    "caveman":   { "status": "compressed", "compressed": true,  "savingsPercent": 45.0,
+                   "fallbackReasons": [], "skippedReasons": [], "fallbackReason": null },
+    "headroom":  { "status": "unchanged",  "compressed": false, "savingsPercent": 0,
+                   "fallbackReasons": [], "skippedReasons": [], "fallbackReason": null },
     "llmlingua": { "status": "unavailable" }
   }
 }
@@ -58,7 +60,13 @@ arbitrary JSON body and reports a per-id status:
 Status values:
 
 - `compressed` / `unchanged` — engine is available and ran; `compressed` and
-  `savingsPercent` describe the outcome.
+  `savingsPercent` describe the outcome. When the engine fell back
+  (`stats.fallbackApplied`), `fallbackReasons` lists the deduped reasons
+  (`validationErrors` plus `pipeline-inflation-guard:*` warnings),
+  `fallbackReason` is the pipeline's canonical reason or the first entry, and
+  `skippedReasons` mirrors `fallbackReasons` (OmniRoute #6461 / PR #6519).
+  Non-fallback runs report `[]` / `[]` / `null` — zero change on the happy
+  path, even when warnings exist.
 - `unavailable` — catalog placeholder not shipped here; the engine is **not**
   dispatched.
 - `error` — engine is available but `apply()` threw (kept distinct from

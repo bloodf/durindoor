@@ -65,6 +65,24 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   // Normalize thinking config: remove if lastMessage is not user
   normalizeThinkingConfig(result);
 
+  /**
+   * OmniRoute #7061: preserve any explicitly-defined Claude thinking budget
+   * (including `budget_tokens: 0`, Gemini dynamic thinking) before format
+   * translation drops `thinking`; absent budget still falls through to
+   * captureThinking below.
+   *
+   * MUST run AFTER normalizeThinkingConfig: on a non-user-last turn (e.g. a
+   * tool-continuation) normalize deletes `thinking`, and a snapshot taken
+   * earlier would re-apply a budget the request no longer carries.
+   */
+  const claudeGeminiBudgetIntent =
+    sourceFormat === FORMATS.CLAUDE
+    && targetFormat === FORMATS.GEMINI
+    && result.thinking?.type === "enabled"
+    && result.thinking.budget_tokens !== undefined
+      ? { mode: "budget", budget: result.thinking.budget_tokens }
+      : null;
+
   // Always ensure tool_calls have id (some providers require it)
   ensureToolCallIds(result);
   
@@ -97,6 +115,7 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   // format conversion strips/renames the fields. Applied after translation.
   const thinkingIntent = translationContext?.thinkingIntent
     ?? parsedModel.override
+    ?? claudeGeminiBudgetIntent
     ?? captureThinking(result);
 
   // Capture session id from the original body (envelope still intact, e.g. antigravity request.sessionId)

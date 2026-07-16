@@ -3647,8 +3647,8 @@ exports[`GOLDEN buildUrl (default executor providers) > bluesminds → url (stre
 
 exports[`GOLDEN buildUrl (default executor providers) > byteplus → url (stream + non-stream) 1`] = `
 {
-  "nonStream": "https://ark.ap-southeast.bytepluses.com/api/coding/v3/chat/completions",
-  "stream": "https://ark.ap-southeast.bytepluses.com/api/coding/v3/chat/completions",
+  "nonStream": "https://ark.ap-southeast.bytepluses.com/api/v3/chat/completions",
+  "stream": "https://ark.ap-southeast.bytepluses.com/api/v3/chat/completions",
 }
 `;
 

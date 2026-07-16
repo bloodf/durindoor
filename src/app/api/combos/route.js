@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCombos, createCombo, getComboByName } from "@/lib/localDb";
+import { parseJsonBody } from "@/shared/utils/parseJsonBody";
 
 export const dynamic = "force-dynamic";
 
@@ -19,9 +20,11 @@ export async function GET() {
 
 // POST /api/combos - Create new combo
 export async function POST(request) {
+  const parsed = await parseJsonBody(request);
+  if (!parsed.ok) return parsed.response;
+
   try {
-    const body = await request.json();
-    const { name, models, kind } = body;
+    const { name, models, kind } = parsed.body;
 
     if (!name) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });

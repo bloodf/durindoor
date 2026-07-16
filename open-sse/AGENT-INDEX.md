@@ -100,7 +100,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `blackbox` |  | apikey | `https://api.blackbox.ai/v1/chat/completions` |
 | `bluesminds` |  | apikey | `https://api.bluesminds.com/v1/chat/completions` |
 | `brave-search` |  | apikey | `` |
-| `byteplus` |  | freeTier | `https://ark.ap-southeast.bytepluses.com/api/coding/v3/chat/completions` |
+| `byteplus` |  | freeTier | `https://ark.ap-southeast.bytepluses.com/api/v3/chat/completions` |
 | `bytez` |  | apikey | `https://api.bytez.com/models/v2/openai/v1/chat/completions` |
 | `cablyai` |  | apikey | `https://api.cablyai.com/v1/chat/completions` |
 | `cartesia` |  | apikey | `` |

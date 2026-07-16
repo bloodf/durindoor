@@ -391,6 +391,12 @@ export function calculatePercentage(used, total) {
  * @returns {number} Remaining percentage (0-100)
  */
 export function getRemainingPercentage(quota) {
+  // Credits rows carry an absolute balance in `remaining` (e.g. 4000 credits),
+  // not a 0-100 percentage — read the percentage field first for those.
+  if (quota?.isCredits && quota?.remainingPercentage !== undefined) {
+    return Math.max(0, Math.round(quota.remainingPercentage));
+  }
+
   if (quota?.remaining !== undefined) {
     return Math.max(0, Math.round(quota.remaining));
   }
@@ -459,6 +465,43 @@ export function getHiddenQuotaRows(provider, quotas = [], quotaVisibility = {}) 
   const hidden = getProviderHiddenQuotaSet(provider, quotaVisibility);
   if (hidden.size === 0) return [];
   return quotas.filter((quota, index) => hidden.has(getQuotaVisibilityKey(quota, index)));
+}
+
+/**
+ * Build a credits-style quota row (absolute balance, not a request window).
+ * `remaining`/`creditCount` hold the raw credit balance; `remainingPercentage`
+ * carries the 0-100 display value (getRemainingPercentage prefers it for
+ * isCredits rows so a 4,000-credit balance is never rendered as "4,000%").
+ */
+function buildCreditsQuota(name, remaining, remainingPercentage, extra = {}) {
+  return {
+    name,
+    used: 0,
+    total: 0,
+    remaining,
+    resetAt: null,
+    unlimited: false,
+    isCredits: true,
+    remainingPercentage,
+    creditCount: remaining,
+    ...extra,
+  };
+}
+
+function buildClaudeExtraUsageQuota(extraUsage) {
+  const monthlyLimit = Number(extraUsage?.monthly_limit ?? 0);
+  const usedCredits = Number(extraUsage?.used_credits ?? 0);
+  const utilization = Number(extraUsage?.utilization ?? 0);
+  const remainingPercentage = Number.isFinite(utilization)
+    ? Math.max(0, 100 - utilization)
+    : undefined;
+  const remaining = Number.isFinite(monthlyLimit) ? Math.max(0, monthlyLimit - usedCredits) : 0;
+
+  return buildCreditsQuota("extra_usage", remaining, remainingPercentage ?? 100, {
+    used: Number.isFinite(usedCredits) ? usedCredits : 0,
+    total: Number.isFinite(monthlyLimit) ? monthlyLimit : 0,
+    currency: extraUsage?.currency,
+  });
 }
 
 /**
@@ -564,15 +607,31 @@ export function parseQuotaData(provider, data) {
             resetAt: null,
             message: data.message,
           });
-        } else if (data.quotas) {
-          Object.entries(data.quotas).forEach(([name, quota]) => {
-            normalizedQuotas.push({
-              name,
-              used: quota.used || 0,
-              total: quota.total || 0,
-              resetAt: quota.resetAt || null,
+        } else {
+          if (data.quotas) {
+            Object.entries(data.quotas).forEach(([name, quota]) => {
+              normalizedQuotas.push({
+                name,
+                used: quota.used || 0,
+                total: quota.total || 0,
+                resetAt: quota.resetAt || null,
+                // Do NOT forward `remaining`: admin/legacy payloads carry an
+                // absolute request count there, and getRemainingPercentage
+                // prefers `remaining` over the derived percentage — a row like
+                // {used:1000,total:5000,remaining:4000} would render "4,000%".
+                // Percentage comes from remainingPercentage or used/total.
+                remainingPercentage: quota.remainingPercentage,
+              });
             });
-          });
+          }
+          // #6806: some Claude plans (e.g. "default_raven_enterprise") return no
+          // five_hour/seven_day utilization windows at all — only a credit-billing
+          // extraUsage block — so quotas can be {} while extraUsage still holds real,
+          // actionable usage data. Fold it in as a credits-style row instead of
+          // falling back to "No quota data".
+          if (data.extraUsage?.is_enabled) {
+            normalizedQuotas.push(buildClaudeExtraUsageQuota(data.extraUsage));
+          }
         }
         break;
 

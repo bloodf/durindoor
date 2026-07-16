@@ -1,4 +1,4 @@
-import { ERROR_RULES, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS } from "../config/errorConfig.js";
+import { ERROR_RULES, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS, MAX_RATE_LIMIT_COOLDOWN_MS } from "../config/errorConfig.js";
 import { parseRateLimitEvidence } from "../utils/error.js";
 
 /**
@@ -58,7 +58,11 @@ export function checkFallbackError(status, errorText, backoffLevel = 0) {
       // caller did not supply one, keeping state:"exhausted" + retryAtKnown
       // instead of persisting this as an ordinary cooldown.
       if (Number.isFinite(evidence.resetAtMs)) {
-        return { shouldFallback: true, cooldownMs: Math.max(0, evidence.resetAtMs - now), newBackoffLevel: 0, rateLimitEvidence: evidence };
+        // Clamp the parsed reset to the hard cap in this text-quota path so
+        // monthly "reset in 14 days" still benches for the cap rather than
+        // being discarded as resetless exhaustion.
+        const clampedReset = Math.min(evidence.resetAtMs, now + MAX_RATE_LIMIT_COOLDOWN_MS);
+        return { shouldFallback: true, cooldownMs: Math.max(0, clampedReset - now), newBackoffLevel: 0, rateLimitEvidence: evidence };
       }
       const fallback = checkFallbackErrorByRules(status, lowerError, backoffLevel);
       return { ...fallback, rateLimitEvidence: evidence };

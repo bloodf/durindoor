@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { checkFallbackError } from "../../open-sse/services/accountFallback.js";
-import { BACKOFF_CONFIG } from "../../open-sse/config/errorConfig.js";
+import { parseRateLimitEvidence } from "../../open-sse/utils/error.js";
+import { BACKOFF_CONFIG, MAX_RATE_LIMIT_COOLDOWN_MS } from "../../open-sse/config/errorConfig.js";
 
 const mocks = vi.hoisted(() => ({
   getProviderConnections: vi.fn(),
@@ -81,6 +82,28 @@ describe("#6731 apikey 429 explicit quota-exhausted text", () => {
     expect(result.shouldFallback).toBe(true);
     expect(result.rateLimitEvidence).toBeUndefined();
     expect(result.cooldownMs).toBe(BACKOFF_CONFIG.base);
+  });
+
+  it("clamps a 14-day monthly quota reset to the configured cap", () => {
+    const result = checkFallbackError(429, "Monthly quota exceeded; reset in 14 days", 0);
+
+    expect(result.shouldFallback).toBe(true);
+    expect(result.rateLimitEvidence?.state).toBe("exhausted");
+    expect(result.cooldownMs).toBe(MAX_RATE_LIMIT_COOLDOWN_MS);
+  });
+
+  it("rejects an absurd Retry-After header duration as resetless exhaustion", () => {
+    const body = "monthly quota exceeded";
+    const evidence = parseRateLimitEvidence({
+      status: 429,
+      bodyText: body,
+      headers: { get: () => "999999999" },
+      now: Date.now(),
+    });
+
+    expect(evidence.state).toBe("exhausted");
+    expect(evidence.resetAtMs).toBeNull();
+    expect(evidence.source).toBe("local_policy");
   });
 });
 

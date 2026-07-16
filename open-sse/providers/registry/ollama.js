@@ -66,5 +66,10 @@ export default {
   },
   features: {
     usage: true,
+    // Ollama Cloud authenticates with an API key (ollama.com/settings/keys), so it
+    // must also join USAGE_APIKEY_PROVIDERS (derived from `usageApikey`) or the
+    // /api/usage/[connectionId] route rejects key-based cloud connections before
+    // the dispatcher runs. ollama-local intentionally stays unregistered.
+    usageApikey: true,
   },
 };

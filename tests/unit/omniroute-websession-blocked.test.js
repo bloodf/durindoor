@@ -111,6 +111,20 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
     });
   });
 
+  it("does not trigger account fallback for Anthropic invalid_request_error 400", () => {
+    expect(checkFallbackError(400, '{"error":{"type":"invalid_request_error","message":"messages.0...}}}')).toEqual({
+      shouldFallback: false,
+      cooldownMs: 0,
+    });
+  });
+
+  it("still falls back for invalid_request_error text on a 5xx status", () => {
+    expect(checkFallbackError(503, '{"error":{"type":"invalid_request_error","message":"bad"}}')).toMatchObject({
+      shouldFallback: true,
+      cooldownMs: expect.any(Number),
+    });
+  });
+
   it("uses an explicit unsupported executor instead of silently falling back to default OpenAI transport", async () => {
     for (const provider of blockedProviders) {
       expect(hasSpecializedExecutor(provider), `${provider} specialized executor`).toBe(true);

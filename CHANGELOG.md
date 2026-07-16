@@ -1,6 +1,8 @@
 # Unreleased
 
 ## Fixes
+- **Claude**: map `claude-fable-5` and `claude-mythos-5` to `claude-adaptive` thinking format; sanitize unsigned, invalid, or default-signature historical thinking blocks and never synthesize placeholder thinking for those models. Preserve Opus/Sonnet signed-thinking history and placeholder behavior.
+- **Anthropic**: do not trigger account fallback for `invalid_request_error` 400 responses; `providerFieldStrips` no longer strips top-level `thinking` when a 400 error points to a nested `messages.*.content.*.thinking` path.
 - **Bootstrap**: strip empty-string `process.env` values before app modules load so Docker `-e KEY=` no longer overrides real values and crash-loops the container (OmniRoute #6828).
 - **Routing**: the `auto` combo's no-auth candidate pool now honors a disabled provider connection's own `isActive=false` (the main Providers grid toggle), seeding chat-eligible no-auth providers by default and gating them out when their connection row is disabled (OmniRoute #6889, fixes #6557).
 - **Codex**: rewrite replayed assistant history `input_text`/`text` parts to `output_text` (dropping `annotations`/`logprobs`/`obfuscation`) so the Codex/OpenAI backend accepts codex-cli conversation replays; user and function items unchanged (OmniRoute #6932).

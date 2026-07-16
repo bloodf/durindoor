@@ -31,6 +31,12 @@ export function checkFallbackError(status, errorText, backoffLevel = 0) {
     return { shouldFallback: false, cooldownMs: 0 };
   }
 
+  // Anthropic 400 invalid_request_error is a client-side request schema failure;
+  // switching accounts will not fix it, so do not fall back.
+  if (Number(status) === 400 && lowerError.includes("invalid_request_error")) {
+    return { shouldFallback: false, cooldownMs: 0 };
+  }
+
   for (const rule of ERROR_RULES) {
     // Text-based rule: match substring in error message
     if (rule.text && lowerError && lowerError.includes(rule.text)) {

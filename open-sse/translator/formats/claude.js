@@ -88,6 +88,12 @@ export function fixToolUseOrdering(messages) {
 // Models that reject thinking.type "adaptive" + output_config.effort (Opus 4.5+/Sonnet 4.6+ only)
 const ADAPTIVE_THINKING_UNSUPPORTED = /haiku/i;
 
+// Adaptive-thinking models (Fable/Mythos) do not support unsigned or default-
+// signature historical thinking blocks and must never receive synthetic placeholders.
+function isAdaptiveThinkingModel(model) {
+  return /claude-(fable|mythos)/i.test(model || "");
+}
+
 function handlesThinkingBlocks(provider) {
   return provider === "claude" || provider?.startsWith("anthropic-compatible") || provider === "deepseek";
 }
@@ -181,6 +187,8 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
 
   // 3. Drop thinking blocks whose signature is not Claude's (combo mixes models,
   // so foreign signatures leak into history and Anthropic rejects them).
+  // Fable/Mythos also reject unsigned/default-placeholder history and never get
+  // synthetic placeholders.
   const thinkingEnabled = body.thinking?.type === "enabled";
   if (Array.isArray(body.messages)) {
     for (const msg of body.messages) {
@@ -190,7 +198,15 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
       const kept = [];
       for (const block of msg.content) {
         if (block.type === CLAUDE_BLOCK.THINKING || block.type === CLAUDE_BLOCK.REDACTED_THINKING) {
-          if (provider !== "claude" || isValidClaudeSignature(block.signature)) {
+          const isAdaptiveModel = isAdaptiveThinkingModel(model);
+          const isPlaceholder = block.signature === DEFAULT_THINKING_CLAUDE_SIGNATURE;
+          const valid = isValidClaudeSignature(block.signature) && !isPlaceholder;
+          if (isAdaptiveModel) {
+            if (valid) {
+              hasKeptThinking = true;
+              kept.push(block);
+            }
+          } else if (provider !== "claude" || isValidClaudeSignature(block.signature)) {
             hasKeptThinking = true;
             kept.push(block);
           }
@@ -200,7 +216,7 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
         kept.push(block);
       }
       msg.content = kept;
-      if (thinkingEnabled && !hasKeptThinking && hasToolUse) {
+      if (thinkingEnabled && !hasKeptThinking && hasToolUse && !isAdaptiveThinkingModel(model)) {
         msg.content.unshift(buildThinkingPlaceholder("claude"));
       }
     }
@@ -302,6 +318,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
           const isClaudeNative = provider === "claude";
           const preservesNativeThinkingBlocks = provider === "ollama" || provider === "ollama-local";
           const isDeepSeek = provider === "deepseek";
+          const isAdaptiveModel = isAdaptiveThinkingModel(body.model);
           const kept = [];
           for (const block of msg.content) {
             const isThinking = block.type === CLAUDE_BLOCK.THINKING || block.type === CLAUDE_BLOCK.REDACTED_THINKING;
@@ -310,7 +327,12 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
                 hasKeptThinking = true;
                 kept.push(block);
               } else if (isClaudeNative) {
-                if (isValidClaudeSignature(block.signature)) {
+                if (isAdaptiveModel) {
+                  if (isValidClaudeSignature(block.signature) && block.signature !== DEFAULT_THINKING_CLAUDE_SIGNATURE) {
+                    hasKeptThinking = true;
+                    kept.push(block);
+                  }
+                } else if (isValidClaudeSignature(block.signature)) {
                   hasKeptThinking = true;
                   kept.push(block);
                 }
@@ -330,7 +352,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
           msg.content = kept;
 
           // Add thinking block if thinking enabled + has tool_use but no thinking
-          if (thinkingEnabled && !hasKeptThinking && hasToolUse) {
+          if (thinkingEnabled && !hasKeptThinking && hasToolUse && !isAdaptiveModel) {
             msg.content.unshift(buildThinkingPlaceholder(provider));
           }
         }

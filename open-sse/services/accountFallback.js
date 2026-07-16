@@ -262,6 +262,33 @@ export function buildModelLockUpdate(model, cooldownMs) {
 }
 
 /**
+ * Decide whether a fallback lock must be account-wide for a provider that has
+ * opted into connection-wide error scoping (#6888).
+ *
+ * Only NVIDIA NIM (and any future provider explicitly flagged with
+ * `passthroughConnectionWideErrors`) treats connection-class failures as
+ * indicting the shared connection itself. A per-model 404 (stale/renamed
+ * catalog id) or 429 (transient rate limit) retains the existing bounded
+ * scope — the caller's canonical-model lock when the catalog id resolves,
+ * account-wide when it does not (bounded-key invariant). Only failures where
+ * the shared connection itself is at fault (5xx, or status 0 for network/
+ * no-response) force the account-wide lock (`modelLock___all`).
+ *
+ * Providers without `passthroughConnectionWideErrors` are unaffected: callers
+ * only consult this helper when the registry sets the flag, so OpenRouter and
+ * other passthrough routers keep their 5xx responses model-scoped.
+ *
+ * @param {boolean} connectionWideErrors - registry `passthroughConnectionWideErrors` flag for the resolved provider
+ * @param {number} status - HTTP status code from upstream (0 = network/no response)
+ * @returns {boolean} true when the lock must be account-wide
+ */
+export function isPassthroughConnectionWideError(connectionWideErrors, status) {
+  if (connectionWideErrors !== true) return false;
+  const code = Number(status) || 0;
+  return code === 0 || code >= 500;
+}
+
+/**
  * Build update object to clear all model locks on a connection.
  */
 export function buildClearModelLocksUpdate(connection) {

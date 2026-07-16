@@ -5,7 +5,7 @@ import {
 } from "@/lib/localDb";
 import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
-import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, buildModelLockUpdate, getActiveModelLockUntil } from "open-sse/services/accountFallback.js";
+import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, buildModelLockUpdate, getActiveModelLockUntil, isPassthroughConnectionWideError } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
 import * as log from "../utils/logger.js";
@@ -592,7 +592,15 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     && evidenceState === "exhausted"
     && !hasFamilyScope
     && getProviderQuotaConfig(provider)?.runtimeScopes?.exhausted === "account";
-  const fallbackModel = resolveFallbackModelScope(provider, model, { accountWide: accountWideRuntime });
+  // #6888: only providers flagged `passthroughConnectionWideErrors` treat
+  // connection-class failures (5xx, network) as account-wide. NVIDIA NIM is
+  // currently the only opt-in provider; generic passthrough routers such as
+  // OpenRouter keep 5xx responses model-scoped.
+  const passthroughConnectionError = isPassthroughConnectionWideError(
+    AI_PROVIDERS[resolveProviderId(provider)]?.passthroughConnectionWideErrors,
+    status,
+  );
+  const fallbackModel = resolveFallbackModelScope(provider, model, { accountWide: accountWideRuntime || passthroughConnectionError });
   let atomicApplied = false;
   try {
     const db = await import("@/lib/localDb");

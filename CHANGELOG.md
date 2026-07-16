@@ -3,6 +3,7 @@
 ## Features
 - **xAI**: route the Responses-tagged model grok-4.20-multi-agent-0309 to Grok's native `/v1/responses` endpoint; plain chat models keep `/v1/chat/completions` (OmniRoute #6709, upstream 9router #2439).
 - **CLI tools**: Grok Build (xAI CLI) tool card + settings — apply/reset a routed `[model.9router]` slot in `~/.grok/config.toml` with previous-default restore and TOML-injection hardening (9router #2571).
+- **GitHub Copilot**: route Claude models through Copilot's native `/v1/messages` endpoint so prompt-cache token counts (`cached_tokens`) surface; non-Claude models keep `/chat/completions` (upstream 9router #2608).
 
 ## Fixes
 - **Claude**: map `claude-fable-5` and `claude-mythos-5` to `claude-adaptive` thinking format; sanitize unsigned, invalid, or default-signature historical thinking blocks and never synthesize placeholder thinking for those models. Preserve Opus/Sonnet signed-thinking history and placeholder behavior.
@@ -14,6 +15,7 @@
 - **Models**: route `/v1/models` live model-list discovery through the local-first provider-validation SSRF guard (`getProviderValidationGuard`) so LAN-local OpenAI-compatible providers (e.g. LM Studio on 192.168.x.x) appear under default settings while cloud-metadata endpoints stay blocked before any fetch; discovery fetches force `redirect: "manual"` (OmniRoute #6966).
 - **Providers**: adding a second API-key connection for the same provider no longer silently overwrites the first — POST /api/providers now runs create-only and returns 409 `PROVIDER_CONNECTION_ALREADY_EXISTS` on a duplicate (provider, apikey, name), the Add-API-key modal pre-fills a unique provider-scoped default name (`main`, `main-2`, …), and PUT /api/providers/[id] remains the explicit update path (OmniRoute #6499).
 - **CLI**: `waitServerReady()` no longer reports ready from a raw TCP accept alone — it classifies each health probe as ready / fast-reject / hanging / not-listening, so the "server is running" banner no longer fires while the backend still cannot answer a request (OmniRoute #6892).
+- **GitHub Copilot**: harden the native `/v1/messages` Claude route — strip params upstream rejects (`temperature`, non-4.6 `thinking`/`reasoning_effort`), map `max_completion_tokens`/`stop`/`tool_choice:"none"` to Anthropic shapes, bound the fetch with the provider connect timeout, retry transient 502/503/504 and network failures, drop the Claude Code persona for non-Claude-Code Copilot clients, and strip unsigned `thinking` history (upstream 9router #2608, Codex #291).
 - **Gemini**: omit unsupported thinking config for Gemma 4 on OpenAI-to-Gemini requests (OmniRoute #6708).
 - **Routing**: clamp reasoning-token headroom to explicit model output caps and isolate fallback attempts (#6714).
 - **OAuth**: regression-test Codex OAuth connection dedup — Codex same-email logins remain isolated by account and provider, preventing silent token overwrite (OmniRoute #6706; behavior already enforced by account-id-scoped dedup).

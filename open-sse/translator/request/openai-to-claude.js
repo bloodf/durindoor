@@ -22,9 +22,22 @@ export function openaiToClaudeRequest(model, body, stream) {
   const modelCeiling = getCapabilitiesForModel(null, model).maxOutput || undefined;
   const result = {
     model: model,
-    max_tokens: adjustMaxTokens(body, modelCeiling),
+    // Honor OpenAI's newer max_completion_tokens cap when max_tokens is absent —
+    // adjustMaxTokens only reads max_tokens, so without this a caller's
+    // max_completion_tokens would silently fall back to the model maximum.
+    max_tokens: adjustMaxTokens(
+      { ...body, max_tokens: body.max_tokens ?? body.max_completion_tokens },
+      modelCeiling
+    ),
     stream: stream
   };
+
+  // OpenAI `stop` (string|string[]) → Anthropic `stop_sequences`. Guard `!= null`
+  // so an explicit OpenAI `stop: null` (accepted, means "no stops") never becomes
+  // `stop_sequences: [null]`, which upstream rejects with a 400.
+  if (body.stop != null) {
+    result.stop_sequences = Array.isArray(body.stop) ? body.stop : [body.stop];
+  }
 
   // Temperature
   if (body.temperature !== undefined) {
@@ -322,7 +335,11 @@ function convertOpenAIToolChoice(choice) {
   // OpenAI string forms: "auto" | "none" | "required"
   if (typeof choice === "string") {
     if (choice === "required") return { type: "any" };
-    return { type: "auto" }; // "auto", "none", or anything unexpected
+    // OpenAI "none" = caller explicitly disabled tools — map to Anthropic's
+    // { type: "none" } (in CLAUDE_TOOL_CHOICE_TYPES) so a no-tools turn is never
+    // silently converted into tool-permitting "auto".
+    if (choice === "none") return { type: "none" };
+    return { type: "auto" }; // "auto" or anything unexpected
   }
 
   if (typeof choice === "object") {

@@ -12,6 +12,7 @@ export default {
   },
   category: "free",
   noAuth: true,
+  autoComboNoAuth: true,
   serviceKinds: ["llm"],
   transport: {
     baseUrl: "https://duckduckgo.com/duckchat/v1/chat",

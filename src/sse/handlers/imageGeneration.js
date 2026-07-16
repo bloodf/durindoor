@@ -1,5 +1,5 @@
 import {
-  getProviderCredentials,
+  getProviderCredentialsWithQuotaPreflight,
   markAccountUnavailable,
   clearAccountError,
   extractApiKey,
@@ -114,7 +114,7 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, { wantsSt
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, { preferredConnectionId });
+    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, { preferredConnectionId });
 
     if (!credentials || credentials.allRateLimited) {
       if (credentials?.allRateLimited) {

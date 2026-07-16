@@ -14,6 +14,7 @@ vi.mock("@/lib/localDb", () => ({
   getProviderConnections: mocks.getProviderConnections,
   updateProviderConnection: mocks.updateProviderConnection,
   validateApiKey: mocks.validateApiKey,
+  getProviderConnectionById: vi.fn(),
   getSettings: mocks.getSettings,
 }));
 

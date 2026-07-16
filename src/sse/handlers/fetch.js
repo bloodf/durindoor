@@ -1,5 +1,5 @@
 import {
-  getProviderCredentials,
+  getProviderCredentialsWithQuotaPreflight,
   markAccountUnavailable,
   clearAccountError,
   extractApiKey,
@@ -213,7 +213,7 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentials(providerId, excludeConnectionIds);
+    const credentials = await getProviderCredentialsWithQuotaPreflight(providerId, excludeConnectionIds);
 
     if (!credentials || credentials.allRateLimited) {
       if (credentials?.allRateLimited) {

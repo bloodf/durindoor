@@ -24,6 +24,7 @@ vi.mock("../../src/sse/services/model.js", () => ({
 
 vi.mock("../../src/sse/services/auth.js", () => ({
   getProviderCredentials: mocks.getProviderCredentials,
+  getProviderCredentialsWithQuotaPreflight: mocks.getProviderCredentials,
   markAccountUnavailable: mocks.markAccountUnavailable,
   clearAccountError: mocks.clearAccountError,
   extractApiKey: mocks.extractApiKey,

@@ -1,4 +1,4 @@
-import { getProviderCredentials, markAccountUnavailable, clearAccountError, extractApiKey, evaluateApiKeyAuth } from "../services/auth.js";
+import { getProviderCredentialsWithQuotaPreflight, markAccountUnavailable, clearAccountError, extractApiKey, evaluateApiKeyAuth } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { handleVideoGenerationCore } from "open-sse/handlers/videoGenerationCore.js";
@@ -45,7 +45,12 @@ export async function handleVideoGeneration(request) {
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
   const policyError = await enforceVideoPolicy(request, modelInfo.provider, modelInfo.model);
   if (policyError) return policyError;
-  const credentials = await getProviderCredentials(modelInfo.provider, null, modelInfo.model);
+  const credentials = await getProviderCredentialsWithQuotaPreflight(modelInfo.provider, null, modelInfo.model);
+  if (credentials?.allRateLimited) {
+    const status = Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;
+    const message = credentials.lastError || `All accounts unavailable for provider: ${modelInfo.provider}`;
+    return unavailableResponse(status, message, credentials.retryAfter, credentials.retryAfterHuman);
+  }
   if (!credentials) return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${modelInfo.provider}`);
 
   const result = await handleVideoGenerationCore({ provider: modelInfo.provider, model: modelInfo.model, body, credentials, signal: request.signal });
@@ -162,7 +167,7 @@ export async function handleVideoCreate(request, action) {
   const preferredConnectionId = request.headers.get("x-connection-id") || null;
   const idempotencyKey = request.headers.get("idempotency-key") || null;
 
-  const credentials = await getProviderCredentials(provider, null, model, { preferredConnectionId });
+  const credentials = await getProviderCredentialsWithQuotaPreflight(provider, null, model, { preferredConnectionId });
   if (!credentials || credentials.allRateLimited) {
     if (credentials?.allRateLimited) {
       return unavailableResponse(
@@ -236,7 +241,7 @@ export async function handleVideoGet(request, requestId) {
 
   const preferredConnectionId = request.headers.get("x-connection-id") || null;
 
-  const credentials = await getProviderCredentials(provider, null, null, { preferredConnectionId });
+  const credentials = await getProviderCredentialsWithQuotaPreflight(provider, null, null, { preferredConnectionId });
   if (!credentials || credentials.allRateLimited) {
     if (credentials?.allRateLimited) {
       return unavailableResponse(

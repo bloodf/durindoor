@@ -3,6 +3,7 @@ import { PROVIDERS } from "../config/providers.js";
 import { resolveKiroModel } from "../config/kiroConstants.js";
 import { v4 as uuidv4 } from "uuid";
 import { refreshKiroToken } from "../services/tokenRefresh.js";
+import { enrichKiroCredentialsFromSsoCache } from "../services/kiroModels.js";
 import { SSE_DONE, SSE_HEADERS } from "../utils/sseConstants.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import {
@@ -742,15 +743,19 @@ export class KiroExecutor extends BaseExecutor {
     if (!credentials.refreshToken) return null;
 
     try {
+      // Re-associate the stored refresh token with its AWS SSO cache entry
+      // before any network I/O, so imported external_idp/IDC connections
+      // missing clientId/clientSecret/tokenEndpoint/scope hit the right
+      // refresh endpoint (9router PR #2615).
+      const enriched = await enrichKiroCredentialsFromSsoCache(credentials, log);
+
       // Use centralized refreshKiroToken function (handles both AWS SSO OIDC and Social Auth)
-      const result = await refreshKiroToken(
-        credentials.refreshToken,
-        credentials.providerSpecificData,
+      return await refreshKiroToken(
+        enriched.refreshToken,
+        enriched.providerSpecificData,
         log,
         proxyOptions
       );
-
-      return result;
     } catch (error) {
       log?.error?.("TOKEN", `Kiro refresh error: ${error.message}`);
       return null;

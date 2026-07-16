@@ -21,6 +21,9 @@
 
 import { v4 as uuidv4 } from "uuid";
 import { createHash } from "crypto";
+import { readFile, readdir } from "fs/promises";
+import { homedir } from "os";
+import { join } from "path";
 import { refreshKiroToken } from "./tokenRefresh.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
@@ -38,6 +41,210 @@ const KIRO_VERSION = "0.10.32";
 
 const FETCH_TIMEOUT_MS = 30_000;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes per credential
+
+/**
+ * Check whether an AWS SSO cache entry looks like a Kiro token.
+ * Accepts Builder ID tokens (aorAAAAAG prefix), Microsoft Entra
+ * (external_idp) tokens, and organization tokens carrying codewhisperer
+ * scopes. Ported from 9router PR #2615 (`src/lib/oauth/kiroSsoCache.js`).
+ */
+export function isKiroSsoToken(data) {
+  if (!data || typeof data.refreshToken !== "string" || !data.refreshToken) return false;
+  if (data.refreshToken.startsWith("aorAAAAAG")) return true;
+  if (data.authMethod === "external_idp") return true;
+  if (Array.isArray(data.scopes) && data.scopes.some((s) => String(s).includes("codewhisperer"))) return true;
+  return false;
+}
+
+/**
+ * Scan the AWS SSO cache (`~/.aws/sso/cache`) and resolve the full Kiro
+ * credential bundle for a specific refresh token (unified SSO cache
+ * resolution, 9router PR #2615).
+ *
+ * `targetRefreshToken` must match an entry exactly — this is what lets an
+ * imported external_idp connection whose stored metadata is incomplete be
+ * re-associated with the richer cache entry before a refresh is attempted.
+ * The preferred `kiro-auth-token.json` file is checked first, but only wins
+ * when it holds the requested token; otherwise every `*.json` entry is
+ * scanned.
+ *
+ * For IDC/organization entries the linked client registration file
+ * (`<clientIdHash>.json`) supplies clientId/clientSecret. The profileArn is
+ * read from the Kiro IDE profile.json and used verbatim — rewriting its
+ * region to us-east-1 breaks non-US IDC accounts (see
+ * src/app/api/oauth/kiro/auto-import/route.js).
+ *
+ * @param {string} [targetRefreshToken] Exact refresh token to match. When
+ *   null, returns the first Kiro-looking token found.
+ * @returns {Promise<object>} { refreshToken, source, clientId, clientSecret,
+ *   region, authMethod, profileArn, rawAuth }
+ * @throws When the cache directory is unreadable or no entry matches.
+ */
+export async function resolveKiroCredentialsFromSsoCache(targetRefreshToken = null) {
+  const cachePath = join(homedir(), ".aws/sso/cache");
+
+  let files;
+  try {
+    files = await readdir(cachePath);
+  } catch (error) {
+    throw new Error("AWS SSO cache not found. Please login to Kiro IDE first.");
+  }
+
+  let refreshToken = null;
+  let foundFile = null;
+  let tokenData = null;
+
+  const checkData = (data, file) => {
+    if (!isKiroSsoToken(data)) return false;
+    if (targetRefreshToken && data.refreshToken !== targetRefreshToken) return false;
+    refreshToken = data.refreshToken;
+    foundFile = file;
+    tokenData = data;
+    return true;
+  };
+
+  const kiroTokenFile = "kiro-auth-token.json";
+  if (files.includes(kiroTokenFile)) {
+    try {
+      const content = await readFile(join(cachePath, kiroTokenFile), "utf-8");
+      checkData(JSON.parse(content), kiroTokenFile);
+    } catch (error) {}
+  }
+
+  if (!refreshToken) {
+    for (const file of files) {
+      if (!file.endsWith(".json")) continue;
+      try {
+        const content = await readFile(join(cachePath, file), "utf-8");
+        if (checkData(JSON.parse(content), file)) break;
+      } catch (error) {
+        continue;
+      }
+    }
+  }
+
+  if (!refreshToken) {
+    throw new Error(targetRefreshToken
+      ? "Provided refresh token not found in local AWS SSO cache."
+      : "Kiro token not found in AWS SSO cache. Please login to Kiro IDE first.");
+  }
+
+  // For IDC/organization tokens, resolve clientId and clientSecret from the
+  // linked client registration file (referenced by clientIdHash).
+  let clientId = null;
+  let clientSecret = null;
+  const region = tokenData?.region || null;
+  const authMethod = tokenData?.authMethod || null;
+
+  if (tokenData?.clientIdHash) {
+    // clientIdHash comes from a local cache JSON file — treat it as input and
+    // only accept the expected hex-hash shape (no path separators) before
+    // joining it into a path, so a crafted entry cannot read files outside
+    // the SSO cache.
+    const safeHash = /^[0-9a-f]{1,128}$/i.test(String(tokenData.clientIdHash))
+      ? String(tokenData.clientIdHash)
+      : null;
+    if (safeHash) {
+      try {
+        const clientContent = await readFile(join(cachePath, `${safeHash}.json`), "utf-8");
+        const clientData = JSON.parse(clientContent);
+        if (clientData.clientId && clientData.clientSecret) {
+          clientId = clientData.clientId;
+          clientSecret = clientData.clientSecret;
+        }
+      } catch (error) {}
+    }
+  }
+
+  // Read profileArn from Kiro IDE's profile.json, verbatim: the ARN already
+  // carries the correct region for the account.
+  let profileArn = null;
+  const kiroProfilePaths = [
+    join(process.env.APPDATA || join(homedir(), "AppData", "Roaming"), "Kiro", "User", "globalStorage", "kiro.kiroagent", "profile.json"),
+    join(homedir(), ".config", "Kiro", "User", "globalStorage", "kiro.kiroagent", "profile.json"),
+  ];
+  for (const profilePath of kiroProfilePaths) {
+    try {
+      const profileData = JSON.parse(await readFile(profilePath, "utf-8"));
+      if (profileData.arn) {
+        profileArn = profileData.arn;
+        break;
+      }
+    } catch (error) {
+      continue;
+    }
+  }
+
+  const rawAuth = authMethod === "external_idp" ? {
+    auth_method: tokenData.authMethod,
+    access_token: tokenData.accessToken,
+    refresh_token: tokenData.refreshToken,
+    client_id: tokenData.clientId || clientId,
+    token_endpoint: tokenData.tokenEndpoint,
+    scopes: tokenData.scopes,
+    region: tokenData.region,
+    profile_arn: profileArn,
+    ...(tokenData.expiresAt ? { expired: tokenData.expiresAt } : {}),
+  } : undefined;
+
+  return { refreshToken, source: foundFile, clientId, clientSecret, region, authMethod, profileArn, rawAuth };
+}
+
+/**
+ * Enrich a Kiro credential from the local AWS SSO cache before a refresh is
+ * attempted (9router PR #2615). Only fills fields the stored credential is
+ * missing — never overwrites user-supplied metadata. Returns the same
+ * reference when the cache cannot help (missing dir, token not cached, or
+ * the credential already carries everything), so callers can pass the result
+ * straight through to `refreshKiroToken`.
+ */
+export async function enrichKiroCredentialsFromSsoCache(credentials, log = null) {
+  const psd = credentials?.providerSpecificData || {};
+  if (!credentials?.refreshToken) return credentials;
+  // Generic imports (no authMethod or the "imported" placeholder) always need
+  // the cache lookup: the SSO cache entry may declare a more specific method
+  // (external_idp / idc) plus the metadata that method's refresh requires.
+  const genericMethod = !psd.authMethod || psd.authMethod === "imported";
+  const needsExternalIdp = psd.authMethod === "external_idp"
+    && !(psd.clientId && psd.tokenEndpoint && psd.scope);
+  const needsIdc = psd.authMethod === "idc" && !(psd.clientId && psd.clientSecret);
+  const needsArn = !psd.profileArn;
+  if (!genericMethod && !needsExternalIdp && !needsIdc && !needsArn) return credentials;
+
+  let cached;
+  try {
+    cached = await resolveKiroCredentialsFromSsoCache(credentials.refreshToken);
+  } catch (error) {
+    log?.debug?.("KIRO_SSO", `SSO cache resolution skipped: ${sanitizeErrorMessage(error?.message || error)}`);
+    return credentials;
+  }
+
+  // A cache entry declaring a concrete method (e.g. external_idp) upgrades a
+  // generic imported credential wholesale; an explicit stored method is kept.
+  const cachedMethod = cached.authMethod || null;
+  const resolvedMethod = genericMethod && cachedMethod ? cachedMethod : psd.authMethod || cachedMethod || undefined;
+  const cachedClientId = cached.clientId || cached.rawAuth?.client_id || null;
+  const cachedScope = cached.rawAuth ? normalizeKiroSsoScope(cached.rawAuth.scopes) : "";
+
+  return {
+    ...credentials,
+    providerSpecificData: {
+      ...psd,
+      ...(resolvedMethod ? { authMethod: resolvedMethod } : {}),
+      ...(psd.profileArn || !cached.profileArn ? {} : { profileArn: cached.profileArn }),
+      ...(psd.region || !cached.region ? {} : { region: cached.region }),
+      ...(psd.clientId || !cachedClientId ? {} : { clientId: cachedClientId }),
+      ...(psd.clientSecret || !cached.clientSecret ? {} : { clientSecret: cached.clientSecret }),
+      ...(psd.tokenEndpoint || !cached.rawAuth?.token_endpoint ? {} : { tokenEndpoint: cached.rawAuth.token_endpoint }),
+      ...(psd.scope || !cachedScope ? {} : { scope: cachedScope }),
+    },
+  };
+}
+
+function normalizeKiroSsoScope(scopes) {
+  if (Array.isArray(scopes)) return scopes.map((s) => String(s).trim()).filter(Boolean).join(" ");
+  return typeof scopes === "string" ? scopes.trim() : "";
+}
 
 /** @type {Map<string, { expiresAt: number, models: any[] }>} */
 const catalogCache = new Map();
@@ -250,9 +457,13 @@ export async function resolveKiroModels(credentials, options = {}) {
   } catch (err) {
     if (err && err.status === 401 && credentials.refreshToken) {
       options.log?.info?.("KIRO_MODELS", "Got 401 from Kiro; refreshing token");
+      // Re-associate the stored refresh token with its SSO cache entry so an
+      // imported external_idp/IDC connection missing clientId/clientSecret/
+      // tokenEndpoint can still refresh (9router PR #2615).
+      const enriched = await enrichKiroCredentialsFromSsoCache(credentials, options.log);
       const refreshed = await refreshKiroToken(
-        credentials.refreshToken,
-        credentials.providerSpecificData,
+        enriched.refreshToken,
+        enriched.providerSpecificData,
         options.log,
         options.proxyOptions
       );

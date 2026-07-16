@@ -415,6 +415,11 @@ export async function refreshKiroToken(refreshToken, providerSpecificData, log, 
 
     const tokens = await response.json();
 
+    if (!tokens || typeof tokens.access_token !== "string" || !tokens.access_token) {
+      log?.error?.("TOKEN_REFRESH", "Kiro external_idp refresh response missing access_token");
+      return null;
+    }
+
     log?.info?.("TOKEN_REFRESH", "Successfully refreshed Kiro external_idp token", {
       hasNewAccessToken: !!tokens.access_token,
       hasNewRefreshToken: !!tokens.refresh_token,

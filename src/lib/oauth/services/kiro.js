@@ -1,5 +1,6 @@
 import { KIRO_CONFIG, assertValidAwsRegion } from "../constants/oauth.js";
 import { buildKiroProfileEndpoint } from "../../../../open-sse/config/kiroRegions.js";
+import { buildExternalIdpRefreshParams } from "../kiroExternalIdp.js";
 
 /**
  * Kiro OAuth Service
@@ -181,6 +182,45 @@ export class KiroService {
    */
   async refreshToken(refreshToken, providerSpecificData = {}, proxyOptions = null) {
     const { authMethod, clientId, clientSecret, region } = providerSpecificData;
+
+    // Microsoft Entra ID (external_idp) refresh — ported from 9router PR
+    // #2615. Must run before the AWS SSO OIDC branch: external_idp tokens
+    // are rejected by AWS endpoints.
+    if (authMethod === "external_idp") {
+      const refreshRequest = buildExternalIdpRefreshParams(refreshToken, providerSpecificData);
+
+      const response = await fetch(refreshRequest.tokenEndpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+        },
+        body: refreshRequest.body,
+        proxyOptions,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Token refresh failed for external_idp: ${errorText}`);
+      }
+
+      const data = await response.json();
+      if (!data || typeof data.access_token !== "string" || !data.access_token) {
+        throw new Error("Token refresh failed for external_idp: response missing access_token");
+      }
+      return {
+        accessToken: data.access_token,
+        refreshToken: data.refresh_token || refreshToken,
+        expiresIn: data.expires_in,
+        // Merge the normalized provider metadata (region, profileArn,
+        // provider label) over the validated refresh fields so the import
+        // route persists the full external_idp identity.
+        providerSpecificData: {
+          ...providerSpecificData,
+          ...refreshRequest.providerSpecificData,
+        },
+      };
+    }
 
     // AWS SSO OIDC refresh (Builder ID or IDC)
     if (clientId && clientSecret) {

@@ -507,4 +507,105 @@ describe("GithubExecutor native Claude /v1/messages routing (upstream #2608)", (
     const thinkingBlocks = (assistant.content || []).filter((b) => b?.type === "thinking" || b?.type === "redacted_thinking");
     expect(thinkingBlocks).toEqual([]);
   });
+
+  it("maps parallel_tool_calls:false to Claude disable_parallel_tool_use (Codex P2)", async () => {
+    proxyAwareFetch.mockResolvedValueOnce(claudeSSE([MSG_START, TEXT_START, TEXT_DELTA("hi"), TEXT_STOP, MSG_DELTA, MSG_STOP]));
+    const exec = new GithubExecutor();
+
+    await exec.execute({
+      model: "claude-sonnet-4.6",
+      body: {
+        model: "claude-sonnet-4.6",
+        messages: [{ role: "user", content: "hi" }],
+        tools: [{ type: "function", function: { name: "get_time", parameters: { type: "object", properties: {} } } }],
+        tool_choice: "auto",
+        parallel_tool_calls: false,
+      },
+      stream: true,
+      credentials,
+      signal: null,
+      log: null,
+    });
+
+    const sent = JSON.parse(proxyAwareFetch.mock.calls[0][1].body);
+    expect(sent.tool_choice).toEqual({ type: "auto", disable_parallel_tool_use: true });
+  });
+
+  it("downgrades forced tool_choice with thinking active, preserving disable_parallel_tool_use (Codex P2)", async () => {
+    proxyAwareFetch.mockResolvedValueOnce(claudeSSE([MSG_START, TEXT_START, TEXT_DELTA("hi"), TEXT_STOP, MSG_DELTA, MSG_STOP]));
+    const exec = new GithubExecutor();
+
+    await exec.execute({
+      model: "claude-sonnet-4.6",
+      body: {
+        model: "claude-sonnet-4.6",
+        messages: [{ role: "user", content: "hi" }],
+        tools: [{ type: "function", function: { name: "get_time", parameters: { type: "object", properties: {} } } }],
+        tool_choice: "required",
+        thinking: { budget_tokens: 2048 },
+      },
+      stream: true,
+      credentials,
+      signal: null,
+      log: null,
+    });
+
+    const sent = JSON.parse(proxyAwareFetch.mock.calls[0][1].body);
+    expect(sent.thinking?.type).toMatch(/enabled|adaptive/);
+    expect(sent.tool_choice).toEqual({ type: "auto", disable_parallel_tool_use: true });
+  });
+
+  it("drops assistant turns that become empty after unsigned thinking is stripped (Codex P2)", async () => {
+    proxyAwareFetch.mockResolvedValueOnce(claudeSSE([MSG_START, TEXT_START, TEXT_DELTA("hi"), TEXT_STOP, MSG_DELTA, MSG_STOP]));
+    const exec = new GithubExecutor();
+
+    await exec.execute({
+      model: "claude-sonnet-4.6",
+      body: {
+        model: "claude-sonnet-4.6",
+        messages: [
+          { role: "user", content: "hi" },
+          { role: "assistant", content: "", reasoning_content: "only unsigned thinking" },
+          { role: "user", content: "go on" },
+        ],
+      },
+      stream: true,
+      credentials,
+      signal: null,
+      log: null,
+    });
+
+    const sent = JSON.parse(proxyAwareFetch.mock.calls[0][1].body);
+    const assistantTurns = sent.messages.filter((m) => m.role === "assistant");
+    expect(assistantTurns).toEqual([]);
+  });
+
+
+  it("does not retry quota dispatch failures (Codex P2)", async () => {
+    vi.useFakeTimers();
+    try {
+      const error = Object.assign(new Error("Provider quota capacity unavailable"), {
+        code: "QUOTA_DISPATCH_UNAVAILABLE",
+        name: "QuotaDispatchUnavailableError",
+      });
+      proxyAwareFetch.mockRejectedValueOnce(error);
+      const exec = new GithubExecutor();
+
+      const pending = exec.execute({
+        model: "claude-sonnet-4.6",
+        body: { model: "claude-sonnet-4.6", messages: [{ role: "user", content: "hi" }] },
+        stream: true,
+        credentials,
+        signal: null,
+        log: null,
+      });
+      await vi.runAllTimersAsync();
+      await expect(pending).rejects.toThrow("Provider quota capacity unavailable");
+      // Quota dispatch is a local capacity failure; no in-place retries.
+      expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
 });

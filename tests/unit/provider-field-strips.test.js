@@ -10,4 +10,13 @@ describe("providerFieldStrips", () => {
   ])("finds documented offending field in: %s", (message, expected) => {
     expect(findOffendingField(message)).toBe(expected);
   });
+
+  it("does not strip top-level thinking when error path is nested under messages.*.content", () => {
+    const error = "messages.0.content.0.thinking: Extra inputs are not permitted";
+    expect(findOffendingField(error)).toBeNull();
+  });
+
+  it("does not treat hyphenated names as underscore variants", () => {
+    expect(findOffendingField("reasoning-budget: invalid")).toBeNull();
+  });
 });

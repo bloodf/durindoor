@@ -672,5 +672,8 @@ export function sanitizeErrorMessage(message) {
       out = out.replace(/\b(?:sk[-_]|gh[pousr]_|github_pat_|glpat-|ya29\.|AIza)\S*$/i, "[redacted]");
     }
   }
+  if (out.length > 4096 && out.endsWith("[redacted]")) {
+    return `${out.slice(0, 4096 - "[redacted]".length)}[redacted]`;
+  }
   return out.slice(0, 4096) || "Upstream provider error";
 }

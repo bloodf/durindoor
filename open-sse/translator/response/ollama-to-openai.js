@@ -35,7 +35,8 @@ export function ollamaToOpenAIResponse(chunk, state) {
   // surface it as an error finish instead of dropping the frame and leaving an
   // empty or unterminated success stream (mirrors the gemini-to-openai pattern).
   if ("error" in chunk) {
-    state.upstreamError = chunk.error;
+    const error = chunk.error;
+    state.upstreamError = typeof error === "string" ? { message: error } : error;
     state.finishReason = OPENAI_FINISH.ERROR;
     return buildChunk({ id, created, model }, {}, OPENAI_FINISH.ERROR);
   }

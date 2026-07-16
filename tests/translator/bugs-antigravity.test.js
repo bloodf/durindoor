@@ -398,3 +398,18 @@ describe("OpenAI → Gemini functionResponse name recovery", () => {
     expect(findResponse(out)?.name).toBe("toolu_01AbCdEf");
   });
 });
+
+// openai-to-antigravity.js — finish_reason: "error" must map to a Gemini error
+// finishReason (OTHER) instead of a clean STOP, so Antigravity/Gemini clients
+// know the turn aborted rather than completed (#271).
+describe("OpenAI → Antigravity error finish mapping", () => {
+  it("maps finish_reason error to GEMINI_FINISH.OTHER", () => {
+    const state = initState(FORMATS.OPENAI);
+    const [out] = translateResponse(FORMATS.OPENAI, FORMATS.ANTIGRAVITY, {
+      id: "chatcmpl-error",
+      model: "m",
+      choices: [{ index: 0, delta: {}, finish_reason: "error" }],
+    }, state);
+    expect(out.response.candidates[0].finishReason).toBe("OTHER");
+  });
+});

@@ -12,11 +12,12 @@ Two changes:
 
 2. **`open-sse/utils/ollamaTransform.js`** (`transformToOllama`, used by the Ollama-compat `/api/v1/api/chat` route) — that route can receive EITHER OpenAI SSE OR native Ollama NDJSON mislabeled `text/event-stream` (ollama-local passthrough wraps the body with SSE headers), so the transform sniffs each line instead of trusting content-type:
    - `data: {...}` / `data: [DONE]` → converted to Ollama NDJSON message chunks (pre-existing behavior, preserved).
-   - Bare Ollama-shaped NDJSON objects (message chunks, `{done: ...}`, `{error: ...}` frames) → forwarded unchanged.
+   - Bare Ollama-shaped NDJSON objects (message chunks and `{done: ...}` frames) → forwarded unchanged. Native `{error: ...}` frames are not forwarded unchanged; they are normalized to the same wire shape below.
    - A buffered OpenAI chat-completion object (the route's `stream:false` path returns one JSON object) → projected to a native Ollama non-stream response via `projectCompletionToClientFormat(..., FORMATS.OLLAMA)` and terminal.
    - Any other bare JSON (OpenAI-style streaming fragments, arrays, arbitrary objects) → dropped, never leaked to Ollama clients as mixed-format lines.
+   - SSE `data: {"error":...}` and bare NDJSON `{"error":...}` frames (including internal `{error: {message, type, code}}` shapes) → normalized to an Ollama-native `{"error":"..."}` frame. An error frame is terminal on its own and suppresses any synthetic `done:true`, so failed streams never look like clean completions.
    - SSE control lines (`event:`, `:` comments, blanks) → ignored.
-   - Terminal `{done:true}` is emitted exactly once — from `[DONE]`, a `finish_reason`, an upstream `done:true`, or flush — never duplicated. An upstream `{error: ...}` frame is terminal on its own and suppresses any synthetic `done:true`, so failed streams never look like clean completions.
+   - Terminal `{done:true}` is emitted exactly once — from `[DONE]`, a `finish_reason`, an upstream `done:true`, or flush — never duplicated. An upstream error frame also suppresses synthetic `done:true`.
    - One persistent streaming `TextDecoder` handles multi-byte UTF-8 split across chunks; `flush` processes a final unterminated line; the upstream HTTP status is preserved on the response.
 
 ## Files
@@ -26,7 +27,7 @@ Production:
 - `open-sse/utils/ollamaTransform.js`
 
 Tests:
-- `tests/unit/ollama-ndjson-transform.test.js` (new — 9 focused cases: SSE conversion preserved, NDJSON passthrough, error frames, terminal-once, UTF-8 split, flush residual line, status preservation)
+- `tests/unit/ollama-ndjson-transform.test.js` (new — focused cases: SSE conversion preserved, NDJSON passthrough, error normalization, terminal-once, UTF-8 split, flush residual line, status preservation, buffered OpenAI completion projection)
 - `tests/unit/chat-body-lifecycle.test.js` (new case — real `handleStreamingResponse` with `application/x-ndjson; charset=utf-8`, `targetFormat: OLLAMA` → `sourceFormat: OPENAI`; asserts success, no error, `chat.completion.chunk`, content, `finish_reason: stop`)
 
 Docs:

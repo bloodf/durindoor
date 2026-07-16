@@ -18,6 +18,29 @@
 import { projectCompletionToClientFormat } from "../translator/response/completionProjector.js";
 import { FORMATS } from "../translator/formats.js";
 
+// Normalize internal {error: {message, type, code}} and Ollama-native {error: string}
+// frames to the Ollama wire shape {error: string}. Never returns null for an
+// actual error; falls back to a safe string so the client sees a frame instead
+// of an empty truncated stream.
+function normalizeError(error) {
+  if (error == null) return { error: "Upstream error" };
+  if (typeof error === "string") return { error: error };
+  if (typeof error === "object") {
+    if (typeof error.message === "string") return { error: error.message };
+    try {
+      return { error: JSON.stringify(error) };
+    } catch {
+      return { error: "Upstream error" };
+    }
+  }
+  return { error: String(error) };
+}
+
+// True for both Ollama-native {error: string} and internal {error: {message, ...}}.
+function isErrorFrame(parsed) {
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed) && Object.hasOwn(parsed, "error");
+}
+
 export function transformToOllama(response, model) {
   let buffer = "";
   let pendingToolCalls = {};
@@ -50,6 +73,16 @@ export function transformToOllama(response, model) {
 
       try {
         const parsed = JSON.parse(data);
+        // Upstream error embedded in an SSE data line (OpenAI wire error, or an
+        // internal {error: {message, type, code}} object): forward as a native
+        // Ollama error frame. This is terminal and suppresses synthetic done:true.
+        if (isErrorFrame(parsed)) {
+          const normalized = normalizeError(parsed.error);
+          ended = true;
+          controller.enqueue(encoder.encode(JSON.stringify(normalized) + "\n"));
+          return;
+        }
+
         const delta = parsed.choices?.[0]?.delta || {};
         const content = delta.content || "";
         const toolCalls = delta.tool_calls;
@@ -119,9 +152,15 @@ export function transformToOllama(response, model) {
         // done frame, or error frame). Any other bare JSON is not a valid
         // Ollama stream object and is dropped rather than passed through to
         // clients as a mixed-format line.
-        if ("message" in parsed || typeof parsed.done === "boolean" || "error" in parsed) {
-          if (parsed.done === true || "error" in parsed) ended = true;
-          controller.enqueue(encoder.encode(trimmed + "\n"));
+        const hasError = isErrorFrame(parsed);
+        if ("message" in parsed || typeof parsed.done === "boolean" || hasError) {
+          if (parsed.done === true || hasError) ended = true;
+          if (hasError) {
+            const normalized = normalizeError(parsed.error);
+            controller.enqueue(encoder.encode(JSON.stringify(normalized) + "\n"));
+          } else {
+            controller.enqueue(encoder.encode(trimmed + "\n"));
+          }
         }
       } catch (e) {
         // Incomplete/invalid JSON line — drop it, never emit garbage.

@@ -138,6 +138,36 @@ describe("transformToOllama — native Ollama NDJSON passthrough (#2541)", () =>
     expect(JSON.parse(lines[0])).toEqual({ error: 'model "nope" not found, try pulling it first' });
   });
 
+  it("normalizes an SSE data: error object to an Ollama-native error string", async () => {
+    const res = transformToOllama(
+      sseResponse(['data: {"error":{"message":"model missing","type":"invalid_request_error","code":"model_not_found"}}']),
+      "missing",
+    );
+    const lines = await readLines(res);
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0])).toEqual({ error: "model missing" });
+  });
+
+  it("normalizes a bare internal {error:{...}} frame to an Ollama-native error string", async () => {
+    const res = transformToOllama(
+      sseResponse(['{"error":{"message":"bad gateway","type":"server_error","code":"internal_server_error"}}']),
+      "gate",
+    );
+    const lines = await readLines(res);
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0])).toEqual({ error: "bad gateway" });
+  });
+
+  it("forwards an SSE data: Ollama-native {error:string} frame unchanged", async () => {
+    const res = transformToOllama(
+      sseResponse(['data: {"error":"native ollama error"}']),
+      "native",
+    );
+    const lines = await readLines(res);
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0])).toEqual({ error: "native ollama error" });
+  });
+
   it("forwards a final NDJSON line that has no trailing newline (flush processes residual buffer)", async () => {
     const body = new ReadableStream({
       start(c) {
@@ -210,12 +240,12 @@ describe("transformToOllama — native Ollama NDJSON passthrough (#2541)", () =>
 // NDJSON stream must surface as an OpenAI error finish, not be dropped into an
 // empty/unterminated success stream (Codex P2 review on #2541).
 describe("ollamaToOpenAIResponse — upstream error frames (#2541)", () => {
-  it("returns a finish_reason 'error' chunk and records state.upstreamError", () => {
+  it("returns a finish_reason 'error' chunk and records state.upstreamError as a message object", () => {
     const state = {};
     const out = ollamaToOpenAIResponse({ model: "llama3.2", error: "model not found" }, state);
     expect(out).not.toBeNull();
     expect(out.choices[0].finish_reason).toBe("error");
-    expect(state.upstreamError).toBe("model not found");
+    expect(state.upstreamError).toEqual({ message: "model not found" });
     expect(state.finishReason).toBe("error");
   });
 });

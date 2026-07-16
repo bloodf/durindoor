@@ -134,6 +134,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `deepgram` |  | apikey | `https://api.deepgram.com/v1/listen` |
 | `deepinfra` |  | apikey | `https://api.deepinfra.com/v1/openai/chat/completions` |
 | `deepseek` |  | apikey | `https://api.deepseek.com/chat/completions` |
+| `devin` |  | apikey | `` |
 | `devin-cli` | openai | oauth | `devin://acp/stdio` |
 | `dgrid` |  | apikey | `https://api.dgrid.ai/v1/chat/completions` |
 | `dify` |  | apikey | `https://api.dify.ai/v1/chat/completions` |

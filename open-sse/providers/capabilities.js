@@ -130,6 +130,8 @@ export const PROVIDER_CAPABILITIES = {
   // callers pass either.
   kiro: KIRO_GPT_5_6_PROVIDER_CAPS,
   kr: KIRO_GPT_5_6_PROVIDER_CAPS,
+  // Devin cloud-agent (OmniRoute #6894): single placeholder model, not chat-capable.
+  devin: { devin: { tools: false } },
   // ClinePass proxies through Vercel's OpenAI Chat Completions API, which only
   // accepts reasoning.effort in {none,minimal,low,medium,high,xhigh}. Force
   // "openai" so thinkingUnified.js emits valid Vercel enum values. Keys are the

@@ -301,12 +301,15 @@ export default function ProvidersPage() {
     ),
     "apikey",
   );
-  // API Key: connected providers first, then alphabetical by name
+  // API Key: connected providers first, then alphabetical by name.
+  // Agent-only providers (e.g. Devin) are shown once an account is connected
+  // even though they are not LLM chat providers.
   const apikeyEntries = Object.entries(APIKEY_PROVIDERS)
     .filter(
-      ([, info]) =>
+      ([key, info]) =>
         !info.hidden &&
-        (info.serviceKinds ?? ["llm"]).includes("llm") &&
+        ((info.serviceKinds ?? ["llm"]).includes("llm") ||
+          getProviderStats(key, "apikey").total > 0) &&
         matchSearch(info.name),
     )
     .sort(([ka, a], [kb, b]) => {

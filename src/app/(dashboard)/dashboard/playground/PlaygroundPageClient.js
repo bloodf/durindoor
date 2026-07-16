@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge, Button } from "@/shared/components";
-import { getModelsByProviderId } from "@/shared/constants/models";
+import { getModelsByProviderId, isChatModel } from "@/shared/constants/models";
 import { isAnthropicCompatibleProvider, isOpenAICompatibleProvider } from "@/shared/constants/providers";
 import { createSseParser } from "@/lib/playground/sse";
 import { sanitizeErrorText } from "@/lib/playground/errors";
@@ -117,6 +117,8 @@ function getProviderLabel(connection) {
 
 function normalizeStaticModel(model, connection) {
   if (!model?.id) return null;
+  // Agent-only static models (e.g. Devin) are not chat candidates; skip them.
+  if (!isChatModel(model)) return null;
   return {
     id: `${connection.provider}/${model.id}`,
     requestModel: `${connection.provider}/${model.id}`,

@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   updateProviderConnection: vi.fn(),
   validateApiKey: vi.fn(),
   getSettings: vi.fn(),
+  recordProviderRateLimitEvidence: vi.fn(),
 }));
 
 vi.mock("@/lib/localDb", () => ({
@@ -14,6 +15,11 @@ vi.mock("@/lib/localDb", () => ({
   updateProviderConnection: mocks.updateProviderConnection,
   validateApiKey: mocks.validateApiKey,
   getSettings: mocks.getSettings,
+}));
+
+vi.mock("@/shared/services/providerRateLimitEvidence", () => ({
+  recordProviderRateLimitEvidence: mocks.recordProviderRateLimitEvidence,
+  clearProviderRateLimitEvidence: vi.fn(),
 }));
 
 describe("Antigravity capacity fallback", () => {
@@ -183,6 +189,13 @@ describe("Antigravity secondary-account quota fallback (U-16 #2514)", () => {
         [`modelLock_${model}`]: expect.anything(),
       }),
     );
+    // #6731 combined semantics: the explicit quota body persists
+    // state:"exhausted" while the caller-supplied reset drives the window.
+    expect(mocks.recordProviderRateLimitEvidence).toHaveBeenCalledWith(
+      expect.objectContaining({ state: "exhausted", resetAtMs: expect.any(Number) }),
+    );
+    const recordedReset = mocks.recordProviderRateLimitEvidence.mock.calls.at(-1)[0].resetAtMs;
+    expect(Math.abs(recordedReset - resetMs)).toBeLessThan(5000);
 
     const second = await getProviderCredentials("agy", null, model);
     expect(second.connectionId).toBe("agy-secondary");

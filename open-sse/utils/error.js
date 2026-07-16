@@ -187,7 +187,7 @@ function durationResetFromText(text, now, maxDelayMs) {
     second: 1000,
     seconds: 1000,
   };
-  const deadlines = new Set();
+  const durations = new Set();
   const clausePattern = /\b(?:retry|retrying|reset|resets|resetting)\b[^\r\n]{0,32}?\b(?:in|after)\s+((?:\d{1,6}\s*(?:weeks?|days?|hours?|minutes?|seconds?|[wdhms])\s*){1,6})/gi;
   for (const clause of text.matchAll(clausePattern)) {
     let duration = 0;
@@ -198,11 +198,11 @@ function durationResetFromText(text, now, maxDelayMs) {
       if (!Number.isSafeInteger(amount) || !factor) continue;
       duration += amount * factor;
       matches += 1;
-      if (!Number.isSafeInteger(duration) || duration > maxDelayMs) return null;
+      if (!Number.isSafeInteger(duration)) return null;
     }
-    if (matches > 0 && duration > 0) deadlines.add(now + duration);
+    if (matches > 0 && duration > 0) durations.add(duration);
   }
-  return deadlines.size === 1 ? [...deadlines][0] : null;
+  return durations.size === 1 ? now + Math.min([...durations][0], maxDelayMs) : null;
 }
 
 /**

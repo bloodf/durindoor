@@ -535,15 +535,28 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   // Provider-specific precise cooldown (e.g. codex usage_limit_reached resets_at) overrides backoff
   let shouldFallback, cooldownMs, newBackoffLevel;
   const now = Date.now();
-  const evidenceState = context?.rateLimitEvidence?.state === "exhausted" ? "exhausted" : "cooldown";
-  // When bounded evidence exists, its null reset is authoritative. The legacy
-  // argument is consulted only for callers that have no normalized evidence.
-  const hasRateLimitEvidence = Boolean(
-    context?.rateLimitEvidence && typeof context.rateLimitEvidence === "object",
-  );
-  const rawProviderReset = hasRateLimitEvidence
-    ? context.rateLimitEvidence.resetAtMs
-    : resetsAtMs;
+  // OmniRoute #6731: classify first so an explicit quota-exhausted body on an
+  // apikey-category 429 is honored even when the caller supplied no evidence.
+  // effectiveEvidence = caller-supplied evidence, else whatever checkFallbackError
+  // parsed from the body; its state/reset then drive the deadline uniformly.
+  const callerEvidence =
+    context?.rateLimitEvidence && typeof context.rateLimitEvidence === "object"
+      ? context.rateLimitEvidence
+      : null;
+  const fallbackResult = checkFallbackError(status, errorText, backoffLevel);
+  const effectiveEvidence = callerEvidence || fallbackResult.rateLimitEvidence || null;
+  const evidenceState = effectiveEvidence?.state === "exhausted" ? "exhausted" : "cooldown";
+  // Precedence: (1) caller-supplied normalized evidence is authoritative — its
+  // null reset is a deliberate rejection of any legacy reset; (2) a reset parsed
+  // from the body by checkFallbackError wins; (3) otherwise the caller's legacy
+  // resetsAtMs applies, so an explicit quota-exhausted 429 keeps its real reset
+  // window instead of collapsing to the short transient bench.
+  const parsedEvidenceReset = Number(fallbackResult.rateLimitEvidence?.resetAtMs);
+  const rawProviderReset = callerEvidence
+    ? callerEvidence.resetAtMs
+    : Number.isFinite(parsedEvidenceReset) && parsedEvidenceReset > now
+      ? parsedEvidenceReset
+      : resetsAtMs;
   const providerReset = Number(rawProviderReset);
   const normalizedReset = Number.isFinite(providerReset) && providerReset > now
     ? Math.min(providerReset, now + MAX_RATE_LIMIT_COOLDOWN_MS)
@@ -553,7 +566,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     cooldownMs = Math.ceil(Math.min(normalizedReset - now, MAX_RATE_LIMIT_COOLDOWN_MS));
     newBackoffLevel = 0;
   } else {
-    ({ shouldFallback, cooldownMs, newBackoffLevel } = checkFallbackError(status, errorText, backoffLevel));
+    ({ shouldFallback, cooldownMs, newBackoffLevel } = fallbackResult);
   }
   if (!shouldFallback) return { shouldFallback: false, cooldownMs: 0 };
 

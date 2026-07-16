@@ -1,4 +1,4 @@
-import { HTTP_STATUS, RETRY_CONFIG, DEFAULT_RETRY_CONFIG, resolveRetryEntry, FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
+import { HTTP_STATUS, RETRY_CONFIG, DEFAULT_RETRY_CONFIG, resolveRetryEntry, FETCH_CONNECT_TIMEOUT_MS, matchSkipRule, resolveRequestRetryPolicy } from "../config/runtimeConfig.js";
 import { shouldRefreshCredentials } from "../services/oauthCredentialManager.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { dbg } from "../utils/debugLog.js";
@@ -149,7 +149,7 @@ export class BaseExecutor {
     return { status: response.status, message: bodyText || `HTTP ${response.status}` };
   }
 
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null, attemptStartedAt = null, onProviderAttempt = null }) {
+  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null, attemptStartedAt = null, onProviderAttempt = null, requestPolicy = null }) {
     if (signal?.aborted) throw requestAbortError(signal.reason);
     const fallbackCount = this.getFallbackCount();
     let lastError = null;
@@ -174,14 +174,57 @@ export class BaseExecutor {
       return providerAttemptStartedAt;
     };
 
-    // Merge default retry config with provider-specific config
-    const retryConfig = { ...DEFAULT_RETRY_CONFIG, ...this.config.retry };
+    // Merge default retry config with provider-specific config (base ceiling per status).
+    // NOTE: never mutate this.config — executors are cached singletons shared across
+    // concurrent requests. All per-request policy lives in local vars derived from requestPolicy.
+    const baseRetry = { ...DEFAULT_RETRY_CONFIG, ...this.config.retry };
+    // Provider skip-error rules + transport retry policy (9router #2588).
+    // requestPolicy == null → nulls everywhere → identical pre-port behavior.
+    const policy = resolveRequestRetryPolicy(this.provider, requestPolicy);
+    const maxTransportAttempts = policy.maxTransportAttempts;
+    const skipRules = policy.skipRules;
+    const hasContainsRule = policy.hasContainsRule;
+    // Header/connect timeout: per-request policy override → provider config → global default.
+    const headerTimeoutMs = policy.headerTimeoutMs || this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
 
-    // Schedule retry via retryConfig[statusKey]. Returns true when caller should `urlIndex--; continue`
+    // Resolve how many in-place retries a failure gets, honoring skip-rules and the
+    // transport-attempt ceiling (see the attempts table in runtimeConfig.js).
+    const resolveAttempts = ({ statusKey, errorKind, text }) => {
+      const base = resolveRetryEntry(baseRetry[statusKey]);
+      const rule = skipRules
+        ? matchSkipRule(this.provider, { status: statusKey, errorKind, text }, skipRules)
+        : null;
+      const cap = maxTransportAttempts != null ? Math.max(0, maxTransportAttempts - 1) : null;
+
+      if (rule?.action === "skip") return { attempts: 0, delayMs: base.delayMs };
+      if (rule?.action === "retry") {
+        return { attempts: cap != null ? cap : base.attempts, delayMs: base.delayMs };
+      }
+      // No explicit rule: connect_timeout gets 0 in-place retries; the account
+      // layer fails over instead of re-hitting a stalled upstream.
+      if (errorKind === "connect_timeout") return { attempts: 0, delayMs: base.delayMs };
+      const attempts = cap != null ? Math.min(base.attempts, cap) : base.attempts;
+      return { attempts, delayMs: base.delayMs };
+    };
+
+    // A matched skip-rule means: abandon this account entirely — do NOT cycle the
+    // remaining transport fallback URLs on the same account (which would keep hitting
+    // a stalled/at-capacity upstream). The account-selection layer picks the next
+    // account/model. Returns the matched rule ({action:"skip", ...}) or null.
+    const matchedSkip = ({ statusKey, errorKind, text }) => {
+      if (!skipRules) return null;
+      const rule = matchSkipRule(this.provider, { status: statusKey, errorKind, text }, skipRules);
+      return rule?.action === "skip" ? rule : null;
+    };
+
+    // Schedule retry via resolveAttempts. Returns true when caller should `urlIndex--; continue`
     // response (optional) lets a subclass hook compute a dynamic delay (e.g. antigravity Retry-After).
-    const tryRetry = async (urlIndex, statusKey, reason, response = null) => {
-      const { attempts, delayMs } = resolveRetryEntry(retryConfig[statusKey]);
+    const tryRetry = async (urlIndex, statusKey, reason, response = null, errorKind = null, text = null) => {
+      const { attempts, delayMs } = resolveAttempts({ statusKey, errorKind, text });
       if (attempts <= 0 || retryAttemptsByUrl[urlIndex] >= attempts) return false;
+      const matchedRule = skipRules
+        ? matchSkipRule(this.provider, { status: statusKey, errorKind, text }, skipRules)
+        : null;
       // Hook: subclass may derive delay from the response (headers/body). null → skip retry, use fallback.
       let waitMs = delayMs;
       if (response && this.computeRetryDelay) {
@@ -197,8 +240,18 @@ export class BaseExecutor {
           cancelDiscardedResponse(response);
           throw error;
         }
-        if (dynamic === false) return false; // hook vetoes retry (e.g. Retry-After too long)
-        if (dynamic != null) waitMs = dynamic;
+        // Upstream #2588 removed the hardcoded antigravity 503-capacity veto so an
+        // explicit user retry-rule wins. Dev keeps that veto inside computeRetryDelay
+        // (antigravity.js untouched), so base converts ONLY that exact veto to the
+        // base delay when a matching explicit retry-rule exists. Every other veto
+        // (Retry-After too long, non-transient, etc.) still stands.
+        const isAntigravityCapacityVeto = this.provider === "antigravity"
+          && Number(statusKey) === 503
+          && typeof text === "string" && text.toLowerCase().includes("capacity");
+        if (dynamic === false && !(isAntigravityCapacityVeto && matchedRule?.action === "retry")) {
+          return false; // hook vetoes retry (e.g. Retry-After too long)
+        }
+        if (dynamic != null && dynamic !== false) waitMs = dynamic;
       }
       retryAttemptsByUrl[urlIndex]++;
       log?.debug?.("RETRY", `${reason} retry ${retryAttemptsByUrl[urlIndex]}/${attempts} after ${waitMs / 1000}s`);
@@ -222,17 +275,24 @@ export class BaseExecutor {
 
       if (!retryAttemptsByUrl[urlIndex]) retryAttemptsByUrl[urlIndex] = 0;
 
-      // Abort if upstream doesn't return response headers within connection timeout
+      // Abort if upstream doesn't return response headers within the connect/header timeout.
+      // Use a closure flag to detect OUR timeout: undici rejects with the exact reason object
+      // we pass to abort(), so error.name stays "Error" (NOT "AbortError") on Node/undici —
+      // the old `error.name === "AbortError"` check never fired. The flag is authoritative.
       let connectCtrl = new AbortController();
-      const timeoutMs = this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
-      let connectTimer = setTimeout(() => connectCtrl.abort(new Error("fetch connect timeout")), timeoutMs);
+      let connectTimedOut = false;
+      const armConnectTimer = () => setTimeout(() => {
+        connectTimedOut = true;
+        connectCtrl.abort(new Error("fetch connect timeout"));
+      }, headerTimeoutMs);
+      let connectTimer = armConnectTimer();
       let mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
 
       try {
         let requestBody = transformedBody;
         let bodyStr = JSON.stringify(requestBody);
         const fetchT0 = Date.now();
-        dbg("FETCH", `${this.provider.toUpperCase()} → ${url} | body=${bodyStr.length}B | connectTimeout=${timeoutMs}ms`);
+        dbg("FETCH", `${this.provider.toUpperCase()} → ${url} | body=${bodyStr.length}B | connectTimeout=${headerTimeoutMs}ms`);
         beginDispatch();
         let response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, {
           method: "POST",
@@ -261,8 +321,9 @@ export class BaseExecutor {
             cancelDiscardedResponse(response);
             // Reset the connect timeout for the new upstream request.
             clearTimeout(connectTimer);
+            connectTimedOut = false;
             connectCtrl = new AbortController();
-            connectTimer = setTimeout(() => connectCtrl.abort(new Error("fetch connect timeout")), timeoutMs);
+            connectTimer = armConnectTimer();
             mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
             beginDispatch();
             response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, {
@@ -278,7 +339,41 @@ export class BaseExecutor {
         const cl = response.headers?.get?.("content-length") || "?";
         dbg("FETCH", `${this.provider.toUpperCase()} ← ${response.status} | ttft=${Date.now() - fetchT0}ms | ct=${ct} | cl=${cl}`);
 
-        if (await tryRetry(urlIndex, response.status, `status ${response.status}`, response)) { urlIndex--; continue; }
+        // Read the error body ONLY when a contains-rule for this provider could fire
+        // (and the status is an error). Clone + bounded read so a provider-controlled
+        // body cannot hang the request or grow memory; the original body stays intact
+        // for the caller/translator. Unreadable/oversized → no contains match.
+        let errorText = null;
+        if (hasContainsRule && response.status >= 400) {
+          try {
+            errorText = await readBoundedResponseText(response.clone(), { signal, maxBytes: 64 * 1024, timeoutMs: 2_000 });
+          } catch (probeError) {
+            // A caller abort during the probe must cancel the request, not be
+            // swallowed into a silent no-match that returns the upstream response.
+            if (probeError?.name === "AbortError" || signal?.aborted) throw probeError;
+            // unreadable/oversized body → skip contains matching
+          }
+        }
+
+        if (await tryRetry(urlIndex, response.status, `status ${response.status}`, response, `http_${response.status}`, errorText)) { urlIndex--; continue; }
+
+        // A skip-rule matched this HTTP failure → abandon this account now; do NOT
+        // fall through to shouldRetry()/other base URLs on the same account. The
+        // response is returned to the caller unchanged. Reachability note: this
+        // fires only when a caller passes `requestPolicy.skipRules` into execute().
+        // The account layer (chatCore/chat.js, outside this port's named files)
+        // re-matches via matchSkipRule/findMatchingSkipRule to read `sweep` and
+        // decide whether to re-try the whole pool.
+        if (matchedSkip({ statusKey: response.status, errorKind: `http_${response.status}`, text: errorText })) {
+          return {
+            response,
+            url,
+            headers,
+            transformedBody: requestBody,
+            attemptStartedAt: providerAttemptStartedAt,
+            terminalProvenance: "upstream",
+          };
+        }
 
         if (this.shouldRetry(response.status, urlIndex)) {
           log?.debug?.("RETRY", `${response.status} on ${url}, trying fallback ${urlIndex + 1}`);
@@ -300,21 +395,34 @@ export class BaseExecutor {
         clearTimeout(connectTimer);
         if (isQuotaDispatchUnavailable(error)) throw error;
         lastError = error;
-        const isConnectTimeout = connectCtrl.signal.aborted && error.name === "AbortError";
+        const isConnectTimeout = connectTimedOut;
+        // Classify: our header-timeout vs a caller-initiated abort vs a generic network error.
+        const errorKind = isConnectTimeout ? "connect_timeout" : "network";
         dbg("FETCH", `${this.provider.toUpperCase()} ✖ ${error.name}: ${error.message}${isConnectTimeout ? " (connect timeout)" : ""}`);
-        // Connect timeout is internal — convert to retryable network error, don't propagate AbortError
-        if (error.name === "AbortError" && !isConnectTimeout) {
+        // A caller-initiated abort (signal aborted but NOT our connect timer) must propagate.
+        if (!isConnectTimeout && (error.name === "AbortError" || signal?.aborted)) {
+          error.errorKind = "aborted";
           error.providerAttemptStartedAt = providerAttemptStartedAt;
           throw error;
         }
 
-        // Map network/fetch exceptions to 502 retry config
-        if (await tryRetry(urlIndex, HTTP_STATUS.BAD_GATEWAY, `network "${error.message}"`)) { urlIndex--; continue; }
+        // connect_timeout / network → retryable per resolveAttempts (default: connect_timeout=0 retries)
+        if (await tryRetry(urlIndex, HTTP_STATUS.BAD_GATEWAY, `${errorKind} "${error.message}"`, null, errorKind, error.message)) { urlIndex--; continue; }
+
+        // A skip-rule matched this exception → abandon this account now; do NOT cycle
+        // the remaining base URLs on the same account. Fires only when a caller
+        // passes requestPolicy.skipRules into execute() (account layer wires that).
+        if (matchedSkip({ statusKey: HTTP_STATUS.BAD_GATEWAY, errorKind, text: error.message })) {
+          error.errorKind = errorKind;
+          error.providerAttemptStartedAt = providerAttemptStartedAt;
+          throw error;
+        }
 
         if (urlIndex + 1 < fallbackCount) {
           log?.debug?.("RETRY", `Error on ${url}, trying fallback ${urlIndex + 1}`);
           continue;
         }
+        error.errorKind = errorKind;
         error.providerAttemptStartedAt = providerAttemptStartedAt;
         throw error;
       }

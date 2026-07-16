@@ -1,6 +1,7 @@
 import { LLM_KIND, buildModelsList } from "./buildModelsList.js";
 import { buildModelsResponse } from "./_shared.js";
 import { headOkResponse } from "open-sse/translator/validate.js";
+import { getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 
 /**
  * Handle CORS preflight
@@ -21,7 +22,12 @@ export async function OPTIONS() {
  */
 export async function GET(request) {
   try {
-    const data = await buildModelsList([LLM_KIND]);
+    // OmniRoute #6966: live model-list discovery uses the same local-first
+    // SSRF guard tier as the provider test-connection path
+    // (`getProviderValidationGuard`), so LAN-local OpenAI-compatible providers
+    // (e.g. LM Studio) list models under the default settings while
+    // cloud-metadata endpoints stay blocked. See buildModelsList.js JSDoc.
+    const data = await buildModelsList([LLM_KIND], getProviderValidationGuard());
     return buildModelsResponse(request, data);
   } catch (error) {
     console.log("Error fetching models:", error);

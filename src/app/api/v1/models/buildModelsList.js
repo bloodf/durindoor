@@ -16,6 +16,7 @@ import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
 import { resolveClinepassModels } from "open-sse/services/clinepassModels.js";
 import { aggregateComboCapabilities, capabilitiesFromServiceKind, getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 import { isPaidModel } from "open-sse/providers/pricing.js";
+import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 
 // In-flight request coalescing for `buildModelsList` (OmniRoute #6440):
 // concurrent `/v1/models` calls that hit before the first one resolves would
@@ -142,7 +143,7 @@ const OPENAI_MODELS_FETCHER_TYPES = new Set(["openai", "openai-compatible"]);
  * registry config and has no static models (e.g. qiniu, bai, hackclub). Returns
  * an empty array on any error so callers can fall back to whatever they had.
  */
-async function fetchRegistryModelsFetcherIds(connection) {
+async function fetchRegistryModelsFetcherIds(connection, guard) {
   const providerId = connection?.provider;
   const provider = providerId ? AI_PROVIDERS[providerId] : null;
   const fetcher = provider?.modelsFetcher;
@@ -150,16 +151,16 @@ async function fetchRegistryModelsFetcherIds(connection) {
   const apiKey = typeof connection.apiKey === "string" ? connection.apiKey : "";
   if (!apiKey) return [];
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    const response = await fetch(fetcher.url, {
+    // #6966: SSRF-guarded (local-first) — see buildModelsList JSDoc.
+    const response = await guardedProbeFetch(fetcher.url, {
       method: "GET",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
       cache: "no-store",
       signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
+    }, guard);
     if (!response.ok) return [];
     const data = await response.json();
     const list = Array.isArray(data) ? data : (data?.data ?? data?.models ?? data?.results);
@@ -171,6 +172,8 @@ async function fetchRegistryModelsFetcherIds(connection) {
     ));
   } catch {
     return [];
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 // Matches provider IDs that are upstream/cross-instance connections (contain a UUID suffix)
@@ -212,7 +215,7 @@ function customModelKind(m) {
   return MODEL_TYPE_TO_KIND[raw] ?? LLM_KIND;
 }
 
-async function fetchCompatibleModelIds(connection) {
+async function fetchCompatibleModelIds(connection, guard) {
   if (typeof connection.apiKey !== "string" || !connection.apiKey) return [];
 
   const psd = isRecord(connection.providerSpecificData) ? connection.providerSpecificData : {};
@@ -240,16 +243,16 @@ async function fetchCompatibleModelIds(connection) {
     return [];
   }
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    const response = await fetch(url, {
+    // #6966: SSRF-guarded (local-first) — see buildModelsList JSDoc.
+    const response = await guardedProbeFetch(url, {
       method: "GET",
       headers,
       cache: "no-store",
       signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
+    }, guard);
 
     if (!response.ok) return [];
 
@@ -271,6 +274,8 @@ async function fetchCompatibleModelIds(connection) {
     );
   } catch {
     return [];
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -280,7 +285,7 @@ async function fetchCompatibleModelIds(connection) {
  * Sends Authorization: Bearer apiKey when the connection has one so gated
  * deployments still respond.
  */
-async function fetchLocalPassthroughModels(connection) {
+async function fetchLocalPassthroughModels(connection, guard) {
   const providerId = connection?.provider;
   const provider = providerId ? AI_PROVIDERS[providerId] : null;
   if (!provider?.passthroughModels) return [];
@@ -296,16 +301,16 @@ async function fetchLocalPassthroughModels(connection) {
     headers.Authorization = `Bearer ${connection.apiKey}`;
   }
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    const response = await fetch(url, {
+    // #6966: SSRF-guarded (local-first) — see buildModelsList JSDoc.
+    const response = await guardedProbeFetch(url, {
       method: "GET",
       headers,
       cache: "no-store",
       signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
+    }, guard);
     if (!response.ok) return [];
     const data = await response.json();
     const list = Array.isArray(data) ? data : (data?.data ?? data?.models ?? data?.results);
@@ -317,6 +322,8 @@ async function fetchLocalPassthroughModels(connection) {
     ));
   } catch {
     return [];
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -344,7 +351,7 @@ function comboMatchesKinds(combo, kindFilter) {
  * @param {string[]} kindFilter - List of service kinds to include (e.g. ["llm"], ["webSearch","webFetch"]).
  * @returns {Promise<object[]>} OpenAI-format model entries.
  */
-async function buildModelsListImpl(kindFilter) {
+async function buildModelsListImpl(kindFilter, guard) {
   // Start the real aggregation FIRST so `getProviderConnections()` is called
   // synchronously — required by the #6440 coalescing identity test, which holds
   // the first in-flight promise open via mockReturnValueOnce and asserts it was
@@ -534,7 +541,7 @@ async function buildModelsListImpl(kindFilter) {
           : providerModels.map((model) => model.id);
 
         if (isCompatibleProvider && rawModelIds.length === 0 && !UPSTREAM_CONNECTION_RE.test(providerId)) {
-          rawModelIds = await fetchCompatibleModelIds(conn);
+          rawModelIds = await fetchCompatibleModelIds(conn, guard);
         }
 
         // Config-driven live catalog override (e.g. Kiro returns dynamic
@@ -563,7 +570,7 @@ async function buildModelsListImpl(kindFilter) {
           && !AI_PROVIDERS[providerId]?.modelsFetcher
         ) {
           try {
-            const localPassthroughIds = await fetchLocalPassthroughModels(conn);
+            const localPassthroughIds = await fetchLocalPassthroughModels(conn, guard);
             if (localPassthroughIds.length) rawModelIds = localPassthroughIds;
           } catch (err) {
             console.log(`Local passthrough model fetch failed for ${providerId}: ${err instanceof Error ? err.message : String(err)}`);
@@ -579,7 +586,7 @@ async function buildModelsListImpl(kindFilter) {
           && AI_PROVIDERS[providerId]?.modelsFetcher
         ) {
           try {
-            const registryIds = await fetchRegistryModelsFetcherIds(conn);
+            const registryIds = await fetchRegistryModelsFetcherIds(conn, guard);
             if (registryIds.length) rawModelIds = registryIds;
           } catch (err) {
             console.log(`modelsFetcher failed for ${providerId}: ${err instanceof Error ? err.message : String(err)}`);
@@ -732,20 +739,39 @@ async function buildModelsListImpl(kindFilter) {
  *   - settled results are NEVER cached (next request observes fresh DB state),
  *   - a rejection cannot poison subsequent calls.
  *
+ * OmniRoute #6966: every live model-list discovery fetch inside the impl
+ * (`fetchCompatibleModelIds`, `fetchLocalPassthroughModels`,
+ * `fetchRegistryModelsFetcherIds`) goes through `guardedProbeFetch` with the
+ * SAME local-first SSRF guard tier as the provider test-connection path
+ * (`getProviderValidationGuard`). A LAN-local OpenAI-compatible provider
+ * (e.g. LM Studio on 192.168.x.x) whose connection test passes under the
+ * default settings must also have its models listed; cloud-metadata / IPv4
+ * link-local endpoints stay blocked before any socket opens, and
+ * `redirect: "manual"` closes redirect-based SSRF past the initial-URL check.
+ * Blocked endpoints land in each fetcher's `catch { return [] }`, so one bad
+ * connection never breaks the aggregated list.
+ *
  * @param {string[]} kindFilter - service kinds to include.
+ * @param {"none"|"public-only"|"block-metadata"} [guard] - resolved SSRF guard
+ *   mode for discovery fetches. Defaults to `getProviderValidationGuard()` so
+ *   direct callers (policy catalog, tests) always run guarded; the models
+ *   routes pass the same resolution explicitly.
  * @returns {Promise<object[]>} OpenAI-format model entries.
  */
-export function buildModelsList(kindFilter) {
+export function buildModelsList(kindFilter, guard = getProviderValidationGuard()) {
   // #6440: store the impl promise itself so concurrent same-kind callers get
   // the SAME reference and the aggregation (whose first await is
   // getProviderConnections) starts in this tick. #6495/F-4 hide-paid filtering
   // is resolved inside the impl, so the flag does not affect the coalescing key
   // and one shared build serves all concurrent same-kind callers consistently.
-  const pendingKey = kindFilterKey(kindFilter);
+  // #6966: the guard mode DOES affect behavior (blocked vs allowed discovery
+  // fetches), so it is part of the coalescing key — concurrent callers under
+  // different policies never share one promise.
+  const pendingKey = `${kindFilterKey(kindFilter)}\0${guard}`;
   const existing = modelsInFlight.get(pendingKey);
   if (existing) return existing;
 
-  const promise = buildModelsListImpl(kindFilter).finally(() => {
+  const promise = buildModelsListImpl(kindFilter, guard).finally(() => {
     // Only delete if still the same promise (guards against a stale entry if
     // the map is ever manipulated elsewhere).
     if (modelsInFlight.get(pendingKey) === promise) modelsInFlight.delete(pendingKey);

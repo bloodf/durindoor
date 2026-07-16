@@ -80,6 +80,7 @@ export function generateBinaryStyleId() {
 export function clearSessionStore() {
     runtimeSessionStore.clear();
     assistantSessionStore.clear();
+    continuationStore.clear();
 }
 
 // Conversation-stable session store: Key = hash(scope+assistant text), Value = { sessionId, lastUsed }
@@ -87,6 +88,15 @@ const assistantSessionStore = new Map();
 const ASSISTANT_MIN_LEN = 50;
 const ASSISTANT_CAP_LEN = 50;
 const MAX_ASSISTANT_SESSIONS = 5000;
+
+// Direct-session continuation cache: Kiro/KAS `agentContinuationId` binds a
+// conversation's agent task across turns so the upstream reuses its warm
+// session cache. Key = tuple [scope, account, model, sessionAffinity]; any
+// dimension change (different account/connection, different model, different
+// client session) yields a distinct entry, so continuations never leak across
+// accounts or models. Value = { continuationId, lastUsed }.
+const continuationStore = new Map();
+const MAX_CONTINUATION_SESSIONS = 5000;
 
 // Client headers/body fields that carry an upstream session id (priority order)
 const SESSION_HEADER_KEYS = ["x-session-id", "session-id", "session_id", "x-amp-thread-id", "x-client-request-id"];
@@ -205,6 +215,52 @@ export function resolveSessionId({ headers, body, connectionId, workspaceId, sco
     return deriveSessionId(connectionId);
 }
 
+/**
+ * Resolve a stable direct-session continuation id (Kiro `agentContinuationId`).
+ *
+ * Reuses the same continuation id while the caller stays on the same
+ * account + model + session affinity, so the upstream keeps serving from its
+ * warm session cache instead of cold-starting a new agent task per turn.
+ *
+ * Cache key = JSON tuple [scope, connectionId, model, sessionId]. The model
+ * and account dimensions are deliberate: a continuation id minted under one
+ * model or account is never replayed for another, even when the client
+ * session id is identical (explicit session headers are caller-controlled
+ * input and must not be able to cross accounts).
+ *
+ * If any identity dimension is missing, the caller cannot be placed in a
+ * distinct affinity bucket — a blank account would collapse every account
+ * into one shared continuation. Such requests get an unstored one-shot id:
+ * never fall back to token/email-derived keys.
+ *
+ * @param {object} opts
+ * @param {string} [opts.sessionId] - Resolved session affinity (e.g. the
+ *   payload's conversationState.conversationId, itself a resolveSessionId result)
+ * @param {string} [opts.connectionId] - Account/connection identifier
+ * @param {string} [opts.model] - Resolved upstream model id
+ * @param {string} [opts.scope] - Provider scope (e.g. "kiro")
+ * @returns {string} A stable continuation id for the affinity tuple, or a
+ *   one-shot id when the tuple is incomplete
+ */
+export function resolveContinuationId({ sessionId, connectionId, model, scope = "" } = {}) {
+    if (!sessionId || !connectionId || !model || !scope) return crypto.randomUUID();
+    const key = JSON.stringify([scope, connectionId, model, sessionId]);
+    const existing = continuationStore.get(key);
+    if (existing) {
+        existing.lastUsed = Date.now();
+        // Refresh recency so the LRU cap evicts genuinely-idle entries first.
+        continuationStore.delete(key);
+        continuationStore.set(key, existing);
+        return existing.continuationId;
+    }
+    const continuationId = crypto.randomUUID();
+    if (continuationStore.size >= MAX_CONTINUATION_SESSIONS) {
+        continuationStore.delete(continuationStore.keys().next().value);
+    }
+    continuationStore.set(key, { continuationId, lastUsed: Date.now() });
+    return continuationId;
+}
+
 // Capture session id from request body + credentials (envelope still intact here)
 export function captureSessionId(body, credentials, connectionId, scope = "") {
     return resolveSessionId({ headers: credentials?.rawHeaders, body, connectionId, scope });
@@ -226,6 +282,9 @@ const assistantCleanup = setInterval(() => {
     const now = Date.now();
     for (const [key, entry] of assistantSessionStore) {
         if (now - entry.lastUsed > MEMORY_CONFIG.sessionTtlMs) assistantSessionStore.delete(key);
+    }
+    for (const [key, entry] of continuationStore) {
+        if (now - entry.lastUsed > MEMORY_CONFIG.sessionTtlMs) continuationStore.delete(key);
     }
 }, MEMORY_CONFIG.sessionCleanupIntervalMs);
 if (assistantCleanup.unref) assistantCleanup.unref();

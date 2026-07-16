@@ -94,7 +94,7 @@ export default {
       { id: "image-01", name: "MiniMax Image-01" },
       { id: "image-01-live", name: "MiniMax Image-01 Live" },
     ],
-    supportedSizes: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "1024x1024"],
+    supportedSizes: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9", "1024x1024"],
   },
   searchViaChat: {
     defaultModel: "MiniMax-M2.7",

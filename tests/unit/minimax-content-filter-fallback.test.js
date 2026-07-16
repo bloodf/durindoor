@@ -1,5 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { handleImageGenerationCore } from "../../open-sse/handlers/imageGenerationCore.js";
+import { PROVIDER_MEDIA } from "../../open-sse/providers/index.js";
 
 const mocks = vi.hoisted(() => ({
   getProviderConnections: vi.fn(),
@@ -23,6 +24,12 @@ const originalFetch = global.fetch;
 // is a per-request rejection, NOT an account/auth/quota failure. The full path —
 // core 422 marker -> markAccountUnavailable — must never lock the connection or
 // enter the account-fallback cooldown chain over a single filtered prompt.
+describe("MiniMax image provider metadata", () => {
+  it("exposes the documented 21:9 ultrawide ratio in supportedSizes", () => {
+    expect(PROVIDER_MEDIA.minimax?.imageConfig?.supportedSizes).toContain("21:9");
+  });
+});
+
 describe("MiniMax content-filter no-lock guard", () => {
   beforeEach(() => {
     vi.clearAllMocks();

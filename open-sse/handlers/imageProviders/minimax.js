@@ -49,9 +49,10 @@ export default {
     };
   },
   buildBody: (model, body) => {
-    // Honor a client-requested response_format, but only the values MiniMax
-    // actually supports (url | base64); default to url.
-    const requested = body.response_format === "base64" ? "base64" : "url";
+    // Honor a client-requested response_format. OpenAI clients send "b64_json";
+    // MiniMax calls the same thing "base64". Map both to upstream "base64";
+    // anything else defaults to "url".
+    const requested = body.response_format === "base64" || body.response_format === "b64_json" ? "base64" : "url";
     return {
       model: model || "image-01",
       prompt: body.prompt,

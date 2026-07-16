@@ -295,7 +295,7 @@ describe("handleImageGenerationCore", () => {
     expect(sentBody.aspect_ratio).toBe("9:16");
   });
 
-  it("honors response_format=base64 and normalizes image_base64 to b64_json", async () => {
+  it("honors the public response_format=b64_json seam, mapping to MiniMax base64 and normalizing to b64_json", async () => {
     global.fetch.mockResolvedValueOnce(
       new Response(
         JSON.stringify({
@@ -307,7 +307,7 @@ describe("handleImageGenerationCore", () => {
     );
 
     const result = await handleImageGenerationCore({
-      body: { prompt: "A mountain", response_format: "base64" },
+      body: { prompt: "A mountain", response_format: "b64_json" },
       modelInfo: { provider: "minimax", model: "image-01" },
       credentials: { apiKey: "test-key" },
       log: null,

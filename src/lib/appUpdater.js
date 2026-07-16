@@ -175,7 +175,8 @@ export function spawnUpdaterAndExit(packageName = UPDATER_CONFIG.npmPackageName)
       UPDATER_WAIT_MIN_MS: String(UPDATER_CONFIG.waitForExitMinMs),
       UPDATER_WAIT_MAX_MS: String(UPDATER_CONFIG.waitForExitMaxMs),
       UPDATER_WAIT_CHECK_MS: String(UPDATER_CONFIG.waitForExitCheckMs),
-      UPDATER_APP_PORT: String(UPDATER_CONFIG.appPort),
+      // Prefer live server port so wait/relaunch match instance (not hardcoded default)
+      UPDATER_APP_PORT: String(process.env.PORT || UPDATER_CONFIG.appPort),
       UPDATER_RELAUNCH: "1",
       UPDATER_RELAUNCH_CMD: relaunch.cmd,
       UPDATER_RELAUNCH_ARGS: JSON.stringify(relaunchArgs),

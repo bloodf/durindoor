@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   probeRegistryProvider,
   validateDevinCloudAgentProvider,
@@ -15,6 +15,27 @@ import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.j
 
 const okResponse = () => ({ ok: true, status: 200, text: async () => "" });
 const authFailResponse = (status) => ({ ok: false, status, text: async () => "unauthorized" });
+
+// /v1/models exclusion assertions: the Devin placeholder must never surface in
+// the LLM catalog (it has no chat transport), but stays direct-lookupable.
+const mocks = vi.hoisted(() => ({
+  getProviderConnections: vi.fn(),
+  getCombos: vi.fn(),
+  getCustomModels: vi.fn(),
+  getModelAliases: vi.fn(),
+  getDisabledModels: vi.fn(),
+}));
+
+vi.mock("@/lib/localDb", () => ({
+  getProviderConnections: mocks.getProviderConnections,
+  getCombos: mocks.getCombos,
+  getCustomModels: mocks.getCustomModels,
+  getModelAliases: mocks.getModelAliases,
+}));
+
+vi.mock("@/lib/disabledModelsDb", () => ({
+  getDisabledModels: mocks.getDisabledModels,
+}));
 
 describe("validateDevinCloudAgentProvider (OmniRoute #6894)", () => {
   it("accepts a key when Devin lists sessions (200)", async () => {
@@ -76,10 +97,17 @@ describe("devin provider wiring (OmniRoute #6894)", () => {
     expect(result).toMatchObject({ valid: false, status: 401, error: "Invalid API key" });
   });
 
-  it("exposes a static model catalog via the real consumer path", () => {
+  it("keeps the placeholder out of the default LLM catalog but direct-lookupable", async () => {
+    // The model carries kind:"agent" and the provider serviceKinds:["agent"]:
+    // without either, buildModelsList/providerMatchesKinds default to "llm"
+    // and the unroutable placeholder leaks into /v1/models + LLM selectors.
+    const { AI_PROVIDERS } = await import("../../src/shared/constants/providers.js");
+    const { PROVIDER_ID_TO_ALIAS } = await import("../../open-sse/config/providerModels.js");
+    expect(AI_PROVIDERS.devin.serviceKinds).toEqual(["agent"]);
     const models = getModelsByProviderId("devin");
     expect(models.length).toBeGreaterThan(0);
-    expect(models[0]).toMatchObject({ id: "devin", name: "Devin (Cognition cloud agent)" });
+    expect(models[0]).toMatchObject({ id: "devin", name: "Devin (Cognition cloud agent)", kind: "agent" });
+    expect(PROVIDER_ID_TO_ALIAS.devin).toBe("devin");
   });
 
   it("marks the placeholder model as toolless so combo never expects tool calls", () => {
@@ -88,10 +116,42 @@ describe("devin provider wiring (OmniRoute #6894)", () => {
   });
 
   it("keeps the ACP devin-cli provider out of the specialty dispatch", async () => {
-    // devin-cli has a registry transport of devin://acp/stdio (non-HTTP); the
-    // generic probe must still handle it (returns null → unsupported), proving
-    // the specialty map is keyed exactly to the cloud-agent id.
-    const result = await probeRegistryProvider("devin-cli", "token", async () => okResponse());
-    expect(result).toBeNull();
+    // devin-cli has a registry transport of devin://acp/stdio (non-HTTP). The
+    // specialty map is keyed exactly to the cloud-agent id, so devin-cli falls
+    // through to the generic probe, whose SSRF guard blocks the non-HTTP(S)
+    // scheme before any network call — no Devin sessions fetch is made.
+    let fetched = false;
+    const fetcher = async () => {
+      fetched = true;
+      return okResponse();
+    };
+    const result = await probeRegistryProvider("devin-cli", "token", fetcher);
+    expect(fetched).toBe(false);
+    expect(result).toMatchObject({
+      valid: false,
+      blocked: true,
+      status: null,
+    });
+  });
+});
+
+describe("devin /v1/models exclusion (OmniRoute #6894)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getProviderConnections.mockResolvedValue([
+      { provider: "devin", isActive: true, apiKey: "cog_token" },
+    ]);
+    mocks.getCombos.mockResolvedValue([]);
+    mocks.getCustomModels.mockResolvedValue([]);
+    mocks.getModelAliases.mockResolvedValue({});
+    mocks.getDisabledModels.mockResolvedValue({});
+  });
+
+  it("omits devin from the root LLM models list even with an active connection", async () => {
+    const { buildModelsList, LLM_KIND } = await import(
+      "../../src/app/api/v1/models/buildModelsList.js"
+    );
+    const ids = (await buildModelsList([LLM_KIND])).map((m) => m.id);
+    expect(ids.some((id) => id.startsWith("devin/"))).toBe(false);
   });
 });

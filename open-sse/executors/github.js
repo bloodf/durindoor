@@ -5,12 +5,13 @@ import { OAUTH_ENDPOINTS, GITHUB_COPILOT } from "../config/appConstants.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { openaiToOpenAIResponsesRequest } from "../translator/request/openai-responses.js";
 import { openaiResponsesToOpenAIResponse } from "../translator/response/openai-responses.js";
-import { initState } from "../translator/index.js";
+import { initState, translateRequest, translateResponse } from "../translator/index.js";
 import { parseSSELine, formatSSE } from "../utils/streamHelpers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { stripUnsupportedParams } from "../translator/concerns/paramSupport.js";
 import { SSE_DONE } from "../utils/sseConstants.js";
 import { FORMATS } from "../translator/formats.js";
+import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
 import { createUpstreamTerminalTracker } from "../utils/streamTerminal.js";
 import {
   getCurrentProviderAttemptTimestamp,
@@ -23,6 +24,16 @@ export class GithubExecutor extends BaseExecutor {
   constructor() {
     super("github", PROVIDERS.github);
     this.knownCodexModels = new Set();
+  }
+
+  // Claude models get routed to Copilot's Anthropic-native /v1/messages shim (see
+  // executeWithMessagesEndpoint below) — the only Copilot endpoint that surfaces
+  // prompt-cache token counts. gpt/gemini/grok models stay on /chat/completions
+  // (or /responses). Name-pattern check, not a registry field: Copilot's live model
+  // catalog (services/copilotModels.js) regularly exposes claude-* variants ahead
+  // of the static registry (registry/github.js).
+  isClaudeModel(model) {
+    return /claude/i.test(model || "");
   }
 
   buildUrl(model, stream, urlIndex = 0) {
@@ -43,47 +54,20 @@ export class GithubExecutor extends BaseExecutor {
       "x-request-id": crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       "x-vscode-user-agent-library-version": "electron-fetch",
       "X-Initiator": "user",
+      // Harmless no-op on /chat/completions and /responses; required by /v1/messages.
+      "anthropic-version": ANTHROPIC_API_VERSION,
       "Accept": stream ? "text/event-stream" : "application/json"
     };
   }
 
-  // Sanitize messages for GitHub Copilot /chat/completions endpoint.
+  // Sanitize messages for GitHub Copilot /chat/completions endpoint (gpt/gemini/grok models —
+  // claude models never reach this, see execute() below).
   // The endpoint only accepts 'text' and 'image_url' content part types.
   // Tool-related content (tool_use, tool_result, thinking) must be serialized as text.
   sanitizeMessagesForChatCompletions(body) {
     if (!body?.messages) return body;
 
     const sanitized = { ...body };
-    
-    // Handle response_format for Claude models via GitHub
-    // GitHub's internal translation doesn't respect response_format, so we inject it as a system prompt
-    // AND prepend a reminder to the last user message for maximum effectiveness
-    if (body.response_format && body.model?.includes('claude')) {
-      const responseFormat = body.response_format;
-      let systemInstruction = '';
-      if (responseFormat.type === 'json_schema' && responseFormat.json_schema?.schema) {
-        systemInstruction = 'CRITICAL: You must ONLY output raw JSON. Never use markdown code blocks. Never use backticks. Never wrap JSON in triple backticks. Output ONLY the raw JSON object.';
-      } else if (responseFormat.type === 'json_object') {
-        systemInstruction = 'CRITICAL: You must ONLY output raw JSON. Never use markdown code blocks. Never use backticks.';
-      }
-      if (systemInstruction) {
-        // Add to system message
-        const systemIdx = body.messages.findIndex(m => m.role === 'system');
-        if (systemIdx >= 0) {
-          body.messages[systemIdx].content = systemInstruction + '\n\n' + body.messages[systemIdx].content;
-        } else {
-          body.messages.unshift({ role: 'system', content: systemInstruction });
-        }
-        
-        // Also prepend to the last user message as a reminder
-        const lastUserIdx = body.messages.map((m, i) => m.role === 'user' ? i : -1).filter(i => i >= 0).pop();
-        if (lastUserIdx >= 0) {
-          const userMsg = body.messages[lastUserIdx];
-          const userContent = typeof userMsg.content === 'string' ? userMsg.content : JSON.stringify(userMsg.content);
-          userMsg.content = 'Respond with ONLY raw JSON (no markdown, no backticks, no code blocks): ' + userContent;
-        }
-      }
-    }
     sanitized.messages = body.messages.map(msg => {
       // assistant messages with only tool_calls have content: null — leave as-is
       if (!msg.content) return msg;
@@ -163,6 +147,15 @@ export class GithubExecutor extends BaseExecutor {
   async execute(options) {
     const { model, log } = options;
 
+    // Claude models: route to Copilot's Anthropic-native /v1/messages shim — the only
+    // Copilot endpoint that surfaces prompt-cache token counts for Claude. Detected by
+    // model NAME (not a registry field): Copilot's live model catalog regularly exposes
+    // claude-* variants the static registry hasn't caught up with (see registry/github.js).
+    if (this.isClaudeModel(model)) {
+      log?.debug("GITHUB", `Using /v1/messages route for ${model}`);
+      return this.executeWithMessagesEndpoint(options);
+    }
+
     // Only use /responses for models that are explicitly known to need it (e.g. gpt codex models)
     // and that the /responses endpoint actually serves (excludes Gemini/Claude, see #1062).
     if (this.knownCodexModels.has(model) && this.supportsResponsesEndpoint(model)) {
@@ -170,8 +163,8 @@ export class GithubExecutor extends BaseExecutor {
       return this.executeWithResponsesEndpoint(options);
     }
 
-    // Sanitize messages before sending to /chat/completions
-    // This handles Claude models on GitHub Copilot which reject non-text/image_url content types
+    // Sanitize messages before sending to /chat/completions (gpt/gemini/grok — the
+    // endpoint rejects non-text/image_url content parts).
     const sanitizedOptions = {
       ...options,
       body: this.sanitizeMessagesForChatCompletions(options.body)
@@ -202,6 +195,193 @@ export class GithubExecutor extends BaseExecutor {
     }
 
     return result;
+  }
+
+  // Claude models arrive here OpenAI-shape (chatCore targets "openai" for github),
+  // so we translate to Anthropic-native ourselves. Hitting /v1/messages directly is
+  // what lets prepareClaudeRequest() (translator/formats/claude.js) inject
+  // cache_control — /chat/completions never gets there, so it never surfaces
+  // prompt-cache token counts.
+  async executeWithMessagesEndpoint({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
+    const url = this.config.messagesUrl;
+    // Force stream:true upstream regardless of client preference (headers AND body),
+    // same as executeWithResponsesEndpoint below — chatCore's non-streaming handler
+    // already knows how to buffer an SSE response into a single JSON reply when the
+    // client asked for stream:false.
+    const headers = this.buildHeaders(credentials, true);
+
+    const transformedBody = translateRequest(FORMATS.OPENAI, FORMATS.CLAUDE, model, body, true, credentials, "github");
+    // _toolNameMap is internal bookkeeping (see openai-to-claude.js) — chatCore
+    // normally strips it before dispatch and threads it into the response state to
+    // restore original tool names; do the same here or Anthropic's strict schema
+    // rejects the extra field with a 400.
+    const toolNameMap = transformedBody._toolNameMap;
+    delete transformedBody._toolNameMap;
+
+    log?.debug("GITHUB", "Sending translated request to /v1/messages");
+
+    const response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(transformedBody),
+      signal
+    }, proxyOptions));
+
+    if (!response.ok) {
+      return { response, url, headers, transformedBody, attemptStartedAt: getCurrentProviderAttemptTimestamp() };
+    }
+
+    const state = initState(FORMATS.CLAUDE);
+    state.model = model;
+    if (toolNameMap) state.toolNameMap = toolNameMap;
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let currentEvent = null;
+    let doneEmitted = false;
+    let failureEmitted = false;
+    let applicationTerminalSeen = false;
+    let rawDoneSeen = false;
+    const rawTerminal = createUpstreamTerminalTracker({ format: FORMATS.CLAUDE });
+    // Translated OpenAI chunks carrying a finish_reason are the client-visible
+    // success terminal. Hold them until EOF (not merely message_stop) so a
+    // truncated/contradicted stream — garbage after message_stop, raw [DONE]
+    // mismatch, dangling event — can never leak a partial success (finish chunk
+    // + [DONE]) ahead of the failure signal. Content deltas stream live.
+    let heldTerminalChunks = null;
+
+    const emitFailure = (controller) => {
+      rawTerminal.fail();
+      heldTerminalChunks = null;
+      if (failureEmitted) return;
+      failureEmitted = true;
+      controller.enqueue(new TextEncoder().encode(
+        `data: ${JSON.stringify({ error: { message: "GitHub Messages stream failed", type: "stream_error" } })}\n\n`,
+      ));
+    };
+
+    const encodeAll = (chunks) => chunks.map((c) => new TextEncoder().encode(formatSSE(c, "openai")));
+
+    const processLine = (line, controller) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith(":")) return;
+      if (trimmed.startsWith("event:")) {
+        currentEvent = trimmed.slice(6).trim() || null;
+        return;
+      }
+      // Strict frame routing (same posture as executeWithResponsesEndpoint): any
+      // non-blank, non-comment line that is neither an event nor a data frame is a
+      // protocol violation — fail loudly rather than silently dropping it.
+      if (!trimmed.startsWith("data:")) {
+        emitFailure(controller);
+        currentEvent = null;
+        return;
+      }
+      const parsed = parseSSELine(trimmed);
+      if (!parsed) {
+        emitFailure(controller);
+        currentEvent = null;
+        return;
+      }
+      // Anthropic's shim may append a terminal "data: [DONE]" after message_stop
+      // (upstream #2608 accepts it). Accept exactly one such sentinel AFTER the
+      // tracker has validated message_stop, and only as a bare data frame — an
+      // event:-named [DONE] is a framing mismatch the claude tracker rejects.
+      // Reject an early, duplicate, or event-named [DONE].
+      if (parsed.done) {
+        if (applicationTerminalSeen && !rawDoneSeen && !failureEmitted
+          && rawTerminal.outcome === "success" && currentEvent === null) {
+          rawDoneSeen = true;
+        } else {
+          emitFailure(controller);
+        }
+        currentEvent = null;
+        return;
+      }
+      // Any data frame after the terminal message_stop (or after a raw [DONE])
+      // contradicts the stream — fail BEFORE translating/emitting any of it.
+      if (rawDoneSeen || applicationTerminalSeen) {
+        emitFailure(controller);
+        currentEvent = null;
+        return;
+      }
+      rawTerminal.observe({ chunk: parsed, eventName: currentEvent, rawDone: false });
+      currentEvent = null;
+      if (rawTerminal.outcome === "failure") {
+        emitFailure(controller);
+        return;
+      }
+      if (rawTerminal.outcome === "success") applicationTerminalSeen = true;
+      const translated = translateResponse(FORMATS.CLAUDE, FORMATS.OPENAI, parsed, state) || [];
+      // Hold back only the finish-carrying chunks (message_delta stop_reason,
+      // message_stop fallback); stream everything else live. Held frames release
+      // at flush only if the stream is still validated at EOF.
+      const live = [];
+      const held = [];
+      for (const c of translated) {
+        const hasFinish = Array.isArray(c?.choices) && c.choices.some((choice) => choice?.finish_reason);
+        (hasFinish ? held : live).push(c);
+      }
+      for (const encoded of encodeAll(live)) controller.enqueue(encoded);
+      if (held.length > 0) heldTerminalChunks = [...(heldTerminalChunks || []), ...held];
+    };
+
+    const transformStream = new TransformStream({
+      async transform(chunk, controller) {
+        buffer += decoder.decode(chunk, { stream: true });
+        const lines = buffer.split("\n");
+
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          processLine(line, controller);
+        }
+      },
+      flush(controller) {
+        buffer += decoder.decode();
+        if (buffer.trim()) {
+          processLine(buffer, controller);
+        }
+        // An event: frame left dangling at EOF (no matching data: line) is a
+        // truncated stream — fail rather than reporting a clean stop.
+        if (currentEvent !== null) {
+          emitFailure(controller);
+          currentEvent = null;
+        }
+        if (!doneEmitted) {
+          if (rawTerminal.outcome === "success" && !failureEmitted) {
+            // Stream validated end-to-end — release the deferred finish frame(s),
+            // then [DONE].
+            if (heldTerminalChunks) {
+              for (const encoded of encodeAll(heldTerminalChunks)) controller.enqueue(encoded);
+              heldTerminalChunks = null;
+            }
+            controller.enqueue(new TextEncoder().encode(SSE_DONE));
+            doneEmitted = true;
+          } else {
+            emitFailure(controller);
+          }
+        }
+      }
+    });
+
+    if (!response.body) {
+      return { response: new Response("", { status: response.status, headers: response.headers }), url, headers, transformedBody, attemptStartedAt: getCurrentProviderAttemptTimestamp() };
+    }
+    const convertedStream = response.body.pipeThrough(transformStream);
+
+    return {
+      response: new Response(convertedStream, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers
+      }),
+      url,
+      headers,
+      transformedBody,
+      attemptStartedAt: getCurrentProviderAttemptTimestamp(),
+      terminalProvenance: "validated",
+    };
   }
 
   async executeWithResponsesEndpoint({ model, body, stream, credentials, signal, log, proxyOptions = null }) {

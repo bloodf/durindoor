@@ -3,6 +3,7 @@
 ## Features
 - **xAI**: route the Responses-tagged model grok-4.20-multi-agent-0309 to Grok's native `/v1/responses` endpoint; plain chat models keep `/v1/chat/completions` (OmniRoute #6709, upstream 9router #2439).
 - **CLI tools**: Grok Build (xAI CLI) tool card + settings — apply/reset a routed `[model.9router]` slot in `~/.grok/config.toml` with previous-default restore and TOML-injection hardening (9router #2571).
+- **GitHub Copilot**: route Claude models through Copilot's native `/v1/messages` endpoint so prompt-cache token counts (`cached_tokens`) surface; non-Claude models keep `/chat/completions` (upstream 9router #2608).
 
 ## Fixes
 - **Claude**: map `claude-fable-5` and `claude-mythos-5` to `claude-adaptive` thinking format; sanitize unsigned, invalid, or default-signature historical thinking blocks and never synthesize placeholder thinking for those models. Preserve Opus/Sonnet signed-thinking history and placeholder behavior.

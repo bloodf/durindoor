@@ -21,6 +21,29 @@ for (const entry of REGISTRY) {
 }
 
 /**
+ * Strip a redundant leading `${nodePrefix}/` segment from a model id.
+ *
+ * Port of OmniRoute #6890. When a custom provider node is addressed by its raw
+ * internal connection id (`<connId>/<modelStr>` — e.g. a combo step), the
+ * caller may have naively concatenated the node's `prefix` (the `owned_by`
+ * emitted by /api/models) with the listed model id, producing
+ * `<connId>/<prefix>/<rawModelId>`. The upstream provider does not recognize
+ * the double-namespaced id and 400s. Stripping normalizes it to the same
+ * `<rawModelId>` the bare alias form (`<prefix>/<rawModelId>`) resolves to.
+ *
+ * @param {string} model - model id as parsed after the first slash
+ * @param {unknown} nodePrefix - the matched node's own prefix
+ * @returns {string} model with one redundant leading `${nodePrefix}/` removed
+ */
+export function stripRedundantNodePrefix(model, nodePrefix) {
+  if (typeof nodePrefix !== "string" || !nodePrefix) return model;
+  const redundant = `${nodePrefix}/`;
+  return typeof model === "string" && model.startsWith(redundant)
+    ? model.slice(redundant.length)
+    : model;
+}
+
+/**
  * Resolve provider alias to provider ID
  */
 export function resolveProviderAlias(aliasOrId) {

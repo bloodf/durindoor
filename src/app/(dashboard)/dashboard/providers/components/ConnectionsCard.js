@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { getStatusVariant as getConnectionStatusVariant } from "@/shared/utils/connectionStatus";
+import { sortConnectionsByAvailability, persistConnectionOrder } from "@/shared/utils/connectionReorder";
 import { isGooglePseProvider, isGooglePseReadyForSave, buildGooglePseProviderSpecificData, buildGooglePseValidationPayload } from "@/shared/utils/googlePseProviderSpecificData.js";
 import PropTypes from "prop-types";
 import { Card, Badge, Button, Modal, Select, Toggle, EditConnectionModal, ConfirmModal } from "@/shared/components";
@@ -364,6 +365,17 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
     } catch { await fetch_(); }
   };
 
+  const handleReorderByStatus = async () => {
+    const sorted = sortConnectionsByAvailability(connections);
+    setConnections(sorted);
+
+    try {
+      await persistConnectionOrder(providerId, sorted);
+    } catch {
+      await fetch_();
+    }
+  };
+
   const handleDelete = async (id) => {
     setConfirmState({
       title: "Delete Connection",
@@ -417,6 +429,17 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
           <h2 className="text-lg font-semibold">Connections</h2>
           <div className="flex flex-wrap items-center gap-2">
+            {connections.length > 1 && (
+              <Button
+                size="sm"
+                variant="secondary"
+                icon="swap_vert"
+                onClick={handleReorderByStatus}
+                title="Reorder by availability status"
+              >
+                Reorder
+              </Button>
+            )}
             <span className="text-xs text-text-muted font-medium">Round Robin</span>
             <Toggle
               checked={providerStrategy === "round-robin"}

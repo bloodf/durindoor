@@ -25,6 +25,7 @@ import EditCompatibleNodeModal from "./EditCompatibleNodeModal";
 import AddCustomModelModal from "./AddCustomModelModal";
 import BulkImportCodexModal from "./BulkImportCodexModal";
 import { getProviderThinkingLevels } from "./providerThinkingLevels";
+import { sortConnectionsByAvailability, persistConnectionOrder } from "@/shared/utils/connectionReorder";
 
 const ONE_BY_ONE_DELAY_MS = 1000;
 
@@ -960,6 +961,18 @@ export default function ProviderDetailPage() {
     }
   };
 
+  const handleReorderByStatus = async () => {
+    const sorted = sortConnectionsByAvailability(connections);
+    setConnections(sorted);
+
+    try {
+      await persistConnectionOrder(providerId, sorted);
+    } catch (error) {
+      console.log("Error reordering by status:", error);
+      await fetchConnections();
+    }
+  };
+
   const selectedConnections = connections.filter((conn) => selectedConnectionIds.includes(conn.id));
   const selectedActiveCount = selectedConnections.filter((conn) => conn.isActive !== false).length;
   const selectedInactiveCount = selectedConnections.length - selectedActiveCount;
@@ -1599,6 +1612,17 @@ export default function ProviderDetailPage() {
                     </Button>
                   )}
                 </>
+              )}
+              {connections.length > 1 && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon="swap_vert"
+                  onClick={handleReorderByStatus}
+                  title="Reorder by availability status"
+                >
+                  Reorder
+                </Button>
               )}
               {/* Round Robin toggle */}
               <div className="flex flex-wrap items-center gap-2">

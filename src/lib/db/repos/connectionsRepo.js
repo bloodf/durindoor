@@ -553,6 +553,27 @@ export async function reorderProviderConnections(providerId) {
   db.transaction(() => reorderInTx(db, providerId));
 }
 
+/**
+ * Atomically set the full priority order of a provider's connections.
+ * `orderedIds` MUST be exactly the provider's connection ids (no dups, none
+ * missing) — anything else throws inside the transaction and nothing persists.
+ */
+export async function reorderProviderConnectionsByIds(providerId, orderedIds) {
+  const db = await getAdapter();
+  db.transaction(() => {
+    const rows = db.all(`SELECT id FROM providerConnections WHERE provider = ?`, [providerId]);
+    const existing = new Set(rows.map((r) => r.id));
+    const requested = new Set(orderedIds);
+    if (requested.size !== orderedIds.length) throw new Error("duplicate connection ids");
+    if (requested.size !== existing.size || [...requested].some((id) => !existing.has(id))) {
+      throw new Error("orderedIds must match the provider's connection set exactly");
+    }
+    orderedIds.forEach((id, i) => {
+      db.run(`UPDATE providerConnections SET priority = ? WHERE id = ?`, [i + 1, id]);
+    });
+  });
+}
+
 export async function cleanupProviderConnections() {
   const db = await getAdapter();
   const fieldsToCheck = [

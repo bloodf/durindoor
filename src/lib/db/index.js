@@ -179,7 +179,7 @@ export {
   createProviderConnection, updateProviderConnection,
   recordProviderConnectionFallbackState, clearProviderConnectionFallbackState,
   deleteProviderConnection, deleteProviderConnectionsByProvider, setProviderConnectionAutoPing,
-  reorderProviderConnections, cleanupProviderConnections,
+  reorderProviderConnections, reorderProviderConnectionsByIds, cleanupProviderConnections,
 } from "./repos/connectionsRepo.js";
 
 // Provider nodes

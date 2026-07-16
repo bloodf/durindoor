@@ -53,6 +53,7 @@ afterEach(async () => {
   vi.doUnmock("os");
   vi.doUnmock("child_process");
   vi.doUnmock("next/server");
+  vi.unstubAllEnvs();
   vi.resetModules();
   await fs.rm(tmpHome, { recursive: true, force: true });
 });
@@ -173,6 +174,53 @@ describe("grok-build-settings route", () => {
     // non-string baseUrl must not coerce through new URL()
     const { status: s3 } = await responseJson(await callPost({ baseUrl: ["http://localhost:20128"], model: "m" }));
     expect(s3).toBe(400);
+  });
+
+  it("honors GROK_HOME for config directory", async () => {
+    const grokHome = await fs.mkdtemp(path.join(os.tmpdir(), "grok-home-"));
+    try {
+      vi.stubEnv("GROK_HOME", grokHome);
+      await callPost({ baseUrl: "http://localhost:20128", model: "m" });
+      const toml = await fs.readFile(path.join(grokHome, "config.toml"), "utf-8");
+      expect(toml).toContain("[model.9router]");
+    } finally {
+      await fs.rm(grokHome, { recursive: true, force: true });
+    }
+  });
+
+  it("matches quoted [model.9router] TOML table and replaces it, not duplicates", async () => {
+    await seedConfig(`[models]\ndefault = "grok-build"\n\n[model."9router"]\nmodel = "old"\nbase_url = "http://old/v1"\n`);
+    await responseJson(await callPost({ baseUrl: "http://localhost:20128", model: "new" }));
+    const toml = await fs.readFile(grokConfigPath(), "utf-8");
+    const matches = toml.match(/\[model\."?9router"?\]/g) || [];
+    expect(matches).toHaveLength(1);
+    expect(toml).toContain('model = "new"');
+  });
+
+  it("preserves existing api_key when POST omits apiKey without leaking it in GET", async () => {
+    await seedConfig("");
+    await responseJson(await callPost({ baseUrl: "http://localhost:20128", model: "m", apiKey: "sk_secret_keep" }));
+    await responseJson(await callPost({ baseUrl: "http://localhost:20128", model: "m" }));
+
+    const toml = await fs.readFile(grokConfigPath(), "utf-8");
+    expect(toml).toContain('api_key = "sk_secret_keep"');
+
+    const { body } = await responseJson(await GET());
+    expect(JSON.stringify(body)).not.toContain("sk_secret_keep");
+  });
+
+  it("restores single-quoted default after DELETE", async () => {
+    await seedConfig(`[models]\ndefault = 'my-model'\n`);
+    await responseJson(await callPost({ baseUrl: "http://localhost:20128", model: "m" }));
+    await responseJson(await DELETE());
+    const toml = await fs.readFile(grokConfigPath(), "utf-8");
+    expect(toml).toContain("default = \"my-model\"");
+  });
+
+  it("reports has9Router false when default is not the 9router slot", async () => {
+    await seedConfig(`[models]\ndefault = "grok-build"\n\n[model.9router]\nmodel = "m"\nbase_url = "http://localhost:20128/v1"\n`);
+    const { body } = await responseJson(await GET());
+    expect(body.has9Router).toBe(false);
   });
 
   it("requires baseUrl and model", async () => {

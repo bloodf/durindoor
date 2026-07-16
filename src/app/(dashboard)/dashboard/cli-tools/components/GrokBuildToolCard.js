@@ -49,12 +49,6 @@ export default function GrokBuildToolCard({
   const configStatus = getConfigStatus();
 
   useEffect(() => {
-    if (apiKeys?.length > 0 && !selectedApiKey) {
-      setSelectedApiKey(apiKeys[0].key);
-    }
-  }, [apiKeys, selectedApiKey]);
-
-  useEffect(() => {
     if (initialStatus) setGrokStatus(initialStatus);
   }, [initialStatus]);
 
@@ -112,12 +106,14 @@ export default function GrokBuildToolCard({
   };
 
   const handleApply = async () => {
+    if (cloudEnabled && !selectedApiKey?.trim()) {
+      setMessage({ type: "error", text: "Please paste your API key secret" });
+      return;
+    }
     setApplying(true);
     setMessage(null);
     try {
-      const keyToUse = selectedApiKey?.trim()
-        || (apiKeys?.length > 0 ? apiKeys[0].key : null)
-        || (!cloudEnabled ? "sk_durindoor" : null);
+      const keyToUse = selectedApiKey?.trim() || "sk_durindoor";
 
       const res = await fetch(ENDPOINT, {
         method: "POST",

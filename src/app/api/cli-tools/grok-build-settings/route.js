@@ -27,9 +27,9 @@ const PROVIDER_NAME = "DurinDoor";
 const MODEL_SLOT = "9router";
 const BUILTIN_DEFAULT = "grok-build";
 
-// [model.9router] ... until next [section] header or EOF
+// [model.9router] or [model."9router"] ... until next [section] header or EOF
 const MODEL_SECTION_RE = new RegExp(
-  `^\\[model\\.${MODEL_SLOT}\\][ \\t]*\\r?\\n(?:(?!\\[)[^\\r\\n]*\\r?\\n?)*`,
+  `^\\[model\\.(?:${MODEL_SLOT}|"${MODEL_SLOT}")\\][ \\t]*\\r?\\n(?:(?!\\[)[^\\r\\n]*\\r?\\n?)*`,
   "m"
 );
 
@@ -38,7 +38,7 @@ const MODELS_SECTION_RE = /^\[models\][ \t]*\r?\n((?:(?!\[)[^\r\n]*\r?\n?)*)/m;
 // Marker written on Apply so Reset can restore the previous [models].default
 const PREV_DEFAULT_RE = /^# durindoor-prev-default = "([^"]*)"[ \t]*\r?\n?/m;
 
-const getGrokDir = () => path.join(os.homedir(), ".grok");
+const getGrokDir = () => process.env.GROK_HOME || path.join(os.homedir(), ".grok");
 const getGrokConfigPath = () => path.join(getGrokDir(), "config.toml");
 const getGrokBinPath = () => path.join(getGrokDir(), "bin", "grok");
 
@@ -89,10 +89,19 @@ const parseModelSection = (toml) => {
   };
 };
 
+const getExistingApiKey = (toml) => {
+  const match = toml.match(MODEL_SECTION_RE);
+  if (!match) return null;
+  const body = match[0].replace(/^\[model\.[^\]]+\][ \t]*\r?\n/, "");
+  return getTomlField(body, "api_key");
+};
+
 const parseModelsDefault = (toml) => {
   const match = toml.match(MODELS_SECTION_RE);
   if (!match) return null;
-  return getTomlField(match[1] || "", "default");
+  const body = match[1] || "";
+  const m = body.match(/^[ \t]*default[ \t]*=[ \t]*"([^"]*)"|^[ \t]*default[ \t]*=[ \t]*'([^']*)'/m);
+  return m ? (m[1] ?? m[2]) : null;
 };
 
 const buildModelSection = (model, baseUrl, apiKey) => {
@@ -124,7 +133,7 @@ const setModelsDefault = (toml, value) => {
     const body = match[1] || "";
     let newBody;
     if (/^[ \t]*default[ \t]*=/m.test(body)) {
-      newBody = body.replace(/^[ \t]*default[ \t]*=[ \t]*"[^"]*"/m, `default = "${value}"`);
+      newBody = body.replace(/^[ \t]*default[ \t]*=[ \t]*(?:"[^"]*"|'[^']*')/m, `default = "${value}"`);
     } else {
       newBody = `default = "${value}"\n${body}`;
     }
@@ -160,8 +169,9 @@ const clearModelsDefaultIfOurs = (toml) => {
   return next;
 };
 
-const hasRouterConfig = (modelCfg) => {
+const hasRouterConfig = (modelCfg, defaultModel) => {
   if (!modelCfg?.base_url) return false;
+  if (defaultModel !== MODEL_SLOT) return false;
   return true;
 };
 
@@ -202,7 +212,7 @@ export async function GET() {
         model,
         default: defaultModel,
       },
-      has9Router: hasRouterConfig(model),
+      has9Router: hasRouterConfig(model, defaultModel),
       configPath: getGrokConfigPath(),
     });
   } catch (error) {
@@ -234,9 +244,10 @@ export async function POST(request) {
     const dir = getGrokDir();
     await fs.mkdir(dir, { recursive: true });
 
-    const keyToWrite = apiKey || "sk_durindoor";
-
     let toml = await readConfigToml();
+    const existingKey = getExistingApiKey(toml);
+    const keyToWrite = apiKey?.trim() || existingKey || "sk_durindoor";
+
     toml = rememberPrevDefault(toml);
     toml = upsertModelSection(toml, buildModelSection(model, normalizedBaseUrl, keyToWrite));
     toml = setModelsDefault(toml, MODEL_SLOT);

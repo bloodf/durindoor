@@ -592,13 +592,12 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     && evidenceState === "exhausted"
     && !hasFamilyScope
     && getProviderQuotaConfig(provider)?.runtimeScopes?.exhausted === "account";
-  // #6888: passthrough providers (nvidia NIM, modelscope-class multiplexers)
-  // serve many unrelated upstream models behind ONE connection. A per-model
-  // 404/429 retains the existing bounded scope (canonical model lock when the
-  // catalog id resolves, account-wide otherwise); connection-class failures
-  // (5xx, network) indict the shared connection and lock account-wide.
+  // #6888: only providers flagged `passthroughConnectionWideErrors` treat
+  // connection-class failures (5xx, network) as account-wide. NVIDIA NIM is
+  // currently the only opt-in provider; generic passthrough routers such as
+  // OpenRouter keep 5xx responses model-scoped.
   const passthroughConnectionError = isPassthroughConnectionWideError(
-    AI_PROVIDERS[resolveProviderId(provider)]?.passthroughModels,
+    AI_PROVIDERS[resolveProviderId(provider)]?.passthroughConnectionWideErrors,
     status,
   );
   const fallbackModel = resolveFallbackModelScope(provider, model, { accountWide: accountWideRuntime || passthroughConnectionError });

@@ -21,31 +21,39 @@ vi.mock("@/lib/localDb", async (importOriginal) => {
   };
 });
 
-// #6888: NVIDIA NIM multiplexes many unrelated vendor models (z-ai/, qwen/,
-// deepseek-ai/, …) behind ONE base URL + ONE API key. A single stale/renamed
-// model's 404 must cool only that model; a connection-class failure (5xx)
-// must cool the whole connection. Mirrors OmniRoute #6773/#6888.
+// #6888: NVIDIA NIM multiplexes many unrelated vendor models behind ONE base URL +
+// ONE API key. A stale/renamed model's 404 must cool only that model; a
+// connection-class failure (5xx) must cool the whole connection. Other
+// passthrough routers (OpenRouter, etc.) must keep 5xx responses model-scoped.
+// Mirrors OmniRoute #6773/#6888.
 describe("NVIDIA NIM passthrough per-model 404 scoping (#6888)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getProviderConnections.mockResolvedValue([
       { id: "nv-1", provider: "nvidia", apiKey: "nvapi-key", backoffLevel: 0 },
+      { id: "or-1", provider: "openrouter", apiKey: "or-key", backoffLevel: 0 },
     ]);
     mocks.recordProviderConnectionFallbackState.mockResolvedValue({ applied: true });
   });
 
-  it("nvidia registry entry sets passthroughModels", () => {
+  it("nvidia registry entry opts into passthroughModels + connection-wide 5xx", () => {
     expect(AI_PROVIDERS.nvidia?.passthroughModels).toBe(true);
+    expect(AI_PROVIDERS.nvidia?.passthroughConnectionWideErrors).toBe(true);
   });
 
-  it("isPassthroughConnectionWideError: 404 model-scoped, 5xx/0 connection-wide, non-passthrough untouched", () => {
-    // Per-model signal: 404 (stale/renamed catalog id) retains bounded scope
-    expect(isPassthroughConnectionWideError(true, 404)).toBe(false);
-    // Connection-class failures → account-wide lock
+  it("generic passthrough (openrouter) keeps 5xx model-scoped", () => {
+    expect(AI_PROVIDERS.openrouter?.passthroughModels).toBe(true);
+    expect(AI_PROVIDERS.openrouter?.passthroughConnectionWideErrors).toBeFalsy();
+  });
+
+  it("isPassthroughConnectionWideError: only flagged providers treat 5xx/0 as connection-wide", () => {
+    // Flagged provider (nvidia): 5xx and network errors cool the whole connection
     expect(isPassthroughConnectionWideError(true, 500)).toBe(true);
     expect(isPassthroughConnectionWideError(true, 503)).toBe(true);
     expect(isPassthroughConnectionWideError(true, 0)).toBe(true);
-    // Non-passthrough providers never take this branch
+    // Per-model signal: 404 (stale/renamed catalog id) retains bounded scope
+    expect(isPassthroughConnectionWideError(true, 404)).toBe(false);
+    // Providers without the flag are unaffected — generic passthrough 5xx stays model-scoped
     expect(isPassthroughConnectionWideError(false, 503)).toBe(false);
     expect(isPassthroughConnectionWideError(undefined, 503)).toBe(false);
   });
@@ -89,7 +97,36 @@ describe("NVIDIA NIM passthrough per-model 404 scoping (#6888)", () => {
     expect(mocks.updateProviderConnection).not.toHaveBeenCalled();
   });
 
-  it("compatibility path: 404 writes the model lock key, 503 writes the account-wide key", async () => {
+  it("503 on a listed OpenRouter model stays model-scoped (atomic path receives the model)", async () => {
+    const result = await markAccountUnavailable(
+      "or-1",
+      503,
+      "Service Unavailable",
+      "openrouter",
+      "openai/gpt-4o-mini-tts",
+    );
+
+    expect(result.shouldFallback).toBe(true);
+    // Without passthroughConnectionWideErrors, a 503 on a known model does not
+    // collapse to __all; the model lock is scoped to the canonical model id.
+    expect(mocks.recordProviderConnectionFallbackState).toHaveBeenCalledWith(
+      "or-1",
+      expect.objectContaining({ model: "openai/gpt-4o-mini-tts", status: 503 }),
+      expect.anything(),
+    );
+    expect(mocks.updateProviderConnection).not.toHaveBeenCalled();
+  });
+
+  it("compatibility path: OpenRouter 503 writes the model lock key, not the account-wide key", async () => {
+    mocks.recordProviderConnectionFallbackState.mockRejectedValue(new Error("no atomic"));
+
+    await markAccountUnavailable("or-1", 503, "Service Unavailable", "openrouter", "openai/gpt-4o-mini-tts");
+    const lock = Object.keys(mocks.updateProviderConnection.mock.calls.at(-1)[1])
+      .find((k) => k.startsWith("modelLock_"));
+    expect(lock).toBe("modelLock_openai/gpt-4o-mini-tts");
+  });
+
+  it("compatibility path: NVIDIA 404 writes model key, 503 writes account-wide key", async () => {
     // Force the legacy fallback branch
     mocks.recordProviderConnectionFallbackState.mockRejectedValue(new Error("no atomic"));
 

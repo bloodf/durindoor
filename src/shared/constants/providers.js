@@ -33,6 +33,7 @@ function buildProviderEntry(r) {
     ...(r.oauth ? { oauth: true } : {}),
     ...(r.transport?.baseUrl ? { defaultBaseUrl: r.transport.baseUrl } : {}),
     ...(r.passthroughModels ? { passthroughModels: true } : {}),
+    ...(r.passthroughConnectionWideErrors ? { passthroughConnectionWideErrors: true } : {}),
     ...(r.hasOAuth ? { hasOAuth: true } : {}),
     ...(r.authModes ? { authModes: r.authModes } : {}),
     ...(r.authType ? { authType: r.authType } : {}),

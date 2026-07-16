@@ -126,3 +126,25 @@ export async function settleProviderAttemptDispatch(target, {
     throw new QuotaDispatchUnavailableError("reservation_error");
   }
 }
+
+/**
+ * Move a dispatch ticket's target mapping from an original response/body to a
+ * replacement (e.g. a relay-SSE body wrapper that rebuilds the Response).
+ * No-op when no ticket is bound or either value is not an object.
+ */
+export function transferProviderAttemptDispatch(from, to) {
+  if (!from || !to) return;
+  const fromIsObject = typeof from === "object" || typeof from === "function";
+  const toIsObject = typeof to === "object" || typeof to === "function";
+  if (!fromIsObject || !toIsObject) return;
+  const ticket = ticketByTarget.get(from) || (from.body ? ticketByTarget.get(from.body) : null);
+  if (!ticket) return;
+  for (const item of targetsByTicket.get(ticket) || []) ticketByTarget.delete(item);
+  const targets = [to];
+  ticketByTarget.set(to, ticket);
+  if (to.body && (typeof to.body === "object" || typeof to.body === "function")) {
+    ticketByTarget.set(to.body, ticket);
+    targets.push(to.body);
+  }
+  targetsByTicket.set(ticket, targets);
+}

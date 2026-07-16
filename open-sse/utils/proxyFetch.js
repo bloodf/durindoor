@@ -666,11 +666,11 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
   const vercelRelayUrl = normalizeString(proxyOptions?.vercelRelayUrl);
   if (vercelRelayUrl) {
     const parsed = new URL(targetUrl);
-    const relayHeaders = {
-      ...options.headers,
-      "x-relay-target": `${parsed.protocol}//${parsed.host}`,
-      "x-relay-path": `${parsed.pathname}${parsed.search}`,
-    };
+    // new Headers() copies plain objects AND Headers instances; object spread
+    // would silently drop entries from a Headers object (OmniRoute#7093).
+    const relayHeaders = new Headers(options.headers);
+    relayHeaders.set("x-relay-target", `${parsed.protocol}//${parsed.host}`);
+    relayHeaders.set("x-relay-path", `${parsed.pathname}${parsed.search}`);
     return runProviderAttemptDispatch(() => originalFetch(vercelRelayUrl, { ...options, headers: relayHeaders }));
   }
 

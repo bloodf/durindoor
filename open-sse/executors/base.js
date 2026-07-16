@@ -1,6 +1,7 @@
 import { HTTP_STATUS, RETRY_CONFIG, DEFAULT_RETRY_CONFIG, resolveRetryEntry, FETCH_CONNECT_TIMEOUT_MS, matchSkipRule, resolveRequestRetryPolicy } from "../config/runtimeConfig.js";
 import { shouldRefreshCredentials } from "../services/oauthCredentialManager.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { boundRelayStreamLifetime, fetchConnectTimeoutError, isRelaySseResponse } from "../utils/relayStreamLifecycle.js";
 import { dbg } from "../utils/debugLog.js";
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE } from "../providers/shared.js";
 import { findOffendingField } from "../config/providerFieldStrips.js";
@@ -9,6 +10,7 @@ import {
   prepareProviderAttemptDispatch,
   runQuotaBearingProviderRequest,
   settleProviderAttemptDispatch,
+  transferProviderAttemptDispatch,
 } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 
@@ -269,6 +271,17 @@ export class BaseExecutor {
       const url = this.buildUrl(model, stream, urlIndex, credentials, requestContext);
       const transformedBody = this.transformRequest(model, body, stream, credentials, requestContext);
       const headers = this.buildHeaders(credentials, stream, requestContext);
+      // Forward the client's request id through the relay (OmniRoute#7093),
+      // without overriding an id the executor already set. Headers may arrive
+      // under any casing, so read them through a Headers instance. Relay-only:
+      // direct provider requests keep their existing header shape.
+      if (proxyOptions?.vercelRelayUrl) {
+        const clientRequestId = new Headers(requestContext?.clientHeaders ?? {}).get("x-request-id");
+        if (clientRequestId && new Headers(headers).get("x-request-id") == null) {
+          if (headers instanceof Headers) headers.set("x-request-id", clientRequestId);
+          else headers["x-request-id"] = clientRequestId;
+        }
+      }
       if (transformedBody?.thinking?.display === "summarized") {
         removeBetaFlag(headers, "redact-thinking-2026-02-12");
       }
@@ -276,14 +289,12 @@ export class BaseExecutor {
       if (!retryAttemptsByUrl[urlIndex]) retryAttemptsByUrl[urlIndex] = 0;
 
       // Abort if upstream doesn't return response headers within the connect/header timeout.
-      // Use a closure flag to detect OUR timeout: undici rejects with the exact reason object
-      // we pass to abort(), so error.name stays "Error" (NOT "AbortError") on Node/undici —
-      // the old `error.name === "AbortError"` check never fired. The flag is authoritative.
+      // OUR timeout is proven by reason identity at the catch (mergedSignal.reason ===
+      // connectCtrl.signal.reason): undici rejects with the exact reason object we pass to
+      // abort(), and a near-simultaneous caller abort must not be misclassified.
       let connectCtrl = new AbortController();
-      let connectTimedOut = false;
       const armConnectTimer = () => setTimeout(() => {
-        connectTimedOut = true;
-        connectCtrl.abort(new Error("fetch connect timeout"));
+        connectCtrl.abort(fetchConnectTimeoutError());
       }, headerTimeoutMs);
       let connectTimer = armConnectTimer();
       let mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
@@ -321,7 +332,6 @@ export class BaseExecutor {
             cancelDiscardedResponse(response);
             // Reset the connect timeout for the new upstream request.
             clearTimeout(connectTimer);
-            connectTimedOut = false;
             connectCtrl = new AbortController();
             connectTimer = armConnectTimer();
             mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
@@ -334,7 +344,30 @@ export class BaseExecutor {
             }, proxyOptions));
           }
         }
-        clearTimeout(connectTimer);
+        // Relayed SSE (vercel relay): keep the timeout/abort signal live until
+        // the body actually ends — EOF, error, downstream cancel, or caller
+        // abort — so a stalled stream cannot bypass retry/fallback (port of
+        // diegosouzapw/OmniRoute#7093 "bound Bifrost stream lifetime").
+        const relaySse = Boolean(proxyOptions?.vercelRelayUrl) && isRelaySseResponse(response);
+        if (relaySse) {
+          const originalResponse = response;
+          response = new Response(
+            boundRelayStreamLifetime(response.body, {
+              signal: mergedSignal,
+              timeoutSignal: connectCtrl.signal,
+              onFinalize: () => clearTimeout(connectTimer),
+            }),
+            {
+              status: response.status,
+              statusText: response.statusText,
+              headers: response.headers,
+            }
+          );
+          // Keep the quota dispatch ticket reachable through the rebuilt response.
+          transferProviderAttemptDispatch(originalResponse, response);
+        } else {
+          clearTimeout(connectTimer);
+        }
         const ct = response.headers?.get?.("content-type") || "";
         const cl = response.headers?.get?.("content-length") || "?";
         dbg("FETCH", `${this.provider.toUpperCase()} ← ${response.status} | ttft=${Date.now() - fetchT0}ms | ct=${ct} | cl=${cl}`);
@@ -395,7 +428,13 @@ export class BaseExecutor {
         clearTimeout(connectTimer);
         if (isQuotaDispatchUnavailable(error)) throw error;
         lastError = error;
-        const isConnectTimeout = connectTimedOut;
+        // Prove OUR timer fired by reason identity (mergedSignal.reason ===
+        // connectCtrl's reason). connectCtrl.signal.aborted alone would
+        // misclassify a caller-first abort when the timer fires before the
+        // fetch rejection reaches this catch; the reason on the merged signal
+        // is whichever fired FIRST, so identity is authoritative.
+        const isConnectTimeout = connectCtrl.signal.aborted &&
+          mergedSignal?.reason === connectCtrl.signal.reason;
         // Classify: our header-timeout vs a caller-initiated abort vs a generic network error.
         const errorKind = isConnectTimeout ? "connect_timeout" : "network";
         dbg("FETCH", `${this.provider.toUpperCase()} ✖ ${error.name}: ${error.message}${isConnectTimeout ? " (connect timeout)" : ""}`);

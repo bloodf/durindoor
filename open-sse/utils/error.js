@@ -542,7 +542,9 @@ function looksLikeAbsolutePath(tok) {
   if (tok.length < 4 || tok.length > 2048) return false;
   const isPosix = tok.charCodeAt(0) === 0x2f; // '/'
   const isWindows = tok.length > 2 && tok.charCodeAt(1) === 0x3a && /[A-Za-z]/.test(tok[0]);
-  if (!isPosix && !isWindows) return false;
+  // Windows UNC (`\\\\server\\share\\file.ts`) — a network-share source path.
+  const isUnc = tok.charCodeAt(0) === 0x5c && tok.charCodeAt(1) === 0x5c;
+  if (!isPosix && !isWindows && !isUnc) return false;
   const dot = tok.lastIndexOf(".");
   if (dot <= 0 || dot === tok.length - 1) return false;
   // Strip a parenthesized line/col suffix (`app.ts(10,5)`) before the colon
@@ -559,10 +561,28 @@ function maskSourcePaths(line) {
   // punctuation (Codex P2: `{"path":"/opt/app.ts"}` must still mask).
   const parts = line.split(/(\s+)/);
   for (let i = 0; i < parts.length; i++) {
-    const core = parts[i].replace(/^[("'{]+|[)"',.;:}]+$/g, "").replace(/^[A-Za-z0-9_-]+":"/, "");
+    // Unwrap iteratively: nested bodies wrap a path in several layers, e.g.
+    // `{"error":{"message":"/opt/x.ts"}}` (Codex P2). Each pass strips one
+    // wrapper (quotes/braces/punct, then a `"key":"` or `key=` prefix) until
+    // nothing changes, so a path at any JSON depth is detected.
+    let core = parts[i];
+    for (;;) {
+      const next = core
+        .replace(/^[("'{]+|[)"',.;:}]+$/g, "")
+        .replace(/^[A-Za-z0-9_-]+":"/, "")
+        .replace(/^[A-Za-z0-9_-]+=/, "");
+      if (next === core) break;
+      core = next;
+    }
     if (core && looksLikeAbsolutePath(core)) parts[i] = "<path>";
   }
   return parts.join("");
+}
+
+// Quoted absolute paths under directories with spaces are broken by the
+// whitespace walker above — mask them with a single pass (Codex P2).
+function maskQuotedPaths(line) {
+  return line.replace(/["'`]((?:[A-Za-z]:[\\/]|\\\\|\/)[^"'`\r\n]*\.(?:ts|tsx|js|jsx|mjs|cjs)(?:[:(][^"'`]*)?)["'`]/gi, '"<path>"');
 }
 
 /**
@@ -600,8 +620,10 @@ export function sanitizeErrorMessage(message) {
   const raw = full.slice(0, 4096);
   const firstLineCut = full.length > 4096 && !raw.includes("\n") && !raw.includes("\r");
   const firstLine = raw.split(/\r?\n/)[0].trim();
-  let out = maskSourcePaths(firstLine)
+  let out = maskQuotedPaths(maskSourcePaths(firstLine))
     .replace(/\b(https?|socks5h?):\/\/[^@\s/]+@/gi, "$1://[redacted]@")
+    // Complete non-HTTP credential URLs (db/redis/…): `scheme://[user:]<token>@host`.
+    .replace(/\b([a-z][a-z0-9+.\-]{1,15}):\/\/(?:[^@\s/:]+:)?[^@\s/]+@/gi, "$1://[redacted]@")
     .replace(/\bBearer\s+\S+/gi, "Bearer [redacted]")
     .replace(/\b(?:sk[-_][A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{12,}|ya29\.[A-Za-z0-9._-]{12,}|AIza[A-Za-z0-9_-]{20,})\b/gi, "[redacted]")
     .replace(
@@ -627,7 +649,15 @@ export function sanitizeErrorMessage(message) {
         /("(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|authorization[-_]?code|oauth[-_]?code|code[-_]?verifier|oauth[-_]?state|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)"\s*:\s*")[^"]+$/i,
         '$1[redacted]"',
       )
-      .replace(/\b(https?|socks5h?):\/\/[^@\s/:]+:(?![0-9]+$)[^@\s/]+$/i, "$1://[redacted]@");
+      .replace(/\b([a-z][a-z0-9+.\-]{1,15}):\/\/[^@\s/:]+:(?![0-9]+$)[^@\s/]+$/i, "$1://[redacted]@");
+    // Token-only URL userinfo cut at the cap (`scheme://TOKEN`, no `:`/`@` in
+    // the kept text). Capped text alone cannot tell a truncated credential from
+    // a safe dotless host (`https://localhost…`), so redact only when the
+    // OMITTED original suffix proves the cap removed the userinfo delimiter:
+    // an `@` after offset 4096 before any `/`, `?`, `#`, or whitespace.
+    if (firstLineCut && /^[^\s/?#@]*@/.test(full.slice(4096))) {
+      out = out.replace(/\b([a-z][a-z0-9+.\-]{1,15}):\/\/[^@\s/]+$/i, "$1://[redacted]@");
+    }
   }
   return out.slice(0, 4096) || "Upstream provider error";
 }

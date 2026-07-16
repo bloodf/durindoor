@@ -239,3 +239,86 @@ describe("unavailableResponse", () => {
     expect(body.error.message).toContain("(reset after 30s)");
   });
 });
+
+// Codex P2 follow-ups on the rebased #6886 diff — residual leak vectors in the
+// same security contract. Each test pins one finding; all were confirmed to
+// leak BEFORE the fix and redact AFTER it.
+describe("sanitizeErrorMessage — Codex P2 residual leaks", () => {
+  it("masks a source path in a nested JSON body", () => {
+    const out = sanitizeErrorMessage('error at {"error":{"message":"/opt/app/src/app.ts:1"}}');
+    expect(out).not.toContain("/opt/app/src/app.ts");
+    expect(out).toContain("<path>");
+  });
+
+  it("masks a source path in a doubly-nested JSON body", () => {
+    const out = sanitizeErrorMessage('bad {"a":{"b":{"c":"C:\\\\repo\\\\src\\\\app.ts:10:5"}}}');
+    expect(out).not.toContain("repo");
+    expect(out).toContain("<path>");
+  });
+
+  it("redacts token-only URL userinfo cut at the cap", () => {
+    // Build so the 4096 cap cuts at the very end of `https://TOKEN` and the
+    // `@` falls into the omitted suffix — the only safe way to prove the cap
+    // removed the userinfo delimiter (a safe dotless host must NOT redact).
+    const secret = "https://SECRETTOKEN";
+    const msg = "q".repeat(4096 - secret.length - 1) + " " + secret + "@proxy.example.com";
+    const out = sanitizeErrorMessage(msg);
+    expect(out).not.toContain("SECRETTOKEN");
+    expect(out).toContain("https://[redacted]@");
+  });
+
+  it("does NOT redact a safe dotless host cut at the cap", () => {
+    // Same cap position, but the omitted suffix has no `@` before whitespace —
+    // this is a host, not a credential; it must pass through unchanged.
+    const host = "https://localhost";
+    const msg = "q".repeat(4096 - host.length - 1) + " " + host + " extra detail";
+    const out = sanitizeErrorMessage(msg);
+    expect(out).toContain("https://localhost");
+  });
+
+  it("masks a quoted source path under a directory with spaces", () => {
+    const out = sanitizeErrorMessage('Error at "/opt/my app/src/app.ts:10:5" failed');
+    expect(out).not.toContain("/opt/my app/src/app.ts");
+    expect(out).toContain('"<path>"');
+  });
+
+  it("redacts credentials on non-HTTP complete URLs", () => {
+    expect(sanitizeErrorMessage("connect postgres://alice:secret@db failed")).toContain(
+      "postgres://[redacted]@db",
+    );
+    expect(sanitizeErrorMessage("connect postgres://alice:secret@db failed")).not.toContain("secret");
+  });
+
+  it("redacts token-only credentials on non-HTTP complete URLs", () => {
+    expect(sanitizeErrorMessage("connect redis://:password@host failed")).toContain(
+      "redis://[redacted]@host",
+    );
+    expect(sanitizeErrorMessage("connect redis://:password@host failed")).not.toContain("password");
+    expect(sanitizeErrorMessage("connect redis://TOKENONLY@host failed")).toBe(
+      "connect redis://[redacted]@host failed",
+    );
+  });
+
+  it("masks a source path after a key=value prefix", () => {
+    const out = sanitizeErrorMessage("Error path=/opt/app/src/app.ts:1 failed");
+    expect(out).not.toContain("/opt/app/src/app.ts");
+    expect(out).toContain("<path>");
+  });
+
+  it("masks a Windows UNC source path", () => {
+    const out = sanitizeErrorMessage("Error at \\\\server\\share\\repo\\src\\app.ts:10:5 failed");
+    expect(out).not.toContain("server\\share");
+    expect(out).toContain("<path>");
+  });
+
+  it("does not redact a safe scheme://host terminal URL", () => {
+    const out = sanitizeErrorMessage("see https://api.example.com for details");
+    expect(out).toContain("https://api.example.com");
+  });
+
+  it("does not mask a relative path or a bare host", () => {
+    const out = sanitizeErrorMessage("reading src/app.ts and db.local failed");
+    expect(out).toContain("src/app.ts");
+    expect(out).toContain("db.local");
+  });
+});

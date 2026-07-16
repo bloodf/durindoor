@@ -20,17 +20,30 @@ const net = require("net");
  * - "hanging"      -> TCP accepted but the request timed out with no
  *                     response at all: still booting, NOT ready. Resets
  *                     the grace window.
+ * - "unhealthy"    -> the server answered quickly with a non-ready HTTP
+ *                     status (5xx, 401/403/429, etc.) or an unexpected
+ *                     network error. Does NOT count toward the grace window.
  * - "not-listening"-> nothing accepts the port. Resets the grace window.
  *
  * Resolves `false` (never rejects, never hangs) on timeout so callers keep
  * their existing fallback path.
  */
 
-const DEFAULT_TIMEOUT_MS = 15000;
+const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_INTERVAL_MS = 150;
 const HEALTH_PATH = "/api/health";
 const PER_REQUEST_TIMEOUT_MS = 2000;
 const TCP_FALLBACK_GRACE_MS = 3000;
+
+// Network error codes that mean the HTTP server is alive but the health route
+// is not mounted yet. Only these codes plus HTTP 404 earn the fast-reject
+// grace window; everything else is treated as unhealthy and keeps the waiter
+// unready.
+const ROUTE_MISSING_ERROR_CODES = new Set([
+  "ECONNRESET",
+  "EPIPE",
+  "UND_ERR_SOCKET",
+]);
 
 /**
  * Poll the health endpoint once and classify the outcome.
@@ -41,7 +54,7 @@ const TCP_FALLBACK_GRACE_MS = 3000;
  * @param {number} [requestTimeoutMs] cap for this single request; defaults
  *   to PER_REQUEST_TIMEOUT_MS. The waiter passes its remaining deadline so a
  *   hanging peer can never overshoot the overall timeoutMs budget.
- * @returns {Promise<"ready"|"fast-reject"|"hanging"|"not-listening">}
+ * @returns {Promise<"ready"|"fast-reject"|"hanging"|"unhealthy"|"not-listening">}
  */
 async function pollHealthOnce(port, requestTimeoutMs = PER_REQUEST_TIMEOUT_MS) {
   if (!Number.isFinite(requestTimeoutMs) || requestTimeoutMs <= 0) return "hanging";
@@ -62,9 +75,19 @@ async function pollHealthOnce(port, requestTimeoutMs = PER_REQUEST_TIMEOUT_MS) {
     // itself capped at the REMAINING budget so it cannot overshoot.
     const remaining = Math.max(1, deadline - Date.now());
     const listening = await isPortListening(port, remaining).catch(() => false);
-    return listening ? "fast-reject" : "not-listening";
+    if (!listening) return "not-listening";
+    // Only proven route-missing signals (reset/early-close + 404) earn the
+    // fast-reject grace. Malformed HTTP responses or explicit 5xx/401/403/429
+    // answers mean the server is unhealthy, not merely unmounted.
+    const code = err?.cause?.code;
+    return ROUTE_MISSING_ERROR_CODES.has(code) ? "fast-reject" : "unhealthy";
   }
-  return res.ok ? "ready" : "fast-reject";
+  // 2xx means the health route is ready. 404 is the expected route-not-mounted
+  // cold-start signal. Any other HTTP status means the endpoint is explicitly
+  // unhealthy and must not be counted as ready.
+  if (res.ok) return "ready";
+  if (res.status === 404) return "fast-reject";
+  return "unhealthy";
 }
 
 /**
@@ -111,8 +134,8 @@ function waitServerReady(port, { timeoutMs = DEFAULT_TIMEOUT_MS, intervalMs = DE
         if (fastRejectSince === null) fastRejectSince = Date.now();
         if (Date.now() - fastRejectSince >= TCP_FALLBACK_GRACE_MS) return finish(true);
       } else {
-        // "hanging" or "not-listening": neither counts toward the grace
-        // window, and a hang actively resets it (#6800).
+        // "ready" returns above; "hanging", "unhealthy", or "not-listening":
+        // none count toward the grace window, and a hang actively resets it.
         fastRejectSince = null;
       }
 
@@ -150,4 +173,4 @@ function isPortListening(port, timeoutMs = 1000) {
   });
 }
 
-module.exports = { waitServerReady, pollHealthOnce };
+module.exports = { waitServerReady, pollHealthOnce, DEFAULT_TIMEOUT_MS, DEFAULT_INTERVAL_MS, PER_REQUEST_TIMEOUT_MS, TCP_FALLBACK_GRACE_MS };

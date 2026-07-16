@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import net from "node:net";
 
 const require = createRequire(import.meta.url);
-const { waitServerReady, pollHealthOnce } = require("../../cli/src/cli/waitServerReady.js");
+const { waitServerReady, pollHealthOnce, DEFAULT_TIMEOUT_MS } = require("../../cli/src/cli/waitServerReady.js");
 
 // #2460 / #6800 (OmniRoute #6892): waitServerReady must NOT report ready from a
 // raw TCP accept alone. It distinguishes four outcomes: "ready" (2xx health),
@@ -59,6 +59,17 @@ function listenHttp(status, body = "ok") {
   });
 }
 
+// Garbage responder: accepts TCP but returns bytes that are not valid HTTP,
+// causing fetch() to fail with a socket-level protocol error. Ensures only
+// proven route-missing error codes earn fast-reject grace.
+function listenGarbage(data = "not http\r\n") {
+  return listen((socket) => {
+    socket.on("data", () => {
+      socket.end(data);
+    });
+  });
+}
+
 describe("pollHealthOnce classifications", () => {
   it('returns "ready" on a 2xx health response', async () => {
     const server = await listenHttp("200 OK");
@@ -69,10 +80,37 @@ describe("pollHealthOnce classifications", () => {
     }
   });
 
-  it('returns "fast-reject" on a non-2xx HTTP response (route not mounted)', async () => {
+  it('returns "fast-reject" on a 404 health response (route not mounted)', async () => {
     const server = await listenHttp("404 Not Found", "nope");
     try {
       await expect(pollHealthOnce(server.address().port)).resolves.toBe("fast-reject");
+    } finally {
+      server.close();
+    }
+  });
+
+  it('returns "unhealthy" on non-404 non-2xx HTTP responses (5xx/401/403/429)', async () => {
+    const server = await listenHttp("500 Internal Server Error", "boom");
+    try {
+      await expect(pollHealthOnce(server.address().port)).resolves.toBe("unhealthy");
+    } finally {
+      server.close();
+    }
+  });
+
+  it('returns "unhealthy" for a health endpoint that is alive but returns 401/403/429', async () => {
+    const server = await listenHttp("401 Unauthorized", "no");
+    try {
+      await expect(pollHealthOnce(server.address().port)).resolves.toBe("unhealthy");
+    } finally {
+      server.close();
+    }
+  });
+
+  it('returns "unhealthy" when a listening server returns a non-404 status', async () => {
+    const server = await listenHttp("429 Too Many Requests", "slow");
+    try {
+      await expect(pollHealthOnce(server.address().port)).resolves.toBe("unhealthy");
     } finally {
       server.close();
     }
@@ -83,6 +121,15 @@ describe("pollHealthOnce classifications", () => {
     const server = await listen((socket) => socket.destroy());
     try {
       await expect(pollHealthOnce(server.address().port)).resolves.toBe("fast-reject");
+    } finally {
+      server.close();
+    }
+  });
+
+  it('returns "unhealthy" when the server speaks non-HTTP bytes (malformed protocol)', async () => {
+    const server = await listenGarbage("this is not http");
+    try {
+      await expect(pollHealthOnce(server.address().port)).resolves.toBe("unhealthy");
     } finally {
       server.close();
     }
@@ -101,6 +148,12 @@ describe("pollHealthOnce classifications", () => {
 
   it('returns "not-listening" on a closed port', async () => {
     await expect(pollHealthOnce(await closedPort())).resolves.toBe("not-listening");
+  });
+});
+
+describe("waitServerReady constants", () => {
+  it("defaults to a 60s cold-start timeout", () => {
+    expect(DEFAULT_TIMEOUT_MS).toBe(60_000);
   });
 });
 

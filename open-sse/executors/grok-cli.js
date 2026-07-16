@@ -372,12 +372,20 @@ export class GrokCliExecutor extends BaseExecutor {
     // accepting summary + encrypted-content continuity (upstream decolua/9router#2590).
     const caps = getCapabilitiesForModel("grok-cli", resolvedModel);
     if (resolvedModel === GROK_BUILD_MODEL) {
-      // Strip only the effort; preserve a caller-supplied summary.
-      if (body.reasoning && typeof body.reasoning === "object") {
-        delete body.reasoning.effort;
-        if (!body.reasoning.summary) body.reasoning.summary = "concise";
+      // grok-build rejects reasoning.effort on the wire. If the caller explicitly
+      // disables reasoning (effort === "none"), omit the field entirely; otherwise
+      // strip the effort and keep a caller-supplied or default summary.
+      const sourceEffort =
+        body.reasoning?.effort ?? body.reasoning_effort ?? modelEffort;
+      if (sourceEffort === "none") {
+        delete body.reasoning;
       } else {
-        body.reasoning = { summary: "concise" };
+        if (body.reasoning && typeof body.reasoning === "object") {
+          delete body.reasoning.effort;
+          if (!body.reasoning.summary) body.reasoning.summary = "concise";
+        } else {
+          body.reasoning = { summary: "concise" };
+        }
       }
     } else if (caps.reasoning !== false) {
       if (!body.reasoning || typeof body.reasoning !== "object") {

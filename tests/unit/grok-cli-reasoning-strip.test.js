@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { GrokCliExecutor } from "../../open-sse/executors/grok-cli.js";
 import { XaiExecutor } from "../../open-sse/executors/xai.js";
+import { translateRequest } from "../../open-sse/translator/index.js";
+import { FORMATS } from "../../open-sse/translator/formats.js";
 
 // OmniRoute#6938 (upstream "fix(grok): strip reasoningEffort for grok cli models";
 // plan row OmniRoute#6937): xAI's cli-chat-proxy 400s on reasoning params for
@@ -13,7 +15,7 @@ import { XaiExecutor } from "../../open-sse/executors/xai.js";
 // These tests pin the strip, the conversion, and a cross-executor control so a
 // regression in either direction fails.
 describe("grok-cli reasoning effort strip (omniroute-6937)", () => {
-  it("strips reasoning_effort and reasoning for non-reasoning grok-build, keeps allowed fields", () => {
+  it("strips reasoning_effort and reasoning.effort for grok-build, keeps summary and encrypted-content continuity", () => {
     const executor = new GrokCliExecutor();
     const out = executor.transformRequest(
       "grok-build",
@@ -29,16 +31,87 @@ describe("grok-cli reasoning effort strip (omniroute-6937)", () => {
       {},
     );
 
-    // Both source shapes of the unsupported reasoning param are gone.
+    // Source effort is consumed; grok-build rejects effort but keeps summary.
     expect("reasoning_effort" in out).toBe(false);
-    expect("reasoning" in out).toBe(false);
-    // include must not carry reasoning.encrypted_content for a stripped request.
-    expect(out.include || []).not.toContain("reasoning.encrypted_content");
+    expect(out.reasoning).toEqual({ summary: "concise" });
+    expect("effort" in (out.reasoning || {})).toBe(false);
+    // Encrypted reasoning continuity still requested for store=false multi-turn.
+    expect(out.include).toContain("reasoning.encrypted_content");
     // Unrelated allowed fields survive untouched.
     expect(out.temperature).toBe(0.4);
     expect(out.top_p).toBe(0.8);
     expect(out.input).toEqual([{ type: "message", role: "user", content: "hi" }]);
     expect(out.model).toBe("grok-build");
+  });
+
+  it("omits reasoning and encrypted_content for grok-build when reasoning_effort is 'none'", () => {
+    const executor = new GrokCliExecutor();
+    const out = executor.transformRequest(
+      "grok-build",
+      {
+        model: "grok-build",
+        messages: [{ role: "user", content: "hi" }],
+        reasoning_effort: "none",
+      },
+      false,
+      {},
+    );
+
+    expect("reasoning_effort" in out).toBe(false);
+    expect("reasoning" in out).toBe(false);
+    expect(out.include || []).not.toContain("reasoning.encrypted_content");
+  });
+
+  it("omits reasoning and encrypted_content for grok-build when reasoning.effort is 'none' through translateRequest + executor", () => {
+    const clientBody = {
+      model: "grok-build",
+      messages: [{ role: "user", content: "hi" }],
+      reasoning: { effort: "none", summary: "detailed" },
+    };
+    const translated = translateRequest(
+      FORMATS.OPENAI,
+      FORMATS.OPENAI_RESPONSES,
+      "grok-build",
+      clientBody,
+      true,
+      null,
+      "grok-cli",
+    );
+
+    const executor = new GrokCliExecutor();
+    const out = executor.transformRequest("grok-build", translated, false, {});
+
+    expect("reasoning_effort" in out).toBe(false);
+    expect("reasoning" in out).toBe(false);
+    expect(out.include || []).not.toContain("reasoning.encrypted_content");
+  });
+
+  it("preserves caller-supplied reasoning.summary through translateRequest + executor", () => {
+    // Pipeline: OpenAI chat body -> Responses translation -> GrokCliExecutor.
+    // applyThinking must not strip reasoning for grok-build, and the executor must
+    // consume effort while keeping the caller's summary choice. Upstream #2590.
+    const clientBody = {
+      model: "grok-build",
+      messages: [{ role: "user", content: "hi" }],
+      reasoning: { effort: "high", summary: "detailed" },
+    };
+    const translated = translateRequest(
+      FORMATS.OPENAI,
+      FORMATS.OPENAI_RESPONSES,
+      "grok-build",
+      clientBody,
+      true,
+      null,
+      "grok-cli",
+    );
+
+    const executor = new GrokCliExecutor();
+    const out = executor.transformRequest("grok-build", translated, false, {});
+
+    expect(out.reasoning).toEqual({ summary: "detailed" });
+    expect("effort" in (out.reasoning || {})).toBe(false);
+    expect("reasoning_effort" in out).toBe(false);
+    expect(out.include).toContain("reasoning.encrypted_content");
   });
 
   it("strips reasoning_effort for non-reasoning grok-composer-2.5-fast", () => {

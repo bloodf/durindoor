@@ -546,7 +546,17 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   const fallbackResult = checkFallbackError(status, errorText, backoffLevel);
   const effectiveEvidence = callerEvidence || fallbackResult.rateLimitEvidence || null;
   const evidenceState = effectiveEvidence?.state === "exhausted" ? "exhausted" : "cooldown";
-  const rawProviderReset = effectiveEvidence ? effectiveEvidence.resetAtMs : resetsAtMs;
+  // Precedence: (1) caller-supplied normalized evidence is authoritative — its
+  // null reset is a deliberate rejection of any legacy reset; (2) a reset parsed
+  // from the body by checkFallbackError wins; (3) otherwise the caller's legacy
+  // resetsAtMs applies, so an explicit quota-exhausted 429 keeps its real reset
+  // window instead of collapsing to the short transient bench.
+  const parsedEvidenceReset = Number(fallbackResult.rateLimitEvidence?.resetAtMs);
+  const rawProviderReset = callerEvidence
+    ? callerEvidence.resetAtMs
+    : Number.isFinite(parsedEvidenceReset) && parsedEvidenceReset > now
+      ? parsedEvidenceReset
+      : resetsAtMs;
   const providerReset = Number(rawProviderReset);
   const normalizedReset = Number.isFinite(providerReset) && providerReset > now
     ? Math.min(providerReset, now + MAX_RATE_LIMIT_COOLDOWN_MS)

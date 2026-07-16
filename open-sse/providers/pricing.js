@@ -3,6 +3,8 @@ import {
   isFreeModel,
   providerHasFreeModels,
 } from "../config/freeModelCatalog.js";
+import { stripKiroSyntheticSuffixes } from "./models/kiroVariants.js";
+import { normalizeModelId } from "./models/schema.js";
 
 // Pricing rates for AI models — all rates in $/1M tokens
 //
@@ -403,6 +405,19 @@ export function getPricingForModel(provider, model) {
   const baseModel = model.includes("/") ? model.split("/").pop() : model;
   if (MODEL_PRICING[baseModel]) return MODEL_PRICING[baseModel];
   if (MODEL_PRICING[model]) return MODEL_PRICING[model];
+
+  // 2b. Kiro GPT-5.6 synthetic variants (decolua/9router#2596): the catalog
+  // expands each tier into `-thinking`/`-agentic`/`-thinking-agentic` ids, but
+  // only the bare tiers carry exact prices. Scoped to kiro/kr so genuine
+  // non-Kiro `*-thinking` models with their own exact rows are untouched.
+  // Normalize digit-dash-digit ids (gpt-5-6-sol) to the dotted catalog form
+  // and retry the canonical lookup on the de-suffixed id before the glob
+  // fallback so Sol variants don't fall through to the generic gpt-5.6-* Terra rate.
+  if (provider === "kiro" || provider === "kr") {
+    const suffixStripped = stripKiroSyntheticSuffixes(baseModel);
+    const normalized = normalizeModelId(suffixStripped);
+    if (MODEL_PRICING[normalized]) return MODEL_PRICING[normalized];
+  }
 
   // 3. Pattern match
   for (const { pattern, pricing } of PATTERN_PRICING) {

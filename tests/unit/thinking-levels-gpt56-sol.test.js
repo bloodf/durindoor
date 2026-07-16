@@ -42,4 +42,27 @@ describe("getThinkingLevels GPT-5.6 effort matrix", () => {
     expect(levels || []).not.toContain("max");
     expect(levels || []).not.toContain("ultra");
   });
+
+  // Kiro maps levels to a numeric budget clamped to 32000 (xhigh=32768 and
+  // max=128000 both clamp to 32000; ultra is not in LEVEL_TO_BUDGET), so ultra
+  // and max are not distinct effective tiers on the Kiro wire. The global
+  // Codex patterns must not leak them into the Kiro picker (#2596).
+  it("Kiro GPT-5.6 Sol exposes only effective levels (no ultra/max)", () => {
+    for (const provider of ["kiro", "kr"]) {
+      expect(getThinkingLevels(provider, "gpt-5.6-sol"), provider).toEqual([
+        "none", "minimal", "low", "medium", "high", "xhigh",
+      ]);
+    }
+  });
+
+  it("Kiro GPT-5.6 Terra/Luna also drop ultra and max", () => {
+    for (const provider of ["kiro", "kr"]) {
+      expect(getThinkingLevels(provider, "gpt-5.6-terra"), provider).toEqual([
+        "none", "minimal", "low", "medium", "high", "xhigh",
+      ]);
+      expect(getThinkingLevels(provider, "gpt-5.6-luna"), provider).toEqual([
+        "none", "minimal", "low", "medium", "high", "xhigh",
+      ]);
+    }
+  });
 });

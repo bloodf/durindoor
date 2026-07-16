@@ -35,6 +35,57 @@ describe("getCapabilitiesForModel", () => {
     expect(getCapabilitiesForModel("kiro", "claude-sonnet-5-thinking-agentic")).toMatchObject(claudeSonnet5Expected);
   });
 
+  // decolua/9router#2596 — every Kiro GPT-5.6 synthetic variant resolves the
+  // family's 272k context / 32k output (the Kiro wire caps inferenceConfig
+  // .maxTokens at 32000) / Kiro-native thinking under both
+  // provider keys, a vendor-prefixed id ("openai/gpt-5.6-sol") hits the same
+  // provider override as the bare id, and the dash-version form ("gpt-5-6-sol")
+  // is normalized to the same 272k row instead of the generic 400k *gpt-5*
+  // pattern. thinkingFormat "kiro" keeps applyThinking from adding a stray
+  // top-level reasoning_effort to the CodeWhisperer payload.
+  const kiroGpt56Expected = {
+    contextWindow: 272000,
+    maxOutput: 32000,
+    thinkingFormat: "kiro",
+    reasoning: true,
+    vision: true,
+    search: true,
+  };
+
+  it("reports Kiro GPT 5.6 models with the Kiro 272k context window", () => {
+    // Representative ids across all 3 tiers and all 4 suffix shapes — the
+    // exact 12-id contract is pinned in kiro-model-slots.test.js.
+    for (const provider of ["kiro", "kr"]) {
+      for (const id of [
+        "gpt-5.6-sol",
+        "gpt-5.6-sol-thinking",
+        "gpt-5.6-terra-agentic",
+        "gpt-5.6-terra-thinking-agentic",
+        "gpt-5.6-luna",
+        "gpt-5.6-luna-thinking",
+      ]) {
+        expect(getCapabilitiesForModel(provider, id), `${provider}/${id}`).toMatchObject(kiroGpt56Expected);
+      }
+      expect(getCapabilitiesForModel(provider, "openai/gpt-5.6-sol"), `${provider} prefixed`).toMatchObject(kiroGpt56Expected);
+    }
+  });
+
+  it("normalizes dash-version Kiro GPT-5.6 ids to the same 272k capability row", () => {
+    // Kiro accepts "5-6" at the wire; the caps map is keyed by dotted ids, so
+    // the lookup normalizes digit-dash-digit. Without it these fall through to
+    // the generic *gpt-5* 400k pattern. Synthetic suffixes stay intact.
+    for (const provider of ["kiro", "kr"]) {
+      for (const id of [
+        "gpt-5-6-sol",
+        "gpt-5-6-sol-thinking",
+        "gpt-5-6-terra-agentic",
+        "gpt-5-6-luna-thinking-agentic",
+      ]) {
+        expect(getCapabilitiesForModel(provider, id), `${provider}/${id}`).toMatchObject(kiroGpt56Expected);
+      }
+    }
+  });
+
   it("uses OpenAI thinking format for NVIDIA-hosted reasoning model families", () => {
     for (const model of [
       "z-ai/glm-5.2",

@@ -1,3 +1,5 @@
+import { KIRO_GPT_5_6_FAMILY, buildKiroGpt56Variants } from "../models/kiroVariants.js";
+
 export default {
   id: "kiro",
   priority: 10,
@@ -78,6 +80,9 @@ export default {
     { id: "claude-sonnet-4.5-thinking-agentic", name: "Claude Sonnet 4.5 (Thinking + Agentic)" },
     { id: "claude-haiku-4.5-thinking-agentic", name: "Claude Haiku 4.5 (Thinking + Agentic)" },
     { id: "claude-fable-5", name: "Claude Fable 5" },
+    // GPT-5.6 family (decolua/9router#2596) — generated from the shared
+    // leaf descriptor so the catalog, live fetcher, and capabilities agree.
+    ...KIRO_GPT_5_6_FAMILY.flatMap(buildKiroGpt56Variants),
   ],
   oauth: {
     ssoOidcEndpoint: "https://oidc.us-east-1.amazonaws.com",

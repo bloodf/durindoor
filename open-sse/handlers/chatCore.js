@@ -8,7 +8,7 @@ import { COLORS } from "../utils/stream.js";
 import { createStreamController } from "../utils/streamHandler.js";
 import { classifyQuotaTerminalReason } from "../utils/quotaTerminalReason.js";
 import { createRequestLogger } from "../utils/requestLogger.js";
-import { getModelTargetFormat, getModelStrip, getModelUpstreamId, getModelType, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
+import { getModelTargetFormat, getModelStrip, getModelUpstreamId, getCanonicalModelId, getModelType, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
 import { PROVIDERS } from "../config/providers.js";
 import { createErrorResult, parseUpstreamError, formatProviderError, sanitizeErrorMessage } from "../utils/error.js";
 import { HTTP_STATUS, VALIDATE_OUTBOUND } from "../config/runtimeConfig.js";
@@ -90,6 +90,22 @@ export function withCompressionHeader(result, headerValue) {
       headers,
     }),
   };
+}
+
+/**
+ * Select the model string handed to translateRequest on the non-passthrough
+ * path. Kiro translators recover the synthetic -thinking/-agentic flags from
+ * the model string (resolveKiroModel). The GPT-5.6 family registers an
+ * upstreamModelId set to the bare wire id, so cleanUpstreamModel has already
+ * lost the suffix by the time translation runs; on the Kiro seam we pass the
+ * canonical (suffixed) catalog id so the translator injects the thinking/
+ * agentic prompts, then strips the suffix at the wire boundary. Other formats
+ * keep cleanUpstreamModel.
+ */
+export function resolveKiroTranslationModel(targetFormat, alias, cleanModel, cleanUpstreamModel) {
+  return targetFormat === FORMATS.KIRO
+    ? getCanonicalModelId(alias, cleanModel) || cleanUpstreamModel
+    : cleanUpstreamModel;
 }
 
 /**
@@ -386,10 +402,11 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
     // Normalize newer Cowork/CC beta shapes (adaptive thinking, mid-conversation system) the API rejects
     if (clientTool === "claude") normalizeClaudePassthrough(translatedBody, translatedBody.model, provider);
   } else {
+    const translationModel = resolveKiroTranslationModel(targetFormat, alias, cleanModel, cleanUpstreamModel);
     translatedBody = translateRequest(
       sourceFormat,
       targetFormat,
-      cleanUpstreamModel,
+      translationModel,
       body,
       stream,
       credentials,

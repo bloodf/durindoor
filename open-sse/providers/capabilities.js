@@ -23,6 +23,11 @@
 // 2.0+, Grok, Perplexity). Verify with: curl -s https://models.dev/api.json
 
 import { matchPattern } from "./pricing.js";
+import {
+  KIRO_GPT_5_6_FAMILY,
+  buildKiroGpt56Variants,
+} from "./models/kiroVariants.js";
+import { normalizeModelId } from "./models/schema.js";
 
 /**
  * Safe floor — every resolved result is merged over this so consumers
@@ -42,7 +47,7 @@ export const DEFAULT_CAPABILITIES = {
   tools: true,          // function / tool calling
   reasoning: false,     // thinking / reasoning
   // thinking wire format (only meaningful when reasoning:true). null → derive from transport.format.
-  // enum: openai|claude-adaptive|claude-budget|gemini-level|gemini-budget|zai|qwen|deepseek|kimi|minimax|hunyuan|step
+  // enum: openai|claude-adaptive|claude-budget|gemini-level|gemini-budget|zai|qwen|deepseek|kimi|minimax|hunyuan|step|kiro
   thinkingFormat: null,
   thinkingCanDisable: true,  // false → model cannot turn thinking off (clamp to min instead of disable)
   thinkingRange: null,       // { min, max } for budget formats; null = no clamp
@@ -107,7 +112,24 @@ export const MODEL_CAPABILITIES = {
 /**
  * Provider-specific capability overrides. Keyed by provider alias/id.
  */
+const KIRO_GPT_5_6_PROVIDER_CAPS = Object.fromEntries(
+  KIRO_GPT_5_6_FAMILY.flatMap(buildKiroGpt56Variants).map((m) => [m.id, {
+    vision: true, reasoning: true, search: true,
+    thinkingFormat: "kiro", contextWindow: m.contextLength, maxOutput: 32000,
+  }])
+);
+
 export const PROVIDER_CAPABILITIES = {
+  // Kiro GPT-5.6 family (decolua/9router#2596): 272k context, Kiro-native
+  // thinking (<thinking_mode> prefix), vision + search. thinkingFormat "kiro"
+  // keeps applyThinking from adding a stray top-level reasoning_effort to the
+  // CodeWhisperer payload. One shared descriptor spread over every
+  // generated synthetic variant id (base/-thinking/-agentic/-thinking-agentic)
+  // so the 12 keys can never drift from the catalog in providerModels.js.
+  // Exposed under both the provider id ("kiro") and its short alias ("kr") —
+  // callers pass either.
+  kiro: KIRO_GPT_5_6_PROVIDER_CAPS,
+  kr: KIRO_GPT_5_6_PROVIDER_CAPS,
   // ClinePass proxies through Vercel's OpenAI Chat Completions API, which only
   // accepts reasoning.effort in {none,minimal,low,medium,high,xhigh}. Force
   // "openai" so thinkingUnified.js emits valid Vercel enum values. Keys are the
@@ -489,21 +511,25 @@ export const PATTERN_CAPABILITIES = [
  *
  * @param {string[]} comboModels
  * @param {Object|null} [comboLookup] optional map of combo name → models array for nested resolution
+ * @param {Object|null} [aliasToProviderId] optional map of model-list output alias
+ *   (incl. custom connection prefixes like `mykr`) → provider id, so combo
+ *   member ids keyed by a connection prefix resolve that provider's caps rows
+ *   instead of falling through to generic patterns.
  * @param {number} [_depth] internal recursion depth guard
  * @returns {object|null} full capabilities object, or null for empty input
  */
-export function aggregateComboCapabilities(comboModels, comboLookup = null, _depth = 0) {
+export function aggregateComboCapabilities(comboModels, comboLookup = null, aliasToProviderId = null, _depth = 0) {
   if (!comboModels?.length || _depth > 6) return null;
   const allCaps = comboModels.map((fullId) => {
     // Nested combo: bare name (no slash) that exists in the lookup — recurse
     if (!fullId.includes("/") && comboLookup?.[fullId]) {
-      return aggregateComboCapabilities(comboLookup[fullId], comboLookup, _depth + 1)
+      return aggregateComboCapabilities(comboLookup[fullId], comboLookup, aliasToProviderId, _depth + 1)
           ?? getCapabilitiesForModel(null, fullId);
     }
     const slash = fullId.indexOf("/");
     const provider = slash === -1 ? null : fullId.slice(0, slash);
     const model = slash === -1 ? fullId : fullId.slice(slash + 1);
-    return getCapabilitiesForModel(provider, model);
+    return getCapabilitiesForModel(aliasToProviderId?.[provider] ?? provider, model);
   });
   const first = allCaps[0];
   return {
@@ -537,13 +563,28 @@ export function getCapabilitiesForModel(provider, model) {
 
   if (!model) return finalize({ ...DEFAULT_CAPABILITIES });
 
+  // Vendor-prefixed ids ("openai/gpt-5.6-sol") resolve against the bare id.
+  const baseModel = model.includes("/") ? model.split("/").pop() : model;
+
   // 1. Provider-specific override
-  if (provider && PROVIDER_CAPABILITIES[provider]?.[model]) {
-    return finalize({ ...DEFAULT_CAPABILITIES, ...PROVIDER_CAPABILITIES[provider][model] });
+  if (provider) {
+    const providerCaps = PROVIDER_CAPABILITIES[provider];
+    if (providerCaps?.[model]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[model] });
+    if (providerCaps?.[baseModel]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[baseModel] });
+    // Kiro accepts dash-form version ids ("gpt-5-6-sol") at the wire, but the
+    // caps map is keyed by the dotted catalog ids. Normalize digit-dash-digit
+    // ("5-6" → "5.6", synthetic -thinking/-agentic suffixes untouched) so the
+    // dash form hits the same 272k GPT-5.6 row instead of the generic 400k
+    // *gpt-5* pattern. Scoped to kiro/kr so other providers are unaffected.
+    if (provider === "kiro" || provider === "kr") {
+      const normalized = normalizeModelId(model);
+      const normalizedBase = normalizeModelId(baseModel);
+      if (providerCaps?.[normalized]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[normalized] });
+      if (providerCaps?.[normalizedBase]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[normalizedBase] });
+    }
   }
 
-  // 2. Canonical exact (strip vendor prefix: "anthropic/claude-opus-4.7" -> "claude-opus-4.7")
-  const baseModel = model.includes("/") ? model.split("/").pop() : model;
+  // 2. Canonical exact
   if (MODEL_CAPABILITIES[baseModel]) return finalize({ ...DEFAULT_CAPABILITIES, ...MODEL_CAPABILITIES[baseModel] });
   if (MODEL_CAPABILITIES[model]) return finalize({ ...DEFAULT_CAPABILITIES, ...MODEL_CAPABILITIES[model] });
 

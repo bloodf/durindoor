@@ -52,6 +52,14 @@ export async function getPricingForModel(provider, model) {
   if (!model) return null;
   const userPricing = await getUserPricing();
   if (provider && userPricing[provider]?.[model]) return userPricing[provider][model];
+  // Kiro GPT-5.6 synthetic variants (#2596): a user override saved on the bare
+  // tier (e.g. kiro["gpt-5.6-sol"]) must also cover its `-thinking`/`-agentic`
+  // variants. Scoped to kiro/kr so other providers' `*-thinking` keys are exact.
+  if (provider === "kiro" || provider === "kr") {
+    const { stripKiroSyntheticSuffixes } = await import("open-sse/providers/models/kiroVariants.js");
+    const canonical = stripKiroSyntheticSuffixes(model);
+    if (canonical !== model && userPricing[provider]?.[canonical]) return userPricing[provider][canonical];
+  }
   const { getPricingForModel: resolveConst } = await import("open-sse/providers/pricing.js");
   return resolveConst(provider, model);
 }

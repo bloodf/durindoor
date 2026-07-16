@@ -115,6 +115,30 @@ export class UnsupportedOmniRouteWebSessionExecutor extends BaseExecutor {
     this.noAuth = true;
   }
 
+  // Fail-closed beyond execute(): routes like translator/translate step 3 call
+  // buildUrl/buildHeaders DIRECTLY on the resolved executor and return the
+  // result to the caller without ever invoking execute(). BaseExecutor
+  // .buildHeaders would attach the provider's saved credential as an
+  // Authorization/x-api-key header (it ignores config.noAuth), disclosing the
+  // blocked provider's token to the HTTP caller. A blocked provider has no
+  // usable upstream, so it must never vend a URL or an authenticated header —
+  // fail LOUD (throw) rather than return a sanitized-but-successful result;
+  // the route's outer catch maps this to { success: false, error } with no
+  // credential material.
+  _unsupportedError() {
+    return new Error(
+      `${this.provider} ${this.detail}: ${this.blocker.reason}.`,
+    );
+  }
+
+  buildUrl() {
+    throw this._unsupportedError();
+  }
+
+  buildHeaders() {
+    throw this._unsupportedError();
+  }
+
   async execute() {
     const payload = {
       error: {

@@ -194,4 +194,25 @@ describe("devin direct dispatch fail-closed (OmniRoute #6894)", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it("buildUrl()/buildHeaders() THROW without disclosing the credential (route bypass path)", async () => {
+    // translator/translate step 3 calls buildUrl/buildHeaders DIRECTLY on the
+    // resolved executor and returns the result without ever invoking execute().
+    // BaseExecutor.buildHeaders would attach the saved Devin key as an
+    // Authorization Bearer header (it ignores config.noAuth) — a cross-provider
+    // credential disclosure. The overrides must throw fail-loud and the thrown
+    // error must carry NO credential material.
+    const { getExecutor } = await import("../../open-sse/executors/index.js");
+    const SECRET = "cog_token_secret";
+    const executor = getExecutor("devin");
+
+    expect(() => executor.buildHeaders({ apiKey: SECRET })).toThrow(/no chat transport/);
+    expect(() => executor.buildUrl("devin/devin", false, 0, { apiKey: SECRET })).toThrow(/no chat transport/);
+
+    let thrown;
+    try { executor.buildHeaders({ apiKey: SECRET }); } catch (error) { thrown = error; }
+    expect(thrown).toBeDefined();
+    expect(String(thrown.message)).not.toContain(SECRET);
+    expect(String(thrown.message)).not.toContain("api.openai.com");
+  });
 });

@@ -42,6 +42,13 @@ export function checkFallbackError(status, errorText, backoffLevel = 0) {
     return { shouldFallback: false, cooldownMs: 0 };
   }
 
+  // A per-request content rejection (e.g. provider content filter blocking a
+  // single prompt) is not an account/auth/quota failure; it must never lock the
+  // connection or trigger the account-fallback cooldown chain.
+  if (lowerError.includes("provider_request_rejected")) {
+    return { shouldFallback: false, cooldownMs: 0 };
+  }
+
   // OmniRoute #6731: an apikey-category 429 whose body explicitly reports an
   // exhausted daily/weekly/monthly quota must honor the real reset window, not
   // the generic exponential backoff. Reuse the native evidence parser so an

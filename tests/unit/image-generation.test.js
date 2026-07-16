@@ -209,12 +209,39 @@ describe("handleImageGenerationCore", () => {
     expect(result.status).toBe(401);
   });
 
-  // Source parity (OmniRoute #7108): a 200 with no image_urls is an upstream
-  // failure (base_resp.status_msg), surfaced as 502 — not a successful empty list.
-  it("returns 502 when MiniMax returns 200 with no image_urls", async () => {
+  // A 200 whose base_resp.status_code is 1026 ("Sensitive content detected in
+  // prompt") is a per-request content rejection, NOT an account failure. The core
+  // must surface it as 422 so the connection is never locked / cooled-down.
+  it("returns 422 (not 502) when MiniMax content-filters a prompt (status_code 1026)", async () => {
     global.fetch.mockResolvedValueOnce(
       new Response(
-        JSON.stringify({ data: { image_urls: [] }, base_resp: { status_msg: "content filtered" } }),
+        JSON.stringify({
+          data: { image_urls: [] },
+          base_resp: { status_code: 1026, status_msg: "Sensitive content detected in prompt" },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    const result = await handleImageGenerationCore({
+      body: { prompt: "A mountain" },
+      modelInfo: { provider: "minimax", model: "image-01" },
+      credentials: { apiKey: "test-key" },
+      log: null,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.status).toBe(422);
+    expect(result.error).toContain("Sensitive content detected");
+    expect(result.error).toContain("provider_request_rejected");
+  });
+
+  // A 200 with an empty image array and NO content-filter signal is a genuine
+  // upstream failure and stays a 502.
+  it("returns 502 when MiniMax returns 200 with an empty result and no filter signal", async () => {
+    global.fetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ data: { image_urls: [] }, base_resp: { status_code: 0, status_msg: "" } }),
         { status: 200, headers: { "Content-Type": "application/json" } }
       )
     );
@@ -228,7 +255,69 @@ describe("handleImageGenerationCore", () => {
 
     expect(result.success).toBe(false);
     expect(result.status).toBe(502);
-    expect(result.error).toContain("content filtered");
+  });
+
+  it("accepts the documented 21:9 ultrawide aspect ratio", async () => {
+    global.fetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ data: { image_urls: ["https://cdn.minimax.io/wide.png"] } }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    await handleImageGenerationCore({
+      body: { prompt: "A panorama", size: "21:9" },
+      modelInfo: { provider: "minimax", model: "image-01" },
+      credentials: { apiKey: "test-key" },
+      log: null,
+    });
+
+    const sentBody = JSON.parse(global.fetch.mock.calls[0][1].body);
+    expect(sentBody.aspect_ratio).toBe("21:9");
+  });
+
+  it("maps OpenAI pixel sizes to the nearest MiniMax aspect ratio", async () => {
+    global.fetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ data: { image_urls: ["https://cdn.minimax.io/tall.png"] } }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    await handleImageGenerationCore({
+      body: { prompt: "A tower", size: "1024x1792" },
+      modelInfo: { provider: "minimax", model: "image-01" },
+      credentials: { apiKey: "test-key" },
+      log: null,
+    });
+
+    const sentBody = JSON.parse(global.fetch.mock.calls[0][1].body);
+    expect(sentBody.aspect_ratio).toBe("9:16");
+  });
+
+  it("honors response_format=base64 and normalizes image_base64 to b64_json", async () => {
+    global.fetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          data: { image_base64: ["aGVsbG8="] },
+          base_resp: { status_code: 0, status_msg: "success" },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    const result = await handleImageGenerationCore({
+      body: { prompt: "A mountain", response_format: "base64" },
+      modelInfo: { provider: "minimax", model: "image-01" },
+      credentials: { apiKey: "test-key" },
+      log: null,
+    });
+
+    expect(result.success).toBe(true);
+    const sentBody = JSON.parse(global.fetch.mock.calls[0][1].body);
+    expect(sentBody.response_format).toBe("base64");
+    const responseBody = await result.response.json();
+    expect(responseBody.data[0].b64_json).toBe("aGVsbG8=");
   });
 
   it("generates image with NanoBanana format", async () => {

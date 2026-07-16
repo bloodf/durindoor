@@ -14,6 +14,7 @@ import {
   KIRO_DEFAULT_REGION,
 } from "../config/kiroRegions.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { resolveContinuationId, extractClientSessionId } from "../utils/sessionManager.js";
 
 // Strict AWS region id allowlist (incl. GovCloud partition `us-gov-west-1`),
 // matching the Bedrock validator shape. Used as a trust-boundary guard before
@@ -218,8 +219,49 @@ export class KiroExecutor extends BaseExecutor {
     return baseUrls[urlIndex] || baseUrls[0] || this.config.baseUrl;
   }
 
-  transformRequest(model, body, stream, credentials) {
-    return body;
+  /**
+   * Stamp Kiro/KAS agent-continuation identity onto the translated payload.
+   *
+   * The translators already place a resolveSessionId-derived affinity id in
+   * `conversationState.conversationId`. Reusing one `agentContinuationId` per
+   * (scope, connectionId, model, conversationId) tuple lets the upstream keep
+   * serving a direct session from its warm cache across turns, while the
+   * account + model key dimensions guarantee a continuation minted under one
+   * account or model is never replayed for another — even when two clients
+   * present the same explicit session id. The payload is cloned so the
+   * caller's body is never mutated.
+   *
+   * Explicit client sessions (identified from inbound client headers) are
+   * reused across turns via a global cache. Generated fallback sessions are
+   * scoped to the inbound `requestContext` so unrelated headerless first-turn
+   * conversations on the same account and model never share a continuation id,
+   * while the same frozen requestContext survives retries and fallback URL
+   * attempts for stable retry identity.
+   */
+  transformRequest(model, body, stream, credentials, requestContext = null) {
+    const conversationId = body?.conversationState?.conversationId;
+    if (!conversationId || typeof body?.conversationState !== "object") return body;
+    const explicitFromContext = extractClientSessionId(requestContext?.clientHeaders, null);
+    const explicitFromCredentials = extractClientSessionId(credentials?.rawHeaders, null);
+    const isGenerated = credentials?._clientSessionIsGenerated
+      ?? !(explicitFromContext ?? explicitFromCredentials);
+    const continuationId = resolveContinuationId({
+      sessionId: conversationId,
+      connectionId: credentials?.connectionId,
+      model,
+      scope: "kiro",
+      requestContext,
+      requestScoped: isGenerated,
+    });
+    return {
+      ...body,
+      conversationState: {
+        ...body.conversationState,
+        agentContinuationId: continuationId,
+        agentTaskType: "vibe",
+      },
+      agentMode: "vibe",
+    };
   }
 
   /**

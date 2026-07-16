@@ -1,6 +1,6 @@
 import {
   extractApiKey, evaluateApiKeyAuth,
-  getProviderCredentials, markAccountUnavailable,
+  getProviderCredentialsWithQuotaPreflight, markAccountUnavailable,
 } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
@@ -64,7 +64,7 @@ export async function handleStt(request) {
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model);
+    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model);
 
     if (!credentials || credentials.allRateLimited) {
       if (credentials?.allRateLimited) {

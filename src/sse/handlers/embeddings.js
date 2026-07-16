@@ -1,5 +1,5 @@
 import {
-  getProviderCredentials,
+  getProviderCredentialsWithQuotaPreflight,
   markAccountUnavailable,
   clearAccountError,
   extractApiKey,
@@ -86,7 +86,7 @@ export async function handleEmbeddings(request) {
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model);
+    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model);
 
     // All accounts unavailable
     if (!credentials || credentials.allRateLimited) {

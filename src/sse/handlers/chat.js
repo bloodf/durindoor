@@ -1,7 +1,7 @@
 import "open-sse/index.js";
 
 import {
-  getProviderCredentials,
+  getProviderCredentialsWithQuotaPreflight,
   projectProviderCredentials,
   markAccountUnavailable,
   clearAccountError,
@@ -38,7 +38,6 @@ import { isAntigravityCapacityError } from "open-sse/services/accountFallback.js
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials } from "../services/tokenRefresh.js";
 import { refreshAndUpdateCredentials } from "@/shared/services/providerCredentials";
-import { refreshProviderQuota } from "@/shared/services/providerQuotaTracker";
 import { allocateProviderAttemptTimestamp } from "@/shared/services/providerRateLimitEvidence";
 import {
   getModelQuotaFamily,
@@ -633,7 +632,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
     let credentials;
     try {
-      credentials = await getProviderCredentials(provider, excludeConnectionIds, model, {
+      credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, {
         signal: requestSignal,
         modelCandidates,
         quotaFamily,
@@ -701,14 +700,6 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     }
     attemptCounts.set(credentials.connectionId, priorAttempts + 1);
     totalAttempts += 1;
-
-    // Refresh stale/missing provider quota outside the credential-selection
-    // mutex. Batch 2 deduplicates concurrent subscribers and fences late work.
-    if (credentials._quotaPreflight?.shouldRefresh && credentials._connection) {
-      refreshProviderQuota(credentials._connection, { signal: requestSignal }).catch((error) => {
-        if (error?.name !== "AbortError") log.warn("QUOTA", "Background quota refresh failed");
-      });
-    }
 
     if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
 

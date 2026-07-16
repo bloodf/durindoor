@@ -1,4 +1,4 @@
-import { getProviderCredentials, extractApiKey, evaluateApiKeyAuth, markAccountUnavailable } from "../services/auth.js";
+import { getProviderCredentialsWithQuotaPreflight, extractApiKey, evaluateApiKeyAuth, markAccountUnavailable } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { handleMusicGenerationCore } from "open-sse/handlers/musicGenerationCore.js";
@@ -36,7 +36,7 @@ export async function handleMusicGeneration(request) {
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, { preferredConnectionId });
+    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, { preferredConnectionId });
 
     if (!credentials || credentials.allRateLimited) {
       if (credentials?.allRateLimited) {

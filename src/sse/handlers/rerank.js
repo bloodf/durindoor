@@ -1,5 +1,5 @@
 import {
-  getProviderCredentials,
+  getProviderCredentialsWithQuotaPreflight,
   markAccountUnavailable,
   clearAccountError,
   extractApiKey,
@@ -87,7 +87,7 @@ async function handleSingleModelRerank(modelStr, body, request, apiKey) {
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model);
+    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model);
 
     if (!credentials || credentials.allRateLimited) {
       if (credentials?.allRateLimited) {

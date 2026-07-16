@@ -3,6 +3,7 @@ import { quotaIdentityKey } from "../../src/shared/utils/quotaSnapshot.js";
 
 const mocks = vi.hoisted(() => ({
   getProviderConnections: vi.fn(),
+  getProviderConnectionById: vi.fn(),
   updateProviderConnection: vi.fn(),
   getSettings: vi.fn(),
   getProxyPools: vi.fn(),
@@ -13,6 +14,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/localDb", () => ({
   getProviderConnections: mocks.getProviderConnections,
+  getProviderConnectionById: mocks.getProviderConnectionById,
   updateProviderConnection: mocks.updateProviderConnection,
   getSettings: mocks.getSettings,
   getProxyPools: mocks.getProxyPools,

@@ -1,6 +1,6 @@
 import {
   extractApiKey, evaluateApiKeyAuth,
-  getProviderCredentials, markAccountUnavailable,
+  getProviderCredentialsWithQuotaPreflight, markAccountUnavailable,
 } from "../services/auth.js";
 import { getSettings, getApiKeyByKey } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
@@ -107,7 +107,7 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, re
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model);
+    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model);
 
     if (!credentials || credentials.allRateLimited) {
       if (credentials?.allRateLimited) {

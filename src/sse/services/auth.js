@@ -1,5 +1,5 @@
 import {
-  getProviderConnections, getApiKeyByKey, validateApiKey,
+  getProviderConnections, getProviderConnectionById, getApiKeyByKey, validateApiKey,
   updateProviderConnection, getSettings, getProxyPools,
   getQuotaReservationPressure,
 } from "@/lib/localDb";
@@ -13,8 +13,10 @@ import { timingSafeEqual } from "node:crypto";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import {
   buildQuotaResourceKeys,
+  evaluateProviderQuotaPreflight,
   inspectProviderQuota,
 } from "@/shared/services/providerQuotaPreflight";
+import { refreshProviderQuota } from "@/shared/services/providerQuotaTracker";
 import {
   clearProviderRateLimitEvidence,
   recordProviderRateLimitEvidence,
@@ -497,6 +499,138 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     return projectProviderCredentials(connection, quotaDecisions.get(connection.id) || null);
   } finally {
     if (!releaseAfterPredecessor && resolveMutex) resolveMutex();
+  }
+}
+
+/**
+ * Get provider credentials with live upstream quota preflight (OmniRoute #6742).
+ *
+ * getProviderCredentials() only consults *persisted* quota snapshots when
+ * skipping connections, so a connection whose snapshot is stale or never
+ * recorded can be selected while already out of quota upstream. This wrapper
+ * routes credential selection through the shared quota preflight exactly
+ * once: when the chosen connection's cache decision asks for a refresh
+ * (`shouldRefresh`), it awaits refreshProviderQuota(), evaluates the freshly
+ * returned exact-source snapshots, and — when upstream reports the account
+ * exhausted — re-calls the plain selector with the caller's original
+ * exclusions. The refresh persists authoritative snapshots, so the selector's
+ * own quota inspection natively skips the exhausted account and produces the
+ * standard next-account or allRateLimited fallback (with correct retry
+ * metadata). No exclusion-set accumulation and no synthetic unavailability
+ * marks: persisted rows remain the single authority for both skip and
+ * fallback shape.
+ *
+ * Fail-open semantics preserve every existing fallback: a refresh that
+ * throws, is unsupported, or resolves with no usable result leaves the
+ * original credentials untouched; `null` / `allRateLimited` results pass
+ * through unchanged; AbortError always propagates. A connection is refreshed
+ * at most once per call, so a stale/repository-mismatched loader that never
+ * reflects tracker persistence cannot loop the same account forever — the
+ * second stale decision for an already-refreshed id is returned fail-open.
+ *
+ * Mirrors upstream `getProviderCredentialsWithQuotaPreflight` (OmniRoute PR
+ * #6742 swapped its credentialed route call sites to it). Durindoor maps 12:
+ * chat, embeddings, fetch, imageEdit, imageGeneration, moderations, music,
+ * rerank, search, stt, tts, video. Best-effort single-attempt routes
+ * (count_tokens, Gemini-native v1beta) intentionally keep the plain selector.
+ *
+ * @param {string} provider - Provider name
+ * @param {Set<string>|string|null} excludeConnectionIds - Connection ID(s) to exclude (for retry with next account)
+ * @param {string|null} model - Model name for per-model rate limit filtering
+ */
+export async function getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds = null, model = null, options = {}) {
+  const signal = options?.signal || null;
+  const providerId = resolveProviderId(provider);
+  const quotaRefresher = options?.quotaRefresher || refreshProviderQuota;
+  const resourceKeys = options?.resourceKeys || buildQuotaResourceKeys({
+    provider: providerId,
+    modelCandidates: options?.modelCandidates || (model ? [model] : []),
+    quotaFamily: options?.quotaFamily || null,
+  });
+  // Bound live refreshes to one per connection id per call: if a loader never
+  // reflects tracker persistence, the same account cannot loop forever.
+  const refreshedConnectionIds = new Set();
+
+  let credentials = await getProviderCredentials(provider, excludeConnectionIds, model, options);
+
+  while (true) {
+    // Unavailable/error fallbacks pass through untouched.
+    if (!credentials || credentials.allRateLimited || !credentials.connectionId || credentials.connectionId === "noauth") {
+      return credentials;
+    }
+    const connectionId = credentials.connectionId;
+    const connection = credentials._connection;
+    if (!credentials._quotaPreflight?.shouldRefresh || !connection || refreshedConnectionIds.has(connectionId)) {
+      return credentials;
+    }
+    refreshedConnectionIds.add(connectionId);
+
+    let refreshResult;
+    try {
+      refreshResult = await quotaRefresher(connection, { signal });
+    } catch (error) {
+      if (error?.name === "AbortError") throw error;
+      log.warn("QUOTA", `${provider} | preflight refresh failed for ${String(connectionId).slice(0, 8)}; proceeding fail-open`);
+      return credentials;
+    }
+    throwIfAborted(signal);
+
+    // Missing/unsupported result: nothing was fetched or persisted, so keep
+    // the original credentials (fail-open).
+    if (!refreshResult) {
+      return credentials;
+    }
+
+    // The tracker runs the credential refresher (persisting any rotated OAuth
+    // tokens) BEFORE the quota fetch, so every resolved result — usable,
+    // blocked, or non-success — may carry fresher credentials than the row we
+    // selected. Reload the connection row and re-project with fresh tokens,
+    // WITHOUT a second strategy commit (the selection already committed).
+    const reloadFreshProjection = async () => {
+      try {
+        const freshRow = await getProviderConnectionById(connectionId);
+        if (!freshRow || freshRow.id !== connectionId || resolveProviderId(freshRow.provider) !== providerId) {
+          return credentials;
+        }
+        return await projectProviderCredentials(freshRow, credentials._quotaPreflight || null);
+      } catch (error) {
+        if (error?.name === "AbortError") throw error;
+        return credentials;
+      }
+    };
+
+    // Non-success outcome (timeout/provider_error/unauthenticated/…): no
+    // blocking snapshots were persisted, so the account stays eligible —
+    // fail-open on quota but still return the freshest credentials.
+    if (refreshResult.outcome !== "success" || !Array.isArray(refreshResult.snapshots)) {
+      return reloadFreshProjection();
+    }
+
+    // Immediate decision for logging only — persisted rows are the authority
+    // for the reselect. Wall-clock now: snapshots were just fetched, and an
+    // injected `options.now` (tests) must not make them look future-stale.
+    const decision = evaluateProviderQuotaPreflight(refreshResult.snapshots, {
+      connectionId,
+      provider: providerId,
+      resourceKeys,
+      now: Date.now(),
+      refreshSupported: true,
+    });
+    if (!decision?.skip) {
+      // Upstream says the account is usable — return it with fresh tokens.
+      return reloadFreshProjection();
+    }
+
+    // Upstream reports this account exhausted/blocked. The refresh persisted
+    // authoritative snapshots, so re-call the plain selector with the
+    // caller's ORIGINAL exclusions: its quota inspection now marks the
+    // account `skip` natively, yielding the next eligible account or the
+    // standard allRateLimited fallback with correct retry metadata.
+    log.info("AUTH", `${provider} | quota preflight blocked ${String(connectionId).slice(0, 8)} (reason=${decision.reason || "unknown"}); reselecting`);
+    credentials = await getProviderCredentials(provider, excludeConnectionIds, model, {
+      ...options,
+      now: Date.now(),
+    });
   }
 }
 

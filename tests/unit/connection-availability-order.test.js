@@ -38,6 +38,18 @@ describe("isConnectionAvailable", () => {
     expect(isConnectionAvailable({ testStatus: "error" }, NOW)).toBe(false);
     expect(isConnectionAvailable({ testStatus: "unavailable", modelLock_x: FUTURE }, NOW)).toBe(false);
   });
+
+  it("is false for a disabled connection even with a healthy last probe", () => {
+    // Disabled rows cannot serve requests now; a stale active/success
+    // testStatus must not classify them as available.
+    expect(isConnectionAvailable({ testStatus: "active", isActive: false }, NOW)).toBe(false);
+    expect(isConnectionAvailable({ testStatus: "success", isActive: false }, NOW)).toBe(false);
+  });
+
+  it("treats a missing isActive as enabled", () => {
+    expect(isConnectionAvailable({ testStatus: "active", isActive: undefined }, NOW)).toBe(true);
+    expect(isConnectionAvailable({ testStatus: "active", isActive: true }, NOW)).toBe(true);
+  });
 });
 
 describe("sortConnectionsByAvailability", () => {
@@ -75,5 +87,17 @@ describe("sortConnectionsByAvailability", () => {
     sortConnectionsByAvailability(connections, NOW);
 
     expect(connections.map((c) => c.id)).toEqual(["a", "b"]);
+  });
+
+  it("sorts disabled connections into the unavailable group behind enabled-healthy ones", () => {
+    const connections = [
+      { id: "disabled-healthy", testStatus: "success", isActive: false },
+      { id: "enabled-healthy", testStatus: "active", isActive: true },
+      { id: "enabled-unhealthy", testStatus: "error", isActive: true },
+    ];
+
+    const sorted = sortConnectionsByAvailability(connections, NOW);
+
+    expect(sorted.map((c) => c.id)).toEqual(["enabled-healthy", "disabled-healthy", "enabled-unhealthy"]);
   });
 });

@@ -366,19 +366,24 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
   };
 
   // Reorder connections by availability (upstream 9router #2558): available
-  // first, stable ties keep manual order. allSettled waits for every write (no
-  // Promise.all early-reject race); any network error or non-OK response
-  // refetches the server order instead of leaving a false optimistic order.
+  // first, stable ties keep manual order. Persist order by writing in REVERSE
+  // desired order with priority: 0 — each PUT resequences priorities 1..N
+  // (reorderInTx) and moves the zero-priority target strictly to the front (no
+  // tie possible against 1..N rows), so reverse writes land exactly in `sorted`
+  // order. Any failure refetches the server order.
   const handleReorderByStatus = async () => {
     const sorted = sortConnectionsByAvailability(connections);
     setConnections(sorted);
-    const results = await Promise.allSettled(
-      sorted.map(async (conn, idx) => {
-        const res = await fetch(`/api/providers/${conn.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ priority: idx }) });
-        if (!res.ok) throw new Error(`Failed to update priority for ${conn.id}: ${res.status}`);
-      })
-    );
-    if (results.some((r) => r.status === "rejected")) await fetch_();
+    let failed = false;
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      try {
+        const res = await fetch(`/api/providers/${sorted[i].id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ priority: 0 }) });
+        if (!res.ok) failed = true;
+      } catch {
+        failed = true;
+      }
+    }
+    if (failed) await fetch_();
   };
 
   const handleDelete = async (id) => {

@@ -960,29 +960,30 @@ export default function ProviderDetailPage() {
   };
 
   // Reorder connections by availability (upstream 9router #2558): available
-  // connections first, stable ties keep manual priority order. Persisted as
-  // sequential priorities. allSettled waits for every write (no Promise.all
-  // early-reject race); any network error or non-OK response refetches the
-  // server order instead of leaving a false optimistic order.
+  // connections first, stable ties keep manual priority order. Persist order by
+  // writing in REVERSE desired order with priority: 0 — each PUT resequences
+  // priorities 1..N (reorderInTx) and moves the zero-priority target strictly
+  // to the front (no tie possible against 1..N rows), so reverse writes land
+  // exactly in `sorted` order. Any failure refetches the server order.
   const handleReorderByStatus = async () => {
     const sorted = sortConnectionsByAvailability(connections);
     setConnections(sorted);
 
-    const results = await Promise.allSettled(
-      sorted.map(async (conn, idx) => {
-        const res = await fetch(`/api/providers/${conn.id}`, {
+    let failed = false;
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      try {
+        const res = await fetch(`/api/providers/${sorted[i].id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ priority: idx }),
+          body: JSON.stringify({ priority: 0 }),
         });
-        if (!res.ok) throw new Error(`Failed to update priority for ${conn.id}: ${res.status}`);
-      })
-    );
-    const failed = results.filter((r) => r.status === "rejected");
-    if (failed.length > 0) {
-      console.log("Error reordering by status:", failed[0].reason);
-      await fetchConnections();
+        if (!res.ok) failed = true;
+      } catch (error) {
+        console.log("Error reordering by status:", error);
+        failed = true;
+      }
     }
+    if (failed) await fetchConnections();
   };
 
   const selectedConnections = connections.filter((conn) => selectedConnectionIds.includes(conn.id));

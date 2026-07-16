@@ -34,6 +34,9 @@ export function getEffectiveConnectionStatus(connection, now = Date.now()) {
  * @returns {boolean} whether the connection can serve requests now
  */
 export function isConnectionAvailable(connection, now = Date.now()) {
+  // A disabled connection cannot serve requests now regardless of how healthy
+  // its last probe looked — exclude it from the available group.
+  if (connection.isActive === false) return false;
   const status = getEffectiveConnectionStatus(connection, now);
   return status === "active" || status === "success";
 }

@@ -32,6 +32,14 @@ export function kiroToOpenAIResponse(chunk, state) {
   if (chunk.object === "chat.completion.chunk" && chunk.choices) {
     if (chunk.usage && (chunk.usage.kiro_credits !== undefined || chunk.usage.kiro_credit_unit !== undefined)) {
       const { kiro_credits, kiro_credit_unit, ...usage } = chunk.usage;
+      // If stripping Kiro-only fields leaves a zero-field object, omit usage
+      // entirely so OpenAI clients do not receive a present-but-empty usage
+      // object on the finish chunk.
+      if (Object.keys(usage).length === 0) {
+        const stripped = { ...chunk };
+        delete stripped.usage;
+        return stripped;
+      }
       return { ...chunk, usage };
     }
     return chunk;

@@ -16,6 +16,7 @@ import {
   normalizeUsage,
 } from "../../open-sse/utils/usageTracking.js";
 import { createPassthroughStreamWithLogger } from "../../open-sse/utils/stream.js";
+import { translateResponse } from "../../open-sse/translator/index.js";
 import { kiroToOpenAIResponse } from "../../open-sse/translator/response/kiro-to-openai.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 
@@ -333,6 +334,54 @@ describe("Kiro credit usage — format filtering", () => {
     // Input chunk left unmutated (internal accounting reads raw usage earlier).
     expect(chunk.usage.kiro_credits).toBe(0.0123);
     expect(chunk.usage.kiro_credit_unit).toBe("credit");
+  });
+
+  it("kiroToOpenAIResponse omits usage entirely when the chunk is credit-only", () => {
+    const chunk = {
+      id: "chatcmpl-1",
+      object: "chat.completion.chunk",
+      created: 1,
+      model: "kiro",
+      choices: [],
+      usage: { kiro_credits: 0.0123, kiro_credit_unit: "credit" },
+    };
+    const out = kiroToOpenAIResponse(chunk, {});
+    // No client-facing token fields remain after stripping Kiro-only keys; the
+    // resulting chunk must not carry a present-but-empty usage object.
+    expect(out).not.toHaveProperty("usage");
+    // Original chunk still has credits for internal accounting.
+    expect(chunk.usage.kiro_credits).toBe(0.0123);
+  });
+
+  it("Responses projection preserves Kiro credits seeded in shared state", () => {
+    // Reproduce the Kiro → OpenAI → Responses chain. state.usage must be seeded
+    // from the raw chunk before translation (as stream.js does), then survive
+    // the OpenAI-to-Responses projection without clobbering provider credits.
+    const state = {};
+    const raw = {
+      id: "chatcmpl-1",
+      object: "chat.completion.chunk",
+      created: 1,
+      model: "kiro",
+      choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+      usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8, kiro_credits: 0.0123, kiro_credit_unit: "credit" },
+    };
+    state.usage = extractUsage(raw);
+    // translateResponse target=KIRO, source=OPENAI_RESPONSES: first Kiro→OpenAI,
+    // then OpenAI→Responses.
+    const events = translateResponse(FORMATS.KIRO, FORMATS.OPENAI_RESPONSES, raw, state);
+    // The provider credit metadata seeded in shared state must survive the
+    // Responses projection, and the client usage must omit Kiro-only fields.
+    expect(state.usage.kiro_credits).toBe(0.0123);
+    expect(state.usage.kiro_credit_unit).toBe("credit");
+    const completed = events.find((e) => e.event === "response.completed");
+    expect(completed).toBeDefined();
+    const respUsage = completed.data.response.usage;
+    expect(respUsage).toBeDefined();
+    expect(respUsage.input_tokens).toBe(5);
+    expect(respUsage.output_tokens).toBe(3);
+    expect(respUsage).not.toHaveProperty("kiro_credits");
+    expect(respUsage).not.toHaveProperty("kiro_credit_unit");
   });
 });
 

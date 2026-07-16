@@ -44,7 +44,14 @@ Common reset patterns:
 
 Treat displayed reset windows as operational hints unless the provider explicitly guarantees them.
 
-## Durable Provider Quota Contract
+## Streaming Usage Translation
+
+Response translators keep provider-specific metering fields internally while exposing only standard token fields to clients.
+
+- Kiro usage chunks may contain `kiro_credits` and `kiro_credit_unit` alongside normal token counts. These fields are preserved in the request-local `state.usage` object for internal accounting and the final usage summary, but they are stripped from any chunk forwarded to OpenAI, Claude, or Responses API clients.
+- When Kiro reports only credit information and no standard token fields, the forwarded chunk omits the `usage` property entirely instead of sending an empty object.
+- Fallback token counts derived from Kiro metering or context events are marked with `estimated: true`. The `estimated` flag travels through direct routes (e.g., Kiro → Claude) so downstream consumers do not treat inferred counts as authoritative provider metrics. Only a strict boolean `true` is accepted as the marker.
+- When projecting an OpenAI chat-completions usage object into the Responses API, DurinDoor merges the chunk's usage fields into the existing `state.usage` rather than replacing it. This keeps provider-only fields such as Kiro credits intact while still letting the latest public token values win.
 
 Schema version 7 adds the runtime-neutral persistence boundary used by the quota integration program. It stores provider-reported observations separately from local request accounting:
 

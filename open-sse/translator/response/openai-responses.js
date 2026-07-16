@@ -30,8 +30,12 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
   }
 
   if (chunk.model) state.model = chunk.model;
-  if (chunk.usage && typeof chunk.usage === "object") state.usage = chunk.usage;
-  
+  // Merge rather than overwrite so provider-only fields already extracted
+  // into shared state (e.g. Kiro credits) survive the Responses projection.
+  if (chunk.usage && typeof chunk.usage === "object") {
+    state.usage = { ...(state.usage || {}), ...chunk.usage };
+  }
+
   if (!chunk.choices?.length) {
     // Usage-only chunks trail finish_reason when include_usage is enabled upstream.
     // Complete only when usage was actually captured — an empty-choices chunk without

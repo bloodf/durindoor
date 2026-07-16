@@ -176,8 +176,6 @@ async function fetchRegistryModelsFetcherIds(connection, guard) {
     clearTimeout(timeoutId);
   }
 }
-// Matches provider IDs that are upstream/cross-instance connections (contain a UUID suffix)
-const UPSTREAM_CONNECTION_RE = /[-_][0-9a-f]{8,}$/i;
 
 // LLM kind sentinel — combos/models with no explicit kind default to LLM
 export const LLM_KIND = "llm";
@@ -561,7 +559,12 @@ async function buildModelsListImpl(kindFilter, guard) {
             )
           : providerModels.map((model) => model.id);
 
-        if (isCompatibleProvider && rawModelIds.length === 0 && !UPSTREAM_CONNECTION_RE.test(providerId)) {
+        if (isCompatibleProvider && rawModelIds.length === 0) {
+          // Compatible providers (openai-compatible-*, anthropic-compatible-*) may
+          // carry a UUID-v4 suffix in their node ID, which would falsely match
+          // the old UUID suffix guard and skip dynamic model discovery. Always
+          // attempt a live /models fetch for compatible providers (through the
+          // SSRF validation guard).
           rawModelIds = await fetchCompatibleModelIds(conn, guard);
         }
 

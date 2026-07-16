@@ -6,35 +6,24 @@
 import { describe, it, expect } from "vitest";
 import { getPricingForModel } from "../../open-sse/providers/pricing.js";
 
+const KIRO_TIERS = [
+  { tier: "sol", input: 5.0, output: 30.0 },
+  { tier: "terra", input: 2.5, output: 15.0 },
+  { tier: "luna", input: 1.0, output: 6.0 },
+];
+
 describe("getPricingForModel kiro synthetic suffixes (#2596)", () => {
-  it("kiro gpt-5.6-sol base price", () => {
-    const p = getPricingForModel("kiro", "gpt-5.6-sol");
-    expect(p?.input).toBe(5.0);
-    expect(p?.output).toBe(30.0);
-  });
-
-  it("kiro gpt-5.6-sol-thinking strips synthetic suffix to Sol price", () => {
-    const p = getPricingForModel("kiro", "gpt-5.6-sol-thinking");
-    expect(p?.input).toBe(5.0);
-    expect(p?.output).toBe(30.0);
-  });
-
-  it("kiro gpt-5.6-terra-agentic strips synthetic suffix to Terra price", () => {
-    const p = getPricingForModel("kiro", "gpt-5.6-terra-agentic");
-    expect(p?.input).toBe(2.5);
-    expect(p?.output).toBe(15.0);
-  });
-
-  it("kr gpt-5.6-luna-thinking strips synthetic suffix to Luna price (kr alias)", () => {
-    const p = getPricingForModel("kr", "gpt-5.6-luna-thinking");
-    expect(p?.input).toBe(1.0);
-    expect(p?.output).toBe(6.0);
-  });
-
-  it("kr gpt-5.6-luna-agentic strips synthetic suffix to Luna price", () => {
-    const p = getPricingForModel("kr", "gpt-5.6-luna-agentic");
-    expect(p?.input).toBe(1.0);
-    expect(p?.output).toBe(6.0);
+  it.each(KIRO_TIERS.flatMap((t) => [
+    [`kiro gpt-5.6-${t.tier}`, "kiro", `gpt-5.6-${t.tier}`, t.input, t.output],
+    [`kiro gpt-5-6-${t.tier}`, "kiro", `gpt-5-6-${t.tier}`, t.input, t.output],
+    [`kiro gpt-5.6-${t.tier}-thinking`, "kiro", `gpt-5.6-${t.tier}-thinking`, t.input, t.output],
+    [`kiro gpt-5-6-${t.tier}-thinking`, "kiro", `gpt-5-6-${t.tier}-thinking`, t.input, t.output],
+    [`kr gpt-5.6-${t.tier}-agentic`, "kr", `gpt-5.6-${t.tier}-agentic`, t.input, t.output],
+    [`kr gpt-5-6-${t.tier}-agentic`, "kr", `gpt-5-6-${t.tier}-agentic`, t.input, t.output],
+  ]))("%s maps to tier price", (_label, provider, model, input, output) => {
+    const p = getPricingForModel(provider, model);
+    expect(p?.input).toBe(input);
+    expect(p?.output).toBe(output);
   });
 
   it("non-Kiro gpt-5.6-sol-thinking keeps generic pattern price (unchanged)", () => {

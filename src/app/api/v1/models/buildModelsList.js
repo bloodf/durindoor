@@ -415,11 +415,14 @@ async function buildModelsListImpl(kindFilter, guard) {
   // connection's custom prefix), so map each exposed alias back to the
   // provider id — needed for combo capability aggregation on ids like
   // `mykr/<model>` whose prefix is not a registered provider alias.
-  const aliasToProviderId = {};
+  const aliasToProviderId = Object.fromEntries(
+    Object.entries(PROVIDER_ID_TO_ALIAS).map(([id, alias]) => [alias, id]),
+  );
+  // Overlay active connections so custom prefixes (providerSpecificData.prefix)
+  // and the provider's static alias both map back to the provider id. Saved combos
+  // may still reference the static alias even after a prefix is configured, and
+  // the no-connection fallback catalog also needs the static alias map.
   for (const [providerId, conn] of activeConnectionByProvider) {
-    // Byte-for-byte the outputAlias derivation used when emitting model ids
-    // below: same fallback chain, same trim, case preserved (combo member ids
-    // match case-sensitively against these aliases).
     const staticAlias = PROVIDER_ID_TO_ALIAS[providerId] ?? providerId;
     const prefix = isRecord(conn.providerSpecificData) ? conn.providerSpecificData.prefix : undefined;
     const outputAlias = (
@@ -428,6 +431,8 @@ async function buildModelsListImpl(kindFilter, guard) {
       || staticAlias
     ).trim();
     aliasToProviderId[outputAlias] = providerId;
+    aliasToProviderId[staticAlias] = providerId;
+    aliasToProviderId[providerId] = providerId;
   }
 
   const addStaticProviderModels = (providerId, alias, { hasCredentials = false } = {}) => {

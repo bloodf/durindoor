@@ -16,7 +16,7 @@
 - **OAuth**: regression-test Codex OAuth connection dedup — Codex same-email logins remain isolated by account and provider, preventing silent token overwrite (OmniRoute #6706; behavior already enforced by account-id-scoped dedup).
 
 ## Providers
-- **Kiro**: add the GPT-5.6 family (Sol/Terra/Luna) as synthetic `-thinking`/`-agentic` variants with a 272k context window and per-tier rate multipliers, and expose MITM picker slots for the new base ids (upstream decolua/9router#2596).
+- **Kiro**: add the GPT-5.6 family (Sol/Terra/Luna) as synthetic `-thinking`/`-agentic` variants with a 272k context window and per-tier rate multipliers, expose MITM picker slots for the new base ids, preserve static alias-to-provider mapping for combo capability aggregation, and normalize dash-form ids before pricing lookup (upstream decolua/9router#2596).
 
 # v1.1.0 (2026-07-14)
 

@@ -107,6 +107,10 @@ DurinDoor is configured through environment variables. Set them in your shell, i
 
 Run `durindoor --help` to see all CLI options and flags.
 
+### Per-request token-saver bypass
+
+Send `X-DurinDoor-Token-Saver: off` on a chat request to disable every token saver (RTK, Headroom, compression seam, caveman, ponytail, pxpipe) for that request only. The exact value `off` (case-insensitive) bypasses; any other value keeps savers enabled. The legacy `X-9Router-Token-Saver` header is accepted as an alias for wire compatibility; when both headers are present, `X-DurinDoor-Token-Saver` takes precedence.
+
 ## Supported Providers
 
 DurinDoor supports a wide fellowship of AI providers, including:

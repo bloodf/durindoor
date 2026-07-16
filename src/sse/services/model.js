@@ -1,6 +1,6 @@
 // Re-export from open-sse with localDb integration
 import { getModelAliases, getComboByName, getProviderNodes, getProviderConnections } from "@/lib/localDb";
-import { parseModel as parseModelCore, resolveModelAliasFromMap, getModelInfoCore } from "open-sse/services/model.js";
+import { parseModel as parseModelCore, resolveModelAliasFromMap, getModelInfoCore, stripRedundantNodePrefix } from "open-sse/services/model.js";
 import { filterPaidModels } from "open-sse/providers/pricing.js";
 import { isAutoComboId, familyOfAutoId, resolveAutoCombo } from "open-sse/services/autoComboResolver.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
@@ -46,16 +46,22 @@ export async function getModelInfo(modelStr) {
     // Provider-node prefixes are user-defined. They must not override built-in
     // provider ids/aliases such as `cf`, `cloudflare-ai`, `openai`, or `hf`.
     if (!RESERVED_PROVIDER_PREFIXES.has(parsed.providerAlias)) {
+      // Custom nodes can be addressed by alias (node.prefix) OR by raw
+      // internal node.id (e.g. a combo step `<connId>/<model>`). The id form
+      // never split parsed.model on the node's prefix, so a naive
+      // `owned_by`+id concat (`<connId>/<prefix>/<rawModelId>`) would 400
+      // upstream double-namespaced. Port of OmniRoute #6890: match both
+      // addressing forms and strip one redundant leading `<prefix>/`.
       const openaiNodes = await getProviderNodes({ type: "openai-compatible" });
-      const matchedOpenAI = openaiNodes.find((node) => node.prefix === parsed.providerAlias);
+      const matchedOpenAI = openaiNodes.find((node) => node.prefix === parsed.providerAlias || node.id === parsed.providerAlias);
       if (matchedOpenAI) {
-        return { provider: matchedOpenAI.id, model: parsed.model };
+        return { provider: matchedOpenAI.id, model: stripRedundantNodePrefix(parsed.model, matchedOpenAI.prefix) };
       }
 
       const anthropicNodes = await getProviderNodes({ type: "anthropic-compatible" });
-      const matchedAnthropic = anthropicNodes.find((node) => node.prefix === parsed.providerAlias);
+      const matchedAnthropic = anthropicNodes.find((node) => node.prefix === parsed.providerAlias || node.id === parsed.providerAlias);
       if (matchedAnthropic) {
-        return { provider: matchedAnthropic.id, model: parsed.model };
+        return { provider: matchedAnthropic.id, model: stripRedundantNodePrefix(parsed.model, matchedAnthropic.prefix) };
       }
 
       const embeddingNodes = await getProviderNodes({ type: "custom-embedding" });

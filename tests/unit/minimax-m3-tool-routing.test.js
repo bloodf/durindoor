@@ -182,3 +182,109 @@ describe("MiniMax-M3 tool-call routing (#2533)", () => {
     expect(executeInput.body.tools?.[0]?.function?.name).toBe("get_weather");
   });
 });
+
+describe("MiniMax-M3 OpenAI tool_choice clamp (#2533)", () => {
+  const OPENAI_TOOL_REQ = {
+    model: "MiniMax-M3",
+    messages: [{ role: "user", content: "call tool" }],
+    tools: [{ type: "function", function: { name: "get_weather" } }],
+    tool_choice: "required",
+  };
+
+  it.each(PROVIDERS)("%s: maps 'required' to 'auto'", (provider) => {
+    const translated = translateRequest(
+      FORMATS.OPENAI,
+      FORMATS.OPENAI,
+      "MiniMax-M3",
+      structuredClone(OPENAI_TOOL_REQ),
+      false,
+      null,
+      provider,
+    );
+    expect(translated.tool_choice).toBe("auto");
+  });
+
+  it.each(PROVIDERS)("%s: maps function object to 'auto'", (provider) => {
+    const req = structuredClone(OPENAI_TOOL_REQ);
+    req.tool_choice = { type: "function", function: { name: "get_weather" } };
+    const translated = translateRequest(
+      FORMATS.OPENAI,
+      FORMATS.OPENAI,
+      "MiniMax-M3",
+      req,
+      false,
+      null,
+      provider,
+    );
+    expect(translated.tool_choice).toBe("auto");
+  });
+
+  it.each(PROVIDERS)("%s: preserves 'auto' and 'none'", (provider) => {
+    const auto = { ...structuredClone(OPENAI_TOOL_REQ), tool_choice: "auto" };
+    const none = { ...structuredClone(OPENAI_TOOL_REQ), tool_choice: "none" };
+    expect(translateRequest(
+      FORMATS.OPENAI,
+      FORMATS.OPENAI,
+      "MiniMax-M3",
+      auto,
+      false,
+      null,
+      provider,
+    ).tool_choice).toBe("auto");
+    expect(translateRequest(
+      FORMATS.OPENAI,
+      FORMATS.OPENAI,
+      "MiniMax-M3",
+      none,
+      false,
+      null,
+      provider,
+    ).tool_choice).toBe("none");
+  });
+
+  it.each(PROVIDERS)("%s: leaves absent tool_choice absent", (provider) => {
+    const req = { ...structuredClone(OPENAI_TOOL_REQ) };
+    delete req.tool_choice;
+    const translated = translateRequest(
+      FORMATS.OPENAI,
+      FORMATS.OPENAI,
+      "MiniMax-M3",
+      req,
+      false,
+      null,
+      provider,
+    );
+    expect(translated).not.toHaveProperty("tool_choice");
+  });
+
+  it.each(PROVIDERS)("%s: clamps Claude-source 'any' and 'tool' tool_choice to 'auto'", (provider) => {
+    const anyReq = {
+      ...structuredClone(CLAUDE_TOOL_REQUEST),
+      tool_choice: { type: "any" },
+    };
+    const toolReq = {
+      ...structuredClone(CLAUDE_TOOL_REQUEST),
+      tool_choice: { type: "tool", name: "get_weather" },
+    };
+
+    expect(translateRequest(
+      FORMATS.CLAUDE,
+      FORMATS.OPENAI,
+      "MiniMax-M3",
+      anyReq,
+      false,
+      null,
+      provider,
+    ).tool_choice).toBe("auto");
+
+    expect(translateRequest(
+      FORMATS.CLAUDE,
+      FORMATS.OPENAI,
+      "MiniMax-M3",
+      toolReq,
+      false,
+      null,
+      provider,
+    ).tool_choice).toBe("auto");
+  });
+});

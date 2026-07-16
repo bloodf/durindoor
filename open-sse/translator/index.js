@@ -192,6 +192,19 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     });
   }
 
+  // MiniMax-M3's OpenAI transport does not support forced tool_choice values
+  // ("required" or function objects); clamp to "auto" to keep tools enabled.
+  if (
+    targetFormat === FORMATS.OPENAI
+    && (provider === "minimax" || provider === "minimax-cn")
+    && translationModel === "MiniMax-M3"
+  ) {
+    const tc = result?.tool_choice;
+    if (tc === "required" || (tc && typeof tc === "object")) {
+      result.tool_choice = "auto";
+    }
+  }
+
   // Final step: prepare request for Claude format endpoints
   if (targetFormat === FORMATS.CLAUDE) {
     const normalizesNativeClaudeTransport = PROVIDERS[provider]?.quirks?.normalizeNativeClaudeTransport

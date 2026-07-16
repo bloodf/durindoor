@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { detectFormat, getTargetFormat } from "open-sse/services/provider.js";
+import { detectFormat, getTargetFormat, resolveTransport } from "open-sse/services/provider.js";
 import { translateRequest } from "open-sse/translator/index.js";
 import { FORMATS } from "open-sse/translator/formats.js";
 import { parseSuffix } from "open-sse/translator/concerns/thinkingUnified.js";
@@ -141,6 +141,10 @@ export async function POST(request) {
           projectId: connection.projectId,
           providerSpecificData: connection.providerSpecificData
         };
+
+        // Attach the resolved transport so the executor uses the model-selected URL/auth headers.
+        const runtimeTransport = resolveTransport(provider, targetFormat);
+        if (runtimeTransport) credentials.runtimeTransport = runtimeTransport;
 
         const executor = getExecutor(provider);
         const url = executor.buildUrl(resolvedModel.upstreamModel, stream, 0, credentials);

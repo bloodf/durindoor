@@ -6,6 +6,7 @@
 - **GitHub Copilot**: route Claude models through Copilot's native `/v1/messages` endpoint so prompt-cache token counts (`cached_tokens`) surface; non-Claude models keep `/chat/completions` (upstream 9router #2608).
 
 ## Fixes
+- **MiniMax-M3**: attach the OpenAI transport in the dashboard translator step 3 so the executor uses the `/v1/text/chatcompletion_v2` endpoint and matching headers; clamp unsupported `tool_choice` values (`"required"` and function objects) to `"auto"` on the OpenAI transport (upstream decolua/9router#2533).
 - **Claude**: map `claude-fable-5` and `claude-mythos-5` to `claude-adaptive` thinking format; sanitize unsigned, invalid, or default-signature historical thinking blocks and never synthesize placeholder thinking for those models. Preserve Opus/Sonnet signed-thinking history and placeholder behavior.
 - **Anthropic**: do not trigger account fallback for `invalid_request_error` 400 responses; `providerFieldStrips` no longer strips top-level `thinking` when a 400 error points to a nested `messages.*.content.*.thinking` path.
 - **Bootstrap**: strip empty-string `process.env` values before app modules load so Docker `-e KEY=` no longer overrides real values and crash-loops the container (OmniRoute #6828).

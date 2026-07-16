@@ -1266,14 +1266,31 @@ async function drainCancelledPanelCalls(calls, pendingIndexes, timeoutMs) {
  * @param {string} [options.comboName] - Combo name (logging)
  * @param {string} [options.judgeModel] - Judge model; falls back to panel[0]
  * @param {Object} [options.tuning] - Override FUSION_DEFAULTS (minPanel, grace, timeout)
+ * @param {Object} [options.contextRequirements] - Optional per-combo context-window
+ *   requirements; filters the panel BEFORE fan-out so an ineligible model is
+ *   never called (same eligibility semantics as handleComboChat).
  * @returns {Promise<Response>}
  */
-export async function handleFusionChat({ body, models, handleSingleModel, log, comboName, judgeModel, tuning }) {
-  const panel = Array.isArray(models) ? models.filter(Boolean) : [];
-  if (panel.length === 0) {
+export async function handleFusionChat({ body, models, handleSingleModel, log, comboName, judgeModel, tuning, contextRequirements = null }) {
+  const allModels = Array.isArray(models) ? models.filter(Boolean) : [];
+  if (allModels.length === 0) {
     return new Response(
       JSON.stringify({ error: { message: "Fusion combo has no models" } }),
       { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  // Context-requirements eligibility filter must run here too: the fusion
+  // branch in chat.js returns before handleComboChat, so without this call a
+  // configured min-context filter would be silently ignored for fusion combos.
+  const eligibleModels = filterByContextRequirements(allModels, contextRequirements, log);
+  const panel = sortByContextSize(eligibleModels, contextRequirements, log);
+  if (!Array.isArray(panel) || panel.length === 0) {
+    const msg = `Combo "${comboName}" has no models matching context requirements`;
+    log.warn("FUSION", msg);
+    return new Response(
+      JSON.stringify({ error: { message: msg } }),
+      { status: 503, headers: { "Content-Type": "application/json" } }
     );
   }
 

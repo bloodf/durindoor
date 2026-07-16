@@ -334,4 +334,91 @@ describe("fusion combo", () => {
       vi.useRealTimers();
     }
   });
+
+  // Context-requirements eligibility must apply to fusion combos too —
+  // the chat handler's fusion branch returns before handleComboChat, so without
+  // the in-engine filter a configured min-context requirement was silently
+  // ignored and every panel model got called.
+  describe("context requirements", () => {
+    // Registry-grounded fixtures (same as combo-context-requirements.test.js):
+    const LARGE = "github-models/openai/gpt-4.1"; // contextLength 1047576
+    const SMALL = "github-models/microsoft/Phi-4"; // contextLength 16384
+    const UNKNOWN = "custom/no-catalog-entry"; // no registry context anywhere
+
+    it("filters the panel BEFORE fan-out so an ineligible model is never called", async () => {
+      const called = [];
+      const handleSingleModel = vi.fn(async (_b, model) => {
+        called.push(model);
+        return okResponse(`answer from ${model}`);
+      });
+      const res = await handleFusionChat({
+        body: { messages: [{ role: "user", content: "Q" }] },
+        models: [SMALL, LARGE],
+        handleSingleModel,
+        log,
+        comboName: "fusion-ctx",
+        contextRequirements: { minContextWindow: 100000, contextFilterMode: "strict" },
+      });
+      expect(res.status).toBe(200);
+      expect(called).not.toContain(SMALL);
+      expect(called).toContain(LARGE);
+    });
+
+    it("returns 503 and calls nothing when every member fails the requirement", async () => {
+      const handleSingleModel = vi.fn(async () => okResponse("should-not-run"));
+      const res = await handleFusionChat({
+        body: { messages: [{ role: "user", content: "Q" }] },
+        models: [SMALL, UNKNOWN],
+        handleSingleModel,
+        log,
+        comboName: "fusion-ctx-empty",
+        contextRequirements: { minContextWindow: 100000, contextFilterMode: "strict" },
+      });
+      expect(res.status).toBe(503);
+      expect(handleSingleModel).not.toHaveBeenCalled();
+      const body = await res.json();
+      expect(body.error.message).toMatch(/no models matching context requirements/i);
+    });
+
+    it("strict mode with minContextWindow 0 keeps known sizes but drops unknown-context models", async () => {
+      const called = [];
+      const handleSingleModel = vi.fn(async (_b, model) => {
+        called.push(model);
+        return okResponse(`answer from ${model}`);
+      });
+      const res = await handleFusionChat({
+        body: { messages: [{ role: "user", content: "Q" }] },
+        models: [SMALL, UNKNOWN],
+        handleSingleModel,
+        log,
+        comboName: "fusion-ctx-zero",
+        contextRequirements: { minContextWindow: 0, contextFilterMode: "strict" },
+      });
+      expect(res.status).toBe(200);
+      expect(called).toContain(SMALL);
+      expect(called).not.toContain(UNKNOWN);
+    });
+
+    it("preferLargeContext orders the panel so the largest-context member leads (default judge)", async () => {
+      const called = [];
+      const handleSingleModel = vi.fn(async (_b, model) => {
+        called.push(model);
+        return okResponse(`answer from ${model}`);
+      });
+      // Panel given small-first; preference must reorder to large-first, and the
+      // default judge falls back to panel[0] → the largest-context member.
+      const res = await handleFusionChat({
+        body: { messages: [{ role: "user", content: "Q" }] },
+        models: [SMALL, LARGE],
+        handleSingleModel,
+        log,
+        comboName: "fusion-ctx-prefer",
+        contextRequirements: { preferLargeContext: true },
+      });
+      expect(res.status).toBe(200);
+      expect(called[0]).toBe(LARGE);
+      // Judge defaults to panel[0] and runs LAST → largest-context model synthesizes.
+      expect(called.at(-1)).toBe(LARGE);
+    });
+  });
 });

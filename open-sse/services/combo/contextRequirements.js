@@ -119,8 +119,11 @@ export function getKnownContextWindow(modelStr) {
 function parseRequirements(requirements) {
   if (!requirements || typeof requirements !== "object") return null;
   const { minContextWindow, preferLargeContext, contextFilterMode = "lenient" } = requirements;
+  // minContextWindow: 0 is a VALID configured minimum: it keeps every model
+  // with a known context size but still lets strict mode drop unknown-context
+  // targets. Treating 0 as "unset" would silently disable strict filtering.
   const min =
-    typeof minContextWindow === "number" && Number.isFinite(minContextWindow) && minContextWindow > 0
+    typeof minContextWindow === "number" && Number.isFinite(minContextWindow) && minContextWindow >= 0
       ? minContextWindow
       : null;
   const prefer = preferLargeContext === true;

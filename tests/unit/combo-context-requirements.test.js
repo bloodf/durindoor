@@ -65,6 +65,17 @@ describe("applyContextRequirements", () => {
     expect(out).toEqual([LARGE]);
   });
 
+  it("strict mode with minContextWindow 0 keeps known sizes but drops unknown-context models", () => {
+    // Regression: parseRequirements must not collapse a configured 0 minimum to
+    // "unset" — that would silently disable strict unknown-drop.
+    const out = applyContextRequirements(
+      [SMALL, UNKNOWN, LARGE],
+      { minContextWindow: 0, contextFilterMode: "strict" },
+      log
+    );
+    expect(out).toEqual([SMALL, LARGE]);
+  });
+
   it("treats alias-form members identically to canonical-form under filtering", () => {
     const models = [SMALL, LARGE_ALIAS];
     const out = applyContextRequirements(models, { minContextWindow: 128000 }, log);

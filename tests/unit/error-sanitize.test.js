@@ -69,6 +69,78 @@ describe("sanitizeErrorMessage", () => {
     expect(sanitizeErrorMessage("x".repeat(5000))).toHaveLength(4096);
   });
 
+  it("redacts a JSON credential whose closing quote was cut by the 4096 cap (P1)", () => {
+    // Secret starts before the cap; its closing delimiter is beyond it, so
+    // the closed-quote redactor cannot match — the truncated-tail rule must.
+    const pad = "p".repeat(4000);
+    const msg = `err ${pad} {"access_token":"SECRET-PREFIX-abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"}`;
+    const out = sanitizeErrorMessage(msg);
+    expect(msg.length).toBeGreaterThan(4096);
+    expect(out).not.toContain("SECRET-PREFIX");
+    expect(out).toContain("[redacted]");
+  });
+
+  it("redacts URL userinfo whose @ was cut by the 4096 cap (P1)", () => {
+    const pad = "p".repeat(4000);
+    const msg = `connect ${pad} http://user:supersecretpassword-that-keeps-going-past-the-cap-boundary@proxy.local:8080 failed`;
+    const out = sanitizeErrorMessage(msg);
+    expect(msg.length).toBeGreaterThan(4096);
+    expect(out).not.toContain("supersecret");
+  });
+
+  it("leaves a safe terminal URL unchanged even when truncated at 4096 (P1 regression)", () => {
+    const pad = "q".repeat(4060);
+    const msg = `${pad} failed https://api.example.com${"z".repeat(50)}`;
+    const out = sanitizeErrorMessage(msg);
+    expect(msg.length).toBeGreaterThan(4096);
+    // No userinfo tail (no `user:secret` shape) → the host survives the cap.
+    expect(out).toContain("https://api.example.com");
+    expect(out).not.toContain("[redacted]@");
+  });
+
+  it("leaves a safe scheme+host at message end unchanged (no false userinfo redaction)", () => {
+    const msg = "failed https://api.example.com";
+    expect(sanitizeErrorMessage(msg)).toBe(msg);
+  });
+
+  it("leaves a short first-line URL untouched when excess length is in later stack lines", () => {
+    // The 4096 cap falls in the stack tail, not the first line — delimiters
+    // are intact, so no incomplete-tail rule may fire on `localhost:8080`.
+    const firstLine = "GET http://localhost:8080/v1 failed";
+    const stack = "\n    at x " + "s".repeat(5000);
+    const out = sanitizeErrorMessage(firstLine + stack);
+    expect((firstLine + stack).length).toBeGreaterThan(4096);
+    expect(out).toBe(firstLine);
+  });
+
+  it("leaves a numeric port tail unchanged when the first line is capped", () => {
+    // Construct so the 4096 cap ends EXACTLY after `:8080` — a purely numeric
+    // tail is a port, not a password, and must not trigger userinfo redaction.
+    const url = "http://localhost:8080";
+    const prefix = "q".repeat(4096 - url.length - 1) + " ";
+    const msg = `${prefix}${url}${"z".repeat(100)}`;
+    expect(msg.slice(0, 4096).endsWith(":8080")).toBe(true);
+    const out = sanitizeErrorMessage(msg);
+    expect(out).toContain("http://localhost:8080");
+    expect(out).not.toContain("[redacted]@");
+  });
+
+  it("masks a source path with a parenthesized line/column suffix (P2)", () => {
+    const posix = sanitizeErrorMessage("failed at /opt/app/src/app.ts(10,5): boom");
+    expect(posix).not.toContain("/opt/app/src");
+    expect(posix).toContain("<path>");
+    const win = sanitizeErrorMessage("failed at C:\\repo\\src\\app.ts(10,5): boom");
+    expect(win).not.toContain("C:\\repo\\src");
+    expect(win).toContain("<path>");
+  });
+
+  it("masks a source path embedded in a JSON body token (P2)", () => {
+    const msg = '500 {"error":{"message":"failed at /opt/app/src/app.ts:1"}}';
+    const out = sanitizeErrorMessage(msg);
+    expect(out).not.toContain("/opt/app/src");
+    expect(out).toContain("<path>");
+  });
+
   it("passes a safe message through unchanged", () => {
     expect(sanitizeErrorMessage("Model not found")).toBe("Model not found");
     expect(sanitizeErrorMessage("Invalid JSON body")).toBe("Invalid JSON body");

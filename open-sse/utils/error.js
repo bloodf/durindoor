@@ -545,18 +545,21 @@ function looksLikeAbsolutePath(tok) {
   if (!isPosix && !isWindows) return false;
   const dot = tok.lastIndexOf(".");
   if (dot <= 0 || dot === tok.length - 1) return false;
-  const ext = tok.slice(dot + 1).split(":", 1)[0].toLowerCase();
+  // Strip a parenthesized line/col suffix (`app.ts(10,5)`) before the colon
+  // form so the extension check sees `ts`, not `ts(10,5` (Codex P2).
+  const ext = tok.slice(dot + 1).replace(/\(.*$/, "").split(":", 1)[0].toLowerCase();
   return SOURCE_EXT.includes(ext);
 }
 
 function maskSourcePaths(line) {
   // Split on captured separators to preserve original whitespace. Stack frames
-  // wrap paths in `("...")` — strip those wrappers for the detection test,
-  // then replace the WHOLE token so no path fragment survives adjacent to
-  // punctuation.
+  // wrap paths in `("...")` and JSON/key-value bodies wrap them in
+  // `"key":"value"` — strip those wrappers for the detection test, then
+  // replace the WHOLE token so no path fragment survives adjacent to
+  // punctuation (Codex P2: `{"path":"/opt/app.ts"}` must still mask).
   const parts = line.split(/(\s+)/);
   for (let i = 0; i < parts.length; i++) {
-    const core = parts[i].replace(/^[("']+|[)"',.;:]+$/g, "");
+    const core = parts[i].replace(/^[("'{]+|[)"',.;:}]+$/g, "").replace(/^[A-Za-z0-9_-]+":"/, "");
     if (core && looksLikeAbsolutePath(core)) parts[i] = "<path>";
   }
   return parts.join("");
@@ -584,9 +587,20 @@ function maskSourcePaths(line) {
 export function sanitizeErrorMessage(message) {
   // Cap BEFORE tokenization (upstream MAX_ERROR_LEN) so a pathological
   // multi-MB single-line message cannot stall the whitespace-token walker.
-  const raw = String(message || "Upstream provider error").slice(0, 4096);
+  // When the cap actually cut the message, a credential tail can lose the
+  // closing delimiter its redactor needs (`"...@`, `"..."`) — redact such an
+  // incomplete tail too, but ONLY in the truncated form so a safe terminal
+  // URL (`https://api.example.com`) or ordinary text is untouched otherwise
+  // (Codex P1 on OmniRoute #6886).
+  const full = String(message || "Upstream provider error");
+  // The incomplete-tail rules below apply only when the 4096 cap cut the
+  // FIRST line itself (a long single-line credential). If the excess length
+  // lives in later stack lines, the first line ended normally and its
+  // delimiters are intact — tail redaction would be a false positive.
+  const raw = full.slice(0, 4096);
+  const firstLineCut = full.length > 4096 && !raw.includes("\n") && !raw.includes("\r");
   const firstLine = raw.split(/\r?\n/)[0].trim();
-  return maskSourcePaths(firstLine)
+  let out = maskSourcePaths(firstLine)
     .replace(/\b(https?|socks5h?):\/\/[^@\s/]+@/gi, "$1://[redacted]@")
     .replace(/\bBearer\s+\S+/gi, "Bearer [redacted]")
     .replace(/\b(?:sk[-_][A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{12,}|ya29\.[A-Za-z0-9._-]{12,}|AIza[A-Za-z0-9_-]{20,})\b/gi, "[redacted]")
@@ -600,6 +614,20 @@ export function sanitizeErrorMessage(message) {
       "$1[redacted]",
     )
     .replace(/file:\/\/\S+/g, "[path]")
-    .replace(/\/(?:Users|home|var|tmp)\/\S+/g, "[path]")
-    .slice(0, 4096) || "Upstream provider error";
+    .replace(/\/(?:Users|home|var|tmp)\/\S+/g, "[path]");
+  if (firstLineCut) {
+    // The 4096 cut may have removed a credential's closing delimiter, leaving
+    // an unredacted secret prefix at the end of the capped text. Redact an
+    // incomplete JSON credential tail and an incomplete URL userinfo tail
+    // (`user:secret` shape, no `@`; a purely numeric second segment is a
+    // port, not a password) — anchored to the end so complete,
+    // delimiter-closed forms above are never double-touched (Codex P1).
+    out = out
+      .replace(
+        /("(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|authorization[-_]?code|oauth[-_]?code|code[-_]?verifier|oauth[-_]?state|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)"\s*:\s*")[^"]+$/i,
+        '$1[redacted]"',
+      )
+      .replace(/\b(https?|socks5h?):\/\/[^@\s/:]+:(?![0-9]+$)[^@\s/]+$/i, "$1://[redacted]@");
+  }
+  return out.slice(0, 4096) || "Upstream provider error";
 }

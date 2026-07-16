@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getProviderConnections: vi.fn(),
   updateProviderConnection: vi.fn(),
+  recordProviderConnectionFallbackState: vi.fn(),
   validateApiKey: vi.fn(),
   getSettings: vi.fn(),
   getApiKeyByKey: vi.fn(),
@@ -20,6 +21,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/localDb", () => ({
   getProviderConnections: mocks.getProviderConnections,
   updateProviderConnection: mocks.updateProviderConnection,
+  recordProviderConnectionFallbackState: mocks.recordProviderConnectionFallbackState,
   validateApiKey: mocks.validateApiKey,
   getSettings: mocks.getSettings,
   getApiKeyByKey: mocks.getApiKeyByKey,
@@ -100,6 +102,7 @@ describe("xAI video proxy (9router#2593)", () => {
     expect(JSON.parse(init.body)).toEqual({ model: "grok-imagine-video", prompt: "a cat on the moon", duration: 6 });
     // Account-pinning header returned for later polls.
     expect(res.headers.get("x-9router-connection-id")).toBe("xai-1");
+    expect(res.headers.get("access-control-expose-headers")).toContain("x-9router-connection-id");
   });
 
   it("GET polls https://api.x.ai/v1/videos/{id} with auth", async () => {
@@ -122,6 +125,7 @@ describe("xAI video proxy (9router#2593)", () => {
     expect(url).toBe("https://api.x.ai/v1/videos/vid-123");
     expect(init.method).toBe("GET");
     expect(init.headers.Authorization).toBe(`Bearer ${XAI_CONNECTION.apiKey}`);
+    expect(res.headers.get("access-control-expose-headers")).toContain("x-9router-connection-id");
   });
 
   it("returns 401 when API key required but missing", async () => {
@@ -152,10 +156,12 @@ describe("xAI video proxy (9router#2593)", () => {
     expect((await res.json()).error.message).toBe("Invalid JSON body");
   });
 
-  it("returns 400 for unknown action", async () => {
+  it("returns 400 for unknown action without touching connection state", async () => {
     const req = jsonRequest("http://localhost/v1/videos/dance", { prompt: "x" });
     const res = await handleVideoCreate(req, "dance");
     expect(res.status).toBe(400);
+    expect(mocks.recordProviderConnectionFallbackState).not.toHaveBeenCalled();
+    expect(mocks.updateProviderConnection).not.toHaveBeenCalled();
   });
 
   it("sanitizes bearer tokens and credential secrets from upstream error text", async () => {

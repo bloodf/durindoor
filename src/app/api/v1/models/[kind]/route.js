@@ -1,6 +1,7 @@
 import { buildModelsList } from "../buildModelsList.js";
 import { buildModelsResponse } from "../_shared.js";
 import { headOkResponse, headNotFoundResponse } from "open-sse/translator/validate.js";
+import { getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 
 // URL slug → service kind(s). `web` covers both webSearch and webFetch.
 const KIND_SLUG_MAP = {
@@ -44,7 +45,9 @@ export async function GET(request, { params }) {
       );
     }
 
-    const data = await buildModelsList(kindFilter);
+    // #6966: resolve the local-first SSRF guard for live model discovery (see
+    // ../route.js); buildModelsList defaults to the same policy for direct callers.
+    const data = await buildModelsList(kindFilter, getProviderValidationGuard());
     return buildModelsResponse(request, data);
   } catch (error) {
     console.log("Error fetching models by kind:", error);

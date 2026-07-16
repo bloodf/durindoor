@@ -112,14 +112,15 @@ describe("#6731 apikey 429 explicit quota-exhausted text", () => {
 // DB, catching any ordering/persistence regression the direct tests cannot.
 describe("#6731 markAccountUnavailable propagation", () => {
   beforeEach(() => {
-    vi.useFakeTimers();
-    vi.setSystemTime(1_800_000_000_000);
+    vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
     vi.clearAllMocks();
     mocks.getProviderConnections.mockResolvedValue([
       { id: "oc-1", provider: "ollama-cloud", backoffLevel: 0 },
     ]);
   });
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   const load = async () => (await import("../../src/sse/services/auth.js")).markAccountUnavailable;
 

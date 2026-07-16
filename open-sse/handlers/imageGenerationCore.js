@@ -193,7 +193,15 @@ export async function handleImageGenerationCore({
       parsed = await providerResponse.json();
     }
   } catch (parseError) {
-    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, parseError.message || `Invalid response from ${provider}`);
+    // An adapter may tag a parse/validation error with an explicit HTTP status
+    // (e.g. 422 for a per-request content rejection) to distinguish it from a
+    // generic upstream failure. Only honor a sane client/server error status;
+    // anything else stays a 502.
+    const tagged = Number(parseError?.status);
+    const status = Number.isInteger(tagged) && tagged >= 400 && tagged <= 599
+      ? tagged
+      : HTTP_STATUS.BAD_GATEWAY;
+    return createErrorResult(status, parseError.message || `Invalid response from ${provider}`);
   }
 
   if (onRequestSuccess) await onRequestSuccess();

@@ -135,6 +135,58 @@ describe("OAuth live model catalog proxy routing", () => {
       .toBe("Bearer copilot-new");
   });
 
+  it("limits auto to base and thinking variants while expanding gpt-5.6 fully", async () => {
+    // decolua/9router#2596 — the shared generator used by the live path must
+    // turn one upstream GPT-5.6 row into the 4 synthetic variants carrying
+    // 272k context + upstreamModelId back to the base id, while the `auto`
+    // row gains only its -thinking variant (never -agentic/-thinking-agentic).
+    mocks.proxyAwareFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        models: [
+          {
+            modelId: "gpt-5.6-sol",
+            modelName: "GPT 5.6 Sol",
+            tokenLimits: { maxInputTokens: 272000 },
+            rateMultiplier: 2.4,
+          },
+          { modelId: "auto", modelName: "Auto" },
+        ],
+      }),
+    });
+    mocks.refreshKiroToken.mockResolvedValue({
+      accessToken: "kiro-access",
+      refreshToken: "kiro-refresh",
+    });
+
+    const result = await resolveKiroModels({
+      accessToken: "kiro-access",
+      refreshToken: "kiro-refresh",
+      providerSpecificData: {},
+    }, {
+      forceRefresh: true,
+      log: { info: vi.fn(), warn: vi.fn(), debug: vi.fn() },
+      proxyOptions: strictRoute,
+    });
+
+    const ids = result?.models.map((m) => m.id) ?? [];
+    expect(ids).toEqual(
+      expect.arrayContaining([
+        "gpt-5.6-sol",
+        "gpt-5.6-sol-thinking",
+        "gpt-5.6-sol-agentic",
+        "gpt-5.6-sol-thinking-agentic",
+        "auto",
+        "auto-thinking",
+      ])
+    );
+    expect(ids).not.toContain("auto-agentic");
+    expect(ids).not.toContain("auto-thinking-agentic");
+    const sol = result.models.find((m) => m.id === "gpt-5.6-sol");
+    expect(sol).toMatchObject({ contextLength: 272000, upstreamModelId: "gpt-5.6-sol" });
+  });
+
   it("redacts proxy credentials from catalog warnings", async () => {
     mocks.proxyAwareFetch.mockRejectedValue(
       new Error("connect failed via http://alice:secret@proxy.internal:8080")

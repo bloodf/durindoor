@@ -23,6 +23,10 @@
 // 2.0+, Grok, Perplexity). Verify with: curl -s https://models.dev/api.json
 
 import { matchPattern } from "./pricing.js";
+import {
+  KIRO_GPT_5_6_FAMILY,
+  buildKiroGpt56Variants,
+} from "./models/kiroVariants.js";
 
 /**
  * Safe floor — every resolved result is merged over this so consumers
@@ -107,7 +111,22 @@ export const MODEL_CAPABILITIES = {
 /**
  * Provider-specific capability overrides. Keyed by provider alias/id.
  */
+const KIRO_GPT_5_6_PROVIDER_CAPS = Object.fromEntries(
+  KIRO_GPT_5_6_FAMILY.flatMap(buildKiroGpt56Variants).map((m) => [m.id, {
+    vision: true, reasoning: true, search: true,
+    thinkingFormat: "openai", contextWindow: m.contextLength, maxOutput: 128000,
+  }])
+);
+
 export const PROVIDER_CAPABILITIES = {
+  // Kiro GPT-5.6 family (decolua/9router#2596): 272k context, OpenAI-style
+  // reasoning, vision + search. One shared descriptor spread over every
+  // generated synthetic variant id (base/-thinking/-agentic/-thinking-agentic)
+  // so the 12 keys can never drift from the catalog in providerModels.js.
+  // Exposed under both the provider id ("kiro") and its short alias ("kr") —
+  // callers pass either.
+  kiro: KIRO_GPT_5_6_PROVIDER_CAPS,
+  kr: KIRO_GPT_5_6_PROVIDER_CAPS,
   // ClinePass proxies through Vercel's OpenAI Chat Completions API, which only
   // accepts reasoning.effort in {none,minimal,low,medium,high,xhigh}. Force
   // "openai" so thinkingUnified.js emits valid Vercel enum values. Keys are the
@@ -537,13 +556,17 @@ export function getCapabilitiesForModel(provider, model) {
 
   if (!model) return finalize({ ...DEFAULT_CAPABILITIES });
 
+  // Vendor-prefixed ids ("openai/gpt-5.6-sol") resolve against the bare id.
+  const baseModel = model.includes("/") ? model.split("/").pop() : model;
+
   // 1. Provider-specific override
-  if (provider && PROVIDER_CAPABILITIES[provider]?.[model]) {
-    return finalize({ ...DEFAULT_CAPABILITIES, ...PROVIDER_CAPABILITIES[provider][model] });
+  if (provider) {
+    const providerCaps = PROVIDER_CAPABILITIES[provider];
+    if (providerCaps?.[model]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[model] });
+    if (providerCaps?.[baseModel]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[baseModel] });
   }
 
-  // 2. Canonical exact (strip vendor prefix: "anthropic/claude-opus-4.7" -> "claude-opus-4.7")
-  const baseModel = model.includes("/") ? model.split("/").pop() : model;
+  // 2. Canonical exact
   if (MODEL_CAPABILITIES[baseModel]) return finalize({ ...DEFAULT_CAPABILITIES, ...MODEL_CAPABILITIES[baseModel] });
   if (MODEL_CAPABILITIES[model]) return finalize({ ...DEFAULT_CAPABILITIES, ...MODEL_CAPABILITIES[model] });
 

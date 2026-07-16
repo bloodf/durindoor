@@ -32,6 +32,10 @@ import {
   regionFromProfileArn,
   resolveKiroRegion,
 } from "../config/kiroRegions.js";
+import {
+  buildKiroModelVariants,
+  stripKiroSyntheticSuffixes,
+} from "../providers/models/kiroVariants.js";
 
 const KIRO_RUNTIME_SDK_VERSION = "1.0.0";
 const KIRO_AGENT_OS = "windows";
@@ -251,15 +255,10 @@ const catalogCache = new Map();
 
 /**
  * Strip the `-agentic` and/or `-thinking` suffixes from a synthetic id, if
- * any. Used only for display naming when a Kiro upstream id happens to look
- * synthetic (defensive).
+ * any. The implementation lives in `providers/models/kiroVariants.js` next to
+ * the variant generator so the live and static catalogs share one source.
  */
-function stripSyntheticSuffixes(id) {
-  let out = id;
-  if (out.endsWith("-agentic")) out = out.slice(0, -"-agentic".length);
-  if (out.endsWith("-thinking")) out = out.slice(0, -"-thinking".length);
-  return out;
-}
+const stripSyntheticSuffixes = stripKiroSyntheticSuffixes;
 
 /**
  * Build the per-account fingerprint headers Kiro upstream validates.
@@ -296,47 +295,14 @@ function buildKiroFingerprintHeaders(credentials) {
 
 /**
  * Build the synthetic 9router variant set for a single upstream Kiro model.
- *
- * Returns objects shaped for `PROVIDER_MODELS` (`{ id, name }`) so they can
- * be slotted directly into the existing model registry.
- *
- * The `auto` model is special: Kiro picks the underlying model server-side,
- * so the chunked-write `-agentic` prompt is not meaningful (the prompt
- * targets coding-agent file writes). Match CLIProxyAPIPlus and skip
- * `-agentic` / `-thinking-agentic` for `auto`.
+ * Thin wrapper over `buildKiroModelVariants` (providers/models/kiroVariants.js)
+ * so the static PROVIDER_MODELS.kr catalog and this live expansion share one
+ * generator — including the `auto` special-case that skips `-agentic` /
+ * `-thinking-agentic` (Kiro picks the underlying model server-side, so the
+ * chunked-write agentic prompt is not meaningful; matches CLIProxyAPIPlus).
  */
 function buildVariants(upstream, displayName) {
-  const safeUpstream = stripSyntheticSuffixes(upstream);
-  const display = displayName || `Kiro ${safeUpstream}`;
-  const isAuto = safeUpstream === "auto";
-
-  const variants = [
-    {
-      id: safeUpstream,
-      name: display,
-      capabilities: { thinking: false, agentic: false }
-    },
-    {
-      id: `${safeUpstream}-thinking`,
-      name: `${display} (Thinking)`,
-      capabilities: { thinking: true, agentic: false }
-    }
-  ];
-
-  if (!isAuto) {
-    variants.push({
-      id: `${safeUpstream}-agentic`,
-      name: `${display} (Agentic)`,
-      capabilities: { thinking: false, agentic: true }
-    });
-    variants.push({
-      id: `${safeUpstream}-thinking-agentic`,
-      name: `${display} (Thinking + Agentic)`,
-      capabilities: { thinking: true, agentic: true }
-    });
-  }
-
-  return variants;
+  return buildKiroModelVariants(upstream, displayName);
 }
 
 /**

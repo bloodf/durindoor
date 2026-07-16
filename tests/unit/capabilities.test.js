@@ -35,6 +35,37 @@ describe("getCapabilitiesForModel", () => {
     expect(getCapabilitiesForModel("kiro", "claude-sonnet-5-thinking-agentic")).toMatchObject(claudeSonnet5Expected);
   });
 
+  // decolua/9router#2596 — every Kiro GPT-5.6 synthetic variant resolves the
+  // family's 272k context / 128k output / OpenAI thinking under both provider
+  // keys, and a vendor-prefixed id ("openai/gpt-5.6-sol") hits the same
+  // provider override as the bare id.
+  const kiroGpt56Expected = {
+    contextWindow: 272000,
+    maxOutput: 128000,
+    thinkingFormat: "openai",
+    reasoning: true,
+    vision: true,
+    search: true,
+  };
+
+  it("reports Kiro GPT 5.6 models with the Kiro 272k context window", () => {
+    // Representative ids across all 3 tiers and all 4 suffix shapes — the
+    // exact 12-id contract is pinned in kiro-model-slots.test.js.
+    for (const provider of ["kiro", "kr"]) {
+      for (const id of [
+        "gpt-5.6-sol",
+        "gpt-5.6-sol-thinking",
+        "gpt-5.6-terra-agentic",
+        "gpt-5.6-terra-thinking-agentic",
+        "gpt-5.6-luna",
+        "gpt-5.6-luna-thinking",
+      ]) {
+        expect(getCapabilitiesForModel(provider, id), `${provider}/${id}`).toMatchObject(kiroGpt56Expected);
+      }
+      expect(getCapabilitiesForModel(provider, "openai/gpt-5.6-sol"), `${provider} prefixed`).toMatchObject(kiroGpt56Expected);
+    }
+  });
+
   it("uses OpenAI thinking format for NVIDIA-hosted reasoning model families", () => {
     for (const model of [
       "z-ai/glm-5.2",

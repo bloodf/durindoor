@@ -16,6 +16,7 @@ import {
   normalizeUsage,
 } from "../../open-sse/utils/usageTracking.js";
 import { createPassthroughStreamWithLogger } from "../../open-sse/utils/stream.js";
+import { kiroToOpenAIResponse } from "../../open-sse/translator/response/kiro-to-openai.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 
 vi.mock("@/lib/usageDb.js", () => ({
@@ -272,6 +273,40 @@ describe("Kiro credit usage — format filtering", () => {
     expect(filtered.prompt_tokens).toBe(10);
     expect(filtered.kiro_credits).toBeUndefined();
     expect(filtered.kiro_credit_unit).toBeUndefined();
+  });
+
+  it("mergeUsage preserves the estimated marker when merging estimates into credit-only usage", () => {
+    const merged = mergeUsage(
+      { kiro_credits: 0.0123, kiro_credit_unit: "credit" },
+      { prompt_tokens: 10, completion_tokens: 4, total_tokens: 14, estimated: true },
+    );
+    expect(merged.kiro_credits).toBe(0.0123);
+    expect(merged.prompt_tokens).toBe(10);
+    // Estimated counts must stay marked as estimates after the merge.
+    expect(merged.estimated).toBe(true);
+    // A later real (non-estimated) usage object must not downgrade the marker.
+    const remerged = mergeUsage(merged, { prompt_tokens: 10, completion_tokens: 4, estimated: false });
+    expect(remerged.estimated).toBe(true);
+  });
+
+  it("kiroToOpenAIResponse strips kiro credit fields from the client-facing passthrough chunk", () => {
+    const chunk = {
+      id: "chatcmpl-1",
+      object: "chat.completion.chunk",
+      created: 1,
+      model: "kiro",
+      choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+      usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8, kiro_credits: 0.0123, kiro_credit_unit: "credit" },
+    };
+    const out = kiroToOpenAIResponse(chunk, {});
+    // Client never sees provider-only metering fields.
+    expect(out.usage.kiro_credits).toBeUndefined();
+    expect(out.usage.kiro_credit_unit).toBeUndefined();
+    expect(out.usage.prompt_tokens).toBe(5);
+    expect(out.usage.completion_tokens).toBe(3);
+    // Input chunk left unmutated (internal accounting reads raw usage earlier).
+    expect(chunk.usage.kiro_credits).toBe(0.0123);
+    expect(chunk.usage.kiro_credit_unit).toBe("credit");
   });
 });
 

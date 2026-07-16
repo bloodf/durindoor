@@ -24,8 +24,16 @@ export function kiroToOpenAIResponse(chunk, state) {
   
   if (!chunk) return null;
 
-  // If chunk is already in OpenAI format (from executor transform), return as-is
+  // If chunk is already in OpenAI format (from executor transform), return as-is.
+  // Provider-only metering fields (Kiro credits) are internal: strip them from
+  // the client-facing usage so strict OpenAI-schema clients never see them.
+  // Internal accounting is unaffected — stream.js extracted raw usage into
+  // state before translation.
   if (chunk.object === "chat.completion.chunk" && chunk.choices) {
+    if (chunk.usage && (chunk.usage.kiro_credits !== undefined || chunk.usage.kiro_credit_unit !== undefined)) {
+      const { kiro_credits, kiro_credit_unit, ...usage } = chunk.usage;
+      return { ...chunk, usage };
+    }
     return chunk;
   }
   

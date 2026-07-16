@@ -360,6 +360,10 @@ export function mergeUsage(prev, next) {
     // chunk can't poison the whole accumulation (Math.max(x, NaN) is NaN).
     if (typeof v === "number" && Number.isFinite(v)) {
       merged[k] = Math.max(typeof merged[k] === "number" ? merged[k] : 0, v);
+    } else if (k === "estimated" && typeof v === "boolean") {
+      // Estimation marker: once estimated, stays estimated (a real value never
+      // downgrades an estimate to authoritative).
+      merged[k] = merged[k] === true || v === true;
     } else if (v && typeof v === "object") {
       merged[k] = v; // nested details objects: take latest
     } else if (typeof v === "string" && k === "kiro_credit_unit") {

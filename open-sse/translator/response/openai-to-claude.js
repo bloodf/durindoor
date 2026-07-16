@@ -94,6 +94,17 @@ function stopTextBlock(state, results) {
 // Helper: flush buffered tool args + close every open tool_use block
 function flushToolBlocks(state, results) {
   for (const [idx, toolInfo] of state.toolCalls) {
+    // A tool call whose name/args never arrived (only an id chunk was seen) still
+    // reserved a block index but deferred its content_block_start. Emit it now so
+    // the terminal content_block_stop is not orphaned (OmniRoute#6730 edge case).
+    if (!toolInfo.startEmitted) {
+      toolInfo.startEmitted = true;
+      results.push({
+        type: "content_block_start",
+        index: toolInfo.blockIndex,
+        content_block: { type: CLAUDE_BLOCK.TOOL_USE, id: toolInfo.id, name: toolInfo.name || "", input: {} }
+      });
+    }
     // Emit buffered + sanitized args as single delta before stop
     const buffered = state.toolArgBuffers?.get(idx);
     if (buffered) {
@@ -258,34 +269,55 @@ export function openaiToClaudeResponse(chunk, state) {
     for (const tc of delta.tool_calls) {
       const idx = tc.index ?? 0;
 
-      // GLM/fireworks repeats id+null-name on every arg chunk; open block once per idx
+      // Strip the legacy proxy_ prefix from an incoming tool name (if any).
+      const incomingName = (() => {
+        const n = tc.function?.name || "";
+        return n.startsWith(CLAUDE_OAUTH_TOOL_PREFIX) ? n.slice(CLAUDE_OAUTH_TOOL_PREFIX.length) : n;
+      })();
+
+      // A tool call is identified by its id. Some OpenAI-compatible upstreams
+      // (GLM 5.2) stream the id and function.name in SEPARATE SSE chunks. The
+      // Claude protocol cannot patch a content_block_start after it is emitted,
+      // so we register the tool call on the id chunk but DEFER content_block_start
+      // until the name arrives (OmniRoute#6730 / decolua/9router#2077).
+      // GLM/fireworks repeats id+null-name on every arg chunk; register once per idx.
       if (tc.id && !state.toolCalls.has(idx)) {
         stopThinkingBlock(state, results);
         stopTextBlock(state, results);
 
-        const toolBlockIndex = state.nextBlockIndex++;
-        state.toolCalls.set(idx, { id: tc.id, name: tc.function?.name || "", blockIndex: toolBlockIndex });
-
-        // Strip prefix from tool name for response
-        let toolName = tc.function?.name || "";
-        if (toolName.startsWith(CLAUDE_OAUTH_TOOL_PREFIX)) {
-          toolName = toolName.slice(CLAUDE_OAUTH_TOOL_PREFIX.length);
-        }
-
-        results.push({
-          type: "content_block_start",
-          index: toolBlockIndex,
-          content_block: {
-            type: CLAUDE_BLOCK.TOOL_USE,
-            id: tc.id,
-            name: toolName,
-            input: {}
-          }
+        state.toolCalls.set(idx, {
+          id: tc.id,
+          name: incomingName,
+          blockIndex: state.nextBlockIndex++,
+          startEmitted: false
         });
       }
 
+      const toolInfo = state.toolCalls.get(idx);
+      if (toolInfo) {
+        // Capture a late-arriving id or name (streamed after the initial chunk).
+        if (tc.id && !toolInfo.id) toolInfo.id = tc.id;
+        if (incomingName && !toolInfo.startEmitted && !toolInfo.name) toolInfo.name = incomingName;
+
+        // Emit content_block_start once we have a name. If arguments arrive before
+        // any name was ever seen, start the block anyway with the (empty) name so
+        // the input_json_delta stays well-formed.
+        if (!toolInfo.startEmitted && (toolInfo.name || tc.function?.arguments != null)) {
+          toolInfo.startEmitted = true;
+          results.push({
+            type: "content_block_start",
+            index: toolInfo.blockIndex,
+            content_block: {
+              type: CLAUDE_BLOCK.TOOL_USE,
+              id: toolInfo.id,
+              name: toolInfo.name || "",
+              input: {}
+            }
+          });
+        }
+      }
+
       if (tc.function?.arguments) {
-        const toolInfo = state.toolCalls.get(idx);
         if (toolInfo) {
           // Buffer args instead of streaming — sanitize at finish to fix bad params
           if (!state.toolArgBuffers) state.toolArgBuffers = new Map();

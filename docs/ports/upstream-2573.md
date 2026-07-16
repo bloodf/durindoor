@@ -26,11 +26,12 @@ endpoint `/api/v3/chat/completions` instead of the Coding Plan endpoint
 `/api/coding/v3/chat/completions`. Ported exactly as the upstream one-line
 `baseUrl` replacement; no other registry fields touched.
 
-## Files (3)
+## Files (4)
 
 - `open-sse/providers/registry/byteplus.js`
 - `tests/unit/port-2573-byteplus-modelark-endpoint.test.js`
 - `docs/ports/upstream-2573.md`
+- `open-sse/AGENT-INDEX.md` (regenerated via `npm run gen:agent-index`)
 
 ## Verification
 

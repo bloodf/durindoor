@@ -145,6 +145,10 @@ export function normalizeUsage(usage) {
     }
   }
 
+  // Estimation marker must survive normalization so fallback token counts
+  // are never persisted as authoritative numbers.
+  if (usage?.estimated === true) normalized.estimated = true;
+
   // Preserve nested details objects for OpenAI format forwarding
   if (usage?.prompt_tokens_details && typeof usage.prompt_tokens_details === "object") {
     normalized.prompt_tokens_details = usage.prompt_tokens_details;
@@ -229,6 +233,7 @@ export function canonicalizeUsage(usage) {
     result.kiro_credits = kiroCredits;
     if (typeof usage.kiro_credit_unit === "string") result.kiro_credit_unit = usage.kiro_credit_unit;
   }
+  if (usage.estimated === true) result.estimated = true;
   return result;
 }
 
@@ -316,7 +321,8 @@ export function extractUsage(chunk) {
       prompt_tokens_details: chunk.usage.prompt_tokens_details,
       completion_tokens_details: chunk.usage.completion_tokens_details,
       kiro_credits: chunk.usage.kiro_credits,
-      kiro_credit_unit: chunk.usage.kiro_credit_unit
+      kiro_credit_unit: chunk.usage.kiro_credit_unit,
+      estimated: chunk.usage.estimated
     });
   }
 

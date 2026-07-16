@@ -113,6 +113,8 @@ describe("Kiro credit usage — executor", () => {
     // Token counts are estimated, not absent — normal token accounting still works
     expect(usageChunk.usage.prompt_tokens).toBeGreaterThan(0);
     expect(usageChunk.usage.completion_tokens).toBeGreaterThan(0);
+    // Fallback counts must be marked as estimates, never persisted as authoritative.
+    expect(usageChunk.usage.estimated).toBe(true);
   });
 
   it("mixed: metricsEvent tokens and meteringEvent credits land on the same usage object", async () => {
@@ -238,6 +240,30 @@ describe("Kiro credit usage — normalization", () => {
     expect(normalizeUsage({ kiro_credits: -1, kiro_credit_unit: "credit" })).toBeNull();
     expect(canonicalizeUsage({ prompt_tokens: 5, kiro_credits: null }).kiro_credits).toBeUndefined();
     expect(canonicalizeUsage({ prompt_tokens: 5, kiro_credits: -2 }).kiro_credits).toBeUndefined();
+  });
+
+  it("executor-estimated usage keeps the estimated marker through extractUsage and canonicalizeUsage", async () => {
+    // Drive a real credit-only executor stream, then feed the emitted chunk
+    // through the persisted-accounting path — the marker must survive both
+    // boundaries or fallback numbers get persisted as authoritative.
+    const executor = new KiroExecutor();
+    const frames = [
+      createMockFrame("assistantResponseEvent", { content: "OK" }),
+      createMockFrame("messageStopEvent", {}),
+      createMockFrame("meteringEvent", { usage: 0.0097, unit: "credit" }),
+      createMockFrame("contextUsageEvent", { contextUsagePercentage: 12 }),
+    ];
+    const output = await readAllSSE(executor.transformEventStreamToSSE({ body: framesStream(frames) }, "claude-test").body);
+    const usageChunk = parseSSEObjects(output).find((obj) => obj.usage?.estimated === true);
+    expect(usageChunk).toBeDefined();
+
+    const extracted = extractUsage(usageChunk);
+    expect(extracted.estimated).toBe(true);
+    expect(extracted.kiro_credits).toBe(0.0097);
+
+    const canonical = canonicalizeUsage(extracted);
+    expect(canonical.estimated).toBe(true);
+    expect(canonical.kiro_credits).toBe(0.0097);
   });
 
   it("mergeUsage carries kiro_credit_unit when credits arrive after token usage", () => {

@@ -656,7 +656,8 @@ export class KiroExecutor extends BaseExecutor {
                 ...(state.usage || {}),
                 prompt_tokens: estimatedInputTokens,
                 completion_tokens: estimatedOutputTokens,
-                total_tokens: estimatedInputTokens + estimatedOutputTokens
+                total_tokens: estimatedInputTokens + estimatedOutputTokens,
+                estimated: true
               };
             }
 
@@ -720,6 +721,7 @@ export class KiroExecutor extends BaseExecutor {
               prompt_tokens: promptTokens,
               completion_tokens: completionTokens,
               total_tokens: promptTokens + completionTokens,
+              estimated: true
             };
           }
           const finishChunk = {

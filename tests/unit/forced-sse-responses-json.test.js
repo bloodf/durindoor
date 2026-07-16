@@ -106,6 +106,60 @@ describe("forced SSE to JSON format axes", () => {
     expect(ctx.onRequestSuccess).not.toHaveBeenCalled();
   });
 
+  it("strips provider-only kiro credit fields from the client JSON but keeps them for internal accounting", async () => {
+    const creditUsage = { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5, kiro_credits: 0.0097, kiro_credit_unit: "credit" };
+    const raw = [
+      `data: ${JSON.stringify({ id: "chat-upstream", created: 123, model: "gpt-test", choices: [{ index: 0, delta: { role: "assistant", content: "hello" }, finish_reason: null }] })}`,
+      `data: ${JSON.stringify({ id: "chat-upstream", created: 123, model: "gpt-test", choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: creditUsage })}`,
+      "data: [DONE]",
+      "",
+    ].join("\n\n");
+    const ctx = makeContext({
+      sourceFormat: FORMATS.OPENAI,
+      targetFormat: FORMATS.OPENAI,
+      raw,
+      provider: "kiro",
+    });
+    const result = await handleForcedSSEToJson(ctx);
+    expect(result.success).toBe(true);
+    const body = await result.response.json();
+    // Client-facing usage carries the real token counts but no provider-only credit fields.
+    expect(body.usage).toMatchObject({ prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 });
+    expect(body.usage.kiro_credits).toBeUndefined();
+    expect(body.usage.kiro_credit_unit).toBeUndefined();
+    // Internal accounting still receives the raw credits.
+    expect(ctx.appendLog).toHaveBeenCalledWith(expect.objectContaining({
+      tokens: expect.objectContaining({ kiro_credits: 0.0097, kiro_credit_unit: "credit" }),
+    }));
+  });
+
+  it("keeps nonzero Claude input/output tokens and no credit leak when the client speaks Claude", async () => {
+    const creditUsage = { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5, kiro_credits: 0.0097, kiro_credit_unit: "credit" };
+    const raw = [
+      `data: ${JSON.stringify({ id: "chat-upstream", created: 123, model: "gpt-test", choices: [{ index: 0, delta: { role: "assistant", content: "hello" }, finish_reason: null }] })}`,
+      `data: ${JSON.stringify({ id: "chat-upstream", created: 123, model: "gpt-test", choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: creditUsage })}`,
+      "data: [DONE]",
+      "",
+    ].join("\n\n");
+    const ctx = makeContext({
+      sourceFormat: FORMATS.CLAUDE,
+      targetFormat: FORMATS.CLAUDE,
+      raw,
+      provider: "kiro",
+    });
+    const result = await handleForcedSSEToJson(ctx);
+    expect(result.success).toBe(true);
+    const body = await result.response.json();
+    // Claude projection rebuilds usage from prompt/completion tokens — the
+    // strip must not zero them out.
+    expect(body.usage).toMatchObject({ input_tokens: 2, output_tokens: 3 });
+    expect(body.usage.kiro_credits).toBeUndefined();
+    expect(body.usage.kiro_credit_unit).toBeUndefined();
+    expect(ctx.appendLog).toHaveBeenCalledWith(expect.objectContaining({
+      tokens: expect.objectContaining({ kiro_credits: 0.0097 }),
+    }));
+  });
+
   it.each([
     [null, 0],
     ["upstream", 1],

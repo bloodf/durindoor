@@ -36,6 +36,7 @@ import { HTTP_STATUS, COMBO_MODEL_TIMEOUT_MS } from "open-sse/config/runtimeConf
 import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
 import { detectFormat } from "open-sse/services/provider.js";
 import { isAntigravityCapacityError } from "open-sse/services/accountFallback.js";
+import { resolveClientSessionId } from "open-sse/utils/sessionManager.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials } from "../services/tokenRefresh.js";
 import { refreshAndUpdateCredentials } from "@/shared/services/providerCredentials";
@@ -650,6 +651,12 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   // Extract userAgent from request
   const userAgent = request?.headers?.get("user-agent") || "";
 
+  const routingSessionId = resolveClientSessionId({
+    headers: clientRawRequest?.headers,
+    body,
+    scope: provider,
+  });
+
   // Try with available accounts (fallback on errors)
   const excludeConnectionIds = new Set();
   const attemptCounts = new Map();
@@ -679,6 +686,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         signal: requestSignal,
         modelCandidates,
         quotaFamily,
+        sessionId: routingSessionId,
       });
     } catch (error) {
       if (error?.name === "AbortError" || requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");

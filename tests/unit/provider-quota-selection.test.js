@@ -236,6 +236,32 @@ describe("quota-aware provider selection", () => {
     expect(result).toMatchObject({ allRateLimited: true, lastErrorCode: 403, lastError: "Access forbidden", retryAfter: null });
   });
 
+  it("keeps a session sticky when quota ranking would otherwise rotate the account", async () => {
+    mocks.getProviderConnections.mockResolvedValue([
+      { ...connection("one", 1), lastUsedAt: new Date(NOW - 1000).toISOString(), consecutiveUseCount: 1 },
+      connection("two", 2),
+    ]);
+    mocks.getSettings.mockResolvedValue({ fallbackStrategy: "round-robin", stickyRoundRobinLimit: 3 });
+
+    const first = await getProviderCredentials("codex", null, "gpt-5.4", {
+      now: NOW,
+      resourceKeys: ["model:gpt-5.4"],
+      quotaSnapshotsLoader: async () => [providerRow("one", 90), providerRow("two", 10)],
+      sessionId: "sess-sticky-quota",
+    });
+    expect(first.connectionId).toBe("one");
+
+    // Second call reverses the quota preference; without session affinity the
+    // router would pick account two. The session must stay on one.
+    const second = await getProviderCredentials("codex", null, "gpt-5.4", {
+      now: NOW,
+      resourceKeys: ["model:gpt-5.4"],
+      quotaSnapshotsLoader: async () => [providerRow("one", 10), providerRow("two", 90)],
+      sessionId: "sess-sticky-quota",
+    });
+    expect(second.connectionId).toBe("one");
+  });
+
   it("projects the committed round-robin revision instead of the stale selected row", async () => {
     mocks.getSettings.mockResolvedValue({ fallbackStrategy: "round-robin", stickyRoundRobinLimit: 3 });
     mocks.getProviderConnections.mockResolvedValue([

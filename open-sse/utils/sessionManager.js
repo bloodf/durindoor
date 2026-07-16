@@ -151,12 +151,13 @@ function extractAntigravitySession(body) {
     return m ? normalizeSessionId(m[1]) : null;
 }
 
-export function extractClientSessionId(headers, body) {
+export function extractClientSessionId(headers, body, scope = "") {
     const claude = extractClaudeCodeSession(body?.metadata?.user_id);
     if (claude) return `claude:${claude}`;
     const antigravity = extractAntigravitySession(body);
     if (antigravity) return `antigravity:${antigravity}`;
     for (const key of SESSION_HEADER_KEYS) {
+        if (scope === "kiro" && key === "x-client-request-id") continue;
         const v = headerValue(headers, key);
         if (v) return v;
     }
@@ -164,8 +165,12 @@ export function extractClientSessionId(headers, body) {
         normalizeSessionId(body?.prompt_cache_key) ||
         normalizeSessionId(body?.session_id) ||
         normalizeSessionId(body?.conversation_id) ||
-        normalizeSessionId(body?.metadata?.user_id);
+        (scope === "kiro" ? null : normalizeSessionId(body?.metadata?.user_id));
     return fromBody || null;
+}
+
+export function resolveClientSessionId({ headers, body, scope = "" } = {}) {
+    return extractClientSessionId(headers, body, scope);
 }
 
 // Accumulate assistant text from OpenAI/Responses-style input/messages (cap-limited)
@@ -211,7 +216,7 @@ function assistantTextSessionId(scope, body) {
  * @returns {{ sessionId: string, requestScoped: boolean }}
  */
 function resolveSessionIdWithProvenance({ headers, body, connectionId, workspaceId, scope = "" } = {}) {
-    const client = extractClientSessionId(headers, body);
+    const client = extractClientSessionId(headers, body, scope);
     if (client) return { sessionId: client, requestScoped: false };
     const fromAssistant = assistantTextSessionId(`${scope}:${connectionId || ""}`, body);
     if (fromAssistant) return { sessionId: fromAssistant, requestScoped: false };

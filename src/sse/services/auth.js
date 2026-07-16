@@ -3,6 +3,7 @@ import {
   updateProviderConnection, getSettings, getProxyPools,
   getQuotaReservationPressure,
 } from "@/lib/localDb";
+import { MEMORY_CONFIG } from "open-sse/config/runtimeConfig.js";
 import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
 import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, buildModelLockUpdate, getActiveModelLockUntil, isPassthroughConnectionWideError } from "open-sse/services/accountFallback.js";
@@ -41,6 +42,52 @@ export async function hasValidCliToken(request) {
 // Round-robin metadata still needs ordered selection within one provider, but
 // unrelated providers must never queue behind each other's quota/settings I/O.
 const selectionMutexes = new Map();
+
+const sessionAffinityState = new Map();
+const MAX_SESSION_AFFINITIES = 5000;
+
+function normalizeSessionAffinityId(value) {
+  if (typeof value !== "string") return null;
+  const v = value.trim();
+  if (!v || v.length > 256) return null;
+  return v;
+}
+
+function sessionAffinityKey(providerId, sessionId) {
+  return `${providerId}:${sessionId}`;
+}
+
+function rememberSessionAffinity(providerId, sessionId, connectionId) {
+  if (!providerId || !sessionId || !connectionId) return;
+  if (sessionAffinityState.size >= MAX_SESSION_AFFINITIES) {
+    sessionAffinityState.delete(sessionAffinityState.keys().next().value);
+  }
+  sessionAffinityState.set(sessionAffinityKey(providerId, sessionId), {
+    connectionId,
+    lastUsed: Date.now(),
+  });
+}
+
+function getSessionAffinity(providerId, sessionId) {
+  if (!providerId || !sessionId) return null;
+  const entry = sessionAffinityState.get(sessionAffinityKey(providerId, sessionId));
+  if (entry) entry.lastUsed = Date.now();
+  return entry?.connectionId || null;
+}
+
+export function resetProviderSessionAffinity() {
+  sessionAffinityState.clear();
+}
+
+const affinityCleanup = setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of sessionAffinityState) {
+    if (now - entry.lastUsed > MEMORY_CONFIG.sessionTtlMs) {
+      sessionAffinityState.delete(key);
+    }
+  }
+}, MEMORY_CONFIG.sessionCleanupIntervalMs);
+if (affinityCleanup.unref) affinityCleanup.unref();
 
 const NO_AUTH_STORED_DATA_PROVIDERS = new Set(["mimocode"]);
 
@@ -242,6 +289,8 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
   const signal = options?.signal || null;
   const selectionNow = options?.now ?? Date.now();
   throwIfAborted(signal);
+  const sessionId = normalizeSessionAffinityId(options?.sessionId);
+
   // Resolve alias before coordination so aliases for one provider share a turn
   // while independent provider identities remain concurrent.
   const providerId = resolveProviderId(provider);
@@ -438,6 +487,15 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     }
 
     let connection;
+    // For round-robin, honor existing session affinity before quota ranking so
+    // a session that already picked an account stays on it when it remains eligible.
+    const stickyConnectionId = sessionId && strategy === "round-robin"
+      ? getSessionAffinity(providerId, sessionId)
+      : null;
+    const stickyConnection = stickyConnectionId
+      ? availableConnections.find((c) => c.id === stickyConnectionId)
+      : null;
+
     // Pin to preferred connection if specified and available
     if (preferredConnectionId) {
       connection = availableConnections.find((c) => c.id === preferredConnectionId);
@@ -447,6 +505,12 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     }
     if (connection) {
       // skip strategy
+    } else if (stickyConnection) {
+      connection = stickyConnection;
+      log.debug("AUTH", `${provider} | session-sticky ${sessionId.slice(0, 8)} → ${connection.id?.slice(0, 8)}`);
+      connection = await updateProviderConnection(connection.id, {
+        lastUsedAt: new Date().toISOString(),
+      }) || connection;
     } else if (quotaRanked) {
       // Persistent pressure + last-selection history provide the fairness tier
       // for quota-comparable accounts. Atomic acquire remains the final arbiter.
@@ -454,45 +518,59 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     } else if (strategy === "round-robin") {
       const stickyLimit = providerOverride.stickyRoundRobinLimit || settings.stickyRoundRobinLimit || 3;
 
-      // Sort by lastUsed (most recent first) to find current candidate
-      const byRecency = [...availableConnections].sort((a, b) => {
-        if (!a.lastUsedAt && !b.lastUsedAt) return (a.priority || 999) - (b.priority || 999);
-        if (!a.lastUsedAt) return 1;
-        if (!b.lastUsedAt) return -1;
-        return new Date(b.lastUsedAt) - new Date(a.lastUsedAt);
-      });
-
-      const current = byRecency[0];
-      const currentCount = current?.consecutiveUseCount || 0;
-
-      if (current && current.lastUsedAt && currentCount < stickyLimit) {
-        // Stay with current account
-        connection = current;
-        // Update lastUsedAt and increment count (await to ensure persistence)
-        connection = await updateProviderConnection(connection.id, {
-          lastUsedAt: new Date().toISOString(),
-          consecutiveUseCount: (connection.consecutiveUseCount || 0) + 1
-        }) || connection;
-      } else {
-        // Pick the least recently used (excluding current if possible)
+      const pickOldest = () => {
         const sortedByOldest = [...availableConnections].sort((a, b) => {
           if (!a.lastUsedAt && !b.lastUsedAt) return (a.priority || 999) - (b.priority || 999);
           if (!a.lastUsedAt) return -1;
           if (!b.lastUsedAt) return 1;
           return new Date(a.lastUsedAt) - new Date(b.lastUsedAt);
         });
+        return sortedByOldest[0];
+      };
 
-        connection = sortedByOldest[0];
-
-        // Update lastUsedAt and reset count to 1 (await to ensure persistence)
+      if (sessionId) {
+        connection = pickOldest();
         connection = await updateProviderConnection(connection.id, {
           lastUsedAt: new Date().toISOString(),
           consecutiveUseCount: 1
         }) || connection;
+      } else {
+        // Sort by lastUsed (most recent first) to find current candidate
+        const byRecency = [...availableConnections].sort((a, b) => {
+          if (!a.lastUsedAt && !b.lastUsedAt) return (a.priority || 999) - (b.priority || 999);
+          if (!a.lastUsedAt) return 1;
+          if (!b.lastUsedAt) return -1;
+          return new Date(b.lastUsedAt) - new Date(a.lastUsedAt);
+        });
+
+        const current = byRecency[0];
+        const currentCount = current?.consecutiveUseCount || 0;
+
+        if (current && current.lastUsedAt && currentCount < stickyLimit) {
+          // Stay with current account
+          connection = current;
+          // Update lastUsedAt and increment count (await to ensure persistence)
+          connection = await updateProviderConnection(connection.id, {
+            lastUsedAt: new Date().toISOString(),
+            consecutiveUseCount: (connection.consecutiveUseCount || 0) + 1
+          }) || connection;
+        } else {
+          connection = pickOldest();
+
+          // Update lastUsedAt and reset count to 1 (await to ensure persistence)
+          connection = await updateProviderConnection(connection.id, {
+            lastUsedAt: new Date().toISOString(),
+            consecutiveUseCount: 1
+          }) || connection;
+        }
       }
     } else {
       // Default: fill-first (already sorted by priority in getProviderConnections)
       connection = availableConnections[0];
+    }
+
+    if (connection && strategy === "round-robin" && sessionId) {
+      rememberSessionAffinity(providerId, sessionId, connection.id);
     }
 
     throwIfAborted(signal);

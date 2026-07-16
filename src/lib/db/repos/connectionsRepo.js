@@ -171,7 +171,7 @@ function reorderInTx(db, providerId) {
   });
 }
 
-export async function createProviderConnection(data, { shouldCommit, requireNewName } = {}) {
+export async function createProviderConnection(data, { shouldCommit, requireNewName, createOnly = false } = {}) {
   const db = await getAdapter();
   // OAuth flows can be cancelled while an upstream exchange is in flight.
   // Check after the async adapter lookup and immediately before the synchronous
@@ -243,6 +243,14 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
     }
 
     if (existing) {
+      // #6499 — create-only (dashboard "add API key"): a duplicate (provider,
+      // apikey, name) must error, never silently upsert/overwrite. The explicit
+      // update path is updateProviderConnection (PUT /api/providers/[id]).
+      if (createOnly && data.authType === "apikey") {
+        const error = new Error(`A connection named "${data.name}" already exists for this provider`);
+        error.code = "PROVIDER_CONNECTION_ALREADY_EXISTS";
+        throw error;
+      }
       const merged = { ...mergeProviderConnection(existing, data), updatedAt: now };
       upsert(db, merged);
       result = merged;

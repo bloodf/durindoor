@@ -49,7 +49,7 @@ export default function ProviderDetailPage() {
   }, [providerId]);
   const { getCaps } = useModelCaps();
   const [connections, setConnections] = useState([]);
-  const [globalApiKeyConnectionNames, setGlobalApiKeyConnectionNames] = useState([]);
+  const [providerApiKeyConnectionNames, setProviderApiKeyConnectionNames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [providerNode, setProviderNode] = useState(null);
   const [proxyPools, setProxyPools] = useState([]);
@@ -353,7 +353,11 @@ export default function ProviderDetailPage() {
         const allConnections = connectionsData.connections || [];
         const filtered = allConnections.filter(c => c.provider === providerId);
         setConnections(filtered);
-        setGlobalApiKeyConnectionNames(apiKeyConnectionNames(allConnections));
+        // #6499 — the name-based collision scope in createProviderConnection is
+        // (provider, authType=apikey, name): provider-local. Derive default-name
+        // candidates from THIS provider's apikey connections only; using global
+        // names would pointlessly skip "main" just because another provider took it.
+        setProviderApiKeyConnectionNames(apiKeyConnectionNames(filtered));
       }
       if (proxyPoolsRes.ok) {
         setProxyPools(proxyPoolsData.proxyPools || []);
@@ -1954,8 +1958,7 @@ export default function ProviderDetailPage() {
         authHint={providerInfo?.authHint}
         website={providerInfo?.website}
         proxyPools={proxyPools}
-        existingConnectionNames={globalApiKeyConnectionNames}
-        existingConnectionCount={connections.length}
+        existingConnectionNames={providerApiKeyConnectionNames}
         error={addConnectionError}
         onSave={handleSaveApiKey}
         onBulkDone={fetchConnections}

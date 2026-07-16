@@ -139,7 +139,8 @@ export async function POST(request) {
     if (!apiKey && provider !== "ollama-local" && !isNoAuthProvider) {
       return NextResponse.json({ error: `${isWebCookieProvider ? "Cookie value" : "API Key"} is required` }, { status: 400 });
     }
-    const connectionName = name || displayName || AI_PROVIDERS[provider]?.name;
+    const rawConnectionName = name || displayName || AI_PROVIDERS[provider]?.name;
+    const connectionName = typeof rawConnectionName === "string" ? rawConnectionName.trim() : "";
     if (!connectionName) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
@@ -207,20 +208,32 @@ export async function POST(request) {
     }
 
     // Bulk add sends createOnly so a name collision never silently overwrites
-    // an existing key — the repo throws PROVIDER_CONNECTION_NAME_CONFLICT and
-    // we surface a 409 instead of the default upsert.
-    const newConnection = await createProviderConnection({
-      provider,
-      authType: isWebCookieProvider ? "cookie" : "apikey",
-      name: connectionName,
-      apiKey: apiKey || "",
-      priority: priority || 1,
-      globalPriority: globalPriority || null,
-      defaultModel: defaultModel || null,
-      providerSpecificData: mergedProviderSpecificData,
-      isActive: true,
-      testStatus: testStatus || "unknown",
-    }, { requireNewName: createOnly === true });
+    // an existing key (requireNewName → PROVIDER_CONNECTION_NAME_CONFLICT → 409).
+    // #6499 — single dashboard add is always create-only: a duplicate
+    // (provider, apikey, name) must NOT silently upsert/overwrite
+    // (createOnly → PROVIDER_CONNECTION_ALREADY_EXISTS → 409). The repo throws
+    // atomically inside its transaction; the explicit update path is
+    // updateProviderConnection (PUT /api/providers/[id]).
+    let newConnection;
+    try {
+      newConnection = await createProviderConnection({
+        provider,
+        authType: isWebCookieProvider ? "cookie" : "apikey",
+        name: connectionName,
+        apiKey: apiKey || "",
+        priority: priority || 1,
+        globalPriority: globalPriority || null,
+        defaultModel: defaultModel || null,
+        providerSpecificData: mergedProviderSpecificData,
+        isActive: true,
+        testStatus: testStatus || "unknown",
+      }, createOnly === true ? { requireNewName: true } : { createOnly: true });
+    } catch (error) {
+      if (error?.code === "PROVIDER_CONNECTION_ALREADY_EXISTS" || error?.code === "PROVIDER_CONNECTION_NAME_CONFLICT") {
+        return NextResponse.json({ error: error.message, code: error.code }, { status: 409 });
+      }
+      throw error;
+    }
 
     // Hide sensitive fields
     const result = sanitizeProviderConnection(newConnection);

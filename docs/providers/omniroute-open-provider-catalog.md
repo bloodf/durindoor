@@ -6,6 +6,7 @@ This note records the provider-facing scope reviewed from the current open OmniR
 
 - OmniRoute PR #6410: added `hcnsec`, the Huancheng Public API, as an OpenAI-compatible API-key provider. DurinDoor keeps it live-catalog first with `modelsFetcher`, `passthroughModels`, and no static seed models.
 - OmniRoute PR #6311: API-key connection creation now defaults to the first unused name in the `main`, `main-2`, `main-3`, ... sequence based on all existing API-key connection names, not the current provider's raw connection count. DurinDoor still keeps the backend `authType + name` upsert behavior, but the add-connection modal no longer silently reuses an existing global API-key default name, and connection-list refreshes while the modal is open do not wipe in-progress input.
+- OmniRoute PR #6499: reopening the add-key modal after a successful add clears the previous API key and any provider-specific fields (Azure endpoint/deployment, account ID, region, Ollama host) so stale credentials cannot create a duplicate connection. Reset only happens on the closed→open transition; background refetches while the modal is open preserve all typed inputs.
 
 ## Already Covered
 

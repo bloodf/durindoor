@@ -6,6 +6,7 @@ import { normalizeClaudePassthrough } from "../translator/formats/claude.js";
 import { validateOutboundPayload, stripInternalKeys, normalizeToolSchemaRoots } from "../translator/validate.js";
 import { COLORS } from "../utils/stream.js";
 import { createStreamController } from "../utils/streamHandler.js";
+import { classifyQuotaTerminalReason } from "../utils/quotaTerminalReason.js";
 import { createRequestLogger } from "../utils/requestLogger.js";
 import { getModelTargetFormat, getModelStrip, getModelUpstreamId, getModelType, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
 import { PROVIDERS } from "../config/providers.js";
@@ -599,10 +600,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
     },
     onError: (error) => {
       finishProviderRequest();
-      const reason = error?.name === "AbortError"
-        ? "abort"
-        : String(error?.message || "").includes("timeout") ? "timeout" : "stream_error";
-      settleQuota(false, reason);
+      settleQuota(false, classifyQuotaTerminalReason(error));
     },
     onComplete: () => {
       finishProviderRequest();
@@ -779,26 +777,22 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
     }
     trackPendingRequest(cleanModel, provider, connectionId, false, true);
     finishProviderRequest();
-    const terminalReason = error.name === "AbortError"
-      ? "abort"
-      : error.name === "TimeoutError"
-        || String(error?.message || "").toLowerCase().includes("timeout")
-        ? "timeout"
-        : "transport_error";
+    const terminalReason = classifyQuotaTerminalReason(error, { providerSignal, fallback: "transport_error" });
+    const wasClientAbort = terminalReason === "abort";
     await settleQuota(false, terminalReason);
-    appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${error.name === "AbortError" ? 499 : HTTP_STATUS.BAD_GATEWAY}` }).catch(() => { });
+    appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${wasClientAbort ? 499 : HTTP_STATUS.BAD_GATEWAY}` }).catch(() => { });
     saveRequestDetail(buildRequestDetail({
       provider, model: cleanModel, connectionId,
       latency: { ttft: 0, total: Date.now() - requestStartTime },
       tokens: { prompt_tokens: 0, completion_tokens: 0 },
       request: extractRequestConfig(body, stream),
       providerRequest: translatedBody || null,
-      response: { error: sanitizeErrorMessage(error.message || String(error)), status: error.name === "AbortError" ? 499 : 502, thinking: null },
+      response: { error: sanitizeErrorMessage(error.message || String(error)), status: wasClientAbort ? 499 : 502, thinking: null },
       pxpipe: pxpipeSummary,
       status: "error"
     })).catch(() => { });
 
-    if (error.name === "AbortError") {
+    if (wasClientAbort) {
       streamController.handleError(error);
       return { ...createErrorResult(499, "Request aborted"), attemptStartedAt: latestProviderAttemptStartedAt };
     }
@@ -1014,10 +1008,8 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
     return result;
   };
   const failPostResponseHandling = async (error) => {
-    const aborted = error?.name === "AbortError" || providerSignal?.aborted;
-    const timedOut = error?.name === "TimeoutError"
-      || String(error?.message || "").toLowerCase().includes("timeout");
-    const reason = aborted ? "abort" : timedOut ? "timeout" : "stream_error";
+    const reason = classifyQuotaTerminalReason(error, { providerSignal });
+    const aborted = reason === "abort";
     // Await the durable terminal before closing the request controller. The
     // controller invokes the same transition as a safety net, and the local
     // compare-and-set keeps the duplicate callback harmless.

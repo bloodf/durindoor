@@ -1,6 +1,7 @@
 import { HTTP_STATUS, RETRY_CONFIG, DEFAULT_RETRY_CONFIG, resolveRetryEntry, FETCH_CONNECT_TIMEOUT_MS, matchSkipRule, resolveRequestRetryPolicy } from "../config/runtimeConfig.js";
 import { shouldRefreshCredentials } from "../services/oauthCredentialManager.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { boundRelayStreamLifetime, isRelaySseResponse } from "../utils/relayStreamLifecycle.js";
 import { dbg } from "../utils/debugLog.js";
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE } from "../providers/shared.js";
 import { findOffendingField } from "../config/providerFieldStrips.js";
@@ -9,6 +10,7 @@ import {
   prepareProviderAttemptDispatch,
   runQuotaBearingProviderRequest,
   settleProviderAttemptDispatch,
+  transferProviderAttemptDispatch,
 } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 
@@ -269,6 +271,17 @@ export class BaseExecutor {
       const url = this.buildUrl(model, stream, urlIndex, credentials, requestContext);
       const transformedBody = this.transformRequest(model, body, stream, credentials, requestContext);
       const headers = this.buildHeaders(credentials, stream, requestContext);
+      // Forward the client's request id through the relay (OmniRoute#7093),
+      // without overriding an id the executor already set. Headers may arrive
+      // under any casing, so read them through a Headers instance. Relay-only:
+      // direct provider requests keep their existing header shape.
+      if (proxyOptions?.vercelRelayUrl) {
+        const clientRequestId = new Headers(requestContext?.clientHeaders ?? {}).get("x-request-id");
+        if (clientRequestId && new Headers(headers).get("x-request-id") == null) {
+          if (headers instanceof Headers) headers.set("x-request-id", clientRequestId);
+          else headers["x-request-id"] = clientRequestId;
+        }
+      }
       if (transformedBody?.thinking?.display === "summarized") {
         removeBetaFlag(headers, "redact-thinking-2026-02-12");
       }
@@ -334,7 +347,29 @@ export class BaseExecutor {
             }, proxyOptions));
           }
         }
-        clearTimeout(connectTimer);
+        // Relayed SSE (vercel relay): keep the timeout/abort signal live until
+        // the body actually ends — EOF, error, downstream cancel, or caller
+        // abort — so a stalled stream cannot bypass retry/fallback (port of
+        // diegosouzapw/OmniRoute#7093 "bound Bifrost stream lifetime").
+        const relaySse = Boolean(proxyOptions?.vercelRelayUrl) && isRelaySseResponse(response);
+        if (relaySse) {
+          const originalResponse = response;
+          response = new Response(
+            boundRelayStreamLifetime(response.body, {
+              signal: mergedSignal,
+              onFinalize: () => clearTimeout(connectTimer),
+            }),
+            {
+              status: response.status,
+              statusText: response.statusText,
+              headers: response.headers,
+            }
+          );
+          // Keep the quota dispatch ticket reachable through the rebuilt response.
+          transferProviderAttemptDispatch(originalResponse, response);
+        } else {
+          clearTimeout(connectTimer);
+        }
         const ct = response.headers?.get?.("content-type") || "";
         const cl = response.headers?.get?.("content-length") || "?";
         dbg("FETCH", `${this.provider.toUpperCase()} ← ${response.status} | ttft=${Date.now() - fetchT0}ms | ct=${ct} | cl=${cl}`);

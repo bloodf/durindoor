@@ -250,6 +250,44 @@ describe("chat upstream body lifecycle", () => {
     expect((await result.response.json()).choices?.[0]?.finish_reason).toBeTruthy();
   });
 
+  // Port of decolua/9router #2541: an ollama-local backend streams native
+  // /api/chat as application/x-ndjson (raw JSON lines, never SSE). With
+  // targetFormat OLLAMA that content-type is expected — the handler must NOT
+  // block it as an upstream error page (issue #2386), and the translate-mode
+  // transform converts it to the client's OpenAI SSE.
+  it("translates ollama-local native application/x-ndjson streams to client SSE", async () => {
+    const handleError = vi.fn();
+    const ndjson =
+      '{"model":"llama3.2","message":{"role":"assistant","content":"Hi"},"done":false}\n' +
+      '{"model":"llama3.2","message":{"role":"assistant","content":""},"done":true}\n';
+    const result = await handleStreamingResponse({
+      ...common(vi.fn()),
+      provider: "ollama-local",
+      model: "llama3.2",
+      sourceFormat: FORMATS.OPENAI,
+      targetFormat: FORMATS.OLLAMA,
+      providerResponse: new Response(ndjson, {
+        status: 200,
+        headers: { "content-type": "application/x-ndjson; charset=utf-8" },
+      }),
+      reqLogger: null,
+      streamController: {
+        handleError,
+        startTime: Date.now(),
+        isConnected: () => true,
+        handleComplete: () => {},
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(handleError).not.toHaveBeenCalled();
+    expect(result.response.headers.get("content-type")).toContain("text/event-stream");
+    const text = await result.response.text();
+    expect(text).toContain("chat.completion.chunk");
+    expect(text).toContain('"content":"Hi"');
+    expect(text).toContain('"finish_reason":"stop"');
+    expect(text).not.toContain('"done":false');
+  });
+
   it("rejects an empty streaming body and releases through the stream controller", async () => {
     const handleError = vi.fn();
     const result = await handleStreamingResponse({

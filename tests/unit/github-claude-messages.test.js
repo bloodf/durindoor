@@ -542,7 +542,7 @@ describe("GithubExecutor native Claude /v1/messages routing (upstream #2608)", (
         messages: [{ role: "user", content: "hi" }],
         tools: [{ type: "function", function: { name: "get_time", parameters: { type: "object", properties: {} } } }],
         tool_choice: "required",
-        thinking: { budget_tokens: 2048 },
+        thinking: { type: "enabled", budget_tokens: 2048 },
       },
       stream: true,
       credentials,
@@ -599,8 +599,9 @@ describe("GithubExecutor native Claude /v1/messages routing (upstream #2608)", (
         signal: null,
         log: null,
       });
+      const rejected = expect(pending).rejects.toThrow("Provider quota capacity unavailable");
       await vi.runAllTimersAsync();
-      await expect(pending).rejects.toThrow("Provider quota capacity unavailable");
+      await rejected;
       // Quota dispatch is a local capacity failure; no in-place retries.
       expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
     } finally {

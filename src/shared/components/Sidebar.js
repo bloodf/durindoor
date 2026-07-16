@@ -73,7 +73,6 @@ export default function Sidebar({ onClose }) {
   };
 
   return (
-  return (
     <>
       <aside className="flex w-72 flex-col border-r border-border-subtle bg-vibrancy backdrop-blur-xl transition-colors duration-300 min-h-full">
         {/* Logo */}

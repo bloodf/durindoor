@@ -155,10 +155,11 @@ export function spawnUpdaterAndExit(packageName = UPDATER_CONFIG.npmPackageName)
   const updaterPath = ensureRuntimeUpdater(resolveBundledUpdaterPath());
   const isTray = process.env.TRAY_MODE === "1";
   const relaunch = resolveRelaunchCommand();
+  const appPort = String(process.env.PORT || UPDATER_CONFIG.appPort);
   // Relaunch matching original env: tray stays tray, foreground stays foreground
   const relaunchArgs = isTray
-    ? [...relaunch.args, "--tray", "--skip-update"]
-    : [...relaunch.args, "--skip-update"];
+    ? [...relaunch.args, "--tray", "--skip-update", "--port", appPort]
+    : [...relaunch.args, "--skip-update", "--port", appPort];
 
   spawn(process.execPath, [updaterPath], {
     detached: true,
@@ -176,7 +177,7 @@ export function spawnUpdaterAndExit(packageName = UPDATER_CONFIG.npmPackageName)
       UPDATER_WAIT_MAX_MS: String(UPDATER_CONFIG.waitForExitMaxMs),
       UPDATER_WAIT_CHECK_MS: String(UPDATER_CONFIG.waitForExitCheckMs),
       // Prefer live server port so wait/relaunch match instance (not hardcoded default)
-      UPDATER_APP_PORT: String(process.env.PORT || UPDATER_CONFIG.appPort),
+      UPDATER_APP_PORT: appPort,
       UPDATER_RELAUNCH: "1",
       UPDATER_RELAUNCH_CMD: relaunch.cmd,
       UPDATER_RELAUNCH_ARGS: JSON.stringify(relaunchArgs),

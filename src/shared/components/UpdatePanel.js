@@ -10,6 +10,7 @@ import {
   getUpdaterStatusUrl,
   hasExceededStartupBudget,
   isUpdaterFailure,
+  isUpdaterStatusCurrent,
   isUpdaterSuccess,
 } from "@/shared/utils/updaterStatus";
 
@@ -43,6 +44,7 @@ export default function UpdatePanel({
   const countdownRef = useRef(null);
   const cancelledRef = useRef(false);
   const startedAtRef = useRef(0);
+  const statusNotBeforeRef = useRef(0);
 
   const clearTimers = useCallback(() => {
     if (pollRef.current) {
@@ -77,7 +79,8 @@ export default function UpdatePanel({
 
   const startStatusPoll = useCallback(() => {
     clearTimers();
-    const url = getUpdaterStatusUrl();
+    const origin = typeof window !== "undefined" ? window.location.origin : null;
+    const url = getUpdaterStatusUrl(UPDATER_CONFIG.statusPort, origin);
     const poll = async () => {
       if (cancelledRef.current) return;
 
@@ -92,21 +95,45 @@ export default function UpdatePanel({
         if (!res.ok) return;
         const data = await res.json();
         if (cancelledRef.current) return;
+
+        // Reject stale status from a prior update run before doing anything terminal.
+        if (statusNotBeforeRef.current && !isUpdaterStatusCurrent(data, statusNotBeforeRef.current)) {
+          return;
+        }
+
         setStatus(data);
         setPhase("running");
 
         if (isUpdaterSuccess(data)) {
           setPhase("success");
-          // App relaunches itself; keep trying reload until dashboard is back.
+          // App relaunches itself; poll dashboard readiness, then reload once.
           if (!reloadRef.current) {
-            reloadRef.current = setInterval(() => {
-              globalThis.location.reload();
+            const probe = async () => {
+              if (cancelledRef.current) return;
+              try {
+                const ready = await fetch(`${origin || ""}/api/version`, { cache: "no-store" });
+                if (ready.ok) {
+                  clearInterval(reloadRef.current);
+                  reloadRef.current = null;
+                  globalThis.location.reload();
+                  return;
+                }
+              } catch { /* server still coming up */ }
+            };
+            let attempts = 0;
+            const maxAttempts = 30; // ~60s at 2s interval, within budget
+            reloadRef.current = setInterval(async () => {
+              attempts += 1;
+              if (cancelledRef.current) return;
+              if (attempts >= maxAttempts) {
+                clearInterval(reloadRef.current);
+                reloadRef.current = null;
+                failToManual("App restarted but is not responding. Reload manually.");
+                return;
+              }
+              await probe();
             }, 2000);
-            // First attempt slightly delayed so relaunch can bind the port
-            reloadTimeoutRef.current = setTimeout(() => {
-              reloadTimeoutRef.current = null;
-              try { globalThis.location.reload(); } catch { /* ignore */ }
-            }, 2500);
+            probe();
           }
           if (pollRef.current) {
             clearInterval(pollRef.current);
@@ -131,6 +158,7 @@ export default function UpdatePanel({
     setPhase("starting");
     cancelledRef.current = false;
     startedAtRef.current = Date.now();
+    statusNotBeforeRef.current = 0;
 
     try {
       const res = await fetch("/api/version/update", { method: "POST" });
@@ -140,6 +168,16 @@ export default function UpdatePanel({
         // Dev / non-CLI install: auto path disabled — fall back to manual
         failToManual(data.message || `Auto-update unavailable (${res.status})`);
         return;
+      }
+
+      // Capture the server's clock from the response so we can reject stale
+      // status from a previous update run (HTTP Date has 1s precision).
+      const serverDate = res.headers.get("Date");
+      if (serverDate) {
+        const parsed = Date.parse(serverDate);
+        if (Number.isFinite(parsed)) {
+          statusNotBeforeRef.current = parsed;
+        }
       }
 
       // Parent Next server will exit shortly; poll detached updater status

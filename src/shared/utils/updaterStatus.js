@@ -11,9 +11,45 @@ import { UPDATER_CONFIG } from "@/shared/constants/config";
  * `hasExceededStartupBudget`).
  */
 
-/** Status endpoint exposed by the detached updater process (survives Next exit). */
-export function getUpdaterStatusUrl(port = UPDATER_CONFIG.statusPort) {
+/**
+ * Status endpoint exposed by the detached updater process (survives Next exit).
+ *
+ * The detached updater binds 127.0.0.1, so polling must stay local. We keep
+ * the origin parameter for callers that want to supply a LAN hostname, but
+ * the current implementation falls back to localhost for safety (HTTPS/tunnel
+ * origins would require a secure transport the status server does not expose).
+ */
+export function getUpdaterStatusUrl(port = UPDATER_CONFIG.statusPort, origin = null) {
+  if (origin) {
+    try {
+      const url = new URL(origin);
+      // Only use hostname-derived URLs for plain HTTP origins that resolve to
+      // the loopback interface. HTTPS / tunnels / non-local origins are not
+      // reachable because the detached updater binds 127.0.0.1.
+      const hostname = url.hostname;
+      if (url.protocol === "http:" && (hostname === "localhost" || hostname === "127.0.0.1")) {
+        return `http://${hostname}:${port}/update/status`;
+      }
+    } catch {
+      // malformed origin: fall back to localhost below
+    }
+  }
   return `http://127.0.0.1:${port}/update/status`;
+}
+
+/**
+ * Whether a status payload belongs to the current update run. Prevents the
+ * overlay from declaring victory when a stale file from a prior run is served
+ * before the fresh detached updater overwrites it.
+ */
+export function isUpdaterStatusCurrent(status, notBefore) {
+  if (!status || typeof status !== "object" || !Number.isFinite(notBefore)) {
+    return false;
+  }
+  const statusStartedAt = Number(status.startedAt);
+  if (!Number.isFinite(statusStartedAt)) return false;
+  // HTTP Date is second-precision; allow one second of skew.
+  return statusStartedAt >= notBefore - 1000;
 }
 
 /**

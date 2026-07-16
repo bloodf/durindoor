@@ -1,4 +1,6 @@
-import { describe, it, expect } from "vitest";
+import {
+  describe, it, expect,
+} from "vitest";
 import {
   getUpdaterPhaseLabel,
   getUpdaterProgressPercent,
@@ -6,6 +8,7 @@ import {
   getUpdaterStatusUrl,
   hasExceededStartupBudget,
   isUpdaterFailure,
+  isUpdaterStatusCurrent,
   isUpdaterSuccess,
 } from "../../src/shared/utils/updaterStatus.js";
 
@@ -17,6 +20,27 @@ describe("updaterStatus helpers", () => {
     expect(getUpdaterStatusUrl(20129)).toBe("http://127.0.0.1:20129/update/status");
     expect(getUpdaterStatusUrl()).toContain("127.0.0.1");
     expect(getUpdaterStatusUrl()).toContain("/update/status");
+  });
+
+  it("derives status URL from loopback window origin when available", () => {
+    expect(getUpdaterStatusUrl(20129, "http://127.0.0.1:3000")).toBe(
+      "http://127.0.0.1:20129/update/status",
+    );
+    expect(getUpdaterStatusUrl(20129, "http://localhost:3000")).toBe(
+      "http://localhost:20129/update/status",
+    );
+  });
+
+  it("falls back to localhost for non-loopback, https, or malformed origin", () => {
+    expect(getUpdaterStatusUrl(20129, "http://192.168.1.42:3000")).toBe(
+      "http://127.0.0.1:20129/update/status",
+    );
+    expect(getUpdaterStatusUrl(20129, "https://example.com:8443")).toBe(
+      "http://127.0.0.1:20129/update/status",
+    );
+    expect(getUpdaterStatusUrl(20129, "")).toBe("http://127.0.0.1:20129/update/status");
+    expect(getUpdaterStatusUrl(20129, "not-a-url")).toBe("http://127.0.0.1:20129/update/status");
+    expect(getUpdaterStatusUrl(20129, null)).toBe("http://127.0.0.1:20129/update/status");
   });
 
   it("labels known phases", () => {
@@ -74,5 +98,16 @@ describe("updaterStatus helpers", () => {
     expect(isUpdaterFailure(status)).toBe(true);
     expect(isUpdaterSuccess(status)).toBe(false);
     expect(hasExceededStartupBudget(startedAt, startedAt + 5000)).toBe(false);
+  });
+
+  it("rejects stale status from a previous update run", () => {
+    const now = Date.now();
+    expect(isUpdaterStatusCurrent({ startedAt: now }, now)).toBe(true);
+    expect(isUpdaterStatusCurrent({ startedAt: now - 5000 }, now)).toBe(false);
+    // Allow one-second HTTP Date precision tolerance.
+    expect(isUpdaterStatusCurrent({ startedAt: now - 900 }, now)).toBe(true);
+    expect(isUpdaterStatusCurrent({ startedAt: "not-a-number" }, now)).toBe(false);
+    expect(isUpdaterStatusCurrent(null, now)).toBe(false);
+    expect(isUpdaterStatusCurrent({ startedAt: now }, null)).toBe(false);
   });
 });

@@ -1,4 +1,5 @@
 import { ERROR_RULES, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS } from "../config/errorConfig.js";
+import { parseRateLimitEvidence } from "../utils/error.js";
 
 /**
  * Calculate exponential backoff cooldown for rate limits (429)
@@ -18,12 +19,16 @@ export function getQuotaCooldown(backoffLevel = 0) {
  * @param {number} status - HTTP status code
  * @param {string} errorText - Error message text
  * @param {number} backoffLevel - Current backoff level for exponential backoff
- * @returns {{ shouldFallback: boolean, cooldownMs: number, newBackoffLevel?: number }}
+ * @returns {{ shouldFallback: boolean, cooldownMs: number, newBackoffLevel?: number, rateLimitEvidence?: object }}
+ *   `rateLimitEvidence` is present only on an explicit quota-exhausted 429,
+ *   so markAccountUnavailable can persist state:"exhausted" instead of an
+ *   ordinary cooldown.
  */
 export function checkFallbackError(status, errorText, backoffLevel = 0) {
-  const lowerError = errorText
-    ? (typeof errorText === "string" ? errorText : JSON.stringify(errorText)).toLowerCase()
+  const normalizedText = errorText
+    ? (typeof errorText === "string" ? errorText : JSON.stringify(errorText))
     : "";
+  const lowerError = normalizedText.toLowerCase();
 
   // Port-pending guards are explicit feature-not-implemented errors; they should not
   // lock the user's connection or trigger the account fallback cooldown chain.
@@ -37,6 +42,33 @@ export function checkFallbackError(status, errorText, backoffLevel = 0) {
     return { shouldFallback: false, cooldownMs: 0 };
   }
 
+  // OmniRoute #6731: an apikey-category 429 whose body explicitly reports an
+  // exhausted daily/weekly/monthly quota must honor the real reset window, not
+  // the generic exponential backoff. Reuse the native evidence parser so an
+  // explicit "reset in N days/weeks" deadline benches the account precisely.
+  // Only state==="exhausted" applies here — a plain transient 429 (no quota
+  // signal) keeps the exponential-backoff path below untouched.
+  if (status === 429) {
+    const now = Date.now();
+    const evidence = parseRateLimitEvidence({ status, bodyText: normalizedText, now });
+    if (evidence?.state === "exhausted") {
+      // Resetless exhaustion: no parseable deadline, so fall through to the
+      // rule loop for the (short) bench duration but preserve the classifier
+      // verdict. markAccountUnavailable adopts rateLimitEvidence when the
+      // caller did not supply one, keeping state:"exhausted" + retryAtKnown
+      // instead of persisting this as an ordinary cooldown.
+      if (Number.isFinite(evidence.resetAtMs)) {
+        return { shouldFallback: true, cooldownMs: Math.max(0, evidence.resetAtMs - now), newBackoffLevel: 0, rateLimitEvidence: evidence };
+      }
+      const fallback = checkFallbackErrorByRules(status, lowerError, backoffLevel);
+      return { ...fallback, rateLimitEvidence: evidence };
+    }
+  }
+
+  return checkFallbackErrorByRules(status, lowerError, backoffLevel);
+}
+
+function checkFallbackErrorByRules(status, lowerError, backoffLevel) {
   for (const rule of ERROR_RULES) {
     // Text-based rule: match substring in error message
     if (rule.text && lowerError && lowerError.includes(rule.text)) {

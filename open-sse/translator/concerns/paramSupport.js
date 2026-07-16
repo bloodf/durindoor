@@ -110,10 +110,11 @@ export function stripUnsupportedParams(provider, model, body) {
 // and gpt-5.6 keep the forward rename they had before this port.
 // Direction is decided by the MODEL STRING ALONE, provider-independent, mirroring
 // OmniRoute's supportsMaxTokens (modelCapabilities.ts). Source matches by raw
-// substring; DurinDoor anchors at a prefix boundary (`^`, `/`, `:`) and a version
-// boundary (`.`, `-`, end) so `openai/o3-mini`, `azure:o1`, `gpt-5.4-pro`, and
-// `gpt-5.40` (a gpt-5.x version) match while `o3mini`, `deepseek-v3o1`, `o2` do not.
-const MAX_TOKENS_UNSUPPORTED_MODEL = /(?:^|[/:])(?:o[134]|gpt-5(?:\.\d+)?)(?:[.-]|$)/i;
+// substring; DurinDoor anchors at a prefix boundary (`^`, `/`, `:`, `-`) and a
+// version boundary (`.`, `-`, end) so `openai/o3-mini`, `azure:o1`, `databricks-gpt-5`,
+// and `gpt-5.40` match while `o3mini`, `deepseek-v3o1`, `databricks-gpt-50`, and
+// `databricks-agpt-5` do not.
+const MAX_TOKENS_UNSUPPORTED_MODEL = /(?:^|[/:-])(?:o[134]|gpt-5(?:\.\d+)?)(?:[.-]|$)/i;
 
 /**
  * Normalize the max-token field name for the target model, in place.

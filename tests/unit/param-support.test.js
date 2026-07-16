@@ -115,9 +115,13 @@ describe("applyParamRenames", () => {
     ["openai", "gpt-5.5-pro", { max_tokens: 400 }, { max_completion_tokens: 400 }],
     // Same families reached through a prefixed non-OpenAI provider must still
     // forward-rename (provider independence; mirrors source supportsMaxTokens).
+    // Dashed provider prefixes (e.g. Databricks registered models) also count as a
+    // prefix boundary, so the helper does not fall through to the reverse branch.
     ["openrouter", "openai/o3", { max_tokens: 500 }, { max_completion_tokens: 500 }],
     ["volcengine-ark", "azure:o1-preview", { max_tokens: 600 }, { max_completion_tokens: 600 }],
     ["github", "gpt-5.4", { max_tokens: 700 }, { max_completion_tokens: 700 }],
+    ["databricks", "databricks-gpt-5", { max_tokens: 222 }, { max_completion_tokens: 222 }],
+    ["digitalocean", "openai-gpt-5.4-pro", { max_tokens: 223 }, { max_completion_tokens: 223 }],
     // Both fields present: destination wins, source field is deleted (forward).
     ["openai", "o3", { max_tokens: 500, max_completion_tokens: 30 }, { max_completion_tokens: 30 }],
     // Both fields present: destination wins (reverse) — Volcengine DeepSeek path.
@@ -137,9 +141,13 @@ describe("applyParamRenames", () => {
     ["openai", "o2", { max_completion_tokens: 55 }, { max_tokens: 55 }],
     ["openai", "gpt-5.40", { max_tokens: 54 }, { max_completion_tokens: 54 }],
     // Unrelated control: nonmatching model with only max_tokens is untouched,
-    // and substring lookalikes ("v3o1") are not family matches.
+    // and substring lookalikes ("v3o1") are not family matches. Hyphen-specific
+    // negatives: dashed provider prefix that does not introduce a reasoning family,
+    // or a version digit appended without a separator, must not match.
     ["volcengine-ark", "DeepSeek-V4-Flash", { max_tokens: 64000 }, { max_tokens: 64000 }],
     ["openai", "deepseek-v3o1-chat", { max_tokens: 800 }, { max_tokens: 800 }],
+    ["databricks", "databricks-gpt-50", { max_completion_tokens: 224 }, { max_tokens: 224 }],
+    ["databricks", "databricks-agpt-5", { max_completion_tokens: 225 }, { max_tokens: 225 }],
     ["openai", "gpt-4o", { temperature: 0.7 }, { temperature: 0.7 }],
   ];
 

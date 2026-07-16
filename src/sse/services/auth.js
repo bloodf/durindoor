@@ -5,7 +5,7 @@ import {
 } from "@/lib/localDb";
 import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
-import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, buildModelLockUpdate, getActiveModelLockUntil } from "open-sse/services/accountFallback.js";
+import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, buildModelLockUpdate, getActiveModelLockUntil, isPassthroughConnectionWideError } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
 import * as log from "../utils/logger.js";
@@ -592,7 +592,16 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     && evidenceState === "exhausted"
     && !hasFamilyScope
     && getProviderQuotaConfig(provider)?.runtimeScopes?.exhausted === "account";
-  const fallbackModel = resolveFallbackModelScope(provider, model, { accountWide: accountWideRuntime });
+  // #6888: passthrough providers (nvidia NIM, modelscope-class multiplexers)
+  // serve many unrelated upstream models behind ONE connection. A per-model
+  // 404/429 retains the existing bounded scope (canonical model lock when the
+  // catalog id resolves, account-wide otherwise); connection-class failures
+  // (5xx, network) indict the shared connection and lock account-wide.
+  const passthroughConnectionError = isPassthroughConnectionWideError(
+    AI_PROVIDERS[resolveProviderId(provider)]?.passthroughModels,
+    status,
+  );
+  const fallbackModel = resolveFallbackModelScope(provider, model, { accountWide: accountWideRuntime || passthroughConnectionError });
   let atomicApplied = false;
   try {
     const db = await import("@/lib/localDb");

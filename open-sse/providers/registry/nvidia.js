@@ -15,6 +15,13 @@ export default {
     },
   },
   category: "freeTier",
+  // #6888: NIM multiplexes many third-party vendor models (z-ai/, minimaxai/,
+  // deepseek-ai/, qwen/, mistralai/, stepfun-ai/, moonshotai/, openai/,
+  // nvidia/) behind ONE base URL + ONE API key — mark passthrough so a single
+  // stale/renamed model's 404 locks only that model instead of cooling the
+  // whole connection (see isPassthroughConnectionWideError in
+  // open-sse/services/accountFallback.js).
+  passthroughModels: true,
   transport: {
     baseUrl: "https://integrate.api.nvidia.com/v1/chat/completions",
     validateUrl: "https://integrate.api.nvidia.com/v1/models",

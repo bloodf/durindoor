@@ -342,6 +342,7 @@ export function initState(sourceFormat) {
       funcCallIds: {},
       funcArgsDone: {},
       funcItemDone: {},
+      awaitingTrailingUsage: false,
       completedSent: false
     };
   }

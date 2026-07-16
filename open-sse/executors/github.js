@@ -2,7 +2,7 @@ import { BaseExecutor, waitForRetryDelay } from "./base.js";
 import { readBoundedResponseText } from "../utils/error.js";
 import { PROVIDERS } from "../config/providers.js";
 import { OAUTH_ENDPOINTS, GITHUB_COPILOT, CLAUDE_SYSTEM_PROMPT } from "../config/appConstants.js";
-import { HTTP_STATUS, DEFAULT_RETRY_CONFIG, resolveRetryEntry, FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
+import { HTTP_STATUS, DEFAULT_RETRY_CONFIG, resolveRetryEntry, resolveRequestRetryPolicy, FETCH_CONNECT_TIMEOUT_MS, matchSkipRule } from "../config/runtimeConfig.js";
 import { normalizeClaudePassthrough } from "../translator/formats/claude.js";
 import { detectClientTool } from "../utils/clientDetector.js";
 import { openaiToOpenAIResponsesRequest } from "../translator/request/openai-responses.js";
@@ -15,11 +15,8 @@ import { SSE_DONE } from "../utils/sseConstants.js";
 import { FORMATS } from "../translator/formats.js";
 import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
 import { createUpstreamTerminalTracker } from "../utils/streamTerminal.js";
-import {
-  getCurrentProviderAttemptTimestamp,
-  runQuotaBearingProviderRequest,
-  settleProviderAttemptDispatch,
-} from "../services/providerAttemptContext.js";
+import { settleProviderAttemptDispatch, getCurrentProviderAttemptTimestamp, runQuotaBearingProviderRequest } from "../services/providerAttemptContext.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import crypto from "crypto";
 
 export class GithubExecutor extends BaseExecutor {
@@ -215,7 +212,7 @@ export class GithubExecutor extends BaseExecutor {
    *   3. a transient 502/503/504 (and network-as-502) retry loop honoring
    *      DEFAULT_RETRY_CONFIG, with connect_timeout getting 0 in-place retries.
    */
-  async executeWithMessagesEndpoint({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null }) {
+  async executeWithMessagesEndpoint({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null, requestPolicy = null }) {
     const url = this.config.messagesUrl;
     // Force stream:true upstream regardless of client preference (headers AND body),
     // same as executeWithResponsesEndpoint below — chatCore's non-streaming handler
@@ -230,6 +227,7 @@ export class GithubExecutor extends BaseExecutor {
     // temperature/thinking 400s only on this route. Clone so we never mutate the
     // caller's body. translateRequest then copies only the fields it knows.
     const strippedBody = stripUnsupportedParams("github", model, { ...body });
+    const parallelToolCallsDisabled = body.parallel_tool_calls === false;
     const transformedBody = translateRequest(FORMATS.OPENAI, FORMATS.CLAUDE, model, strippedBody, true, credentials, "github");
     // _toolNameMap is internal bookkeeping (see openai-to-claude.js) — chatCore
     // normally strips it before dispatch and threads it into the response state to
@@ -267,27 +265,85 @@ export class GithubExecutor extends BaseExecutor {
      */
     normalizeClaudePassthrough(transformedBody, model, "claude");
 
+    /**
+     * Parallel-tool-use guard (Codex #291 P2): translateRequest converts OpenAI
+     * tool_choice but does not carry parallel_tool_calls. Claude expresses the
+     * same intent as tool_choice.disable_parallel_tool_use. Only decorate when
+     * tools are present and the caller did not explicitly disable tools.
+     */
+    if (parallelToolCallsDisabled && transformedBody.tools?.length > 0) {
+      const existing = transformedBody.tool_choice || { type: "auto" };
+      if (existing.type !== "none") {
+        transformedBody.tool_choice = { ...existing, disable_parallel_tool_use: true };
+      }
+    }
+
+    /**
+     * Thinking/forced-tool-choice guard (Codex #291 P2): Claude's Messages API
+     * rejects extended thinking (enabled/adaptive) together with forced tool
+     * choice (any/tool). Downgrade to auto while preserving the parallel-use
+     * flag; preserve "none" because it disables tools and is compatible.
+     */
+    const thinkingActive = transformedBody.thinking?.type === "enabled" || transformedBody.thinking?.type === "adaptive";
+    if (thinkingActive && transformedBody.tools?.length > 0 && transformedBody.tool_choice) {
+      const { type } = transformedBody.tool_choice;
+      if (type === "any" || type === "tool") {
+        const disableParallel = transformedBody.tool_choice.disable_parallel_tool_use ?? true;
+        transformedBody.tool_choice = { type: "auto", disable_parallel_tool_use: disableParallel };
+      }
+    }
+
+    /**
+     * Empty-assistant cleanup (Codex #291 P2): normalizeClaudePassthrough strips
+     * unsigned thinking blocks, which can leave an assistant message with
+     * content: []. prepareClaudeRequest already filtered empty messages before
+     * this strip, so re-filter after it.
+     */
+    if (Array.isArray(transformedBody.messages)) {
+      transformedBody.messages = transformedBody.messages.filter((msg) => {
+        if (msg.role !== "assistant") return true;
+        if (Array.isArray(msg.content) && msg.content.length === 0) return false;
+        return true;
+      });
+      if (transformedBody.messages.length === 0) {
+        throw new Error("GitHub /v1/messages request has no messages after empty-turn cleanup");
+      }
+    }
+
     log?.debug("GITHUB", "Sending translated request to /v1/messages");
 
     // Transient-retry policy for this direct fetch. BaseExecutor.execute merges
-    // DEFAULT_RETRY_CONFIG with this.config.retry; do the same so a provider-config
-    // override still wins. connect_timeout gets 0 in-place retries (the account
-    // layer fails over rather than re-hitting a stalled upstream); HTTP 502/503/504
-    // and generic network errors (mapped to 502) retry per their configured entry.
+    // DEFAULT_RETRY_CONFIG with this.config.retry and applies a per-execute
+    // maxTransportAttempts ceiling AND skip-rules; mirror both here so a single
+    // runaway sequence (e.g. 502 -> 503 -> 504) shares one counter, cannot exceed
+    // the caller's transport budget, and honors explicit retry/skip rules.
+    // connect_timeout gets 0 in-place retries (the account layer fails over rather
+    // than re-hitting a stalled upstream).
     const baseRetry = { ...DEFAULT_RETRY_CONFIG, ...this.config.retry };
-    const headerTimeoutMs = this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
+    const policy = resolveRequestRetryPolicy(this.provider, requestPolicy);
+    const headerTimeoutMs = policy.headerTimeoutMs || this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
     const transientStatuses = new Set([
       HTTP_STATUS.BAD_GATEWAY,        // 502
       HTTP_STATUS.SERVICE_UNAVAILABLE, // 503
       HTTP_STATUS.GATEWAY_TIMEOUT,     // 504
     ]);
+    const cap = policy.maxTransportAttempts != null ? Math.max(0, policy.maxTransportAttempts - 1) : null;
+    const resolveAttempts = ({ statusKey, errorKind, text }) => {
+      const base = resolveRetryEntry(baseRetry[statusKey]);
+      const rule = policy.skipRules
+        ? matchSkipRule(this.provider, { status: statusKey, errorKind, text }, policy.skipRules)
+        : null;
+      if (rule?.action === "skip") return { ...base, attempts: 0 };
+      if (rule?.action === "retry") {
+        return { ...base, attempts: cap != null ? cap : base.attempts };
+      }
+      if (errorKind === "connect_timeout") return { ...base, attempts: 0 };
+      if (cap != null) return { ...base, attempts: Math.min(base.attempts, cap) };
+      return base;
+    };
 
     let response = null;
-    // Per-route retry counters. Network errors share one counter (all map to the
-    // 502 entry); transient HTTP statuses track attempts per-status so a 502 then
-    // a 503 each honor their own configured attempt budget.
-    let networkRetries = 0;
-    const httpRetriesByStatus = {};
+    let transportRetries = 0;
     for (;;) {
       /**
        * Header-timeout abort (Codex #291 P2): BaseExecutor.execute wraps its fetch
@@ -315,36 +371,48 @@ export class GithubExecutor extends BaseExecutor {
         }, proxyOptions));
       } catch (error) {
         clearTimeout(connectTimer);
+        // Quota-dispatch failures are local capacity failures, not provider
+        // evidence; rethrow immediately so chatCore can fail over.
+        if (isQuotaDispatchUnavailable(error)) throw error;
         // Caller-initiated abort (NOT our connect timer) must propagate unretried.
         if (!connectTimedOut && (error?.name === "AbortError" || signal?.aborted)) throw error;
         /**
-         * Transient retry (Codex #291 P2): the old BaseExecutor route retried
-         * transient failures before surfacing an error; this direct fetch returned
-         * them immediately, making Claude noticeably flakier than the unchanged
-         * GitHub models. Network/transport errors map to the 502 entry; our own
-         * connect timeout is NOT retried in place (matches BaseExecutor).
+         * Transient retry: network/transport errors and even explicit connect_timeout
+         * rules map to the 502 entry; the default resolver gives connect_timeout 0 retries
+         * so only an explicit requestPolicy retry rule can override it (matches BaseExecutor).
          */
-        if (!connectTimedOut) {
-          const { attempts, delayMs } = resolveRetryEntry(baseRetry[HTTP_STATUS.BAD_GATEWAY]);
-          if (networkRetries < attempts) {
-            networkRetries++;
-            log?.debug?.("RETRY", `github /v1/messages network "${error.message}" retry ${networkRetries}/${attempts} after ${delayMs / 1000}s`);
-            await waitForRetryDelay(delayMs, signal);
-            continue;
-          }
+        const errorKind = connectTimedOut ? "connect_timeout" : "network";
+        const { attempts, delayMs } = resolveAttempts({ statusKey: HTTP_STATUS.BAD_GATEWAY, errorKind, text: error.message });
+        if (transportRetries < attempts) {
+          transportRetries++;
+          log?.debug?.("RETRY", `github /v1/messages ${errorKind} "${error.message}" retry ${transportRetries}/${attempts} after ${delayMs / 1000}s`);
+          await waitForRetryDelay(delayMs, signal);
+          continue;
         }
+        error.errorKind = errorKind;
+        error.providerAttemptStartedAt = getCurrentProviderAttemptTimestamp();
         throw error;
       }
       clearTimeout(connectTimer);
 
+      // Read the error body ONCE per attempt when a contains-rule could fire, so
+      // skip/retry rules that match on body text work for any failed status.
+      let errorText = null;
+      if (policy.hasContainsRule && response.status >= 400) {
+        try {
+          errorText = await readBoundedResponseText(response.clone(), { signal, maxBytes: 64 * 1024, timeoutMs: 2_000 });
+        } catch (probeError) {
+          if (probeError?.name === "AbortError" || signal?.aborted) throw probeError;
+        }
+      }
+
       // Retry a transient HTTP status: settle the discarded attempt's quota ticket
       // and cancel its body BEFORE waiting so no lease leaks across retries.
       if (transientStatuses.has(response.status)) {
-        const { attempts, delayMs } = resolveRetryEntry(baseRetry[response.status]);
-        const used = httpRetriesByStatus[response.status] || 0;
-        if (used < attempts) {
-          httpRetriesByStatus[response.status] = used + 1;
-          log?.debug?.("RETRY", `github /v1/messages status ${response.status} retry ${used + 1}/${attempts} after ${delayMs / 1000}s`);
+        const { attempts, delayMs } = resolveAttempts({ statusKey: response.status, errorKind: `http_${response.status}`, text: errorText });
+        if (transportRetries < attempts) {
+          transportRetries++;
+          log?.debug?.("RETRY", `github /v1/messages status ${response.status} retry ${transportRetries}/${attempts} after ${delayMs / 1000}s`);
           await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
           try {
             const cancellation = response.body?.cancel?.("github /v1/messages transient retry");

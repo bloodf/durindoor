@@ -55,9 +55,11 @@ Two coordinated stages in `handleComboChat` (`open-sse/services/combo.js`):
    an excluded member and skew the survivor sequence. The empty-pool 503
    (`no models matching context requirements`) fires here.
 2. **Preference sort** (`sortByContextSize`) runs at **upstream #6907's pipeline
-   point** — on the rotated / capability-ordered targets, **immediately before**
-   task-aware reordering. The incoming (strategy) order is the stable tiebreak;
-   unknown-context models sort to the end.
+   point** — on the rotated targets, **before** capability-aware auto-switch reordering
+   and **before** task-aware reordering. This ordering keeps `preferLargeContext`
+   as a dispatch preference while still letting hard-capability models (vision, PDF,
+   audio, video) move to the front when the request needs them. The incoming
+   (strategy) order is the stable tiebreak; unknown-context models sort to the end.
 
 **Precedence.** Task-aware reordering (smart/task strategies) runs after the sort and
 may reorder survivors; quota ranking runs last. `preferLargeContext` sets a context
@@ -73,9 +75,9 @@ that resolver always merges `DEFAULT_CAPABILITIES.contextWindow` (200000) and wo
 make every unknown model look "known", breaking strict/lenient. Only explicit,
 authoritative values are trusted, in order:
 
-1. provider registry entry — `models[].contextLength` / `defaultContextLength`
-   (provider alias resolved to its canonical registry id first, so `ghm/openai/gpt-4.1`
-   resolves like `github-models/openai/gpt-4.1`);
+1. provider registry entry — `models[].contextLength`, then `defaultContextLength`, then
+   `transport.defaultContextLength` (provider alias resolved to its canonical registry id
+   first, so `ghm/openai/gpt-4.1` resolves like `github-models/openai/gpt-4.1`);
 2. an exact-id or glob-pattern capability that declares `contextWindow`
    (first matching pattern stops the search — matches `getCapabilitiesForModel`
    first-match semantics, so a first pattern with no `contextWindow` means "unknown",

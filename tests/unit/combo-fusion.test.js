@@ -399,6 +399,23 @@ describe("fusion combo", () => {
       expect(called).not.toContain(UNKNOWN);
     });
 
+    it("returns 503 before fan-out when a member lacks a slash and context requirements are active", async () => {
+      const handleSingleModel = vi.fn(async () => okResponse("should-not-run"));
+      const res = await handleFusionChat({
+        body: { messages: [{ role: "user", content: "Q" }] },
+        models: ["bare-alias", LARGE],
+        handleSingleModel,
+        log,
+        comboName: "fusion-invalid-member",
+        contextRequirements: { minContextWindow: 100000, contextFilterMode: "strict" },
+      });
+      expect(res.status).toBe(503);
+      expect(handleSingleModel).not.toHaveBeenCalled();
+      const body = await res.json();
+      expect(body.error.message).toMatch(/bare-alias/);
+      expect(body.error.message).toMatch(/not a valid provider\/model member/i);
+    });
+
     it("preferLargeContext orders the panel so the largest-context member leads (default judge)", async () => {
       const called = [];
       const handleSingleModel = vi.fn(async (_b, model) => {

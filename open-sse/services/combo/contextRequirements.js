@@ -7,8 +7,8 @@
  *      rotation/scoring so the round-robin pointer, sticky rotation, and
  *      conversation-affinity state are all computed over the eligible pool only.
  *   2. sortByContextSize() — PREFERENCE (preferLargeContext), runs at upstream
- *      #6907's pipeline point: on the rotated/capability-ordered targets,
- *      immediately BEFORE task-aware reordering.
+ *      #6907's pipeline point: on the rotated targets, BEFORE capability-aware
+ *      auto-switch reordering and task-aware reordering.
  * Splitting eligibility from preference is required by durindoor's local
  * round-robin/affinity state machinery: a single late filter (upstream's shape)
  * would let the RR pointer land on an excluded member and skew the survivor
@@ -86,6 +86,8 @@ export function getKnownContextWindow(modelStr) {
     if (fromModel !== null) return fromModel;
     const fromDefault = valid(entry.defaultContextLength);
     if (fromDefault !== null) return fromDefault;
+    const fromTransportDefault = valid(entry.transport?.defaultContextLength);
+    if (fromTransportDefault !== null) return fromTransportDefault;
   }
 
   // 2a. Provider-specific capability override declaring contextWindow.
@@ -133,6 +135,34 @@ function parseRequirements(requirements) {
   // unvalidated settings PATCH can't silently drop unknown-context targets.
   const mode = contextFilterMode === "strict" ? "strict" : "lenient";
   return { min, prefer, mode };
+}
+
+/**
+ * Validate that each combo member is a canonical "provider/model" id when any
+ * context requirement is active. Bare aliases and nested combo ids cannot be
+ * resolved to a context window, so dispatching them with contextRequirements
+ * would silently skip evaluation. This helper fails controlled instead.
+ *
+ * @param {string[]} models - combo member ids (original/full set, before filtering)
+ * @param {Object} [requirements] - the combo's contextRequirements config
+ * @returns {{ok:true}|{ok:false,status:number,message:string}}
+ */
+export function validateContextRequirementsMembers(models, requirements) {
+  const req = parseRequirements(requirements);
+  if (!req) return { ok: true };
+  if (!Array.isArray(models)) {
+    return { ok: false, status: 503, message: "Combo models are missing or invalid." };
+  }
+  for (const model of models) {
+    if (typeof model !== "string" || !model.includes("/")) {
+      return {
+        ok: false,
+        status: 503,
+        message: `Context requirements require canonical provider/model members; "${model}" is not a valid provider/model member.`,
+      };
+    }
+  }
+  return { ok: true };
 }
 
 /**

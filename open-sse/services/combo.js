@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 import { checkFallbackError, formatRetryAfter } from "./accountFallback.js";
 import { unavailableResponse } from "../utils/error.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
-import { filterByContextRequirements, sortByContextSize } from "./combo/contextRequirements.js";
+import { filterByContextRequirements, sortByContextSize, validateContextRequirementsMembers } from "./combo/contextRequirements.js";
 import { resolveReasoningBufferedMaxTokens } from "./reasoningTokenBuffer.js";
 import { extractTextContent } from "../translator/formats/gemini.js";
 import { isAutoComboId, familyOfAutoId, resolveAutoCombo } from "./autoComboResolver.js";
@@ -892,6 +892,15 @@ export async function handleComboChat({
   // sequence. `activeModels` is used for rotation AND every downstream pool
   // reference (pointer, affinity release) so they share the SAME eligible set.
   // Same reference when no requirement is configured, leaving fallback order intact.
+  const memberCheck = validateContextRequirementsMembers(models, contextRequirements);
+  if (!memberCheck.ok) {
+    log.warn("COMBO", memberCheck.message);
+    return new Response(
+      JSON.stringify({ error: { message: memberCheck.message } }),
+      { status: memberCheck.status, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   const activeModels = filterByContextRequirements(models, contextRequirements, log);
   if (!Array.isArray(activeModels) || activeModels.length === 0) {
     const msg = `Combo "${comboName}" has no models matching context requirements`;
@@ -911,6 +920,14 @@ export async function handleComboChat({
     rotatedModels = getRotatedModels(activeModels, comboName, comboStrategy, comboStickyLimit, conversationCacheKey);
   }
 
+  // Context-requirements preferLargeContext SORT runs BEFORE capability-aware
+  // reordering (auto-switch) and task-aware reordering. Putting it here keeps
+  // the eligibility filter before rotation, lets preferLargeContext influence
+  // dispatch order, and still leaves hard-capability-aware auto-switch to push
+  // vision/audio models to the front when the request needs them. Same reference
+  // when off.
+  rotatedModels = sortByContextSize(rotatedModels, contextRequirements, log);
+
   // Required request capabilities hoisted so both the capability reorder and
   // (for task strategies) the task reorder can use the same set.
   const required = autoSwitch ? detectRequiredCapabilities(body) : new Set();
@@ -926,12 +943,6 @@ export async function handleComboChat({
       rotatedModels = reordered;
     }
   }
-
-  // Context-requirements preferLargeContext SORT applied ONCE on the
-  // rotated/capability-ordered targets, at upstream #6907's pipeline point:
-  // immediately BEFORE task-aware reordering. The eligibility filter already ran
-  // pre-rotation, so this step only re-orders. Same reference when off.
-  rotatedModels = sortByContextSize(rotatedModels, contextRequirements, log);
 
   // Task-aware reordering (smart/task strategies) runs after context sort.
   if (autoSwitch && isTaskRoutingStrategy(comboStrategy)) {
@@ -1277,6 +1288,18 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
     return new Response(
       JSON.stringify({ error: { message: "Fusion combo has no models" } }),
       { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  // Members that do not resolve to a provider/model id cannot be evaluated for
+  // context requirements. Fail controlled instead of silently treating them
+  // as eligible/unknown in the panel.
+  const memberCheck = validateContextRequirementsMembers(allModels, contextRequirements);
+  if (!memberCheck.ok) {
+    log.warn("FUSION", memberCheck.message);
+    return new Response(
+      JSON.stringify({ error: { message: memberCheck.message } }),
+      { status: memberCheck.status, headers: { "Content-Type": "application/json" } }
     );
   }
 

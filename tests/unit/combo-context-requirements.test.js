@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyContextRequirements,
   getKnownContextWindow,
+  validateContextRequirementsMembers,
 } from "../../open-sse/services/combo/contextRequirements.js";
 import { handleComboChat, resetComboRotation } from "../../open-sse/services/combo.js";
 
@@ -17,6 +18,19 @@ const LARGE_ALIAS = "ghm/openai/gpt-4.1"; // same model via alias
 const SMALL = "github-models/microsoft/Phi-4"; // 16384
 const UNKNOWN = "custom/no-catalog-entry"; // no registry entry / capability context
 
+// Transport-default fixture (open-sse/providers/registry/dgrid.js):
+// provider has no per-model contextLength, but transport.defaultContextLength is known.
+const DGRID_TRANSPORT = "dgrid/dgridai/free"; // transport.defaultContextLength 128000
+
+// Hard-capability ordering fixtures:
+// VISION is vision-capable but contextWindow is smaller than TEXT_LARGE.
+const VISION = "github-models/openai/gpt-4o"; // vision: true, contextLength 128000
+const TEXT_LARGE = "github-models/deepseek/DeepSeek-R1"; // vision: false, contextLength 131072
+
+// Non-canonical members that cannot be resolved to a provider/model id.
+const BARE_ALIAS = "bare-alias";
+const NESTED_COMBO = "nested-combo";
+
 describe("getKnownContextWindow", () => {
   it("resolves context from the provider registry per-model contextLength", () => {
     expect(getKnownContextWindow(LARGE)).toBe(1047576);
@@ -27,10 +41,49 @@ describe("getKnownContextWindow", () => {
     expect(getKnownContextWindow(LARGE_ALIAS)).toBe(1047576);
   });
 
+  it("falls back to entry.transport.defaultContextLength when no direct entry.defaultContextLength", () => {
+    expect(getKnownContextWindow(DGRID_TRANSPORT)).toBe(128000);
+  });
+
   it("returns null for a model with no explicit context anywhere (never the DEFAULT floor)", () => {
     // Critical: getCapabilitiesForModel would merge DEFAULT_CAPABILITIES.contextWindow
     // (200000) and make this unknown model look known. This resolver must stay null.
     expect(getKnownContextWindow(UNKNOWN)).toBeNull();
+  });
+});
+
+describe("validateContextRequirementsMembers", () => {
+  it("allows canonical provider/model members when any requirement is active", () => {
+    const result = validateContextRequirementsMembers([SMALL, LARGE], {
+      minContextWindow: 1000,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects a bare alias when a requirement is active", () => {
+    const result = validateContextRequirementsMembers([BARE_ALIAS, LARGE], {
+      minContextWindow: 1000,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe(503);
+    expect(result.message).toMatch(/bare-alias/);
+    expect(result.message).toMatch(/not a valid provider\/model member/i);
+  });
+
+  it("rejects a nested combo id when a requirement is active", () => {
+    const result = validateContextRequirementsMembers([NESTED_COMBO, LARGE], {
+      minContextWindow: 1000,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe(503);
+    expect(result.message).toMatch(/nested-combo/);
+    expect(result.message).toMatch(/not a valid provider\/model member/i);
+  });
+
+  it("is a no-op when no context requirement is active", () => {
+    expect(validateContextRequirementsMembers([BARE_ALIAS], {})).toEqual({ ok: true });
+    expect(validateContextRequirementsMembers([BARE_ALIAS], null)).toEqual({ ok: true });
+    expect(validateContextRequirementsMembers([BARE_ALIAS], undefined)).toEqual({ ok: true });
   });
 });
 
@@ -212,6 +265,66 @@ describe("handleComboChat context-requirements plumbing", () => {
     expect(called).toBe(false); // fail-fast before any dispatch
     const body = await res.json();
     expect(body.error.message).toMatch(/no models matching context requirements/);
+  });
+
+  it("returns 503 when a member lacks a slash and context requirements are active", async () => {
+    const comboName = `ctx-invalid-member-${Date.now()}`;
+    resetComboRotation(comboName);
+    let called = false;
+
+    const res = await handleComboChat({
+      body: { messages: [{ role: "user", content: "hi" }] },
+      models: [BARE_ALIAS, LARGE],
+      comboName,
+      comboStrategy: "fallback",
+      autoSwitch: false,
+      contextRequirements: { minContextWindow: 128000, contextFilterMode: "strict" },
+      log,
+      handleSingleModel: async () => {
+        called = true;
+        return Response.json({});
+      },
+    });
+
+    expect(res.status).toBe(503);
+    expect(called).toBe(false);
+    const body = await res.json();
+    expect(body.error.message).toMatch(/bare-alias/);
+    expect(body.error.message).toMatch(/not a valid provider\/model member/i);
+  });
+
+  it("preferLargeContext keeps hard-capability vision model ahead of larger-context text-only model when vision is required", async () => {
+    const comboName = `ctx-cap-over-prefer-${Date.now()}`;
+    resetComboRotation(comboName);
+    let first = null;
+
+    // TEXT_LARGE has a bigger context window but no vision; VISION has a smaller
+    // context window but vision. A request with an image requires hard capability
+    // vision, so vision-capable model must be tried first even though
+    // preferLargeContext would otherwise put the larger text-only model first.
+    const res = await handleComboChat({
+      body: {
+        messages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: "look" }, { type: "image_url", image_url: { url: "http://x" } }],
+          },
+        ],
+      },
+      models: [TEXT_LARGE, VISION],
+      comboName,
+      comboStrategy: "fallback",
+      autoSwitch: true,
+      contextRequirements: { preferLargeContext: true },
+      log,
+      handleSingleModel: async (_body, model) => {
+        if (first === null) first = model;
+        return Response.json({ choices: [{ message: { role: "assistant", content: model } }] });
+      },
+    });
+
+    expect(res.ok).toBe(true);
+    expect(first).toBe(VISION);
   });
 
   it("preserves fallback order and target set when no requirement is configured", async () => {

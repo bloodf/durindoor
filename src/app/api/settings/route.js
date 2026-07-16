@@ -120,6 +120,38 @@ export async function PATCH(request) {
       }
     }
 
+    // Validate per-combo contextRequirements (upstream #6907 schema parity):
+    //   minContextWindow: integer 0..10_000_000 (optional)
+    //   preferLargeContext: boolean (optional)
+    //   contextFilterMode: "strict" | "lenient" (optional)
+    // Reject unknown keys (upstream `.strict()`); a silently-normalized typo'd
+    // config would otherwise mask a misconfigured combo. comboStrategies is an
+    // object keyed by combo name; only objects carrying contextRequirements are
+    // validated, other per-combo keys are untouched.
+    if (Object.prototype.hasOwnProperty.call(body, "comboStrategies")) {
+      const cs = body.comboStrategies;
+      const bad = () => NextResponse.json({ error: "Invalid comboStrategies.contextRequirements" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      if (!cs || typeof cs !== "object" || Array.isArray(cs)) return bad();
+      const ALLOWED_KEYS = new Set(["minContextWindow", "preferLargeContext", "contextFilterMode"]);
+      for (const cfg of Object.values(cs)) {
+        if (!cfg || typeof cfg !== "object" || !Object.prototype.hasOwnProperty.call(cfg, "contextRequirements")) continue;
+        const cr = cfg.contextRequirements;
+        // Upstream `.strict().optional()`: absent key is fine, but an explicit
+        // null is rejected (it is not a valid optional object).
+        if (cr === undefined) continue;
+        if (cr === null || typeof cr !== "object" || Array.isArray(cr)) return bad();
+        for (const k of Object.keys(cr)) if (!ALLOWED_KEYS.has(k)) return bad();
+        if (Object.prototype.hasOwnProperty.call(cr, "minContextWindow")) {
+          // Upstream z.coerce.number() accepts numeric strings; coerce then bound.
+          const v = Number(cr.minContextWindow);
+          if (!Number.isSafeInteger(v) || v < 0 || v > 10_000_000) return bad();
+          cr.minContextWindow = v; // store the coerced number
+        }
+        if (Object.prototype.hasOwnProperty.call(cr, "preferLargeContext") && typeof cr.preferLargeContext !== "boolean") return bad();
+        if (Object.prototype.hasOwnProperty.call(cr, "contextFilterMode") && cr.contextFilterMode !== "strict" && cr.contextFilterMode !== "lenient") return bad();
+      }
+    }
+
     const settings = await updateSettings(body);
 
     // Apply outbound proxy settings immediately (no restart required)

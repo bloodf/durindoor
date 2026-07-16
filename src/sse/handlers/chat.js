@@ -484,6 +484,7 @@ export async function handleChat(request, clientRawRequest = null) {
       comboName: modelStr,
       comboStrategy,
       comboStickyLimit,
+      contextRequirements: perCombo.contextRequirements,
       quotaRanker: (ordered) => rankComboModelsByQuota(
         ordered,
         settings,
@@ -566,6 +567,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         comboName: modelStr,
         comboStrategy,
         comboStickyLimit,
+        contextRequirements: perCombo.contextRequirements,
         quotaRanker: (ordered) => rankComboModelsByQuota(
           ordered,
           chatSettings,

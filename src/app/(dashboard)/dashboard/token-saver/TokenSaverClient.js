@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Card, Button, Input, Modal, Toggle } from "@/shared/components";
+import TokenSaverOverview from "./components/TokenSaverOverview";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { getCurrentLocale, onLocaleChange } from "@/i18n/runtime";
 import {
@@ -11,6 +12,7 @@ import {
 } from "../endpoint/endpointConstants";
 
 export default function TokenSaverClient() {
+  const [tab, setTab] = useState("overview");
   const [rtkEnabled, setRtkEnabledState] = useState(true);
   const [pxpipeEnabled, setPxpipeEnabled] = useState(false);
   const [pxpipeMinChars, setPxpipeMinChars] = useState("25000");
@@ -408,6 +410,28 @@ export default function TokenSaverClient() {
 
   return (
     <div className="space-y-6 p-6">
+      <div className="flex w-fit rounded-lg border border-border bg-surface-2 p-1" role="tablist" aria-label="Token Saver">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "overview"}
+          onClick={() => setTab("overview")}
+          className={`rounded-md px-4 py-1.5 text-sm font-medium ${tab === "overview" ? "bg-primary text-white" : "text-text-muted hover:text-text"}`}
+        >
+          Overview
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "settings"}
+          onClick={() => setTab("settings")}
+          className={`rounded-md px-4 py-1.5 text-sm font-medium ${tab === "settings" ? "bg-primary text-white" : "text-text-muted hover:text-text"}`}
+        >
+          Settings
+        </button>
+      </div>
+
+      {tab === "overview" ? <TokenSaverOverview /> : <>
       <Card id="rtk">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-lg font-semibold flex items-center gap-2">
@@ -884,6 +908,7 @@ export default function TokenSaverClient() {
           </div>
         </div>
       </Modal>
+      </>}
     </div>
   );
 }

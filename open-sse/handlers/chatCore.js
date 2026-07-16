@@ -35,8 +35,8 @@ import { dedupeTools } from "../utils/toolDeduper.js";
 import { salvageOrphanedToolResults, fixMissingToolResponses } from "../translator/concerns/toolCall.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
-import { compressMessages, resolveTokenSaverEnabled } from "../rtk/index.js";
-import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadroomPhantomSavings } from "../rtk/headroom.js";
+import { compressMessages, resolveTokenSaverEnabled, normalizeTokenSaverEvent } from "../rtk/index.js";
+import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadroomPhantomSavings, classifyHeadroomDiagnostic } from "../rtk/headroom.js";
 import { compressWithPxpipe, normalizePxpipeResult } from "../rtk/pxpipe.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { estimateTokens } from "./countTokensCore.js";
@@ -212,7 +212,7 @@ async function cancelResponseBody(response) {
  *   errors. Legacy `info`/`debug`/`warn`/`error` remain supported.
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, compressionEnabled, compressionEngines, skipPonytailCommands = false, claudeClassifierCompat }) {
+export async function handleChatCore({ body, modelInfo, credentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, compressionEnabled, compressionEngines, skipPonytailCommands = false, claudeClassifierCompat }) {
   if (abortSignal?.aborted) return createErrorResult(499, "Request aborted");
   const { provider, model: requestedModel } = modelInfo;
   const requestStartTime = Date.now();
@@ -584,6 +584,49 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
   fixMissingToolResponses(translatedBody);
 
   if (xf.length && log?.line) log.line(reqTag, "⚙", xf.join(" · "));
+
+  // Token Saver telemetry (port of 9router #2562). Emit ONE normalized event
+  // per routing attempt. The caller (handleSingleModelChat) keeps the LATEST
+  // attempt's event and persists it once after the final routing decision, so
+  // fallback retries supersede instead of double-counting, and fusion panels
+  // (parallel handleChatCore calls) each persist their own event. Headroom
+  // body bytes come from the before/after size snapshots; only non-negative
+  // shrink counts toward actualBytesSaved. Fail-open: telemetry never breaks
+  // the request path.
+  if (onTokenSaverEvent) {
+    try {
+      const hrBefore = headroomDiagnostics?.before?.bodyBytes || 0;
+      const hrAfter = headroomDiagnostics?.after?.bodyBytes || 0;
+      const hrState = headroomStats ? "compressed" : (headroomEnabled ? "skipped" : "disabled");
+      const hrDiagnostic = hrState === "skipped" ? classifyHeadroomDiagnostic(headroomDiagnostics, headroomStats, headroomEnabled) : null;
+      onTokenSaverEvent(normalizeTokenSaverEvent({
+        rtk: rtkStats ? {
+          requestsWithHits: rtkStats.hits?.length ? 1 : 0,
+          hits: rtkStats.hits?.length || 0,
+          bytesBefore: rtkStats.bytesBefore,
+          bytesAfter: rtkStats.bytesAfter,
+          bytesSaved: Math.max(0, (rtkStats.bytesBefore || 0) - (rtkStats.bytesAfter || 0)),
+        } : null,
+        headroom: {
+          state: hrState,
+          tokensBefore: headroomStats?.tokens_before,
+          tokensAfter: headroomStats?.tokens_after,
+          tokensSaved: headroomStats?.tokens_saved,
+          bodyBytesBefore: hrBefore,
+          bodyBytesAfter: hrAfter,
+          phantomSavings: headroomStats ? isHeadroomPhantomSavings(headroomStats, headroomDiagnostics) : false,
+          diagnostic: hrDiagnostic,
+        },
+        pxpipe: pxpipeSummary ? {
+          applied: pxpipeSummary.applied,
+          tokensBeforeEst: pxpipeSummary.tokensBeforeEst,
+          tokensAfterEst: pxpipeSummary.tokensAfterEst,
+          tokensSavedEst: pxpipeSummary.tokensSavedEst,
+          imageCount: pxpipeSummary.imageCount,
+        } : null,
+      }));
+    } catch { /* stats must not break requests */ }
+  }
 
   // Classifier compat short-circuit: Claude Code's auto-mode classifier expects
   // the response to begin with "<block>no</block>" (ALLOW). Anything else fails

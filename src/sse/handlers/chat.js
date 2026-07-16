@@ -18,6 +18,7 @@ import {
 import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
 import { appendPxpipeEvent } from "@/lib/pxpipe/events.js";
 import { getModelInfo, getComboModels } from "../services/model.js";
+import { recordTokenSaverEvent } from "@/lib/usageDb";
 import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
 import { applyVisionBridgeReroute } from "open-sse/services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
@@ -476,10 +477,20 @@ export async function handleChat(request, clientRawRequest = null) {
 
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
     log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
-    return handleComboChat({
+    // #2562: combo fallback must persist ONE token-saver row for the whole
+    // logical request, not one per fallback attempt. Collect the latest event
+    // across attempts and persist after handleComboChat returns.
+    const tokenSaverCollector = { latest: null };
+    const comboResult = await handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey),
+      handleSingleModel: (b, m) => {
+        // Reset per attempt so an eventless attempt does not carry forward the
+        // previous attempt's event; the collector then holds only the latest
+        // emitted event from the attempts that actually fired telemetry.
+        tokenSaverCollector.latest = null;
+        return handleSingleModelChat(b, m, clientRawRequest, request, apiKey, null, tokenSaverCollector);
+      },
       log,
       comboName: modelStr,
       comboStrategy,
@@ -494,6 +505,12 @@ export async function handleChat(request, clientRawRequest = null) {
       ),
       signal: request?.signal || null,
     });
+    // One row per logical combo request (collector holds only the latest
+    // attempt's event) — never one per fallback attempt (Codex P2 on #306).
+    if (tokenSaverCollector.latest) {
+      try { await recordTokenSaverEvent(tokenSaverCollector.latest); } catch { /* telemetry must not break requests */ }
+    }
+    return comboResult;
   }
 
   // Single model request
@@ -503,7 +520,7 @@ export async function handleChat(request, clientRawRequest = null) {
 /**
  * Handle single model chat request
  */
-async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, attemptSignal = null) {
+async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, attemptSignal = null, tokenSaverCollector = null) {
   const requestSignal = attemptSignal || request?.signal || null;
   if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
   const modelInfo = await getModelInfo(modelStr);
@@ -553,17 +570,27 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
       const comboStickyLimit = chatSettings.comboStickyRoundRobinLimit;
       log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
-      return handleComboChat({
+      // Nested combos inherit the parent's collector if present; otherwise own
+      // it so nested fallback attempts do not double-count rows.
+      const ownsCollector = !tokenSaverCollector;
+      const nestedCollector = tokenSaverCollector || { latest: null };
+      const nestedResult = await handleComboChat({
         body,
         models: comboModels,
-        handleSingleModel: (b, m) => handleSingleModelChat(
-          b,
-          m,
-          clientRawRequest,
-          request,
-          apiKey,
-          requestSignal,
-        ),
+        handleSingleModel: (b, m) => {
+          // Reset per nested attempt so a silent attempt does not replay the
+          // previous nested attempt's event.
+          nestedCollector.latest = null;
+          return handleSingleModelChat(
+            b,
+            m,
+            clientRawRequest,
+            request,
+            apiKey,
+            requestSignal,
+            nestedCollector,
+          );
+        },
         log,
         comboName: modelStr,
         comboStrategy,
@@ -578,6 +605,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         ),
         signal: requestSignal,
       });
+      if (ownsCollector && nestedCollector.latest) {
+        try { await recordTokenSaverEvent(nestedCollector.latest); } catch { /* telemetry must not break requests */ }
+      }
+      return nestedResult;
     }
     log.warn("CHAT", "Invalid model format", { model: modelStr });
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
@@ -628,6 +659,14 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   const quotaFamily = getModelQuotaFamily(providerAlias, model);
   const modelCandidates = [...new Set([model, upstreamModel].filter(Boolean))];
 
+  // Token Saver telemetry (port of 9router #2562): capture the LATEST routing
+  // attempt's normalized event; fallback retries overwrite it. When a parent
+  // combo passes a collector, feed events into it and skip the local finally
+  // persistence so the whole combo writes one row. Otherwise persist once in
+  // finally (success, terminal error, abort, or throw) so one logical request
+  // = one row and retries never double-count.
+  let lastTokenSaverEvent = null;
+  try {
   while (true) {
     if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
     let credentials;
@@ -792,6 +831,13 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       pxpipeTimeoutMs: chatSettings.pxpipeTimeoutMs,
       pxpipeTransform,
       onPxpipeEvent: appendPxpipeEvent,
+      onTokenSaverEvent: (event) => {
+        if (tokenSaverCollector) {
+          tokenSaverCollector.latest = event;
+        } else {
+          lastTokenSaverEvent = event;
+        }
+      },
       providerThinking,
       providerConcurrencyLimit: chatSettings.providerConcurrencyLimits,
       claudeClassifierCompat: ["off", "auto", "always"].includes(chatSettings.claudeClassifierCompat)
@@ -872,5 +918,12 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     }
 
     return result.response;
+  }
+  } finally {
+    // Persist the latest routing attempt's event once per logical request.
+    // Awaited so the row is durable before the response returns (fail-open
+    // inside recordTokenSaverEvent — it catches DB errors and never throws).
+    // Skip when a collector is in use; the owner persists after all attempts.
+    if (lastTokenSaverEvent && !tokenSaverCollector) await recordTokenSaverEvent(lastTokenSaverEvent);
   }
 }

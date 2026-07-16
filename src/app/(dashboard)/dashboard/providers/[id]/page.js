@@ -26,6 +26,7 @@ import EditCompatibleNodeModal from "./EditCompatibleNodeModal";
 import AddCustomModelModal from "./AddCustomModelModal";
 import BulkImportCodexModal from "./BulkImportCodexModal";
 import { getProviderThinkingLevels } from "./providerThinkingLevels";
+import { sortConnectionsByAvailability } from "@/shared/utils/connectionAvailability";
 
 const ONE_BY_ONE_DELAY_MS = 1000;
 
@@ -958,6 +959,32 @@ export default function ProviderDetailPage() {
     }
   };
 
+  // Reorder connections by availability (upstream 9router #2558): available
+  // connections first, stable ties keep manual priority order. Persisted as
+  // sequential priorities. allSettled waits for every write (no Promise.all
+  // early-reject race); any network error or non-OK response refetches the
+  // server order instead of leaving a false optimistic order.
+  const handleReorderByStatus = async () => {
+    const sorted = sortConnectionsByAvailability(connections);
+    setConnections(sorted);
+
+    const results = await Promise.allSettled(
+      sorted.map(async (conn, idx) => {
+        const res = await fetch(`/api/providers/${conn.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ priority: idx }),
+        });
+        if (!res.ok) throw new Error(`Failed to update priority for ${conn.id}: ${res.status}`);
+      })
+    );
+    const failed = results.filter((r) => r.status === "rejected");
+    if (failed.length > 0) {
+      console.log("Error reordering by status:", failed[0].reason);
+      await fetchConnections();
+    }
+  };
+
   const selectedConnections = connections.filter((conn) => selectedConnectionIds.includes(conn.id));
   const selectedActiveCount = selectedConnections.filter((conn) => conn.isActive !== false).length;
   const selectedInactiveCount = selectedConnections.length - selectedActiveCount;
@@ -1614,6 +1641,17 @@ export default function ProviderDetailPage() {
                     </Button>
                   )}
                 </>
+              )}
+              {connections.length > 1 && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon="swap_vert"
+                  onClick={handleReorderByStatus}
+                  title="Reorder by availability status"
+                >
+                  Reorder
+                </Button>
               )}
               {/* Round Robin toggle */}
               <div className="flex flex-wrap items-center gap-2">

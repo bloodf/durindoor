@@ -260,11 +260,13 @@ export default function ModelSelectModal({
       ? NO_AUTH_PROVIDER_IDS.filter((id) => (AI_PROVIDERS[id]?.serviceKinds || ["llm"]).includes(kindFilter))
       : NO_AUTH_PROVIDER_IDS;
 
-    // Show connected providers, no-auth providers, and custom provider nodes
+    // Show connected providers and no-auth providers. Custom compatible-provider
+    // nodes are covered by activeConnectionIds (connection.provider === node id),
+    // so they appear only with a non-disabled connection — the parent already
+    // filtered disabled connections out of activeProviders (9router #2526).
     const providerIdsToShow = new Set([
-      ...activeConnectionIds,           // Connected providers
+      ...activeConnectionIds,           // Connected providers (incl. active custom nodes)
       ...noAuthIds,                     // No-auth providers (kind-filtered)
-      ...providerNodes.map(n => n.id),  // Custom provider nodes (openai-compatible, etc.)
     ]);
 
     // Sort by PROVIDER_ORDER

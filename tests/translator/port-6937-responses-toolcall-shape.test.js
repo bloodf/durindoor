@@ -152,12 +152,13 @@ describe("OpenAI → Responses tool-call shape (#6937)", () => {
 
   it("defers output_item.added until tool name arrives after id", () => {
     const patch = "patch text";
+    const requestBody = { tools: [{ type: "custom", function: { name: "apply_patch" } }] };
     const events = run([
       chunk({ tool_calls: [{ index: 0, id: "call_late", type: "function", function: { arguments: "" } }] }),
       chunk({ tool_calls: [{ index: 0, function: { arguments: JSON.stringify({ input: patch }) } }] }),
       chunk({ tool_calls: [{ index: 0, function: { name: "apply_patch" } }] }),
       chunk({}, { finish_reason: "tool_calls" }),
-    ]);
+    ], requestBody);
 
     const added = byType(events, "response.output_item.added");
     expect(added).toHaveLength(1);
@@ -173,13 +174,14 @@ describe("OpenAI → Responses tool-call shape (#6937)", () => {
 
   it("concatenated custom_tool_call_input deltas equal final done input", () => {
     const inputA = '{"input":"*** Begin Patch';
+    const requestBody = { tools: [{ type: "custom", function: { name: "apply_patch" } }] };
     const inputB = '\\n*** End Patch"}';
     const events = run([
       chunk({ tool_calls: [{ index: 0, id: "call_frag", type: "function", function: { name: "apply_patch", arguments: "" } }] }),
       chunk({ tool_calls: [{ index: 0, function: { arguments: inputA } }] }),
       chunk({ tool_calls: [{ index: 0, function: { arguments: inputB } }] }),
       chunk({}, { finish_reason: "tool_calls" }),
-    ]);
+    ], requestBody);
 
     const deltas = byType(events, "response.custom_tool_call_input.delta");
     const done = byType(events, "response.custom_tool_call_input.done");

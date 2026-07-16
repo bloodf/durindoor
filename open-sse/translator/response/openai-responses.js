@@ -304,11 +304,10 @@ function emitToolCall(state, emit, tc) {
 
   if (funcName) state.funcNames[tcIdx] = funcName;
 
-  // Use declared tool type from request metadata when available; otherwise
-  // fall back to the legacy name-based heuristic (apply_patch == custom).
+  // Custom-tool framing requires request metadata; a function named apply_patch
+  // remains a normal function unless the client declared it as custom.
   const declaredType = state.toolTypes?.[state.funcNames[tcIdx] || funcName || ""] || "";
-  const isCustomTool = declaredType === "custom" ||
-    ((state.funcNames[tcIdx] || funcName) === "apply_patch" && !declaredType);
+  const isCustomTool = declaredType === "custom";
 
   // Save id on first sight; if name hasn't arrived yet, emit nothing yet.
   if (newCallId && !state.funcCallIds[tcIdx]) {
@@ -381,8 +380,7 @@ function emitToolCall(state, emit, tc) {
 
 function isCustomToolByState(state, tcIdx, funcName) {
   const declaredType = state.toolTypes?.[state.funcNames[tcIdx] || funcName || ""] || "";
-  return declaredType === "custom" ||
-    ((state.funcNames[tcIdx] || funcName) === "apply_patch" && !declaredType);
+  return declaredType === "custom";
 }
 
 function closeToolCall(state, emit, idx) {

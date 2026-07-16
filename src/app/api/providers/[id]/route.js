@@ -13,6 +13,37 @@ import { notifyQuotaAutoPingSettingChanged } from "@/shared/services/quotaAutoPi
 
 const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set(["clientSecret"]);
 
+// Port of OmniRoute #6562/#6626: `priority` auto-increments unbounded on
+// connection creation (`MAX(priority)+1` per provider in connectionsRepo),
+// and the edit UI always round-trips the connection's current priority
+// unchanged on save. A UI-only ceiling of 100 therefore rejected re-saving
+// already-valid, already-persisted priorities with "Invalid request" on every
+// edit once a provider exceeded 100 rotated accounts (e.g. bulk OAuth import).
+// The ceiling is now bounded well above any legitimate value instead.
+const MAX_CONNECTION_PRIORITY = 100_000;
+
+// Mirrors the source schema (`z.coerce.number().int().min(1).max(100_000)`):
+// accepts numeric strings as well as numbers, rejects everything else.
+// Returns the coerced integer when valid, `null` otherwise.
+function coerceConnectionPriority(value) {
+  const num = Number(value);
+  if (!Number.isInteger(num) || num < 1 || num > MAX_CONNECTION_PRIORITY) return null;
+  return num;
+}
+
+// Mirrors OmniRoute's `validateBody` failure envelope
+// (`{ error: { message: "Invalid request", details: [{ field, message }] } }`).
+// This is a JS adaptation: durindoor has no Zod, so the nested shape is
+// reproduced by hand. The upstream regression only asserts
+// `body?.error?.message === "Invalid request"`; the per-issue `details` text is
+// Zod-generated upstream and is not imitated here.
+function invalidRequest(field) {
+  return NextResponse.json(
+    { error: { message: "Invalid request", details: [{ field, message: "Invalid value" }] } },
+    { status: 400 }
+  );
+}
+
 function sanitizeProviderConnection(connection) {
   const providerSpecificData = connection.providerSpecificData
     ? Object.fromEntries(
@@ -150,6 +181,25 @@ export async function PUT(request, { params }) {
       providerSpecificData
     } = body;
 
+    // Body validation runs before any connection lookup or DB write, faithful
+    // to the source route: an out-of-range priority must 400 with the source's
+    // "Invalid request" envelope regardless of whether the id exists, and must
+    // leave the persisted connection untouched.
+    let coercedPriority;
+    if (priority !== undefined) {
+      coercedPriority = coerceConnectionPriority(priority);
+      if (coercedPriority === null) {
+        return invalidRequest("priority");
+      }
+    }
+    let coercedGlobalPriority;
+    if (globalPriority !== undefined && globalPriority !== null) {
+      coercedGlobalPriority = coerceConnectionPriority(globalPriority);
+      if (coercedGlobalPriority === null) {
+        return invalidRequest("globalPriority");
+      }
+    }
+
     const existing = await getProviderConnectionById(id);
     if (!existing) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
@@ -167,8 +217,10 @@ export async function PUT(request, { params }) {
 
     const updateData = {};
     if (name !== undefined) updateData.name = name;
-    if (priority !== undefined) updateData.priority = priority;
-    if (globalPriority !== undefined) updateData.globalPriority = globalPriority;
+    if (priority !== undefined) updateData.priority = coercedPriority;
+    if (globalPriority !== undefined) {
+      updateData.globalPriority = globalPriority === null ? null : coercedGlobalPriority;
+    }
     if (defaultModel !== undefined) updateData.defaultModel = defaultModel;
     if (isActive !== undefined) updateData.isActive = isActive;
     if (apiKey && existing.authType === "apikey") updateData.apiKey = apiKey;

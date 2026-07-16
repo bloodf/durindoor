@@ -944,12 +944,12 @@ export default function ProviderDetailPage() {
         fetch(`/api/providers/${newConnections[index1].id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ priority: index1 }),
+          body: JSON.stringify({ priority: index1 + 1 }),
         }),
         fetch(`/api/providers/${newConnections[index2].id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ priority: index2 }),
+          body: JSON.stringify({ priority: index2 + 1 }),
         }),
       ]);
     } catch (error) {

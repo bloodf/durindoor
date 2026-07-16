@@ -210,15 +210,12 @@ async function probeRegistryNoAuth(connection, effectiveProxy, fetcher) {
   }
 }
 
-async function probeRegistry(connection, fetcher) {
-  // probeRegistryProvider already enforces the SSRF guard on primary + fallback
-  // URLs and forbids redirects. It is proxy-agnostic, so when a connection proxy
-  // is configured we prefer the explicit compatible/local probes above.
+async function probeRegistry(connection, fetcher, effectiveProxy) {
   const { probeRegistryProvider } = await import("@/app/api/providers/providerProbe");
   return probeRegistryProvider(
     connection.provider,
     connection.apiKey,
-    fetcher ?? fetch,
+    (url, opts) => proxyAware(url, { ...opts, redirect: "manual" }, effectiveProxy, fetcher ?? fetch),
     connection.providerSpecificData || {}
   );
 }
@@ -294,7 +291,7 @@ export async function probeConnectionHealth(connection, opts = {}) {
       }
     }
 
-    const result = await probeRegistry(connection, fetcher);
+    const result = await probeRegistry(connection, fetcher, effectiveProxy);
     if (!result) return { valid: false, status: null, error: "no probe for provider" };
     return result;
   } catch (err) {

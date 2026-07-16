@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { probeConnectionHealth } from "../../src/lib/providerHealthProbe.js";
 
 const okFetch = (status = 200) => async () => ({ ok: status >= 200 && status < 300, status });
@@ -117,6 +117,62 @@ describe("probeConnectionHealth", () => {
     expect(result.status).toBe(503);
   });
 
+  it("Devin specialty probe routes through proxy-aware fetcher and forces redirect:manual", async () => {
+    const calls = [];
+    const fetcher = async (url, options) => {
+      calls.push({ url: String(url), options });
+      return { ok: true, status: 200, text: async () => "" };
+    };
+    const conn = { id: "dev1", provider: "devin", apiKey: "cog_token", providerSpecificData: {} };
+    const result = await probeConnectionHealth(conn, { fetcher, proxyConfig: null });
+    expect(result.valid).toBe(true);
+    expect(result.status).toBe(200);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe("https://api.devin.ai/v1/sessions?limit=1");
+    expect(calls[0].options.redirect).toBe("manual");
+    expect(calls[0].options.headers?.Authorization).toBe("Bearer cog_token");
+  });
+
+  it("Devin specialty probe uses Vercel relay when configured, leaving direct fetcher unused", async () => {
+    const { __setOriginalFetchForTesting } = await import("../../open-sse/utils/proxyFetch.js");
+    const relayCalls = [];
+    const directSpy = vi.fn();
+    const restore = __setOriginalFetchForTesting(async (url, options) => {
+      relayCalls.push({ url: String(url), options });
+      return { ok: true, status: 200, text: async () => "" };
+    });
+    try {
+      const conn = { id: "dev1", provider: "devin", apiKey: "cog_token", providerSpecificData: {} };
+      const result = await probeConnectionHealth(conn, {
+        fetcher: directSpy,
+        proxyConfig: { vercelRelayUrl: "https://relay.example.test" },
+      });
+      expect(result.valid).toBe(true);
+      expect(directSpy).not.toHaveBeenCalled();
+      expect(relayCalls).toHaveLength(1);
+      expect(relayCalls[0].url).toBe("https://relay.example.test");
+      const headers = relayCalls[0].options.headers instanceof Headers
+        ? Object.fromEntries(relayCalls[0].options.headers.entries())
+        : relayCalls[0].options.headers;
+      expect(headers["x-relay-target"]).toBe("https://api.devin.ai");
+      expect(headers["x-relay-path"]).toBe("/v1/sessions?limit=1");
+      expect(headers.authorization).toBe("Bearer cog_token");
+      expect(relayCalls[0].options.redirect).toBe("manual");
+    } finally {
+      restore();
+    }
+  });
+
+  it("Devin specialty probe rejects 401 without leaking upstream error text", async () => {
+    const fetcher = async () => ({ ok: false, status: 401, text: async () => "secret detail" });
+    const conn = { id: "dev2", provider: "devin", apiKey: "bad", providerSpecificData: {} };
+    const result = await probeConnectionHealth(conn, { fetcher, proxyConfig: null });
+    expect(result.valid).toBe(false);
+    expect(result.status).toBe(401);
+    expect(result.error).toBe("Invalid API key");
+    expect(result.error).not.toContain("secret detail");
+  });
+
   it("auggie non-HTTP transport returns unconfigured, not healthy and not blocked", async () => {
     const fetcher = async () => { throw new Error("fetch must not be called for auggie://"); };
     const conn = { id: "a1", provider: "auggie", name: "auggie", providerSpecificData: {} };
@@ -126,3 +182,5 @@ describe("probeConnectionHealth", () => {
     expect(result.unconfigured).toBe(true);
   });
 });
+
+export {};

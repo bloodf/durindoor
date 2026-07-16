@@ -2,7 +2,7 @@ import { getDefaultModel, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerM
 import { PROVIDERS } from "open-sse/config/providers.js";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
-import { assertOutboundUrlAllowed, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
+import { assertOutboundUrlAllowed, getProviderValidationGuard, guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
 import { extractKimiJwt, KIMI_WEB_DISCOVERY_HEADERS } from "@/lib/providers/webCookieAuth.js";
 
 const AUTH_FAILURE_STATUSES = new Set([401, 403]);
@@ -21,16 +21,21 @@ const SPECIALTY_VALIDATORS = {
 
 /**
  * Devin cloud-agent (Cognition) — list one session with Bearer auth; a 2xx
- * proves the service-user token is accepted, 401/403 rejects it.
+ * proves the service-user token is accepted, 401/403 rejects it. Uses the
+ * SSRF-guarded fetch helper with `redirect: "manual"` so a 3xx cannot bypass the
+ * guard (#6542). The optional `fetcher` override lets callers (health monitor,
+ * connection tests) inject a proxy-aware transport.
  */
 export async function validateDevinCloudAgentProvider({ apiKey, fetcher = fetch }) {
+  const url = "https://api.devin.ai/v1/sessions?limit=1";
   let response;
   try {
-    response = await fetcher("https://api.devin.ai/v1/sessions?limit=1", {
-      method: "GET",
-      headers: { Authorization: `Bearer ${apiKey}` },
-      signal: AbortSignal.timeout(8000),
-    });
+    response = await guardedProbeFetch(
+      url,
+      { method: "GET", headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(8000) },
+      getProviderValidationGuard(),
+      fetcher,
+    );
   } catch {
     return { valid: false, status: null, error: "Provider unavailable - network request failed" };
   }

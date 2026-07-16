@@ -840,6 +840,7 @@ export function getComboModelsFromData(modelStr, combosData, options = {}) {
  *   Eligibility (minContextWindow) filters the pool BEFORE rotation so RR/affinity
  *   state is computed over eligible models; preferLargeContext sorts the rotated
  *   targets BEFORE task-aware reordering (upstream #6907 pipeline point).
+ * @param {number} [options.comboTimeoutMs=0] - Per-model timeout; 0 disables
  * @returns {Promise<Response>}
  */
 export async function handleComboChat({
@@ -851,6 +852,7 @@ export async function handleComboChat({
   comboStrategy,
   comboStickyLimit = 1,
   autoSwitch = true,
+  comboTimeoutMs = 0,
   quotaRanker = null,
   signal = null,
   contextRequirements = null,
@@ -1000,6 +1002,7 @@ export async function handleComboChat({
     const modelStr = rotatedModels[i];
     log.info("COMBO", `Trying model ${i + 1}/${rotatedModels.length}: ${modelStr}`);
 
+    let timedOut = false;
     try {
       // Buffer an isolated per-attempt body so fallbacks always start from the
       // caller's original max_tokens value.
@@ -1008,9 +1011,48 @@ export async function handleComboChat({
       if (nextMaxTokens !== null && nextMaxTokens !== body?.max_tokens) {
         attemptBody = { ...body, max_tokens: nextMaxTokens };
       }
-      const result = await handleSingleModel(attemptBody, modelStr);
+      // Per-attempt timeout: abort signal stops the underlying request when the
+      // deadline fires, so quota/concurrency is released before fallback starts.
+      // The timeout is a deadline for the first response; it does not replace
+      // the streaming stall/first-chunk timeouts.
+      let attemptSignal = null;
+      let attemptController = null;
+      let timeoutTimer = null;
+      if (comboTimeoutMs > 0) {
+        attemptController = new AbortController();
+        attemptSignal = attemptController.signal;
+      }
 
-      
+      let result;
+      try {
+        if (comboTimeoutMs > 0) {
+          result = await Promise.race([
+            handleSingleModel(attemptBody, modelStr, attemptSignal),
+            new Promise((_, reject) => {
+              timeoutTimer = setTimeout(() => {
+                const err = new Error(`Combo timeout after ${comboTimeoutMs}ms`);
+                err.name = "AbortError";
+                err.isComboTimeout = true;
+                reject(err);
+                attemptController.abort();
+              }, comboTimeoutMs);
+            }),
+          ]);
+        } else {
+          result = await handleSingleModel(attemptBody, modelStr, attemptSignal);
+        }
+      } finally {
+        if (timeoutTimer) clearTimeout(timeoutTimer);
+      }
+
+      // A timed-out attempt may return a 499 Response; treat it as a deadline miss
+      // rather than a genuine failure and fall back to the next model.
+      if (result?.status === 499 && attemptSignal?.aborted) {
+        releaseFailedAffinity(modelStr, i);
+        log.warn("COMBO", `Model ${modelStr} timed out after ${comboTimeoutMs}ms, falling to next`);
+        continue;
+      }
+
       // Success (2xx) - return response
       if (result.ok) {
         if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, true, null);
@@ -1076,7 +1118,21 @@ export async function handleComboChat({
       if (!lastStatus) lastStatus = result.status;
       log.warn("COMBO", `Model ${modelStr} failed, trying next`, { status: result.status });
     } catch (error) {
-      if (error?.name === "AbortError" || signal?.aborted) return abortedResponse();
+      if (signal?.aborted) return abortedResponse();
+      if (error?.isComboTimeout) {
+        // Deadline miss is not a real failure; skip setting lastError so the final
+        // "all models failed" message stays on the most recent genuine failure.
+        releaseFailedAffinity(modelStr, i);
+        log.warn("COMBO", `Model ${modelStr} timed out after ${comboTimeoutMs}ms, falling to next`);
+        continue;
+      }
+      // A timeout abort was already handled above; any other AbortError here is
+      // unexpected — treat it as a fallback-able error so the combo continues.
+      if (error?.name === "AbortError") {
+        releaseFailedAffinity(modelStr, i);
+        log.warn("COMBO", `Model ${modelStr} aborted, trying next`);
+        continue;
+      }
       // Catch unexpected exceptions to ensure fallback continues
       releaseFailedAffinity(modelStr, i);
       lastError = error.message || String(error);

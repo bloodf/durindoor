@@ -76,6 +76,8 @@ vi.mock("../../open-sse/rtk/ponytail.js", () => ({
 vi.mock("../../open-sse/rtk/index.js", () => ({
   compressMessages: vi.fn(() => null),
   formatRtkLog: vi.fn(() => ""),
+  // chatCore imports this for the per-request bypass header (#2609); default enabled.
+  resolveTokenSaverEnabled: vi.fn(() => true),
 }));
 
 vi.mock("../../open-sse/rtk/headroom.js", () => ({

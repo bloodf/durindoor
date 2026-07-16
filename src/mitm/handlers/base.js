@@ -8,7 +8,9 @@ const API_KEY = process.env.ROUTER_API_KEY;
 
 // The intercepted client can carry upstream credentials in many non-standard
 // headers. Forward only harmless request metadata; DurinDoor supplies its own
-// content type and API authorization below.
+// content type and API authorization below. Token-saver bypass headers are also
+// forwarded so MITM-routed clients can opt out per request (synced to
+// TOKEN_SAVER_PRIMARY_HEADER / TOKEN_SAVER_LEGACY_HEADER in open-sse/rtk/index.js).
 const FORWARDED_CLIENT_HEADERS = new Set([
   "accept",
   "accept-language",
@@ -20,6 +22,8 @@ const FORWARDED_CLIENT_HEADERS = new Set([
   "x-correlation-id",
   "x-initiator",
   "x-request-id",
+  "x-durindoor-token-saver",
+  "x-9router-token-saver",
 ]);
 
 function selectForwardedClientHeaders(clientHeaders = {}) {

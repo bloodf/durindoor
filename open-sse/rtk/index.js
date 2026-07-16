@@ -145,6 +145,40 @@ function compressText(text, stats, shape) {
   return out;
 }
 
+// Per-request token-saver bypass (port of decolua/9router#2609).
+// `X-DurinDoor-Token-Saver: off` disables every token saver for one chat
+// request; the legacy `X-9Router-Token-Saver` alias is honored for wire
+// compatibility with 9router clients. The DurinDoor header takes precedence
+// whenever present — even with an empty value — so a client can re-enable
+// savers despite a legacy `off` injected upstream. Only the exact value
+// `off` (case-insensitive) bypasses; any other value keeps savers enabled.
+export const TOKEN_SAVER_PRIMARY_HEADER = "x-durindoor-token-saver";
+export const TOKEN_SAVER_LEGACY_HEADER = "x-9router-token-saver";
+
+function readHeaderValue(headers, name) {
+  if (!headers) return undefined;
+  // Fetch API Headers instance (case-insensitive by contract).
+  if (typeof headers.get === "function") {
+    const v = headers.get(name);
+    return v === null || v === undefined ? undefined : String(v);
+  }
+  if (typeof headers === "object") {
+    for (const key of Object.keys(headers)) {
+      if (key.toLowerCase() === name) {
+        const v = headers[key];
+        return v === null || v === undefined ? undefined : String(v);
+      }
+    }
+  }
+  return undefined;
+}
+
+export function resolveTokenSaverEnabled(headers) {
+  const primary = readHeaderValue(headers, TOKEN_SAVER_PRIMARY_HEADER);
+  const raw = primary !== undefined ? primary : readHeaderValue(headers, TOKEN_SAVER_LEGACY_HEADER);
+  return raw === undefined || raw.toLowerCase() !== "off";
+}
+
 // Convenience: format a log line from stats
 export function formatRtkLog(stats) {
   if (!stats || !stats.hits || stats.hits.length === 0) return null;

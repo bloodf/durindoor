@@ -30,6 +30,7 @@ import {
 } from "open-sse/services/combo.js";
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
 import { handlePonytailCommands, DEFAULT_PONYTAIL_HELP, resolvePonytailStream } from "open-sse/utils/tokenSaverBridge.js";
+import { resolveTokenSaverEnabled } from "open-sse/rtk/index.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
 import { detectFormat } from "open-sse/services/provider.js";
@@ -388,28 +389,35 @@ export async function handleChat(request, clientRawRequest = null) {
     }
   }
 
+  // Per-request token-saver bypass (#2609): `X-DurinDoor-Token-Saver: off`
+  // (or legacy `X-9Router-Token-Saver: off`) disables the local Ponytail
+  // slash-command interceptor so the request reaches the provider untransformed.
+  const tokenSaverEnabled = resolveTokenSaverEnabled(clientRawRequest?.headers);
+
   // Ponytail slash commands are local-only: respond before any account/credential lookup.
   const sourceFormat = detectFormatByEndpoint(
     clientRawRequest?.endpoint || new URL(request.url).pathname,
     body,
   ) || detectFormat(body);
   const acceptHeader = clientRawRequest?.headers?.accept || "";
-  const ponytailResponse = await handlePonytailCommands(body, modelStr, {
-    fetchStats: authenticatedKeyRecord
-      ? async () => {
-          const { getApiKeyUsageTotals } = await import("@/lib/localDb");
-          return {
-            ...(await getApiKeyUsageTotals(authenticatedKeyRecord.id)),
-            scope: "this API key",
-          };
-        }
-      : null,
-    helpText: DEFAULT_PONYTAIL_HELP,
-    sourceFormatOverride: sourceFormat,
-    streamOverride: resolvePonytailStream(body, sourceFormat, acceptHeader),
-  });
-  if (ponytailResponse?.success && ponytailResponse.response) {
-    return ponytailResponse.response;
+  if (tokenSaverEnabled) {
+    const ponytailResponse = await handlePonytailCommands(body, modelStr, {
+      fetchStats: authenticatedKeyRecord
+        ? async () => {
+            const { getApiKeyUsageTotals } = await import("@/lib/localDb");
+            return {
+              ...(await getApiKeyUsageTotals(authenticatedKeyRecord.id)),
+              scope: "this API key",
+            };
+          }
+        : null,
+      helpText: DEFAULT_PONYTAIL_HELP,
+      sourceFormatOverride: sourceFormat,
+      streamOverride: resolvePonytailStream(body, sourceFormat, acceptHeader),
+    });
+    if (ponytailResponse?.success && ponytailResponse.response) {
+      return ponytailResponse.response;
+    }
   }
 
   // Bypass naming/warmup requests before combo rotation to avoid wasting rotation slots

@@ -35,7 +35,7 @@ import { dedupeTools } from "../utils/toolDeduper.js";
 import { salvageOrphanedToolResults, fixMissingToolResponses } from "../translator/concerns/toolCall.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
-import { compressMessages } from "../rtk/index.js";
+import { compressMessages, resolveTokenSaverEnabled } from "../rtk/index.js";
 import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadroomPhantomSavings } from "../rtk/headroom.js";
 import { compressWithPxpipe, normalizePxpipeResult } from "../rtk/pxpipe.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
@@ -256,12 +256,19 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
 
   const sourceFormat = sourceFormatOverride || detectFormat(body);
 
+  // Per-request token-saver bypass (#2609): `X-DurinDoor-Token-Saver: off`
+  // (or the legacy `X-9Router-Token-Saver` alias) disables every saver below
+  // for this request only — including the Ponytail slash-command interceptor.
+  // Salvage/fix tool-response repair stays unconditional — it preserves the
+  // tool-pairing invariant, not a saver.
+  const tokenSaverEnabled = resolveTokenSaverEnabled(clientRawRequest?.headers);
+
   // Ponytail slash commands — must run before bypass heuristics.
   // Honor sourceFormatOverride and header-driven non-streaming requests.
   const acceptHeader = clientRawRequest?.headers?.accept || "";
   const clientPrefersJson = acceptHeader.includes("application/json");
   const clientPrefersSSE = acceptHeader.includes("text/event-stream");
-  if (!skipPonytailCommands) {
+  if (tokenSaverEnabled && !skipPonytailCommands) {
     const ponytailResponse = await handlePonytailCommands(body, requestedModel, {
       // Worker/core fallbacks have no authenticated API-key record, so gain
       // deliberately returns the dashboard hint instead of aggregate stats.
@@ -477,7 +484,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
   const xf = [];
 
   // RTK: compress tool_result content
-  const rtkStats = compressMessages(translatedBody, rtkEnabled);
+  const rtkStats = compressMessages(translatedBody, tokenSaverEnabled && rtkEnabled);
   if (rtkStats?.hits?.length) {
     const saved = rtkStats.bytesBefore - rtkStats.bytesAfter;
     const pct = rtkStats.bytesBefore > 0 ? ((saved / rtkStats.bytesBefore) * 100).toFixed(0) : "0";
@@ -486,7 +493,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
 
   // Headroom: optional external proxy compression; fail open if proxy is absent.
   const headroomDiagnostics = {};
-  const headroomStats = await compressWithHeadroom(translatedBody, { enabled: headroomEnabled, url: headroomUrl, model: cleanUpstreamModel, format: finalFormat, compressUserMessages: headroomCompressUserMessages, diagnostics: headroomDiagnostics });
+  const headroomStats = await compressWithHeadroom(translatedBody, { enabled: tokenSaverEnabled && headroomEnabled, url: headroomUrl, model: cleanUpstreamModel, format: finalFormat, compressUserMessages: headroomCompressUserMessages, diagnostics: headroomDiagnostics });
   if (headroomStats) {
     const before = headroomStats.tokens_before || 0;
     const delta = headroomStats.tokens_saved || 0;
@@ -497,7 +504,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
     if (isHeadroomPhantomSavings(headroomStats, headroomDiagnostics)) {
       log?.warn?.("HEADROOM", `reported token delta, but outbound JSON shrank <5%; provider may bill near-original payload | ${formatHeadroomSizeLog(headroomDiagnostics)}`);
     }
-  } else if (headroomEnabled) {
+  } else if (tokenSaverEnabled && headroomEnabled) {
     log?.warn?.("HEADROOM", `skipped: ${headroomDiagnostics.reason || "compression unavailable"}${headroomDiagnostics.endpoint ? ` (${headroomDiagnostics.endpoint})` : ""}`);
   }
 
@@ -507,7 +514,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
   // as a response-header value. Catastrophic seam failure restores the pre-stack
   // snapshot and emits no header. Fail-open throughout.
   let compressionHeaderValue = null;
-  if (compressionEnabled) {
+  if (tokenSaverEnabled && compressionEnabled) {
     const preStackSnapshot = structuredClone(translatedBody);
     try {
       const { body: compressedBody, headerValue } = await runCompressionSeam(translatedBody, undefined, {
@@ -542,20 +549,20 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
   fixMissingToolResponses(translatedBody);
 
   // Caveman: inject terse-style system prompt
-  if (cavemanEnabled && cavemanLevel) {
+  if (tokenSaverEnabled && cavemanEnabled && cavemanLevel) {
     injectCaveman(translatedBody, finalFormat, cavemanLevel);
     xf.push(`CAVEMAN:${cavemanLevel}`);
   }
 
   // Ponytail: inject lazy-senior-dev system prompt
-  if (ponytailEnabled && ponytailLevel) {
+  if (tokenSaverEnabled && ponytailEnabled && ponytailLevel) {
     injectPonytail(translatedBody, finalFormat, ponytailLevel);
     xf.push(`PONYTAIL:${ponytailLevel}`);
   }
 
   // PXPIPE: image bulky context (Claude-format bodies only), last saver before dispatch
   let pxpipeSummary = null;
-  if (pxpipeEnabled) {
+  if (tokenSaverEnabled && pxpipeEnabled) {
     const pxpipeDiagnostics = {};
     const pxpipeResult = normalizePxpipeResult(await compressWithPxpipe(translatedBody, {
       enabled: true, format: finalFormat, model: cleanUpstreamModel,

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { KiroService } from "@/lib/oauth/services/kiro";
 import { createProviderConnection } from "@/models";
+import { normalizeKiroExternalIdpAuth } from "@/lib/oauth/kiroExternalIdp";
+import { resolveKiroCredentialsFromSsoCache } from "open-sse/services/kiroModels.js";
 
 /**
  * POST /api/oauth/kiro/import
@@ -24,16 +26,39 @@ export async function POST(request) {
 
     // For IDC tokens, refresh via the regional OIDC endpoint with client credentials.
     // For social/builder-id tokens, use the standard social refresh endpoint.
-    const providerSpecificData = isIdc
+    let resolvedProviderData = isIdc
       ? { clientId, clientSecret, region: region || "us-east-1", authMethod: "idc" }
       : {};
 
-    const tokenData = await kiroService.refreshToken(refreshToken.trim(), providerSpecificData);
+    let resolvedProfileArn = profileArn || null;
+
+    // Unified SSO cache resolution (9router PR #2615): if the pasted refresh
+    // token matches a local AWS SSO cache entry that declares external_idp
+    // (Microsoft Entra), validate it against the Microsoft token endpoint
+    // instead of the AWS OIDC / social endpoints, which reject such tokens.
+    // Only the cache LOOKUP failures fall through to the standard flow; an
+    // exact-match entry declaring external_idp with invalid metadata (bad
+    // endpoint, missing fields) must fail closed, not silently retry against
+    // AWS/social endpoints.
+    let cacheResult = null;
+    try {
+      cacheResult = await resolveKiroCredentialsFromSsoCache(refreshToken.trim());
+    } catch (cacheError) {
+      // Cache unavailable or token not cached — proceed with standard flow.
+    }
+    if (cacheResult?.authMethod === "external_idp" && cacheResult.rawAuth) {
+      // Throws on invalid metadata (e.g. non-Microsoft token endpoint).
+      const normalized = normalizeKiroExternalIdpAuth(cacheResult.rawAuth);
+      resolvedProviderData = normalized.providerSpecificData;
+      resolvedProfileArn = normalized.providerSpecificData.profileArn || resolvedProfileArn;
+    }
+
+    const tokenData = await kiroService.refreshToken(refreshToken.trim(), resolvedProviderData);
 
     const email = kiroService.extractEmailFromJWT(tokenData.accessToken);
-    const resolvedAuthMethod = isIdc ? "idc" : "imported";
-    const providerLabel = isIdc ? "Enterprise" : "Imported";
-    const resolvedProfileArn = profileArn || tokenData.profileArn || null;
+    const resolvedAuthMethod = tokenData.providerSpecificData?.authMethod || (isIdc ? "idc" : "imported");
+    const providerLabel = tokenData.providerSpecificData?.provider || (isIdc ? "Enterprise" : "Imported");
+    resolvedProfileArn = resolvedProfileArn || tokenData.providerSpecificData?.profileArn || tokenData.profileArn || null;
 
     const connection = await createProviderConnection({
       provider: "kiro",
@@ -47,6 +72,9 @@ export async function POST(request) {
         authMethod: resolvedAuthMethod,
         provider: providerLabel,
         ...(isIdc ? { clientId, clientSecret, region: region || "us-east-1" } : {}),
+        // Persist the full external_idp metadata (clientId, tokenEndpoint,
+        // scope) so later runtime refreshes stay on the Microsoft endpoint.
+        ...(tokenData.providerSpecificData?.authMethod === "external_idp" ? tokenData.providerSpecificData : {}),
       },
       testStatus: "active",
     });

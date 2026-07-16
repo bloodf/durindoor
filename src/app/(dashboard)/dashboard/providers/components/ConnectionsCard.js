@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { getStatusVariant as getConnectionStatusVariant } from "@/shared/utils/connectionStatus";
+import { sortConnectionsByAvailability, persistConnectionOrder } from "@/shared/utils/connectionReorder";
 import { isGooglePseProvider, isGooglePseReadyForSave, buildGooglePseProviderSpecificData, buildGooglePseValidationPayload } from "@/shared/utils/googlePseProviderSpecificData.js";
 import PropTypes from "prop-types";
 import { Card, Badge, Button, Modal, Select, Toggle, EditConnectionModal, ConfirmModal } from "@/shared/components";
@@ -365,36 +366,11 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
   };
 
   const handleReorderByStatus = async () => {
-    const getEffectiveStatus = (conn) => {
-      const isCooldown = Object.entries(conn).some(
-        ([k, v]) => k.startsWith("modelLock_") && v && new Date(v).getTime() > Date.now()
-      );
-      return conn.testStatus === "unavailable" && !isCooldown ? "active" : conn.testStatus;
-    };
-
-    const sorted = [...connections].sort((a, b) => {
-      const statusA = getEffectiveStatus(a);
-      const statusB = getEffectiveStatus(b);
-      const availableA = statusA === "active" || statusA === "success";
-      const availableB = statusB === "active" || statusB === "success";
-
-      if (availableA && !availableB) return -1;
-      if (!availableA && availableB) return 1;
-      return 0;
-    });
-
+    const sorted = sortConnectionsByAvailability(connections);
     setConnections(sorted);
 
     try {
-      await Promise.all(
-        sorted.map((conn, idx) =>
-          fetch(`/api/providers/${conn.id}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ priority: idx }),
-          })
-        )
-      );
+      await persistConnectionOrder(providerId, sorted);
     } catch {
       await fetch_();
     }

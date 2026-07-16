@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   refreshWithRetry: vi.fn(),
   handleStreamingResponse: vi.fn(),
   handleNonStreamingResponse: vi.fn(),
+  isCodexOriginatedHeaders: vi.fn(() => false),
   logClientRawRequest: vi.fn(),
   logRawRequest: vi.fn(),
   logTargetRequest: vi.fn(),
@@ -33,6 +34,7 @@ vi.mock("../../open-sse/utils/requestLogger.js", () => ({
 vi.mock("../../open-sse/utils/clientDetector.js", () => ({
   detectClientTool: vi.fn(() => null),
   isNativePassthrough: vi.fn(() => false),
+  isCodexOriginatedHeaders: mocks.isCodexOriginatedHeaders,
 }));
 
 vi.mock("../../open-sse/utils/bypassHandler.js", () => ({
@@ -109,6 +111,9 @@ function makeOptions({ endpoint = "/v1/responses/compact", legacyMarker = false 
 describe("Codex compact request context in chatCore", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // clearAllMocks clears calls, not implementations — pin the detector to
+    // non-Codex by default; echo tests opt in explicitly.
+    mocks.isCodexOriginatedHeaders.mockReturnValue(false);
     mocks.handleStreamingResponse.mockImplementation(async ({ providerResponse }) => ({ success: true, response: providerResponse }));
     mocks.handleNonStreamingResponse.mockImplementation(async ({ providerResponse }) => ({ success: true, response: providerResponse }));
     mocks.refreshWithRetry.mockResolvedValue({ accessToken: "new-token" });
@@ -131,9 +136,7 @@ describe("Codex compact request context in chatCore", () => {
     expect(first.requestContext).toMatchObject({
       compact: true,
       clientHeaders: { "x-session-id": "request-session" },
-      requestedModel: "gpt-5.3-codex-high",
     });
-    expect(second.requestContext.requestedModel).toBe("gpt-5.3-codex-high");
     expect(Object.isFrozen(first.requestContext)).toBe(true);
     expect(Object.isFrozen(first.requestContext.clientHeaders)).toBe(true);
     expect(first.body).not.toHaveProperty("_compact");
@@ -210,5 +213,61 @@ describe("Codex compact request context in chatCore", () => {
     expect(mocks.handleStreamingResponse).not.toHaveBeenCalled();
     expect(mocks.handleNonStreamingResponse.mock.calls[0][0].body).not.toHaveProperty("_compact");
     expect(options.credentials).not.toHaveProperty("_isCompact");
+  });
+
+  function lifecycleSseResult({ provider = "openai", upstreamModel = "gpt-5.5" } = {}) {
+    const frames = [
+      'data: {"type":"response.created","response":{"id":"resp_1","object":"response","model":"' + upstreamModel + '","status":"in_progress"}}',
+      'data: {"type":"response.completed","response":{"id":"resp_1","object":"response","model":"' + upstreamModel + '","status":"completed"}}',
+      "data: [DONE]",
+    ].join("\n\n") + "\n\n";
+    return {
+      response: new Response(frames, { status: 200, headers: { "Content-Type": "text/event-stream" } }),
+      url: `https://${provider}.test/responses`,
+      headers: {},
+      transformedBody: { model: upstreamModel, input: [] },
+    };
+  }
+
+  it("echoes the ORIGINAL combo client model when Codex-originated and non-compact, regardless of routed provider", async () => {
+    // Client asked the combo for codex/gpt-5.5-xhigh; combo routed to a
+    // NON-Codex upstream. Echo must reflect the client id, not the routed id.
+    mocks.isCodexOriginatedHeaders.mockReturnValue(true);
+    mocks.execute.mockResolvedValue(lifecycleSseResult({ provider: "openai", upstreamModel: "gpt-5.5" }));
+    const options = makeOptions({ endpoint: "/v1/responses" });
+    options.modelInfo = { provider: "openai", model: "gpt-5.5" };
+    options.clientRawRequest.body = { ...options.body, model: "codex/gpt-5.5-xhigh" };
+    options.body = options.clientRawRequest.body;
+
+    const result = await handleChatCore(options);
+
+    const text = await result.response.text();
+    const created = text.match(/data: (\{[^\n]*response\.created[^\n]*\})/);
+    expect(JSON.parse(created[1]).response.model).toBe("codex/gpt-5.5-xhigh");
+  });
+
+  it("does NOT echo on compact requests (unary JSON contract stays untouched)", async () => {
+    mocks.isCodexOriginatedHeaders.mockReturnValue(true);
+    // Compact forces non-streaming dispatch; the upstream returns unary JSON.
+    mocks.handleNonStreamingResponse.mockImplementation(async ({ providerResponse }) => ({ success: true, response: providerResponse }));
+    const jsonBody = { id: "resp_1", object: "response", model: "gpt-5.5", status: "completed", output: [] };
+    const jsonResponse = new Response(JSON.stringify(jsonBody), { status: 200, headers: { "Content-Type": "application/json" } });
+    mocks.execute.mockResolvedValue({
+      response: jsonResponse,
+      url: "https://openai.test/responses",
+      headers: {},
+      transformedBody: { model: "gpt-5.5", input: [] },
+    });
+    const options = makeOptions({ endpoint: "/v1/responses/compact" });
+    options.clientRawRequest.body = { ...options.body, model: "codex/gpt-5.5-xhigh" };
+    options.body = options.clientRawRequest.body;
+
+    const result = await handleChatCore(options);
+
+    // Compact → non-streaming dispatch, and no echo on the unary JSON.
+    expect(mocks.handleNonStreamingResponse).toHaveBeenCalledOnce();
+    expect(mocks.handleStreamingResponse).not.toHaveBeenCalled();
+    const out = await result.response.json();
+    expect(out.model).toBe("gpt-5.5");
   });
 });

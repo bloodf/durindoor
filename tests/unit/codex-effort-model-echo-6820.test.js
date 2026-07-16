@@ -1,218 +1,192 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 
 /**
- * Outbound/inbound wire proof for OmniRoute #6820 (issue #3697) port:
- * Codex CLI compatibility shim. The upstream request keeps the bare upstream
- * model id (`gpt-5.5`), while Responses SSE payloads echo the client-requested
- * effort-suffixed id (`gpt-5.5-xhigh`) so the Codex CLI status line/model
- * button shows the active reasoning effort.
+ * OmniRoute #6820 (issue #3697) port — Codex CLI compatibility shim.
  *
- * DurinDoor deviation from the upstream PR: the echo lives in the Codex
- * executor (response-side rewrite after the SSE transient-error peek), driven
- * by `requestContext.requestedModel` — not a global chatCore echo pipeline.
+ * The Codex CLI status line / model button reads the `model` field of
+ * Responses payloads (`response.created` / `response.in_progress` /
+ * `response.completed`, and the final non-streaming JSON body) to display the
+ * active model + reasoning effort. The upstream wire id stays the bare catalog
+ * id (`gpt-5.5`); the echo rewrites the client-visible `model` on the response
+ * side only.
+ *
+ * DurinDoor layout: the echo is a chatCore boundary wrapper
+ * (`applyResponseModelEcho`) applied to the terminal handler `Response`,
+ * triggered by `isCodexOriginatedHeaders` — NOT by the routed provider, so a
+ * `codex/gpt-5.5-xhigh` id routed through a combo to a non-Codex upstream
+ * still echoes. Compact unary requests are excluded.
  */
 
-const CODEX_URL = "https://chatgpt.com/backend-api/codex/responses";
+import {
+  applyResponseModelEcho,
+  createResponsesModelEchoStream,
+  resolveResponsesEchoModel,
+} from "../../open-sse/services/responseModelEcho.js";
+import { isCodexOriginatedHeaders } from "../../open-sse/utils/clientDetector.js";
 
-function sseText(frames, eol = "\n") {
-  return frames.join(`${eol}${eol}`) + `${eol}${eol}`;
-}
+const ECHO = "gpt-5.5-xhigh";
 
-function sseResponse({ model = "gpt-5.5", eol = "\n", headers = {} } = {}) {
-  const frames = [
-    `event: response.created${eol}data: {"type":"response.created","response":{"id":"resp_1","object":"response","model":"${model}","status":"in_progress"}}`,
-    `event: response.in_progress${eol}data: {"type":"response.in_progress","response":{"id":"resp_1","object":"response","model":"${model}","status":"in_progress"}}`,
+function lifecycleFrames(eol = "\n") {
+  return [
+    `event: response.created${eol}data: {"type":"response.created","response":{"id":"resp_1","object":"response","model":"gpt-5.5","status":"in_progress"}}`,
+    `event: response.in_progress${eol}data: {"type":"response.in_progress","response":{"id":"resp_1","object":"response","model":"gpt-5.5","status":"in_progress"}}`,
     `event: response.output_text.delta${eol}data: {"type":"response.output_text.delta","delta":"ok"}`,
-    `event: response.completed${eol}data: {"type":"response.completed","response":{"id":"resp_1","object":"response","model":"${model}","status":"completed"}}`,
+    `event: response.completed${eol}data: {"type":"response.completed","response":{"id":"resp_1","object":"response","model":"gpt-5.5","status":"completed"}}`,
   ];
-  return new Response(sseText(frames, eol), {
+}
+
+function sseResponse(eol = "\n") {
+  return new Response(lifecycleFrames(eol).join(`${eol}${eol}`) + `${eol}${eol}`, {
     status: 200,
-    headers: { "Content-Type": "text/event-stream", ...headers },
+    headers: { "Content-Type": "text/event-stream" },
   });
 }
 
-const proxyAwareFetch = vi.fn(async () => sseResponse());
-
-vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
-  proxyAwareFetch,
-}));
-
-// Hoisted out of the timed test section: a cold dynamic import under parallel
-// worker load can exceed the per-test timeout and leave stale fetch-mock calls
-// that poison subsequent assertions.
-const { CodexExecutor } = await import("../../open-sse/executors/codex.js");
-
-async function executeWithModel({ model, requestedModel, extraBody = {} }) {
-  const executor = new CodexExecutor();
-  return executor.execute({
-    model,
-    body: { model, input: "hi", ...extraBody },
-    stream: true,
-    credentials: {
-      accessToken: "test-token",
-      connectionId: "conn_test",
-      providerSpecificData: { chatgptAccountId: "acct_test" },
-    },
-    log: null,
-    requestContext: requestedModel ? { requestedModel } : {},
-  });
-}
-
-function parsePostedBody() {
-  expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
-  const [url, options] = proxyAwareFetch.mock.calls[0];
-  expect(url).toBe(CODEX_URL);
-  expect(options.method).toBe("POST");
-  return JSON.parse(options.body);
-}
-
-async function readBodyText(response) {
+async function readAll(response) {
   return new Response(response.body).text();
 }
 
-function framePayloads(text, eventName) {
-  return text
-    .split(/\r?\n\r?\n/)
-    .filter((frame) => frame.includes(`event: ${eventName}`))
-    .map((frame) => {
-      const dataLine = frame.split(/\r?\n/).find((line) => line.startsWith("data:"));
-      return JSON.parse(dataLine.slice(5).trim());
-    });
-}
-
-describe("Codex effort-suffixed model echo (OmniRoute #6820 / issue #3697)", () => {
-  beforeEach(() => {
-    proxyAwareFetch.mockClear();
-    proxyAwareFetch.mockImplementation(async () => sseResponse());
+describe("isCodexOriginatedHeaders", () => {
+  it("matches originator/user-agent STARTING with codex (case-insensitive)", () => {
+    expect(isCodexOriginatedHeaders({ originator: "codex_exec" })).toBe(true);
+    expect(isCodexOriginatedHeaders({ "user-agent": "codex_cli_rs/0.136.0" })).toBe(true);
+    expect(isCodexOriginatedHeaders({ "User-Agent": "Codex/1.2.3" })).toBe(true);
+    expect(isCodexOriginatedHeaders(new Headers({ originator: "codex_cli_rs" }))).toBe(true);
   });
 
-  it("posts the bare upstream model id while Responses payloads echo the requested effort-suffixed id", async () => {
-    const result = await executeWithModel({
-      model: "gpt-5.5",
-      requestedModel: "gpt-5.5-xhigh",
-    });
+  it("rejects substring / non-codex / non-string / empty headers", () => {
+    expect(isCodexOriginatedHeaders({ originator: "my-codex-proxy" })).toBe(false);
+    expect(isCodexOriginatedHeaders({ "user-agent": "claude-cli/1.0" })).toBe(false);
+    expect(isCodexOriginatedHeaders({ originator: { toString: () => "codex_exec" } })).toBe(false);
+    expect(isCodexOriginatedHeaders({})).toBe(false);
+    expect(isCodexOriginatedHeaders(null)).toBe(false);
+  });
+});
 
-    // Routing unchanged: upstream wire id stays bare, effort lands on reasoning.
-    const posted = parsePostedBody();
-    expect(posted.model).toBe("gpt-5.5");
-    expect(posted.reasoning.effort).toBeDefined();
+describe("resolveResponsesEchoModel", () => {
+  it("echoes the ORIGINAL client body model, never the routed upstream id", () => {
+    expect(resolveResponsesEchoModel({ body: { model: "gpt-5.5-xhigh" } })).toBe("gpt-5.5-xhigh");
+    expect(resolveResponsesEchoModel({ body: { model: "gpt-5.5" } })).toBe("gpt-5.5");
+    // No raw body model → nothing safe to echo (no routed fallback).
+    expect(resolveResponsesEchoModel({ body: {} })).toBe(null);
+    expect(resolveResponsesEchoModel(null)).toBe(null);
+  });
+});
 
-    // Response side: created/in_progress/completed echo the client-requested id.
-    const text = await readBodyText(result.response);
-    for (const event of ["response.created", "response.in_progress", "response.completed"]) {
-      const payloads = framePayloads(text, event);
-      expect(payloads).toHaveLength(1);
-      expect(payloads[0].response.model).toBe("gpt-5.5-xhigh");
-    }
-    // No bare upstream id left anywhere in echoed payloads.
-    expect(text).not.toContain('"model":"gpt-5.5"');
+describe("createResponsesModelEchoStream", () => {
+  it("rewrites nested response.model on lifecycle events, keyed off payload type", async () => {
+    const out = await readAll(new Response(
+      new Response(lifecycleFrames().join("\n\n") + "\n\n").body
+        .pipeThrough(createResponsesModelEchoStream(ECHO)),
+    ));
+    const created = out.match(/data: (\{[^\n]*response\.created[^\n]*\})/);
+    expect(created).toBeTruthy();
+    expect(JSON.parse(created[1]).response.model).toBe(ECHO);
+    const completed = out.match(/data: (\{[^\n]*response\.completed[^\n]*\})/);
+    expect(JSON.parse(completed[1]).response.model).toBe(ECHO);
+    // Non-lifecycle events are untouched.
+    expect(out).toContain('"response.output_text.delta","delta":"ok"');
+    expect(out).not.toContain(`"delta":"ok","model"`);
   });
 
-  it("does not echo when the requested id has no recognized effort suffix", async () => {
-    const result = await executeWithModel({
-      model: "gpt-5.5",
-      requestedModel: "gpt-5.5",
-    });
-
-    const text = await readBodyText(result.response);
-    const payloads = framePayloads(text, "response.completed");
-    expect(payloads[0].response.model).toBe("gpt-5.5");
+  it("rewrites data-only lifecycle frames that have no event: header", async () => {
+    const dataOnly = 'data: {"type":"response.created","response":{"id":"r","model":"gpt-5.5"}}\n\n';
+    const out = await readAll(new Response(
+      new Response(dataOnly).body.pipeThrough(createResponsesModelEchoStream(ECHO)),
+    ));
+    expect(JSON.parse(out.match(/data: (\{.*\})/)[1]).response.model).toBe(ECHO);
   });
 
-  it("does not echo non-effort aliases (no suffix leak into response.model)", async () => {
-    const result = await executeWithModel({
-      model: "gpt-5.5",
-      requestedModel: "my-codex-alias",
-    });
-
-    const text = await readBodyText(result.response);
-    const payloads = framePayloads(text, "response.completed");
-    expect(payloads[0].response.model).toBe("gpt-5.5");
-    expect(text).not.toContain("my-codex-alias");
-  });
-
-  it("leaves the stream untouched when requestContext carries no requestedModel", async () => {
-    const result = await executeWithModel({ model: "gpt-5.5", requestedModel: null });
-
-    const text = await readBodyText(result.response);
-    const payloads = framePayloads(text, "response.completed");
-    expect(payloads[0].response.model).toBe("gpt-5.5");
-  });
-
-  it("drops upstream content-length on the transformed response", async () => {
-    proxyAwareFetch.mockImplementation(async () =>
-      sseResponse({ headers: { "Content-Length": "512" } })
-    );
-    const result = await executeWithModel({
-      model: "gpt-5.5",
-      requestedModel: "gpt-5.5-xhigh",
-    });
-
-    expect(result.response.headers.get("content-length")).toBeNull();
-    // Stream still parses end-to-end.
-    const text = await readBodyText(result.response);
-    expect(framePayloads(text, "response.completed")).toHaveLength(1);
-  });
-
-  it("preserves CRLF framing and only rewrites model-bearing frames", async () => {
-    proxyAwareFetch.mockImplementation(async () => sseResponse({ eol: "\r\n" }));
-    const result = await executeWithModel({
-      model: "gpt-5.5",
-      requestedModel: "gpt-5.5-xhigh",
-    });
-
-    const text = await readBodyText(result.response);
-    // CRLF delimiter style survives the transform.
-    expect(text).toContain("\r\n\r\n");
-    // Non-model frame (output_text.delta) passes through unchanged.
-    expect(text).toContain('data: {"type":"response.output_text.delta","delta":"ok"}');
-    const payloads = framePayloads(text, "response.completed");
-    expect(payloads[0].response.model).toBe("gpt-5.5-xhigh");
-  });
-
-  it("reassembles frames split across chunk boundaries before rewriting", async () => {
-    const full = [
-      'event: response.created\r\ndata: {"type":"response.created","response":{"id":"resp_1","model":"gpt-5.5","status":"in_progress"}}',
-      'event: response.completed\r\ndata: {"type":"response.completed","response":{"id":"resp_1","model":"gpt-5.5","status":"completed"}}',
-    ].join("\r\n\r\n") + "\r\n\r\n";
-    const encoded = new TextEncoder().encode(full);
-    // Split mid-JSON inside the first frame's data payload.
-    const splitAt = full.indexOf('"model"') + 3;
+  it("handles \\r\\n line endings and multi-byte JSON split across chunks", async () => {
+    const text = lifecycleFrames("\r\n").join("\r\n\r\n") + "\r\n\r\n";
+    const bytes = new TextEncoder().encode(text);
+    // Split mid-frame to prove frame-accurate buffering.
+    const mid = Math.floor(bytes.length / 2);
     const stream = new ReadableStream({
       start(controller) {
-        controller.enqueue(encoded.subarray(0, splitAt));
-        controller.enqueue(encoded.subarray(splitAt));
+        controller.enqueue(bytes.slice(0, mid));
+        controller.enqueue(bytes.slice(mid));
         controller.close();
       },
     });
-    proxyAwareFetch.mockImplementation(
-      async () => new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } })
-    );
+    const out = await readAll(new Response(stream.pipeThrough(createResponsesModelEchoStream(ECHO))));
+    expect(out).toContain(`"model":"${ECHO}"`);
+    expect(out).toContain("\r\n");
+  });
+});
 
-    const result = await executeWithModel({
-      model: "gpt-5.5",
-      requestedModel: "gpt-5.5-xhigh",
-    });
-    const text = await readBodyText(result.response);
-    expect(framePayloads(text, "response.created")[0].response.model).toBe("gpt-5.5-xhigh");
-    expect(framePayloads(text, "response.completed")[0].response.model).toBe("gpt-5.5-xhigh");
+describe("applyResponseModelEcho", () => {
+  it("returns the result unchanged when echoModel is null", async () => {
+    const result = { success: true, response: sseResponse() };
+    const out = await applyResponseModelEcho(result, null);
+    expect(out).toBe(result);
   });
 
-  it("strips only a trailing effort suffix from the routing id (prefix occurrences kept)", async () => {
-    // Model id containing an effort word earlier in the name: only the trailing
-    // `-high` is stripped for the wire; echo still uses the full client id.
-    proxyAwareFetch.mockImplementation(async () =>
-      sseResponse({ model: "gpt-high-codex" })
-    );
-    const result = await executeWithModel({
-      model: "gpt-high-codex-high",
-      requestedModel: "gpt-high-codex-high",
-    });
+  it("rewrites SSE bodies and drops content-length", async () => {
+    const result = {
+      success: true,
+      response: new Response(sseResponse().body, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream", "content-length": "999" },
+      }),
+    };
+    const out = await applyResponseModelEcho(result, ECHO);
+    expect(out.response.headers.get("content-length")).toBe(null);
+    const text = await out.response.text();
+    expect(text).toContain(`"model":"${ECHO}"`);
+  });
 
-    const posted = parsePostedBody();
-    expect(posted.model).toBe("gpt-high-codex");
-    expect(posted.reasoning.effort).toBe("high");
-    const text = await readBodyText(result.response);
-    expect(framePayloads(text, "response.completed")[0].response.model).toBe("gpt-high-codex-high");
+  it("sets top-level model on Responses JSON objects (forced-SSE→JSON converter)", async () => {
+    // Converter output has object:"response" but no model field.
+    const body = JSON.stringify({ id: "resp_1", object: "response", status: "completed", output: [], usage: {} });
+    const result = {
+      success: true,
+      response: new Response(body, { status: 200, headers: { "Content-Type": "application/json" } }),
+    };
+    const out = await applyResponseModelEcho(result, ECHO);
+    expect(JSON.parse(await out.response.text()).model).toBe(ECHO);
+  });
+
+  it("overwrites an existing string model on non-streaming Responses JSON", async () => {
+    const body = JSON.stringify({ id: "resp_1", object: "response", model: "gpt-5.5", status: "completed" });
+    const result = {
+      success: true,
+      response: new Response(body, { status: 200, headers: { "Content-Type": "application/json" } }),
+    };
+    const out = await applyResponseModelEcho(result, ECHO);
+    expect(JSON.parse(await out.response.text()).model).toBe(ECHO);
+  });
+
+  it("leaves non-Responses JSON (error objects) untouched", async () => {
+    const body = JSON.stringify({ error: { message: "boom", type: "server_error" } });
+    const result = {
+      success: true,
+      response: new Response(body, { status: 200, headers: { "Content-Type": "application/json" } }),
+    };
+    const out = await applyResponseModelEcho(result, ECHO);
+    expect(await out.response.text()).toBe(body);
+  });
+
+  it("returns the result unchanged for unsuccessful results", async () => {
+    const result = { success: false, response: sseResponse() };
+    const out = await applyResponseModelEcho(result, ECHO);
+    expect(out).toBe(result);
+  });
+
+  it("propagates transport read failures instead of swallowing them into an empty body", async () => {
+    // A JSON body whose stream errors mid-read must reject so chatCore's error
+    // handling sees the transport failure — never be folded into a 200 with an
+    // empty/garbage body.
+    const failing = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"object":"response"'));
+        controller.error(new Error("boom: connection reset"));
+      },
+    });
+    const result = {
+      success: true,
+      response: new Response(failing, { status: 200, headers: { "Content-Type": "application/json" } }),
+    };
+    await expect(applyResponseModelEcho(result, ECHO)).rejects.toThrow("boom: connection reset");
   });
 });

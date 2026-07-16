@@ -240,7 +240,7 @@ number,title,verdict,evidence
 6823,"feat: add Z.ai Web free web-cookie provider (#4056)",PORT,named-map-id
 6822,"feat(providers): manual context-window override for custom models (#4125)",SKIP,SKIP:not-selected|files:48
 6821,"fix(providers): honor explicit thinking.budget_tokens 0 in openai->gemini transform (#6813)",PORT,named-map-id
-6820,"feat(codex): echo requested effort-suffixed model id in Responses payloads (#3697)",SKIP,SKIP:not-selected|files:6
+6820,"feat(codex): echo requested effort-suffixed model id in Responses payloads (#3697)",PORT,named-map-id
 6819,"[dup] fix(providers): drop image_generation for gpt-5.3-codex-spark (#6651)",SKIP,SKIP:not-selected|files:2
 6818,"feat(usage): surface Antigravity weekly quota alongside the 5-hour window (#4017)",PORT,named-map-id
 6817,"feat(resilience): weekly-429 cooldown for fetcher-less providers (#3709)",SKIP,SKIP:not-selected|files:4

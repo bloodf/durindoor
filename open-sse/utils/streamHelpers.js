@@ -158,3 +158,24 @@ export function formatSSE(data, sourceFormat) {
 
   return `data: ${JSON.stringify(data)}\n\n`;
 }
+
+/**
+ * Split an accumulated raw SSE text buffer into complete frames plus the
+ * unterminated tail. Frames are delimited by a blank line (`\r?\n\r?\n`); text
+ * after the last delimiter is returned as `remainder` so the caller can
+ * prepend it to the next chunk without inspecting partial data.
+ *
+ * @param {string} buffer Accumulated raw SSE text that may contain a partial final frame.
+ * @returns {{frames: string[], remainder: string}} Complete frames and the unterminated tail.
+ */
+export function extractCompleteSseFrames(buffer) {
+  const frames = [];
+  const delimiter = /\r?\n\r?\n/g;
+  let cursor = 0;
+  let match;
+  while ((match = delimiter.exec(buffer)) !== null) {
+    frames.push(buffer.slice(cursor, match.index));
+    cursor = delimiter.lastIndex;
+  }
+  return { frames, remainder: buffer.slice(cursor) };
+}

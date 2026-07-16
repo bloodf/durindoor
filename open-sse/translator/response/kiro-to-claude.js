@@ -75,6 +75,16 @@ export function kiroToClaudeResponse(chunk, state) {
         ? data.usage.completion_tokens
         : 0;
     state.usage = { input_tokens: promptTokens, output_tokens: outputTokens };
+    // Preserve Kiro credit metering attached upstream (executor meteringEvent)
+    // so onStreamComplete persists credits on the Claude route too.
+    const kiroCredits = data.usage.kiro_credits !== null && data.usage.kiro_credits !== undefined
+      ? Number(data.usage.kiro_credits) : NaN;
+    if (Number.isFinite(kiroCredits) && kiroCredits >= 0) {
+      state.usage.kiro_credits = kiroCredits;
+      if (typeof data.usage.kiro_credit_unit === "string") {
+        state.usage.kiro_credit_unit = data.usage.kiro_credit_unit;
+      }
+    }
   }
 
   // First chunk → emit message_start.

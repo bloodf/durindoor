@@ -11,7 +11,15 @@
  * body cannot leak the listener or timer.
  */
 
-/** True when a relayed upstream response is an SSE stream. */
+/**
+ * The canonical relay/connect timeout abort reason. Using a DOMException named
+ * "TimeoutError" lets the stream-lifecycle wrapper distinguish internal
+ * timeouts from caller aborts without changing pre-header fetch behavior.
+ */
+export function fetchConnectTimeoutError() {
+  return new DOMException("fetch connect timeout", "TimeoutError");
+}
+
 export function isRelaySseResponse(response) {
   const contentType = response?.headers?.get?.("content-type") || "";
   return Boolean(response?.body) && contentType.toLowerCase().includes("text/event-stream");
@@ -26,12 +34,17 @@ export function isRelaySseResponse(response) {
  * @param {object} [options]
  * @param {AbortSignal} [options.signal] caller timeout/abort signal kept live
  *   until the body finalizes; aborting cancels the reader and finalizes.
+ * @param {AbortSignal} [options.timeoutSignal] the internal relay/connect
+ *   timeout controller's signal. Only when THIS signal aborted with the exact
+ *   reason now on `signal` is the reason preserved verbatim (provenance by
+ *   identity, not name): a caller `AbortSignal.timeout()` supplies a
+ *   TimeoutError too, and that must still normalize to AbortError.
  * @param {(error?: unknown) => void} [options.onFinalize] runs exactly once:
  *   `undefined` on clean EOF, the error on stream error, the reason on cancel
  *   or abort.
  * @returns {ReadableStream<Uint8Array>}
  */
-export function boundRelayStreamLifetime(body, { signal = null, onFinalize = null } = {}) {
+export function boundRelayStreamLifetime(body, { signal = null, timeoutSignal = null, onFinalize = null } = {}) {
   const reader = body.getReader();
   let finalized = false;
   let downstream = null;
@@ -43,10 +56,16 @@ export function boundRelayStreamLifetime(body, { signal = null, onFinalize = nul
     onFinalize?.(error);
   };
 
-  // Signal-driven termination is a caller abort/timeout: always surface it
-  // downstream as AbortError (never a clean EOF, never a plain Error name),
-  // preserving the reason as the cause for diagnostics.
+  // Signal-driven termination surfaces downstream as an error, never as a
+  // clean EOF. Preserve the internal relay/connect timeout reason verbatim —
+  // wrapping it as AbortError would let createDisconnectAwareStream's catch
+  // treat a relay timeout after partial SSE bytes as a graceful network
+  // close. Provenance is by IDENTITY (timeoutSignal aborted with this exact
+  // reason object), never by name: a caller AbortSignal.timeout() reason is
+  // also named TimeoutError and must normalize to AbortError like every
+  // other caller abort.
   const abortError = (reason) => {
+    if (timeoutSignal && timeoutSignal.aborted && timeoutSignal.reason === reason) return reason;
     const message = reason instanceof Error ? reason.message : "Aborted";
     const error = new DOMException(message || "Aborted", "AbortError");
     if (reason != null) error.cause = reason;

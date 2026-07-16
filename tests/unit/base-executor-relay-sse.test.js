@@ -105,12 +105,56 @@ describe("BaseExecutor relay SSE lifecycle (OmniRoute#7093 port)", () => {
       );
       await vi.advanceTimersByTimeAsync(100); // timeoutMs
       expect(signal.aborted).toBe(true);
-      // Signal-driven termination surfaces as AbortError, never clean EOF.
+      // Internal timeout surfaces the TimeoutError reason VERBATIM (never a
+      // graceful EOF / AbortError) so createDisconnectAwareStream treats it as
+      // a hard error and the chatCore classifier picks reason "timeout".
       const { error } = await readOutcome;
-      expect(error).toMatchObject({ name: "AbortError" });
-      // The timeout identity survives in the cause so the chatCore classifier
-      // picks reason "timeout", not "abort".
-      expect(String(error?.cause?.message || error?.message)).toContain("timeout");
+      expect(error).toBeInstanceOf(DOMException);
+      expect(error).toMatchObject({ name: "TimeoutError" });
+      expect(String(error?.message)).toContain("timeout");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("caller-first abort is classified 'aborted' even when the connect timer fires before the fetch rejection lands", async () => {
+    // Regression for the classification race: caller aborts first, then the
+    // header-timeout timer fires, THEN the fetch rejection reaches the catch.
+    // Reason-identity (mergedSignal.reason === connectCtrl.signal.reason) must
+    // keep this on the caller-abort path (errorKind "aborted"), never
+    // misclassify it as our connect_timeout.
+    vi.useFakeTimers();
+    try {
+      let rejectFetch;
+      hookFetch(
+        () =>
+          new Promise((_, reject) => {
+            rejectFetch = reject;
+          })
+      );
+      const callerCtrl = new AbortController();
+      const ex = makeExecutor();
+      const pending = executeRelay(ex, { signal: callerCtrl.signal });
+      // Avoid unhandled-rejection noise while we step the clock.
+      const outcome = pending.then(
+        () => ({ ok: true }),
+        (error) => ({ ok: false, error })
+      );
+      // 1. Caller aborts first (plain caller abort → reason is an AbortError).
+      callerCtrl.abort(new DOMException("The operation was aborted", "AbortError"));
+      // 2. The connect timer still fires before the rejection reaches base.js.
+      await vi.advanceTimersByTimeAsync(100); // timeoutMs
+      // 3. NOW the fetch rejects with the caller's abort reason (as undici
+      //    would, rejecting with the signal reason object).
+      rejectFetch(callerCtrl.signal.reason);
+      await vi.advanceTimersByTimeAsync(0);
+      const { ok, error } = await outcome;
+      expect(ok).toBe(false);
+      expect(error).toBeDefined();
+      // Caller-abort path: errorKind "aborted", NOT "connect_timeout", and the
+      // executor must not fall into the retry/fallback branch.
+      expect(error.errorKind).toBe("aborted");
+      expect(error.errorKind).not.toBe("connect_timeout");
     } finally {
       vi.useRealTimers();
     }

@@ -1,7 +1,7 @@
 import { HTTP_STATUS, RETRY_CONFIG, DEFAULT_RETRY_CONFIG, resolveRetryEntry, FETCH_CONNECT_TIMEOUT_MS, matchSkipRule, resolveRequestRetryPolicy } from "../config/runtimeConfig.js";
 import { shouldRefreshCredentials } from "../services/oauthCredentialManager.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { boundRelayStreamLifetime, isRelaySseResponse } from "../utils/relayStreamLifecycle.js";
+import { boundRelayStreamLifetime, fetchConnectTimeoutError, isRelaySseResponse } from "../utils/relayStreamLifecycle.js";
 import { dbg } from "../utils/debugLog.js";
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE } from "../providers/shared.js";
 import { findOffendingField } from "../config/providerFieldStrips.js";
@@ -289,14 +289,12 @@ export class BaseExecutor {
       if (!retryAttemptsByUrl[urlIndex]) retryAttemptsByUrl[urlIndex] = 0;
 
       // Abort if upstream doesn't return response headers within the connect/header timeout.
-      // Use a closure flag to detect OUR timeout: undici rejects with the exact reason object
-      // we pass to abort(), so error.name stays "Error" (NOT "AbortError") on Node/undici —
-      // the old `error.name === "AbortError"` check never fired. The flag is authoritative.
+      // OUR timeout is proven by reason identity at the catch (mergedSignal.reason ===
+      // connectCtrl.signal.reason): undici rejects with the exact reason object we pass to
+      // abort(), and a near-simultaneous caller abort must not be misclassified.
       let connectCtrl = new AbortController();
-      let connectTimedOut = false;
       const armConnectTimer = () => setTimeout(() => {
-        connectTimedOut = true;
-        connectCtrl.abort(new Error("fetch connect timeout"));
+        connectCtrl.abort(fetchConnectTimeoutError());
       }, headerTimeoutMs);
       let connectTimer = armConnectTimer();
       let mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
@@ -334,7 +332,6 @@ export class BaseExecutor {
             cancelDiscardedResponse(response);
             // Reset the connect timeout for the new upstream request.
             clearTimeout(connectTimer);
-            connectTimedOut = false;
             connectCtrl = new AbortController();
             connectTimer = armConnectTimer();
             mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
@@ -357,6 +354,7 @@ export class BaseExecutor {
           response = new Response(
             boundRelayStreamLifetime(response.body, {
               signal: mergedSignal,
+              timeoutSignal: connectCtrl.signal,
               onFinalize: () => clearTimeout(connectTimer),
             }),
             {
@@ -430,7 +428,13 @@ export class BaseExecutor {
         clearTimeout(connectTimer);
         if (isQuotaDispatchUnavailable(error)) throw error;
         lastError = error;
-        const isConnectTimeout = connectTimedOut;
+        // Prove OUR timer fired by reason identity (mergedSignal.reason ===
+        // connectCtrl's reason). connectCtrl.signal.aborted alone would
+        // misclassify a caller-first abort when the timer fires before the
+        // fetch rejection reaches this catch; the reason on the merged signal
+        // is whichever fired FIRST, so identity is authoritative.
+        const isConnectTimeout = connectCtrl.signal.aborted &&
+          mergedSignal?.reason === connectCtrl.signal.reason;
         // Classify: our header-timeout vs a caller-initiated abort vs a generic network error.
         const errorKind = isConnectTimeout ? "connect_timeout" : "network";
         dbg("FETCH", `${this.provider.toUpperCase()} ✖ ${error.name}: ${error.message}${isConnectTimeout ? " (connect timeout)" : ""}`);

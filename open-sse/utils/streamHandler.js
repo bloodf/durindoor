@@ -131,10 +131,15 @@ export function createDisconnectAwareStream(transformStream, streamController, o
         reader.cancel().catch(() => {});
         writer.abort().catch(() => {});
 
-        // Treat network resets / socket hang up / abort as graceful close
         const msg = error?.message || "";
         const code = error?.code || error?.cause?.code || "";
-        const isNetworkClose =
+        // Treat caller abort and network resets as graceful close.
+        // A relay/connect TimeoutError is NOT caller abort and NOT a network
+        // close: it must surface as a hard stream error so the client sees
+        // truncated SSE as terminal failure, not clean EOF (Codex P2 on
+        // OmniRoute#7093 port). Precedence: named TimeoutError blocks rescue.
+        const isRelayTimeout = error?.name === "TimeoutError";
+        const isNetworkClose = !isRelayTimeout && (
           error.name === "AbortError" ||
           msg.includes("aborted") ||
           msg.includes("socket hang up") ||
@@ -144,7 +149,8 @@ export function createDisconnectAwareStream(transformStream, streamController, o
           code === "ECONNRESET" ||
           code === "ETIMEDOUT" ||
           code === "EPIPE" ||
-          code === "UND_ERR_SOCKET";
+          code === "UND_ERR_SOCKET"
+        );
 
         // Graceful close on network/abort, or when a structured terminal is available
         // (Responses passthrough prefers response.failed + [DONE] over a raw transport error)

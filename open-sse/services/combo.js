@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { checkFallbackError, formatRetryAfter } from "./accountFallback.js";
 import { unavailableResponse } from "../utils/error.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
+import { filterByContextRequirements, sortByContextSize, validateContextRequirementsMembers } from "./combo/contextRequirements.js";
 import { resolveReasoningBufferedMaxTokens } from "./reasoningTokenBuffer.js";
 import { extractTextContent } from "../translator/formats/gemini.js";
 import { isAutoComboId, familyOfAutoId, resolveAutoCombo } from "./autoComboResolver.js";
@@ -834,6 +835,11 @@ export function getComboModelsFromData(modelStr, combosData, options = {}) {
  * @param {string} [options.comboName] - Name of the combo (for round-robin tracking)
  * @param {string} [options.comboStrategy] - Strategy: "fallback" or "round-robin"
  * @param {number|string} [options.comboStickyLimit=1] - Requests per combo model before switching
+ * @param {Object} [options.contextRequirements] - Optional per-combo context-window
+ *   config ({ minContextWindow, preferLargeContext, contextFilterMode }).
+ *   Eligibility (minContextWindow) filters the pool BEFORE rotation so RR/affinity
+ *   state is computed over eligible models; preferLargeContext sorts the rotated
+ *   targets BEFORE task-aware reordering (upstream #6907 pipeline point).
  * @returns {Promise<Response>}
  */
 export async function handleComboChat({
@@ -847,6 +853,7 @@ export async function handleComboChat({
   autoSwitch = true,
   quotaRanker = null,
   signal = null,
+  contextRequirements = null,
 }) {
   const abortedResponse = () => new Response(
     JSON.stringify({ error: { message: "Request aborted" } }),
@@ -878,19 +885,56 @@ export async function handleComboChat({
     );
   }
 
+  // Context-requirements ELIGIBILITY filter runs BEFORE rotation/scoring so the
+  // round-robin pointer, sticky rotation, smart-scoring, and conversation-affinity
+  // state are all computed over the ELIGIBLE pool. Filtering only after rotation
+  // would let the pointer land on an excluded member and skew the survivor
+  // sequence. `activeModels` is used for rotation AND every downstream pool
+  // reference (pointer, affinity release) so they share the SAME eligible set.
+  // Same reference when no requirement is configured, leaving fallback order intact.
+  const memberCheck = validateContextRequirementsMembers(models, contextRequirements);
+  if (!memberCheck.ok) {
+    log.warn("COMBO", memberCheck.message);
+    return new Response(
+      JSON.stringify({ error: { message: memberCheck.message } }),
+      { status: memberCheck.status, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  const activeModels = filterByContextRequirements(models, contextRequirements, log);
+  if (!Array.isArray(activeModels) || activeModels.length === 0) {
+    const msg = `Combo "${comboName}" has no models matching context requirements`;
+    log.warn("COMBO", msg);
+    return new Response(
+      JSON.stringify({ error: { message: msg } }),
+      { status: 503, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   // Apply rotation/scoring strategy
   const conversationCacheKey = getConversationCacheKey(body);
   let rotatedModels;
   if (comboStrategy === "smart-scoring") {
-    rotatedModels = getSmartScoredModels(models, comboName);
+    rotatedModels = getSmartScoredModels(activeModels, comboName);
   } else {
-    rotatedModels = getRotatedModels(models, comboName, comboStrategy, comboStickyLimit, conversationCacheKey);
+    rotatedModels = getRotatedModels(activeModels, comboName, comboStrategy, comboStickyLimit, conversationCacheKey);
   }
+
+  // Context-requirements preferLargeContext SORT runs BEFORE capability-aware
+  // reordering (auto-switch) and task-aware reordering. Putting it here keeps
+  // the eligibility filter before rotation, lets preferLargeContext influence
+  // dispatch order, and still leaves hard-capability-aware auto-switch to push
+  // vision/audio models to the front when the request needs them. Same reference
+  // when off.
+  rotatedModels = sortByContextSize(rotatedModels, contextRequirements, log);
+
+  // Required request capabilities hoisted so both the capability reorder and
+  // (for task strategies) the task reorder can use the same set.
+  const required = autoSwitch ? detectRequiredCapabilities(body) : new Set();
 
   // Auto-switch satisfies request capabilities only. It must not override the
   // explicit Fallback/Round Robin order for plain text requests.
   if (autoSwitch) {
-    const required = detectRequiredCapabilities(body);
     if (required.size > 0) {
       const reordered = reorderByCapabilities(rotatedModels, required);
       if (reordered[0] !== rotatedModels[0]) {
@@ -898,17 +942,19 @@ export async function handleComboChat({
       }
       rotatedModels = reordered;
     }
-
-    if (isTaskRoutingStrategy(comboStrategy)) {
-      const task = classifyTask(body);
-      const taskReordered = reorderByTaskWeight(rotatedModels, task, required);
-      if (taskReordered[0] !== rotatedModels[0]) {
-        const reasons = Array.isArray(task.reasons) && task.reasons.length ? ` (${task.reasons.join(",")})` : "";
-        log.info("COMBO", `smart-route task=${task.level}${reasons} → ${taskReordered[0]}`);
-      }
-      rotatedModels = taskReordered;
-    }
   }
+
+  // Task-aware reordering (smart/task strategies) runs after context sort.
+  if (autoSwitch && isTaskRoutingStrategy(comboStrategy)) {
+    const task = classifyTask(body);
+    const taskReordered = reorderByTaskWeight(rotatedModels, task, required);
+    if (taskReordered[0] !== rotatedModels[0]) {
+      const reasons = Array.isArray(task.reasons) && task.reasons.length ? ` (${task.reasons.join(", ")})` : "";
+      log.info("COMBO", `smart-route task=${task.level}${reasons} → ${taskReordered[0]}`);
+    }
+    rotatedModels = taskReordered;
+  }
+
   if (typeof quotaRanker === "function") {
     try {
       const quotaOrdered = await quotaRanker(rotatedModels);
@@ -943,7 +989,7 @@ export async function handleComboChat({
     if (affinityReleased || !rrAffinityKey) return;
     if (idx !== 0) return;
     const pinned = comboConversationAffinity.get(rrAffinityKey);
-    if (pinned && models[pinned.index % models.length] === failedModelStr) {
+    if (pinned && activeModels[pinned.index % activeModels.length] === failedModelStr) {
       comboConversationAffinity.delete(rrAffinityKey);
     }
     affinityReleased = true;
@@ -971,7 +1017,7 @@ export async function handleComboChat({
         if (comboStrategy === "round-robin") {
           const actuallyRotated = modelStr !== rotatedModels[0];
           if (actuallyRotated) {
-            advanceRoundRobinPointerPastServedModel(models, comboName, comboStickyLimit, modelStr);
+            advanceRoundRobinPointerPastServedModel(activeModels, comboName, comboStickyLimit, modelStr);
           }
         }
         log.info("COMBO", `Model ${modelStr} succeeded`);
@@ -1231,14 +1277,43 @@ async function drainCancelledPanelCalls(calls, pendingIndexes, timeoutMs) {
  * @param {string} [options.comboName] - Combo name (logging)
  * @param {string} [options.judgeModel] - Judge model; falls back to panel[0]
  * @param {Object} [options.tuning] - Override FUSION_DEFAULTS (minPanel, grace, timeout)
+ * @param {Object} [options.contextRequirements] - Optional per-combo context-window
+ *   requirements; filters the panel BEFORE fan-out so an ineligible model is
+ *   never called (same eligibility semantics as handleComboChat).
  * @returns {Promise<Response>}
  */
-export async function handleFusionChat({ body, models, handleSingleModel, log, comboName, judgeModel, tuning }) {
-  const panel = Array.isArray(models) ? models.filter(Boolean) : [];
-  if (panel.length === 0) {
+export async function handleFusionChat({ body, models, handleSingleModel, log, comboName, judgeModel, tuning, contextRequirements = null }) {
+  const allModels = Array.isArray(models) ? models.filter(Boolean) : [];
+  if (allModels.length === 0) {
     return new Response(
       JSON.stringify({ error: { message: "Fusion combo has no models" } }),
       { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  // Members that do not resolve to a provider/model id cannot be evaluated for
+  // context requirements. Fail controlled instead of silently treating them
+  // as eligible/unknown in the panel.
+  const memberCheck = validateContextRequirementsMembers(allModels, contextRequirements);
+  if (!memberCheck.ok) {
+    log.warn("FUSION", memberCheck.message);
+    return new Response(
+      JSON.stringify({ error: { message: memberCheck.message } }),
+      { status: memberCheck.status, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  // Context-requirements eligibility filter must run here too: the fusion
+  // branch in chat.js returns before handleComboChat, so without this call a
+  // configured min-context filter would be silently ignored for fusion combos.
+  const eligibleModels = filterByContextRequirements(allModels, contextRequirements, log);
+  const panel = sortByContextSize(eligibleModels, contextRequirements, log);
+  if (!Array.isArray(panel) || panel.length === 0) {
+    const msg = `Combo "${comboName}" has no models matching context requirements`;
+    log.warn("FUSION", msg);
+    return new Response(
+      JSON.stringify({ error: { message: msg } }),
+      { status: 503, headers: { "Content-Type": "application/json" } }
     );
   }
 

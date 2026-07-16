@@ -6,7 +6,7 @@ const PRIVILEGED_UNCONFIRMED_EXIT_CODE = 86;
 
 /**
  * Detect if current Windows process has admin rights (no UAC popup needed).
- * Uses `net session` which only succeeds when elevated.
+ * Uses `fltmc` (Filter Manager control), which only succeeds when elevated.
  */
 function isAdmin({ platform = process.platform, execFileSyncImpl = execFileSync } = {}) {
   if (platform === "win32") {

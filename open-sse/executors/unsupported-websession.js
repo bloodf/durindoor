@@ -2,6 +2,21 @@ import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 
 export const BLOCKED_OMNIROUTE_PROVIDERS = {
+  // OmniRoute #6894: Devin is a cloud-agent provider with transport:null — it
+  // has no chat/completions upstream. Without this fail-closed entry,
+  // getExecutor("devin") fell through to DefaultExecutor, whose constructor
+  // substitutes PROVIDERS.openai when PROVIDERS["devin"] is undefined, which
+  // sent the saved Devin API key as a Bearer token to api.openai.com
+  // (cross-provider credential disclosure via direct model:"devin/devin"
+  // dispatch). The 501 response performs ZERO upstream fetch.
+  devin: {
+    aliases: [],
+    source: [
+      "open-sse/providers/registry/devin.js",
+    ],
+    detail: "runtime execution is not available",
+    reason: "cloud-agent provider (kind: agent) with no chat transport — credential/catalog only",
+  },
   "adapta-web": {
     aliases: ["adp-web"],
     source: [
@@ -95,13 +110,15 @@ export class UnsupportedOmniRouteWebSessionExecutor extends BaseExecutor {
       source: [],
       reason: "requires an OmniRoute web-session executor not yet ported to this JS branch",
     };
+    this.detail = BLOCKED_OMNIROUTE_PROVIDERS[provider]?.detail
+      || "is registered from OmniRoute PR #51 but runtime execution is not ported yet";
     this.noAuth = true;
   }
 
   async execute() {
     const payload = {
       error: {
-        message: `${this.provider} is registered from OmniRoute PR #51 but runtime execution is not ported yet: ${this.blocker.reason}.`,
+        message: `${this.provider} ${this.detail}: ${this.blocker.reason}.`,
         type: "provider_port_pending",
         provider: this.provider,
         sourceFiles: this.blocker.source,

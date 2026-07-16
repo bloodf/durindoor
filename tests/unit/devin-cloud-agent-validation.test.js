@@ -155,3 +155,43 @@ describe("devin /v1/models exclusion (OmniRoute #6894)", () => {
     expect(ids.some((id) => id.startsWith("devin/"))).toBe(false);
   });
 });
+
+describe("devin direct dispatch fail-closed (OmniRoute #6894)", () => {
+  // Direct model:"devin/devin" chat requests bypass the catalog/selector
+  // exclusion above. Before this guard, getExecutor("devin") fell through to
+  // DefaultExecutor, whose constructor substitutes PROVIDERS.openai when
+  // PROVIDERS["devin"] is undefined (transport:null), which dispatched the
+  // saved Devin API key as a Bearer token to api.openai.com — cross-provider
+  // credential disclosure. The blocked-provider executor returns a synthetic
+  // 501 with ZERO upstream fetch, so the credential never leaves the process.
+  it("getExecutor('devin') returns the fail-closed executor, not DefaultExecutor", async () => {
+    const { getExecutor, hasSpecializedExecutor } = await import(
+      "../../open-sse/executors/index.js"
+    );
+    expect(hasSpecializedExecutor("devin")).toBe(true);
+    expect(getExecutor("devin").constructor.name).toBe(
+      "UnsupportedOmniRouteWebSessionExecutor"
+    );
+  });
+
+  it("execute() returns 501 and performs ZERO upstream fetch even with credentials", async () => {
+    const { getExecutor } = await import("../../open-sse/executors/index.js");
+    const fetchSpy = vi.fn();
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = fetchSpy;
+    try {
+      const result = await getExecutor("devin").execute({
+        credentials: { apiKey: "cog_token_secret" },
+        body: { model: "devin/devin", messages: [{ role: "user", content: "hi" }] },
+      });
+      expect(result.response.status).toBe(501);
+      const payload = JSON.parse(await result.response.text());
+      expect(payload.error.type).toBe("provider_port_pending");
+      expect(payload.error.provider).toBe("devin");
+      expect(payload.error.message).toContain("no chat transport");
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});

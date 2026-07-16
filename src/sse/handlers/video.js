@@ -3,7 +3,7 @@ import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { handleVideoGenerationCore } from "open-sse/handlers/videoGenerationCore.js";
 import { handleVideoProxyCore, getVideoConfig, sanitizeSecrets, VIDEO_ACTIONS } from "open-sse/handlers/videoCore.js";
-import { errorResponse } from "open-sse/utils/error.js";
+import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
@@ -13,6 +13,16 @@ import * as log from "../utils/logger.js";
 // without a provider prefix (bare model id, or multipart bodies we
 // deliberately don't parse) land here.
 const DEFAULT_VIDEO_PROVIDER = "xai";
+
+async function enforceVideoPolicy(request, provider, model) {
+  return enforceApiKeyModelPolicy(request, `${provider}/${model}`);
+}
+
+function shouldMarkAccountUnavailable(status) {
+  const code = Number(status);
+  return code >= HTTP_STATUS.SERVER_ERROR
+    || [HTTP_STATUS.UNAUTHORIZED, HTTP_STATUS.PAYMENT_REQUIRED, HTTP_STATUS.FORBIDDEN, HTTP_STATUS.RATE_LIMITED].includes(code);
+}
 
 export async function handleVideoGeneration(request) {
   let body;
@@ -33,7 +43,7 @@ export async function handleVideoGeneration(request) {
   if (!body.model) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   const modelInfo = await getModelInfo(body.model);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
-  const policyError = await enforceApiKeyModelPolicy(request, `${modelInfo.provider}/${modelInfo.model}`);
+  const policyError = await enforceVideoPolicy(request, modelInfo.provider, modelInfo.model);
   if (policyError) return policyError;
   const credentials = await getProviderCredentials(modelInfo.provider, null, modelInfo.model);
   if (!credentials) return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${modelInfo.provider}`);
@@ -94,6 +104,15 @@ function withConnectionHeader(response, connectionId) {
   // Video jobs are account-bound upstream — clients echo this back as
   // `x-connection-id` on GET polls so the same account is used.
   headers.set("x-9router-connection-id", String(connectionId));
+  // Allow clients to read the account-pinning header from CORS responses.
+  const exposed = headers.get("Access-Control-Expose-Headers") || "";
+  const exposedList = exposed.split(",").map((h) => h.trim().toLowerCase()).filter(Boolean);
+  headers.set(
+    "Access-Control-Expose-Headers",
+    exposedList.includes("x-9router-connection-id")
+      ? exposed
+      : exposed ? `${exposed}, x-9router-connection-id` : "x-9router-connection-id",
+  );
   return new Response(response.body, { status: response.status, headers });
 }
 
@@ -130,7 +149,7 @@ export async function handleVideoCreate(request, action) {
 
   // Policy needs a concrete model; bodies that omit `model` (allowed by the
   // upstream xAI video API) default to the provider's video model.
-  const policyError = await enforceApiKeyModelPolicy(request, `${provider}/${model || "grok-imagine-video"}`);
+  const policyError = await enforceVideoPolicy(request, provider, model || "grok-imagine-video");
   if (policyError) return policyError;
 
   // Strip the provider prefix (e.g. "xai/grok-imagine-video") before forwarding;
@@ -145,6 +164,14 @@ export async function handleVideoCreate(request, action) {
 
   const credentials = await getProviderCredentials(provider, null, model, { preferredConnectionId });
   if (!credentials || credentials.allRateLimited) {
+    if (credentials?.allRateLimited) {
+      return unavailableResponse(
+        Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE,
+        `[${provider}/${model || "grok-imagine-video"}] ${credentials.lastError || "Unavailable"}`,
+        credentials.retryAfter,
+        credentials.retryAfterHuman,
+      );
+    }
     return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${provider}`);
   }
 
@@ -179,9 +206,11 @@ export async function handleVideoCreate(request, action) {
   }
 
   // Record the failure (dashboard shows lastError/errorCode → user sees re-auth is needed)
-  await markAccountUnavailable(
-    credentials.connectionId, result.status, sanitizeSecrets(result.error, refreshedCredentials), provider, model
-  );
+  if (shouldMarkAccountUnavailable(result.status)) {
+    await markAccountUnavailable(
+      credentials.connectionId, result.status, sanitizeSecrets(result.error, refreshedCredentials), provider, model
+    );
+  }
   return result.response;
 }
 
@@ -202,10 +231,21 @@ export async function handleVideoGet(request, requestId) {
   if (!requestId) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing video request id");
 
   const provider = DEFAULT_VIDEO_PROVIDER;
+  const policyError = await enforceVideoPolicy(request, provider, "grok-imagine-video");
+  if (policyError) return policyError;
+
   const preferredConnectionId = request.headers.get("x-connection-id") || null;
 
   const credentials = await getProviderCredentials(provider, null, null, { preferredConnectionId });
   if (!credentials || credentials.allRateLimited) {
+    if (credentials?.allRateLimited) {
+      return unavailableResponse(
+        Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE,
+        `[${provider}/grok-imagine-video] ${credentials.lastError || "Unavailable"}`,
+        credentials.retryAfter,
+        credentials.retryAfterHuman,
+      );
+    }
     return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${provider}`);
   }
 
@@ -232,8 +272,10 @@ export async function handleVideoGet(request, requestId) {
     return withConnectionHeader(result.response, credentials.connectionId);
   }
 
-  await markAccountUnavailable(
-    credentials.connectionId, result.status, sanitizeSecrets(result.error, refreshedCredentials), provider, null
-  );
+  if (shouldMarkAccountUnavailable(result.status)) {
+    await markAccountUnavailable(
+      credentials.connectionId, result.status, sanitizeSecrets(result.error, refreshedCredentials), provider, null
+    );
+  }
   return result.response;
 }

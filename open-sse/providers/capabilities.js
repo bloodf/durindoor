@@ -27,6 +27,7 @@ import {
   KIRO_GPT_5_6_FAMILY,
   buildKiroGpt56Variants,
 } from "./models/kiroVariants.js";
+import { normalizeModelId } from "./models/schema.js";
 
 /**
  * Safe floor — every resolved result is merged over this so consumers
@@ -46,7 +47,7 @@ export const DEFAULT_CAPABILITIES = {
   tools: true,          // function / tool calling
   reasoning: false,     // thinking / reasoning
   // thinking wire format (only meaningful when reasoning:true). null → derive from transport.format.
-  // enum: openai|claude-adaptive|claude-budget|gemini-level|gemini-budget|zai|qwen|deepseek|kimi|minimax|hunyuan|step
+  // enum: openai|claude-adaptive|claude-budget|gemini-level|gemini-budget|zai|qwen|deepseek|kimi|minimax|hunyuan|step|kiro
   thinkingFormat: null,
   thinkingCanDisable: true,  // false → model cannot turn thinking off (clamp to min instead of disable)
   thinkingRange: null,       // { min, max } for budget formats; null = no clamp
@@ -114,13 +115,15 @@ export const MODEL_CAPABILITIES = {
 const KIRO_GPT_5_6_PROVIDER_CAPS = Object.fromEntries(
   KIRO_GPT_5_6_FAMILY.flatMap(buildKiroGpt56Variants).map((m) => [m.id, {
     vision: true, reasoning: true, search: true,
-    thinkingFormat: "openai", contextWindow: m.contextLength, maxOutput: 128000,
+    thinkingFormat: "kiro", contextWindow: m.contextLength, maxOutput: 128000,
   }])
 );
 
 export const PROVIDER_CAPABILITIES = {
-  // Kiro GPT-5.6 family (decolua/9router#2596): 272k context, OpenAI-style
-  // reasoning, vision + search. One shared descriptor spread over every
+  // Kiro GPT-5.6 family (decolua/9router#2596): 272k context, Kiro-native
+  // thinking (<thinking_mode> prefix), vision + search. thinkingFormat "kiro"
+  // keeps applyThinking from adding a stray top-level reasoning_effort to the
+  // CodeWhisperer payload. One shared descriptor spread over every
   // generated synthetic variant id (base/-thinking/-agentic/-thinking-agentic)
   // so the 12 keys can never drift from the catalog in providerModels.js.
   // Exposed under both the provider id ("kiro") and its short alias ("kr") —
@@ -564,6 +567,17 @@ export function getCapabilitiesForModel(provider, model) {
     const providerCaps = PROVIDER_CAPABILITIES[provider];
     if (providerCaps?.[model]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[model] });
     if (providerCaps?.[baseModel]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[baseModel] });
+    // Kiro accepts dash-form version ids ("gpt-5-6-sol") at the wire, but the
+    // caps map is keyed by the dotted catalog ids. Normalize digit-dash-digit
+    // ("5-6" → "5.6", synthetic -thinking/-agentic suffixes untouched) so the
+    // dash form hits the same 272k GPT-5.6 row instead of the generic 400k
+    // *gpt-5* pattern. Scoped to kiro/kr so other providers are unaffected.
+    if (provider === "kiro" || provider === "kr") {
+      const normalized = normalizeModelId(model);
+      const normalizedBase = normalizeModelId(baseModel);
+      if (providerCaps?.[normalized]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[normalized] });
+      if (providerCaps?.[normalizedBase]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[normalizedBase] });
+    }
   }
 
   // 2. Canonical exact

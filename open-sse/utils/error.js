@@ -17,9 +17,17 @@ export function buildErrorBody(statusCode, message) {
       ? { type: "server_error", code: "internal_server_error" }
       : { type: "invalid_request_error", code: "" });
 
+  // Root seam (OmniRoute #6886): every non-streaming (`errorResponse`) and
+  // SSE (`writeStreamError`) API error body built here routes its
+  // `error.message` through sanitizeErrorMessage — no per-handler wrappers.
+  // The status-specific default is sanitized too (harmless) so an empty/blank
+  // message still yields the status default, never `""`. A caller-supplied
+  // structured errorBody bypasses this builder; createErrorResult sanitizes
+  // that shape's `error.message` separately. Other structured fields (e.g.
+  // `upstream_details`) are not rewritten here.
   return {
     error: {
-      message: message || DEFAULT_ERROR_MESSAGES[statusCode] || "An error occurred",
+      message: sanitizeErrorMessage(message || DEFAULT_ERROR_MESSAGES[statusCode] || "An error occurred"),
       type: errorInfo.type,
       code: errorInfo.code
     }
@@ -437,14 +445,22 @@ export async function parseUpstreamError(response, executor = null, options = {}
  * @returns {{ success: false, status: number, error: string, response: Response, resetsAtMs?: number }}
  */
 export function createErrorResult(statusCode, message, resetsAtMs, errorBody, rateLimitEvidence = null) {
+  // A caller-supplied structured errorBody bypasses buildErrorBody (its
+  // provider-shaped type/code/details must be preserved, not rebuilt), so
+  // sanitize its message field on a shallow clone instead — the caller's
+  // object is never mutated (OmniRoute #6886).
+  const safeBody =
+    errorBody && typeof errorBody.error?.message === "string"
+      ? { ...errorBody, error: { ...errorBody.error, message: sanitizeErrorMessage(errorBody.error.message) } }
+      : errorBody;
   return {
     success: false,
     status: statusCode,
     error: message,
     resetsAtMs,
     ...(rateLimitEvidence ? { rateLimitEvidence } : {}),
-    response: errorBody
-      ? new Response(JSON.stringify(errorBody), {
+    response: safeBody
+      ? new Response(JSON.stringify(safeBody), {
           status: statusCode,
           headers: {
             "Content-Type": "application/json",
@@ -469,7 +485,10 @@ export function unavailableResponse(statusCode, message, retryAfter, retryAfterH
   const retryAfterSec = hasRetryDeadline
     ? Math.max(Math.ceil((retryAfterMs - Date.now()) / 1000), 1)
     : null;
-  const msg = retryAfterHuman ? `${message} (${retryAfterHuman})` : message;
+  // Sanitize at this shared builder too (OmniRoute #6886) — unavailableResponse
+  // bypasses buildErrorBody. The human retry suffix is appended after
+  // sanitizing the base message so it survives verbatim.
+  const msg = `${sanitizeErrorMessage(message)}${retryAfterHuman ? ` (${retryAfterHuman})` : ""}`;
   const error = { message: msg };
   // #6523: for 429 rate-limit responses, surface the OpenAI-shaped type/code
   // and an ISO `retry_after` timestamp so SDKs can back off deterministically.
@@ -513,16 +532,98 @@ export function formatProviderError(error, provider, model, statusCode) {
   return `[${code}]: ${message}${causeStr}`;
 }
 
+// Source extensions whose absolute paths are masked (upstream OmniRoute #6886
+// looksLikeAbsolutePath). Whitespace-tokenized instead of one regex so a safe
+// URL like `https://cdn/app.js` (token has a scheme, not an absolute-path head)
+// survives unchanged and CodeQL js/polynomial-redos stays clean.
+const SOURCE_EXT = ["ts", "tsx", "js", "jsx", "mjs", "cjs"];
+
+function looksLikeAbsolutePath(tok) {
+  if (tok.length < 4 || tok.length > 2048) return false;
+  const isPosix = tok.charCodeAt(0) === 0x2f; // '/'
+  const isWindows = tok.length > 2 && tok.charCodeAt(1) === 0x3a && /[A-Za-z]/.test(tok[0]);
+  // Windows UNC (`\\\\server\\share\\file.ts`) — a network-share source path.
+  const isUnc = tok.charCodeAt(0) === 0x5c && tok.charCodeAt(1) === 0x5c;
+  if (!isPosix && !isWindows && !isUnc) return false;
+  const dot = tok.lastIndexOf(".");
+  if (dot <= 0 || dot === tok.length - 1) return false;
+  // Strip a parenthesized line/col suffix (`app.ts(10,5)`) before the colon
+  // form so the extension check sees `ts`, not `ts(10,5` (Codex P2).
+  const ext = tok.slice(dot + 1).replace(/\(.*$/, "").split(":", 1)[0].toLowerCase();
+  return SOURCE_EXT.includes(ext);
+}
+
+function maskSourcePaths(line) {
+  // Split on captured separators to preserve original whitespace. Stack frames
+  // wrap paths in `("...")` and JSON/key-value bodies wrap them in
+  // `"key":"value"` — strip those wrappers for the detection test, then
+  // replace the WHOLE token so no path fragment survives adjacent to
+  // punctuation (Codex P2: `{"path":"/opt/app.ts"}` must still mask).
+  const parts = line.split(/(\s+)/);
+  for (let i = 0; i < parts.length; i++) {
+    // Unwrap iteratively: nested bodies wrap a path in several layers, e.g.
+    // `{"error":{"message":"/opt/x.ts"}}` (Codex P2). Each pass strips one
+    // wrapper (quotes/braces/punct, then a `"key":"` or `key=` prefix) until
+    // nothing changes, so a path at any JSON depth is detected.
+    let core = parts[i];
+    for (;;) {
+      const next = core
+        .replace(/^[("'{]+|[)"',.;:}]+$/g, "")
+        .replace(/^[A-Za-z0-9_-]+":"/, "")
+        .replace(/^[A-Za-z0-9_-]+=/, "");
+      if (next === core) break;
+      core = next;
+    }
+    if (core && looksLikeAbsolutePath(core)) parts[i] = "<path>";
+  }
+  return parts.join("");
+}
+
+// Quoted absolute paths under directories with spaces are broken by the
+// whitespace walker above — mask them with a single pass (Codex P2).
+function maskQuotedPaths(line) {
+  return line.replace(/["'`]((?:[A-Za-z]:[\\/]|\\\\|\/)[^"'`\r\n]*\.(?:ts|tsx|js|jsx|mjs|cjs)(?:[:(][^"'`]*)?)["'`]/gi, '"<path>"');
+}
+
 /**
- * Keep provider-facing transport errors useful without leaking stack traces or
- * local paths from WebSocket exceptions.
+ * Keep provider- and API-facing error messages useful without leaking stack
+ * traces, credentials, or local absolute paths.
+ *
+ * Contract (OmniRoute #6886 "Rule 12" port):
+ * - Stack tail: only the FIRST line survives (stack frames live on later lines).
+ * - Absolute source paths: POSIX (`/home/u/x.ts`, `/opt/app/src/db.js:88:12`, …)
+ *   and Windows (`C:\\Users\\u\\app.ts`, `D:/proj/a.mjs:10`) whitespace-delimited
+ *   tokens whose final extension is a source extension (ts/tsx/js/jsx/mjs/cjs)
+ *   become `<path>`. Separately, the legacy rule masks anything under
+ *   `/Users|/home|/var|/tmp` (and `file://` URLs) as `[path]`. URLs with a
+ *   scheme (`https://cdn/app.js`) are NOT source-path-masked.
+ * - Secrets: URL userinfo, Bearer tokens, JSON credential fields, `key: value`
+ *   pairs, and query-param credentials become `[redacted]`.
+ * - Safe messages (no stack/path/secret) pass through UNCHANGED.
+ * - Output is capped at 4096 chars (pathological-input guard).
  * @param {string} message
  * @returns {string}
  */
 export function sanitizeErrorMessage(message) {
-  const firstLine = String(message || "Upstream provider error").split(/\r?\n/)[0].trim();
-  return firstLine
+  // Cap BEFORE tokenization (upstream MAX_ERROR_LEN) so a pathological
+  // multi-MB single-line message cannot stall the whitespace-token walker.
+  // When the cap actually cut the message, a credential tail can lose the
+  // closing delimiter its redactor needs (`"...@`, `"..."`) — redact such an
+  // incomplete tail too, but ONLY in the truncated form so a safe terminal
+  // URL (`https://api.example.com`) or ordinary text is untouched otherwise
+  // (Codex P1 on OmniRoute #6886).
+  const full = String(message || "Upstream provider error");
+  // The incomplete-tail rules below apply only when the 4096 cap cut the
+  // FIRST line itself (a long single-line credential). If the excess length
+  // lives in later stack lines, the first line ended normally and its
+  // delimiters are intact — tail redaction would be a false positive.
+  const raw = full.slice(0, 4096);
+  const firstLineCut = full.length > 4096 && !raw.includes("\n") && !raw.includes("\r");
+  const firstLine = raw.split(/\r?\n/)[0].trim();
+  let out = maskQuotedPaths(maskSourcePaths(firstLine))
     .replace(/\b(https?|socks5h?):\/\/[^@\s/]+@/gi, "$1://[redacted]@")
+    // Complete non-HTTP credential URLs (db/redis/…): `scheme://[user:]<token>@host`.
+    .replace(/\b([a-z][a-z0-9+.\-]{1,15}):\/\/(?:[^@\s/:]+:)?[^@\s/]+@/gi, "$1://[redacted]@")
     .replace(/\bBearer\s+\S+/gi, "Bearer [redacted]")
     .replace(/\b(?:sk[-_][A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{12,}|ya29\.[A-Za-z0-9._-]{12,}|AIza[A-Za-z0-9_-]{20,})\b/gi, "[redacted]")
     .replace(
@@ -534,7 +635,45 @@ export function sanitizeErrorMessage(message) {
       /((?:[?&;#]\s*|^)(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|authorization[-_]?code|oauth[-_]?code|code|code[-_]?verifier|state|oauth[-_]?state|cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)=)[^&;\s]+/gi,
       "$1[redacted]",
     )
+    // Inline key=value assignments (e.g. `provider rejected api_key=SECRET` or
+    // `password = SECRET`) using the same explicit credential-key list as the
+    // JSON/query redactors so non-secret words containing `key` stay readable.
+    .replace(
+      /\b(access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|authorization[-_]?code|oauth[-_]?code|code[-_]?verifier|oauth[-_]?state|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)\b(\s*=\s*)[^\s&;]+/gi,
+      "$1$2[redacted]",
+    )
     .replace(/file:\/\/\S+/g, "[path]")
-    .replace(/\/(?:Users|home|var|tmp)\/\S+/g, "[path]")
-    .slice(0, 500) || "Upstream provider error";
+    .replace(/\/(?:Users|home|var|tmp)\/\S+/g, "[path]");
+  if (firstLineCut) {
+    // The 4096 cut may have removed a credential's closing delimiter, leaving
+    // an unredacted secret prefix at the end of the capped text. Redact an
+    // incomplete JSON credential tail and an incomplete URL userinfo tail
+    // (`user:secret` shape, no `@`; a purely numeric second segment is a
+    // port, not a password) — anchored to the end so complete,
+    // delimiter-closed forms above are never double-touched (Codex P1).
+    out = out
+      .replace(
+        /("(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|authorization[-_]?code|oauth[-_]?code|code[-_]?verifier|oauth[-_]?state|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)"\s*:\s*")[^"]+$/i,
+        '$1[redacted]"',
+      )
+      .replace(/\b([a-z][a-z0-9+.\-]{1,15}):\/\/[^@\s/:]+:(?![0-9]+$)[^@\s/]+$/i, "$1://[redacted]@");
+    // Token-only URL userinfo cut at the cap (`scheme://TOKEN`, no `:`/`@` in
+    // the kept text). Capped text alone cannot tell a truncated credential from
+    // a safe dotless host (`https://localhost…`), so redact only when the
+    // OMITTED original suffix proves the cap removed the userinfo delimiter:
+    // an `@` after offset 4096 before any `/`, `?`, `#`, or whitespace.
+    if (firstLineCut && /^[^\s/?#@]*@/.test(full.slice(4096))) {
+      out = out.replace(/\b([a-z][a-z0-9+.\-]{1,15}):\/\/[^@\s/]+$/i, "$1://[redacted]@");
+    }
+    // Standalone credential prefixes (ghp_, sk[-_], AIza, …) cut at the cap:
+    // if the omitted suffix continues the same token, the last word in the
+    // capped text is a partial secret and must be redacted.
+    if (firstLineCut && /^[A-Za-z0-9._-]/.test(full.slice(4096))) {
+      out = out.replace(/\b(?:sk[-_]|gh[pousr]_|github_pat_|glpat-|ya29\.|AIza)\S*$/i, "[redacted]");
+    }
+  }
+  if (out.length > 4096 && out.endsWith("[redacted]")) {
+    return `${out.slice(0, 4096 - "[redacted]".length)}[redacted]`;
+  }
+  return out.slice(0, 4096) || "Upstream provider error";
 }

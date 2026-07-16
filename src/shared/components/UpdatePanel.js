@@ -40,7 +40,6 @@ export default function UpdatePanel({
   const [isDisconnected, setIsDisconnected] = useState(false);
   const pollRef = useRef(null);
   const reloadRef = useRef(null);
-  const reloadTimeoutRef = useRef(null);
   const countdownRef = useRef(null);
   const cancelledRef = useRef(false);
   const startedAtRef = useRef(0);
@@ -54,10 +53,6 @@ export default function UpdatePanel({
     if (reloadRef.current) {
       clearInterval(reloadRef.current);
       reloadRef.current = null;
-    }
-    if (reloadTimeoutRef.current) {
-      clearTimeout(reloadTimeoutRef.current);
-      reloadTimeoutRef.current = null;
     }
     if (countdownRef.current) {
       clearInterval(countdownRef.current);

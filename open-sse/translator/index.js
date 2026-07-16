@@ -59,11 +59,21 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   const parsedModel = parseSuffix(model);
   const translationModel = parsedModel.cleanModel;
 
+  // Strip explicit content types (opt-in via strip[] in PROVIDER_MODELS entry)
+  stripContentTypes(result, stripList);
+
+  // Normalize thinking config: remove if lastMessage is not user
+  normalizeThinkingConfig(result);
+
   /**
    * OmniRoute #7061: preserve any explicitly-defined Claude thinking budget
    * (including `budget_tokens: 0`, Gemini dynamic thinking) before format
    * translation drops `thinking`; absent budget still falls through to
    * captureThinking below.
+   *
+   * MUST run AFTER normalizeThinkingConfig: on a non-user-last turn (e.g. a
+   * tool-continuation) normalize deletes `thinking`, and a snapshot taken
+   * earlier would re-apply a budget the request no longer carries.
    */
   const claudeGeminiBudgetIntent =
     sourceFormat === FORMATS.CLAUDE
@@ -72,11 +82,6 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     && result.thinking.budget_tokens !== undefined
       ? { mode: "budget", budget: result.thinking.budget_tokens }
       : null;
-  // Strip explicit content types (opt-in via strip[] in PROVIDER_MODELS entry)
-  stripContentTypes(result, stripList);
-
-  // Normalize thinking config: remove if lastMessage is not user
-  normalizeThinkingConfig(result);
 
   // Always ensure tool_calls have id (some providers require it)
   ensureToolCallIds(result);

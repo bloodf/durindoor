@@ -36,4 +36,27 @@ describe("Claude to Gemini thinking budget", () => {
       });
     });
   }
+
+  // Regression: on a non-user-last turn (tool continuation / assistant prefill)
+  // normalizeThinkingConfig strips `thinking`; the budget-intent capture must
+  // run AFTER that strip so no stale snapshot re-applies a thinkingConfig.
+  it("emits no thinkingConfig when the last message is not from the user", () => {
+    const result = translateRequest(
+      FORMATS.CLAUDE,
+      FORMATS.GEMINI,
+      "gemini-2.5-pro",
+      {
+        messages: [
+          { role: ROLE.USER, content: [{ type: CLAUDE_BLOCK.TEXT, text: "hi" }] },
+          { role: ROLE.ASSISTANT, content: [{ type: CLAUDE_BLOCK.TEXT, text: "continuing" }] },
+        ],
+        thinking: { type: "enabled", budget_tokens: 0 },
+      },
+      false,
+      { apiKey: "test" },
+      "gemini",
+    );
+
+    expect(result.generationConfig.thinkingConfig).toBeUndefined();
+  });
 });

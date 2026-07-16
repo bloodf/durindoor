@@ -16,6 +16,7 @@ export default {
   },
   category: "free",
   noAuth: true,
+  autoComboNoAuth: true,
   transport: {
     baseUrl: "https://api.xiaomimimo.com",
     chatPath: "/api/free-ai/openai/chat",

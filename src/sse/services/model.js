@@ -3,6 +3,8 @@ import { getModelAliases, getComboByName, getProviderNodes, getProviderConnectio
 import { parseModel as parseModelCore, resolveModelAliasFromMap, getModelInfoCore, stripRedundantNodePrefix } from "open-sse/services/model.js";
 import { filterPaidModels } from "open-sse/providers/pricing.js";
 import { isAutoComboId, familyOfAutoId, resolveAutoCombo } from "open-sse/services/autoComboResolver.js";
+import { applyNoAuthAutoComboGate } from "open-sse/services/combo.js";
+import { NOAUTH_PROVIDERS } from "open-sse/config/providers.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
 import { PROVIDER_MODELS } from "open-sse/providers/index.js";
 
@@ -112,13 +114,32 @@ export async function getAutoComboCatalog() {
     idToKey.set(entry.id, key);
     if (entry.alias) idToKey.set(entry.alias, key);
   }
+  // Chat-eligible no-auth entries come from the canonical config (registry
+  // derived — never a hardcoded provider list).
+  const noAuthEntries = Object.values(NOAUTH_PROVIDERS);
+  const getModels = (key) => PROVIDER_MODELS[key];
   const catalog = {};
+  const inactiveKeys = new Set();
   for (const conn of connections) {
-    if (!conn || conn.isActive === false) continue;
+    if (!conn) continue;
     const key = idToKey.get(conn.provider) || conn.provider;
     const models = PROVIDER_MODELS[key];
     if (!Array.isArray(models) || models.length === 0) continue;
+    if (conn.isActive === false) {
+      // #6557: remember a fully-disabled provider so its default no-auth seat
+      // is suppressed below; an active row for the same provider still wins
+      // (seated by the active-row path later in this loop).
+      inactiveKeys.add(key);
+      continue;
+    }
     if (!catalog[key]) catalog[key] = models;
+  }
+  // #6557 / OmniRoute #6889: no-auth providers enter the pool by DEFAULT
+  // (zero-row synthetic seat); the gate drops only those explicitly disabled
+  // via their own connection row's isActive=false. Active rows are already
+  // seated in the loop above, so an enabled provider-account still wins.
+  for (const key of applyNoAuthAutoComboGate({ idToKey, noAuthEntries, getModels, inactiveKeys })) {
+    if (!catalog[key]) catalog[key] = PROVIDER_MODELS[key];
   }
   return catalog;
 }

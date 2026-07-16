@@ -16,6 +16,7 @@ export default {
   },
   category: "free",
   noAuth: true,
+  autoComboNoAuth: true,
   transport: {
     baseUrl: "https://theoldllm.vercel.app/api/chatgpt",
     baseUrls: ["https://theoldllm.vercel.app/api/chatgpt"],

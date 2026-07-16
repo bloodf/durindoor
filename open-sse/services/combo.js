@@ -38,6 +38,51 @@ export function splitFingerprintPin(id) {
   return { realConnectionId, pinnedFingerprint };
 }
 
+// ─── Auto-combo no-auth candidate gating (OmniRoute #6889, fixes #6557) ─────
+// A no-auth provider (opencode/mimocode/…) has no credential, so it enters the
+// auto-combo pool by DEFAULT even with zero provider_connections rows. But a
+// real connection row CAN exist for it (created via "Add Account" for a
+// fingerprint provider), and that row's own `isActive=false` — the toggle on
+// the main Providers grid card — must gate the pool too.
+//
+// Pure over its inputs so it runs in both the async catalog build
+// (src/sse/services/model.js) and any sync dispatch path without a DB handle.
+
+/**
+ * Apply the #6557 gate to the default no-auth auto-combo candidates.
+ *
+ * Seed every eligible no-auth catalog key that has a non-empty model roster
+ * (zero-row default), but skip any whose provider has an `isActive=false`
+ * connection row (the grid toggle). The caller already seats active rows in
+ * the catalog, so an enabled provider-account still wins over a separate
+ * inactive row without this helper re-adding it.
+ *
+ * Eligibility is decided upstream by the caller via the canonical
+ * `NOAUTH_PROVIDERS` config (open-sse/config/providers.js); this helper does
+ * NOT re-check `noAuth`/`serviceKinds`.
+ *
+ * @param {Object} params
+ * @param {Map<string,string>} params.idToKey connection `provider` id → catalog key
+ * @param {Array<{id:string,alias?:string}>} params.noAuthEntries chat-eligible no-auth registry entries
+ * @param {(key:string)=>Array<unknown>|undefined} params.getModels models lookup for a catalog key
+ * @param {Set<string>} params.inactiveKeys catalog keys with ≥1 `isActive=false` connection row
+ * @returns {string[]} catalog keys to include in the auto-combo catalog (deduped)
+ */
+export function applyNoAuthAutoComboGate({ idToKey, noAuthEntries, getModels, inactiveKeys }) {
+  const keys = new Set();
+  for (const entry of noAuthEntries || []) {
+    const key = idToKey.get(entry.id) || entry.alias || entry.id;
+    if (!key) continue;
+    const models = getModels(key);
+    if (!Array.isArray(models) || models.length === 0) continue;
+    // #6557: honor the provider's own grid-card toggle (its connection row's
+    // isActive=false). Scope is the isActive gate only.
+    if (inactiveKeys.has(key) || (entry.alias && inactiveKeys.has(entry.alias))) continue;
+    keys.add(key);
+  }
+  return [...keys];
+}
+
 // ─── Model-family detection (auto-combo family helpers, #6509 / #6453) ───────
 // Canonical surface lives in the dependency-free autoComboFamilies module so
 // combo.js and the resolver share it without a cycle. Re-exported here for

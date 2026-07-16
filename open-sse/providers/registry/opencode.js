@@ -12,6 +12,7 @@ export default {
   },
   category: "free",
   noAuth: true,
+  autoComboNoAuth: true,
   transport: {
     baseUrl: "https://opencode.ai",
     headers: {

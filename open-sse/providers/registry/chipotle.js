@@ -16,6 +16,7 @@ export default {
   },
   category: "free",
   noAuth: true,
+  autoComboNoAuth: true,
   transport: {
     baseUrl: "https://amelia.chipotle.com",
     baseUrls: ["https://amelia.chipotle.com"],

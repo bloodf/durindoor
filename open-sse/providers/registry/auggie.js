@@ -16,6 +16,7 @@ export default {
   },
   category: "free",
   noAuth: true,
+  autoComboNoAuth: true,
   transport: {
     baseUrl: "auggie://cli/stdio",
     format: "openai",

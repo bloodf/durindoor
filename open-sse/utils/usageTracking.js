@@ -134,6 +134,16 @@ export function normalizeUsage(usage) {
   assignNumber("cost_usd", usage?.cost_usd);
   assignNumber("cost_in_usd", usage?.cost_in_usd);
   assignNumber("cost_in_usd_ticks", usage?.cost_in_usd_ticks);
+  // Kiro meters in credits, not tokens — preserve through normalization
+  // (consumption is never negative; drop malformed null/negative values)
+  const kiroCredits = usage?.kiro_credits !== null && usage?.kiro_credits !== undefined
+    ? Number(usage.kiro_credits) : NaN;
+  if (Number.isFinite(kiroCredits) && kiroCredits >= 0) {
+    normalized.kiro_credits = kiroCredits;
+    if (typeof usage?.kiro_credit_unit === "string") {
+      normalized.kiro_credit_unit = usage.kiro_credit_unit;
+    }
+  }
 
   // Preserve nested details objects for OpenAI format forwarding
   if (usage?.prompt_tokens_details && typeof usage.prompt_tokens_details === "object") {
@@ -213,6 +223,12 @@ export function canonicalizeUsage(usage) {
   if (Number.isFinite(Number(usage.cost_usd))) result.cost_usd = Number(usage.cost_usd);
   if (Number.isFinite(Number(usage.cost_in_usd))) result.cost_in_usd = Number(usage.cost_in_usd);
   if (Number.isFinite(Number(usage.cost_in_usd_ticks))) result.cost_in_usd_ticks = Number(usage.cost_in_usd_ticks);
+  const kiroCredits = usage.kiro_credits !== null && usage.kiro_credits !== undefined
+    ? Number(usage.kiro_credits) : NaN;
+  if (Number.isFinite(kiroCredits) && kiroCredits >= 0) {
+    result.kiro_credits = kiroCredits;
+    if (typeof usage.kiro_credit_unit === "string") result.kiro_credit_unit = usage.kiro_credit_unit;
+  }
   return result;
 }
 
@@ -284,18 +300,23 @@ export function extractUsage(chunk) {
     });
   }
 
-  // OpenAI format (also covers DeepSeek which uses prompt_cache_hit_tokens)
-  if (chunk.usage && typeof chunk.usage === "object" && chunk.usage.prompt_tokens !== undefined) {
+  // OpenAI format (also covers DeepSeek which uses prompt_cache_hit_tokens).
+  // Kiro can attach credit-only metering without token counts.
+  if (chunk.usage && typeof chunk.usage === "object" &&
+      (chunk.usage.prompt_tokens !== undefined || chunk.usage.kiro_credits !== undefined)) {
+    const hasPromptTokens = chunk.usage.prompt_tokens !== undefined;
     return normalizeUsage({
       prompt_tokens: chunk.usage.prompt_tokens,
-      completion_tokens: chunk.usage.completion_tokens || 0,
+      completion_tokens: hasPromptTokens ? (chunk.usage.completion_tokens || 0) : chunk.usage.completion_tokens,
       total_tokens: chunk.usage.total_tokens,
       cached_tokens: chunk.usage.prompt_tokens_details?.cached_tokens || chunk.usage.prompt_cache_hit_tokens,
       reasoning_tokens: chunk.usage.completion_tokens_details?.reasoning_tokens,
       cost_in_usd: chunk.usage.cost_in_usd,
       cost_in_usd_ticks: chunk.usage.cost_in_usd_ticks,
       prompt_tokens_details: chunk.usage.prompt_tokens_details,
-      completion_tokens_details: chunk.usage.completion_tokens_details
+      completion_tokens_details: chunk.usage.completion_tokens_details,
+      kiro_credits: chunk.usage.kiro_credits,
+      kiro_credit_unit: chunk.usage.kiro_credit_unit
     });
   }
 
@@ -341,6 +362,8 @@ export function mergeUsage(prev, next) {
       merged[k] = Math.max(typeof merged[k] === "number" ? merged[k] : 0, v);
     } else if (v && typeof v === "object") {
       merged[k] = v; // nested details objects: take latest
+    } else if (typeof v === "string" && k === "kiro_credit_unit") {
+      merged[k] = v; // Kiro credit unit label: take latest
     }
   }
   return merged;

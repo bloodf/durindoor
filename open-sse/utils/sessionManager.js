@@ -80,7 +80,8 @@ export function generateBinaryStyleId() {
 export function clearSessionStore() {
     runtimeSessionStore.clear();
     assistantSessionStore.clear();
-    continuationStore.clear();
+    globalContinuationStore.clear();
+    requestContinuationStore = new WeakMap();
 }
 
 // Conversation-stable session store: Key = hash(scope+assistant text), Value = { sessionId, lastUsed }
@@ -91,12 +92,21 @@ const MAX_ASSISTANT_SESSIONS = 5000;
 
 // Direct-session continuation cache: Kiro/KAS `agentContinuationId` binds a
 // conversation's agent task across turns so the upstream reuses its warm
-// session cache. Key = tuple [scope, account, model, sessionAffinity]; any
-// dimension change (different account/connection, different model, different
-// client session) yields a distinct entry, so continuations never leak across
-// accounts or models. Value = { continuationId, lastUsed }.
-const continuationStore = new Map();
+// session cache.
+//
+// Explicit client sessions are cached globally keyed on the full
+// [scope, account, model, sessionAffinity] tuple, so a header-backed conversation
+// reuses the same continuation across turns. Generated fallback sessions (no
+// explicit client session id) are cached in a WeakMap keyed by the inbound
+// requestContext: the same context survives BaseExecutor retries/fallbacks, but
+// two unrelated inbound requests never share a continuation id. Value for both
+// stores is { continuationId, lastUsed }.
+const globalContinuationStore = new Map();
 const MAX_CONTINUATION_SESSIONS = 5000;
+
+// Request-scoped continuation cache for generated fallback sessions.
+// Replaced entirely in clearSessionStore because WeakMap cannot be cleared.
+let requestContinuationStore = new WeakMap();
 
 // Client headers/body fields that carry an upstream session id (priority order)
 const SESSION_HEADER_KEYS = ["x-session-id", "session-id", "session_id", "x-amp-thread-id", "x-client-request-id"];
@@ -141,7 +151,7 @@ function extractAntigravitySession(body) {
     return m ? normalizeSessionId(m[1]) : null;
 }
 
-function extractClientSessionId(headers, body) {
+export function extractClientSessionId(headers, body) {
     const claude = extractClaudeCodeSession(body?.metadata?.user_id);
     if (claude) return `claude:${claude}`;
     const antigravity = extractAntigravitySession(body);
@@ -194,6 +204,23 @@ function assistantTextSessionId(scope, body) {
 }
 
 /**
+ * Resolve a conversation-stable session id and a provenance hint that tells
+ * continuation resolution whether to cache globally (explicit/assistant/
+ * workspace/session-derived) or per-request (per-connection generated).
+ *
+ * @returns {{ sessionId: string, requestScoped: boolean }}
+ */
+function resolveSessionIdWithProvenance({ headers, body, connectionId, workspaceId, scope = "" } = {}) {
+    const client = extractClientSessionId(headers, body);
+    if (client) return { sessionId: client, requestScoped: false };
+    const fromAssistant = assistantTextSessionId(`${scope}:${connectionId || ""}`, body);
+    if (fromAssistant) return { sessionId: fromAssistant, requestScoped: false };
+    const ws = normalizeSessionId(workspaceId);
+    if (ws) return { sessionId: ws, requestScoped: false };
+    return { sessionId: deriveSessionId(connectionId), requestScoped: true };
+}
+
+/**
  * Resolve a conversation-stable session id (generalizes Codex resolveCacheSessionId).
  * Priority: client session → accumulated-assistant-text hash → workspaceId → per-connection.
  *
@@ -205,14 +232,8 @@ function assistantTextSessionId(scope, body) {
  * @param {string} [opts.scope] - Provider scope to isolate cache keys across providers
  * @returns {string} A stable session id
  */
-export function resolveSessionId({ headers, body, connectionId, workspaceId, scope = "" } = {}) {
-    const client = extractClientSessionId(headers, body);
-    if (client) return client;
-    const fromAssistant = assistantTextSessionId(`${scope}:${connectionId || ""}`, body);
-    if (fromAssistant) return fromAssistant;
-    const ws = normalizeSessionId(workspaceId);
-    if (ws) return ws;
-    return deriveSessionId(connectionId);
+export function resolveSessionId(opts) {
+    return resolveSessionIdWithProvenance(opts).sessionId;
 }
 
 /**
@@ -228,10 +249,17 @@ export function resolveSessionId({ headers, body, connectionId, workspaceId, sco
  * session id is identical (explicit session headers are caller-controlled
  * input and must not be able to cross accounts).
  *
- * If any identity dimension is missing, the caller cannot be placed in a
- * distinct affinity bucket — a blank account would collapse every account
- * into one shared continuation. Such requests get an unstored one-shot id:
- * never fall back to token/email-derived keys.
+ * Generated fallback sessions (no explicit client session id, no assistant
+ * text, no workspace id) are cached per requestContext so unrelated
+ * headerless first-turn conversations on the same account and model never
+ * share a continuation id. The same frozen requestContext survives retries and
+ * fallback URL attempts for stable retry identity. All other session kinds
+ * (explicit header/body, assistant-derived, workspace) are cached globally
+ * so cross-turn reuse continues across inbound requests.
+ *
+ * If any identity dimension is missing, or the session is generated but no
+ * requestContext is available, the caller gets an unstored one-shot id and
+ * never falls back to token/email-derived keys.
  *
  * @param {object} opts
  * @param {string} [opts.sessionId] - Resolved session affinity (e.g. the
@@ -239,31 +267,73 @@ export function resolveSessionId({ headers, body, connectionId, workspaceId, sco
  * @param {string} [opts.connectionId] - Account/connection identifier
  * @param {string} [opts.model] - Resolved upstream model id
  * @param {string} [opts.scope] - Provider scope (e.g. "kiro")
+ * @param {object} [opts.requestContext] - Request-scoped metadata from chatCore;
+ *   same object survives BaseExecutor retries/fallbacks
+ * @param {boolean} [opts.requestScoped=true] - True when the session affinity was
+ *   generated per-request (no explicit/assistant/workspace provenance). Defaults
+ *   to isolated per-request to avoid accidental sharing when provenance is unknown.
  * @returns {string} A stable continuation id for the affinity tuple, or a
- *   one-shot id when the tuple is incomplete
+ *   one-shot id when the tuple is incomplete or no requestContext is available
  */
-export function resolveContinuationId({ sessionId, connectionId, model, scope = "" } = {}) {
+export function resolveContinuationId({ sessionId, connectionId, model, scope = "", requestContext = null, requestScoped = true } = {}) {
     if (!sessionId || !connectionId || !model || !scope) return crypto.randomUUID();
     const key = JSON.stringify([scope, connectionId, model, sessionId]);
-    const existing = continuationStore.get(key);
+    const now = Date.now();
+
+    // Explicit, assistant-derived, and workspace sessions are reused across
+    // turns via a global cache.
+    if (!requestScoped) {
+        const existing = globalContinuationStore.get(key);
+        if (existing) {
+            existing.lastUsed = now;
+            // Refresh recency so the LRU cap evicts genuinely-idle entries first.
+            globalContinuationStore.delete(key);
+            globalContinuationStore.set(key, existing);
+            return existing.continuationId;
+        }
+        const continuationId = crypto.randomUUID();
+        if (globalContinuationStore.size >= MAX_CONTINUATION_SESSIONS) {
+            globalContinuationStore.delete(globalContinuationStore.keys().next().value);
+        }
+        globalContinuationStore.set(key, { continuationId, lastUsed: now });
+        return continuationId;
+    }
+
+    // Generated/fallback sessions must stay scoped to the inbound request so
+    // two independent headerless first-turn conversations never share a
+    // continuation id. The same requestContext object survives retries.
+    if (!requestContext) return crypto.randomUUID();
+
+    let inner = requestContinuationStore.get(requestContext);
+    if (!inner) {
+        inner = new Map();
+        requestContinuationStore.set(requestContext, inner);
+    }
+
+    const existing = inner.get(key);
     if (existing) {
-        existing.lastUsed = Date.now();
-        // Refresh recency so the LRU cap evicts genuinely-idle entries first.
-        continuationStore.delete(key);
-        continuationStore.set(key, existing);
+        existing.lastUsed = now;
+        inner.delete(key);
+        inner.set(key, existing);
         return existing.continuationId;
     }
     const continuationId = crypto.randomUUID();
-    if (continuationStore.size >= MAX_CONTINUATION_SESSIONS) {
-        continuationStore.delete(continuationStore.keys().next().value);
+    if (inner.size >= MAX_CONTINUATION_SESSIONS) {
+        inner.delete(inner.keys().next().value);
     }
-    continuationStore.set(key, { continuationId, lastUsed: Date.now() });
+    inner.set(key, { continuationId, lastUsed: now });
     return continuationId;
 }
 
 // Capture session id from request body + credentials (envelope still intact here)
 export function captureSessionId(body, credentials, connectionId, scope = "") {
-    return resolveSessionId({ headers: credentials?.rawHeaders, body, connectionId, scope });
+    const { sessionId, requestScoped } = resolveSessionIdWithProvenance({ headers: credentials?.rawHeaders, body, connectionId, scope });
+    if (credentials) {
+        // True only when resolveSessionId fell back to the generated per-connection
+        // branch; explicit/assistant/workspace derived sessions stay global.
+        credentials._clientSessionIsGenerated = requestScoped;
+    }
+    return sessionId;
 }
 
 // Convert any session id to Antigravity numeric format "-<int64>" (matches real AG / CLIProxyAPI).
@@ -283,8 +353,8 @@ const assistantCleanup = setInterval(() => {
     for (const [key, entry] of assistantSessionStore) {
         if (now - entry.lastUsed > MEMORY_CONFIG.sessionTtlMs) assistantSessionStore.delete(key);
     }
-    for (const [key, entry] of continuationStore) {
-        if (now - entry.lastUsed > MEMORY_CONFIG.sessionTtlMs) continuationStore.delete(key);
+    for (const [key, entry] of globalContinuationStore) {
+        if (now - entry.lastUsed > MEMORY_CONFIG.sessionTtlMs) globalContinuationStore.delete(key);
     }
 }, MEMORY_CONFIG.sessionCleanupIntervalMs);
 if (assistantCleanup.unref) assistantCleanup.unref();

@@ -10,7 +10,7 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { KiroExecutor } from "../../open-sse/executors/kiro.js";
-import { clearSessionStore, resolveContinuationId, resolveSessionId } from "../../open-sse/utils/sessionManager.js";
+import { clearSessionStore, resolveContinuationId, resolveSessionId, captureSessionId } from "../../open-sse/utils/sessionManager.js";
 import { openaiToKiroRequest } from "../../open-sse/translator/request/openai-to-kiro.js";
 
 const executor = new KiroExecutor();
@@ -26,11 +26,15 @@ function kiroBody(conversationId) {
   };
 }
 
+function requestContext(headers = {}) {
+  return Object.freeze({ clientHeaders: headers });
+}
+
 beforeEach(() => clearSessionStore());
 
 describe("kiro direct session continuation affinity", () => {
-  it("hit: same account + model + session reuses the continuation id", () => {
-    const credentials = { connectionId: "conn-a" };
+  it("hit: same explicit account + model + session reuses the continuation id", () => {
+    const credentials = { connectionId: "conn-a", rawHeaders: { "x-session-id": "sess-1" } };
     const first = executor.transformRequest("claude-sonnet-4.5", kiroBody("sess-1"), true, credentials);
     const second = executor.transformRequest("claude-sonnet-4.5", kiroBody("sess-1"), true, credentials);
 
@@ -43,7 +47,7 @@ describe("kiro direct session continuation affinity", () => {
   });
 
   it("miss: a different session affinity gets a different continuation id", () => {
-    const credentials = { connectionId: "conn-a" };
+    const credentials = { connectionId: "conn-a", rawHeaders: { "x-session-id": "sess-1" } };
     const a = executor.transformRequest("claude-sonnet-4.5", kiroBody("sess-1"), true, credentials);
     const b = executor.transformRequest("claude-sonnet-4.5", kiroBody("sess-2"), true, credentials);
 
@@ -52,14 +56,14 @@ describe("kiro direct session continuation affinity", () => {
 
   it("isolation: same session id on different accounts never shares a continuation", () => {
     const shared = kiroBody("sess-shared");
-    const a = executor.transformRequest("claude-sonnet-4.5", kiroBody("sess-shared"), true, { connectionId: "conn-a" });
-    const b = executor.transformRequest("claude-sonnet-4.5", shared, true, { connectionId: "conn-b" });
+    const a = executor.transformRequest("claude-sonnet-4.5", kiroBody("sess-shared"), true, { connectionId: "conn-a", rawHeaders: { "x-session-id": "sess-shared" } });
+    const b = executor.transformRequest("claude-sonnet-4.5", shared, true, { connectionId: "conn-b", rawHeaders: { "x-session-id": "sess-shared" } });
 
     expect(a.conversationState.agentContinuationId).not.toBe(b.conversationState.agentContinuationId);
   });
 
   it("isolation: same session id on different models never shares a continuation", () => {
-    const credentials = { connectionId: "conn-a" };
+    const credentials = { connectionId: "conn-a", rawHeaders: { "x-session-id": "sess-1" } };
     const a = executor.transformRequest("claude-sonnet-4.5", kiroBody("sess-1"), true, credentials);
     const b = executor.transformRequest("claude-opus-4.1", kiroBody("sess-1"), true, credentials);
 
@@ -99,31 +103,64 @@ describe("kiro direct session continuation affinity", () => {
   it("retry/fallback re-dispatch reuses the same continuation id", () => {
     // BaseExecutor invokes transformRequest per URL attempt; a retry must not
     // mint a fresh continuation or the upstream warm-cache reuse is defeated.
+    const ctx = requestContext();
     const credentials = { connectionId: "conn-a" };
-    const attempt1 = executor.transformRequest("claude-sonnet-4.5", kiroBody("sess-1"), true, credentials);
-    const attempt2 = executor.transformRequest("claude-sonnet-4.5", kiroBody("sess-1"), true, credentials);
+    const attempt1 = executor.transformRequest("claude-sonnet-4.5", kiroBody("sess-1"), true, credentials, ctx);
+    const attempt2 = executor.transformRequest("claude-sonnet-4.5", kiroBody("sess-1"), true, credentials, ctx);
     expect(attempt2.conversationState.agentContinuationId)
       .toBe(attempt1.conversationState.agentContinuationId);
   });
 
+  it("headerless generated sessions do not leak across independent requests", () => {
+    // Two unrelated first-turn headerless conversations on the same account and
+    // model must not share a continuation id, even though they both have the
+    // same generated sessionId (derived from connectionId).
+    const credentials = { connectionId: "conn-a" };
+    const a = executor.transformRequest("claude-sonnet-4.5", kiroBody("sess-1"), true, credentials, requestContext());
+    const b = executor.transformRequest("claude-sonnet-4.5", kiroBody("sess-1"), true, credentials, requestContext());
+
+    expect(a.conversationState.agentContinuationId).not.toBe(b.conversationState.agentContinuationId);
+  });
+
+  it("explicit header session reuses across different request contexts", () => {
+    // A client-supplied session id must continue across turns even when each
+    // turn arrives with a different inbound requestContext.
+    const credentials = { connectionId: "conn-a", rawHeaders: { "x-session-id": "client-sess-7" } };
+    const a = executor.transformRequest("claude-sonnet-4.5", kiroBody("client-sess-7"), true, credentials, requestContext());
+    const b = executor.transformRequest("claude-sonnet-4.5", kiroBody("client-sess-7"), true, credentials, requestContext());
+
+    expect(a.conversationState.agentContinuationId).toBe(b.conversationState.agentContinuationId);
+  });
+
   it("does not mutate the caller's payload", () => {
     const body = kiroBody("sess-1");
-    const out = executor.transformRequest("claude-sonnet-4.5", body, true, { connectionId: "conn-a" });
+    const out = executor.transformRequest("claude-sonnet-4.5", body, true, { connectionId: "conn-a" }, requestContext());
 
     expect(out).not.toBe(body);
     expect(body.conversationState.agentContinuationId).toBeUndefined();
     expect(body.agentMode).toBeUndefined();
   });
 
+  it("body-provided session id reuses across different request contexts", () => {
+    const credentials = { connectionId: "conn-a", rawHeaders: {} };
+    const sessionId = captureSessionId({ session_id: "body-sess-1" }, credentials, "conn-a", "kiro");
+    expect(credentials._clientSessionIsGenerated).toBe(false);
+    const body = kiroBody(sessionId);
+    const a = executor.transformRequest("claude-sonnet-4.5", body, true, credentials, requestContext());
+    const b = executor.transformRequest("claude-sonnet-4.5", body, true, credentials, requestContext());
+
+    expect(a.conversationState.agentContinuationId).toBe(b.conversationState.agentContinuationId);
+  });
+
   it("passes payloads without a conversationState.conversationId through untouched", () => {
-    expect(executor.transformRequest("claude-sonnet-4.5", { model: "m" }, true, { connectionId: "conn-a" }))
+    expect(executor.transformRequest("claude-sonnet-4.5", { model: "m" }, true, { connectionId: "conn-a" }, requestContext()))
       .toEqual({ model: "m" });
   });
 });
 
 describe("resolveContinuationId", () => {
-  it("reuses within the tuple and isolates across every key dimension", () => {
-    const base = { sessionId: "s1", connectionId: "c1", model: "m1", scope: "kiro" };
+  it("reuses within the tuple for global sessions across request contexts", () => {
+    const base = { sessionId: "s1", connectionId: "c1", model: "m1", scope: "kiro", requestScoped: false };
     const id = resolveContinuationId(base);
 
     expect(resolveContinuationId(base)).toBe(id);
@@ -133,10 +170,24 @@ describe("resolveContinuationId", () => {
     expect(resolveContinuationId({ ...base, scope: "codex" })).not.toBe(id);
   });
 
-  it("missing account/model/session yields an unstored one-shot id", () => {
+  it("reuses within the tuple for request-scoped sessions sharing the same requestContext", () => {
+    const ctx = Object.freeze({});
+    const base = { sessionId: "s1", connectionId: "c1", model: "m1", scope: "kiro", requestContext: ctx };
+    const id = resolveContinuationId(base);
+
+    expect(resolveContinuationId(base)).toBe(id);
+    expect(resolveContinuationId({ ...base, requestContext: Object.freeze({}) })).not.toBe(id);
+    expect(resolveContinuationId({ ...base, sessionId: "s2" })).not.toBe(id);
+    expect(resolveContinuationId({ ...base, connectionId: "c2" })).not.toBe(id);
+    expect(resolveContinuationId({ ...base, model: "m2" })).not.toBe(id);
+    expect(resolveContinuationId({ ...base, scope: "codex" })).not.toBe(id);
+  });
+
+  it("missing account/model/session/scope or requestContext yields an unstored one-shot id", () => {
     // A blank connectionId must NOT collapse all accounts into one shared
     // continuation bucket — incomplete identity gets no cache reuse at all.
-    const base = { sessionId: "s1", connectionId: "c1", model: "m1", scope: "kiro" };
+    const ctx = Object.freeze({});
+    const base = { sessionId: "s1", connectionId: "c1", model: "m1", scope: "kiro", requestContext: ctx };
     expect(resolveContinuationId({ ...base, connectionId: undefined }))
       .not.toBe(resolveContinuationId({ ...base, connectionId: undefined }));
     expect(resolveContinuationId({ ...base, model: "" }))
@@ -145,12 +196,15 @@ describe("resolveContinuationId", () => {
       .not.toBe(resolveContinuationId({ ...base, sessionId: null }));
     expect(resolveContinuationId({ ...base, scope: "" }))
       .not.toBe(resolveContinuationId({ ...base, scope: "" }));
+    expect(resolveContinuationId({ ...base, requestContext: null }))
+      .not.toBe(resolveContinuationId({ ...base, requestContext: null }));
     // One-shots are never stored: a later fully-keyed call is unaffected.
     expect(resolveContinuationId(base)).toBe(resolveContinuationId(base));
   });
 
   it("clears with the session store", () => {
-    const base = { sessionId: "s1", connectionId: "c1", model: "m1", scope: "kiro" };
+    const ctx = Object.freeze({});
+    const base = { sessionId: "s1", connectionId: "c1", model: "m1", scope: "kiro", requestContext: ctx };
     const id = resolveContinuationId(base);
     clearSessionStore();
     expect(resolveContinuationId(base)).not.toBe(id);

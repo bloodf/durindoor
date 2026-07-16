@@ -14,7 +14,7 @@ import {
   KIRO_DEFAULT_REGION,
 } from "../config/kiroRegions.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { resolveContinuationId } from "../utils/sessionManager.js";
+import { resolveContinuationId, extractClientSessionId } from "../utils/sessionManager.js";
 
 // Strict AWS region id allowlist (incl. GovCloud partition `us-gov-west-1`),
 // matching the Bedrock validator shape. Used as a trust-boundary guard before
@@ -230,15 +230,28 @@ export class KiroExecutor extends BaseExecutor {
    * account or model is never replayed for another — even when two clients
    * present the same explicit session id. The payload is cloned so the
    * caller's body is never mutated.
+   *
+   * Explicit client sessions (identified from inbound client headers) are
+   * reused across turns via a global cache. Generated fallback sessions are
+   * scoped to the inbound `requestContext` so unrelated headerless first-turn
+   * conversations on the same account and model never share a continuation id,
+   * while the same frozen requestContext survives retries and fallback URL
+   * attempts for stable retry identity.
    */
-  transformRequest(model, body, stream, credentials) {
+  transformRequest(model, body, stream, credentials, requestContext = null) {
     const conversationId = body?.conversationState?.conversationId;
     if (!conversationId || typeof body?.conversationState !== "object") return body;
+    const explicitFromContext = extractClientSessionId(requestContext?.clientHeaders, null);
+    const explicitFromCredentials = extractClientSessionId(credentials?.rawHeaders, null);
+    const isGenerated = credentials?._clientSessionIsGenerated
+      ?? !(explicitFromContext ?? explicitFromCredentials);
     const continuationId = resolveContinuationId({
       sessionId: conversationId,
       connectionId: credentials?.connectionId,
       model,
       scope: "kiro",
+      requestContext,
+      requestScoped: isGenerated,
     });
     return {
       ...body,

@@ -8,6 +8,39 @@ import { extractKimiJwt, KIMI_WEB_DISCOVERY_HEADERS } from "@/lib/providers/webC
 const AUTH_FAILURE_STATUSES = new Set([401, 403]);
 const CHAT_PROBE_ACCEPT_STATUSES = new Set([400, 422, 429]);
 
+// Specialty validators run BEFORE the generic registry probe for providers
+// whose registry entry has no chat transport (`transport: null`) and so cannot
+// be probed through buildRegistryProviderProbe. Keyed by provider id.
+const SPECIALTY_VALIDATORS = {
+  // Devin cloud-agent (Cognition) — GET /v1/sessions with Bearer auth
+  // (docs.devin.ai/api-reference/sessions/list-sessions). Distinct from the
+  // "devin-cli" LLM provider (ACP stdio), which has its own executor.
+  // Ported from OmniRoute #6894 (diegosouzapw#6142, parity with `jules`).
+  devin: validateDevinCloudAgentProvider,
+};
+
+/**
+ * Devin cloud-agent (Cognition) — list one session with Bearer auth; a 2xx
+ * proves the service-user token is accepted, 401/403 rejects it.
+ */
+export async function validateDevinCloudAgentProvider({ apiKey, fetcher = fetch }) {
+  let response;
+  try {
+    response = await fetcher("https://api.devin.ai/v1/sessions?limit=1", {
+      method: "GET",
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch {
+    return { valid: false, status: null, error: "Provider unavailable - network request failed" };
+  }
+  if (AUTH_FAILURE_STATUSES.has(response.status)) {
+    return { valid: false, status: response.status, error: "Invalid API key" };
+  }
+  if (response.ok) return { valid: true, status: response.status };
+  return { valid: false, status: response.status, error: `Provider validation failed (HTTP ${response.status ?? "unknown"})` };
+}
+
 function getChatProbeError(status) {
   if (AUTH_FAILURE_STATUSES.has(status)) return "Invalid API key";
   if (status === 404) return "Provider validation endpoint not found";
@@ -182,6 +215,8 @@ export function buildRegistryProviderProbe(provider, apiKey, providerSpecificDat
 }
 
 export async function probeRegistryProvider(provider, apiKey, fetcher = fetch, providerSpecificData = {}) {
+  const specialty = SPECIALTY_VALIDATORS[provider];
+  if (specialty) return specialty({ apiKey, fetcher, providerSpecificData });
   const probe = buildRegistryProviderProbe(provider, apiKey, providerSpecificData);
   if (!probe) return null;
   if (probe.accepts === "always") return { valid: true, status: 200 };

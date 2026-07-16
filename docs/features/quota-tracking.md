@@ -69,7 +69,7 @@ The stable refresh coverage is:
 | Gemini CLI | Google Code Assist project discovery plus `retrieveUserQuota` model fractions. |
 | Antigravity and `agy` | Native Antigravity bootstrap profile (`ideType` only, with no rejected platform/plugin metadata) plus `retrieveUserQuota`; no credit-spending probe. |
 | Codex | ChatGPT `wham/usage` session, weekly, code-review, and Codex Spark windows, bound with the shared account-ID resolver. |
-| Claude | OAuth utilization windows plus strict legacy organization usage rows; unknown legacy allocations remain unknown rather than fabricated. Anthropic's `omelette` codename maps to `designer`. |
+| Claude | OAuth utilization windows plus strict legacy organization usage rows; unknown legacy allocations remain unknown rather than fabricated. Anthropic's `omelette` codename maps to `designer`. When a plan returns no utilization windows, an enabled `extraUsage` credit block is surfaced as a credits-style quota row so real remaining credit still renders instead of "No quota data". |
 | GitHub Copilot | Paid entitlement, used/total, or percent-only snapshots and free-plan remaining buckets, preserving unlimited entitlements. |
 | Cursor | The WorkOS-authenticated dashboard spending JSON contract; Connect/protobuf usage calls are not used for quota persistence. Redirects remain rejected by the common transport security lock. |
 | Kiro | Accepted-main `ListAvailableProfiles` discovery and `GetUsageLimits` POST behavior. Legacy region casing is normalized only when constructing endpoints, while stored profile-ARN bytes remain unchanged. Draft API-key/external-IdP quota variants remain excluded until accepted upstream; the tracker rejects those modes before proxy lookup, token refresh, or provider I/O. |

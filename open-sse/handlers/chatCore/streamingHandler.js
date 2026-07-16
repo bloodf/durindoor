@@ -58,8 +58,14 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   // return a clean JSON error instead. The message is stripped of HTML tags
   // and clamped so untrusted upstream text never reaches the client verbatim
   // (the UI may render error.message as HTML).
+  // Ollama's native /api/chat streams as `application/x-ndjson` (raw JSON
+  // lines), never SSE — that's expected for targetFormat OLLAMA and is fully
+  // handled by the translate-mode transform stream below (parseSSELine +
+  // ollamaToOpenAIResponse, see translator/response/ollama-to-openai.js), so
+  // it must not be treated as an upstream error page (issue #2386).
   const upstreamContentType = (providerResponse.headers.get('content-type') || '').toLowerCase();
-  if (upstreamContentType && !upstreamContentType.includes('text/event-stream') && !upstreamContentType.includes('application/json')) {
+  const isExpectedOllamaNdjson = targetFormat === FORMATS.OLLAMA && upstreamContentType.includes('application/x-ndjson');
+  if (upstreamContentType && !isExpectedOllamaNdjson && !upstreamContentType.includes('text/event-stream') && !upstreamContentType.includes('application/json')) {
     let bodyText = "";
     try {
       bodyText = await readBoundedResponseText(providerResponse, { signal, maxBytes: 16 * 1024, timeoutMs: 2_000 });
@@ -81,13 +87,11 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
     if (log?.errorLine) log.errorLine(reqTag, "✗", `BLOCKED ${status} · ${provider}/${model} · non-SSE (${upstreamContentType})\n    ${shortMsg}`);
     else console.warn(`[STREAM] ${provider} | ${model} | blocked pipe: ${shortMsg} [${status}]`);
     streamController?.handleError?.(new Error(`upstream non-SSE: ${status}`));
-    return {
-      success: false,
-      response: new Response(JSON.stringify({ error: { message: `[${status}]: ${shortMsg}` } }), {
-        status,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      }),
-    };
+    // Use the shared error-result shape (status/error/response) so callers like
+    // handleSingleModelChat can correctly log and fall back — a locally built
+    // { success, response } object here silently drops status/error and causes
+    // the real cause to be lost downstream (see markAccountUnavailable).
+    return createErrorResult(status, `[${status}]: ${shortMsg}`);
   }
 
   const transformStream = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, model, connectionId, body, providerBody: finalBody || translatedBody, onStreamComplete, onCoherentTerminal, apiKey, claudeClassifierCompat });

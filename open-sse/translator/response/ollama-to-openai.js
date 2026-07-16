@@ -31,6 +31,15 @@ export function ollamaToOpenAIResponse(chunk, state) {
 
   const { id, created, model } = state.ollama;
 
+  // Error frame embedded in a 200 NDJSON stream (`{"error":"model not found"}`):
+  // surface it as an error finish instead of dropping the frame and leaving an
+  // empty or unterminated success stream (mirrors the gemini-to-openai pattern).
+  if ("error" in chunk) {
+    state.upstreamError = chunk.error;
+    state.finishReason = OPENAI_FINISH.ERROR;
+    return buildChunk({ id, created, model }, {}, OPENAI_FINISH.ERROR);
+  }
+
   // Final chunk with done=true
   if (chunk.done) {
     const usage = extractUsage(chunk);

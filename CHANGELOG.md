@@ -19,6 +19,10 @@
 ## Providers
 - **Kiro**: add the GPT-5.6 family (Sol/Terra/Luna) as synthetic `-thinking`/`-agentic` variants with a 272k context window and per-tier rate multipliers, expose MITM picker slots for the new base ids, preserve static alias-to-provider mapping for combo capability aggregation, and normalize dash-form ids before pricing lookup (upstream decolua/9router#2596).
 
+- **Ollama**: accept native `application/x-ndjson` streams from ollama-local backends instead of blocking them as error pages, and pass raw NDJSON through the Ollama-compat `/api/chat` transform (upstream #2541).
+- **Gemini**: omit unsupported thinking config for Gemma 4 on OpenAI-to-Gemini requests (OmniRoute #6708).
+- **Routing**: clamp reasoning-token headroom to explicit model output caps and isolate fallback attempts (#6714).
+- **OAuth**: regression-test Codex OAuth connection dedup — Codex same-email logins remain isolated by account and provider, preventing silent token overwrite (OmniRoute #6706; behavior already enforced by account-id-scoped dedup).
 # v1.1.0 (2026-07-14)
 
 First published DurinDoor release since v1.0.1. Includes the previously

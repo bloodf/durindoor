@@ -20,6 +20,100 @@ import { resolveSessionId } from "../utils/sessionManager.js";
 import { applyCodexAccountHeader } from "../shared/codexAccountId.js";
 import { settleProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 
+// Recognized Codex effort suffixes, lowest-to-highest. Single source of truth for
+// routing normalization (transformRequest strips the suffix from the wire id) and
+// the response model-echo guard (only effort-suffixed client ids are echoed back).
+const CODEX_EFFORT_LEVELS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
+
+/**
+ * Split a Codex model id into its bare upstream id and recognized effort suffix.
+ * e.g. `gpt-5.5-xhigh` → `{ model: "gpt-5.5", effort: "xhigh" }`;
+ * `gpt-5.5` → `{ model: "gpt-5.5", effort: null }`. A trailing segment not in
+ * CODEX_EFFORT_LEVELS is part of the model id, not an effort.
+ *
+ * @param {unknown} modelId Candidate model id.
+ * @returns {{model: string, effort: string|null}} Bare id and effort (null when absent/unrecognized).
+ */
+function splitCodexEffortSuffix(modelId) {
+  const model = typeof modelId === "string" ? modelId : "";
+  for (const level of CODEX_EFFORT_LEVELS) {
+    if (model.endsWith(`-${level}`)) {
+      return { model: model.slice(0, -`-${level}`.length), effort: level };
+    }
+  }
+  return { model, effort: null };
+}
+
+/**
+ * Rewrite the nested `response.model` field of complete Responses SSE frames to
+ * the client-requested model id. Frame-accurate: buffers raw text across chunk
+ * boundaries and only touches complete frames, so multi-byte JSON never splits
+ * mid-token. Frames without a rewritten `response.model` pass through
+ * byte-for-byte (original line endings and delimiters preserved); a rewritten
+ * frame is re-serialized with the frame's own line ending.
+ *
+ * OmniRoute #6820 (issue #3697) port — Codex CLI compatibility shim. The Codex
+ * CLI status line/model button reads `response.model` in
+ * `response.created`/`response.in_progress`/`response.completed` payloads to
+ * display the active model + reasoning effort. The upstream request must carry
+ * the bare upstream id (`gpt-5.5`), so this rewrite happens on the response
+ * side only.
+ */
+function createModelEchoTransform(echoModel) {
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let buffer = "";
+
+  // Returns the frame unchanged unless a data payload's nested `response.model`
+  // was rewritten; rewritten frames reuse the frame's detected line ending.
+  const rewriteFrame = (frame) => {
+    if (!frame.includes("data:")) return frame;
+    const eol = frame.includes("\r\n") ? "\r\n" : "\n";
+    let changed = false;
+    const lines = frame.split(/\r?\n/).map((line) => {
+      if (!line.startsWith("data:")) return line;
+      let value = line.slice(5);
+      if (value.startsWith(" ")) value = value.slice(1);
+      if (value === "[DONE]") return line;
+      try {
+        const parsed = JSON.parse(value);
+        const nested = parsed?.response;
+        if (nested && typeof nested === "object" && !Array.isArray(nested)
+          && typeof nested.model === "string") {
+          nested.model = echoModel;
+          changed = true;
+          return `data: ${JSON.stringify(parsed)}`;
+        }
+      } catch { /* unparseable payloads pass through unchanged */ }
+      return line;
+    });
+    return changed ? lines.join(eol) : frame;
+  };
+
+  return new TransformStream({
+    transform(chunk, controller) {
+      buffer += typeof chunk === "string" ? chunk : decoder.decode(chunk, { stream: true });
+      const batch = extractCompleteSseFrames(buffer);
+      buffer = batch.remainder;
+      for (const frame of batch.frames) {
+        const rewritten = rewriteFrame(frame);
+        // Frames carry no delimiter (stripped by extraction); infer the stream's
+        // delimiter style from the frame's own line endings.
+        const delimiter = frame.includes("\r\n") ? "\r\n\r\n" : "\n\n";
+        controller.enqueue(encoder.encode(`${rewritten}${delimiter}`));
+      }
+    },
+    flush(controller) {
+      // Flush any trailing partial frame (unterminated tail) verbatim.
+      buffer += decoder.decode();
+      if (buffer) {
+        controller.enqueue(encoder.encode(rewriteFrame(buffer)));
+        buffer = "";
+      }
+    },
+  });
+}
+
 // SSE error patterns inside 200-OK bodies. Some retry same account first; capacity rotates accounts.
 const CODEX_SSE_RETRY_PATTERNS = ["server_is_overloaded", "service_unavailable_error"];
 
@@ -589,6 +683,19 @@ export class CodexExecutor extends BaseExecutor {
         || resolveCacheSessionId(requestBody, args.credentials, args.requestContext),
     });
 
+    // OmniRoute #6820 (issue #3697): Codex CLI compatibility shim. Capture the
+    // untouched client-requested model id (e.g. `gpt-5.5-xhigh`) BEFORE
+    // transformRequest strips the effort suffix for the upstream wire id. The
+    // echo below rewrites `response.model` in Responses SSE frames so the Codex
+    // CLI status line/model button shows the active effort, without changing
+    // the routed upstream id. Guard: echo only when the requested id carries a
+    // recognized Codex effort suffix — aliases and plain ids are never echoed.
+    const requestedModelEcho = (() => {
+      const requested = args.requestContext?.requestedModel;
+      if (typeof requested !== "string" || !requested) return null;
+      return splitCodexEffortSuffix(requested).effort ? requested : null;
+    })();
+
     const imgCount = Array.isArray(requestBody.input) ? requestBody.input.reduce((n, it) => n + (Array.isArray(it.content) ? it.content.filter(c => c.type === "image_url").length : 0), 0) : 0;
     const inputLen = Array.isArray(requestBody.input) ? requestBody.input.length : 0;
     dbg("CODEX", `execute start | inputItems=${inputLen} | images=${imgCount}`);
@@ -631,6 +738,21 @@ export class CodexExecutor extends BaseExecutor {
             statusText: result.response.statusText,
             headers: result.response.headers,
           });
+        }
+        // #3697 shim: echo the client-requested effort-suffixed model id in
+        // Responses SSE payloads. Compact requests skip this path (unary JSON,
+        // not an SSE stream). Rewritten frames change the byte length, so the
+        // upstream content-length must not survive the transform.
+        if (requestedModelEcho && !requestContext.compact && result.response?.body) {
+          const headers = new Headers(result.response.headers);
+          headers.delete("content-length");
+          result.response = new Response(
+            result.response.body.pipeThrough(createModelEchoTransform(requestedModelEcho)),
+            {
+              status: result.response.status,
+              statusText: result.response.statusText,
+              headers,
+            });
         }
         return result;
       }
@@ -806,15 +928,11 @@ export class CodexExecutor extends BaseExecutor {
 
     // Extract thinking level from model name suffix
     // e.g., gpt-5.3-codex-high → high, gpt-5.3-codex → low (default)
-    const effortLevels = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
-    let modelEffort = null;
-    for (const level of effortLevels) {
-      if (body.model.endsWith(`-${level}`)) {
-        modelEffort = level;
-        // Strip suffix from model name for actual API call
-        body.model = body.model.replace(`-${level}`, '');
-        break;
-      }
+    const effortSplit = splitCodexEffortSuffix(body.model);
+    const modelEffort = effortSplit.effort;
+    if (modelEffort) {
+      // Strip suffix from model name for actual API call
+      body.model = effortSplit.model;
     }
 
     // Priority: explicit reasoning.effort > reasoning_effort param > model suffix > default (low)

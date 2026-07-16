@@ -109,13 +109,20 @@ function isCompactResponsesEndpoint(endpoint) {
  * Build immutable request-only metadata before logging or translation. The
  * legacy body marker remains accepted for compatibility, but is removed from
  * both working and diagnostic copies before either can leave the process.
+ *
+ * `requestedModel` is the untouched client-requested model id from `modelInfo`
+ * (route-resolved, pre-suffix-strip; e.g. `gpt-5.5-xhigh`). Executors use it
+ * for client-visible response shaping — never for routing. Stored only when a
+ * non-empty string.
  */
-function captureRequestContext(body, clientRawRequest) {
+function captureRequestContext(body, clientRawRequest, requestedModel = null) {
   const compact = isCompactResponsesEndpoint(clientRawRequest?.endpoint)
     || body?._compact === true
     || clientRawRequest?.body?._compact === true;
   const clientHeaders = Object.freeze({ ...(clientRawRequest?.headers || {}) });
-  return Object.freeze({ compact, clientHeaders });
+  const context = { compact, clientHeaders };
+  if (typeof requestedModel === "string" && requestedModel) context.requestedModel = requestedModel;
+  return Object.freeze(context);
 }
 
 function stripLegacyCompactMarker(body, clientRawRequest) {
@@ -223,7 +230,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
     quotaCapacityUnavailable: true,
     quotaReason: reason || "capacity_exhausted",
   });
-  const requestContext = captureRequestContext(body, clientRawRequest);
+  const requestContext = captureRequestContext(body, clientRawRequest, requestedModel);
   ({ body, clientRawRequest } = stripLegacyCompactMarker(body, clientRawRequest));
 
   // Stable per-session color so all lines of one CLI conversation share a tag

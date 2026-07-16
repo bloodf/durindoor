@@ -119,6 +119,7 @@ describe("Codex compact request context in chatCore", () => {
       .mockResolvedValueOnce(providerResult(401))
       .mockResolvedValueOnce(providerResult(200));
     const options = makeOptions();
+    options.modelInfo.model = "gpt-5.3-codex-high";
     options.refreshCredentials = vi.fn().mockResolvedValue({ accessToken: "new-token" });
 
     await handleChatCore(options);
@@ -130,7 +131,9 @@ describe("Codex compact request context in chatCore", () => {
     expect(first.requestContext).toMatchObject({
       compact: true,
       clientHeaders: { "x-session-id": "request-session" },
+      requestedModel: "gpt-5.3-codex-high",
     });
+    expect(second.requestContext.requestedModel).toBe("gpt-5.3-codex-high");
     expect(Object.isFrozen(first.requestContext)).toBe(true);
     expect(Object.isFrozen(first.requestContext.clientHeaders)).toBe(true);
     expect(first.body).not.toHaveProperty("_compact");

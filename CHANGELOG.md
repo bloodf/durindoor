@@ -5,6 +5,7 @@
 - **CLI tools**: Grok Build (xAI CLI) tool card + settings — apply/reset a routed `[model.9router]` slot in `~/.grok/config.toml` with previous-default restore and TOML-injection hardening (9router #2571).
 - **GitHub Copilot**: route Claude models through Copilot's native `/v1/messages` endpoint so prompt-cache token counts (`cached_tokens`) surface; non-Claude models keep `/chat/completions` (upstream 9router #2608).
 - **Token Saver**: aggregate token-saver telemetry with per-request persistence and period aggregation, dashboard overview, stats API + live stream, and fail-open recording on chat and /v1/responses (#2562).
+- **Updater**: one-click Update in the dashboard sidebar (auto install + restart via the detached updater status endpoint, bounded poll with manual fallback; decolua/9router #2575).
 
 ## Fixes
 - **MiniMax-M3**: attach the OpenAI transport in the dashboard translator step 3 so the executor uses the `/v1/text/chatcompletion_v2` endpoint and matching headers; clamp unsupported `tool_choice` values (`"required"` and function objects) to `"auto"` on the OpenAI transport (upstream decolua/9router#2533).

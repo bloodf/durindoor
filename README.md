@@ -1,4 +1,4 @@
-![DurinDoor](public/durindoor-logo.png)
+![DurinDoor](assets/durindoor-wordmark-theme-aware.svg)
 
 # DurinDoor — Forge Your AI Gateway
 

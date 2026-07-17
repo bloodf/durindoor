@@ -268,6 +268,18 @@ export class DefaultExecutor extends BaseExecutor {
       injectPromptCacheKey(this.provider, transformed, credentials);
       applyParamRenames(this.provider, model, transformed, requestContext?.modelCapabilities);
       stripUnsupportedParams(this.provider, model, transformed, requestContext?.modelCapabilities);
+      // Custom-model maxOutput: clamp whichever token-limit field the request
+      // carries. Static catalog ceilings are enforced by per-format
+      // translators; this covers generic OpenAI-compatible dispatch where a
+      // persisted custom ceiling would otherwise be ignored.
+      const customMax = requestContext?.modelCapabilities?.maxOutput;
+      if (Number.isFinite(customMax) && customMax > 0) {
+        for (const field of ["max_tokens", "max_completion_tokens", "max_output_tokens"]) {
+          if (typeof transformed[field] === "number" && transformed[field] > customMax) {
+            transformed[field] = customMax;
+          }
+        }
+      }
     }
 
     return this.ensureThinkingBudget(injectReasoningContent({ provider: this.provider, model, body: transformed }), model, requestContext?.modelCapabilities);

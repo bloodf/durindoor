@@ -195,21 +195,24 @@ export async function updateCustomModel({ providerAlias, id, type = "llm", name,
     throw err;
   }
   const k = customKey(providerAlias, id, type);
-  const existing = await customKv.get(k);
-  if (!existing) return false;
-  const merged = { ...(existing.capabilities || {}) };
-  for (const key of Object.keys(norm.caps)) {
-    const val = norm.caps[key];
-    if (val === null) {
-      delete merged[key];
-    } else if (Object.hasOwn(norm.caps, key)) {
-      merged[key] = val;
+  // Atomic read-merge-write: concurrent PATCHes serialize inside one DB
+  // transaction so neither request's capability merge is lost.
+  const result = await customKv.update(k, (existing) => {
+    if (!existing) return undefined; // missing row: no write
+    const merged = { ...(existing.capabilities || {}) };
+    for (const key of Object.keys(norm.caps)) {
+      const val = norm.caps[key];
+      if (val === null) {
+        delete merged[key];
+      } else if (Object.hasOwn(norm.caps, key)) {
+        merged[key] = val;
+      }
     }
-  }
-  const value = { ...existing, capabilities: merged };
-  if (name !== undefined) value.name = name || id;
-  await customKv.set(k, value);
-  return value;
+    const value = { ...existing, capabilities: merged };
+    if (name !== undefined) value.name = name || id;
+    return value;
+  });
+  return result === undefined ? false : result;
 }
 
 export async function deleteCustomModel({ providerAlias, id, type = "llm" }) {

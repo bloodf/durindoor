@@ -33,7 +33,23 @@ export function resolveCustomCapabilities(provider, model, requestPrefix, custom
 export async function loadCustomCapabilities(provider, model, requestPrefix) {
   try {
     const customModels = await getCustomModels();
-    return resolveCustomCapabilities(provider, model, requestPrefix, customModels);
+    const direct = resolveCustomCapabilities(provider, model, requestPrefix, customModels);
+    if (direct) return direct;
+    // Compatible-provider nodes store custom rows under the node PREFIX as
+    // providerAlias, while getModelInfo resolves to the internal node id. A
+    // bare alias (requestPrefix null) or id-addressed request would miss the
+    // row, so retry with the node's prefix as the effective alias.
+    if (provider && (provider.startsWith("openai-compatible") || provider.startsWith("anthropic-compatible") || /^[0-9a-f-]{16,}$/i.test(provider))) {
+      const nodes = [
+        ...(await getProviderNodes({ type: "openai-compatible" })),
+        ...(await getProviderNodes({ type: "anthropic-compatible" })),
+      ];
+      const node = nodes.find((n) => n.id === provider);
+      if (node?.prefix && node.prefix !== requestPrefix) {
+        return resolveCustomCapabilities(provider, model, node.prefix, customModels);
+      }
+    }
+    return null;
   } catch {
     return null;
   }

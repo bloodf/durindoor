@@ -76,11 +76,11 @@ describe("Firecrawl providers", () => {
         url: "https://example.com",
         provider: "firecrawl_custom",
         providerConfig: { firecrawlBaseUrl: "http://10.0.0.5:3002" },
-        credentials: { providerSpecificData: { baseUrl: "http://127.0.0.1:3002" } }
+        credentials: { providerSpecificData: { baseUrl: "http://127.0.0.1:3002/firecrawl" } }
       });
 
       expect(global.fetch).toHaveBeenCalledWith(
-        "http://127.0.0.1:3002/v2/scrape",
+        "http://127.0.0.1:3002/firecrawl/v2/scrape",
         expect.anything()
       );
     });
@@ -127,6 +127,46 @@ describe("Firecrawl providers", () => {
 
       expect(global.fetch).toHaveBeenCalledWith(
         "http://10.0.0.5:3002/v2/scrape",
+        expect.anything()
+      );
+    });
+
+    it("preserves configured base path behind reverse proxy", async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, data: { markdown: "# Hi" } }),
+      });
+
+      await handleFetchCore({
+        url: "https://example.com",
+        provider: "firecrawl_custom",
+        providerConfig: { firecrawlBaseUrl: "http://127.0.0.1:3002/firecrawl" },
+        credentials: {}
+      });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        "http://127.0.0.1:3002/firecrawl/v2/scrape",
+        expect.anything()
+      );
+    });
+
+    it("strips trailing slash from custom base path", async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, data: { markdown: "# Hi" } }),
+      });
+
+      await handleFetchCore({
+        url: "https://example.com",
+        provider: "firecrawl_custom",
+        providerConfig: { firecrawlBaseUrl: "http://127.0.0.1:3002/firecrawl/" },
+        credentials: {}
+      });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        "http://127.0.0.1:3002/firecrawl/v2/scrape",
         expect.anything()
       );
     });

@@ -113,6 +113,20 @@ describe("Firecrawl auto-detect probes", () => {
     expect(res.error).toContain("Connection refused");
   });
 
+  it("preserves base path when probing /test", async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    const res = await probeFirecrawlEndpoint("http://127.0.0.1:3002/firecrawl", { apiKey: "fc-key" });
+    expect(res.ok).toBe(true);
+    expect(global.fetch).toHaveBeenCalledWith(
+      "http://127.0.0.1:3002/firecrawl/test",
+      expect.objectContaining({
+        method: "GET",
+        redirect: "error",
+        headers: expect.objectContaining({ authorization: "Bearer fc-key" }),
+      })
+    );
+  });
+
   it("scans default loopback candidates sequentially", async () => {
     global.fetch = vi.fn().mockRejectedValue(new Error("refused"));
     const res = await probeDefaultFirecrawlEndpoints();
@@ -158,6 +172,19 @@ describe("Firecrawl custom connection upsert", () => {
     await upsertFirecrawlCustomConnection({ baseUrl: "http://127.0.0.1:3002" });
 
     expect(updateProviderConnection).toHaveBeenCalledWith("active-1", expect.anything());
+  });
+
+  it("explicitly clears stored apiKey when re-detected with blank key", async () => {
+    const existing = { id: "fc-1", provider: "firecrawl_custom", isActive: true, apiKey: "old-key", firecrawlHeaders: "{}", providerSpecificData: { baseUrl: "http://127.0.0.1:3002" } };
+    getProviderConnections.mockResolvedValue([existing]);
+    updateProviderConnection.mockImplementation((id, c) => ({ ...c, id }));
+
+    await upsertFirecrawlCustomConnection({ baseUrl: "http://127.0.0.1:3002", apiKey: "" });
+
+    expect(updateProviderConnection).toHaveBeenCalledWith(
+      "fc-1",
+      expect.objectContaining({ apiKey: null })
+    );
   });
 });
 

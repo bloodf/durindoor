@@ -60,6 +60,7 @@ function sanitizeProviderConnection(connection) {
   delete result.accessToken;
   delete result.refreshToken;
   delete result.idToken;
+  delete result.firecrawlHeaders;
   return result;
 }
 

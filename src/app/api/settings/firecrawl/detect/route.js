@@ -56,7 +56,8 @@ export async function POST(request) {
           { status: 400, headers: HEADERS }
         );
       }
-      baseUrl = urlValidation.url.origin;
+      const url = urlValidation.url;
+      baseUrl = `${url.origin}${url.pathname.replace(/\/$/, "")}`;
       probe = await probeFirecrawlEndpoint(baseUrl, {
         apiKey: apiKeyValidation.apiKey,
         headers: headerValidation.headers,

@@ -199,18 +199,24 @@ async function runFirecrawl({ url, fmt, timeoutMs, apiKey, maxCharacters, costPe
   };
 }
 
+function normalizeFirecrawlBaseUrl(validation) {
+  const url = validation.url;
+  const pathname = url.pathname.replace(/\/$/, "");
+  return `${url.origin}${pathname}`;
+}
+
 function resolveFirecrawlBaseUrl(provider, providerConfig, credentials) {
   const isCustom = provider === "firecrawl_custom";
   if (isCustom) {
     const explicitCustom = credentials?.providerSpecificData?.baseUrl;
     if (explicitCustom) {
       const validated = validateFirecrawlBaseUrl(explicitCustom);
-      if (validated.ok) return validated.url.origin;
+      if (validated.ok) return normalizeFirecrawlBaseUrl(validated);
       throw new Error(`Invalid self-hosted Firecrawl URL: ${validated.error}`);
     }
     if (providerConfig?.firecrawlBaseUrl) {
       const validated = validateFirecrawlBaseUrl(providerConfig.firecrawlBaseUrl);
-      if (validated.ok) return validated.url.origin;
+      if (validated.ok) return normalizeFirecrawlBaseUrl(validated);
       throw new Error(`Invalid self-hosted Firecrawl URL: ${validated.error}`);
     }
     const envBaseUrl = process.env.FIRECRAWL_BASE_URL;
@@ -226,7 +232,7 @@ function validateCustomBaseUrl(provider, rawUrl) {
   if (provider !== "firecrawl_custom") return rawUrl;
   const validation = validateFirecrawlBaseUrl(rawUrl);
   if (!validation.ok) throw new Error(`Invalid self-hosted Firecrawl URL: ${validation.error}`);
-  return validation.url.origin;
+  return normalizeFirecrawlBaseUrl(validation);
 }
 
 async function runJina({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt }) {

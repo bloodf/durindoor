@@ -28,7 +28,8 @@ export async function probeFirecrawlEndpoint(baseUrl, { apiKey, headers } = {}) 
   const headerValidation = validateFirecrawlHeaders(headers);
   if (!headerValidation.ok) return headerValidation;
 
-  const base = validation.url.origin;
+  const url = validation.url;
+  const base = `${url.origin}${url.pathname.replace(/\/$/, "")}`;
   const init = {
     method: "GET",
     redirect: "error",

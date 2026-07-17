@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/shared/constants/providers", () => ({
-  USAGE_SUPPORTED_PROVIDERS: ["claude", "codex", "ollama"],
-  USAGE_APIKEY_PROVIDERS: ["ollama"],
+  USAGE_SUPPORTED_PROVIDERS: ["claude", "codex", "ollama", "kiro"],
+  USAGE_APIKEY_PROVIDERS: ["ollama", "kiro"],
 }));
 
 vi.mock("@/lib/localDb", () => ({ getProviderConnections: vi.fn() }));
@@ -27,6 +27,12 @@ describe("isUsageEligible", () => {
 
   it("returns true for the underscore api_key spelling on a supported provider", () => {
     expect(isUsageEligible({ provider: "ollama", authType: "api_key" })).toBe(true);
+  });
+
+  it("returns true for Kiro's persisted api_key auth type (direct API-key import)", () => {
+    // src/app/api/oauth/kiro/api-key/route.js:37 stores authType "api_key";
+    // registry kiro.js has usage:true + usageApikey:true.
+    expect(isUsageEligible({ provider: "kiro", authType: "api_key" })).toBe(true);
   });
 
   it("returns false for api_key on a provider without API-key usage support", () => {

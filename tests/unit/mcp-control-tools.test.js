@@ -11,6 +11,10 @@ const mocks = vi.hoisted(() => ({
   buildModelsList: vi.fn(),
   notifyQuotaAutoPingSettingChanged: vi.fn(),
   sanitizeProviderConnectionForClient: vi.fn((c) => c),
+  AI_PROVIDERS: { openai: { id: "openai", alias: "openai", category: "llm", authType: "token" } },
+  isOpenAICompatibleProvider: vi.fn((id) => id.startsWith("openai-compatible-")),
+  isAnthropicCompatibleProvider: vi.fn((id) => id.startsWith("anthropic-compatible-")),
+  isCustomEmbeddingProvider: vi.fn((id) => id.startsWith("embedding-custom-")),
 }));
 
 vi.mock("@/models", () => ({
@@ -40,6 +44,13 @@ vi.mock("@/shared/services/quotaAutoPing", () => ({
 
 vi.mock("@/lib/providers/sanitizeProviderConnectionForClient.js", () => ({
   sanitizeProviderConnectionForClient: mocks.sanitizeProviderConnectionForClient,
+}));
+
+vi.mock("@/shared/constants/providers", () => ({
+  AI_PROVIDERS: mocks.AI_PROVIDERS,
+  isOpenAICompatibleProvider: mocks.isOpenAICompatibleProvider,
+  isAnthropicCompatibleProvider: mocks.isAnthropicCompatibleProvider,
+  isCustomEmbeddingProvider: mocks.isCustomEmbeddingProvider,
 }));
 
 const { listTools, callTool } = await import("../../src/lib/mcp/control/tools");
@@ -168,6 +179,29 @@ describe("mcp-control tools", () => {
     expect(mocks.getProviderNodeById).toHaveBeenCalledWith(customId);
     expect(mocks.getProviderConnections).toHaveBeenCalledWith({ provider: customId });
     expect(result.connections).toHaveLength(1);
+  });
+
+  it("toggle_provider_active accepts a custom embedding provider", async () => {
+    const customId = "embedding-custom-abc";
+    mocks.getProviderNodeById.mockResolvedValue({ id: customId });
+    const conn = { id: "ec1", provider: customId };
+    mocks.getProviderConnections.mockResolvedValue([conn]);
+    mocks.updateProviderConnection.mockResolvedValue({ ...conn, isActive: true });
+    mocks.sanitizeProviderConnectionForClient.mockReturnValue({ id: "ec1", provider: customId, isActive: true });
+
+    const result = await callTool("toggle_provider_active", { providerId: customId, isActive: true });
+
+    expect(mocks.getProviderNodeById).toHaveBeenCalledWith(customId);
+    expect(mocks.getProviderConnections).toHaveBeenCalledWith({ provider: customId });
+    expect(result.connections).toHaveLength(1);
+  });
+
+  it("toggle_provider_active rejects a faked custom embedding ID with no node", async () => {
+    mocks.getProviderNodeById.mockResolvedValue(null);
+
+    await expect(callTool("toggle_provider_active", { providerId: "embedding-custom-does-not-exist", isActive: false }))
+      .rejects.toThrow("Unknown provider");
+    expect(mocks.getProviderNodeById).toHaveBeenCalledWith("embedding-custom-does-not-exist");
   });
 
   it("toggle_provider_active rejects a faked compatible ID with no node", async () => {

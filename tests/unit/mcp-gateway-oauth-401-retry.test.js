@@ -50,6 +50,7 @@ beforeEach(() => {
   updateInstance.mockReset();
   updateInstance.mockResolvedValue({});
   getInstanceById.mockReset();
+  getInstanceById.mockResolvedValue({});
   global.fetch.mockReset();
 });
 
@@ -184,6 +185,36 @@ describe("oauthRefresh — preflight refresh failure", () => {
       expect.objectContaining({
         oauthTokens: expect.objectContaining({ needsReauth: true }),
       })
+    );
+  });
+
+  it("does not persist needsReauth when a newer token was written concurrently", async () => {
+    const instance = makeOAuthInstance();
+    instance.oauthTokens.expires_at = Date.now() - 1_000;
+
+    getInstanceById.mockResolvedValue({
+      id: instance.id,
+      oauthTokens: {
+        ...instance.oauthTokens,
+        access_token: "newer-token",
+        needsReauth: false,
+      },
+    });
+
+    global.fetch.mockImplementation(async (url) => {
+      if (String(url).includes("/token")) {
+        return mockFetchResponse(400, "invalid_grant");
+      }
+      return mockFetchResponse(200, { ok: true });
+    });
+
+    const refreshed = await ensureFreshToken(instance, oauthMetaFromTokens(instance.oauthTokens));
+
+    expect(refreshed.oauthTokens.access_token).toBe("newer-token");
+    expect(refreshed.oauthTokens.needsReauth).not.toBe(true);
+    expect(updateInstance).not.toHaveBeenCalledWith(
+      instance.id,
+      expect.objectContaining({ oauthTokens: expect.objectContaining({ needsReauth: true }) })
     );
   });
 });

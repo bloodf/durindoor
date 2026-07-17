@@ -7,7 +7,12 @@ import {
 import { buildModelsList, LLM_KIND } from "@/app/api/v1/models/buildModelsList";
 import { getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { VALID_USAGE_STATS_PERIODS } from "@/lib/usagePeriods.js";
-import { AI_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
+import {
+  AI_PROVIDERS,
+  isOpenAICompatibleProvider,
+  isAnthropicCompatibleProvider,
+  isCustomEmbeddingProvider,
+} from "@/shared/constants/providers";
 import { notifyQuotaAutoPingSettingChanged } from "@/shared/services/quotaAutoPing";
 import { sanitizeProviderConnectionForClient } from "@/lib/providers/sanitizeProviderConnectionForClient.js";
 import { getUsageStats, getTokenSaverStats } from "@/lib/usageDb";
@@ -26,7 +31,11 @@ function sanitizeConnection(c) {
 async function isValidProviderId(providerId) {
   if (typeof providerId !== "string" || providerId.length === 0) return false;
   if (AI_PROVIDERS[providerId] != null) return true;
-  if (isOpenAICompatibleProvider(providerId) || isAnthropicCompatibleProvider(providerId)) {
+  if (
+    isOpenAICompatibleProvider(providerId) ||
+    isAnthropicCompatibleProvider(providerId) ||
+    isCustomEmbeddingProvider(providerId)
+  ) {
     const node = await getProviderNodeById(providerId);
     return node != null;
   }

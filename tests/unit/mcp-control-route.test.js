@@ -164,6 +164,15 @@ describe("dashboard guard mcp-control auth", () => {
     expect(mocks.verifyDashboardAuthToken).toHaveBeenCalledWith("valid-jwt");
   });
 
+  it("rejects mcp-control with an invalid dashboard JWT", async () => {
+    mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+    const response = await proxy(guardRequest("/api/mcp/control", {
+      host: "router.example.com",
+      cookie: "auth_token=bad-jwt",
+    }, "POST", { auth_token: { value: "bad-jwt" } }));
+    expect(response.status).toBe(401);
+  });
+
   it("rejects mcp-control without auth", async () => {
     const response = await proxy(guardRequest("/api/mcp/control", {
       host: "router.example.com",
@@ -176,5 +185,37 @@ describe("dashboard guard mcp-control auth", () => {
       host: "router.example.com",
     }));
     expect(response.status).toBe(403);
+  });
+
+  it("rejects mcp-control when requireLogin=false and no CLI/API/JWT", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+    mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+    const response = await proxy(guardRequest("/api/mcp/control", {
+      host: "router.example.com",
+    }));
+    expect(response.status).toBe(401);
+  });
+
+  it("allows mcp-control with CLI token when requireLogin=false", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+    mocks.getConsistentMachineId.mockResolvedValue("cli-token");
+    const response = await proxy(guardRequest("/api/mcp/control", {
+      host: "router.example.com",
+      "x-9r-cli-token": "cli-token",
+    }));
+    expect(response).toBeDefined();
+    expect(response.status).toBe(200);
+  });
+
+  it("allows mcp-control with API key when requireLogin=false", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+    mocks.validateApiKey.mockResolvedValue(true);
+    const response = await proxy(guardRequest("/api/mcp/control", {
+      host: "router.example.com",
+      authorization: "Bearer sk-valid",
+    }));
+    expect(response).toBeDefined();
+    expect(response.status).toBe(200);
+    expect(mocks.validateApiKey).toHaveBeenCalledWith("sk-valid");
   });
 });

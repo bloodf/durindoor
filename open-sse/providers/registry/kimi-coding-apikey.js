@@ -42,6 +42,7 @@ export default {
   ],
   // Ported from OmniRoute kimi/coding-apikey at source commit 3ddcee6.
   models: [
+    { id: "kimi-k3", name: "Kimi K3", contextLength: 1048576, maxOutputTokens: 262144, supportsVision: true, supportsReasoning: true, unsupportedParams: ["temperature", "top_p"] },
     { id: "kimi-k2.6", name: "Kimi K2.6", contextLength: 262144, maxOutputTokens: 262144, supportsVision: true },
     { id: "kimi-k2.6-thinking", name: "Kimi K2.6 Thinking", contextLength: 262144, maxOutputTokens: 262144 },
     { id: "kimi-k2.7-code", name: "Kimi K2.7 Code", contextLength: 262144, maxOutputTokens: 262144, supportsVision: true, supportsReasoning: true, unsupportedParams: ["temperature", "top_p"] },

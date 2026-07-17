@@ -143,7 +143,7 @@ describe("SidebarNavIcons", () => {
   });
 
   it("brand logo points to the DurinDoor app icon with correct alt text", () => {
-    expect(BRAND_LOGO_SRC).toBe("/icons/icon-192.svg");
+    expect(BRAND_LOGO_SRC).toBe("/icons/icon-512.png");
     expect(BRAND_LOGO_ALT).toBe("");
   });
 
@@ -155,7 +155,7 @@ describe("SidebarNavIcons", () => {
       height: 36,
     });
     const html = renderToStaticMarkup(img);
-    expect(html).toContain('src="/icons/icon-192.svg"');
+    expect(html).toContain('src="/icons/icon-512.png"');
     expect(html).toContain('alt=""');
     expect(html).toContain('width="36"');
     expect(html).toContain('height="36"');

@@ -108,7 +108,7 @@ const PROVIDER_MODELS = {
     { id: "glm-4.6v" },
   ],
   kimi: [
-    { id: "kimi-latest" },
+    { id: "kimi-k3" },
   ],
   minimax: [
     { id: "MiniMax-M2.1" },

@@ -33,19 +33,19 @@ describe("U-10 Claude/Codex pricing (upstream d2599ebf1)", () => {
 
     it("gpt-5.6-luna", () => {
       expect(getPricingForModel(null, "gpt-5.6-luna")).toEqual(
-        claude(1.00, 6.00, 0.10, 6.00, 1.00),
+        claude(1.00, 1.25, 0.10, 1.25, 1.00),
       );
     });
 
     it("gpt-5.6-terra", () => {
       expect(getPricingForModel(null, "gpt-5.6-terra")).toEqual(
-        claude(2.50, 15.00, 0.25, 15.00, 2.50),
+        claude(2.50, 3.125, 0.25, 3.125, 2.50),
       );
     });
 
     it("gpt-5.6-sol", () => {
       expect(getPricingForModel(null, "gpt-5.6-sol")).toEqual(
-        claude(5.00, 30.00, 0.50, 30.00, 5.00),
+        claude(5.00, 6.25, 0.50, 6.25, 5.00),
       );
     });
   });

@@ -304,7 +304,8 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null) {
     }
     case "kimi": {
       if (none && canDisable) { body.thinking = { type: "disabled" }; break; }
-      const effort = toKimiReasoningEffort(eff);
+      const levels = getThinkingLevels(provider, model);
+      const effort = levels?.length === 1 && levels[0] === "max" ? "max" : toKimiReasoningEffort(eff);
       if (effort) body.reasoning_effort = effort;
       break;
     }

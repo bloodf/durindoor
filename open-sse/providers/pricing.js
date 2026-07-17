@@ -225,7 +225,6 @@ export const MODEL_PRICING = {
   "kimi-k2-thinking":             { input: 1.50,  output: 6.00,  cached: 0.75,  reasoning: 9.00,   cache_creation: 1.50  },
   "kimi-k2.5":                    { input: 1.20,  output: 4.80,  cached: 0.60,  reasoning: 7.20,   cache_creation: 1.20  },
   "kimi-k2.5-thinking":           { input: 1.80,  output: 7.20,  cached: 0.90,  reasoning: 10.80,  cache_creation: 1.80  },
-  "kimi-latest":                  { input: 1.00,  output: 4.00,  cached: 0.50,  reasoning: 6.00,   cache_creation: 1.00  },
 
   // === DeepSeek ===
   "deepseek-chat":                { input: 0.14,  output: 0.28,  cached: 0.0028, reasoning: 0.28,   cache_creation: 0.14  },
@@ -248,8 +247,10 @@ export const MODEL_PRICING = {
   "glm-4.6":                      { input: 0.60,  output: 2.20,  cached: 0.11  },
   "glm-4.6v":                     { input: 0.75,  output: 3.00,  cached: 0.375, reasoning: 4.50,   cache_creation: 0.75  },
   "glm-4.7":                      { input: 0.60,  output: 2.20,  cached: 0.11  },
+  "glm-4.7-flash":                { input: 0,     output: 0,     cached: 0,     reasoning: 0,     cache_creation: 0     },
   "glm-4.7-flashx":               { input: 0.07,  output: 0.40,  cached: 0.01  },
   "glm-4-32b-0414-128k":          { input: 0.10,  output: 0.10  },
+  "glm-4.5-flash":                { input: 0,     output: 0,     cached: 0,     reasoning: 0,     cache_creation: 0     },
 
   // === MiniMax ===
   "MiniMax-M2":                   { input: 0.30,  output: 1.20,  cached: 0.03,  cache_creation: 0.375 },

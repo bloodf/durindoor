@@ -1,4 +1,4 @@
-# Unreleased
+# 2.0.0
 
 ## Features
 - **xAI**: route the Responses-tagged model grok-4.20-multi-agent-0309 to Grok's native `/v1/responses` endpoint; plain chat models keep `/v1/chat/completions` (OmniRoute #6709, upstream 9router #2439).

@@ -76,7 +76,13 @@ export function getKnownContextWindow(modelStr, capabilitiesMap = null) {
   if (!model) return null;
 
   const caps = capabilitiesMap?.get?.(modelStr);
-  if (caps && typeof caps === "object" && Number.isFinite(caps.contextWindow) && caps.contextWindow > 0) {
+  // Trust the map's contextWindow only when the custom row explicitly set it
+  // (customKeys marker); merged static/default values fall through to the
+  // catalog lookups below so unknown models stay unknown in strict mode.
+  if (
+    caps && typeof caps === "object" && Number.isFinite(caps.contextWindow) && caps.contextWindow > 0
+    && (!(caps.customKeys instanceof Set) || caps.customKeys.has("contextWindow"))
+  ) {
     return caps.contextWindow;
   }
 

@@ -80,6 +80,7 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
     setThinkingRangeMax(existing.thinkingRange?.max?.toString() ?? "");
     setTestStatus(null);
     setTestError("");
+    setSaveError("");
     setShowAdvanced(Boolean(existing.thinkingFormat || existing.thinkingRange || existing.contextWindow || existing.maxOutput));
   };
 
@@ -119,10 +120,13 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
     }
   };
 
+  const [saveError, setSaveError] = useState("");
+
   const handleSave = async () => {
     const cleanId = stripAlias(modelId.trim());
     if (!cleanId || saving) return;
     setSaving(true);
+    setSaveError("");
     try {
       await onSave({
         id: cleanId,
@@ -136,6 +140,11 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
           thinkingRangeMax,
         }),
       });
+    } catch (err) {
+      // Keep the modal open with the user's inputs; the parent only closes on
+      // success. Surface the API's validation message (e.g. invalid maxOutput).
+      setSaveError(err?.message || "Failed to save model");
+      return;
     } finally {
       setSaving(false);
     }
@@ -290,6 +299,13 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
           <div className="flex items-start gap-2 text-sm text-red-500">
             <span className="material-symbols-outlined text-base shrink-0">cancel</span>
             <span>{testError || "Model not reachable"}</span>
+          </div>
+        )}
+
+        {saveError && (
+          <div className="flex items-center gap-1.5 text-sm text-red-500" role="alert">
+            <span className="material-symbols-outlined text-base shrink-0">cancel</span>
+            <span>{saveError}</span>
           </div>
         )}
 

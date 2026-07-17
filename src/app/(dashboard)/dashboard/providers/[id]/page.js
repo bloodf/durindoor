@@ -589,12 +589,13 @@ export default function ProviderDetailPage() {
       if (res.ok) {
         await fetchCustomModels();
         if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("customModelChanged"));
-      } else {
-        const data = await res.json();
-        alert(data.error || "Failed to add custom model");
+        return;
       }
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || "Failed to add custom model");
     } catch (error) {
-      console.log("Error adding custom model:", error);
+      // Rethrow so callers (capability editor, quick-add rows) surface it.
+      throw error instanceof Error ? error : new Error("Failed to add custom model");
     }
   };
 
@@ -608,12 +609,13 @@ export default function ProviderDetailPage() {
       if (res.ok) {
         await fetchCustomModels();
         if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("customModelChanged"));
-      } else {
-        const data = await res.json();
-        alert(data.error || "Failed to update custom model");
+        return;
       }
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || "Failed to update custom model");
     } catch (error) {
-      console.log("Error updating custom model:", error);
+      // Rethrow so the capability editor stays open and shows the message.
+      throw error instanceof Error ? error : new Error("Failed to update custom model");
     }
   };
 

@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-describe("GithubExecutor custom maxOutput clamp", () => {
-  it("clamps the /chat/completions transform body", async () => {
+describe("central custom maxOutput clamp (base execute seam)", () => {
+  it("clamps the github /chat/completions transform output like execute() does", async () => {
     const { GithubExecutor } = await import("../../open-sse/executors/github.js");
     const ex = new GithubExecutor();
-    const out = ex.transformRequest("gpt-5.4", { max_tokens: 9000 }, false, {}, { modelCapabilities: { maxOutput: 2048 } });
+    const ctx = { modelCapabilities: { maxOutput: 2048 } };
+    // execute() composes transformRequest + clampCustomMaxOutput centrally.
+    const out = ex.clampCustomMaxOutput(ex.transformRequest("gpt-5.4", { max_tokens: 9000 }, false, {}, ctx), ctx);
     // github's applyParamRenames maps max_tokens -> max_completion_tokens; the
-    // clamp runs after the rename on the final field.
+    // clamp then caps the renamed (final) field.
     expect(out.max_completion_tokens).toBe(2048);
     expect(out.max_tokens).toBeUndefined();
   });
@@ -14,10 +16,20 @@ describe("GithubExecutor custom maxOutput clamp", () => {
   it("does not invent token fields when absent", async () => {
     const { GithubExecutor } = await import("../../open-sse/executors/github.js");
     const ex = new GithubExecutor();
-    const out = ex.transformRequest("gpt-5.4", { messages: [] }, false, {}, { modelCapabilities: { maxOutput: 2048 } });
+    const ctx = { modelCapabilities: { maxOutput: 2048 } };
+    const out = ex.clampCustomMaxOutput(ex.transformRequest("gpt-5.4", { messages: [] }, false, {}, ctx), ctx);
     expect(out.max_tokens).toBeUndefined();
     expect(out.max_completion_tokens).toBeUndefined();
   });
+
+  it("clamps gemini-envelope bodies (antigravity request.generationConfig)", async () => {
+    const { BaseExecutor } = await import("../../open-sse/executors/base.js");
+    const ex = new BaseExecutor("antigravity");
+    const body = { request: { generationConfig: { maxOutputTokens: 8192 } } };
+    ex.clampCustomMaxOutput(body, { modelCapabilities: { maxOutput: 1024 } });
+    expect(body.request.generationConfig.maxOutputTokens).toBe(1024);
+  });
+
 });
 
 describe("modal boolean caps presence semantics", () => {

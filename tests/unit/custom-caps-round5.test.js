@@ -29,7 +29,8 @@ describe("azure executor custom maxOutput clamp", () => {
   it("clamps the azure body like DefaultExecutor", async () => {
     const { AzureExecutor } = await import("../../open-sse/executors/azure.js");
     const ex = new AzureExecutor();
-    const out = ex.transformRequest("custom-x", { max_tokens: 9000 }, false, {}, { modelCapabilities: { maxOutput: 2048 } });
+    const ctx = { modelCapabilities: { maxOutput: 2048 } };
+    const out = ex.clampCustomMaxOutput(ex.transformRequest("custom-x", { max_tokens: 9000 }, false, {}, ctx), ctx);
     expect(out.max_tokens).toBe(2048);
   });
 });

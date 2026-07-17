@@ -21,7 +21,15 @@ export function resolveCustomCapabilities(provider, model, requestPrefix, custom
       const staticCaps = getCapabilitiesForModel(provider, String(cleanModel));
       const caps = m.capabilities;
       const hasCaps = caps && typeof caps === "object" && !Array.isArray(caps) && Object.keys(caps).length > 0;
-      return hasCaps ? { ...staticCaps, ...caps } : staticCaps;
+      const merged = hasCaps ? { ...staticCaps, ...caps } : { ...staticCaps };
+      // Consumers that must distinguish "explicitly persisted on the custom
+      // row" from "inherited static/default" (e.g. strict context routing)
+      // read this non-enumerable marker; spreads/JSON drop it harmlessly.
+      Object.defineProperty(merged, "customKeys", {
+        value: new Set(hasCaps ? Object.keys(caps) : []),
+        enumerable: false,
+      });
+      return merged;
     }
   }
   return null;

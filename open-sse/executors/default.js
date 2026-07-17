@@ -268,9 +268,6 @@ export class DefaultExecutor extends BaseExecutor {
       injectPromptCacheKey(this.provider, transformed, credentials);
       applyParamRenames(this.provider, model, transformed, requestContext?.modelCapabilities);
       stripUnsupportedParams(this.provider, model, transformed, requestContext?.modelCapabilities);
-      // Custom-model maxOutput: clamp normalized token-limit fields (shared
-      // BaseExecutor helper; static catalog ceilings live in the translators).
-      this.clampCustomMaxOutput(transformed, requestContext, ["max_tokens", "max_completion_tokens", "max_output_tokens"]);
     }
 
     return this.ensureThinkingBudget(injectReasoningContent({ provider: this.provider, model, body: transformed }), model, requestContext?.modelCapabilities);

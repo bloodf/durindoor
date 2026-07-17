@@ -125,9 +125,6 @@ export class GithubExecutor extends BaseExecutor {
     }
     // Config-driven strip of params unsupported by this provider/model
     stripUnsupportedParams("github", model, transformed);
-    // Custom-model maxOutput (shared BaseExecutor helper): clamp the
-    // normalized OpenAI fields on the /chat/completions path.
-    this.clampCustomMaxOutput(transformed, requestContext);
     return transformed;
   }
 

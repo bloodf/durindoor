@@ -23,10 +23,10 @@ vi.mock("open-sse/services/compression/index.js", () => ({
 const { POST } = await import("../../src/app/api/compression/preview/route.js");
 
 // Dashboard-context request: NO `Authorization: Bearer` and NO `x-api-key`
-// header. The Compression Studio page at
-// `src/app/(dashboard)/dashboard/compression-studio/page.js:30-35 runPreview`
-// POSTs this way because `src/dashboardGuard.js:262-289` already authenticated
-// the dashboard session (dashboard JWT) at the proxy layer.
+// header. The Test Savers page at
+// `src/app/(dashboard)/dashboard/compression-studio/page.js` POSTs this way
+// because `src/dashboardGuard.js:262-289` already authenticated the dashboard
+// session (dashboard JWT) at the proxy layer.
 function dashboardJsonRequest(body) {
   return new Request("https://durindoor.local/api/compression/preview", {
     method: "POST",

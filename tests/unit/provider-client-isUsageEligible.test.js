@@ -25,7 +25,7 @@ describe("isUsageEligible", () => {
     expect(isUsageEligible({ provider: "ollama", authType: "apikey" })).toBe(true);
   });
 
-  it("returns true for the stored api_key spelling (Kiro direct import)", () => {
+  it("returns true for the underscore api_key spelling on a supported provider", () => {
     expect(isUsageEligible({ provider: "ollama", authType: "api_key" })).toBe(true);
   });
 

@@ -342,9 +342,16 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
 
   // ponytail: ceiling = ollama under claude transport. Lift into PROVIDERS[ollama].quirks
   // or a capability flag if a second native-claude provider lands.
-  const preservesNativeClaudeThinking = PROVIDERS[provider]?.quirks?.preserveNativeClaudeThinking
+  // Explicit custom thinking-related overrides (customKeys marker) must not be
+  // bypassed by the native-Claude compatibility shortcut below.
+  const hasExplicitThinkingOverride =
+    modelCapabilities?.customKeys instanceof Set
+    && ["reasoning", "thinkingCanDisable", "thinkingRange", "thinkingFormat"]
+      .some((k) => modelCapabilities.customKeys.has(k));
+  const preservesNativeClaudeThinking = (PROVIDERS[provider]?.quirks?.preserveNativeClaudeThinking
     || provider === "ollama"
-    || provider === "ollama-local";
+    || provider === "ollama-local")
+    && !hasExplicitThinkingOverride;
   if (preservesNativeClaudeThinking && targetFormat === FORMATS.CLAUDE) {
     // WR-01: chatCore.js:66-68 injects `reasoning_effort` (OpenAI field) for level-mode
     // providerThinking configs. On the Claude wire it is not a valid Messages field.

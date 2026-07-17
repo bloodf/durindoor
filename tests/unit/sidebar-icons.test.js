@@ -21,7 +21,8 @@ describe("SidebarNavIcons", () => {
     expect(map.get("Usage")).toBe("bar_chart");
     expect(map.get("Playground")).toBe("chat");
     expect(map.get("Combos")).toBe("layers");
-    expect(map.get("Compression Studio")).toBe("compress");
+    expect(map.get("Quota Tracker")).toBe("data_usage");
+    expect(map.get("Provider Health")).toBe("monitor_heart");
     expect(map.get("MCP Gateway")).toBe("hub");
   });
 
@@ -80,11 +81,13 @@ describe("SidebarNavIcons", () => {
       "Statistics",
       "Settings",
       "Headroom",
+      "Test Savers",
     ]);
     expect(tokenSaverMenu.children.map((c) => c.href)).toEqual([
       "/dashboard/token-saver",
       "/dashboard/token-saver/settings",
       "/dashboard/headroom",
+      "/dashboard/compression-studio",
     ]);
   });
 
@@ -161,7 +164,7 @@ describe("SidebarNavIcons", () => {
   });
 
   it("brand logo points to the DurinDoor app icon with correct alt text", () => {
-    expect(BRAND_LOGO_SRC).toBe("/icons/icon-192.svg");
+    expect(BRAND_LOGO_SRC).toBe("/icons/icon-512.png");
     expect(BRAND_LOGO_ALT).toBe("");
   });
 
@@ -173,7 +176,7 @@ describe("SidebarNavIcons", () => {
       height: 36,
     });
     const html = renderToStaticMarkup(img);
-    expect(html).toContain('src="/icons/icon-192.svg"');
+    expect(html).toContain('src="/icons/icon-512.png"');
     expect(html).toContain('alt=""');
     expect(html).toContain('width="36"');
     expect(html).toContain('height="36"');

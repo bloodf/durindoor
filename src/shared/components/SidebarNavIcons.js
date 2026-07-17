@@ -26,7 +26,7 @@ export const VISIBLE_MEDIA_KINDS = ["embedding", "image", "tts", "stt"];
 // Combined entry: webSearch + webFetch share one page at /dashboard/media-providers/web
 export const COMBINED_WEB_ITEM = { id: "web", label: "Web Fetch & Search", icon: "travel_explore", href: "/dashboard/media-providers/web" };
 
-export const BRAND_LOGO_SRC = "/icons/icon-192.svg";
+export const BRAND_LOGO_SRC = "/icons/icon-512.png";
 export const BRAND_LOGO_ALT = "";
 
 // Top-level dashboard navigation. Usage is the dashboard home (the root
@@ -35,7 +35,8 @@ export const navItems = [
   { href: "/dashboard/usage", label: "Usage", icon: "bar_chart" },
   { href: "/dashboard/playground", label: "Playground", icon: "chat" },
   { href: "/dashboard/combos", label: "Combos", icon: "layers" },
-  { href: "/dashboard/compression-studio", label: "Compression Studio", icon: "compress" },
+  { href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage" },
+  { href: "/dashboard/health", label: "Provider Health", icon: "monitor_heart" },
   { href: "/dashboard/mcp-gateway", label: "MCP Gateway", icon: "hub", exact: false },
 ];
 
@@ -53,7 +54,8 @@ export const providersMenu = {
 
 // Collapsible Token Saver menu. Statistics renders the overview dashboard;
 // Settings holds the RTK/Headroom/PXPIPE toggles; Headroom links to the
-// dedicated full-page UI owned by the HeadroomWebui worker.
+// dedicated full-page UI owned by the HeadroomWebui worker; Test Savers is the
+// compression preview studio.
 export const tokenSaverMenu = {
   icon: "savings",
   label: "Token Saver",
@@ -61,6 +63,7 @@ export const tokenSaverMenu = {
     { href: "/dashboard/token-saver", label: "Statistics", icon: "bar_chart" },
     { href: "/dashboard/token-saver/settings", label: "Settings", icon: "settings" },
     { href: "/dashboard/headroom", label: "Headroom", icon: "memory" },
+    { href: "/dashboard/compression-studio", label: "Test Savers", icon: "compress" },
   ],
 };
 

@@ -110,6 +110,13 @@ const getPageInfo = (pathname) => {
       icon: "security",
       breadcrumbs: [],
     };
+  if (pathname === "/dashboard/compression-studio" || pathname.includes("/compression-studio"))
+    return {
+      title: "Test Savers",
+      description: "Preview token compression across engines",
+      icon: "compress",
+      breadcrumbs: [],
+    };
   if (pathname.includes("/token-saver"))
     return {
       title: "Token Saver",

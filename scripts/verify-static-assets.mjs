@@ -6,7 +6,20 @@ import os from "node:os";
 import path from "node:path";
 
 const DIST_DIR = process.env.NEXT_DIST_DIR || ".next";
-const STANDALONE_ROOT = path.join(process.cwd(), DIST_DIR, "standalone");
+const BASE_STANDALONE = path.join(process.cwd(), DIST_DIR, "standalone");
+
+function resolveStandaloneRoot(base) {
+  if (fs.existsSync(path.join(base, "custom-server.js"))) return base;
+  // workspace tracing mode nests the app under a project subdirectory
+  const nested = fs.existsSync(base)
+    ? fs.readdirSync(base)
+        .map((name) => path.join(base, name))
+        .find((dir) => fs.existsSync(path.join(dir, "custom-server.js")))
+    : undefined;
+  return nested || base;
+}
+
+const STANDALONE_ROOT = resolveStandaloneRoot(BASE_STANDALONE);
 const SERVER_ENTRY = path.join(STANDALONE_ROOT, "custom-server.js");
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));

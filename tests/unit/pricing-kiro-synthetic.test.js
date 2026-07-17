@@ -7,9 +7,9 @@ import { describe, it, expect } from "vitest";
 import { getPricingForModel } from "../../open-sse/providers/pricing.js";
 
 const KIRO_TIERS = [
-  { tier: "sol", input: 5.0, output: 30.0 },
-  { tier: "terra", input: 2.5, output: 15.0 },
-  { tier: "luna", input: 1.0, output: 6.0 },
+  { tier: "sol", input: 5.0, output: 6.25 },
+  { tier: "terra", input: 2.5, output: 3.125 },
+  { tier: "luna", input: 1.0, output: 1.25 },
 ];
 
 describe("getPricingForModel kiro synthetic suffixes (#2596)", () => {

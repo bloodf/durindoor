@@ -24,6 +24,11 @@ vi.mock("open-sse/services/kiroModels.js", () => ({ resolveKiroModels: vi.fn() }
 vi.mock("open-sse/services/qoderModels.js", () => ({ resolveQoderModels: vi.fn() }));
 vi.mock("open-sse/services/copilotModels.js", () => ({ resolveCopilotModels: vi.fn() }));
 vi.mock("open-sse/services/clinepassModels.js", () => ({ resolveClinepassModels: vi.fn() }));
+// The ollama-local resolver routes through proxyAwareFetch; delegate to
+// global.fetch so this file's fetch-shape assertions stay meaningful.
+vi.mock("open-sse/utils/proxyFetch.js", () => ({
+  proxyAwareFetch: vi.fn((url, init) => global.fetch(url, init)),
+}));
 
 import { getProviderConnections } from "@/lib/localDb";
 
@@ -109,5 +114,34 @@ describe("ollama-local embedding model discovery (#media-ollama-embeddings)", ()
     expect(models.some((m) => m.id === "ollama-local/general-purpose")).toBe(true);
     expect(models.some((m) => m.id === "ollama-local/snowflake-arctic-instruct")).toBe(false);
     expect(models.some((m) => m.id === "ollama-local/phi4")).toBe(false);
+  });
+
+  it("classifies an explicitly enabled bge-m3 as embedding (enabledModels set)", async () => {
+    getProviderConnections.mockResolvedValue([
+      {
+        id: "conn-local",
+        provider: "ollama-local",
+        authType: "apikey",
+        apiKey: "local",
+        isActive: true,
+        providerSpecificData: { enabledModels: ["bge-m3"] },
+      },
+    ]);
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        models: [
+          { name: "bge-m3", details: { family: "bert" } },
+          { name: "llama3.2", details: { family: "llama" } },
+        ],
+      }),
+    });
+
+    const models = await buildModelsList(["embedding"], "block-metadata");
+
+    // Explicit selection preserved AND classified via /api/tags metadata.
+    expect(models.some((m) => m.id === "ollama-local/bge-m3")).toBe(true);
+    // Non-enabled discovered model must NOT reappear.
+    expect(models.some((m) => m.id === "ollama-local/llama3.2")).toBe(false);
   });
 });

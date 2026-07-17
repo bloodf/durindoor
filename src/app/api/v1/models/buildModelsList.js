@@ -19,6 +19,7 @@ import { resolveClinepassModels } from "open-sse/services/clinepassModels.js";
 import { aggregateComboCapabilities, capabilitiesFromServiceKind, getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 import { isPaidModel } from "open-sse/providers/pricing.js";
 import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
+import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 
 // In-flight request coalescing for `buildModelsList` (OmniRoute #6440):
 // concurrent `/v1/models` calls that hit before the first one resolves would
@@ -199,12 +200,18 @@ const LIVE_MODEL_RESOLVERS = {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
     try {
+      // Route through the connection proxy exactly like the embedding
+      // request path does, while keeping the SSRF guard: guardedProbeFetch
+      // validates the URL, the injected fetcher carries proxyOptions.
+      const psd = isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {};
+      const proxyOptions = await resolveConnectionProxyConfig(psd);
+      const proxiedFetch = (fetchUrl, init) => proxyAwareFetch(fetchUrl, init, proxyOptions || null);
       const response = await guardedProbeFetch(url, {
         method: "GET",
         headers: { "Content-Type": "application/json" },
         cache: "no-store",
         signal: controller.signal,
-      }, guard);
+      }, guard, proxiedFetch);
       if (!response.ok) return null;
       const data = await response.json();
       const list = parseOpenAIStyleModels(data);
@@ -682,6 +689,22 @@ async function buildModelsListImpl(kindFilter, guard) {
             }
           } catch (err) {
             console.log(`Live model fetch failed for ${providerId}: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        } else if (providerId === "ollama-local" && liveResolver && hasExplicitEnabledModels) {
+          // ollama-local only: explicit enabledModels keep the user's
+          // selection, but /api/tags still supplies kind metadata so a
+          // selected bge-m3 classifies as embedding instead of falling
+          // through to the LLM heuristic. Other providers keep their
+          // no-network fast path.
+          try {
+            const live = await liveResolver(conn, guard);
+            for (const m of live?.models ?? []) {
+              if (!rawModelIds.includes(m.id)) continue;
+              if (m.kind || m.type) liveModelKindById.set(m.id, m.kind || m.type);
+              if (isRecord(m.capabilities)) liveCapabilitiesById.set(m.id, m.capabilities);
+            }
+          } catch (err) {
+            console.log(`Live model classification failed for ${providerId}: ${err instanceof Error ? err.message : String(err)}`);
           }
         }
         // Local passthrough live discovery (lm-studio, vllm, lemonade). Hits

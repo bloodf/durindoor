@@ -88,9 +88,19 @@ export const captureThinking = extractThinking;
 
 // Resolve thinking format: provider override > capability > derive(targetFormat).
 function resolveFormat(targetFormat, model, provider, caps = null) {
+  const resolvedCaps = caps || getCapabilitiesForModel(provider, model);
+  // An explicitly persisted custom-model thinkingFormat (customKeys marker)
+  // outranks the registry-level provider default (e.g. a custom model behind
+  // OpenRouter that speaks claude-style thinking, not "openai").
+  if (
+    resolvedCaps?.thinkingFormat
+    && resolvedCaps.customKeys instanceof Set
+    && resolvedCaps.customKeys.has("thinkingFormat")
+  ) {
+    return resolvedCaps.thinkingFormat;
+  }
   const providerFmt = provider ? PROVIDERS[provider]?.thinkingFormat : null;
   if (providerFmt) return providerFmt;
-  const resolvedCaps = caps || getCapabilitiesForModel(provider, model);
   if (resolvedCaps.thinkingFormat) return resolvedCaps.thinkingFormat;
   return FORMAT_TO_NATIVE[targetFormat] || "openai";
 }

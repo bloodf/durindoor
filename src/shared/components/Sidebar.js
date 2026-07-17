@@ -17,6 +17,7 @@ import {
   NavIcon,
   navItems,
   PROFILE_NAV_ITEM,
+  providersMenu,
   systemItems,
   tokenSaverMenu,
   VISIBLE_MEDIA_KINDS,
@@ -37,7 +38,12 @@ export default function Sidebar({ onClose }) {
     isActivePath(pathname, child.href, true)
   );
   const [userToggled, setUserToggled] = useState(null);
+  const [providersToggled, setProvidersToggled] = useState(null);
   const tokenSaverOpen = userToggled ?? isTokenSaverSectionActive;
+  const isProvidersSectionActive = providersMenu.children.some((child) =>
+    isActivePath(pathname, child.href, child.exact !== false),
+  );
+  const providersMenuOpen = providersToggled ?? isProvidersSectionActive;
 
   useEffect(() => {
     fetch("/api/settings")
@@ -115,6 +121,43 @@ export default function Sidebar({ onClose }) {
             </Link>
           ))}
 
+          {/* Providers collapsible menu */}
+          <button
+            onClick={() => setProvidersToggled((open) => !(open ?? isProvidersSectionActive))}
+            className={cn(
+              "w-full flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
+              isProvidersSectionActive
+                ? "bg-primary/10 text-primary"
+                : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+            )}
+          >
+            <NavIcon icon={providersMenu.icon} isActive={isProvidersSectionActive} />
+            <span className="text-[13px] font-medium flex-1 text-left">{providersMenu.label}</span>
+            <span className="material-symbols-outlined text-[14px] transition-transform" style={{ transform: providersMenuOpen ? "rotate(180deg)" : "rotate(0deg)" }}>
+              expand_more
+            </span>
+          </button>
+          {providersMenuOpen && (
+            <div className="pl-4">
+              {providersMenu.children.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={onClose}
+                  className={cn(
+                    "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
+                    isActive(item.href, item.exact !== false)
+                      ? "bg-primary/10 text-primary"
+                      : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+                  )}
+                >
+                  <NavIcon icon={item.icon} isActive={isActive(item.href, item.exact !== false)} size="16" />
+                  <span className="text-sm">{item.label}</span>
+                </Link>
+              ))}
+            </div>
+          )}
+
           {/* Token Saver collapsible menu */}
           <button
             onClick={() => setUserToggled((open) => !(open ?? isTokenSaverSectionActive))}
@@ -140,12 +183,12 @@ export default function Sidebar({ onClose }) {
                   onClick={onClose}
                   className={cn(
                     "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
-                    isActive(item.href, true)
+                    isActive(item.href, item.exact !== false)
                       ? "bg-primary/10 text-primary"
                       : "text-text-muted hover:bg-surface-2 hover:text-text-main"
                   )}
                 >
-                  <NavIcon icon={item.icon} isActive={isActive(item.href, true)} size="16" />
+                  <NavIcon icon={item.icon} isActive={isActive(item.href, item.exact !== false)} size="16" />
                   <span className="text-sm">{item.label}</span>
                 </Link>
               ))}

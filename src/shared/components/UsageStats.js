@@ -2,17 +2,11 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { FREE_PROVIDERS, AI_PROVIDERS } from "@/shared/constants/providers";
 import { USAGE_PERIOD_OPTIONS } from "@/lib/usagePeriods.js";
 import { createLatestRequestGuard, mergeUsageResponse } from "@/shared/utils/requestFreshness";
 import { allocateUsageCost } from "@/shared/utils/usageCostAllocation";
+import { buildUsageProviders } from "@/shared/utils/usageProviders";
 
-// Keep providers without serviceKinds (default LLM) or with "llm" in serviceKinds
-function isLLMProvider(id) {
-  const p = AI_PROVIDERS[id];
-  if (!p?.serviceKinds) return true;
-  return p.serviceKinds.includes("llm");
-}
 import Badge from "./Badge";
 import Card from "./Card";
 import OverviewCards from "@/app/(dashboard)/dashboard/usage/components/OverviewCards";
@@ -225,28 +219,15 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
     Promise.all([
       fetch("/api/providers", { signal: controller.signal }).then((r) => r.ok ? r.json() : null),
       fetch("/api/provider-nodes", { signal: controller.signal }).then((r) => r.ok ? r.json() : null),
+      fetch("/api/settings", { signal: controller.signal }).then((r) => r.ok ? r.json() : null),
     ])
-      .then(([d, nodesData]) => {
-        // Build node name lookup for custom providers
-        const nodeNameMap = {};
-        for (const node of (nodesData?.nodes || [])) {
-          nodeNameMap[node.id] = node.name;
-        }
-        const seen = new Set();
-        const unique = (d?.connections || []).filter((c) => {
-          if (c.isActive === false) return false;
-          if (!isLLMProvider(c.provider)) return false;
-          if (seen.has(c.provider)) return false;
-          seen.add(c.provider);
-          return true;
-        }).map((c) => ({
-          ...c,
-          nodeName: nodeNameMap[c.provider] || null,
-        }));
-        const noAuthProviders = Object.values(FREE_PROVIDERS)
-          .filter((p) => p.noAuth && !seen.has(p.id) && isLLMProvider(p.id))
-          .map((p) => ({ provider: p.id, name: p.name }));
-        if (!controller.signal.aborted) setProviders([...unique, ...noAuthProviders]);
+      .then(([d, nodesData, settings]) => {
+        const providers = buildUsageProviders(
+          d?.connections || [],
+          nodesData?.nodes || [],
+          settings?.disabledFreeProviders || [],
+        );
+        if (!controller.signal.aborted) setProviders(providers);
       })
       .catch(() => {});
     return () => controller.abort();

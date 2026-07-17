@@ -46,6 +46,7 @@ import {
   getModelUpstreamId,
   PROVIDER_ID_TO_ALIAS,
 } from "open-sse/config/providerModels.js";
+import { resolveProviderId } from "@/shared/constants/providers.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
@@ -697,6 +698,36 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   const policyError2 = await enforceApiKeyModelPolicy(request, `${provider}/${model}`);
   if (policyError2) return policyError2;
 
+  // Pin the request to a specific connection when the client asks for one.
+  // The header is preferred; body fields are accepted for backwards-compatible
+  // clients but stripped before the core sees them.
+  const rawConnectionPin = request.headers.get("x-connection-id")
+    || body.connectionId
+    || body.connection_id
+    || null;
+  let preferredConnectionId = null;
+  if (rawConnectionPin) {
+    const requestedId = String(rawConnectionPin);
+    const canonicalProvider = resolveProviderId(provider);
+    const activeConnections = await getProviderConnections({ provider: canonicalProvider, isActive: true });
+    const pinnedConnection = activeConnections.find((c) => c.id === requestedId);
+    if (!pinnedConnection) {
+      log.warn("CHAT", `x-connection-id not found for provider ${canonicalProvider}: ${requestedId.slice(0, 8)}`);
+      return errorResponse(
+        HTTP_STATUS.BAD_REQUEST,
+        `Connection ${requestedId.slice(0, 8)}... is not active for provider '${canonicalProvider}'.`
+      );
+    }
+    preferredConnectionId = pinnedConnection.id;
+    log.info("CHAT", `[${provider}/${model}] pinned to connection ${preferredConnectionId.slice(0, 8)}`);
+  }
+  // Strip router-only connection pin from upstream request body.
+  if (body.connectionId !== undefined || body.connection_id !== undefined) {
+    body = { ...body };
+    delete body.connectionId;
+    delete body.connection_id;
+  }
+
   // Strip reasoning_content for providers that reject it (Mistral, etc.)
   // Preserve for providers that require it (DeepSeek thinking mode)
   if (!provider.startsWith("deepseek")) {
@@ -758,10 +789,19 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         modelCandidates,
         quotaFamily,
         sessionId: routingSessionId,
+        preferredConnectionId,
       });
     } catch (error) {
       if (error?.name === "AbortError" || requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
       throw error;
+    }
+
+    // If the caller pinned a connection, the selected credential must match it
+    // exactly. Otherwise the account has been excluded/quota-blocked/rotated and
+    // the pin is no longer honored.
+    if (preferredConnectionId && credentials?.connectionId && credentials.connectionId !== preferredConnectionId) {
+      log.warn("CHAT", `[${provider}/${model}] pinned connection ${preferredConnectionId.slice(0, 8)} not selected; refusing rotation`);
+      return errorResponse(HTTP_STATUS.BAD_REQUEST, `Connection ${preferredConnectionId.slice(0, 8)}... is not available for provider '${provider}'.`);
     }
 
     // All accounts unavailable
@@ -967,6 +1007,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
     if (result.success) return result.response;
     if (requestAborted(request, requestSignal) || result.status === 499) return result.response;
+    if (preferredConnectionId) {
+      // A pinned connection must not rotate. Return the failure response immediately.
+      log.warn("CHAT", `[${provider}/${model}] pinned connection ${preferredConnectionId.slice(0, 8)} failed; pin is terminal`);
+      return result.response;
+    }
     if (result.quotaCapacityUnavailable) {
       // A local atomic-capacity race is not provider evidence. Release/expiry is
       // owned by the lifecycle; exclude this account and try a sibling without

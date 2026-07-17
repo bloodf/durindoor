@@ -1,4 +1,4 @@
-import { getInstallInfo, isInstalling, findNpm } from "./install.js";
+import { getInstallInfo, isInstalling } from "./install.js";
 import { getLoadedInfo, loadPxpipe, selfTest } from "./loader.js";
 
 // Aggregate status for the Token Saver card and /api/pxpipe/status.
@@ -9,12 +9,15 @@ export function getPxpipeStatus() {
   return {
     installed: install.installed,
     installing: isInstalling(),
+    installMethod: "dependency",
+    dependencyMissing: !install.installed && !!install.code,
     version: install.version,
     path: install.path,
+    reason: install.reason || null,
+    code: install.code || null,
     running: loaded.loaded,
     loadedAt: loaded.loadedAt || null,
     uptimeMs: loaded.loaded ? Date.now() - loaded.loadedAt : 0,
-    npmAvailable: !!findNpm(),
     mode: "library", // in-process transform, not an external proxy
   };
 }
@@ -26,8 +29,13 @@ export async function runHealthCheck() {
   const fail = (error) => ({ healthy: false, checks, error });
 
   const install = getInstallInfo();
-  checks.push({ id: "installed", label: "PXPIPE installed", ok: install.installed, detail: install.version ? `v${install.version}` : null });
-  if (!install.installed) return fail("pxpipe not installed");
+  checks.push({
+    id: "installed",
+    label: "PXPIPE installed",
+    ok: install.installed,
+    detail: install.version ? `v${install.version}` : install.reason || null,
+  });
+  if (!install.installed) return fail(install.reason || "pxpipe not installed");
 
   try {
     await loadPxpipe();

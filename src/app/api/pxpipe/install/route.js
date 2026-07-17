@@ -4,10 +4,10 @@ import { unloadPxpipe } from "@/lib/pxpipe/loader.js";
 import { runHealthCheck } from "@/lib/pxpipe/service.js";
 
 export const dynamic = "force-dynamic";
-// npm install can legitimately take minutes on a cold cache.
-export const maxDuration = 300;
 
-// Install (or repair — same operation, reinstalls @latest) then re-run the health check.
+// Verify the bundled dependency is present, drop any cached module version,
+// then run the health check. The package is a direct dependency, so this
+// endpoint no longer performs a network install.
 export async function POST() {
   try {
     const info = await installPxpipe();
@@ -15,6 +15,6 @@ export async function POST() {
     const health = await runHealthCheck();
     return NextResponse.json({ ...info, health });
   } catch (error) {
-    return NextResponse.json({ error: error.message, code: error.code || null }, { status: 500 });
+    return NextResponse.json({ error: error.message, code: error.code || null, surface: error.surface || null }, { status: 500 });
   }
 }

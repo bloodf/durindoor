@@ -11,6 +11,8 @@ export async function GET() {
     return NextResponse.json({
       ...status,
       enabled: !!settings.pxpipeEnabled,
+      // pxpipeAutoInstall is retained in settings for compatibility with old
+      // TokenSaverClient callers, but it no longer triggers runtime installs.
       autoInstall: !!settings.pxpipeAutoInstall,
       minChars: settings.pxpipeMinChars,
       timeoutMs: settings.pxpipeTimeoutMs,

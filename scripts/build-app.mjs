@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { createIsolatedBuildEnvironment } from "./build-environment.mjs";
 
@@ -71,6 +72,22 @@ try {
     if (!fs.existsSync(standaloneWs)) {
       const wsRoot = path.dirname(require.resolve("ws/package.json"));
       fs.cpSync(wsRoot, standaloneWs, { recursive: true });
+    }
+    // PxPipe transform runs from the standalone server via dynamic ESM import.
+    // The package is only reachable through its ESM exports and is not a
+    // Next NFT trace target, so copy it explicitly to the standalone node_modules.
+    const standalonePxpipe = path.join(standaloneDir, "node_modules", "pxpipe-proxy");
+    if (!fs.existsSync(standalonePxpipe)) {
+      const pxpipeEntry = fileURLToPath(import.meta.resolve("pxpipe-proxy/transform"));
+      const pxpipeRoot = path.resolve(path.dirname(pxpipeEntry), "../..");
+      fs.cpSync(pxpipeRoot, standalonePxpipe, { recursive: true });
+    }
+    // gpt-tokenizer is pxpipe-proxy's only runtime dependency and is not
+    // traced as a Next server dep. Copy it so the standalone bundle boots.
+    const standaloneGptTokenizer = path.join(standaloneDir, "node_modules", "gpt-tokenizer");
+    if (!fs.existsSync(standaloneGptTokenizer)) {
+      const gptTokenizerRoot = path.dirname(require.resolve("gpt-tokenizer/package.json"));
+      fs.cpSync(gptTokenizerRoot, standaloneGptTokenizer, { recursive: true });
     }
     const sharedConstantsDir = path.join(standaloneDir, "src", "shared", "constants");
     fs.mkdirSync(sharedConstantsDir, { recursive: true });

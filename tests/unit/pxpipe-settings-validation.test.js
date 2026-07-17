@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getSettings: vi.fn(),
   updateSettings: vi.fn(),
+  runHealthCheck: vi.fn(),
 }));
 
 vi.mock("next/server", () => ({
@@ -17,6 +18,7 @@ vi.mock("open-sse/services/combo.js", () => ({
   resetComboScoring: vi.fn(),
 }));
 vi.mock("@/shared/services/quotaAutoPing", () => ({ runQuotaAutoPingTick: vi.fn() }));
+vi.mock("@/lib/pxpipe/service.js", () => ({ runHealthCheck: mocks.runHealthCheck }));
 
 const settingsRoute = await import("../../src/app/api/settings/route.js");
 
@@ -113,6 +115,12 @@ describe("settings API PXPIPE validation", () => {
  */
 describe("pxpipe health route", () => {
   it("GET returns the same shape as POST", async () => {
+    mocks.runHealthCheck.mockResolvedValue({
+      healthy: true,
+      checks: [{ id: "installed", ok: true, detail: "v0.9.0" }],
+      error: null,
+    });
+
     const healthRoute = await import("../../src/app/api/pxpipe/health/route.js");
 
     expect(typeof healthRoute.GET).toBe("function");

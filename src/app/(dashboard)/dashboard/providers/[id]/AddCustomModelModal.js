@@ -43,6 +43,10 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
   const [maxOutput, setMaxOutput] = useState("");
   const [thinkingFormat, setThinkingFormat] = useState("");
   const [thinkingCanDisable, setThinkingCanDisable] = useState(true);
+  // Only persist thinkingCanDisable when the user touched it (or the stored
+  // model already carried it) — otherwise the true default would override
+  // provider/pattern fallbacks like thinkingCanDisable:false.
+  const [thinkingCanDisableTouched, setThinkingCanDisableTouched] = useState(false);
   const [thinkingRangeMin, setThinkingRangeMin] = useState("");
   const [thinkingRangeMax, setThinkingRangeMax] = useState("");
   const [testStatus, setTestStatus] = useState(null); // null | "testing" | "ok" | "error"
@@ -63,6 +67,7 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
     setMaxOutput(existing.maxOutput?.toString() ?? "");
     setThinkingFormat(existing.thinkingFormat ?? "");
     setThinkingCanDisable(existing.thinkingCanDisable !== false);
+    setThinkingCanDisableTouched(Object.hasOwn(existing, "thinkingCanDisable"));
     setThinkingRangeMin(existing.thinkingRange?.min?.toString() ?? "");
     setThinkingRangeMax(existing.thinkingRange?.max?.toString() ?? "");
     setTestStatus(null);
@@ -117,7 +122,7 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
           contextWindow,
           maxOutput,
           thinkingFormat,
-          thinkingCanDisable,
+          thinkingCanDisable: thinkingCanDisableTouched ? thinkingCanDisable : undefined,
           thinkingRangeMin,
           thinkingRangeMax,
         }),
@@ -235,7 +240,7 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
                 id="thinkingCanDisable"
                 type="checkbox"
                 checked={thinkingCanDisable}
-                onChange={(e) => setThinkingCanDisable(e.target.checked)}
+                onChange={(e) => { setThinkingCanDisable(e.target.checked); setThinkingCanDisableTouched(true); }}
                 className="rounded border-border"
               />
               <label htmlFor="thinkingCanDisable" className="text-xs">Thinking can be disabled</label>

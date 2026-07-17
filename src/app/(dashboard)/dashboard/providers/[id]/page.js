@@ -1243,6 +1243,12 @@ export default function ProviderDetailPage() {
           onDeleteAlias={handleDeleteAlias}
           onAddCustomModel={(modelId) => handleAddCustomModel(modelId, "llm", providerStorageAlias)}
           onDeleteCustomModel={(modelId) => handleDeleteCustomModel(modelId, "llm", providerStorageAlias)}
+          onEditCustomModel={(modelId) => {
+            // Pass the persisted custom-model record (incl. capabilities) so
+            // the modal's edit mode prefills the capability editor.
+            const record = customModels.find((m) => m.id === modelId);
+            if (record) setEditingCustomModel(record);
+          }}
           onRefresh={() => Promise.all([fetchAliases(), fetchCustomModels()])}
           connections={connections}
           isAnthropic={isAnthropicCompatible}

@@ -118,10 +118,13 @@ function buildThinkingPlaceholder(provider) {
  * applied a budget. Shared by translated requests and native Claude
  * passthrough so neither path can send `budget_tokens >= max_tokens`.
  */
-export function reconcileClaudeThinkingBudget(body, provider = "claude") {
+export function reconcileClaudeThinkingBudget(body, provider = "claude", customMaxOutput = null) {
   if (!body || typeof body !== "object" || !body.max_tokens) return body;
 
-  const ceiling = getCapabilitiesForModel(provider, body.model).maxOutput || DEFAULT_MAX_TOKENS;
+  // Custom-model maxOutput overrides the static catalog ceiling; the thinking
+  // budget is then fitted inside the already-clamped cap.
+  const ceiling = (Number.isFinite(customMaxOutput) && customMaxOutput > 0 ? customMaxOutput : null)
+    ?? (getCapabilitiesForModel(provider, body.model).maxOutput || DEFAULT_MAX_TOKENS);
   if (body.max_tokens > ceiling) body.max_tokens = ceiling;
 
   if (
@@ -131,7 +134,16 @@ export function reconcileClaudeThinkingBudget(body, provider = "claude") {
   ) {
     body.max_tokens = Math.min(body.thinking.budget_tokens + 1024, ceiling);
     if (body.thinking.budget_tokens >= body.max_tokens) {
-      body.thinking.budget_tokens = Math.max(1024, body.max_tokens - 1024);
+      // Anthropic requires budget_tokens strictly below max_tokens. The 1024
+      // floor assumes a roomy ceiling; a small custom maxOutput may not fit
+      // it, so fall back to leaving at least 1 output token, and disable
+      // thinking entirely when even that can't fit.
+      const fitted = Math.min(Math.max(1024, body.max_tokens - 1024), body.max_tokens - 1);
+      if (fitted >= 1) {
+        body.thinking.budget_tokens = fitted;
+      } else {
+        delete body.thinking;
+      }
     }
   }
 
@@ -143,7 +155,7 @@ export function reconcileClaudeThinkingBudget(body, provider = "claude") {
 // 1. thinking.type "adaptive" → unsupported on Haiku
 // 2. output_config.effort → unsupported on Haiku
 // 3. role "system" messages (mid-conversation-system beta) → only top-level system is allowed
-export function normalizeClaudePassthrough(body, model = "", provider = "claude") {
+export function normalizeClaudePassthrough(body, model = "", provider = "claude", customMaxOutput = null) {
   if (!body || typeof body !== "object") return body;
 
   // 1. Downgrade adaptive thinking for models that don't support it
@@ -222,7 +234,7 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
     }
   }
 
-  return reconcileClaudeThinkingBudget(body, provider);
+  return reconcileClaudeThinkingBudget(body, provider, customMaxOutput);
 }
 
 // Prepare request for Claude format endpoints
@@ -231,7 +243,7 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
 // - Add thinking block for Anthropic endpoint (provider === "claude")
 // - Fix tool_use/tool_result ordering
 // - Apply cloaking (billing header + fake user ID) for OAuth tokens
-export function prepareClaudeRequest(body, provider = null, apiKey = null, connectionId = null, rawHeaders = null, sessionId = null) {
+export function prepareClaudeRequest(body, provider = null, apiKey = null, connectionId = null, rawHeaders = null, sessionId = null, customMaxOutput = null) {
   const dropsClaudeCacheControl = PROVIDERS[provider]?.quirks?.dropClaudeCacheControl
     || provider === "ollama"
     || provider === "ollama-local";
@@ -241,7 +253,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
     delete body.output_config;
   }
 
-  reconcileClaudeThinkingBudget(body, provider);
+  reconcileClaudeThinkingBudget(body, provider, customMaxOutput);
 
   // 1. System: remove all cache_control, add only to last block with ttl 1h
   if (body.system && Array.isArray(body.system)) {

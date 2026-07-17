@@ -270,16 +270,18 @@ export class DefaultExecutor extends BaseExecutor {
       stripUnsupportedParams(this.provider, model, transformed, requestContext?.modelCapabilities);
     }
 
-    return this.ensureThinkingBudget(injectReasoningContent({ provider: this.provider, model, body: transformed }), model);
+    return this.ensureThinkingBudget(injectReasoningContent({ provider: this.provider, model, body: transformed }), model, requestContext?.modelCapabilities);
   }
 
   // ClinePass / OpenRouter-style thinking models burn all of max_tokens on reasoning
   // when the budget is too small, leaving content empty (finish_reason: "length").
   // Bump max_tokens to a safe minimum only when reasoning is enabled and budget undersized.
   // Source: decolua/9router#2332 @ 005d970f49.
-  ensureThinkingBudget(body, model) {
+  ensureThinkingBudget(body, model, modelCapabilities = null) {
     if (!body || this.provider !== "clinepass") return body;
-    const caps = getCapabilitiesForModel(this.provider, model);
+    // Custom-model overrides (e.g. maxOutput below the thinking floor) take
+    // precedence over the static catalog.
+    const caps = modelCapabilities || getCapabilitiesForModel(this.provider, model);
     if (!caps?.reasoning) return body;
 
     const reasoningEnabled = body.extra_body?.thinking?.type === "enabled"

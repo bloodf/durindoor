@@ -194,7 +194,7 @@ function validateVisionTarget(target) {
  * @param {object} [args.settings]  settings snapshot from getSettings()
  * @returns {{ body: object, modelStr: string, rerouted: boolean, fromModel?: string, toModel?: string }}
  */
-export function applyVisionBridgeReroute({ body, modelStr, settings } = {}) {
+export function applyVisionBridgeReroute({ body, modelStr, settings, capabilities = null } = {}) {
   if (!body || typeof body !== "object" || typeof modelStr !== "string") {
     return { body, modelStr, rerouted: false };
   }
@@ -214,8 +214,8 @@ export function applyVisionBridgeReroute({ body, modelStr, settings } = {}) {
   }
   // Already vision-capable — let the upstream handle it natively.
   const parsed = parseModel(modelStr);
-  const currentCaps = getCapabilitiesForModel(parsed.provider, parsed.model);
-  if (currentCaps.vision === true) {
+  const currentCaps = capabilities || getCapabilitiesForModel(parsed.provider, parsed.model);
+  if (currentCaps?.vision === true) {
     return { body, modelStr, rerouted: false };
   }
   // Vision Bridge requires an explicit operator-configured target that is

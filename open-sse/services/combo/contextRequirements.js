@@ -69,11 +69,16 @@ for (const entry of REGISTRY) {
  * @param {string} modelStr - full "provider/model" id (or bare model id)
  * @returns {number|null}
  */
-export function getKnownContextWindow(modelStr) {
+export function getKnownContextWindow(modelStr, capabilitiesMap = null) {
   const slash = typeof modelStr === "string" ? modelStr.indexOf("/") : -1;
   const provider = slash > 0 ? modelStr.slice(0, slash) : "";
   const model = slash > 0 ? modelStr.slice(slash + 1) : String(modelStr || "");
   if (!model) return null;
+
+  const caps = capabilitiesMap?.get?.(modelStr);
+  if (caps && typeof caps === "object" && Number.isFinite(caps.contextWindow) && caps.contextWindow > 0) {
+    return caps.contextWindow;
+  }
 
   const valid = (v) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null);
 
@@ -177,14 +182,14 @@ export function validateContextRequirementsMembers(models, requirements) {
  * @param {Object} [log] - logger; optional
  * @returns {string[]} eligible models (same reference when no active filter)
  */
-export function filterByContextRequirements(models, requirements, log = null) {
+export function filterByContextRequirements(models, requirements, log = null, capabilitiesMap = null) {
   if (!Array.isArray(models) || models.length === 0) return models;
   const req = parseRequirements(requirements);
   if (!req || req.min === null) return models;
 
   const before = models.length;
   const filtered = models.filter((modelStr) => {
-    const ctx = getKnownContextWindow(modelStr);
+    const ctx = getKnownContextWindow(modelStr, capabilitiesMap);
     if (ctx === null) return req.mode === "lenient"; // unknown handling
     return ctx >= req.min;
   });
@@ -210,13 +215,13 @@ export function filterByContextRequirements(models, requirements, log = null) {
  * @param {Object} [log] - logger; optional
  * @returns {string[]} sorted models (same reference when preferLargeContext is off)
  */
-export function sortByContextSize(models, requirements, log = null) {
+export function sortByContextSize(models, requirements, log = null, capabilitiesMap = null) {
   if (!Array.isArray(models) || models.length <= 1) return models;
   const req = parseRequirements(requirements);
   if (!req || !req.prefer) return models;
 
   const sorted = [...models]
-    .map((modelStr, i) => ({ modelStr, i, ctx: getKnownContextWindow(modelStr) }))
+    .map((modelStr, i) => ({ modelStr, i, ctx: getKnownContextWindow(modelStr, capabilitiesMap) }))
     .sort((a, b) => {
       const ac = a.ctx ?? -1; // unknown sorts to the end
       const bc = b.ctx ?? -1;
@@ -226,7 +231,7 @@ export function sortByContextSize(models, requirements, log = null) {
   log?.debug?.(
     "COMBO",
     `Context requirements: sorted by context size (descending): ${sorted
-      .map((m) => `${m}(${getKnownContextWindow(m) ?? "unknown"})`)
+      .map((m) => `${m}(${getKnownContextWindow(m, capabilitiesMap) ?? "unknown"})`)
       .join(", ")}`
   );
   return sorted;
@@ -237,6 +242,6 @@ export function sortByContextSize(models, requirements, log = null) {
  * separate rotation stage). Combo chat uses the split pair explicitly so the
  * eligibility filter can run before rotation state is computed.
  */
-export function applyContextRequirements(models, requirements, log = null) {
-  return sortByContextSize(filterByContextRequirements(models, requirements, log), requirements, log);
+export function applyContextRequirements(models, requirements, log = null, capabilitiesMap = null) {
+  return sortByContextSize(filterByContextRequirements(models, requirements, log, capabilitiesMap), requirements, log, capabilitiesMap);
 }

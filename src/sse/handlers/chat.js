@@ -375,21 +375,11 @@ export async function handleChat(request, clientRawRequest = null) {
   // combo resolution. The rerouted target is policy-rechecked — a vision model
   // the caller's API key is not allowed to use must not be reachable via the
   // bridge; on denial we keep the original model and let normal policy gates run.
-  const vb = applyVisionBridgeReroute({ body, modelStr, settings });
-  if (vb.rerouted) {
-    const policyError = await enforceApiKeyModelPolicy(request, vb.modelStr);
-    if (policyError) {
-      log.warn("CHAT", `Vision Bridge target "${vb.toModel}" denied by API key policy; keeping "${modelStr}"`);
-    } else {
-      log.info("CHAT", `Vision Bridge reroute: ${vb.fromModel} -> ${vb.toModel}`);
-      body = vb.body;
-      modelStr = vb.modelStr;
-      // clientRawRequest intentionally keeps the ORIGINAL client body so usage
-      // logs record the model the caller actually asked for; the reroute only
-      // changes what we dispatch upstream.
-    }
-  }
-
+  //
+  // Custom capabilities resolve BEFORE the bridge so a user-added vision override
+  // on a compatible node or bare alias is honored. Both run AFTER the local
+  // ponytail/bypass interceptors below — local commands must answer without
+  // any model/DB lookup.
   // Per-request token-saver bypass (#2609): `X-DurinDoor-Token-Saver: off`
   // (or legacy `X-9Router-Token-Saver: off`) disables the local Ponytail
   // slash-command interceptor so the request reaches the provider untransformed.
@@ -426,6 +416,22 @@ export async function handleChat(request, clientRawRequest = null) {
   const bypassResponse = handleBypassRequest(body, modelStr, userAgent, !!settings.ccFilterNaming);
   if (bypassResponse) return bypassResponse.response || bypassResponse;
 
+  const singleModelCaps = await buildSingleModelCapabilitiesMap(modelStr);
+  const vb = applyVisionBridgeReroute({ body, modelStr, settings, capabilities: singleModelCaps });
+  if (vb.rerouted) {
+    const policyError = await enforceApiKeyModelPolicy(request, vb.modelStr);
+    if (policyError) {
+      log.warn("CHAT", `Vision Bridge target "${vb.toModel}" denied by API key policy; keeping "${modelStr}"`);
+    } else {
+      log.info("CHAT", `Vision Bridge reroute: ${vb.fromModel} -> ${vb.toModel}`);
+      body = vb.body;
+      modelStr = vb.modelStr;
+      // clientRawRequest intentionally keeps the ORIGINAL client body so usage
+      // logs record the model the caller actually asked for; the reroute only
+      // changes what we dispatch upstream.
+    }
+  }
+
   // Check if model is a combo (has multiple models with fallback)
   // #6495 / F-4: filter paid members when the toggle is on. The auth ACL check
   // above intentionally calls getComboModels without the flag so combo
@@ -450,6 +456,7 @@ export async function handleChat(request, clientRawRequest = null) {
     // combo access control above remains the gate for combo names.
     if (comboStrategy === "fusion") {
       log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: fusion)`);
+      const capabilitiesMap = await resolveComboCapabilitiesMap(comboModels);
       return handleFusionChat({
         body,
         models: comboModels,
@@ -473,9 +480,11 @@ export async function handleChat(request, clientRawRequest = null) {
         judgeModel: comboStrategies[modelStr]?.judgeModel,
         tuning: comboStrategies[modelStr]?.fusionTuning,
         contextRequirements: perCombo.contextRequirements,
+        capabilitiesMap,
       });
     }
 
+    const capabilitiesMap = await resolveComboCapabilitiesMap(comboModels);
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
     const comboTimeoutMs = perCombo?.timeoutMs || COMBO_MODEL_TIMEOUT_MS || 0;
     log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit}, timeout: ${comboTimeoutMs || "off"})`);
@@ -499,6 +508,7 @@ export async function handleChat(request, clientRawRequest = null) {
       comboStickyLimit,
       contextRequirements: perCombo.contextRequirements,
       comboTimeoutMs,
+      capabilitiesMap,
       quotaRanker: (ordered) => rankComboModelsByQuota(
         ordered,
         settings,
@@ -517,13 +527,38 @@ export async function handleChat(request, clientRawRequest = null) {
   }
 
   // Single model request
-  return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey);
+  return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, null, null, vb.rerouted ? undefined : singleModelCaps);
+}
+
+// Resolve custom capabilities for all combo members into a single map keyed
+// by the original member string. Falls back to static caps when no custom row.
+async function resolveComboCapabilitiesMap(members) {
+  const map = new Map();
+  if (!Array.isArray(members)) return map;
+  await Promise.all(
+    members.map(async (member) => {
+      const resolved = await getModelInfo(member);
+      if (!resolved?.provider || !resolved?.model) return;
+      const requestPrefix = parseModel(member).providerAlias || null;
+      const caps = await loadCustomCapabilities(resolved.provider, resolved.model, requestPrefix);
+      if (caps) map.set(member, caps);
+    })
+  );
+  return map;
+}
+
+async function buildSingleModelCapabilitiesMap(modelStr) {
+  const resolved = await getModelInfo(modelStr);
+  if (!resolved?.provider || !resolved?.model) return null;
+  const requestPrefix = parseModel(modelStr).providerAlias || null;
+  const caps = await loadCustomCapabilities(resolved.provider, resolved.model, requestPrefix);
+  return caps;
 }
 
 /**
  * Handle single model chat request
  */
-async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, attemptSignal = null, tokenSaverCollector = null) {
+async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, attemptSignal = null, tokenSaverCollector = null, preResolvedCapabilities = undefined) {
   const requestSignal = attemptSignal || request?.signal || null;
   if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
   const modelInfo = await getModelInfo(modelStr);
@@ -662,7 +697,12 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   // the prefix the caller actually used (e.g. node alias or bare model alias).
   const parsed = parseModel(modelStr);
   const requestPrefix = parsed?.providerAlias || null;
-  const modelCapabilities = await loadCustomCapabilities(provider, model, requestPrefix);
+  // The direct single-model path already resolved caps for the vision bridge;
+  // reuse that result (null = resolved, no custom row). Combo attempts pass
+  // undefined so each member resolves its own caps.
+  const modelCapabilities = preResolvedCapabilities !== undefined
+    ? preResolvedCapabilities
+    : await loadCustomCapabilities(provider, model, requestPrefix);
 
   // Try with available accounts (fallback on errors)
   const excludeConnectionIds = new Set();

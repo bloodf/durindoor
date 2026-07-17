@@ -6,7 +6,7 @@ import { Button, ConfirmModal } from "@/shared/components";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
 import { useMultiSelect } from "@/shared/hooks/useMultiSelect";
 
-function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, deleteStatus, isTesting, checkbox }) {
+function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onEdit, onTest, testStatus, deleteStatus, isTesting, checkbox }) {
   const borderColor = deleteStatus === "deleting"
     ? "border-orange-500/40"
     : testStatus === "ok"
@@ -69,6 +69,16 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
           )}
         </div>
       </div>
+      {onEdit && (
+        <button
+          type="button"
+          onClick={onEdit}
+          className="p-1 hover:bg-surface-hover rounded text-text-muted"
+          title="Edit capabilities"
+        >
+          <span className="material-symbols-outlined text-sm">edit</span>
+        </button>
+      )}
       <button
         onClick={onDeleteAlias}
         className="p-1 hover:bg-red-50 rounded text-red-500"
@@ -80,7 +90,7 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
   );
 }
 
-export default function CompatibleModelsSection({ providerStorageAlias, providerDisplayAlias, modelAliases, customModels, copied, onCopy, onDeleteAlias, onAddCustomModel, onDeleteCustomModel, onRefresh, connections, isAnthropic }) {
+export default function CompatibleModelsSection({ providerStorageAlias, providerDisplayAlias, modelAliases, customModels, copied, onCopy, onDeleteAlias, onAddCustomModel, onDeleteCustomModel, onEditCustomModel, onRefresh, connections, isAnthropic }) {
   const [newModel, setNewModel] = useState("");
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -430,6 +440,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
                 copied={copied}
                 onCopy={onCopy}
                 onDeleteAlias={() => source === "custom" ? onDeleteCustomModel(id) : onDeleteAlias(alias)}
+                onEdit={source === "custom" && onEditCustomModel ? () => onEditCustomModel(id) : undefined}
                 onTest={connections.length > 0 ? () => handleTestModel(id) : undefined}
                 testStatus={modelTestResults[id]}
                 deleteStatus={deleteStatus[id]}
@@ -470,6 +481,7 @@ CompatibleModelsSection.propTypes = {
   onDeleteAlias: PropTypes.func.isRequired,
   onAddCustomModel: PropTypes.func.isRequired,
   onDeleteCustomModel: PropTypes.func.isRequired,
+  onEditCustomModel: PropTypes.func,
   onRefresh: PropTypes.func.isRequired,
   connections: PropTypes.arrayOf(PropTypes.shape({
     id: PropTypes.string,

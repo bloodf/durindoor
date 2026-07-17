@@ -6,7 +6,6 @@ import Link from "next/link";
 import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, ImportTokenModal, IFlowCookieModal, GitLabAuthModal, Toggle, Select, EditConnectionModal, NoAuthProxyCard, ConfirmModal, ProviderIcon } from "@/shared/components";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
-import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { translate } from "@/i18n/runtime";
@@ -25,6 +24,9 @@ import EditCompatibleNodeModal from "./EditCompatibleNodeModal";
 import AddCustomModelModal from "./AddCustomModelModal";
 import BulkImportCodexModal from "./BulkImportCodexModal";
 import { getProviderThinkingLevels } from "./providerThinkingLevels";
+import { getCustomModelCapabilities } from "./customModelCapabilities";
+import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
+import { getThinkingLevelsFromCapabilities } from "open-sse/providers/thinkingLevels.js";
 import { sortConnectionsByAvailability, persistConnectionOrder } from "@/shared/utils/connectionReorder";
 
 const ONE_BY_ONE_DELAY_MS = 1000;
@@ -74,6 +76,7 @@ export default function ProviderDetailPage() {
   const [modelsTestError, setModelsTestError] = useState("");
   const [testingModelIds, setTestingModelIds] = useState(() => new Set());
   const [showAddCustomModel, setShowAddCustomModel] = useState(false);
+  const [editingCustomModel, setEditingCustomModel] = useState(null);
   const [selectedConnectionIds, setSelectedConnectionIds] = useState([]);
   const [bulkProxyPoolId, setBulkProxyPoolId] = useState("__none__");
   const [bulkUpdatingProxy, setBulkUpdatingProxy] = useState(false);
@@ -214,9 +217,10 @@ export default function ProviderDetailPage() {
   const apiKeyConnectionLabel = providerId === "xai" ? "xAI API Key" : "API Key";
   // Resolve suffix "(level)" for a model when a thinking level is picked and the model supports it.
   // Upstream decolua/9router#2534: "none" suppresses the suffix (explicit strip, not a level label).
-  const resolveThinkingSuffix = (modelId) => {
+  const resolveThinkingSuffix = (modelId, customCaps) => {
     if (!thinkingMode || thinkingMode === "auto" || thinkingMode === "none") return null;
-    const levels = getThinkingLevels(providerId, modelId);
+    const caps = getCustomModelCapabilities({ providerId, modelId, capabilities: customCaps });
+    const levels = getThinkingLevelsFromCapabilities(caps, providerId, modelId);
     return levels && levels.includes(thinkingMode) ? thinkingMode : null;
   };
   const providerStorageAlias = isCompatible ? providerId : providerAlias;
@@ -573,22 +577,45 @@ export default function ProviderDetailPage() {
     }
   };
 
-  const handleAddCustomModel = async (modelId, type = "llm", providerAliasOverride = providerStorageAlias) => {
+  const handleAddCustomModel = async (payload, type = "llm", providerAliasOverride = providerStorageAlias) => {
+    const modelId = typeof payload === "string" ? payload : payload.id;
+    const capabilities = typeof payload === "object" && payload !== null && !Array.isArray(payload) ? payload.capabilities : undefined;
     try {
       const res = await fetch("/api/models/custom", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ providerAlias: providerAliasOverride, id: modelId, type }),
+        body: JSON.stringify({ providerAlias: providerAliasOverride, id: modelId, type, capabilities }),
       });
       if (res.ok) {
         await fetchCustomModels();
         if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("customModelChanged"));
-      } else {
-        const data = await res.json();
-        alert(data.error || "Failed to add custom model");
+        return;
       }
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || "Failed to add custom model");
     } catch (error) {
-      console.log("Error adding custom model:", error);
+      // Rethrow so callers (capability editor, quick-add rows) surface it.
+      throw error instanceof Error ? error : new Error("Failed to add custom model");
+    }
+  };
+
+  const handleUpdateCustomModel = async ({ id, capabilities }) => {
+    try {
+      const res = await fetch("/api/models/custom", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ providerAlias: providerStorageAlias, id, type: "llm", capabilities }),
+      });
+      if (res.ok) {
+        await fetchCustomModels();
+        if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("customModelChanged"));
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || "Failed to update custom model");
+    } catch (error) {
+      // Rethrow so the capability editor stays open and shows the message.
+      throw error instanceof Error ? error : new Error("Failed to update custom model");
     }
   };
 
@@ -1218,6 +1245,12 @@ export default function ProviderDetailPage() {
           onDeleteAlias={handleDeleteAlias}
           onAddCustomModel={(modelId) => handleAddCustomModel(modelId, "llm", providerStorageAlias)}
           onDeleteCustomModel={(modelId) => handleDeleteCustomModel(modelId, "llm", providerStorageAlias)}
+          onEditCustomModel={(modelId) => {
+            // Pass the persisted custom-model record (incl. capabilities) so
+            // the modal's edit mode prefills the capability editor.
+            const record = customModels.find((m) => m.id === modelId && m.providerAlias === providerStorageAlias && (m.kind || m.type || "llm") === "llm");
+            if (record) setEditingCustomModel(record);
+          }}
           onRefresh={() => Promise.all([fetchAliases(), fetchCustomModels()])}
           connections={connections}
           isAnthropic={isAnthropicCompatible}
@@ -1265,8 +1298,9 @@ export default function ProviderDetailPage() {
             isTesting={testingModelIds.has(model.id)}
             isCustom
             isFree={false}
-            caps={getCaps(`${providerId}/${model.id}`)}
-            thinkingSuffix={resolveThinkingSuffix(model.id)}
+            caps={getCustomModelCapabilities({ providerId, modelId: model.id, capabilities: model.capabilities })}
+            thinkingSuffix={resolveThinkingSuffix(model.id, model.capabilities)}
+            onEdit={model.source === "custom" ? () => setEditingCustomModel(model) : undefined}
           />
         ))}
 
@@ -1988,16 +2022,25 @@ export default function ProviderDetailPage() {
           isAnthropic={isAnthropicCompatible}
         />
       )}
-      {!isCompatible && (
+      {(!isCompatible || editingCustomModel) && (
         <AddCustomModelModal
-          isOpen={showAddCustomModel}
+          isOpen={showAddCustomModel || Boolean(editingCustomModel)}
           providerAlias={providerStorageAlias}
           providerDisplayAlias={providerDisplayAlias}
-          onSave={async (modelId) => {
-            await handleAddCustomModel(modelId, "llm", providerStorageAlias);
+          initialModel={editingCustomModel}
+          onSave={async (payload) => {
+            if (editingCustomModel) {
+              await handleUpdateCustomModel(payload);
+            } else {
+              await handleAddCustomModel(payload, "llm", providerStorageAlias);
+            }
             setShowAddCustomModel(false);
+            setEditingCustomModel(null);
           }}
-          onClose={() => setShowAddCustomModel(false)}
+          onClose={() => {
+            setShowAddCustomModel(false);
+            setEditingCustomModel(null);
+          }}
         />
       )}
 

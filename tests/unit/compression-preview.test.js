@@ -64,6 +64,7 @@ describe("POST /api/compression/preview", () => {
         fallbackReasons: [],
         skippedReasons: [],
         fallbackReason: null,
+        raw: { model: "x", messages: [] },
       },
       "engine-b": {
         status: "compressed",
@@ -72,6 +73,7 @@ describe("POST /api/compression/preview", () => {
         fallbackReasons: [],
         skippedReasons: [],
         fallbackReason: null,
+        raw: { model: "x", messages: [] },
       },
       "engine-missing": { status: "unavailable" },
     });
@@ -102,6 +104,7 @@ describe("POST /api/compression/preview", () => {
       fallbackReasons: [],
       skippedReasons: [],
       fallbackReason: null,
+      raw: {},
     });
     expect(json.results["engine-b"]).toEqual({
       status: "unchanged",
@@ -110,6 +113,7 @@ describe("POST /api/compression/preview", () => {
       fallbackReasons: [],
       skippedReasons: [],
       fallbackReason: null,
+      raw: {},
     });
   });
 
@@ -180,6 +184,7 @@ describe("POST /api/compression/preview", () => {
       fallbackReasons: [],
       skippedReasons: [],
       fallbackReason: null,
+      raw: {},
     });
   });
 

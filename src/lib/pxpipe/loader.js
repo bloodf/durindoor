@@ -1,4 +1,4 @@
-import { pathToFileURL } from "url";
+import { pathToFileURL } from "node:url";
 import { getInstallInfo, libraryEntry } from "./install.js";
 
 // Module cache: pxpipe is loaded once per process ("started") and dropped on
@@ -63,15 +63,17 @@ export async function loadPxpipe() {
 async function doLoad() {
   const info = getInstallInfo();
   if (!info.installed) {
-    const err = new Error("PXPIPE is not installed");
+    const err = new Error(info.reason || "PXPIPE is not installed");
     err.code = "NOT_INSTALLED";
+    err.surface = info.reason || "NOT_INSTALLED";
     throw err;
   }
-  // Cache-bust per version so Repair/upgrade takes effect without a server restart.
-  const url = `${pathToFileURL(libraryEntry()).href}?v=${encodeURIComponent(info.version || "0")}`;
+  // Cache-bust per version so upgrades take effect without a server restart.
+  const entry = libraryEntry();
+  const url = `${pathToFileURL(entry).href}?v=${encodeURIComponent(info.version || "0")}`;
   const mod = await import(/* webpackIgnore: true */ url);
   if (typeof mod.transformAnthropicMessages !== "function") {
-    throw new Error("installed pxpipe package does not export transformAnthropicMessages");
+    throw new Error("pxpipe package does not export transformAnthropicMessages");
   }
   cached = { module: mod, version: info.version, loadedAt: Date.now() };
   return cached;

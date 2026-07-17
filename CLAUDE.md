@@ -45,7 +45,42 @@ cd tests && npm install && npx vitest run --reporter=verbose
 
 ## Conventional Commits
 
-This project uses conventional commits with a custom `port` type. The full type list and the `port(upstream): #N - <title>` format are defined in `.commitlintrc.json` and `AGENTS.md` §3.
+This project uses conventional commits. The authoritative contract is `AGENTS.md` §3 and §6.3; the same rules are summarized here so every contributor sees them in the project overview.
+
+**Allowed types** (from `.commitlintrc.cjs` `type-enum`):
+- `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `ci`, `chore`, `revert`, `merge`, `port`, `sync`
+- `port` is custom; conventional scopes are `port(upstream)` and `port(omniroute)`:
+  - `port(upstream): #<N> - <title>` for upstream 9router PR ports
+  - `port(omniroute): <title>` for OmniRoute cross-fork ports
+- `sync` is allowed. Bare upstream release-tag subjects matching the regex `^# v\d+\.\d+\.\d+ \([^)]+\)$` (e.g. `# v1.2.3 (anything-without-closing-paren)`) are ignored by commitlint and skip every rule; durindoor's own `sync:` commits still must pass all rules. The date form (`# vX.Y.Z (YYYY-MM-DD)`) is the repo convention, but the ignored pattern is broader.
+
+**Enforced length/tolerances**:
+- Subject text (`<subject>` in `type(scope): <subject>`) is **max 100 characters** (`subject-max-length: [2, "always", 100]`). This does not include the type/scope prefix; `header-max-length` is disabled.
+- Body lines are **max 200 characters** (`body-max-line-length: [1, "always", 200]`), enforced as a warning.
+- Header and footer line length are not enforced; `subject-case` is disabled.
+- `subject-empty` and `type-empty` are hard errors.
+
+**Mandatory pre-push checklist**:
+```bash
+npx commitlint --from=origin/dev --to=HEAD
+```
+Must exit `0` before every `git push`; rewrite commits if it fails.
+
+**Mandatory PR-title checklist** (squash-merge uses the PR title as the commit subject):
+```bash
+echo "<pr-title>" | npx commitlint
+```
+Replace `<pr-title>` with the actual PR title; rewrite the title if it fails.
+
+**Good examples:**
+- `fix(translator): stop leaking literal <think> markers into OpenAI chunks`
+- `feat(config): add per-model timeout to combo fallback`
+- `port(upstream): #2646 - per-model timeout for faster combo fallback`
+
+**Bad examples:**
+- `fixed translator bug` — missing type prefix
+- `fix(translator): stop leaking literal <think> markers into OpenAI chunks and also handle nested reasoning blocks that some providers emit` — subject text exceeds 100 characters
+- `build: add release script` — `build` is not in the allowed `type-enum` list
 
 ## Branch Model
 

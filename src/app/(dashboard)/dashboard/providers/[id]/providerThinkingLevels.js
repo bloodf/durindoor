@@ -1,4 +1,5 @@
-import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
+import { getThinkingLevelsFromCapabilities } from "open-sse/providers/thinkingLevels.js";
+import { getCustomModelCapabilities } from "./customModelCapabilities";
 
 export function getProviderThinkingLevels({
   providerId,
@@ -9,13 +10,11 @@ export function getProviderThinkingLevels({
 }) {
   const set = new Set();
   const seen = new Set();
-  const addLevels = (modelId) => {
+  const addLevels = (modelId, customCaps) => {
     if (!modelId || seen.has(modelId)) return;
     seen.add(modelId);
-    const lv = getThinkingLevels(providerId, modelId);
-    // Upstream decolua/9router#2534: include "none" so the dashboard picker
-    // can emit an explicit "strip reasoning" mode for non-reasoning models
-    // (e.g. xAI grok-composer 400s if reasoning_effort is sent at all).
+    const caps = getCustomModelCapabilities({ providerId, modelId, capabilities: customCaps });
+    const lv = getThinkingLevelsFromCapabilities(caps, providerId, modelId);
     if (lv) lv.forEach((l) => set.add(l));
   };
   for (const m of models) addLevels(m.id);
@@ -23,7 +22,7 @@ export function getProviderThinkingLevels({
   for (const entry of customModels) {
     if (entry.providerAlias !== providerStorageAlias) continue;
     if ((entry.kind || entry.type || "llm") !== "llm") continue;
-    addLevels(entry.id);
+    addLevels(entry.id, entry.capabilities);
   }
   if (!set.size) return null;
   const rest = [...set].filter((l) => l !== "none");

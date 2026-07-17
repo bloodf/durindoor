@@ -17,6 +17,7 @@ import {
   WEB_COOKIE_PROVIDERS,
   OPENAI_COMPATIBLE_PREFIX,
   ANTHROPIC_COMPATIBLE_PREFIX,
+  classifyFreeProvider,
 } from "@/shared/constants/providers";
 import Link from "next/link";
 import { getErrorCode, getRelativeTime } from "@/shared/utils";
@@ -24,6 +25,7 @@ import { useNotificationStore } from "@/store/notificationStore";
 import { useHeaderSearchStore } from "@/store/headerSearchStore";
 import ModelAvailabilityBadge from "./components/ModelAvailabilityBadge";
 import AddCompatibleModal from "./components/AddCompatibleModal";
+import { isProviderConfigured } from "./providerFilters";
 
 function getStatusDisplay(connected, error, errorCode) {
   const parts = [];
@@ -104,6 +106,7 @@ export default function ProvidersPage() {
     useState(false);
   const [testingMode, setTestingMode] = useState(null);
   const [testResults, setTestResults] = useState(null);
+  const [providerFilter, setProviderFilter] = useState("all");
   const notify = useNotificationStore();
   const searchQuery = useHeaderSearchStore((s) => s.query);
   const registerSearch = useHeaderSearchStore((s) => s.register);
@@ -255,6 +258,12 @@ export default function ProvidersPage() {
     }
   };
 
+  const matchConfigured = (key, noAuth = false) => {
+    if (providerFilter === "all") return true;
+    const configured = isProviderConfigured(connections, key, noAuth);
+    return providerFilter === "configured" ? configured : !configured;
+  };
+
   const compatibleProviders = providerNodes
     .filter((node) => node.type === "openai-compatible")
     .map((node) => ({
@@ -265,7 +274,7 @@ export default function ProvidersPage() {
       apiType: node.apiType,
       ...(node.iconUrl ? { iconUrl: node.iconUrl } : {}),
     }))
-    .filter((p) => matchSearch(p.name));
+    .filter((p) => matchSearch(p.name) && matchConfigured(p.id));
 
   const anthropicCompatibleProviders = providerNodes
     .filter((node) => node.type === "anthropic-compatible")
@@ -276,28 +285,31 @@ export default function ProvidersPage() {
       textIcon: "AC",
       ...(node.iconUrl ? { iconUrl: node.iconUrl } : {}),
     }))
-    .filter((p) => matchSearch(p.name));
+    .filter((p) => matchSearch(p.name) && matchConfigured(p.id));
 
   const oauthEntries = sortByPriority(
-    Object.entries(OAUTH_PROVIDERS).filter(([, info]) => !info.hidden && matchSearch(info.name)),
+    Object.entries(OAUTH_PROVIDERS).filter(
+      ([key, info]) => !info.hidden && matchSearch(info.name) && matchConfigured(key, info.noAuth),
+    ),
     "oauth",
   );
   const freeEntries = Object.entries(FREE_PROVIDERS)
-    .filter(([, info]) => !info.hidden && matchSearch(info.name))
+    .filter(([key, info]) => !info.hidden && matchSearch(info.name) && matchConfigured(key, info.noAuth))
     .sort(([, a], [, b]) => (b.noAuth ? 1 : 0) - (a.noAuth ? 1 : 0));
   const freeTierEntries = sortByPriority(
     Object.entries(FREE_TIER_PROVIDERS).filter(
-      ([, info]) =>
+      ([key, info]) =>
         !info.hidden &&
         matchSearch(info.name) &&
-        (info.serviceKinds ?? ["llm"]).includes("llm"),
+        (info.serviceKinds ?? ["llm"]).includes("llm") &&
+        matchConfigured(key, info.noAuth),
     ),
     "freeTier",
   ).sort(([, a], [, b]) => (b.noAuth ? 1 : 0) - (a.noAuth ? 1 : 0));
   // Web Cookie Providers: filter with search and sort by priority
   const webCookieEntries = sortByPriority(
     Object.entries(WEB_COOKIE_PROVIDERS).filter(
-      ([, info]) => !info.hidden && matchSearch(info.name),
+      ([key, info]) => !info.hidden && matchSearch(info.name) && matchConfigured(key, info.noAuth),
     ),
     "apikey",
   );
@@ -310,7 +322,8 @@ export default function ProvidersPage() {
         !info.hidden &&
         ((info.serviceKinds ?? ["llm"]).includes("llm") ||
           getProviderStats(key, "apikey").total > 0) &&
-        matchSearch(info.name),
+        matchSearch(info.name) &&
+        matchConfigured(key, info.noAuth),
     )
     .sort(([ka, a], [kb, b]) => {
       const ca = getProviderStats(ka, "apikey").total > 0 ? 0 : 1;
@@ -345,6 +358,29 @@ export default function ProvidersPage() {
 
   return (
     <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap gap-1.5">
+          {[
+            { key: "all", label: "All" },
+            { key: "configured", label: "Configured" },
+            { key: "unconfigured", label: "Unconfigured" },
+          ].map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setProviderFilter(key)}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                providerFilter === key
+                  ? "bg-primary text-white"
+                  : "bg-bg border border-border text-text-muted hover:text-text-main"
+              }`}
+              aria-pressed={providerFilter === key}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {!hasAnyResult && (
         <div className="text-center py-8 border border-dashed border-border rounded-xl">
           <span className="material-symbols-outlined text-[32px] text-text-muted mb-2">
@@ -637,6 +673,7 @@ export default function ProvidersPage() {
 function ProviderCard({ providerId, provider, stats, authType, onToggle }) {
   const { connected, error, errorCode, errorTime, allDisabled } = stats;
   const isNoAuth = !!provider.noAuth;
+  const freeClass = classifyFreeProvider(providerId);
 
   const dotColors = {
     free: "bg-green-500",
@@ -679,6 +716,12 @@ function ProviderCard({ providerId, provider, stats, authType, onToggle }) {
             <div className="min-w-0">
               <h3 className="truncate font-semibold">{provider.name}</h3>
               <div className="flex min-w-0 items-center gap-1.5 text-xs flex-wrap">
+                {freeClass === "free" && (
+                  <Badge variant="success" size="sm">Free</Badge>
+                )}
+                {freeClass === "freeTier" && (
+                  <Badge variant="info" size="sm">Free Tier</Badge>
+                )}
                 {allDisabled ? (
                   <Badge variant="default" size="sm">
                     <span className="flex items-center gap-1">
@@ -756,6 +799,7 @@ function ApiKeyProviderCard({
   const isAnthropicCompatible = providerId.startsWith(
     ANTHROPIC_COMPATIBLE_PREFIX,
   );
+  const freeClass = classifyFreeProvider(providerId);
 
   const dotColors = {
     free: "bg-green-500",
@@ -808,6 +852,12 @@ function ApiKeyProviderCard({
             <div className="min-w-0">
               <h3 className="truncate font-semibold">{provider.name}</h3>
               <div className="flex min-w-0 items-center gap-1.5 text-xs flex-wrap">
+                {freeClass === "free" && (
+                  <Badge variant="success" size="sm">Free</Badge>
+                )}
+                {freeClass === "freeTier" && (
+                  <Badge variant="info" size="sm">Free Tier</Badge>
+                )}
                 {allDisabled ? (
                   <Badge variant="default" size="sm">
                     <span className="flex items-center gap-1">

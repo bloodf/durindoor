@@ -1,26 +1,22 @@
 import { NextResponse } from "next/server";
-import { getSettings } from "@/lib/localDb";
-import { getInstallInfo, installPxpipe } from "@/lib/pxpipe/install.js";
+import { getInstallInfo } from "@/lib/pxpipe/install.js";
 import { loadPxpipe } from "@/lib/pxpipe/loader.js";
 import { getPxpipeStatus } from "@/lib/pxpipe/service.js";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
 
 // "Start" in library mode = warm the in-process transform module.
-// Auto-installs first when the package is missing and pxpipeAutoInstall is on.
+// The package is a direct dependency; if missing, surface dependency-missing
+// state rather than attempting a runtime npm install.
 export async function POST() {
   try {
-    if (!getInstallInfo().installed) {
-      const settings = await getSettings();
-      if (!settings.pxpipeAutoInstall) {
-        return NextResponse.json({ error: "PXPIPE is not installed", code: "NOT_INSTALLED" }, { status: 409 });
-      }
-      await installPxpipe();
+    const info = getInstallInfo();
+    if (!info.installed) {
+      return NextResponse.json({ error: info.reason || "PXPIPE dependency is not installed", code: info.code || null }, { status: 409 });
     }
     await loadPxpipe();
     return NextResponse.json(getPxpipeStatus());
   } catch (error) {
-    return NextResponse.json({ error: error.message, code: error.code || null }, { status: 500 });
+    return NextResponse.json({ error: error.message, code: error.code || null, surface: error.surface || null }, { status: 500 });
   }
 }

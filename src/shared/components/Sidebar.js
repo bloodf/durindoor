@@ -13,9 +13,12 @@ import {
   BRAND_LOGO_SRC,
   COMBINED_WEB_ITEM,
   debugItems,
+  isActivePath,
   NavIcon,
   navItems,
+  PROFILE_NAV_ITEM,
   systemItems,
+  tokenSaverMenu,
   VISIBLE_MEDIA_KINDS,
 } from "./SidebarNavIcons";
 
@@ -27,6 +30,14 @@ export default function Sidebar({ onClose }) {
   const [enableTranslator, setEnableTranslator] = useState(false);
 
   const INSTALL_CMD = UPDATER_CONFIG.installCmdLatest;
+
+  const isActive = (href, exact = false) => isActivePath(pathname, href, exact);
+
+  const isTokenSaverSectionActive = tokenSaverMenu.children.some((child) =>
+    isActivePath(pathname, child.href, true)
+  );
+  const [userToggled, setUserToggled] = useState(null);
+  const tokenSaverOpen = userToggled ?? isTokenSaverSectionActive;
 
   useEffect(() => {
     fetch("/api/settings")
@@ -42,14 +53,6 @@ export default function Sidebar({ onClose }) {
       .then(data => { if (data.hasUpdate) setUpdateInfo(data); })
       .catch(() => {});
   }, []);
-
-  const isActive = (href) => {
-    if (!pathname) return false;
-    if (href === "/dashboard/endpoint") {
-      return pathname === "/dashboard" || pathname.startsWith("/dashboard/endpoint");
-    }
-    return pathname.startsWith(href);
-  };
 
   return (
     <>
@@ -102,15 +105,52 @@ export default function Sidebar({ onClose }) {
               onClick={onClose}
               className={cn(
                 "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                isActive(item.href)
+                isActive(item.href, item.exact !== false)
                   ? "bg-primary/10 text-primary"
                   : "text-text-muted hover:bg-surface-2 hover:text-text-main"
               )}
             >
-              <NavIcon icon={item.icon} isActive={isActive(item.href)} />
+              <NavIcon icon={item.icon} isActive={isActive(item.href, item.exact !== false)} />
               <span className="text-[13px] font-medium">{item.label}</span>
             </Link>
           ))}
+
+          {/* Token Saver collapsible menu */}
+          <button
+            onClick={() => setUserToggled((open) => !(open ?? isTokenSaverSectionActive))}
+            className={cn(
+              "w-full flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
+              isTokenSaverSectionActive
+                ? "bg-primary/10 text-primary"
+                : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+            )}
+          >
+            <NavIcon icon={tokenSaverMenu.icon} isActive={isTokenSaverSectionActive} />
+            <span className="text-[13px] font-medium flex-1 text-left">{tokenSaverMenu.label}</span>
+            <span className="material-symbols-outlined text-[14px] transition-transform" style={{ transform: tokenSaverOpen ? "rotate(180deg)" : "rotate(0deg)" }}>
+              expand_more
+            </span>
+          </button>
+          {tokenSaverOpen && (
+            <div className="pl-4">
+              {tokenSaverMenu.children.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={onClose}
+                  className={cn(
+                    "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
+                    isActive(item.href, true)
+                      ? "bg-primary/10 text-primary"
+                      : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+                  )}
+                >
+                  <NavIcon icon={item.icon} isActive={isActive(item.href, true)} size="16" />
+                  <span className="text-sm">{item.label}</span>
+                </Link>
+              ))}
+            </div>
+          )}
 
           {/* System section */}
           <div className="pt-3 mt-2 space-y-0.5">
@@ -176,12 +216,12 @@ export default function Sidebar({ onClose }) {
                 onClick={onClose}
                 className={cn(
                   "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                  isActive(item.href)
+                  isActive(item.href, item.exact !== false)
                     ? "bg-primary/10 text-primary"
                     : "text-text-muted hover:bg-surface-2 hover:text-text-main"
                 )}
               >
-                <NavIcon icon={item.icon} isActive={isActive(item.href)} />
+                <NavIcon icon={item.icon} isActive={isActive(item.href, item.exact !== false)} />
                 <span className="text-[13px] font-medium">{item.label}</span>
               </Link>
             ))}
@@ -196,31 +236,30 @@ export default function Sidebar({ onClose }) {
                   onClick={onClose}
                   className={cn(
                     "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                    isActive(item.href)
+                    isActive(item.href, true)
                       ? "bg-primary/10 text-primary"
                       : "text-text-muted hover:bg-surface-2 hover:text-text-main"
                   )}
                 >
-                  <NavIcon icon={item.icon} isActive={isActive(item.href)} />
+                  <NavIcon icon={item.icon} isActive={isActive(item.href, true)} />
                   <span className="text-[13px] font-medium">{item.label}</span>
                 </Link>
               ) : null;
             })}
 
-
-            {/* Settings */}
+            {/* Settings (profile) stays its own unrelated item */}
             <Link
-              href="/dashboard/profile"
+              href={PROFILE_NAV_ITEM.href}
               onClick={onClose}
               className={cn(
                 "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                isActive("/dashboard/profile")
+                isActive(PROFILE_NAV_ITEM.href, true)
                   ? "bg-primary/10 text-primary"
                   : "text-text-muted hover:bg-surface-2 hover:text-text-main"
               )}
             >
-              <NavIcon icon="settings" isActive={isActive("/dashboard/profile")} />
-              <span className="text-[13px] font-medium">Settings</span>
+              <NavIcon icon={PROFILE_NAV_ITEM.icon} isActive={isActive(PROFILE_NAV_ITEM.href, true)} />
+              <span className="text-[13px] font-medium">{PROFILE_NAV_ITEM.label}</span>
             </Link>
           </div>
         </nav>

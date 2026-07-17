@@ -44,7 +44,6 @@ describe("POST /api/compression/preview — dashboard-context auth (R1)", () => 
       stats: { savingsPercent: 10 },
     });
     mocks.applyB.mockResolvedValue({
-      body: { model: "x", messages: [] },
       compressed: false,
       stats: null,
     });
@@ -60,6 +59,8 @@ describe("POST /api/compression/preview — dashboard-context auth (R1)", () => 
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.results["engine-a"].status).toBe("compressed");
+    expect(json.results["engine-a"].raw).toEqual({ model: "x", messages: [] });
+    expect(json.results["engine-b"].raw).toBeUndefined();
     expect(mocks.applyA).toHaveBeenCalled();
   });
 

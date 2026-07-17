@@ -38,13 +38,13 @@ export const navItems = [
   { href: "/dashboard/combos", label: "Combos", icon: "layers" },
   { href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage" },
   { href: "/dashboard/health", label: "Provider Health", icon: "monitor_heart" },
-  { href: "/dashboard/compression-studio", label: "Compression Studio", icon: "compress" },
   { href: "/dashboard/mcp-gateway", label: "MCP Gateway", icon: "hub", exact: false },
 ];
 
 // Collapsible Token Saver menu. Statistics renders the overview dashboard;
 // Settings holds the RTK/Headroom/PXPIPE toggles; Headroom links to the
-// dedicated full-page UI owned by the HeadroomWebui worker.
+// dedicated full-page UI owned by the HeadroomWebui worker; Test Savers is the
+// compression preview studio.
 export const tokenSaverMenu = {
   icon: "savings",
   label: "Token Saver",
@@ -52,6 +52,7 @@ export const tokenSaverMenu = {
     { href: "/dashboard/token-saver", label: "Statistics", icon: "bar_chart" },
     { href: "/dashboard/token-saver/settings", label: "Settings", icon: "settings" },
     { href: "/dashboard/headroom", label: "Headroom", icon: "memory" },
+    { href: "/dashboard/compression-studio", label: "Test Savers", icon: "compress" },
   ],
 };
 

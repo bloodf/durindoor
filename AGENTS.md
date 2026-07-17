@@ -7,9 +7,9 @@ It is the only project-level agent contract. Per-subsystem guides that used to l
 ## 0. TL;DR for a fresh session
 
 1. You are working in a fork of `decolua/9router` (DurinDoor). Look at the active branch first; it is one of the in-flight `port/upstream-*` / `fix/*` / `ci/*` work, or `dev`.
-2. Read `package.json` scripts and `.commitlintrc.json` before changing build or commit conventions.
+2. Read `package.json` scripts and `.commitlintrc.cjs` before changing build or commit conventions.
 3. If you are the Hermes cron agent looking after the repo, also read `~/.hermes/agentic-engineering.json` (if present) before declaring work complete.
-4. Conventional Commits are enforced by `commitlint.yml` in CI. The `port` type is custom.
+4. Conventional Commits are enforced by `commitlint.yml` in CI. The config lives at `.commitlintrc.cjs`; allowed types and length rules are defined there.
 5. Tests baseline: `tests/__baseline__/known-fails.txt` is a curated gate. Do not grow it.
 
 ## 1. Repository-agent contract
@@ -40,12 +40,14 @@ The Hermes cron agent — and any other look-after-the-repo agent — MUST verif
 
 ## 3. Conventions
 
-- **Commit messages** follow Conventional Commits (`.commitlintrc.json`). Allowed types:
-  - `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `ci`, `style`, `perf`, `build`, `revert`, `merge`
-  - `port(upstream): #<N> - <title>` for upstream 9router PR ports
-  - `port(omniroute): <title>` for OmniRoute cross-fork ports
-  - `feat(rebrand):` / `chore(rebrand):` / `docs(rebrand):` for the DurinDoor brand refresh
-  - Subject max length 100. Body line max length 200.
+- **Commit messages** follow Conventional Commits (`.commitlintrc.cjs`). Allowed types are the exact values in the `type-enum` rule:
+  - `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `ci`, `chore`, `revert`, `merge`, `port`, `sync`
+  - `port` is custom; conventional scopes in this repo are `port(upstream)` for upstream 9router PR ports and `port(omniroute)` for OmniRoute cross-fork ports. No scope is enforced by commitlint, but these are the repo conventions.
+  - `sync` is allowed. Bare upstream release-tag subjects matching the regex `^# v\d+\.\d+\.\d+ \([^)]+\)$` (e.g. `# v1.2.3 (anything-without-closing-paren)`) are ignored by commitlint and skip every rule; durindoor's own `sync:` commits still must pass all rules. The date form (`# vX.Y.Z (YYYY-MM-DD)`) is the repo convention, but the ignored pattern is broader.
+  - Subject text (the `<subject>` in `type(scope): <subject>`) is **max 100 characters** (`subject-max-length: [2, "always", 100]`). This does not include the type/scope prefix; `header-max-length` is disabled.
+  - Body lines are **max 200 characters** (`body-max-line-length: [1, "always", 200]`), enforced as a warning; header and footer line length are not enforced.
+  - `subject-empty` and `type-empty` are hard errors; every subject must have a non-empty type and subject.
+  - `subject-case` is disabled.
 - **Branching**: one branch per independent PR; never share a worktree between PRs. Force-push only on the branch being amended.
 - **Tests baseline**: `tests/__baseline__/known-fails.txt` is the curated list of pre-existing test failures. Adding entries is a hard gate — reverts required if a port adds new failures.
 - **Wire-format compat** (read-only at server boundary):
@@ -181,10 +183,30 @@ Provider-agnostic SSE engine: one OpenAI-style request → any provider (LLM cha
 
 ### 6.3 Commit and PR title format
 
-- Commit subject follows Conventional Commits (`.commitlintrc.json`).
+- Commit subject follows Conventional Commits (`.commitlintrc.cjs`).
+- **Pre-push checklist (mandatory):** before every `git push`, run:
+  ```bash
+  npx commitlint --from=origin/dev --to=HEAD
+  ```
+  This command must exit `0`; if it fails, rewrite the violating commits before pushing.
+- **PR title checklist (mandatory):** because squash-merge uses the PR title as the commit subject, the PR title itself must also satisfy the convention. Validate it with:
+  ```bash
+  echo "<pr-title>" | npx commitlint
+  ```
+  Replace `<pr-title>` with the actual PR title. If that command fails, rewrite the PR title before merging.
 - PR title mirrors the commit subject for single-commit PRs; for multi-commit PRs, pick the most descriptive type+scope from the commits.
-- `port(upstream): #N - <title>` for upstream 9router PR ports; the `#N` is the upstream PR number.
+- `port(upstream): #N - <title>` for upstream 9router PR ports; the `#N` is the upstream PR number. `port(omniroute): <title>` for OmniRoute cross-fork ports.
 - PR body must list: scope, test coverage, doc coverage, baseline impact, and any wire-format / migration concerns.
+
+**Good examples:**
+- `fix(translator): stop leaking literal <think> markers into OpenAI chunks`
+- `feat(config): add per-model timeout to combo fallback`
+- `port(upstream): #2646 - per-model timeout for faster combo fallback`
+
+**Bad examples:**
+- `fixed translator bug` — missing type prefix
+- `fix(translator): stop leaking literal <think> markers into OpenAI chunks and also handle nested reasoning blocks that some providers emit` — subject text exceeds 100 characters
+- `build: add release script` — `build` is not in the allowed `type-enum` list
 
 ### 6.4 CI gates
 

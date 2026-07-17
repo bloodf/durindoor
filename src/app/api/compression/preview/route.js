@@ -1,4 +1,9 @@
-import { getEngine, isEngineAvailable, ENGINE_IDS } from "open-sse/services/compression/index.js";
+import {
+  getEngine,
+  isEngineAvailable,
+  ENGINE_IDS,
+} from "open-sse/services/compression/index.js";
+import { ENGINE_CATALOG } from "open-sse/services/compression/engineCatalog.js";
 
 // POST /api/compression/preview — run each catalog engine against the body and
 // report a per-id status:
@@ -12,7 +17,7 @@ import { getEngine, isEngineAvailable, ENGINE_IDS } from "open-sse/services/comp
 // Auth: this handler is internal to the dashboard. `src/dashboardGuard.js:262-289`
 // deny-by-defaults every `/api/*` path that is not on the public allow-list and
 // requires either a valid CLI token or an authenticated dashboard session
-// (dashboard JWT). The Compression Studio page at
+// (dashboard JWT). The Test Savers page at
 // `src/app/(dashboard)/dashboard/compression-studio/page.js` POSTs here WITHOUT
 // an LLM API key, so re-checking `settings.requireApiKey` in this handler would
 // 401 every dashboard request whenever the global LLM-endpoint enforcement flag
@@ -60,14 +65,38 @@ export async function POST(request) {
     );
   }
 
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return Response.json(
+      { error: { message: "Invalid JSON body", type: "invalid_request_error" } },
+      { status: 400 }
+    );
+  }
+
+  // Accept an optional `engine` selector outside the compression payload. If
+  // provided, only that engine runs; otherwise the entire catalog is previewed.
+  // Unknown or unavailable ids are rejected before the payload is touched.
+  const { engine, ...payload } = body;
+
+  let engineIds = ENGINE_IDS;
+  if (engine !== undefined && engine !== "") {
+    const meta = ENGINE_CATALOG[engine];
+    if (!meta || !isEngineAvailable(engine)) {
+      return Response.json(
+        { error: { message: `Unknown or unavailable engine: ${engine}`, type: "invalid_request_error" } },
+        { status: 400 }
+      );
+    }
+    engineIds = [engine];
+  }
+
   const results = {};
-  for (const id of ENGINE_IDS) {
+  for (const id of engineIds) {
     if (!isEngineAvailable(id)) {
       results[id] = { status: "unavailable" };
       continue;
     }
     try {
-      const result = await getEngine(id).apply(body, {});
+      const result = await getEngine(id).apply(payload, {});
       const fallbackReasons = computeFallbackReasons(result?.stats);
       const raw = result?.body;
       results[id] = {
@@ -93,5 +122,5 @@ export async function POST(request) {
     }
   }
 
-  return Response.json({ engines: ENGINE_IDS, results });
+  return Response.json({ engines: engineIds, results });
 }

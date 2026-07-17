@@ -23,7 +23,6 @@ describe("SidebarNavIcons", () => {
     expect(map.get("Combos")).toBe("layers");
     expect(map.get("Quota Tracker")).toBe("data_usage");
     expect(map.get("Provider Health")).toBe("monitor_heart");
-    expect(map.get("Compression Studio")).toBe("compress");
     expect(map.get("MCP Gateway")).toBe("hub");
   });
 
@@ -55,18 +54,20 @@ describe("SidebarNavIcons", () => {
     expect(map.get("Skills")).toBe("extension");
   });
 
-  it("exposes a collapsible token saver menu with statistics, settings and headroom", () => {
+  it("exposes a collapsible token saver menu with statistics, settings, headroom and test savers", () => {
     expect(tokenSaverMenu.label).toBe("Token Saver");
     expect(tokenSaverMenu.icon).toBe("savings");
     expect(tokenSaverMenu.children.map((c) => c.label)).toEqual([
       "Statistics",
       "Settings",
       "Headroom",
+      "Test Savers",
     ]);
     expect(tokenSaverMenu.children.map((c) => c.href)).toEqual([
       "/dashboard/token-saver",
       "/dashboard/token-saver/settings",
       "/dashboard/headroom",
+      "/dashboard/compression-studio",
     ]);
   });
 

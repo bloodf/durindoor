@@ -18,6 +18,15 @@ vi.mock("open-sse/services/compression/index.js", () => ({
     if (id === "engine-b") return { apply: mocks.applyB };
     throw new Error(`Unknown compression engine: ${id}`);
   }),
+  engineMeta: vi.fn((id) => ({ id, label: id })),
+}));
+
+vi.mock("open-sse/services/compression/engineCatalog.js", () => ({
+  ENGINE_CATALOG: {
+    "engine-a": { id: "engine-a", label: "Engine A", available: true },
+    "engine-b": { id: "engine-b", label: "Engine B", available: true },
+    "engine-missing": { id: "engine-missing", label: "Engine Missing", available: false },
+  },
 }));
 
 const { POST } = await import("../../src/app/api/compression/preview/route.js");
@@ -79,6 +88,71 @@ describe("POST /api/compression/preview", () => {
     });
     expect(mocks.applyA).toHaveBeenCalledWith({ model: "x", messages: [] }, {});
     expect(mocks.applyB).toHaveBeenCalledWith({ model: "x", messages: [] }, {});
+  });
+
+  it("runs only the selected engine when engine is provided", async () => {
+    mocks.applyA.mockResolvedValue({
+      body: { model: "x", messages: [] },
+      compressed: true,
+      stats: { savingsPercent: 42.5 },
+    });
+    mocks.applyB.mockResolvedValue({
+      body: { model: "x", messages: [] },
+      compressed: true,
+      stats: { bytesBefore: 1000, bytesAfter: 250 },
+    });
+
+    const res = await POST(jsonRequest({ engine: "engine-a", model: "x", messages: [] }));
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.engines).toEqual(["engine-a"]);
+    expect(json.results).toEqual({
+      "engine-a": {
+        status: "compressed",
+        compressed: true,
+        savingsPercent: 42.5,
+        fallbackReasons: [],
+        skippedReasons: [],
+        fallbackReason: null,
+        raw: { model: "x", messages: [] },
+      },
+    });
+    expect(mocks.applyA).toHaveBeenCalledWith({ model: "x", messages: [] }, {});
+    expect(mocks.applyB).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for an unknown engine selector", async () => {
+    const res = await POST(jsonRequest({ engine: "engine-unknown", model: "x", messages: [] }));
+
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error.message).toContain("engine-unknown");
+    expect(mocks.applyA).not.toHaveBeenCalled();
+    expect(mocks.applyB).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for an unavailable engine selector", async () => {
+    const res = await POST(jsonRequest({ engine: "engine-missing", model: "x", messages: [] }));
+
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error.message).toContain("engine-missing");
+    expect(mocks.applyA).not.toHaveBeenCalled();
+    expect(mocks.applyB).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 on a null body", async () => {
+    const req = new Request("https://durindoor.local/api/compression/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer sk-test" },
+      body: "null",
+    });
+
+    const res = await POST(req);
+
+    expect(res.status).toBe(400);
+    expect(mocks.applyA).not.toHaveBeenCalled();
   });
 
   it("labels an available engine that throws as error, not unavailable", async () => {

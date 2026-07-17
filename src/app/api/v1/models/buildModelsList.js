@@ -620,6 +620,7 @@ async function buildModelsListImpl(kindFilter, guard) {
     // DB unavailable -> return static models, filtered by per-model kind
     for (const alias of Object.keys(PROVIDER_MODELS)) {
       const providerId = aliasToProviderId[alias] ?? alias;
+      if (isFreeNoAuthDisabled(providerId)) continue;
       addStaticProviderModels(providerId, alias);
     }
 

@@ -100,9 +100,7 @@ const APIKEY_INITIAL_VISIBLE = 20;
 export default function ProvidersPage() {
   const [connections, setConnections] = useState([]);
   const [providerNodes, setProviderNodes] = useState([]);
-  const [disabledFreeProviders, setDisabledFreeProviders] = useState([
-    ...FREE_NO_AUTH_PROVIDER_IDS,
-  ]);
+  const [disabledFreeProviders, setDisabledFreeProviders] = useState([]);
   const [savingFreeProviders, setSavingFreeProviders] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showAllApikey, setShowAllApikey] = useState(false);
@@ -170,7 +168,7 @@ export default function ProvidersPage() {
           setDisabledFreeProviders(
             Array.isArray(settingsData.disabledFreeProviders)
               ? settingsData.disabledFreeProviders
-              : [...FREE_NO_AUTH_PROVIDER_IDS]
+              : []
           );
         }
       } catch (error) {

@@ -1,4 +1,3 @@
-import { FREE_NO_AUTH_PROVIDER_IDS } from "@/shared/constants/freeNoAuthProviders";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 
@@ -81,8 +80,9 @@ const DEFAULT_SETTINGS = {
   quotaTrackerState: DEFAULT_QUOTA_TRACKER_STATE,
   ponytailEnabled: false,
   ponytailLevel: "full",
-  // Default: every free no-auth provider is disabled unless explicitly enabled.
-  disabledFreeProviders: [...FREE_NO_AUTH_PROVIDER_IDS],
+  // Default: free no-auth providers remain enabled unless the user explicitly
+  // disables them via Settings > Providers.
+  disabledFreeProviders: [],
 };
 
 async function readRaw() {

@@ -5,7 +5,7 @@ function disabledSet(settings) {
   return new Set(
     Array.isArray(settings?.disabledFreeProviders)
       ? settings.disabledFreeProviders
-      : [...FREE_NO_AUTH_PROVIDER_IDS]
+      : []
   );
 }
 

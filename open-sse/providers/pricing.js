@@ -260,6 +260,11 @@ export const MODEL_PRICING = {
   "MiniMax-M2.5-highspeed":       { input: 0.60,  output: 2.40,  cached: 0.03,  cache_creation: 0.375 },
   "MiniMax-M2.7":                 { input: 0.30,  output: 1.20,  cached: 0.06,  cache_creation: 0.375 },
   "MiniMax-M2.7-highspeed":       { input: 0.60,  output: 2.40,  cached: 0.06,  cache_creation: 0.375 },
+  // MiniMax-M3 standard pricing applies to requests with ≤512K input tokens.
+  // Requests above 512K input tokens fall into a higher-rate long-context tier;
+  // this catalog does not model that tier, and the advertised capability
+  // context window is capped to 512K. See first-party docs:
+  // https://platform.minimax.io/docs/guides/pricing-paygo
   "MiniMax-M3":                   { input: 0.30,  output: 1.20,  cached: 0.06  },
   "minimax-m2.1":                 { input: 0.30,  output: 1.20,  cached: 0.03,  cache_creation: 0.375 },
   "minimax-m2.5":                 { input: 0.30,  output: 1.20,  cached: 0.03,  cache_creation: 0.375 },

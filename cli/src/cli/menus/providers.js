@@ -974,5 +974,6 @@ module.exports = {
     isConnectionAutoPingOn,
     buildConnectionHeader,
     toggleConnectionAutoPing,
+    PROVIDER_MODELS,
   },
 };

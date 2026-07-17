@@ -1,3 +1,4 @@
+import { FREE_NO_AUTH_PROVIDER_IDS } from "@/shared/constants/freeNoAuthProviders";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 
@@ -80,7 +81,10 @@ const DEFAULT_SETTINGS = {
   quotaTrackerState: DEFAULT_QUOTA_TRACKER_STATE,
   ponytailEnabled: false,
   ponytailLevel: "full",
+  // Default: every free no-auth provider is disabled unless explicitly enabled.
+  disabledFreeProviders: [...FREE_NO_AUTH_PROVIDER_IDS],
 };
+
 async function readRaw() {
   const db = await getAdapter();
   const row = db.get(`SELECT data FROM settings WHERE id = 1`);
@@ -95,16 +99,15 @@ function mergeWithDefaults(raw) {
     ...((raw || {}).quotaTrackerState || {}),
   };
   for (const [key, defVal] of Object.entries(DEFAULT_SETTINGS)) {
-    if (merged[key] === undefined) {
-      if (
-        key === "outboundProxyEnabled" &&
-        typeof merged.outboundProxyUrl === "string" &&
-        merged.outboundProxyUrl.trim()
-      ) {
-        merged[key] = true;
-      } else {
-        merged[key] = defVal;
-      }
+    if (merged[key] !== undefined) continue;
+    if (
+      key === "outboundProxyEnabled" &&
+      typeof merged.outboundProxyUrl === "string" &&
+      merged.outboundProxyUrl.trim()
+    ) {
+      merged[key] = true;
+    } else {
+      merged[key] = defVal;
     }
   }
   return merged;

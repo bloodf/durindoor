@@ -9,6 +9,7 @@ import {
 import { getProviderConnections, getCombos, getCustomModels, getModelAliases } from "@/lib/localDb";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
+import { isFreeNoAuthProviderDisabled } from "@/sse/services/freeProviderGate.js";
 import { getSettings } from "@/lib/db/repos/settingsRepo";
 import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
@@ -462,12 +463,17 @@ async function buildModelsListImpl(kindFilter, guard) {
   // called exactly once in this tick. Read the #6495/F-4 opt-in concurrently
   // (fail-closed to off so a settings DB error never hides paid models).
   const connectionsPromise = getProviderConnections();
+  let settings = null;
   let hidePaidModels = false;
   try {
-    hidePaidModels = (await getSettings())?.hidePaidModels === true;
+    settings = await getSettings();
+    hidePaidModels = settings?.hidePaidModels === true;
   } catch (e) {
     hidePaidModels = false;
   }
+
+  const isFreeNoAuthDisabled = (providerId) =>
+    isFreeNoAuthProviderDisabled(providerId, settings);
 
   let connections = [];
   try {
@@ -641,6 +647,7 @@ async function buildModelsListImpl(kindFilter, guard) {
     const providerResults = await Promise.all(
       Array.from(activeConnectionByProvider.entries()).map(async ([providerId, conn]) => {
         if (!providerMatchesKinds(providerId, kindFilter)) return [];
+        if (isFreeNoAuthDisabled(providerId)) return [];
 
         const staticAlias = PROVIDER_ID_TO_ALIAS[providerId] ?? providerId;
         const prefix = isRecord(conn.providerSpecificData) ? conn.providerSpecificData.prefix : undefined;
@@ -873,6 +880,7 @@ async function buildModelsListImpl(kindFilter, guard) {
     // catalog above and suppresses this synthetic static fallback.
     for (const [providerId, provider] of Object.entries(AI_PROVIDERS)) {
       if (provider?.noAuth !== true || activeConnectionByProvider.has(providerId)) continue;
+      if (isFreeNoAuthDisabled(providerId)) continue;
       const alias = PROVIDER_ID_TO_ALIAS[providerId] ?? getProviderAlias(providerId) ?? providerId;
       addStaticProviderModels(providerId, alias);
     }

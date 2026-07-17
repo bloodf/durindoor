@@ -842,8 +842,12 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       return errorResponse(HTTP_STATUS.BAD_REQUEST, `Connection ${preferredConnectionId.slice(0, 8)}... is not available for provider '${provider}'.`);
     }
 
-    // All accounts unavailable
-    if (!credentials || credentials.allRateLimited) {
+    // All accounts unavailable or provider disabled
+    if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
+      if (credentials?.providerDisabled) {
+        log.warn("CHAT", `[${provider}/${model}] free no-auth provider disabled by settings`);
+        return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
+      }
       if (credentials?.allRateLimited) {
         const storedStatus = Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;
         const combinedRateLimit = aggregateRateLimitBlockers(attemptedBlockers, {

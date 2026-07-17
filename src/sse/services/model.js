@@ -64,7 +64,15 @@ export async function loadCustomCapabilities(provider, model, requestPrefix) {
 }
 
 // Re-export from open-sse with localDb integration
-import { getModelAliases, getComboByName, getProviderNodes, getProviderConnections, getCustomModels } from "@/lib/localDb";
+import { isFreeNoAuthProviderDisabled } from "@/sse/services/freeProviderGate.js";
+import {
+  getModelAliases,
+  getComboByName,
+  getProviderNodes,
+  getProviderConnections,
+  getCustomModels,
+  getSettings,
+} from "@/lib/localDb";
 import { parseModel as parseModelCore, resolveModelAliasFromMap, getModelInfoCore, stripRedundantNodePrefix } from "open-sse/services/model.js";
 import { filterPaidModels } from "open-sse/providers/pricing.js";
 import { isAutoComboId, familyOfAutoId, resolveAutoCombo } from "open-sse/services/autoComboResolver.js";
@@ -180,8 +188,12 @@ export async function getAutoComboCatalog() {
     if (entry.alias) idToKey.set(entry.alias, key);
   }
   // Chat-eligible no-auth entries come from the canonical config (registry
-  // derived — never a hardcoded provider list).
-  const noAuthEntries = Object.values(NOAUTH_PROVIDERS);
+  // derived — never a hardcoded provider list). Drop any disabled by the
+  // free-provider enable toggle.
+  const settings = await getSettings().catch(() => null);
+  const noAuthEntries = Object.values(NOAUTH_PROVIDERS).filter(
+    (entry) => !isFreeNoAuthProviderDisabled(entry.id, settings)
+  );
   const getModels = (key) => PROVIDER_MODELS[key];
   const catalog = {};
   const inactiveKeys = new Set();

@@ -227,7 +227,12 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
   while (true) {
     const credentials = await getProviderCredentialsWithQuotaPreflight(providerId, excludeConnectionIds);
 
-    if (!credentials || credentials.allRateLimited) {
+    // All accounts unavailable or provider disabled
+    if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
+      if (credentials?.providerDisabled) {
+        log.warn("FETCH", `[${providerId}] free no-auth provider disabled by settings`);
+        return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${providerId}' is disabled. Enable it in Settings > Providers.`);
+      }
       if (credentials?.allRateLimited) {
         const errorMsg = lastError || credentials.lastError || "Unavailable";
         const status = lastStatus || Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;

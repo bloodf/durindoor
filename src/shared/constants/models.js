@@ -48,3 +48,4 @@ export const CAPACITY_META = {
   // search: temporarily hidden (feature not wired yet)
   reasoning: { icon: "neurology", label: "Reasoning", desc: "Supports reasoning / thinking", color: "text-amber-500" },
   tools: { icon: "build", label: "Tools", desc: "Supports function calling", color: "text-purple-500" },
+};

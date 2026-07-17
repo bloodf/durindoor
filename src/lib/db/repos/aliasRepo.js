@@ -30,6 +30,15 @@ export async function getCustomModels() {
   return Object.values(all);
 }
 
+function pruneNull(obj) {
+  const out = {};
+  for (const key of Object.keys(obj)) {
+    const value = obj[key];
+    if (value !== null) out[key] = value;
+  }
+  return out;
+}
+
 // Valid thinkingFormat values from capabilities.js schema.
 const VALID_THINKING_FORMATS = new Set([
   "openai",
@@ -45,7 +54,6 @@ const VALID_THINKING_FORMATS = new Set([
   "hunyuan",
   "step",
   "kiro",
-  null,
 ]);
 
 const BOOLEAN_CAPS = [
@@ -56,8 +64,8 @@ const BOOLEAN_CAPS = [
   "imageOutput",
   "audioOutput",
   "search",
-  "tools",
   "reasoning",
+  "tools",
   "thinkingCanDisable",
 ];
 
@@ -68,12 +76,13 @@ function isPositiveInteger(value) {
 }
 
 function isValidThinkingRange(value) {
-  if (value === null || value === undefined) return true;
+  if (value === undefined) return true;
+  if (value === null) return true;
   if (typeof value !== "object" || Array.isArray(value)) return false;
   const { min, max } = value;
-  if (min !== undefined && !isPositiveInteger(min)) return false;
-  if (max !== undefined && !isPositiveInteger(max)) return false;
-  if (min !== undefined && max !== undefined && min > max) return false;
+  if (min !== undefined && min !== null && !isPositiveInteger(min)) return false;
+  if (max !== undefined && max !== null && !isPositiveInteger(max)) return false;
+  if (min !== undefined && min !== null && max !== undefined && max !== null && min > max) return false;
   return true;
 }
 
@@ -93,7 +102,7 @@ export function normalizeCustomCapabilities(raw) {
   }
   const out = {};
   for (const key of Object.keys(raw)) {
-    if (!(key in DEFAULT_CAPABILITIES)) {
+    if (!Object.hasOwn(DEFAULT_CAPABILITIES, key)) {
       return { ok: false, error: `unknown capability key: ${key}` };
     }
   }
@@ -108,22 +117,32 @@ export function normalizeCustomCapabilities(raw) {
   for (const key of INTEGER_CAPS) {
     const value = raw[key];
     if (value === undefined) continue;
+    if (value === null) {
+      out[key] = null;
+      continue;
+    }
     if (!isPositiveInteger(value)) {
       return { ok: false, error: `${key} must be a positive integer` };
     }
     out[key] = value;
   }
   if (raw.thinkingFormat !== undefined) {
-    if (!VALID_THINKING_FORMATS.has(raw.thinkingFormat)) {
+    if (raw.thinkingFormat === null) {
+      out.thinkingFormat = null;
+    } else if (!VALID_THINKING_FORMATS.has(raw.thinkingFormat)) {
       return { ok: false, error: "invalid thinkingFormat" };
+    } else {
+      out.thinkingFormat = raw.thinkingFormat;
     }
-    out.thinkingFormat = raw.thinkingFormat;
   }
   if (raw.thinkingRange !== undefined) {
-    if (!isValidThinkingRange(raw.thinkingRange)) {
+    if (raw.thinkingRange === null) {
+      out.thinkingRange = null;
+    } else if (!isValidThinkingRange(raw.thinkingRange)) {
       return { ok: false, error: "thinkingRange must be { min, max } with positive integers and min <= max" };
+    } else {
+      out.thinkingRange = { ...raw.thinkingRange };
     }
-    out.thinkingRange = raw.thinkingRange === null ? null : { ...raw.thinkingRange };
   }
   return { ok: true, caps: out };
 }
@@ -142,9 +161,11 @@ export async function addCustomModel({ providerAlias, id, type = "llm", name, ca
   db.transaction(() => {
     const row = db.get(`SELECT 1 FROM kv WHERE scope = 'customModels' AND key = ?`, [k]);
     if (row) return;
-    const value = stringifyJson({ providerAlias, id, type, name: name || id, capabilities: norm.caps });
-    db.run(`INSERT INTO kv(scope, key, value) VALUES('customModels', ?, ?)`, [k, value]);
-    added = true;
+    const value = {
+      providerAlias, id, type, name: name || id, capabilities: pruneNull(norm.caps),
+    };
+    db.run(`INSERT INTO kv(scope, key, value) VALUES('customModels', ?, ?)`, [k, stringifyJson(value)]);
+    added = value;
   });
   return added;
 }
@@ -153,10 +174,21 @@ export async function addCustomModel({ providerAlias, id, type = "llm", name, ca
  * Update an existing custom model's metadata and capabilities. The providerAlias,
  * id, and type together form the immutable key; only name and capabilities can change.
  *
- * @returns {boolean} true if the row existed and was updated
+ * @returns {object|false} the persisted record on success, or false if not found
  */
 export async function updateCustomModel({ providerAlias, id, type = "llm", name, capabilities }) {
-  const norm = normalizeCustomCapabilities(capabilities);
+  let caps = capabilities;
+  // Only own keys matter; explicit null deletes an override; missing key leaves existing intact.
+  if (capabilities !== null && capabilities !== undefined) {
+    const capsInput = {};
+    for (const key of Object.keys(capabilities)) {
+      if (Object.hasOwn(capabilities, key)) {
+        capsInput[key] = capabilities[key];
+      }
+    }
+    caps = capsInput;
+  }
+  const norm = normalizeCustomCapabilities(caps);
   if (!norm.ok) {
     const err = new Error(norm.error);
     err.status = 400;
@@ -165,13 +197,19 @@ export async function updateCustomModel({ providerAlias, id, type = "llm", name,
   const k = customKey(providerAlias, id, type);
   const existing = await customKv.get(k);
   if (!existing) return false;
-  const value = {
-    ...existing,
-    name: name !== undefined ? (name || id) : existing.name,
-    capabilities: capabilities === undefined ? (existing.capabilities || {}) : norm.caps,
-  };
+  const merged = { ...(existing.capabilities || {}) };
+  for (const key of Object.keys(norm.caps)) {
+    const val = norm.caps[key];
+    if (val === null) {
+      delete merged[key];
+    } else if (Object.hasOwn(norm.caps, key)) {
+      merged[key] = val;
+    }
+  }
+  const value = { ...existing, capabilities: merged };
+  if (name !== undefined) value.name = name || id;
   await customKv.set(k, value);
-  return true;
+  return value;
 }
 
 export async function deleteCustomModel({ providerAlias, id, type = "llm" }) {

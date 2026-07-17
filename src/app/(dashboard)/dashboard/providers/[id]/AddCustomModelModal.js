@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
 import { Button, Modal } from "@/shared/components";
 import CapacityBadges from "@/shared/components/CapacityBadges";
+import { buildCustomCapabilities } from "./customModelCapabilities";
 
 const BOOLEAN_CAP_KEYS = [
   { key: "vision", label: "Vision", icon: "visibility" },
@@ -52,7 +53,12 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
   const reset = (model = null) => {
     setModelId(model ? model.id : "");
     const existing = model && model.capabilities ? model.capabilities : {};
-    setCaps({ tools: true, ...existing });
+    setCaps({ tools: true });
+    for (const key of BOOLEAN_CAP_KEYS) {
+      if (Object.hasOwn(existing, key.key)) {
+        setCaps((prev) => ({ ...prev, [key.key]: existing[key.key] }));
+      }
+    }
     setContextWindow(existing.contextWindow?.toString() ?? "");
     setMaxOutput(existing.maxOutput?.toString() ?? "");
     setThinkingFormat(existing.thinkingFormat ?? "");
@@ -77,21 +83,6 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
 
   const toggleCap = (key) => {
     setCaps((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
-
-  const builtCaps = () => {
-    const out = { ...caps };
-    if (contextWindow.trim() !== "") out.contextWindow = Number(contextWindow);
-    if (maxOutput.trim() !== "") out.maxOutput = Number(maxOutput);
-    if (thinkingFormat) out.thinkingFormat = thinkingFormat;
-    out.thinkingCanDisable = thinkingCanDisable;
-    if (thinkingRangeMin.trim() !== "" || thinkingRangeMax.trim() !== "") {
-      const range = {};
-      if (thinkingRangeMin.trim() !== "") range.min = Number(thinkingRangeMin);
-      if (thinkingRangeMax.trim() !== "") range.max = Number(thinkingRangeMax);
-      out.thinkingRange = range;
-    }
-    return out;
   };
 
   const handleTest = async () => {
@@ -119,7 +110,18 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
     if (!cleanId || saving) return;
     setSaving(true);
     try {
-      await onSave({ id: cleanId, capabilities: builtCaps() });
+      await onSave({
+        id: cleanId,
+        capabilities: buildCustomCapabilities({
+          booleanCaps: caps,
+          contextWindow,
+          maxOutput,
+          thinkingFormat,
+          thinkingCanDisable,
+          thinkingRangeMin,
+          thinkingRangeMax,
+        }),
+      });
     } finally {
       setSaving(false);
     }

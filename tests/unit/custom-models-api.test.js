@@ -61,7 +61,7 @@ describe("/api/models/custom persistence", () => {
     const data = await readJson(res);
 
     expect(data.success).toBe(true);
-    expect(data.added.capabilities).toEqual(caps);
+    expect(data.model.capabilities).toEqual(caps);
     expect(mocks.addCustomModel).toHaveBeenCalledWith(
       expect.objectContaining({ capabilities: caps })
     );
@@ -81,7 +81,7 @@ describe("/api/models/custom persistence", () => {
     const data = await readJson(res);
 
     expect(data.success).toBe(true);
-    expect(data.updated.capabilities).toEqual(caps);
+    expect(data.model.capabilities).toEqual(caps);
   });
 
   it("DELETE removes a custom model", async () => {

@@ -22,7 +22,10 @@ export async function POST(request) {
       return NextResponse.json({ error: "providerAlias and id required" }, { status: 400 });
     }
     const added = await addCustomModel({ providerAlias, id, type: type || "llm", name, capabilities });
-    return NextResponse.json({ success: true, added });
+    if (!added) {
+      return NextResponse.json({ error: "Custom model already exists" }, { status: 409 });
+    }
+    return NextResponse.json({ success: true, model: added });
   } catch (error) {
     console.log("Error adding custom model:", error);
     return NextResponse.json({ error: error.message || "Failed to add custom model" }, { status: error.status || 500 });
@@ -40,7 +43,7 @@ export async function PATCH(request) {
     if (!updated) {
       return NextResponse.json({ error: "Custom model not found" }, { status: 404 });
     }
-    return NextResponse.json({ success: true, updated });
+    return NextResponse.json({ success: true, model: updated });
   } catch (error) {
     console.log("Error updating custom model:", error);
     return NextResponse.json({ error: error.message || "Failed to update custom model" }, { status: error.status || 500 });

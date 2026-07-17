@@ -417,7 +417,12 @@ export async function handleChat(request, clientRawRequest = null) {
   if (bypassResponse) return bypassResponse.response || bypassResponse;
 
   const singleModelCaps = await buildSingleModelCapabilitiesMap(modelStr);
-  const vb = applyVisionBridgeReroute({ body, modelStr, settings, capabilities: singleModelCaps });
+  // Custom caps for the configured bridge target: a custom model persisted
+  // with vision:true is a valid target even if the static catalog disagrees.
+  const visionTargetCaps = settings?.visionBridgeEnabled === true && settings?.visionBridgeModel
+    ? await buildSingleModelCapabilitiesMap(String(settings.visionBridgeModel))
+    : null;
+  const vb = applyVisionBridgeReroute({ body, modelStr, settings, capabilities: singleModelCaps, targetCapabilities: visionTargetCaps });
   if (vb.rerouted) {
     const policyError = await enforceApiKeyModelPolicy(request, vb.modelStr);
     if (policyError) {
@@ -603,6 +608,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           judgeModel: comboStrategies[modelStr]?.judgeModel,
           tuning: comboStrategies[modelStr]?.fusionTuning,
           contextRequirements: perCombo.contextRequirements,
+          capabilitiesMap: await resolveComboCapabilitiesMap(comboModels),
         });
       }
 
@@ -613,6 +619,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       // it so nested fallback attempts do not double-count rows.
       const ownsCollector = !tokenSaverCollector;
       const nestedCollector = tokenSaverCollector || { latest: null };
+      const nestedCapabilitiesMap = await resolveComboCapabilitiesMap(comboModels);
       const nestedResult = await handleComboChat({
         body,
         models: comboModels,
@@ -636,6 +643,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         comboStickyLimit,
         contextRequirements: perCombo.contextRequirements,
         comboTimeoutMs,
+        capabilitiesMap: nestedCapabilitiesMap,
         quotaRanker: (ordered) => rankComboModelsByQuota(
           ordered,
           chatSettings,

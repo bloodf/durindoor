@@ -556,6 +556,14 @@ async function buildModelsListImpl(kindFilter, guard) {
     }
   };
 
+  // Custom-model capability overrides keyed "providerAlias/modelId" — one map
+  // for all combo aggregations (no per-member DB reads).
+  const customCapsById = new Map(
+    customModels
+      .filter((m) => m?.id && m?.providerAlias && m?.capabilities && typeof m.capabilities === "object")
+      .map((m) => [`${m.providerAlias}/${m.id}`, m.capabilities]),
+  );
+
   // Combos first (filtered by kind). Web combos expose `kind` so AI knows search vs fetch.
   for (const combo of combos) {
     if (!comboMatchesKinds(combo, kindFilter)) continue;
@@ -593,7 +601,7 @@ async function buildModelsListImpl(kindFilter, guard) {
     if (combo.kind === "webSearch" || combo.kind === "webFetch") {
       entry.kind = combo.kind;
     } else {
-      const comboCaps = aggregateComboCapabilities(visibleMembers, comboByName, aliasToProviderId);
+      const comboCaps = aggregateComboCapabilities(visibleMembers, comboByName, aliasToProviderId, 0, customCapsById);
       if (comboCaps) entry.capabilities = comboCaps;
     }
     models.push(entry);

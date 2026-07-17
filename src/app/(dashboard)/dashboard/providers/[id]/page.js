@@ -1246,7 +1246,7 @@ export default function ProviderDetailPage() {
           onEditCustomModel={(modelId) => {
             // Pass the persisted custom-model record (incl. capabilities) so
             // the modal's edit mode prefills the capability editor.
-            const record = customModels.find((m) => m.id === modelId);
+            const record = customModels.find((m) => m.id === modelId && m.providerAlias === providerStorageAlias);
             if (record) setEditingCustomModel(record);
           }}
           onRefresh={() => Promise.all([fetchAliases(), fetchCustomModels()])}

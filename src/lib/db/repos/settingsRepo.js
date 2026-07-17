@@ -80,7 +80,11 @@ const DEFAULT_SETTINGS = {
   quotaTrackerState: DEFAULT_QUOTA_TRACKER_STATE,
   ponytailEnabled: false,
   ponytailLevel: "full",
+  // Default: free no-auth providers remain enabled unless the user explicitly
+  // disables them via Settings > Providers.
+  disabledFreeProviders: [],
 };
+
 async function readRaw() {
   const db = await getAdapter();
   const row = db.get(`SELECT data FROM settings WHERE id = 1`);
@@ -95,16 +99,15 @@ function mergeWithDefaults(raw) {
     ...((raw || {}).quotaTrackerState || {}),
   };
   for (const [key, defVal] of Object.entries(DEFAULT_SETTINGS)) {
-    if (merged[key] === undefined) {
-      if (
-        key === "outboundProxyEnabled" &&
-        typeof merged.outboundProxyUrl === "string" &&
-        merged.outboundProxyUrl.trim()
-      ) {
-        merged[key] = true;
-      } else {
-        merged[key] = defVal;
-      }
+    if (merged[key] !== undefined) continue;
+    if (
+      key === "outboundProxyEnabled" &&
+      typeof merged.outboundProxyUrl === "string" &&
+      merged.outboundProxyUrl.trim()
+    ) {
+      merged[key] = true;
+    } else {
+      merged[key] = defVal;
     }
   }
   return merged;

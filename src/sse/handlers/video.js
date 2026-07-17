@@ -46,6 +46,10 @@ export async function handleVideoGeneration(request) {
   const policyError = await enforceVideoPolicy(request, modelInfo.provider, modelInfo.model);
   if (policyError) return policyError;
   const credentials = await getProviderCredentialsWithQuotaPreflight(modelInfo.provider, null, modelInfo.model);
+  if (credentials?.providerDisabled) {
+    log.warn("VIDEO", `[${modelInfo.provider}/${modelInfo.model}] free no-auth provider disabled by settings`);
+    return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${modelInfo.provider}' is disabled. Enable it in Settings > Providers.`);
+  }
   if (credentials?.allRateLimited) {
     const status = Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;
     const message = credentials.lastError || `All accounts unavailable for provider: ${modelInfo.provider}`;
@@ -168,7 +172,11 @@ export async function handleVideoCreate(request, action) {
   const idempotencyKey = request.headers.get("idempotency-key") || null;
 
   const credentials = await getProviderCredentialsWithQuotaPreflight(provider, null, model, { preferredConnectionId });
-  if (!credentials || credentials.allRateLimited) {
+  if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
+    if (credentials?.providerDisabled) {
+      log.warn("VIDEO", `[${provider}/${model || "grok-imagine-video"}] free no-auth provider disabled by settings`);
+      return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
+    }
     if (credentials?.allRateLimited) {
       return unavailableResponse(
         Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE,
@@ -242,7 +250,11 @@ export async function handleVideoGet(request, requestId) {
   const preferredConnectionId = request.headers.get("x-connection-id") || null;
 
   const credentials = await getProviderCredentialsWithQuotaPreflight(provider, null, null, { preferredConnectionId });
-  if (!credentials || credentials.allRateLimited) {
+  if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
+    if (credentials?.providerDisabled) {
+      log.warn("VIDEO", `[${provider}/grok-imagine-video] free no-auth provider disabled by settings`);
+      return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
+    }
     if (credentials?.allRateLimited) {
       return unavailableResponse(
         Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE,

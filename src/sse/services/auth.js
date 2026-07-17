@@ -1,3 +1,4 @@
+import { isFreeNoAuthProviderDisabled } from "@/sse/services/freeProviderGate.js";
 import {
   getProviderConnections, getProviderConnectionById, getApiKeyByKey, validateApiKey,
   updateProviderConnection, getSettings, getProxyPools,
@@ -295,6 +296,13 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
   // Resolve alias before coordination so aliases for one provider share a turn
   // while independent provider identities remain concurrent.
   const providerId = resolveProviderId(provider);
+
+  // Free no-auth providers are gated by persisted settings; if disabled, return
+  // a sentinel so every selector (direct and preflight) behaves identically.
+  const settings = await getSettings().catch(() => null);
+  if (isFreeNoAuthProviderDisabled(providerId, settings)) {
+    return { providerDisabled: true };
+  }
   // Normalize to Set for consistent handling
   const excludeSet = excludeConnectionIds instanceof Set
     ? excludeConnectionIds

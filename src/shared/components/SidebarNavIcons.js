@@ -26,7 +26,7 @@ export const VISIBLE_MEDIA_KINDS = ["embedding", "image", "tts", "stt"];
 // Combined entry: webSearch + webFetch share one page at /dashboard/media-providers/web
 export const COMBINED_WEB_ITEM = { id: "web", label: "Web Fetch & Search", icon: "travel_explore", href: "/dashboard/media-providers/web" };
 
-export const BRAND_LOGO_SRC = "/icons/icon-192.svg";
+export const BRAND_LOGO_SRC = "/icons/icon-512.png";
 export const BRAND_LOGO_ALT = "";
 
 // Top-level dashboard navigation. Usage is the dashboard home (the root

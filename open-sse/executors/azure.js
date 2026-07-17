@@ -57,15 +57,8 @@ export class AzureExecutor extends DefaultExecutor {
     // directly. Clone before mutating to avoid caller side effects. (#6912/#6964)
     const transformed = { ...(body || {}) };
     applyParamRenames("azure", model, transformed);
-    // Custom-model maxOutput clamp (same contract as DefaultExecutor).
-    const customMax = requestContext?.modelCapabilities?.maxOutput;
-    if (Number.isFinite(customMax) && customMax > 0) {
-      for (const field of ["max_tokens", "max_completion_tokens"]) {
-        if (typeof transformed[field] === "number" && transformed[field] > customMax) {
-          transformed[field] = customMax;
-        }
-      }
-    }
+    // Custom-model maxOutput clamp (shared BaseExecutor helper).
+    this.clampCustomMaxOutput(transformed, requestContext);
     return transformed;
   }
 }

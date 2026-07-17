@@ -63,6 +63,22 @@ export function waitForRetryDelay(delayMs, signal = null) {
  * BaseExecutor - Base class for provider executors
  */
 export class BaseExecutor {
+  /**
+   * Clamp normalized token-limit fields to a custom-model maxOutput override.
+   * Shared by executors whose transformRequest builds the final upstream body
+   * (Default, Azure, Github chat + Claude shim). No-op without a custom cap.
+   */
+  clampCustomMaxOutput(body, requestContext, fields = ["max_tokens", "max_completion_tokens"]) {
+    const customMax = requestContext?.modelCapabilities?.maxOutput;
+    if (!body || !(Number.isFinite(customMax) && customMax > 0)) return body;
+    for (const field of fields) {
+      if (typeof body[field] === "number" && body[field] > customMax) {
+        body[field] = customMax;
+      }
+    }
+    return body;
+  }
+
   constructor(provider, config) {
     this.provider = provider;
     this.config = config;

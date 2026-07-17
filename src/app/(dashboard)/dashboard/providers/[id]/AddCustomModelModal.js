@@ -39,6 +39,10 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
   const isEdit = Boolean(initialModel);
   const [modelId, setModelId] = useState("");
   const [caps, setCaps] = useState({ tools: true });
+  // Track which boolean caps the user (or the stored record) actually set —
+  // untouched checkboxes must not override static/provider defaults (e.g. a
+  // catalog entry with tools:false).
+  const [capsTouched, setCapsTouched] = useState(new Set());
   const [contextWindow, setContextWindow] = useState("");
   const [maxOutput, setMaxOutput] = useState("");
   const [thinkingFormat, setThinkingFormat] = useState("");
@@ -58,11 +62,15 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
     setModelId(model ? model.id : "");
     const existing = model && model.capabilities ? model.capabilities : {};
     setCaps({ tools: true });
+    const touched = new Set();
     for (const key of BOOLEAN_CAP_KEYS) {
       if (Object.hasOwn(existing, key.key)) {
         setCaps((prev) => ({ ...prev, [key.key]: existing[key.key] }));
+        touched.add(key.key);
       }
     }
+    if (Object.hasOwn(existing, "tools")) touched.add("tools");
+    setCapsTouched(touched);
     setContextWindow(existing.contextWindow?.toString() ?? "");
     setMaxOutput(existing.maxOutput?.toString() ?? "");
     setThinkingFormat(existing.thinkingFormat ?? "");
@@ -88,6 +96,7 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
 
   const toggleCap = (key) => {
     setCaps((prev) => ({ ...prev, [key]: !prev[key] }));
+    setCapsTouched((prev) => new Set(prev).add(key));
   };
 
   const handleTest = async () => {
@@ -118,7 +127,7 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
       await onSave({
         id: cleanId,
         capabilities: buildCustomCapabilities({
-          booleanCaps: caps,
+          booleanCaps: Object.fromEntries(Object.entries(caps).filter(([k]) => capsTouched.has(k))),
           contextWindow,
           maxOutput,
           thinkingFormat,

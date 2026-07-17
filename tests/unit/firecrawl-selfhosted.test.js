@@ -63,8 +63,8 @@ describe("Firecrawl providers", () => {
   });
 
   describe("firecrawl_custom provider", () => {
-    it("prefers providerConfig.firecrawlBaseUrl over env var", async () => {
-      process.env.FIRECRAWL_BASE_URL = "http://env-firecrawl:3002";
+    it("prefers credentials.providerSpecificData.baseUrl over env var", async () => {
+      process.env.FIRECRAWL_BASE_URL = "http://127.0.0.1:3002";
 
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
@@ -75,18 +75,18 @@ describe("Firecrawl providers", () => {
       await handleFetchCore({
         url: "https://example.com",
         provider: "firecrawl_custom",
-        providerConfig: { firecrawlBaseUrl: "http://db-firecrawl:3002" },
-        credentials: {}
+        providerConfig: { firecrawlBaseUrl: "http://10.0.0.5:3002" },
+        credentials: { providerSpecificData: { baseUrl: "http://127.0.0.1:3002" } }
       });
 
       expect(global.fetch).toHaveBeenCalledWith(
-        "http://db-firecrawl:3002/v2/scrape",
+        "http://127.0.0.1:3002/v2/scrape",
         expect.anything()
       );
     });
 
     it("uses FIRECRAWL_BASE_URL and hits /v2/scrape", async () => {
-      process.env.FIRECRAWL_BASE_URL = "http://my-local-firecrawl:3002";
+      process.env.FIRECRAWL_BASE_URL = "http://127.0.0.1:3002";
 
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
@@ -104,7 +104,29 @@ describe("Firecrawl providers", () => {
 
       expect(res.success).toBe(true);
       expect(global.fetch).toHaveBeenCalledWith(
-        "http://my-local-firecrawl:3002/v2/scrape",
+        "http://127.0.0.1:3002/v2/scrape",
+        expect.anything()
+      );
+    });
+
+    it("prefers providerConfig.firecrawlBaseUrl over env var", async () => {
+      process.env.FIRECRAWL_BASE_URL = "http://127.0.0.1:3002";
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, data: { markdown: "# Hi" } }),
+      });
+
+      await handleFetchCore({
+        url: "https://example.com",
+        provider: "firecrawl_custom",
+        providerConfig: { firecrawlBaseUrl: "http://10.0.0.5:3002" },
+        credentials: {}
+      });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        "http://10.0.0.5:3002/v2/scrape",
         expect.anything()
       );
     });
@@ -133,7 +155,7 @@ describe("Firecrawl providers", () => {
       );
     });
 
-    it("does not send an Authorization header", async () => {
+    it("sends Authorization header for custom when API key is provided", async () => {
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
@@ -145,11 +167,11 @@ describe("Firecrawl providers", () => {
         url: "https://example.com",
         provider: "firecrawl_custom",
         providerConfig: {},
-        credentials: { apiKey: "should-be-ignored" }
+        credentials: { apiKey: "custom-key" }
       });
 
       const [, init] = global.fetch.mock.calls[0];
-      expect(init.headers).not.toHaveProperty("authorization");
+      expect(init.headers).toHaveProperty("authorization", "Bearer custom-key");
     });
 
     it("returns a clear error when the instance is unreachable", async () => {

@@ -1,4 +1,4 @@
-// Web Fetch handler — dispatches to firecrawl, jina-reader, tavily, exa, tinyfish
+import { validateFirecrawlBaseUrl, validateFirecrawlHeaders, parseFirecrawlHeaders } from "open-sse/shared/firecrawlConfig.js";
 // Returns normalized shape across all providers
 
 const DEFAULT_TIMEOUT_MS = 15000;
@@ -112,7 +112,7 @@ export async function handleFetchCore({ url, format, maxCharacters, provider, pr
 
   try {
     if (provider === "firecrawl" || provider === "firecrawl_custom") {
-      return await runFirecrawl({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt, provider, providerConfig });
+      return await runFirecrawl({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt, provider, providerConfig, credentials });
     }
     if (provider === "jina-reader") {
       return await runJina({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt });
@@ -133,25 +133,46 @@ export async function handleFetchCore({ url, format, maxCharacters, provider, pr
   }
 }
 
-async function runFirecrawl({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt, provider, providerConfig }) {
+async function runFirecrawl({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt, provider, providerConfig, credentials }) {
   const isCustom = provider === "firecrawl_custom";
 
   if (!isCustom && !apiKey) {
     return { success: false, status: 400, error: "FIRECRAWL_API_KEY is required for the official Firecrawl provider" };
   }
 
-  // Priority: DB setting > env var > default
-  const baseUrl = providerConfig?.firecrawlBaseUrl || process.env.FIRECRAWL_BASE_URL || (isCustom ? "http://127.0.0.1:3002" : "https://api.firecrawl.dev");
+  const baseUrl = validateCustomBaseUrl(provider, resolveFirecrawlBaseUrl(provider, providerConfig, credentials));
   const endpoint = isCustom ? "/v2/scrape" : "/v1/scrape";
 
+  const rawHeaders = isCustom ? credentials?.firecrawlHeaders : null;
+  let customHeaders = null;
+  if (isCustom && rawHeaders !== undefined && rawHeaders !== null && rawHeaders !== "") {
+    customHeaders = parseFirecrawlHeaders(rawHeaders);
+    if (!customHeaders) {
+      return { success: false, status: 400, error: "Invalid custom Firecrawl headers" };
+    }
+  }
+  if (isCustom && customHeaders !== null) {
+    const validation = validateFirecrawlHeaders(customHeaders);
+    if (!validation.ok) {
+      return { success: false, status: 400, error: `Invalid custom Firecrawl headers: ${validation.error}` };
+    }
+  }
   const headers = { "content-type": "application/json" };
+
   if (!isCustom && apiKey) {
     headers.authorization = `Bearer ${apiKey}`;
+  } else if (isCustom && apiKey) {
+    headers.authorization = `Bearer ${apiKey}`;
+  }
+
+  if (customHeaders && typeof customHeaders === "object") {
+    Object.assign(headers, customHeaders);
   }
 
   const upstreamStart = Date.now();
   const r = await tryFetch(`${baseUrl}${endpoint}`, {
     method: "POST",
+    redirect: "error",
     headers,
     body: JSON.stringify({ url, formats: [fmt] })
   }, timeoutMs);
@@ -176,6 +197,36 @@ async function runFirecrawl({ url, fmt, timeoutMs, apiKey, maxCharacters, costPe
       costUsd: costPerQuery, responseMs: Date.now() - startedAt, upstreamMs
     })
   };
+}
+
+function resolveFirecrawlBaseUrl(provider, providerConfig, credentials) {
+  const isCustom = provider === "firecrawl_custom";
+  if (isCustom) {
+    const explicitCustom = credentials?.providerSpecificData?.baseUrl;
+    if (explicitCustom) {
+      const validated = validateFirecrawlBaseUrl(explicitCustom);
+      if (validated.ok) return validated.url.origin;
+      throw new Error(`Invalid self-hosted Firecrawl URL: ${validated.error}`);
+    }
+    if (providerConfig?.firecrawlBaseUrl) {
+      const validated = validateFirecrawlBaseUrl(providerConfig.firecrawlBaseUrl);
+      if (validated.ok) return validated.url.origin;
+      throw new Error(`Invalid self-hosted Firecrawl URL: ${validated.error}`);
+    }
+    const envBaseUrl = process.env.FIRECRAWL_BASE_URL;
+    if (envBaseUrl && validateFirecrawlBaseUrl(envBaseUrl).ok) {
+      return envBaseUrl.replace(/\/$/, "");
+    }
+    return "http://127.0.0.1:3002";
+  }
+  return providerConfig?.firecrawlBaseUrl || process.env.FIRECRAWL_BASE_URL || "https://api.firecrawl.dev";
+}
+
+function validateCustomBaseUrl(provider, rawUrl) {
+  if (provider !== "firecrawl_custom") return rawUrl;
+  const validation = validateFirecrawlBaseUrl(rawUrl);
+  if (!validation.ok) throw new Error(`Invalid self-hosted Firecrawl URL: ${validation.error}`);
+  return validation.url.origin;
 }
 
 async function runJina({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt }) {

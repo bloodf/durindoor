@@ -4,8 +4,9 @@ import {
   clearAccountError,
   extractApiKey,
   evaluateApiKeyAuth,
+  projectProviderCredentials,
 } from "../services/auth.js";
-import { getSettings, getCombos, getApiKeyByKey } from "@/lib/localDb";
+import { getSettings, getCombos, getApiKeyByKey, getProviderConnections } from "@/lib/localDb";
 import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
 import { handleFetchCore } from "open-sse/handlers/fetch/index.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
@@ -184,6 +185,17 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
   }
 
   // No-auth fetch path (kept for parity though no current fetch provider sets noAuth)
+  let credentials = null;
+
+  // firecrawl_custom is noAuth on the registry but supports optional saved
+  // credentials for authenticated self-hosted instances. Load the active saved
+  // connection when available; otherwise fall back to default local no-auth.
+  if (resolvedProvider.id === "firecrawl_custom") {
+    log.info("AUTH", `\x1b[32m${providerId} custom mode\x1b[0m`);
+    const active = (await getProviderConnections({ provider: "firecrawl_custom", isActive: true }))[0] || null;
+    credentials = active ? await projectProviderCredentials(active) : null;
+  }
+
   if (resolvedProvider.noAuth) {
     log.info("AUTH", `\x1b[32m${providerId} no-auth mode\x1b[0m`);
     const result = await handleFetchCore({
@@ -192,7 +204,7 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
       maxCharacters,
       provider: resolvedProvider.id,
       providerConfig: fetchConfig,
-      credentials: null,
+      credentials,
       log
     });
     if (result.success) {

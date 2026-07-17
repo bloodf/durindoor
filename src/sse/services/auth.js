@@ -150,6 +150,7 @@ export async function projectProviderCredentials(connection, quotaPreflight = nu
   return {
     authType: connection.authType,
     apiKey: connection.apiKey,
+    firecrawlHeaders: connection.firecrawlHeaders,
     accessToken: connection.accessToken,
     refreshToken: connection.refreshToken,
     idToken: connection.idToken,

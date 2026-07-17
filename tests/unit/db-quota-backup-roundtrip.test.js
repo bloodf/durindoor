@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { isEncryptedBlob } from "../../src/lib/crypto/columnCrypto.js";
 import { QUOTA_MAX_IMPORT_ROWS, QUOTA_MAX_SOURCE_SNAPSHOTS } from "../../src/shared/constants/quota.js";
 
 let tempDir;
@@ -121,7 +122,9 @@ describe("portable quota backup", () => {
     db.run(`DELETE FROM providerQuotaSnapshots`);
     await database.importDb(JSON.parse(JSON.stringify(exported)));
 
-    expect(db.get(`SELECT data FROM providerConnections WHERE id='conn-1'`).data).toBe(JSON.stringify({ accessToken: "access-token-canary", refreshToken: "refresh-token-canary" }));
+    const connData = JSON.parse(db.get(`SELECT data FROM providerConnections WHERE id='conn-1'`).data);
+    expect(isEncryptedBlob(connData.accessToken)).toBe(true);
+    expect(isEncryptedBlob(connData.refreshToken)).toBe(true);
     expect(db.get(`SELECT key FROM apiKeys WHERE id='key-1'`).key).toBe("sk-deadbeef");
     expect(await database.getProviderQuotaSnapshot(snapshot.identity, { includeStale: true })).toEqual(snapshot);
     expect(await database.getQuotaFetchState({ connectionId: "conn-1", provider: "gemini", sourceId: "gemini:quota:v1" })).toMatchObject({ outcome: "success" });

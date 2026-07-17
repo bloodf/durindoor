@@ -30,6 +30,7 @@ function sanitizeProviderConnection(connection) {
     accessToken: undefined,
     refreshToken: undefined,
     idToken: undefined,
+    firecrawlHeaders: undefined,
     ...(providerSpecificData !== undefined ? { providerSpecificData } : {}),
   };
 }

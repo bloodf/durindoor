@@ -7,6 +7,7 @@ import {
   getHeadroomStatus,
   isLoopbackHeadroomUrl,
 } from "../headroom/detect.js";
+import { startHeadroomProxy } from "../headroom/process.js";
 
 const IS_WIN = process.platform === "win32";
 const WHICH_CMD = IS_WIN ? "where" : "which";
@@ -130,17 +131,25 @@ export async function installHeadroom({ python, uv } = {}) {
   }
 }
 
-export async function configureHeadroom(settings, { dryRun = false, url = DEFAULT_HEADROOM_URL } = {}) {
+export async function configureHeadroom(settings, { dryRun = false, url, install = installHeadroom } = {}) {
   const report = { changed: false, actions: [] };
-  const detected = await detectHeadroom({ url });
+
+  // Prefer caller-provided URL, then the configured URL, then the default.
+  // A reachable external endpoint is usable even without a local CLI.
+  const effectiveUrl = url || settings.headroomUrl || DEFAULT_HEADROOM_URL;
+  const detected = await detectHeadroom({ url: effectiveUrl });
   const uv = findUv();
   const installPython = findPython310ForInstall();
   const canInstall = Boolean(uv || installPython);
 
   let installed = detected.installed;
+  let running = detected.running;
+  let wouldStart = false;
 
-  if (!installed && !dryRun) {
-    const installResult = await installHeadroom({ python: detected.python || installPython, uv });
+  if (running) {
+    report.actions.push(`headroom reachable at ${effectiveUrl}`);
+  } else if (!installed && !dryRun) {
+    const installResult = await install({ python: detected.python || installPython, uv });
     if (installResult.installed) {
       installed = true;
       report.actions.push(`installed headroom-ai[proxy] via ${installResult.method}`);
@@ -149,17 +158,45 @@ export async function configureHeadroom(settings, { dryRun = false, url = DEFAUL
     }
   }
 
-  if (!installed) {
-    const wouldInstall = dryRun && canInstall;
-    report.actions.push(wouldInstall ? "headroom not installed; would install then enable" : "headroom not installed and no install path found; skipping");
-    return {
-      changed: false,
-      wouldChange: wouldInstall || false,
-      wouldInstall: wouldInstall || false,
-      installed: false,
-      actions: report.actions,
-      updates: {},
-    };
+  if (!running) {
+    if (installed && isLoopbackHeadroomUrl(effectiveUrl)) {
+      if (dryRun) {
+        report.actions.push(`would start headroom proxy on ${effectiveUrl}`);
+        wouldStart = true;
+      } else {
+        try {
+          const port = parseInt(new URL(effectiveUrl).port || "8787", 10);
+          const startResult = await startHeadroomProxy({ port });
+          report.actions.push(startResult.alreadyRunning ? `headroom proxy already running on ${effectiveUrl}` : `started headroom proxy on ${effectiveUrl}`);
+          running = true;
+        } catch (e) {
+          report.actions.push(`headroom install succeeded but start failed: ${e.message || String(e)}`);
+          return {
+            changed: false,
+            wouldChange: false,
+            wouldInstall: false,
+            installed: true,
+            running: false,
+            actions: report.actions,
+            updates: {},
+          };
+        }
+      }
+    }
+
+    if (!running && !wouldStart) {
+      const wouldInstall = dryRun && !installed && canInstall;
+      report.actions.push(wouldInstall ? "headroom not reachable; would install then enable" : "headroom not reachable and no install path found; skipping");
+      return {
+        changed: false,
+        wouldChange: wouldInstall || false,
+        wouldInstall: wouldInstall || false,
+        installed: installed || false,
+        running: false,
+        actions: report.actions,
+        updates: {},
+      };
+    }
   }
 
   if (!settings.headroomEnabled) {
@@ -169,7 +206,7 @@ export async function configureHeadroom(settings, { dryRun = false, url = DEFAUL
     report.actions.push("headroomEnabled already true");
   }
 
-  const targetUrl = url || DEFAULT_HEADROOM_URL;
+  const targetUrl = effectiveUrl;
   if (settings.headroomUrl !== targetUrl) {
     logAction(report, dryRun, `set headroomUrl to ${targetUrl}`);
     report.changed = true;
@@ -195,7 +232,8 @@ export async function configureHeadroom(settings, { dryRun = false, url = DEFAUL
     changed: report.changed && !dryRun,
     wouldChange: report.changed,
     wouldInstall: false,
-    installed: true,
+    installed: installed || false,
+    running,
     localUrl: isLoopbackHeadroomUrl(targetUrl),
     actions: report.actions,
     updates,

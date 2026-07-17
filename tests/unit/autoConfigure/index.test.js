@@ -44,13 +44,44 @@ describe("runAutoConfigure", () => {
     expect(report.changed).toBe(false);
   });
 
+  it("passes undefined headroomUrl by default to preserve configured settings", async () => {
+    configureHeadroom.mockResolvedValue({ changed: false, wouldChange: false, updates: {}, actions: [] });
+    configurePxpipe.mockReturnValue({ changed: false, wouldChange: false, updates: {}, actions: [] });
+    configureFirecrawl.mockResolvedValue({ changed: false, wouldChange: false, updates: {}, actions: [], connection: null });
+    configureToggles.mockReturnValue({ changed: false, wouldChange: false, updates: {}, actions: [] });
+
+    await runAutoConfigure({ headroomUrl: "http://saved.example.com" }, {});
+    expect(configureHeadroom).toHaveBeenCalledWith(
+      { headroomUrl: "http://saved.example.com" },
+      { dryRun: false, url: undefined }
+    );
+  });
+
+  it("uses FIRECRAWL_API_KEY env when no option provided via runAutoConfigure", async () => {
+    vi.stubEnv("FIRECRAWL_API_KEY", "env-key");
+    configureHeadroom.mockResolvedValue({ changed: false, wouldChange: false, updates: {}, actions: [] });
+    configurePxpipe.mockReturnValue({ changed: false, wouldChange: false, updates: {}, actions: [] });
+    configureFirecrawl.mockResolvedValue({ changed: false, wouldChange: false, updates: {}, actions: [], connection: null });
+    configureToggles.mockReturnValue({ changed: false, wouldChange: false, updates: {}, actions: [] });
+
+    try {
+      await runAutoConfigure({}, {});
+      expect(configureFirecrawl).toHaveBeenCalledWith(
+        {},
+        expect.objectContaining({ apiKey: "env-key" })
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("getAutoConfigureStatus returns wouldChange", async () => {
     configureHeadroom.mockResolvedValue({ changed: false, wouldChange: true, updates: {}, actions: ["a"] });
     configurePxpipe.mockReturnValue({ changed: false, wouldChange: false, updates: {}, actions: [] });
     configureFirecrawl.mockResolvedValue({ changed: false, wouldChange: false, updates: {}, actions: [], connection: null });
     configureToggles.mockReturnValue({ changed: false, wouldChange: false, updates: {}, actions: [] });
 
-    const status = await getAutoConfigureStatus({}, { firecrawl: { probe: vi.fn() } });
+    const status = await getAutoConfigureStatus({}, {});
     expect(status.wouldChange).toBe(true);
   });
 });

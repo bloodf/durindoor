@@ -41,11 +41,21 @@ export async function configureFirecrawl(settings, {
   listConnections,
   apiKey = process.env.FIRECRAWL_API_KEY,
   headers,
+  override = false,
 } = {}) {
   const report = { changed: false, actions: [] };
-  const detected = await detectFirecrawl({ probe, apiKey, headers });
 
-  if (!detected.ok) {
+  let baseUrl;
+  let detected = { ok: false };
+  if (settings.firecrawlBaseUrl && !override) {
+    baseUrl = settings.firecrawlBaseUrl;
+    report.actions.push(`using configured firecrawlBaseUrl ${baseUrl}`);
+  } else {
+    detected = await detectFirecrawl({ probe, apiKey, headers });
+    baseUrl = detected.baseUrl;
+  }
+
+  if (!detected.ok && !baseUrl) {
     report.actions.push(`firecrawl not detected: ${detected.error}`);
     return {
       changed: false,
@@ -57,12 +67,14 @@ export async function configureFirecrawl(settings, {
     };
   }
 
-  const baseUrl = detected.baseUrl;
-
   let settingsChanged = false;
   if (settings.firecrawlBaseUrl !== baseUrl) {
-    report.actions.push(dryRun ? `would set firecrawlBaseUrl to ${baseUrl}` : `set firecrawlBaseUrl to ${baseUrl}`);
-    settingsChanged = true;
+    if (override || !settings.firecrawlBaseUrl) {
+      report.actions.push(dryRun ? `would set firecrawlBaseUrl to ${baseUrl}` : `set firecrawlBaseUrl to ${baseUrl}`);
+      settingsChanged = true;
+    } else {
+      report.actions.push(`preserving configured firecrawlBaseUrl ${settings.firecrawlBaseUrl}`);
+    }
   } else {
     report.actions.push(`firecrawlBaseUrl already ${baseUrl}`);
   }

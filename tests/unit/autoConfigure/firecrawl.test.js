@@ -15,6 +15,50 @@ describe("configureFirecrawl", () => {
     delete process.env.FIRECRAWL_API_KEY;
   });
 
+  it("preserves configured firecrawlBaseUrl by default", async () => {
+    const listConnections = vi.fn().mockResolvedValue([
+      {
+        provider: "firecrawl_custom",
+        name: "Firecrawl Local",
+        isActive: true,
+        testStatus: "pending",
+        apiKey: "abc",
+        providerSpecificData: { baseUrl: "http://firecrawl.example.com" },
+      },
+    ]);
+    const res = await configureFirecrawl(
+      { firecrawlBaseUrl: "http://firecrawl.example.com" },
+      { listConnections, apiKey: "abc" }
+    );
+    expect(res.detected).toBe(true);
+    expect(res.changed).toBe(false);
+    expect(res.baseUrl).toBe("http://firecrawl.example.com");
+    expect(res.updates).toEqual({});
+    expect(res.connection).toBeNull();
+  });
+
+  it("allows overriding configured firecrawlBaseUrl when requested", async () => {
+    const probe = vi.fn().mockResolvedValue({ ok: true, baseUrl: "http://127.0.0.1:3002" });
+    const listConnections = vi.fn().mockResolvedValue([
+      {
+        provider: "firecrawl_custom",
+        name: "Firecrawl Local",
+        isActive: true,
+        testStatus: "pending",
+        apiKey: "abc",
+        providerSpecificData: { baseUrl: "http://firecrawl.example.com" },
+      },
+    ]);
+    const res = await configureFirecrawl(
+      { firecrawlBaseUrl: "http://firecrawl.example.com" },
+      { probe, listConnections, apiKey: "abc", override: true }
+    );
+    expect(res.detected).toBe(true);
+    expect(res.changed).toBe(true);
+    expect(res.baseUrl).toBe("http://127.0.0.1:3002");
+    expect(res.updates).toEqual({ firecrawlBaseUrl: "http://127.0.0.1:3002" });
+  });
+
   it("returns no change when firecrawl not detected", async () => {
     const probe = vi.fn().mockResolvedValue({ ok: false, error: "offline" });
     const res = await configureFirecrawl({ firecrawlBaseUrl: "" }, { probe });
@@ -65,18 +109,6 @@ describe("configureFirecrawl", () => {
     expect(res.changed).toBe(false);
     expect(res.wouldChange).toBe(false);
     expect(res.connection).toBeNull();
-  });
-
-  it("uses FIRECRAWL_API_KEY env when no option provided via runAutoConfigure", async () => {
-    process.env.FIRECRAWL_API_KEY = "env-key";
-    const probe = vi.fn().mockResolvedValue({ ok: true, baseUrl: "http://127.0.0.1:3002" });
-    const listConnections = vi.fn().mockResolvedValue([]);
-    const { runAutoConfigure } = await import("../../../src/lib/autoConfigure/index.js");
-    const res = await runAutoConfigure(
-      { firecrawlBaseUrl: "" },
-      { firecrawl: { probe, listConnections } }
-    );
-    expect(res.services.firecrawl.connection.apiKey).toBe("env-key");
   });
 
   it("preserves existing keyed connection credentials when env and options omit apiKey/headers", async () => {

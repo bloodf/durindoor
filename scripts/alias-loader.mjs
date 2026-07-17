@@ -1,6 +1,9 @@
-import { pathToFileURL } from "node:url";
+import { pathToFileURL, fileURLToPath } from "node:url";
 import path from "node:path";
 import fs from "node:fs/promises";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(__dirname, "..");
 
 async function exists(filePath) {
   try {
@@ -25,7 +28,7 @@ async function resolveAlias(targetPath, specifier) {
 
 export async function resolve(specifier, context, nextResolve) {
   if (specifier.startsWith("@/")) {
-    const targetPath = path.resolve(process.cwd(), "src", specifier.slice(2));
+    const targetPath = path.resolve(REPO_ROOT, "src", specifier.slice(2));
     const resolved = await resolveAlias(targetPath, specifier);
     if (resolved) {
       return nextResolve(pathToFileURL(resolved).href, context);
@@ -33,7 +36,7 @@ export async function resolve(specifier, context, nextResolve) {
     return nextResolve(pathToFileURL(targetPath).href, context);
   }
   if (specifier.startsWith("open-sse/")) {
-    const targetPath = path.resolve(process.cwd(), "open-sse", specifier.slice(9));
+    const targetPath = path.resolve(REPO_ROOT, "open-sse", specifier.slice(9));
     const resolved = await resolveAlias(targetPath, specifier);
     if (resolved) {
       return nextResolve(pathToFileURL(resolved).href, context);

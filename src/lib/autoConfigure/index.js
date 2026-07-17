@@ -8,7 +8,7 @@ export { configureHeadroom, configurePxpipe, configureFirecrawl, configureToggle
 export async function runAutoConfigure(settings, options = {}) {
   const {
     dryRun = false,
-    headroomUrl = process.env.HEADROOM_URL || "http://localhost:8787",
+    headroomUrl,
     firecrawlApiKey = process.env.FIRECRAWL_API_KEY,
     firecrawlHeaders,
     firecrawl: firecrawlOptions = {},
@@ -31,6 +31,7 @@ export async function runAutoConfigure(settings, options = {}) {
     headers: firecrawlOptions.headers ?? firecrawlHeaders,
     probe: firecrawlOptions.probe,
     listConnections: firecrawlOptions.listConnections,
+    override: firecrawlOptions.override,
   });
   const toggles = configureToggles(settings, { dryRun });
 

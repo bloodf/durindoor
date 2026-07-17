@@ -212,7 +212,7 @@ async function cancelResponseBody(response) {
  *   errors. Legacy `info`/`debug`/`warn`/`error` remain supported.
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, compressionEnabled, compressionEngines, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
+export async function handleChatCore({ body, modelInfo, credentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, compressionEnabled, compressionEngines, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
   if (abortSignal?.aborted) return createErrorResult(499, "Request aborted");
   const { provider, model: requestedModel } = modelInfo;
   const requestStartTime = Date.now();
@@ -497,9 +497,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
 
   // Headroom: optional external proxy compression; fail open if proxy is absent.
   const headroomDiagnostics = {};
+  const headroomStartedAt = Date.now();
   const headroomStats = await compressWithHeadroom(translatedBody, { enabled: tokenSaverEnabled && headroomEnabled, url: headroomUrl, model: cleanUpstreamModel, format: finalFormat, compressUserMessages: headroomCompressUserMessages, diagnostics: headroomDiagnostics });
+  const headroomDurationMs = Date.now() - headroomStartedAt;
   if (headroomStats) {
     const before = headroomStats.tokens_before || 0;
+    const after = headroomStats.tokens_after || 0;
     const delta = headroomStats.tokens_saved || 0;
     const pct = before > 0 ? ((delta / before) * 100).toFixed(1) : "0";
     xf.push(`HEADROOM −${delta}tok(${pct}%)`);
@@ -508,8 +511,33 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
     if (isHeadroomPhantomSavings(headroomStats, headroomDiagnostics)) {
       log?.warn?.("HEADROOM", `reported token delta, but outbound JSON shrank <5%; provider may bill near-original payload | ${formatHeadroomSizeLog(headroomDiagnostics)}`);
     }
+    try {
+      onHeadroomEvent?.({
+        provider,
+        model: cleanModel,
+        applied: true,
+        tokensBefore: before,
+        tokensAfter: after,
+        tokensSaved: delta,
+        bodyBytesBefore: headroomDiagnostics?.before?.bodyBytes || 0,
+        bodyBytesAfter: headroomDiagnostics?.after?.bodyBytes || 0,
+        messageBytesBefore: headroomDiagnostics?.before?.messageBytes || 0,
+        messageBytesAfter: headroomDiagnostics?.after?.messageBytes || 0,
+        durationMs: headroomDurationMs,
+      });
+    } catch { /* stats must not break requests */ }
   } else if (tokenSaverEnabled && headroomEnabled) {
+    const hrDiagnostic = classifyHeadroomDiagnostic(headroomDiagnostics, headroomStats, headroomEnabled);
     log?.warn?.("HEADROOM", `skipped: ${headroomDiagnostics.reason || "compression unavailable"}${headroomDiagnostics.endpoint ? ` (${headroomDiagnostics.endpoint})` : ""}`);
+    try {
+      onHeadroomEvent?.({
+        provider,
+        model: cleanModel,
+        applied: false,
+        reason: hrDiagnostic,
+        durationMs: headroomDurationMs,
+      });
+    } catch { /* stats must not break requests */ }
   }
 
   // Compression engine stack (F-1b): runs AFTER rtk/headroom, BEFORE salvage/caveman/pxpipe.

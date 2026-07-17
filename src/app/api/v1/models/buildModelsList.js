@@ -556,12 +556,15 @@ async function buildModelsListImpl(kindFilter, guard) {
     }
   };
 
-  // Custom-model capability overrides keyed "providerAlias/modelId" — one map
-  // for all combo aggregations (no per-member DB reads).
+  // Custom-model capability overrides — one map for all combo aggregations
+  // (no per-member DB reads). Keys are canonical `providerId/modelId`;
+  // aggregateComboCapabilities normalizes member prefixes (static alias OR a
+  // connection's custom output prefix) through aliasToProviderId before
+  // lookup, so `myproxy/model` finds a row stored under the provider alias.
   const customCapsById = new Map(
     customModels
-      .filter((m) => m?.id && m?.providerAlias && m?.capabilities && typeof m.capabilities === "object")
-      .map((m) => [`${m.providerAlias}/${m.id}`, m.capabilities]),
+      .filter((m) => m?.id && m?.providerAlias && (m.kind || m.type || "llm") === "llm" && m?.capabilities && typeof m.capabilities === "object")
+      .map((m) => [`${aliasToProviderId[m.providerAlias] ?? m.providerAlias}/${m.id}`, m.capabilities]),
   );
 
   // Combos first (filtered by kind). Web combos expose `kind` so AI knows search vs fetch.

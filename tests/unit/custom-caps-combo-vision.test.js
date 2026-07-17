@@ -15,6 +15,20 @@ describe("combo advertising with custom capabilities", () => {
     expect(caps.vision).toBe(true);
   });
 
+  it("normalizes a custom connection prefix to the canonical provider key", () => {
+    // Custom row stored under providerId "myprov"; combo member uses the
+    // connection's output prefix "myproxy" which aliases back to "myprov".
+    const customCaps = new Map([["myprov/custom-model", { vision: true }]]);
+    const caps = aggregateComboCapabilities(
+      ["myproxy/custom-model"],
+      null,
+      { myproxy: "myprov" },
+      0,
+      customCaps,
+    );
+    expect(caps.vision).toBe(true);
+  });
+
   it("keys custom caps by provider so same id on another provider stays static", () => {
     const customCaps = new Map([["provA/shared-id", { vision: true }]]);
     const capsB = aggregateComboCapabilities(["provB/shared-id"], null, null, 0, customCaps);

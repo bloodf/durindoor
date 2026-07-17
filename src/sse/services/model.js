@@ -10,6 +10,10 @@ export function resolveCustomCapabilities(provider, model, requestPrefix, custom
   const canonicalAlias = PROVIDER_ID_TO_ALIAS[provider] || provider;
   for (const m of customModels) {
     if (!m.id || !m.providerAlias) continue;
+    // The same provider/model id may carry sibling records of other types
+    // (image, embedding). Chat capability resolution reads only LLM records.
+    // Same fallback as providerCustomModels: kind || type || "llm".
+    if ((m.kind || m.type || "llm") !== "llm") continue;
     const storedId = String(m.id).replace(/^\//, "");
     if (storedId !== cleanModelId) continue;
     const alias = m.providerAlias;

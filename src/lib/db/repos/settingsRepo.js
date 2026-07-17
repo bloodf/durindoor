@@ -51,7 +51,6 @@ const DEFAULT_SETTINGS = {
   headroomUrl: DEFAULT_HEADROOM_URL,
   headroomCompressUserMessages: false,
   pxpipeEnabled: true,
-  pxpipeAutoInstall: true,
   pxpipeMinChars: 25000,
   pxpipeTimeoutMs: 15000,
   providerConcurrencyLimits: {},

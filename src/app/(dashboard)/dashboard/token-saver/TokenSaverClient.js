@@ -21,7 +21,6 @@ export default function TokenSaverClient() {
   const [pxpipeTimeoutMs, setPxpipeTimeoutMs] = useState("15000");
   const [pxpipeTimeoutInputValue, setPxpipeTimeoutInputValue] = useState("15000");
   const [pxpipeTimeoutError, setPxpipeTimeoutError] = useState("");
-  const [pxpipeAutoInstall, setPxpipeAutoInstall] = useState(true);
   const [pxpipeStatus, setPxpipeStatus] = useState({
     installed: false,
     installing: false,
@@ -310,12 +309,6 @@ export default function TokenSaverClient() {
     if (!res?.ok) setPxpipeEnabled(!value);
   };
 
-  const handlePxpipeAutoInstall = async (value) => {
-    setPxpipeAutoInstall(value);
-    const res = await patchSetting({ pxpipeAutoInstall: value });
-    if (!res?.ok) setPxpipeAutoInstall(!value);
-  };
-
   const handlePxpipeMinChars = (value) => {
     setPxpipeInputValue(value);
     setPxpipeMinCharsError("");
@@ -369,7 +362,6 @@ export default function TokenSaverClient() {
           setPonytailEnabled(!!data.ponytailEnabled);
           setPonytailLevel(data.ponytailLevel || "full");
           setPxpipeEnabled(!!data.pxpipeEnabled);
-          setPxpipeAutoInstall(data.pxpipeAutoInstall !== false);
           setPxpipeMinChars(String(data.pxpipeMinChars ?? 25000));
           setPxpipeInputValue(String(data.pxpipeMinChars ?? 25000));
           setPxpipeTimeoutMs(String(data.pxpipeTimeoutMs ?? 15000));
@@ -788,18 +780,6 @@ export default function TokenSaverClient() {
           {pxpipeTimeoutError && (
             <p className="text-sm text-warning">{pxpipeTimeoutError}</p>
           )}
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium">Auto-install</p>
-              <p className="text-sm text-text-muted">
-                Install PXPIPE automatically on first use when enabled.
-              </p>
-            </div>
-            <Toggle
-              checked={pxpipeAutoInstall}
-              onChange={() => handlePxpipeAutoInstall(!pxpipeAutoInstall)}
-            />
-          </div>
           {pxpipeHealth && (
             <p className={`text-sm ${pxpipeHealth.healthy ? "text-success" : "text-warning"}`}>
               Health: {pxpipeHealth.healthy ? "OK" : pxpipeHealth.error || "Unhealthy"}

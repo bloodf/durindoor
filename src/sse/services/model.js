@@ -23,8 +23,20 @@ export function resolveCustomCapabilities(provider, model, requestPrefix, custom
   return null;
 }
 
+// Async wrapper owning the DB lookup so callers (chat handler) don't fetch
+// the whole custom-model catalog themselves — keeps localDb mocking scoped
+// to this service's tests. Fail-open: lookup errors mean "no custom caps".
+export async function loadCustomCapabilities(provider, model, requestPrefix) {
+  try {
+    const customModels = await getCustomModels();
+    return resolveCustomCapabilities(provider, model, requestPrefix, customModels);
+  } catch {
+    return null;
+  }
+}
+
 // Re-export from open-sse with localDb integration
-import { getModelAliases, getComboByName, getProviderNodes, getProviderConnections } from "@/lib/localDb";
+import { getModelAliases, getComboByName, getProviderNodes, getProviderConnections, getCustomModels } from "@/lib/localDb";
 import { parseModel as parseModelCore, resolveModelAliasFromMap, getModelInfoCore, stripRedundantNodePrefix } from "open-sse/services/model.js";
 import { filterPaidModels } from "open-sse/providers/pricing.js";
 import { isAutoComboId, familyOfAutoId, resolveAutoCombo } from "open-sse/services/autoComboResolver.js";

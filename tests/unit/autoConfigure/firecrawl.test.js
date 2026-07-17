@@ -12,6 +12,7 @@ describe("configureFirecrawl", () => {
 
   afterEach(() => {
     process.env = originalEnv;
+    delete process.env.FIRECRAWL_API_KEY;
   });
 
   it("returns no change when firecrawl not detected", async () => {

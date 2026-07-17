@@ -844,6 +844,7 @@ function ProviderCard({
       )}
     </div>
   );
+}
 ProviderCard.propTypes = {
   providerId: PropTypes.string.isRequired,
   provider: PropTypes.shape({

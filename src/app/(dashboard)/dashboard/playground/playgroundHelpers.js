@@ -1,23 +1,31 @@
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
 
 /**
- * Get a read-only connection selector state for the active provider group.
+ * Build the list of connection options for the active provider group.
  *
- * The chat handler does not read x-connection-id, so we render a read-only
- * connection label plus a notice instead of a functional selector. No state
- * is persisted because the value cannot be honored server-side.
+ * Returns an empty array for single-connection providers. Otherwise returns an
+ * "Auto" option followed by one entry per connection, using name or email as the
+ * label and falling back to a short id display.
  * @param {object|null} group
- * @returns {{ visible: boolean, label: string, notice: string }}
+ * @returns {Array<{value:string, label:string}>}
  */
-export function getConnectionSelectorState(group) {
+export function getConnectionOptions(group) {
   if (!group || !Array.isArray(group.connections) || group.connections.length <= 1) {
-    return { visible: false, label: "", notice: "" };
+    return [];
   }
-  return {
-    visible: true,
-    label: `${group.connections.length} connections`,
-    notice: "pinning unavailable in chat handler",
-  };
+  const validConnections = group.connections.filter((c) => typeof c.id === "string" && c.id.length > 0);
+  if (validConnections.length <= 1) return [];
+  return [
+    { value: "auto", label: "Auto" },
+    ...validConnections.map((connection) => ({
+      value: connection.id,
+      label: typeof connection.name === "string" && connection.name.length > 0
+        ? connection.name
+        : typeof connection.email === "string" && connection.email.length > 0
+          ? connection.email
+          : connection.id,
+    })),
+  ];
 }
 
 /**

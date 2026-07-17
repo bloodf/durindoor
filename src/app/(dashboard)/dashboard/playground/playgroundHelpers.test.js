@@ -1,35 +1,42 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  getConnectionSelectorState,
+  getConnectionOptions,
   getModelReasoningOptions,
   groupModelsByProvider,
   normalizeReasoningEffort,
 } from "./playgroundHelpers.js";
 
-describe("getConnectionSelectorState", () => {
-  it("returns not visible when the group has fewer than two connections", () => {
-    const group = { providerId: "openai", providerName: "OpenAI", connections: [{ id: "openai-1", name: "OpenAI #1" }], models: [] };
-    expect(getConnectionSelectorState(group)).toEqual({ visible: false, label: "", notice: "" });
+describe("getConnectionOptions", () => {
+  it("returns empty array for null group", () => {
+    expect(getConnectionOptions(null)).toEqual([]);
   });
 
-  it("returns not visible for a null group", () => {
-    expect(getConnectionSelectorState(null)).toEqual({ visible: false, label: "", notice: "" });
+  it("returns empty array when the group has one or fewer connections", () => {
+    const group = { providerId: "openai", connections: [{ id: "openai-1" }] };
+    expect(getConnectionOptions(group)).toEqual([]);
   });
 
-  it("shows connection count and a pinning notice for multiple connections", () => {
+  it("returns auto plus connection options with labels", () => {
     const group = {
       providerId: "openai",
-      providerName: "OpenAI",
       connections: [
-        { id: "openai-1", name: "OpenAI Primary" },
-        { id: "openai-2", name: "OpenAI Fallback" },
+        { id: "openai-1", name: "OpenAI Primary", email: "primary@example.com" },
+        { id: "openai-2", email: "fallback@example.com" },
+        { id: "openai-3" },
       ],
-      models: [],
     };
-    const state = getConnectionSelectorState(group);
-    expect(state.visible).toBe(true);
-    expect(state.label).toBe("2 connections");
-    expect(state.notice).toMatch(/pinning unavailable/i);
+    const options = getConnectionOptions(group);
+    expect(options).toEqual([
+      { value: "auto", label: "Auto" },
+      { value: "openai-1", label: "OpenAI Primary" },
+      { value: "openai-2", label: "fallback@example.com" },
+      { value: "openai-3", label: "openai-3" },
+    ]);
+  });
+
+  it("returns empty array when connections is missing", () => {
+    const group = { providerId: "openai" };
+    expect(getConnectionOptions(group)).toEqual([]);
   });
 });
 

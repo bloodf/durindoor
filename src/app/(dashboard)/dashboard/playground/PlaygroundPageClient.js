@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Badge, Button, Card, ProviderIcon, SegmentedControl } from "@/shared/components";
+import { Badge, Button, Card, ProviderIcon, SegmentedControl, Select } from "@/shared/components";
 import { getModelsByProviderId, isChatModel } from "@/shared/constants/models";
 import { isAnthropicCompatibleProvider, isOpenAICompatibleProvider } from "@/shared/constants/providers";
 import { createSseParser } from "@/lib/playground/sse";
 import { sanitizeErrorText } from "@/lib/playground/errors";
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
-import { getConnectionSelectorState, getModelReasoningOptions, groupModelsByProvider, normalizeReasoningEffort } from "./playgroundHelpers";
+import { getConnectionOptions, getModelReasoningOptions, groupModelsByProvider, normalizeReasoningEffort } from "./playgroundHelpers";
 
 const STORAGE_KEYS = {
   sessions: "basic-chat.sessions",
@@ -15,6 +15,7 @@ const STORAGE_KEYS = {
   activeProviderId: "basic-chat.activeProviderId",
   draft: "basic-chat.draft",
   reasoningEffort: "playground.reasoningEffort",
+  activeConnectionId: "playground.activeConnectionId",
 };
 
 function createId() {
@@ -197,6 +198,10 @@ export default function PlaygroundPageClient() {
     if (typeof window === "undefined") return "auto";
     return globalThis.localStorage.getItem(STORAGE_KEYS.reasoningEffort) || "auto";
   });
+  const [activeConnectionId, setActiveConnectionId] = useState(() => {
+    if (typeof window === "undefined") return "auto";
+    return globalThis.localStorage.getItem(STORAGE_KEYS.activeConnectionId) || "auto";
+  });
   const [attachments, setAttachments] = useState([]);
   const [isSending, setIsSending] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState("");
@@ -374,10 +379,11 @@ export default function PlaygroundPageClient() {
       globalThis.localStorage.setItem(STORAGE_KEYS.activeProviderId, activeProviderId);
       globalThis.localStorage.setItem(STORAGE_KEYS.draft, draft);
       globalThis.localStorage.setItem(STORAGE_KEYS.reasoningEffort, reasoningEffort);
+      globalThis.localStorage.setItem(STORAGE_KEYS.activeConnectionId, activeConnectionId);
     } catch {
       // Ignore storage errors.
     }
-  }, [isHydrated, sessions, activeSessionId, activeProviderId, draft, reasoningEffort]);
+  }, [isHydrated, sessions, activeSessionId, activeProviderId, draft, reasoningEffort, activeConnectionId]);
 
   useEffect(() => {
     if (!isHydrated || loadingData || initializedRef.current) return;
@@ -481,6 +487,7 @@ export default function PlaygroundPageClient() {
     const group = providerGroups.find((item) => item.providerId === providerId);
     if (!group || group.models.length === 0) return;
     const nextModel = group.models[0];
+    setActiveConnectionId("auto");
 
     const current = sessions.find((session) => session.id === activeSessionId);
     if (current && current.messages.length > 0) {
@@ -507,6 +514,7 @@ export default function PlaygroundPageClient() {
   const handleSelectModel = (modelId) => {
     const model = modelIndex.get(modelId);
     if (!model) return;
+    setActiveConnectionId("auto");
 
     const current = sessions.find((session) => session.id === activeSessionId);
     if (current && current.messages.length > 0) {
@@ -650,12 +658,17 @@ export default function PlaygroundPageClient() {
         body.reasoning_effort = reasoningEffort;
       }
 
+      const headers = {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      };
+      if (connectionValue !== "auto") {
+        headers["x-connection-id"] = connectionValue;
+      }
+
       const response = await fetch("/v1/chat/completions", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "text/event-stream",
-        },
+        headers,
         body: JSON.stringify(body),
         signal: controller.signal,
       });
@@ -740,10 +753,11 @@ export default function PlaygroundPageClient() {
 
   const modelLabel = activeModel ? `${activeModel.name}` : "Select model";
   const modelSubLabel = activeModel ? activeModel.requestModel : "Choose from connected providers";
-  const connectionSelector = useMemo(() => {
-    if (!activeProviderGroup) return { visible: false, label: "", notice: "" };
-    return getConnectionSelectorState(activeProviderGroup);
-  }, [activeProviderGroup]);
+  const activeConnectionOptions = useMemo(() => getConnectionOptions(activeProviderGroup), [activeProviderGroup]);
+
+  const connectionValue = activeConnectionOptions.some((opt) => opt.value === activeConnectionId)
+    ? activeConnectionId
+    : "auto";
 
   return (
     <div className="relative flex-1 flex flex-col h-full min-h-0 min-w-0 bg-bg text-text-main overflow-hidden">
@@ -824,16 +838,15 @@ export default function PlaygroundPageClient() {
           </div>
 
           <div className="flex items-center gap-2">
-            {connectionSelector.visible ? (
-              <div
-                className="hidden sm:flex items-center gap-2 rounded-2xl border border-border-subtle bg-surface px-3 py-2"
-                title="Connection pinning is not yet supported by the chat handler."
-              >
-                <span className="text-xs text-text-subtle">Connection:</span>
-                <span className="text-xs font-medium text-text-main">{connectionSelector.label}</span>
-                <span className="material-symbols-outlined text-[14px] text-text-subtle" aria-hidden="true">lock</span>
-                <span className="text-xs text-text-subtle">{connectionSelector.notice}</span>
-              </div>
+            {activeConnectionOptions.length > 1 ? (
+              <Select
+                label="Connection"
+                selectClassName="min-w-[10rem]"
+                options={activeConnectionOptions}
+                value={connectionValue}
+                onChange={(event) => setActiveConnectionId(event.target.value)}
+                placeholder="Select connection"
+              />
             ) : null}
             {reasoningOptions && reasoningOptions.length > 1 ? (
               <SegmentedControl

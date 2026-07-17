@@ -1,6 +1,13 @@
 // Provider transport schema: shared defaults + endpoint defaults + resolver (skeleton, not wired)
 import { DEFAULT_RETRY_CONFIG, FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 
+// Provider-declared response compatibility formats. These are deliberately
+// transport metadata, not model-name heuristics, so unrelated providers that
+// host a similarly named model keep their response bytes unchanged.
+export const INLINE_THINKING_FORMATS = Object.freeze({
+  THINK_TAGS: "think-tags",
+});
+
 /**
  * RegistryEntry shape — full contract for registry/{id}.js. See REGISTRY_TEMPLATE.js for a worked example.
  * Only `id` + `category` are strictly required; everything else is optional/derived.
@@ -15,7 +22,8 @@ import { DEFAULT_RETRY_CONFIG, FETCH_CONNECT_TIMEOUT_MS } from "../config/runtim
  * @property {string[]}[authModes]    Allowed auth modes when provider supports both.
  * @property {boolean} [hasOAuth]     Provider exposes an OAuth flow.
  * @property {boolean} [noAuth]       Provider needs no credentials (local/free).
- * @property {Object}  [display]      UI: {name,icon,color,textIcon,website,notice,deprecated,deprecationNotice,kindNotice,mediaPriority}.
+ * @property {boolean} [autoComboNoAuth] Opt-in: seed this chat no-auth provider into the auto-combo pool by default (#6889); its connection row's isActive=false then gates it out.
+ * @property {Object}  [display]      UI: {name,icon,color,textIcon,iconUrl,website,notice,deprecated,deprecationNotice,kindNotice,mediaPriority}.
  * @property {Object}  [transport]    Runtime HTTP config (see TransportConfig below). Builds PROVIDERS[id].
  * @property {Object}  [oauth]        OAuth flow config (see OAuthConfig). Builds PROVIDER_OAUTH[id].
  * @property {Object}  [media]        Non-LLM services (see MediaConfig). Builds PROVIDER_MEDIA[id].
@@ -23,11 +31,14 @@ import { DEFAULT_RETRY_CONFIG, FETCH_CONNECT_TIMEOUT_MS } from "../config/runtim
  * @property {Object}  [features]     Feature flags, e.g. {usage:true}.
  * @property {Object}  [thinkingConfig] Reasoning UI: {options:[...],defaultMode}.
  * @property {boolean} [passthroughModels] Forward client model id untouched.
+ * @property {boolean} [passthroughConnectionWideErrors] Treat 5xx / network errors as account-wide for passthrough providers that share one connection (currently only NVIDIA NIM).
  *
  * TransportConfig: { baseUrl, format, headers, auth, forceStream, urlSuffix, quirks, retry, timeoutMs,
  *   executor, clientId, clientSecret, tokenUrl, refreshUrl, usage, cliVersion, apiClient, regions,
- *   defaultRegion, modelsFetcher, validateUrl, responsesUrl } — clientId/clientSecret/tokenUrl are
+ *   defaultRegion, modelsFetcher, validateUrl, validationModelId, responsesUrl } — clientId/clientSecret/tokenUrl are
  *   injected from `oauth` automatically (single source); declare them in `oauth`, not here.
+ * `quirks.inlineThinking` is `{ format, models }` and applies only to that
+ * transport and the exact listed model ids.
  *
  * OAuthConfig: { clientId, authorizeUrl, tokenUrl, deviceCodeUrl, refreshUrl, scope|scopes, redirectUri,
  *   callbackPath, fixedPort, codeChallengeMethod, extraParams, refresh:{encoding,scope}, refreshLeadMs,

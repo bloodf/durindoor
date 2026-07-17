@@ -1,25 +1,25 @@
 ---
-name: 9router-web-fetch
-description: Fetch URL → markdown / text / HTML via 9Router /v1/web/fetch using Firecrawl / Jina Reader / Tavily Extract / Exa Contents. Use when the user wants to scrape a webpage, extract URL content, read article, or convert a URL to markdown.
+name: durindoor-web-fetch
+description: Fetch URL → markdown / text / HTML via DurinDoor /v1/web/fetch using Firecrawl / Jina Reader / Tavily Extract / Exa Contents. Use when the user wants to scrape a webpage, extract URL content, read article, or convert a URL to markdown.
 ---
 
-# 9Router — Web Fetch
+# DurinDoor — Web Fetch
 
-Requires `NINEROUTER_URL` (and `NINEROUTER_KEY` if auth enabled). See https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/9router/SKILL.md for setup.
+Requires `DURINDOOR_URL` (and `DURINDOOR_KEY` if auth enabled). See https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/master/skills/durindoor/SKILL.md for setup.
 
 ## Discover
 
 ```bash
-curl $NINEROUTER_URL/v1/models/web | jq '.data[] | select(.kind=="webFetch") | .id'
+curl $DURINDOOR_URL/v1/models/web | jq '.data[] | select(.kind=="webFetch") | .id'
 # Per-provider params
-curl "$NINEROUTER_URL/v1/models/info?id=firecrawl/fetch"
+curl "$DURINDOOR_URL/v1/models/info?id=firecrawl/fetch"
 ```
 
 IDs end in `/fetch` (e.g. `firecrawl/fetch`, `jina/fetch`). `fetch-combo` chains providers with auto-fallback.
 
 ## Endpoint
 
-`POST $NINEROUTER_URL/v1/web/fetch`
+`POST $DURINDOOR_URL/v1/web/fetch`
 
 | Field | Required | Notes |
 |---|---|---|
@@ -32,32 +32,32 @@ IDs end in `/fetch` (e.g. `firecrawl/fetch`, `jina/fetch`). `fetch-combo` chains
 
 ### Jina Reader
 ```bash
-curl -X POST $NINEROUTER_URL/v1/web/fetch \
-  -H "Authorization: Bearer $NINEROUTER_KEY" \
+curl -X POST $DURINDOOR_URL/v1/web/fetch \
+  -H "Authorization: Bearer $DURINDOOR_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"model":"jina-reader","url":"https://9router.com","format":"markdown"}'
+  -d '{"model":"jina-reader","url":"https://durindoor.com","format":"markdown"}'
 ```
 
 ### Exa
 ```bash
-curl -X POST $NINEROUTER_URL/v1/web/fetch \
-  -H "Authorization: Bearer $NINEROUTER_KEY" \
+curl -X POST $DURINDOOR_URL/v1/web/fetch \
+  -H "Authorization: Bearer $DURINDOOR_KEY" \
   -H "Content-Type: application/json" \
   -d '{"model":"exa","url":"https://example.com","format":"markdown","max_characters":0}'
 ```
 
 ### Firecrawl
 ```bash
-curl -X POST $NINEROUTER_URL/v1/web/fetch \
-  -H "Authorization: Bearer $NINEROUTER_KEY" \
+curl -X POST $DURINDOOR_URL/v1/web/fetch \
+  -H "Authorization: Bearer $DURINDOOR_KEY" \
   -H "Content-Type: application/json" \
   -d '{"model":"firecrawl","url":"https://example.com","format":"markdown","max_characters":0}'
 ```
 
 ### Tavily
 ```bash
-curl -X POST $NINEROUTER_URL/v1/web/fetch \
-  -H "Authorization: Bearer $NINEROUTER_KEY" \
+curl -X POST $DURINDOOR_URL/v1/web/fetch \
+  -H "Authorization: Bearer $DURINDOOR_KEY" \
   -H "Content-Type: application/json" \
   -d '{"model":"tavily","url":"https://example.com","format":"markdown","max_characters":0}'
 ```
@@ -66,9 +66,9 @@ curl -X POST $NINEROUTER_URL/v1/web/fetch \
 JS:
 
 ```js
-const r = await fetch(`${process.env.NINEROUTER_URL}/v1/web/fetch`, {
+const r = await fetch(`${process.env.DURINDOOR_URL}/v1/web/fetch`, {
   method: "POST",
-  headers: { "Authorization": `Bearer ${process.env.NINEROUTER_KEY}`, "Content-Type": "application/json" },
+  headers: { "Authorization": `Bearer ${process.env.DURINDOOR_KEY}`, "Content-Type": "application/json" },
   body: JSON.stringify({ model: "fetch-combo", url: "https://example.com", format: "markdown", max_characters: 5000 }),
 });
 const { data } = await r.json();

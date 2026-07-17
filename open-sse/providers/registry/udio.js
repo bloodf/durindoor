@@ -1,0 +1,26 @@
+export default {
+  id: "udio",
+  priority: 244,
+  alias: "udio",
+  uiAlias: "udio",
+  display: {
+    name: "Udio",
+    icon: "music_note",
+    color: "#0F172A",
+    textIcon: "UD",
+    website: "https://udio.com",
+  },
+  category: "webCookie",
+  authType: "cookie",
+  authHint: "Paste the Udio session cookie from udio.com.",
+  serviceKinds: ["music"],
+  hiddenKinds: ["music"],
+  transport: {
+    baseUrl: "https://www.udio.com/api/generate-proxy",
+    format: "openai",
+    executor: "udio",
+    authType: "cookie",
+  },
+  musicConfig: { baseUrl: "https://www.udio.com/api/generate-proxy" },
+  models: [{ id: "udio-default", name: "Udio Default", kind: "music" }],
+};

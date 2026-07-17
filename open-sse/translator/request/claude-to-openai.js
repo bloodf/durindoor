@@ -2,7 +2,7 @@ import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { adjustMaxTokens } from "../formats/maxTokens.js";
 import { encodeDataUri } from "../concerns/image.js";
-import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK } from "../schema/index.js";
+import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, CLAUDE_REDACTED_THINKING_BLOCKS } from "../schema/index.js";
 import { collapseTextParts } from "../concerns/message.js";
 
 function stripAnthropicBillingHeader(text) {
@@ -10,7 +10,18 @@ function stripAnthropicBillingHeader(text) {
   return text.replace(/^x-anthropic-billing-header:[^\n]*(?:\r?\n)?/i, "");
 }
 
-// Convert Claude request to OpenAI format
+/**
+ * Translate an Anthropic `/v1/messages` request body into the OpenAI
+ * Chat Completions shape consumed by the upstream executor.
+ *
+ * @param {string} model Resolved upstream model id.
+ * @param {object} body Anthropic request body.
+ * @param {object} [body.metadata] Anthropic request metadata.
+ * @param {string} [body.metadata.user_id] End-user identifier; forwarded as the
+ *   OpenAI `user` field (abuse detection / caching) only when a non-empty string.
+ * @param {boolean} stream Whether the caller requested a streaming response.
+ * @returns {object} OpenAI-shaped request body.
+ */
 export function claudeToOpenAIRequest(model, body, stream) {
   const result = {
     model: model,
@@ -90,6 +101,12 @@ export function claudeToOpenAIRequest(model, body, stream) {
     result.reasoning = body.reasoning;
   }
 
+  // Anthropic metadata.user_id → OpenAI `user` (non-empty strings only).
+  const userId = body.metadata?.user_id;
+  if (typeof userId === "string" && userId.length > 0) {
+    result.user = userId;
+  }
+
   return result;
 }
 
@@ -129,14 +146,30 @@ function fixMissingToolResponsesOpenAI(messages) {
   }
 }
 
-// Wrap mid-conversation system text so it ends as a user turn (avoids Anthropic prefill 400)
+// Wrap mid-conversation system text so it ends as a user turn (avoids Anthropic prefill 400).
+// Uses <instructions> tags that Claude models treat as authoritative directives.
 function systemReminderText(content) {
   const parts = Array.isArray(content)
     ? content.filter(c => c?.type === CLAUDE_BLOCK.TEXT).map(c => c.text || "")
     : [typeof content === "string" ? content : ""];
   const text = parts.filter(Boolean).join("\n");
   if (!text.trim()) return "";
-  return `<system-reminder>\n${text}\n</system-reminder>`;
+  return `<instructions>\n${text}\n</instructions>`;
+}
+
+// Attach stashed redacted_thinking blocks to an intermediate OpenAI assistant
+// message as a non-enumerable symbol property: visible to the in-process
+// openai->claude pivot, invisible to JSON.stringify and to key-spread copies
+// (`{ ...msg }`) that would forward it onto the wire.
+function attachRedactedThinking(message, redactedThinking) {
+  if (redactedThinking.length === 0) return message;
+  Object.defineProperty(message, CLAUDE_REDACTED_THINKING_BLOCKS, {
+    value: redactedThinking,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  });
+  return message;
 }
 
 // Convert single Claude message - returns single message or array of messages
@@ -160,6 +193,7 @@ function convertClaudeMessage(msg) {
     const toolCalls = [];
     const toolResults = [];
     let reasoningContent = "";
+    const redactedThinking = [];
 
     for (const block of msg.content) {
       switch (block.type) {
@@ -169,6 +203,14 @@ function convertClaudeMessage(msg) {
 
         case CLAUDE_BLOCK.THINKING:
           if (block.thinking) reasoningContent += block.thinking;
+          break;
+
+        // Stash under a non-enumerable symbol: the OpenAI wire format cannot
+        // carry opaque redacted payloads, and flattening into reasoning_content
+        // would leak encrypted bytes as plain text. Only well-formed blocks
+        // (type + string data) survive the bridge.
+        case CLAUDE_BLOCK.REDACTED_THINKING:
+          if (typeof block.data === "string") redactedThinking.push({ ...block });
           break;
 
         case CLAUDE_BLOCK.IMAGE:
@@ -188,6 +230,9 @@ function convertClaudeMessage(msg) {
             type: OPENAI_BLOCK.FUNCTION,
             function: {
               name: block.name,
+              // A string `input` is already serialized JSON (e.g. produced by a
+              // prior bridge pass) — pass it through verbatim; re-stringifying
+              // would double-encode it into a quoted blob downstream.
               arguments: typeof block.input === "string" ? block.input : JSON.stringify(block.input || {})
             }
           });
@@ -248,11 +293,12 @@ function convertClaudeMessage(msg) {
         result.reasoning_content = reasoningContent;
       }
       result.tool_calls = toolCalls;
-      return result;
+      return attachRedactedThinking(result, redactedThinking);
     }
 
-    // Return content
-    if (parts.length > 0 || reasoningContent) {
+    // Return content (redactedThinking alone must also keep the message
+    // alive — otherwise a redacted-only assistant turn would return null).
+    if (parts.length > 0 || reasoningContent || redactedThinking.length > 0) {
       const result2 = { role };
       if (parts.length > 0) {
         result2.content = collapseTextParts(parts);
@@ -260,12 +306,12 @@ function convertClaudeMessage(msg) {
       if (reasoningContent) {
         result2.reasoning_content = reasoningContent;
       }
-      return result2;
+      return attachRedactedThinking(result2, redactedThinking);
     }
     
     // Empty content array
     if (msg.content.length === 0) {
-      return { role, content: "" };
+      return attachRedactedThinking({ role, content: "" }, redactedThinking);
     }
   }
 

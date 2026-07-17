@@ -16,8 +16,8 @@ import { SSE_DONE } from "../utils/sseConstants.js";
  * 9router can consume it without further format translation.
  */
 export class CommandCodeExecutor extends BaseExecutor {
-  constructor() {
-    super("commandcode", PROVIDERS.commandcode);
+  constructor(provider = "commandcode") {
+    super(provider, PROVIDERS[provider] || PROVIDERS.commandcode);
   }
 
   transformRequest(model, body, stream, credentials) {
@@ -47,15 +47,16 @@ export class CommandCodeExecutor extends BaseExecutor {
     const result = await super.execute(opts);
     if (!result?.response?.ok || !result.response.body) return result;
     result.response = wrapNdjsonAsOpenAISse(result.response, opts.model);
+    result.terminalProvenance = "validated";
     return result;
   }
 }
 
-function wrapNdjsonAsOpenAISse(originalResponse, model) {
+export function wrapNdjsonAsOpenAISse(originalResponse, model) {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
   let buffer = "";
-  const state = { model };
+  const state = { model, rawTerminalSeen: false, failureSeen: false };
 
   const emitChunks = (chunks, controller) => {
     if (!chunks) return;
@@ -66,24 +67,53 @@ function wrapNdjsonAsOpenAISse(originalResponse, model) {
     }
   };
 
+  const emitFailure = (controller, message) => {
+    if (state.failureSeen) return;
+    state.failureSeen = true;
+    controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: { message, type: "stream_error" } })}\n\n`));
+  };
+
+  const processLine = (line, controller) => {
+    const trimmed = line.trim();
+    if (!trimmed || state.failureSeen) return;
+    if (state.rawTerminalSeen) {
+      emitFailure(controller, "CommandCode returned data after finish");
+      return;
+    }
+    const json = trimmed.startsWith("data:") ? trimmed.slice(5).trim() : trimmed;
+    let event;
+    try {
+      event = JSON.parse(json);
+    } catch {
+      emitFailure(controller, "CommandCode returned malformed stream data");
+      return;
+    }
+    if (event?.type === "error") {
+      emitFailure(controller, "CommandCode upstream stream failed");
+      return;
+    }
+    if (event?.type === "finish") state.rawTerminalSeen = true;
+    emitChunks(commandCodeToOpenAIResponse(event, state), controller);
+  };
+
   const transform = new TransformStream({
     transform(chunk, controller) {
       buffer += decoder.decode(chunk, { stream: true });
       const lines = buffer.split("\n");
       buffer = lines.pop() || "";
       for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        // Translate AI SDK v5 NDJSON line to one or more OpenAI chunks
-        emitChunks(commandCodeToOpenAIResponse(trimmed, state), controller);
+        processLine(line, controller);
       }
     },
     flush(controller) {
       const trimmed = buffer.trim();
-      if (trimmed) {
-        emitChunks(commandCodeToOpenAIResponse(trimmed, state), controller);
+      if (trimmed) processLine(trimmed, controller);
+      if (!state.rawTerminalSeen && !state.failureSeen) {
+        emitFailure(controller, "CommandCode stream ended before finish");
       }
-      controller.enqueue(encoder.encode(SSE_DONE));
+      if (state.rawTerminalSeen && !state.failureSeen) {
+        controller.enqueue(encoder.encode(SSE_DONE));
+      }
     },
   });
 

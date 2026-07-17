@@ -8,7 +8,6 @@ import { v4 as uuidv4 } from "uuid";
 import { resolveSessionId } from "../../utils/sessionManager.js";
 import {
   resolveKiroModel,
-  toKiroModelId,
   resolveKiroThinkingBudget,
   buildThinkingSystemPrefix,
   KIRO_AGENTIC_SYSTEM_PROMPT,
@@ -279,29 +278,9 @@ function convertMessages(messages, tools, model) {
     let msg = messages[i];
     let role = msg.role;
 
-    // Normalize: system -> user (with <system-reminder> wrapper to mark provenance)
-    // tool -> user (raw content, no wrapper — tool output is already structured)
-    if (role === ROLE.SYSTEM) {
-      role = ROLE.USER;
-      // Wrap in <system-reminder> so the model can distinguish injected system
-      // instructions from actual user input (#2306 — without this the full Claude Code
-      // system prompt appears as raw user text, leaking context and wasting tokens).
-      const extractText = (content) => {
-        if (typeof content === "string") return content;
-        if (Array.isArray(content)) {
-          return content
-            .filter(c => c.type === OPENAI_BLOCK.TEXT || c.text)
-            .map(c => c.text || "")
-            .filter(Boolean)
-            .join("\n");
-        }
-        return "";
-      };
-      const rawText = extractText(msg.content);
-      if (rawText) {
-        msg = { ...msg, content: `<system-reminder>\n${rawText}\n</system-reminder>` };
-      }
-    } else if (role === ROLE.TOOL) {
+    // Normalize: system/tool -> user
+    const wasSystem = role === ROLE.SYSTEM;
+    if (role === ROLE.SYSTEM || role === ROLE.TOOL) {
       role = ROLE.USER;
     }
 
@@ -369,7 +348,10 @@ function convertMessages(messages, tools, model) {
           content: [{ text: toolContent }]
         });
       } else if (content) {
-        pendingUserContent.push(content);
+        // <instructions> tags: Claude models treat these as authoritative directives.
+        pendingUserContent.push(
+          wasSystem ? `<instructions>\n${content}\n</instructions>` : content
+        );
       }
     } else if (role === ROLE.ASSISTANT) {
       // Extract text content and tool uses
@@ -543,17 +525,23 @@ function convertMessages(messages, tools, model) {
  *    `thinking`, OpenAI `reasoning_effort`, AMP/Cursor magic tags, and model
  *    name hints.
  */
-export function openaiToKiroRequest(model, body, stream, credentials) {
+export function openaiToKiroRequest(model, body, stream, credentials, translationContext = null) {
   const messages = body.messages || [];
   const tools = body.tools || [];
   const maxTokens = 32000;
   const temperature = body.temperature;
   const topP = body.top_p;
 
-  const { upstream: upstreamModel, agentic } = resolveKiroModel(model);
-  // Kiro API requires dash-notation version numbers (claude-sonnet-4-5 not claude-sonnet-4.5)
-  const kiroModelId = toKiroModelId(upstreamModel);
-  const thinkingBudget = resolveKiroThinkingBudget(body, credentials?.rawHeaders, model);
+  // Synthetic `-thinking` / `-agentic` suffixes are local routing hints. The
+  // resolved upstream ID is already Kiro's wire ID; live Kiro accepts Claude
+  // version dots (for example `claude-sonnet-4.5`) and must receive them intact.
+  const { upstream: kiroModelId, agentic } = resolveKiroModel(model);
+  const thinkingBudget = resolveKiroThinkingBudget(
+    body,
+    credentials?.rawHeaders,
+    model,
+    translationContext?.thinkingIntent,
+  );
 
   const { history, currentMessage } = convertMessages(messages, tools, kiroModelId);
 
@@ -584,7 +572,12 @@ export function openaiToKiroRequest(model, body, stream, credentials) {
   const payload = {
     conversationState: {
       chatTriggerType: "MANUAL",
-      conversationId: resolveSessionId({ headers: credentials?.rawHeaders, body, connectionId: credentials?.connectionId, scope: "kiro" }),
+      conversationId: translationContext?.clientSessionId || resolveSessionId({
+        headers: credentials?.rawHeaders,
+        body,
+        connectionId: credentials?.connectionId,
+        scope: "kiro",
+      }),
       currentMessage: {
         userInputMessage: {
           content: finalContent,
@@ -612,12 +605,6 @@ export function openaiToKiroRequest(model, body, stream, credentials) {
     if (temperature !== undefined) payload.inferenceConfig.temperature = temperature;
     if (topP !== undefined) payload.inferenceConfig.topP = topP;
   }
-
-  // Tag payload so the executor can route the upstream model id correctly.
-  Object.defineProperty(payload, "_kiroUpstreamModel", {
-    value: kiroModelId,
-    enumerable: false
-  });
 
   return payload;
 }

@@ -52,12 +52,6 @@ export default function ClaudeToolCard({
   const configStatus = getConfigStatus();
 
   useEffect(() => {
-    if (apiKeys?.length > 0 && !selectedApiKey) {
-      setSelectedApiKey(apiKeys[0].key);
-    }
-  }, [apiKeys, selectedApiKey]);
-
-  useEffect(() => {
     if (initialStatus) setClaudeStatus(initialStatus);
   }, [initialStatus]);
 
@@ -109,13 +103,8 @@ export default function ClaudeToolCard({
           }
         }
       });
-      // Only set selectedApiKey if it exists in apiKeys list
-      const tokenFromFile = env.ANTHROPIC_AUTH_TOKEN;
-      if (tokenFromFile && apiKeys?.some(k => k.key === tokenFromFile)) {
-        setSelectedApiKey(tokenFromFile);
-      }
     }
-  }, [claudeStatus, apiKeys, tool.defaultModels, onModelMappingChange]);
+  }, [claudeStatus, tool.defaultModels, onModelMappingChange]);
 
   const checkClaudeStatus = async () => {
     setCheckingClaude(true);
@@ -146,9 +135,9 @@ export default function ClaudeToolCard({
     try {
       const env = { ANTHROPIC_BASE_URL: getEffectiveBaseUrl() };
 
-      // Get key from dropdown, fallback to first key or sk_durindoor for localhost
+      // Management APIs never return stored secrets; operators paste a saved
+      // credential or use the local no-auth placeholder.
       const keyToUse = selectedApiKey?.trim()
-        || (apiKeys?.length > 0 ? apiKeys[0].key : null)
         || (!cloudEnabled ? "sk_durindoor" : null);
 
       if (keyToUse) {

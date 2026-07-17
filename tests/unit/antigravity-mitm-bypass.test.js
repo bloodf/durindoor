@@ -6,8 +6,8 @@ const serverPath = path.resolve(process.cwd(), "../src/mitm/server.js");
 const source = fs.readFileSync(serverPath, "utf8");
 
 describe("Antigravity MITM routing", () => {
-  it("bypasses the legacy antigravity interceptor after model mapping", () => {
-    expect(source).toContain('if (tool === "antigravity") {');
-    expect(source).toContain('return passthrough(req, res, bodyBuffer);');
+  it("dispatches the full override to the Antigravity interceptor", () => {
+    expect(source).toContain('handlers[tool].intercept(req, res, bodyBuffer, mappedOverride, passthrough)');
+    expect(source).not.toContain('if (tool === "antigravity") {\n      return passthrough(req, res, bodyBuffer);');
   });
 });

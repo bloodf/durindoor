@@ -42,7 +42,13 @@ function ValueCells({ item, viewMode, isSummary = false }) {
           {item.cachedTokens ? fmt(item.cachedTokens) : "—"}
         </td>
         <td className="px-6 py-3 text-right text-text-muted">
+          {item.cacheCreationTokens ? fmt(item.cacheCreationTokens) : "—"}
+        </td>
+        <td className="px-6 py-3 text-right text-text-muted">
           {isSummary && item.completionTokens === undefined ? "—" : fmt(item.completionTokens)}
+        </td>
+        <td className="px-6 py-3 text-right text-text-muted">
+          {item.reasoningTokens ? fmt(item.reasoningTokens) : "—"}
         </td>
         <td className="px-6 py-3 text-right font-medium">
           {fmt(item.totalTokens)}
@@ -59,7 +65,13 @@ function ValueCells({ item, viewMode, isSummary = false }) {
         {item.cachedCost ? fmtCost(item.cachedCost) : "—"}
       </td>
       <td className="px-6 py-3 text-right text-text-muted">
+        {item.cacheCreationCost ? fmtCost(item.cacheCreationCost) : "—"}
+      </td>
+      <td className="px-6 py-3 text-right text-text-muted">
         {isSummary && item.outputCost === undefined ? "—" : fmtCost(item.outputCost)}
+      </td>
+      <td className="px-6 py-3 text-right text-text-muted">
+        {item.reasoningCost ? fmtCost(item.reasoningCost) : "—"}
       </td>
       <td className="px-6 py-3 text-right font-medium text-warning">
         {fmtCost(item.totalCost || item.cost)}
@@ -140,14 +152,18 @@ export default function UsageTable({
       return [
         { field: "promptTokens", label: "Input Tokens" },
         { field: "cachedTokens", label: "Cached" },
+        { field: "cacheCreationTokens", label: "Cache Write" },
         { field: "completionTokens", label: "Output Tokens" },
+        { field: "reasoningTokens", label: "Reasoning" },
         { field: "totalTokens", label: "Total Tokens" },
       ];
     }
     return [
       { field: "promptTokens", label: "Input Cost" },
       { field: "cachedCost", label: "Cached Cost" },
+      { field: "cacheCreationCost", label: "Cache Write Cost" },
       { field: "completionTokens", label: "Output Cost" },
+      { field: "reasoningCost", label: "Reasoning Cost" },
       { field: "cost", label: "Total Cost" },
     ];
   }, [viewMode]);

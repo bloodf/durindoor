@@ -2,9 +2,11 @@
 
 import { updateInstance, getInstanceById } from "@/lib/localDb";
 import { isRecord } from "./guards";
+import { assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
 
 const REFRESH_LEEWAY_MS = 60_000;
 const KEY = "__9routerGatewayRefresh";
+const MAX_REDIRECT_HOPS = 5;
 
 function inflightStore() {
   if (!globalThis[KEY]) {
@@ -84,11 +86,42 @@ async function doRefresh(instance, { tokenEndpoint, clientId, clientSecret, reso
   if (clientSecret) body.set("client_secret", clientSecret);
   if (resource) body.set("resource", resource);
 
-  const res = await fetch(tokenEndpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-    body: body.toString(),
-  });
+  // POST the refresh grant. Same-origin-only on 3xx — the AS may
+  // legitimately 308/301 http→https or relocate the token endpoint,
+  // but a cross-origin redirect would leak the refresh_token +
+  // client_secret to an unrelated host. We manually re-validate every
+  // hop via the SSRF guard and reject origin changes.
+  let currentUrl = tokenEndpoint;
+  let res = null;
+  for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop++) {
+    res = await fetch(currentUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      body: body.toString(),
+      redirect: "manual",
+    });
+    if (!(res.status >= 300 && res.status < 400)) break;
+    const location = res.headers.get("location");
+    if (!location) break;
+    let next;
+    try {
+      next = new URL(location, currentUrl);
+    } catch {
+      throw new Error("refresh redirect Location is not a valid URL");
+    }
+    try {
+      assertOutboundUrlAllowed(next);
+    } catch (err) {
+      if (err instanceof OutboundUrlGuardError) {
+        throw new Error(`refresh redirect blocked: ${err.message}`);
+      }
+      throw err;
+    }
+    if (next.origin !== new URL(currentUrl).origin) {
+      throw new Error(`refresh redirect crossed origin: ${new URL(currentUrl).origin} → ${next.origin}`);
+    }
+    currentUrl = next.toString();
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`refresh ${res.status}: ${text.slice(0, 200)}`);

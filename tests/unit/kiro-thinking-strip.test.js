@@ -1,6 +1,23 @@
 import { describe, it, expect } from "vitest";
 import { KiroExecutor } from "../../open-sse/executors/kiro.js";
 
+const CRC32_TABLE = new Uint32Array(256);
+for (let index = 0; index < CRC32_TABLE.length; index++) {
+  let value = index;
+  for (let bit = 0; bit < 8; bit++) {
+    value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+  }
+  CRC32_TABLE[index] = value >>> 0;
+}
+
+function crc32(bytes) {
+  let checksum = 0xffffffff;
+  for (const byte of bytes) {
+    checksum = (checksum >>> 8) ^ CRC32_TABLE[(checksum ^ byte) & 0xff];
+  }
+  return (checksum ^ 0xffffffff) >>> 0;
+}
+
 function createMockFrame(eventType, payloadObj) {
   const payloadStr = JSON.stringify(payloadObj);
   const payloadBytes = new TextEncoder().encode(payloadStr);
@@ -18,6 +35,7 @@ function createMockFrame(eventType, payloadObj) {
 
   view.setUint32(0, totalLength, false);
   view.setUint32(4, headerLength, false);
+  view.setUint32(8, crc32(buffer.subarray(0, 8)), false);
 
   let offset = 12;
   buffer[offset++] = headerNameBytes.length;
@@ -31,6 +49,7 @@ function createMockFrame(eventType, payloadObj) {
   offset += headerValueBytes.length;
 
   buffer.set(payloadBytes, offset);
+  view.setUint32(totalLength - 4, crc32(buffer.subarray(0, -4)), false);
   
   return buffer;
 }
@@ -54,11 +73,13 @@ describe("KiroExecutor thinking tag stripping", () => {
     // Create frames
     const f1 = createMockFrame("assistantResponseEvent", { content: "Here is my answer. <thinking>Let me think..." });
     const f2 = createMockFrame("assistantResponseEvent", { content: "still thinking...</thinking> Yes, 42." });
+    const stop = createMockFrame("messageStopEvent", {});
     
     const readableStream = new ReadableStream({
       start(controller) {
         controller.enqueue(f1);
         controller.enqueue(f2);
+        controller.enqueue(stop);
         controller.close();
       }
     });
@@ -97,11 +118,13 @@ describe("KiroExecutor thinking tag stripping", () => {
     
     const f0 = createMockFrame("reasoningContentEvent", { text: "I am reasoning" });
     const f1 = createMockFrame("assistantResponseEvent", { content: "<thinking>purely thinking...</thinking>" });
+    const stop = createMockFrame("messageStopEvent", {});
     
     const readableStream = new ReadableStream({
       start(controller) {
         controller.enqueue(f0);
         controller.enqueue(f1);
+        controller.enqueue(stop);
         controller.close();
       }
     });

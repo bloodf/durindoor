@@ -3,10 +3,137 @@ import { PROVIDERS } from "../config/providers.js";
 import { resolveKiroModel } from "../config/kiroConstants.js";
 import { v4 as uuidv4 } from "uuid";
 import { refreshKiroToken } from "../services/tokenRefresh.js";
-import { resolveKiroDataPlaneUrl } from "../config/kiroConstants.js";
+import { enrichKiroCredentialsFromSsoCache } from "../services/kiroModels.js";
 import { SSE_DONE, SSE_HEADERS } from "../utils/sseConstants.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
-import { resolveKiroRegion, buildKiroBaseUrls } from "../config/kiroRegions.js";
+import {
+  resolveKiroRegion,
+  buildKiroBaseUrls,
+  buildKiroProfileEndpoint,
+  regionFromProfileArn,
+  KIRO_DEFAULT_REGION,
+} from "../config/kiroRegions.js";
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { resolveContinuationId, extractClientSessionId } from "../utils/sessionManager.js";
+
+// Strict AWS region id allowlist (incl. GovCloud partition `us-gov-west-1`),
+// matching the Bedrock validator shape. Used as a trust-boundary guard before
+// interpolating a stored/ARN-derived region into a `q.<region>.amazonaws.com`
+// host (SSRF). Stored credentials and ARN segments are untrusted input.
+const AWS_REGION_PATTERN = /^[a-z]{2}(?:-gov)?-[a-z]+-\d+$/;
+function isValidAwsRegion(r) {
+  return typeof r === "string" && AWS_REGION_PATTERN.test(r.toLowerCase());
+}
+
+// Region the data plane must target: the profile's own region is authoritative
+// (Q Developer profile can live in a different region than the Identity Center
+// that minted the token), then explicit credential region, then default.
+// Each candidate is validated before it can be interpolated into a host.
+function resolveKiroRuntimeRegion(credentials) {
+  const psd = credentials?.providerSpecificData || {};
+  const fromArn = regionFromProfileArn(psd.profileArn);
+  if (isValidAwsRegion(fromArn)) return fromArn.toLowerCase();
+  const fromCred = resolveKiroRegion(credentials);
+  if (isValidAwsRegion(fromCred)) return fromCred.toLowerCase();
+  return KIRO_DEFAULT_REGION;
+}
+
+// Process-lifetime cache of resolved profileArns keyed by access token, so we
+// only hit ListAvailableProfiles once per token when the stored credential has
+// none (typical for IDC/Organization accounts outside us-east-1).
+const KIRO_PROFILE_ARN_CACHE = new Map();
+const KIRO_MAX_EVENTSTREAM_FRAME_BYTES = 16 * 1024 * 1024;
+const KIRO_MAX_EVENTSTREAM_HEADERS_BYTES = 128 * 1024;
+const KIRO_POST_STOP_EVENT_TYPES = new Set(["contextUsageEvent", "meteringEvent", "metricsEvent"]);
+const KIRO_EVENTSTREAM_CRC_TABLE = new Uint32Array(256);
+for (let index = 0; index < KIRO_EVENTSTREAM_CRC_TABLE.length; index++) {
+  let value = index;
+  for (let bit = 0; bit < 8; bit++) {
+    value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+  }
+  KIRO_EVENTSTREAM_CRC_TABLE[index] = value >>> 0;
+}
+
+function eventStreamCrc32(bytes) {
+  let checksum = 0xffffffff;
+  for (const byte of bytes) {
+    checksum = (checksum >>> 8) ^ KIRO_EVENTSTREAM_CRC_TABLE[(checksum ^ byte) & 0xff];
+  }
+  return (checksum ^ 0xffffffff) >>> 0;
+}
+
+/** Well-known regions to probe when the credential region yields no profile. */
+const KIRO_PROFILE_FALLBACK_REGIONS = ["us-east-1", "eu-central-1"];
+
+/**
+ * Resolve a Kiro/CodeWhisperer profileArn for a bearer token via
+ * ListAvailableProfiles, trying the credential's own region first and then the
+ * well-known Q Developer regions. The Q Developer profile can live in a
+ * different region than the IAM Identity Center that minted the token (e.g. IDC
+ * in eu-north-1 but the profile in eu-central-1 — Q Developer is not hosted in
+ * every SSO region). Returns the first ARN found (preferring one whose region
+ * matches the queried region) or null. Exported for unit testing.
+ *
+ * @param {string} accessToken Bearer token for CodeWhisperer.
+ * @param {string} preferredRegion Credential / SSO region to try first.
+ * @param {object} [proxyOptions] Proxy passthrough for proxyAwareFetch.
+ * @param {object} [log] Optional logger with debug/info/warn.
+ * @param {Function} [fetchImpl] Injected fetch (defaults to proxyAwareFetch).
+ * @returns {Promise<string|null>}
+ */
+export async function resolveKiroProfileArnAcrossRegions(
+  accessToken,
+  preferredRegion,
+  proxyOptions = null,
+  log = null,
+  fetchImpl = proxyAwareFetch,
+  signal = null,
+) {
+  if (!accessToken) return null;
+  const rawCandidates = [...new Set(
+    [preferredRegion, ...KIRO_PROFILE_FALLBACK_REGIONS]
+      .filter(Boolean)
+      .map((region) => typeof region === "string" ? region.trim().toLowerCase() : region),
+  )];
+  // Trust boundary: providerSpecificData.region is stored from user input and is
+  // interpolated into the control-plane host. Drop anything that isn't a valid
+  // AWS region id rather than building an arbitrary `q.<x>.amazonaws.com` URL.
+  const candidates = rawCandidates.filter(isValidAwsRegion);
+  for (const region of candidates) {
+    if (signal?.aborted) throw signal.reason instanceof Error
+      ? signal.reason
+      : new DOMException("Kiro profile discovery aborted", "AbortError");
+    try {
+      const response = await fetchImpl(buildKiroProfileEndpoint(region), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-amz-json-1.0",
+          "x-amz-target": "AmazonCodeWhispererService.ListAvailableProfiles",
+          "Authorization": `Bearer ${accessToken}`,
+          "Accept": "application/json",
+        },
+        body: JSON.stringify({ maxResults: 10 }),
+        signal,
+      }, proxyOptions);
+      if (!response?.ok) {
+        log?.debug?.("KIRO", `ListAvailableProfiles ${region} → ${response?.status}`);
+        try { void response?.body?.cancel?.().catch?.(() => {}); } catch { /* already closed */ }
+        continue;
+      }
+      const data = await response.json().catch(() => null);
+      const profiles = Array.isArray(data?.profiles) ? data.profiles : [];
+      if (profiles.length === 0) continue;
+      const arnOf = (p) => (p?.arn || p?.profileArn || "").trim();
+      const match = profiles.find((p) => regionFromProfileArn(arnOf(p)) === region) || profiles[0];
+      const arn = arnOf(match);
+      if (arn) return arn;
+    } catch (e) {
+      if (e?.name === "AbortError") throw e;
+      log?.debug?.("KIRO", `ListAvailableProfiles ${region} error: ${e?.message || e}`);
+    }
+  }
+  return null;
+}
 
 /**
  * KiroExecutor - Executor for Kiro AI (AWS CodeWhisperer)
@@ -64,31 +191,25 @@ export class KiroExecutor extends BaseExecutor {
    * tokens are what that gateway accepts.
    */
   getOrderedBaseUrls(credentials) {
-    // IAM Identity Center accounts can be homed outside us-east-1. Their token is
-    // rejected by the hardcoded us-east-1 registry baseUrls (403 "bearer token
-    // invalid"), so route to the account's regional Amazon Q endpoint. us-east-1
-    // (Builder ID / social / unset) keeps the registry baseUrls + 429 rotation.
-    const regional = resolveKiroDataPlaneUrl(credentials?.providerSpecificData?.region);
-    if (regional) return [regional];
-
-    const baseUrls = this.getBaseUrls();
+    // Region is derived from ONE source of truth: explicit credential region,
+    // then the profileArn's region (authoritative — Q Developer profile can live
+    // in a different region than the IAM Identity Center that minted the token),
+    // then us-east-1. buildKiroBaseUrls encodes the only real asymmetry (the
+    // legacy codewhisperer.* host exists only in us-east-1) as data.
+    const region = resolveKiroRuntimeRegion(credentials);
+    const baseUrls = buildKiroBaseUrls(region);
     const authMethod = credentials?.providerSpecificData?.authMethod;
-    // IAM Identity Center (idc) tokens are AWS SSO access tokens — the same
-    // family as external_idp/api_key. The kiro.dev gateway rejects them with
-    // 403 "bearer token invalid", so they must hit the CodeWhisperer
-    // *.amazonaws.com surface, and in the region the token was minted in
-    // (the baseUrls are hardcoded us-east-1).
+    // api_key / external_idp / idc tokens are rejected by the kiro.dev IDE
+    // gateway (403 "bearer token invalid") and must hit the CodeWhisperer
+    // *.amazonaws.com surface first. For non-default regions we likewise prefer
+    // the regional q.<region> data plane (the legacy us-east-1 codewhisperer host
+    // does not exist elsewhere); the kiro.dev host stays as a failover. us-east-1
+    // OAuth/social keeps kiro.dev-first order.
     const isCodeWhispererSurface =
       authMethod === "api_key" || authMethod === "external_idp" || authMethod === "idc";
-    if (!isCodeWhispererSurface) return baseUrls;
-
-    const region = (credentials?.providerSpecificData?.region || "us-east-1").trim();
-    const regionalize = (u) =>
-      region && region !== "us-east-1" && u.includes("amazonaws.com")
-        ? u.replace(/([a-z]+)\.[a-z0-9-]+\.amazonaws\.com/, `$1.${region}.amazonaws.com`)
-        : u;
-
-    const amazon = baseUrls.filter((u) => u.includes("amazonaws.com")).map(regionalize);
+    const amazonFirst = isCodeWhispererSurface || region !== KIRO_DEFAULT_REGION;
+    if (!amazonFirst) return baseUrls;
+    const amazon = [...new Set(baseUrls.filter((u) => u.includes("amazonaws.com")))];
     const others = baseUrls.filter((u) => !u.includes("amazonaws.com"));
     return amazon.length > 0 ? [...amazon, ...others] : baseUrls;
   }
@@ -98,8 +219,49 @@ export class KiroExecutor extends BaseExecutor {
     return baseUrls[urlIndex] || baseUrls[0] || this.config.baseUrl;
   }
 
-  transformRequest(model, body, stream, credentials) {
-    return body;
+  /**
+   * Stamp Kiro/KAS agent-continuation identity onto the translated payload.
+   *
+   * The translators already place a resolveSessionId-derived affinity id in
+   * `conversationState.conversationId`. Reusing one `agentContinuationId` per
+   * (scope, connectionId, model, conversationId) tuple lets the upstream keep
+   * serving a direct session from its warm cache across turns, while the
+   * account + model key dimensions guarantee a continuation minted under one
+   * account or model is never replayed for another — even when two clients
+   * present the same explicit session id. The payload is cloned so the
+   * caller's body is never mutated.
+   *
+   * Explicit client sessions (identified from inbound client headers) are
+   * reused across turns via a global cache. Generated fallback sessions are
+   * scoped to the inbound `requestContext` so unrelated headerless first-turn
+   * conversations on the same account and model never share a continuation id,
+   * while the same frozen requestContext survives retries and fallback URL
+   * attempts for stable retry identity.
+   */
+  transformRequest(model, body, stream, credentials, requestContext = null) {
+    const conversationId = body?.conversationState?.conversationId;
+    if (!conversationId || typeof body?.conversationState !== "object") return body;
+    const explicitFromContext = extractClientSessionId(requestContext?.clientHeaders, null);
+    const explicitFromCredentials = extractClientSessionId(credentials?.rawHeaders, null);
+    const isGenerated = credentials?._clientSessionIsGenerated
+      ?? !(explicitFromContext ?? explicitFromCredentials);
+    const continuationId = resolveContinuationId({
+      sessionId: conversationId,
+      connectionId: credentials?.connectionId,
+      model,
+      scope: "kiro",
+      requestContext,
+      requestScoped: isGenerated,
+    });
+    return {
+      ...body,
+      conversationState: {
+        ...body.conversationState,
+        agentContinuationId: continuationId,
+        agentTaskType: "vibe",
+      },
+      agentMode: "vibe",
+    };
   }
 
   /**
@@ -119,11 +281,65 @@ export class KiroExecutor extends BaseExecutor {
    * classify the status, and trigger account fallback/cooldown.
    */
   async execute(args) {
-    const result = await super.execute(args);
+    // Kiro/CodeWhisperer rejects IDC/Builder-ID requests lacking a profileArn
+    // with 400 "profileArn is required". IDC/Organization logins outside
+    // us-east-1 frequently land with no profileArn (AWS SSO OIDC doesn't mint
+    // one and there is no shared default outside us-east-1). Resolve it on the
+    // real request path so connections self-heal.
+    await this.ensureKiroProfileArn(args);
+    // Profile discovery is not the quota-bearing runtime request. Allocate a
+    // fresh fencing clock immediately before BaseExecutor begins dispatch so a
+    // slow discovery cannot make later 429 evidence appear older than it is.
+    const result = await super.execute({ ...args, attemptStartedAt: null });
     if (result?.response?.ok) {
       result.response = this.transformEventStreamToSSE(result.response, args.model);
+      result.terminalProvenance = "validated";
     }
     return result;
+  }
+
+  /**
+   * Ensure the outgoing Kiro payload carries a profileArn. The translator sets
+   * it from the stored credential; when that is empty (typical for IDC/Org
+   * accounts outside us-east-1) we resolve it live via ListAvailableProfiles,
+   * trying the credential's own region first and then known Q Developer regions
+   * (the profile can live in a different region than the Identity Center). The
+   * resolved ARN is written onto BOTH the payload and the credential so
+   * getOrderedBaseUrls routes the runtime to the profile's region. Cached per
+   * access token. api_key auth is skipped — it must use its own account ARN.
+   */
+  async ensureKiroProfileArn(args) {
+    const { body, credentials, log, proxyOptions = null } = args || {};
+    if (!body || typeof body !== "object" || body.profileArn) return;
+    const psd = credentials?.providerSpecificData || {};
+    if (psd.authMethod === "api_key") return;
+    const accessToken = credentials?.accessToken;
+    if (!accessToken) return;
+
+    const cached = KIRO_PROFILE_ARN_CACHE.get(accessToken);
+    if (cached) {
+      body.profileArn = cached;
+      if (credentials.providerSpecificData) credentials.providerSpecificData.profileArn = cached;
+      return;
+    }
+
+    const preferredRegion = isValidAwsRegion(psd.region)
+      ? psd.region
+      : (regionFromProfileArn(psd.profileArn) || KIRO_DEFAULT_REGION);
+    const arn = await resolveKiroProfileArnAcrossRegions(accessToken, preferredRegion, proxyOptions, log, proxyAwareFetch, args?.signal || null);
+    if (args?.signal?.aborted) throw args.signal.reason instanceof Error
+      ? args.signal.reason
+      : new DOMException("Kiro profile discovery aborted", "AbortError");
+    if (arn) {
+      KIRO_PROFILE_ARN_CACHE.set(accessToken, arn);
+      body.profileArn = arn;
+      // Stamp the credential so getOrderedBaseUrls routes runtime to the ARN's
+      // (profile) region — which may differ from the SSO region.
+      if (credentials.providerSpecificData) credentials.providerSpecificData.profileArn = arn;
+      log?.info?.("KIRO", `Resolved missing profileArn at request time (region=${regionFromProfileArn(arn) || preferredRegion}): ${arn}`);
+    } else {
+      log?.warn?.("KIRO", `Could not resolve a profileArn (region=${preferredRegion}). Upstream will reject with 400 "profileArn is required". Confirm Amazon Q Developer Pro is enabled for this IAM Identity Center account.`);
+    }
   }
 
   /**
@@ -140,6 +356,8 @@ export class KiroExecutor extends BaseExecutor {
     const state = {
       endDetected: false,
       finishEmitted: false,
+      rawTerminalSeen: false,
+      failureSeen: false,
       hasToolCalls: false,
       hasReasoningContent: false,
       reasoningChunkCount: 0,
@@ -147,9 +365,18 @@ export class KiroExecutor extends BaseExecutor {
       seenToolIds: new Map(),
       inThinking: false
     };
+    const rejectFraming = (controller) => {
+      if (state.failureSeen) return;
+      state.failureSeen = true;
+      buffer = new Uint8Array(0);
+      controller.enqueue(new TextEncoder().encode(
+        `data: ${JSON.stringify({ error: { message: "Kiro returned an invalid EventStream frame", type: "stream_error" } })}\n\n`,
+      ));
+    };
 
     const transformStream = new TransformStream({
       async transform(chunk, controller) {
+        if (state.failureSeen) return;
              // Track output so we can emit a keepalive if this frame yields no chunk.
         const enqueueCountBefore = chunkIndex;
         // Append to buffer
@@ -165,16 +392,41 @@ export class KiroExecutor extends BaseExecutor {
           iterations++;
           const view = new DataView(buffer.buffer, buffer.byteOffset);
           const totalLength = view.getUint32(0, false);
+          const headersLength = view.getUint32(4, false);
 
-          if (totalLength < 16 || totalLength > buffer.length || buffer.length < totalLength) break;
+          if (
+            totalLength < 16
+            || totalLength > KIRO_MAX_EVENTSTREAM_FRAME_BYTES
+            || headersLength > KIRO_MAX_EVENTSTREAM_HEADERS_BYTES
+            || headersLength > totalLength - 16
+          ) {
+            rejectFraming(controller);
+            break;
+          }
+          if (buffer.length < totalLength) break;
 
           const eventData = buffer.slice(0, totalLength);
           buffer = buffer.slice(totalLength);
 
           const event = parseEventFrame(eventData);
-          if (!event) continue;
+          if (!event) {
+            rejectFraming(controller);
+            break;
+          }
 
           const eventType = event.headers[":event-type"] || "";
+          const messageType = event.headers[":message-type"] || "";
+          if (messageType === "error" || messageType === "exception" || /(?:Error|Exception)$/.test(eventType)) {
+            state.failureSeen = true;
+            controller.enqueue(new TextEncoder().encode(
+              `data: ${JSON.stringify({ error: { message: "Kiro upstream stream failed", type: "provider_error" } })}\n\n`,
+            ));
+            continue;
+          }
+          if (state.rawTerminalSeen && !KIRO_POST_STOP_EVENT_TYPES.has(eventType)) {
+            rejectFraming(controller);
+            break;
+          }
 
           // Track total content length for token estimation
           if (!state.totalContentLength) state.totalContentLength = 0;
@@ -366,19 +618,7 @@ export class KiroExecutor extends BaseExecutor {
 
           // Handle messageStopEvent
           if (eventType === "messageStopEvent") {
-            const chunk = {
-              id: responseId,
-              object: "chat.completion.chunk",
-              created,
-              model,
-              choices: [{
-                index: 0,
-                delta: {},
-                finish_reason: state.hasToolCalls ? "tool_calls" : "stop"
-              }]
-            };
-            state.finishEmitted = true;
-            controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(chunk)}\n\n`));
+            state.rawTerminalSeen = true;
           }
 
           // Handle contextUsageEvent to extract contextUsagePercentage
@@ -388,9 +628,20 @@ export class KiroExecutor extends BaseExecutor {
             state.hasContextUsage = true;
           }
 
-          // Handle meteringEvent - mark that we received it
+          // Handle meteringEvent - preserve Kiro credit usage on state.usage
           if (eventType === "meteringEvent") {
             state.hasMeteringEvent = true;
+            const metering = event.payload?.meteringEvent || event.payload || {};
+            const credits = metering.usage !== null && metering.usage !== undefined
+              ? Number(metering.usage) : NaN;
+            // Consumption is never negative; ignore malformed values
+            if (Number.isFinite(credits) && credits >= 0) {
+              state.usage = {
+                ...(state.usage || {}),
+                kiro_credits: credits,
+                kiro_credit_unit: typeof metering.unit === "string" ? metering.unit : "credit"
+              };
+            }
           }
 
           // Handle metricsEvent for token usage
@@ -408,6 +659,7 @@ export class KiroExecutor extends BaseExecutor {
 
               if (inputTokens > 0 || outputTokens > 0) {
                 state.usage = {
+                  ...(state.usage || {}),
                   prompt_tokens: inputTokens,
                   completion_tokens: outputTokens,
                   total_tokens: inputTokens + outputTokens
@@ -423,11 +675,15 @@ export class KiroExecutor extends BaseExecutor {
           }
 
           // Emit final chunk only after receiving BOTH meteringEvent AND contextUsageEvent
-          if (state.hasMeteringEvent && state.hasContextUsage && !state.finishEmitted) {
+          if (state.rawTerminalSeen && state.hasMeteringEvent && state.hasContextUsage && !state.finishEmitted) {
             state.finishEmitted = true;
 
-            // Estimate tokens if not available from events
-            if (!state.usage) {
+            // Estimate tokens if not available from events. Credit-only
+            // metering (kiro_credits) means we have usage but no token counts,
+            // so estimate whenever token counts are absent, preserving credits.
+            const hasTokenUsage = Number.isFinite(Number(state.usage?.prompt_tokens)) ||
+              Number.isFinite(Number(state.usage?.completion_tokens));
+            if (!hasTokenUsage) {
               // Estimate output tokens from content length
               const estimatedOutputTokens = state.totalContentLength > 0
                 ? Math.max(1, Math.floor(state.totalContentLength / 4))
@@ -439,9 +695,11 @@ export class KiroExecutor extends BaseExecutor {
                 : 0;
 
               state.usage = {
+                ...(state.usage || {}),
                 prompt_tokens: estimatedInputTokens,
                 completion_tokens: estimatedOutputTokens,
-                total_tokens: estimatedInputTokens + estimatedOutputTokens
+                total_tokens: estimatedInputTokens + estimatedOutputTokens,
+                estimated: true
               };
             }
 
@@ -472,15 +730,42 @@ export class KiroExecutor extends BaseExecutor {
 
         // No client chunk produced this frame — emit an SSE comment keepalive
                 // so the stall watchdog sees upstream activity (ignored by parser/client).
-                if (chunkIndex === enqueueCountBefore && !state.finishEmitted) {
+                if (chunkIndex === enqueueCountBefore && !state.finishEmitted && !state.failureSeen) {
                   controller.enqueue(new TextEncoder().encode(": ka\n\n"));
                 }
       },
 
       flush(controller) {
-        // Emit finish chunk if not already sent
-        if (!state.finishEmitted) {
+        if (buffer.length > 0) {
+          state.failureSeen = true;
+          controller.enqueue(new TextEncoder().encode(
+            `data: ${JSON.stringify({ error: { message: "Kiro stream ended with a truncated EventStream frame", type: "stream_error" } })}\n\n`,
+          ));
+        } else if (!state.rawTerminalSeen && !state.failureSeen) {
+          state.failureSeen = true;
+          controller.enqueue(new TextEncoder().encode(
+            `data: ${JSON.stringify({ error: { message: "Kiro stream ended before messageStopEvent", type: "stream_error" } })}\n\n`,
+          ));
+        }
+
+        // Emit finish only for a raw application terminal, never arbitrary EOF.
+        if (state.rawTerminalSeen && !state.failureSeen && !state.finishEmitted) {
           state.finishEmitted = true;
+          const hasTokenUsage = Number.isFinite(Number(state.usage?.prompt_tokens)) ||
+            Number.isFinite(Number(state.usage?.completion_tokens));
+          if (!hasTokenUsage && state.totalContentLength > 0) {
+            const completionTokens = Math.max(1, Math.floor(state.totalContentLength / 4));
+            const promptTokens = state.contextUsagePercentage > 0
+              ? Math.floor(state.contextUsagePercentage * contextWindow / 100)
+              : 0;
+            state.usage = {
+              ...(state.usage || {}),
+              prompt_tokens: promptTokens,
+              completion_tokens: completionTokens,
+              total_tokens: promptTokens + completionTokens,
+              estimated: true
+            };
+          }
           const finishChunk = {
             id: responseId,
             object: "chat.completion.chunk",
@@ -490,19 +775,24 @@ export class KiroExecutor extends BaseExecutor {
               index: 0,
               delta: {},
               finish_reason: state.hasToolCalls ? "tool_calls" : "stop"
-            }]
+              }]
           };
+          if (state.usage) finishChunk.usage = state.usage;
           controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(finishChunk)}\n\n`));
         }
 
-        // Send final done message
-        controller.enqueue(new TextEncoder().encode(SSE_DONE));
+        if (state.rawTerminalSeen && !state.failureSeen) {
+          controller.enqueue(new TextEncoder().encode(SSE_DONE));
+        }
       }
     });
 
     // Pipe response body through transform stream
     if (!response.body) {
-      return new Response(SSE_DONE, { status: response.status, headers: { "Content-Type": "text/event-stream" } });
+      return new Response(JSON.stringify({ error: { message: "Kiro upstream returned no response body" } }), {
+        status: 502,
+        headers: { "Content-Type": "application/json" },
+      });
     }
     const transformedStream = response.body.pipeThrough(transformStream);
 
@@ -517,15 +807,19 @@ export class KiroExecutor extends BaseExecutor {
     if (!credentials.refreshToken) return null;
 
     try {
+      // Re-associate the stored refresh token with its AWS SSO cache entry
+      // before any network I/O, so imported external_idp/IDC connections
+      // missing clientId/clientSecret/tokenEndpoint/scope hit the right
+      // refresh endpoint (9router PR #2615).
+      const enriched = await enrichKiroCredentialsFromSsoCache(credentials, log);
+
       // Use centralized refreshKiroToken function (handles both AWS SSO OIDC and Social Auth)
-      const result = await refreshKiroToken(
-        credentials.refreshToken,
-        credentials.providerSpecificData,
+      return await refreshKiroToken(
+        enriched.refreshToken,
+        enriched.providerSpecificData,
         log,
         proxyOptions
       );
-
-      return result;
     } catch (error) {
       log?.error?.("TOKEN", `Kiro refresh error: ${error.message}`);
       return null;
@@ -538,58 +832,60 @@ export class KiroExecutor extends BaseExecutor {
  */
 function parseEventFrame(data) {
   try {
-    const view = new DataView(data.buffer, data.byteOffset);
+    if (!(data instanceof Uint8Array) || data.byteLength < 16) return null;
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    const totalLength = view.getUint32(0, false);
     const headersLength = view.getUint32(4, false);
+    if (
+      totalLength !== data.byteLength
+      || headersLength > KIRO_MAX_EVENTSTREAM_HEADERS_BYTES
+      || headersLength > totalLength - 16
+    ) return null;
+    if (view.getUint32(8, false) !== eventStreamCrc32(data.subarray(0, 8))) return null;
+    if (
+      view.getUint32(totalLength - 4, false)
+      !== eventStreamCrc32(data.subarray(0, totalLength - 4))
+    ) return null;
 
-    // Parse headers
     const headers = {};
     let offset = 12; // After prelude
     const headerEnd = 12 + headersLength;
+    const decoder = new TextDecoder("utf-8", { fatal: true });
 
-    while (offset < headerEnd && offset < data.length) {
+    while (offset < headerEnd) {
       const nameLen = data[offset];
       offset++;
-      if (offset + nameLen > data.length) break;
+      if (nameLen === 0 || offset + nameLen + 1 > headerEnd) return null;
 
-      const name = new TextDecoder().decode(data.slice(offset, offset + nameLen));
+      const name = decoder.decode(data.subarray(offset, offset + nameLen));
       offset += nameLen;
+      if (Object.prototype.hasOwnProperty.call(headers, name)) return null;
 
       const headerType = data[offset];
       offset++;
-
-      if (headerType === 7) { // String type
-        const valueLen = (data[offset] << 8) | data[offset + 1];
-        offset += 2;
-        if (offset + valueLen > data.length) break;
-
-        const value = new TextDecoder().decode(data.slice(offset, offset + valueLen));
-        offset += valueLen;
-        headers[name] = value;
-      } else {
-        break;
-      }
+      // Kiro's application headers are strings. Reject unknown encodings rather
+      // than partially accepting a frame with ambiguous header boundaries.
+      if (headerType !== 7 || offset + 2 > headerEnd) return null;
+      const valueLen = view.getUint16(offset, false);
+      offset += 2;
+      if (offset + valueLen > headerEnd) return null;
+      headers[name] = decoder.decode(data.subarray(offset, offset + valueLen));
+      offset += valueLen;
     }
+    if (offset !== headerEnd) return null;
 
-    // Parse payload
-    const payloadStart = 12 + headersLength;
+    const payloadStart = headerEnd;
     const payloadEnd = data.length - 4; // Exclude message CRC
 
     let payload = null;
     if (payloadEnd > payloadStart) {
-      const payloadStr = new TextDecoder().decode(data.slice(payloadStart, payloadEnd));
+      const payloadStr = decoder.decode(data.subarray(payloadStart, payloadEnd));
 
       // Skip empty or whitespace-only payloads
       if (!payloadStr || !payloadStr.trim()) {
         return { headers, payload: null };
       }
-
-      try {
-        payload = JSON.parse(payloadStr);
-      } catch (parseError) {
-        // Log parse error for debugging
-        console.warn(`[Kiro] Failed to parse payload: ${parseError.message} | payload: ${payloadStr.substring(0, 100)}`);
-        payload = { raw: payloadStr };
-      }
+      payload = JSON.parse(payloadStr);
     }
 
     return { headers, payload };

@@ -70,6 +70,9 @@ describe("model test route kind routing", () => {
         }),
       })
     );
+    const headers = global.fetch.mock.calls[0][1].headers;
+    expect(headers.Authorization).toBeUndefined();
+    expect(headers["x-9r-cli-token"]).toBe("cli-token");
   });
 
   it("routes embedding model tests to /api/v1/embeddings", async () => {

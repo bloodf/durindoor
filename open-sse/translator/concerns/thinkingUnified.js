@@ -3,8 +3,13 @@
 // never hardcoded per-model here. See .docs/thinking/plan.md MATRIX VI-A.
 
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
+import { getThinkingLevels } from "../../providers/thinkingLevels.js";
 import { PROVIDERS } from "../../providers/index.js";
+import { FORMATS } from "../formats.js";
 import { LEVEL_TO_BUDGET, budgetToLevel, effortToBudget, effortToThinkingLevel } from "./thinking.js";
+import { parseSuffix, stripThinkingSuffix } from "./thinkingSuffix.js";
+
+export { parseSuffix, stripThinkingSuffix } from "./thinkingSuffix.js";
 
 // Map a target wire-format to its native thinking format (when capability has none).
 const FORMAT_TO_NATIVE = {
@@ -19,21 +24,6 @@ const FORMAT_TO_NATIVE = {
   antigravity: "gemini-budget",
   kiro: "kiro",
 };
-
-// Parse model-name suffix "model(value)" → { cleanModel, override }.
-// value: level name (high) | number (8192) | auto | none. null override when absent.
-export function parseSuffix(model) {
-  if (typeof model !== "string") return { cleanModel: model, override: null };
-  const m = model.match(/^(.*)\(([^()]+)\)\s*$/);
-  if (!m) return { cleanModel: model, override: null };
-  const cleanModel = m[1].trim();
-  const raw = m[2].trim().toLowerCase();
-  if (raw === "none" || raw === "off") return { cleanModel, override: { mode: "none" } };
-  if (raw === "auto") return { cleanModel, override: { mode: "auto" } };
-  if (/^\d+$/.test(raw)) return { cleanModel, override: { mode: "budget", budget: Number(raw) } };
-  if (LEVEL_TO_BUDGET[raw] !== undefined) return { cleanModel, override: { mode: "level", level: raw } };
-  return { cleanModel, override: null };
-}
 
 // Extract unified thinking intent from a request body (post-translation, mixed shapes).
 // Returns { mode, budget?, level? } or null when no thinking intent present.
@@ -132,16 +122,77 @@ function toGeminiThinkingLevel(cfg) {
   return effortToThinkingLevel(raw);
 }
 
-// Gemini nests thinkingConfig under generationConfig. gemini-cli / antigravity wrap
-// the whole request in a { request: { generationConfig } } envelope — target the
-// envelope's generationConfig when present, else the top-level one.
+function toKimiReasoningEffort(cfg) {
+  const level = toLevel(cfg);
+  if (level === "auto") return "high";
+  if (level === "minimal") return "low";
+  if (level === "xhigh") return "max";
+  if (["low", "medium", "high", "max"].includes(level)) return level;
+  return null;
+}
+
+/** Minimum maxOutputTokens by Gemini thinkingLevel. */
+const GEMINI_LEVEL_OUTPUT_FLOOR = {
+  minimal: 4096,
+  low: 8192,
+  medium: 16384,
+  high: 65535,
+};
+
+/**
+ * Minimum maxOutputTokens for a numeric thinkingBudget (gemini-2.5 style).
+ * `budget === -1` (dynamic) and non-finite inputs map to a safe default.
+ */
+function geminiBudgetOutputFloor(budget) {
+  if (budget === -1) return 32768;
+  if (!Number.isFinite(budget)) return 32768;
+  if (budget <= 1024) return 8192;
+  if (budget <= 8192) return 16384;
+  if (budget <= 24576) return 32768;
+  return 65535;
+}
+
+/** Output floor for a named thinkingLevel (defaults to `high` when unknown). */
+function geminiLevelOutputFloor(level) {
+  return GEMINI_LEVEL_OUTPUT_FLOOR[level] || GEMINI_LEVEL_OUTPUT_FLOOR.high;
+}
+
+/**
+ * Resolve the generationConfig object thinking fields live on. gemini-cli /
+ * antigravity wrap the request in `{ request: { generationConfig } }`; target
+ * that envelope's generationConfig when present, else the top-level one,
+ * creating whichever is missing.
+ */
+function getGeminiGenerationConfig(body) {
+  if (body.request && typeof body.request === "object") {
+    if (!body.request.generationConfig || typeof body.request.generationConfig !== "object") {
+      body.request.generationConfig = {};
+    }
+    return body.request.generationConfig;
+  }
+  if (!body.generationConfig || typeof body.generationConfig !== "object") {
+    body.generationConfig = {};
+  }
+  return body.generationConfig;
+}
+
 function setGeminiThinking(body, tc) {
-  const gc = body.request?.generationConfig
-    ? body.request.generationConfig
-    : (body.generationConfig && typeof body.generationConfig === "object"
-        ? body.generationConfig
-        : (body.generationConfig = {}));
+  const gc = getGeminiGenerationConfig(body);
   gc.thinkingConfig = tc;
+}
+
+/**
+ * Raise maxOutputTokens to at least `floor` (clamped to caps.maxOutput when
+ * known). Never lowers an existing, larger value; never exceeds the provider cap.
+ */
+function ensureGeminiOutputFloor(body, floor, caps) {
+  const cap = Number.isFinite(caps?.maxOutput) ? caps.maxOutput : floor;
+  const target = Math.min(floor, cap);
+  const gc = getGeminiGenerationConfig(body);
+  const current = Number(gc.maxOutputTokens);
+  if (!Number.isFinite(current) || current < target) {
+    gc.maxOutputTokens = target;
+  }
 }
 
 // Strip every known thinking field from a body (used before re-applying / when unsupported).
@@ -157,8 +208,23 @@ function stripAll(body) {
   if (body.request?.generationConfig) delete body.request.generationConfig.thinkingConfig;
 }
 
+// Map requested OpenAI effort to a level the model accepts.
+// Preserve when listed in getThinkingLevels; else nearest high-end sibling.
+// Unknown/empty metadata keeps legacy safe max/ultra → xhigh clamp.
+export function resolveOpenAiEffort(level, provider, model) {
+  if (!level) return level;
+  const allowed = getThinkingLevels(provider, model);
+  if (Array.isArray(allowed) && allowed.includes(level)) return level;
+  if (level === "ultra") {
+    if (Array.isArray(allowed) && allowed.includes("max")) return "max";
+    return "xhigh";
+  }
+  if (level === "max") return "xhigh";
+  return level;
+}
+
 // Apply unified thinking config to body in the resolved provider-native format.
-function applyFormat(fmt, body, cfg, caps) {
+function applyFormat(fmt, body, cfg, caps, model = null, provider = null) {
   const none = cfg.mode === "none";
   const canDisable = caps.thinkingCanDisable !== false;
   // Model cannot disable thinking → clamp "none" to minimal effort instead.
@@ -168,7 +234,8 @@ function applyFormat(fmt, body, cfg, caps) {
     case "openai": {
       if (none && canDisable) { body.reasoning_effort = "none"; break; }
       const level = toLevel(eff);
-      if (level) body.reasoning_effort = level;
+      // Config-driven: preserve supported effort; nearest sibling otherwise.
+      if (level) body.reasoning_effort = resolveOpenAiEffort(level, provider, model);
       break;
     }
     case "claude-adaptive": {
@@ -191,12 +258,14 @@ function applyFormat(fmt, body, cfg, caps) {
     case "gemini-level": {
       const level = none ? "minimal" : toGeminiThinkingLevel(eff);
       setGeminiThinking(body, { thinkingLevel: level, includeThoughts: level !== "minimal" });
+      ensureGeminiOutputFloor(body, geminiLevelOutputFloor(level), caps);
       break;
     }
     case "gemini-budget": {
       if (none && canDisable) { setGeminiThinking(body, { thinkingBudget: 0, includeThoughts: false }); break; }
       const budget = toBudget(eff, caps.thinkingRange);
       setGeminiThinking(body, { thinkingBudget: budget ?? -1, includeThoughts: true });
+      ensureGeminiOutputFloor(body, geminiBudgetOutputFloor(budget ?? -1), caps);
       break;
     }
     case "zai": {
@@ -225,8 +294,8 @@ function applyFormat(fmt, body, cfg, caps) {
     }
     case "kimi": {
       if (none && canDisable) { body.thinking = { type: "disabled" }; break; }
-      const level = toLevel(eff);
-      if (level) body.reasoning_effort = level === "max" ? "high" : level;
+      const effort = toKimiReasoningEffort(eff);
+      if (effort) body.reasoning_effort = effort;
       break;
     }
     case "minimax": {
@@ -261,7 +330,39 @@ function applyFormat(fmt, body, cfg, caps) {
 export function applyThinking(targetFormat, model, body, provider = null, intent = undefined) {
   if (!body || typeof body !== "object") return body;
 
+  // ponytail: ceiling = ollama under claude transport. Lift into PROVIDERS[ollama].quirks
+  // or a capability flag if a second native-claude provider lands.
+  const preservesNativeClaudeThinking = PROVIDERS[provider]?.quirks?.preserveNativeClaudeThinking
+    || provider === "ollama"
+    || provider === "ollama-local";
+  if (preservesNativeClaudeThinking && targetFormat === FORMATS.CLAUDE) {
+    // WR-01: chatCore.js:66-68 injects `reasoning_effort` (OpenAI field) for level-mode
+    // providerThinking configs. On the Claude wire it is not a valid Messages field.
+    // Normalize to Claude shape: fold into output_config.effort unless a Claude-native
+    // thinking field is already present (let the client's Claude field win). Keep the
+    // early-return so stripAll does not undo Claude-native fields.
+    if (body.reasoning_effort) {
+      if (body.thinking) {
+        delete body.reasoning_effort;
+      } else {
+        body.output_config = body.output_config || {};
+        if (!body.output_config.effort) body.output_config.effort = body.reasoning_effort;
+        delete body.reasoning_effort;
+      }
+    }
+    return body;
+  }
+
   const { cleanModel, override } = parseSuffix(model);
+
+  // Grok Build (grok-cli) rejects reasoning.effort but still accepts summary/
+  // encrypted-content continuity. Let the executor own the wire normalization so
+  // a caller-supplied summary is not stripped by the reasoning:false capability.
+  // Upstream decolua/9router#2590.
+  if (provider === "grok-cli" && cleanModel === "grok-build") {
+    return body;
+  }
+
   const cfg = override || intent || extractThinking(body);
   const caps = getCapabilitiesForModel(provider, cleanModel);
 
@@ -274,6 +375,30 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
 
   const fmt = resolveFormat(targetFormat, cleanModel, provider);
   stripAll(body);
-  applyFormat(fmt, body, cfg, caps);
+  applyFormat(fmt, body, cfg, caps, cleanModel, provider);
+  return body;
+}
+
+// Apply per-transport requestDefaults from the provider registry when the client
+// did not set a field. Multi-endpoint providers can scope defaults to a format
+// (e.g. MiniMax openai transport → reasoning_split).
+// Ported from upstream decolua/9router PR #2525 (head 72385571c6).
+export function applyTransportRequestDefaults(targetFormat, body, provider = null) {
+  if (!body || typeof body !== "object" || !provider) return body;
+  const config = PROVIDERS[provider];
+  if (!config) return body;
+
+  let defaults = null;
+  const transports = config.transports;
+  if (Array.isArray(transports) && transports.length) {
+    defaults = transports.find((t) => t.format === targetFormat)?.requestDefaults;
+  } else {
+    defaults = config.requestDefaults ?? config.transport?.requestDefaults;
+  }
+
+  if (!defaults || typeof defaults !== "object") return body;
+  for (const [key, value] of Object.entries(defaults)) {
+    if (body[key] === undefined) body[key] = value;
+  }
   return body;
 }

@@ -4,7 +4,17 @@ const { spawn, exec, execSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 const https = require("https");
+const http = require("http");
+const crypto = require("crypto");
 const os = require("os");
+const { stopMitmViaManagerSync } = require("./src/cli/mitmManagerStop");
+const { getAppDataDir, getGlobalMitmStateDir } = require("./src/cli/appDataDir");
+const { waitServerReady } = require("./src/cli/waitServerReady");
+
+// Resolve once before any worker changes cwd. Every CLI helper and the Next
+// worker inherit the same absolute path, so database, PID, CA, and auth-token
+// state cannot split across process working directories.
+process.env.DATA_DIR = getAppDataDir();
 
 // Native spinner - no external dependency
 function createSpinner(text) {
@@ -43,10 +53,50 @@ function createSpinner(text) {
 }
 
 const pkg = require("./package.json");
+const args = process.argv.slice(2);
+
+// Configuration constants
+const APP_NAME = pkg.name; // Use from package.json
+const INSTALL_CMD_LATEST = `npm i -g ${APP_NAME}@latest --prefer-online`;
+
+const DEFAULT_PORT = 20128;
+const DEFAULT_HOST = "0.0.0.0";
+
+function hasFlag(flag, shortFlag) {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === flag || arg === shortFlag) return true;
+    if (["--port", "-p", "--host", "-H"].includes(arg)) i++;
+  }
+  return false;
+}
+
+if (hasFlag("--help", "-h")) {
+  console.log(`
+Usage: ${APP_NAME} [options]
+
+Options:
+  -p, --port <port>   Port to run the server (default: ${DEFAULT_PORT})
+  -H, --host <host>   Host to bind (default: ${DEFAULT_HOST})
+  -n, --no-browser    Don't open browser automatically
+  -l, --log           Show server logs (default: hidden)
+  -t, --tray          Run in system tray mode (background)
+  --skip-update       Skip auto-update check
+  -h, --help          Show this help message
+  -v, --version       Show version
+`);
+  process.exit(0);
+}
+
+if (hasFlag("--version", "-v")) {
+  console.log(pkg.version);
+  process.exit(0);
+}
+
 const { ensureSqliteRuntime, buildEnvWithRuntime } = require("./hooks/sqliteRuntime");
 const { ensureTrayRuntime } = require("./hooks/trayRuntime");
-const { cleanupMitmHostsFile } = require("./hooks/cleanupMitmHosts");
-const args = process.argv.slice(2);
+const { killByPidFile } = require("./hooks/killByPidFile");
+
 
 // Self-heal SQLite runtime deps (sql.js + better-sqlite3) into ~/.9router/runtime
 // so the server can resolve them via NODE_PATH. Best-effort — sql.js is required,
@@ -56,14 +106,7 @@ try { ensureSqliteRuntime({ silent: true }); } catch {}
 // Self-heal tray runtime (systray for macOS/Linux only). Windows skipped.
 try { ensureTrayRuntime({ silent: true }); } catch {}
 
-// Configuration constants
-const APP_NAME = pkg.name;
 const DISPLAY_NAME = "DurinDoor";
-const INSTALL_CMD_LATEST = `npm i -g ${APP_NAME}@latest --prefer-online`;
-
-const DEFAULT_PORT = 20128;
-const DEFAULT_HOST = "0.0.0.0";
-
 // First non-internal IPv4 — the address remote peers actually reach when bound to 0.0.0.0.
 function getLanIp() {
   for (const ifaces of Object.values(os.networkInterfaces())) {
@@ -108,24 +151,6 @@ for (let i = 0; i < args.length; i++) {
   } else if (args[i] === "--tray" || args[i] === "-t") {
     trayMode = true;
     process.env.TRAY_MODE = "1";
-  } else if (args[i] === "--help" || args[i] === "-h") {
-    console.log(`
-Usage: ${APP_NAME} [options]
-
-Options:
-  -p, --port <port>   Port to run the server (default: ${DEFAULT_PORT})
-  -H, --host <host>   Host to bind (default: ${DEFAULT_HOST})
-  -n, --no-browser    Don't open browser automatically
-  -l, --log           Show server logs (default: hidden)
-  -t, --tray          Run in system tray mode (background)
-  --skip-update       Skip auto-update check
-  -h, --help          Show this help message
-  -v, --version       Show version
-`);
-    process.exit(0);
-  } else if (args[i] === "--version" || args[i] === "-v") {
-    console.log(pkg.version);
-    process.exit(0);
   }
 }
 
@@ -147,30 +172,6 @@ function compareVersions(a, b) {
     if (partsA[i] < partsB[i]) return -1;
   }
   return 0;
-}
-
-// Get app data dir (matches app/src/lib/dataDir.js convention)
-function getAppDataDir() {
-  return process.platform === "win32"
-    ? path.join(process.env.APPDATA || "", "9router")
-    : path.join(os.homedir(), ".9router");
-}
-
-// Kill PID from file (best-effort, removes file after)
-function killByPidFile(pidFile) {
-  try {
-    if (!fs.existsSync(pidFile)) return;
-    const pid = parseInt(fs.readFileSync(pidFile, "utf8").trim(), 10);
-    if (!pid) return;
-    try {
-      if (process.platform === "win32") {
-        execSync(`taskkill /F /T /PID ${pid}`, { stdio: "ignore", windowsHide: true, timeout: 3000 });
-      } else {
-        process.kill(pid, "SIGKILL");
-      }
-    } catch { }
-    try { fs.unlinkSync(pidFile); } catch { }
-  } catch { }
 }
 
 // Kill tunnel processes (cloudflared/tailscale) by their PID files
@@ -212,11 +213,14 @@ function killCloudflaredByAppPort(appPort) {
 
 // Kill all 9router processes
 function killAllAppProcesses(appPort) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     try {
-      cleanupMitmHostsFile();
-      // Kill MIT first (privileged process, needs special handling)
-      killProxyByPidFile();
+      const mitmPidFile = path.join(getAppDataDir(), "mitm", ".mitm.pid");
+      const managerStopped = stopMitmViaManagerSync(appPort);
+      if (!managerStopped && fs.existsSync(mitmPidFile)) {
+        reject(new Error("MITM manager cleanup could not be confirmed; refusing to orphan system redirect state"));
+        return;
+      }
       // Kill Headroom proxy by PID file — detached process that outlives the main server.
       // Must stop before npm rename; it holds a handle on the app/ directory on Windows (#2265).
       killByPidFile(path.join(getAppDataDir(), "headroom", "proxy.pid"));
@@ -314,48 +318,6 @@ function killAllAppProcesses(appPort) {
 // Sleep helper using SharedArrayBuffer wait (sync, no busy-loop)
 function sleepSync(ms) {
   try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); } catch { /* ignore */ }
-}
-
-// Wait until process dies or timeout reached
-function waitForExit(pid, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try { process.kill(pid, 0); } catch { return true; }
-    sleepSync(100);
-  }
-  return false;
-}
-
-// Kill MIT server by PID file (runs privileged, needs special handling)
-// Sends SIGTERM first so MIT can clean up host entries before dying.
-function killProxyByPidFile() {
-  try {
-    const pidFile = path.join(getAppDataDir(), "mitm", ".mitm.pid");
-    if (!fs.existsSync(pidFile)) return;
-    const pid = parseInt(fs.readFileSync(pidFile, "utf8").trim(), 10);
-    if (!pid) return;
-
-    if (process.platform === "win32") {
-      // Graceful first (lets server cleanup hosts), then force
-      try { execSync(`taskkill /T /PID ${pid}`, { stdio: "ignore", windowsHide: true, timeout: 2000 }); } catch { }
-      if (!waitForExit(pid, 1500)) {
-        try { execSync(`taskkill /F /T /PID ${pid}`, { stdio: "ignore", windowsHide: true, timeout: 3000 }); } catch { }
-      }
-      // Last-resort: PowerShell Stop-Process (sometimes succeeds where taskkill fails on admin processes)
-      if (!waitForExit(pid, 500)) {
-        try { execSync(`powershell -NonInteractive -WindowStyle Hidden -Command "Stop-Process -Id ${pid} -Force"`, { stdio: "ignore", windowsHide: true, timeout: 3000 }); } catch { }
-      }
-    } else {
-      // SIGTERM via cached sudo token first
-      try { execSync(`sudo -n kill -TERM ${pid} 2>/dev/null`, { stdio: "ignore", timeout: 2000 }); }
-      catch { try { process.kill(pid, "SIGTERM"); } catch { } }
-      if (!waitForExit(pid, 1500)) {
-        try { execSync(`sudo -n kill -9 ${pid} 2>/dev/null`, { stdio: "ignore", timeout: 2000 }); }
-        catch { try { process.kill(pid, "SIGKILL"); } catch { } }
-      }
-    }
-    try { fs.unlinkSync(pidFile); } catch { }
-  } catch { }
 }
 
 // Kill any process on specific port
@@ -491,13 +453,100 @@ function openBrowser(url) {
   });
 }
 
-// Find standalone server (bundled in bin/app for published package).
-// Prefer custom-server.js (injects real socket IP) when present.
+// The owner-aware wrapper is mandatory: starting the bare Next server would
+// bypass real-peer, anti-spoofing, and privileged-control proof checks.
 const standaloneDir = path.join(__dirname, "app");
 const customServerPath = path.join(standaloneDir, "custom-server.js");
-const serverPath = fs.existsSync(customServerPath)
-  ? customServerPath
-  : path.join(standaloneDir, "server.js");
+if (!fs.existsSync(customServerPath)) {
+  console.error("Error: owner-aware custom-server.js is missing. Reinstall DurinDoor.");
+  process.exit(1);
+}
+const serverPath = customServerPath;
+const { INTENTIONAL_HANDOFF_EXIT_CODE } = require(
+  path.join(standaloneDir, "src", "shared", "constants", "processExitCodes.js"),
+);
+const { isIntentionalWorkerHandoff } = require("./src/cli/workerExit");
+
+function hasStaleMitmOwnership() {
+  const mitmDir = path.join(getAppDataDir(), "mitm");
+  return fs.existsSync(path.join(mitmDir, ".mitm.pid"))
+    || fs.existsSync(path.join(getGlobalMitmStateDir(), "redirect.json"));
+}
+
+function waitForWorkerIdentity(child, expectedNonce, timeoutMs = 30000) {
+  const deadline = Date.now() + timeoutMs;
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      child.removeListener("exit", onExit);
+      if (error) reject(error); else resolve();
+    };
+    const onExit = (code) => finish(new Error(`Recovery worker exited before readiness (code ${code})`));
+    child.once("exit", onExit);
+    const attempt = () => {
+      if (settled) return;
+      const req = http.request({
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/health",
+        method: "GET",
+        timeout: 1000,
+      }, (res) => {
+        const matches = res.statusCode >= 200
+          && res.statusCode < 300
+          && res.headers["x-durindoor-worker-nonce"] === expectedNonce;
+        res.resume();
+        res.on("end", () => {
+          if (matches) finish();
+          else if (Date.now() >= deadline) finish(new Error("Recovery worker identity could not be verified"));
+          else setTimeout(attempt, 250);
+        });
+      });
+      req.on("timeout", () => req.destroy());
+      req.on("error", () => {
+        if (Date.now() >= deadline) finish(new Error("Recovery worker did not become ready"));
+        else setTimeout(attempt, 250);
+      });
+      req.end();
+    };
+    attempt();
+  });
+}
+
+async function recoverStaleMitmOwnershipBeforeStartup() {
+  if (!hasStaleMitmOwnership()) return;
+  if (stopMitmViaManagerSync(port, { preserveDesiredState: true })) return;
+
+  const nonce = crypto.randomBytes(24).toString("hex");
+  const child = spawn(RUNTIME, ["--max-old-space-size=6144", serverPath], {
+    cwd: standaloneDir,
+    // A recovery worker may intentionally outlive this CLI after a failed
+    // cleanup. Ignore inherited output so no referenced/fillable pipe can keep
+    // the parent alive or stall that retained worker.
+    stdio: "ignore",
+    detached: true,
+    windowsHide: true,
+    env: {
+      ...buildEnvWithRuntime(process.env),
+      PORT: port.toString(),
+      HOSTNAME: "127.0.0.1",
+      DURINDOOR_WORKER_NONCE: nonce,
+    },
+  });
+  try {
+    await waitForWorkerIdentity(child, nonce);
+    if (!stopMitmViaManagerSync(port, { preserveDesiredState: true })) {
+      throw new Error("Recovery worker could not clean stale MITM ownership");
+    }
+    try { process.kill(child.pid, "SIGTERM"); } catch { /* already stopped */ }
+    try { process.kill(-child.pid, "SIGKILL"); } catch { /* platform/process-group fallback */ }
+  } catch (error) {
+    child.unref();
+    throw new Error(`${error.message}; recovery worker was retained for a safe cleanup retry`);
+  }
+}
 
 if (!fs.existsSync(serverPath)) {
   console.error("Error: Standalone build not found.");
@@ -505,13 +554,18 @@ if (!fs.existsSync(serverPath)) {
   process.exit(1);
 }
 
-// Check for updates FIRST, then start server
-checkForUpdate().then((latestVersion) => {
-  killAllAppProcesses(port).then(() => {
-    return killProcessOnPort(port);
-  }).then(() => {
-    startServer(latestVersion);
-  });
+// Kick off the update check in parallel with cleanup/port-release (not on the
+// critical path for server start). MITM/stale-redirect recovery stays sequential
+// BEFORE killAllAppProcesses: safety-critical system redirect cleanup.
+const updatePromise = checkForUpdate();
+(async () => {
+  await recoverStaleMitmOwnershipBeforeStartup();
+  await killAllAppProcesses(port);
+  await killProcessOnPort(port);
+  startServer(updatePromise);
+})().catch((error) => {
+  console.error(`Startup cleanup failed: ${error.message}`);
+  process.exitCode = 1;
 });
 
 // Show interface selection menu
@@ -562,7 +616,11 @@ async function showInterfaceMenu(latestVersion) {
 const MAX_RESTARTS = 2;
 const RESTART_RESET_MS = 30000; // Reset counter if alive > 30s
 
-function startServer(latestVersion) {
+function startServer(updatePromise) {
+  // Accept either a Promise (parallel update check) or a resolved value.
+  // Swallow update-check failures: a network blip must never crash startup or
+  // surface an unhandled rejection; the existing update menu simply sees null.
+  const latestVersionPromise = Promise.resolve(updatePromise).catch(() => null);
   const displayHost = getDisplayHost();
   const url = `http://${displayHost}:${port}/dashboard`;
   // Surface real network exposure when bound to all interfaces (default 0.0.0.0).
@@ -573,11 +631,12 @@ function startServer(latestVersion) {
 
   let restartCount = 0;
   let serverStartTime = Date.now();
+  let recoveryInProgress = false;
 
   const CRASH_LOG_LINES = 50;
   let crashLog = [];
 
-  function spawnServer() {
+  function spawnServer(extraEnv = {}) {
     serverStartTime = Date.now();
     crashLog = [];
     const child = spawn(RUNTIME, ["--max-old-space-size=6144", serverPath], {
@@ -588,7 +647,8 @@ function startServer(latestVersion) {
       env: {
         ...buildEnvWithRuntime(process.env),
         PORT: port.toString(),
-        HOSTNAME: host
+        HOSTNAME: host,
+        ...extraEnv,
       }
     });
     if (!showLog && child.stderr) {
@@ -606,20 +666,21 @@ function startServer(latestVersion) {
   // Cleanup function - force kill server process
   let isCleaningUp = false;
   function cleanup() {
-    if (isCleaningUp) return;
+    if (isCleaningUp) return false;
     isCleaningUp = true;
     try {
-      // Parent CLI must clean hosts — Next.js child is SIGKILL'd below and
-      // never runs initializeApp's removeAllDNSEntriesSync().
-      cleanupMitmHostsFile();
+      const mitmStopped = stopMitmViaManagerSync(port);
+      if (!mitmStopped) {
+        console.error("MITM manager cleanup could not be confirmed; leaving the app worker alive to preserve system redirect ownership.");
+        isCleaningUp = false;
+        return false;
+      }
 
       // Kill tray if running
       try {
         const { killTray } = require("./src/cli/tray/tray");
         killTray();
       } catch (e) { }
-      // Kill MIT server (privileged process) via PID file
-      killProxyByPidFile();
       // Kill Headroom proxy (detached process, holds handle on app/ on Windows)
       killByPidFile(path.join(getAppDataDir(), "headroom", "proxy.pid"));
       // Kill cloudflared/tailscale via PID file (only this app's tunnel)
@@ -637,7 +698,21 @@ function startServer(latestVersion) {
       if (server?.pid) {
         try { process.kill(-server.pid, "SIGKILL"); } catch (e) { }
       }
-    } catch (e) { }
+      return true;
+    } catch (error) {
+      console.error(`Cleanup failed: ${error.message}`);
+      isCleaningUp = false;
+      return false;
+    }
+  }
+
+  function exitAfterCleanup(code = 0, delayMs = 100) {
+    if (!cleanup()) {
+      isShuttingDown = false;
+      return false;
+    }
+    setTimeout(() => process.exit(code), delayMs);
+    return true;
   }
 
   // Suppress all errors during shutdown (systray lib throws JSON parse errors)
@@ -652,20 +727,17 @@ function startServer(latestVersion) {
     if (isShuttingDown) return;
     isShuttingDown = true;
     console.log("\nExiting...");
-    cleanup();
-    setTimeout(() => process.exit(0), 100);
+    exitAfterCleanup(0);
   });
   process.on("SIGTERM", () => {
     if (isShuttingDown) return;
     isShuttingDown = true;
-    cleanup();
-    setTimeout(() => process.exit(0), 100);
+    exitAfterCleanup(0);
   });
   process.on("SIGHUP", () => {
     if (isShuttingDown) return;
     isShuttingDown = true;
-    cleanup();
-    setTimeout(() => process.exit(0), 100);
+    exitAfterCleanup(0);
   });
 
   // Initialize tray icon (runs alongside TUI)
@@ -677,8 +749,7 @@ function startServer(latestVersion) {
         onQuit: () => {
           isShuttingDown = true;
           console.log("\n👋 Shutting down from tray...");
-          cleanup();
-          setTimeout(() => process.exit(0), 100);
+          exitAfterCleanup(0);
         },
         onOpenDashboard: () => openBrowser(url)
       });
@@ -696,17 +767,34 @@ function startServer(latestVersion) {
     console.log(`\n🚀 ${DISPLAY_NAME} v${pkg.version}`);
     console.log(`Server: http://${displayHost}:${port}`);
 
-    setTimeout(() => {
+    waitServerReady(port).then((ready) => {
       initTrayIcon();
-      console.log("\n💡 Router is now running in system tray. Close this terminal if you want.");
+      if (ready) {
+        console.log("\n💡 Router is now running in system tray. Close this terminal if you want.");
+      } else {
+        console.log("\n⚠ Server process started; readiness unconfirmed. Tray attached anyway.");
+      }
       console.log("   Right-click tray icon to open dashboard or quit.\n");
-    }, 2000);
+    });
 
     return;
   }
 
   // Wait for server to be ready, then show interface menu loop + tray
-  setTimeout(async () => {
+  waitServerReady(port).then(async (ready) => {
+    if (recoveryInProgress) return;
+    if (!ready) {
+      // Readiness failed after the deadline: the backend may have crashed and
+      // menu actions would hit a dead server. Keep the tray for control, but do
+      // not enter the interactive web/TUI loop; server event handlers manage
+      // restart/exit.
+      console.error("\n✖ Server did not become ready in time; not showing interface menu.");
+      console.error("  Check the logs above; the tray icon remains available.");
+      initTrayIcon();
+      return;
+    }
+    // Resolve parallel update check (already running); don't block server start on it.
+    const latestVersion = await latestVersionPromise;
     // Start tray icon alongside TUI
     initTrayIcon();
 
@@ -721,7 +809,10 @@ function startServer(latestVersion) {
           console.log(`\n⬆  Update v${pkg.version} → v${latestVersion}\n`);
           console.log(`Run this after exit:\n`);
           console.log(`   \x1b[33m${INSTALL_CMD_LATEST}\x1b[0m\n`);
-          cleanup();
+          if (!cleanup()) {
+            isShuttingDown = false;
+            continue;
+          }
           await killAllAppProcesses(port);
           await killProcessOnPort(port);
           setTimeout(() => process.exit(0), 200);
@@ -761,6 +852,14 @@ function startServer(latestVersion) {
             return;
           }
 
+          // Stop the current worker before creating its replacement. If MITM
+          // ownership cleanup cannot be confirmed, do not fork and orphan it.
+          isShuttingDown = true;
+          if (!cleanup()) {
+            isShuttingDown = false;
+            continue;
+          }
+
           // Windows/Linux: spawn detached bgProcess (systray works fine in child)
           console.log(`\n⏳ Starting background process... (tray icon will appear in ~3s)`);
 
@@ -776,36 +875,49 @@ function startServer(latestVersion) {
           console.log(`   Server: http://${displayHost}:${port}`);
           console.log(`\n💡 You can close this terminal. Right-click tray icon to quit.\n`);
 
-          // cleanup() kills server so bgProcess can claim the port fresh
-          cleanup();
           process.exit(0);
         } else if (choice === "exit") {
           isShuttingDown = true;
           console.log("\nExiting...");
-          cleanup();
-          setTimeout(() => process.exit(0), 100);
+          exitAfterCleanup(0);
         }
       }
     } catch (err) {
       console.error("Error:", err.message);
-      cleanup();
-      process.exit(1);
+      isShuttingDown = true;
+      exitAfterCleanup(1, 0);
     }
-  }, 3000);
+  });
 
   function attachServerEvents() {
     server.on("error", (err) => {
       console.error("Failed to start server:", err.message);
+      if (recoveryInProgress) return;
       if (!isShuttingDown) tryRestart();
-      else { cleanup(); process.exit(1); }
+      else if (cleanup()) process.exit(1);
     });
 
     server.on("close", (code) => {
-      if (isShuttingDown || code === 0) {
+      if (recoveryInProgress) return;
+      if (isIntentionalWorkerHandoff(
+        code,
+        INTENTIONAL_HANDOFF_EXIT_CODE,
+        hasStaleMitmOwnership(),
+      )) {
+        isShuttingDown = true;
+        process.exit(0);
+        return;
+      }
+      if (isShuttingDown) {
         process.exit(code || 0);
         return;
       }
-      tryRestart(code);
+      if (code === INTENTIONAL_HANDOFF_EXIT_CODE) {
+        console.error("Intentional worker handoff was rejected because MITM ownership state remains.");
+      }
+      // A clean Next.js exit is still unexpected at the CLI layer. Restart so
+      // the manager can re-adopt or explicitly clean any active MITM state.
+      tryRestart(code || 1);
     });
   }
 
@@ -815,18 +927,9 @@ function startServer(latestVersion) {
     if (aliveMs >= RESTART_RESET_MS) restartCount = 0;
 
     if (restartCount >= MAX_RESTARTS) {
-      console.error(`\n⚠️  Server crashed ${MAX_RESTARTS} times. Disabling MIT and restarting...`);
-      try {
-        const dbPath = path.join(os.homedir(), process.platform === "win32" ? path.join("AppData", "Roaming", "9router", "db.json") : path.join(".9router", "db.json"));
-        if (fs.existsSync(dbPath)) {
-          const db = JSON.parse(fs.readFileSync(dbPath, "utf-8"));
-          if (db.settings) db.settings.mitmEnabled = false;
-          fs.writeFileSync(dbPath, JSON.stringify(db, null, 2));
-        }
-      } catch { /* best effort */ }
-      restartCount = 0;
-      server = spawnServer();
-      attachServerEvents();
+      console.error(`\n⚠️  Server crashed ${MAX_RESTARTS} times. Starting one recovery worker to clean MITM system state...`);
+      recoveryInProgress = true;
+      void recoverAfterRestartExhaustion();
       return;
     }
 
@@ -843,6 +946,33 @@ function startServer(latestVersion) {
       server = spawnServer();
       attachServerEvents();
     }, delay);
+  }
+
+  async function recoverAfterRestartExhaustion() {
+    try {
+      const nonce = crypto.randomBytes(24).toString("hex");
+      server = spawnServer({ DURINDOOR_WORKER_NONCE: nonce });
+      attachServerEvents();
+      await waitForWorkerIdentity(server, nonce);
+      if (!stopMitmViaManagerSync(port, { preserveDesiredState: false })) {
+        throw new Error("MITM manager cleanup could not be confirmed on the recovery worker");
+      }
+      console.error("MITM system state was cleaned and disabled; exiting instead of continuing the crash loop.");
+      isShuttingDown = true;
+      if (!cleanup()) {
+        isShuttingDown = false;
+        throw new Error("Recovery worker shutdown cleanup could not be confirmed");
+      }
+      process.exit(1);
+    } catch (error) {
+      // Keep a live recovery worker when possible; it retains ownership and
+      // gives the operator a safe surface from which to retry cleanup.
+      console.error(`Recovery cleanup failed: ${error.message}`);
+      if (server?.exitCode != null || server?.signalCode != null) {
+        recoveryInProgress = false;
+      }
+      isShuttingDown = false;
+    }
   }
 
   attachServerEvents();

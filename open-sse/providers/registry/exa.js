@@ -1,6 +1,7 @@
 export default {
   id: "exa",
   alias: "exa",
+  aliases: ["exa-search"],
   display: {
     name: "Exa",
     icon: "manage_search",

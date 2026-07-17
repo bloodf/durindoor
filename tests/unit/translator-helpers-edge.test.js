@@ -24,6 +24,31 @@ describe("normalizeClaudePassthrough — haiku adaptive thinking (docs 11 §1)",
     expect(out.system).toEqual([{ type: "text", text: "be brief" }]);
     expect(out.messages.every((m) => m.role !== "system")).toBe(true);
   });
+
+  it("reconciles native thinking budgets below max_tokens", () => {
+    const out = normalizeClaudePassthrough({
+      model: "claude-haiku-4-5",
+      max_tokens: 4096,
+      thinking: { type: "enabled", budget_tokens: 8192 },
+      messages: [{ role: "user", content: "hello" }],
+    }, "claude-haiku-4-5", "claude");
+
+    expect(out.max_tokens).toBe(9216);
+    expect(out.thinking.budget_tokens).toBe(8192);
+    expect(out.thinking.budget_tokens).toBeLessThan(out.max_tokens);
+  });
+
+  it("shrinks an over-ceiling native budget while preserving answer headroom", () => {
+    const out = normalizeClaudePassthrough({
+      model: "claude-haiku-4-5",
+      max_tokens: 200000,
+      thinking: { type: "enabled", budget_tokens: 128000 },
+      messages: [{ role: "user", content: "hello" }],
+    }, "claude-haiku-4-5", "claude");
+
+    expect(out.max_tokens).toBe(64000);
+    expect(out.thinking.budget_tokens).toBe(62976);
+  });
 });
 
 describe("parseDataUri / encodeDataUri (docs 11 §4)", () => {

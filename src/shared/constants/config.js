@@ -56,6 +56,7 @@ export const API_ENDPOINTS = {
 export const CONSOLE_LOG_CONFIG = {
   maxLines: 200,
   pollIntervalMs: 1000,
+  streamTimeoutMs: 5000,
 };
 
 // Client-side store TTL: how long fetched data stays fresh before re-fetching
@@ -67,6 +68,7 @@ export const QUOTA_AUTOPING_CONFIG = {
   pingLeadMs: 5000,                     // fire once reset passes (within tolerance)
   refreshAheadMs: 300000,               // refetch usage when within 5min of reset
   failureCooldownMs: 900000,            // avoid failed ping spam while upstream/auth is unhealthy
+  pingTimeoutMs: 45000,                 // bound request + streamed response drain
   providers: {
     claude: {
       settingsKey: "claudeAutoPing",    // preserve existing settings contract

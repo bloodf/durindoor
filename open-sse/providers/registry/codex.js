@@ -38,6 +38,12 @@ export default {
       originator: "codex_cli_rs",
       "User-Agent": "codex_cli_rs/0.136.0",
     },
+    // Official openai/codex: semantic Ultra serializes as Max for requests.
+    // Upstream provenance: decolua/9router#2523 — alias lookup is case-sensitive
+    // ("ULTRA" must not map to "max").
+    quirks: {
+      reasoningEffortAliases: { ultra: "max" },
+    },
     usage: {
       url: "https://chatgpt.com/backend-api/wham/usage",
       resetCreditsUrl: "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits",
@@ -66,12 +72,18 @@ export default {
     { id: "gpt-5.5-image", name: "GPT 5.5 Image", capabilities: ["text2img","edit"], params: ["size","quality","background","image_detail","output_format"], kind: "image" },
     { id: "gpt-5.4-image", name: "GPT 5.4 Image", capabilities: ["text2img","edit"], params: ["size","quality","background","image_detail","output_format"], kind: "image" },
     { id: "gpt-5.3-image", name: "GPT 5.3 Image", capabilities: ["text2img","edit"], params: ["size","quality","background","image_detail","output_format"], kind: "image" },
+    { id: "gpt-5.6-sol", name: "GPT 5.6 Sol" },
+    { id: "gpt-5.6-sol-review", name: "GPT 5.6 Sol Review", upstreamModelId: "gpt-5.6-sol", quotaFamily: "review" },
+    { id: "gpt-5.6-terra", name: "GPT 5.6 Terra" },
+    { id: "gpt-5.6-terra-review", name: "GPT 5.6 Terra Review", upstreamModelId: "gpt-5.6-terra", quotaFamily: "review" },
+    { id: "gpt-5.6-luna", name: "GPT 5.6 Luna" },
+    { id: "gpt-5.6-luna-review", name: "GPT 5.6 Luna Review", upstreamModelId: "gpt-5.6-luna", quotaFamily: "review" },
   ],
   serviceKinds: ["llm","image"],
   oauth: {
     clientId: "app_EMoamEEZ73f0CkXaXp7hrann",
     authorizeUrl: "https://auth.openai.com/oauth/authorize",
-    tokenUrl: "https://auth.openai.com/oauth/token",
+    tokenUrl: "https://auth.openai.com/api/accounts/oauth/token",
     scope: "openid profile email offline_access",
     codeChallengeMethod: "S256",
     fixedPort: 1455,

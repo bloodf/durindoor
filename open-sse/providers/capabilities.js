@@ -23,6 +23,11 @@
 // 2.0+, Grok, Perplexity). Verify with: curl -s https://models.dev/api.json
 
 import { matchPattern } from "./pricing.js";
+import {
+  KIRO_GPT_5_6_FAMILY,
+  buildKiroGpt56Variants,
+} from "./models/kiroVariants.js";
+import { normalizeModelId } from "./models/schema.js";
 
 /**
  * Safe floor — every resolved result is merged over this so consumers
@@ -42,7 +47,7 @@ export const DEFAULT_CAPABILITIES = {
   tools: true,          // function / tool calling
   reasoning: false,     // thinking / reasoning
   // thinking wire format (only meaningful when reasoning:true). null → derive from transport.format.
-  // enum: openai|claude-adaptive|claude-budget|gemini-level|gemini-budget|zai|qwen|deepseek|kimi|minimax|hunyuan|step
+  // enum: openai|claude-adaptive|claude-budget|gemini-level|gemini-budget|zai|qwen|deepseek|kimi|minimax|hunyuan|step|kiro
   thinkingFormat: null,
   thinkingCanDisable: true,  // false → model cannot turn thinking off (clamp to min instead of disable)
   thinkingRange: null,       // { min, max } for budget formats; null = no clamp
@@ -98,12 +103,85 @@ export const MODEL_CAPABILITIES = {
   // Qwen plain coder/text (no vision) — registry "vision-model" / "coder-model" aliases
   "vision-model":      { vision: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000 },
   "coder-model":       { reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000 },
+
+  // Grok CLI non-reasoning coding models (cli-chat-proxy rejects reasoningEffort). Upstream decolua/9router#2534.
+  "grok-composer-2.5-fast": { vision: true, reasoning: false, search: false, thinkingFormat: null, contextWindow: 200000, maxOutput: 30000 },
+  "grok-build":            { vision: true, reasoning: false, search: false, thinkingFormat: null, contextWindow: 512000, maxOutput: 30000 },
 };
 
 /**
  * Provider-specific capability overrides. Keyed by provider alias/id.
  */
+const KIRO_GPT_5_6_PROVIDER_CAPS = Object.fromEntries(
+  KIRO_GPT_5_6_FAMILY.flatMap(buildKiroGpt56Variants).map((m) => [m.id, {
+    vision: true, reasoning: true, search: true,
+    thinkingFormat: "kiro", contextWindow: m.contextLength, maxOutput: 32000,
+  }])
+);
+
 export const PROVIDER_CAPABILITIES = {
+  // Kiro GPT-5.6 family (decolua/9router#2596): 272k context, Kiro-native
+  // thinking (<thinking_mode> prefix), vision + search. thinkingFormat "kiro"
+  // keeps applyThinking from adding a stray top-level reasoning_effort to the
+  // CodeWhisperer payload. One shared descriptor spread over every
+  // generated synthetic variant id (base/-thinking/-agentic/-thinking-agentic)
+  // so the 12 keys can never drift from the catalog in providerModels.js.
+  // Exposed under both the provider id ("kiro") and its short alias ("kr") —
+  // callers pass either.
+  kiro: KIRO_GPT_5_6_PROVIDER_CAPS,
+  kr: KIRO_GPT_5_6_PROVIDER_CAPS,
+  // Devin cloud-agent (OmniRoute #6894): single placeholder model, not chat-capable.
+  devin: { devin: { tools: false } },
+  // ClinePass proxies through Vercel's OpenAI Chat Completions API, which only
+  // accepts reasoning.effort in {none,minimal,low,medium,high,xhigh}. Force
+  // "openai" so thinkingUnified.js emits valid Vercel enum values. Keys are the
+  // WIRE ids (`cline-pass/...`) because transformRequest → ensureThinkingBudget
+  // receives getModelUpstreamId()'s cleanUpstreamModel, not the short registry id.
+  // Source: decolua/9router#2332 @ 005d970f49.
+  clinepass: {
+    "cline-pass/deepseek-v4-pro":   { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 50000 },
+    "cline-pass/deepseek-v4-flash": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 50000 },
+  },
+  // Kimi Web (www.kimi.com) consumer chat — OpenAI-shaped transport. The
+  // `k2d6-thinking` tier supports reasoning via the OpenAI `reasoning_effort`
+  // wire format and can be disabled (`reasoning_effort: "none"`); the plain
+  // `k2d6` tier has no reasoning. Both tiers are toolless until tool mapping
+  // exists — the executor folds only system/user/assistant text and never
+  // forwards tools/tool_choice or emits tool_calls, so combo or
+  // `tool_choice:"required"` routing must not pick Kimi expecting a tool call.
+  "kimi-web": {
+    "k2d6": { tools: false },
+    "k2d6-thinking": { tools: false, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true },
+  },
+  // ZenMux Free exposes text streaming through its Anthropic-compatible web
+  // endpoint but does not return structured tool_use blocks.
+  "zenmux-free": {
+    "deepseek/deepseek-chat": { tools: false },
+    "deepseek/deepseek-reasoner": { tools: false, reasoning: true, thinkingFormat: "deepseek", thinkingCanDisable: false, contextWindow: 128000 },
+    "deepseek/deepseek-v4-pro": { tools: false, reasoning: true, thinkingFormat: "deepseek", contextWindow: 1000000, maxOutput: 384000 },
+    "kuaishou/kat-coder-pro-v1-free": { tools: false },
+    "z-ai/glm-4.7-flash-free": { tools: false },
+    "stepfun/step-3.5-flash-free": { tools: false },
+    "inclusionai/ling-1t": { tools: false },
+    "inclusionai/ling-mini-2.0": { tools: false },
+    "inclusionai/ring-1t": { tools: false },
+    "sapiens-ai/agnes-1.5-lite": { tools: false },
+    "sapiens-ai/agnes-1.5-pro": { tools: false },
+  },
+  zmf: {
+    "deepseek/deepseek-chat": { tools: false },
+    "deepseek/deepseek-reasoner": { tools: false, reasoning: true, thinkingFormat: "deepseek", thinkingCanDisable: false, contextWindow: 128000 },
+    "deepseek/deepseek-v4-pro": { tools: false, reasoning: true, thinkingFormat: "deepseek", contextWindow: 1000000, maxOutput: 384000 },
+    "kuaishou/kat-coder-pro-v1-free": { tools: false },
+    "z-ai/glm-4.7-flash-free": { tools: false },
+    "stepfun/step-3.5-flash-free": { tools: false },
+    "inclusionai/ling-1t": { tools: false },
+    "inclusionai/ling-mini-2.0": { tools: false },
+    "inclusionai/ring-1t": { tools: false },
+    "sapiens-ai/agnes-1.5-lite": { tools: false },
+    "sapiens-ai/agnes-1.5-pro": { tools: false },
+  },
+
   // Fireworks AI — all models served via OpenAI-compatible API, so
   // thinkingFormat must be "openai" (overrides family-native patterns like
   // zai/deepseek/kimi/minimax/qwen that would produce wrong wire shapes).
@@ -172,7 +250,126 @@ export const PROVIDER_CAPABILITIES = {
     "deepseek-v4-flash":  { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 50000 },
     "deepseek-v3-2-volc": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 96000, maxOutput: 32000 },
   },
+
+  // OpenCode Zen — Big Pickle advertises reasoning in the registry but the
+  // generic fallback did not read model-level supportsReasoning flags.
+  "opencode-zen": {
+    "big-pickle": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true },
+  },
+
+  // Qianfan ERNIE multimodal models exposed as vision-capable chat models.
+  qianfan: {
+    "ernie-5.1": { vision: true },
+    "ernie-5.0-thinking-latest": { vision: true, reasoning: true },
+    "ernie-x1.1": { vision: true, contextWindow: 64000 },
+  },
+
+  // Reka Edge 2603 is a vision-capable model on an OpenAI-compatible surface.
+  reka: {
+    "reka-edge-2603": { vision: true },
+  },
+
+  // v0 models support image inputs through the Vercel Chat Completions API.
+  "v0-vercel": {
+    "v0-1.5-md": { vision: true },
+    "v0-1.5-lg": { vision: true },
+  },
+
+  // SenseNova — SenseChat-Vision is advertised as a vision model; without an
+  // override the provider/model id falls through to the default text-only floor
+  // and images are stripped before the request reaches the provider.
+  // SenseNova Token Plan (validated 2026-07-06): max output tokens are CLAMPED
+  // to 65536 via the registry clampRequestBody hook (explicit over-ceiling values
+  // only — omitted token fields are left untouched). Only the three supported chat
+  // models are exposed; sensenova-u1-fast advertises on /models but 404s on
+  // chat completions, so it is omitted from the registry.
+  sensenova: {
+    "sensenova-6.7-flash-lite": {
+      vision: true,
+      tools: true,
+      // Flash-Lite streams reasoning on the Token Plan endpoint and accepts
+      // OpenAI-style reasoning_effort (incl. "none" to disable), so mark it
+      // reasoning-capable — otherwise applyThinking strips the client's
+      // reasoning_effort/thinking controls for a model that can honour them.
+      reasoning: true,
+      thinkingFormat: "openai",
+      thinkingCanDisable: true,
+      contextWindow: 262144,
+      maxOutput: 65536,
+    },
+    "deepseek-v4-flash": {
+      reasoning: true,
+      contextWindow: 1048576,
+      maxOutput: 65536,
+      // SenseNova's DeepSeek speaks OpenAI-style reasoning_effort (incl. "none"
+      // to disable), NOT the native-deepseek thinking wire format — using
+      // "deepseek" here would strip a client reasoning_effort. Override to
+      // "openai" so it passes through.
+      thinkingFormat: "openai",
+      thinkingCanDisable: true,
+    },
+    "glm-5.2": {
+      reasoning: true,
+      contextWindow: 1048576,
+      maxOutput: 65536,
+      thinkingFormat: "openai",
+    },
+  },
+
+  // StepFun — step-3.7-flash is documented as a vision-capable reasoning model.
+  // The generic *step-* pattern is reasoning-only, so override vision while
+  // preserving the StepFun reasoning wire format.
+  stepfun: {
+    "step-3.7-flash": { vision: true, reasoning: true, thinkingFormat: "step", contextWindow: 262144 },
+    "step-3.5-flash": { reasoning: true, thinkingFormat: "step", contextWindow: 262144 },
+    "step-3.5-flash-2603": { reasoning: true, thinkingFormat: "step", contextWindow: 262144 },
+    "step-1o-turbo-vision": { vision: true, reasoning: true, thinkingFormat: "step", contextWindow: 32768 },
+  },
+
+  // Tencent Hunyuan — hunyuan-vision is advertised as a vision model, but the
+  // generic *hunyuan* pattern only marks reasoning; override so image inputs
+  // are not replaced with placeholders before the request is sent.
+  tencent: {
+    "hunyuan-vision": { vision: true, reasoning: true, thinkingFormat: "hunyuan" },
+  },
+
+  // Scaleway AI serves models through an OpenAI-compatible endpoint, so any
+  // reasoning model that defaults to a native thinking field must be forced to
+  // the openai reasoning_effort shape.
+  scaleway: {
+    "qwen3-235b-a22b-instruct-2507": { thinkingFormat: "openai" },
+    "llama-3.1-70b-instruct": { thinkingFormat: "openai" },
+    "llama-3.1-8b-instruct": { thinkingFormat: "openai" },
+    "mistral-small-3.2-24b-instruct-2506": { thinkingFormat: "openai" },
+    "deepseek-v3-0324": { thinkingFormat: "openai" },
+    "gpt-oss-120b": { thinkingFormat: "openai" },
+  },
+  scw: {
+    "qwen3-235b-a22b-instruct-2507": { thinkingFormat: "openai" },
+    "llama-3.1-70b-instruct": { thinkingFormat: "openai" },
+    "llama-3.1-8b-instruct": { thinkingFormat: "openai" },
+    "mistral-small-3.2-24b-instruct-2506": { thinkingFormat: "openai" },
+    "deepseek-v3-0324": { thinkingFormat: "openai" },
+    "gpt-oss-120b": { thinkingFormat: "openai" },
+  },
+
+  // Upstage — solar-pro3 contains "pro3" which matches the OpenAI o-series
+  // *o3* pattern, incorrectly marking it vision-capable. Override so it uses
+  // the text-only default and images fail locally instead of being forwarded.
+  upstage: {
+    "solar-pro3": { vision: false, reasoning: false },
+  },
+
+  // ZenMux — x-ai/grok-4.1-fast is explicitly text-only, so override vision to
+  // false while preserving the Grok pattern's reasoning/search/openai defaults.
+  // glm-4.6v-flash is advertised as vision-capable, but the generic *glm-4*
+  // pattern below is text-only; override here so images survive.
+  zenmux: {
+    "x-ai/grok-4.1-fast": { vision: false, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 256000 },
+    "z-ai/glm-4.6v-flash": { vision: true, contextWindow: 128000 },
+  },
 };
+
 
 /**
  * Pattern fallback — glob (* = wildcard), matched case-insensitively and
@@ -190,8 +387,8 @@ export const PATTERN_CAPABILITIES = [
   { pattern: "*claude*haiku*",  caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
   { pattern: "*claude*opus*",   caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
   { pattern: "*claude*sonnet*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
-  { pattern: "*claude*fable*",  caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-budget", contextWindow: 1000000, maxOutput: 128000 } },
-  { pattern: "*claude*mythos*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-budget", contextWindow: 1000000, maxOutput: 128000 } },
+  { pattern: "*claude*fable*",  caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
+  { pattern: "*claude*mythos*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
   { pattern: "*claude-3*",      caps: { vision: true } },
   { pattern: "*claude*",        caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
 
@@ -202,6 +399,8 @@ export const PATTERN_CAPABILITIES = [
   { pattern: "*gemini-2.5*",    caps: { vision: true, audioInput: true, videoInput: true, reasoning: true, search: true, thinkingFormat: "gemini-budget", thinkingRange: { min: 0, max: 24576 }, contextWindow: 1048576, maxOutput: 65536 } },
   { pattern: "*gemini-2*",      caps: { vision: true, audioInput: true, videoInput: true, search: true, contextWindow: 1048576, maxOutput: 65536 } },
   { pattern: "*gemini*",        caps: { vision: true, search: true, contextWindow: 1048576 } },
+  // Gemma 4 on Gemini API accepts thinkingLevel, not Gemini 2.5 thinkingBudget.
+  { pattern: "*gemma-4*",       caps: { vision: true, reasoning: true, thinkingFormat: "gemini-level", contextWindow: 128000 } },
   { pattern: "*gemma*",         caps: { vision: true, contextWindow: 128000 } },
   { pattern: "*nanobanana*",    caps: { vision: true, imageOutput: true } },
 
@@ -224,7 +423,12 @@ export const PATTERN_CAPABILITIES = [
 
   // ── Grok (vision + Live Search) ──────────────────────────────────
   { pattern: "*grok*image*",    caps: { imageOutput: true } },
+  // Grok Composer / Build (Grok CLI): no client-controlled reasoningEffort (xAI 400 if sent). Upstream decolua/9router#2534.
+  { pattern: "*grok-composer*", caps: { vision: true, reasoning: false, search: false, thinkingFormat: null, contextWindow: 200000, maxOutput: 30000 } },
+  { pattern: "*grok-build*",    caps: { vision: true, reasoning: false, search: false, thinkingFormat: null, contextWindow: 512000, maxOutput: 30000 } },
   { pattern: "*grok-code*",     caps: { reasoning: true, thinkingFormat: "openai", contextWindow: 256000 } },
+  // Grok 4.5 (Grok CLI / Grok Build): 500k context per cli-chat-proxy /v1/models.
+  { pattern: "*grok-4.5*",      caps: { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 500000, maxOutput: 64000 } },
   { pattern: "*grok-4*",        caps: { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 256000 } },
   { pattern: "*grok-3*",        caps: { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 131072 } },
   { pattern: "*grok*",          caps: { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 256000 } },
@@ -309,21 +513,25 @@ export const PATTERN_CAPABILITIES = [
  *
  * @param {string[]} comboModels
  * @param {Object|null} [comboLookup] optional map of combo name → models array for nested resolution
+ * @param {Object|null} [aliasToProviderId] optional map of model-list output alias
+ *   (incl. custom connection prefixes like `mykr`) → provider id, so combo
+ *   member ids keyed by a connection prefix resolve that provider's caps rows
+ *   instead of falling through to generic patterns.
  * @param {number} [_depth] internal recursion depth guard
  * @returns {object|null} full capabilities object, or null for empty input
  */
-export function aggregateComboCapabilities(comboModels, comboLookup = null, _depth = 0) {
+export function aggregateComboCapabilities(comboModels, comboLookup = null, aliasToProviderId = null, _depth = 0) {
   if (!comboModels?.length || _depth > 6) return null;
   const allCaps = comboModels.map((fullId) => {
     // Nested combo: bare name (no slash) that exists in the lookup — recurse
     if (!fullId.includes("/") && comboLookup?.[fullId]) {
-      return aggregateComboCapabilities(comboLookup[fullId], comboLookup, _depth + 1)
+      return aggregateComboCapabilities(comboLookup[fullId], comboLookup, aliasToProviderId, _depth + 1)
           ?? getCapabilitiesForModel(null, fullId);
     }
     const slash = fullId.indexOf("/");
     const provider = slash === -1 ? null : fullId.slice(0, slash);
     const model = slash === -1 ? fullId : fullId.slice(slash + 1);
-    return getCapabilitiesForModel(provider, model);
+    return getCapabilitiesForModel(aliasToProviderId?.[provider] ?? provider, model);
   });
   const first = allCaps[0];
   return {
@@ -353,25 +561,42 @@ export function aggregateComboCapabilities(comboModels, comboLookup = null, _dep
  * @returns {object} full capabilities object
  */
 export function getCapabilitiesForModel(provider, model) {
-  if (!model) return { ...DEFAULT_CAPABILITIES };
+  const finalize = (caps) => provider === "huggingchat" ? { ...caps, vision: false } : caps;
+
+  if (!model) return finalize({ ...DEFAULT_CAPABILITIES });
+
+  // Vendor-prefixed ids ("openai/gpt-5.6-sol") resolve against the bare id.
+  const baseModel = model.includes("/") ? model.split("/").pop() : model;
 
   // 1. Provider-specific override
-  if (provider && PROVIDER_CAPABILITIES[provider]?.[model]) {
-    return { ...DEFAULT_CAPABILITIES, ...PROVIDER_CAPABILITIES[provider][model] };
+  if (provider) {
+    const providerCaps = PROVIDER_CAPABILITIES[provider];
+    if (providerCaps?.[model]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[model] });
+    if (providerCaps?.[baseModel]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[baseModel] });
+    // Kiro accepts dash-form version ids ("gpt-5-6-sol") at the wire, but the
+    // caps map is keyed by the dotted catalog ids. Normalize digit-dash-digit
+    // ("5-6" → "5.6", synthetic -thinking/-agentic suffixes untouched) so the
+    // dash form hits the same 272k GPT-5.6 row instead of the generic 400k
+    // *gpt-5* pattern. Scoped to kiro/kr so other providers are unaffected.
+    if (provider === "kiro" || provider === "kr") {
+      const normalized = normalizeModelId(model);
+      const normalizedBase = normalizeModelId(baseModel);
+      if (providerCaps?.[normalized]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[normalized] });
+      if (providerCaps?.[normalizedBase]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[normalizedBase] });
+    }
   }
 
-  // 2. Canonical exact (strip vendor prefix: "anthropic/claude-opus-4.7" -> "claude-opus-4.7")
-  const baseModel = model.includes("/") ? model.split("/").pop() : model;
-  if (MODEL_CAPABILITIES[baseModel]) return { ...DEFAULT_CAPABILITIES, ...MODEL_CAPABILITIES[baseModel] };
-  if (MODEL_CAPABILITIES[model]) return { ...DEFAULT_CAPABILITIES, ...MODEL_CAPABILITIES[model] };
+  // 2. Canonical exact
+  if (MODEL_CAPABILITIES[baseModel]) return finalize({ ...DEFAULT_CAPABILITIES, ...MODEL_CAPABILITIES[baseModel] });
+  if (MODEL_CAPABILITIES[model]) return finalize({ ...DEFAULT_CAPABILITIES, ...MODEL_CAPABILITIES[model] });
 
   // 3. Pattern match (first match wins)
   for (const { pattern, caps } of PATTERN_CAPABILITIES) {
     if (matchPattern(pattern, baseModel) || matchPattern(pattern, model)) {
-      return { ...DEFAULT_CAPABILITIES, ...caps };
+      return finalize({ ...DEFAULT_CAPABILITIES, ...caps });
     }
   }
 
   // 4. Floor
-  return { ...DEFAULT_CAPABILITIES };
+  return finalize({ ...DEFAULT_CAPABILITIES });
 }

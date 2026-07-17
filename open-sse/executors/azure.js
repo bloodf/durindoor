@@ -1,4 +1,5 @@
 import { DefaultExecutor } from "./default.js";
+import { applyParamRenames } from "../translator/concerns/paramSupport.js";
 
 export class AzureExecutor extends DefaultExecutor {
   constructor() {
@@ -52,6 +53,10 @@ export class AzureExecutor extends DefaultExecutor {
   }
 
   transformRequest(model, body, stream, credentials) {
-    return body;
+    // Azure bypasses DefaultExecutor.transformRequest; invoke the shared helper
+    // directly. Clone before mutating to avoid caller side effects. (#6912/#6964)
+    const transformed = { ...(body || {}) };
+    applyParamRenames("azure", model, transformed);
+    return transformed;
   }
 }

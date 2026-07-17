@@ -3,11 +3,13 @@
 const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
+const { resolveCliAppDir } = require("./cliBuildPaths");
+const { copyRequiredStandaloneSidecars } = require("./standaloneSidecars");
 
 const cliDir = path.resolve(__dirname, "..");
 const appDir = path.resolve(cliDir, "..");
 const rootDir = path.resolve(appDir, "..");
-const cliAppDir = path.join(cliDir, "app");
+const cliAppDir = resolveCliAppDir(cliDir);
 const buildHomeDir = path.join(cliDir, ".build-home");
 const buildDistDirName = ".next-cli-build";
 const buildDistDir = path.join(appDir, buildDistDirName);
@@ -131,25 +133,33 @@ console.log("✅ Cleaned\n");
 
 // Step 3: Copy Next.js standalone build to app/cli/app.
 // Newer Next.js standalone output writes server.js/package.json plus .next/, src/, and
-// node_modules/ directly under .next/standalone. Older builds may still use a nested app/.
+// node_modules/ directly under .next/standalone, but sometimes nests under a workspace
+// project subfolder (e.g. 9router/). Scan any direct subdir for server.js before falling back to app/.
 console.log("3️⃣  Copying Next.js standalone build to app/cli/app...");
 const standaloneRoot = path.join(appDir, ".next", "standalone");
 const standaloneRootResolved = path.join(buildDistDir, "standalone");
 let standaloneRootToUse = fs.existsSync(standaloneRootResolved) ? standaloneRootResolved : standaloneRoot;
 // Next.js 16 nests standalone output under the project name when NEXT_TRACING_ROOT_MODE=workspace
 // e.g. .next-cli-build/standalone/9router/server.js
-const pkgName = path.basename(appDir);
-const nestedRoot = path.join(standaloneRootToUse, pkgName);
-if (fs.existsSync(path.join(nestedRoot, "server.js")) && !fs.existsSync(path.join(standaloneRootToUse, "server.js"))) {
-  console.log(`ℹ️  Detected nested standalone output: ${pkgName}/`);
-  standaloneRootToUse = nestedRoot;
+let standaloneApp = standaloneRootToUse;
+if (!fs.existsSync(path.join(standaloneApp, "server.js"))) {
+  const subdirs = fs.readdirSync(standaloneRootToUse).filter(name => {
+    try {
+      return fs.statSync(path.join(standaloneRootToUse, name)).isDirectory() && name !== "node_modules";
+    } catch {
+      return false;
+    }
+  });
+  const found = subdirs.find(name => fs.existsSync(path.join(standaloneRootToUse, name, "server.js")));
+  if (found) {
+    standaloneApp = path.join(standaloneRootToUse, found);
+  } else {
+    standaloneApp = path.join(standaloneRootToUse, "app");
+  }
 }
-const standaloneApp = fs.existsSync(path.join(standaloneRootToUse, "server.js"))
-  ? standaloneRootToUse
-  : path.join(standaloneRootToUse, "app");
 if (!fs.existsSync(standaloneApp)) {
   console.error("❌ Next.js standalone build not found under .next/standalone");
-  console.error("Expected either .next/standalone/server.js or .next/standalone/app/");
+  console.error("Expected either .next/standalone/server.js or .next/standalone/app/ or .next/standalone/[folder]/");
   process.exit(1);
 }
 copyRecursive(standaloneApp, cliAppDir);
@@ -161,13 +171,17 @@ if (standaloneApp !== standaloneRootToUse && fs.existsSync(standaloneNodeModules
 }
 console.log("✅ Copied standalone build\n");
 
-// Step 3a: Copy custom server (injects real socket IP, strips spoofable XFF).
-const customServerSrc = path.join(appDir, "custom-server.js");
-if (fs.existsSync(customServerSrc)) {
-  fs.copyFileSync(customServerSrc, path.join(cliAppDir, "custom-server.js"));
-  console.log("✅ Copied custom-server.js\n");
-} else {
-  console.warn("⚠️  custom-server.js not found — server will run without real-IP injection\n");
+// Step 3a: Copy custom server + required root sidecars (custom-server.js
+// injects real socket IP / strips spoofable XFF; head-response-guard.cjs is
+// its #6608 HEAD guard). These live outside Next's standalone trace, so a
+// missing copy crashes the shipped CLI at boot (OmniRoute #6908).
+console.log("3️⃣ a Copying custom server + sidecars...");
+try {
+  copyRequiredStandaloneSidecars(appDir, cliAppDir);
+  console.log("✅ Copied custom-server.js + head-response-guard.cjs\n");
+} catch (error) {
+  console.error(`❌ ${error.message}`);
+  process.exit(1);
 }
 
 // Step 3b: Ensure sql.js (pure JS fallback) bundled in app/cli/app/node_modules.

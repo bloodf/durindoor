@@ -3,46 +3,12 @@ import { getProviderConnections } from "@/lib/localDb";
 import { backfillCodexEmails } from "@/lib/oauth/providers";
 import { backfillCursorEmails } from "@/lib/oauth/services/cursorLocalStore.js";
 import { USAGE_APIKEY_PROVIDERS, USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
-
-const SAFE_FIELDS = [
-  "id", "provider", "authType", "name", "email", "displayName",
-  "priority", "globalPriority", "isActive", "defaultModel",
-  "testStatus", "lastError", "lastErrorAt", "errorCode",
-  "expiresAt", "lastUsedAt", "consecutiveUseCount",
-  "createdAt", "updatedAt",
-];
-
-const SAFE_PSD_FIELDS = [
-  "baseUrl", "azureEndpoint", "deployment", "apiVersion", "accountId",
-  "region", "projectId", "resourceUrl", "proxyPoolId",
-  "connectionProxyEnabled", "connectionProxyUrl", "connectionNoProxy",
-  "githubLogin", "githubName", "githubEmail", "githubUserId",
-  "username", "firstName", "lastName", "authMethod", "authKind",
-  "profileArn",
-];
+import { sanitizeProviderConnectionForClient } from "@/lib/providers/sanitizeProviderConnectionForClient.js";
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 500;
 
-function maskName(name) {
-  if (typeof name !== "string" || name.length <= 16) return name;
-  if (/[a-zA-Z0-9_-]{32,}/.test(name)) return `${name.slice(0, 8)}***`;
-  return name;
-}
 
-function sanitize(c) {
-  const safe = {};
-  for (const f of SAFE_FIELDS) if (c[f] !== undefined) safe[f] = c[f];
-  if (safe.name) safe.name = maskName(safe.name);
-  if (c.providerSpecificData) {
-    const psd = {};
-    for (const f of SAFE_PSD_FIELDS) {
-      if (c.providerSpecificData[f] !== undefined) psd[f] = c.providerSpecificData[f];
-    }
-    safe.providerSpecificData = psd;
-  }
-  return safe;
-}
 
 function isUsageEligible(connection) {
   return USAGE_SUPPORTED_PROVIDERS.includes(connection.provider) && (
@@ -106,7 +72,7 @@ export async function GET(request) {
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
     const currentPage = Math.min(page, totalPages);
     const offset = (currentPage - 1) * pageSize;
-    const pageConnections = sortedConnections.slice(offset, offset + pageSize).map(sanitize);
+    const pageConnections = sortedConnections.slice(offset, offset + pageSize).map(sanitizeProviderConnectionForClient);
 
     return NextResponse.json({
       connections: pageConnections,

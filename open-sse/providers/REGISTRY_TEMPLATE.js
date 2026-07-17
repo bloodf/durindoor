@@ -94,5 +94,6 @@ export default {
   // ── optional flags ───────────────────────────────────────────────────────
   // features: { usage: true },
   // thinkingConfig: { options: ["auto", "none", "low", "high"], defaultMode: "auto" },
-  // passthroughModels: true,
+  // passthroughModels: true,                 // forward unknown model ids untouched
+  // passthroughConnectionWideErrors: true,    // 5xx/network failures lock the whole connection (NVIDIA NIM only; opt-in)
 };

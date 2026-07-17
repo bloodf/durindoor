@@ -6,6 +6,7 @@ import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { redactSecrets } from "@/shared/utils/secretRedaction";
 
 const execAsync = promisify(exec);
 
@@ -112,7 +113,7 @@ export async function GET() {
         const config = parseToml(toml);
         return NextResponse.json({
             installed: true,
-            settings: config,
+            settings: redactSecrets(config),
             has9Router: has9RouterConfig(config),
             configPath: getDeepSeekConfigPath(),
         });
@@ -132,7 +133,9 @@ export async function POST(request) {
         const dir = getDeepSeekDir();
         await fs.mkdir(dir, { recursive: true });
 
-        const newConfig = build9RouterConfig(baseUrl, apiKey || "sk_durindoor", model);
+        const existing = parseToml(await readConfigToml());
+        const existingKey = existing["providers.openai"]?.api_key;
+        const newConfig = build9RouterConfig(baseUrl, apiKey || existingKey || "sk_durindoor", model);
         await fs.writeFile(getDeepSeekConfigPath(), newConfig);
 
         return NextResponse.json({

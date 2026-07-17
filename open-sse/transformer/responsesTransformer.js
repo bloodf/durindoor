@@ -6,6 +6,7 @@
 
 import fs from "fs";
 import path from "path";
+import { toResponsesUsage } from "../translator/concerns/usage.js";
 
 // Create log directory for responses (Node.js only)
 export function createResponsesLogger(model, logsDir = null) {
@@ -73,6 +74,9 @@ export function createResponsesApiTransformStream(logger = null) {
     funcArgsDone: {},
     funcItemDone: {},
     buffer: "",
+    usage: null,
+    // Delay completion after finish_reason so a trailing usage-only chunk can enrich it.
+    awaitingTrailingUsage: false,
     completedSent: false
   };
 
@@ -225,6 +229,7 @@ export function createResponsesApiTransformStream(logger = null) {
   const sendCompleted = (controller) => {
     if (!state.completedSent) {
       state.completedSent = true;
+      const usage = toResponsesUsage(state.usage);
       emit(controller, "response.completed", {
         type: "response.completed",
         response: {
@@ -233,7 +238,8 @@ export function createResponsesApiTransformStream(logger = null) {
           created_at: state.created,
           status: "completed",
           background: false,
-          error: null
+          error: null,
+          ...(usage ? { usage } : {})
         }
       });
     }
@@ -264,7 +270,13 @@ export function createResponsesApiTransformStream(logger = null) {
           continue;
         }
 
-        if (!parsed.choices?.length) continue;
+        if (parsed.usage && typeof parsed.usage === "object") state.usage = parsed.usage;
+        if (!parsed.choices?.length) {
+          // Complete only when usage actually arrived — a bare empty-choices chunk
+          // must not trigger the deferred completion early.
+          if (state.awaitingTrailingUsage && !state.completedSent && state.usage) sendCompleted(controller);
+          continue;
+        }
         
         const choice = parsed.choices[0];
         const idx = choice.index || 0;
@@ -419,7 +431,11 @@ export function createResponsesApiTransformStream(logger = null) {
           for (const i in state.msgItemAdded) closeMessage(controller, i);
           closeReasoning(controller);
           for (const i in state.funcCallIds) closeToolCall(controller, i);
-          sendCompleted(controller);
+          if (state.usage) {
+            sendCompleted(controller);
+          } else {
+            state.awaitingTrailingUsage = true;
+          }
         }
       }
     },

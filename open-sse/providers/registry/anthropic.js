@@ -1,5 +1,3 @@
-import { CLAUDE_API_HEADERS } from "../shared.js";
-
 export default {
   id: "anthropic",
   priority: 30,
@@ -19,7 +17,8 @@ export default {
     baseUrl: "https://api.anthropic.com/v1/messages",
     format: "claude",
     headers: {
-      "Anthropic-Version": "2023-06-01",
+      // Keep lowercase to match merged forwarded-header keys and avoid duplicate logical entries.
+      "anthropic-version": "2023-06-01",
       "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14",
     },
   },

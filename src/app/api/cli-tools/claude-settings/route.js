@@ -6,6 +6,7 @@ import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { redactSecrets } from "@/shared/utils/secretRedaction";
 
 const execAsync = promisify(exec);
 
@@ -68,7 +69,7 @@ export async function GET() {
 
     return NextResponse.json({
       installed: true,
-      settings: settings,
+      settings: redactSecrets(settings),
       has9Router: has9Router,
       settingsPath: getClaudeSettingsPath(),
     });
@@ -112,9 +113,27 @@ export async function POST(request) {
 
     // Normalize ANTHROPIC_BASE_URL to ensure /v1 suffix
     if (env.ANTHROPIC_BASE_URL) {
-      env.ANTHROPIC_BASE_URL = env.ANTHROPIC_BASE_URL.endsWith("/v1") 
-        ? env.ANTHROPIC_BASE_URL 
+      env.ANTHROPIC_BASE_URL = env.ANTHROPIC_BASE_URL.endsWith("/v1")
+        ? env.ANTHROPIC_BASE_URL
         : `${env.ANTHROPIC_BASE_URL}/v1`;
+    }
+
+    // Strip the DurinDoor provider prefix (e.g. "cc/") from the
+    // ANTHROPIC_DEFAULT_*_MODEL values. These vars are read by Claude Code and
+    // embedded verbatim into the Task tool / subagent schema's `model` field,
+    // which is forwarded straight to Anthropic. A "cc/claude-opus-4-8" value is
+    // rejected by Anthropic with a 400 (#2642). The bare model id
+    // ("claude-opus-4-8") still routes correctly through DurinDoor, so the prefix
+    // must not be persisted into Claude Code's settings.
+    for (const key of [
+      "ANTHROPIC_DEFAULT_OPUS_MODEL",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+      "ANTHROPIC_DEFAULT_FABLE_MODEL",
+    ]) {
+      if (typeof env[key] === "string") {
+        env[key] = env[key].replace(/^cc\//, "");
+      }
     }
 
     // Merge new env with existing settings
@@ -200,4 +219,3 @@ export async function DELETE() {
     );
   }
 }
-

@@ -37,8 +37,8 @@ export function detectClientTool(headers = {}, body = {}) {
   // Gemini CLI
   if (ua.includes("gemini-cli")) return "gemini-cli";
 
-  // Codex CLI
-  if (ua.includes("codex-cli")) return "codex";
+  // Codex CLI (codex-cli / codex_cli_rs / codex_exec)
+  if (ua.includes("codex-cli") || ua.includes("codex_cli_rs") || ua.includes("codex_exec")) return "codex";
 
   // DeepSeek TUI
   if (ua.includes("deepseek-tui")) return "deepseek-tui";
@@ -60,4 +60,38 @@ export function isNativePassthrough(clientTool, provider) {
     ? "anthropic"
     : provider;
   return nativeProviders.includes(normalizedProvider);
+}
+
+/**
+ * Codex-originated request detection (OmniRoute #6820, issue #3697). Matches
+ * upstream `isCodexOriginatedHeaders`: a header value counts when it STARTS
+ * with `codex` (case-insensitive), so `codex_exec`, `codex_cli_rs`,
+ * `codex-cli`, `codex/1.2.3` all match — but a substring elsewhere does NOT
+ * (no spoof-like `my-codex-proxy`). Either `originator` or `user-agent` is
+ * sufficient.
+ *
+ * Accepts a WHATWG `Headers` object or a plain record (lowercase keys).
+ * @param {Headers|Record<string,string>|null|undefined} headers
+ * @returns {boolean}
+ */
+export function isCodexOriginatedHeaders(headers) {
+  if (!headers) return false;
+  let originator = "";
+  let ua = "";
+  const read = (value) => (typeof value === "string" ? value.toLowerCase() : "");
+  if (typeof headers.get === "function") {
+    // WHATWG Headers: .get is case-insensitive per spec.
+    originator = read(headers.get("originator"));
+    ua = read(headers.get("user-agent"));
+  } else {
+    // Plain record: keys may be any case (`User-Agent`, `Originator`, ...).
+    // Only string values count — a spoof object with a crafted toString must
+    // not coerce into a match.
+    for (const [key, value] of Object.entries(headers)) {
+      const name = key.toLowerCase();
+      if (name === "originator") originator = read(value);
+      else if (name === "user-agent") ua = read(value);
+    }
+  }
+  return originator.startsWith("codex") || ua.startsWith("codex");
 }

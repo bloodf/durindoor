@@ -18,6 +18,7 @@ export default {
   transport: {
     baseUrl: "https://api.githubcopilot.com/chat/completions",
     responsesUrl: "https://api.githubcopilot.com/responses",
+    messagesUrl: "https://api.githubcopilot.com/v1/messages",
     headers: {
       "copilot-integration-id": "vscode-chat",
       "editor-version": "vscode/1.110.0",
@@ -40,6 +41,14 @@ export default {
       url: "https://api.github.com/copilot_internal/user",
     },
   },
+  // Note: routing to Copilot's Anthropic-native /v1/messages shim (see
+  // executors/github.js) is decided by model-NAME pattern at request time, not by
+  // a static targetFormat field here — Copilot's live model catalog (see
+  // services/copilotModels.js) regularly exposes claude-* models this static list
+  // hasn't caught up with yet, and static per-entry targetFormat would silently
+  // miss those while also double-translating requests for models that ARE listed
+  // here (chatCore pre-translates to Claude shape, then the executor would
+  // translate again). Keep plain entries.
   models: [
     // GoldenEye is GitHub's auto-routing model available on ALL tiers including free.
     // Listed first so it is the default for connection tests and model selector.
@@ -64,6 +73,7 @@ export default {
     { id: "oswe-vscode-prime", name: "Raptor Mini" },
     { id: "text-embedding-3-small", name: "Text Embedding 3 Small (GitHub)", kind: "embedding" },
     { id: "text-embedding-3-large", name: "Text Embedding 3 Large (GitHub)", kind: "embedding" },
+    { id: "claude-fable-5", name: "Claude Fable 5" },
   ],
   serviceKinds: ["llm","embedding"],
   embeddingConfig: { baseUrl: "https://models.github.ai/inference/embeddings", authType: "apikey", authHeader: "bearer" },

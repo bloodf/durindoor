@@ -1,16 +1,14 @@
 /**
  * Unit tests verifying MiniMax-M3 is registered as a first-class
  * built-in model for both the `minimax` (international) and
- * `minimax-cn` (China) providers. No `targetFormat` override:
- * MiniMax-M3 uses OpenAI-shaped transport (targetFormat: "claude"
- * previously routed Claude-shaped bodies to the OpenAI transport,
- * see commit 042cdfc6).
- *
- * Run: cd tests && NODE_PATH=/tmp/node_modules /tmp/node_modules/.bin/vitest run tests/unit/provider-models-minimax-m3.test.js --reporter=verbose
+ * `minimax-cn` (China) providers. No registry `targetFormat` override:
+ * the OpenAI-API routing lives in `getModelTargetFormat()`
+ * (open-sse/config/providerModels.js, upstream decolua/9router#2533),
+ * keeping the registry entry format-agnostic for non-LLM kinds.
  */
 
 import { describe, it, expect } from "vitest";
-import { PROVIDER_MODELS, getModelsByProviderId } from "../../open-sse/config/providerModels.js";
+import { PROVIDER_MODELS, getModelsByProviderId, getModelTargetFormat } from "../../open-sse/config/providerModels.js";
 
 describe("MiniMax-M3 model registration", () => {
   it("includes MiniMax-M3 in PROVIDER_MODELS.minimax", () => {
@@ -33,6 +31,14 @@ describe("MiniMax-M3 model registration", () => {
       name: "MiniMax M3",
     });
     expect(m3.targetFormat).toBeUndefined();
+  });
+
+  it("routes MiniMax-M3 through the OpenAI format via getModelTargetFormat (#2533)", () => {
+    expect(getModelTargetFormat("minimax", "MiniMax-M3")).toBe("openai");
+    expect(getModelTargetFormat("minimax-cn", "MiniMax-M3")).toBe("openai");
+    // Other MiniMax models keep format-agnostic routing.
+    expect(getModelTargetFormat("minimax", "MiniMax-M2.7")).toBeNull();
+    expect(getModelTargetFormat("minimax-cn", "MiniMax-M2.7")).toBeNull();
   });
 
   it("exposes MiniMax-M3 through getModelsByProviderId for both provider IDs", () => {

@@ -4,10 +4,19 @@ import { updateInstance } from "@/lib/localDb";
 import { ensureFreshToken, oauthMetaFromTokens } from "./oauthRefresh";
 import { retryWithBackoff } from "./retry";
 import { isJsonRpcResponse, isRecord } from "./guards";
+import { assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
 
 const TIMEOUT_MS = 30_000;
 const DEFAULT_PROTOCOL_VERSION = "2025-06-18";
 const HTTP_SESSION_KEY = "__9routerGatewayHttpSessions";
+const MAX_REDIRECT_HOPS = 5;
+
+// JSON-RPC request ids. `initialize` hardcodes id 1 (spec: ids only need to
+// be unique within a connection); every post-init request allocates from the
+// per-connection counter on the session entry (see getSessionEntry). The
+// counter lives in the globalThis-backed store, not module scope, so HMR /
+// worker module reloads can never reset it back onto in-flight ids.
+const INITIALIZE_ID = 1;
 
 function getSessionStore() {
   if (!globalThis[HTTP_SESSION_KEY]) {
@@ -19,7 +28,13 @@ function getSessionStore() {
 function getSessionEntry(instance) {
   const store = getSessionStore();
   if (!store.has(instance.id)) {
-    store.set(instance.id, { sessionId: null, protocolVersion: null, serverInfo: null, initPromise: null });
+    store.set(instance.id, {
+      sessionId: null,
+      protocolVersion: null,
+      serverInfo: null,
+      initPromise: null,
+      nextRequestId: INITIALIZE_ID + 1,
+    });
   }
   return store.get(instance.id);
 }
@@ -122,12 +137,72 @@ export async function mcpRequest(instance, jsonRpc, opts = {}) {
       const headers = buildHeaders(currentInstance);
       if (opts.sessionId) headers["mcp-session-id"] = opts.sessionId;
 
-      const res = await fetch(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(jsonRpc),
-        signal: ac.signal,
-      });
+      // SSRF / redirect handling. We do NOT let the runtime auto-follow
+      // redirects: a hostile (or compromised) upstream can 3xx the
+      // JSON-RPC POST to an arbitrary host and, with auto-follow, would
+      // receive the Authorization bearer we attached. Two rules on
+      // EVERY hop:
+      //   1. redirect:"manual" + assertOutboundUrlAllowed() — re-validate
+      //      the Location against the SSRF guard before opening the
+      //      socket.
+      //   2. strip Authorization + other sensitive caller-supplied
+      //      headers whenever the redirect crosses origin. Same-origin
+      //      redirects keep them.
+      let currentUrl = url;
+      let currentHeaders = headers;
+      let res = null;
+      for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop++) {
+        let fetchRes;
+        try {
+          fetchRes = await fetch(currentUrl, {
+            method: "POST",
+            headers: currentHeaders,
+            body: JSON.stringify(jsonRpc),
+            signal: ac.signal,
+            redirect: "manual",
+          });
+        } catch (err) {
+          if (err instanceof OutboundUrlGuardError) {
+            throw Object.assign(new Error("URL not allowed"), { blocked: true, original: err });
+          }
+          throw err;
+        }
+
+        res = fetchRes;
+        if (!(res.status >= 300 && res.status < 400)) break;
+
+        const location = res.headers.get("location");
+        if (!location) break;
+
+        let next;
+        try {
+          next = new URL(location, currentUrl);
+        } catch {
+          break;
+        }
+
+        try {
+          assertOutboundUrlAllowed(next);
+        } catch (err) {
+          if (err instanceof OutboundUrlGuardError) {
+            throw Object.assign(new Error("URL not allowed"), { blocked: true, original: err });
+          }
+          throw err;
+        }
+
+        const prevOrigin = new URL(currentUrl).origin;
+        if (next.origin !== prevOrigin) {
+          const stripped = { ...currentHeaders };
+          delete stripped.Authorization;
+          delete stripped.authorization;
+          delete stripped.Cookie;
+          delete stripped.cookie;
+          delete stripped["Proxy-Authorization"];
+          delete stripped["proxy-authorization"];
+          currentHeaders = stripped;
+        }
+        currentUrl = next.toString();
+      }
 
       if (res.status === 401 || res.status === 403) {
         const body = await res.text().catch(() => "");
@@ -224,7 +299,7 @@ export async function ensureInitialized(instance, opts = {}) {
         clientInfo: { name: "9router-gateway", version: "1" },
       };
       const resp = await mcpRequest(instance, {
-        jsonrpc: "2.0", id: 0, method: "initialize", params: initParams,
+        jsonrpc: "2.0", id: INITIALIZE_ID, method: "initialize", params: initParams,
       });
 
       if ("error" in resp && resp.error !== undefined) {
@@ -248,10 +323,12 @@ export async function ensureInitialized(instance, opts = {}) {
         ...(resp.sessionId ? { sessionId: resp.sessionId } : {}),
       };
 
-      entry.sessionId = info.sessionId ?? null;
-      entry.protocolVersion = info.protocolVersion;
-      entry.serverInfo = info.serverInfo;
-      entry.initPromise = null;
+    // Commit session state before clearing initPromise, so a concurrent
+    // caller that awaited our initPromise sees a fully initialized entry.
+    entry.sessionId = info.sessionId ?? null;
+    entry.protocolVersion = info.protocolVersion;
+    entry.serverInfo = info.serverInfo;
+    entry.initPromise = null;
 
       return info;
     } catch (e) {
@@ -265,8 +342,9 @@ export async function ensureInitialized(instance, opts = {}) {
 
 export async function listTools(instance, opts = {}) {
   const init = await ensureInitialized(instance, opts);
+  const entry = getSessionEntry(instance);
   const resp = await mcpRequest(instance, {
-    jsonrpc: "2.0", id: 1, method: "tools/list", params: opts.params ?? {},
+    jsonrpc: "2.0", id: entry.nextRequestId++, method: "tools/list", params: opts.params ?? {},
   }, { ...(init.sessionId !== undefined ? { sessionId: init.sessionId } : {}) });
   if ("error" in resp && resp.error !== undefined) {
     const errVal = resp.error;
@@ -279,9 +357,10 @@ export async function listTools(instance, opts = {}) {
 
 export async function callTool(instance, name, args, opts = {}) {
   const init = await ensureInitialized(instance, opts);
+  const entry = getSessionEntry(instance);
   const resp = await mcpRequest(instance, {
     jsonrpc: "2.0",
-    id: 2,
+    id: entry.nextRequestId++,
     method: "tools/call",
     params: { name, arguments: args ?? {} },
   }, { ...(init.sessionId !== undefined ? { sessionId: init.sessionId } : {}) });

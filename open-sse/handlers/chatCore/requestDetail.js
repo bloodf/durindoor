@@ -1,6 +1,7 @@
 import { saveRequestUsage, appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { COLORS } from "../../utils/stream.js";
 import { canonicalizeUsage } from "../../utils/usageTracking.js";
+import { toOpenAIUsage } from "../../translator/concerns/usage.js";
 
 const OPTIONAL_PARAMS = [
   "temperature", "top_p", "top_k",
@@ -30,7 +31,10 @@ export function extractUsageFromResponse(responseBody) {
       prompt_tokens: responseBody.usage.input_tokens || 0,
       completion_tokens: responseBody.usage.output_tokens || 0,
       cache_read_input_tokens: responseBody.usage.cache_read_input_tokens,
-      cache_creation_input_tokens: responseBody.usage.cache_creation_input_tokens
+      cache_creation_input_tokens: responseBody.usage.cache_creation_input_tokens,
+      cost_usd: responseBody.usage.cost_usd,
+      cost_in_usd: responseBody.usage.cost_in_usd,
+      cost_in_usd_ticks: responseBody.usage.cost_in_usd_ticks
     };
   }
 
@@ -40,7 +44,10 @@ export function extractUsageFromResponse(responseBody) {
       prompt_tokens: responseBody.usage.prompt_tokens || 0,
       completion_tokens: responseBody.usage.completion_tokens || 0,
       cached_tokens: responseBody.usage.prompt_tokens_details?.cached_tokens,
-      reasoning_tokens: responseBody.usage.completion_tokens_details?.reasoning_tokens
+      reasoning_tokens: responseBody.usage.completion_tokens_details?.reasoning_tokens,
+      cost_usd: responseBody.usage.cost_usd,
+      cost_in_usd: responseBody.usage.cost_in_usd,
+      cost_in_usd_ticks: responseBody.usage.cost_in_usd_ticks
     };
   }
 
@@ -48,12 +55,7 @@ export function extractUsageFromResponse(responseBody) {
   // under `response`, so usage can be either top-level or nested.
   const usageMetadata = responseBody.usageMetadata || responseBody.response?.usageMetadata;
   if (usageMetadata) {
-    return {
-      prompt_tokens: usageMetadata.promptTokenCount || 0,
-      completion_tokens: usageMetadata.candidatesTokenCount || 0,
-      cached_tokens: usageMetadata.cachedContentTokenCount || 0,
-      reasoning_tokens: usageMetadata.thoughtsTokenCount || 0
-    };
+    return toOpenAIUsage(usageMetadata, "gemini");
   }
 
   return null;
@@ -71,29 +73,62 @@ export function buildRequestDetail(base, overrides = {}) {
     providerRequest: base.providerRequest || null,
     providerResponse: base.providerResponse || null,
     response: base.response || {},
+    pxpipe: base.pxpipe || undefined,
     status: base.status || "success",
     ...overrides
   };
 }
 
-export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, label = "USAGE" }) {
+/**
+ * Build the unified "done" summary line: total latency, optional TTFT, input
+ * tokens (with cache read/creation breakdown when present), and output tokens.
+ * Accepted usage fields: `prompt_tokens`/`input_tokens`, `completion_tokens`/
+ * `output_tokens`, `cache_read_input_tokens`/`cached_tokens` /
+ * `prompt_tokens_details.cached_tokens`, and `cache_creation_input_tokens`.
+ * @param {object} params
+ * @param {object} [params.usage] - Usage object using the field names above.
+ * @param {{ttft?: number, total?: number}} [params.latency] - Latency in ms.
+ * @returns {string} `DONE <total>ms[ · TTFT <ms>] · IN <n>[(CACHE …)] · OUT <n>`.
+ */
+export function formatDoneLine({ usage, latency }) {
+  const u = usage || {};
+  const inTok = u.prompt_tokens ?? u.input_tokens ?? 0;
+  const outTok = u.completion_tokens ?? u.output_tokens ?? 0;
+  const cacheRead = u.cache_read_input_tokens ?? u.cached_tokens ?? u.prompt_tokens_details?.cached_tokens ?? 0;
+  const cacheCreate = u.cache_creation_input_tokens ?? 0;
+  let inStr = `IN ${inTok}`;
+  if (cacheRead || cacheCreate) {
+    const parts = [];
+    if (cacheRead) parts.push(`↻${cacheRead}`);
+    if (cacheCreate) parts.push(`+${cacheCreate}`);
+    inStr += ` (CACHE ${parts.join(" ")})`;
+  }
+  const ttftStr = latency?.ttft ? ` · TTFT ${latency.ttft}ms` : "";
+  return `DONE ${latency?.total ?? 0}ms${ttftStr} · ${inStr} · OUT ${outTok}`;
+}
+
+export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, usageEventId, label = "USAGE", silent = false }) {
   if (!tokens || typeof tokens !== "object") return;
 
-  const inTokens = tokens.input_tokens ?? tokens.prompt_tokens ?? 0;
-  const outTokens = tokens.output_tokens ?? tokens.completion_tokens ?? 0;
+  const providerNormalized = tokens.promptTokenCount !== undefined || tokens.totalTokenCount !== undefined
+    ? toOpenAIUsage(tokens, "gemini")
+    : tokens;
 
-  if (inTokens === 0 && outTokens === 0) return;
-
-  const time = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  const accountSuffix = connectionId ? ` | account=${connectionId.slice(0, 8)}...` : "";
-  console.log(`${COLORS.green}[${time}] 📊 [${label}] ${provider.toUpperCase()} | in=${inTokens} | out=${outTokens}${accountSuffix}${COLORS.reset}`);
-
-  // Canonicalize to one storage convention (prompt_tokens cache-inclusive) so
-  // cached/cache-creation tokens survive to cost calc + stats. See canonicalizeUsage.
-  const normalized = canonicalizeUsage(tokens) || {
+  // Canonicalize before deciding what to persist. Cache-only, reasoning-only,
+  // total-only, cost-only, and zero-token successful requests are all valid
+  // committed events even when their visible input/output counters are zero.
+  const normalized = canonicalizeUsage(providerNormalized) || {
     prompt_tokens: tokens.prompt_tokens ?? tokens.input_tokens ?? 0,
-    completion_tokens: tokens.completion_tokens ?? tokens.output_tokens ?? 0
+    completion_tokens: tokens.completion_tokens ?? tokens.output_tokens ?? 0,
   };
+  const inTokens = normalized.prompt_tokens ?? 0;
+  const outTokens = normalized.completion_tokens ?? 0;
+
+  if (!silent) {
+    const time = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const accountSuffix = connectionId ? ` | account=${connectionId.slice(0, 8)}...` : "";
+    console.log(`${COLORS.green}[${time}] 📊 [${label}] ${provider.toUpperCase()} | in=${inTokens} | out=${outTokens}${accountSuffix}${COLORS.reset}`);
+  }
 
   saveRequestUsage({
     provider: provider || "unknown",
@@ -102,6 +137,7 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
     timestamp: new Date().toISOString(),
     connectionId: connectionId || undefined,
     apiKey: apiKey || undefined,
-    endpoint: endpoint || null
+    endpoint: endpoint || null,
+    usageEventId: usageEventId || undefined,
   }).catch(() => {});
 }

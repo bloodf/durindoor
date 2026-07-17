@@ -2,13 +2,19 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
+import { createLatestIntentQueue } from "@/shared/utils/latestIntentQueue";
+import { getCodexPlanLabel } from "@/shared/utils/codexPlanLabel";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import QuotaTable from "./QuotaTable";
+import Badge from "@/shared/components/Badge";
 import Toggle from "@/shared/components/Toggle";
 import Tooltip from "@/shared/components/Tooltip";
 import {
   parseQuotaData,
   calculatePercentage,
+  filterQuotasByVisibility,
+  getHiddenQuotaRows,
+  getQuotaVisibilityKey,
   getConnectionLabel,
   getConnectionQuotaRemaining,
   sortVisibleConnections,
@@ -35,6 +41,7 @@ import {
   ACCOUNT_PAGE_SIZE_MAX,
   ACCOUNT_FILTER_OPTIONS,
   QUOTA_SORT_OPTIONS,
+  createAutoRefreshScheduler,
 } from "./utils";
 import Card from "@/shared/components/Card";
 import { ConfirmModal, EditConnectionModal } from "@/shared/components";
@@ -388,6 +395,29 @@ export default function ProviderLimits() {
   const [errors, setErrors] = useState({});
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [autoPingMaps, setAutoPingMaps] = useState({ claude: {}, codex: {} });
+  const [autoPingQueue] = useState(() => createLatestIntentQueue({
+    write: async (_key, enabled, { connectionId }) => {
+      const response = await fetch(`/api/providers/${encodeURIComponent(connectionId)}/auto-ping`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      if (!response.ok) throw new Error(`Auto-ping update failed (${response.status})`);
+      return response.json();
+    },
+    onOptimistic: (_key, enabled, { connectionId, provider }) => setAutoPingMaps((current) => ({
+      ...current,
+      [provider]: { ...(current[provider] || {}), [connectionId]: enabled },
+    })),
+    onConfirmed: (_key, enabled, { connectionId, provider }) => setAutoPingMaps((current) => ({
+      ...current,
+      [provider]: { ...(current[provider] || {}), [connectionId]: enabled },
+    })),
+    onRollback: (_key, enabled, { connectionId, provider }) => setAutoPingMaps((current) => ({
+      ...current,
+      [provider]: { ...(current[provider] || {}), [connectionId]: enabled },
+    })),
+  }));
   const [lastUpdated, setLastUpdated] = useState(null);
   const [hasHydratedSavedState, setHasHydratedSavedState] = useState(false);
   const [hasHydratedAutoRefresh, setHasHydratedAutoRefresh] = useState(false);
@@ -412,6 +442,7 @@ export default function ProviderLimits() {
   const [quotaSortMode, setQuotaSortMode] = useState(
     initialFilterState.quotaSortMode,
   );
+  const [quotaVisibility, setQuotaVisibility] = useState({});
   const [expiringFirst, setExpiringFirst] = useState(
     initialFilterState.expiringFirst,
   );
@@ -433,8 +464,8 @@ export default function ProviderLimits() {
     providerFilteredConnections: 0,
   });
 
-  const intervalRef = useRef(null);
-  const countdownRef = useRef(null);
+  const schedulerRef = useRef(null);
+  const refreshAllRef = useRef(null);
   const tickCountRef = useRef(0);
   const filterStateRef = useRef(initialFilterState);
   const lastPersistedFilterStateRef = useRef(null);
@@ -1009,6 +1040,10 @@ export default function ProviderLimits() {
     }
   }, [refreshingAll, fetchConnections, fetchQuota, page]);
 
+  // Keep a stable ref to the latest refreshAll so the scheduler effect does not
+  // resubscribe on every refreshAll identity change (avoids timer churn).
+  refreshAllRef.current = refreshAll;
+
   useEffect(() => {
     if (!hasHydratedSavedState) return;
 
@@ -1052,94 +1087,130 @@ export default function ProviderLimits() {
   useEffect(() => {
     fetch("/api/settings", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : {}))
-      .then((s) => setAutoPingMaps({
-        claude: s?.claudeAutoPing?.connections || {},
-        codex: s?.codexAutoPing?.connections || {},
-      }))
+      .then((s) => {
+        const maps = {
+          claude: s?.claudeAutoPing?.connections || {},
+          codex: s?.codexAutoPing?.connections || {},
+        };
+        autoPingQueue.hydrate(Object.entries(maps).flatMap(([provider, connectionsMap]) => (
+          Object.entries(connectionsMap).map(([id, enabled]) => [`${provider}:${id}`, enabled])
+        )));
+        setAutoPingMaps(maps);
+        setQuotaVisibility(s?.quotaVisibility || {});
+      })
       .catch(() => {});
-  }, []);
+  }, [autoPingQueue]);
 
   const toggleAutoPing = useCallback(async (connectionId, provider, on) => {
     const settingsKey = AUTO_PING_SETTINGS_KEYS[provider];
     if (!settingsKey) return;
+    await autoPingQueue.enqueue(`${provider}:${connectionId}`, on, { connectionId, provider });
+  }, [autoPingQueue]);
 
-    const previous = autoPingMaps;
-    const nextProviderMap = { ...(autoPingMaps[provider] || {}), [connectionId]: on };
-    const nextMaps = { ...autoPingMaps, [provider]: nextProviderMap };
-    setAutoPingMaps(nextMaps);
+  const pendingWrites = useRef([]);
+  const isProcessingWrites = useRef(false);
+  const quotaVisibilityRef = useRef(quotaVisibility);
+  useEffect(() => {
+    quotaVisibilityRef.current = quotaVisibility;
+  }, [quotaVisibility]);
+
+  const processQueue = useCallback(async () => {
+    if (isProcessingWrites.current) return;
+    isProcessingWrites.current = true;
     try {
-      const r = await fetch("/api/settings", { cache: "no-store" });
-      const s = r.ok ? await r.json() : {};
-      const cfg = { ...(s[settingsKey] || {}), connections: nextProviderMap };
-      await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [settingsKey]: cfg }),
-      });
-    } catch {
-      setAutoPingMaps(previous);
+      while (pendingWrites.current.length > 0) {
+        const batch = pendingWrites.current.splice(0);
+        const startState = quotaVisibilityRef.current;
+        const nextState = batch.reduce((state, mutate) => mutate(state), startState);
+        setQuotaVisibility(nextState);
+        quotaVisibilityRef.current = nextState;
+        try {
+          const response = await fetch("/api/settings", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ quotaVisibility: nextState }),
+          });
+          if (!response.ok) throw new Error("Failed to update quota visibility");
+        } catch (error) {
+          console.error("Error updating quota visibility:", error);
+          setQuotaVisibility(startState);
+          quotaVisibilityRef.current = startState;
+        }
+      }
+    } finally {
+      isProcessingWrites.current = false;
     }
-  }, [autoPingMaps]);
+  }, []);
 
-  // Auto-refresh interval
+  const handleHideQuota = useCallback((provider, quota) => {
+    const key = getQuotaVisibilityKey(quota, quota.visibilityIndex);
+    if (!provider || !key) return;
+
+    pendingWrites.current.push((state) => {
+      const providerVisibility = state[provider] || {};
+      const hidden = new Set(providerVisibility.hidden || []);
+      hidden.add(key);
+      return {
+        ...state,
+        [provider]: {
+          ...providerVisibility,
+          hidden: [...hidden],
+        },
+      };
+    });
+    processQueue();
+  }, [processQueue]);
+
+  const handleShowQuota = useCallback((provider, quota) => {
+    const key = getQuotaVisibilityKey(quota, quota.visibilityIndex);
+    if (!provider || !key) return;
+
+    pendingWrites.current.push((state) => {
+      const providerVisibility = state[provider] || {};
+      const hidden = new Set(providerVisibility.hidden || []);
+      hidden.delete(key);
+      return {
+        ...state,
+        [provider]: {
+          ...providerVisibility,
+          hidden: [...hidden],
+        },
+      };
+    });
+    processQueue();
+  }, [processQueue]);
+
+  // One scheduler owns refresh + countdown timers and pauses on tab-hidden,
+  // deriving the countdown from an absolute deadline so buffered tunnels stay
+  // stable across visibility changes. Replaces the prior dual-setInterval logic.
   useEffect(() => {
     if (!hasHydratedAutoRefresh || !autoRefresh) {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-      if (countdownRef.current) {
-        clearInterval(countdownRef.current);
-        countdownRef.current = null;
-      }
+      schedulerRef.current?.stop();
+      schedulerRef.current = null;
+      setCountdown(Math.ceil(REFRESH_INTERVAL_MS / 1000));
       return;
     }
 
-    // Main refresh interval
-    intervalRef.current = setInterval(() => {
-      refreshAll();
-    }, REFRESH_INTERVAL_MS);
+    const scheduler = createAutoRefreshScheduler({
+      intervalMs: REFRESH_INTERVAL_MS,
+      onRefresh: (force) => refreshAllRef.current?.(force),
+      onCountdown: setCountdown,
+    });
+    schedulerRef.current = scheduler;
+    scheduler.start();
 
-    // Countdown interval
-    countdownRef.current = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) return 60;
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      if (countdownRef.current) clearInterval(countdownRef.current);
-    };
-  }, [autoRefresh, refreshAll, hasHydratedAutoRefresh]);
-
-  // Pause auto-refresh when tab is hidden (Page Visibility API)
-  useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.hidden) {
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
-          intervalRef.current = null;
-        }
-        if (countdownRef.current) {
-          clearInterval(countdownRef.current);
-          countdownRef.current = null;
-        }
-      } else if (autoRefresh && hasHydratedAutoRefresh) {
-        // Resume auto-refresh when tab becomes visible
-        intervalRef.current = setInterval(() => refreshAll(), REFRESH_INTERVAL_MS);
-        countdownRef.current = setInterval(() => {
-          setCountdown((prev) => (prev <= 1 ? 60 : prev - 1));
-        }, 1000);
-      }
+      if (document.hidden) scheduler.pause();
+      else void scheduler.resume();
     };
-
     document.addEventListener("visibilitychange", handleVisibilityChange);
+
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      scheduler.stop();
+      if (schedulerRef.current === scheduler) schedulerRef.current = null;
     };
-  }, [autoRefresh, refreshAll, hasHydratedAutoRefresh]);
+  }, [autoRefresh, hasHydratedAutoRefresh]);
 
   const sortedConnections = useMemo(
     () =>
@@ -1152,6 +1223,31 @@ export default function ProviderLimits() {
       ),
     [connections, quotaData, expiringFirst, providerFilter, quotaSortMode],
   );
+
+  const connectionQuotaRows = useMemo(() => {
+    const rows = {};
+    for (const conn of sortedConnections) {
+      const rawQuotas = quotaData[conn.id]?.quotas || [];
+      const visibleQuotas = filterQuotasByVisibility(
+        conn.provider,
+        rawQuotas,
+        quotaVisibility,
+      ).map((quota) => ({
+        ...quota,
+        visibilityIndex: rawQuotas.indexOf(quota),
+      }));
+      const hiddenQuotaRows = getHiddenQuotaRows(
+        conn.provider,
+        rawQuotas,
+        quotaVisibility,
+      ).map((quota) => ({
+        ...quota,
+        visibilityIndex: rawQuotas.indexOf(quota),
+      }));
+      rows[conn.id] = { rawQuotas, visibleQuotas, hiddenQuotaRows };
+    }
+    return rows;
+  }, [sortedConnections, quotaData, quotaVisibility]);
 
   // Connection is depleted when any quota entry hit the threshold
   const isConnectionDepleted = (conn) => {
@@ -1437,7 +1533,16 @@ export default function ProviderLimits() {
           {/* Refresh all button */}
           <button
             type="button"
-            onClick={() => refreshAll(true)}
+            onClick={() => {
+              // Route through the scheduler so a manual refresh reuses its
+              // in-flight dedupe and resets the countdown deadline; fall back to
+              // a direct call when auto-refresh (and thus the scheduler) is off.
+              if (autoRefresh && schedulerRef.current) {
+                void schedulerRef.current.refreshNow();
+              } else {
+                void refreshAll(true);
+              }
+            }}
             disabled={refreshingAll}
             className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-black/10 px-2 text-xs text-text-primary transition-colors hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/5 disabled:opacity-50"
             title="Refresh all"
@@ -1468,9 +1573,17 @@ export default function ProviderLimits() {
           // Use table layout for all providers
           const isInactive = conn.isActive === false;
           const isCodex = conn.provider === "codex";
+          // Codex plan label (e.g. "Plus", "Team", "Pro") — shown alongside the
+          // provider badge in the usage row. Hidden for non-Codex, empty, or "unknown".
+          const codexPlan = getCodexPlanLabel(isCodex, quota?.plan);
           const resetCreditCount = getCodexResetCreditCount(quota);
           const isResettingLimit = resettingLimitId === conn.id;
           const rowBusy = deletingId === conn.id || togglingId === conn.id || isResettingLimit;
+          const { rawQuotas, visibleQuotas, hiddenQuotaRows } = connectionQuotaRows[conn.id] || {
+            rawQuotas: [],
+            visibleQuotas: [],
+            hiddenQuotaRows: [],
+          };
 
           return (
             <Card
@@ -1552,6 +1665,11 @@ export default function ProviderLimits() {
                   <div className="flex items-center gap-1 shrink-0">
                     {isCodex && (
                       <>
+                      {codexPlan && (
+                        <Badge variant="primary" size="sm" className="capitalize">
+                          {codexPlan}
+                        </Badge>
+                      )}
                         <Tooltip
                           text={
                             resetCreditCount > 0
@@ -1593,7 +1711,7 @@ export default function ProviderLimits() {
                         </Tooltip>
                       </>
                     )}
-                    {AUTO_PING_SETTINGS_KEYS[conn.provider] && conn.authType === "oauth" && (
+                    {AUTO_PING_SETTINGS_KEYS[conn.provider] && conn.authType === "oauth" && conn.isActive !== false && (
                       <Tooltip text={AUTO_PING_TOOLTIPS[conn.provider]}>
                         <button
                           type="button"
@@ -1692,13 +1810,33 @@ export default function ProviderLimits() {
                   </div>
                 ) : (
                   <QuotaTable
-                    quotas={quota?.quotas}
+                    quotas={visibleQuotas}
                     compact
                     sortMode="default"
                     showSortLabel={
                       conn.provider === "codex" && quotaSortMode !== "default"
                     }
+                    onHideQuota={(quotaRow) => handleHideQuota(conn.provider, quotaRow)}
                   />
+                )}
+                {hiddenQuotaRows.length > 0 && (
+                  <div className="mt-2 flex flex-wrap items-center gap-1 border-t border-black/5 pt-2 text-[10px] text-text-muted dark:border-white/5">
+                    <span className="material-symbols-outlined text-[14px]">
+                      visibility_off
+                    </span>
+                    <span>Hidden:</span>
+                    {hiddenQuotaRows.map((quotaRow) => (
+                      <button
+                        key={getQuotaVisibilityKey(quotaRow, quotaRow.visibilityIndex)}
+                        type="button"
+                        onClick={() => handleShowQuota(conn.provider, quotaRow)}
+                        className="rounded-md border border-black/10 px-1.5 py-0.5 transition-colors hover:bg-black/5 hover:text-text-primary dark:border-white/10 dark:hover:bg-white/5"
+                        title="Show this quota row"
+                      >
+                        {quotaRow.name}
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
             </Card>

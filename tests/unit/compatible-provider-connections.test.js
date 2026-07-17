@@ -21,6 +21,7 @@ async function setupTestContext(nodeData) {
   }));
 
   const { POST } = await import("@/app/api/providers/route.js");
+  const { PUT } = await import("@/app/api/providers/[id]/route.js");
   const {
     createProviderNode,
     getProviderConnections,
@@ -31,6 +32,7 @@ async function setupTestContext(nodeData) {
   return {
     node,
     POST,
+    PUT,
     getProviderConnections,
     cleanup() {
       fs.rmSync(tempDir, { recursive: true, force: true });
@@ -38,7 +40,7 @@ async function setupTestContext(nodeData) {
   };
 }
 
-function makeRequest(provider, name = "Test Connection") {
+function makeRequest(provider, name = "Test Connection", extras = {}) {
   return new Request("https://9router.local/api/providers", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -47,6 +49,7 @@ function makeRequest(provider, name = "Test Connection") {
       apiKey: "test-key",
       name,
       defaultModel: "test-model",
+      ...extras,
     }),
   });
 }
@@ -66,6 +69,9 @@ function expectCompatibleConnection(connection, node, { apiType } = {}) {
   }
 }
 
+// Cold first case: Next route + models + six DB migrations take ~7.4s under Node 20.20.2.
+// Vitest default testTimeout is 5s ("Test timed out in 5000ms" on clean full-suite runs).
+// Later cases reuse warm modules (~200ms). Timeout only on the first it (15s), not suite-wide.
 describe("compatible provider connections API", () => {
   let cleanup = () => {};
 
@@ -113,8 +119,34 @@ describe("compatible provider connections API", () => {
         nodeName: ctx.node.name,
       },
     });
-  });
+  }, 15000);
 
+  it("creates a no-auth connection for a free provider without an API key", async () => {
+    const ctx = await setupTestContext({
+      id: "mimocode",
+      type: "free",
+      name: "MiMoCode",
+      prefix: "mcode",
+      baseUrl: "https://api.xiaomimimo.com/v1",
+    });
+    cleanup = ctx.cleanup;
+
+    const response = await ctx.POST(makeRequest("mimocode", "Mimocode rotation", { apiKey: "", providerSpecificData: { fingerprints: ["fp-a"] } }));
+    const body = await response.json();
+    const storedConnections = await ctx.getProviderConnections({ provider: "mimocode" });
+
+    expect(response.status).toBe(201);
+    expect(storedConnections).toHaveLength(1);
+    expect(storedConnections[0]).toMatchObject({
+      provider: "mimocode",
+      authType: "apikey",
+      name: "Mimocode rotation",
+      providerSpecificData: {
+        fingerprints: ["fp-a"],
+      },
+    });
+    expect(body.connection.apiKey).toBeUndefined();
+  });
   it("creates one API-key connection for an Anthropic-compatible node", async () => {
     const ctx = await setupTestContext({
       id: "anthropic-compatible-test",
@@ -164,5 +196,117 @@ describe("compatible provider connections API", () => {
     expect(res2.status).toBe(201);
     expect(stored).toHaveLength(2);
     stored.forEach(c => expectCompatibleConnection(c, ctx.node, { apiType: "chat" }));
+  });
+
+  it("rejects hidden built-in API-key providers in the legacy creation API", async () => {
+    const ctx = await setupTestContext({
+      id: "openai-compatible-hidden-guard",
+      type: "openai-compatible",
+      name: "Hidden Guard Node",
+      prefix: "hgn",
+      apiType: "chat",
+      baseUrl: "https://hidden-guard.test/v1",
+    });
+    cleanup = ctx.cleanup;
+
+    const response = await ctx.POST(makeRequest("databricks"));
+    const body = await response.json();
+    const storedConnections = await ctx.getProviderConnections({ provider: "databricks" });
+
+    expect(response.status).toBe(400);
+    expect(body).toEqual({ error: "Invalid provider" });
+    expect(storedConnections).toHaveLength(0);
+  });
+
+  it("continues creating visible built-in API-key providers in the legacy creation API", async () => {
+    const ctx = await setupTestContext({
+      id: "openai-compatible-visible-guard",
+      type: "openai-compatible",
+      name: "Visible Guard Node",
+      prefix: "vgn",
+      apiType: "chat",
+      baseUrl: "https://visible-guard.test/v1",
+    });
+    cleanup = ctx.cleanup;
+
+    const response = await ctx.POST(makeRequest("openai"));
+    const body = await response.json();
+    const storedConnections = await ctx.getProviderConnections({ provider: "openai" });
+
+    expect(response.status).toBe(201);
+    expect(body.connection).toMatchObject({
+      provider: "openai",
+      authType: "apikey",
+      name: "Test Connection",
+    });
+    expect(body.connection.apiKey).toBeUndefined();
+    expect(storedConnections).toHaveLength(1);
+  });
+
+  it.each(["cloudflare-ai", "snowflake"])("rejects %s connections without an account ID", async (provider) => {
+    const ctx = await setupTestContext({
+      id: "account-id-guard",
+      type: "openai-compatible",
+      name: "Account ID Guard",
+      prefix: "aig",
+      apiType: "chat",
+      baseUrl: "https://account-id-guard.test/v1",
+    });
+    cleanup = ctx.cleanup;
+
+    const response = await ctx.POST(makeRequest(provider));
+    const body = await response.json();
+    const storedConnections = await ctx.getProviderConnections({ provider });
+
+    expect(response.status).toBe(400);
+    expect(body.error).toMatch(/requires accountId/);
+    expect(storedConnections).toHaveLength(0);
+  });
+
+  it("normalizes and stores the Snowflake account ID", async () => {
+    const ctx = await setupTestContext({
+      id: "snowflake-account-id-guard",
+      type: "openai-compatible",
+      name: "Snowflake Guard",
+      prefix: "sfg",
+      apiType: "chat",
+      baseUrl: "https://snowflake-guard.test/v1",
+    });
+    cleanup = ctx.cleanup;
+
+    const response = await ctx.POST(makeRequest("snowflake", "Snowflake", {
+      providerSpecificData: { accountId: "org_account" },
+    }));
+    const storedConnections = await ctx.getProviderConnections({ provider: "snowflake" });
+
+    expect(response.status).toBe(201);
+    expect(storedConnections).toHaveLength(1);
+    expect(storedConnections[0].providerSpecificData.accountId).toBe("org-account");
+  });
+
+  it("rejects an edit that clears a required Snowflake account ID", async () => {
+    const ctx = await setupTestContext({
+      id: "snowflake-edit-account-id-guard",
+      type: "openai-compatible",
+      name: "Snowflake Edit Guard",
+      prefix: "seg",
+      apiType: "chat",
+      baseUrl: "https://snowflake-edit-guard.test/v1",
+    });
+    cleanup = ctx.cleanup;
+    await ctx.POST(makeRequest("snowflake", "Snowflake", {
+      providerSpecificData: { accountId: "org-account" },
+    }));
+    const [stored] = await ctx.getProviderConnections({ provider: "snowflake" });
+
+    const response = await ctx.PUT(new Request(`https://9router.local/api/providers/${stored.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ providerSpecificData: { accountId: "" } }),
+    }), { params: Promise.resolve({ id: stored.id }) });
+    const after = (await ctx.getProviderConnections({ provider: "snowflake" }))[0];
+
+    expect(response.status).toBe(400);
+    expect(after.providerSpecificData.accountId).toBe("org-account");
   });
 });

@@ -9,8 +9,10 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     
-    const page = parseInt(searchParams.get("page")) || 1;
-    const pageSize = parseInt(searchParams.get("pageSize")) || 20;
+    const rawPage = searchParams.get("page");
+    const page = rawPage === null ? 1 : Number(rawPage);
+    const rawPageSize = searchParams.get("pageSize");
+    const pageSize = rawPageSize === null ? 20 : Number(rawPageSize);
     const provider = searchParams.get("provider");
     const model = searchParams.get("model");
     const connectionId = searchParams.get("connectionId");
@@ -18,16 +20,16 @@ export async function GET(request) {
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
     
-    if (page < 1) {
+    if (!Number.isInteger(page) || page < 1) {
       return NextResponse.json(
-        { error: "Page must be >= 1" },
+        { error: "page must be an integer >= 1" },
         { status: 400 }
       );
     }
-    
-    if (pageSize < 1 || pageSize > 100) {
+
+    if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100) {
       return NextResponse.json(
-        { error: "PageSize must be between 1 and 100" },
+        { error: "pageSize must be an integer in [1,100]" },
         { status: 400 }
       );
     }

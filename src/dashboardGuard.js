@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { getSettings, validateApiKey, validateGatewayKey } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
+import {
+  CONTROL_PORT_HEADER,
+  CONTROL_PROOF_HEADER,
+  verifyControlProof,
+} from "@/mitm/controlProof";
 
 const CLI_TOKEN_HEADER = "x-9r-cli-token";
 const CLI_TOKEN_SALT = "9r-cli-auth";
@@ -81,6 +86,7 @@ const LOCAL_ONLY_PATHS = [
   "/api/auth/reset-password",
   "/api/headroom/start",
   "/api/headroom/stop",
+  "/api/headroom/proxy",
 ];
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
@@ -89,6 +95,19 @@ function isLoopbackHostname(h) {
   if (!h) return false;
   const name = h.split(":")[0].replace(/^\[|\]$/g, "").toLowerCase();
   return LOOPBACK_HOSTS.has(name);
+}
+
+function hasExactRequestOrigin(request) {
+  const rawOrigin = request.headers.get("origin");
+  const rawHost = request.headers.get("host");
+  if (!rawOrigin || !rawHost) return false;
+  try {
+    const protocol = new URL(request.url).protocol;
+    const expected = new URL(`${protocol}//${rawHost}`).origin;
+    return new URL(rawOrigin).origin === expected;
+  } catch {
+    return false;
+  }
 }
 
 export function isLocalRequest(request) {
@@ -146,8 +165,32 @@ async function canAccessPublicLlmApi(request) {
 
 async function canAccessLocalOnlyRoute(request) {
   if (await hasValidCliToken(request)) return true;
-  // Browser on host: loopback Host + Origin (blocks tunnel/CSRF) + auth (JWT or requireLogin=false)
-  if (isLocalRequest(request) && await isAuthenticated(request)) return true;
+  if (!isLocalRequest(request)) return false;
+
+  const pathname = request.nextUrl.pathname;
+  const isMitmMutation = (pathname === "/api/cli-tools/antigravity-mitm"
+      || pathname.startsWith("/api/cli-tools/antigravity-mitm/"))
+    && String(request.method || "GET").toUpperCase() !== "GET";
+  if (isMitmMutation) {
+    // Loopback and same-OS-user ownership are not authentication: a local
+    // reverse proxy could otherwise become a confused deputy. Browser
+    // mutations require a dashboard JWT; CLI callers were accepted above with
+    // their machine-bound token. The owner proof remains defense in depth.
+    if (!(await hasValidToken(request))) return false;
+    // An explicit loopback Origin proves this is a direct same-origin browser
+    // request. Without it, a same-UID local reverse proxy could become a
+    // confused deputy even though the TCP owner proof itself is valid.
+    if (!hasExactRequestOrigin(request)) return false;
+    return verifyControlProof({
+      method: request.method,
+      pathname,
+      remotePort: request.headers.get(CONTROL_PORT_HEADER),
+      proof: request.headers.get(CONTROL_PROOF_HEADER),
+    });
+  }
+
+  // Other local-only routes retain the dashboard's normal login policy.
+  if (await isAuthenticated(request)) return true;
   return false;
 }
 
@@ -179,6 +222,7 @@ function isPublicApi(pathname) {
 
 export const __test__ = {
   isLocalRequest,
+  hasExactRequestOrigin,
   isPublicLlmApi,
   extractApiKey,
   canAccessPublicLlmApi,

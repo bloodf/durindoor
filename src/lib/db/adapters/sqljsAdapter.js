@@ -91,7 +91,6 @@ export async function createSqlJsAdapter(filePath) {
     try {
       const result = fn();
       db.exec(`RELEASE ${sp}`);
-      scheduleSave();
       return result;
     } catch (e) {
       try { db.exec(`ROLLBACK TO ${sp}`); db.exec(`RELEASE ${sp}`); } catch {}
@@ -111,5 +110,9 @@ export async function createSqlJsAdapter(filePath) {
   process.on("SIGINT", flush);
   process.on("SIGTERM", flush);
 
-  return { driver: "sql.js", run, get, all, exec, transaction, close, raw: db };
+  return {
+    driver: "sql.js",
+    capabilities: Object.freeze({ sharedFileTransactions: false }),
+    run, get, all, exec, transaction, close, raw: db,
+  };
 }

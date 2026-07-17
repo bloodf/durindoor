@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getInstanceById, updateInstance, deleteInstance } from "@/lib/localDb";
 import { deriveOauthStatus } from "@/lib/mcp/gateway/oauthStatus";
 import { mergeOauthClientConfig } from "@/lib/mcp/gateway/oauthClientConfig";
+import { assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
+import { sanitizeInstanceHeaders } from "@/lib/mcp/gateway/instanceHeaders";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +45,25 @@ export async function PUT(request, context) {
     const body = await request.json();
     const errs = validatePatch(body);
     if (errs.length) return NextResponse.json({ error: errs.join("; ") }, { status: 400 });
+
+    // SSRF guard on URL update — see the matching block on POST.
+    if (body.url !== undefined && body.url !== null && body.url !== "") {
+      try {
+        assertOutboundUrlAllowed(body.url);
+      } catch (err) {
+        if (err instanceof OutboundUrlGuardError) {
+          console.log("MCP instance URL blocked by SSRF guard (update):", err?.message, "url=", err?.url);
+          return NextResponse.json({ error: "URL not allowed", blocked: true }, { status: 403 });
+        }
+        throw err;
+      }
+    }
+
+    // Sanitize caller-supplied headers on update too (allowlist).
+    if (body.headers !== undefined) {
+      body.headers = sanitizeInstanceHeaders(body.headers);
+    }
+
     // Fold any manually-entered OAuth client credentials into oauthTokens,
     // merging with (not clobbering) whatever token material is already stored.
     const existing = await getInstanceById(id);

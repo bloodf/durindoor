@@ -38,5 +38,6 @@ export function openaiToVertexRequest(model, body, stream, credentials) {
   const gemini = openaiToGeminiRequest(model, body, stream, credentials);
   return postProcessForVertex(gemini);
 }
+openaiToVertexRequest.finalize = openaiToGeminiRequest.finalize;
 
 register(FORMATS.OPENAI, FORMATS.VERTEX, openaiToVertexRequest, null);

@@ -1,7 +1,20 @@
 import { ProxyAgent, fetch as undiciFetch } from "undici";
+import { sanitizeErrorMessage } from "../../../open-sse/utils/error.js";
+import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
 
-const DEFAULT_TEST_URL = "https://google.com/";
+// Fixed probe target. Previously this endpoint accepted a caller-supplied
+// `testUrl` from the request body, which turned the proxy-test route into
+// an SSRF amplifier (the user-controlled `dispatcher` was a red herring —
+// the URL itself was the weapon). The test exists to verify that a
+// configured proxy can reach the public internet; the destination does
+// not need to vary per-call.
+export const DEFAULT_TEST_URL = "https://google.com/";
 const DEFAULT_TIMEOUT_MS = 8000;
+
+// Hard cap on 3xx hops. google.com and similar endpoints 301 http→https
+// and/or to a country-specific TLD; a loop (A↔B) or a long chain is
+// treated as failure.
+const MAX_REDIRECT_HOPS = 5;
 
 /**
  * Parse proxy URL from various formats
@@ -117,21 +130,26 @@ function parseProxyUrls(proxyUrls) {
   return parsedUrls;
 }
 
-function getErrorMessage(err) {
+export function getErrorMessage(err) {
   if (!err) return "Unknown error";
   const base = err?.message || String(err);
   const causeCode = err?.cause?.code || err?.code;
   const causeMessage = err?.cause?.message;
+  const safeBase = sanitizeErrorMessage(base);
+  const safeCauseMessage = causeMessage ? sanitizeErrorMessage(causeMessage) : "";
+  const safeCauseCode = causeCode ? sanitizeErrorMessage(causeCode) : "";
 
   if (causeMessage && causeMessage !== base) {
-    return causeCode ? `${base}: ${causeMessage} (${causeCode})` : `${base}: ${causeMessage}`;
+    return safeCauseCode
+      ? `${safeBase}: ${safeCauseMessage} (${safeCauseCode})`
+      : `${safeBase}: ${safeCauseMessage}`;
   }
 
   if (causeCode && !base.includes(causeCode)) {
-    return `${base} (${causeCode})`;
+    return `${safeBase} (${safeCauseCode})`;
   }
 
-  return base;
+  return safeBase;
 }
 
 function normalizeString(value) {
@@ -139,7 +157,7 @@ function normalizeString(value) {
   return String(value).trim();
 }
 
-export async function testProxyUrl({ proxyUrl, testUrl, timeoutMs } = {}) {
+export async function testProxyUrl({ proxyUrl, timeoutMs } = {}) {
   const normalizedProxyUrl = normalizeString(proxyUrl);
   if (!normalizedProxyUrl) {
     return { ok: false, status: 400, error: "proxyUrl is required" };
@@ -151,7 +169,6 @@ export async function testProxyUrl({ proxyUrl, testUrl, timeoutMs } = {}) {
     return { ok: false, status: 400, error: "Invalid proxy URL format" };
   }
 
-  const normalizedTestUrl = normalizeString(testUrl) || DEFAULT_TEST_URL;
   const timeoutMsRaw = Number(timeoutMs);
   const normalizedTimeoutMs =
     Number.isFinite(timeoutMsRaw) && timeoutMsRaw > 0
@@ -167,40 +184,87 @@ export async function testProxyUrl({ proxyUrl, testUrl, timeoutMs } = {}) {
       return {
         ok: false,
         status: 400,
-        error: `Invalid proxy URL: ${err?.message || String(err)}`,
+        error: `Invalid proxy URL: ${sanitizeErrorMessage(err?.message || err)}`,
       };
     }
 
-    const controller = new AbortController();
+    let testUrl = DEFAULT_TEST_URL;
     const startedAt = Date.now();
-    const timer = setTimeout(() => controller.abort(), normalizedTimeoutMs);
 
-    try {
-      const res = await undiciFetch(normalizedTestUrl, {
-        method: "HEAD",
-        dispatcher,
-        signal: controller.signal,
-        headers: {
-          "User-Agent": "9Router",
-        },
-      });
+    for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop++) {
+      // Re-validate on EVERY hop: a hostile proxy can 3xx the probe to a
+      // private / metadata target. https: only — this test exists to
+      // verify the proxy can reach the public internet; if it cannot
+      // fetch https, it cannot proxy real traffic.
+      try {
+        assertPublicUrl(testUrl);
+      } catch (guardErr) {
+        return {
+          ok: false,
+          status: 400,
+          error: `URL not allowed: ${sanitizeErrorMessage(guardErr?.message || "blocked")}`,
+        };
+      }
+      let parsed;
+      try {
+        parsed = new URL(testUrl);
+      } catch {
+        return { ok: false, status: 400, error: "URL is not valid" };
+      }
+      if (parsed.protocol !== "https:") {
+        return { ok: false, status: 400, error: "URL must use https:" };
+      }
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), normalizedTimeoutMs);
+
+      let res;
+      try {
+        res = await undiciFetch(testUrl, {
+          method: "HEAD",
+          dispatcher,
+          signal: controller.signal,
+          redirect: "manual",
+          headers: {
+            "User-Agent": "9Router",
+          },
+        });
+      } catch (err) {
+        const message =
+          err?.name === "AbortError"
+            ? "Proxy test timed out"
+            : getErrorMessage(err);
+        return { ok: false, status: 500, error: message };
+      } finally {
+        clearTimeout(timer);
+      }
+
+      // 3xx with redirect:manual → re-validate Location and loop.
+      if (res.status >= 300 && res.status < 400) {
+        const location = res.headers.get("location");
+        if (!location) {
+          return { ok: false, status: res.status, error: "Redirect without Location header" };
+        }
+        let next;
+        try {
+          next = new URL(location, testUrl).toString();
+        } catch {
+          return { ok: false, status: res.status, error: "Redirect Location is not a valid URL" };
+        }
+        testUrl = next;
+        continue;
+      }
 
       return {
         ok: res.ok,
         status: res.status,
         statusText: res.statusText,
-        url: normalizedTestUrl,
+        url: testUrl,
         elapsedMs: Date.now() - startedAt,
       };
-    } catch (err) {
-      const message =
-        err?.name === "AbortError"
-          ? "Proxy test timed out"
-          : getErrorMessage(err);
-      return { ok: false, status: 500, error: message };
-    } finally {
-      clearTimeout(timer);
     }
+
+    return { ok: false, status: 508, error: "Too many redirects" };
   } finally {
     try {
       await dispatcher?.close?.();
@@ -214,7 +278,7 @@ export async function testProxyUrl({ proxyUrl, testUrl, timeoutMs } = {}) {
  * Test multiple proxy URLs in bulk
  * Supports comma-separated list or array of proxy URLs in various formats
  */
-export async function testProxyUrls({ proxyUrls, testUrl, timeoutMs } = {}) {
+export async function testProxyUrls({ proxyUrls, timeoutMs } = {}) {
   if (!proxyUrls) {
     return [];
   }
@@ -223,7 +287,7 @@ export async function testProxyUrls({ proxyUrls, testUrl, timeoutMs } = {}) {
   const results = [];
 
   for (const url of urls) {
-    const result = await testProxyUrl({ proxyUrl: url, testUrl, timeoutMs });
+    const result = await testProxyUrl({ proxyUrl: url, timeoutMs });
     results.push({ proxyUrl: url, ...result });
   }
 

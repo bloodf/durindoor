@@ -15,6 +15,7 @@ const DEFAULT_QUOTA_TRACKER_STATE = {
 
 const DEFAULT_SETTINGS = {
   cloudEnabled: false,
+  hidePaidModels: false,
   tunnelEnabled: false,
   tunnelUrl: "",
   tunnelProvider: "cloudflare",
@@ -22,6 +23,7 @@ const DEFAULT_SETTINGS = {
   tailscaleUrl: "",
   stickyRoundRobinLimit: 3,
   providerStrategies: {},
+  quotaVisibility: {},
   comboStrategy: "fallback",
   comboStickyRoundRobinLimit: 1,
   comboStrategies: {},
@@ -48,14 +50,37 @@ const DEFAULT_SETTINGS = {
   headroomEnabled: false,
   headroomUrl: DEFAULT_HEADROOM_URL,
   headroomCompressUserMessages: false,
+  pxpipeEnabled: false,
   cavemanEnabled: false,
   cavemanLevel: "full",
   quotaTrackerState: DEFAULT_QUOTA_TRACKER_STATE,
   ponytailEnabled: false,
   ponytailLevel: "full",
-  // Per-provider concurrency limits: { "umans": 4, "openai": 2 }
-  // 0 or missing = unlimited. Limits concurrent in-flight upstream requests.
+  pxpipeAutoInstall: true,
+  pxpipeMinChars: 25000,
+  pxpipeTimeoutMs: 15000,
   providerConcurrencyLimits: {},
+  // Optional upstream routing overrides. Shape:
+  // { [providerId]: { enabled, mode: "native"|"cliproxyapi"|"fallback", cliproxyapiModelMapping } }
+  upstreamProxyConfig: {},
+  cliproxyapi_fallback_codes: "429,500,502,503,504",
+  // Vision Bridge (OmniRoute #6640): reroute image-bearing requests on a
+  // non-vision model to a configured vision-capable target. Requires an
+  // explicit, vision-capable visionBridgeModel; an empty/invalid target leaves
+  // the request on its original model (no unsafe auto-pick to a provider the
+  // caller may not have credentials for).
+  visionBridgeEnabled: false,
+  visionBridgeModel: "",
+  // Claude Code auto-mode classifier compat: "off" | "auto" | "always".
+  // When enabled, classifier requests are short-circuited to "<block>no</block>"
+  // (ALLOW) and `thinking` blocks are suppressed on Claude-shaped responses.
+  claudeClassifierCompat: "off",
+  // Compression engine stack (F-1b). Master switch is off by default; enabling
+  // runs the configured engine(s) after RTK/headroom and before caveman/pxpipe.
+  // compressionEngines is a per-id toggle map: { [engineId]: { enabled, level? } }.
+  // Any engine throw fail-opens and restores the body; the loop never throws.
+  compressionEnabled: false,
+  compressionEngines: {},
 };
 
 async function readRaw() {

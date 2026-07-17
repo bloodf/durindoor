@@ -21,7 +21,9 @@ describe("Antigravity usage headers", () => {
 
     await getAntigravityUsage("access-token", {});
 
-    expect(proxyAwareFetch).toHaveBeenCalledTimes(2);
+    // 3 calls: loadCodeAssist (project/plan) + fetchAvailableModels (5h per-model)
+    // + retrieveUserQuotaSummary (weekly, best-effort) — all use IDE headers.
+    expect(proxyAwareFetch).toHaveBeenCalledTimes(3);
     for (const [, options] of proxyAwareFetch.mock.calls) {
       expect(options.headers["User-Agent"]).toBe("antigravity/ide/2.1.1 darwin/arm64");
       expect(options.headers).not.toHaveProperty("x-request-source");

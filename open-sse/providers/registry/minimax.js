@@ -1,4 +1,10 @@
 import { CLAUDE_API_HEADERS } from "../shared.js";
+import { INLINE_THINKING_FORMATS } from "../schema.js";
+
+const M3_OPENAI_INLINE_THINKING = Object.freeze({
+  format: INLINE_THINKING_FORMATS.THINK_TAGS,
+  models: Object.freeze(["MiniMax-M3"]),
+});
 
 export default {
   id: "minimax",
@@ -44,6 +50,12 @@ export default {
       format: "openai",
       baseUrl: "https://api.minimax.io/v1/chat/completions",
       auth: { combined: true, header: "Authorization", scheme: "bearer" },
+      quirks: { inlineThinking: M3_OPENAI_INLINE_THINKING },
+      // MiniMax OpenAI API: split thinking into reasoning_details (vendor-recommended for OpenAI clients).
+      // Ported from upstream decolua/9router PR #2525 (head 72385571c6).
+      requestDefaults: { reasoning_split: true },
+      // Upstream still reasons; don't forward thinking fields to OpenAI clients (OpenCode shows them).
+      omitStreamReasoning: true,
     },
     {
       format: "claude",
@@ -58,7 +70,8 @@ export default {
     { id: "MiniMax-M2.7", name: "MiniMax M2.7" },
     { id: "MiniMax-M2.5", name: "MiniMax M2.5" },
     { id: "MiniMax-M2.1", name: "MiniMax M2.1" },
-    { id: "minimax-image-01", name: "MiniMax Image 01", params: ["n","size","response_format"], kind: "image" },
+    { id: "image-01", name: "MiniMax Image-01", params: ["n","size","response_format"], kind: "image" },
+    { id: "image-01-live", name: "MiniMax Image-01 Live", params: ["n","size","response_format"], kind: "image" },
     { id: "speech-2.8-hd", name: "Speech 2.8 HD", kind: "tts" },
     { id: "speech-2.8-turbo", name: "Speech 2.8 Turbo", kind: "tts" },
     { id: "speech-2.6-hd", name: "Speech 2.6 HD", kind: "tts" },
@@ -70,7 +83,19 @@ export default {
   ],
   serviceKinds: ["llm","image","imageToText","webSearch","tts"],
   ttsConfig: { baseUrl: "https://api.minimax.io/v1/t2a_v2", authType: "apikey", authHeader: "bearer", format: "minimax-tts" },
-  imageConfig: { baseUrl: "https://api.minimaxi.com/v1/images/generations" },
+  // OmniRoute #7108: image_generation lives on the dedicated synchronous
+  // endpoint (not the OpenAI-compatible /images/generations path).
+  imageConfig: {
+    baseUrl: "https://api.minimax.io/v1/image_generation",
+    authType: "apikey",
+    authHeader: "bearer",
+    format: "minimax-image",
+    models: [
+      { id: "image-01", name: "MiniMax Image-01" },
+      { id: "image-01-live", name: "MiniMax Image-01 Live" },
+    ],
+    supportedSizes: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9", "1024x1024"],
+  },
   searchViaChat: {
     defaultModel: "MiniMax-M2.7",
     endpoint: "https://api.minimaxi.com/v1/text/chatcompletion_v2",

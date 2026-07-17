@@ -4,9 +4,20 @@ import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 import { buildKiroOidcEndpoint, KIRO_DEFAULT_REGION } from "../../config/kiroRegions.js";
 import { dedupRefresh } from "./dedup.js";
 import { buildExternalIdpRefreshParams } from "../../../src/lib/oauth/kiroExternalIdp.js";
+import { sanitizeErrorMessage } from "../../utils/error.js";
+
+function safeRefreshError(value) {
+  if (typeof value === "string") return sanitizeErrorMessage(value);
+  if (value?.message) return sanitizeErrorMessage(value.message);
+  try {
+    return sanitizeErrorMessage(JSON.stringify(value));
+  } catch {
+    return sanitizeErrorMessage(value);
+  }
+}
 
 let _xaiServiceSingleton = null;
-export async function refreshXaiToken(refreshToken, log) {
+export async function refreshXaiToken(refreshToken, log, proxyOptions = null) {
   if (!refreshToken) return null;
   return dedupRefresh("xai", refreshToken, async () => {
     try {
@@ -14,7 +25,7 @@ export async function refreshXaiToken(refreshToken, log) {
         const mod = await import("../../../src/lib/oauth/services/xai.js");
         _xaiServiceSingleton = new mod.XaiService();
       }
-      const tokens = await _xaiServiceSingleton.refreshAccessToken(refreshToken);
+      const tokens = await _xaiServiceSingleton.refreshAccessToken(refreshToken, proxyOptions);
       return {
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token || refreshToken,
@@ -22,32 +33,32 @@ export async function refreshXaiToken(refreshToken, log) {
         idToken: tokens.id_token,
       };
     } catch (e) {
-      log?.warn?.("TOKEN_REFRESH", `xai refresh failed: ${e?.message || e}`);
+      log?.warn?.("TOKEN_REFRESH", `xai refresh failed: ${safeRefreshError(e?.message || e)}`);
       const msg = String(e?.message || "");
       if (msg.includes("invalid_grant") || msg.includes("invalid_request")) {
         return { error: "invalid_grant" };
       }
       return null;
     }
-  }, log);
+  }, log, proxyOptions);
 }
 
-export async function refreshAccessToken(provider, refreshToken, credentials, log) {
+export async function refreshAccessToken(provider, refreshToken, credentials, log, proxyOptions = null) {
   const config = PROVIDERS[provider];
 
   if (!config || !config.refreshUrl) {
-    log?.warn?.("TOKEN_REFRESH", `No refresh URL configured for provider: ${provider}`);
+    log?.warn?.("TOKEN_REFRESH", `No refresh URL configured for provider: ${safeRefreshError(provider)}`);
     return null;
   }
 
   if (!refreshToken) {
-    log?.warn?.("TOKEN_REFRESH", `No refresh token available for provider: ${provider}`);
+    log?.warn?.("TOKEN_REFRESH", `No refresh token available for provider: ${safeRefreshError(provider)}`);
     return null;
   }
 
   return dedupRefresh(provider, refreshToken, async () => {
   try {
-    const response = await fetch(config.refreshUrl, {
+    const response = await proxyAwareFetch(config.refreshUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -59,13 +70,13 @@ export async function refreshAccessToken(provider, refreshToken, credentials, lo
         client_id: config.clientId,
         client_secret: config.clientSecret,
       }),
-    });
+    }, proxyOptions);
 
     if (!response.ok) {
       const errorText = await response.text();
-      log?.error?.("TOKEN_REFRESH", `Failed to refresh token for ${provider}`, {
+      log?.error?.("TOKEN_REFRESH", `Failed to refresh token for ${safeRefreshError(provider)}`, {
         status: response.status,
-        error: errorText,
+        error: safeRefreshError(errorText),
       });
       return null;
     }
@@ -84,19 +95,76 @@ export async function refreshAccessToken(provider, refreshToken, credentials, lo
       expiresIn: tokens.expires_in,
     };
   } catch (error) {
-    log?.error?.("TOKEN_REFRESH", `Error refreshing token for ${provider}`, {
-      error: error.message,
+    log?.error?.("TOKEN_REFRESH", `Error refreshing token for ${safeRefreshError(provider)}`, {
+      error: safeRefreshError(error),
     });
     return null;
   }
-  }, log);
+  }, log, proxyOptions);
 }
 
-export async function refreshClaudeOAuthToken(refreshToken, log) {
+export async function refreshGitLabDuoToken(refreshToken, credentials = {}, log, proxyOptions = null) {
+  if (!refreshToken) return null;
+  const baseUrl = String(
+    credentials?.providerSpecificData?.baseUrl ||
+      process.env.GITLAB_DUO_BASE_URL ||
+      process.env.GITLAB_BASE_URL ||
+      "https://gitlab.com"
+  ).replace(/\/$/, "");
+  const clientId =
+    credentials?.providerSpecificData?.clientId ||
+    process.env.GITLAB_DUO_OAUTH_CLIENT_ID ||
+    process.env.GITLAB_OAUTH_CLIENT_ID ||
+    PROVIDER_OAUTH["gitlab-duo"]?.clientId ||
+    "";
+  const clientSecret =
+    process.env.GITLAB_DUO_OAUTH_CLIENT_SECRET ||
+    process.env.GITLAB_OAUTH_CLIENT_SECRET ||
+    PROVIDER_OAUTH["gitlab-duo"]?.clientSecret ||
+    "";
+
+  return dedupRefresh(`gitlab-duo:${baseUrl}:${clientId}`, refreshToken, async () => {
+    try {
+      const params = new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+        client_id: clientId,
+      });
+      if (clientSecret) params.set("client_secret", clientSecret);
+      const response = await proxyAwareFetch(`${baseUrl}/oauth/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+        body: params,
+      }, proxyOptions);
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        log?.warn?.("TOKEN_REFRESH", `GitLab Duo refresh failed: ${response.status} ${safeRefreshError(errorText)}`);
+        if (response.status === 400 || response.status === 401) return { error: "invalid_grant" };
+        return null;
+      }
+      const tokens = await response.json();
+      return {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token || refreshToken,
+        expiresIn: tokens.expires_in,
+        providerSpecificData: {
+          baseUrl,
+          clientId,
+          authKind: "oauth",
+        },
+      };
+    } catch (error) {
+      log?.warn?.("TOKEN_REFRESH", `GitLab Duo refresh error: ${safeRefreshError(error)}`);
+      return null;
+    }
+  }, log, proxyOptions);
+}
+
+export async function refreshClaudeOAuthToken(refreshToken, log, proxyOptions = null) {
   if (!refreshToken) return null;
   return dedupRefresh("claude", refreshToken, async () => {
   try {
-    const response = await fetch(OAUTH_ENDPOINTS.anthropic.token, {
+    const response = await proxyAwareFetch(OAUTH_ENDPOINTS.anthropic.token, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -107,11 +175,14 @@ export async function refreshClaudeOAuthToken(refreshToken, log) {
         refresh_token: refreshToken,
         client_id: PROVIDERS.claude.clientId,
       }),
-    });
+    }, proxyOptions);
 
     if (!response.ok) {
       const errorText = await response.text();
-      log?.error?.("TOKEN_REFRESH", "Failed to refresh Claude OAuth token", { status: response.status, error: errorText });
+      log?.error?.("TOKEN_REFRESH", "Failed to refresh Claude OAuth token", {
+        status: response.status,
+        error: safeRefreshError(errorText),
+      });
       return null;
     }
 
@@ -119,17 +190,17 @@ export async function refreshClaudeOAuthToken(refreshToken, log) {
     log?.info?.("TOKEN_REFRESH", "Successfully refreshed Claude OAuth token", { hasNewAccessToken: !!tokens.access_token, expiresIn: tokens.expires_in });
     return { accessToken: tokens.access_token, refreshToken: tokens.refresh_token || refreshToken, expiresIn: tokens.expires_in };
   } catch (error) {
-    log?.error?.("TOKEN_REFRESH", `Network error refreshing Claude token: ${error.message}`);
+    log?.error?.("TOKEN_REFRESH", `Network error refreshing Claude token: ${safeRefreshError(error)}`);
     return null;
   }
-  }, log);
+  }, log, proxyOptions);
 }
 
-export async function refreshGoogleToken(refreshToken, clientId, clientSecret, log) {
+export async function refreshGoogleToken(refreshToken, clientId, clientSecret, log, proxyOptions = null) {
   if (!refreshToken) return null;
   return dedupRefresh(`google:${clientId}`, refreshToken, async () => {
   try {
-    const response = await fetch(OAUTH_ENDPOINTS.google.token, {
+    const response = await proxyAwareFetch(OAUTH_ENDPOINTS.google.token, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -141,11 +212,14 @@ export async function refreshGoogleToken(refreshToken, clientId, clientSecret, l
         client_id: clientId,
         client_secret: clientSecret,
       }),
-    });
+    }, proxyOptions);
 
     if (!response.ok) {
       const errorText = await response.text();
-      log?.error?.("TOKEN_REFRESH", "Failed to refresh Google token", { status: response.status, error: errorText });
+      log?.error?.("TOKEN_REFRESH", "Failed to refresh Google token", {
+        status: response.status,
+        error: safeRefreshError(errorText),
+      });
       return null;
     }
 
@@ -153,19 +227,19 @@ export async function refreshGoogleToken(refreshToken, clientId, clientSecret, l
     log?.info?.("TOKEN_REFRESH", "Successfully refreshed Google token", { hasNewAccessToken: !!tokens.access_token, expiresIn: tokens.expires_in });
     return { accessToken: tokens.access_token, refreshToken: tokens.refresh_token || refreshToken, expiresIn: tokens.expires_in };
   } catch (error) {
-    log?.error?.("TOKEN_REFRESH", `Network error refreshing Google token: ${error.message}`);
+    log?.error?.("TOKEN_REFRESH", `Network error refreshing Google token: ${safeRefreshError(error)}`);
     return null;
   }
-  }, log);
+  }, log, proxyOptions);
 }
 
-export async function refreshQwenToken(refreshToken, log) {
+export async function refreshQwenToken(refreshToken, log, proxyOptions = null) {
   if (!refreshToken) return null;
   return dedupRefresh("qwen", refreshToken, async () => {
   const endpoint = OAUTH_ENDPOINTS.qwen.token;
 
   try {
-    const response = await fetch(endpoint, {
+    const response = await proxyAwareFetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -176,7 +250,7 @@ export async function refreshQwenToken(refreshToken, log) {
         refresh_token: refreshToken,
         client_id: PROVIDERS.qwen.clientId,
       }),
-    });
+    }, proxyOptions);
 
     if (response.status === 200) {
       const tokens = await response.json();
@@ -199,18 +273,18 @@ export async function refreshQwenToken(refreshToken, log) {
       const errorText = await response.text().catch(() => "");
       log?.warn?.("TOKEN_REFRESH", `Error with Qwen endpoint`, {
         status: response.status,
-        error: errorText,
+        error: safeRefreshError(errorText),
       });
     }
   } catch (error) {
     log?.warn?.("TOKEN_REFRESH", `Network error trying Qwen endpoint`, {
-      error: error.message,
+      error: safeRefreshError(error),
     });
   }
 
   log?.error?.("TOKEN_REFRESH", "Failed to refresh Qwen token");
   return null;
-  }, log);
+  }, log, proxyOptions);
 }
 
 export function classifyOAuthRefreshError(errorText = "", status = 0) {
@@ -234,11 +308,11 @@ export function classifyOAuthRefreshError(errorText = "", status = 0) {
   return { status, code, description, permanent };
 }
 
-export async function refreshCodexToken(refreshToken, log) {
+export async function refreshCodexToken(refreshToken, log, proxyOptions = null) {
   if (!refreshToken) return null;
   return dedupRefresh("codex", refreshToken, async () => {
     try {
-      const response = await fetch(OAUTH_ENDPOINTS.openai.token, {
+      const response = await proxyAwareFetch(OAUTH_ENDPOINTS.openai.token, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -249,7 +323,7 @@ export async function refreshCodexToken(refreshToken, log) {
           grant_type: "refresh_token",
           refresh_token: refreshToken,
         }),
-      });
+      }, proxyOptions);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -257,15 +331,15 @@ export async function refreshCodexToken(refreshToken, log) {
         if (failure.permanent) {
           log?.error?.("TOKEN_REFRESH", "Codex refresh token already used or invalid. Re-auth required.", {
             status: response.status,
-            code: failure.code,
+            code: safeRefreshError(failure.code),
           });
           return { error: "unrecoverable_refresh_error", code: failure.code };
         }
 
         log?.error?.("TOKEN_REFRESH", "Failed to refresh Codex token", {
           status: response.status,
-          error: errorText,
-          code: failure.code,
+          error: safeRefreshError(errorText),
+          code: safeRefreshError(failure.code),
           permanent: failure.permanent,
         });
         return null;
@@ -287,19 +361,19 @@ export async function refreshCodexToken(refreshToken, log) {
         expiresIn: tokens.expires_in,
       };
     } catch (error) {
-      log?.error?.("TOKEN_REFRESH", `Network error refreshing Codex token: ${error.message}`);
+      log?.error?.("TOKEN_REFRESH", `Network error refreshing Codex token: ${safeRefreshError(error)}`);
       return null;
     }
-  }, log);
+  }, log, proxyOptions);
 }
 
-async function resolveKiroProfileArnPatch(providerSpecificData, accessToken, refreshedArn) {
+async function resolveKiroProfileArnPatch(providerSpecificData, accessToken, refreshedArn, proxyOptions) {
   if (providerSpecificData?.profileArn) return {};
   let profileArn = refreshedArn?.trim?.() || null;
   if (!profileArn) {
     const { fetchKiroProfileArn } = await import("../../../src/lib/oauth/providers.js");
     const region = providerSpecificData?.region || KIRO_DEFAULT_REGION;
-    profileArn = await fetchKiroProfileArn(accessToken, region);
+    profileArn = await fetchKiroProfileArn(accessToken, region, proxyOptions);
   }
   return profileArn ? { providerSpecificData: { profileArn } } : {};
 }
@@ -317,7 +391,7 @@ export async function refreshKiroToken(refreshToken, providerSpecificData, log, 
     try {
       refreshRequest = buildExternalIdpRefreshParams(refreshToken, providerSpecificData);
     } catch (error) {
-      log?.warn?.("TOKEN_REFRESH", `Invalid Kiro external_idp refresh config: ${error.message}`);
+      log?.warn?.("TOKEN_REFRESH", `Invalid Kiro external_idp refresh config: ${safeRefreshError(error)}`);
       return null;
     }
 
@@ -334,12 +408,17 @@ export async function refreshKiroToken(refreshToken, providerSpecificData, log, 
       const errorText = await response.text();
       log?.error?.("TOKEN_REFRESH", "Failed to refresh Kiro external_idp token", {
         status: response.status,
-        error: errorText,
+        error: safeRefreshError(errorText),
       });
       return null;
     }
 
     const tokens = await response.json();
+
+    if (!tokens || typeof tokens.access_token !== "string" || !tokens.access_token) {
+      log?.error?.("TOKEN_REFRESH", "Kiro external_idp refresh response missing access_token");
+      return null;
+    }
 
     log?.info?.("TOKEN_REFRESH", "Successfully refreshed Kiro external_idp token", {
       hasNewAccessToken: !!tokens.access_token,
@@ -377,7 +456,7 @@ export async function refreshKiroToken(refreshToken, providerSpecificData, log, 
       const errorText = await response.text();
       log?.error?.("TOKEN_REFRESH", "Failed to refresh Kiro AWS token", {
         status: response.status,
-        error: errorText,
+        error: safeRefreshError(errorText),
       });
       return null;
     }
@@ -393,7 +472,7 @@ export async function refreshKiroToken(refreshToken, providerSpecificData, log, 
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken || refreshToken,
       expiresIn: tokens.expiresIn,
-      ...(await resolveKiroProfileArnPatch(providerSpecificData, tokens.accessToken, tokens.profileArn)),
+      ...(await resolveKiroProfileArnPatch(providerSpecificData, tokens.accessToken, tokens.profileArn, proxyOptions)),
     };
   }
 
@@ -413,7 +492,7 @@ export async function refreshKiroToken(refreshToken, providerSpecificData, log, 
     const errorText = await response.text();
     log?.error?.("TOKEN_REFRESH", "Failed to refresh Kiro social token", {
       status: response.status,
-      error: errorText,
+      error: safeRefreshError(errorText),
     });
     return null;
   }
@@ -429,17 +508,17 @@ export async function refreshKiroToken(refreshToken, providerSpecificData, log, 
     accessToken: tokens.accessToken,
     refreshToken: tokens.refreshToken || refreshToken,
     expiresIn: tokens.expiresIn,
-    ...(await resolveKiroProfileArnPatch(providerSpecificData, tokens.accessToken, tokens.profileArn)),
+    ...(await resolveKiroProfileArnPatch(providerSpecificData, tokens.accessToken, tokens.profileArn, proxyOptions)),
   };
-  }, log);
+  }, log, proxyOptions);
 }
 
-export async function refreshIflowToken(refreshToken, log) {
+export async function refreshIflowToken(refreshToken, log, proxyOptions = null) {
   if (!refreshToken) return null;
   return dedupRefresh("iflow", refreshToken, async () => {
   const basicAuth = btoa(`${PROVIDERS.iflow.clientId}:${PROVIDERS.iflow.clientSecret}`);
 
-  const response = await fetch(OAUTH_ENDPOINTS.iflow.token, {
+  const response = await proxyAwareFetch(OAUTH_ENDPOINTS.iflow.token, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -452,13 +531,13 @@ export async function refreshIflowToken(refreshToken, log) {
       client_id: PROVIDERS.iflow.clientId,
       client_secret: PROVIDERS.iflow.clientSecret,
     }),
-  });
+  }, proxyOptions);
 
   if (!response.ok) {
     const errorText = await response.text();
     log?.error?.("TOKEN_REFRESH", "Failed to refresh iFlow token", {
       status: response.status,
-      error: errorText,
+      error: safeRefreshError(errorText),
     });
     return null;
   }
@@ -476,10 +555,10 @@ export async function refreshIflowToken(refreshToken, log) {
     refreshToken: tokens.refresh_token || refreshToken,
     expiresIn: tokens.expires_in,
   };
-  }, log);
+  }, log, proxyOptions);
 }
 
-export async function refreshGitHubToken(refreshToken, log) {
+export async function refreshGitHubToken(refreshToken, log, proxyOptions = null) {
   if (!refreshToken) return null;
   return dedupRefresh("github", refreshToken, async () => {
   const params = {
@@ -491,20 +570,20 @@ export async function refreshGitHubToken(refreshToken, log) {
     params.client_secret = PROVIDERS.github.clientSecret;
   }
 
-  const response = await fetch(OAUTH_ENDPOINTS.github.token, {
+  const response = await proxyAwareFetch(OAUTH_ENDPOINTS.github.token, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
       Accept: "application/json",
     },
     body: new URLSearchParams(params),
-  });
+  }, proxyOptions);
 
   if (!response.ok) {
     const errorText = await response.text();
     log?.error?.("TOKEN_REFRESH", "Failed to refresh GitHub token", {
       status: response.status,
-      error: errorText,
+      error: safeRefreshError(errorText),
     });
     return null;
   }
@@ -522,14 +601,14 @@ export async function refreshGitHubToken(refreshToken, log) {
     refreshToken: tokens.refresh_token || refreshToken,
     expiresIn: tokens.expires_in,
   };
-  }, log);
+  }, log, proxyOptions);
 }
 
-export async function refreshCopilotToken(githubAccessToken, log) {
+export async function refreshCopilotToken(githubAccessToken, log, proxyOptions = null) {
   if (!githubAccessToken) return null;
   return dedupRefresh("copilot", githubAccessToken, async () => {
   try {
-    const response = await fetch(PROVIDER_OAUTH["github"]?.copilotTokenUrl, {
+    const response = await proxyAwareFetch(PROVIDER_OAUTH["github"]?.copilotTokenUrl, {
       headers: {
         "Authorization": `token ${githubAccessToken}`,
         "User-Agent": GITHUB_COPILOT.USER_AGENT,
@@ -538,13 +617,13 @@ export async function refreshCopilotToken(githubAccessToken, log) {
         "Accept": "application/json",
         "x-github-api-version": GITHUB_COPILOT.API_VERSION
       }
-    });
+    }, proxyOptions);
 
     if (!response.ok) {
       const errorText = await response.text();
       log?.error?.("TOKEN_REFRESH", "Failed to refresh Copilot token", {
         status: response.status,
-        error: errorText
+        error: safeRefreshError(errorText)
       });
       return null;
     }
@@ -562,21 +641,21 @@ export async function refreshCopilotToken(githubAccessToken, log) {
     };
   } catch (error) {
     log?.error?.("TOKEN_REFRESH", "Error refreshing Copilot token", {
-      error: error.message
+      error: safeRefreshError(error)
     });
     return null;
   }
-  }, log);
+  }, log, proxyOptions);
 }
 
 // CodeBuddy (Tencent) refresh — POST /v2/plugin/auth/token/refresh with the
 // refresh token carried in the X-Refresh-Token header (not a form body),
 // matching the official CodeBuddy CLI. Response: { code: 0, data: <token> }.
-export async function refreshCodebuddyToken(refreshToken, log) {
+export async function refreshCodebuddyToken(refreshToken, log, proxyOptions = null) {
   if (!refreshToken) return null;
   return dedupRefresh("codebuddy-cn", refreshToken, async () => {
     const oauth = PROVIDER_OAUTH["codebuddy-cn"] || {};
-    const response = await fetch(oauth.refreshUrl, {
+    const response = await proxyAwareFetch(oauth.refreshUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -589,13 +668,13 @@ export async function refreshCodebuddyToken(refreshToken, log) {
         "X-Product": "SaaS",
       },
       body: "{}",
-    });
+    }, proxyOptions);
 
     if (!response.ok) {
       const errorText = await response.text();
       log?.error?.("TOKEN_REFRESH", "Failed to refresh CodeBuddy token", {
         status: response.status,
-        error: errorText,
+        error: safeRefreshError(errorText),
       });
       return null;
     }
@@ -604,7 +683,7 @@ export async function refreshCodebuddyToken(refreshToken, log) {
     if (data.code !== 0 || !data.data?.accessToken) {
       log?.error?.("TOKEN_REFRESH", "CodeBuddy token refresh returned no token", {
         code: data.code,
-        msg: data.msg,
+        msg: safeRefreshError(data.msg),
       });
       return null;
     }
@@ -620,5 +699,5 @@ export async function refreshCodebuddyToken(refreshToken, log) {
       refreshToken: data.data.refreshToken || refreshToken,
       expiresIn: data.data.expiresIn,
     };
-  }, log);
+  }, log, proxyOptions);
 }

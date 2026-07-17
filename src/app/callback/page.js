@@ -9,6 +9,7 @@ import { useSearchParams } from "next/navigation";
 function CallbackContent() {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState("processing");
+  const [failureMessage, setFailureMessage] = useState("");
 
   useEffect(() => {
     const code = searchParams.get("code");
@@ -17,26 +18,21 @@ function CallbackContent() {
     const error = searchParams.get("error");
     const errorDescription = searchParams.get("error_description");
 
+    // Timestamp the common payload once so every transport can reject a
+    // replay from an earlier OAuth attempt, not only the localStorage path.
     const callbackData = {
       code,
       token,
       state,
       error,
       errorDescription,
-      fullUrl: window.location.href,
+      timestamp: Date.now(),
     };
 
-    let relayed = false;
-
-    // Trusted origins that may receive this callback. The OAuth code/state
-    // must only be relayed to the dashboard window we expect to be the opener
-    // (same origin) or the Codex helper that listens on a fixed loopback port.
-    // Any other origin is treated as hostile (drive-by attacker that opened
-    // the popup against the well-known redirect_uri to phish the code).
-    const expectedOrigins = [
-      window.location.origin, // Same origin (for most providers)
-      "http://localhost:1455", // Codex specific port
-    ];
+    // The OAuth code/state is relayed only to the exact dashboard origin.
+    // Any other opener is treated as hostile.
+    const expectedOrigins = [window.location.origin];
+    const timers = [];
 
     // Method 1: postMessage to opener (popup mode)
     // Send once per expected origin. The browser delivers the message only
@@ -47,7 +43,6 @@ function CallbackContent() {
       for (const origin of expectedOrigins) {
         try {
           window.opener.postMessage({ type: "oauth_callback", data: callbackData }, origin);
-          relayed = true;
         } catch (e) {
           console.log("postMessage failed:", e);
         }
@@ -59,29 +54,38 @@ function CallbackContent() {
       const channel = new BroadcastChannel("oauth_callback");
       channel.postMessage(callbackData);
       channel.close();
-      relayed = true;
     } catch (e) {
       console.log("BroadcastChannel failed:", e);
     }
 
     // Method 3: localStorage event (fallback)
     try {
-      localStorage.setItem("oauth_callback", JSON.stringify({ ...callbackData, timestamp: Date.now() }));
-      relayed = true;
+      localStorage.setItem("oauth_callback", JSON.stringify(callbackData));
+      // The storage event retains the value for other tabs; remove the secret
+      // immediately so a later page load cannot recover an OAuth code/token.
+      localStorage.removeItem("oauth_callback");
     } catch (e) {
       console.log("localStorage failed:", e);
     }
 
     if (!(code || token || error)) {
-      setTimeout(() => setStatus("manual"), 0);
-      return;
+      timers.push(setTimeout(() => setStatus("manual"), 0));
+      return () => timers.forEach(clearTimeout);
     }
 
-    setStatus("success");
-    setTimeout(() => {
+    if (error) {
+      timers.push(setTimeout(() => {
+        setFailureMessage(errorDescription || error);
+        setStatus("error");
+      }, 0));
+      return () => timers.forEach(clearTimeout);
+    }
+    timers.push(setTimeout(() => setStatus("success"), 0));
+    timers.push(setTimeout(() => {
       window.close();
-      setTimeout(() => setStatus("done"), 500);
-    }, 1500);
+      timers.push(setTimeout(() => setStatus("done"), 500));
+    }, 1500));
+    return () => timers.forEach(clearTimeout);
   }, [searchParams]);
 
   return (
@@ -106,6 +110,16 @@ function CallbackContent() {
             <p className="text-text-muted">
               {status === "success" ? "This window will close automatically..." : "You can close this tab now."}
             </p>
+          </>
+        )}
+
+        {status === "error" && (
+          <>
+            <div className="size-16 mx-auto mb-4 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+              <span className="material-symbols-outlined text-3xl text-red-600">error</span>
+            </div>
+            <h1 className="text-xl font-semibold mb-2">Authorization Failed</h1>
+            <p className="text-text-muted">{failureMessage || "The provider rejected this login."}</p>
           </>
         )}
 

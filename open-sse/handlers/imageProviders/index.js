@@ -12,10 +12,13 @@ import blackForestLabs from "./blackForestLabs.js";
 import runwayml from "./runwayml.js";
 import cloudflareAi from "./cloudflareAi.js";
 import antigravity from "./antigravity.js";
+import minimax from "./minimax.js";
 
 const ADAPTERS = {
   openai: createOpenAIAdapter("openai"),
-  minimax: createOpenAIAdapter("minimax"),
+  // Dedicated adapter (OmniRoute #7108): MiniMax image_generation is not
+  // OpenAI-compatible (aspect_ratio request, data.image_urls response).
+  minimax,
   openrouter: createOpenAIAdapter("openrouter"),
   recraft: createOpenAIAdapter("recraft"),
   "vercel-ai-gateway": createOpenAIAdapter("vercel-ai-gateway"),
@@ -27,6 +30,7 @@ const ADAPTERS = {
   huggingface,
   nanobanana,
   antigravity,
+  agy: antigravity,
   "fal-ai": falAi,
   "stability-ai": stabilityAi,
   "black-forest-labs": blackForestLabs,

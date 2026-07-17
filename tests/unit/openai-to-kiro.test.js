@@ -7,10 +7,18 @@
  */
 
 import { describe, it, expect } from "vitest";
+import "../translator/registerAll.js";
 import { openaiToKiroRequest } from "../../open-sse/translator/request/openai-to-kiro.js";
+import { getModelUpstreamId } from "../../open-sse/config/providerModels.js";
+import { translateRequest } from "../../open-sse/translator/index.js";
+import { FORMATS } from "../../open-sse/translator/formats.js";
+import { resolveKiroTranslationModel } from "../../open-sse/handlers/chatCore.js";
 
 const contentOf = (result) =>
   result.conversationState.currentMessage.userInputMessage.content;
+
+const modelIdOf = (result) =>
+  result.conversationState.currentMessage.userInputMessage.modelId;
 
 describe("openaiToKiroRequest", () => {
   describe("basic message conversion", () => {
@@ -23,7 +31,7 @@ describe("openaiToKiroRequest", () => {
 
       const currentMsg = result.conversationState.currentMessage;
       expect(currentMsg.userInputMessage.content).toContain("Hello");
-      expect(currentMsg.userInputMessage.modelId).toBe("claude-sonnet-4-6");
+      expect(currentMsg.userInputMessage.modelId).toBe("claude-sonnet-4.6");
       expect(currentMsg.userInputMessage.origin).toBe("AI_EDITOR");
     });
 
@@ -321,6 +329,44 @@ describe("openaiToKiroRequest", () => {
   });
 
   describe("thinking budget", () => {
+    it("does not infer thinking from sentinel words inside an opaque suffix", () => {
+      for (const model of [
+        "claude-sonnet-4.6(custom-thinking)",
+        "claude-sonnet-4.6(custom-reason)",
+      ]) {
+        const result = openaiToKiroRequest(
+          model,
+          { messages: [{ role: "user", content: "hello" }] },
+          true,
+          {},
+        );
+        expect(contentOf(result)).not.toContain("<thinking_mode>");
+        expect(result.conversationState.currentMessage.userInputMessage.modelId).toBe(model);
+      }
+    });
+
+    it("uses request-scoped suffix intent with a clean model ID", () => {
+      const body = {
+        messages: [
+          { role: "user", content: "first" },
+          { role: "assistant", content: "answer" },
+          { role: "user", content: "second" },
+        ],
+      };
+      const result = openaiToKiroRequest(
+        "claude-sonnet-4.6",
+        body,
+        true,
+        {},
+        { thinkingIntent: { mode: "budget", budget: 8192 }, clientSessionId: "session-8192" },
+      );
+
+      expect(contentOf(result)).toContain("<max_thinking_length>8192</max_thinking_length>");
+      expect(result.conversationState.conversationId).toBe("session-8192");
+      expect(JSON.stringify(result)).not.toContain("(8192)");
+      expect(Reflect.ownKeys(result).filter((key) => String(key).startsWith("_"))).toEqual([]);
+    });
+
     it("maps reasoning_effort low to max_thinking_length 1024", () => {
       const body = {
         reasoning_effort: "low",
@@ -396,6 +442,78 @@ describe("openaiToKiroRequest", () => {
 
       expect(contentOf(result)).not.toContain("<thinking_mode>enabled</thinking_mode>");
       expect(contentOf(result)).not.toContain("<max_thinking_length>");
+    });
+  });
+
+  // decolua/9router#2596 regression: the GPT-5.6 family registers an
+  // upstreamModelId (bare wire id), so chatCore's cleanUpstreamModel has
+  // already lost the synthetic -thinking/-agentic suffix before translation.
+  // The chatCore Kiro seam passes the canonical (suffixed) catalog id instead
+  // so resolveKiroModel recovers the flags. This pins that selector + the
+  // translator's flag recovery and wire-boundary strip together.
+  describe("GPT-5.6 synthetic variant seam (upstream #2596)", () => {
+    it("recovers thinking+agentic flags from the canonical id and strips to the bare wire id", () => {
+      const requested = "gpt-5.6-sol-thinking-agentic";
+      // The real chatCore non-passthrough selector: Kiro target resolves the
+      // canonical (suffixed) catalog id, not the suffix-stripped upstreamModelId.
+      const translationModel = resolveKiroTranslationModel(
+        FORMATS.KIRO, "kr", requested, getModelUpstreamId("kr", requested),
+      );
+      expect(translationModel).toBe(requested); // canonical id keeps the suffix
+
+      const body = { messages: [{ role: "user", content: "Write a big file" }] };
+      const result = openaiToKiroRequest(translationModel, body, true, {});
+
+      // Flags recovered: thinking prefix + first-turn agentic prompt injected.
+      expect(contentOf(result)).toContain("<thinking_mode>enabled</thinking_mode>");
+      expect(contentOf(result)).toContain("<max_thinking_length>");
+      expect(contentOf(result)).toContain("# CRITICAL: CHUNKED WRITE PROTOCOL");
+      expect(contentOf(result)).toContain("Write a big file");
+      // Wire boundary carries the bare upstream id, never the synthetic suffix.
+      expect(modelIdOf(result)).toBe("gpt-5.6-sol");
+      expect(JSON.stringify(result)).not.toContain("gpt-5.6-sol-thinking-agentic");
+    });
+
+    it("emits no stray top-level reasoning_effort through the full translate pipeline (caps thinkingFormat kiro)", () => {
+      // exercises applyThinking: explicit OpenAI reasoning intent on a Kiro
+      // GPT-5.6 request must become the <thinking_mode> system prefix, not a
+      // top-level reasoning_effort field on the CodeWhisperer payload.
+      const body = {
+        reasoning_effort: "high",
+        messages: [{ role: "user", content: "hi" }],
+      };
+      const result = translateRequest(
+        FORMATS.OPENAI,
+        FORMATS.KIRO,
+        "gpt-5.6-sol-thinking",
+        body,
+        true,
+        null,
+        "kiro",
+      );
+
+      expect(result.reasoning_effort).toBeUndefined();
+      expect(contentOf(result)).toContain("<thinking_mode>enabled</thinking_mode>");
+      expect(modelIdOf(result)).toBe("gpt-5.6-sol");
+    });
+
+    it("passing the stripped upstreamModelId loses the flags (proves the seam is required)", () => {
+      const stripped = getModelUpstreamId("kr", "gpt-5.6-sol-thinking");
+      expect(stripped).toBe("gpt-5.6-sol"); // upstreamModelId strips the suffix
+
+      const body = { messages: [{ role: "user", content: "hi" }] };
+      const result = openaiToKiroRequest(stripped, body, true, {});
+
+      // Without the suffix there is no model-derived thinking/agentic signal.
+      expect(modelIdOf(result)).toBe("gpt-5.6-sol");
+      expect(contentOf(result)).not.toContain("<thinking_mode>enabled</thinking_mode>");
+    });
+
+    it("resolveKiroTranslationModel keeps cleanUpstreamModel for non-Kiro targets", () => {
+      expect(resolveKiroTranslationModel(FORMATS.CLAUDE, "kr", "gpt-5.6-sol-thinking", "gpt-5.6-sol"))
+        .toBe("gpt-5.6-sol");
+      expect(resolveKiroTranslationModel(FORMATS.OPENAI, "openai", "gpt-5.6-sol", "gpt-5.6-sol"))
+        .toBe("gpt-5.6-sol");
     });
   });
 });

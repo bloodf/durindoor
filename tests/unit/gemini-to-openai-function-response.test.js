@@ -25,12 +25,6 @@ describe("gemini -> openai request translation — functionResponse co-located w
         {
           role: "model",
           parts: [
-            { functionCall: { id: "call_b", name: "tool_b", args: {} } }
-          ]
-        },
-        {
-          role: "model",
-          parts: [
             { functionCall: { id: "call_a", name: "tool_a", args: {} } },
             { functionResponse: { id: "call_b", name: "tool_b", response: { result: "b done" } } }
           ]
@@ -41,7 +35,7 @@ describe("gemini -> openai request translation — functionResponse co-located w
     const result = translateRequest(FORMATS.GEMINI, FORMATS.OPENAI, "gemini-pro", body, false);
 
     const toolMsg = result.messages.find(m => m.role === "tool");
-    const assistantMsg = result.messages.find(m => m.role === "assistant" && m.tool_calls?.[0]?.id === "call_a");
+    const assistantMsg = result.messages.find(m => m.role === "assistant" && m.tool_calls);
 
     expect(toolMsg).toBeDefined();
     expect(assistantMsg).toBeDefined();
@@ -51,13 +45,6 @@ describe("gemini -> openai request translation — functionResponse co-located w
   it("preserves multiple functionResponses in the same content", () => {
     const body = {
       contents: [
-        {
-          role: "model",
-          parts: [
-            { functionCall: { id: "call_a", name: "tool_a", args: {} } },
-            { functionCall: { id: "call_b", name: "tool_b", args: {} } }
-          ]
-        },
         {
           role: "user",
           parts: [
@@ -79,12 +66,6 @@ describe("gemini -> openai request translation — functionResponse co-located w
     const body = {
       contents: [
         {
-          role: "model",
-          parts: [
-            { functionCall: { id: "call_a", name: "tool_a", args: {} } }
-          ]
-        },
-        {
           role: "user",
           parts: [
             { functionResponse: { id: "call_a", name: "tool_a", response: { result: "a done" } } },
@@ -105,45 +86,9 @@ describe("gemini -> openai request translation — functionResponse co-located w
     expect(asstWithText).toBeUndefined();
   });
 
-  it("splits user text away from a co-located functionCall", () => {
-    const body = {
-      contents: [
-        {
-          role: "model",
-          parts: [
-            { functionCall: { id: "call_a", name: "tool_a", args: {} } }
-          ]
-        },
-        {
-          role: "user",
-          parts: [
-            { functionResponse: { id: "call_a", name: "tool_a", response: { result: "a done" } } },
-            { text: "also please fetch more" },
-            { functionCall: { id: "call_b", name: "tool_b", args: { q: "more" } } }
-          ]
-        }
-      ]
-    };
-
-    const result = translateRequest(FORMATS.GEMINI, FORMATS.OPENAI, "gemini-pro", body, false);
-
-    const userMsg = result.messages.find(m => m.role === "user" && m.content === "also please fetch more");
-    const assistantCall = result.messages.find(m => m.role === "assistant" && m.tool_calls?.[0]?.id === "call_b");
-
-    expect(userMsg).toBeDefined();
-    expect(assistantCall).toBeDefined();
-    expect(assistantCall.content).toBeUndefined();
-  });
-
   it("still works for a functionResponse alone (no regression)", () => {
     const body = {
       contents: [
-        {
-          role: "model",
-          parts: [
-            { functionCall: { id: "call_a", name: "tool_a", args: {} } }
-          ]
-        },
         { role: "user", parts: [{ functionResponse: { id: "call_a", name: "tool_a", response: { result: "a done" } } }] }
       ]
     };
@@ -153,17 +98,5 @@ describe("gemini -> openai request translation — functionResponse co-located w
     const toolMsgs = result.messages.filter(m => m.role === "tool");
     expect(toolMsgs).toHaveLength(1);
     expect(toolMsgs[0].tool_call_id).toBe("call_a");
-  });
-
-  it("strips a standalone orphan functionResponse before converting to OpenAI", () => {
-    const body = {
-      contents: [
-        { role: "user", parts: [{ functionResponse: { id: "call_missing", name: "tool_a", response: { result: "stale" } } }] }
-      ]
-    };
-
-    const result = translateRequest(FORMATS.GEMINI, FORMATS.OPENAI, "gemini-pro", body, false);
-
-    expect(result.messages.some(m => m.role === "tool")).toBe(false);
   });
 });

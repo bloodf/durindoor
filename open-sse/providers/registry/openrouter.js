@@ -38,8 +38,16 @@ export default {
     { id: "openai/gpt-image-1", name: "GPT Image 1 (via OpenRouter)", params: ["n","size","quality","response_format"], kind: "image" },
     { id: "google/imagen-3.0-generate-002", name: "Imagen 3 (via OpenRouter)", params: ["n","size"], kind: "image" },
     { id: "black-forest-labs/FLUX.1-schnell", name: "FLUX.1 Schnell (via OpenRouter)", params: ["n","size"], kind: "image" },
+    // OpenRouter exposes a separate, Cohere-compatible POST /api/v1/rerank endpoint
+    // (not surfaced by its live /v1/models feed). Model IDs keep their vendor slash
+    // (e.g. "cohere/rerank-4-pro"); the model parser splits on the first slash, so
+    // 3-segment ids resolve safely. Seeded by hand as OpenRouter adds rerank models.
+    { id: "cohere/rerank-4-pro", name: "Cohere Rerank 4 Pro (via OpenRouter)", kind: "rerank" },
+    { id: "cohere/rerank-4-fast", name: "Cohere Rerank 4 Fast (via OpenRouter)", kind: "rerank" },
+    { id: "cohere/rerank-v3.5", name: "Cohere Rerank v3.5 (via OpenRouter)", kind: "rerank" },
+    { id: "nvidia/llama-nemotron-rerank-vl-1b-v2:free", name: "Llama Nemotron Rerank VL 1B v2 (free, via OpenRouter)", kind: "rerank" },
   ],
-  serviceKinds: ["llm","embedding","tts","imageToText"],
+  serviceKinds: ["llm","embedding","tts","imageToText","rerank"],
   ttsConfig: {
     baseUrl: "https://openrouter.ai/api/v1/chat/completions",
     defaultModel: "openai/gpt-4o-mini-tts",

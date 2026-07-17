@@ -50,6 +50,13 @@ Common service kinds:
 
 If a provider has multiple connections, DurinDoor selects an available connection and avoids accounts that are temporarily locked, expired, or excluded by the current fallback attempt. Provider-specific code can refresh credentials when the upstream supports refresh.
 
+For round-robin providers, behavior depends on whether a stable client session id is present:
+
+- When the client supplies a session id (via `x-session-id`, `session-id`, `session_id`, `x-amp-thread-id`, or embedded body fields), DurinDoor pins that session to the first available account and keeps routing to the same account until it becomes unavailable or the in-memory affinity entry expires (default session TTL). This is the "session-sticky" round-robin path.
+- Requests without a session id continue to use the request-count round-robin governed by `stickyRoundRobinLimit` (default 3 consecutive uses on the same account before rotating).
+- For Kiro specifically, the request-scoped `x-client-request-id` header is intentionally ignored for account affinity so that per-request IDs do not break stickiness. Other scopes still allow `x-client-request-id` as a session hint.
+- A session whose pinned account is excluded or locked falls back to the next available account and re-anchors there for that session.
+
 ## Request Translation
 
 Client tools do not all speak the same format. DurinDoor translates between OpenAI, Anthropic Claude, Gemini, OpenAI Responses, Kiro, Cursor, CommandCode, Ollama, Vertex, and other supported shapes.
@@ -63,7 +70,7 @@ Important rules:
 
 ## Response Translation
 
-For streaming requests, DurinDoor reads provider chunks and emits client-compatible chunks. For non-streaming requests, it normalizes the final JSON response.
+For streaming requests, DurinDoor reads provider chunks and emits client-compatible chunks. For non-streaming requests, it normalizes the final JSON response. Client streaming intent is tracked separately from upstream streaming capability: if a provider must be called without streaming, DurinDoor can still return client-facing SSE by converting the provider's final JSON response into chat completion chunks.
 
 The response layer is responsible for:
 

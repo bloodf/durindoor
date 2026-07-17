@@ -41,8 +41,8 @@ describe("Kiro external_idp (CLIProxyAPI) import and refresh", () => {
       clientId: TEST_CLIENT_ID,
       tokenEndpoint: "https://login.microsoftonline.com/tenant-id/oauth2/v2.0/token",
       scope: TEST_SCOPE,
-      profileArn: "arn:aws:codewhisperer:us-east-1:123456789012:profile/ABC",
-      region: "us-east-1",
+      profileArn: "arn:aws:codewhisperer:US-EAST-1:123456789012:profile/ABC",
+      region: "US-EAST-1",
     });
 
     expect(result).toMatchObject({
@@ -50,12 +50,10 @@ describe("Kiro external_idp (CLIProxyAPI) import and refresh", () => {
       refreshToken: "rotated-refresh-token",
       expiresIn: 3600,
       providerSpecificData: {
-        profileArn: "arn:aws:codewhisperer:us-east-1:123456789012:profile/ABC",
         authMethod: "external_idp",
         clientId: TEST_CLIENT_ID,
         tokenEndpoint: "https://login.microsoftonline.com/tenant-id/oauth2/v2.0/token",
         scope: TEST_SCOPE,
-        region: "us-east-1",
       },
     });
 
@@ -74,6 +72,55 @@ describe("Kiro external_idp (CLIProxyAPI) import and refresh", () => {
       refresh_token: "old-refresh-token",
       scope: TEST_SCOPE,
     });
+  });
+
+  it("persists a rotated external_idp token without rewriting legacy Kiro metadata", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        access_token: "new-access-token",
+        refresh_token: "rotated-refresh-token",
+        expires_in: 3600,
+      }),
+    });
+    global.fetch = fetchMock;
+    const { KiroExecutor } = await import("../../open-sse/executors/kiro.js");
+    const { refreshAndUpdateCredentials } = await import("../../src/shared/services/providerCredentials.js");
+    const original = {
+      id: "kiro-legacy-external-idp",
+      provider: "kiro",
+      authType: "oauth",
+      accessToken: "old-access-token",
+      refreshToken: "old-refresh-token-legacy",
+      providerSpecificData: {
+        authMethod: "external_idp",
+        clientId: TEST_CLIENT_ID,
+        tokenEndpoint: "https://login.microsoftonline.com/tenant-id/oauth2/v2.0/token",
+        scope: TEST_SCOPE,
+        profileArn: "arn:aws:codewhisperer:US-EAST-1:123456789012:profile/legacy",
+        region: "US-EAST-1",
+      },
+    };
+    const updateProviderConnectionImpl = vi.fn().mockResolvedValue(undefined);
+
+    await refreshAndUpdateCredentials(original, true, null, {
+      getExecutorImpl: () => new KiroExecutor(),
+      updateProviderConnectionImpl,
+      now: () => Date.parse("2026-07-10T00:00:00.000Z"),
+      log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    expect(updateProviderConnectionImpl).toHaveBeenCalledWith(
+      "kiro-legacy-external-idp",
+      expect.objectContaining({
+        accessToken: "new-access-token",
+        refreshToken: "rotated-refresh-token",
+      }),
+      expect.any(Object),
+    );
+    const update = updateProviderConnectionImpl.mock.calls[0][1];
+    expect(update).not.toHaveProperty("providerSpecificData");
+    expect(original.providerSpecificData.region).toBe("US-EAST-1");
   });
 
   it("rejects external_idp refresh endpoints outside Microsoft login", async () => {
@@ -171,7 +218,7 @@ describe("Kiro external_idp (CLIProxyAPI) import and refresh", () => {
       client_id: TEST_CLIENT_ID,
       token_endpoint: "https://login.microsoftonline.com/tenant-id/oauth2/v2.0/token",
       profile_arn: "arn:aws:codewhisperer:us-east-1:123456789012:profile/ABC",
-      region: "us-east-1",
+      region: "US-EAST-1",
       scopes: TEST_SCOPE,
       expired: new Date(Date.now() + 3600_000).toISOString(),
     };

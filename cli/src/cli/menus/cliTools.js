@@ -1,5 +1,5 @@
 const api = require("../api/client");
-const { pause, confirm } = require("../utils/input");
+const { pause, confirm, promptSecret, select } = require("../utils/input");
 const { showStatus } = require("../utils/display");
 const { selectModelFromList } = require("../utils/modelSelector");
 const { showMenuWithBack } = require("../utils/menuHelper");
@@ -23,13 +23,20 @@ const CLAUDE_MODEL_TYPES = [
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
 /**
- * Get first available API key from server
+ * Select a managed key label, then ask the operator for the one-time secret.
+ * List/detail APIs intentionally never return stored API-key credentials.
  * @returns {Promise<string|null>}
  */
 async function getFirstApiKey() {
   const result = await api.getApiKeys();
   const keys = result.success ? (result.data.keys || []) : [];
-  return keys.length > 0 ? keys[0].key : null;
+  if (keys.length === 0) return null;
+  const index = keys.length === 1
+    ? 0
+    : await select("Choose API key", keys.map((key) => `${key.name} (${key.maskedKey || "***"})`));
+  const selected = keys[index];
+  const secret = await promptSecret(`Enter the secret for ${selected.name} (${selected.maskedKey || "***"}): `);
+  return secret || null;
 }
 
 // ─── Claude Code ──────────────────────────────────────────────────────────────

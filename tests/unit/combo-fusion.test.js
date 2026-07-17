@@ -18,6 +18,38 @@ function errResponse(status = 500) {
 }
 
 describe("fusion combo", () => {
+  // #6495 / F-4: when the hide-paid toggle filters an all-paid fusion combo
+  // down to an empty panel, handleFusionChat must fail fast (400) rather than
+  // fall through to `panel[0]` === undefined and route a judge turn with no
+  // model. The chat handler reaches here via `if (comboModels)` because an
+  // empty array is truthy — so the engine guard is the load-bearing defense.
+  it("returns 400 and never calls handleSingleModel when the panel is empty", async () => {
+    const handleSingleModel = vi.fn(async () => okResponse("should-not-run"));
+    const res = await handleFusionChat({
+      body: { messages: [{ role: "user", content: "Q" }] },
+      models: [],
+      handleSingleModel,
+      log,
+      comboName: "all-paid-fusion",
+    });
+    expect(res.status).toBe(400);
+    expect(handleSingleModel).not.toHaveBeenCalled();
+    const body = await res.json();
+    expect(body.error.message).toMatch(/no models/i);
+  });
+
+  it("treats a null/undefined models arg as an empty panel (400)", async () => {
+    const handleSingleModel = vi.fn(async () => okResponse("should-not-run"));
+    const res = await handleFusionChat({
+      body: { messages: [{ role: "user", content: "Q" }] },
+      models: null,
+      handleSingleModel,
+      log,
+    });
+    expect(res.status).toBe(400);
+    expect(handleSingleModel).not.toHaveBeenCalled();
+  });
+
   it("answers directly with a single-model panel (nothing to fuse)", async () => {
     const handleSingleModel = vi.fn(async () => okResponse("solo"));
     await handleFusionChat({
@@ -85,8 +117,12 @@ describe("fusion combo", () => {
   });
 
   it("proceeds on quorum without waiting for a straggler (grace window)", async () => {
-    const handleSingleModel = vi.fn(async (_body, model) => {
-      if (model === "p/slow") return okResponse("slow", { delayMs: 5000 });
+    const handleSingleModel = vi.fn(async (_body, model, isPanel, signal) => {
+      if (model === "p/slow" && isPanel) {
+        return new Promise((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+        });
+      }
       if (model === "p/judge") return okResponse("FINAL");
       return okResponse(`fast-${model}`);
     });
@@ -112,8 +148,9 @@ describe("fusion combo", () => {
     expect(judgeText).not.toContain("slow");
   });
 
-  it("returns the lone survivor directly when only one panel model succeeds", async () => {
+  it("routes the lone survivor through an explicit judge (#6607)", async () => {
     const handleSingleModel = vi.fn(async (_body, model) => {
+      if (model === "p/judge") return okResponse("judged-lone");
       if (model === "p/ok") return okResponse("lone");
       return errResponse(500);
     });
@@ -125,9 +162,9 @@ describe("fusion combo", () => {
       judgeModel: "p/judge",
       tuning: { minPanel: 2, stragglerGraceMs: 50, panelHardTimeoutMs: 5000 },
     });
-    // No judge call — single answer means there is nothing to fuse.
+    // #6607: explicit judgeModel is honored even with a single surviving answer.
     const judged = handleSingleModel.mock.calls.some(([, m]) => m === "p/judge");
-    expect(judged).toBe(false);
+    expect(judged).toBe(true);
   });
 
   it("returns 503 when the whole panel fails", async () => {
@@ -212,5 +249,193 @@ describe("fusion combo", () => {
     
     // Flattened tool_result
     expect(panelBody.messages[2].content).toBe("[Tool result: done]");
+  });
+
+  it("waits for an aborted panel release before starting the judge", async () => {
+    vi.useFakeTimers();
+    try {
+      let stragglerSignal;
+      const events = [];
+      const handleSingleModel = vi.fn(async (_body, model, isPanel, signal) => {
+        if (model === "p/fast") return okResponse("fast answer");
+        if (model === "p/slow" && isPanel) {
+          stragglerSignal = signal;
+          return new Promise((_resolve, reject) => {
+            signal.addEventListener("abort", () => {
+              events.push("abort:slow");
+              setTimeout(() => {
+                events.push("release:slow");
+                reject(new DOMException("aborted", "AbortError"));
+              }, 20);
+            }, { once: true });
+          });
+        }
+        events.push(`start:${model}`);
+        return okResponse("judge answer");
+      });
+      const pending = handleFusionChat({
+        body: { messages: [{ role: "user", content: "Q" }] },
+        models: ["p/fast", "p/slow"],
+        handleSingleModel,
+        log,
+        judgeModel: "p/judge",
+        tuning: {
+          minPanel: 1,
+          stragglerGraceMs: 10,
+          panelHardTimeoutMs: 1000,
+          panelCancelDrainTimeoutMs: 100,
+        },
+      });
+      await vi.advanceTimersByTimeAsync(11);
+      expect(events).toEqual(["abort:slow"]);
+      await vi.advanceTimersByTimeAsync(20);
+      const response = await pending;
+      expect(response.ok).toBe(true);
+      expect(stragglerSignal.aborted).toBe(true);
+      expect(events).toEqual(["abort:slow", "release:slow", "start:p/judge"]);
+      expect(handleSingleModel).toHaveBeenCalledWith(expect.any(Object), "p/slow", true, expect.any(AbortSignal));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("fails locally without a judge when canceled panel cleanup misses its deadline", async () => {
+    vi.useFakeTimers();
+    try {
+      const handleSingleModel = vi.fn(async (_body, model, isPanel, signal) => {
+        if (model === "p/fast") return okResponse("fast answer");
+        if (model === "p/slow" && isPanel) {
+          return new Promise(() => {
+            signal.addEventListener("abort", () => {}, { once: true });
+          });
+        }
+        return okResponse("judge must not run");
+      });
+      const pending = handleFusionChat({
+        body: { messages: [{ role: "user", content: "Q" }] },
+        models: ["p/fast", "p/slow"],
+        handleSingleModel,
+        log,
+        judgeModel: "p/judge",
+        tuning: {
+          minPanel: 1,
+          stragglerGraceMs: 10,
+          panelHardTimeoutMs: 1000,
+          panelCancelDrainTimeoutMs: 25,
+        },
+      });
+
+      await vi.advanceTimersByTimeAsync(36);
+      const response = await pending;
+
+      expect(response.status).toBe(503);
+      expect(handleSingleModel.mock.calls.some(([, model]) => model === "p/judge")).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Context-requirements eligibility must apply to fusion combos too —
+  // the chat handler's fusion branch returns before handleComboChat, so without
+  // the in-engine filter a configured min-context requirement was silently
+  // ignored and every panel model got called.
+  describe("context requirements", () => {
+    // Registry-grounded fixtures (same as combo-context-requirements.test.js):
+    const LARGE = "github-models/openai/gpt-4.1"; // contextLength 1047576
+    const SMALL = "github-models/microsoft/Phi-4"; // contextLength 16384
+    const UNKNOWN = "custom/no-catalog-entry"; // no registry context anywhere
+
+    it("filters the panel BEFORE fan-out so an ineligible model is never called", async () => {
+      const called = [];
+      const handleSingleModel = vi.fn(async (_b, model) => {
+        called.push(model);
+        return okResponse(`answer from ${model}`);
+      });
+      const res = await handleFusionChat({
+        body: { messages: [{ role: "user", content: "Q" }] },
+        models: [SMALL, LARGE],
+        handleSingleModel,
+        log,
+        comboName: "fusion-ctx",
+        contextRequirements: { minContextWindow: 100000, contextFilterMode: "strict" },
+      });
+      expect(res.status).toBe(200);
+      expect(called).not.toContain(SMALL);
+      expect(called).toContain(LARGE);
+    });
+
+    it("returns 503 and calls nothing when every member fails the requirement", async () => {
+      const handleSingleModel = vi.fn(async () => okResponse("should-not-run"));
+      const res = await handleFusionChat({
+        body: { messages: [{ role: "user", content: "Q" }] },
+        models: [SMALL, UNKNOWN],
+        handleSingleModel,
+        log,
+        comboName: "fusion-ctx-empty",
+        contextRequirements: { minContextWindow: 100000, contextFilterMode: "strict" },
+      });
+      expect(res.status).toBe(503);
+      expect(handleSingleModel).not.toHaveBeenCalled();
+      const body = await res.json();
+      expect(body.error.message).toMatch(/no models matching context requirements/i);
+    });
+
+    it("strict mode with minContextWindow 0 keeps known sizes but drops unknown-context models", async () => {
+      const called = [];
+      const handleSingleModel = vi.fn(async (_b, model) => {
+        called.push(model);
+        return okResponse(`answer from ${model}`);
+      });
+      const res = await handleFusionChat({
+        body: { messages: [{ role: "user", content: "Q" }] },
+        models: [SMALL, UNKNOWN],
+        handleSingleModel,
+        log,
+        comboName: "fusion-ctx-zero",
+        contextRequirements: { minContextWindow: 0, contextFilterMode: "strict" },
+      });
+      expect(res.status).toBe(200);
+      expect(called).toContain(SMALL);
+      expect(called).not.toContain(UNKNOWN);
+    });
+
+    it("returns 503 before fan-out when a member lacks a slash and context requirements are active", async () => {
+      const handleSingleModel = vi.fn(async () => okResponse("should-not-run"));
+      const res = await handleFusionChat({
+        body: { messages: [{ role: "user", content: "Q" }] },
+        models: ["bare-alias", LARGE],
+        handleSingleModel,
+        log,
+        comboName: "fusion-invalid-member",
+        contextRequirements: { minContextWindow: 100000, contextFilterMode: "strict" },
+      });
+      expect(res.status).toBe(503);
+      expect(handleSingleModel).not.toHaveBeenCalled();
+      const body = await res.json();
+      expect(body.error.message).toMatch(/bare-alias/);
+      expect(body.error.message).toMatch(/not a valid provider\/model member/i);
+    });
+
+    it("preferLargeContext orders the panel so the largest-context member leads (default judge)", async () => {
+      const called = [];
+      const handleSingleModel = vi.fn(async (_b, model) => {
+        called.push(model);
+        return okResponse(`answer from ${model}`);
+      });
+      // Panel given small-first; preference must reorder to large-first, and the
+      // default judge falls back to panel[0] → the largest-context member.
+      const res = await handleFusionChat({
+        body: { messages: [{ role: "user", content: "Q" }] },
+        models: [SMALL, LARGE],
+        handleSingleModel,
+        log,
+        comboName: "fusion-ctx-prefer",
+        contextRequirements: { preferLargeContext: true },
+      });
+      expect(res.status).toBe(200);
+      expect(called[0]).toBe(LARGE);
+      // Judge defaults to panel[0] and runs LAST → largest-context model synthesizes.
+      expect(called.at(-1)).toBe(LARGE);
+    });
   });
 });

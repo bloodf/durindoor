@@ -1,4 +1,7 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { compressMessages, formatRtkLog } from "../../open-sse/rtk/index.js";
 import { gitDiff } from "../../open-sse/rtk/filters/gitDiff.js";
 import { gitStatus } from "../../open-sse/rtk/filters/gitStatus.js";
@@ -260,6 +263,59 @@ describe("gitLog filter", () => {
     ].join("\n");
     const out = gitLog(input);
     expect(out).toContain("4 files changed, 20 insertions(+), 2 deletions(-)");
+  });
+
+  it("keeps git log --stat file-level rows", () => {
+    const input = [
+      "commit abc1234def5678abc1234def5678abc1234def5",
+      "Author: Dev One <dev1@example.com>",
+      "Date:   Sun Jul 6 10:00:00 2026 +0700",
+      "",
+      "    Fix typo",
+      "",
+      " src/main.js | 3 ++-",
+      " assets/logo.png | Bin 0 -> 123 bytes",
+      " 2 files changed, 2 insertions(+), 1 deletion(-)",
+    ].join("\n");
+    const out = gitLog(input);
+    expect(out).toContain("src/main.js | 3 ++-");
+    expect(out).toContain("assets/logo.png | Bin 0 -> 123 bytes");
+    expect(out).toContain("2 files changed, 2 insertions(+), 1 deletion(-)");
+  });
+
+  it("keeps graph-prefixed git log --stat file-level rows", () => {
+    const input = [
+      "* commit abc1234def5678abc1234def5678abc1234def5",
+      "| Author: Dev One <dev1@example.com>",
+      "| Date:   Sun Jul 6 10:00:00 2026 +0700",
+      "|",
+      "|     Fix typo",
+      "|",
+      "|     verbose body line omitted by RTK",
+      "|  src/main.js | 3 ++-",
+      "|  1 file changed, 2 insertions(+), 1 deletion(-)",
+    ].join("\n");
+    const out = gitLog(input);
+    expect(out).not.toBe(input);
+    expect(out).toContain("src/main.js | 3 ++-");
+    expect(out).toContain("1 file changed, 2 insertions(+), 1 deletion(-)");
+    expect(out).not.toContain("verbose body line omitted by RTK");
+  });
+
+  it("keeps git log --numstat file-level rows", () => {
+    const input = [
+      "commit abc1234def5678abc1234def5678abc1234def5",
+      "Author: Dev One <dev1@example.com>",
+      "Date:   Sun Jul 6 10:00:00 2026 +0700",
+      "",
+      "    Fix typo",
+      "",
+      "4\t0\tsrc/main.js",
+      "-\t-\tassets/logo.png",
+    ].join("\n");
+    const out = gitLog(input);
+    expect(out).toContain("4\t0\tsrc/main.js");
+    expect(out).toContain("-\t-\tassets/logo.png");
   });
 
   it("keeps git log --name-only file lists", () => {
@@ -661,5 +717,189 @@ describe("formatRtkLog", () => {
     expect(line).toContain("saved 600B");
     expect(line).toContain("60.0%");
     expect(line).toContain("git-diff");
+  });
+});
+
+// Port of decolua/9router #2562 — aggregate Token Saver persistence + stats.
+// Nested describe carries its own DB setup/teardown so the pure-filter tests
+// above are untouched. Local Date constructors throughout: the repo keys rows
+// by local calendar date, keeping the tests timezone-independent.
+// Each test boots a fresh temp SQLite DB and runs the full migration chain;
+// under parallel-agent machine load a single boot can exceed the 5s default,
+// so the suite gets a 20s per-test/hook timeout (margin, not a logic change).
+describe("token-saver aggregate repo (port of 9router #2562)", { timeout: 20000 }, () => {
+  let tempDir;
+  let originalDataDir;
+  let originalHome;
+
+  beforeEach(() => {
+    originalDataDir = process.env.DATA_DIR;
+    originalHome = process.env.HOME;
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "durindoor-token-saver-"));
+    process.env.DATA_DIR = path.join(tempDir, "data");
+    process.env.HOME = path.join(tempDir, "home");
+    fs.mkdirSync(process.env.HOME, { recursive: true });
+    delete global._dbAdapter;
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    try { global._dbAdapter?.instance?.close?.(); } catch {}
+    delete global._dbAdapter;
+    delete global._statsEmitTimers;
+    if (originalDataDir === undefined) delete process.env.DATA_DIR;
+    else process.env.DATA_DIR = originalDataDir;
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  async function loadRepo() {
+    await import("@/lib/db/index.js"); // run migrations / schema bootstrap
+    return await import("@/lib/db/repos/usageRepo.js");
+  }
+
+  async function readRows() {
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const db = await getAdapter();
+    return db.all(`SELECT timestamp, dateKey, data FROM tokenSaverEvents ORDER BY id`);
+  }
+
+  it("stores only the canonical normalized event (no raw diagnostics/URLs)", async () => {
+    const { recordTokenSaverEvent } = await loadRepo();
+    await recordTokenSaverEvent({
+      rtk: { bytesSaved: 120, hits: 1, requestsWithHits: 1, requestsObserved: 1 },
+      headroom: {
+        state: "skipped",
+        diagnostic: "https://evil.internal:9443/proxy unexpected error details leak",
+        tokensSaved: -50, // garbage must be clamped by the normalizer
+        injected: "arbitrary-field",
+      },
+      pxpipe: { tokensSavedEst: 10, applied: 1, imageCount: 2 },
+    }, new Date(2026, 6, 14, 10));
+
+    const rows = await readRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].data).not.toContain("evil.internal");
+    expect(rows[0].data).not.toContain("injected");
+    const data = JSON.parse(rows[0].data);
+    expect(data.rtk.bytesSaved).toBe(120);
+    expect(data.headroom.state).toBe("skipped");
+    expect(data.headroom.tokensSaved).toBe(0); // clamped
+  });
+
+  it("rejects events with invalid timestamps (no misdated rows)", async () => {
+    const { recordTokenSaverEvent } = await loadRepo();
+    await recordTokenSaverEvent({ rtk: { bytesSaved: 1 } }, new Date("not-a-date"));
+    expect(await readRows()).toHaveLength(0);
+  });
+
+  it("serializes concurrent persists without losing rows", async () => {
+    const { recordTokenSaverEvent } = await loadRepo();
+    await Promise.all(
+      Array.from({ length: 20 }, (_, i) =>
+        recordTokenSaverEvent({ rtk: { bytesSaved: i } }, new Date(2026, 6, 14, 10))
+      )
+    );
+    expect(await readRows()).toHaveLength(20);
+  });
+
+  async function seed(repo) {
+    const mk = (d, ev) => repo.recordTokenSaverEvent(ev, d);
+    await mk(new Date(2026, 6, 13, 9),  { rtk: { bytesSaved: 100, hits: 1, requestsWithHits: 1, requestsObserved: 1 }, headroom: { state: "compressed", tokensSaved: 40, bodyBytesBefore: 500, bodyBytesAfter: 300 } });
+    await mk(new Date(2026, 6, 13, 18), { rtk: { bytesSaved: 60, hits: 1, requestsWithHits: 1, requestsObserved: 1 } });
+    await mk(new Date(2026, 6, 14, 8),  { rtk: { bytesSaved: 20, hits: 1, requestsWithHits: 1, requestsObserved: 1 }, headroom: { state: "skipped", diagnostic: "missing-proxy-url" }, pxpipe: { tokensSavedEst: 15, applied: 1, imageCount: 1 } });
+    await mk(new Date(2026, 6, 15, 0),  { rtk: { bytesSaved: 999, requestsObserved: 1 } }); // future
+    await mk(new Date(2026, 5, 1, 0),   { rtk: { bytesSaved: 7, requestsObserved: 1 } }); // far past
+  }
+
+  it("throws RangeError on an invalid period", async () => {
+    const { getTokenSaverStats } = await loadRepo();
+    await expect(getTokenSaverStats("nonsense")).rejects.toBeInstanceOf(RangeError);
+  });
+
+  it("aggregates multi-source rows and derives contiguous dailyPoints", async () => {
+    const repo = await loadRepo();
+    await seed(repo);
+    const stats = await repo.getTokenSaverStats("7d", new Date(2026, 6, 14, 12));
+
+    // Future row (07-15) excluded from a bounded window.
+    expect(stats.requestsObserved).toBe(3);
+    expect(stats.rtk.bytesSaved).toBe(180);
+    // actual = RTK bytes + non-negative Headroom body shrink only.
+    expect(stats.totals.actualBytesSaved).toBe(180 + 200);
+    expect(stats.headroom.compressed).toBe(1);
+    expect(stats.headroom.tokensSaved).toBe(40);
+    expect(stats.headroom.skipReasons["missing-proxy-url"]).toBe(1);
+    // pxpipe stays a separate estimate.
+    expect(stats.pxpipe.tokensSavedEst).toBe(15);
+
+    // 7d window zero-filled from cutoff (07-08) through today (07-14).
+    expect(stats.dailyPoints.map((p) => p.dateKey)).toEqual([
+      "2026-07-08", "2026-07-09", "2026-07-10", "2026-07-11",
+      "2026-07-12", "2026-07-13", "2026-07-14",
+    ]);
+    const byKey = Object.fromEntries(stats.dailyPoints.map((p) => [p.dateKey, p]));
+    expect(byKey["2026-07-13"].actualBytesSaved).toBe(100 + 60 + 200);
+    expect(byKey["2026-07-14"].actualBytesSaved).toBe(20);
+    expect(byKey["2026-07-10"].actualBytesSaved).toBe(0);
+  });
+
+  it("today window covers only today; 24h is a fixed 2-day window", async () => {
+    const repo = await loadRepo();
+    await seed(repo);
+    const now = new Date(2026, 6, 14, 12);
+    const today = await repo.getTokenSaverStats("today", now);
+    expect(today.dailyPoints.map((p) => p.dateKey)).toEqual(["2026-07-14"]);
+    expect(today.rtk.bytesSaved).toBe(20);
+
+    const last24 = await repo.getTokenSaverStats("24h", now);
+    expect(last24.dailyPoints.map((p) => p.dateKey)).toEqual(["2026-07-13", "2026-07-14"]);
+  });
+
+  it("all window returns observed keys only (excludes future rows)", async () => {
+    const repo = await loadRepo();
+    await seed(repo);
+    const stats = await repo.getTokenSaverStats("all", new Date(2026, 6, 14, 12));
+    expect(stats.dailyPoints.map((p) => p.dateKey)).toEqual(["2026-06-01", "2026-07-13", "2026-07-14"]);
+    expect(stats.rtk.bytesSaved).toBe(100 + 60 + 20 + 7);
+  });
+
+  it("never counts Headroom savings on skipped/disabled (positive deltas zeroed)", async () => {
+    const { recordTokenSaverEvent, getTokenSaverStats } = await loadRepo();
+    const now = new Date(2026, 6, 14, 12);
+    // Malformed: skipped/disabled events claiming positive savings must persist
+    // with zeroed Headroom deltas — a skip is observed, never saved.
+    await recordTokenSaverEvent({
+      headroom: { state: "skipped", tokensSaved: 500, tokensBefore: 1000, tokensAfter: 500, bodyBytesBefore: 900, bodyBytesAfter: 400, phantomSavings: true, diagnostic: "timeout" },
+    }, now);
+    await recordTokenSaverEvent({
+      headroom: { state: "disabled", tokensSaved: 300, bodyBytesBefore: 800, bodyBytesAfter: 200 },
+    }, now);
+    await recordTokenSaverEvent({
+      headroom: { state: "compressed", tokensSaved: 40, bodyBytesBefore: 500, bodyBytesAfter: 300 },
+    }, now);
+
+    const rows = await readRows();
+    expect(JSON.parse(rows[0].data).headroom.tokensSaved).toBe(0);
+    expect(JSON.parse(rows[0].data).headroom.bodyBytesBefore).toBe(0);
+    expect(JSON.parse(rows[0].data).headroom.phantomSavings).toBe(0);
+    expect(JSON.parse(rows[1].data).headroom.tokensSaved).toBe(0);
+
+    const stats = await getTokenSaverStats("today", now);
+    expect(stats.headroom.skipped).toBe(1);
+    expect(stats.headroom.disabled).toBe(1);
+    expect(stats.headroom.compressed).toBe(1);
+    expect(stats.headroom.tokensSaved).toBe(40); // only the compressed event
+    expect(stats.headroom.skipReasons.timeout).toBe(1);
+    expect(stats.totals.actualBytesSaved).toBe(200); // only compressed body shrink
+  });
+
+  it("returns a zeroed aggregate with empty dailyPoints when no rows exist", async () => {
+    const repo = await loadRepo();
+    const stats = await repo.getTokenSaverStats("30d", new Date(2026, 6, 14, 12));
+    expect(stats.requestsObserved).toBe(0);
+    expect(stats.totals.actualBytesSaved).toBe(0);
+    expect(stats.dailyPoints.every((p) => p.actualBytesSaved === 0)).toBe(true);
   });
 });

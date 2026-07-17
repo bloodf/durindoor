@@ -1,6 +1,11 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
-import { HTTP_STATUS } from "../config/runtimeConfig.js";
+import {
+  FETCH_CONNECT_TIMEOUT_MS,
+  HTTP_STATUS,
+  MAX_PROVIDER_BODY_BYTES,
+  PROVIDER_BODY_TIMEOUT_MS,
+} from "../config/runtimeConfig.js";
 import {
   generateCursorBody,
   parseConnectRPCFrame,
@@ -13,7 +18,12 @@ import { estimateUsage } from "../utils/usageTracking.js";
 import { SSE_DONE, SSE_HEADERS } from "../utils/sseConstants.js";
 import { chatChunkSse } from "../utils/sse.js";
 import { FORMATS } from "../translator/formats.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { proxyAwareFetch, shouldUseProxyAwareTransport } from "../utils/proxyFetch.js";
+import {
+  runProviderAttemptDispatch,
+  runQuotaBearingProviderRequest,
+} from "../services/providerAttemptContext.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import zlib from "zlib";
 
 // Detect cloud environment
@@ -31,6 +41,12 @@ if (!isCloudEnv()) {
   } catch {
     // http2 not available
   }
+}
+
+export function __setCursorHttp2ForTesting(value) {
+  const previous = http2;
+  http2 = value;
+  return () => { http2 = previous; };
 }
 
 const COMPRESS_FLAG = {
@@ -58,7 +74,10 @@ function visibleComposerContentFromThinking(thinking) {
   return thinking.slice(endIdx + endTag.length).trimStart();
 }
 
-function decompressPayload(payload, flags) {
+function decompressPayload(payload, flags, maxOutputLength = MAX_PROVIDER_BODY_BYTES) {
+  if (!Number.isSafeInteger(maxOutputLength) || maxOutputLength <= 0 || payload.length > maxOutputLength) {
+    return null;
+  }
   // Check if payload is JSON error (starts with {"error")
   if (payload.length > 10 && payload[0] === 0x7b && payload[1] === 0x22) {
     try {
@@ -77,15 +96,15 @@ function decompressPayload(payload, flags) {
   ) {
     // Primary: try gzip decompression (standard gzip header 0x1f 0x8b)
     try {
-      return zlib.gunzipSync(payload);
+      return zlib.gunzipSync(payload, { maxOutputLength });
     } catch (gzipErr) {
       // Fallback: TRAILER and GZIP_TRAILER frames sometimes use raw zlib deflate format
       try {
-        return zlib.inflateSync(payload);
+        return zlib.inflateSync(payload, { maxOutputLength });
       } catch (deflateErr) {
         // Last resort: try raw deflate (no zlib header)
         try {
-          return zlib.inflateRawSync(payload);
+          return zlib.inflateRawSync(payload, { maxOutputLength });
         } catch (rawErr) {
           debugLog(
             `[DECOMPRESS ERROR] flags=${flags}, payloadSize=${payload.length}, gzip=${gzipErr.message}, deflate=${deflateErr.message}, raw=${rawErr.message}`
@@ -94,7 +113,7 @@ function decompressPayload(payload, flags) {
             `[DECOMPRESS ERROR] First 50 bytes (hex):`,
             payload.slice(0, 50).toString("hex")
           );
-          return payload;
+          return null;
         }
       }
     }
@@ -103,10 +122,11 @@ function decompressPayload(payload, flags) {
 }
 
 // Read one cursor protobuf frame: header + bounds + decompress. Returns status + payload + new offset.
-function readCursorFrame(buffer, offset, frameNum, tag) {
+function readCursorFrame(buffer, offset, frameNum, tag, maxOutputLength = MAX_PROVIDER_BODY_BYTES) {
+  if (offset === buffer.length) return { status: "eof", offset };
   if (offset + 5 > buffer.length) {
     debugLog(`[CURSOR BUFFER${tag}] Reached end, offset=${offset}, remaining=${buffer.length - offset}`);
-    return { status: "done" };
+    return { status: "incomplete", offset };
   }
 
   const flags = buffer[offset];
@@ -115,15 +135,15 @@ function readCursorFrame(buffer, offset, frameNum, tag) {
 
   if (offset + 5 + length > buffer.length) {
     debugLog(`[CURSOR BUFFER${tag}] Incomplete frame, offset=${offset}, length=${length}, buffer.length=${buffer.length}`);
-    return { status: "done" };
+    return { status: "incomplete", offset };
   }
 
   let payload = buffer.slice(offset + 5, offset + 5 + length);
   const newOffset = offset + 5 + length;
-  payload = decompressPayload(payload, flags);
+  payload = decompressPayload(payload, flags, maxOutputLength);
   if (!payload) {
-    debugLog(`[CURSOR BUFFER${tag}] Frame ${frameNum + 1}: decompression failed, skipping`);
-    return { status: "skip", offset: newOffset };
+    debugLog(`[CURSOR BUFFER${tag}] Frame ${frameNum + 1}: decompression failed`);
+    return { status: "error", offset: newOffset };
   }
   return { status: "ok", payload, offset: newOffset };
 }
@@ -146,6 +166,86 @@ function createErrorResponse(jsonError) {
     status: isRateLimit ? HTTP_STATUS.RATE_LIMITED : HTTP_STATUS.BAD_REQUEST,
     headers: { "Content-Type": "application/json" }
   });
+}
+
+function createCursorStreamErrorResponse(message, status = HTTP_STATUS.BAD_GATEWAY) {
+  return new Response(JSON.stringify({
+    error: { message, type: "stream_error", code: "incomplete_stream" },
+  }), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function cursorAbortError(reason) {
+  if (reason instanceof Error && reason.name === "AbortError") return reason;
+  return new DOMException("Cursor request aborted", "AbortError");
+}
+
+function cursorBodyLimitError() {
+  return new Error("Cursor response exceeded the configured body limit");
+}
+
+export function appendBoundedCursorChunk(state, chunk, maxBytes = MAX_PROVIDER_BODY_BYTES) {
+  const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+  const nextTotal = state.total + value.byteLength;
+  if (nextTotal > maxBytes) throw cursorBodyLimitError();
+  state.total = nextTotal;
+  state.chunks.push(value);
+}
+
+function readCursorChunk(reader, combined, signal) {
+  if (combined.aborted) {
+    return Promise.reject(signal?.aborted
+      ? cursorAbortError(signal.reason)
+      : new Error("Cursor response body timed out"));
+  }
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      combined.removeEventListener("abort", onAbort);
+      callback(value);
+    };
+    const onAbort = () => finish(
+      reject,
+      signal?.aborted ? cursorAbortError(signal.reason) : new Error("Cursor response body timed out"),
+    );
+    combined.addEventListener("abort", onAbort, { once: true });
+    reader.read().then(
+      (value) => finish(resolve, value),
+      (error) => finish(reject, error),
+    );
+  });
+}
+
+export async function readCursorResponseBody(response, signal, {
+  maxBytes = MAX_PROVIDER_BODY_BYTES,
+  timeoutMs = PROVIDER_BODY_TIMEOUT_MS,
+} = {}) {
+  if (signal?.aborted) throw cursorAbortError(signal.reason);
+  const reader = response?.body?.getReader?.();
+  if (!reader) throw new Error("Cursor upstream returned no response body");
+  const state = { chunks: [], total: 0 };
+  const timeout = AbortSignal.timeout(timeoutMs);
+  const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
+  const onAbort = () => { void Promise.resolve(reader.cancel(combined.reason)).catch(() => {}); };
+  combined.addEventListener("abort", onAbort, { once: true });
+  try {
+    while (true) {
+      const { done, value } = await readCursorChunk(reader, combined, signal);
+      if (done) break;
+      appendBoundedCursorChunk(state, value, maxBytes);
+    }
+    return Buffer.concat(state.chunks, state.total);
+  } catch (error) {
+    void Promise.resolve(reader.cancel(error)).catch(() => {});
+    throw error;
+  } finally {
+    combined.removeEventListener("abort", onAbort);
+    try { reader.releaseLock(); } catch { /* noop */ }
+  }
 }
 
 export class CursorExecutor extends BaseExecutor {
@@ -181,17 +281,32 @@ export class CursorExecutor extends BaseExecutor {
   }
 
   async makeFetchRequest(url, headers, body, signal, proxyOptions = null) {
-    const response = await proxyAwareFetch(url, {
-      method: "POST",
-      headers,
-      body,
-      signal
-    }, proxyOptions);
+    if (signal?.aborted) throw cursorAbortError(signal.reason);
+    const connectController = new AbortController();
+    const timeoutMs = this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
+    const onAbort = () => connectController.abort(cursorAbortError(signal.reason));
+    signal?.addEventListener?.("abort", onAbort, { once: true });
+    const timeout = setTimeout(
+      () => connectController.abort(new Error("Cursor response headers timed out")),
+      timeoutMs,
+    );
+    let response;
+    try {
+      response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, {
+        method: "POST",
+        headers,
+        body,
+        signal: connectController.signal,
+      }, proxyOptions));
+    } finally {
+      clearTimeout(timeout);
+      signal?.removeEventListener?.("abort", onAbort);
+    }
 
     return {
       status: response.status,
       headers: Object.fromEntries(response.headers.entries()),
-      body: Buffer.from(await response.arrayBuffer())
+      body: await readCursorResponseBody(response, signal)
     };
   }
 
@@ -200,76 +315,128 @@ export class CursorExecutor extends BaseExecutor {
       throw new Error("http2 module not available");
     }
 
-    const HTTP2_TIMEOUT_MS = 60000; // 60s max — prevent hung sessions
+    const http2TimeoutMs = this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
 
     return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(cursorAbortError(signal.reason));
+        return;
+      }
       const urlObj = new URL(url);
       const client = http2.connect(`https://${urlObj.host}`);
-      const chunks = [];
+      const bodyState = { chunks: [], total: 0 };
       let responseHeaders = {};
       let settled = false;
+      let onAbort = null;
+      let req = null;
 
-      // Ensure client is always closed on settle
-      const finish = (fn) => (...args) => {
+      const closeTransport = (error, destroy) => {
+        if (destroy) {
+          try { req?.close?.(http2.constants?.NGHTTP2_CANCEL); } catch { /* already closed */ }
+          try { req?.destroy?.(error); } catch { /* already destroyed */ }
+          try { client.destroy?.(error); } catch { /* already destroyed */ }
+          return;
+        }
+        try { client.close(); } catch { /* already closed */ }
+      };
+
+      // Gracefully close only a complete response. Timeout, abort, and transport
+      // errors must destroy the stream/session so a peer cannot keep them alive.
+      const finish = (fn, { destroy = false } = {}) => (...args) => {
         if (settled) return;
         settled = true;
         clearTimeout(hangTimeout);
-        client.close();
+        if (onAbort) signal?.removeEventListener?.("abort", onAbort);
+        closeTransport(args[0], destroy);
         fn(...args);
       };
 
-      // Hard timeout: close session if server never responds
-      const hangTimeout = setTimeout(finish(() => {
-        reject(new Error("HTTP/2 request timed out"));
-      }), HTTP2_TIMEOUT_MS);
+      // Hard timeout: destroy the request and session if the peer never ends.
+      const hangTimeout = setTimeout(() => {
+        const error = new Error("HTTP/2 request timed out");
+        finish(reject, { destroy: true })(error);
+      }, http2TimeoutMs);
 
-      client.on("error", finish(reject));
+      client.on("error", finish(reject, { destroy: true }));
 
-      const req = client.request({
-        ":method": "POST",
-        ":path": urlObj.pathname,
-        ":authority": urlObj.host,
-        ":scheme": "https",
-        ...headers
-      });
-
-      req.on("response", (hdrs) => { responseHeaders = hdrs; });
-      req.on("data", (chunk) => { chunks.push(chunk); });
-      req.on("end", finish(() => {
-        resolve({
-          status: responseHeaders[":status"],
-          headers: responseHeaders,
-          body: Buffer.concat(chunks)
+      try {
+        req = client.request({
+          ":method": "POST",
+          ":path": urlObj.pathname,
+          ":authority": urlObj.host,
+          ":scheme": "https",
+          ...headers
         });
-      }));
-      req.on("error", finish(reject));
-
-      if (signal) {
-        const onAbort = finish(() => reject(new Error("Request aborted")));
-        signal.addEventListener("abort", onAbort, { once: true });
+      } catch (error) {
+        finish(reject, { destroy: true })(error);
+        return;
       }
 
-      req.write(body);
-      req.end();
+      req.on("response", (hdrs) => { responseHeaders = hdrs; });
+      req.on("data", (chunk) => {
+        if (settled) return;
+        try {
+          appendBoundedCursorChunk(bodyState, chunk);
+        } catch (error) {
+          finish(reject, { destroy: true })(error);
+        }
+      });
+      req.on("end", () => {
+        const status = Number(responseHeaders[":status"]);
+        if (!Number.isInteger(status)) {
+          finish(reject, { destroy: true })(new Error("Cursor HTTP/2 response omitted its status"));
+          return;
+        }
+        finish(resolve)({
+          status,
+          headers: responseHeaders,
+          body: Buffer.concat(bodyState.chunks, bodyState.total)
+        });
+      });
+      req.on("error", finish(reject, { destroy: true }));
+      req.on("close", () => {
+        if (!settled) {
+          finish(reject, { destroy: true })(new Error("Cursor HTTP/2 response closed before completion"));
+        }
+      });
+
+      if (signal) {
+        onAbort = () => finish(reject, { destroy: true })(cursorAbortError(signal.reason));
+        signal.addEventListener("abort", onAbort, { once: true });
+        if (signal.aborted) onAbort();
+      }
+
+      if (settled) return;
+      try {
+        req.write(body);
+        req.end();
+      } catch (error) {
+        finish(reject, { destroy: true })(error);
+      }
     });
   }
 
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
+  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, attemptStartedAt = null, onProviderAttempt = null }) {
+    if (signal?.aborted) throw cursorAbortError(signal.reason);
     const url = this.buildUrl();
     const headers = this.buildHeaders(credentials);
     const transformedBody = this.transformRequest(model, body, stream, credentials);
 
+    const providerAttemptStartedAt = Number.isSafeInteger(attemptStartedAt) && attemptStartedAt > 0
+      ? attemptStartedAt
+      : (typeof onProviderAttempt === "function" ? onProviderAttempt() : Date.now());
     try {
-      const shouldForceFetch = proxyOptions?.enabled === true || proxyOptions?.connectionProxyEnabled === true || !!proxyOptions?.vercelRelayUrl;
+      const shouldForceFetch = shouldUseProxyAwareTransport(url, proxyOptions);
       const response = (http2 && !shouldForceFetch)
-        ? await this.makeHttp2Request(url, headers, transformedBody, signal)
+        ? await runQuotaBearingProviderRequest(() => runProviderAttemptDispatch(
+            () => this.makeHttp2Request(url, headers, transformedBody, signal),
+          ))
         : await this.makeFetchRequest(url, headers, transformedBody, signal, proxyOptions);
 
       if (response.status !== 200) {
-        const errorText = response.body?.toString() || "Unknown error";
         const errorResponse = new Response(JSON.stringify({
           error: {
-            message: `[${response.status}]: ${errorText}`,
+            message: `Cursor upstream returned HTTP ${response.status}`,
             type: "invalid_request_error",
             code: ""
           }
@@ -277,15 +444,27 @@ export class CursorExecutor extends BaseExecutor {
           status: response.status,
           headers: { "Content-Type": "application/json" }
         });
-        return { response: errorResponse, url, headers, transformedBody: body };
+        return { response: errorResponse, url, headers, transformedBody: body, attemptStartedAt: providerAttemptStartedAt };
       }
 
       const transformedResponse = stream !== false
         ? this.transformProtobufToSSE(response.body, model, body)
         : this.transformProtobufToJSON(response.body, model, body);
 
-      return { response: transformedResponse, url, headers, transformedBody: body };
+      return {
+        response: transformedResponse,
+        url,
+        headers,
+        transformedBody: body,
+        attemptStartedAt: providerAttemptStartedAt,
+        terminalProvenance: "validated",
+      };
     } catch (error) {
+      if (isQuotaDispatchUnavailable(error)) throw error;
+      if (error?.name === "AbortError") {
+        error.providerAttemptStartedAt = providerAttemptStartedAt;
+        throw error;
+      }
       const errorResponse = new Response(JSON.stringify({
         error: {
           message: error.message,
@@ -296,7 +475,7 @@ export class CursorExecutor extends BaseExecutor {
         status: HTTP_STATUS.SERVER_ERROR,
         headers: { "Content-Type": "application/json" }
       });
-      return { response: errorResponse, url, headers, transformedBody: body };
+      return { response: errorResponse, url, headers, transformedBody: body, attemptStartedAt: providerAttemptStartedAt };
     }
   }
 
@@ -311,29 +490,26 @@ export class CursorExecutor extends BaseExecutor {
     const toolCallsMap = new Map(); // Track streaming tool calls by ID
     const finalizedIds = new Set();
     let frameCount = 0;
+    let decompressedTotal = 0;
 
     debugLog(`[CURSOR BUFFER] Total length: ${buffer.length} bytes`);
 
     while (offset < buffer.length) {
-      const frame = readCursorFrame(buffer, offset, frameCount, "");
-      if (frame.status === "done") break;
+      const frame = readCursorFrame(buffer, offset, frameCount, "", MAX_PROVIDER_BODY_BYTES - decompressedTotal);
+      if (frame.status === "incomplete") return createCursorStreamErrorResponse("Cursor returned a truncated protobuf frame");
+      if (frame.status === "eof") break;
       offset = frame.offset;
       frameCount++;
-      if (frame.status === "skip") continue;
+      if (frame.status === "error") return createCursorStreamErrorResponse("Cursor returned an undecodable protobuf frame");
       const payload = frame.payload;
+      decompressedTotal += payload.length;
 
       // Check for JSON error frames (byte guard: skip toString on non-JSON frames)
       if (payload.length > 0 && payload[0] === 0x7b) {
         try {
           const text = payload.toString("utf-8");
           if (text.includes('"error"')) {
-            const hasContent = totalContent || toolCallsMap.size > 0;
-            debugLog(
-              `[CURSOR BUFFER] Error frame (hasContent=${hasContent}): ${text.slice(0, 500)}`
-            );
-            if (hasContent) {
-              break;
-            }
+            debugLog(`[CURSOR BUFFER] Error frame: ${text.slice(0, 500)}`);
             return createErrorResponse(JSON.parse(text));
           }
         } catch {}
@@ -342,12 +518,12 @@ export class CursorExecutor extends BaseExecutor {
       const result = extractTextFromResponse(new Uint8Array(payload));
       debugLog(`[CURSOR DECODED] Frame ${frameCount}:`, result);
 
+      if (result.decodeError) {
+        return createCursorStreamErrorResponse("Cursor returned an undecodable protobuf frame");
+      }
+
       if (result.error) {
-        const hasContent = totalContent || toolCallsMap.size > 0;
-        debugLog(`[CURSOR BUFFER] Decoded error (hasContent=${hasContent}): ${result.error}`);
-        if (hasContent) {
-          break;
-        }
+        debugLog(`[CURSOR BUFFER] Decoded error: ${result.error}`);
         return new Response(
           JSON.stringify({
             error: {
@@ -394,6 +570,8 @@ export class CursorExecutor extends BaseExecutor {
       if (result.text) totalContent += result.text;
       if (result.thinking) totalThinking += result.thinking;
     }
+
+    if (frameCount === 0) return createCursorStreamErrorResponse("Cursor returned an empty protobuf stream");
 
     const visibleComposerContent = isComposerModel(model)
       ? visibleComposerContentFromThinking(totalThinking)
@@ -474,29 +652,26 @@ export class CursorExecutor extends BaseExecutor {
     const finalizedIds = new Set();
     const emittedToolCallIds = new Set();
     let frameCount = 0;
+    let decompressedTotal = 0;
 
     debugLog(`[CURSOR BUFFER SSE] Total length: ${buffer.length} bytes`);
 
     while (offset < buffer.length) {
-      const frame = readCursorFrame(buffer, offset, frameCount, " SSE");
-      if (frame.status === "done") break;
+      const frame = readCursorFrame(buffer, offset, frameCount, " SSE", MAX_PROVIDER_BODY_BYTES - decompressedTotal);
+      if (frame.status === "incomplete") return createCursorStreamErrorResponse("Cursor returned a truncated protobuf frame");
+      if (frame.status === "eof") break;
       offset = frame.offset;
       frameCount++;
-      if (frame.status === "skip") continue;
+      if (frame.status === "error") return createCursorStreamErrorResponse("Cursor returned an undecodable protobuf frame");
       const payload = frame.payload;
+      decompressedTotal += payload.length;
 
       // Check for JSON error frames (byte-guard: only decode if starts with '{')
       if (payload[0] === 0x7b) {
         try {
           const text = payload.toString("utf-8");
           if (text.includes('"error"')) {
-            const hasContent = chunks.length > 0 || totalContent || toolCallsMap.size > 0;
-            debugLog(
-              `[CURSOR BUFFER SSE] Error frame (hasContent=${hasContent}): ${text.slice(0, 500)}`
-            );
-            if (hasContent) {
-              break;
-            }
+            debugLog(`[CURSOR BUFFER SSE] Error frame: ${text.slice(0, 500)}`);
             return createErrorResponse(JSON.parse(text));
           }
         } catch {}
@@ -505,12 +680,12 @@ export class CursorExecutor extends BaseExecutor {
       const result = extractTextFromResponse(new Uint8Array(payload));
       debugLog(`[CURSOR DECODED SSE] Frame ${frameCount}:`, result);
 
+      if (result.decodeError) {
+        return createCursorStreamErrorResponse("Cursor returned an undecodable protobuf frame");
+      }
+
       if (result.error) {
-        const hasContent = chunks.length > 0 || totalContent || toolCallsMap.size > 0;
-        debugLog(`[CURSOR BUFFER SSE] Decoded error (hasContent=${hasContent}): ${result.error}`);
-        if (hasContent) {
-          break;
-        }
+        debugLog(`[CURSOR BUFFER SSE] Decoded error: ${result.error}`);
         return new Response(
           JSON.stringify({
             error: {
@@ -616,6 +791,8 @@ export class CursorExecutor extends BaseExecutor {
         }
       }
     }
+
+    if (frameCount === 0) return createCursorStreamErrorResponse("Cursor returned an empty protobuf stream");
 
     debugLog(
       `[CURSOR BUFFER SSE] Parsed ${frameCount} frames, toolCallsMap size: ${toolCallsMap.size}, toolCalls array: ${toolCalls.length}`

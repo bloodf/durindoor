@@ -5,7 +5,8 @@ import { adjustMaxTokens } from "../formats/maxTokens.js";
 import { safeParseJSON } from "../concerns/json.js";
 import { parseDataUri } from "../concerns/image.js";
 import { extractTextContent } from "../formats/gemini.js";
-import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK } from "../schema/index.js";
+import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, CLAUDE_REDACTED_THINKING_BLOCKS } from "../schema/index.js";
+import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 
 // Empty prefix matches real Claude Code behavior (no tool name prefix).
 // Previously "proxy_" was used but this is a detectable fingerprint difference.
@@ -15,11 +16,28 @@ const CLAUDE_OAUTH_TOOL_PREFIX = "";
 export function openaiToClaudeRequest(model, body, stream) {
   // Tool name mapping for Claude OAuth (capitalizedName → originalName)
   const toolNameMap = new Map();
+  // Cap max_tokens at the model's real output ceiling (e.g. Opus 4.8 = 128000),
+  // not the conservative 64000 default — otherwise a high-output model is
+  // pre-clamped here before prepareClaudeRequest's model-aware step runs.
+  const modelCeiling = getCapabilitiesForModel(null, model).maxOutput || undefined;
   const result = {
     model: model,
-    max_tokens: adjustMaxTokens(body),
+    // Honor OpenAI's newer max_completion_tokens cap when max_tokens is absent —
+    // adjustMaxTokens only reads max_tokens, so without this a caller's
+    // max_completion_tokens would silently fall back to the model maximum.
+    max_tokens: adjustMaxTokens(
+      { ...body, max_tokens: body.max_tokens ?? body.max_completion_tokens },
+      modelCeiling
+    ),
     stream: stream
   };
+
+  // OpenAI `stop` (string|string[]) → Anthropic `stop_sequences`. Guard `!= null`
+  // so an explicit OpenAI `stop: null` (accepted, means "no stops") never becomes
+  // `stop_sequences: [null]`, which upstream rejects with a 400.
+  if (body.stop != null) {
+    result.stop_sequences = Array.isArray(body.stop) ? body.stop : [body.stop];
+  }
 
   // Temperature
   if (body.temperature !== undefined) {
@@ -148,7 +166,15 @@ Respond ONLY with the JSON object, no other text.`);
         continue;
       }
 
-      const toolData = toolType === OPENAI_BLOCK.FUNCTION && tool.function ? tool.function : tool;
+      // Function-shaped tools arrive in two flavors from real clients:
+      //   (a) openai-spec: { type: "function", function: { name, ... } }
+      //   (b) legacy/loose: { function: { name, ... } }   (no parent `type`)
+      // Both must yield toolData.name = "echo". Treat the bare-function shape
+      // as a function tool too — Anthropic-compatible gateways (notably
+      // MiniMax M3 at api.minimaxi.com) reject payloads where this branch
+      // falls through with `toolData.name === undefined`, returning their
+      // upstream code (2013) "invalid tool type". See #2435.
+      const toolData = tool.function ?? tool;
       const originalName = toolData.name;
 
       // Claude OAuth requires prefixed tool names to avoid conflicts
@@ -240,6 +266,18 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
       }
     }
   } else if (msg.role === ROLE.ASSISTANT) {
+    // Restore redacted_thinking blocks stashed by claude->openai during the
+    // first pivot (only in-process code sharing the symbol can set it; JSON
+    // round-trips drop it). Restore the { type, data } contract only —
+    // redacted blocks reject extra fields like cache_control upstream.
+    const stashedRedacted = msg[CLAUDE_REDACTED_THINKING_BLOCKS];
+    if (Array.isArray(stashedRedacted)) {
+      for (const block of stashedRedacted) {
+        if (block?.type === CLAUDE_BLOCK.REDACTED_THINKING && typeof block.data === "string") {
+          blocks.push({ type: CLAUDE_BLOCK.REDACTED_THINKING, data: block.data });
+        }
+      }
+    }
     // OpenAI assistant reasoning_content → Claude thinking block. Prepend so it
     // precedes the text/tool_use blocks (Claude requires thinking first).
     const hasThinkingBlock = Array.isArray(msg.content) && msg.content.some(part => part.type === CLAUDE_BLOCK.THINKING);
@@ -297,7 +335,11 @@ function convertOpenAIToolChoice(choice) {
   // OpenAI string forms: "auto" | "none" | "required"
   if (typeof choice === "string") {
     if (choice === "required") return { type: "any" };
-    return { type: "auto" }; // "auto", "none", or anything unexpected
+    // OpenAI "none" = caller explicitly disabled tools — map to Anthropic's
+    // { type: "none" } (in CLAUDE_TOOL_CHOICE_TYPES) so a no-tools turn is never
+    // silently converted into tool-permitting "auto".
+    if (choice === "none") return { type: "none" };
+    return { type: "auto" }; // "auto" or anything unexpected
   }
 
   if (typeof choice === "object") {

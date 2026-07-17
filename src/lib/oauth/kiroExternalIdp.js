@@ -1,10 +1,11 @@
+import { KIRO_DEFAULT_REGION, normalizeKiroRegion } from "../../../open-sse/config/kiroRegions.js";
+
 const MICROSOFT_TOKEN_ENDPOINT_HOSTS = new Set([
   "login.microsoftonline.com",
   "login.microsoft.com",
   "login.windows.net",
 ]);
 
-const DEFAULT_REGION = "us-east-1";
 const DEFAULT_EXPIRES_IN = 3600;
 
 function normalizeString(value) {
@@ -98,7 +99,7 @@ export function normalizeKiroExternalIdpAuth(rawAuth) {
   const clientId = normalizeString(input.client_id || input.clientId);
   const tokenEndpoint = validateMicrosoftTokenEndpoint(input.token_endpoint || input.tokenEndpoint);
   const profileArn = normalizeString(input.profile_arn || input.profileArn);
-  const region = normalizeString(input.region) || DEFAULT_REGION;
+  const region = normalizeKiroRegion(normalizeString(input.region) || KIRO_DEFAULT_REGION);
   const scope = normalizeScope(input.scopes || input.scope);
 
   if (!accessToken) throw new Error("access_token is required");
@@ -145,7 +146,6 @@ export function buildExternalIdpRefreshParams(refreshToken, providerSpecificData
       scope,
     }),
     providerSpecificData: {
-      ...providerSpecificData,
       authMethod: "external_idp",
       clientId,
       tokenEndpoint,

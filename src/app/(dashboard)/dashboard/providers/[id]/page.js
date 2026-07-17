@@ -3,23 +3,29 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
-import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, IFlowCookieModal, GitLabAuthModal, Toggle, Select, EditConnectionModal, NoAuthProxyCard, ConfirmModal, ProviderIcon } from "@/shared/components";
-import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS, THINKING_CONFIG } from "@/shared/constants/providers";
+import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, ImportTokenModal, IFlowCookieModal, GitLabAuthModal, Toggle, Select, EditConnectionModal, NoAuthProxyCard, ConfirmModal, ProviderIcon } from "@/shared/components";
+import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
+import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { translate } from "@/i18n/runtime";
 import { fetchSuggestedModels } from "@/shared/utils/providerModelsFetcher";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
+import { shouldShowProviderConnections } from "@/shared/utils/providerAuthMode";
+import { buildImportTokenPayload, isImportTokenOAuthProvider } from "@/shared/utils/importTokenProviders";
+import { createLatestIntentQueue } from "@/shared/utils/latestIntentQueue";
 import ModelRow from "./ModelRow";
 import PassthroughModelsSection from "./PassthroughModelsSection";
 import CompatibleModelsSection from "./CompatibleModelsSection";
 import ConnectionRow from "./ConnectionRow";
 import AddApiKeyModal from "./AddApiKeyModal";
+import { apiKeyConnectionNames } from "./apiKeyConnectionName";
 import EditCompatibleNodeModal from "./EditCompatibleNodeModal";
 import AddCustomModelModal from "./AddCustomModelModal";
 import BulkImportCodexModal from "./BulkImportCodexModal";
+import { getProviderThinkingLevels } from "./providerThinkingLevels";
+import { sortConnectionsByAvailability, persistConnectionOrder } from "@/shared/utils/connectionReorder";
 
 const ONE_BY_ONE_DELAY_MS = 1000;
 
@@ -36,13 +42,25 @@ export default function ProviderDetailPage() {
   const params = useParams();
   const router = useRouter();
   const providerId = params.id;
+  const currentProviderIdRef = useRef(null);
+  const fetchConnectionsGenerationRef = useRef(0);
+  useEffect(() => {
+    currentProviderIdRef.current = providerId;
+  }, [providerId]);
   const { getCaps } = useModelCaps();
   const [connections, setConnections] = useState([]);
+  const [providerApiKeyConnectionNames, setProviderApiKeyConnectionNames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [providerNode, setProviderNode] = useState(null);
   const [proxyPools, setProxyPools] = useState([]);
+  const [proxyPoolsReadyForProvider, setProxyPoolsReadyForProvider] = useState(null);
+  const proxyPoolsReady = proxyPoolsReadyForProvider === providerId;
   const [showOAuthModal, setShowOAuthModal] = useState(false);
   const [showIFlowCookieModal, setShowIFlowCookieModal] = useState(false);
+  const [showImportTokenModal, setShowImportTokenModal] = useState(false);
+  const [importTokenValue, setImportTokenValue] = useState("");
+  const [importTokenError, setImportTokenError] = useState("");
+  const [importingToken, setImportingToken] = useState(false);
   const [showAddApiKeyModal, setShowAddApiKeyModal] = useState(false);
   const [addConnectionError, setAddConnectionError] = useState("");
   const [showBulkImportCodex, setShowBulkImportCodex] = useState(false);
@@ -52,7 +70,6 @@ export default function ProviderDetailPage() {
   const [selectedConnection, setSelectedConnection] = useState(null);
   const [modelAliases, setModelAliases] = useState({});
   const [customModels, setCustomModels] = useState([]);
-  const [headerImgError, setHeaderImgError] = useState(false);
   const [modelTestResults, setModelTestResults] = useState({});
   const [modelsTestError, setModelsTestError] = useState("");
   const [testingModelIds, setTestingModelIds] = useState(() => new Set());
@@ -66,6 +83,32 @@ export default function ProviderDetailPage() {
   const [thinkingMode, setThinkingMode] = useState("auto");
   const [concurrencyLimit, setConcurrencyLimit] = useState("");
   const [autoPing, setAutoPing] = useState({ enabled: false, connections: {} });
+  const [autoPingQueue] = useState(() => createLatestIntentQueue({
+      write: async (_key, enabled, { connectionId }) => {
+        const response = await fetch(`/api/providers/${encodeURIComponent(connectionId)}/auto-ping`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled }),
+        });
+        if (!response.ok) throw new Error(`Auto-ping update failed (${response.status})`);
+        return response.json();
+      },
+      onOptimistic: (_key, enabled, { connectionId }) => setAutoPing((current) => ({
+        ...current,
+        connections: { ...current.connections, [connectionId]: enabled },
+      })),
+      onConfirmed: (_key, enabled, { connectionId }) => setAutoPing((current) => ({
+        ...current,
+        connections: { ...current.connections, [connectionId]: enabled },
+      })),
+      onRollback: (_key, enabled, { connectionId }, error) => {
+        console.log("Error saving auto-ping config:", error);
+        setAutoPing((current) => ({
+          ...current,
+          connections: { ...current.connections, [connectionId]: enabled },
+        }));
+      },
+    }));
   const [suggestedModels, setSuggestedModels] = useState([]);
   const [kiloFreeModels, setKiloFreeModels] = useState([]);
   const [disabledModelIds, setDisabledModelIds] = useState([]);
@@ -83,6 +126,11 @@ export default function ProviderDetailPage() {
   const AG_RISK_STORAGE_KEY = "ag_risk_confirmed";
 
   const openOAuthConnection = () => {
+    if (isImportTokenOAuthProvider(providerId)) {
+      setImportTokenError("");
+      setShowImportTokenModal(true);
+      return;
+    }
     setShowOAuthModal(true);
   };
 
@@ -108,6 +156,10 @@ export default function ProviderDetailPage() {
   };
 
   const triggerAddConnection = () => {
+    if (isImportToken) {
+      openOAuthConnection();
+      return;
+    }
     if (isOAuth) {
       triggerOAuthConnection();
       return;
@@ -140,9 +192,12 @@ export default function ProviderDetailPage() {
       }
     : (OAUTH_PROVIDERS[providerId] || APIKEY_PROVIDERS[providerId] || FREE_PROVIDERS[providerId] || FREE_TIER_PROVIDERS[providerId] || WEB_COOKIE_PROVIDERS[providerId]);
   const authModes = providerInfo?.authModes || [];
-  const isOAuth = !!OAUTH_PROVIDERS[providerId] || !!FREE_PROVIDERS[providerId] || authModes.includes("oauth");
+  const isImportToken = providerInfo?.flowType === "import_token";
+  const isOAuth = !!OAUTH_PROVIDERS[providerId] || authModes.includes("oauth") || FREE_PROVIDERS[providerId]?.oauth;
   const supportsApiKeyAuth = !!APIKEY_PROVIDERS[providerId] || authModes.includes("apikey");
   const isFreeNoAuth = !!FREE_PROVIDERS[providerId]?.noAuth;
+  const isStoredNoAuth = isFreeNoAuth && providerId === "mimocode";
+  const showConnections = shouldShowProviderConnections(providerInfo, { storedNoAuth: isStoredNoAuth });
   const models = getModelsByProviderId(providerId);
   const providerAlias = getProviderAlias(providerId);
   
@@ -150,11 +205,31 @@ export default function ProviderDetailPage() {
   const isAnthropicCompatible = isAnthropicCompatibleProvider(providerId);
   const isCompatible = isOpenAICompatible || isAnthropicCompatible;
   const hasDualAuthModes = !isCompatible && isOAuth && supportsApiKeyAuth;
-  const oauthConnectionLabel = providerId === "xai" ? "Grok Build OAuth" : "OAuth";
+  const oauthConnectionLabel =
+    providerId === "xai"
+      ? "Grok Build OAuth"
+      : providerId === "grok-cli"
+        ? "Grok CLI Device Login"
+        : "OAuth";
   const apiKeyConnectionLabel = providerId === "xai" ? "xAI API Key" : "API Key";
-  const thinkingConfig = AI_PROVIDERS[providerId]?.thinkingConfig || THINKING_CONFIG.extended;
-  
+  // Resolve suffix "(level)" for a model when a thinking level is picked and the model supports it.
+  // Upstream decolua/9router#2534: "none" suppresses the suffix (explicit strip, not a level label).
+  const resolveThinkingSuffix = (modelId) => {
+    if (!thinkingMode || thinkingMode === "auto" || thinkingMode === "none") return null;
+    const levels = getThinkingLevels(providerId, modelId);
+    return levels && levels.includes(thinkingMode) ? thinkingMode : null;
+  };
   const providerStorageAlias = isCompatible ? providerId : providerAlias;
+  // Union of levels across this provider's reasoning models — drives the level picker options.
+  // Include custom models too (e.g. manually added gpt-5.6-sol → max).
+  const providerThinkingLevels = getProviderThinkingLevels({
+    providerId,
+    models,
+    kiloFreeModels,
+    customModels,
+    providerStorageAlias,
+  });
+
   const providerDisplayAlias = isCompatible
     ? (providerNode?.prefix || providerId)
     : providerAlias;
@@ -256,6 +331,11 @@ export default function ProviderDetailPage() {
   }, [providerId]);
 
   const fetchConnections = useCallback(async () => {
+    const requestProviderId = providerId;
+    const requestGeneration = ++fetchConnectionsGenerationRef.current;
+    const isCurrentRequest = () =>
+      fetchConnectionsGenerationRef.current === requestGeneration &&
+      currentProviderIdRef.current === requestProviderId;
     try {
       const [connectionsRes, nodesRes, proxyPoolsRes, settingsRes] = await Promise.all([
         fetch("/api/providers", { cache: "no-store" }),
@@ -267,9 +347,16 @@ export default function ProviderDetailPage() {
       const nodesData = await nodesRes.json();
       const proxyPoolsData = await proxyPoolsRes.json();
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
+      if (!isCurrentRequest()) return;
       if (connectionsRes.ok) {
-        const filtered = (connectionsData.connections || []).filter(c => c.provider === providerId);
+        const allConnections = connectionsData.connections || [];
+        const filtered = allConnections.filter(c => c.provider === providerId);
         setConnections(filtered);
+        // #6499 — the name-based collision scope in createProviderConnection is
+        // (provider, authType=apikey, name): provider-local. Derive default-name
+        // candidates from THIS provider's apikey connections only; using global
+        // names would pointlessly skip "main" just because another provider took it.
+        setProviderApiKeyConnectionNames(apiKeyConnectionNames(filtered));
       }
       if (proxyPoolsRes.ok) {
         setProxyPools(proxyPoolsData.proxyPools || []);
@@ -286,6 +373,9 @@ export default function ProviderDetailPage() {
       setConcurrencyLimit(cLimit != null ? String(cLimit) : "");
       const autoPingSettingsKey = AUTO_PING_SETTINGS_KEYS[providerId];
       const apCfg = autoPingSettingsKey ? settingsData[autoPingSettingsKey] || {} : {};
+      autoPingQueue.hydrate(
+        Object.entries(apCfg.connections || {}).map(([id, enabled]) => [`${providerId}:${id}`, enabled]),
+      );
       setAutoPing({ enabled: apCfg.enabled === true, connections: apCfg.connections || {} });
       if (nodesRes.ok) {
         let node = (nodesData.nodes || []).find((entry) => entry.id === providerId) || null;
@@ -295,6 +385,7 @@ export default function ProviderDetailPage() {
         if (!node && isCompatible) {
           for (let attempt = 0; attempt < 3; attempt += 1) {
             await new Promise((resolve) => setTimeout(resolve, 150));
+            if (!isCurrentRequest()) return;
             const retryRes = await fetch("/api/provider-nodes", { cache: "no-store" });
             if (!retryRes.ok) continue;
             const retryData = await retryRes.json();
@@ -303,14 +394,19 @@ export default function ProviderDetailPage() {
           }
         }
 
-        setProviderNode(node);
+        if (isCurrentRequest()) setProviderNode(node);
       }
     } catch (error) {
-      console.log("Error fetching connections:", error);
+      if (isCurrentRequest()) console.log("Error fetching connections:", error);
     } finally {
-      setLoading(false);
+      // OAuth defaults to an explicit direct route, but must not start before
+      // the selectable strict pools have either loaded or definitively failed.
+      if (isCurrentRequest()) {
+        setProxyPoolsReadyForProvider(requestProviderId);
+        setLoading(false);
+      }
     }
-  }, [providerId, isCompatible]);
+  }, [providerId, isCompatible, autoPingQueue]);
 
   const handleUpdateNode = async (formData) => {
     try {
@@ -426,24 +522,9 @@ export default function ProviderDetailPage() {
     saveConcurrencyLimit(value);
   };
 
-  const saveAutoPing = async (next) => {
-    const autoPingSettingsKey = AUTO_PING_SETTINGS_KEYS[providerId];
-    if (!autoPingSettingsKey) return;
-
-    setAutoPing(next);
-    try {
-      await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [autoPingSettingsKey]: next }),
-      });
-    } catch (error) {
-      console.log("Error saving auto-ping config:", error);
-    }
-  };
-
   const handleAutoPingConnection = (connectionId, on) => {
-    saveAutoPing({ ...autoPing, connections: { ...autoPing.connections, [connectionId]: on } });
+    if (!AUTO_PING_SETTINGS_KEYS[providerId]) return;
+    autoPingQueue.enqueue(`${providerId}:${connectionId}`, on, { connectionId });
   };
 
   useEffect(() => {
@@ -724,6 +805,35 @@ export default function ProviderDetailPage() {
     setShowIFlowCookieModal(false);
   };
 
+  const handleImportTokenSubmit = async () => {
+    setImportTokenError("");
+    const payload = buildImportTokenPayload(importTokenValue);
+    if (!payload) {
+      setImportTokenError("Paste a Grok CLI auth.json file, raw JWT, or structured token body.");
+      return;
+    }
+
+    setImportingToken(true);
+    try {
+      const res = await fetch(`/api/oauth/${providerId}/import-token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || `Import failed (${res.status})`);
+      }
+      setImportTokenValue("");
+      setShowImportTokenModal(false);
+      await fetchConnections();
+    } catch (error) {
+      setImportTokenError(error.message || "Failed to import token");
+    } finally {
+      setImportingToken(false);
+    }
+  };
+
   const handleSaveApiKey = async (formData) => {
     setAddConnectionError("");
     try {
@@ -837,16 +947,28 @@ export default function ProviderDetailPage() {
         fetch(`/api/providers/${newConnections[index1].id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ priority: index1 }),
+          body: JSON.stringify({ priority: index1 + 1 }),
         }),
         fetch(`/api/providers/${newConnections[index2].id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ priority: index2 }),
+          body: JSON.stringify({ priority: index2 + 1 }),
         }),
       ]);
     } catch (error) {
       console.log("Error swapping priority:", error);
+      await fetchConnections();
+    }
+  };
+
+  const handleReorderByStatus = async () => {
+    const sorted = sortConnectionsByAvailability(connections);
+    setConnections(sorted);
+
+    try {
+      await persistConnectionOrder(providerId, sorted);
+    } catch (error) {
+      console.log("Error reordering by status:", error);
       await fetchConnections();
     }
   };
@@ -974,7 +1096,7 @@ export default function ProviderDetailPage() {
                 onMoveUp={() => handleSwapPriority(index, index - 1)}
                 onMoveDown={() => handleSwapPriority(index, index + 1)}
                 onToggleActive={(isActive) => handleUpdateConnectionStatus(conn.id, isActive)}
-                autoPing={AUTO_PING_SETTINGS_KEYS[providerId] && conn.authType === "oauth" ? {
+                autoPing={AUTO_PING_SETTINGS_KEYS[providerId] && conn.authType === "oauth" && conn.isActive !== false ? {
                   on: autoPing.connections[conn.id] === true,
                   onToggle: (on) => handleAutoPingConnection(conn.id, on),
                   provider: providerId,
@@ -987,9 +1109,10 @@ export default function ProviderDetailPage() {
                       body: JSON.stringify({ proxyPoolId: proxyPoolId || null }),
                     });
                     if (res.ok) {
+                      const { connection: updatedConnection } = await res.json();
                       setConnections(prev => prev.map(c =>
                         c.id === conn.id
-                          ? { ...c, providerSpecificData: { ...c.providerSpecificData, proxyPoolId: proxyPoolId || null } }
+                          ? (updatedConnection || c)
                           : c
                       ));
                     }
@@ -1143,6 +1266,7 @@ export default function ProviderDetailPage() {
             isCustom
             isFree={false}
             caps={getCaps(`${providerId}/${model.id}`)}
+            thinkingSuffix={resolveThinkingSuffix(model.id)}
           />
         ))}
 
@@ -1168,6 +1292,7 @@ export default function ProviderDetailPage() {
               isFree={model.isFree}
               onDisable={() => handleDisableModel(model.id)}
               caps={getCaps(`${providerId}/${model.id}`)}
+              thinkingSuffix={resolveThinkingSuffix(model.id)}
             />
           );
         })}
@@ -1298,31 +1423,14 @@ export default function ProviderDetailPage() {
             className="flex size-12 shrink-0 items-center justify-center rounded-lg"
             style={{ backgroundColor: `${providerInfo.color}15` }}
           >
-            {headerImgError ? (
-              <span className="text-sm font-bold" style={{ color: providerInfo.color }}>
-                {providerInfo.textIcon || providerInfo.id.slice(0, 2).toUpperCase()}
-              </span>
-            ) : providerInfo.iconUrl ? (
-              // Remote custom icon: use a plain <img> via ProviderIcon to avoid next/image remotePatterns config.
-              <ProviderIcon
-                src={providerInfo.iconUrl}
-                alt={providerInfo.name}
-                size={48}
-                className="max-h-12 max-w-12 rounded-lg object-contain"
-                fallbackText={providerInfo.textIcon || providerInfo.id.slice(0, 2).toUpperCase()}
-                fallbackColor={providerInfo.color}
-              />
-            ) : (
-              <Image
-                src={getHeaderIconPath()}
-                alt={providerInfo.name}
-                width={48}
-                height={48}
-                className="max-h-12 max-w-12 rounded-lg object-contain"
-                sizes="48px"
-                onError={() => setHeaderImgError(true)}
-              />
-            )}
+            <ProviderIcon
+              src={providerInfo.iconUrl || getHeaderIconPath()}
+              alt={providerInfo.name}
+              size={48}
+              className="max-h-12 max-w-12 rounded-lg object-contain"
+              fallbackText={providerInfo.textIcon || providerInfo.id.slice(0, 2).toUpperCase()}
+              fallbackColor={providerInfo.color}
+            />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-3 flex-wrap">
@@ -1432,9 +1540,10 @@ export default function ProviderDetailPage() {
       )}
 
       {/* Connections */}
-      {isFreeNoAuth ? (
+      {isFreeNoAuth && !isStoredNoAuth && (
         <NoAuthProxyCard providerId={providerId} />
-      ) : (
+      )}
+      {showConnections && (
         <Card>
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-lg font-semibold">Connections</h2>
@@ -1504,21 +1613,17 @@ export default function ProviderDetailPage() {
                   )}
                 </>
               )}
-              {/* Thinking config */}
-              {/* {thinkingConfig && (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-text-muted font-medium">Thinking</span>
-                  <select
-                    value={thinkingMode}
-                    onChange={(e) => handleThinkingModeChange(e.target.value)}
-                    className="text-xs px-2 py-1 border border-border rounded-md bg-background focus:outline-none focus:border-primary"
-                  >
-                    {thinkingConfig.options.map((opt) => (
-                      <option key={opt} value={opt}>{opt.charAt(0).toUpperCase() + opt.slice(1)}</option>
-                    ))}
-                  </select>
-                </div>
-              )} */}
+              {connections.length > 1 && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon="swap_vert"
+                  onClick={handleReorderByStatus}
+                  title="Reorder by availability status"
+                >
+                  Reorder
+                </Button>
+              )}
               {/* Round Robin toggle */}
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs text-text-muted font-medium">Round Robin</span>
@@ -1701,9 +1806,23 @@ export default function ProviderDetailPage() {
       {/* Models */}
       <Card>
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-lg font-semibold">
-            {"Available Models"}
-          </h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-semibold">
+              {"Available Models"}
+            </h2>
+            {providerThinkingLevels && (
+              <select
+                value={thinkingMode}
+                onChange={(e) => handleThinkingModeChange(e.target.value)}
+                title="Appends (level) suffix to copied model names"
+                className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none"
+              >
+                {providerThinkingLevels.map((opt) => (
+                  <option key={opt} value={opt}>{`Thinking: ${opt.charAt(0).toUpperCase() + opt.slice(1)}`}</option>
+                ))}
+              </select>
+            )}
+          </div>
           {!isCompatible && (() => {
             const allIds = [
               ...models,
@@ -1741,6 +1860,8 @@ export default function ProviderDetailPage() {
           providerInfo={providerInfo}
           onSuccess={handleOAuthSuccess}
           onClose={() => setShowOAuthModal(false)}
+          proxyPools={proxyPools}
+          proxyPoolsReady={proxyPoolsReady}
         />
       ) : providerId === "cursor" ? (
         <CursorAuthModal
@@ -1748,9 +1869,20 @@ export default function ProviderDetailPage() {
           onSuccess={handleOAuthSuccess}
           onClose={() => setShowOAuthModal(false)}
         />
-      ) : providerId === "gitlab" ? (
+      ) : providerId === "gitlab" || providerId === "gitlab-duo" ? (
         <GitLabAuthModal
           isOpen={showOAuthModal}
+          provider={providerId}
+          providerInfo={providerInfo}
+          onSuccess={handleOAuthSuccess}
+          onClose={() => setShowOAuthModal(false)}
+          proxyPools={proxyPools}
+          proxyPoolsReady={proxyPoolsReady}
+        />
+      ) : isImportToken ? (
+        <ImportTokenModal
+          isOpen={showOAuthModal}
+          provider={providerId}
           providerInfo={providerInfo}
           onSuccess={handleOAuthSuccess}
           onClose={() => setShowOAuthModal(false)}
@@ -1762,6 +1894,8 @@ export default function ProviderDetailPage() {
           providerInfo={providerInfo}
           onSuccess={handleOAuthSuccess}
           onClose={() => setShowOAuthModal(false)}
+          proxyPools={proxyPools}
+          proxyPoolsReady={proxyPoolsReady}
         />
       )}
       {providerId === "iflow" && (
@@ -1771,6 +1905,54 @@ export default function ProviderDetailPage() {
           onClose={() => setShowIFlowCookieModal(false)}
         />
       )}
+      <Modal
+        isOpen={showImportTokenModal}
+        title="Import Grok CLI Token"
+        size="lg"
+        onClose={() => {
+          if (importingToken) return;
+          setImportTokenError("");
+          setShowImportTokenModal(false);
+        }}
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setImportTokenError("");
+                setShowImportTokenModal(false);
+              }}
+              disabled={importingToken}
+            >
+              Cancel
+            </Button>
+            <Button
+              icon="upload"
+              loading={importingToken}
+              onClick={handleImportTokenSubmit}
+            >
+              Import
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-text-muted">
+            Paste the contents of <code className="rounded bg-surface-2 px-1 py-0.5">~/.grok/auth.json</code>, a raw Grok JWT, or a structured <code className="rounded bg-surface-2 px-1 py-0.5">{"{ accessToken, refreshToken }"}</code> body.
+          </p>
+          <textarea
+            value={importTokenValue}
+            onChange={(event) => setImportTokenValue(event.target.value)}
+            rows={10}
+            spellCheck={false}
+            className="w-full rounded-[10px] border border-border bg-background px-3 py-2 font-mono text-xs text-text-main outline-none focus:border-primary"
+            placeholder='{"https://auth.x.ai::client":{"key":"eyJ...","refresh_token":"...","expires_at":"..."}}'
+          />
+          {!!importTokenError && (
+            <p className="text-sm text-red-500">{importTokenError}</p>
+          )}
+        </div>
+      </Modal>
       <AddApiKeyModal
         isOpen={showAddApiKeyModal}
         provider={providerId}
@@ -1781,6 +1963,7 @@ export default function ProviderDetailPage() {
         authHint={providerInfo?.authHint}
         website={providerInfo?.website}
         proxyPools={proxyPools}
+        existingConnectionNames={providerApiKeyConnectionNames}
         error={addConnectionError}
         onSave={handleSaveApiKey}
         onBulkDone={fetchConnections}

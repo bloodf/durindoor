@@ -1,5 +1,8 @@
+import { QUOTA_V7_TABLES } from "./migrations/quota-v7-schema.js";
+import { QUOTA_V8_TABLES } from "./migrations/quota-v8-schema.js";
+
 // Latest schema version — bumped when a migration is added in ./migrations/
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 10;
 
 export const PRAGMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -46,6 +49,10 @@ export const TABLES = {
       "CREATE INDEX IF NOT EXISTS idx_pc_priority ON providerConnections(provider, priority)",
     ],
   },
+  providerQuotaSnapshots: QUOTA_V7_TABLES.providerQuotaSnapshots,
+  quotaFetchStates: QUOTA_V7_TABLES.quotaFetchStates,
+  quotaReservations: QUOTA_V8_TABLES.quotaReservations,
+  quotaReservationItems: QUOTA_V8_TABLES.quotaReservationItems,
   providerNodes: {
     columns: {
       id: "TEXT PRIMARY KEY",
@@ -79,9 +86,21 @@ export const TABLES = {
       machineId: "TEXT",
       isActive: "INTEGER DEFAULT 1",
       allowedCombos: "TEXT",
+      dailyLimitTokens: "INTEGER",
+      policy: "TEXT",
+      expiresAt: "TEXT",
       createdAt: "TEXT NOT NULL",
     },
     indexes: ["CREATE INDEX IF NOT EXISTS idx_ak_key ON apiKeys(key)"],
+  },
+  apiKeyUsageTotals: {
+    columns: {
+      apiKeyId: "TEXT PRIMARY KEY REFERENCES apiKeys(id) ON DELETE CASCADE",
+      totalTokens: "INTEGER NOT NULL DEFAULT 0",
+      totalCost: "REAL NOT NULL DEFAULT 0",
+      totalRequests: "INTEGER NOT NULL DEFAULT 0",
+      updatedAt: "TEXT",
+    },
   },
   combos: {
     columns: {
@@ -160,12 +179,14 @@ export const TABLES = {
       status: "TEXT",
       tokens: "TEXT",
       meta: "TEXT",
+      usageEventId: "TEXT",
     },
     indexes: [
       "CREATE INDEX IF NOT EXISTS idx_uh_ts ON usageHistory(timestamp DESC)",
       "CREATE INDEX IF NOT EXISTS idx_uh_provider ON usageHistory(provider)",
       "CREATE INDEX IF NOT EXISTS idx_uh_model ON usageHistory(model)",
       "CREATE INDEX IF NOT EXISTS idx_uh_conn ON usageHistory(connectionId)",
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_uh_usage_event ON usageHistory(usageEventId) WHERE usageEventId IS NOT NULL",
     ],
   },
   usageDaily: {
@@ -173,6 +194,22 @@ export const TABLES = {
       dateKey: "TEXT PRIMARY KEY",
       data: "TEXT NOT NULL",
     },
+  },
+  // Aggregate Token Saver telemetry (port of 9router #2562). One row per
+  // persisted logical request; `data` is the normalized event JSON. DB-native
+  // autoincrement id — no caller/JS key. `timestamp` (ISO) backs today/24h/all
+  // windows; `dateKey` backs inclusive local-calendar N-day windows.
+  tokenSaverEvents: {
+    columns: {
+      id: "INTEGER PRIMARY KEY AUTOINCREMENT",
+      timestamp: "TEXT NOT NULL",
+      dateKey: "TEXT NOT NULL",
+      data: "TEXT NOT NULL",
+    },
+    indexes: [
+      "CREATE INDEX IF NOT EXISTS idx_tse_ts ON tokenSaverEvents(timestamp)",
+      "CREATE INDEX IF NOT EXISTS idx_tse_date ON tokenSaverEvents(dateKey)",
+    ],
   },
   requestDetails: {
     columns: {

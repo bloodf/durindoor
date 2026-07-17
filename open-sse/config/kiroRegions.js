@@ -20,6 +20,7 @@
  */
 
 export const KIRO_DEFAULT_REGION = "us-east-1";
+const KIRO_REGION_PATTERN = /^[a-z]{2}(?:-[a-z0-9]+)+-\d{1,2}$/;
 
 const GENERATE_PATH = "/generateAssistantResponse";
 
@@ -40,12 +41,25 @@ function hostAvailable(entry, region) {
   return entry.availableIn === "all" || entry.availableIn.includes(region);
 }
 
+export function normalizeKiroRegion(region) {
+  const normalized = typeof region === "string" ? region.trim().toLowerCase() : "";
+  if (!KIRO_REGION_PATTERN.test(normalized)) {
+    throw new Error("Invalid Kiro AWS region");
+  }
+  return normalized;
+}
+
 /** Extract the AWS region from a CodeWhisperer profileArn, or null if absent. */
 export function regionFromProfileArn(profileArn) {
   if (typeof profileArn !== "string") return null;
   // arn:aws:codewhisperer:<region>:<account>:profile/<id>
   const parts = profileArn.split(":");
-  return parts.length >= 4 && parts[3] ? parts[3] : null;
+  if (parts[0] !== "arn" || parts[2] !== "codewhisperer" || !parts[3]) return null;
+  try {
+    return normalizeKiroRegion(parts[3]);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -54,7 +68,7 @@ export function regionFromProfileArn(profileArn) {
  */
 export function resolveKiroRegion(credentials) {
   const psd = credentials?.providerSpecificData;
-  return psd?.region || regionFromProfileArn(psd?.profileArn) || KIRO_DEFAULT_REGION;
+  return normalizeKiroRegion(psd?.region || regionFromProfileArn(psd?.profileArn) || KIRO_DEFAULT_REGION);
 }
 
 /**
@@ -62,7 +76,7 @@ export function resolveKiroRegion(credentials) {
  * automatically excluding hosts that do not exist in that region.
  */
 export function buildKiroBaseUrls(region = KIRO_DEFAULT_REGION) {
-  const r = region || KIRO_DEFAULT_REGION;
+  const r = normalizeKiroRegion(region || KIRO_DEFAULT_REGION);
   return KIRO_RUNTIME_HOSTS
     .filter((e) => hostAvailable(e, r))
     .map((e) => `https://${e.host(r)}${GENERATE_PATH}`);
@@ -75,7 +89,7 @@ export function buildKiroBaseUrls(region = KIRO_DEFAULT_REGION) {
  * exists (us-east-1) and falls back to q.* everywhere else.
  */
 export function buildKiroProfileEndpoint(region = KIRO_DEFAULT_REGION) {
-  const r = region || KIRO_DEFAULT_REGION;
+  const r = normalizeKiroRegion(region || KIRO_DEFAULT_REGION);
   const amazonHost = KIRO_RUNTIME_HOSTS
     .filter((e) => hostAvailable(e, r) && e.host(r).includes("amazonaws.com"))
     .map((e) => e.host(r))
@@ -85,7 +99,8 @@ export function buildKiroProfileEndpoint(region = KIRO_DEFAULT_REGION) {
 
 /** Region-scoped AWS SSO-OIDC token endpoint (IDC refresh). */
 export function buildKiroOidcEndpoint(region = KIRO_DEFAULT_REGION) {
-  return `https://oidc.${region || KIRO_DEFAULT_REGION}.amazonaws.com/token`;
+  const r = normalizeKiroRegion(region || KIRO_DEFAULT_REGION);
+  return `https://oidc.${r}.amazonaws.com/token`;
 }
 
 /**
@@ -97,5 +112,6 @@ export function buildKiroOidcEndpoint(region = KIRO_DEFAULT_REGION) {
  */
 export function alignProfileArnRegion(profileArn, region) {
   if (!profileArn || !region) return profileArn || "";
-  return profileArn.replace(/^(arn:aws:codewhisperer:)[^:]+(:)/, `$1${region}$2`);
+  const r = normalizeKiroRegion(region);
+  return profileArn.replace(/^(arn:aws:codewhisperer:)[^:]+(:)/, `$1${r}$2`);
 }

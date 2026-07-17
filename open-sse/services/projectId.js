@@ -8,6 +8,12 @@
  */
 
 import { CLOUD_CODE_API, LOAD_CODE_ASSIST_HEADERS, LOAD_CODE_ASSIST_METADATA } from "../config/appConstants.js";
+import { proxyRouteFingerprint } from "./tokenRefresh/dedup.js";
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { readBoundedResponseText, sanitizeErrorMessage } from "../utils/error.js";
+
+const PROJECT_RESPONSE_MAX_BYTES = 256 * 1024;
+const PROJECT_RESPONSE_TIMEOUT_MS = 30_000;
 
 // ─── Cache ────────────────────────────────────────────────────────────────────
 // connectionId -> { projectId: string, fetchedAt: number }
@@ -56,7 +62,7 @@ export function startCacheCleanup() {
     if (_cleanupTimer) return;
     _cleanupTimer = setInterval(() => {
         try { cleanupNow(); } catch (e) {
-            console.warn("[ProjectId] cleanup sweep error:", e?.message ?? e);
+            console.warn("[ProjectId] cleanup sweep error:", sanitizeErrorMessage(e?.message ?? e));
         }
     }, CLEANUP_INTERVAL_MS);
     // Unref so the timer doesn't prevent Node from exiting when it is otherwise idle
@@ -83,8 +89,41 @@ startCacheCleanup();
  * @param {string} accessToken  - Valid OAuth access token
  * @returns {Promise<string|null>} Real project ID or null
  */
-export async function getProjectIdForConnection(connectionId, accessToken) {
+function projectAbortError(reason) {
+    if (reason instanceof Error && reason.name === "AbortError") return reason;
+    return new DOMException("Project discovery aborted", "AbortError");
+}
+
+function subscribeToPending(entry, signal) {
+    if (signal?.aborted) return Promise.reject(projectAbortError(signal.reason));
+    const subscriber = {};
+    entry.subscribers.add(subscriber);
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        const finish = (callback, value) => {
+            if (settled) return;
+            settled = true;
+            signal?.removeEventListener?.("abort", onAbort);
+            entry.subscribers.delete(subscriber);
+            callback(value);
+        };
+        const onAbort = () => {
+            finish(reject, projectAbortError(signal?.reason));
+            if (entry.subscribers.size === 0 && !entry.settled) {
+                entry.controller.abort(projectAbortError(signal?.reason));
+            }
+        };
+        signal?.addEventListener?.("abort", onAbort, { once: true });
+        entry.promise.then(
+            (value) => finish(resolve, value),
+            (error) => finish(reject, error),
+        );
+    });
+}
+
+export async function getProjectIdForConnection(connectionId, accessToken, proxyOptions = null, signal = null) {
     if (!connectionId || !accessToken) return null;
+    if (signal?.aborted) throw projectAbortError(signal.reason);
 
     // Return cached value if still fresh
     const cached = projectIdCache.get(connectionId);
@@ -93,32 +132,40 @@ export async function getProjectIdForConnection(connectionId, accessToken) {
     }
 
     // Deduplicate concurrent fetches for the same connection
-    if (pendingFetches.has(connectionId)) {
-        return pendingFetches.get(connectionId).promise;
+    const pendingKey = `${connectionId}:${proxyRouteFingerprint(proxyOptions)}`;
+    const pending = pendingFetches.get(pendingKey);
+    if (pending?.controller?.signal?.aborted) {
+        pendingFetches.delete(pendingKey);
+    } else if (pending) {
+        return subscribeToPending(pending, signal);
     }
 
     // Each fetch gets its own AbortController so it can be canceled via removeConnection()
     const controller = new AbortController();
 
-    const promise = (async () => {
+    const entry = { promise: null, controller, startedAt: Date.now(), subscribers: new Set(), settled: false };
+    entry.promise = (async () => {
         try {
-            const projectId = await fetchProjectId(accessToken, controller.signal);
-            if (projectId) {
+            const projectId = await fetchProjectId(accessToken, controller.signal, proxyOptions);
+            if (projectId && !controller.signal.aborted) {
                 projectIdCache.set(connectionId, {projectId, fetchedAt: Date.now()});
                 return projectId;
             }
             console.warn("[ProjectId] could not fetch projectId for connection", connectionId.slice(0, 8));
             return null;
         } catch (error) {
-            console.warn(`[ProjectId] Error fetching project ID: ${error.message}`);
+            if (error?.name !== "AbortError") {
+                console.warn(`[ProjectId] Error fetching project ID: ${sanitizeErrorMessage(error?.message || error)}`);
+            }
             return null;
         } finally {
-            pendingFetches.delete(connectionId);
+            entry.settled = true;
+            if (pendingFetches.get(pendingKey) === entry) pendingFetches.delete(pendingKey);
         }
     })();
 
-    pendingFetches.set(connectionId, {promise, controller, startedAt: Date.now()});
-    return promise;
+    pendingFetches.set(pendingKey, entry);
+    return subscribeToPending(entry, signal);
 }
 
 /**
@@ -127,6 +174,11 @@ export async function getProjectIdForConnection(connectionId, accessToken) {
  */
 export function invalidateProjectId(connectionId) {
     projectIdCache.delete(connectionId);
+    for (const [key, pending] of pendingFetches) {
+        if (!key.startsWith(`${connectionId}:`)) continue;
+        try { pending.controller.abort(new DOMException("Project credentials changed", "AbortError")); } catch { /* noop */ }
+        pendingFetches.delete(key);
+    }
 }
 
 /**
@@ -138,10 +190,10 @@ export function invalidateProjectId(connectionId) {
 export function removeConnection(connectionId) {
     if (!connectionId) return;
     projectIdCache.delete(connectionId);
-    const pending = pendingFetches.get(connectionId);
-    if (pending) {
+    for (const [key, pending] of pendingFetches) {
+        if (!key.startsWith(`${connectionId}:`)) continue;
         try { pending.controller.abort(); } catch (_) { /* ignore */ }
-        pendingFetches.delete(connectionId);
+        pendingFetches.delete(key);
     }
 }
 
@@ -155,20 +207,25 @@ export function removeConnection(connectionId) {
  * @param {AbortSignal} signal
  * @returns {Promise<string|null>}
  */
-async function fetchProjectId(accessToken, signal) {
-    const response = await fetch(CLOUD_CODE_API.loadCodeAssist, {
+async function fetchProjectId(accessToken, signal, proxyOptions) {
+    const response = await proxyAwareFetch(CLOUD_CODE_API.loadCodeAssist, {
         method: "POST",
         headers: { ...LOAD_CODE_ASSIST_HEADERS, "Authorization": `Bearer ${accessToken}` },
         body: JSON.stringify({ metadata: LOAD_CODE_ASSIST_METADATA }),
         signal
-    });
+    }, proxyOptions);
 
+    const responseText = await readBoundedResponseText(response, {
+        signal,
+        maxBytes: PROJECT_RESPONSE_MAX_BYTES,
+        timeoutMs: PROJECT_RESPONSE_TIMEOUT_MS,
+    });
     if (!response.ok) {
-        const errorText = await response.text().catch(() => "");
-        throw new Error(`loadCodeAssist failed: HTTP ${response.status} ${errorText.slice(0, 200)}`);
+        const errorText = responseText;
+        throw new Error(`loadCodeAssist failed: HTTP ${response.status} ${sanitizeErrorMessage(errorText)}`);
     }
 
-    const data = await response.json();
+    const data = JSON.parse(responseText);
     const projectId = extractProjectId(data);
     if (projectId) return projectId;
 
@@ -185,7 +242,7 @@ async function fetchProjectId(accessToken, signal) {
         }
     }
 
-    return onboardUser(accessToken, tierID, signal);
+    return onboardUser(accessToken, tierID, signal, proxyOptions);
 }
 
 /**
@@ -196,7 +253,7 @@ async function fetchProjectId(accessToken, signal) {
  * @param {AbortSignal} externalSignal  – propagated from the connection's AbortController
  * @returns {Promise<string|null>}
  */
-async function onboardUser(accessToken, tierID, externalSignal) {
+async function onboardUser(accessToken, tierID, externalSignal, proxyOptions) {
     console.log(`[ProjectId] Onboarding user with tier: ${tierID}`);
 
     const reqBody = { tierId: tierID, metadata: LOAD_CODE_ASSIST_METADATA };
@@ -213,21 +270,25 @@ async function onboardUser(accessToken, tierID, externalSignal) {
         externalSignal?.addEventListener("abort", forwardAbort);
 
         try {
-            const response = await fetch(CLOUD_CODE_API.onboardUser, {
+            const response = await proxyAwareFetch(CLOUD_CODE_API.onboardUser, {
                 method: "POST",
                 headers: { ...LOAD_CODE_ASSIST_HEADERS, "Authorization": `Bearer ${accessToken}` },
                 body: JSON.stringify(reqBody),
                 signal: localCtrl.signal
+            }, proxyOptions);
+
+            const responseText = await readBoundedResponseText(response, {
+                signal: localCtrl.signal,
+                maxBytes: PROJECT_RESPONSE_MAX_BYTES,
+                timeoutMs: PROJECT_RESPONSE_TIMEOUT_MS,
             });
 
-            clearTimeout(timeoutId);
-
             if (!response.ok) {
-                const errorText = await response.text().catch(() => "");
-                throw new Error(`onboardUser HTTP ${response.status}: ${errorText.slice(0, 200)}`);
+                const errorText = responseText;
+                throw new Error(`onboardUser HTTP ${response.status}: ${sanitizeErrorMessage(errorText)}`);
             }
 
-            const data = await response.json();
+            const data = JSON.parse(responseText);
 
             if (data.done === true) {
                 const projectId = extractProjectIdFromOnboard(data);
@@ -240,7 +301,7 @@ async function onboardUser(accessToken, tierID, externalSignal) {
 
             // Server not done yet – wait and retry
             console.log(`[ProjectId] Onboard attempt ${attempt}/${MAX_ATTEMPTS}: not done yet, waiting...`);
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await waitForProjectRetry(2000, externalSignal);
 
         } catch (error) {
             clearTimeout(timeoutId);
@@ -250,12 +311,16 @@ async function onboardUser(accessToken, tierID, externalSignal) {
                 continue;
             }
             if (attempt === MAX_ATTEMPTS) {
-                console.warn(`[ProjectId] onboardUser failed after ${MAX_ATTEMPTS} attempts: ${error.message}`);
+                console.warn(
+                    `[ProjectId] onboardUser failed after ${MAX_ATTEMPTS} attempts: ${sanitizeErrorMessage(error?.message || error)}`,
+                );
                 return null;
             }
             // Continue to next attempt instead of throwing (which would skip remaining retries)
-            console.warn(`[ProjectId] onboardUser attempt ${attempt} failed: ${error.message}, retrying...`);
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            console.warn(
+                `[ProjectId] onboardUser attempt ${attempt} failed: ${sanitizeErrorMessage(error?.message || error)}, retrying...`,
+            );
+            await waitForProjectRetry(2000, externalSignal);
         } finally {
             clearTimeout(timeoutId);
             externalSignal?.removeEventListener("abort", forwardAbort);
@@ -263,6 +328,20 @@ async function onboardUser(accessToken, tierID, externalSignal) {
     }
 
     return null;
+}
+
+function waitForProjectRetry(delayMs, signal) {
+    if (signal?.aborted) return Promise.reject(projectAbortError(signal.reason));
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => finish(resolve), delayMs);
+        const onAbort = () => finish(reject, projectAbortError(signal?.reason));
+        const finish = (callback, value) => {
+            clearTimeout(timer);
+            signal?.removeEventListener?.("abort", onAbort);
+            callback(value);
+        };
+        signal?.addEventListener?.("abort", onAbort, { once: true });
+    });
 }
 
 /**

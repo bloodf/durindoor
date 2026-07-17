@@ -11,6 +11,7 @@ export default function CompressionStudioPage() {
   const [engines, setEngines] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [rawOpen, setRawOpen] = useState({});
 
   const runPreview = async () => {
     setLoading(true);
@@ -28,13 +29,13 @@ export default function CompressionStudioPage() {
       const res = await fetch("/api/compression/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: input,
+        body: JSON.stringify({ body: JSON.parse(input) }),
       });
-      const data = await res.json();
       if (!res.ok) {
-        setError(data?.error?.message || `Preview failed (${res.status})`);
-        return;
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Preview failed (${res.status})`);
       }
+      const data = await res.json();
       setEngines(Array.isArray(data.engines) ? data.engines : []);
       setResults(data.results || {});
     } catch (err) {
@@ -44,12 +45,18 @@ export default function CompressionStudioPage() {
     }
   };
 
+  const toggleRaw = (id) => {
+    setRawOpen((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
   return (
     <div className="p-6 space-y-4">
-      <h1 className="text-2xl font-semibold">Compression Studio</h1>
-      <p className="text-sm text-gray-500">
-        Preview how each compression engine would transform a request body.
-      </p>
+      <div>
+        <h1 className="text-2xl font-semibold">Compression Studio</h1>
+        <p className="text-sm text-gray-500">
+          Preview how each compression engine would transform a request body.
+        </p>
+      </div>
 
       <Card className="p-4 space-y-3">
         <label className="block text-sm font-medium" htmlFor="compression-input">
@@ -80,6 +87,7 @@ export default function CompressionStudioPage() {
                   <th className="py-2">Engine</th>
                   <th className="py-2">Compressed</th>
                   <th className="py-2">Est. savings</th>
+                  <th className="py-2"></th>
                 </tr>
               </thead>
               <tbody>
@@ -87,6 +95,7 @@ export default function CompressionStudioPage() {
                   const r = results[id] || {};
                   const unavailable = r.status === "unavailable";
                   const errored = r.status === "error";
+                  const raw = r.raw ?? r.compressedBody;
                   return (
                     <tr key={id} className="border-b last:border-0">
                       <td className="py-2 font-mono">{id}</td>
@@ -96,12 +105,38 @@ export default function CompressionStudioPage() {
                       <td className="py-2">
                         {unavailable || errored ? "—" : `${Number(r.savingsPercent || 0).toFixed(2)}%`}
                       </td>
+                      <td className="py-2 text-right">
+                        {!unavailable && !errored && raw !== undefined && (
+                          <button
+                            type="button"
+                            onClick={() => toggleRaw(id)}
+                            className="text-xs text-primary underline hover:opacity-80"
+                          >
+                            {rawOpen[id] ? "Hide raw JSON" : "Show raw JSON"}
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           )}
+
+          {Object.entries(rawOpen)
+            .filter(([, open]) => open)
+            .map(([id]) => {
+              const r = results[id] || {};
+              const raw = r.raw ?? r.compressedBody;
+              return (
+                <div key={`${id}-raw`} className="mt-3">
+                  <p className="text-xs font-semibold text-text-muted mb-1">{id} raw output</p>
+                  <pre className="w-full h-40 font-mono text-xs p-3 rounded-md border bg-black/5 dark:bg-white/5 overflow-auto">
+                    {typeof raw === "string" ? raw : JSON.stringify(raw, null, 2)}
+                  </pre>
+                </div>
+              );
+            })}
         </Card>
       )}
     </div>

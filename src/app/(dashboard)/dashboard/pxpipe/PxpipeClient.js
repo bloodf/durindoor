@@ -10,6 +10,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import PropTypes from "prop-types";
 import { Card, Button } from "@/shared/components";
 import { formatPxpipeEvent, fmtTokens, PXPIPE_REASON_LABELS as REASON_LABELS } from "./formatPxpipeEvent.js";
 
@@ -38,7 +39,14 @@ function SummaryCard({ label, value, sub, tone }) {
   );
 }
 
-export default function PxpipeClient() {
+SummaryCard.propTypes = {
+  label: PropTypes.string.isRequired,
+  value: PropTypes.node,
+  sub: PropTypes.node,
+  tone: PropTypes.string,
+};
+
+export default function PxpipeClient({ embedded = false }) {
   const [status, setStatus] = useState(null);
   const [health, setHealth] = useState(null);
   const [stats, setStats] = useState(null);
@@ -82,16 +90,18 @@ export default function PxpipeClient() {
           : "Stopped";
 
   return (
-    <div className="space-y-6 p-6">
+    <div className={`space-y-6 ${embedded ? "" : "p-6"}`}>
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h2 className="text-lg font-semibold flex items-center gap-2">
           <span className="material-symbols-outlined text-primary">image</span>
           PXPIPE Dashboard
         </h2>
         <div className="flex items-center gap-2">
-          <a href="/dashboard/token-saver" className="text-xs text-primary underline hover:opacity-80">
-            Token Saver settings
-          </a>
+          {!embedded && (
+            <a href="/dashboard/token-saver/settings" className="text-xs text-primary underline hover:opacity-80">
+              Token Saver settings
+            </a>
+          )}
           <Button size="sm" variant="ghost" onClick={refresh} disabled={loading}>
             {loading ? "Refreshing…" : "Refresh"}
           </Button>
@@ -261,3 +271,7 @@ export default function PxpipeClient() {
     </div>
   );
 }
+
+PxpipeClient.propTypes = {
+  embedded: PropTypes.bool,
+};

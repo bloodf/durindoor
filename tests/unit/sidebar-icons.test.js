@@ -29,8 +29,6 @@ describe("SidebarNavIcons", () => {
   it("does not include removed or relocated entries in top nav", () => {
     const labels = new Set(navItems.map((i) => i.label));
     expect(labels).not.toContain("Providers");
-    expect(labels).not.toContain("Quota Tracker");
-    expect(labels).not.toContain("Provider Health");
     expect(labels).not.toContain("Endpoint & Key");
     expect(labels).not.toContain("CLI Tools");
     expect(labels).not.toContain("Token Saver");

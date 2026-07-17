@@ -43,6 +43,33 @@ describe("BaseExecutor.execute — retry by status (config-driven)", () => {
     expect(out.response.status).toBe(502);
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
+
+  it("stamps every real dispatch and returns the final retry attempt", async () => {
+    const ex = makeExec({ baseUrl: "https://x/api", retry: { 502: { attempts: 1, delayMs: 0 } } });
+    fetchMock.mockResolvedValueOnce(res(502)).mockResolvedValueOnce(res(200));
+    const onProviderAttempt = vi.fn().mockReturnValue(1001);
+    const out = await ex.execute({
+      model: "m",
+      body: {},
+      stream: false,
+      credentials: creds,
+      attemptStartedAt: 1000,
+      onProviderAttempt,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(onProviderAttempt).toHaveBeenCalledOnce();
+    expect(out.attemptStartedAt).toBe(1001);
+  });
+
+  it("cancels a discarded response body before retrying", async () => {
+    const cancel = vi.fn().mockResolvedValue(undefined);
+    const ex = makeExec({ baseUrl: "https://x/api", retry: { 502: { attempts: 1, delayMs: 0 } } });
+    fetchMock
+      .mockResolvedValueOnce({ ...res(502), body: { cancel } })
+      .mockResolvedValueOnce(res(200));
+    await ex.execute({ model: "m", body: {}, stream: false, credentials: creds });
+    expect(cancel).toHaveBeenCalledOnce();
+  });
 });
 
 describe("BaseExecutor.execute — baseUrls fallback", () => {
@@ -55,6 +82,16 @@ describe("BaseExecutor.execute — baseUrls fallback", () => {
     expect(out.response.status).toBe(200);
     expect(out.url).toBe("https://b/api");
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("cancels the discarded response before switching fallback urls", async () => {
+    const cancel = vi.fn().mockResolvedValue(undefined);
+    const ex = makeExec({ baseUrls: ["https://a/api", "https://b/api"], retry: { 429: { attempts: 0 } } });
+    fetchMock
+      .mockResolvedValueOnce({ ...res(429), body: { cancel } })
+      .mockResolvedValueOnce(res(200));
+    await ex.execute({ model: "m", body: {}, stream: false, credentials: creds });
+    expect(cancel).toHaveBeenCalledOnce();
   });
 });
 
@@ -81,6 +118,37 @@ describe("BaseExecutor.execute — network error retry/fallback", () => {
     }
     expect(thrown?.message).toBe("boom");
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("BaseExecutor.execute — cancellation", () => {
+  it("does not dispatch a pre-aborted request", async () => {
+    const ex = makeExec({ baseUrl: "https://x/api", retry: { 502: { attempts: 2, delayMs: 1000 } } });
+    const controller = new AbortController();
+    controller.abort();
+    await expect(ex.execute({
+      model: "m", body: {}, stream: false, credentials: creds, signal: controller.signal,
+    })).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("aborts a pending retry delay and never performs the later fetch", async () => {
+    vi.useFakeTimers();
+    try {
+      const ex = makeExec({ baseUrl: "https://x/api", retry: { 502: { attempts: 1, delayMs: 30_000 } } });
+      const controller = new AbortController();
+      fetchMock.mockResolvedValueOnce(res(502));
+      const pending = ex.execute({
+        model: "m", body: {}, stream: false, credentials: creds, signal: controller.signal,
+      });
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      controller.abort();
+      await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+      await vi.runAllTimersAsync();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -145,5 +213,65 @@ describe("BaseExecutor.execute — computeRetryDelay hook veto", () => {
     // hook vetoes retry → no fallback url → returns the 429 response as-is
     expect(out.response.status).toBe(429);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("BaseExecutor.execute — reactive field strip retry", () => {
+  it("strips top-level context_management and retries once when a strict gateway names it in a 400", async () => {
+    const ex = makeExec({ baseUrl: "https://x/api" });
+    fetchMock
+      .mockResolvedValueOnce(new Response("context_management: Extra inputs are not permitted", { status: 400 }))
+      .mockResolvedValueOnce(res(200));
+
+    const out = await ex.execute({
+      model: "m",
+      body: {
+        messages: [{ role: "user", content: "hi" }],
+        context_management: { edits: [] },
+      },
+      stream: false,
+      credentials: creds,
+    });
+
+    expect(out.response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).context_management).toBeDefined();
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).context_management).toBeUndefined();
+    expect(out.transformedBody.context_management).toBeUndefined();
+  });
+
+  it("bounds and aborts a stalled 400 field-probe body", async () => {
+    const ex = makeExec({ baseUrl: "https://x/api" });
+    const controller = new AbortController();
+    fetchMock.mockResolvedValueOnce(new Response(new ReadableStream({
+      pull: () => new Promise(() => {}),
+    }), { status: 400 }));
+    const pending = ex.execute({
+      model: "m",
+      body: { context_management: { edits: [] } },
+      stream: false,
+      credentials: creds,
+      signal: controller.signal,
+    });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("does not retry from an oversized 400 field-probe body", async () => {
+    const ex = makeExec({ baseUrl: "https://x/api" });
+    fetchMock.mockResolvedValueOnce(new Response(
+      `context_management ${"x".repeat(70 * 1024)}`,
+      { status: 400 },
+    ));
+    const out = await ex.execute({
+      model: "m",
+      body: { context_management: { edits: [] } },
+      stream: false,
+      credentials: creds,
+    });
+    expect(out.response.status).toBe(400);
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 });

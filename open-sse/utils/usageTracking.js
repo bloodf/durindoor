@@ -4,6 +4,9 @@
 
 import { FORMATS } from "../translator/formats.js";
 
+// Legacy per-chunk usage console line; off by default (superseded by "📊 done")
+const DEBUG_USAGE = process.env.LOG_USAGE_VERBOSE === "1";
+
 // ANSI color codes
 export const COLORS = {
   reset: "\x1b[0m",
@@ -72,24 +75,24 @@ export function filterUsageForFormat(usage, targetFormat) {
     [FORMATS.CLAUDE]: [
       'input_tokens', 'output_tokens', 
       'cache_read_input_tokens', 'cache_creation_input_tokens',
-      'estimated'
+      'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks'
     ],
     [FORMATS.GEMINI]: [
       'promptTokenCount', 'candidatesTokenCount', 'totalTokenCount',
       'cachedContentTokenCount', 'thoughtsTokenCount',
-      'estimated'
+      'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks'
     ],
     [FORMATS.OPENAI_RESPONSES]: [
       'input_tokens', 'output_tokens',
       'input_tokens_details', 'output_tokens_details',
-      'estimated'
+      'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks'
     ],
     // OpenAI format (default for OPENAI, CODEX, KIRO, etc.)
     default: [
       'prompt_tokens', 'completion_tokens', 'total_tokens',
       'cached_tokens', 'reasoning_tokens',
       'prompt_tokens_details', 'completion_tokens_details',
-      'estimated'
+      'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks'
     ]
   };
 
@@ -128,6 +131,23 @@ export function normalizeUsage(usage) {
   assignNumber("cache_creation_input_tokens", usage?.cache_creation_input_tokens);
   assignNumber("cached_tokens", usage?.cached_tokens);
   assignNumber("reasoning_tokens", usage?.reasoning_tokens);
+  assignNumber("cost_usd", usage?.cost_usd);
+  assignNumber("cost_in_usd", usage?.cost_in_usd);
+  assignNumber("cost_in_usd_ticks", usage?.cost_in_usd_ticks);
+  // Kiro meters in credits, not tokens — preserve through normalization
+  // (consumption is never negative; drop malformed null/negative values)
+  const kiroCredits = usage?.kiro_credits !== null && usage?.kiro_credits !== undefined
+    ? Number(usage.kiro_credits) : NaN;
+  if (Number.isFinite(kiroCredits) && kiroCredits >= 0) {
+    normalized.kiro_credits = kiroCredits;
+    if (typeof usage?.kiro_credit_unit === "string") {
+      normalized.kiro_credit_unit = usage.kiro_credit_unit;
+    }
+  }
+
+  // Estimation marker must survive normalization so fallback token counts
+  // are never persisted as authoritative numbers.
+  if (usage?.estimated === true) normalized.estimated = true;
 
   // Preserve nested details objects for OpenAI format forwarding
   if (usage?.prompt_tokens_details && typeof usage.prompt_tokens_details === "object") {
@@ -163,7 +183,7 @@ export function canonicalizeUsage(usage) {
 
   const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
   const completion = num(usage.completion_tokens ?? usage.output_tokens);
-  const reasoning = num(usage.reasoning_tokens);
+  const reasoning = num(usage.reasoning_tokens ?? usage.completion_tokens_details?.reasoning_tokens);
   // Fall back to the nested prompt_tokens_details.cache_creation_tokens shape
   // (buildUsage()'s OpenAI-forwarding format) when the top-level field is
   // absent, so callers that pass a buildUsage() object through don't silently
@@ -181,25 +201,39 @@ export function canonicalizeUsage(usage) {
   // Guard on the absence of `cached_tokens`: our own canonical output always
   // sets that key (even to 0), so re-running canonicalizeUsage on an already-
   // folded result takes the passthrough branch instead of folding again.
-  if (usage.cached_tokens === undefined &&
-      (usage.cache_read_input_tokens !== undefined || usage.cache_creation_input_tokens !== undefined)) {
+  const foldsExclusiveCache = usage.cached_tokens === undefined &&
+      (usage.cache_read_input_tokens !== undefined || usage.cache_creation_input_tokens !== undefined);
+  if (foldsExclusiveCache) {
     cached = num(usage.cache_read_input_tokens);
     prompt = prompt + cached + cacheCreation;
   } else {
     // OpenAI/Gemini path (or already-canonical input): prompt already includes cached_tokens.
-    cached = num(usage.cached_tokens);
+    cached = num(usage.cached_tokens ?? usage.prompt_tokens_details?.cached_tokens);
   }
+
+  const componentTotal = prompt + completion;
+  const explicitTotal = num(usage.total_tokens);
 
   const result = {
     prompt_tokens: prompt,
     completion_tokens: completion,
-    // Recompute rather than pass through: when the fold branch ran above,
-    // an upstream total_tokens (cache-exclusive) would otherwise be stale.
-    total_tokens: prompt + completion,
+    // Claude's exclusive cache fold changes the component sum, so its incoming
+    // total becomes stale. Other providers' explicit totals are authoritative.
+    total_tokens: foldsExclusiveCache ? componentTotal : (explicitTotal > 0 ? explicitTotal : componentTotal),
     cached_tokens: cached,
     cache_creation_input_tokens: cacheCreation,
   };
   if (reasoning > 0) result.reasoning_tokens = reasoning;
+  if (Number.isFinite(Number(usage.cost_usd))) result.cost_usd = Number(usage.cost_usd);
+  if (Number.isFinite(Number(usage.cost_in_usd))) result.cost_in_usd = Number(usage.cost_in_usd);
+  if (Number.isFinite(Number(usage.cost_in_usd_ticks))) result.cost_in_usd_ticks = Number(usage.cost_in_usd_ticks);
+  const kiroCredits = usage.kiro_credits !== null && usage.kiro_credits !== undefined
+    ? Number(usage.kiro_credits) : NaN;
+  if (Number.isFinite(kiroCredits) && kiroCredits >= 0) {
+    result.kiro_credits = kiroCredits;
+    if (typeof usage.kiro_credit_unit === "string") result.kiro_credit_unit = usage.kiro_credit_unit;
+  }
+  if (usage.estimated === true) result.estimated = true;
   return result;
 }
 
@@ -265,19 +299,30 @@ export function extractUsage(chunk) {
       completion_tokens: usage.output_tokens || usage.completion_tokens || 0,
       cached_tokens: cachedTokens,
       reasoning_tokens: usage.output_tokens_details?.reasoning_tokens,
+      cost_in_usd: usage.cost_in_usd,
+      cost_in_usd_ticks: usage.cost_in_usd_ticks,
       prompt_tokens_details: cachedTokens ? { cached_tokens: cachedTokens } : undefined
     });
   }
 
-  // OpenAI format (also covers DeepSeek which uses prompt_cache_hit_tokens)
-  if (chunk.usage && typeof chunk.usage === "object" && chunk.usage.prompt_tokens !== undefined) {
+  // OpenAI format (also covers DeepSeek which uses prompt_cache_hit_tokens).
+  // Kiro can attach credit-only metering without token counts.
+  if (chunk.usage && typeof chunk.usage === "object" &&
+      (chunk.usage.prompt_tokens !== undefined || chunk.usage.kiro_credits !== undefined)) {
+    const hasPromptTokens = chunk.usage.prompt_tokens !== undefined;
     return normalizeUsage({
       prompt_tokens: chunk.usage.prompt_tokens,
-      completion_tokens: chunk.usage.completion_tokens || 0,
+      completion_tokens: hasPromptTokens ? (chunk.usage.completion_tokens || 0) : chunk.usage.completion_tokens,
+      total_tokens: chunk.usage.total_tokens,
       cached_tokens: chunk.usage.prompt_tokens_details?.cached_tokens || chunk.usage.prompt_cache_hit_tokens,
       reasoning_tokens: chunk.usage.completion_tokens_details?.reasoning_tokens,
+      cost_in_usd: chunk.usage.cost_in_usd,
+      cost_in_usd_ticks: chunk.usage.cost_in_usd_ticks,
       prompt_tokens_details: chunk.usage.prompt_tokens_details,
-      completion_tokens_details: chunk.usage.completion_tokens_details
+      completion_tokens_details: chunk.usage.completion_tokens_details,
+      kiro_credits: chunk.usage.kiro_credits,
+      kiro_credit_unit: chunk.usage.kiro_credit_unit,
+      estimated: chunk.usage.estimated
     });
   }
 
@@ -321,8 +366,14 @@ export function mergeUsage(prev, next) {
     // chunk can't poison the whole accumulation (Math.max(x, NaN) is NaN).
     if (typeof v === "number" && Number.isFinite(v)) {
       merged[k] = Math.max(typeof merged[k] === "number" ? merged[k] : 0, v);
+    } else if (k === "estimated" && typeof v === "boolean") {
+      // Estimation marker: once estimated, stays estimated (a real value never
+      // downgrades an estimate to authoritative).
+      merged[k] = merged[k] === true || v === true;
     } else if (v && typeof v === "object") {
       merged[k] = v; // nested details objects: take latest
+    } else if (typeof v === "string" && k === "kiro_credit_unit") {
+      merged[k] = v; // Kiro credit unit label: take latest
     }
   }
   return merged;
@@ -400,6 +451,10 @@ export function estimateUsage(body, contentLength, targetFormat = FORMATS.OPENAI
  */
 export function logUsage(provider, usage, model = null, connectionId = null, apiKey = null) {
   if (!usage || typeof usage !== "object") return;
+
+  // Console output moved to the unified "📊 done" line (streamingHandler). Kept as
+  // a no-op hook so callers stay unchanged; usage persistence happens via saveUsageStats.
+  if (!DEBUG_USAGE) return;
 
   const p = provider?.toUpperCase() || "UNKNOWN";
 

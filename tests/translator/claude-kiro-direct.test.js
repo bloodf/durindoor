@@ -9,6 +9,26 @@ import { FORMATS } from "../../open-sse/translator/formats.js";
 const C2K = (body) =>
   translateRequest(FORMATS.CLAUDE, FORMATS.KIRO, "claude-sonnet-4.5", body, true, null, "kiro");
 
+describe("public translateRequest suffix fallback", () => {
+  it("cleans same-format body.model while applying the suffix intent", () => {
+    const out = translateRequest(
+      FORMATS.OPENAI,
+      FORMATS.OPENAI,
+      "gpt-5(high)",
+      {
+        model: "gpt-5(high)",
+        messages: [{ role: "user", content: "hello" }],
+      },
+      true,
+      null,
+      "openai",
+    );
+
+    expect(out.model).toBe("gpt-5");
+    expect(out.reasoning_effort).toBe("high");
+  });
+});
+
 describe("Claude → Kiro (direct route)", () => {
   it("produces a Kiro conversationState payload", () => {
     const out = C2K({ messages: [{ role: "user", content: "hello" }] });
@@ -75,6 +95,80 @@ describe("Claude → Kiro (direct route)", () => {
       "<max_thinking_length>24576</max_thinking_length>"
     );
   });
+
+  it("threads a parsed suffix intent without leaking it into nested model IDs", () => {
+    const out = translateRequest(
+      FORMATS.CLAUDE,
+      FORMATS.KIRO,
+      "claude-sonnet-4.5",
+      {
+        messages: [
+          { role: "user", content: "first" },
+          { role: "assistant", content: "answer" },
+          { role: "user", content: "next" },
+        ],
+      },
+      true,
+      { rawHeaders: { "x-session-id": "kiro-session-144" } },
+      "kiro",
+      null,
+      [],
+      "connection-144",
+      null,
+      { thinkingIntent: { mode: "level", level: "high" }, capabilityModel: "claude-sonnet-4.5" },
+    );
+
+    expect(out.conversationState.conversationId).toBe("kiro-session-144");
+    expect(out.conversationState.currentMessage.userInputMessage.content).toContain(
+      "<max_thinking_length>24576</max_thinking_length>",
+    );
+    const serialized = JSON.stringify(out);
+    expect(serialized).not.toContain("(high)");
+    expect(serialized).not.toContain("_kiro");
+  });
+
+  it("keeps the public translateRequest entry point safe without explicit context", () => {
+    const out = translateRequest(
+      FORMATS.CLAUDE,
+      FORMATS.KIRO,
+      "claude-sonnet-4.5(high)",
+      { messages: [{ role: "user", content: "hello" }] },
+      true,
+      null,
+      "kiro",
+    );
+
+    expect(out.conversationState.currentMessage.userInputMessage.modelId).toBe(
+      "claude-sonnet-4.5",
+    );
+    expect(out.conversationState.currentMessage.userInputMessage.content).toContain(
+      "<max_thinking_length>24576</max_thinking_length>",
+    );
+  });
+
+  it("lets an explicit none suffix suppress body/header/model thinking fallbacks", () => {
+    const out = translateRequest(
+      FORMATS.CLAUDE,
+      FORMATS.KIRO,
+      "claude-sonnet-4.5-thinking",
+      {
+        thinking: { type: "enabled", budget_tokens: 8192 },
+        messages: [{ role: "user", content: "do not think" }],
+      },
+      true,
+      { rawHeaders: { "anthropic-beta": "interleaved-thinking-2025-05-14" } },
+      "kiro",
+      null,
+      [],
+      null,
+      null,
+      { thinkingIntent: { mode: "none" }, capabilityModel: "claude-sonnet-4.5-thinking" },
+    );
+
+    const content = out.conversationState.currentMessage.userInputMessage.content;
+    expect(content).not.toContain("<thinking_mode>");
+    expect(content).not.toContain("<max_thinking_length>");
+  });
 });
 
 describe("Kiro → Claude (direct route, OpenAI-shaped chunks from executor)", () => {
@@ -126,6 +220,114 @@ describe("Kiro → Claude (direct route, OpenAI-shaped chunks from executor)", (
     expect(md.delta.stop_reason).toBe("end_turn");
     expect(md.usage).toEqual({ input_tokens: 5, output_tokens: 3 });
     expect(events.some((e) => e.type === "message_stop")).toBe(true);
+  });
+
+  it("preserves kiro_credits through the final-chunk usage remap", () => {
+    const state = {};
+    R(
+      {
+        id: "chatcmpl-1",
+        object: "chat.completion.chunk",
+        model: "m",
+        choices: [{ index: 0, delta: { content: "x" }, finish_reason: null }],
+      },
+      state
+    );
+    const events = R(
+      {
+        id: "chatcmpl-1",
+        object: "chat.completion.chunk",
+        model: "m",
+        choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+        usage: { prompt_tokens: 5, completion_tokens: 3, kiro_credits: 0.0123, kiro_credit_unit: "credit" },
+      },
+      state
+    );
+    // Credits must survive the { input_tokens, output_tokens } remap so
+    // onStreamComplete persists Kiro credit metering on the Claude route.
+    expect(state.usage.kiro_credits).toBe(0.0123);
+    expect(state.usage.kiro_credit_unit).toBe("credit");
+    expect(state.usage.input_tokens).toBe(5);
+    expect(state.usage.output_tokens).toBe(3);
+    const md = events.find((e) => e.type === "message_delta");
+    expect(md.usage.kiro_credits).toBe(0.0123);
+    expect(md.usage.kiro_credit_unit).toBe("credit");
+  });
+
+  it("preserves estimated marker through the final-chunk usage remap", () => {
+    const state = {};
+    R(
+      {
+        id: "chatcmpl-1",
+        object: "chat.completion.chunk",
+        model: "m",
+        choices: [{ index: 0, delta: { content: "x" }, finish_reason: null }],
+      },
+      state
+    );
+    const events = R(
+      {
+        id: "chatcmpl-1",
+        object: "chat.completion.chunk",
+        model: "m",
+        choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+        usage: {
+          prompt_tokens: 5,
+          completion_tokens: 3,
+          kiro_credits: 0.0123,
+          kiro_credit_unit: "credit",
+          estimated: true,
+        },
+      },
+      state
+    );
+    // Estimated marker must survive the final remap so onStreamComplete does
+    // not persist fallback token counts as authoritative on the Claude route.
+    expect(state.usage.estimated).toBe(true);
+    expect(state.usage.kiro_credits).toBe(0.0123);
+    const md = events.find((e) => e.type === "message_delta");
+    expect(md.usage.estimated).toBe(true);
+    expect(md.usage.kiro_credits).toBe(0.0123);
+    expect(md.usage.kiro_credit_unit).toBe("credit");
+    // Truthy strings like "true" must not be treated as an estimate marker.
+    const stringState = {};
+    R(
+      {
+        id: "chatcmpl-1",
+        object: "chat.completion.chunk",
+        model: "m",
+        choices: [{ index: 0, delta: { content: "x" }, finish_reason: null }],
+      },
+      stringState
+    );
+    const stringEvents = R(
+      {
+        id: "chatcmpl-1",
+        object: "chat.completion.chunk",
+        model: "m",
+        choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+        usage: { prompt_tokens: 5, completion_tokens: 3, estimated: "true" },
+      },
+      stringState
+    );
+    const stringMd = stringEvents.find((e) => e.type === "message_delta");
+    expect(stringMd.usage.estimated).toBeUndefined();
+  });
+
+  it("drops malformed null kiro_credits on the final-chunk remap", () => {
+    const state = {};
+    R(
+      {
+        id: "chatcmpl-1",
+        object: "chat.completion.chunk",
+        model: "m",
+        choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+        usage: { prompt_tokens: 5, completion_tokens: 3, kiro_credits: null },
+      },
+      state
+    );
+    expect(state.usage.kiro_credits).toBeUndefined();
+    expect(state.usage).toEqual({ input_tokens: 5, output_tokens: 3 });
   });
 
   it("reasoning_content maps to a thinking block", () => {

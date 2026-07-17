@@ -14,6 +14,9 @@ Provider connections are the credentials DurinDoor uses to call upstream AI serv
 
 The dashboard groups providers by category, but all successful connections become usable by the routing layer when the selected endpoint and model support the request type.
 
+Some registry providers are marked hidden because the generic connection form does not collect enough provider-specific data for them yet. Hidden providers do not appear in the legacy `Dashboard -> Providers -> Add New Provider` selector and the legacy `/api/providers` creation route rejects direct connection attempts for them. Existing visible providers and custom compatible provider nodes continue to use the same connection flow.
+
+Dedicated local and router provider IDs such as `lm-studio`, `vllm`, `llama-cpp`, `docker-model-runner`, and `9router` are documented in [Local, Self-Hosted, and Router Providers](./local-router-providers.md). These providers use OpenAI-compatible local defaults and can override the base URL per saved connection.
 ## Add an OAuth Connection
 
 1. Open `Dashboard -> Providers`.
@@ -69,5 +72,27 @@ If all OpenAI connections fail, combo fallback may try the next model
 ## Provider Identifiers
 
 DurinDoor uses provider identifiers internally and in model strings. Examples include `openai`, `anthropic`, `gemini`, `cc`, `cx`, `kiro`, and custom compatible prefixes. The exact list comes from the provider registry in the running version.
+
+## OmniRoute OAuth Provider Slice
+
+DurinDoor ports OAuth/session providers only when the runtime transport, credential serialization, and token refresh behavior are covered by local tests.
+
+Implemented in this slice:
+
+| Provider | Identifier | Credential path | Refresh behavior |
+| --- | --- | --- | --- |
+| Antigravity CLI | `agy` | Same Google OAuth shape as Antigravity, stored under a separate provider id so CLI credentials do not collide with IDE credentials. | Reuses the Antigravity Google refresh flow. |
+| Grok Build CLI | `grok-cli` | Import `~/.grok/auth.json` or a raw Grok JWT through the import-token flow. Auth JSON imports preserve the refresh token and non-secret account metadata. | Uses the xAI OAuth token endpoint and stores rotated refresh tokens when returned. |
+| GitLab Duo | `gitlab-duo` | Browser OAuth with PKCE against `GITLAB_DUO_BASE_URL`/`GITLAB_BASE_URL`, or per-connection `baseUrl` metadata. Chat messages are adapted to GitLab Code Suggestions completions. | Refreshes through the instance `/oauth/token` endpoint and keeps base URL/client metadata with the connection. |
+| Trae | `trae` | Import a Trae SOLO `Cloud-IDE-JWT` token. Optional identity metadata (`webId`, `bizUserId`, `userUniqueId`, tenant/scope/region) is carried in provider-specific data. | Pasted Cloud-IDE-JWT tokens do not expose a public refresh flow; reconnect by importing a new token when Trae expires it. |
+| Devin CLI | `devin-cli` | Import a Devin/Windsurf token or rely on `devin auth login` credentials. Runtime calls spawn `devin acp --agent-type summarizer` over ACP stdio; set `CLI_DEVIN_BIN` to override binary discovery. | No public token refresh is available for imported tokens; reconnect or re-authenticate the official CLI when the upstream session expires. |
+| Windsurf | `windsurf` | Import the Windsurf/Codeium token shown by the IDE command-palette auth-token flow. Runtime calls use Windsurf's `LanguageServerService/GetChatMessage` gRPC-web endpoint with a direct protobuf request encoder and OpenAI-compatible SSE chunk output. | No public refresh flow is available for imported tokens; reconnect by importing a fresh token if Windsurf rejects the session. |
+
+Windsurf runtime details:
+
+1. The executor maps DurinDoor/OmniRoute model aliases to Windsurf wire identifiers before encoding the request.
+2. The request body is a dependency-free protobuf encoder wrapped in a gRPC-web data frame; the API token is sent both as a bearer header and in protobuf metadata.
+3. The response parser accepts gRPC-web data frames and trailer frames, decodes content, done/usage, and error chunks, and emits OpenAI-compatible SSE chunks.
+4. Wire-level unit tests cover malformed/truncated frames and upstream error chunks so the runtime is no longer guarded as `501`.
 
 Use the dashboard model selector or `/v1/models` response as the source of truth for available identifiers in your instance.

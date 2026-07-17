@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { getSettings, updateSettings } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation, resetComboScoring } from "open-sse/services/combo.js";
-import { runQuotaAutoPingTick } from "@/shared/services/quotaAutoPing";
 import bcrypt from "bcryptjs";
 
 export const dynamic = "force-dynamic";
@@ -14,11 +13,12 @@ const SETTINGS_RESPONSE_HEADERS = {
 
 // Secrets must never be mass-assigned from request body (CWE-915)
 const PROTECTED_SETTING_KEYS = ["password", "mitmSudoEncrypted"];
+const SCOPED_SETTING_KEYS = ["claudeAutoPing", "codexAutoPing"];
 
 export async function GET() {
   try {
     const settings = await getSettings();
-    const { password, oidcClientSecret, ...safeSettings } = settings;
+    const { password, oidcClientSecret, mitmSudoEncrypted, ...safeSettings } = settings;
     safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
     
     const enableRequestLogs = process.env.ENABLE_REQUEST_LOGS === "true";
@@ -39,6 +39,12 @@ export async function GET() {
 export async function PATCH(request) {
   try {
     const body = await request.json();
+
+    if (SCOPED_SETTING_KEYS.some((key) => Object.prototype.hasOwnProperty.call(body, key))) {
+      return NextResponse.json({
+        error: "Auto-ping must be updated through the connection-scoped endpoint",
+      }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+    }
 
     // Strip protected secrets before any internal handling sets them
     for (const key of PROTECTED_SETTING_KEYS) delete body[key];
@@ -90,6 +96,62 @@ export async function PATCH(request) {
       body.firecrawlBaseUrl = raw;
     }
 
+    /**
+     * Validate PXPIPE settings. Bounds rationale: minChars must be a
+     * positive integer; timeout floor 1s (below it a transform can never
+     * round-trip), ceiling 120s (2x the largest shipped default so a stuck
+     * pipeline cannot hold a request open indefinitely); booleans for flags.
+     */
+    if (Object.prototype.hasOwnProperty.call(body, "pxpipeMinChars")) {
+      const v = body.pxpipeMinChars;
+      if (!Number.isSafeInteger(v) || v <= 0) {
+        return NextResponse.json({ error: "Invalid pxpipeMinChars" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "pxpipeTimeoutMs")) {
+      const v = body.pxpipeTimeoutMs;
+      if (!Number.isSafeInteger(v) || v < 1000 || v > 120000) {
+        return NextResponse.json({ error: "Invalid pxpipeTimeoutMs" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
+    }
+    for (const key of ["pxpipeEnabled", "pxpipeAutoInstall"]) {
+      if (Object.prototype.hasOwnProperty.call(body, key) && typeof body[key] !== "boolean") {
+        return NextResponse.json({ error: `Invalid ${key}` }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
+    }
+
+    // Validate per-combo contextRequirements (upstream #6907 schema parity):
+    //   minContextWindow: integer 0..10_000_000 (optional)
+    //   preferLargeContext: boolean (optional)
+    //   contextFilterMode: "strict" | "lenient" (optional)
+    // Reject unknown keys (upstream `.strict()`); a silently-normalized typo'd
+    // config would otherwise mask a misconfigured combo. comboStrategies is an
+    // object keyed by combo name; only objects carrying contextRequirements are
+    // validated, other per-combo keys are untouched.
+    if (Object.prototype.hasOwnProperty.call(body, "comboStrategies")) {
+      const cs = body.comboStrategies;
+      const bad = () => NextResponse.json({ error: "Invalid comboStrategies.contextRequirements" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      if (!cs || typeof cs !== "object" || Array.isArray(cs)) return bad();
+      const ALLOWED_KEYS = new Set(["minContextWindow", "preferLargeContext", "contextFilterMode"]);
+      for (const cfg of Object.values(cs)) {
+        if (!cfg || typeof cfg !== "object" || !Object.prototype.hasOwnProperty.call(cfg, "contextRequirements")) continue;
+        const cr = cfg.contextRequirements;
+        // Upstream `.strict().optional()`: absent key is fine, but an explicit
+        // null is rejected (it is not a valid optional object).
+        if (cr === undefined) continue;
+        if (cr === null || typeof cr !== "object" || Array.isArray(cr)) return bad();
+        for (const k of Object.keys(cr)) if (!ALLOWED_KEYS.has(k)) return bad();
+        if (Object.prototype.hasOwnProperty.call(cr, "minContextWindow")) {
+          // Upstream z.coerce.number() accepts numeric strings; coerce then bound.
+          const v = Number(cr.minContextWindow);
+          if (!Number.isSafeInteger(v) || v < 0 || v > 10_000_000) return bad();
+          cr.minContextWindow = v; // store the coerced number
+        }
+        if (Object.prototype.hasOwnProperty.call(cr, "preferLargeContext") && typeof cr.preferLargeContext !== "boolean") return bad();
+        if (Object.prototype.hasOwnProperty.call(cr, "contextFilterMode") && cr.contextFilterMode !== "strict" && cr.contextFilterMode !== "lenient") return bad();
+      }
+    }
+
     const settings = await updateSettings(body);
 
     // Apply outbound proxy settings immediately (no restart required)
@@ -111,17 +173,7 @@ export async function PATCH(request) {
       resetComboScoring();
     }
 
-    if (
-      Object.prototype.hasOwnProperty.call(body, "claudeAutoPing") ||
-      Object.prototype.hasOwnProperty.call(body, "codexAutoPing")
-    ) {
-      // Run once immediately after opt-in changes so users don't wait for the next scheduler tick.
-      runQuotaAutoPingTick().catch((error) => {
-        console.warn("[AutoPing] settings-triggered tick failed:", error.message);
-      });
-    }
-
-    const { password, oidcClientSecret, ...safeSettings } = settings;
+    const { password, oidcClientSecret, mitmSudoEncrypted, ...safeSettings } = settings;
     safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
     return NextResponse.json(safeSettings, { headers: SETTINGS_RESPONSE_HEADERS });
   } catch (error) {

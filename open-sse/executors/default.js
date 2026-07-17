@@ -1,14 +1,17 @@
 import crypto from "crypto";
 import { BaseExecutor } from "./base.js";
-import { PROVIDERS, PROVIDER_OAUTH } from "../config/providers.js";
+import { PROVIDERS, PROVIDER_OAUTH, resolveHerokuBaseUrl } from "../config/providers.js";
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE } from "../providers/shared.js";
 import { OAUTH_ENDPOINTS, buildKimiHeaders } from "../config/appConstants.js";
 import { buildClineHeaders } from "../shared/clineAuth.js";
 import { getCachedClaudeHeaders } from "../utils/claudeHeaderCache.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { getOpenAICompatibleType } from "../services/provider.js";
+import { refreshCodebuddyToken } from "../services/tokenRefresh.js";
+import { isOfficialAnthropicBaseUrl } from "../utils/anthropicHost.js";
 
 // Opt-in prompt-cache key injection for openai-compatible providers.
 // OpenAI-style upstreams (Chat Completions + Responses) accept an optional
@@ -55,23 +58,75 @@ const AUTH_DESCRIPTORS = Object.fromEntries(
     .map(([id, t]) => [id, t.auth])
 );
 
+// Apply a token to a header per scheme. Missing tokens intentionally leave the
+// header absent so optional local providers do not send "Bearer undefined".
+
+// Upstream decolua/9router#2533: MiniMax documents MiniMax-M3 on the standard
+// OpenAI API endpoint /v1/text/chatcompletion_v2 rather than /v1/chat/completions.
+// Only rewrite the URL when the resolved transport is the OpenAI one for MiniMax-M3
+// — the Claude transport (x-api-key, ?beta=true) and every other MiniMax model
+// keep their URL.
+const MINIMAX_M3_PROVIDERS = new Set(["minimax", "minimax-cn"]);
+
+function resolveMiniMaxM3Url(provider, model, url, transportFormat) {
+  if (!MINIMAX_M3_PROVIDERS.has(provider) || model !== "MiniMax-M3") return url;
+  if (transportFormat !== "openai") return url;
+  return url.replace(/\/v1\/chat\/completions$/, "/v1/text/chatcompletion_v2");
+}
+
+export function normalizeAccountIdPlaceholder(provider, accountId) {
+  const trimmed = `${accountId || ""}`.trim();
+  if (!trimmed) throw new Error(`${provider} requires accountId in providerSpecificData`);
+  // Snowflake documents a "dashed" hostname variant of the account identifier:
+  // underscores are valid in the account name but not in a DNS label, so
+  // normalize them to hyphens before validation/URL construction.
+  const normalized = trimmed.replace(/_/g, "-");
+
+  const labels = normalized.split(".");
+  const validDnsLabels = labels.every((label) => (
+    label.length > 0
+    && label.length <= 63
+    && /^[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?$/.test(label)
+  ));
+  if (!validDnsLabels || normalized.length > 253) {
+    throw new Error(`${provider} requires a valid accountId in providerSpecificData`);
+  }
+
+  return normalized;
+}
+
 // Apply a token to a header per scheme (matches legacy: combined always sets, even when undefined).
 function setAuth(headers, spec, token) {
-  headers[spec.header] = spec.scheme === "bearer" ? `Bearer ${token}` : token;
+  if (!token) return;
+  const scheme = spec.scheme;
+  if (scheme === "bearer") headers[spec.header] = `Bearer ${token}`;
+  else if (scheme === "key") headers[spec.header] = `Key ${token}`;
+  else if (spec.prefix) headers[spec.header] = `${spec.prefix} ${token}`;
+  else headers[spec.header] = token;
 }
 
 // Resolve auth onto headers from a descriptor.
 function applyAuth(headers, desc, credentials) {
   if (desc.combined) {
-    // combined providers always set the header (legacy behavior, incl. noAuth → "Bearer undefined")
     setAuth(headers, desc, credentials.apiKey || credentials.accessToken);
+    applyExtraHeaders(headers, desc.extraHeaders, credentials);
     if (desc.anthropicVersion && !headers["anthropic-version"]) headers["anthropic-version"] = ANTHROPIC_API_VERSION;
     return;
   }
   // split apiKey/oauth: set only the matching branch (legacy: anthropic-compatible skips when both absent)
   if (credentials.apiKey) setAuth(headers, desc.apiKey, credentials.apiKey);
   else if (credentials.accessToken) setAuth(headers, desc.oauth, credentials.accessToken);
+  applyExtraHeaders(headers, desc.extraHeaders, credentials);
   if (desc.anthropicVersion && !headers["anthropic-version"]) headers["anthropic-version"] = ANTHROPIC_API_VERSION;
+}
+
+function applyExtraHeaders(headers, extraHeaders, credentials) {
+  if (!Array.isArray(extraHeaders)) return;
+  for (const spec of extraHeaders) {
+    if (!spec?.header || !spec?.from) continue;
+    const value = credentials?.[spec.from];
+    if (value) headers[spec.header] = value;
+  }
 }
 
 // Provider-specific header quirks kept as small hooks (not pure auth).
@@ -114,12 +169,84 @@ const REFRESH_GRANTS = Object.fromEntries(
     })
 );
 
+// OmniRoute local/self-hosted parity: these provider IDs are configurable
+// OpenAI-compatible endpoints. When no connection baseUrl is set, stay on the
+// provider's local default instead of falling back through PROVIDERS.openai.
+export const LOCAL_PROVIDER_DEFAULT_BASE_URLS = {
+  "lm-studio": "http://localhost:1234/v1",
+  vllm: "http://localhost:8000/v1",
+  lemonade: "http://localhost:13305/api/v1",
+  llamafile: "http://127.0.0.1:8080/v1",
+  "llama-cpp": "http://127.0.0.1:8080/v1",
+  triton: "http://localhost:8000/v1",
+  "docker-model-runner": "http://localhost:12434/v1",
+  xinference: "http://localhost:9997/v1",
+  oobabooga: "http://localhost:5000/v1",
+  "9router": "http://127.0.0.1:20130/v1",
+};
+
+
+const GLMT_MODEL_ALIASES = {
+  "glm-5.2-high": { model: "glm-5.2", reasoningEffort: "high" },
+  "glm-5.2-max": { model: "glm-5.2", reasoningEffort: "max" },
+};
+
+function applyGlmtModelAlias(provider, model, body) {
+  if (provider !== "glmt" || !body || typeof body !== "object") return body;
+  const alias = GLMT_MODEL_ALIASES[model] || GLMT_MODEL_ALIASES[body.model];
+  if (!alias) return body;
+  body.model = alias.model;
+  body.reasoning_effort = alias.reasoningEffort;
+  return body;
+}
+
+// Floor for clinepass thinking models so reasoning does not consume the entire
+// output budget and return finish_reason:"length" with empty content (#2332).
+export const THINKING_BUDGET_FLOOR = 4096;
+
+// Pure budget decision mirroring upstream #2332: returns the token count to
+// write, or null to leave as-is. Never lowers a positive budget; bumps an
+// undersized one only when the cap allows reaching the full floor.
+export function computeThinkingBudget(current, cap) {
+  const maxOutput = typeof cap === "number" && cap > 0 ? cap : THINKING_BUDGET_FLOOR;
+  const target = Math.min(THINKING_BUDGET_FLOOR, maxOutput);
+  if (typeof current !== "number" || current <= 0) return target;
+  // Never lower a positive budget; only bump when the cap can reach the floor.
+  if (current < THINKING_BUDGET_FLOOR && maxOutput >= THINKING_BUDGET_FLOOR) return THINKING_BUDGET_FLOOR;
+  return null;
+}
+
 export class DefaultExecutor extends BaseExecutor {
   constructor(provider) {
     super(provider, PROVIDERS[provider] || PROVIDERS.openai);
   }
 
+  applyRequestDefaults(body) {
+    const defaults = this.config?.requestDefaults;
+    if (!defaults || !body || typeof body !== "object") return body;
+    if (defaults.maxTokens !== undefined && body.max_tokens === undefined && body.max_completion_tokens === undefined) {
+      body.max_tokens = defaults.maxTokens;
+    }
+    if (defaults.temperature !== undefined && body.temperature === undefined) {
+      body.temperature = defaults.temperature;
+    }
+    if (defaults.thinkingBudgetTokens !== undefined || defaults.thinkingType !== undefined) {
+      const current = body.thinking && typeof body.thinking === "object" ? body.thinking : {};
+      body.thinking = {
+        ...current,
+        ...(current.type === undefined && defaults.thinkingType !== undefined ? { type: defaults.thinkingType } : {}),
+        ...(current.budget_tokens === undefined && defaults.thinkingBudgetTokens !== undefined ? { budget_tokens: defaults.thinkingBudgetTokens } : {}),
+      };
+    }
+    return body;
+  }
+
   transformRequest(model, body, stream, credentials) {
+    this.applyRequestDefaults(body);
+    // Provider-specific request hook (e.g. SenseNova Token Plan clamps
+    // max_tokens / max_completion_tokens above its 65536 ceiling).
+    this.config?.clampRequestBody?.(body);
+    applyGlmtModelAlias(this.provider, model, body);
     const transformed = this.applyJsonSchemaFallback(body);
 
     if (transformed && typeof transformed === "object") {
@@ -128,12 +255,44 @@ export class DefaultExecutor extends BaseExecutor {
         delete transformed.client_metadata;
       }
       this.defaultResponsesTextFormat(transformed);
+      if (this.config.format === "openai" && stream === false) {
+        // Resolved stream mode is authoritative for upstream OpenAI-compatible
+        // payloads, including providers that explicitly reject streaming.
+        // Also drop stream_options: it's only meaningful with stream:true
+        // (include_usage controls the final SSE usage chunk) and some
+        // OpenAI-compatible upstreams 400 on stream_options when stream is
+        // false (client sent it because it originally requested streaming).
+        transformed.stream = false;
+        delete transformed.stream_options;
+      }
       injectPromptCacheKey(this.provider, transformed, credentials);
       applyParamRenames(this.provider, model, transformed);
       stripUnsupportedParams(this.provider, model, transformed);
     }
 
-    return injectReasoningContent({ provider: this.provider, model, body: transformed });
+    return this.ensureThinkingBudget(injectReasoningContent({ provider: this.provider, model, body: transformed }), model);
+  }
+
+  // ClinePass / OpenRouter-style thinking models burn all of max_tokens on reasoning
+  // when the budget is too small, leaving content empty (finish_reason: "length").
+  // Bump max_tokens to a safe minimum only when reasoning is enabled and budget undersized.
+  // Source: decolua/9router#2332 @ 005d970f49.
+  ensureThinkingBudget(body, model) {
+    if (!body || this.provider !== "clinepass") return body;
+    const caps = getCapabilitiesForModel(this.provider, model);
+    if (!caps?.reasoning) return body;
+
+    const reasoningEnabled = body.extra_body?.thinking?.type === "enabled"
+      || (typeof body.reasoning_effort === "string" && body.reasoning_effort !== "none" && body.reasoning_effort !== "off")
+      || body.reasoning_effort === true;
+    if (!reasoningEnabled) return body;
+
+    const cap = typeof caps.maxOutput === "number" && caps.maxOutput > 0 ? caps.maxOutput : THINKING_BUDGET_FLOOR;
+    // Preserve whichever token field the caller used; never introduce the other.
+    const field = typeof body.max_completion_tokens === "number" ? "max_completion_tokens" : "max_tokens";
+    const next = computeThinkingBudget(body[field], cap);
+    if (next != null) body[field] = next;
+    return body;
   }
 
   // Some Responses-compatible upstreams (e.g. LM Studio) reject a request whose
@@ -170,10 +329,14 @@ export class DefaultExecutor extends BaseExecutor {
   }
 
   buildUrl(model, stream, urlIndex = 0, credentials = null) {
-    // Runtime transport (multi-endpoint providers): use the sourceFormat-matched endpoint
+    // Runtime transport (multi-endpoint providers): use the resolved endpoint.
     const rt = credentials?.runtimeTransport;
     if (rt?.baseUrl) {
-      return rt.urlSuffix ? `${rt.baseUrl}${rt.urlSuffix}` : rt.baseUrl;
+      const url = rt.urlSuffix ? `${rt.baseUrl}${rt.urlSuffix}` : rt.baseUrl;
+      return resolveMiniMaxM3Url(this.provider, model, url, rt.format);
+    }
+    if (this.provider === "heroku") {
+      return `${resolveHerokuBaseUrl(credentials)}/chat/completions`;
     }
     if (this.provider?.startsWith?.("openai-compatible-")) {
       const baseUrl = credentials?.providerSpecificData?.baseUrl || OPENAI_COMPAT_BASE;
@@ -187,6 +350,16 @@ export class DefaultExecutor extends BaseExecutor {
       const normalized = baseUrl.replace(/\/$/, "");
       return `${normalized}/messages`;
     }
+    if (LOCAL_PROVIDER_DEFAULT_BASE_URLS[this.provider]) {
+      const baseUrl =
+        credentials?.providerSpecificData?.baseUrl ||
+        this.config.baseUrl ||
+        LOCAL_PROVIDER_DEFAULT_BASE_URLS[this.provider];
+      const normalized = baseUrl.replace(/\/$/, "");
+      return normalized.endsWith("/chat/completions")
+        ? normalized
+        : `${normalized}/chat/completions`;
+    }
     // gemini-format: build :streamGenerateContent / :generateContent path
     if (this.config.format === "gemini") {
       return `${this.config.baseUrl}/${model}:${stream ? "streamGenerateContent?alt=sse" : "generateContent"}`;
@@ -197,8 +370,7 @@ export class DefaultExecutor extends BaseExecutor {
     }
     const url = this.config.baseUrl;
     if (url?.includes("{accountId}")) {
-      const accountId = credentials?.providerSpecificData?.accountId;
-      if (!accountId) throw new Error(`${this.provider} requires accountId in providerSpecificData`);
+      const accountId = normalizeAccountIdPlaceholder(this.provider, credentials?.providerSpecificData?.accountId);
       return url.replace("{accountId}", accountId);
     }
     return url;
@@ -215,9 +387,14 @@ export class DefaultExecutor extends BaseExecutor {
     return BEARER;
   }
 
-  buildHeaders(credentials, stream = true) {
+  buildHeaders(credentials = {}, stream = true) {
+    credentials ||= {};
     const rt = credentials?.runtimeTransport;
     const headers = { "Content-Type": "application/json", ...(rt ? rt.headers : this.config.headers) };
+    if (!credentials.apiKey && !credentials.accessToken) {
+      if (stream) headers["Accept"] = "text/event-stream";
+      return headers;
+    }
     const desc = rt?.auth || AUTH_DESCRIPTORS[this.provider] || this.resolveAuthDescriptor();
     // Hooks run BEFORE auth so dynamic overlays (claude cached headers) can't clobber the token.
     for (const hook of desc.hooks || []) HEADER_HOOKS[hook]?.(headers, credentials);
@@ -226,7 +403,15 @@ export class DefaultExecutor extends BaseExecutor {
     // Strip first-party Claude Code identity headers for non-Anthropic anthropic-compatible upstreams
     if (this.provider?.startsWith?.("anthropic-compatible-")) {
       const baseUrl = credentials?.providerSpecificData?.baseUrl || "";
-      const isOfficialAnthropic = baseUrl === "" || baseUrl.includes("api.anthropic.com");
+      /**
+       * Exact-host check (CodeQL js/incomplete-url-substring-sanitization): a substring
+       * `.includes("api.anthropic.com")` would accept look-alike upstreams such as
+       * `https://api.anthropic.com.evil.test`, suppressing the Bearer fallback intended
+       * for third-party gateways. An empty baseUrl means the default official endpoint;
+       * anything else is verified via parsed hostname equality
+       * ({@link isOfficialAnthropicBaseUrl}).
+       */
+      const isOfficialAnthropic = baseUrl === "" || isOfficialAnthropicBaseUrl(baseUrl);
       if (!isOfficialAnthropic) {
         // Some third-party Anthropic-compatible gateways require Bearer auth in
         // addition to x-api-key. Send both (x-api-key already set above) so
@@ -280,6 +465,7 @@ export class DefaultExecutor extends BaseExecutor {
       iflow: () => this.refreshIflow(credentials.refreshToken, proxyOptions),
       gemini: () => this.refreshFromGrant(credentials, proxyOptions),
       kiro: () => this.refreshKiro(credentials.refreshToken, proxyOptions),
+      "codebuddy-cn": () => refreshCodebuddyToken(credentials.refreshToken, log, proxyOptions),
       cline: () => this.refreshCline(credentials.refreshToken, proxyOptions),
       clinepass: () => this.refreshCline(credentials.refreshToken, proxyOptions),
       "kimi-coding": () => this.refreshKimiCoding(credentials.refreshToken, proxyOptions),

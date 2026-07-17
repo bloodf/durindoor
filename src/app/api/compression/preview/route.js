@@ -1,0 +1,95 @@
+import { getEngine, isEngineAvailable, ENGINE_IDS } from "open-sse/services/compression/index.js";
+
+// POST /api/compression/preview — run each catalog engine against the body and
+// report a per-id status:
+//   - { status: "unavailable" }              catalog placeholder not shipped here
+//   - { status: "compressed", compressed, savingsPercent }   available, ran
+//   - { status: "error" }                    available but apply() threw
+// Unavailable engines are NEVER dispatched to getEngine() (which throws on
+// placeholders); available engines that throw are labeled "error", never
+// "unavailable".
+//
+// Auth: this handler is internal to the dashboard. `src/dashboardGuard.js:262-289`
+// deny-by-defaults every `/api/*` path that is not on the public allow-list and
+// requires either a valid CLI token or an authenticated dashboard session
+// (dashboard JWT). The Compression Studio page at
+// `src/app/(dashboard)/dashboard/compression-studio/page.js` POSTs here WITHOUT
+// an LLM API key, so re-checking `settings.requireApiKey` in this handler would
+// 401 every dashboard request whenever the global LLM-endpoint enforcement flag
+// is on. Trust the proxy; do not re-authenticate.
+// OmniRoute #6461 (PR #6519): when an engine fell back (`stats.fallbackApplied`),
+// surface WHY by synthesizing a deduped reason list from data the pipeline
+// already produces on `stats`: `validationErrors` plus inflation-guard entries
+// in `validationWarnings`. Non-fallback runs get [] / null — zero change on the
+// happy path, even when warnings exist (mirrors the source gating).
+function computeFallbackReasons(stats) {
+  const reasons = [];
+  if (!stats || stats.fallbackApplied !== true) return reasons;
+  const seen = new Set();
+  const push = (s) => {
+    if (typeof s === "string" && s.length > 0 && !seen.has(s)) {
+      seen.add(s);
+      reasons.push(s);
+    }
+  };
+  for (const err of stats.validationErrors ?? []) push(err);
+  for (const warn of stats.validationWarnings ?? []) {
+    if (typeof warn === "string" && warn.startsWith("pipeline-inflation-guard:")) push(warn);
+  }
+  return reasons;
+}
+
+function computeSavingsPercent(stats) {
+  if (!stats || typeof stats !== "object") return 0;
+  if (typeof stats.savingsPercent === "number") return stats.savingsPercent;
+  const before = stats.bytesBefore ?? stats.tokensBefore ?? stats.originalTokens;
+  const after = stats.bytesAfter ?? stats.tokensAfter ?? stats.compressedTokens;
+  if (typeof before !== "number" || typeof after !== "number" || before <= 0) return 0;
+  const pct = ((before - after) / before) * 100;
+  return Number.isFinite(pct) ? Math.round(pct * 100) / 100 : 0;
+}
+
+export async function POST(request) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json(
+      { error: { message: "Invalid JSON body", type: "invalid_request_error" } },
+      { status: 400 }
+    );
+  }
+
+  const results = {};
+  for (const id of ENGINE_IDS) {
+    if (!isEngineAvailable(id)) {
+      results[id] = { status: "unavailable" };
+      continue;
+    }
+    try {
+      const result = await getEngine(id).apply(body, {});
+      const fallbackReasons = computeFallbackReasons(result?.stats);
+      results[id] = {
+        status: result?.compressed === true ? "compressed" : "unchanged",
+        compressed: result?.compressed === true,
+        savingsPercent: computeSavingsPercent(result?.stats),
+        // Source emits one pipeline-wide list under `skippedReasons` /
+        // `fallbackReasons` / `fallbackReason`; durindoor previews per engine,
+        // so the same fields land on each engine's result. The canonical
+        // `stats.fallbackReason` is honored only on fallback runs (a fallback
+        // may carry it with no synthesizable errors/warnings); non-fallback
+        // runs are strictly [] / [] / null per the source contract.
+        fallbackReasons,
+        skippedReasons: fallbackReasons,
+        fallbackReason:
+          result?.stats?.fallbackApplied === true
+            ? (result.stats.fallbackReason ?? fallbackReasons[0] ?? null)
+            : null,
+      };
+    } catch {
+      results[id] = { status: "error" };
+    }
+  }
+
+  return Response.json({ engines: ENGINE_IDS, results });
+}

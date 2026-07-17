@@ -1,9 +1,9 @@
 import {
-  getProviderCredentials,
+  getProviderCredentialsWithQuotaPreflight,
   markAccountUnavailable,
   clearAccountError,
   extractApiKey,
-  isValidApiKey,
+  evaluateApiKeyAuth,
 } from "../services/auth.js";
 import { getSettings, getCombos, getApiKeyByKey } from "@/lib/localDb";
 import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
@@ -13,7 +13,11 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
+import { getAutoComboCatalog } from "../services/model.js";
+import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
+import { filterPaidModels } from "open-sse/providers/pricing.js";
 import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
+import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 
 /**
  * Handle web fetch (URL extraction) request for the SSE/Next.js server.
@@ -32,7 +36,7 @@ export async function handleFetch(request) {
 
   const reqUrl = new URL(request.url);
   // Accept either `provider` or `model` (UI sends `model` since provider IS the model for webFetch)
-  const providerInput = body.provider || body.model;
+  let providerInput = normalizeFetchProviderInput(body.provider || body.model);
   const targetUrl = body.url;
   const format = body.format;
   const maxCharacters = body.max_characters;
@@ -47,18 +51,15 @@ export async function handleFetch(request) {
     log.debug("AUTH", "No API key provided (local mode)");
   }
 
-  // Enforce API key if enabled in settings
   const settings = await getSettings();
-  if (settings.requireApiKey) {
-    if (!apiKey) {
+  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true, request });
+  if (!apiKeyAuth.ok) {
+    if (apiKeyAuth.reason === "missing") {
       log.warn("AUTH", "Missing API key (requireApiKey=true)");
       return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
     }
-    const valid = await isValidApiKey(apiKey);
-    if (!valid) {
-      log.warn("AUTH", "Invalid API key (requireApiKey=true)");
-      return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
-    }
+    log.warn("AUTH", "Invalid API key");
+    return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
   }
 
   if (!providerInput || typeof providerInput !== "string") {
@@ -87,12 +88,15 @@ export async function handleFetch(request) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, err.message);
   }
 
-  // Per-key combo access control
+  // Per-key combo access control. Auto-combo catalog computed lazily — only
+  // for `auto/<family>` ids — so named-combo traffic keeps its current DB cost.
+  const autoCatalog = isAutoComboId(providerInput) ? await getAutoComboCatalog() : null;
+  const autoOptions = autoCatalog ? { catalog: autoCatalog, settings } : { settings };
   if (apiKey && providerInput) {
     const keyData = await getApiKeyByKey(apiKey);
     if (keyData && Array.isArray(keyData.allowedCombos) && keyData.allowedCombos.length > 0) {
       const combosData = await getCombos();
-      const isCombo = getComboModelsFromData(providerInput, combosData);
+      const isCombo = getComboModelsFromData(providerInput, combosData, autoOptions);
       if (isCombo && !keyData.allowedCombos.includes(providerInput)) {
         log.warn("AUTH", `API key "${keyData.name}" not allowed to access combo "${providerInput}"`);
         return errorResponse(HTTP_STATUS.FORBIDDEN, `Access denied: combo "${providerInput}" is not allowed for this API key`);
@@ -102,10 +106,20 @@ export async function handleFetch(request) {
 
   // Combo expansion: providerInput may be a combo name → run fallback/round-robin across providers
   const combos = await getCombos();
-  const comboModels = getComboModelsFromData(providerInput, combos);
+  // #6495 / F-4: filter paid members when the toggle is on. The auth ACL check
+  // above calls getComboModelsFromData without filtering so combo existence/ACL
+  // stay against the real member list.
+  const comboModels = filterPaidModels(
+    getComboModelsFromData(providerInput, combos, autoOptions),
+    settings.hidePaidModels === true,
+  );
   if (comboModels) {
     const comboStrategies = settings.comboStrategies || {};
-    const comboStrategy = comboStrategies[providerInput]?.fallbackStrategy || settings.comboStrategy || "fallback";
+    const perCombo = comboStrategies[providerInput] || {};
+    const comboSpecificStrategy = isAutoComboId(providerInput)
+      ? (perCombo.strategy ?? perCombo.fallbackStrategy)
+      : perCombo.fallbackStrategy;
+    const comboStrategy = comboSpecificStrategy || settings.comboStrategy || "fallback";
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
     log.info("FETCH", `Combo "${providerInput}" with ${comboModels.length} providers (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
     return handleComboChat({
@@ -118,8 +132,27 @@ export async function handleFetch(request) {
       comboStickyLimit
     });
   }
-
   return handleSingleProviderFetch(body, providerInput, request, apiKey, settings);
+}
+
+/**
+ * Normalize advertised webFetch model ids (e.g. tinyfish/fetch) to the provider
+ * alias, but only when the raw id is unknown and the stripped alias maps to a
+ * provider that supports web fetch.
+ * @param {string} providerInput
+ * @returns {string}
+ */
+export function normalizeFetchProviderInput(providerInput) {
+  if (typeof providerInput !== "string" || !providerInput.endsWith("/fetch")) {
+    return providerInput;
+  }
+  const stripped = providerInput.slice(0, -"/fetch".length);
+  const rawProvider = AI_PROVIDERS[resolveProviderId(providerInput)];
+  const strippedProvider = AI_PROVIDERS[resolveProviderId(stripped)];
+  if (!rawProvider?.fetchConfig && strippedProvider?.fetchConfig) {
+    return stripped;
+  }
+  return providerInput;
 }
 
 async function handleSingleProviderFetch(body, providerInput, request, apiKey, settings) {
@@ -133,6 +166,9 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
     log.warn("FETCH", "Unknown provider", { provider: providerInput });
     return errorResponse(HTTP_STATUS.BAD_REQUEST, `Unknown provider: ${providerInput}`);
   }
+
+  const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${providerId}/fetch`);
+  if (resolvedPolicyError) return resolvedPolicyError;
 
   const providerConfig = resolvedProvider.fetchConfig;
   if (!providerConfig) {
@@ -160,8 +196,12 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
       log
     });
     if (result.success) {
-      return new Response(JSON.stringify(result.data), {
+      const response = new Response(JSON.stringify(result.data), {
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+      });
+      return recordApiKeyUsageForResponse(apiKey, response, {
+        tokens: 0,
+        cost: Number(result.data?.usage?.fetch_cost_usd) || 0,
       });
     }
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Fetch failed");
@@ -173,7 +213,7 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentials(providerId, excludeConnectionIds);
+    const credentials = await getProviderCredentialsWithQuotaPreflight(providerId, excludeConnectionIds);
 
     if (!credentials || credentials.allRateLimited) {
       if (credentials?.allRateLimited) {
@@ -216,8 +256,12 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
     });
 
     if (result.success) {
-      return new Response(JSON.stringify(result.data), {
+      const response = new Response(JSON.stringify(result.data), {
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+      });
+      return recordApiKeyUsageForResponse(apiKey, response, {
+        tokens: 0,
+        cost: Number(result.data?.usage?.fetch_cost_usd) || 0,
       });
     }
 

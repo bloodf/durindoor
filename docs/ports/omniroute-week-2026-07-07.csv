@@ -1,0 +1,436 @@
+number,title,verdict,evidence
+7203,"fix: add dashboard-scoped typecheck gate covering src/app/(dashboard) TSX (#7033)",SKIP,SKIP:not-selected|files:9
+7202,"fix(ci): run quality gates on Mergify merge-queue draft PRs",SKIP,SKIP:infra-only|files:2
+7201,"fix: honor combo-level proxy assignments from the registry (#7149)",SKIP,SKIP:not-selected|files:6
+7200,"fix(dashboard): implement missing handleToggleSource on Free Pool tab (#7161)",SKIP,SKIP:not-selected|files:3
+7199,"fix: filter hidden custom models out of legacy combo model picker (#7156)",SKIP,SKIP:not-selected|files:3
+7198,"fix: stop duplicating text in Gemini Web streamed responses (#7163)",SKIP,SKIP:not-selected|files:3
+7197,"fix: agent bridge dns toggle uses POST; not PUT (#7157)",SKIP,SKIP:not-selected|files:3
+7196,"fix: surface real claude-web error body for non-SSE 400s (#7134)",SKIP,SKIP:not-selected|files:3
+7195,"fix: wire modelAliases fetch into HermesAgentToolCard (#7151)",SKIP,SKIP:not-selected|files:3
+7194,"fix: restore mobile grid-cols-1 fallback on quota page card grid (#7072)",SKIP,SKIP:not-selected|files:4
+7193,"fix(providers): reject chat requests for cloud-agent-only jules provider (#6699)",SKIP,SKIP:not-selected|files:3
+7192,"fix: zai-web connection-test cookie probe now honors the configured proxy (#7058)",SKIP,SKIP:not-selected|files:4
+7191,"fix: raise main server keepAliveTimeout/headersTimeout above Node's 5s default (#7003)",SKIP,SKIP:not-selected|files:6
+7190,"fix: sanitize non-Latin1 chars in combo diagnostic headers (#6612)",SKIP,SKIP:not-selected|files:3
+7189,"fix: include proxyId when testing a saved registry proxy (#7080)",SKIP,SKIP:not-selected|files:3
+7188,"fix: refresh OpenCode (oc) free-tier model catalog (#6998)",SKIP,SKIP:not-selected|files:5
+7187,"fix: stop opencode-go quota lookup defaulting to Z.AI endpoint (#7022)",SKIP,SKIP:not-selected|files:7
+7186,"fix(db): cap OOM probe-failure cycle in getDbInstance() (#6835)",SKIP,SKIP:not-selected|files:4
+7185,"fix(providers): DuckDuckGo VQD 429 misclassified as 503 (#6996)",SKIP,SKIP:not-selected|files:3
+7184,"merge queue: checking release/v3.8.49 (dee9750) and #7175 together",SKIP,SKIP:infra-only|files:2
+7183,"fix: wire adaptive context-budget dial into settings schema and DB (#7005)",SKIP,SKIP:not-selected|files:7
+7182,"fix: preserve relayAuth for pool-referenced relay proxies (#5716)",SKIP,SKIP:not-selected|files:5
+7181,"fix: recognize Ollama Cloud session usage-limit 429 as quota-exhausted (#7071)",SKIP,SKIP:not-selected|files:5
+7180,"fix: extend turbopack ignoreIssue suppression to compression module (#7051)",SKIP,SKIP:not-selected|files:3
+7179,"fix(ci): Mergify auto-enqueue rule (queue_conditions alone are eligibility-only)",SKIP,SKIP:infra-only|files:1
+7178,"fix: add handleToggleSource to FreePoolTab and fix CSP for cloudflareinsights",SKIP,SKIP:not-selected|files:31
+7177,"fix(combo): reject known context overflow without exhausting providers",SKIP,SKIP:not-selected|files:13
+7176,"fix(codex): preserve encrypted reasoning without fake summaries",SKIP,SKIP:not-selected|files:3
+7175,"feat(ci): Trunk Flaky Tests uploads for vitest + Playwright E2E (WS5.2/5.3)",SKIP,SKIP:infra-only|files:2
+7174,"fix(tests+providers): env-dependent tests exposed by GH-hosted runners (#6634 selfref shallow checkout + yuanbao live-network 401)",SKIP,SKIP:not-selected|files:5
+7172,"fix(combo): fall back on Responses SSE failures",SKIP,SKIP:not-selected|files:2
+7171,"fix(executors): disable parallel tools for Codex Responses Lite",SKIP,SKIP:not-selected|files:3
+7170,"fix(deps): pin transitive esbuild to 0.27.x (avoid 0.28 transform regression) (#5757)",SKIP,SKIP:infra-only|files:1
+7169,"fix(quality): anchor cognitive-complexity parse on the cognitive section (#7009)",SKIP,SKIP:not-selected|files:2
+7168,"chore(ci): add .mergify.yml to main (Mergify reads config only from the default branch)",SKIP,SKIP:infra-only|files:1
+7167,"fix(compression): lazy-load typescript in RTK codeStripper (#7096)",SKIP,SKIP:not-selected|files:2
+7166,"fix(providers): accept m365.cloud.microsoft for copilot-m365-web token (#7078)",SKIP,SKIP:not-selected|files:2
+7165,"fix(providers): classify Cloudflare neuron 429 as quota_exhausted (#6980)",SKIP,SKIP:not-selected|files:3
+7164,"fix(compression): lazy-load typescript in RTK codeStripper so prod-lean deploys don't break (#7096)",SKIP,SKIP:not-selected|files:2
+7160,"fix(docker): approve better-sqlite3 install scripts before rebuild",SKIP,SKIP:not-selected|files:1
+7158,"chore: establish Bun as the repository package manager",SKIP,SKIP:not-selected|files:7
+7155,"chore: adopt TypeScript 7 as the blocking compiler",SKIP,SKIP:infra-only|files:2
+7154,"Add Codex reset credit picker and normalize Responses content",SKIP,SKIP:not-selected|files:22
+7153,"Add Codex reset credit picker and normalize Responses content",SKIP,SKIP:not-selected|files:21
+7147,"chore(ci): promote test:vitest:ui to blocking (suite green after #7127)",SKIP,SKIP:infra-only|files:2
+7141,"added files for production",SKIP,SKIP:not-selected|files:2
+7139,"fix(ci): raise dast-smoke timeout 12→25min (build alone eats up to 11min)",SKIP,SKIP:infra-only|files:2
+7136,"Use OpenAI chunks for early chat keepalives",SKIP,SKIP:not-selected|files:4
+7135,"Fix test-masking self-check on release branches",SKIP,SKIP:not-selected|files:1
+7133,"feat(homolog): real-environment E2E homologation suite (npm run homolog)",SKIP,SKIP:not-selected|files:26
+7131,"fix grid components in provider quota",SKIP,SKIP:not-selected|files:1
+7130,"feat(sidecar): support conditional provider manifest refresh",SKIP,SKIP:not-selected|files:3
+7129,"fix(models): update Anthropic model contextLength to 1M",SKIP,SKIP:not-selected|files:3
+7128,"Fix p95 fallback in speed-optimized routing",SKIP,SKIP:not-selected|files:2
+7127,"fix(tests): vitest UI suite back to green (69 fails triaged — WS6.1)",SKIP,SKIP:not-selected|files:30
+7125,"fix(dashboard): align onboarding tier content",SKIP,SKIP:not-selected|files:5
+7124,"fix(dashboard): add vision-capability toggle for custom OpenAI-compatible models",SKIP,SKIP:not-selected|files:51
+7123,"fix(electron): strip hashed native modules from standalone and fix removal path",SKIP,SKIP:not-selected|files:1
+7122,"fix(oauth): resolve Kiro AWS SSO cache client credentials by clientId match",SKIP,SKIP:not-selected|files:5
+7121,"fix(combo): detect empty content_block in streaming SSE peek",SKIP,SKIP:not-selected|files:3
+7120,"fix(combos): reject oversized fusion panels before fan-out",SKIP,SKIP:not-selected|files:5
+7119,"fix(api): check Vercel SSO-protection PATCH response on relay deploy",SKIP,SKIP:not-selected|files:3
+7118,"fix(dashboard): include never-tested connections in combo builder active-provider list",SKIP,SKIP:not-selected|files:4
+7117,"fix(cli): remove MITM DNS spoof entries before killing server process",SKIP,SKIP:not-selected|files:4
+7116,"fix(sse): handle space-separated arg name/value in Composer tool calls",SKIP,SKIP:not-selected|files:3
+7115,"chore(ops): runner-box janitor + operations runbook (WS3.3)",SKIP,SKIP:not-selected|files:3
+7114,"feat(ci): Codecov patch coverage (informational) + missing lcov reporter fix (WS5.6)",SKIP,SKIP:not-selected|files:3
+7113,"feat(ci): Windows leg for Electron prepare smoke (WS1.5)",SKIP,SKIP:infra-only|files:2
+7112,"feat(ci): Mergify merge queue + manual-train fallback runbook (WS3.4/WS3.2)",SKIP,SKIP:infra-only|files:3
+7109,"feat(release): post-publish verifier — clean-container install + boot (WS1.4)",SKIP,SKIP:not-selected|files:4
+7108,"fix(providers): add MiniMax image-generation provider",PORT,named-map-id
+7107,"docs(quality): per-runner retry policy + release-level ratchet-drift rule (WS5.4/WS5.5)",SKIP,SKIP:infra-only|files:2
+7106,"fix(sse): sanitize non-ok Antigravity streaming error body",SKIP,SKIP:not-selected|files:3
+7105,"fix(cli): verify better-sqlite3 native binary is actually loadable",SKIP,SKIP:not-selected|files:3
+7104,"fix(executors): forward X-Session-ID/X-Title agent metadata headers",SKIP,SKIP:not-selected|files:3
+7103,"fix(providers): surface a warning on 404 model_not_found in OpenAI-compatible Check",SKIP,SKIP:not-selected|files:3
+7102,"fix(compression): Headroom SmartCrusher skips developer-role messages",SKIP,SKIP:not-selected|files:3
+7101,"fix(openai): strip reasoning_effort when GPT-5.x models carry function tools",SKIP,SKIP:not-selected|files:4
+7100,"fix(codex): strip regex lookaround from tool schema patterns",SKIP,SKIP:not-selected|files:4
+7099,"chore(ci): gate hygiene — secrets baseline 0; semgrep drop; hadolint (WS6/D3 + WS1.7)",SKIP,SKIP:not-selected|files:4
+7098,"fix(sse): recognize xiaomi-tokenplan mimo as a thinking-mode model",PORT,named-map-id
+7095,"fix(stream): expose encrypted Codex reasoning to chat clients",SKIP,SKIP:not-selected|files:4
+7093,"fix(relay): bound Bifrost stream lifetime",PORT,named-map-id
+7092,"feat(release): npm staged publishing + pre-publish boot-smoke (WS1.3)",SKIP,SKIP:infra-only|files:3
+7091,"feat(ci): TypeScript 7 native shadow for typecheck:core (WS4.2; advisory)",SKIP,SKIP:infra-only|files:2
+7090,"feat(ci): duration-balanced E2E shards via LPT bin-packing (WS4.1)",SKIP,SKIP:not-selected|files:5
+7089,"feat(ci): continuous release-green — on-push quick gate + 3×/day full sweep (WS5.1)",SKIP,SKIP:infra-only|files:2
+7088,"feat(ci): hotfix fast-lane + tests-only E2E skip (WS3.1)",SKIP,SKIP:not-selected|files:5
+7087,"Explain effective auto-combo scoring weights",SKIP,SKIP:not-selected|files:3
+7086,"feat(ci): boot-smoke the packed npm tarball (check:pack-boot — #7065 class killer)",SKIP,SKIP:not-selected|files:6
+7085,"test(ci): make masking self-reference check hermetic",SKIP,SKIP:not-selected|files:1
+7084,"test(translator): align Antigravity Gemini thinking default",SKIP,SKIP:not-selected|files:1
+7083,"chore(release): gate the sync-back push on release-green --quick (WS0.3)",SKIP,SKIP:not-selected|files:3
+7081,"test(build): pack-artifact closure tests for all npm-shipped entrypoints (#7065 class)",SKIP,SKIP:not-selected|files:4
+7077,"fix(db): register omniglyph in compression engine allowlists (combos + preview enum)",SKIP,SKIP:not-selected|files:3
+7076,"Release v3.8.49",SKIP,SKIP:not-selected|files:100
+7074,"fix(i18n): restore proxy registry key parity",SKIP,SKIP:not-selected|files:2
+7073,"fix(dashboard): strip browser-extension attrs before hydration",SKIP,SKIP:not-selected|files:1
+7070,"perf: wrap ComboCard; HeroSection in React.memo",SKIP,SKIP:not-selected|files:3
+7068,"deps: bump the development group with 7 updates",SKIP,SKIP:infra-only|files:2
+7067,"deps: bump the production group with 11 updates",SKIP,SKIP:infra-only|files:1
+7066,"perf: Date.now hoist; hasActiveDeltaValue hoist; buffer.split guard in SSE stream",SKIP,SKIP:not-selected|files:2
+7064,"perf: P0 fixes — recharts dynamic imports; DB pagination; quota pools batch loading",SKIP,SKIP:not-selected|files:29
+7063,"fix(cloudflare-relay): avoid invalid regex syntax in generated worker",SKIP,SKIP:not-selected|files:3
+7062,"feat(providers): add Dahl free inference provider",SKIP,SKIP:not-selected|files:16
+7061,"fix(translator): preserve thinking.budget_tokens: 0 in Claude->Gemini (#6813)",PORT,named-map-id
+7060,"fix(providers): AgentRouter model import applies Claude Code wire image to /v1/models (#7016)",SKIP,SKIP:not-selected|files:2
+7059,"fix(combo): least-used sorts by per-account executionKey (#7015)",SKIP,SKIP:not-selected|files:2
+7056,"fix(responses): map mid-conversation system turns to developer role (#6954)",SKIP,SKIP:not-selected|files:2
+7055,"fix(build): v3.8.47 hotfix — npm tarball missing head-response-guard.cjs (#7065) + electron win spawn",SKIP,SKIP:not-selected|files:67
+7054,"fix(usage): register ollama-cloud in USAGE_FETCHER_PROVIDERS (#7026)",PORT,named-map-id
+7053,"fix(antigravity): collect native part.functionCall into tool calls (#7037)",SKIP,SKIP:not-selected|files:2
+7052,"fix(combo): treat maxInputTokens as an input-only cap in the context filter (#7039)",SKIP,SKIP:not-selected|files:2
+7050,"fix(providers): sanitize Claude native output_config.effort (#7044)",SKIP,SKIP:not-selected|files:2
+7048,"fix(codex): normalize nested Responses output content",SKIP,SKIP:not-selected|files:2
+7046,"feat(api): add pagination params to /api/combos",SKIP,SKIP:not-selected|files:31
+7045,"feat(perf): add performance.mark/measure to SSE pipeline + request-size metric",SKIP,SKIP:not-selected|files:3
+7042,"fix(quality): read cognitiveComplexity= machine line in validate-release-green (#7009)",SKIP,SKIP:not-selected|files:2
+7041,"fix(sse): register ollama-cloud in USAGE_FETCHER_PROVIDERS (#7026)",SKIP,SKIP:not-selected|files:2
+7038,"fix(ci): zero the Sonar quality-gate findings on new code",SKIP,SKIP:not-selected|files:13
+7036,"feat(sse): allow disabling `:` comment heartbeats via OMNIROUTE_SSE_COMMENTS=off",SKIP,SKIP:not-selected|files:2
+7035,"feat(providers): add Agnes AI native provider support",SKIP,SKIP:not-selected|files:4
+7032,"fix(auggie): update model registry to match v0.32.0 CLI model IDs",SKIP,SKIP:not-selected|files:3
+7029,"Fix hook model mutation in chat handler",SKIP,SKIP:not-selected|files:1
+7028,"fix: infer bare models from active synced catalogs",SKIP,SKIP:not-selected|files:7
+7027,"fix(dashboard): make quota cards container responsive",SKIP,SKIP:not-selected|files:2
+7018,"Release v3.8.48",SKIP,SKIP:not-selected|files:100
+7014,"docs: add realistic provider guide with honest status for each category",SKIP,SKIP:infra-only|files:1
+7012,"fix(codex): preserve GPT-5.6 reasoning contract",SKIP,SKIP:not-selected|files:14
+7011,"fix(ci): collect Gemini translator tests",SKIP,SKIP:not-selected|files:2
+7008,"[codex] Keep mode-pack weights consistent in auto fallback ranking",SKIP,SKIP:not-selected|files:2
+7007,"[codex] Keep mode-pack weights consistent in auto fallback ranking",SKIP,SKIP:not-selected|files:2
+7006,"feat(sidecar): add provider manifest client",SKIP,SKIP:not-selected|files:5
+7004,"fix(models): preserve chat-capable image model rows",SKIP,SKIP:not-selected|files:2
+7002,"feat: implement executable issue-agent triage runs",SKIP,SKIP:not-selected|files:25
+7001,"fix: DDG circuit breaker (#6999) + null content validation (#7000)",SKIP,SKIP:not-selected|files:5
+6995,"feat(quota): opt-in auto-ping to keep Codex quota windows warm (#6977)",DUPLICATE,exclude-or-dup-list
+6994,"feat(providers): curated OpenRouter embeddings catalog + specialty merge in live discovery (#6976)",PORT,named-map-id
+6993,"Preserve direct-model combo metadata",SKIP,SKIP:not-selected|files:29
+6992,"fix(sse): schema-aware optional tool-arg normalization for Codex routes (#6951)",SKIP,SKIP:not-selected|files:6
+6991,"fix(combos): show embedding/rerank models and disambiguate duplicate names in builder options (#6975; #6957)",SKIP,SKIP:not-selected|files:5
+6990,"fix(sse): apply commentary-phase drop filter in TRANSLATE mode (#6952)",SKIP,SKIP:not-selected|files:4
+6988,"fix(6848): auto-cleanup for telemetry tables causing OOM",SKIP,SKIP:not-selected|files:4
+6987,"feat(6922): effort-tier aliases for glm-5.2 & mimo-v2.5 on opencode-go",SKIP,SKIP:not-selected|files:3
+6986,"fix(providers): cap grok-cli tools at 200 for cli-chat-proxy",DUPLICATE,exclude-or-dup-list
+6985,"fix(6975): show embedding models in combo builder picker",SKIP,SKIP:not-selected|files:2
+6984,"fix(dashboard): hide disabled provider connections from combo builder",SKIP,SKIP:not-selected|files:4
+6983,"fix(6980): classify Cloudflare AI neuron exhaustion as quota_exhausted",SKIP,SKIP:not-selected|files:3
+6982,"fix(6954;6953): preserve system role + strip empty-signature thinking blocks",SKIP,SKIP:not-selected|files:4
+6981,"fix(providers): classify cloudflare-ai daily neuron exhaustion as quota_exhausted",SKIP,SKIP:not-selected|files:3
+6979,"fix(6914;6912): antigravity server-side tool invocations + remove clinepass gate from ensureThinkingBudget",SKIP,SKIP:not-selected|files:5
+6974,"Feat/chaos mode",SKIP,SKIP:not-selected|files:100
+6973,"feat(auth): OIDC as optional dashboard admin login gate (password fallback preserved)",SKIP,SKIP:not-selected|files:12
+6966,"fix(api): LAN model-list discovery uses local-first SSRF guard (#6939)",PORT,named-map-id
+6965,"fix: defer response.completed until trailing usage-only chunk on /v1/responses streams (#6906)",PORT,named-map-id
+6964,"fix: rename max_completion_tokens to max_tokens for volcengine/DeepSeek (#6912)",PORT,named-map-id
+6963,"fix: wire shared quota-fetch throttle into all provider fetchers (#6911)",PORT,named-map-id
+6962,"fix: classify LAN embeddings providers as no-auth (#6925)",SKIP,SKIP:not-selected|files:3
+6961,"fix: label audio/embeddings/image compatible providers by kind on ProviderCard (#6936)",PORT,named-map-id
+6960,"fix: omit removed attachments field from Muse Spark Web request (#6935)",SKIP,SKIP:not-selected|files:3
+6959,"fix(sse): set includeServerSideToolInvocations on Antigravity tool cloak decoys (#6914)",SKIP,SKIP:not-selected|files:3
+6958,"feat(providers): refresh Antigravity; GitHub; Devin Desktop; and Grok catalogs",SKIP,SKIP:not-selected|files:100
+6955,"fix(perplexity-web): stop empty-content responses from live schematized SSE",SKIP,SKIP:not-selected|files:3
+6947,"fix(tokenHealthCheck): normalize provider case in rotating/copilot checks",SKIP,SKIP:not-selected|files:3
+6946,"fix(db): add authType filter support to getProviderConnections",SKIP,SKIP:not-selected|files:2
+6945,"chore(release): reconcile 81 changelog.d fragments into CHANGELOG [3.8.47]",SKIP,SKIP:infra-only|files:82
+6944,"fix(sse): escape backslash in ChatGPT-web citation link text (#6569)",SKIP,SKIP:not-selected|files:3
+6943,"fix(6813): fix thinking budget zero drop and default thinkingConfig injection",SKIP,SKIP:not-selected|files:3
+6942,"fix(6803): move timing-sensitive tests to serial and increase audit shutdown timeout",SKIP,SKIP:not-selected|files:10
+6938,"fix(grok): strip reasoningEffort for grok cli models",PORT,named-map-id
+6937,"fix(grok): align responses tool-call shape for grok models",PORT,named-map-id
+6932,"fix(codex): correct GPT-5.6 Responses input normalization (input_text -> output_text)",PORT,named-map-id
+6931,"docs: slim CLAUDE.md by extracting playbooks and deep-dive detail",SKIP,SKIP:infra-only|files:3
+6930,"perf: thread pre-fetched token to checkRateLimit avoiding re-query",PORT,named-map-id
+6929,"fix: eliminate redundant getApiKeyMetadata DB read in embeddings route",SKIP,SKIP:not-selected|files:2
+6927,"fix(sse): flatten structured (array) content in Qwen Web executor",PORT,named-map-id
+6926,"feat: add icons for 46 missing provider images",PORT,named-map-id
+6923,"perf(db): cap modelLockouts eviction at 1000 entries",SKIP,SKIP:not-selected|files:2
+6921,"perf(db): add temp_store=MEMORY pragma to SQLite init",SKIP,SKIP:not-selected|files:2
+6920,"perf(startup): warm model catalog cache at module init",SKIP,SKIP:not-selected|files:2
+6919,"perf(db): add jitter to stagger due-on-restart connections",SKIP,SKIP:not-selected|files:2
+6918,"perf(db): project columns + composite index in getProviderConnections",SKIP,SKIP:not-selected|files:3
+6917,"fix: add re-entrancy guard to token health check sweep",SKIP,SKIP:not-selected|files:3
+6909,"fix(proxy): relay repair + free-pool UX + relay awareness",SKIP,SKIP:not-selected|files:32
+6908,"fix(cli): ship head-response-guard.cjs in the standalone bundle",PORT,named-map-id
+6907,"[trim] feat(combo): add context requirements config for target filtering",PORT,named-map-id
+6905,"fix(api): merge id-only tool_call continuation deltas in stream summary (#6276)",PORT,named-map-id
+6904,"fix(providers): honor max_token capability override in reasoning buffer clamp (#6524)",PORT,named-map-id
+6903,"fix(sse): apply cliproxyapiModelMapping at CLIProxyAPI dispatch time (#6876)",PORT,named-map-id
+6902,"fix(mcp): de-duplicate TOTAL_MCP_TOOL_COUNT by tool name (#6854)",SKIP,SKIP:not-selected|files:4
+6901,"fix(compression): surface silently-dropped stacked-pipeline steps and fix inflation-guard misfire (#6479)",SKIP,SKIP:not-selected|files:7
+6900,"fix(plugin): split OC-gate provider id from OmniRoute-facing routing id (#6859)",SKIP,SKIP:not-selected|files:7
+6899,"fix(db): share sql.js preinit across callers; fix named-param bind (#6628; #6802)",SKIP,SKIP:not-selected|files:6
+6898,"fix(db): stop legacy log-archive migration from deleting the live app-logger directory and crashing startup (#6401)",PORT,named-map-id
+6897,"fix(sse): de-flake timing-sensitive combo cooldown/breaker tests (#6803)",SKIP,SKIP:not-selected|files:8
+6896,"fix(dashboard): surface Claude extraUsage credits in quota card (#6806)",PORT,named-map-id
+6895,"fix(providers): honor a provider-level proxy assigned to no-auth providers (#6272)",PORT,named-map-id
+6894,"fix(providers): wire devin cloud-agent into provider validation and static models (#6142)",PORT,named-map-id
+6893,"fix(routing): recognize Kimi token-limit 400 as context overflow for combo fallback (#6637)",PORT,named-map-id
+6892,"fix(cli): waitForServer must not report ready on bare TCP accept (#6800)",PORT,named-map-id
+6891,"fix(providers): give v0-vercel-web its own alias so credentials are detected (#6343)",PORT,named-map-id
+6890,"fix(providers): strip redundant node prefix on connId-addressed custom models (#6772)",PORT,named-map-id
+6889,"fix(routing): honor no-auth provider connection isActive in auto-combo pool (#6557)",PORT,named-map-id
+6888,"fix(providers): scope nvidia NIM 404s to the single failing model (#6773)",PORT,named-map-id
+6887,"fix(api): recognize OpenRouter reasoning/reasoning_details in non-streaming OpenAI-to-Claude conversion (#6623)",PORT,named-map-id
+6886,"fix(api): route error responses through sanitizeErrorMessage (Hard Rule #12)",PORT,named-map-id
+6885,"fix(docs): document Turbopack build memory tradeoff for RAM-constrained machines (#6409)",SKIP,SKIP:not-selected|files:4
+6884,"fix(ci): exclude check-test-masking.test.ts fixtures from self-referential tautology gate (#6634)",SKIP,SKIP:not-selected|files:5
+6883,"fix(sse): treat compression no-op as zero-savings; not inflation/silent-drop",SKIP,SKIP:not-selected|files:5
+6882,"fix(providers): route AgentRouter key validation through CC wire image (#6377)",SKIP,SKIP:not-selected|files:3
+6881,"fix(ci): publish electron-updater latest.yml manifests in release assets (#6766)",SKIP,SKIP:not-selected|files:5
+6878,"fix(release): read changelog.d fragments in list-uncovered-commits (#6857)",SKIP,SKIP:not-selected|files:3
+6877,"[defer] fix embedded CLIProxyAPI config handling",SKIP,SKIP:not-selected|files:1
+6871,"fix(api): return 400 (not 500) on malformed JSON body",PORT,named-map-id
+6870,"fix(oauth): embed Trae OAuth client_id via resolvePublicCred (Hard Rule #11)",SKIP,SKIP:not-selected|files:4
+6869,"fix(fusion): select judge from a surviving panel member when no explicit judge",SKIP,SKIP:not-selected|files:2
+6868,"fix(sse): stop combo path tripping whole-provider breaker on plain 429",SKIP,SKIP:not-selected|files:3
+6867,"feat(proxy): shorthand proxy formats + protocol header mode for bulk import",SKIP,SKIP:not-selected|files:11
+6866,"fix(sse): combo model lockout honors parsed upstream quota reset (#6863)",SKIP,SKIP:not-selected|files:3
+6862,"feat(providers): add GPT-5.6 model family",SKIP,SKIP:not-selected|files:100
+6860,"feat(proxy): relay repair + free-pool UX + relay awareness",SKIP,SKIP:not-selected|files:100
+6856,"fix(usage): validate exact xAI cost values for #6711",SKIP,SKIP:not-selected|files:4
+6855,"[defer] feat(omnicontext): Continuity Plane Phase 0–4 + coverage; CI eval; Memory embed; docs",SKIP,SKIP:not-selected|files:97
+6853,"docs(readme): fix stale strategy/tool/scoring counts (18 strategies; 94 tools; 12-factor)",SKIP,SKIP:infra-only|files:2
+6852,"Feat/omnicontext phase 0",SKIP,SKIP:not-selected|files:100
+6851,"feat(omnicontext): Continuity Plane Phase 0–4 + coverage; CI eval; Memory embed; docs",SKIP,SKIP:not-selected|files:97
+6849,"docs: refresh stale llm.txt facts + relocate design.md to docs/architecture/DESIGN_SYSTEM.md",SKIP,SKIP:not-selected|files:45
+6847,"docs: rename /implement-prs → /merge-prs in CLAUDE.md (Rule #21)",SKIP,SKIP:infra-only|files:1
+6841,"fix(docker): copy head-response-guard.cjs into the standalone bundle (boot crash)",SKIP,SKIP:not-selected|files:2
+6840,"fix(kiro): probe IdC region during profileArn discovery; cross-region (recovers #6099)",SKIP,SKIP:not-selected|files:6
+6839,"fix(antigravity): sanitize Cloud Code safety settings (recovers #6581)",SKIP,SKIP:not-selected|files:3
+6838,"feat(compression): update vendored GCF (Headroom) codec to spec v3.2 — nested flattening",SKIP,SKIP:not-selected|files:11
+6833,"feat(provider): add OpenVecta AI inference gateway",SKIP,SKIP:not-selected|files:11
+6832,"chore(deps): bump github/codeql-action/init from 4.36.3 to 4.37.0",SKIP,SKIP:not-selected|files:8
+6831,"chore(deps): bump github/codeql-action/analyze from 4.36.3 to 4.37.0",SKIP,SKIP:not-selected|files:8
+6830,"fix(dashboard): logs detail modal no longer reopens on first close",SKIP,SKIP:not-selected|files:2
+6829,"fix(providers): classify 404 as MODEL_NOT_FOUND to stop retry storm (#6827)",PORT,named-map-id
+6828,"fix(bootstrap): filter empty process.env values to prevent Docker env crash loop",PORT,named-map-id
+6823,"feat: add Z.ai Web free web-cookie provider (#4056)",PORT,named-map-id
+6822,"feat(providers): manual context-window override for custom models (#4125)",SKIP,SKIP:not-selected|files:48
+6821,"fix(providers): honor explicit thinking.budget_tokens 0 in openai->gemini transform (#6813)",PORT,named-map-id
+6820,"feat(codex): echo requested effort-suffixed model id in Responses payloads (#3697)",PORT,named-map-id
+6819,"[dup] fix(providers): drop image_generation for gpt-5.3-codex-spark (#6651)",SKIP,SKIP:not-selected|files:2
+6818,"feat(usage): surface Antigravity weekly quota alongside the 5-hour window (#4017)",PORT,named-map-id
+6817,"feat(resilience): weekly-429 cooldown for fetcher-less providers (#3709)",SKIP,SKIP:not-selected|files:4
+6816,"feat(combo): strict budget-cap fallback policy for auto/* combos (#3470)",PORT,named-map-id
+6815,"feat: improve Provider Quota page horizontal density (#3520)",SKIP,SKIP:not-selected|files:3
+6814,"feat: per-model web-search interception rule (#3384)",SKIP,SKIP:not-selected|files:7
+6812,"feat: request count log per provider; per date (#4009)",SKIP,SKIP:not-selected|files:53
+6811,"feat(dashboard): add search to Playground model picker dropdown (#4086)",SKIP,SKIP:not-selected|files:5
+6810,"feat: sidebar search/filter input (#4013)",SKIP,SKIP:not-selected|files:5
+6809,"refactor(usage): type saveRequestUsage with UsageEntry interface + any-budget ratchet (#3512)",SKIP,SKIP:not-selected|files:4
+6808,"[trim] feat(combo): add context requirements config for target filtering",SKIP,SKIP:not-selected|files:55
+6807,"fix(sse): default reasoning summary for effort-only Responses requests",SKIP,SKIP:not-selected|files:3
+6805,"fix(codex): strip include from compact responses requests",SKIP,SKIP:not-selected|files:3
+6804,"feat(fusion): let judge use its own knowledge and override the panel",SKIP,SKIP:not-selected|files:2
+6798,"feat(proxy): implement latency-optimized proxy rotation strategy",SKIP,SKIP:not-selected|files:13
+6797,"Release/v3.8.45",SKIP,SKIP:not-selected|files:100
+6795,"fix(cursor): use Agent CLI build id for x-cursor-client-version",SKIP,SKIP:not-selected|files:8
+6794,"[needs-vps] fix(electron): materialize Turbopack hashed-module symlinks during packaging (#6724; #6594)",SKIP,SKIP:not-selected|files:3
+6792,"fix(api): accept all catalog engines on compression PUT schema (#6747)",SKIP,SKIP:not-selected|files:6
+6791,"fix(providers): ensure DeepSeek Web SSE emits [DONE] after FINISHED",SKIP,SKIP:not-selected|files:3
+6790,"fix(translator): read PDF/video file attachments for Gemini/Antigravity and Claude",DUPLICATE,exclude-or-dup-list
+6788,"ci(quality): TIA impacted-run loader parity for dashboard tests (closes #6787)",SKIP,SKIP:infra-only|files:2
+6786,"fix(responses): escape literal control chars in tool call JSON; emit …",SKIP,SKIP:not-selected|files:18
+6784,"chore(release): merge-train — batch-validate queued PRs once (kills O(N²) CI waits)",SKIP,SKIP:not-selected|files:3
+6783,"feat(release): changelog.d/ fragments — eliminate the CHANGELOG merge-storm cascade",SKIP,SKIP:not-selected|files:10
+6781,"ci(quality): shard unit fast-path 2→4 (halves the heaviest job)",SKIP,SKIP:infra-only|files:1
+6780,"fix(codex): bump default client version to 0.144.0",SKIP,SKIP:not-selected|files:7
+6779,"feat(cursor): add Opus 4.8; Fable 5; and Sonnet 5 model families",SKIP,SKIP:not-selected|files:4
+6776,"Discover live Codex models",SKIP,SKIP:not-selected|files:10
+6774,"chore(cursor): add Grok 4.5 effort/fast model IDs",SKIP,SKIP:not-selected|files:3
+6769,"fix(i18n): translate hardcoded Portuguese dashboard strings to English (#6761; #6768)",SKIP,SKIP:not-selected|files:6
+6763,"\ feat: operator-configurable account rotation\",SKIP,SKIP:not-selected|files:8
+6762,"[subsumed] fix(gemini): preserve chat file_data PDFs",SKIP,SKIP:not-selected|files:2
+6759,"fix(api): raise provider apiKey cap for cookie-based web providers (#6715)",SKIP,SKIP:not-selected|files:2
+6757,"fix(api): accept enableRenderers in RTK compression config schema (#6703)",SKIP,SKIP:not-selected|files:2
+6756,"fix(api): accept rtkConfig.enableRenderers on compression write schema (#6751)",SKIP,SKIP:not-selected|files:2
+6755,"chore(ci): add coverage check for API tests",SKIP,SKIP:not-selected|files:5
+6753,"fix(gemini): preserve chat file_data PDFs",SKIP,SKIP:not-selected|files:2
+6743,"fix(api): emit reasoning_content on claude-web + v0-vercel-web SSE (#6662)",PORT,named-map-id
+6742,"fix(resilience): route remaining credential-selection call sites through quota preflight (#6686)",SKIP,SKIP:not-selected|files:16
+6741,"fix(compression): reconcile outer vs per-engine token counts (#6488)",SKIP,SKIP:not-selected|files:4
+6735,"fix(api): Responses passthrough emits event-only SSE frames after filtering commentary output (#6561)",SKIP,SKIP:not-selected|files:4
+6734,"fix(cli): fall back to settings.json when Claude Code binary is unresolvable (#6701)",SKIP,SKIP:not-selected|files:4
+6733,"fix(resilience): release combo session-stickiness pin on a terminal/quality-rejected account (#6692)",DUPLICATE,exclude-or-dup-list
+6732,"fix(resilience): resolve fp-pinned combo account back to real connection id (#6696)",SKIP,SKIP:not-selected|files:4
+6731,"fix(resilience): apikey-provider 429s honor explicit quota-exhausted text (#6638)",PORT,named-map-id
+6730,"fix(translator): defer content_block_start until GLM streams the tool name",SKIP,SKIP:not-selected|files:3
+6729,"fix(translator): strip empty cloud_base_branch from Cursor Subagent tool call",SKIP,SKIP:not-selected|files:3
+6728,"feat(chaos): big update - optimize; fix bugs; add features; enhance UX",SKIP,SKIP:not-selected|files:36
+6727,"feat(models): add capability override UI",SKIP,SKIP:not-selected|files:13
+6726,"fix(providers): Kiro adaptive-thinking allowlist excludes sonnet-4.5/haiku-4.5 (#6576)",PORT,named-map-id
+6725,"fix(startup): lazy-import ioredis in rateLimiter to fix MCP ERR_MODULE_NOT_FOUND (#6559)",SKIP,SKIP:not-selected|files:4
+6723,"fix(i18n): backfill 194 missing pt-BR keys (#6695)",SKIP,SKIP:not-selected|files:3
+6722,"fix(providers): stop quota card re-sorting Codex/GLM bars by remaining % (#6687)",SKIP,SKIP:not-selected|files:5
+6721,"fix(providers): drop image_generation for Codex Spark models regardless of plan (#6651)",SKIP,SKIP:not-selected|files:3
+6720,"fix(build): suppress Turbopack over-bundling warning from agentSkills generator (#6582)",SKIP,SKIP:not-selected|files:3
+6719,"fix(i18n): translate provider visibility/free-paid filter labels across 15 locales (#6694)",SKIP,SKIP:not-selected|files:17
+6718,"fix(startup): rename reasoningControls.ts to avoid webpack casing collision (#6584)",SKIP,SKIP:not-selected|files:8
+6717,"fix(api): point CLI health command at /api/monitoring/health (#6677)",SKIP,SKIP:not-selected|files:3
+6716,"ci(quality): cut PR gate wall time without dropping protection",SKIP,SKIP:not-selected|files:31
+6714,"Clamp reasoning token buffer to model output cap",PORT,named-map-id
+6713,"fix(antigravity): surface aborted Gemini tool calls off end_turn",DUPLICATE,exclude-or-dup-list
+6712,"fix(volcengine): clamp Kimi max_tokens to Ark endpoint cap",PORT,named-map-id
+6711,"fix(usage): honor xAI provider-reported exact cost",SKIP,SKIP:not-selected|files:5
+6710,"fix(codex): surface capacity errors embedded in 200-OK SSE streams",DUPLICATE,exclude-or-dup-list
+6709,"feat(xai): route xAI clients to Grok native /v1/responses endpoint",PORT,named-map-id
+6708,"fix(sse): skip thinkingConfig for gemma models in openai→gemini translation",PORT,named-map-id
+6707,"fix(gemini): skip thinkingConfig for Gemma-4 on OpenAI→Gemini path",SKIP,SKIP:not-selected|files:3
+6706,"fix(oauth): avoid bare-email dedup of Codex OAuth logins",PORT,named-map-id
+6705,"fix(translator): unwrap bare {function:{…}} OpenAI tools without parent type",SKIP,SKIP:not-selected|files:3
+6704,"fix(sse): unwrap bare {function:{…}} tools in openai→claude translation",DUPLICATE,exclude-or-dup-list
+6702,"Expose per-combo reasoning token buffer toggle",SKIP,SKIP:not-selected|files:6
+6700,"fix: update Dockerfile with --allow-scripts for better-sqlite3 compil…",SKIP,SKIP:not-selected|files:3
+6698,"fix(sse): count gate/combo-rejected requests in per-api-key usage",PORT,named-map-id
+6697,"feat(oauth): accept 9router camelCase Codex export in bulk import (#6665)",SKIP,SKIP:not-selected|files:3
+6693,"ci(vps): VPS_ALWAYS_ON — keep the dedicated CI host up across releases",SKIP,SKIP:not-selected|files:1
+6691,"ci(quality): route heavy fast-path jobs to the self-hosted VPS pool (flag-gated)",SKIP,SKIP:infra-only|files:1
+6682,"fix(cli): compression REST fallback uses canonical defaultMode + JSON object cells (#6571)",SKIP,SKIP:not-selected|files:5
+6681,"fix(providers): register openrouter rerank provider (#6574)",DUPLICATE,exclude-or-dup-list
+6679,"feat(chaos): add Chaos Mode — multi-model parallel/collaborative execution",SKIP,SKIP:not-selected|files:35
+6678,"feat(settings): 9router-style Routing Strategy card + sticky parity",SKIP,SKIP:not-selected|files:15
+6676,"fix(cli): use defaultMode in compression REST fallback + render objects in table output (#6571)",SKIP,SKIP:not-selected|files:4
+6675,"fix(providers): remove obsolete providers",SKIP,SKIP:not-selected|files:39
+6663,"docs(claude): nomes da nova família de skills review/triage/implement",SKIP,SKIP:infra-only|files:1
+6661,"chore(deps): bump omniglyph to ^1.0.2 (security: ReDoS fixes)",SKIP,SKIP:infra-only|files:2
+6649,"feat: add setting for provider/model-specific parameters",SKIP,SKIP:not-selected|files:23
+6648,"fix(mimocode): handle 400 with cooldown + account rotation",DUPLICATE,exclude-or-dup-list
+6647,"fix(cli): detect WinGet Claude Code on Windows",SKIP,SKIP:not-selected|files:3
+6646,"docs(routing): reconcile 17 vs 18 public-strategy count in AUTO-COMBO",SKIP,SKIP:infra-only|files:1
+6645,"fix(api): sanitize catch-block error.message in middleware/hooks routes",DUPLICATE,exclude-or-dup-list
+6644,"docs: sync routing-strategy count to 18 across README + AGENTS.md",SKIP,SKIP:infra-only|files:4
+6643,"docs(claude): fix p2c casing to match ROUTING_STRATEGY_VALUES",SKIP,SKIP:infra-only|files:1
+6642,"docs(claude): align research artifact path with superpowers convention",SKIP,SKIP:infra-only|files:2
+6641,"fix(test): replace tautology in playground-api-tab + make test-masking catch it (#6404)",SKIP,SKIP:not-selected|files:100
+6640,"fix(vision-bridge): auto-reroute non-vision models to fastest vision model when images detected",DUPLICATE,exclude-or-dup-list
+6635,"fix(chatgpt-web): render citations as markdown links",SKIP,SKIP:not-selected|files:6
+6632,"fix(db): break probe-failed/restore loop on large storage.sqlite",SKIP,SKIP:not-selected|files:2
+6630,"fix(db): break probe-failed/restore loop that hangs server startup on sql.js OOM (v3.8.46)",SKIP,SKIP:not-selected|files:1
+6629,"fix(db): break probe-failed/restore loop that hangs server startup on sql.js OOM (v3.8.46)",SKIP,SKIP:not-selected|files:100
+6626,"fix(api): fix Invalid request when editing Codex connections (#6562)",SKIP,SKIP:not-selected|files:3
+6624,"fix(api): POST /api/keys no longer hangs on fresh install (#6570)",SKIP,SKIP:not-selected|files:4
+6622,"fix(startup): tolerate 'Database closed' in instrumentation bootstrap (#6560)",SKIP,SKIP:not-selected|files:4
+6621,"fix(auth): enforce API-key policy on Codex Responses WebSocket bridge (#6564)",SKIP,SKIP:not-selected|files:3
+6620,"fix(proxy): force CONNECT tunnel for HTTP proxied requests (undici 8.7) + production deps bump",DUPLICATE,exclude-or-dup-list
+6619,"fix(startup): resolve AgentBridge MITM router key from existing OmniRoute key",SKIP,SKIP:not-selected|files:3
+6618,"fix(providers): correct Content-Type on Cloudflare Worker upload (#6416)",SKIP,SKIP:not-selected|files:5
+6617,"fix(startup): cover all 4 antigravity hosts in AgentBridge MITM certs (#6494)",SKIP,SKIP:not-selected|files:3
+6616,"fix(resilience): fall back on masked-200 credit exhaustion (#6427)",SKIP,SKIP:not-selected|files:3
+6615,"fix(compression): rank non-default engines in the adaptive ladder (#6533)",SKIP,SKIP:not-selected|files:3
+6614,"fix(providers): backfill #6454 CHANGELOG + 11-member fusion regression guard",SKIP,SKIP:not-selected|files:2
+6611,"feat(sandbox): native Apple Container; WSL; OrbStack; Podman runtime support",SKIP,SKIP:not-selected|files:5
+6610,"fix(providers): exclude image/diffusion models from chat catalog (#6457)",SKIP,SKIP:not-selected|files:4
+6609,"fix(api): render tool-call args correctly via /anthropic (#6459)",SKIP,SKIP:not-selected|files:3
+6608,"fix(api): close HEAD requests immediately instead of hanging (#6400)",DUPLICATE,exclude-or-dup-list
+6607,"fix(providers): honor fusion config.judgeModel (#6455)",DUPLICATE,exclude-or-dup-list
+6606,"fix(providers): exclude image/diffusion models from chat catalog (#6457)",DUPLICATE,exclude-or-dup-list
+6605,"fix(electron): bump electron 42→43 + build better-sqlite3 from source (ABI 148)",SKIP,SKIP:not-selected|files:3
+6604,"feat(sandbox): native Apple Container; WSL Container; OrbStack; Podman runtime support",SKIP,SKIP:not-selected|files:100
+6603,"fix(test): replace playground-api-tab tautology + tighten test-masking (#6404)",SKIP,SKIP:not-selected|files:4
+6602,"fix(oauth): persist and reuse rotated Codex OAuth refresh token (#6352)",DUPLICATE,exclude-or-dup-list
+6601,"fix(dashboard): size the web-session cookie modal to fit on 1080p (#6265)",SKIP,SKIP:not-selected|files:4
+6600,"fix(resilience): thread connection snapshot into headroom Codex quota fetch (#6379)",SKIP,SKIP:not-selected|files:4
+6599,"fix(logger): tolerate write to removed DATA_DIR so tests don't crash on teardown (#6360)",SKIP,SKIP:not-selected|files:2
+6598,"fix(providers): include custom models in Free Provider Rankings filters (#6368)",SKIP,SKIP:not-selected|files:3
+6597,"fix(providers): stop cloudflare-ai from silently dropping image content parts (#6390)",DUPLICATE,exclude-or-dup-list
+6596,"docs(changelog): backfill #6304 + #6240 bug-fix bullets",SKIP,SKIP:infra-only|files:1
+6590,"feat(sse): add connection backpressure guard to chat handler",SKIP,SKIP:not-selected|files:3
+6588,"deps: bump the development group across 1 directory with 6 updates",SKIP,SKIP:infra-only|files:2
+6587,"feat: add Kiro API key authentication",SKIP,SKIP:not-selected|files:31
+6586,"fix(sse): preserve server-tool literal names in message history and tool_choice",DUPLICATE,exclude-or-dup-list
+6583,"feat(quality): validate-release-green --full-ci — reproduce the ci.yml static gate set (P0)",SKIP,SKIP:not-selected|files:5
+6581,"fix(antigravity): sanitize Cloud Code safety settings",SKIP,SKIP:no-files|files:0
+6580,"fix(release): v3.8.46 closing — proxy random via crypto.randomInt (CodeQL #698/#699) + date [3.8.46]",SKIP,SKIP:not-selected|files:46
+6578,"fix(startup): normalize non-Error rejections from DB init before rethrow (#6560)",SKIP,SKIP:not-selected|files:2
+6577,"feat(plugins): add langfuse plugin",SKIP,SKIP:not-selected|files:3
+6572,"feat: headroom integration + resource optimizations for container stability",DUPLICATE,exclude-or-dup-list
+6569,"Release v3.8.47",DUPLICATE,exclude-or-dup-list
+6565,"fix(security): enforce API key policy in Codex WS bridge (#6564)",SKIP,SKIP:not-selected|files:2
+6558,"fix(fusion): judge replayed a panel answer via idempotency-key collision",DUPLICATE,exclude-or-dup-list
+6556,"feat(compression): omniglyph engine (context-as-image; Fable 5 direct) — stack + single mode",DUPLICATE,exclude-or-dup-list
+6554,"fix(playground): accept a dashboard session for presets under REQUIRE_API_KEY",SKIP,SKIP:not-selected|files:3
+6553,"perf(health): short-TTL cache for GET /api/monitoring/health",DUPLICATE,exclude-or-dup-list
+6552,"fix(dashboard-api): apply hidePaidModels to /api/models + openrouter-catalog + test endpoints (#6328)",DUPLICATE,exclude-or-dup-list
+6551,"fix(backup): exclude paid models from JSON export/backup when hidePaidModels=true (#6328)",DUPLICATE,exclude-or-dup-list
+6550,"fix(autoCombo): exclude paid models from fusion candidate pools when hidePaidModels=true (#6328)",DUPLICATE,exclude-or-dup-list
+6549,"fix(models): apply hidePaidModels to synced/custom/alias-backed/managed-fallback loops (#6328)",DUPLICATE,exclude-or-dup-list
+6548,"fix(tests): replace expect(true) tautology in playground-api-tab (#6404)",SKIP,SKIP:not-selected|files:1
+6547,"docs(readme): cross-link CodeWebChat as editor-side companion (#6189)",SKIP,SKIP:infra-only|files:1
+6546,"fix(providers): fail fast on empty auto-combo pool instead of 15s timeout (#6458)",DUPLICATE,exclude-or-dup-list
+6545,"feat(combo): sanitized diagnostic trace on auto-combo terminal failure",SKIP,SKIP:not-selected|files:4
+6544,"perf(models): short-TTL request-coalescing cache for the /v1/models catalog",SKIP,SKIP:not-selected|files:4
+6543,"fix(security): fail-closed CORS for cloud-agent management routes",DUPLICATE,exclude-or-dup-list
+6542,"fix(security): SSRF-guard provider validation probes (block cloud metadata)",DUPLICATE,exclude-or-dup-list
+6541,"fix(security): loopback-gate /api/middleware/* (arbitrary JS via vm.Script)",DUPLICATE,exclude-or-dup-list
+6538,"fix: broken tier-flow diagram on onboarding page",SKIP,SKIP:not-selected|files:2
+6536,"Default global reasoning token buffer off",SKIP,SKIP:not-selected|files:8
+6534,"fix(compression): honor UI-toggled engines in stackedPipeline dispatch + surface substitution (#6463)",SKIP,SKIP:not-selected|files:3
+6532,"fix(providers): warn when config.judgeModel is set on a non-fusion combo (#6455)",DUPLICATE,exclude-or-dup-list
+6527,"feat(providers): 'Add session cookie' modal — one-click 'Open <host>' link (#6268)",SKIP,SKIP:not-selected|files:5
+6526,"fix(providers): size AddApiKeyModal for 1080p — drop inner max-h cap; widen to lg (#6265)",SKIP,SKIP:not-selected|files:2
+6525,"fix(providers): reject image-only models on /v1/chat/completions with clear error (#6457)",DUPLICATE,exclude-or-dup-list
+6523,"fix(providers): enrich model_cooldown 429 body with retry_after ISO + credential count (#6460)",DUPLICATE,exclude-or-dup-list
+6522,"fix(api): validate chat completion scalars before provider lookup (#6412)",SKIP,SKIP:not-selected|files:3
+6521,"fix(providers): honor fusion minPanel=1 and surface per-member failures in fusion 503 (#6454)",DUPLICATE,exclude-or-dup-list
+6520,"fix(compression): enable caveman engine when selected as stacked step (#6464)",SKIP,SKIP:not-selected|files:2
+6519,"fix(compression): surface fallback reasons in preview response (#6461)",SKIP,SKIP:not-selected|files:3
+6518,"feat(sse): exclude paid-only models from auto/* candidate pool when hidePaidModels is on (#6512)",DUPLICATE,exclude-or-dup-list
+6517,"fix(api): add explicit HEAD handler for /v1/models to prevent ~6s hang (#6400)",DUPLICATE,exclude-or-dup-list
+6516,"fix(api): JSON 404 for unknown /anthropic/*; /openai/*; /metrics; /debug; /.env (#6405 follow-up)",DUPLICATE,exclude-or-dup-list
+6515,"fix(api): return 400 for missing/invalid messages before model resolution (#6402)",DUPLICATE,exclude-or-dup-list
+6514,"fix(backend): accept mode:''caveman'' as alias for ''standard'' in compression API (#6425)",SKIP,SKIP:not-selected|files:2
+6513,"fix(api): return 415 when /v1/chat/completions receives non-JSON Content-Type (#6414)",DUPLICATE,exclude-or-dup-list
+6511,"fix(api): exempt test-model requests from Output Styles injection (#6240)",SKIP,SKIP:not-selected|files:4
+6510,"fix(providers): spawn Auggie CLI with shell:true on win32 (#6304)",SKIP,SKIP:not-selected|files:2
+6509,"feat(sse): provider-family auto combos auto/glm; auto/minimax; auto/zai; auto/mimo; auto/gemma; auto/llama; auto/gemini (#6453)",DUPLICATE,exclude-or-dup-list
+6508,"fix(resilience): recoverable 403 for no-credential providers (#6315)",SKIP,SKIP:not-selected|files:3
+6507,"fix(api): remove duplicate origin check causing LAN 403 on health-autopilot actions (#6277)",SKIP,SKIP:not-selected|files:3
+6506,"fix(compression): unknown engine names surface validationErrors instead of silently falling back",SKIP,SKIP:not-selected|files:3
+6505,"fix(pricing): persist sync status across module instances (#6325)",SKIP,SKIP:not-selected|files:3
+6504,"fix(cli): surface a diagnostic instead of a silent hang on serve readiness timeout (#6321)",SKIP,SKIP:not-selected|files:4
+6503,"fix(providers): strip reasoning_effort/reasoning from grok-cli requests (#6288)",SKIP,SKIP:not-selected|files:3
+6502,"fix(providers): stop Antigravity false quota-exhausted (#6295)",SKIP,SKIP:not-selected|files:3
+6501,"fix(compression): add intra-message dedup to session-dedup engine (#6467)",SKIP,SKIP:not-selected|files:6
+6499,"fix(ui): prevent silent overwrite of existing API key connections on …",PORT,ported:POST create-only 409 + provider-scoped default name|files:8
+commit:fb24740b73,"fix(ci): add the auto-enqueue pull_request_rule to the Mergify config (queue_conditions alone are eligibility-only) (#7179)",SKIP,release-ci-deps-commit
+commit:01ab5d1fd5,"chore(ci): add .mergify.yml to main — Mergify only reads config from the default branch (#7168)",SKIP,release-ci-deps-commit
+commit:7ee5bbc64d,"fix(build): v3.8.48 hotfix — npm tarball head-response-guard (#7065); electron win spawn; Sonar gate zeroed (#7055)",SKIP,release-ci-deps-commit
+commit:e8950ded39,"Release v3.8.47 (#6569)",SKIP,release-ci-deps-commit
+commit:9cd18bf9a1,"fix(proxy): force CONNECT tunnel for HTTP proxied requests (undici 8.7) + production deps bump (#6620)",SKIP,release-ci-deps-commit
+commit:44d501ae6a,"deps: bump the development group across 1 directory with 6 updates (#6588)",SKIP,release-ci-deps-commit
+commit:5712364134,"fix(electron): bump electron 42→43 + build better-sqlite3 from source (ABI 148) (#6605)",SKIP,release-ci-deps-commit
+commit:1eae976b28,"fix(release): v3.8.46 closing — proxy random via crypto.randomInt (CodeQL #698/#699) + date [3.8.46]",SKIP,release-ci-deps-commit
+commit:92715c8f2c,"Release v3.8.46",SKIP,release-ci-deps-commit

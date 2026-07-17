@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { getStatusVariant as getConnectionStatusVariant } from "@/shared/utils/connectionStatus";
+import { sortConnectionsByAvailability, persistConnectionOrder } from "@/shared/utils/connectionReorder";
+import { isGooglePseProvider, isGooglePseReadyForSave, buildGooglePseProviderSpecificData, buildGooglePseValidationPayload } from "@/shared/utils/googlePseProviderSpecificData.js";
 import PropTypes from "prop-types";
 import { Card, Badge, Button, Modal, Select, Toggle, EditConnectionModal, ConfirmModal } from "@/shared/components";
 
@@ -196,18 +198,19 @@ ConnectionRow.propTypes = {
 // ── AddApiKeyModal ─────────────────────────────────────────────
 function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, onClose }) {
   const NONE = "__none__";
-  const [formData, setFormData] = useState({ name: "", apiKey: "", priority: 1, proxyPoolId: NONE });
+  const [formData, setFormData] = useState({ name: "", apiKey: "", priority: 1, proxyPoolId: NONE, cx: "" });
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
   const [saving, setSaving] = useState(false);
 
   const handleValidate = async () => {
+    if (!formData.apiKey || !isGooglePseReadyForSave(provider, formData.cx)) return;
     setValidating(true);
     try {
       const res = await fetch("/api/providers/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, apiKey: formData.apiKey }),
+        body: JSON.stringify(buildGooglePseValidationPayload(provider, formData.apiKey, formData.cx)),
       });
       const data = await res.json();
       setValidationResult(data.valid ? "success" : "failed");
@@ -216,7 +219,7 @@ function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, on
   };
 
   const handleSubmit = async () => {
-    if (!provider || !formData.apiKey) return;
+    if (!provider || !formData.apiKey || !isGooglePseReadyForSave(provider, formData.cx)) return;
     setSaving(true);
     try {
       let isValid = false;
@@ -225,19 +228,21 @@ function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, on
         const res = await fetch("/api/providers/validate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ provider, apiKey: formData.apiKey }),
+          body: JSON.stringify(buildGooglePseValidationPayload(provider, formData.apiKey, formData.cx)),
         });
         const data = await res.json();
         isValid = !!data.valid;
         setValidationResult(isValid ? "success" : "failed");
       } catch { setValidationResult("failed"); }
       finally { setValidating(false); }
+      const providerSpecificData = isGooglePseProvider(provider) ? buildGooglePseProviderSpecificData(formData.cx) : undefined;
       await onSave({
         name: formData.name,
         apiKey: formData.apiKey,
         priority: formData.priority,
         proxyPoolId: formData.proxyPoolId === NONE ? null : formData.proxyPoolId,
         testStatus: isValid ? "active" : "unknown",
+        ...(providerSpecificData ? { providerSpecificData } : {}),
       });
     } finally { setSaving(false); }
   };
@@ -257,11 +262,17 @@ function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, on
             <input type="password" className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary" value={formData.apiKey} onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })} />
           </div>
           <div className="pt-6">
-            <Button onClick={handleValidate} disabled={!formData.apiKey || validating || saving} variant="secondary">
+            <Button onClick={handleValidate} disabled={!formData.apiKey || !isGooglePseReadyForSave(provider, formData.cx) || validating || saving} variant="secondary">
               {validating ? "Checking..." : "Check"}
             </Button>
           </div>
         </div>
+        {isGooglePseProvider(provider) && (
+          <div>
+            <label className="text-xs text-text-muted mb-1 block">Search Engine ID (cx)</label>
+            <input className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary" value={formData.cx} onChange={(e) => setFormData({ ...formData, cx: e.target.value })} placeholder="e.g. 0123456789:abcdefg" />
+          </div>
+        )}
         {validationResult && (
           <Badge variant={validationResult === "success" ? "success" : "error"}>
             {validationResult === "success" ? "Valid" : "Invalid"}
@@ -274,7 +285,7 @@ function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, on
         <Select label="Proxy Pool" value={formData.proxyPoolId} onChange={(e) => setFormData({ ...formData, proxyPoolId: e.target.value })}
           options={[{ value: NONE, label: "None" }, ...(proxyPools || []).map((p) => ({ value: p.id, label: p.name }))]} />
         <div className="flex gap-2">
-          <Button onClick={handleSubmit} fullWidth disabled={!formData.name || !formData.apiKey || saving}>
+          <Button onClick={handleSubmit} fullWidth disabled={!formData.name || !formData.apiKey || !isGooglePseReadyForSave(provider, formData.cx) || saving}>
             {saving ? "Saving..." : "Save"}
           </Button>
           <Button onClick={onClose} variant="ghost" fullWidth>Cancel</Button>
@@ -348,10 +359,21 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
     setConnections(next);
     try {
       await Promise.all([
-        fetch(`/api/providers/${next[i1].id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ priority: i1 }) }),
-        fetch(`/api/providers/${next[i2].id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ priority: i2 }) }),
+        fetch(`/api/providers/${next[i1].id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ priority: i1 + 1 }) }),
+        fetch(`/api/providers/${next[i2].id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ priority: i2 + 1 }) }),
       ]);
     } catch { await fetch_(); }
+  };
+
+  const handleReorderByStatus = async () => {
+    const sorted = sortConnectionsByAvailability(connections);
+    setConnections(sorted);
+
+    try {
+      await persistConnectionOrder(providerId, sorted);
+    } catch {
+      await fetch_();
+    }
   };
 
   const handleDelete = async (id) => {
@@ -378,7 +400,10 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
   const handleUpdateProxy = async (connId, proxyPoolId) => {
     try {
       const res = await fetch(`/api/providers/${connId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ proxyPoolId: proxyPoolId || null }) });
-      if (res.ok) setConnections((prev) => prev.map((c) => c.id === connId ? { ...c, providerSpecificData: { ...c.providerSpecificData, proxyPoolId: proxyPoolId || null } } : c));
+      if (res.ok) {
+        const { connection: updatedConnection } = await res.json();
+        setConnections((prev) => prev.map((c) => c.id === connId ? (updatedConnection || c) : c));
+      }
     } catch (e) { console.log("proxy error:", e); }
   };
 
@@ -404,6 +429,17 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
           <h2 className="text-lg font-semibold">Connections</h2>
           <div className="flex flex-wrap items-center gap-2">
+            {connections.length > 1 && (
+              <Button
+                size="sm"
+                variant="secondary"
+                icon="swap_vert"
+                onClick={handleReorderByStatus}
+                title="Reorder by availability status"
+              >
+                Reorder
+              </Button>
+            )}
             <span className="text-xs text-text-muted font-medium">Round Robin</span>
             <Toggle
               checked={providerStrategy === "round-robin"}

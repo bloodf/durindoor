@@ -1,6 +1,6 @@
 services:
   durindoor:
-    image: decolua/durindoor:latest
+    image: ghcr.io/bloodf/durindoor:latest
     container_name: durindoor
     restart: always
     ports:

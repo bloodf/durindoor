@@ -40,7 +40,7 @@ const EXTRA_BINS = IS_WIN
       "/bin",
     ];
 
-export const EXTENDED_PATH = [...EXTRA_BINS, process.env.PATH || ""].filter(Boolean).join(path.delimiter);
+const EXTENDED_PATH = [...EXTRA_BINS, process.env.PATH || ""].filter(Boolean).join(path.delimiter);
 const PYTHON_CANDIDATES = ["python3.13", "python3.12", "python3.11", "python3.10", "python3", "python"];
 const MIN_VERSION = [3, 10];
 const HEADROOM_HEALTH_TIMEOUT_MS = 1500;
@@ -68,7 +68,6 @@ export function findHeadroomBinary() {
 // first candidate that can also see the installed `headroom-ai` package so the
 // dashboard probes and install action operate on the same interpreter as the CLI.
 export function findPython310() {
-  let firstValid = null;
   for (const candidate of PYTHON_CANDIDATES) {
     try {
       const ver = execSync(`${candidate} --version`, {
@@ -80,7 +79,10 @@ export function findPython310() {
       if (!match) continue;
       const [major, minor] = [parseInt(match[1], 10), parseInt(match[2], 10)];
       if (!(major > MIN_VERSION[0] || (major === MIN_VERSION[0] && minor >= MIN_VERSION[1]))) continue;
-      if (!firstValid) firstValid = candidate;
+      // Always probe pip show so the chosen interpreter actually has
+      // headroom-ai installed. Otherwise the dashboard probes and install
+      // action could land on a different interpreter than the one that has
+      // the package, especially when both python and python3 exist.
       try {
         execFileSync(candidate, ["-m", "pip", "show", "headroom-ai"], {
           stdio: ["ignore", "pipe", "ignore"],
@@ -96,7 +98,7 @@ export function findPython310() {
       // candidate not present, try next
     }
   }
-  return firstValid;
+  return null;
 }
 
 // Probe whether a Headroom proxy is reachable at the given URL by hitting /health.
@@ -162,7 +164,7 @@ export function getInstalledHeadroomExtras(python) {
     const version = packages.find((p) => p.name?.toLowerCase() === "headroom-ai")?.version || null;
     const extras = {};
     for (const extra of HEADROOM_COMPRESSION_EXTRAS) {
-      extras[extra] = EXTRA_MARKERS[extra].every((m) => names.has(m));
+      extras[extra] = EXTRA_MARKERS[extra].some((m) => names.has(m));
     }
     return { installed: true, version, extras };
   } catch {

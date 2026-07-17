@@ -1,5 +1,6 @@
 import { KIRO_CONFIG, assertValidAwsRegion } from "../constants/oauth.js";
 import { buildKiroProfileEndpoint } from "../../../../open-sse/config/kiroRegions.js";
+import { buildExternalIdpRefreshParams } from "../kiroExternalIdp.js";
 
 /**
  * Kiro OAuth Service
@@ -17,7 +18,7 @@ export class KiroService {
    * Register OIDC client with AWS SSO
    * Returns clientId and clientSecret for device code flow
    */
-  async registerClient(region = "us-east-1") {
+  async registerClient(region = "us-east-1", proxyOptions = null) {
     assertValidAwsRegion(region);
     const endpoint = `https://oidc.${region}.amazonaws.com/client/register`;
 
@@ -33,6 +34,7 @@ export class KiroService {
         grantTypes: KIRO_CONFIG.grantTypes,
         issuerUrl: KIRO_CONFIG.issuerUrl,
       }),
+      proxyOptions,
     });
 
     if (!response.ok) {
@@ -51,7 +53,7 @@ export class KiroService {
   /**
    * Start device authorization for AWS Builder ID or IDC
    */
-  async startDeviceAuthorization(clientId, clientSecret, startUrl, region = "us-east-1") {
+  async startDeviceAuthorization(clientId, clientSecret, startUrl, region = "us-east-1", proxyOptions = null) {
     assertValidAwsRegion(region);
     const endpoint = `https://oidc.${region}.amazonaws.com/device_authorization`;
 
@@ -65,6 +67,7 @@ export class KiroService {
         clientSecret,
         startUrl,
       }),
+      proxyOptions,
     });
 
     if (!response.ok) {
@@ -86,7 +89,7 @@ export class KiroService {
   /**
    * Poll for token using device code (AWS Builder ID/IDC)
    */
-  async pollDeviceToken(clientId, clientSecret, deviceCode, region = "us-east-1") {
+  async pollDeviceToken(clientId, clientSecret, deviceCode, region = "us-east-1", proxyOptions = null) {
     assertValidAwsRegion(region);
     const endpoint = `https://oidc.${region}.amazonaws.com/token`;
 
@@ -101,6 +104,7 @@ export class KiroService {
         deviceCode,
         grantType: "urn:ietf:params:oauth:grant-type:device_code",
       }),
+      proxyOptions,
     });
 
     const data = await response.json();
@@ -142,7 +146,7 @@ export class KiroService {
    * Exchange authorization code for tokens (Social Login)
    * Must use same redirect_uri as authorization request
    */
-  async exchangeSocialCode(code, codeVerifier) {
+  async exchangeSocialCode(code, codeVerifier, proxyOptions = null) {
     // Must match the redirect_uri used in buildSocialLoginUrl
     const redirectUri = "kiro://kiro.kiroAgent/authenticate-success";
 
@@ -156,6 +160,7 @@ export class KiroService {
         code_verifier: codeVerifier,
         redirect_uri: redirectUri,
       }),
+      proxyOptions,
     });
 
     if (!response.ok) {
@@ -175,8 +180,47 @@ export class KiroService {
   /**
    * Refresh token using refresh token
    */
-  async refreshToken(refreshToken, providerSpecificData = {}) {
+  async refreshToken(refreshToken, providerSpecificData = {}, proxyOptions = null) {
     const { authMethod, clientId, clientSecret, region } = providerSpecificData;
+
+    // Microsoft Entra ID (external_idp) refresh — ported from 9router PR
+    // #2615. Must run before the AWS SSO OIDC branch: external_idp tokens
+    // are rejected by AWS endpoints.
+    if (authMethod === "external_idp") {
+      const refreshRequest = buildExternalIdpRefreshParams(refreshToken, providerSpecificData);
+
+      const response = await fetch(refreshRequest.tokenEndpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+        },
+        body: refreshRequest.body,
+        proxyOptions,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Token refresh failed for external_idp: ${errorText}`);
+      }
+
+      const data = await response.json();
+      if (!data || typeof data.access_token !== "string" || !data.access_token) {
+        throw new Error("Token refresh failed for external_idp: response missing access_token");
+      }
+      return {
+        accessToken: data.access_token,
+        refreshToken: data.refresh_token || refreshToken,
+        expiresIn: data.expires_in,
+        // Merge the normalized provider metadata (region, profileArn,
+        // provider label) over the validated refresh fields so the import
+        // route persists the full external_idp identity.
+        providerSpecificData: {
+          ...providerSpecificData,
+          ...refreshRequest.providerSpecificData,
+        },
+      };
+    }
 
     // AWS SSO OIDC refresh (Builder ID or IDC)
     if (clientId && clientSecret) {
@@ -195,6 +239,7 @@ export class KiroService {
           refreshToken,
           grantType: "refresh_token",
         }),
+        proxyOptions,
       });
 
       if (!response.ok) {
@@ -220,6 +265,7 @@ export class KiroService {
       body: JSON.stringify({
         refreshToken,
       }),
+      proxyOptions,
     });
 
     if (!response.ok) {
@@ -239,7 +285,7 @@ export class KiroService {
   /**
    * Validate and import refresh token
    */
-  async validateImportToken(refreshToken) {
+  async validateImportToken(refreshToken, proxyOptions = null) {
     // Validate token format
     if (!refreshToken.startsWith("aorAAAAAG")) {
       throw new Error("Invalid token format. Token should start with aorAAAAAG...");
@@ -247,7 +293,7 @@ export class KiroService {
 
     // Try to refresh to validate
     try {
-      const result = await this.refreshToken(refreshToken);
+      const result = await this.refreshToken(refreshToken, {}, proxyOptions);
       return {
         accessToken: result.accessToken,
         refreshToken: result.refreshToken || refreshToken,
@@ -266,32 +312,50 @@ export class KiroService {
    * it must be fetched separately — the same call works for API-key auth.
    * Accepts both `arn` and `profileArn` response field names (the API-key
    * JSON-1.0 surface returns `arn`).
+   *
+   * The Q Developer profile can live in a different region than the caller's
+   * IAM Identity Center (Q Developer is not hosted in every SSO region), and the
+   * legacy codewhisperer.* host only exists in us-east-1 (every other region uses
+   * q.<region>). Try the requested region first, then the known Q Developer
+   * regions, and return the first profile found (preferring one whose region
+   * matches the queried region). port(upstream): #2355.
    */
-  async listAvailableProfiles(accessToken, region = "us-east-1") {
+  async listAvailableProfiles(accessToken, region = "us-east-1", proxyOptions = null) {
+    // Trust boundary: the requested region is interpolated into the control-plane
+    // host. Reject anything that is not a valid AWS region id (SSRF guard).
     assertValidAwsRegion(region);
-    const endpoint = buildKiroProfileEndpoint(region);
-
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-amz-json-1.0",
-        "x-amz-target": "AmazonCodeWhispererService.ListAvailableProfiles",
-        "Authorization": `Bearer ${accessToken}`,
-        "Accept": "application/json",
-      },
-      body: JSON.stringify({ maxResults: 10 }),
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Failed to list profiles: ${error}`);
+    const candidates = [...new Set([region, "us-east-1", "eu-central-1"])];
+    let lastError = null;
+    for (const r of candidates) {
+      try {
+        const response = await fetch(buildKiroProfileEndpoint(r), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-amz-json-1.0",
+            "x-amz-target": "AmazonCodeWhispererService.ListAvailableProfiles",
+            "Authorization": `Bearer ${accessToken}`,
+            "Accept": "application/json",
+          },
+          body: JSON.stringify({ maxResults: 10 }),
+          proxyOptions,
+        });
+        if (!response.ok) {
+          lastError = new Error(`ListAvailableProfiles ${r} failed: ${await response.text()}`);
+          continue;
+        }
+        const data = await response.json();
+        const profiles = Array.isArray(data?.profiles) ? data.profiles : [];
+        if (profiles.length === 0) continue;
+        const arnOf = (p) => p?.arn || p?.profileArn || null;
+        const match = profiles.find((p) => arnOf(p)?.split(":")[3] === r) || profiles[0];
+        const arn = arnOf(match);
+        if (arn) return arn;
+      } catch (e) {
+        lastError = e;
+      }
     }
-
-    const data = await response.json();
-    const profiles = Array.isArray(data?.profiles) ? data.profiles : [];
-    const arnOf = (p) => p?.arn || p?.profileArn || null;
-    const match = profiles.find((p) => arnOf(p)?.split(":")[3] === region) || profiles[0];
-    return arnOf(match);
+    if (lastError) throw lastError;
+    return null;
   }
 
   /**

@@ -61,11 +61,13 @@ export function cloakClaudeTools(body) {
   // Client tools first, then CC decoy tools (no overlap: client tools all have _cc suffix)
   const allTools = [...clientDeclarations, ...CC_DECOY_TOOLS];
 
-  // Rename tool_use in message history (all client tools get suffix)
+  // Rename tool_use in message history. Only client tools that were actually
+  // suffixed above should be rewritten; built-in server tools keep their exact
+  // reserved literal name (e.g. web_search, bash).
   const renamedMessages = body.messages?.map(msg => {
     if (!Array.isArray(msg.content)) return msg;
     const renamedContent = msg.content.map(block =>
-      block.type === "tool_use" ? { ...block, name: suffix(block.name) } : block
+      block.type === "tool_use" && clientToolNames.has(block.name) ? { ...block, name: suffix(block.name) } : block
     );
     return { ...msg, content: renamedContent };
   });

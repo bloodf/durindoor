@@ -3,38 +3,24 @@ import path from "path";
 import fs from "fs";
 import os from "os";
 import { UPDATER_CONFIG } from "@/shared/constants/config";
+import processExitCodes from "@/shared/constants/processExitCodes";
+import { getCachedPassword, loadEncryptedPassword, stopServer } from "@/mitm/manager";
 
 const KILL_TIMEOUT_MS = 5000;
 const PROCESS_WAIT_MS = 1500;
+const { INTENTIONAL_HANDOFF_EXIT_CODE } = processExitCodes;
 
-// Kill MITM server by PID file (MITM may run as admin/sudo)
-function killMitmByPidFile() {
-  try {
-    const mitmPidFile = path.join(
-      process.platform === "win32"
-        ? path.join(process.env.APPDATA || "", "9router")
-        : path.join(os.homedir(), ".9router"),
-      "mitm",
-      ".mitm.pid"
-    );
-    if (!fs.existsSync(mitmPidFile)) return;
-    const pid = parseInt(fs.readFileSync(mitmPidFile, "utf8").trim(), 10);
-    if (!pid) return;
+// The CLI parent treats only this reserved code as an intentional worker
+// handoff. Ordinary code-0 exits remain restartable crash/recovery events.
+export function scheduleIntentionalHandoffExit(delayMs) {
+  setTimeout(() => process.exit(INTENTIONAL_HANDOFF_EXIT_CODE), delayMs);
+}
 
-    if (process.platform === "win32") {
-      // taskkill first (works if same user); fallback to PowerShell Stop-Process which can kill admin process if our token allows
-      try { execSync(`taskkill /F /T /PID ${pid}`, { stdio: "ignore", windowsHide: true, timeout: 3000 }); } catch {
-        try { execSync(`powershell -NonInteractive -WindowStyle Hidden -Command "Stop-Process -Id ${pid} -Force"`, { stdio: "ignore", windowsHide: true, timeout: 3000 }); } catch { /* best effort */ }
-      }
-    } else {
-      try {
-        execSync(`sudo -n kill -9 ${pid} 2>/dev/null`, { stdio: "ignore", timeout: 3000 });
-      } catch {
-        try { process.kill(pid, "SIGKILL"); } catch { /* best effort */ }
-      }
-    }
-    try { fs.unlinkSync(mitmPidFile); } catch { /* best effort */ }
-  } catch { /* best effort */ }
+// Stop MITM through its authenticated manager path before killing app workers.
+export async function stopMitmForUpdate() {
+  await loadEncryptedPassword();
+  const password = getCachedPassword();
+  await stopServer(password, { preserveDesiredState: true });
 }
 
 // Collect PIDs of all 9router-related processes (excluding current)
@@ -137,7 +123,7 @@ function ensureRuntimeUpdater(bundledPath) {
 
 // Kill all app-related processes to release file locks (esp. on Windows)
 export async function killAppProcesses() {
-  killMitmByPidFile();
+  await stopMitmForUpdate();
   const pids = collectAppPids();
   const platform = process.platform;
 
@@ -169,10 +155,11 @@ export function spawnUpdaterAndExit(packageName = UPDATER_CONFIG.npmPackageName)
   const updaterPath = ensureRuntimeUpdater(resolveBundledUpdaterPath());
   const isTray = process.env.TRAY_MODE === "1";
   const relaunch = resolveRelaunchCommand();
+  const appPort = String(process.env.PORT || UPDATER_CONFIG.appPort);
   // Relaunch matching original env: tray stays tray, foreground stays foreground
   const relaunchArgs = isTray
-    ? [...relaunch.args, "--tray", "--skip-update"]
-    : [...relaunch.args, "--skip-update"];
+    ? [...relaunch.args, "--tray", "--skip-update", "--port", appPort]
+    : [...relaunch.args, "--skip-update", "--port", appPort];
 
   spawn(process.execPath, [updaterPath], {
     detached: true,
@@ -189,12 +176,13 @@ export function spawnUpdaterAndExit(packageName = UPDATER_CONFIG.npmPackageName)
       UPDATER_WAIT_MIN_MS: String(UPDATER_CONFIG.waitForExitMinMs),
       UPDATER_WAIT_MAX_MS: String(UPDATER_CONFIG.waitForExitMaxMs),
       UPDATER_WAIT_CHECK_MS: String(UPDATER_CONFIG.waitForExitCheckMs),
-      UPDATER_APP_PORT: String(UPDATER_CONFIG.appPort),
+      // Prefer live server port so wait/relaunch match instance (not hardcoded default)
+      UPDATER_APP_PORT: appPort,
       UPDATER_RELAUNCH: "1",
       UPDATER_RELAUNCH_CMD: relaunch.cmd,
       UPDATER_RELAUNCH_ARGS: JSON.stringify(relaunchArgs),
     },
   }).unref();
 
-  setTimeout(() => process.exit(0), UPDATER_CONFIG.exitDelayMs);
+  scheduleIntentionalHandoffExit(UPDATER_CONFIG.exitDelayMs);
 }

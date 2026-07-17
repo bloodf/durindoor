@@ -10,8 +10,9 @@
 
 import { describe, it, expect } from "vitest";
 import { createPassthroughStreamWithLogger } from "../../open-sse/utils/stream.js";
+import { FORMATS } from "../../open-sse/translator/formats.js";
 
-async function runPassthrough(toolNameMap, chunks) {
+async function runPassthrough(toolNameMap, chunks, targetFormat = null) {
   const stream = createPassthroughStreamWithLogger(
     "claude",           // provider
     null,               // reqLogger
@@ -20,7 +21,8 @@ async function runPassthrough(toolNameMap, chunks) {
     "conn-1",           // connectionId
     {},                 // body
     null,               // onStreamComplete
-    "sk-ant-oat-test"   // apiKey
+    "sk-ant-oat-test",  // apiKey
+    targetFormat
   );
 
   const writer = stream.writable.getWriter();
@@ -41,9 +43,10 @@ async function runPassthrough(toolNameMap, chunks) {
   for (const chunk of chunks) {
     await writer.write(encoder.encode(chunk));
   }
-  await writer.close();
-
-  return readAll;
+  const [closeResult, readResult] = await Promise.allSettled([writer.close(), readAll]);
+  if (closeResult.status === "rejected") throw closeResult.reason;
+  if (readResult.status === "rejected") throw readResult.reason;
+  return readResult.value;
 }
 
 describe("claude→claude passthrough tool-name decloaking", () => {
@@ -101,5 +104,34 @@ describe("claude→claude passthrough tool-name decloaking", () => {
     const output = await runPassthrough(toolNameMap, [sseChunk]);
 
     expect(output).toContain('"name":"Execute_ide"');
+  });
+
+  it("preserves native Claude data frames and ends at message_stop without OpenAI DONE", async () => {
+    const frames = [
+      ["message_start", { type: "message_start", message: { id: "msg_ollama_123", usage: { input_tokens: 3 } } }],
+      ["content_block_delta", { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "hello" } }],
+      ["message_delta", { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 1 } }],
+      ["message_stop", { type: "message_stop" }],
+    ];
+    const input = frames.map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join("");
+
+    const output = await runPassthrough(null, [input], FORMATS.CLAUDE);
+
+    for (const [event, data] of frames) {
+      expect(output).toContain(`event: ${event}`);
+      expect(output).toContain(JSON.stringify(data));
+    }
+    expect(output).not.toContain("data: [DONE]");
+  });
+
+  it("fails closed when a native Claude stream ends before message_stop", async () => {
+    const incomplete = `event: content_block_delta\ndata: ${JSON.stringify({
+      type: "content_block_delta",
+      index: 0,
+      delta: { type: "text_delta", text: "partial" },
+    })}\n\n`;
+
+    await expect(runPassthrough(null, [incomplete], FORMATS.CLAUDE))
+      .rejects.toThrow("ended before message_stop");
   });
 });

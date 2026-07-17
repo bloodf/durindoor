@@ -21,6 +21,9 @@ export default {
     format: "claude",
     urlSuffix: "?beta=true",
     headers: { ...CLAUDE_API_HEADERS },
+    reasoningInject: {
+      scope: "all",
+    },
     clientId: "17e5f671-d194-4dfb-9706-5516cb48c098",
     tokenUrl: "https://auth.kimi.com/api/oauth/token",
     refreshUrl: "https://auth.kimi.com/api/oauth/token",

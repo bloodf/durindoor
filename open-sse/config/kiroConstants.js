@@ -15,13 +15,14 @@
  * fiction. The suffix is stripped before the request leaves this process.
  */
 
-import { extractThinking } from "../translator/concerns/thinkingUnified.js";
+import { extractThinking, parseSuffix } from "../translator/concerns/thinkingUnified.js";
 import { assertValidAwsRegion } from "../../src/lib/oauth/constants/oauth.js";
 import { effortToBudget } from "../translator/concerns/thinking.js";
 import {
   resolveKiroRegion as resolveKiroRegionFromCredentials,
   alignProfileArnRegion,
   KIRO_DEFAULT_REGION,
+  normalizeKiroRegion,
 } from "./kiroRegions.js";
 
 // Backwards-compat shim: legacy callers (and tests) pass the region as
@@ -32,7 +33,7 @@ import {
 export function resolveKiroRegion(arg) {
   if (typeof arg === "string") {
     const t = arg.trim();
-    return t || KIRO_DEFAULT_REGION;
+    return normalizeKiroRegion(t || KIRO_DEFAULT_REGION);
   }
   if (arg && typeof arg === "object") {
     return resolveKiroRegionFromCredentials(arg);
@@ -99,6 +100,9 @@ export function resolveKiroDataPlaneUrl(region) {
  */
 export function resolveKiroControlPlaneHost(region) {
   const r = resolveKiroRegion(region);
+  // This host carries bearer/API-key credentials. Never interpolate an
+  // untrusted stored region without the same validation as the data plane.
+  assertValidAwsRegion(r);
   return r === KIRO_DEFAULT_REGION
     ? "https://codewhisperer.us-east-1.amazonaws.com"
     : `https://q.${r}.amazonaws.com`;
@@ -109,23 +113,28 @@ export function resolveKiroControlPlaneHost(region) {
  * credential's region. This is the single place that decides which profileArn
  * (if any) a request carries:
  *
- *   - a stored profileArn      → returned, with its region segment aligned to
- *                                the request region (self-heals mismatches)
+ *   - a stored profileArn      → returned VERBATIM. The profile's own region is
+ *                                authoritative: a Q Developer profile can live
+ *                                in a different region than the IAM Identity
+ *                                Center that minted the token (e.g. IDC
+ *                                eu-north-1, profile eu-central-1). Rewriting
+ *                                the region here corrupts valid Org ARNs → 400
+ *                                "Improperly formed request". The data plane is
+ *                                routed off the ARN region by the executor.
  *   - no ARN, api_key auth     → "" (api keys must use their own account ARN;
  *                                the shared default would 403)
  *   - no ARN, us-east-1        → the shared builder-id/social default ARN
  *   - no ARN, other region     → "" (no shared default exists outside us-east-1;
- *                                the ARN is resolved on token refresh instead)
+ *                                the ARN is resolved at request time instead)
  *
  * @param {object} credentials Connection record with providerSpecificData
- * @param {string} [region]    Pre-resolved region (defaults to resolveKiroRegion)
  * @returns {string} profileArn or "" when none should be sent
  */
-export function resolveKiroProfileArn(credentials, region) {
+export function resolveKiroProfileArn(credentials) {
   const psd = credentials?.providerSpecificData || {};
-  const r = region || resolveKiroRegion(credentials);
-  if (psd.profileArn) return alignProfileArnRegion(psd.profileArn, r);
+  if (psd.profileArn) return psd.profileArn;
   if (psd.authMethod === "api_key") return "";
+  const r = resolveKiroRegion(credentials);
   if (r === KIRO_DEFAULT_REGION) return resolveDefaultProfileArn(psd.authMethod);
   return "";
 }
@@ -195,10 +204,15 @@ REMEMBER: When in doubt, write LESS per operation. Multiple small operations > o
  * @param {object} body OpenAI/Claude-shaped request body
  * @param {object} [headers] Original inbound HTTP headers (case-insensitive)
  * @param {string} [model] Model id the caller asked for
+ * @param {object|null} [intent] Pre-parsed request-scoped thinking override
  * @returns {number|null} budget to inject, or null when thinking is disabled
  */
-export function resolveKiroThinkingBudget(body, headers, model) {
-  const cfg = extractThinking(body);
+export function resolveKiroThinkingBudget(body, headers, model, intent = null) {
+  // A model suffix is an explicit client choice, so it must win over body,
+  // header, tag, and legacy model-name heuristics. In particular `(none)`
+  // suppresses all of those fallbacks.
+  const parsedModel = parseSuffix(model);
+  const cfg = intent ?? parsedModel.override ?? extractThinking(body);
   if (cfg) {
     if (cfg.mode === "none") return null;
     if (cfg.mode === "budget") return cfg.budget;
@@ -216,8 +230,11 @@ export function resolveKiroThinkingBudget(body, headers, model) {
   if (containsThinkingModeTag(body)) return KIRO_THINKING_BUDGET_DEFAULT;
 
   if (typeof model === "string" && model) {
-    const m = model.toLowerCase();
-    if (m.includes("thinking") || m.includes("-reason")) return KIRO_THINKING_BUDGET_DEFAULT;
+    const hasOpaqueSuffix = /\([^()]+\)\s*$/.test(model) && !parsedModel.override;
+    if (!hasOpaqueSuffix) {
+      const m = parsedModel.cleanModel.toLowerCase();
+      if (m.includes("thinking") || m.includes("-reason")) return KIRO_THINKING_BUDGET_DEFAULT;
+    }
   }
 
   return null;
@@ -232,8 +249,8 @@ export function resolveKiroThinkingBudget(body, headers, model) {
  * @param {string} [model] Model id the caller asked for (post-strip ok)
  * @returns {boolean}
  */
-export function isThinkingEnabled(body, headers, model) {
-  return resolveKiroThinkingBudget(body, headers, model) !== null;
+export function isThinkingEnabled(body, headers, model, intent = null) {
+  return resolveKiroThinkingBudget(body, headers, model, intent) !== null;
 }
 
 /**
@@ -284,24 +301,6 @@ export function isThinkingModel(model) {
 export function stripThinkingSuffix(model) {
   if (!isThinkingModel(model)) return model;
   return model.slice(0, -KIRO_THINKING_SUFFIX.length);
-}
-
-/**
- * Normalise a 9router model id to the wire format the Kiro API expects.
- * Kiro rejects Claude model IDs that use dot notation for the version number
- * (e.g. "claude-sonnet-4.5") — it only accepts dash notation ("claude-sonnet-4-5").
- * Non-Claude models (deepseek-3.2, MiniMax-M2.5) are passed through unchanged
- * because their dots are semantically part of the stable upstream model name and
- * those models work correctly with dots.
- *
- * @param {string} upstream Model id with synthetic suffixes already stripped
- * @returns {string} Kiro-wire model id
- */
-export function toKiroModelId(upstream) {
-  if (typeof upstream === "string" && upstream.startsWith("claude-")) {
-    return upstream.replace(/\./g, "-");
-  }
-  return upstream;
 }
 
 /**

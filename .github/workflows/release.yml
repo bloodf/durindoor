@@ -1,26 +1,4 @@
 name: Release
-
-# Two-branch release model:
-#   main → controlled production npm publish (this workflow, on release).
-# Triggered by GitHub Releases cut on the main branch only (operator
-# discipline — `release.yml` is paired with a tag policy that prevents
-# `v*` tags from any other branch; see migration plan §2 tag policy).
-#
-# Why not `npm ci`: the repository intentionally gitignores
-# package-lock.json (`.gitignore` line 63) because the codebase is too
-# large for npm install to be deterministic enough to deserve a lockfile.
-# setup-node v4's `cache: npm` therefore also fails on the same root
-# cause — 'Dependencies lock file is not found'. We use `npm install
-# --no-audit --no-fund` plus no cache, matching `ci.yml` and `test.yml`
-# in this repo.
-#
-# Auth flow: the token is supplied via `NPM_TOKEN` (npm 9+ canonical env
-# name) plus legacy `NODE_AUTH_TOKEN` so npm 10/11/12 all read it without
-# guesswork. The `registry-url` on `actions/setup-node@v4` is what tells
-# npm to call registry.npmjs.org and triggers the auth-token branch
-# instead of bypassing it via OIDC (which without explicit creds fails
-# with ENEEDAUTH on first-publish for a brand-new package).
-
 on:
   release:
     types: [published]
@@ -33,26 +11,68 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 20.20.2
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            tests/package-lock.json
           registry-url: https://registry.npmjs.org
-          # No `cache: npm` — repo gitignores package-lock.json.
 
-      - run: npm install --no-audit --no-fund
-      - run: npm run build
-
-      - name: Configure npm registry auth
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Pin npm
         run: |
-          npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN" \
-            --userconfig="$RUNNER_TEMP/.npmrc-cred"
+          npm install --global npm@10.8.2
+          test "$(npm --version)" = "10.8.2"
 
-      - name: npm publish
+      - name: Install app dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Install test dependencies
+        working-directory: tests
+        run: npm ci --no-audit --no-fund
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Agent index drift gate
+        run: npm run check:agent-index
+
+      - name: Build with isolated application state
+        run: npm run build
+
+      - name: Run blocking Vitest gate
+        working-directory: tests
         env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          BASELINE_BASE_REF: HEAD^
+          HOME: ${{ runner.temp }}/durindoor-home
+          DATA_DIR: ${{ runner.temp }}/durindoor-data
+        run: mkdir -p "$HOME" "$DATA_DIR" && npm run test:ci
+
+      - name: Verify test reports
+        if: always()
+        run: |
+          test -s tests/.test-results.json
+          test -s tests/.test-results.junit.xml
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-vitest-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            tests/.test-results.json
+            tests/.test-results.junit.xml
+          include-hidden-files: true
+          if-no-files-found: error
+
+      - name: Install CLI dependencies
+        run: npm --prefix cli install --include=dev --no-audit --no-fund
+
+      - name: Publish CLI
+        run: npm run cli:publish
+        env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/.npmrc-cred
-        run: npm publish --provenance --access public

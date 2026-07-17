@@ -1,6 +1,7 @@
 import { PROVIDER_MODELS } from "open-sse/config/providerModels.js";
 import { AI_PROVIDERS, ALIAS_TO_ID } from "@/shared/constants/providers";
 import { getModelKind } from "@/shared/constants/models";
+import { headOkResponse, headNotFoundResponse } from "open-sse/translator/validate.js";
 
 const KIND_ENDPOINT = {
   llm: "/v1/chat/completions",
@@ -11,6 +12,7 @@ const KIND_ENDPOINT = {
   imageToText: "/v1/chat/completions",
   webSearch: "/v1/search",
   webFetch: "/v1/fetch",
+  rerank: "/v1/rerank",
 };
 
 const TTS_VOICES_API = new Set(["elevenlabs", "edge-tts", "deepgram", "inworld", "local-device", "minimax", "minimax-cn"]);
@@ -78,8 +80,27 @@ function lookup(fullId, requestedKind) {
 
 export async function OPTIONS() {
   return new Response(null, {
-    headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, OPTIONS" },
+    headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS" },
   });
+}
+
+/**
+ * HEAD /v1/models/info — mirrors GET status with a null body.
+ * Missing `id` → 400 (matches GET); unknown id → 404; known → 200.
+ */
+export async function HEAD(request) {
+  const { searchParams } = new URL(request.url);
+  const id = searchParams.get("id");
+  const kind = searchParams.get("kind");
+  if (!id) {
+    return new Response(null, {
+      status: 400,
+      headers: { "content-type": "application/json", "Access-Control-Allow-Origin": "*" },
+    });
+  }
+  const info = lookup(id, kind);
+  if (!info) return headNotFoundResponse();
+  return headOkResponse();
 }
 
 // GET /v1/models/info?id={alias}/{modelId} — metadata for a single model

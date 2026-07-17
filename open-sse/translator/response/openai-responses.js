@@ -1,6 +1,11 @@
 /**
  * Translator: OpenAI Chat Completions → OpenAI Responses API (response)
  * Converts streaming chunks from Chat Completions to Responses API events
+ *
+ * Tool-call shape follows the Responses API spec (OmniRoute #6937): function
+ * and custom tool items carry status in_progress/completed, custom tools
+ * (apply_patch) stream via custom_tool_call_input.* events, and output_index
+ * is offset past a preceding reasoning item so items never collide at 0.
  */
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
@@ -10,6 +15,16 @@ import { fallbackToolCallId } from "../concerns/toolCall.js";
 import { reasoningDelta, extractReasoningText } from "../concerns/reasoning.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, OPENAI_FINISH, MODEL_FALLBACK } from "../schema/index.js";
 
+/** Collect events while preserving the stream-wide sequence across deferred completion. */
+function createEventEmitter(state) {
+  const events = [];
+  const emit = (eventType, data) => {
+    data.sequence_number = ++state.seq;
+    events.push({ event: eventType, data });
+  };
+  return { events, emit };
+}
+
 /**
  * Translate OpenAI chunk to Responses API events
  * @returns {Array} Array of events with { event, data } structure
@@ -18,16 +33,27 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
   if (!chunk) {
     return flushEvents(state);
   }
-  
-  if (!chunk.choices?.length) return [];
-  
-  const events = [];
-  const nextSeq = () => ++state.seq;
-  
-  const emit = (eventType, data) => {
-    data.sequence_number = nextSeq();
-    events.push({ event: eventType, data });
-  };
+
+  if (chunk.model) state.model = chunk.model;
+  // Merge rather than overwrite so provider-only fields already extracted
+  // into shared state (e.g. Kiro credits) survive the Responses projection.
+  if (chunk.usage && typeof chunk.usage === "object") {
+    state.usage = { ...(state.usage || {}), ...chunk.usage };
+  }
+
+  if (!chunk.choices?.length) {
+    // Usage-only chunks trail finish_reason when include_usage is enabled upstream.
+    // Complete only when usage was actually captured — an empty-choices chunk without
+    // usage (or before finish_reason deferred completion) must not complete early.
+    if (state.awaitingTrailingUsage && !state.completedSent && state.usage) {
+      const { events, emit } = createEventEmitter(state);
+      sendCompleted(state, emit);
+      return events;
+    }
+    return [];
+  }
+
+  const { events, emit } = createEventEmitter(state);
 
   const choice = chunk.choices[0];
   const idx = choice.index || 0;
@@ -44,6 +70,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
         id: state.responseId,
         object: "response",
         created_at: state.created,
+        model: state.model || MODEL_FALLBACK,
         status: "in_progress",
         background: false,
         error: null,
@@ -57,6 +84,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
         id: state.responseId,
         object: "response",
         created_at: state.created,
+        model: state.model || MODEL_FALLBACK,
         status: "in_progress"
       }
     });
@@ -72,6 +100,15 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
   // Handle text content
   if (delta.content) {
     let content = delta.content;
+
+    // Reasoning arrived via reasoning_content (not inline <think> tags) and now
+    // normal text begins → the reasoning section is over. Close it here on the
+    // state transition, so consumers get an explicit "reasoning ended" event
+    // before the first output_text.delta (#454) without translators having to
+    // inject literal tag markers into content.
+    if (state.reasoningId && !state.reasoningDone && !state.inThinking) {
+      closeReasoning(state, emit);
+    }
 
     if (content.includes("<think>")) {
       state.inThinking = true;
@@ -112,7 +149,11 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     for (const i in state.msgItemAdded) closeMessage(state, emit, i);
     closeReasoning(state, emit);
     for (const i in state.funcCallIds) closeToolCall(state, emit, i);
-    sendCompleted(state, emit);
+    if (state.usage) {
+      sendCompleted(state, emit);
+    } else {
+      state.awaitingTrailingUsage = true;
+    }
   }
 
   return events;
@@ -121,19 +162,20 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
 // Helper functions
 function startReasoning(state, emit, idx) {
   if (!state.reasoningId) {
+    const outputIndex = state.nextOutputIndex++;
     state.reasoningId = `rs_${state.responseId}_${idx}`;
-    state.reasoningIndex = idx;
+    state.reasoningIndex = outputIndex;
     
     emit("response.output_item.added", {
       type: "response.output_item.added",
-      output_index: idx,
+      output_index: outputIndex,
       item: { id: state.reasoningId, type: RESPONSES_ITEM.REASONING, summary: [] }
     });
 
     emit("response.reasoning_summary_part.added", {
       type: "response.reasoning_summary_part.added",
       item_id: state.reasoningId,
-      output_index: idx,
+      output_index: outputIndex,
       summary_index: 0,
       part: { type: RESPONSES_ITEM.SUMMARY_TEXT, text: "" }
     });
@@ -187,15 +229,19 @@ function closeReasoning(state, emit) {
 
 function emitTextContent(state, emit, idx, content) {
   if (!state.msgItemAdded[idx]) {
+    const outputIndex = state.nextOutputIndex++;
     state.msgItemAdded[idx] = true;
+    state.msgOutputIndexes[idx] = outputIndex;
     const msgId = `msg_${state.responseId}_${idx}`;
     
     emit("response.output_item.added", {
       type: "response.output_item.added",
-      output_index: idx,
+      output_index: outputIndex,
       item: { id: msgId, type: RESPONSES_ITEM.MESSAGE, content: [], role: ROLE.ASSISTANT }
     });
   }
+
+  const outputIndex = state.msgOutputIndexes[idx];
 
   if (!state.msgContentAdded[idx]) {
     state.msgContentAdded[idx] = true;
@@ -203,7 +249,7 @@ function emitTextContent(state, emit, idx, content) {
     emit("response.content_part.added", {
       type: "response.content_part.added",
       item_id: `msg_${state.responseId}_${idx}`,
-      output_index: idx,
+      output_index: outputIndex,
       content_index: 0,
       part: { type: RESPONSES_ITEM.OUTPUT_TEXT, annotations: [], logprobs: [], text: "" }
     });
@@ -212,7 +258,7 @@ function emitTextContent(state, emit, idx, content) {
   emit("response.output_text.delta", {
     type: "response.output_text.delta",
     item_id: `msg_${state.responseId}_${idx}`,
-    output_index: idx,
+    output_index: outputIndex,
     content_index: 0,
     delta: content,
     logprobs: []
@@ -227,11 +273,12 @@ function closeMessage(state, emit, idx) {
     state.msgItemDone[idx] = true;
     const fullText = state.msgTextBuf[idx] || "";
     const msgId = `msg_${state.responseId}_${idx}`;
+    const outputIndex = state.msgOutputIndexes[idx];
 
     emit("response.output_text.done", {
       type: "response.output_text.done",
       item_id: msgId,
-      output_index: parseInt(idx),
+      output_index: outputIndex,
       content_index: 0,
       text: fullText,
       logprobs: []
@@ -240,14 +287,14 @@ function closeMessage(state, emit, idx) {
     emit("response.content_part.done", {
       type: "response.content_part.done",
       item_id: msgId,
-      output_index: parseInt(idx),
+      output_index: outputIndex,
       content_index: 0,
       part: { type: RESPONSES_ITEM.OUTPUT_TEXT, annotations: [], logprobs: [], text: fullText }
     });
 
     emit("response.output_item.done", {
       type: "response.output_item.done",
-      output_index: parseInt(idx),
+      output_index: outputIndex,
       item: {
         id: msgId,
         type: RESPONSES_ITEM.MESSAGE,
@@ -260,66 +307,160 @@ function closeMessage(state, emit, idx) {
 
 function emitToolCall(state, emit, tc) {
   const tcIdx = tc.index ?? 0;
+  let outputIndex = state.funcOutputIndexes[tcIdx];
   const newCallId = tc.id;
   const funcName = tc.function?.name;
 
   if (funcName) state.funcNames[tcIdx] = funcName;
 
-  if (!state.funcCallIds[tcIdx] && newCallId) {
+  // Custom-tool framing requires request metadata; a function named apply_patch
+  // remains a normal function unless the client declared it as custom.
+  const declaredType = state.toolTypes?.[state.funcNames[tcIdx] || funcName || ""] || "";
+  const isCustomTool = declaredType === "custom";
+
+  // Save id on first sight; if name hasn't arrived yet, emit nothing yet.
+  if (newCallId && !state.funcCallIds[tcIdx]) {
     state.funcCallIds[tcIdx] = newCallId;
-    
+  }
+
+  // Emit output_item.added only once both id and name are known.
+  const refCallId = state.funcCallIds[tcIdx];
+  const refName = state.funcNames[tcIdx];
+  if (refCallId && refName && !state.funcItemAdded[tcIdx]) {
+    state.funcItemAdded[tcIdx] = true;
+    outputIndex = state.funcOutputIndexes[tcIdx] = state.nextOutputIndex++;
     emit("response.output_item.added", {
       type: "response.output_item.added",
-      output_index: tcIdx,
-      item: {
-        id: `fc_${newCallId}`,
-        type: RESPONSES_ITEM.FUNCTION_CALL,
-        arguments: "",
-        call_id: newCallId,
-        name: state.funcNames[tcIdx] || ""
-      }
+      output_index: outputIndex,
+      item: isCustomTool
+        ? {
+            id: `fc_${refCallId}`,
+            type: "custom_tool_call",
+            input: "",
+            call_id: refCallId,
+            name: refName,
+            status: "in_progress"
+          }
+        : {
+            id: `fc_${refCallId}`,
+            type: RESPONSES_ITEM.FUNCTION_CALL,
+            arguments: "",
+            call_id: refCallId,
+            name: refName,
+            status: "in_progress"
+          }
     });
+
+    // Replay any regular argument deltas that arrived while we were waiting for the name.
+    if (!isCustomTool && state.funcPendingArgs[tcIdx]) {
+      for (const delta of state.funcPendingArgs[tcIdx]) {
+        emit("response.function_call_arguments.delta", {
+          type: "response.function_call_arguments.delta",
+          item_id: `fc_${refCallId}`,
+          output_index: outputIndex,
+          delta
+        });
+      }
+      delete state.funcPendingArgs[tcIdx];
+    }
   }
 
-  if (!state.funcArgsBuf[tcIdx]) state.funcArgsBuf[tcIdx] = "";
+  state.funcArgsBuf[tcIdx] ||= "";
 
   if (tc.function?.arguments) {
-    const refCallId = state.funcCallIds[tcIdx] || newCallId;
-    if (refCallId) {
-      emit("response.function_call_arguments.delta", {
-        type: "response.function_call_arguments.delta",
-        item_id: `fc_${refCallId}`,
-        output_index: tcIdx,
-        delta: tc.function.arguments
-      });
+    const delta = tc.function.arguments;
+    state.funcArgsBuf[tcIdx] += delta;
+
+    if (!isCustomTool) {
+      if (refCallId && refName) {
+        emit("response.function_call_arguments.delta", {
+          type: "response.function_call_arguments.delta",
+          item_id: `fc_${refCallId}`,
+          output_index: outputIndex,
+          delta
+        });
+      } else if (refCallId) {
+        // Name not yet known; queue regular delta for replay once name arrives.
+        (state.funcPendingArgs[tcIdx] ||= []).push(delta);
+      }
     }
-    state.funcArgsBuf[tcIdx] += tc.function.arguments;
   }
+}
+
+function isCustomToolByState(state, tcIdx, funcName) {
+  const declaredType = state.toolTypes?.[state.funcNames[tcIdx] || funcName || ""] || "";
+  return declaredType === "custom";
 }
 
 function closeToolCall(state, emit, idx) {
   const callId = state.funcCallIds[idx];
+  if (!state.funcItemAdded[idx]) return;
   if (callId && !state.funcItemDone[idx]) {
     const args = state.funcArgsBuf[idx] || "{}";
-    
-    emit("response.function_call_arguments.done", {
-      type: "response.function_call_arguments.done",
-      item_id: `fc_${callId}`,
-      output_index: parseInt(idx),
-      arguments: args
-    });
+    const outputIndex = state.funcOutputIndexes[idx];
+    const isCustomTool = isCustomToolByState(state, idx, "");
 
-    emit("response.output_item.done", {
-      type: "response.output_item.done",
-      output_index: parseInt(idx),
-      item: {
-        id: `fc_${callId}`,
-        type: RESPONSES_ITEM.FUNCTION_CALL,
-        arguments: args,
-        call_id: callId,
-        name: state.funcNames[idx] || ""
+    if (isCustomTool) {
+      // Codex sends a function-call-shaped stream even for custom tools; the
+      // arguments are a JSON wrapper {"input":"<patch>"} we must unwrap into
+      // raw custom-tool input. Stream the raw input as custom_tool_call_input
+      // deltas so concatenated deltas equal the final done input.
+      let rawInput = args;
+      let parsed = null;
+      try { parsed = JSON.parse(args); } catch { /* not JSON */ }
+      if (parsed && typeof parsed.input === "string") rawInput = parsed.input;
+      state.funcCustomInput[idx] = rawInput;
+
+      if (!state.funcCustomDeltaEmitted[idx]) {
+        state.funcCustomDeltaEmitted[idx] = true;
+        emit("response.custom_tool_call_input.delta", {
+          type: "response.custom_tool_call_input.delta",
+          item_id: `fc_${callId}`,
+          output_index: outputIndex,
+          delta: rawInput
+        });
       }
-    });
+
+      emit("response.custom_tool_call_input.done", {
+        type: "response.custom_tool_call_input.done",
+        item_id: `fc_${callId}`,
+        output_index: outputIndex,
+        input: rawInput
+      });
+
+      emit("response.output_item.done", {
+        type: "response.output_item.done",
+        output_index: outputIndex,
+        item: {
+          id: `fc_${callId}`,
+          type: "custom_tool_call",
+          input: rawInput,
+          call_id: callId,
+          name: state.funcNames[idx] || "",
+          status: "completed"
+        }
+      });
+    } else {
+      emit("response.function_call_arguments.done", {
+        type: "response.function_call_arguments.done",
+        item_id: `fc_${callId}`,
+        output_index: outputIndex,
+        arguments: args
+      });
+
+      emit("response.output_item.done", {
+        type: "response.output_item.done",
+        output_index: outputIndex,
+        item: {
+          id: `fc_${callId}`,
+          type: RESPONSES_ITEM.FUNCTION_CALL,
+          arguments: args,
+          call_id: callId,
+          name: state.funcNames[idx] || "",
+          status: "completed"
+        }
+      });
+    }
 
     state.funcItemDone[idx] = true;
     state.funcArgsDone[idx] = true;
@@ -336,6 +477,7 @@ function sendCompleted(state, emit) {
         id: state.responseId,
         object: "response",
         created_at: state.created,
+        model: state.model || MODEL_FALLBACK,
         status: "completed",
         background: false,
         error: null,
@@ -348,12 +490,7 @@ function sendCompleted(state, emit) {
 function flushEvents(state) {
   if (state.completedSent) return [];
   
-  const events = [];
-  const nextSeq = () => ++state.seq;
-  const emit = (eventType, data) => {
-    data.sequence_number = nextSeq();
-    events.push({ event: eventType, data });
-  };
+  const { events, emit } = createEventEmitter(state);
 
   for (const i in state.msgItemAdded) closeMessage(state, emit, i);
   closeReasoning(state, emit);
@@ -462,8 +599,8 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     return null;
   }
 
-  // Response completed
-  if (eventType === "response.completed" || eventType === "response.done") {
+  // Response completed or coherently ended incomplete.
+  if (eventType === "response.completed" || eventType === "response.done" || eventType === "response.incomplete") {
     // Extract usage from response.completed event
     const responseUsage = data.response?.usage;
     if (responseUsage && typeof responseUsage === "object") {
@@ -477,7 +614,9 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     }
     
     if (!state.finishReasonSent) {
-      const finishReason = computeFinishReason(state);
+      const finishReason = eventType === "response.incomplete"
+        ? OPENAI_FINISH.LENGTH
+        : computeFinishReason(state);
 
       state.finishReasonSent = true;
       state.finishReason = finishReason; // Mark for usage injection in stream.js

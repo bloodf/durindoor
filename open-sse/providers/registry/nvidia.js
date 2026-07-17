@@ -15,9 +15,21 @@ export default {
     },
   },
   category: "freeTier",
+  // #6888: NVIDIA NIM multiplexes many unrelated vendor models behind ONE
+  // base URL + ONE API key. A stale/renamed model's 404 must lock only that
+  // model, but a connection-class failure (5xx, network) indicts the shared
+  // connection and must lock account-wide. `passthroughModels` keeps the
+  // 404/429 model-scoped; `passthroughConnectionWideErrors` adds the 5xx/0
+  // connection-wide branch. Other passthrough routers (OpenRouter, etc.) keep
+  // 5xx model-scoped unless they also opt into this flag.
+  passthroughModels: true,
+  passthroughConnectionWideErrors: true,
   transport: {
     baseUrl: "https://integrate.api.nvidia.com/v1/chat/completions",
     validateUrl: "https://integrate.api.nvidia.com/v1/models",
+    quirks: {
+      dropClientMetadata: true,
+    },
   },
   models: [
     { id: "abacusai/dracarys-llama-3.1-70b-instruct", name: "Dracarys Llama 3.1 70B Instruct" },

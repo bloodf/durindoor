@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { resolveConnectionParams } from "../../open-sse/executors/copilot-m365-connection.js";
 
 const originalFetch = global.fetch;
 
@@ -64,6 +65,41 @@ async function validatePerplexityWeb(apiKey) {
     return { valid: false, error: "Invalid session cookie — re-paste __Secure-next-auth.session-token from perplexity.ai" };
   }
   return { valid: true, error: null };
+}
+
+async function validateCopilotWeb(apiKey) {
+  const token =
+    apiKey.match(/access_token=([^;]+)/)?.[1] ||
+    apiKey.match(/[Bb]earer\s+(.+)/)?.[1] ||
+    apiKey;
+  if (!token) return { valid: false, error: "Paste your access_token from copilot.microsoft.com" };
+  const res = await fetch("https://copilot.microsoft.com/c/api/start", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: "https://copilot.microsoft.com",
+      Referer: "https://copilot.microsoft.com/",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      timeZone: "America/New_York",
+      startNewConversation: true,
+      teenSupportEnabled: false,
+    }),
+  });
+  if (res.status === 401 || res.status === 403) {
+    return { valid: false, error: "Invalid or expired access_token from copilot.microsoft.com" };
+  }
+  return { valid: true, error: null };
+}
+
+function validateCopilotM365Web(apiKey, providerSpecificData = {}) {
+  const params = resolveConnectionParams({ apiKey, providerSpecificData });
+  const valid = !("error" in params);
+  return {
+    valid,
+    error: valid ? null : params.error,
+  };
 }
 
 describe("grok-web validation", () => {
@@ -183,5 +219,42 @@ describe("perplexity-web validation", () => {
       "https://www.perplexity.ai/rest/sse/perplexity_ask",
       expect.objectContaining({ method: "POST" }),
     );
+  });
+});
+
+describe("copilot web validation", () => {
+  beforeEach(() => vi.clearAllMocks());
+  afterEach(() => { global.fetch = originalFetch; });
+
+  it("copilot-web accepts any non-auth failure as a token-shaped success", async () => {
+    global.fetch = vi.fn().mockResolvedValue({ status: 400 });
+    const result = await validateCopilotWeb("access_token=tok; other=1");
+    expect(result.valid).toBe(true);
+    expect(global.fetch.mock.calls[0][1].headers.Authorization).toBe("Bearer tok");
+  });
+
+  it("copilot-web rejects 401/403 as expired access_token", async () => {
+    global.fetch = vi.fn().mockResolvedValue({ status: 401 });
+    const result = await validateCopilotWeb("bad-token");
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("Invalid or expired access_token");
+  });
+
+  it("copilot-m365-web requires access_token and Chathub path", () => {
+    expect(validateCopilotM365Web("access_token=tok; chathubPath=user@tenant")).toEqual({
+      valid: true,
+      error: null,
+    });
+    expect(validateCopilotM365Web(
+      "wss://substrate.office.com/m365Copilot/Chathub/user%40tenant?access_token=tok",
+    ).valid).toBe(true);
+    expect(validateCopilotM365Web("access_token=tok").valid).toBe(false);
+    expect(validateCopilotM365Web("chathubPath=user@tenant").valid).toBe(false);
+    expect(validateCopilotM365Web("userTenant=user@tenant").valid).toBe(false);
+    expect(validateCopilotM365Web("access_token=tok; chathubPath=user@tenant?junk").valid).toBe(false);
+    expect(validateCopilotM365Web(
+      "access_token=tok; chathubPath=user@tenant",
+      { host: "attacker.example" },
+    ).valid).toBe(false);
   });
 });

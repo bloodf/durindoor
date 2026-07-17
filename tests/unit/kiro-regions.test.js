@@ -22,6 +22,7 @@ describe("regionFromProfileArn", () => {
   it("extracts the region segment", () => {
     expect(regionFromProfileArn(arn(EU))).toBe(EU);
     expect(regionFromProfileArn(arn(US))).toBe(US);
+    expect(regionFromProfileArn(arn("US-EAST-1"))).toBe(US);
   });
   it("returns null for junk", () => {
     expect(regionFromProfileArn(null)).toBeNull();
@@ -33,6 +34,7 @@ describe("regionFromProfileArn", () => {
 describe("resolveKiroRegion", () => {
   it("prefers explicit region", () => {
     expect(resolveKiroRegion({ providerSpecificData: { region: EU, profileArn: arn(US) } })).toBe(EU);
+    expect(resolveKiroRegion({ providerSpecificData: { region: " EU-CENTRAL-1 " } })).toBe(EU);
   });
   it("falls back to profileArn region", () => {
     expect(resolveKiroRegion({ providerSpecificData: { profileArn: arn(EU) } })).toBe(EU);
@@ -69,6 +71,7 @@ describe("buildKiroBaseUrls", () => {
 describe("buildKiroProfileEndpoint", () => {
   it("uses codewhisperer host for us-east-1", () => {
     expect(buildKiroProfileEndpoint(US)).toBe("https://codewhisperer.us-east-1.amazonaws.com");
+    expect(buildKiroProfileEndpoint("US-EAST-1")).toBe("https://codewhisperer.us-east-1.amazonaws.com");
   });
   it("uses q host for other regions", () => {
     expect(buildKiroProfileEndpoint(EU)).toBe("https://q.eu-central-1.amazonaws.com");
@@ -80,6 +83,19 @@ describe("buildKiroOidcEndpoint", () => {
     expect(buildKiroOidcEndpoint(EU)).toBe("https://oidc.eu-central-1.amazonaws.com/token");
     expect(buildKiroOidcEndpoint()).toBe("https://oidc.us-east-1.amazonaws.com/token");
   });
+
+  it.each(["attacker.example/", "eu-central-1.evil", "https://evil.test", "us_east_1", ""])(
+    "rejects hostile or malformed region input %s before URL construction",
+    (region) => {
+      if (region === "") {
+        expect(buildKiroOidcEndpoint(region)).toBe("https://oidc.us-east-1.amazonaws.com/token");
+        return;
+      }
+      expect(() => buildKiroOidcEndpoint(region)).toThrow("Invalid Kiro AWS region");
+      expect(() => buildKiroProfileEndpoint(region)).toThrow("Invalid Kiro AWS region");
+      expect(() => buildKiroBaseUrls(region)).toThrow("Invalid Kiro AWS region");
+    },
+  );
 });
 
 describe("alignProfileArnRegion", () => {
@@ -97,8 +113,8 @@ describe("alignProfileArnRegion", () => {
 });
 
 describe("resolveKiroProfileArn (integration with kiroConstants)", () => {
-  it("aligns a stored us-east-1 ARN to the EU credential region (self-heal)", () => {
-    const creds = { providerSpecificData: { region: EU, authMethod: "idc", profileArn: arn(US) } };
+  it("returns a stored ARN VERBATIM (profile region is authoritative; IDC/profile can differ)", () => {
+    const creds = { providerSpecificData: { region: "eu-north-1", authMethod: "idc", profileArn: arn(EU) } };
     expect(resolveKiroProfileArn(creds)).toBe(arn(EU));
   });
   it("keeps a correct EU ARN as-is", () => {

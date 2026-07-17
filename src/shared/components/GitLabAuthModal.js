@@ -18,7 +18,16 @@ function getRedirectUri() {
  * - OAuth (PKCE): requires OAuth App Client ID (and optional Client Secret)
  * - PAT: requires Personal Access Token
  */
-export default function GitLabAuthModal({ isOpen, providerInfo, onSuccess, onClose }) {
+export default function GitLabAuthModal({
+  isOpen,
+  provider,
+  providerInfo,
+  onSuccess,
+  onClose,
+  proxyPools = [],
+  proxyPoolsReady = false,
+}) {
+  const providerId = provider || "gitlab";
   const [mode, setMode] = useState(null); // null | "oauth" | "pat"
   const [baseUrl, setBaseUrl] = useState(GITLAB_COM);
   const [clientId, setClientId] = useState("");
@@ -67,7 +76,7 @@ export default function GitLabAuthModal({ isOpen, providerInfo, onSuccess, onClo
       const res = await fetch("/api/oauth/gitlab/pat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: pat.trim(), baseUrl: baseUrl.trim() || GITLAB_COM }),
+        body: JSON.stringify({ provider: providerId, token: pat.trim(), baseUrl: baseUrl.trim() || GITLAB_COM }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Authentication failed");
@@ -87,9 +96,11 @@ export default function GitLabAuthModal({ isOpen, providerInfo, onSuccess, onClo
     return (
       <OAuthModal
         isOpen
-        provider="gitlab"
+        provider={providerId}
         providerInfo={providerInfo}
         oauthMeta={oauthMeta}
+        proxyPools={proxyPools}
+        proxyPoolsReady={proxyPoolsReady}
         onSuccess={() => { onSuccess?.(); handleClose(); }}
         onClose={() => { setShowOAuth(false); setOauthMeta(null); }}
       />
@@ -188,7 +199,14 @@ export default function GitLabAuthModal({ isOpen, providerInfo, onSuccess, onClo
 
 GitLabAuthModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
+  provider: PropTypes.string,
   providerInfo: PropTypes.shape({ name: PropTypes.string }),
   onSuccess: PropTypes.func,
   onClose: PropTypes.func.isRequired,
+  proxyPools: PropTypes.arrayOf(PropTypes.shape({
+    id: PropTypes.string,
+    name: PropTypes.string,
+    isActive: PropTypes.bool,
+  })),
+  proxyPoolsReady: PropTypes.bool,
 };

@@ -1,67 +1,95 @@
-# v1.0.1 (2026-07-06)
+# 2.0.0
 
 ## Features
-
-- Add DigitalOcean AI provider (serverless inference).
-- Add RTK git-log filter.
-
-## Fixes
-
-- Drop orphan Gemini function responses before OpenAI bridge conversion.
-- Refresh docs and remove non-English documentation set.
-
-# v1.0.0 (2026-07-04)
-
-First DurinDoor release. Initial fork from `decolua/9router` v0.5.18;
-rebranded display + identity strings preserved for data migration
-(`sk_9router`, `[providers.9router]`, `X-Msh-Platform: 9router`,
-`~/.9router/` data dir, `STORAGE_KEY`, `CLI_TOKEN_SALT`,
-`custom:9Router-*`).
-
-## Highlights
-
-- **Two-branch release model**: `dev` is the default branch (nightly
-  pre-releases), `main` only receives human-merged controlled releases.
-  `.github/workflows/nightly.yml` cuts an idempotent
-  `nightly-YYYY-MM-DD` tag daily 02:00 UTC, marked `prerelease: true`
-  and `make_latest: false`, anchored to a pinned commit SHA so future
-  `dev` history rewrites cannot re-anchor existing releases.
-- **Rebrand**: package name `durindoor`, UI rebrand to a LOTR
-  green/gold palette, traffic-light chrome removed,
-  `NineRemoteButton` / `NineRemotePromoModal` deleted, 9Remote- and
-  9router-only upstream changes not absorbed.
-- **CI/CD reorg**: emoji-named jobs/steps (✅ CI, ✨ Lint & Build, 🧪
-  Tests). `npm run lint` (scoped to `src/`) green with documented
-  warnings. `npm run test:ci` exits 0 against
-  `tests/__baseline__/known-fails.txt`. Release workflow hardened for
-  the no-`package-lock.json` reality.
-- **Upstream ports** (auto-ported via `durindoor-port-pr.sh`):
-  #2364 usage-stats API-key collision fix (sha256 fingerprint bucket),
-  #2373 NVIDIA NIM chat-model catalog expansion.
-- **OAuth secrets scrubbed**: `GEMINI_OAUTH_CLIENT_ID`,
-  `ANTIGRAVITY_OAUTH_CLIENT_ID` moved from source to env vars.
-- **Firecrawl URL**: DB setting > env var > default priority chain
-  (`open-sse/handlers/fetch/index.js`), tests for self-hosted in
-  `tests/unit/firecrawl-selfhosted.test.js`.
+- **xAI**: route the Responses-tagged model grok-4.20-multi-agent-0309 to Grok's native `/v1/responses` endpoint; plain chat models keep `/v1/chat/completions` (OmniRoute #6709, upstream 9router #2439).
+- **CLI tools**: Grok Build (xAI CLI) tool card + settings — apply/reset a routed `[model.9router]` slot in `~/.grok/config.toml` with previous-default restore and TOML-injection hardening (9router #2571).
+- **GitHub Copilot**: route Claude models through Copilot's native `/v1/messages` endpoint so prompt-cache token counts (`cached_tokens`) surface; non-Claude models keep `/chat/completions` (upstream 9router #2608).
+- **Token Saver**: aggregate token-saver telemetry with per-request persistence and period aggregation, dashboard overview, stats API + live stream, and fail-open recording on chat and /v1/responses (#2562).
+- **Updater**: one-click Update in the dashboard sidebar (auto install + restart via the detached updater status endpoint, bounded poll with manual fallback; decolua/9router #2575).
 
 ## Fixes
+- **MiniMax-M3**: attach the OpenAI transport in the dashboard translator step 3 so the executor uses the `/v1/text/chatcompletion_v2` endpoint and matching headers; clamp unsupported `tool_choice` values (`"required"` and function objects) to `"auto"` on the OpenAI transport (upstream decolua/9router#2533).
+- **Claude**: map `claude-fable-5` and `claude-mythos-5` to `claude-adaptive` thinking format; sanitize unsigned, invalid, or default-signature historical thinking blocks and never synthesize placeholder thinking for those models. Preserve Opus/Sonnet signed-thinking history and placeholder behavior.
+- **Anthropic**: do not trigger account fallback for `invalid_request_error` 400 responses; `providerFieldStrips` no longer strips top-level `thinking` when a 400 error points to a nested `messages.*.content.*.thinking` path.
+- **Models**: discover OpenAI/Anthropic-compatible provider models in `/v1/models` — the old UUID suffix guard skipped UUID-v4 compatible node IDs and prevented `fetchCompatibleModelIds` from running (upstream #2645).
+- **Claude Code**: strip the `cc/` provider prefix from `ANTHROPIC_DEFAULT_*_MODEL` when writing Claude Code settings so bare model ids (e.g. `claude-opus-4-8`) reach Anthropic instead of 400 (upstream #2645).
+- **Bootstrap**: strip empty-string `process.env` values before app modules load so Docker `-e KEY=` no longer overrides real values and crash-loops the container (OmniRoute #6828).
+- **Routing**: the `auto` combo's no-auth candidate pool now honors a disabled provider connection's own `isActive=false` (the main Providers grid toggle), seeding chat-eligible no-auth providers by default and gating them out when their connection row is disabled (OmniRoute #6889, fixes #6557).
+- **Codex**: rewrite replayed assistant history `input_text`/`text` parts to `output_text` (dropping `annotations`/`logprobs`/`obfuscation`) so the Codex/OpenAI backend accepts codex-cli conversation replays; user and function items unchanged (OmniRoute #6932).
+- **Codex**: echo the client-requested effort-suffixed model id (e.g. `gpt-5.5-xhigh`) in Responses `response.created`/`response.in_progress`/`response.completed` payloads so the Codex CLI status line shows the active effort, without changing the routed upstream model id (OmniRoute #6820).
+- **Models**: route `/v1/models` live model-list discovery through the local-first provider-validation SSRF guard (`getProviderValidationGuard`) so LAN-local OpenAI-compatible providers (e.g. LM Studio on 192.168.x.x) appear under default settings while cloud-metadata endpoints stay blocked before any fetch; discovery fetches force `redirect: "manual"` (OmniRoute #6966).
+- **Providers**: adding a second API-key connection for the same provider no longer silently overwrites the first — POST /api/providers now runs create-only and returns 409 `PROVIDER_CONNECTION_ALREADY_EXISTS` on a duplicate (provider, apikey, name), the Add-API-key modal pre-fills a unique provider-scoped default name (`main`, `main-2`, …), and PUT /api/providers/[id] remains the explicit update path (OmniRoute #6499).
+- **CLI**: `waitServerReady()` no longer reports ready from a raw TCP accept alone — it classifies each health probe as ready / fast-reject / hanging / not-listening, so the "server is running" banner no longer fires while the backend still cannot answer a request (OmniRoute #6892).
+- **GitHub Copilot**: harden the native `/v1/messages` Claude route — strip params upstream rejects (`temperature`, non-4.6 `thinking`/`reasoning_effort`), map `max_completion_tokens`/`stop`/`tool_choice:"none"` to Anthropic shapes, bound the fetch with the provider connect timeout, retry transient 502/503/504 and network failures, drop the Claude Code persona for non-Claude-Code Copilot clients, and strip unsigned `thinking` history (upstream 9router #2608, Codex #291).
+- **Resilience**: honor explicit daily/weekly/monthly quota-exhausted text on apikey-category 429s — bench the connection for the parsed reset window (or preserve `exhausted` state when resetless) instead of retrying on the generic transient backoff; ordinary transient 429s keep exponential backoff (OmniRoute #6731 / #6638).
+- **Gemini**: omit unsupported thinking config for Gemma 4 on OpenAI-to-Gemini requests (OmniRoute #6708).
+- **Routing**: clamp reasoning-token headroom to explicit model output caps and isolate fallback attempts (#6714).
+- **OAuth**: regression-test Codex OAuth connection dedup — Codex same-email logins remain isolated by account and provider, preventing silent token overwrite (OmniRoute #6706; behavior already enforced by account-id-scoped dedup).
+- **Claude streaming**: defer `content_block_start` until a streamed tool name arrives so GLM-style split id/name chunks no longer emit an empty tool name (OmniRoute #6730).
 
-- **CI (`ci.yml`, `release.yml`, `nightly.yml`, `docker-publish.yml`)**:
-  switched `npm ci` → `npm install --no-audit --no-fund` (repo gitignores
-  `package-lock.json`, line 63 of `.gitignore`); removed `cache: npm`
-  from setup-node; added `persist-credentials: false` to checkout;
-  pinned `target_commitish` to the checked-out SHA. CI scope narrowed to
-  `install + lint + build`; tests moved to `test.yml` with a
-  no-regression gate. `docker-publish.yml` dropped Docker Hub
-  (GHCR-only on `v*` tags).
+## Providers
+- **Kiro**: add the GPT-5.6 family (Sol/Terra/Luna) as synthetic `-thinking`/`-agentic` variants with a 272k context window and per-tier rate multipliers, expose MITM picker slots for the new base ids, preserve static alias-to-provider mapping for combo capability aggregation, and normalize dash-form ids before pricing lookup (upstream decolua/9router#2596).
 
-## Breaking Changes
+- **Ollama**: accept native `application/x-ndjson` streams from ollama-local backends instead of blocking them as error pages, and pass raw NDJSON through the Ollama-compat `/api/chat` transform (upstream #2541).
+- **Gemini**: omit unsupported thinking config for Gemma 4 on OpenAI-to-Gemini requests (OmniRoute #6708).
+- **Routing**: clamp reasoning-token headroom to explicit model output caps and isolate fallback attempts (#6714).
+- **OAuth**: regression-test Codex OAuth connection dedup — Codex same-email logins remain isolated by account and provider, preventing silent token overwrite (OmniRoute #6706; behavior already enforced by account-id-scoped dedup).
+# v1.1.0 (2026-07-14)
 
-- **Two-branch release model**: `dev` is now the default branch; nightly
-  pre-releases tag from `dev`; `main` only receives human-merged
-  controlled releases. Self-hosted operators tracking the old default
-  branch should switch to `dev` for nightly updates and treat `main`
-  as stable-only.
+First published DurinDoor release since v1.0.1. Includes the previously
+unreleased v1.0.2 changelog and version changes (brand + build), which ship
+here for the first time.
+
+## Features
+- **Compression**: token-compression engine catalog wired into chatCore, with a compression-studio preview (#203, #223).
+- **Quota**: atomic quota-aware routing with preflight + fallback and per-provider quota trackers/persistence (#211, #212, #213).
+- **Auto-combo**: combo engine with patches and resolver for multi-provider routing (#205).
+- **Health**: provider health monitoring and free-provider rankings (#198).
+- **Playground**: full chat playground replacing basic-chat (#199).
+- **Realtime**: OpenAI realtime WebSocket bridge (#192).
+- **Catalog**: refreshed model catalog and paid-model filtering across catalog and pickers (#193, #200).
+- **UI**: show Codex plan labels in provider and quota views (#241).
+
+## Providers
+- **Kimi Web**: add the www.kimi.com consumer-chat provider with web-cookie auth (#140).
+- **SenseNova**: Token Plan support with OpenAI-style reasoning and a max-tokens clamp (#138).
+- **OpenRouter**: register the rerank provider and `/v1/rerank` routing (#139).
+- **grok-cli**: cap tools at 200 for the cli-chat-proxy and add usage/quota parsing (#237, #246, #248).
+- **OpenAI**: route GPT-5.6 Sol tools through the Responses API; honor GPT-5.6 effort semantics on the Codex wire (#233, #240).
+- **Ollama**: add a native Claude transport (upstream #2475).
+- **MiniMax**: OpenAI transport passthrough (#234).
+- **Codex**: fast tier, long contexts, capacity SSE, reset-credit expiry, and refresh-token family-revocation cascade (#217, #235, #236).
+- Providers batch (ClinePass, NVIDIA, and more) (#195).
+
+## Security
+- Require `API_KEY_SECRET`; refuse the hardcoded HMAC fallback (SEC-B-01) (#231).
+- Encrypt OAuth tokens and API keys at rest in provider connections (SEC-B-02) (#232).
+- Close SSRF holes in provider-node validation, proxy-test, and the MCP gateway; fail-closed CORS and sanitized errors (SEC-A-01/02/03) (#228, #229, #230, #191).
+
+## Localization
+- Complete Simplified Chinese UI translations and guard English/zh-CN key parity (#2436).
+- Indonesian caveman language pack (#222).
+
+## Fixes
+- **Thinking/Kiro**: keep request-only thinking controls out of provider model IDs, validate native Kiro envelopes, preserve direct-route sessions, and reconcile Claude passthrough thinking budgets.
+- **Anthropic**: lowercase the `anthropic-version` header to prevent duplication on `/v1/messages` (#238).
+- **Headroom**: allow larger prompt compression to finish (#239).
+- **Dashboard**: support buffered tunnels and stable quota refresh via a single auto-refresh scheduler (#243).
+- **Gemini**: preserve chat `file_data` PDFs through openai-to-gemini translation (#147).
+- **Translator**: preserve reasoning/thinking history across the OpenAI request bridge; prevent doubled tool args OpenAI↔Claude; per-toolUseEvent Kiro tool-call indices (#214, #215, #224).
+- **MCP gateway**: harden stdio/HTTP/SSE transport races and error shapes (#218, #219, #220).
+- **Usage**: validate page bounds and refetch tabs on reset without clobbering the period (#226).
+- **Executors**: source `DEFAULT_MODEL` from the provider registry; dedupe mimocode keys; use `ANTHROPIC_API_VERSION` in zenmux-free (#225, #227).
+
+## Brand
+- Rebrand all user-facing documentation, GitBook, Docker docs, CLI README, and assets to the DurinDoor identity.
+- Remove non-English documentation; keep English-only docs for now.
+- Rename skill modules to the `durindoor-*` namespace and update URLs to `bloodf/durindoor`.
+- Update favicon and app icons to the new DurinDoor mark.
+- Fix release workflow to publish the `cli` package rather than the private root package.
+
+## Build
+- Bump root and CLI package versions to 1.1.0.
 
 # v0.5.18 (2026-07-03)
 
@@ -237,7 +265,7 @@ rebranded display + identity strings preserved for data migration
 - Dashboard: show provider node name instead of connection name in topology (#1770) + show explicit `kind="llm"` combos on combos page (#1684)
 
 ## Docs
-- README: add Indonesian 9Router tutorial video (#1709)
+- README: add Indonesian DurinDoor tutorial video (#1709)
 
 # v0.4.71 (2026-06-06)
 

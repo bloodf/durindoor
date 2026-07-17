@@ -1,9 +1,9 @@
-import { PROVIDERS } from "./providers.js";
 import REGISTRY from "../providers/registry/index.js";
 // PROVIDER_MODELS now built from providers/registry (transport + models co-located)
 import { PROVIDER_MODELS } from "../providers/index.js";
-import { modelQuotaFamily, modelStrip, modelTargetFormat } from "../providers/models/schema.js";
+import { modelQuotaFamily, modelStrip, modelTargetFormat, normalizeModelId } from "../providers/models/schema.js";
 import { CODEX_REVIEW_SUFFIX } from "../providers/models/helpers.js";
+import { parseSuffix } from "../translator/concerns/thinkingSuffix.js";
 
 export { PROVIDER_MODELS };
 
@@ -18,57 +18,106 @@ export function getDefaultModel(aliasOrId) {
   return models?.[0]?.id || null;
 }
 
+// Providers whose registry uses dots in version numbers (e.g. "claude-sonnet-4.5").
+// For these, we tolerate clients sending dashes ("claude-sonnet-4-5") by normalizing
+// digit-hyphen-digit to digit-dot-digit before lookup. Other providers are left untouched.
+const DOT_VERSION_PROVIDERS = new Set(["kr", "kiro"]);
+
+// Find a registry entry by id. For Kiro models, tolerates dash/dot version separators
+// ("claude-sonnet-4-5" ~= "claude-sonnet-4.5"). Other providers use exact match only.
+function findModel(models, modelId, aliasOrId) {
+  if (!models) return undefined;
+  const found = models.find(m => m.id === modelId);
+  if (found) return found;
+  if (!DOT_VERSION_PROVIDERS.has(aliasOrId)) return undefined;
+  const normalized = normalizeModelId(modelId);
+  if (normalized === modelId) return undefined;
+  return models.find(m => m.id === normalized);
+}
+
 export function isValidModel(aliasOrId, modelId, passthroughProviders = new Set()) {
   if (passthroughProviders.has(aliasOrId)) return true;
   const models = PROVIDER_MODELS[aliasOrId];
   if (!models) return false;
-  return models.some(m => m.id === modelId);
+  return !!findModel(models, modelId, aliasOrId);
 }
 
 export function findModelName(aliasOrId, modelId) {
   const models = PROVIDER_MODELS[aliasOrId];
   if (!models) return modelId;
-  const found = models.find(m => m.id === modelId);
+  const found = findModel(models, modelId, aliasOrId);
   return found?.name || modelId;
 }
 
+function getOpenCodeZenPassthroughTargetFormat(modelId) {
+  if (typeof modelId !== "string") return null;
+  if (modelId.startsWith("claude-")) return "claude";
+  if (/^gpt-5(?:[.-]|$)/.test(modelId)) return "openai-responses";
+  return null;
+}
+
+// Upstream decolua/9router#2533: MiniMax documents MiniMax-M3 tool calling on the
+// standard OpenAI API surface, so M3 is routed through the OpenAI wire format +
+// chatcompletion_v2 endpoint even for Claude-source clients.
+const OPENAI_FORMAT_MINIMAX_PROVIDERS = new Set(["minimax", "minimax-cn"]);
+
 export function getModelTargetFormat(aliasOrId, modelId) {
   const models = PROVIDER_MODELS[aliasOrId];
-  if (!models) return null;
-  return modelTargetFormat(models.find(m => m.id === modelId));
+  const configuredTargetFormat = models ? modelTargetFormat(findModel(models, modelId, aliasOrId)) : null;
+  if (configuredTargetFormat) return configuredTargetFormat;
+  if (OPENAI_FORMAT_MINIMAX_PROVIDERS.has(aliasOrId) && modelId === "MiniMax-M3") return "openai";
+  // OpenCode Zen allows passthrough model IDs, but API-family prefixes still need
+  // their native translators instead of the provider default Chat Completions route.
+  if (aliasOrId === "opencode-zen") return getOpenCodeZenPassthroughTargetFormat(modelId);
+  return null;
 }
 
 export function getModelType(aliasOrId, modelId) {
   const models = PROVIDER_MODELS[aliasOrId];
   if (!models) return null;
-  const found = models.find(m => m.id === modelId);
+  const found = findModel(models, modelId, aliasOrId);
   return found?.kind || found?.type || null;
 }
 
 export function getModelUpstreamId(aliasOrId, modelId) {
+  // Only recognized request-only thinking controls participate in catalog
+  // lookup. Unknown parentheses may be part of a real passthrough/custom model
+  // ID and must remain opaque instead of being rewritten through a base alias.
+  // The control is never re-appended: provider-facing model IDs are always clean,
+  // while thinking intent travels in request-scoped translation context.
+  const parsed = parseSuffix(modelId);
+  const baseId = parsed.cleanModel;
   const models = PROVIDER_MODELS[aliasOrId];
-  const found = models?.find(m => m.id === modelId);
+  const found = findModel(models, baseId, aliasOrId);
   if (found?.upstreamModelId) return found.upstreamModelId;
-  if (aliasOrId === "cx" && typeof modelId === "string" && modelId.endsWith(CODEX_REVIEW_SUFFIX)) {
-    return modelId.slice(0, -CODEX_REVIEW_SUFFIX.length);
+  if (found?.id) return found.id;
+  if (aliasOrId === "cx" && typeof baseId === "string" && baseId.endsWith(CODEX_REVIEW_SUFFIX)) {
+    return baseId.slice(0, -CODEX_REVIEW_SUFFIX.length);
   }
-  return modelId;
+  return baseId;
+}
+
+/** Return the configured catalog id for a request model, or null for passthrough input. */
+export function getCanonicalModelId(aliasOrId, modelId) {
+  const { cleanModel } = parseSuffix(modelId);
+  const models = PROVIDER_MODELS[aliasOrId];
+  return findModel(models, cleanModel, aliasOrId)?.id || null;
 }
 
 export function getModelQuotaFamily(aliasOrId, modelId) {
+  const { cleanModel } = parseSuffix(modelId);
   const models = PROVIDER_MODELS[aliasOrId];
-  return modelQuotaFamily(models?.find(m => m.id === modelId));
+  return modelQuotaFamily(findModel(models, cleanModel, aliasOrId));
 }
 
-// OAuth short aliases — derived from registry `alias` (single source). everything else: alias = id.
-// vertex/vertex-partner keep alias=id (kept via the `|| id` fallback in consumers).
+// Short aliases are derived from the full registry, including transportless media
+// providers, so provider-id lookups can still reach PROVIDER_MODELS alias keys.
 export const OAUTH_ALIASES = Object.fromEntries(
   REGISTRY.filter(r => r.alias && r.alias !== r.id).map(r => [r.id, r.alias])
 );
 
-// Derived from PROVIDERS — no need to maintain manually
 export const PROVIDER_ID_TO_ALIAS = Object.fromEntries(
-  Object.keys(PROVIDERS).map(id => [id, OAUTH_ALIASES[id] || id])
+  REGISTRY.map(r => [r.id, r.alias || r.id])
 );
 
 export function getModelsByProviderId(providerId) {
@@ -79,5 +128,5 @@ export function getModelsByProviderId(providerId) {
 // Get strip list for a model entry (explicit opt-in only)
 // Returns array of content types to strip, e.g. ["image", "audio"]
 export function getModelStrip(alias, modelId) {
-  return modelStrip(PROVIDER_MODELS[alias]?.find(m => m.id === modelId));
+  return modelStrip(findModel(PROVIDER_MODELS[alias], modelId, alias));
 }

@@ -4,6 +4,7 @@
 
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 import { U, parseResetTime, toFiniteNumber } from "./shared.js";
+import { applyCodexAccountHeader, resolveCodexAccountId } from "../../shared/codexAccountId.js";
 
 // Codex (OpenAI) API config
 const CODEX_CONFIG = {
@@ -43,10 +44,15 @@ function toIsoDate(value) {
   return Number.isFinite(time) ? date.toISOString() : null;
 }
 
-export function getCodexAccountId(providerSpecificData = {}) {
-  const value = providerSpecificData?.workspaceId || providerSpecificData?.chatgptAccountId || providerSpecificData?.accountId;
-  return typeof value === "string" ? value.trim() : "";
-}
+/**
+ * Upstream provenance: reset-credit expiry parsing and multi-field account-id
+ * resolution were ported from decolua/9router PR #2345
+ * ("fix(codex): parse reset credit expiry details", upstream head
+ * 465e3e52b728636eabeb05950dd72d21a8f1400f). dev additionally hardens
+ * account-id resolution via open-sse/shared/codexAccountId.js (256-char
+ * limit, rejects NUL/CR/LF) — do not regress to the plain trim().
+ */
+export const getCodexAccountId = resolveCodexAccountId;
 
 function looksLikeProxyOptions(value) {
   return value && typeof value === "object" && (
@@ -73,8 +79,7 @@ function buildCodexHeaders(accessToken, providerSpecificData = {}, extra = {}) {
     "User-Agent": "codex_cli_rs/0.136.0",
     ...extra,
   };
-  const accountId = getCodexAccountId(providerSpecificData);
-  if (accountId) headers["ChatGPT-Account-ID"] = accountId;
+  applyCodexAccountHeader(headers, providerSpecificData);
   return headers;
 }
 

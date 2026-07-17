@@ -134,8 +134,8 @@ describe("injectReasoningContent — MiniMax thinking round-trip", () => {
     expect(out.messages[0].reasoning_content).toBe(original);
   });
 
-  it("DefaultExecutor transformRequest runs the injector for minimax", () => {
-    const { DefaultExecutor } = require("../../open-sse/executors/default.js");
+  it("DefaultExecutor transformRequest runs the injector for minimax", async () => {
+    const { DefaultExecutor } = await import("../../open-sse/executors/default.js");
     const executor = new DefaultExecutor("minimax");
     const out = executor.transformRequest(
       "MiniMax-M2.7",
@@ -156,5 +156,33 @@ describe("OpenCodeExecutor — issue #1543 regression", () => {
     );
     const assistant = out.messages.find((m) => m.role === "assistant");
     expect(assistant.reasoning_content).toBeDefined();
+  });
+
+  it("strips client_metadata before forwarding to OpenCode", () => {
+    const executor = new OpenCodeExecutor();
+    const out = executor.transformRequest(
+      "kimi-k2.6",
+      {
+        ...bodyWith([{ role: "user", content: "hi" }]),
+        client_metadata: { client: "codex" },
+      },
+    );
+    expect(out.client_metadata).toBeUndefined();
+  });
+});
+
+describe("injectReasoningContent — native Kimi thinking round-trip", () => {
+  it("injects reasoning_content on Kimi assistant turns without tool calls", () => {
+    const out = injectReasoningContent({
+      provider: "kimi",
+      model: "kimi-k2.6",
+      body: bodyWith([
+        { role: "user", content: "hi" },
+        { role: "assistant", content: "previous answer" },
+      ]),
+    });
+    const assistant = out.messages.find((m) => m.role === "assistant");
+    expect(typeof assistant.reasoning_content).toBe("string");
+    expect(assistant.reasoning_content.length).toBeGreaterThan(0);
   });
 });

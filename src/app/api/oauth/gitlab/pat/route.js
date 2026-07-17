@@ -16,7 +16,11 @@ export async function POST(request) {
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     }
 
-    const { token, baseUrl } = body;
+    const { token, baseUrl, provider: providerParam } = body;
+    const provider = providerParam?.trim() || "gitlab";
+    if (provider !== "gitlab" && provider !== "gitlab-duo") {
+      return NextResponse.json({ error: "Unsupported provider for GitLab PAT" }, { status: 400 });
+    }
     if (!token?.trim()) {
       return NextResponse.json({ error: "Personal Access Token is required" }, { status: 400 });
     }
@@ -37,7 +41,7 @@ export async function POST(request) {
     const email = user.email || user.public_email || "";
 
     await createProviderConnection({
-      provider: "gitlab",
+      provider,
       authType: "oauth",
       accessToken: token.trim(),
       refreshToken: null,

@@ -21,7 +21,109 @@ export const QUOTA_SORT_OPTIONS = [
   { value: "remaining-desc", label: "% quota: high to low" },
 ];
 
+export function getRefreshCountdown(nextRefreshAt, now = Date.now()) {
+  if (!Number.isFinite(nextRefreshAt)) return 0;
+  return Math.max(0, Math.ceil((nextRefreshAt - now) / 1000));
+}
+
+export function createAutoRefreshScheduler({
+  intervalMs = REFRESH_INTERVAL_MS,
+  onRefresh,
+  onCountdown = () => {},
+  isHidden = () => typeof document !== "undefined" && document.hidden,
+  now = () => Date.now(),
+  setTimeoutFn = setTimeout,
+  clearTimeoutFn = clearTimeout,
+  setIntervalFn = setInterval,
+  clearIntervalFn = clearInterval,
+}) {
+  let stopped = true;
+  let refreshTimer = null;
+  let countdownTimer = null;
+  let nextRefreshAt = null;
+  let running = null;
+
+  const clearTimers = () => {
+    if (refreshTimer) clearTimeoutFn(refreshTimer);
+    if (countdownTimer) clearIntervalFn(countdownTimer);
+    refreshTimer = null;
+    countdownTimer = null;
+  };
+
+  const publishCountdown = () => {
+    onCountdown(getRefreshCountdown(nextRefreshAt, now()));
+  };
+
+  const schedule = () => {
+    clearTimers();
+    if (stopped || isHidden()) return;
+    if (!Number.isFinite(nextRefreshAt)) nextRefreshAt = now() + intervalMs;
+
+    publishCountdown();
+    refreshTimer = setTimeoutFn(() => {
+      void runRefresh(false).catch(() => {});
+    }, Math.max(0, nextRefreshAt - now()));
+    countdownTimer = setIntervalFn(publishCountdown, 1000);
+  };
+
+  function runRefresh(force) {
+    if (running) return running;
+    if (!force && isHidden()) {
+      clearTimers();
+      return Promise.resolve();
+    }
+
+    clearTimers();
+    running = Promise.resolve()
+      .then(() => onRefresh(force))
+      .finally(() => {
+        running = null;
+        if (stopped) return;
+        nextRefreshAt = now() + intervalMs;
+        schedule();
+      });
+    return running;
+  }
+
+  return {
+    start() {
+      stopped = false;
+      nextRefreshAt = now() + intervalMs;
+      schedule();
+    },
+    pause() {
+      clearTimers();
+      publishCountdown();
+    },
+    resume() {
+      if (stopped) return Promise.resolve();
+      if (!Number.isFinite(nextRefreshAt)) nextRefreshAt = now() + intervalMs;
+      if (nextRefreshAt <= now()) return runRefresh(false);
+      schedule();
+      return Promise.resolve();
+    },
+    refreshNow() {
+      return runRefresh(true);
+    },
+    stop() {
+      stopped = true;
+      clearTimers();
+    },
+    getNextRefreshAt() {
+      return nextRefreshAt;
+    },
+  };
+}
+
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
+// ┌────────────────────────────────────────────────────────────────────────────┐
+// │ Quota-visibility helpers                                                   │
+// │                                                                              │
+// │ These utilities let users hide individual quota rows per provider.          │
+// │ Quota rows are identified by a stable key (`modelKey` when available,        │
+// │ otherwise a composite of the display name and array index).                │
+// └────────────────────────────────────────────────────────────────────────────┘
+
 export function getConnectionLabel(connection) {
   return connection.name?.trim()
     || connection.email?.trim()
@@ -289,6 +391,12 @@ export function calculatePercentage(used, total) {
  * @returns {number} Remaining percentage (0-100)
  */
 export function getRemainingPercentage(quota) {
+  // Credits rows carry an absolute balance in `remaining` (e.g. 4000 credits),
+  // not a 0-100 percentage — read the percentage field first for those.
+  if (quota?.isCredits && quota?.remainingPercentage !== undefined) {
+    return Math.max(0, Math.round(quota.remainingPercentage));
+  }
+
   if (quota?.remaining !== undefined) {
     return Math.max(0, Math.round(quota.remaining));
   }
@@ -298,6 +406,102 @@ export function getRemainingPercentage(quota) {
   }
 
   return calculatePercentage(quota?.used, quota?.total);
+}
+
+/**
+ * Build a stable key used to identify a quota row for visibility settings.
+ *
+ * Prefer `quota.modelKey` when present. For positional display names such as
+ * "Month 1" / "Month 2", fall back to a composite key that includes the row's
+ * 0-based array index so reordering does not collapse distinct rows.
+ *
+ * @param {Object} quota - Normalized quota row
+ * @param {number} [index] - 0-based position of the row in its array
+ * @returns {string} Stable visibility key
+ */
+export function getQuotaVisibilityKey(quota, index) {
+  if (!quota || typeof quota !== "object") return "";
+  if (quota.modelKey) return String(quota.modelKey).trim();
+  const name = String(quota.name || "").trim();
+  if (name === "") return "";
+  if (index === undefined || index === null) return name;
+  return `${name}::${index}`;
+}
+
+function getProviderHiddenQuotaSet(provider, quotaVisibility) {
+  const hidden = quotaVisibility?.[provider]?.hidden;
+  return new Set(
+    (Array.isArray(hidden) ? hidden : [])
+      .map((item) => String(item).trim())
+      .filter(Boolean),
+  );
+}
+
+/**
+ * Return quota rows that should be visible for a provider.
+ *
+ * @param {string} provider - Provider identifier
+ * @param {Array<Object>} [quotas=[]] - Normalized quota rows
+ * @param {Object} [quotaVisibility={}] - Per-provider visibility settings
+ * @returns {Array<Object>} Quota rows that are not hidden
+ */
+export function filterQuotasByVisibility(provider, quotas = [], quotaVisibility = {}) {
+  if (!Array.isArray(quotas) || quotas.length === 0) return [];
+  const hidden = getProviderHiddenQuotaSet(provider, quotaVisibility);
+  if (hidden.size === 0) return quotas;
+  return quotas.filter((quota, index) => !hidden.has(getQuotaVisibilityKey(quota, index)));
+}
+
+/**
+ * Return quota rows that are currently hidden for a provider.
+ *
+ * @param {string} provider - Provider identifier
+ * @param {Array<Object>} [quotas=[]] - Normalized quota rows
+ * @param {Object} [quotaVisibility={}] - Per-provider visibility settings
+ * @returns {Array<Object>} Hidden quota rows
+ */
+export function getHiddenQuotaRows(provider, quotas = [], quotaVisibility = {}) {
+  if (!Array.isArray(quotas) || quotas.length === 0) return [];
+  const hidden = getProviderHiddenQuotaSet(provider, quotaVisibility);
+  if (hidden.size === 0) return [];
+  return quotas.filter((quota, index) => hidden.has(getQuotaVisibilityKey(quota, index)));
+}
+
+/**
+ * Build a credits-style quota row (absolute balance, not a request window).
+ * `remaining`/`creditCount` hold the raw credit balance; `remainingPercentage`
+ * carries the 0-100 display value (getRemainingPercentage prefers it for
+ * isCredits rows so a 4,000-credit balance is never rendered as "4,000%").
+ */
+function buildCreditsQuota(name, remaining, remainingPercentage, extra = {}) {
+  return {
+    name,
+    used: 0,
+    total: 0,
+    remaining,
+    resetAt: null,
+    unlimited: false,
+    isCredits: true,
+    remainingPercentage,
+    creditCount: remaining,
+    ...extra,
+  };
+}
+
+function buildClaudeExtraUsageQuota(extraUsage) {
+  const monthlyLimit = Number(extraUsage?.monthly_limit ?? 0);
+  const usedCredits = Number(extraUsage?.used_credits ?? 0);
+  const utilization = Number(extraUsage?.utilization ?? 0);
+  const remainingPercentage = Number.isFinite(utilization)
+    ? Math.max(0, 100 - utilization)
+    : undefined;
+  const remaining = Number.isFinite(monthlyLimit) ? Math.max(0, monthlyLimit - usedCredits) : 0;
+
+  return buildCreditsQuota("extra_usage", remaining, remainingPercentage ?? 100, {
+    used: Number.isFinite(usedCredits) ? usedCredits : 0,
+    total: Number.isFinite(monthlyLimit) ? monthlyLimit : 0,
+    currency: extraUsage?.currency,
+  });
 }
 
 /**
@@ -403,15 +607,31 @@ export function parseQuotaData(provider, data) {
             resetAt: null,
             message: data.message,
           });
-        } else if (data.quotas) {
-          Object.entries(data.quotas).forEach(([name, quota]) => {
-            normalizedQuotas.push({
-              name,
-              used: quota.used || 0,
-              total: quota.total || 0,
-              resetAt: quota.resetAt || null,
+        } else {
+          if (data.quotas) {
+            Object.entries(data.quotas).forEach(([name, quota]) => {
+              normalizedQuotas.push({
+                name,
+                used: quota.used || 0,
+                total: quota.total || 0,
+                resetAt: quota.resetAt || null,
+                // Do NOT forward `remaining`: admin/legacy payloads carry an
+                // absolute request count there, and getRemainingPercentage
+                // prefers `remaining` over the derived percentage — a row like
+                // {used:1000,total:5000,remaining:4000} would render "4,000%".
+                // Percentage comes from remainingPercentage or used/total.
+                remainingPercentage: quota.remainingPercentage,
+              });
             });
-          });
+          }
+          // #6806: some Claude plans (e.g. "default_raven_enterprise") return no
+          // five_hour/seven_day utilization windows at all — only a credit-billing
+          // extraUsage block — so quotas can be {} while extraUsage still holds real,
+          // actionable usage data. Fold it in as a credits-style row instead of
+          // falling back to "No quota data".
+          if (data.extraUsage?.is_enabled) {
+            normalizedQuotas.push(buildClaudeExtraUsageQuota(data.extraUsage));
+          }
         }
         break;
 
@@ -446,6 +666,29 @@ export function parseQuotaData(provider, data) {
               total: quota.total || 0,
               resetAt: quota.resetAt || null,
               recurring: quota.recurring !== false,
+            });
+          });
+        }
+        break;
+      case "grok-cli":
+        // Grok CLI / Grok Build (SuperGrok + X Premium+) returns raw.quotas
+        // as a { productName: { used, total, remainingPercentage, resetAt } }
+        // map. The dashboard rows expect used / total / remainingPercentage
+        // (so the percent bar renders); fall back to a derived percent when
+        // the upstream doesn't supply it.
+        if (data.quotas && typeof data.quotas === "object" && !Array.isArray(data.quotas)) {
+          Object.entries(data.quotas).forEach(([name, quota]) => {
+            const used = typeof quota?.used === "number" ? quota.used : 0;
+            const total = typeof quota?.total === "number" ? quota.total : 0;
+            const remainingPercentage = typeof quota?.remainingPercentage === "number"
+              ? quota.remainingPercentage
+              : (total > 0 ? Math.max(0, Math.min(100, Math.round(((total - used) / total) * 100))) : 0);
+            normalizedQuotas.push({
+              name,
+              used,
+              total,
+              remainingPercentage,
+              ...(quota?.resetAt ? { resetAt: quota.resetAt } : {}),
             });
           });
         }
@@ -488,3 +731,4 @@ export function parseQuotaData(provider, data) {
 
   return normalizedQuotas;
 }
+

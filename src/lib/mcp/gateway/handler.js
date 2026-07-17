@@ -116,7 +116,7 @@ export async function handleJsonRpc(request, body, opts = {}) {
           endpoint: "/api/mcp-gateway",
           tokens: {},
           status: "ok",
-        }).catch((e) => console.warn("[mcp-gw] usage log failed:", e?.message));
+        }).catch((err) => console.warn("[mcp-gw] usage save failed:", err));
         return respond(jsonRpcOk(obj.id, result ?? { content: [], isError: false }));
       } catch (e) {
         const errMsg = (typeof e.message === "string" ? e.message : undefined) || String(e);
@@ -130,7 +130,7 @@ export async function handleJsonRpc(request, body, opts = {}) {
           endpoint: "/api/mcp-gateway",
           tokens: {},
           status: "error",
-        }).catch(() => {});
+        }).catch((err) => console.warn("[mcp-gw] usage save failed:", err));
         if (isUpstream) {
           return respond(jsonRpcOk(obj.id, {
             content: [{ type: "text", text: `tool error: ${errMsg}` }],

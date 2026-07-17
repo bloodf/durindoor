@@ -6,7 +6,10 @@ import { createHash } from "node:crypto";
 import { checkFallbackError, formatRetryAfter } from "./accountFallback.js";
 import { unavailableResponse } from "../utils/error.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
+import { filterByContextRequirements, sortByContextSize, validateContextRequirementsMembers } from "./combo/contextRequirements.js";
+import { resolveReasoningBufferedMaxTokens } from "./reasoningTokenBuffer.js";
 import { extractTextContent } from "../translator/formats/gemini.js";
+import { isAutoComboId, familyOfAutoId, resolveAutoCombo } from "./autoComboResolver.js";
 
 // Hard capabilities = input modalities; missing one drops request data (e.g. image
 // stripped). Must be prioritized. Soft (e.g. search) only degrades a feature.
@@ -15,6 +18,83 @@ const HARD_CAPS = new Set(["vision", "pdf", "audioInput", "videoInput"]);
 // Prefixes used when flattening tool turns into plain prose for panel models.
 const TOOL_CALL_PREFIX = "[Called tools: ";
 const TOOL_RESULT_PREFIX = "[Tool result: ";
+
+// ─── Fingerprint account pin (#6696) ─────────────────────────────────────────
+// The combo builder UI pins a specific account for fingerprint providers
+// (mimocode/mcode/opencode) by encoding it as a composite model/connection id:
+// `${realConnectionId}|fp|${fingerprint}`
+// splitFingerprintPin parses that composite back into { realConnectionId,
+// pinnedFingerprint } so the executor can resolve the exact account. Malformed
+// (empty id or empty fingerprint) return null so callers fall through to the
+// unpinned path unchanged — mirroring upstream splitFingerprintPin (#6696).
+export const FP_PIN_SEPARATOR = "|fp|";
+
+export function splitFingerprintPin(id) {
+  if (typeof id !== "string") return null;
+  const idx = id.indexOf(FP_PIN_SEPARATOR);
+  if (idx === -1) return null;
+  const realConnectionId = id.slice(0, idx);
+  const pinnedFingerprint = id.slice(idx + FP_PIN_SEPARATOR.length);
+  if (!realConnectionId || !pinnedFingerprint) return null;
+  return { realConnectionId, pinnedFingerprint };
+}
+
+// ─── Auto-combo no-auth candidate gating (OmniRoute #6889, fixes #6557) ─────
+// A no-auth provider (opencode/mimocode/…) has no credential, so it enters the
+// auto-combo pool by DEFAULT even with zero provider_connections rows. But a
+// real connection row CAN exist for it (created via "Add Account" for a
+// fingerprint provider), and that row's own `isActive=false` — the toggle on
+// the main Providers grid card — must gate the pool too.
+//
+// Pure over its inputs so it runs in both the async catalog build
+// (src/sse/services/model.js) and any sync dispatch path without a DB handle.
+
+/**
+ * Apply the #6557 gate to the default no-auth auto-combo candidates.
+ *
+ * Seed every eligible no-auth catalog key that has a non-empty model roster
+ * (zero-row default), but skip any whose provider has an `isActive=false`
+ * connection row (the grid toggle). The caller already seats active rows in
+ * the catalog, so an enabled provider-account still wins over a separate
+ * inactive row without this helper re-adding it.
+ *
+ * Eligibility is decided upstream by the caller via the canonical
+ * `NOAUTH_PROVIDERS` config (open-sse/config/providers.js); this helper does
+ * NOT re-check `noAuth`/`serviceKinds`.
+ *
+ * @param {Object} params
+ * @param {Map<string,string>} params.idToKey connection `provider` id → catalog key
+ * @param {Array<{id:string,alias?:string}>} params.noAuthEntries chat-eligible no-auth registry entries
+ * @param {(key:string)=>Array<unknown>|undefined} params.getModels models lookup for a catalog key
+ * @param {Set<string>} params.inactiveKeys catalog keys with ≥1 `isActive=false` connection row
+ * @returns {string[]} catalog keys to include in the auto-combo catalog (deduped)
+ */
+export function applyNoAuthAutoComboGate({ idToKey, noAuthEntries, getModels, inactiveKeys }) {
+  const keys = new Set();
+  for (const entry of noAuthEntries || []) {
+    const key = idToKey.get(entry.id) || entry.alias || entry.id;
+    if (!key) continue;
+    const models = getModels(key);
+    if (!Array.isArray(models) || models.length === 0) continue;
+    // #6557: honor the provider's own grid-card toggle (its connection row's
+    // isActive=false). Scope is the isActive gate only.
+    if (inactiveKeys.has(key) || (entry.alias && inactiveKeys.has(entry.alias))) continue;
+    keys.add(key);
+  }
+  return [...keys];
+}
+
+// ─── Model-family detection (auto-combo family helpers, #6509 / #6453) ───────
+// Canonical surface lives in the dependency-free autoComboFamilies module so
+// combo.js and the resolver share it without a cycle. Re-exported here for
+// existing importers (tests + downstream combo code).
+export {
+  MODEL_FAMILIES,
+  AUTO_FAMILY_IDS,
+  isValidModelFamily,
+  detectModelFamily,
+  isProviderOverrideFamily,
+} from "./autoComboFamilies.js";
 
 // Flatten tool turns into prose so panel models keep the context but can't loop
 // on tools: drop the request's tools, turn tool/function results into assistant
@@ -131,6 +211,7 @@ const comboRotationState = new Map();
  * @type {Map<string, { index: number, lastUsed: number }>}
  */
 const comboConversationAffinity = new Map();
+export { comboConversationAffinity }; // test access to round-robin sticky pin state (#6733)
 const CONVERSATION_AFFINITY_TTL_MS = 60 * 60 * 1000;
 const MAX_CONVERSATION_AFFINITY_ENTRIES = 1000;
 /**
@@ -161,6 +242,14 @@ function _getScore(comboName, modelStr) {
     return Math.min(Math.max(recovered, SCORE_CFG.min), SCORE_CFG.max);
   }
   return state.score;
+}
+
+/** Map legacy smart-scoring evidence into the shared quota scorer's health band. */
+export function getComboModelQuotaHealth(comboName, modelStr) {
+  const score = _getScore(comboName, modelStr);
+  if (score <= 50) return "unhealthy";
+  if (score < 95) return "degraded";
+  return "healthy";
 }
 
 /** Update a model's score after a request attempt. */
@@ -297,6 +386,26 @@ function advanceRotationState(rotationKey, currentIndex, modelCount, normalizedS
     comboRotationState.set(rotationKey, {
       index: currentIndex,
       consecutiveUseCount: nextUseCount,
+    });
+  }
+}
+
+function advanceRoundRobinPointerPastServedModel(models, comboName, comboStickyLimit, servedModel) {
+  if (!Array.isArray(models) || models.length <= 1 || !servedModel) return;
+  const servedIndex = models.indexOf(servedModel);
+  if (servedIndex < 0) return;
+  const sticky = normalizeStickyLimit(comboStickyLimit);
+  if (sticky > 1) {
+    // For sticky round-robin, pin the served model as the current rotation
+    // and start its sticky counter so subsequent requests continue from it.
+    comboRotationState.set(comboName || "__default__", {
+      index: servedIndex,
+      consecutiveUseCount: 0,
+    });
+  } else {
+    comboRotationState.set(comboName || "__default__", {
+      index: (servedIndex + 1) % models.length,
+      consecutiveUseCount: 0,
     });
   }
 }
@@ -682,12 +791,27 @@ export function resetComboScoring(comboName) {
 }
 
 /**
- * Get combo models from combos data
+ * Get combo models from combos data. `auto/<family>` resolves BEFORE the slash
+ * guard and the combos-data lookup: a recognized auto id always returns an array
+ * (possibly empty) — never null — so callers enter the combo path and fail fast
+ * (handleComboChat emits a controlled 503) rather than falling through to a
+ * literal "auto" provider or a combos-data miss.
  * @param {string} modelStr - Model string to check
  * @param {Array|Object} combosData - Array of combos or object with combos
- * @returns {string[]|null} Array of models or null if not a combo
+ * @param {Object} [options] - { catalog, settings } for auto/* resolution
+ * @returns {string[]|null} Array of models (empty for empty auto pool), or null if not a combo
  */
-export function getComboModelsFromData(modelStr, combosData) {
+export function getComboModelsFromData(modelStr, combosData, options = {}) {
+  // `auto/<family>` resolves BEFORE the slash guard and the combos-data lookup.
+  // With a catalog supplied it materializes the family pool; with no catalog the
+  // recognized auto id still short-circuits to [] (fail-fast) rather than
+  // falling through to a literal "auto" provider or a combos-data miss. A
+  // recognized auto id always returns an array (possibly empty) — never null.
+  if (isAutoComboId(modelStr)) {
+    const family = familyOfAutoId(modelStr);
+    return resolveAutoCombo(family, options.catalog || {}, options.settings);
+  }
+
   // Don't check if it's in provider/model format
   if (modelStr.includes("/")) return null;
   
@@ -711,22 +835,108 @@ export function getComboModelsFromData(modelStr, combosData) {
  * @param {string} [options.comboName] - Name of the combo (for round-robin tracking)
  * @param {string} [options.comboStrategy] - Strategy: "fallback" or "round-robin"
  * @param {number|string} [options.comboStickyLimit=1] - Requests per combo model before switching
+ * @param {Object} [options.contextRequirements] - Optional per-combo context-window
+ *   config ({ minContextWindow, preferLargeContext, contextFilterMode }).
+ *   Eligibility (minContextWindow) filters the pool BEFORE rotation so RR/affinity
+ *   state is computed over eligible models; preferLargeContext sorts the rotated
+ *   targets BEFORE task-aware reordering (upstream #6907 pipeline point).
+ * @param {number} [options.comboTimeoutMs=0] - Per-model timeout; 0 disables
  * @returns {Promise<Response>}
  */
-export async function handleComboChat({ body, models, handleSingleModel, log, comboName, comboStrategy, comboStickyLimit = 1, autoSwitch = true }) {
+export async function handleComboChat({
+  body,
+  models,
+  handleSingleModel,
+  log,
+  comboName,
+  comboStrategy,
+  comboStickyLimit = 1,
+  autoSwitch = true,
+  comboTimeoutMs = 0,
+  quotaRanker = null,
+  signal = null,
+  contextRequirements = null,
+}) {
+  const abortedResponse = () => new Response(
+    JSON.stringify({ error: { message: "Request aborted" } }),
+    { status: 499, headers: { "Content-Type": "application/json" } },
+  );
+  const waitForCooldown = (milliseconds) => {
+    if (signal?.aborted) return Promise.reject(new DOMException("Request aborted", "AbortError"));
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(finish, milliseconds);
+      const onAbort = () => finish(new DOMException("Request aborted", "AbortError"));
+      function finish(error = null) {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+        if (error) reject(error);
+        else resolve();
+      }
+      signal?.addEventListener("abort", onAbort, { once: true });
+    });
+  };
+  if (signal?.aborted) return abortedResponse();
+  // #6546 (#6458): fail fast on an empty pool instead of looping zero times and
+  // leaking a generic "all models failed" after the fact.
+  if (!Array.isArray(models) || models.length === 0) {
+    const msg = `Combo "${comboName}" has no models`;
+    log.warn("COMBO", msg);
+    return new Response(
+      JSON.stringify({ error: { message: msg } }),
+      { status: 503, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  // Context-requirements ELIGIBILITY filter runs BEFORE rotation/scoring so the
+  // round-robin pointer, sticky rotation, smart-scoring, and conversation-affinity
+  // state are all computed over the ELIGIBLE pool. Filtering only after rotation
+  // would let the pointer land on an excluded member and skew the survivor
+  // sequence. `activeModels` is used for rotation AND every downstream pool
+  // reference (pointer, affinity release) so they share the SAME eligible set.
+  // Same reference when no requirement is configured, leaving fallback order intact.
+  const memberCheck = validateContextRequirementsMembers(models, contextRequirements);
+  if (!memberCheck.ok) {
+    log.warn("COMBO", memberCheck.message);
+    return new Response(
+      JSON.stringify({ error: { message: memberCheck.message } }),
+      { status: memberCheck.status, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  const activeModels = filterByContextRequirements(models, contextRequirements, log);
+  if (!Array.isArray(activeModels) || activeModels.length === 0) {
+    const msg = `Combo "${comboName}" has no models matching context requirements`;
+    log.warn("COMBO", msg);
+    return new Response(
+      JSON.stringify({ error: { message: msg } }),
+      { status: 503, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   // Apply rotation/scoring strategy
   const conversationCacheKey = getConversationCacheKey(body);
   let rotatedModels;
   if (comboStrategy === "smart-scoring") {
-    rotatedModels = getSmartScoredModels(models, comboName);
+    rotatedModels = getSmartScoredModels(activeModels, comboName);
   } else {
-    rotatedModels = getRotatedModels(models, comboName, comboStrategy, comboStickyLimit, conversationCacheKey);
+    rotatedModels = getRotatedModels(activeModels, comboName, comboStrategy, comboStickyLimit, conversationCacheKey);
   }
+
+  // Context-requirements preferLargeContext SORT runs BEFORE capability-aware
+  // reordering (auto-switch) and task-aware reordering. Putting it here keeps
+  // the eligibility filter before rotation, lets preferLargeContext influence
+  // dispatch order, and still leaves hard-capability-aware auto-switch to push
+  // vision/audio models to the front when the request needs them. Same reference
+  // when off.
+  rotatedModels = sortByContextSize(rotatedModels, contextRequirements, log);
+
+  // Required request capabilities hoisted so both the capability reorder and
+  // (for task strategies) the task reorder can use the same set.
+  const required = autoSwitch ? detectRequiredCapabilities(body) : new Set();
 
   // Auto-switch satisfies request capabilities only. It must not override the
   // explicit Fallback/Round Robin order for plain text requests.
   if (autoSwitch) {
-    const required = detectRequiredCapabilities(body);
     if (required.size > 0) {
       const reordered = reorderByCapabilities(rotatedModels, required);
       if (reordered[0] !== rotatedModels[0]) {
@@ -734,15 +944,28 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
       }
       rotatedModels = reordered;
     }
+  }
 
-    if (isTaskRoutingStrategy(comboStrategy)) {
-      const task = classifyTask(body);
-      const taskReordered = reorderByTaskWeight(rotatedModels, task, required);
-      if (taskReordered[0] !== rotatedModels[0]) {
-        const reasons = Array.isArray(task.reasons) && task.reasons.length ? ` (${task.reasons.join(",")})` : "";
-        log.info("COMBO", `smart-route task=${task.level}${reasons} → ${taskReordered[0]}`);
+  // Task-aware reordering (smart/task strategies) runs after context sort.
+  if (autoSwitch && isTaskRoutingStrategy(comboStrategy)) {
+    const task = classifyTask(body);
+    const taskReordered = reorderByTaskWeight(rotatedModels, task, required);
+    if (taskReordered[0] !== rotatedModels[0]) {
+      const reasons = Array.isArray(task.reasons) && task.reasons.length ? ` (${task.reasons.join(", ")})` : "";
+      log.info("COMBO", `smart-route task=${task.level}${reasons} → ${taskReordered[0]}`);
+    }
+    rotatedModels = taskReordered;
+  }
+
+  if (typeof quotaRanker === "function") {
+    try {
+      const quotaOrdered = await quotaRanker(rotatedModels);
+      if (Array.isArray(quotaOrdered) && quotaOrdered.length === rotatedModels.length) {
+        rotatedModels = quotaOrdered;
       }
-      rotatedModels = taskReordered;
+    } catch {
+      // Quota diagnostics are fail-open for unknown/repository errors; account
+      // selection still applies the authoritative atomic capacity gate.
     }
   }
   
@@ -750,16 +973,95 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
   let earliestRetryAfter = null;
   let lastStatus = null;
 
+  // #6733: release the round-robin conversation-affinity pin when the
+  // affinity-pinned FIRST member fails. Affinity only exists when the sticky
+  // limit keeps >1 request on the same model, and the key is exactly
+  // `${comboName || "__default__"}:${conversationCacheKey}` (mirrors
+  // getRotatedModels). Release only when i===0 (the pinned first member) AND
+  // the stored index still maps to the failed model — guards against a race
+  // that re-pointed the entry to a different member. Idempotent per request.
+  const stickyLimit = normalizeStickyLimit(comboStickyLimit);
+  const rrRotationKey = comboName || "__default__";
+  const rrAffinityKey =
+    comboStrategy === "round-robin" && stickyLimit > 1 && conversationCacheKey
+      ? `${rrRotationKey}:${conversationCacheKey}`
+      : null;
+  let affinityReleased = false;
+  const releaseFailedAffinity = (failedModelStr, idx) => {
+    if (affinityReleased || !rrAffinityKey) return;
+    if (idx !== 0) return;
+    const pinned = comboConversationAffinity.get(rrAffinityKey);
+    if (pinned && activeModels[pinned.index % activeModels.length] === failedModelStr) {
+      comboConversationAffinity.delete(rrAffinityKey);
+    }
+    affinityReleased = true;
+  };
+
   for (let i = 0; i < rotatedModels.length; i++) {
+    if (signal?.aborted) return abortedResponse();
     const modelStr = rotatedModels[i];
     log.info("COMBO", `Trying model ${i + 1}/${rotatedModels.length}: ${modelStr}`);
 
+    let timedOut = false;
     try {
-      const result = await handleSingleModel(body, modelStr);
-      
+      // Buffer an isolated per-attempt body so fallbacks always start from the
+      // caller's original max_tokens value.
+      let attemptBody = body;
+      const nextMaxTokens = resolveReasoningBufferedMaxTokens(modelStr, body?.max_tokens);
+      if (nextMaxTokens !== null && nextMaxTokens !== body?.max_tokens) {
+        attemptBody = { ...body, max_tokens: nextMaxTokens };
+      }
+      // Per-attempt timeout: abort signal stops the underlying request when the
+      // deadline fires, so quota/concurrency is released before fallback starts.
+      // The timeout is a deadline for the first response; it does not replace
+      // the streaming stall/first-chunk timeouts.
+      let attemptSignal = null;
+      let attemptController = null;
+      let timeoutTimer = null;
+      if (comboTimeoutMs > 0) {
+        attemptController = new AbortController();
+        attemptSignal = attemptController.signal;
+      }
+
+      let result;
+      try {
+        if (comboTimeoutMs > 0) {
+          result = await Promise.race([
+            handleSingleModel(attemptBody, modelStr, attemptSignal),
+            new Promise((_, reject) => {
+              timeoutTimer = setTimeout(() => {
+                const err = new Error(`Combo timeout after ${comboTimeoutMs}ms`);
+                err.name = "AbortError";
+                err.isComboTimeout = true;
+                reject(err);
+                attemptController.abort();
+              }, comboTimeoutMs);
+            }),
+          ]);
+        } else {
+          result = await handleSingleModel(attemptBody, modelStr, attemptSignal);
+        }
+      } finally {
+        if (timeoutTimer) clearTimeout(timeoutTimer);
+      }
+
+      // A timed-out attempt may return a 499 Response; treat it as a deadline miss
+      // rather than a genuine failure and fall back to the next model.
+      if (result?.status === 499 && attemptSignal?.aborted) {
+        releaseFailedAffinity(modelStr, i);
+        log.warn("COMBO", `Model ${modelStr} timed out after ${comboTimeoutMs}ms, falling to next`);
+        continue;
+      }
+
       // Success (2xx) - return response
       if (result.ok) {
         if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, true, null);
+        if (comboStrategy === "round-robin") {
+          const actuallyRotated = modelStr !== rotatedModels[0];
+          if (actuallyRotated) {
+            advanceRoundRobinPointerPastServedModel(activeModels, comboName, comboStickyLimit, modelStr);
+          }
+        }
         log.info("COMBO", `Model ${modelStr} succeeded`);
         return result;
       }
@@ -802,15 +1104,37 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
       if (cooldownMs && cooldownMs > 0 && cooldownMs <= 5000 &&
           (result.status === 503 || result.status === 502 || result.status === 504)) {
         log.info("COMBO", `Model ${modelStr} transient ${result.status}, waiting ${cooldownMs}ms before next`);
-        await new Promise(r => setTimeout(r, cooldownMs));
+        try {
+          await waitForCooldown(cooldownMs);
+        } catch (error) {
+          if (error?.name === "AbortError") return abortedResponse();
+          throw error;
+        }
       }
 
       // Fallback to next model
+      releaseFailedAffinity(modelStr, i);
       lastError = errorText || String(result.status);
       if (!lastStatus) lastStatus = result.status;
       log.warn("COMBO", `Model ${modelStr} failed, trying next`, { status: result.status });
     } catch (error) {
+      if (signal?.aborted) return abortedResponse();
+      if (error?.isComboTimeout) {
+        // Deadline miss is not a real failure; skip setting lastError so the final
+        // "all models failed" message stays on the most recent genuine failure.
+        releaseFailedAffinity(modelStr, i);
+        log.warn("COMBO", `Model ${modelStr} timed out after ${comboTimeoutMs}ms, falling to next`);
+        continue;
+      }
+      // A timeout abort was already handled above; any other AbortError here is
+      // unexpected — treat it as a fallback-able error so the combo continues.
+      if (error?.name === "AbortError") {
+        releaseFailedAffinity(modelStr, i);
+        log.warn("COMBO", `Model ${modelStr} aborted, trying next`);
+        continue;
+      }
       // Catch unexpected exceptions to ensure fallback continues
+      releaseFailedAffinity(modelStr, i);
       lastError = error.message || String(error);
       if (!lastStatus) lastStatus = 500;
       log.warn("COMBO", `Model ${modelStr} threw error, trying next`, { error: lastError });
@@ -930,24 +1254,16 @@ const FUSION_DEFAULTS = {
   minPanel: 2,             // answers needed before stragglers get a grace window
   stragglerGraceMs: 8000,  // wait this long for laggards once quorum is reached
   panelHardTimeoutMs: 90000, // absolute cap so one hung model can't stall forever
+  panelCancelDrainTimeoutMs: 5000, // wait for canceled calls to release quota before judge
 };
-
-// Resolve a Response (or {__error}) within ms; the loser keeps running but is ignored.
-function withTimeout(promise, ms) {
-  return new Promise((resolve) => {
-    const t = setTimeout(() => resolve({ __timeout: true }), ms);
-    Promise.resolve(promise)
-      .then((v) => { clearTimeout(t); resolve(v); })
-      .catch((e) => { clearTimeout(t); resolve({ __error: e }); });
-  });
-}
 
 /**
  * Collect panel responses with quorum-grace: as soon as `minPanel` calls succeed,
  * start a short grace timer for the rest, then proceed with whatever arrived. This
  * caps the straggler penalty (the slowest model otherwise dominates wall time) while
  * still preferring a full panel when everyone is fast. Bounded by a hard timeout.
- * Returns a sparse array aligned to `calls` (undefined = not yet / dropped).
+ * Returns a stable sparse snapshot plus the indexes still running at cutoff.
+ * Late settlements must not mutate the panel that will be sent to the judge.
  */
 function collectPanel(calls, { minPanel, stragglerGraceMs, panelHardTimeoutMs }) {
   return new Promise((resolve) => {
@@ -961,7 +1277,11 @@ function collectPanel(calls, { minPanel, stragglerGraceMs, panelHardTimeoutMs })
       finished = true;
       clearTimeout(hardTimer);
       if (graceTimer) clearTimeout(graceTimer);
-      resolve(out);
+      const results = out.slice();
+      const pendingIndexes = Array.from({ length: results.length }, (_, index) => (
+        results[index] === undefined ? index : null
+      )).filter((index) => index !== null);
+      resolve({ results, pendingIndexes });
     };
     const hardTimer = setTimeout(finish, panelHardTimeoutMs);
     calls.forEach((p, i) => {
@@ -976,6 +1296,20 @@ function collectPanel(calls, { minPanel, stragglerGraceMs, panelHardTimeoutMs })
         });
     });
   });
+}
+
+async function drainCancelledPanelCalls(calls, pendingIndexes, timeoutMs) {
+  if (pendingIndexes.length === 0) return true;
+  let timer = null;
+  const drained = Promise.allSettled(pendingIndexes.map((index) => calls[index])).then(() => true);
+  const timedOut = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(false), timeoutMs);
+  });
+  try {
+    return await Promise.race([drained, timedOut]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 /**
@@ -999,24 +1333,67 @@ function collectPanel(calls, { minPanel, stragglerGraceMs, panelHardTimeoutMs })
  * @param {string} [options.comboName] - Combo name (logging)
  * @param {string} [options.judgeModel] - Judge model; falls back to panel[0]
  * @param {Object} [options.tuning] - Override FUSION_DEFAULTS (minPanel, grace, timeout)
+ * @param {Object} [options.contextRequirements] - Optional per-combo context-window
+ *   requirements; filters the panel BEFORE fan-out so an ineligible model is
+ *   never called (same eligibility semantics as handleComboChat).
  * @returns {Promise<Response>}
  */
-export async function handleFusionChat({ body, models, handleSingleModel, log, comboName, judgeModel, tuning }) {
-  const panel = Array.isArray(models) ? models.filter(Boolean) : [];
-  if (panel.length === 0) {
+export async function handleFusionChat({ body, models, handleSingleModel, log, comboName, judgeModel, tuning, contextRequirements = null }) {
+  const allModels = Array.isArray(models) ? models.filter(Boolean) : [];
+  if (allModels.length === 0) {
     return new Response(
       JSON.stringify({ error: { message: "Fusion combo has no models" } }),
       { status: 400, headers: { "Content-Type": "application/json" } }
     );
   }
 
-  // A single-model fusion has nothing to fuse — just answer directly.
+  // Members that do not resolve to a provider/model id cannot be evaluated for
+  // context requirements. Fail controlled instead of silently treating them
+  // as eligible/unknown in the panel.
+  const memberCheck = validateContextRequirementsMembers(allModels, contextRequirements);
+  if (!memberCheck.ok) {
+    log.warn("FUSION", memberCheck.message);
+    return new Response(
+      JSON.stringify({ error: { message: memberCheck.message } }),
+      { status: memberCheck.status, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  // Context-requirements eligibility filter must run here too: the fusion
+  // branch in chat.js returns before handleComboChat, so without this call a
+  // configured min-context filter would be silently ignored for fusion combos.
+  const eligibleModels = filterByContextRequirements(allModels, contextRequirements, log);
+  const panel = sortByContextSize(eligibleModels, contextRequirements, log);
+  if (!Array.isArray(panel) || panel.length === 0) {
+    const msg = `Combo "${comboName}" has no models matching context requirements`;
+    log.warn("FUSION", msg);
+    return new Response(
+      JSON.stringify({ error: { message: msg } }),
+      { status: 503, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  // A single-model fusion has nothing to fuse — unless the operator pinned an
+  // explicit judgeModel (#6607 / #6455): then that lone model becomes the
+  // panel-of-one and the configured judge still synthesizes the answer, so a
+  // persisted judgeModel is never silently discarded. Without an explicit
+  // judge, answer directly (judge would equal panel[0], nothing to fuse).
   if (panel.length === 1) {
-    return handleSingleModel(body, panel[0]);
+    if (judgeModel && judgeModel.trim()) {
+      // fall through to shared fan-out/judge path with a one-member panel
+    } else {
+      return handleSingleModel(body, panel[0]);
+    }
   }
 
   const cfg = { ...FUSION_DEFAULTS, ...(tuning || {}) };
-  const minPanel = Math.min(Math.max(2, cfg.minPanel), panel.length);
+  // #6521 (#6454): allow minPanel as low as 1 (was floor 2) so a 2-model panel
+  // can proceed on a single answer instead of waiting for a quorum that never
+  // arrives. Sanitize non-finite/fractional tuning so a NaN/Infinity value
+  // can't disable the grace timer and stall until the hard timeout.
+  const rawMin = Number(cfg.minPanel);
+  const safeMin = Number.isFinite(rawMin) ? Math.floor(rawMin) : FUSION_DEFAULTS.minPanel;
+  const minPanel = Math.min(Math.max(1, safeMin), panel.length);
   const judge = judgeModel && judgeModel.trim() ? judgeModel.trim() : panel[0];
   log.info("FUSION", `Combo "${comboName}" | panel=${panel.length} [${panel.join(", ")}] | judge=${judge} | quorum=${minPanel}`);
 
@@ -1032,8 +1409,28 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
   }
 
   const t0 = Date.now();
-  const calls = panel.map((m) => withTimeout(handleSingleModel(panelBody, m, true), cfg.panelHardTimeoutMs));
-  const settled = await collectPanel(calls, { ...cfg, minPanel });
+  const panelControllers = panel.map(() => new AbortController());
+  const calls = panel.map((m, index) => Promise.resolve()
+    .then(() => handleSingleModel(panelBody, m, true, panelControllers[index].signal)));
+  const { results: settled, pendingIndexes } = await collectPanel(calls, { ...cfg, minPanel });
+  for (const index of pendingIndexes) {
+    const controller = panelControllers[index];
+    if (!controller.signal.aborted) controller.abort("fusion_panel_complete");
+  }
+  if (pendingIndexes.length > 0) {
+    const rawDrainTimeout = Number(cfg.panelCancelDrainTimeoutMs);
+    const drainTimeoutMs = Number.isFinite(rawDrainTimeout) && rawDrainTimeout > 0
+      ? Math.min(Math.floor(rawDrainTimeout), FUSION_DEFAULTS.panelCancelDrainTimeoutMs)
+      : FUSION_DEFAULTS.panelCancelDrainTimeoutMs;
+    const drained = await drainCancelledPanelCalls(calls, pendingIndexes, drainTimeoutMs);
+    if (!drained) {
+      log.warn("FUSION", "Canceled panel calls did not acknowledge cleanup before the drain deadline");
+      return new Response(
+        JSON.stringify({ error: { message: "Fusion panel cleanup timed out" } }),
+        { status: 503, headers: { "Content-Type": "application/json" } },
+      );
+    }
+  }
   log.info("FUSION", `fan-out collected in ${Date.now() - t0}ms`);
 
   // 2. Collect successful answers.
@@ -1068,8 +1465,18 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
     );
   }
   if (answers.length === 1) {
-    log.info("FUSION", `Only ${answers[0].model} succeeded — answering directly (no fusion)`);
-    return handleSingleModel(body, answers[0].model);
+    // #6607 (#6455): with a single surviving panel answer, the cheap shortcut
+    // (return that answer directly) is only valid when the judge WOULD have
+    // been that same model anyway (judge === panel[0], i.e. no explicit
+    // judgeModel). When the operator configured an explicit judgeModel, honor
+    // it: run the judge over the lone collected answer instead of silently
+    // replaying the survivor and discarding the judge configuration.
+    const explicitJudge = judgeModel && judgeModel.trim();
+    if (!explicitJudge) {
+      log.info("FUSION", `Only ${answers[0].model} succeeded — answering directly (no fusion)`);
+      return handleSingleModel(body, answers[0].model);
+    }
+    log.info("FUSION", `Only ${answers[0].model} succeeded — still judging with explicit ${judge}`);
   }
 
   // 4. Judge analyzes + writes one final answer (streams to client if requested).

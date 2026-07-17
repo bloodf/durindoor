@@ -1,47 +1,50 @@
-import { vi, describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
+import { createRequire } from "node:module";
 
-// Use vi.hoisted to patch child_process before winElevated.js is imported
-const mockExecSync = vi.hoisted(() => vi.fn());
+const require = createRequire(import.meta.url);
+const { isAdmin } = require("../../src/mitm/winElevated.js");
 
-vi.hoisted(() => {
-  const child_process = require("child_process");
-  child_process.execSync = mockExecSync;
-});
-
-// Import after the hoisted patch is executed
-import { isAdmin } from "../../src/mitm/winElevated.js";
-
+// 9router #2291: the Windows elevation probe must invoke `fltmc` (Filter
+// Manager control) rather than `net session`. These tests inject a mock
+// execFileSync and force platform "win32" so the Windows branch is exercised
+// on every host OS.
 describe("Windows Admin Privilege Check (winElevated.js)", () => {
+  let execFileSyncImpl;
+
   beforeEach(() => {
-    mockExecSync.mockReset();
+    execFileSyncImpl = vi.fn();
   });
 
-  it("returns true when fltmc succeeds (elevated process)", () => {
-    mockExecSync.mockReturnValue(Buffer.from(""));
-    
-    const result = isAdmin();
-    
-    if (process.platform === "win32") {
-      expect(result).toBe(true);
-      expect(mockExecSync).toHaveBeenCalledWith("fltmc", { windowsHide: true, stdio: "ignore" });
-    } else {
-      // On non-Windows, it checks process.getuid
-      expect(result).toBe(typeof process.getuid === "function" && process.getuid() === 0);
-    }
+  it("returns true and probes the trusted fltmc.exe when elevated", () => {
+    execFileSyncImpl.mockReturnValue(Buffer.from(""));
+
+    const result = isAdmin({ platform: "win32", execFileSyncImpl });
+
+    expect(result).toBe(true);
+    expect(execFileSyncImpl).toHaveBeenCalledTimes(1);
+    const [binary, argv, options] = execFileSyncImpl.mock.calls[0];
+    expect(binary).toBe("C:\\Windows\\System32\\fltmc.exe");
+    expect(argv).toEqual([]);
+    expect(options).toMatchObject({ windowsHide: true, stdio: "ignore", timeout: 5000 });
   });
 
-  it("returns false when fltmc throws an error (non-elevated process)", () => {
-    mockExecSync.mockImplementation(() => {
+  it("returns false when fltmc throws (non-elevated process)", () => {
+    execFileSyncImpl.mockImplementation(() => {
       throw new Error("Access is denied");
     });
-    
-    const result = isAdmin();
-    
-    if (process.platform === "win32") {
-      expect(result).toBe(false);
-      expect(mockExecSync).toHaveBeenCalledWith("fltmc", { windowsHide: true, stdio: "ignore" });
-    } else {
-      expect(result).toBe(typeof process.getuid === "function" && process.getuid() === 0);
-    }
+
+    const result = isAdmin({ platform: "win32", execFileSyncImpl });
+
+    expect(result).toBe(false);
+    expect(execFileSyncImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("never probes fltmc on non-Windows platforms", () => {
+    const result = isAdmin({ platform: "linux", execFileSyncImpl });
+
+    expect(execFileSyncImpl).not.toHaveBeenCalled();
+    const realUid = typeof process.getuid === "function" ? process.getuid() : null;
+    const effectiveUid = typeof process.geteuid === "function" ? process.geteuid() : realUid;
+    expect(result).toBe(realUid === 0 || effectiveUid === 0);
   });
 });

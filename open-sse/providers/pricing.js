@@ -1,9 +1,150 @@
+import REGISTRY from "./registry/index.js";
+import {
+  isFreeModel,
+  providerHasFreeModels,
+} from "../config/freeModelCatalog.js";
+import { stripKiroSyntheticSuffixes } from "./models/kiroVariants.js";
+import { normalizeModelId } from "./models/schema.js";
+
 // Pricing rates for AI models — all rates in $/1M tokens
 //
 // Fallback order (first match wins):
 //   1. PROVIDER_PRICING[provider][model]  — provider-specific override
 //   2. MODEL_PRICING[model]               — canonical model price (provider-agnostic)
 //   3. PATTERN_PRICING                    — glob pattern match (e.g. "codex-*")
+
+// Alias→id and id→entry maps for resolving the provider half of a model string
+// when classifying paid vs free. Built once from the registry single-source so
+// per-model classification is O(1) (the /v1/models list carries hundreds).
+const ALIAS_TO_PROVIDER_ID = {};
+const PROVIDER_BY_ID = {};
+for (const entry of REGISTRY) {
+  PROVIDER_BY_ID[entry.id] = entry;
+  ALIAS_TO_PROVIDER_ID[entry.id] = entry.id;
+  if (entry.alias) ALIAS_TO_PROVIDER_ID[entry.alias] = entry.id;
+  if (entry.uiAlias && entry.uiAlias !== entry.alias) ALIAS_TO_PROVIDER_ID[entry.uiAlias] = entry.id;
+  for (const a of entry.aliases || []) ALIAS_TO_PROVIDER_ID[a] = entry.id;
+}
+
+/**
+ * Split a "provider/model" string at the FIRST slash, preserving nested model
+ * ids like "fireworks/accounts/fireworks/models/glm-5p2".
+ */
+function splitProviderModel(modelStr) {
+  if (typeof modelStr !== "string") return { provider: "", model: "" };
+  const slash = modelStr.indexOf("/");
+  if (slash <= 0) return { provider: "", model: modelStr };
+  return {
+    provider: modelStr.slice(0, slash),
+    model: modelStr.slice(slash + 1),
+  };
+}
+
+function resolveProviderId(providerOrAlias) {
+  return ALIAS_TO_PROVIDER_ID[providerOrAlias] || providerOrAlias;
+}
+
+function registryEntry(providerId) {
+  return PROVIDER_BY_ID[providerId] || null;
+}
+
+function registryModel(entry, modelId) {
+  if (!entry?.models) return null;
+  return entry.models.find((m) => m.id === modelId) || null;
+}
+
+/**
+ * Whether the registry entry for (provider, model) is explicitly marked free.
+ * Honors per-model markers (name "(Free)", id ending in ":free"/"-free") and
+ * provider-level no-auth/category:"free". Provider-wide `hasFree` is NOT an
+ * exemption — a provider can mix free and priced models, so exemption needs
+ * per-model evidence. Returns `null` when there is no signal either way so
+ * callers fall through to pricing.
+ */
+function registryFreeSignal(providerId, modelId) {
+  const entry = registryEntry(providerId);
+  if (!entry) return null;
+  if (entry.noAuth === true || entry.category === "free") return true;
+  const m = registryModel(entry, modelId);
+  if (!m) return null;
+  if (m.free === true || m.isFree === true) return true;
+  if (typeof m.name === "string" && /\(Free\)\s*$/i.test(m.name)) return true;
+  if (typeof m.id === "string" && /(:free|-free)$/i.test(m.id)) return true;
+  return null;
+}
+
+/**
+ * Classify a model string as PAID for the `hidePaidModels` filter.
+ *
+ * Mirrors OmniRoute #6495 `shouldHidePaid(provider, modelId, pricing)` exactly:
+ *   - toggle off → caller skips this (returns false here only when nothing hides);
+ *   - provider NOT in curated free catalog → PAID (whole provider paid-only);
+ *   - provider in catalog → PAID unless `isFreeModel(provider, {id, pricing})`
+ *     says free (`:free` suffix, zero prompt+completion price, catalog id match).
+ * One deliberate extension beyond upstream: an explicit registry free marker
+ * (no-auth provider, `category:"free"`, per-model `free`/`(Free)`/`:free`/`-free`)
+ * wins first — DurinDoor lists free routes (api-airforce `(Free)`, auggie) that
+ * are not in the curated catalog, and those must stay visible. Unknown/unpriced
+ * on a non-free provider is PAID (matches upstream: the catalog is the
+ * authority, not the pricing table).
+ *
+ * @param {string} modelStr "alias/model" or "provider/model" (nested ids ok).
+ * @returns {boolean}
+ */
+export function isPaidModel(modelStr) {
+  const { provider: providerOrAlias, model } = splitProviderModel(modelStr);
+  // Bare / providerless IDs (custom/providerless rows in buildModelsList) have
+  // no curated catalog entry and must stay visible — never classify as paid.
+  if (!providerOrAlias || !model) return false;
+  const provider = resolveProviderId(providerOrAlias);
+
+  if (registryFreeSignal(provider, model) === true) return false;
+
+  // OmniRoute shouldHidePaid: provider with no curated free roster → hide all.
+  if (!providerHasFreeModels(provider)) return true;
+
+  // Provider has a free roster → keep only the models the catalog marks free
+  // (or an explicit zero-price row). Pricing is resolved raw-alias-first so
+  // alias-keyed overrides (PROVIDER_PRICING.gh) still feed zero-price detection.
+  const pricing =
+    getPricingForModel(providerOrAlias, model) ?? getPricingForModel(provider, model);
+  return !isFreeModel(provider, { id: model, pricing });
+}
+
+/**
+ * Filter an array of model strings/objects down to the free ones when the
+ * hide-paid toggle is on. Passes the array through unchanged when disabled.
+ * Object entries are classified by their `id` (string) field.
+ *
+ * @template T
+ * @param {T[]} models
+ * @param {boolean} enabled
+ * @param {(m: T) => string} [toModelStr] defaults to `m.id ?? m`
+ * @returns {T[]}
+ */
+export function filterPaidModels(models, enabled, toModelStr = (m) => (typeof m === "string" ? m : m?.id)) {
+  if (!enabled || !Array.isArray(models)) return models;
+  return models.filter((m) => {
+    const s = toModelStr(m);
+    return typeof s !== "string" || !isPaidModel(s);
+  });
+}
+
+/**
+ * Whether a single model qualifies as FREE for `provider` (OmniRoute #6495).
+ * Canonical definition lives in `open-sse/config/freeModelCatalog.js`; it is
+ * re-exported here so the hide-paid classifier surface — `isPaidModel`,
+ * `filterPaidModels`, `isFreeModel` — is addressable from one module.
+ *
+ * Free when ANY of: `model.id` ends with `:free`; pricing is zero prompt AND
+ * zero completion (`{prompt,completion}` or `{input,output}`); or `model.id` is
+ * on the curated free roster for `provider`. No-pricing / unknown is NOT free.
+ *
+ * @param {string} provider canonical provider id (aliases resolved by caller).
+ * @param {{ id?: string, pricing?: object }} model
+ * @returns {boolean}
+ */
+export { isFreeModel };
 
 /**
  * Canonical model pricing — provider-agnostic.
@@ -29,30 +170,30 @@ export const MODEL_PRICING = {
   "claude-sonnet-4.6":            { input: 3.00,  output: 15.00, cached: 0.30,  reasoning: 22.50,  cache_creation: 3.00  },
   "claude-opus-4-5-thinking":     { input: 5.00,  output: 25.00, cached: 0.50,  reasoning: 37.50,  cache_creation: 5.00  },
   "claude-opus-4-6-thinking":     { input: 5.00,  output: 25.00, cached: 0.50,  reasoning: 37.50,  cache_creation: 5.00  },
+  "claude-fable-5":               { input: 10.00, output: 50.00, cached: 1.00,  reasoning: 50.00,  cache_creation: 12.50 },
 
   // === OpenAI / GPT ===
-  "gpt-3.5-turbo":                { input: 0.50,  output: 1.50,  cached: 0.25,  reasoning: 2.25,   cache_creation: 0.50  },
   "gpt-4":                        { input: 2.50,  output: 10.00, cached: 1.25,  reasoning: 15.00,  cache_creation: 2.50  },
   "gpt-4-turbo":                  { input: 10.00, output: 30.00, cached: 5.00,  reasoning: 45.00,  cache_creation: 10.00 },
   "gpt-4o":                       { input: 2.50,  output: 10.00, cached: 1.25,  reasoning: 15.00,  cache_creation: 2.50  },
   "gpt-4o-mini":                  { input: 0.15,  output: 0.60,  cached: 0.075, reasoning: 0.90,   cache_creation: 0.15  },
   "gpt-4.1":                      { input: 2.50,  output: 10.00, cached: 1.25,  reasoning: 15.00,  cache_creation: 2.50  },
-  "gpt-5":                        { input: 3.00,  output: 12.00, cached: 1.50,  reasoning: 18.00,  cache_creation: 3.00  },
-  "gpt-5-mini":                   { input: 0.75,  output: 3.00,  cached: 0.375, reasoning: 4.50,   cache_creation: 0.75  },
-  "gpt-5-codex":                  { input: 3.00,  output: 12.00, cached: 1.50,  reasoning: 18.00,  cache_creation: 3.00  },
-  "gpt-5.1":                      { input: 4.00,  output: 16.00, cached: 2.00,  reasoning: 24.00,  cache_creation: 4.00  },
-  "gpt-5.1-codex":                { input: 4.00,  output: 16.00, cached: 2.00,  reasoning: 24.00,  cache_creation: 4.00  },
+  "gpt-5":                        { input: 1.25,  output: 10.00, cached: 0.625, reasoning: 10.00,  cache_creation: 1.25  },
+  "gpt-5-mini":                   { input: 0.25,  output: 2.00,  cached: 0.125, reasoning: 2.00,   cache_creation: 0.25  },
+  "gpt-5-codex":                  { input: 1.25,  output: 10.00, cached: 0.625, reasoning: 10.00,  cache_creation: 1.25  },
+  "gpt-5.1":                      { input: 1.25,  output: 10.00, cached: 0.625, reasoning: 10.00,  cache_creation: 1.25  },
+  "gpt-5.1-codex":                { input: 1.25,  output: 10.00, cached: 0.625, reasoning: 10.00,  cache_creation: 1.25  },
   "gpt-5.1-codex-mini":           { input: 1.50,  output: 6.00,  cached: 0.75,  reasoning: 9.00,   cache_creation: 1.50  },
   "gpt-5.1-codex-mini-high":      { input: 2.00,  output: 8.00,  cached: 1.00,  reasoning: 12.00,  cache_creation: 2.00  },
   "gpt-5.1-codex-max":            { input: 8.00,  output: 32.00, cached: 4.00,  reasoning: 48.00,  cache_creation: 8.00  },
-  "gpt-5.2":                      { input: 5.00,  output: 20.00, cached: 2.50,  reasoning: 30.00,  cache_creation: 5.00  },
-  "gpt-5.2-codex":                { input: 5.00,  output: 20.00, cached: 2.50,  reasoning: 30.00,  cache_creation: 5.00  },
-  "gpt-5.3-codex":                { input: 6.00,  output: 24.00, cached: 3.00,  reasoning: 36.00,  cache_creation: 6.00  },
-  "gpt-5.3-codex-xhigh":         { input: 10.00, output: 40.00, cached: 5.00,  reasoning: 60.00,  cache_creation: 10.00 },
-  "gpt-5.3-codex-high":          { input: 8.00,  output: 32.00, cached: 4.00,  reasoning: 48.00,  cache_creation: 8.00  },
-  "gpt-5.3-codex-low":           { input: 4.00,  output: 16.00, cached: 2.00,  reasoning: 24.00,  cache_creation: 4.00  },
-  "gpt-5.3-codex-none":          { input: 3.00,  output: 12.00, cached: 1.50,  reasoning: 18.00,  cache_creation: 3.00  },
+  "gpt-5.2":                      { input: 1.75,  output: 14.00, cached: 0.175, reasoning: 14.00,  cache_creation: 1.75  },
+  "gpt-5.2-codex":                { input: 1.75,  output: 14.00, cached: 0.175, reasoning: 14.00,  cache_creation: 1.75  },
+  "gpt-5.3-codex":                { input: 1.75,  output: 14.00, cached: 0.175, reasoning: 14.00,  cache_creation: 1.75  },
   "gpt-5.3-codex-spark":         { input: 3.00,  output: 12.00, cached: 0.30,  reasoning: 12.00,  cache_creation: 3.00  },
+  "gpt-5.6":                      { input: 2.50,  output: 15.00, cached: 0.25,  reasoning: 15.00,  cache_creation: 2.50  },
+  "gpt-5.6-luna":                 { input: 1.00,  output: 6.00,  cached: 0.10,  reasoning: 6.00,   cache_creation: 1.00  },
+  "gpt-5.6-terra":                { input: 2.50,  output: 15.00, cached: 0.25,  reasoning: 15.00,  cache_creation: 2.50  },
+  "gpt-5.6-sol":                  { input: 5.00,  output: 30.00, cached: 0.50,  reasoning: 30.00,  cache_creation: 5.00  },
   "o1":                           { input: 15.00, output: 60.00, cached: 7.50,  reasoning: 90.00,  cache_creation: 15.00 },
   "o1-mini":                      { input: 3.00,  output: 12.00, cached: 1.50,  reasoning: 18.00,  cache_creation: 3.00  },
 
@@ -115,6 +256,8 @@ export const MODEL_PRICING = {
   "gpt-oss-120b-medium":          { input: 0.50,  output: 2.00,  cached: 0.25,  reasoning: 3.00,   cache_creation: 0.50  },
   "vision-model":                 { input: 1.50,  output: 6.00,  cached: 0.75,  reasoning: 9.00,   cache_creation: 1.50  },
   "coder-model":                  { input: 1.50,  output: 6.00,  cached: 0.75,  reasoning: 9.00,   cache_creation: 1.50  },
+  "glm-5.1":                      { input: 1.00,  output: 4.00,  cached: 0.50,  reasoning: 6.00,   cache_creation: 1.00  },
+  "glm-5.2":                      { input: 1.00,  output: 4.00,  cached: 0.50,  reasoning: 6.00,   cache_creation: 1.00  },
 };
 
 /**
@@ -123,7 +266,7 @@ export const MODEL_PRICING = {
  * Keyed by provider alias (cc, cx, gc, gh, ...) or provider id (openai, anthropic, ...).
  */
 export const PROVIDER_PRICING = {
-  // GitHub Copilot (gh) — gpt-5.3-codex has different rate than canonical
+  // GitHub Copilot (gh) — explicit override, matches canonical gpt-5.3-codex rate
   gh: {
     "gpt-5.3-codex": { input: 1.75, output: 14.00, cached: 0.175, reasoning: 14.00, cache_creation: 1.75 },
   },
@@ -164,11 +307,11 @@ export const PATTERN_PRICING = [
   { pattern: "*-codex-max",     pricing: { input: 8.00,  output: 32.00, cached: 4.00,  reasoning: 48.00,  cache_creation: 8.00  } },
   { pattern: "*-codex-mini-*",  pricing: { input: 1.50,  output: 6.00,  cached: 0.75,  reasoning: 9.00,   cache_creation: 1.50  } },
   { pattern: "*-codex-mini",    pricing: { input: 1.50,  output: 6.00,  cached: 0.75,  reasoning: 9.00,   cache_creation: 1.50  } },
-  { pattern: "*-codex-low",     pricing: { input: 4.00,  output: 16.00, cached: 2.00,  reasoning: 24.00,  cache_creation: 4.00  } },
-  { pattern: "*-codex-none",    pricing: { input: 3.00,  output: 12.00, cached: 1.50,  reasoning: 18.00,  cache_creation: 3.00  } },
+  { pattern: "*-codex-low",     pricing: { input: 1.75,  output: 14.00, cached: 0.175, reasoning: 14.00,  cache_creation: 1.75  } },
+  { pattern: "*-codex-none",    pricing: { input: 1.75,  output: 14.00, cached: 0.175, reasoning: 14.00,  cache_creation: 1.75  } },
   { pattern: "*-codex-spark",   pricing: { input: 3.00,  output: 12.00, cached: 0.30,  reasoning: 12.00,  cache_creation: 3.00  } },
-  { pattern: "codex-*",         pricing: { input: 3.00,  output: 12.00, cached: 1.50,  reasoning: 18.00,  cache_creation: 3.00  } },
-  { pattern: "*-codex",         pricing: { input: 3.00,  output: 12.00, cached: 1.50,  reasoning: 18.00,  cache_creation: 3.00  } },
+  { pattern: "codex-*",         pricing: { input: 1.75,  output: 14.00, cached: 0.175, reasoning: 14.00,  cache_creation: 1.75  } },
+  { pattern: "*-codex",         pricing: { input: 1.75,  output: 14.00, cached: 0.175, reasoning: 14.00,  cache_creation: 1.75  } },
 
   // --- Claude ---
   { pattern: "claude-opus-*",   pricing: { input: 5.00,  output: 25.00, cached: 0.50,  reasoning: 25.00,  cache_creation: 6.25  } },
@@ -185,11 +328,12 @@ export const PATTERN_PRICING = [
   { pattern: "gemini-*",        pricing: { input: 0.50,  output: 3.00,  cached: 0.03,  reasoning: 4.50,   cache_creation: 0.50  } },
 
   // --- GPT (specific first, generic last) ---
-  { pattern: "gpt-5.3-*",       pricing: { input: 6.00,  output: 24.00, cached: 3.00,  reasoning: 36.00,  cache_creation: 6.00  } },
-  { pattern: "gpt-5.2-*",       pricing: { input: 5.00,  output: 20.00, cached: 2.50,  reasoning: 30.00,  cache_creation: 5.00  } },
-  { pattern: "gpt-5.1-*",       pricing: { input: 4.00,  output: 16.00, cached: 2.00,  reasoning: 24.00,  cache_creation: 4.00  } },
-  { pattern: "gpt-5-*",         pricing: { input: 3.00,  output: 12.00, cached: 1.50,  reasoning: 18.00,  cache_creation: 3.00  } },
-  { pattern: "gpt-5*",          pricing: { input: 3.00,  output: 12.00, cached: 1.50,  reasoning: 18.00,  cache_creation: 3.00  } },
+  { pattern: "gpt-5.6-*",       pricing: { input: 2.50,  output: 15.00, cached: 0.25,  reasoning: 15.00,  cache_creation: 2.50  } },
+  { pattern: "gpt-5.3-*",       pricing: { input: 1.75,  output: 14.00, cached: 0.175, reasoning: 14.00,  cache_creation: 1.75  } },
+  { pattern: "gpt-5.2-*",       pricing: { input: 1.75,  output: 14.00, cached: 0.175, reasoning: 14.00,  cache_creation: 1.75  } },
+  { pattern: "gpt-5.1-*",       pricing: { input: 1.25,  output: 10.00, cached: 0.625, reasoning: 10.00,  cache_creation: 1.25  } },
+  { pattern: "gpt-5-*",         pricing: { input: 1.25,  output: 10.00, cached: 0.625, reasoning: 10.00,  cache_creation: 1.25  } },
+  { pattern: "gpt-5*",          pricing: { input: 1.25,  output: 10.00, cached: 0.625, reasoning: 10.00,  cache_creation: 1.25  } },
   { pattern: "gpt-4o-*",        pricing: { input: 0.15,  output: 0.60,  cached: 0.075, reasoning: 0.90,   cache_creation: 0.15  } },
   { pattern: "gpt-4o",          pricing: { input: 2.50,  output: 10.00, cached: 1.25,  reasoning: 15.00,  cache_creation: 2.50  } },
   { pattern: "gpt-4*",          pricing: { input: 2.50,  output: 10.00, cached: 1.25,  reasoning: 15.00,  cache_creation: 2.50  } },
@@ -262,6 +406,19 @@ export function getPricingForModel(provider, model) {
   if (MODEL_PRICING[baseModel]) return MODEL_PRICING[baseModel];
   if (MODEL_PRICING[model]) return MODEL_PRICING[model];
 
+  // 2b. Kiro GPT-5.6 synthetic variants (decolua/9router#2596): the catalog
+  // expands each tier into `-thinking`/`-agentic`/`-thinking-agentic` ids, but
+  // only the bare tiers carry exact prices. Scoped to kiro/kr so genuine
+  // non-Kiro `*-thinking` models with their own exact rows are untouched.
+  // Normalize digit-dash-digit ids (gpt-5-6-sol) to the dotted catalog form
+  // and retry the canonical lookup on the de-suffixed id before the glob
+  // fallback so Sol variants don't fall through to the generic gpt-5.6-* Terra rate.
+  if (provider === "kiro" || provider === "kr") {
+    const suffixStripped = stripKiroSyntheticSuffixes(baseModel);
+    const normalized = normalizeModelId(suffixStripped);
+    if (MODEL_PRICING[normalized]) return MODEL_PRICING[normalized];
+  }
+
   // 3. Pattern match
   for (const { pattern, pricing } of PATTERN_PRICING) {
     if (matchPattern(pattern, baseModel) || matchPattern(pattern, model)) {
@@ -297,7 +454,14 @@ export function formatCost(cost) {
  * @returns {number} cost in dollars
  */
 export function calculateCostFromTokens(tokens, pricing) {
-  if (!tokens || !pricing) return 0;
+  if (!tokens) return 0;
+
+  const directCost = tokens.cost_usd ?? tokens.cost_in_usd;
+  if (Number.isFinite(Number(directCost)) && Number(directCost) >= 0) return Number(directCost);
+  if (Number.isFinite(Number(tokens.cost_in_usd_ticks)) && Number(tokens.cost_in_usd_ticks) >= 0) {
+    return Number(tokens.cost_in_usd_ticks) / 1_000_000_000_000;
+  }
+  if (!pricing) return 0;
 
   let cost = 0;
 
@@ -315,11 +479,17 @@ export function calculateCostFromTokens(tokens, pricing) {
   }
 
   const outputTokens = tokens.completion_tokens || tokens.output_tokens || 0;
-  cost += outputTokens * (pricing.output / 1000000);
-
   const reasoningTokens = tokens.reasoning_tokens || 0;
-  if (reasoningTokens > 0) {
-    cost += reasoningTokens * ((pricing.reasoning || pricing.output) / 1000000);
+  // Reasoning detail is a subset of completion/output in the canonical usage
+  // contract. Price the visible remainder at the ordinary output rate, then
+  // price the reasoning subset once at its dedicated rate (or output fallback).
+  const billedReasoningTokens = outputTokens > 0
+    ? Math.min(outputTokens, reasoningTokens)
+    : reasoningTokens;
+  const visibleOutputTokens = Math.max(0, outputTokens - billedReasoningTokens);
+  cost += visibleOutputTokens * (pricing.output / 1000000);
+  if (billedReasoningTokens > 0) {
+    cost += billedReasoningTokens * ((pricing.reasoning || pricing.output) / 1000000);
   }
 
   if (cacheCreationTokens > 0) {

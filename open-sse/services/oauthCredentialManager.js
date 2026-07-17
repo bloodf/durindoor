@@ -3,12 +3,38 @@ import {
   isUnrecoverableRefreshError,
   refreshTokenByProvider,
 } from "./tokenRefresh.js";
+import { proxyRouteFingerprint } from "./tokenRefresh/dedup.js";
 import { PROVIDER_OAUTH } from "../providers/index.js";
+import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
+import { digestMemoryKey } from "../utils/memoryKey.js";
 
 // Single source: codex.oauth.maxRefreshAgeMs (8 days) — proactive refresh window
 export const CODEX_MAX_REFRESH_AGE_MS = PROVIDER_OAUTH["codex"]?.maxRefreshAgeMs;
 
 const refreshLocks = new Map();
+
+function deleteRefreshLock(key, expectedEntry = null) {
+  const current = refreshLocks.get(key);
+  if (!current || (expectedEntry && current !== expectedEntry)) return false;
+  if (current.timer) clearTimeout(current.timer);
+  refreshLocks.delete(key);
+  return true;
+}
+
+function pruneRefreshLocks(now = Date.now()) {
+  for (const [key, entry] of refreshLocks) {
+    if (entry.expiresAt <= now) deleteRefreshLock(key, entry);
+  }
+}
+
+function makeRoomForRefreshLock() {
+  pruneRefreshLocks();
+  while (refreshLocks.size >= MEMORY_CONFIG.refreshDedupMaxSize) {
+    const oldestKey = refreshLocks.keys().next().value;
+    if (oldestKey === undefined) break;
+    deleteRefreshLock(oldestKey);
+  }
+}
 
 function parseTimeMs(value) {
   if (value === undefined || value === null || value === "") return null;
@@ -120,7 +146,82 @@ export function mergeRefreshedCredentials(provider, currentCredentials, refreshe
   return next;
 }
 
-function getRefreshLockKey(provider, credentials) {
+/**
+ * Reconstruct the immutable OAuth egress contract from persisted credentials,
+ * then merge any request-local resolved pool fields supplied by the caller.
+ *
+ * Persisted `oauthProxy.mode` remains authoritative for the fail-open/fail-closed
+ * policy. Resolved URLs stay request-local and are never written by this helper.
+ *
+ * @param {object|null} credentials Provider credentials.
+ * @param {object|null} explicitProxyOptions Resolved request-local routing.
+ * @returns {object} Effective proxy options for refresh and retry.
+ */
+export function resolveCredentialProxyOptions(credentials, explicitProxyOptions = null) {
+  const data = credentials?.providerSpecificData || {};
+  const oauthProxy = data.oauthProxy && typeof data.oauthProxy === "object"
+    ? data.oauthProxy
+    : {};
+  const explicit = explicitProxyOptions && typeof explicitProxyOptions === "object"
+    ? explicitProxyOptions
+    : {};
+
+  const options = {
+    oauthProxy,
+    proxyMode: oauthProxy.mode || data.proxyMode || "legacy",
+    proxyPoolId:
+      oauthProxy.poolId ||
+      data.proxyPoolId ||
+      data.connectionProxyPoolId ||
+      null,
+    connectionProxyPoolId:
+      data.connectionProxyPoolId ||
+      data.proxyPoolId ||
+      oauthProxy.poolId ||
+      null,
+    connectionProxyEnabled: data.connectionProxyEnabled === true,
+    connectionProxyUrl: data.connectionProxyUrl || "",
+    connectionNoProxy: data.connectionNoProxy || "",
+    vercelRelayUrl: data.vercelRelayUrl || "",
+    strictProxy: data.strictProxy === true,
+    disableEnvProxy: data.disableEnvProxy === true,
+    ...explicit,
+  };
+  // Persisted metadata is the authority. Request-local options may supply a
+  // resolved endpoint but may not replace a stored mode or pool identity.
+  if (oauthProxy.mode) options.oauthProxy = oauthProxy;
+  options.proxyMode = options.oauthProxy?.mode || options.proxyMode;
+  options.proxyPoolId =
+    options.oauthProxy?.poolId ||
+    options.proxyPoolId ||
+    options.connectionProxyPoolId ||
+    null;
+  options.connectionProxyPoolId =
+    options.connectionProxyPoolId ||
+    options.proxyPoolId ||
+    null;
+
+  // A caller cannot weaken the durable direct/strict-pool contract by omitting
+  // or replacing request-local booleans. Legacy mode intentionally remains
+  // best-effort and may use environment/configured proxy fallback.
+  if (options.proxyMode === "direct") {
+    options.proxyPoolId = null;
+    options.connectionProxyPoolId = null;
+    options.connectionProxyEnabled = false;
+    options.connectionProxyUrl = "";
+    options.connectionNoProxy = "";
+    options.vercelRelayUrl = "";
+    options.disableEnvProxy = true;
+    options.strictProxy = false;
+  } else if (options.proxyMode === "strict-pool") {
+    options.disableEnvProxy = true;
+    options.strictProxy = true;
+  }
+
+  return options;
+}
+
+function getRefreshLockKey(provider, credentials, proxyOptions) {
   const stableId =
     credentials?.connectionId ||
     credentials?.id ||
@@ -128,29 +229,67 @@ function getRefreshLockKey(provider, credentials) {
     credentials?.name ||
     credentials?.refreshToken?.slice?.(-16) ||
     "default";
-  return `${provider}:${stableId}`;
+  return digestMemoryKey(
+    "credential-refresh-lock",
+    provider,
+    stableId,
+    proxyRouteFingerprint(proxyOptions),
+  );
 }
 
-export async function withCredentialRefreshLock(provider, credentials, refreshFn) {
-  const key = getRefreshLockKey(provider, credentials);
+export async function withCredentialRefreshLock(provider, credentials, refreshFn, proxyOptions = null) {
+  const key = getRefreshLockKey(provider, credentials, proxyOptions);
   const existing = refreshLocks.get(key);
-  if (existing) return existing;
+  if (existing && existing.expiresAt > Date.now()) return existing.promise;
+  if (existing) deleteRefreshLock(key, existing);
+
+  makeRoomForRefreshLock();
+  const entry = { promise: null, expiresAt: Date.now() + MEMORY_CONFIG.refreshDedupInFlightTtlMs, timer: null };
 
   const pending = Promise.resolve()
     .then(refreshFn)
     .finally(() => {
-      refreshLocks.delete(key);
+      deleteRefreshLock(key, entry);
     });
 
-  refreshLocks.set(key, pending);
+  entry.promise = pending;
+  refreshLocks.set(key, entry);
+  entry.timer = setTimeout(() => {
+    deleteRefreshLock(key, entry);
+  }, MEMORY_CONFIG.refreshDedupInFlightTtlMs);
+  entry.timer.unref?.();
   return pending;
 }
 
-export async function refreshProviderCredentials(provider, credentials, log) {
+export function __getCredentialRefreshLockSnapshotForTesting() {
+  return {
+    keys: [...refreshLocks.keys()],
+    size: refreshLocks.size,
+    maxSize: MEMORY_CONFIG.refreshDedupMaxSize,
+    ttlMs: MEMORY_CONFIG.refreshDedupInFlightTtlMs,
+  };
+}
+
+export function __clearCredentialRefreshLocksForTesting() {
+  for (const [key, entry] of refreshLocks) deleteRefreshLock(key, entry);
+}
+
+/**
+ * Refresh and merge provider credentials without changing the request's egress
+ * route. The optional trailing proxy context is used by reactive 401/403 paths;
+ * proactive paths reconstruct it from the selected connection credentials.
+ */
+export async function refreshProviderCredentials(provider, credentials, log, proxyOptions = null) {
   if (!credentials) return null;
+  const effectiveProxyOptions = resolveCredentialProxyOptions(credentials, proxyOptions);
 
   return withCredentialRefreshLock(provider, credentials, async () => {
-    const refreshed = await refreshTokenByProvider(provider, credentials, log);
+    const refreshed = await refreshTokenByProvider(
+      provider,
+      credentials,
+      log,
+      effectiveProxyOptions
+    );
     return mergeRefreshedCredentials(provider, credentials, refreshed);
-  });
+  }, effectiveProxyOptions);
 }

@@ -23,11 +23,18 @@ export default {
     ],
     defaultMode: "auto",
   },
+  // GPT-5.6 tool calls with reasoning require the Responses API.
   transport: {
     baseUrl: "https://api.openai.com/v1/chat/completions",
     forceStream: true,
   },
+  transports: [
+    { format: "openai", baseUrl: "https://api.openai.com/v1/chat/completions" },
+    { format: "openai-responses", baseUrl: "https://api.openai.com/v1/responses" },
+  ],
   models: [
+    { id: "gpt-5.6", name: "GPT-5.6", targetFormat: "openai-responses" },
+    { id: "gpt-5.6-sol", name: "GPT-5.6 Sol", targetFormat: "openai-responses" },
     { id: "gpt-5.5", name: "GPT-5.5" },
     { id: "gpt-5.4", name: "GPT-5.4" },
     { id: "gpt-5.4-mini", name: "GPT-5.4 Mini" },

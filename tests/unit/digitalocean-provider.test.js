@@ -20,7 +20,9 @@ describe("DigitalOcean provider", () => {
 
   it("routes DigitalOcean GPT 5.x serverless models through Responses", () => {
     expect(getModelTargetFormat("digitalocean", "openai-gpt-5.5")).toBe("openai-responses");
+    expect(getModelTargetFormat("digitalocean", "openai-gpt-5.4-pro")).toBe("openai-responses");
     expect(getModelTargetFormat("digitalocean", "openai-gpt-5.4")).toBe("openai-responses");
     expect(getModelTargetFormat("digitalocean", "openai-gpt-5.4-mini")).toBe("openai-responses");
+    expect(getModelTargetFormat("digitalocean", "openai-gpt-5.4-nano")).toBe("openai-responses");
   });
 });

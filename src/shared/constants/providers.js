@@ -30,11 +30,16 @@ function buildProviderEntry(r) {
     ...(r.regions ? { regions: r.regions, defaultRegion: r.defaultRegion } : {}),
     ...(r.hasProviderSpecificData ? { hasProviderSpecificData: true } : {}),
     ...(r.noAuth ? { noAuth: true } : {}),
+    ...(r.oauth ? { oauth: true } : {}),
+    ...(r.transport?.baseUrl ? { defaultBaseUrl: r.transport.baseUrl } : {}),
     ...(r.passthroughModels ? { passthroughModels: true } : {}),
+    ...(r.passthroughConnectionWideErrors ? { passthroughConnectionWideErrors: true } : {}),
     ...(r.hasOAuth ? { hasOAuth: true } : {}),
     ...(r.authModes ? { authModes: r.authModes } : {}),
     ...(r.authType ? { authType: r.authType } : {}),
     ...(r.authHint ? { authHint: r.authHint } : {}),
+    ...(r.aliases ? { aliases: r.aliases } : {}),
+    ...(r.oauth?.flowType ? { flowType: r.oauth.flowType } : {}),
   };
 }
 
@@ -71,6 +76,7 @@ export const WEB_COOKIE_PROVIDERS = byCategory("webCookie");
 // Media provider kinds — each kind maps to a route and endpoint config
 export const MEDIA_PROVIDER_KINDS = [
   { id: "embedding",   label: "Embedding",      icon: "data_array",        endpoint: { method: "POST", path: "/v1/embeddings" } },
+  { id: "rerank",      label: "Rerank",         icon: "sort",              endpoint: { method: "POST", path: "/v1/rerank" } },
   { id: "image",       label: "Text to Image",  icon: "brush",             endpoint: { method: "POST", path: "/v1/images/generations" } },
   { id: "imageToText", label: "Image to Text",  icon: "image_search",      endpoint: { method: "POST", path: "/v1/images/understanding" } },
   { id: "tts",         label: "Text To Speech", icon: "record_voice_over", endpoint: { method: "POST", path: "/v1/audio/speech" } },
@@ -110,7 +116,7 @@ export const AUTH_METHODS = {
 // Helper: Get provider by alias
 export function getProviderByAlias(alias) {
   for (const provider of Object.values(AI_PROVIDERS)) {
-    if (provider.alias === alias || provider.id === alias) {
+    if (provider.alias === alias || provider.id === alias || provider.aliases?.includes(alias)) {
       return provider;
     }
   }
@@ -132,6 +138,9 @@ export function getProviderAlias(providerId) {
 // Alias to ID mapping (for quick lookup)
 export const ALIAS_TO_ID = Object.values(AI_PROVIDERS).reduce((acc, p) => {
   acc[p.alias] = p.id;
+  for (const alias of p.aliases || []) {
+    acc[alias] = p.id;
+  }
   return acc;
 }, {});
 
@@ -140,6 +149,12 @@ export const ID_TO_ALIAS = Object.values(AI_PROVIDERS).reduce((acc, p) => {
   acc[p.id] = p.alias;
   return acc;
 }, {});
+
+// Hidden registry entries remain routable when already configured elsewhere,
+// but they are not selectable or creatable through generic provider forms.
+export function isHiddenProvider(providerId) {
+  return AI_PROVIDERS[providerId]?.hidden === true;
+}
 
 // Helper: Get providers by service kind (e.g. "tts", "embedding", "image")
 // Providers without serviceKinds default to ["llm"]

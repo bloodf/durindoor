@@ -1,6 +1,7 @@
 export default {
   id: "serper",
   alias: "serper",
+  aliases: ["serper-search"],
   display: {
     name: "Serper",
     icon: "search",

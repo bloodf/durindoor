@@ -1,10 +1,10 @@
 import { FORMATS } from "./formats.js";
-import { ensureToolCallIds, fixMissingToolResponses, stripOrphanedToolResults } from "./concerns/toolCall.js";
-import { prepareClaudeRequest } from "./formats/claude.js";
+import { ensureToolCallIds, fixMissingToolResponses, salvageOrphanedToolResults } from "./concerns/toolCall.js";
+import { normalizeClaudePassthrough, prepareClaudeRequest } from "./formats/claude.js";
 import { cloakClaudeTools } from "../utils/claudeCloaking.js";
 import { filterToOpenAIFormat } from "./formats/openai.js";
 import { normalizeThinkingConfig } from "../services/provider.js";
-import { applyThinking, captureThinking } from "./concerns/thinkingUnified.js";
+import { applyThinking, applyTransportRequestDefaults, captureThinking, parseSuffix } from "./concerns/thinkingUnified.js";
 import { captureSessionId } from "../utils/sessionManager.js";
 import { AntigravityExecutor } from "../executors/antigravity.js";
 import { PROVIDERS } from "../providers/index.js";
@@ -48,10 +48,16 @@ function stripContentTypes(body, stripList = []) {
   }
 }
 
-// Translate request: source -> openai -> target
-export function translateRequest(sourceFormat, targetFormat, model, body, stream = true, credentials = null, provider = null, reqLogger = null, stripList = [], connectionId = null, clientTool = null) {
+// Translate request: source -> openai -> target. `translationContext` carries
+// request-scoped routing intent (never serialized into the provider body).
+export function translateRequest(sourceFormat, targetFormat, model, body, stream = true, credentials = null, provider = null, reqLogger = null, stripList = [], connectionId = null, clientTool = null, translationContext = null) {
   ensureInitialized();
   let result = body;
+  // chatCore supplies an already-clean mapped model plus explicit context, but
+  // public/direct translator callers may still pass `model(level)`. Keep that
+  // entry point safe by parsing here as a compatibility fallback.
+  const parsedModel = parseSuffix(model);
+  const translationModel = parsedModel.cleanModel;
 
   // Strip explicit content types (opt-in via strip[] in PROVIDER_MODELS entry)
   stripContentTypes(result, stripList);
@@ -59,31 +65,67 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   // Normalize thinking config: remove if lastMessage is not user
   normalizeThinkingConfig(result);
 
+  /**
+   * OmniRoute #7061: preserve any explicitly-defined Claude thinking budget
+   * (including `budget_tokens: 0`, Gemini dynamic thinking) before format
+   * translation drops `thinking`; absent budget still falls through to
+   * captureThinking below.
+   *
+   * MUST run AFTER normalizeThinkingConfig: on a non-user-last turn (e.g. a
+   * tool-continuation) normalize deletes `thinking`, and a snapshot taken
+   * earlier would re-apply a budget the request no longer carries.
+   */
+  const claudeGeminiBudgetIntent =
+    sourceFormat === FORMATS.CLAUDE
+    && targetFormat === FORMATS.GEMINI
+    && result.thinking?.type === "enabled"
+    && result.thinking.budget_tokens !== undefined
+      ? { mode: "budget", budget: result.thinking.budget_tokens }
+      : null;
+
   // Always ensure tool_calls have id (some providers require it)
   ensureToolCallIds(result);
   
   // Fix missing tool responses (insert empty tool_result if needed)
   fixMissingToolResponses(result);
 
-  // Strip orphaned tool results (tool_result with no matching tool_call).
-  // Skip for Kiro: its request translator salvages orphaned tool_results by
-  // folding their content into user text (reconcileOrphanedToolResults /
-  // flattenClaudeToolInteractions) rather than dropping it. Stripping here
-  // first would delete that content before the Kiro translator can preserve it.
-  const preservesNativeToolResults =
+  // Salvage orphaned tool results (tool_result with no matching tool_call).
+  // Folds orphan content into user text (`[Tool result: ...]`) instead of
+  // deleting — non-lossy for the translated messages[] shape (OpenAI/Claude)
+  // and preserves Kiro's reconcileOrphanedToolResults salvage semantics.
+  //
+  // MUST skip the Gemini family (gemini/gemini-cli/antigravity/vertex): at this
+  // point the body still carries native contents[] whose functionResponse ids
+  // are keyed per-part, not against the global functionCall set salvage builds,
+  // so an unconditional run rewrites legitimate functionResponses into
+  // `[Tool result: ...]` text before the gemini->openai conversion can read
+  // them. Those formats are salvaged downstream of their own conversion if at
+  // all. Responses API function_call_output is structural-stripped separately
+  // inside openai-responses.js.
+  const skipSalvage =
     sourceFormat === FORMATS.GEMINI ||
     sourceFormat === FORMATS.GEMINI_CLI ||
-    sourceFormat === FORMATS.ANTIGRAVITY;
-  if (targetFormat !== FORMATS.KIRO && !preservesNativeToolResults) {
-    stripOrphanedToolResults(result);
+    sourceFormat === FORMATS.ANTIGRAVITY ||
+    sourceFormat === FORMATS.VERTEX;
+  if (!skipSalvage) {
+    salvageOrphanedToolResults(result);
   }
 
   // Capture thinking intent from the original (pre-translation) body, before any
   // format conversion strips/renames the fields. Applied after translation.
-  const thinkingIntent = captureThinking(result);
+  const thinkingIntent = translationContext?.thinkingIntent
+    ?? parsedModel.override
+    ?? claudeGeminiBudgetIntent
+    ?? captureThinking(result);
 
   // Capture session id from the original body (envelope still intact, e.g. antigravity request.sessionId)
   const clientSessionId = captureSessionId(result, credentials, connectionId, targetFormat);
+  const resolvedTranslationContext = Object.freeze({
+    ...(translationContext || {}),
+    thinkingIntent,
+    clientSessionId,
+  });
+  let finalizeTranslatedRequest;
   // Expose to downstream translators (gemini-cli/antigravity envelopes) that run after envelope is stripped
   if (credentials) credentials._clientSessionId = clientSessionId;
 
@@ -94,13 +136,14 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     // pairs like claude:kiro (avoids the claude->openai->kiro double-hop).
     const directFn = requestRegistry.get(`${sourceFormat}:${targetFormat}`);
     if (directFn) {
-      result = directFn(model, result, stream, credentials);
+      result = directFn(translationModel, result, stream, credentials, resolvedTranslationContext);
+      finalizeTranslatedRequest = directFn.finalize;
     } else {
       // Step 1: source -> openai (if source is not openai)
       if (sourceFormat !== FORMATS.OPENAI) {
         const toOpenAI = requestRegistry.get(`${sourceFormat}:${FORMATS.OPENAI}`);
         if (toOpenAI) {
-          result = toOpenAI(model, result, stream, credentials);
+          result = toOpenAI(translationModel, result, stream, credentials, resolvedTranslationContext);
           // Log OpenAI intermediate format
           reqLogger?.logOpenAIRequest?.(result);
         }
@@ -110,14 +153,36 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
       if (targetFormat !== FORMATS.OPENAI) {
         const fromOpenAI = requestRegistry.get(`${FORMATS.OPENAI}:${targetFormat}`);
         if (fromOpenAI) {
-          result = fromOpenAI(model, result, stream, credentials);
+          result = fromOpenAI(translationModel, result, stream, credentials, resolvedTranslationContext);
         }
       }
     }
   }
 
+  // Direct callers may provide a request body that still contains the
+  // recognized suffix. Keep same-format translations safe as well; unknown
+  // parenthesized IDs have no override and remain untouched.
+  if (
+    parsedModel.override
+    && result
+    && typeof result === "object"
+    && Object.prototype.hasOwnProperty.call(result, "model")
+  ) {
+    result.model = translationModel;
+  }
+
   // Normalize thinking to the target provider-native format (config-driven, capability-aware)
-  applyThinking(targetFormat, model, result, provider, thinkingIntent);
+  applyThinking(
+    targetFormat,
+    resolvedTranslationContext.capabilityModel || translationModel,
+    result,
+    provider,
+    thinkingIntent,
+  );
+  // Translator-local guards run after centralized thinking normalization.
+  finalizeTranslatedRequest?.(translationModel, result);
+  // Per-transport registry defaults (e.g. MiniMax openai transport → reasoning_split).
+  applyTransportRequestDefaults(targetFormat, result, provider);
 
   // Always normalize to clean OpenAI format when target is OpenAI
   // This handles hybrid requests (e.g., OpenAI messages + Claude tools)
@@ -127,8 +192,30 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     });
   }
 
+  // MiniMax-M3's OpenAI transport does not support forced tool_choice values
+  // ("required" or function objects); clamp to "auto" to keep tools enabled.
+  if (
+    targetFormat === FORMATS.OPENAI
+    && (provider === "minimax" || provider === "minimax-cn")
+    && translationModel === "MiniMax-M3"
+  ) {
+    const tc = result?.tool_choice;
+    if (tc === "required" || (tc && typeof tc === "object")) {
+      result.tool_choice = "auto";
+    }
+  }
+
   // Final step: prepare request for Claude format endpoints
   if (targetFormat === FORMATS.CLAUDE) {
+    const normalizesNativeClaudeTransport = PROVIDERS[provider]?.quirks?.normalizeNativeClaudeTransport
+      || provider === "ollama"
+      || provider === "ollama-local";
+    if (normalizesNativeClaudeTransport) {
+      // Ollama implements the Messages wire contract but not Anthropic's
+      // model-specific beta matrix. Normalize system turns without applying
+      // Claude-family model downgrades to the upstream Ollama model id.
+      result = normalizeClaudePassthrough(result, "", provider);
+    }
     const apiKey = credentials?.accessToken || credentials?.apiKey || null;
     result = prepareClaudeRequest(result, provider, apiKey, connectionId, credentials?.rawHeaders, clientSessionId);
   }
@@ -192,6 +279,14 @@ export function translateResponse(targetFormat, sourceFormat, chunk, state) {
     }
   }
 
+  // Flush sentinel: a null chunk means "the stream ended" (stream.js flush).
+  // When step 1 has nothing to convert, forward the sentinel so the source-side
+  // translator can finalize a dangling message (all openai→X translators
+  // null-check their chunk, so this is a no-op unless one implements a flush).
+  if (chunk === null && results.length === 0) {
+    results = [null];
+  }
+
   // Step 2: openai -> source (if source is not openai)
   if (sourceFormat !== FORMATS.OPENAI) {
     const fromOpenAI = responseRegistry.get(`${FORMATS.OPENAI}:${sourceFormat}`);
@@ -221,7 +316,21 @@ export function needsTranslation(sourceFormat, targetFormat) {
 }
 
 // Initialize state for streaming response based on format
-export function initState(sourceFormat) {
+export function initState(sourceFormat, requestBody) {
+  // Build a name → declared type map from the request tools so response
+  // translators can classify custom tools using real metadata instead of
+  // guessing from the tool name (e.g. apply_patch).
+  const toolTypes = {};
+  if (Array.isArray(requestBody?.tools)) {
+    for (const tool of requestBody.tools) {
+      const type = typeof tool?.type === "string" ? tool.type : "";
+      const name = typeof tool?.function?.name === "string"
+        ? tool.function.name
+        : (typeof tool?.name === "string" ? tool.name : "");
+      if (name && type) toolTypes[name] = type;
+    }
+  }
+
   // Base state for all formats
   const base = {
     messageId: null,
@@ -234,7 +343,8 @@ export function initState(sourceFormat) {
     finishReason: null,
     finishReasonSent: false,
     usage: null,
-    contentBlockIndex: -1
+    contentBlockIndex: -1,
+    toolTypes
   };
 
   // Add openai-responses specific fields
@@ -250,6 +360,9 @@ export function initState(sourceFormat) {
       msgContentAdded: {},
       msgItemDone: {},
       reasoningId: "",
+      nextOutputIndex: 0,
+      msgOutputIndexes: {},
+      funcOutputIndexes: {},
       reasoningIndex: -1,
       reasoningBuf: "",
       reasoningPartAdded: false,
@@ -260,6 +373,11 @@ export function initState(sourceFormat) {
       funcCallIds: {},
       funcArgsDone: {},
       funcItemDone: {},
+      funcItemAdded: {},
+      funcPendingArgs: {},
+      funcCustomInput: {},
+      funcCustomDeltaEmitted: {},
+      awaitingTrailingUsage: false,
       completedSent: false
     };
   }

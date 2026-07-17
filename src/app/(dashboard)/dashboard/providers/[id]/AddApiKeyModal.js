@@ -1,13 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import { Button, Badge, Input, Modal, Select } from "@/shared/components";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
+import { parseBulkApiKeyLine, requiresProviderAccountId } from "@/lib/providerAccountIds";
+import {
+  allocateBulkConnectionName,
+  bulkUsedNameSet,
+  buildAddApiKeyModalReset,
+  createAddApiKeyModalInitialState,
+} from "./apiKeyConnectionName";
 
 const BULK_PLACEHOLDER = `name1|sk-key1\nname2|sk-key2\nsk-key-only-auto-named`;
 
-export default function AddApiKeyModal({ isOpen, provider, providerName, isCompatible, isAnthropic, authType, authHint, website, proxyPools, error, onSave, onBulkDone, onClose }) {
+export default function AddApiKeyModal({ isOpen, provider, providerName, isCompatible, isAnthropic, authType, authHint, website, proxyPools, existingConnectionNames, error, onSave, onBulkDone, onClose }) {
   const NONE_PROXY_POOL_VALUE = "__none__";
   const isOllamaLocal = provider === "ollama-local";
   const isCookie = authType === "cookie";
@@ -19,31 +26,43 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
 
   const isAzure = provider === "azure";
   const isCloudflareAi = provider === "cloudflare-ai";
+  const requiresAccountId = requiresProviderAccountId(provider);
+  const accountIdProviderLabel = provider === "snowflake" ? "Snowflake Cortex" : "Cloudflare Workers AI";
   const providerRegions = AI_PROVIDERS?.[provider]?.regions || null;
   const defaultRegion = AI_PROVIDERS?.[provider]?.defaultRegion || providerRegions?.[0]?.id || "";
 
-  const [formData, setFormData] = useState({
-    name: "",
-    apiKey: "",
-    defaultModel: "",
-    priority: 1,
-    proxyPoolId: NONE_PROXY_POOL_VALUE,
-    ollamaHostUrl: "",
-  });
-  const [azureData, setAzureData] = useState({
-    azureEndpoint: "",
-    apiVersion: "2024-10-01-preview",
-    deployment: "",
-    organization: "",
-  });
-  const [cloudflareData, setCloudflareData] = useState({ accountId: "" });
-  const [region, setRegion] = useState(defaultRegion);
+  const initialState = createAddApiKeyModalInitialState(existingConnectionNames, defaultRegion);
+  const [formData, setFormData] = useState(initialState.formData);
+  const [azureData, setAzureData] = useState(initialState.azureData);
+  const [accountIdData, setAccountIdData] = useState(initialState.accountIdData);
+  const [region, setRegion] = useState(initialState.region);
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
   const [saving, setSaving] = useState(false);
+  const bulkPlaceholder = requiresAccountId
+    ? `name1|sk-key1|acc123456\nname2|sk-key2|def789012`
+    : BULK_PLACEHOLDER;
+
   const [mode, setMode] = useState("single"); // "single" | "bulk"
   const [bulkText, setBulkText] = useState("");
   const [bulkResult, setBulkResult] = useState(null); // { success, failed }
+
+  // #6499 — on closed→open, pre-fill a unique default name and reset all
+  // credential/provider-specific fields so stale secrets cannot create a
+  // duplicate connection. Background refetches while the modal is open do not
+  // trigger this reset, so typed inputs are preserved. The API still enforces
+  // create-only (409); this is UX.
+  const wasOpenRef = useRef(false);
+  useEffect(() => {
+    const wasOpen = wasOpenRef.current;
+    wasOpenRef.current = isOpen;
+    const reset = buildAddApiKeyModalReset(wasOpen, isOpen, existingConnectionNames, defaultRegion);
+    if (!reset) return;
+    setFormData(reset.formData);
+    setAzureData(reset.azureData);
+    setAccountIdData(reset.accountIdData);
+    setRegion(reset.region);
+  }, [isOpen, existingConnectionNames, defaultRegion]);
 
   const buildProviderSpecificData = () => {
     if (isOllamaLocal && formData.ollamaHostUrl.trim()) {
@@ -57,8 +76,8 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         organization: azureData.organization,
       };
     }
-    if (isCloudflareAi) {
-      return { accountId: cloudflareData.accountId };
+    if (requiresAccountId) {
+      return { accountId: accountIdData.accountId.trim() };
     }
     if (providerRegions && region) {
       return { region };
@@ -67,6 +86,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   };
 
   const handleValidate = async () => {
+    if (requiresAccountId && !accountIdData.accountId.trim()) return;
     setValidating(true);
     try {
       const res = await fetch("/api/providers/validate", {
@@ -91,6 +111,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
       if (!formData.name) return;
     }
     if (isCompatible && !formData.defaultModel.trim()) return;
+    if (requiresAccountId && !accountIdData.accountId.trim()) return;
 
     setSaving(true);
     try {
@@ -131,18 +152,69 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     if (!lines.length) return;
     setSaving(true);
     setBulkResult(null);
+
+    // Preflight: fetch this provider's current apikey connection names so the
+    // planner can gap-fill collision-free "<base> <n>" names. The backend
+    // upserts apikey connections by name within a provider, so planning from a
+    // stale/empty list could overwrite an existing key. Abort the whole batch
+    // if the preflight GET fails rather than risk an overwrite.
+    let usedNames;
+    try {
+      const res = await fetch("/api/providers");
+      if (!res.ok) throw new Error("preflight failed");
+      const data = await res.json();
+      // Malformed payload (non-array connections) must abort, not plan from an
+      // empty list — planning blind could overwrite an existing key.
+      if (!data || !Array.isArray(data.connections)) throw new Error("preflight malformed");
+      const existingNames = data.connections
+        .filter((c) => c && c.provider === provider && c.authType === "apikey")
+        .map((c) => c.name);
+      usedNames = bulkUsedNameSet(existingNames);
+    } catch {
+      setSaving(false);
+      setBulkResult({ success: 0, failed: lines.length, preflightError: true });
+      return;
+    }
+
+    // Plan the ENTIRE batch before the first POST: parse + validate every
+    // nonblank line and allocate its collision-free name (against existing
+    // names and names allocated to earlier entries in this same batch). If any
+    // line is invalid, write zero entries and report the failure — no partial
+    // batch caused by a malformed trailing line.
+    const plan = [];
+    for (let i = 0; i < lines.length; i++) {
+      let parsed;
+      try {
+        parsed = parseBulkApiKeyLine(lines[i], i, provider);
+      } catch {
+        setSaving(false);
+        setBulkResult({ success: 0, failed: lines.length, planError: true });
+        return;
+      }
+      const base = parsed.name.replace(/ \d+$/, "");
+      plan.push({
+        name: allocateBulkConnectionName(base, usedNames),
+        apiKey: parsed.apiKey,
+        providerSpecificData: parsed.providerSpecificData,
+      });
+    }
+
     let success = 0;
     let failed = 0;
-    for (let i = 0; i < lines.length; i++) {
-      const parts = lines[i].split("|");
-      const apiKey = parts.length >= 2 ? parts.slice(1).join("|").trim() : parts[0].trim();
-      const baseName = parts.length >= 2 ? parts[0].trim() : "Key";
-      const name = `${baseName} ${i + 1}`;
+    for (const entry of plan) {
       try {
         const res = await fetch("/api/providers", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ provider, apiKey, name, priority: 1, testStatus: "unknown" }),
+          body: JSON.stringify({
+            provider,
+            apiKey: entry.apiKey,
+            name: entry.name,
+            priority: 1,
+            testStatus: "unknown",
+            createOnly: true,
+            ...(entry.providerSpecificData ? { providerSpecificData: entry.providerSpecificData } : {}),
+          }),
         });
         if (res.ok) success++;
         else failed++;
@@ -168,10 +240,15 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
 
         {mode === "bulk" && (
           <div className="flex flex-col gap-3">
-            <p className="text-xs text-text-muted">One key per line. Format: <code>name|apiKey</code> or just <code>apiKey</code> (auto-named by index).</p>
+            <p className="text-xs text-text-muted">
+              {requiresAccountId
+                ? <>One key per line. Required format: <code>name|apiKey|accountId</code>.</>
+                : <>One key per line. Format: <code>name|apiKey</code> or just <code>apiKey</code> (auto-named by index).</>
+              }
+            </p>
             <textarea
               className="w-full rounded border border-accent/30 bg-sidebar p-2 text-sm font-mono resize-y min-h-[140px] focus:outline-none focus:ring-1 focus:ring-primary"
-              placeholder={BULK_PLACEHOLDER}
+              placeholder={bulkPlaceholder}
               value={bulkText}
               onChange={(e) => setBulkText(e.target.value)}
             />
@@ -223,7 +300,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
               className="flex-1"
             />
             <div className="pt-6">
-              <Button onClick={handleValidate} disabled={!formData.apiKey || validating || saving} variant="secondary">
+              <Button onClick={handleValidate} disabled={!formData.apiKey || (requiresAccountId && !accountIdData.accountId.trim()) || validating || saving} variant="secondary">
                 {validating ? "Checking..." : "Check"}
               </Button>
             </div>
@@ -281,17 +358,20 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
             Enter the model ID exactly as your compatible endpoint expects it. This model will be saved as the connection default.
           </p>
         )}
-        {isCloudflareAi && (
+        {requiresAccountId && (
           <div className="bg-sidebar/50 p-4 rounded-lg border border-accent/20">
-            <h3 className="font-semibold mb-3 text-sm">Cloudflare Workers AI</h3>
+            <h3 className="font-semibold mb-3 text-sm">{accountIdProviderLabel}</h3>
             <Input
               label="Account ID"
-              value={cloudflareData.accountId}
-              onChange={(e) => setCloudflareData({ ...cloudflareData, accountId: e.target.value })}
-              placeholder="abc123def456..."
+              value={accountIdData.accountId}
+              onChange={(e) => setAccountIdData({ ...accountIdData, accountId: e.target.value })}
+              placeholder={isCloudflareAi ? "abc123def456..." : "snowflake-account-id"}
             />
             <p className="text-xs text-text-muted mt-2">
-              Find your Account ID in the right sidebar of <a href="https://dash.cloudflare.com" target="_blank" rel="noopener noreferrer" className="text-primary underline">dash.cloudflare.com</a>
+              {isCloudflareAi
+                ? <>Find your Account ID in the right sidebar of <a href="https://dash.cloudflare.com" target="_blank" rel="noopener noreferrer" className="text-primary underline">dash.cloudflare.com</a>.</>
+                : <>Use the organization-account identifier shown in <a href="https://app.snowflake.com" target="_blank" rel="noopener noreferrer" className="text-primary underline">Snowsight</a>.</>
+              }
             </p>
           </div>
         )}
@@ -356,7 +436,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         </p>
 
         <div className="flex gap-2">
-          <Button onClick={handleSubmit} fullWidth disabled={saving || (!isOllamaLocal && (!formData.name || !formData.apiKey)) || (isCompatible && !formData.defaultModel.trim()) || (isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization)) || (isCloudflareAi && !cloudflareData.accountId)}>
+          <Button onClick={handleSubmit} fullWidth disabled={saving || (!isOllamaLocal && (!formData.name || !formData.apiKey)) || (isCompatible && !formData.defaultModel.trim()) || (isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization)) || (requiresAccountId && !accountIdData.accountId)}>
             {saving ? "Saving..." : "Save"}
           </Button>
           <Button onClick={onClose} variant="ghost" fullWidth>
@@ -383,6 +463,7 @@ AddApiKeyModal.propTypes = {
     name: PropTypes.string,
   })),
   error: PropTypes.string,
+  existingConnectionNames: PropTypes.arrayOf(PropTypes.string),
   onSave: PropTypes.func.isRequired,
   onBulkDone: PropTypes.func,
   onClose: PropTypes.func.isRequired,

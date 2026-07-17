@@ -1,6 +1,7 @@
 // Bun runtime adapter — uses built-in bun:sqlite (native, fastest under Bun).
 // Loaded only when process.versions.bun is present.
 import { PRAGMA_SQL } from "../schema.js";
+import { assertCheckpointComplete } from "../helpers/checkpoint.js";
 
 const CHECKPOINT_INTERVAL_MS = 60 * 1000;
 
@@ -30,13 +31,17 @@ export async function createBunSqliteAdapter(filePath) {
     try { stmtCache.clear(); } catch {}
     try { db.close(); } catch {}
   }
-  const onShutdown = () => gracefulClose();
-  process.once("beforeExit", onShutdown);
-  process.once("SIGINT", () => { onShutdown(); process.exit(0); });
-  process.once("SIGTERM", () => { onShutdown(); process.exit(0); });
+  const onSignal = () => {
+    // Keep the repository available until the central MITM cleanup finishes.
+    try { db.exec("PRAGMA wal_checkpoint(TRUNCATE)"); } catch {}
+  };
+  process.once("beforeExit", gracefulClose);
+  process.once("SIGINT", onSignal);
+  process.once("SIGTERM", onSignal);
 
   return {
     driver: "bun:sqlite",
+    capabilities: Object.freeze({ sharedFileTransactions: true }),
     run(sql, params = []) {
       const r = prepare(sql).run(...params);
       return { changes: Number(r.changes ?? 0), lastInsertRowid: Number(r.lastInsertRowid ?? 0) };
@@ -53,7 +58,10 @@ export async function createBunSqliteAdapter(filePath) {
       const tx = db.transaction(fn);
       return tx();
     },
-    checkpoint() { try { db.exec("PRAGMA wal_checkpoint(TRUNCATE)"); } catch {} },
+    checkpoint() {
+      const row = db.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get();
+      return assertCheckpointComplete(row, "bun:sqlite");
+    },
     close() {
       clearInterval(checkpointTimer);
       gracefulClose();

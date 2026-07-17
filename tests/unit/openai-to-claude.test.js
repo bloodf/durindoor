@@ -143,7 +143,9 @@ describe("openaiToClaudeRequest", () => {
 
     it("maps string tool_choice values", () => {
       expect(choiceOf("auto")).toEqual({ type: "auto" });
-      expect(choiceOf("none")).toEqual({ type: "auto" });
+      // "none" = caller disabled tools — must map to Anthropic { type: "none" },
+      // never silently become tool-permitting "auto" (Codex P2 on #2608).
+      expect(choiceOf("none")).toEqual({ type: "none" });
       expect(choiceOf("required")).toEqual({ type: "any" });
     });
 
@@ -164,6 +166,25 @@ describe("openaiToClaudeRequest", () => {
     it("omits tool_choice entirely when the request has none", () => {
       const result = openaiToClaudeRequest("claude-sonnet-4.5", baseBody, false);
       expect(result.tool_choice).toBeUndefined();
+    });
+
+    it("honors max_completion_tokens when max_tokens is absent (Codex P2 on #2608)", () => {
+      // Tools-free body so adjustMaxTokens' DEFAULT_MIN_TOKENS tool-bump doesn't mask the exact cap.
+      const result = openaiToClaudeRequest("claude-sonnet-4.5", { messages: baseBody.messages, max_completion_tokens: 32 }, false);
+      expect(result.max_tokens).toBe(32);
+      expect(result.max_completion_tokens).toBeUndefined();
+    });
+
+    it("prefers explicit max_tokens over max_completion_tokens", () => {
+      const result = openaiToClaudeRequest("claude-sonnet-4.5", { messages: baseBody.messages, max_tokens: 64, max_completion_tokens: 32 }, false);
+      expect(result.max_tokens).toBe(64);
+    });
+
+    it("maps stop string/array to stop_sequences and ignores stop:null (Codex P2 on #2608)", () => {
+      expect(openaiToClaudeRequest("claude-sonnet-4.5", { messages: baseBody.messages, stop: "END" }, false).stop_sequences).toEqual(["END"]);
+      expect(openaiToClaudeRequest("claude-sonnet-4.5", { messages: baseBody.messages, stop: ["A", "B"] }, false).stop_sequences).toEqual(["A", "B"]);
+      // Explicit stop:null (valid OpenAI, means "no stops") must NOT become [null].
+      expect(openaiToClaudeRequest("claude-sonnet-4.5", { messages: baseBody.messages, stop: null }, false).stop_sequences).toBeUndefined();
     });
   });
 });

@@ -1,4 +1,10 @@
 import { CLAUDE_API_HEADERS } from "../shared.js";
+import { INLINE_THINKING_FORMATS } from "../schema.js";
+
+const M3_OPENAI_INLINE_THINKING = Object.freeze({
+  format: INLINE_THINKING_FORMATS.THINK_TAGS,
+  models: Object.freeze(["MiniMax-M3"]),
+});
 
 export default {
   id: "minimax-cn",
@@ -44,6 +50,11 @@ export default {
       format: "openai",
       baseUrl: "https://api.minimaxi.com/v1/chat/completions",
       auth: { combined: true, header: "Authorization", scheme: "bearer" },
+      quirks: { inlineThinking: M3_OPENAI_INLINE_THINKING },
+      // MiniMax OpenAI API: split thinking into reasoning_details.
+      // Ported from upstream decolua/9router PR #2525 (head 72385571c6).
+      requestDefaults: { reasoning_split: true },
+      omitStreamReasoning: true,
     },
     {
       format: "claude",

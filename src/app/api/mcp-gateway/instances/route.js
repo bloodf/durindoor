@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getInstances, createInstance } from "@/lib/localDb";
 import { deriveOauthStatus } from "@/lib/mcp/gateway/oauthStatus";
 import { mergeOauthClientConfig } from "@/lib/mcp/gateway/oauthClientConfig";
+import { assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
+import { sanitizeInstanceHeaders } from "@/lib/mcp/gateway/instanceHeaders";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +59,32 @@ export async function POST(request) {
     const body = await request.json();
     const errs = validatePayload(body);
     if (errs.length) return NextResponse.json({ error: errs.join("; ") }, { status: 400 });
+
+    // SSRF guard: instance.url becomes the outbound target for
+    // mcpRequest() and oauthRefresh. Validate BEFORE we persist anything
+    // — block-metadata is the default (LAN/loopback allowed; metadata
+    // link-local blocked); operators can tighten to public-only via
+    // OMNIROUTE_ALLOW_LOCAL_PROVIDER_URLS=false.
+    if (body.url) {
+      try {
+        assertOutboundUrlAllowed(body.url);
+      } catch (err) {
+        if (err instanceof OutboundUrlGuardError) {
+          console.log("MCP instance URL blocked by SSRF guard:", err?.message, "url=", err?.url);
+          return NextResponse.json({ error: "URL not allowed", blocked: true }, { status: 403 });
+        }
+        throw err;
+      }
+    }
+
+    // Sanitize caller-supplied headers against a strict allowlist. A
+    // previous version let callers set Authorization/Cookie/Proxy-
+    // Authorization/X-* which would be forwarded to the upstream on every
+    // request AND on any cross-origin redirect.
+    if (body.headers !== undefined) {
+      body.headers = sanitizeInstanceHeaders(body.headers);
+    }
+
     // Fold any manually-entered OAuth client credentials into oauthTokens.
     const oauthTokens = mergeOauthClientConfig(null, body);
     if (oauthTokens) body.oauthTokens = oauthTokens;

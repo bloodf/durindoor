@@ -3,15 +3,10 @@
 import { Suspense, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { UsageStats, RequestLogger, CardSkeleton, SegmentedControl, ConfirmModal, Button } from "@/shared/components";
+import { USAGE_PERIOD_OPTIONS } from "@/lib/usagePeriods.js";
 import RequestDetailsTab from "./components/RequestDetailsTab";
 
-const PERIODS = [
-  { value: "today", label: "Today" },
-  { value: "24h", label: "24h" },
-  { value: "7d", label: "7D" },
-  { value: "30d", label: "30D" },
-  { value: "60d", label: "60D" },
-];
+const PERIODS = USAGE_PERIOD_OPTIONS;
 
 const RESET_PERIODS = [
   { value: "5m", label: "5 minutes" },
@@ -41,6 +36,7 @@ function UsageContent() {
   const [resetModalOpen, setResetModalOpen] = useState(false);
   const [resetPeriod, setResetPeriod] = useState("all");
   const [resetting, setResetting] = useState(false);
+  const [resetNonce, setResetNonce] = useState(0);
 
   const tabFromUrl = searchParams.get("tab");
   const activeTab = tabFromUrl && ["overview", "logs", "details"].includes(tabFromUrl)
@@ -64,8 +60,8 @@ function UsageContent() {
       });
       if (!res.ok) throw new Error("Reset failed");
       setResetModalOpen(false);
-      // Force a re-render by toggling the period slightly
-      setPeriod((p) => p === "today" ? "24h" : "today");
+      // Force all usage tabs to refetch without touching the selected period
+      setResetNonce((n) => n + 1);
     } catch (e) {
       console.error("Reset failed:", e);
     } finally {
@@ -80,26 +76,30 @@ function UsageContent() {
 
   return (
     <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
-      {/* Tabs + period selector + reset on same row */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <SegmentedControl
-          options={[
-            { value: "overview", label: "Overview" },
-            { value: "details", label: "Details" },
-          ]}
-          value={activeTab}
-          onChange={handleTabChange}
-          className="w-full sm:w-auto"
-        />
+      {/* Keep tabs left and periods right on one line without overlap */}
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <div className="relative z-20 shrink-0">
+          <SegmentedControl
+            options={[
+              { value: "overview", label: "Overview" },
+              { value: "details", label: "Details" },
+            ]}
+            value={activeTab}
+            onChange={handleTabChange}
+            className="w-auto shrink-0"
+          />
+        </div>
         {activeTab === "overview" && (
-          <div className="flex items-center gap-2">
-            <SegmentedControl
-              options={PERIODS}
-              value={period}
-              onChange={setPeriod}
-              size="sm"
-              className="w-full sm:w-auto"
-            />
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-2 overflow-hidden">
+            <div className="overflow-x-auto">
+              <SegmentedControl
+                options={PERIODS}
+                value={period}
+                onChange={setPeriod}
+                size="sm"
+                className="min-w-max"
+              />
+            </div>
             <Button
               variant="outline"
               size="sm"
@@ -115,11 +115,11 @@ function UsageContent() {
 
       {activeTab === "overview" && (
         <Suspense fallback={<CardSkeleton />}>
-          <UsageStats period={period} setPeriod={setPeriod} hidePeriodSelector />
+          <UsageStats period={period} setPeriod={setPeriod} hidePeriodSelector resetNonce={resetNonce} />
         </Suspense>
       )}
-      {activeTab === "logs" && <RequestLogger />}
-      {activeTab === "details" && <RequestDetailsTab />}
+      {activeTab === "logs" && <RequestLogger resetNonce={resetNonce} />}
+      {activeTab === "details" && <RequestDetailsTab resetNonce={resetNonce} />}
 
       {/* Reset Confirmation Modal */}
       <ConfirmModal

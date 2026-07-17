@@ -13,6 +13,7 @@ import {
   Legend,
 } from "recharts";
 import Card from "@/shared/components/Card";
+import { createLatestRequestGuard } from "@/shared/utils/requestFreshness";
 
 const fmtTokens = (n) => {
   if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
@@ -26,25 +27,32 @@ export default function UsageChart({ period = "7d" }) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState("tokens");
+  const [requestGuard] = useState(createLatestRequestGuard);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (signal, requestToken) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/usage/chart?period=${period}`);
+      const res = await fetch(`/api/usage/chart?period=${encodeURIComponent(period)}`, { signal });
       if (res.ok) {
         const json = await res.json();
-        setData(json);
+        if (!signal.aborted && requestToken.isCurrent()) setData(json);
       }
     } catch (e) {
-      console.error("Failed to fetch chart data:", e);
+      if (e?.name !== "AbortError") console.error("Failed to fetch chart data:", e);
     } finally {
-      setLoading(false);
+      if (!signal.aborted) setLoading(false);
     }
   }, [period]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    const controller = new AbortController();
+    const requestToken = requestGuard.begin();
+    fetchData(controller.signal, requestToken);
+    return () => {
+      controller.abort();
+      requestToken.cancel();
+    };
+  }, [fetchData, requestGuard]);
 
   const hasData = data.some((d) => d.tokens > 0 || d.cost > 0);
 

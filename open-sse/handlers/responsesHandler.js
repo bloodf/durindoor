@@ -4,10 +4,13 @@
  */
 
 import { handleChatCore } from "./chatCore.js";
+import { recordTokenSaverEvent } from "@/lib/usageDb.js";
 import { convertResponsesApiFormat } from "../translator/formats/responsesApi.js";
 import { createResponsesApiTransformStream } from "../transformer/responsesTransformer.js";
 import { convertResponsesStreamToJson } from "../transformer/streamToJsonConverter.js";
 import { SSE_HEADERS_CORS } from "../utils/sseConstants.js";
+import { FORMATS } from "../translator/formats.js";
+import { handlePonytailCommands, DEFAULT_PONYTAIL_HELP } from "../utils/tokenSaverBridge.js";
 
 /**
  * Handle /v1/responses request
@@ -23,6 +26,16 @@ import { SSE_HEADERS_CORS } from "../utils/sseConstants.js";
  * @returns {Promise<{success: boolean, response?: Response, status?: number, error?: string}>}
  */
 export async function handleResponsesCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, connectionId }) {
+  // Intercept before converting to Chat Completions. Synthetic Responses are
+  // already native and must not pass through the downstream SSE transformer.
+  const ponytailResponse = await handlePonytailCommands(body, body.model || modelInfo?.model, {
+    fetchStats: null,
+    helpText: DEFAULT_PONYTAIL_HELP,
+    sourceFormatOverride: FORMATS.OPENAI_RESPONSES,
+    streamOverride: body.stream === true,
+  });
+  if (ponytailResponse) return ponytailResponse;
+
   // Convert Responses API format to Chat Completions format
   const convertedBody = convertResponsesApiFormat(body);
 
@@ -34,6 +47,10 @@ export async function handleResponsesCore({ body, modelInfo, credentials, log, o
   }
 
   // Call chat core handler — force sourceFormat so streaming path knows this is a Responses API client
+  // Token Saver telemetry (port of 9router #2562): capture the latest routing
+  // attempt's normalized event; persist it once after the core returns so a
+  // /v1/responses request records compression telemetry exactly like /chat.
+  let lastTokenSaverEvent = null;
   const result = await handleChatCore({
     body: convertedBody,
     modelInfo,
@@ -43,8 +60,16 @@ export async function handleResponsesCore({ body, modelInfo, credentials, log, o
     onRequestSuccess,
     onDisconnect,
     connectionId,
-    sourceFormatOverride: "openai-responses"
+    sourceFormatOverride: FORMATS.OPENAI_RESPONSES,
+    skipPonytailCommands: true,
+    onTokenSaverEvent: (event) => { lastTokenSaverEvent = event; },
   });
+
+  if (lastTokenSaverEvent) {
+    // Awaited so the row is durable before the response returns (fail-open
+    // inside recordTokenSaverEvent; outer try guards a synchronous throw).
+    try { await recordTokenSaverEvent(lastTokenSaverEvent); } catch { /* telemetry must not break requests */ }
+  }
 
   if (!result.success || !result.response) {
     return result;
@@ -96,4 +121,3 @@ export async function handleResponsesCore({ body, modelInfo, credentials, log, o
   // Case 3: Non-SSE response (error or non-streaming from provider) - return as-is
   return result;
 }
-

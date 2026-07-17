@@ -398,9 +398,15 @@ describe("wrapQoderSSE", () => {
     return buf;
   }
 
-  it("forwards an OpenAI envelope chunk and emits [DONE] in flush", async () => {
+  it("forwards OpenAI chunks only with a raw finish and DONE terminal", async () => {
     const inner = JSON.stringify({ choices: [{ delta: { content: "hi" } }] });
-    const upstream = `data: ${JSON.stringify({ statusCodeValue: 200, body: inner })}\n\n`;
+    const finish = JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] });
+    const upstream = [
+      `data: ${JSON.stringify({ statusCodeValue: 200, body: inner })}`,
+      `data: ${JSON.stringify({ statusCodeValue: 200, body: finish })}`,
+      `data: ${JSON.stringify({ statusCodeValue: 200, body: "[DONE]" })}`,
+      "",
+    ].join("\n");
     const wrapped = wrapQoderSSE(makeResponse([upstream]), "qoder/auto");
     const out = await drain(wrapped);
     expect(out).toContain(`data: ${inner}\n\n`);
@@ -410,19 +416,18 @@ describe("wrapQoderSSE", () => {
   // Regression for review finding #4: a final data: line without a trailing
   // newline used to be silently dropped from `buffer` in flush().
   it("drains a trailing partial line without a newline in flush()", async () => {
-    const inner = JSON.stringify({ choices: [{ delta: { content: "tail" } }], finish_reason: "stop" });
+    const inner = JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] });
     // Note: NO trailing \n on the final line.
-    const upstream = `data: ${JSON.stringify({ statusCodeValue: 200, body: inner })}`;
+    const upstream = [
+      `data: ${JSON.stringify({ statusCodeValue: 200, body: inner })}`,
+      `data: ${JSON.stringify({ statusCodeValue: 200, body: "[DONE]" })}`,
+    ].join("\n");
     const wrapped = wrapQoderSSE(makeResponse([upstream]), "qoder/auto");
     const out = await drain(wrapped);
     expect(out).toContain(`data: ${inner}\n\n`);
   });
 
-  // Regression for review finding #3: chunks could leak past [DONE] when
-  // the success branch had no doneEmitted guard. We synthesize an error
-  // envelope (which sets doneEmitted=true) followed by a valid envelope
-  // and assert the second envelope is NOT forwarded.
-  it("does not forward chunks after [DONE] has been emitted", async () => {
+  it("keeps an error envelope sticky and never synthesizes success", async () => {
     const errorEnv = JSON.stringify({ statusCodeValue: 500, body: "boom" });
     const validInner = JSON.stringify({ choices: [{ delta: { content: "leak" } }] });
     const validEnv = JSON.stringify({ statusCodeValue: 200, body: validInner });
@@ -432,9 +437,8 @@ describe("wrapQoderSSE", () => {
     );
     const out = await drain(wrapped);
     expect(out).not.toContain("leak");
-    // Should still have a single [DONE].
-    const doneCount = (out.match(/data: \[DONE\]/g) || []).length;
-    expect(doneCount).toBe(1);
+    expect(out).toContain("Qoder upstream stream failed");
+    expect(out).not.toContain("data: [DONE]");
   });
 
   // Regression for review finding #6: literal newlines inside the inner
@@ -453,12 +457,28 @@ describe("wrapQoderSSE", () => {
     expect(() => JSON.parse(dataLine.slice("data: ".length))).not.toThrow();
   });
 
-  it("upstream error envelope produces an error chunk + [DONE]", async () => {
+  it("upstream error envelope produces a fixed error without DONE", async () => {
     const env = JSON.stringify({ statusCodeValue: 503, body: "service unavailable" });
     const wrapped = wrapQoderSSE(makeResponse([`data: ${env}\n\n`]), "qoder/lite");
     const out = await drain(wrapped);
-    expect(out).toContain("[qoder error 503");
-    expect(out).toContain("data: [DONE]\n\n");
+    expect(out).toContain("Qoder upstream stream failed");
+    expect(out).not.toContain("service unavailable");
+    expect(out).not.toContain("data: [DONE]");
+  });
+
+  it("rejects data after a provisional raw DONE", async () => {
+    const finish = JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] });
+    const late = JSON.stringify({ statusCodeValue: 503, body: "late failure" });
+    const wrapped = wrapQoderSSE(makeResponse([[
+      `data: ${JSON.stringify({ statusCodeValue: 200, body: finish })}`,
+      `data: ${JSON.stringify({ statusCodeValue: 200, body: "[DONE]" })}`,
+      `data: ${late}`,
+      "",
+    ].join("\n")]), "qoder/auto");
+    const out = await drain(wrapped);
+    expect(out).toContain("Qoder upstream stream failed");
+    expect(out).not.toContain("late failure");
+    expect(out).not.toContain("data: [DONE]");
   });
 
   it("non-ok responses are returned unchanged (no transform)", () => {

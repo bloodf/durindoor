@@ -4,7 +4,8 @@ import "open-sse/index.js";
 import { getProviderConnectionById } from "@/lib/localDb";
 import { consumeCodexRateLimitResetCredit, getCodexRateLimitResetCredits } from "open-sse/services/usage.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
-import { refreshAndUpdateCredentials } from "../route.js";
+import { refreshAndUpdateCredentials } from "@/shared/services/providerCredentials";
+import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 
 const AUTH_EXPIRED_PATTERNS = ["expired", "authentication", "unauthorized", "401", "re-authorize"];
 
@@ -69,7 +70,8 @@ async function getCodexConnection(connectionId) {
     connectionProxyUrl: proxyConfig.connectionProxyUrl || "",
     connectionNoProxy: proxyConfig.connectionNoProxy || "",
     vercelRelayUrl: proxyConfig.vercelRelayUrl || "",
-    strictProxy: false,
+    strictProxy: proxyConfig.strictProxy === true,
+    disableEnvProxy: proxyConfig.disableEnvProxy === true,
   };
 
   return { connection, isOAuth, proxyOptions };
@@ -80,8 +82,9 @@ async function refreshCodexConnection(connection, proxyOptions) {
     const result = await refreshAndUpdateCredentials(connection, false, proxyOptions);
     return { connection: result.connection };
   } catch (refreshError) {
-    console.error("[Codex Reset Credits API] Credential refresh failed:", refreshError);
-    return { response: Response.json({ error: `Credential refresh failed: ${refreshError.message}` }, { status: 401 }) };
+    const safeMessage = sanitizeErrorMessage(refreshError?.message || refreshError);
+    console.error("[Codex Reset Credits API] Credential refresh failed:", safeMessage);
+    return { response: Response.json({ error: `Credential refresh failed: ${safeMessage}` }, { status: 401 }) };
   }
 }
 
@@ -113,8 +116,9 @@ export async function GET(_request, { params }) {
     return Response.json(result);
   } catch (error) {
     const provider = connection?.provider ?? "unknown";
-    console.warn(`[Codex Reset Credits] ${provider}: ${error.message}`);
-    return Response.json({ error: error.message }, { status: 500 });
+    const safeMessage = sanitizeErrorMessage(error?.message || error);
+    console.warn(`[Codex Reset Credits] ${provider}: ${safeMessage}`);
+    return Response.json({ error: safeMessage }, { status: 500 });
   }
 }
 
@@ -153,14 +157,17 @@ export async function POST(request, { params }) {
           connection.providerSpecificData,
         );
       } catch (retryError) {
-        console.warn(`[Codex Reset Credits] force refresh failed: ${retryError.message}`);
+        console.warn(
+          `[Codex Reset Credits] force refresh failed: ${sanitizeErrorMessage(retryError?.message || retryError)}`,
+        );
       }
     }
 
     return getResponseForConsumeResult(consumeResult, redeemRequestId);
   } catch (error) {
     const provider = connection?.provider ?? "unknown";
-    console.warn(`[Codex Reset Credits] ${provider}: ${error.message}`);
-    return Response.json({ error: error.message }, { status: 500 });
+    const safeMessage = sanitizeErrorMessage(error?.message || error);
+    console.warn(`[Codex Reset Credits] ${provider}: ${safeMessage}`);
+    return Response.json({ error: safeMessage }, { status: 500 });
   }
 }

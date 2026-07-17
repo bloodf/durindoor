@@ -5,7 +5,7 @@ import {
   openaiToOpenAIResponsesRequest,
 } from "../translator/request/openai-responses.js";
 
-const DEFAULT_TIMEOUT_MS = 3000;
+const DEFAULT_TIMEOUT_MS = 15000;
 
 function jsonBytes(value) {
   try {
@@ -18,6 +18,8 @@ function jsonBytes(value) {
 function messagePayload(body) {
   if (Array.isArray(body?.messages)) return body.messages;
   if (Array.isArray(body?.input)) return body.input;
+  const kiro = collectKiroHeadroomMessages(body);
+  if (kiro) return kiro.messages;
   return null;
 }
 
@@ -79,6 +81,194 @@ function hasUnsafeResponsesInputForCompression(body) {
     if (!item || typeof item !== "object" || Array.isArray(item)) return false;
     return typeof item.type === "string" && item.type !== "message";
   });
+}
+
+/**
+ * Project a Kiro `conversationState` body into OpenAI-shaped messages for the
+ * Headroom proxy, recording a write-back target (object + key) per emitted
+ * message so compressed text can be copied into the original Kiro fields.
+ *
+ * @param {object} body Kiro request body carrying `conversationState`.
+ * @returns {{messages: object[], targets: {object: object, key: string}[]} | null}
+ *   Projection (parallel `messages`/`targets` arrays) or null when no text-bearing
+ *   Kiro messages were found.
+ */
+function collectKiroHeadroomMessages(body) {
+  const state = body?.conversationState;
+  if (!state || typeof state !== "object") return null;
+
+  const messages = [];
+  const targets = [];
+
+  const addTextTarget = (role, text, target, extra = {}) => {
+    if (typeof text !== "string") return;
+    messages.push({ role, content: text, ...extra });
+    targets.push(target);
+  };
+
+  const toToolCalls = (toolUses) => {
+    if (!Array.isArray(toolUses) || toolUses.length === 0) return undefined;
+    const calls = toolUses.map((toolUse) => ({
+      id: toolUse?.toolUseId,
+      type: "function",
+      function: {
+        name: toolUse?.name || "",
+        arguments: JSON.stringify(toolUse?.input || {}),
+      },
+    })).filter((call) => call.id || call.function.name);
+    return calls.length > 0 ? calls : undefined;
+  };
+
+  const visit = (item) => {
+    const user = item?.userInputMessage;
+    if (user) {
+      addTextTarget("system", user.systemInstruction, { object: user, key: "systemInstruction" });
+      addTextTarget("user", user.content, { object: user, key: "content" });
+
+      const toolResults = user.userInputMessageContext?.toolResults;
+      if (Array.isArray(toolResults)) {
+        for (const toolResult of toolResults) {
+          const content = toolResult?.content;
+          if (!Array.isArray(content)) continue;
+          for (const part of content) {
+            addTextTarget(
+              "tool",
+              part?.text,
+              { object: part, key: "text" },
+              toolResult?.toolUseId ? { tool_call_id: toolResult.toolUseId } : {}
+            );
+          }
+        }
+      }
+      return;
+    }
+
+    const assistant = item?.assistantResponseMessage;
+    if (assistant) {
+      const toolCalls = toToolCalls(assistant.toolUses);
+      addTextTarget(
+        "assistant",
+        assistant.content,
+        { object: assistant, key: "content" },
+        toolCalls ? { tool_calls: toolCalls } : {}
+      );
+    }
+  };
+
+  if (Array.isArray(state.history)) {
+    for (const item of state.history) visit(item);
+  }
+  if (state.currentMessage) visit(state.currentMessage);
+
+  return messages.length > 0 ? { messages, targets } : null;
+}
+
+/**
+ * Extract plain text from a Headroom proxy message whose `content` may be a
+ * string or an array of string/`{text}` parts.
+ *
+ * @param {object} message Compressed message returned by the proxy.
+ * @returns {string | null} Joined text, or null when no text content is present.
+ */
+function textFromHeadroomMessage(message) {
+  const content = message?.content;
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return null;
+
+  const parts = [];
+  for (const part of content) {
+    if (typeof part === "string") {
+      parts.push(part);
+    } else if (typeof part?.text === "string") {
+      parts.push(part.text);
+    }
+  }
+  return parts.length > 0 ? parts.join("\n") : null;
+}
+
+/**
+ * Stable identity key for a Kiro-projected message, derived only from IDs
+ * already present on the wire (tool `tool_call_id`, assistant `tool_calls[].id`).
+ * Returns null when the message carries no comparable ID (plain user/system
+ * turns) — those stay role-checked only.
+ *
+ * @param {object} message Projected or proxy-returned message.
+ * @returns {string | null} Identity key, or null when none is available.
+ */
+function kiroMessageIdentity(message) {
+  if (!message || typeof message !== "object") return null;
+  if (message.role === "tool" && typeof message.tool_call_id === "string") {
+    return `tool:${message.tool_call_id}`;
+  }
+  if (message.role === "assistant" && Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
+    const ids = message.tool_calls.map((call) => call?.id).filter((id) => typeof id === "string").sort();
+    if (ids.length > 0) return `assistant:${ids.join(",")}`;
+  }
+  return null;
+}
+
+/**
+ * Validate the proxy response against the Kiro projection (count + role order
+ * + per-index identity where the wire carries IDs), then write each compressed
+ * text back into its recorded Kiro field. Fail-open: any mismatch returns false
+ * without mutating the body.
+ *
+ * ponytail: identity check covers tool/assistant turns (they carry IDs on the
+ * wire); adjacent plain user/system turns have no stable ID, so a same-role
+ * reorder there is only role-guarded. Upgrade path = round-trip an ordinal
+ * synthetic id through the proxy (changes wire bytes) if headroom ever reorders
+ * user turns in practice.
+ *
+ * @param {{messages: object[], targets: {object: object, key: string}[]}} projection
+ *   Output of {@link collectKiroHeadroomMessages}.
+ * @param {object[]} compressedMessages Messages returned by the Headroom proxy.
+ * @param {object} [diagnostics] Optional diagnostics sink; `reason` is set on failure.
+ * @returns {boolean} True when the body was updated; false to fail open.
+ */
+function applyKiroHeadroomMessages(projection, compressedMessages, diagnostics) {
+  if (!Array.isArray(compressedMessages) || compressedMessages.length !== projection.messages.length) {
+    setDiagnostic(diagnostics, "proxy response did not match Kiro message count");
+    return false;
+  }
+
+  const updates = [];
+  const seenIdentities = new Set();
+  for (let i = 0; i < projection.messages.length; i++) {
+    const expected = projection.messages[i];
+    const actual = compressedMessages[i];
+    if (!actual || actual.role !== expected.role) {
+      setDiagnostic(diagnostics, "proxy response did not preserve Kiro message order");
+      return false;
+    }
+    const expectedId = kiroMessageIdentity(expected);
+    if (expectedId !== null) {
+      // Duplicate non-null identity = two projected parts share one wire id
+      // (e.g. multiple text parts in a single toolResult). They cannot be
+      // disambiguated positionally, so fail open rather than risk writing
+      // compressed text into the wrong part.
+      if (seenIdentities.has(expectedId)) {
+        setDiagnostic(diagnostics, "proxy response has ambiguous Kiro message identity");
+        return false;
+      }
+      seenIdentities.add(expectedId);
+      if (expectedId !== kiroMessageIdentity(actual)) {
+        setDiagnostic(diagnostics, "proxy response did not preserve Kiro message identity");
+        return false;
+      }
+    }
+
+    const text = textFromHeadroomMessage(actual);
+    if (text === null) {
+      setDiagnostic(diagnostics, "proxy response missing Kiro text content");
+      return false;
+    }
+    updates.push({ target: projection.targets[i], text });
+  }
+
+  for (const update of updates) {
+    update.target.object[update.target.key] = update.text;
+  }
+  return true;
 }
 
 // POST messages to Headroom /v1/compress; returns compressed messages + stats or null.
@@ -171,6 +361,22 @@ export async function compressWithHeadroom(body, { enabled, url, model, format, 
       return data;
     }
 
+    // Kiro shape: conversationState.history/currentMessage are projected to
+    // OpenAI messages for the proxy, then copied back into the original Kiro
+    // fields. Keep the provider payload shape intact for Kiro's executor.
+    if (format === "kiro") {
+      const projection = collectKiroHeadroomMessages(body);
+      if (!projection) {
+        setDiagnostic(diagnostics, "Kiro request did not project to messages[]");
+        return null;
+      }
+      const data = await callCompress(url, projection.messages, model, timeoutMs, compressUserMessages, diagnostics || {});
+      if (!data) return null;
+      if (!applyKiroHeadroomMessages(projection, data.messages, diagnostics)) return null;
+      if (diagnostics) diagnostics.after = captureSizeSnapshot(body);
+      return data;
+    }
+
     // OpenAI shape: messages/input go straight to the proxy.
     const key = Array.isArray(body.messages) ? "messages"
       : Array.isArray(body.input) ? "input"
@@ -212,4 +418,33 @@ export function isHeadroomPhantomSavings(stats, diagnostics, minShrinkRatio = 0.
   const after = diagnostics?.after?.bodyBytes || 0;
   if (before <= 0 || after <= 0) return false;
   return after >= before * (1 - minShrinkRatio);
+}
+
+/**
+ * Classify a Headroom outcome into a dashboard-safe category (matches upstream
+ * decolua/9router #2562 exactly). The raw `diagnostics.reason` string can embed
+ * URLs, HTTP statuses, and upstream error text; persisting it would leak that
+ * into the aggregate dashboard. This maps it to one allowlisted enum value.
+ *
+ * @param {object} diagnostics The diagnostics sink passed to compressWithHeadroom.
+ * @param {object|null} stats The compressWithHeadroom return (null on skip).
+ * @param {boolean} enabled Whether Headroom was enabled for the request.
+ * @returns {string} One of: compressed, disabled, missing-proxy-url, timeout,
+ *   http-error, unsafe-responses-input, translation-failed, unsupported-shape,
+ *   invalid-proxy-response, unexpected-error, other-skip.
+ */
+export function classifyHeadroomDiagnostic(diagnostics, stats, enabled) {
+  if (stats) return "compressed";
+  if (!enabled) return "disabled";
+
+  const reason = String(diagnostics?.reason || "").toLowerCase();
+  if (reason.includes("missing proxy url")) return "missing-proxy-url";
+  if (reason.includes("timeout") || reason.includes("abort")) return "timeout";
+  if (reason.includes("proxy returned http")) return "http-error";
+  if (reason.includes("openai-responses tool/reasoning")) return "unsafe-responses-input";
+  if (reason.includes("did not translate") || reason.includes("translate to messages")) return "translation-failed";
+  if (reason.includes("unsupported") || reason.includes("did not project")) return "unsupported-shape";
+  if (reason.includes("proxy response")) return "invalid-proxy-response";
+  if (reason.includes("unexpected error")) return "unexpected-error";
+  return "other-skip";
 }

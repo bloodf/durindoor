@@ -200,6 +200,21 @@ function normalizeSearxng(data, _query, _searchType) {
   return { results, totalResults: results.length };
 }
 
+function normalizeOllama(data, _query, _searchType) {
+  const now = new Date().toISOString();
+  const items = Array.isArray(data.results) ? data.results : [];
+  const results = items.map((item, idx) =>
+    makeResult("ollama", {
+      title: item.title,
+      url: item.url,
+      snippet: item.content || item.snippet || "",
+      published_at: item.published_at || item.publishedAt || null,
+      source_type: "web",
+    }, idx, now)
+  );
+  return { results, totalResults: results.length };
+}
+
 const NORMALIZERS = {
   "serper": normalizeSerper,
   "brave-search": normalizeBrave,
@@ -211,6 +226,7 @@ const NORMALIZERS = {
   "searchapi": normalizeSearchApi,
   "youcom": normalizeYouCom,
   "searxng": normalizeSearxng,
+  "ollama": normalizeOllama,
 };
 
 /**

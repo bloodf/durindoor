@@ -47,12 +47,6 @@ export default function OpenClawToolCard({
   const configStatus = getConfigStatus();
 
   useEffect(() => {
-    if (apiKeys?.length > 0 && !selectedApiKey) {
-      setSelectedApiKey(apiKeys[0].key);
-    }
-  }, [apiKeys, selectedApiKey]);
-
-  useEffect(() => {
     if (initialStatus) setOpenclawStatus(initialStatus);
   }, [initialStatus]);
 
@@ -81,9 +75,6 @@ export default function OpenClawToolCard({
       if (provider) {
         const primaryModel = openclawStatus.settings?.agents?.defaults?.model?.primary;
         if (primaryModel) setSelectedModel(primaryModel.replace("9router/", ""));
-        if (provider.apiKey && apiKeys?.some(k => k.key === provider.apiKey)) {
-          setSelectedApiKey(provider.apiKey);
-        }
       }
       // Init per-agent models from enriched agents list
       const agentList = openclawStatus.agents || [];
@@ -93,7 +84,7 @@ export default function OpenClawToolCard({
       });
       setAgentModels(initAgentModels);
     }
-  }, [openclawStatus, apiKeys]);
+  }, [openclawStatus]);
 
   const checkOpenclawStatus = async () => {
     setCheckingOpenclaw(true);
@@ -132,7 +123,6 @@ export default function OpenClawToolCard({
     setMessage(null);
     try {
       const keyToUse = selectedApiKey?.trim()
-        || (apiKeys?.length > 0 ? apiKeys[0].key : null)
         || (!cloudEnabled ? "sk_durindoor" : null);
 
       const res = await fetch("/api/cli-tools/openclaw-settings", {

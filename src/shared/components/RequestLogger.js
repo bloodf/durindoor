@@ -3,14 +3,14 @@
 import { useState, useEffect } from "react";
 import Card from "./Card";
 
-export default function RequestLogger() {
+export default function RequestLogger({ resetNonce = 0 } = {}) {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   useEffect(() => {
     fetchLogs();
-  }, []);
+  }, [resetNonce]);
 
   useEffect(() => {
     let interval;

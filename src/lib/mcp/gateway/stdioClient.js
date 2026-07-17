@@ -123,6 +123,13 @@ class StdioEntry {
     this.initPromise = null;
     this.initInfo = null;
 
+    // Identity guard: exit/error handlers close over THIS spawn. After a
+    // respawn the stale process must not null out this.proc (the live child)
+    // or reject pending requests owned by the new generation. Listeners
+    // attached here fire at most once per ChildProcess, so a no-op on a
+    // replaced child is harmless — its own generation already cleared state.
+    const isCurrent = () => this.proc === proc;
+
     const ready = new Promise((resolve, reject) => {
       const onError = (e) => reject(new Error(`${command} spawn error: ${e.message}`));
       proc.once("error", onError);
@@ -139,6 +146,7 @@ class StdioEntry {
       if (line) console.log(`[mcp-gw:${this.instance.slug}]`, line);
     });
     proc.on("exit", (code, signal) => {
+      if (!isCurrent()) return;
       this.proc = null;
       const err = new Error(`upstream ${this.instance.slug} exited (code=${code}, signal=${signal})`);
       for (const { reject, timer } of this.pending.values()) {
@@ -149,6 +157,7 @@ class StdioEntry {
       this.events.emit("exit");
     });
     proc.on("error", (e) => {
+      if (!isCurrent()) return;
       const err = new Error(`upstream ${this.instance.slug} error: ${e.message}`);
       for (const { reject, timer } of this.pending.values()) {
         clearTimeout(timer);

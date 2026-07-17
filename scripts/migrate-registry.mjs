@@ -48,7 +48,7 @@ function migrateEntry(entry, filename) {
 
   // 1. Top-level identity/transport fields (preserve order)
   const TRANSPORT_KEYS = ["id", "alias", "aliases", "uiAlias", "display", "category",
-    "authType", "authHint", "authModes", "hasOAuth", "noAuth",
+    "authType", "authHint", "authModes", "hasOAuth", "noAuth", "autoComboNoAuth",
     "hasProviderSpecificData", "thinkingConfig", "hiddenKinds",
     "regions", "defaultRegion", "passthroughModels", "transport"];
   for (const k of TRANSPORT_KEYS) {
@@ -168,7 +168,7 @@ function formatEntry(entry, imports = "") {
 
   const TOP_ORDER = [
     "id", "alias", "aliases", "uiAlias", "display", "category",
-    "authType", "authHint", "authModes", "hasOAuth", "noAuth",
+    "authType", "authHint", "authModes", "hasOAuth", "noAuth", "autoComboNoAuth",
     "hasProviderSpecificData", "thinkingConfig", "hiddenKinds",
     "regions", "defaultRegion", "transport",
     "models",

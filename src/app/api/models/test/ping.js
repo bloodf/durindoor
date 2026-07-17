@@ -1,4 +1,3 @@
-import { getApiKeys } from "@/lib/localDb";
 import { UPDATER_CONFIG } from "@/shared/constants/config";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 
@@ -38,14 +37,7 @@ function createSilentWavFile() {
 }
 
 async function getInternalHeaders() {
-  let apiKey = null;
-  try {
-    const keys = await getApiKeys();
-    apiKey = keys.find((k) => k.isActive !== false)?.key || null;
-  } catch {}
-
   const headers = { "Content-Type": "application/json" };
-  if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
   headers["x-9r-cli-token"] = await getConsistentMachineId(CLI_TOKEN_SALT);
   return headers;
 }
@@ -126,6 +118,37 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
     const text = typeof parsed?.text === "string" ? parsed.text : "";
     if (!text.trim()) {
       return { ok: false, latencyMs, status: res.status, error: "Provider returned no transcription text for this model" };
+    }
+    return { ok: true, latencyMs, error: null, status: res.status };
+  }
+
+  if (kind === "rerank") {
+    const res = await fetch(`${baseUrl}/api/v1/rerank`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model,
+        query: "ping",
+        documents: ["hello world"],
+        top_n: 1,
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const latencyMs = Date.now() - start;
+    const rawText = await res.text().catch(() => "");
+    let parsed = null;
+    try { parsed = rawText ? JSON.parse(rawText) : null; } catch {}
+
+    if (!res.ok) {
+      const detail = parsed?.error?.message || parsed?.msg || parsed?.message || parsed?.error || rawText;
+      return { ok: false, latencyMs, error: `HTTP ${res.status}${detail ? `: ${String(detail).slice(0, 240)}` : ""}`, status: res.status };
+    }
+
+    const results = Array.isArray(parsed?.results) ? parsed.results
+      : Array.isArray(parsed?.data) ? parsed.data
+        : null;
+    if (!results) {
+      return { ok: false, latencyMs, status: res.status, error: "Provider returned no rerank results for this model" };
     }
     return { ok: true, latencyMs, error: null, status: res.status };
   }

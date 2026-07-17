@@ -49,6 +49,22 @@ describe("canonicalizeUsage", () => {
     expect(out.reasoning_tokens).toBe(40);
   });
 
+  it("preserves an authoritative Gemini total through extraction and canonicalization", () => {
+    const extracted = toOpenAIUsage({
+      promptTokenCount: 100,
+      candidatesTokenCount: 40,
+      thoughtsTokenCount: 10,
+      totalTokenCount: 150,
+    }, "gemini");
+    const out = canonicalizeUsage(extracted);
+    expect(out).toMatchObject({
+      prompt_tokens: 100,
+      completion_tokens: 50,
+      reasoning_tokens: 10,
+      total_tokens: 150,
+    });
+  });
+
   it("handles no-cache usage", () => {
     const out = canonicalizeUsage({ prompt_tokens: 100, completion_tokens: 50 });
     expect(out.prompt_tokens).toBe(100);
@@ -117,6 +133,20 @@ describe("calculateCostFromTokens (canonical inclusive convention)", () => {
   it("matches plain input pricing when no cache present", () => {
     const cost = calculateCostFromTokens({ prompt_tokens: 100, completion_tokens: 50 }, pricing);
     expect(cost).toBeCloseTo((100 * 3 + 50 * 15) / 1_000_000, 12);
+  });
+
+  it("trusts provider-reported dollar cost when available", () => {
+    expect(calculateCostFromTokens({ prompt_tokens: 100, completion_tokens: 50, cost_in_usd: 0.123 }, pricing)).toBe(0.123);
+    expect(calculateCostFromTokens({ prompt_tokens: 100, completion_tokens: 50, cost_in_usd_ticks: 123000000000 }, pricing)).toBe(0.123);
+  });
+
+  it("prices reasoning as a subset of completion instead of billing it twice", () => {
+    const cost = calculateCostFromTokens(
+      { prompt_tokens: 100, completion_tokens: 50, reasoning_tokens: 20 },
+      { ...pricing, reasoning: 30 },
+    );
+    const expected = (100 * 3 + 30 * 15 + 20 * 30) / 1_000_000;
+    expect(cost).toBeCloseTo(expected, 12);
   });
 });
 

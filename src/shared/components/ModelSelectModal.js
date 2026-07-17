@@ -20,6 +20,22 @@ const PROVIDER_ORDER = [
 // Providers that need no auth — always show in model selector
 const NO_AUTH_PROVIDER_IDS = Object.keys(FREE_PROVIDERS).filter(id => FREE_PROVIDERS[id].noAuth);
 
+// kindFilter (UI service kind) → /api/v1/models slug. webSearch/webFetch share
+// the `web` slug server-side. null/absent → root LLM list.
+const KIND_TO_SLUG = {
+  image: "image",
+  tts: "tts",
+  stt: "stt",
+  embedding: "embedding",
+  imageToText: "image-to-text",
+  webSearch: "web",
+  webFetch: "web",
+};
+
+// Web provider-as-model rows are routed by providerId but cataloged as
+// `<alias>/search` and `<alias>/fetch`; map the UI kind to its catalog suffix.
+const WEB_KIND_SUFFIX = { webSearch: "search", webFetch: "fetch" };
+
 export default function ModelSelectModal({
   isOpen,
   onClose,
@@ -49,6 +65,58 @@ export default function ModelSelectModal({
   const [customModels, setCustomModels] = useState([]);
   const [disabledModels, setDisabledModels] = useState({});
   const [fetchedModels, setFetchedModels] = useState({});
+  // #6495 / F-4: ids the server catalog currently exposes. /api/v1/models is
+  // already filtered by the hide-paid toggle server-side, so intersecting the
+  // modal's locally-built entries with this set enforces the toggle without
+  // bundling the pricing catalog into the dashboard chunk. A null set means
+  // "toggle off / not yet checked" → no client filtering. Once the toggle is
+  // confirmed ON the set is seeded EMPTY (fail-closed) and only replaced with
+  // real ids after a valid catalog fetch, so a fetch error or malformed body
+  // hides paid models rather than leaking them. When the toggle is off the
+  // server returns the full catalog and the intersection is a no-op for known
+  // models while still keeping custom/unknown entries visible.
+  const [visibleModelIds, setVisibleModelIds] = useState(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    // Clear any stale set so a kind/toggle change never filters the freshly
+    // rendered picker with the previous catalog while the new fetch is in
+    // flight; an ignore flag drops a slow prior response from overwriting a
+    // newer one.
+    let ignore = false;
+    setVisibleModelIds(null);
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const settingsRes = await fetch("/api/settings", { signal: controller.signal });
+        if (!settingsRes.ok) throw new Error(`settings ${settingsRes.status}`);
+        const settingsData = await settingsRes.json();
+        if (settingsData?.hidePaidModels !== true || ignore) return;
+        // Fail-closed: from this point the toggle is confirmed ON. Hide
+        // everything until a VALID catalog response replaces this set — non-OK
+        // status, thrown fetch, or a malformed `data` payload must NOT fall
+        // back to showing paid ids (A200 leakage fix).
+        setVisibleModelIds(new Set());
+        const slug = kindFilter ? KIND_TO_SLUG[kindFilter] : null;
+        const url = slug ? `/api/v1/models/${slug}` : "/api/v1/models";
+        const modelsRes = await fetch(url, { signal: controller.signal });
+        if (!modelsRes.ok) throw new Error(`models ${modelsRes.status}`);
+        const modelsData = await modelsRes.json();
+        if (!Array.isArray(modelsData?.data) || ignore) return;
+        const ids = modelsData.data
+          .map((m) => m.id)
+          .filter((id) => typeof id === "string");
+        setVisibleModelIds(new Set(ids));
+      } catch (error) {
+        if (error?.name === "AbortError") return;
+        console.error("Error fetching visible model ids:", error);
+      }
+    })();
+    return () => {
+      ignore = true;
+      controller.abort();
+    };
+  }, [isOpen, kindFilter]);
 
   const fetchCombos = async () => {
     try {
@@ -124,7 +192,7 @@ export default function ModelSelectModal({
 
     const loadCustomProviderModels = async () => {
       const customProviderIds = activeProviders
-        .filter(p => isOpenAICompatibleProvider(p.provider) || isAnthropicCompatibleProvider(p.provider))
+        .filter(p => isOpenAICompatibleProvider(p.provider) || isAnthropicCompatibleProvider(p.provider) || p.provider === "hcnsec")
         .map(p => p.provider);
 
       if (customProviderIds.length === 0) return;
@@ -133,7 +201,7 @@ export default function ModelSelectModal({
       await Promise.all(
         customProviderIds.map(async (providerId) => {
           const models = await fetchProviderModels(providerId);
-          if (models && models.length > 1) {
+          if (models && models.length > 0) {
             fetched[providerId] = models;
           }
         })
@@ -192,11 +260,13 @@ export default function ModelSelectModal({
       ? NO_AUTH_PROVIDER_IDS.filter((id) => (AI_PROVIDERS[id]?.serviceKinds || ["llm"]).includes(kindFilter))
       : NO_AUTH_PROVIDER_IDS;
 
-    // Show connected providers, no-auth providers, and custom provider nodes
+    // Show connected providers and no-auth providers. Custom compatible-provider
+    // nodes are covered by activeConnectionIds (connection.provider === node id),
+    // so they appear only with a non-disabled connection — the parent already
+    // filtered disabled connections out of activeProviders (9router #2526).
     const providerIdsToShow = new Set([
-      ...activeConnectionIds,           // Connected providers
+      ...activeConnectionIds,           // Connected providers (incl. active custom nodes)
       ...noAuthIds,                     // No-auth providers (kind-filtered)
-      ...providerNodes.map(n => n.id),  // Custom provider nodes (openai-compatible, etc.)
     ]);
 
     // Sort by PROVIDER_ORDER
@@ -256,6 +326,17 @@ export default function ModelSelectModal({
             const supports = (providerInfo.serviceKinds || ["llm"]).includes(kindFilter);
             if (supports) combined = [{ id: providerId, name: providerInfo.name, value: alias }];
           }
+          // Augment with live-fetched models of the same kind when available
+          const dynamicModels = fetchedModels[providerId] || [];
+          const dynamicModelEntries = dynamicModels
+            .map((m) => ({
+              id: m.id || m.slug || m.model || m.name,
+              name: m.name || m.displayName || m.id,
+              value: `${alias}/${m.id || m.slug || m.model || m.name}`,
+              kind: getModelKind(m),
+            }))
+            .filter((m) => m.id && getModelKind(m) === kindFilter && !combined.some((existing) => existing.value === m.value));
+          combined = [...combined, ...dynamicModelEntries];
         } else {
           // LLM/null kind: merge hardcoded models (e.g. mimo-free → mimo-auto) with user-added models
           const registeredLlms = customRegisteredModels.filter((m) => !getModelKind(m) || getModelKind(m) === "llm");
@@ -265,6 +346,21 @@ export default function ModelSelectModal({
             .map((m) => ({ id: m.id, name: m.name, value: `${alias}/${m.id}`, kind: getModelKind(m) }))
             .filter((m) => !seen.has(m.value));
           combined = [...registeredLlms, ...aliasModels.filter((m) => !registeredLlms.some((registered) => registered.value === m.value)), ...hardcoded];
+          // Augment with live-fetched LLM models when available
+          const dynamicModels = fetchedModels[providerId] || [];
+          const dynamicModelEntries = dynamicModels
+            .map((m) => ({
+              id: m.id || m.slug || m.model || m.name,
+              name: m.name || m.displayName || m.id,
+              value: `${alias}/${m.id || m.slug || m.model || m.name}`,
+              kind: getModelKind(m),
+            }))
+            .filter((m) => {
+              if (!m.id) return false;
+              if (getModelKind(m) && getModelKind(m) !== "llm") return false;
+              return !combined.some((existing) => existing.value === m.value);
+            });
+          combined = [...combined, ...dynamicModelEntries];
         }
 
         if (combined.length > 0) {
@@ -420,16 +516,43 @@ export default function ModelSelectModal({
       if (group.models.length === 0) delete groups[providerId];
     });
 
+    // #6495 / F-4: intersect with the server catalog's visible ids so the
+    // hide-paid toggle (applied server-side) propagates to every picker. A null
+    // set = not loaded / fetch failed → fail open (no filtering). The fetched
+    // catalog matches the current kindFilter (root LLM list for the default
+    // selector, /api/v1/models/{kind} for typed pickers). Synthetic
+    // placeholders are not catalog rows and not evidence of paid status, so
+    // they stay visible. Web provider-as-model rows are routed by providerId
+    // but cataloged as `<alias>/search` / `<alias>/fetch`, so they match
+    // against the cataloged id, not `m.value`.
+    if (visibleModelIds) {
+      const webSuffix = WEB_KIND_SUFFIX[kindFilter];
+      Object.entries(groups).forEach(([providerId, group]) => {
+        group.models = group.models.filter((m) => {
+          if (m.isPlaceholder) return true;
+          if (webSuffix) return visibleModelIds.has(`${group.alias}/${webSuffix}`);
+          return visibleModelIds.has(m.value);
+        });
+        if (group.models.length === 0) delete groups[providerId];
+      });
+    }
+
     return groups;
-  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders, fetchedModels]);
+  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders, fetchedModels, visibleModelIds]);
 
   // Filter combos by search query (and hide combos when kindFilter is set — combos are LLM-only by design)
   const filteredCombos = useMemo(() => {
     if (kindFilter) return [];
-    if (!searchQuery.trim()) return combos;
+    // #6495 / F-4: intersect with the server catalog's visible ids. The catalog
+    // already omits all-paid combos and keeps mixed ones (with paid members
+    // filtered), so a combo name present in the set is a visible combo. A null
+    // set = not loaded / fetch failed → fail open (no filtering).
+    let list = combos;
+    if (visibleModelIds) list = list.filter((c) => visibleModelIds.has(c.name));
+    if (!searchQuery.trim()) return list;
     const query = searchQuery.toLowerCase();
-    return combos.filter(c => c.name.toLowerCase().includes(query));
-  }, [combos, searchQuery, kindFilter]);
+    return list.filter(c => c.name.toLowerCase().includes(query));
+  }, [combos, searchQuery, kindFilter, visibleModelIds]);
 
   // Sort models alphabetically, with added models floated to top
   const sortModels = (models) => {

@@ -18,8 +18,9 @@ describe("request detail usage extraction", () => {
     expect(usage).toEqual({
       prompt_tokens: 77187,
       completion_tokens: 236,
-      cached_tokens: 69387,
-      reasoning_tokens: 12,
+      total_tokens: 77423,
+      prompt_tokens_details: { cached_tokens: 69387 },
+      completion_tokens_details: { reasoning_tokens: 12 },
     });
   });
 });

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { getStatusVariant as getConnectionStatusVariant } from "@/shared/utils/connectionStatus";
+import { getCodexPlanLabel } from "@/shared/utils/codexPlanLabel";
 import PropTypes from "prop-types";
 import { Badge, Toggle, Tooltip } from "@/shared/components";
 import CooldownTimer from "./CooldownTimer";
@@ -78,6 +79,12 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
     || connection.email?.trim()
     || connection.displayName?.trim()
     || (isOAuthConnection ? "OAuth Account" : isCookieConnection ? "Cookie Account" : "API Key");
+  // Codex plan label (e.g. "Plus", "Team", "Pro") — shown alongside the
+  // connection badges. Hidden for non-Codex, empty, or "unknown".
+  const codexPlan = getCodexPlanLabel(
+    connection.provider === "codex",
+    connection.providerSpecificData?.chatgptPlanType,
+  );
   const secondaryDisplayName = connection.name?.trim() && connection.email?.trim() && connection.name.trim() !== connection.email.trim()
     ? connection.email.trim()
     : connection.name?.trim() && connection.displayName?.trim() && connection.name.trim() !== connection.displayName.trim()
@@ -170,6 +177,11 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
             <Badge variant="default" size="sm">
               {authLabel}
             </Badge>
+            {codexPlan && (
+              <Badge variant="primary" size="sm" className="capitalize">
+                {codexPlan}
+              </Badge>
+            )}
             {hasAnyProxy && (
               <Badge variant={proxyBadgeVariant} size="sm">
                 Proxy
@@ -283,6 +295,10 @@ ConnectionRow.propTypes = {
     name: PropTypes.string,
     email: PropTypes.string,
     displayName: PropTypes.string,
+    provider: PropTypes.string,
+    providerSpecificData: PropTypes.shape({
+      chatgptPlanType: PropTypes.string,
+    }),
     modelLockUntil: PropTypes.string,
     testStatus: PropTypes.string,
     isActive: PropTypes.bool,

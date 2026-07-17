@@ -24,10 +24,9 @@
  */
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
-import { v4 as uuidv4 } from "uuid";
+import { resolveSessionId } from "../../utils/sessionManager.js";
 import {
   resolveKiroModel,
-  toKiroModelId,
   resolveKiroThinkingBudget,
   buildThinkingSystemPrefix,
   KIRO_AGENTIC_SYSTEM_PROMPT,
@@ -376,7 +375,7 @@ function reconcileOrphanedToolResults(history, currentMessage) {
 /**
  * Build a Kiro payload directly from a Claude Messages API request body.
  */
-export function claudeToKiroRequest(model, body, stream, credentials) {
+export function claudeToKiroRequest(model, body, stream, credentials, translationContext = null) {
   let messages = Array.isArray(body.messages) ? body.messages : [];
   const tools = Array.isArray(body.tools) ? body.tools : [];
   const clientProvidedTools = tools.length > 0;
@@ -384,10 +383,15 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
   const temperature = body.temperature;
   const topP = body.top_p;
 
-  const { upstream: upstreamModel, agentic } = resolveKiroModel(model);
-  // Kiro API requires dash-notation version numbers (claude-sonnet-4-5 not claude-sonnet-4.5)
-  const kiroModelId = toKiroModelId(upstreamModel);
-  const thinkingBudget = resolveKiroThinkingBudget(body, credentials?.rawHeaders, model);
+  // Synthetic suffixes are local routing hints. Kiro's current wire contract
+  // accepts Claude version dots, so preserve the resolved upstream ID exactly.
+  const { upstream: kiroModelId, agentic } = resolveKiroModel(model);
+  const thinkingBudget = resolveKiroThinkingBudget(
+    body,
+    credentials?.rawHeaders,
+    model,
+    translationContext?.thinkingIntent,
+  );
 
   // Guard 1: no client tools → flatten all tool interactions to text.
   if (!clientProvidedTools) {
@@ -410,7 +414,10 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
 
   let finalContent = currentMessage?.userInputMessage?.content || "";
 
-  // System prompt → prepend to the user content.
+  // System prompt: pass via native systemInstruction field (Kiro/Q API supports it)
+  // and also prepend as <instructions> in user content as fallback for upstreams
+  // that don't support the native field.
+  let systemInstruction = undefined;
   if (body.system) {
     let systemText = "";
     if (typeof body.system === "string") {
@@ -418,7 +425,10 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
     } else if (Array.isArray(body.system)) {
       systemText = body.system.map((s) => s.text || "").join("\n");
     }
-    if (systemText) finalContent = `${systemText}\n\n${finalContent}`;
+    if (systemText) {
+      systemInstruction = systemText;
+      finalContent = `<instructions>\n${systemText}\n</instructions>\n\n${finalContent}`;
+    }
   }
 
   // Prefix order: thinking_mode tag, timestamp marker, then agentic prompt.
@@ -433,23 +443,36 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
   if (agentic && isFirstTurn) prefixParts.push(KIRO_AGENTIC_SYSTEM_PROMPT);
   finalContent = `${prefixParts.join("\n\n")}\n\n${finalContent}`;
 
+  const userInputMessage = {
+    content: finalContent,
+    // Keep the same canonical upstream ID in the current message, history
+    // backfill.
+    modelId: kiroModelId,
+    origin: "AI_EDITOR",
+    ...(currentMessage?.userInputMessage?.userInputMessageContext && {
+      userInputMessageContext:
+        currentMessage.userInputMessage.userInputMessageContext,
+    }),
+    ...(currentMessage?.userInputMessage?.images && {
+      images: currentMessage.userInputMessage.images,
+    }),
+  };
+
+  if (systemInstruction) {
+    userInputMessage.systemInstruction = systemInstruction;
+  }
+
   const payload = {
     conversationState: {
       chatTriggerType: "MANUAL",
-      conversationId: uuidv4(),
+      conversationId: translationContext?.clientSessionId || resolveSessionId({
+        headers: credentials?.rawHeaders,
+        body,
+        connectionId: credentials?.connectionId,
+        scope: "kiro",
+      }),
       currentMessage: {
-        userInputMessage: {
-          content: finalContent,
-          modelId: kiroModelId,
-          origin: "AI_EDITOR",
-          ...(currentMessage?.userInputMessage?.userInputMessageContext && {
-            userInputMessageContext:
-              currentMessage.userInputMessage.userInputMessageContext,
-          }),
-          ...(currentMessage?.userInputMessage?.images && {
-            images: currentMessage.userInputMessage.images,
-          }),
-        },
+        userInputMessage,
       },
       history,
     },
@@ -463,12 +486,6 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
     if (temperature !== undefined) payload.inferenceConfig.temperature = temperature;
     if (topP !== undefined) payload.inferenceConfig.topP = topP;
   }
-
-  // Non-enumerable hint so the executor can route the upstream model id.
-  Object.defineProperty(payload, "_kiroUpstreamModel", {
-    value: kiroModelId,
-    enumerable: false,
-  });
 
   return payload;
 }

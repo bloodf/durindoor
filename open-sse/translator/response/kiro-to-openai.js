@@ -24,8 +24,24 @@ export function kiroToOpenAIResponse(chunk, state) {
   
   if (!chunk) return null;
 
-  // If chunk is already in OpenAI format (from executor transform), return as-is
+  // If chunk is already in OpenAI format (from executor transform), return as-is.
+  // Provider-only metering fields (Kiro credits) are internal: strip them from
+  // the client-facing usage so strict OpenAI-schema clients never see them.
+  // Internal accounting is unaffected — stream.js extracted raw usage into
+  // state before translation.
   if (chunk.object === "chat.completion.chunk" && chunk.choices) {
+    if (chunk.usage && (chunk.usage.kiro_credits !== undefined || chunk.usage.kiro_credit_unit !== undefined)) {
+      const { kiro_credits, kiro_credit_unit, ...usage } = chunk.usage;
+      // If stripping Kiro-only fields leaves a zero-field object, omit usage
+      // entirely so OpenAI clients do not receive a present-but-empty usage
+      // object on the finish chunk.
+      if (Object.keys(usage).length === 0) {
+        const stripped = { ...chunk };
+        delete stripped.usage;
+        return stripped;
+      }
+      return { ...chunk, usage };
+    }
     return chunk;
   }
   
@@ -112,10 +128,16 @@ export function kiroToOpenAIResponse(chunk, state) {
     const toolName = toolUse.name || "";
     const toolInput = toolUse.input || {};
 
+    // Each toolUseEvent in a turn must carry a unique index so downstream
+    // translators (openai-to-claude) can keep distinct open tool blocks per call.
+    state.toolCallIndex = state.toolCallIndex ?? 0;
+    const idx = state.toolCallIndex;
+    state.toolCallIndex = idx + 1;
+
     const openaiChunk = buildChunk(chunkMeta(state), {
       ...(state.chunkIndex === 0 ? { role: ROLE.ASSISTANT } : {}),
       tool_calls: [{
-        index: 0,
+        index: idx,
         id: toolCallId,
         type: OPENAI_BLOCK.FUNCTION,
         function: {

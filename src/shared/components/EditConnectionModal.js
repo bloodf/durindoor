@@ -8,6 +8,12 @@ import Button from "@/shared/components/Button";
 import Badge from "@/shared/components/Badge";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import Select from "@/shared/components/Select";
+import { requiresProviderAccountId } from "@/lib/providerAccountIds";
+import {
+  buildGooglePseProviderSpecificData,
+  isGooglePseProvider,
+  normalizeGooglePseCx,
+} from "@/shared/utils/googlePseProviderSpecificData";
 
 export default function EditConnectionModal({ isOpen, connection, proxyPools, onSave, onClose }) {
   const [formData, setFormData] = useState({
@@ -22,6 +28,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
     organization: "",
   });
   const [cloudflareData, setCloudflareData] = useState({ accountId: "" });
+  const [googlePseData, setGooglePseData] = useState({ cx: "" });
   const [region, setRegion] = useState("");
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
@@ -45,8 +52,15 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
           organization: connection.providerSpecificData.organization || "",
         });
       }
-      if (connection.provider === "cloudflare-ai" && connection.providerSpecificData) {
-        setCloudflareData({ accountId: connection.providerSpecificData.accountId || "" });
+      // Always reset when switching connections so a legacy row with missing
+      // metadata cannot inherit another tenant's account ID from component state.
+      setCloudflareData({
+        accountId: requiresProviderAccountId(connection.provider)
+          ? connection.providerSpecificData?.accountId || ""
+          : "",
+      });
+      if (connection.provider === "google-pse") {
+        setGooglePseData({ cx: connection.providerSpecificData?.cx || "" });
       }
       // Load region for providers that support it (e.g. xiaomi-tokenplan)
       const providerCfg = AI_PROVIDERS?.[connection.provider];
@@ -61,7 +75,9 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
 
   const isOAuth = connection?.authType === "oauth";
   const isAzure = connection?.provider === "azure";
-  const isCloudflareAi = connection?.provider === "cloudflare-ai";
+  const requiresAccountId = requiresProviderAccountId(connection?.provider);
+  const accountIdProviderLabel = connection?.provider === "snowflake" ? "Snowflake Cortex" : "Cloudflare Workers AI";
+  const isGooglePse = isGooglePseProvider(connection?.provider);
   const isCompatible = connection
     ? (isOpenAICompatibleProvider(connection.provider) || isAnthropicCompatibleProvider(connection.provider))
     : false;
@@ -72,6 +88,29 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
     if (providerRegions && region) return { ...((connection?.providerSpecificData) || {}), region };
     return undefined;
   };
+
+  const buildProviderSpecificData = () => {
+    if (isAzure) {
+      return {
+        azureEndpoint: azureData.azureEndpoint,
+        apiVersion: azureData.apiVersion,
+        deployment: azureData.deployment,
+        organization: azureData.organization,
+      };
+    }
+    if (requiresAccountId) {
+      return { accountId: cloudflareData.accountId.trim() };
+    }
+    if (isGooglePse) {
+      return buildGooglePseProviderSpecificData(googlePseData.cx, connection?.providerSpecificData);
+    }
+    if (providerRegions) {
+      return buildRegionSpecificData();
+    }
+    return undefined;
+  };
+
+  const hasRequiredGooglePseCx = !isGooglePse || !!normalizeGooglePseCx(googlePseData.cx);
 
   const handleTest = async () => {
     if (!connection?.provider) return;
@@ -90,8 +129,11 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
 
   const handleValidate = async () => {
     if (!connection?.provider || !formData.apiKey) return;
+    if (!hasRequiredGooglePseCx) return;
+    if (requiresAccountId && !cloudflareData.accountId.trim()) return;
     setValidating(true);
     setValidationResult(null);
+    const providerSpecificData = buildProviderSpecificData();
     try {
       const res = await fetch("/api/providers/validate", {
         method: "POST",
@@ -99,9 +141,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         body: JSON.stringify({
           provider: connection.provider,
           apiKey: formData.apiKey,
-          ...(isAzure ? { providerSpecificData: azureData } : {}),
-          ...(isCloudflareAi ? { providerSpecificData: cloudflareData } : {}),
-          ...(providerRegions ? { providerSpecificData: buildRegionSpecificData() } : {}),
+          ...(providerSpecificData ? { providerSpecificData } : {}),
         }),
       });
       const data = await res.json();
@@ -115,8 +155,11 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
 
   const handleSubmit = async () => {
     if (!connection) return;
+    if (!hasRequiredGooglePseCx) return;
+    if (requiresAccountId && !cloudflareData.accountId.trim()) return;
     setSaving(true);
     try {
+      const providerSpecificData = buildProviderSpecificData();
       const updates = {
         name: formData.name,
         priority: formData.priority,
@@ -134,9 +177,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
               body: JSON.stringify({
                 provider: connection.provider,
                 apiKey: formData.apiKey,
-                ...(isAzure ? { providerSpecificData: azureData } : {}),
-                ...(isCloudflareAi ? { providerSpecificData: cloudflareData } : {}),
-                ...(providerRegions ? { providerSpecificData: buildRegionSpecificData() } : {}),
+                ...(providerSpecificData ? { providerSpecificData } : {}),
               }),
             });
             const data = await res.json();
@@ -155,21 +196,8 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         }
       }
       
-      // Add Azure-specific data if this is an Azure connection
-      if (isAzure) {
-        updates.providerSpecificData = {
-          azureEndpoint: azureData.azureEndpoint,
-          apiVersion: azureData.apiVersion,
-          deployment: azureData.deployment,
-          organization: azureData.organization,
-        };
-      }
-      if (isCloudflareAi) {
-        updates.providerSpecificData = { accountId: cloudflareData.accountId };
-      }
-      // Persist updated region for region-aware providers
-      if (providerRegions && region) {
-        updates.providerSpecificData = buildRegionSpecificData();
+      if (providerSpecificData) {
+        updates.providerSpecificData = providerSpecificData;
       }
       
       await onSave(updates);
@@ -215,7 +243,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
                 className="flex-1"
               />
               <div className="pt-6">
-                <Button onClick={handleValidate} disabled={!formData.apiKey || validating || saving} variant="secondary">
+                <Button onClick={handleValidate} disabled={!formData.apiKey || !hasRequiredGooglePseCx || (requiresAccountId && !cloudflareData.accountId.trim()) || validating || saving} variant="secondary">
                   {validating ? "Checking..." : "Check"}
                 </Button>
               </div>
@@ -226,6 +254,19 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
               </Badge>
             )}
           </>
+        )}
+
+        {isGooglePse && (
+          <div className="bg-sidebar/50 p-4 rounded-lg border border-accent/20">
+            <h3 className="font-semibold mb-3 text-sm">Google Programmable Search</h3>
+            <Input
+              label="Search Engine ID (cx)"
+              value={googlePseData.cx}
+              onChange={(e) => setGooglePseData({ cx: e.target.value })}
+              placeholder="012345678901234567890:abcdefg"
+              hint="Required for Google Programmable Search requests."
+            />
+          </div>
         )}
 
         {isAzure && (
@@ -273,7 +314,20 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
           />
         )}
 
-        {!isCompatible && !isAzure && !isCloudflareAi && (
+        {requiresAccountId && (
+          <div className="bg-sidebar/50 p-4 rounded-lg border border-accent/20">
+            <h3 className="font-semibold mb-3 text-sm">{accountIdProviderLabel}</h3>
+            <Input
+              label="Account ID"
+              value={cloudflareData.accountId}
+              onChange={(e) => setCloudflareData({ ...cloudflareData, accountId: e.target.value })}
+              placeholder={connection?.provider === "snowflake" ? "org-account" : "abc123def456..."}
+              hint={connection?.provider === "snowflake" ? "Your Snowflake account identifier (e.g. org-account)" : "Find your Account ID in the right sidebar of dash.cloudflare.com"}
+            />
+          </div>
+        )}
+
+        {!isCompatible && !isAzure && !requiresAccountId && (
           <div className="flex items-center gap-3">
             <Button onClick={handleTest} variant="secondary" disabled={testing}>
               {testing ? "Testing..." : "Test Connection"}
@@ -287,7 +341,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         )}
 
         <div className="flex gap-2">
-          <Button onClick={handleSubmit} fullWidth disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
+          <Button onClick={handleSubmit} fullWidth disabled={saving || !hasRequiredGooglePseCx || (requiresAccountId && !cloudflareData.accountId.trim())}>{saving ? "Saving..." : "Save"}</Button>
           <Button onClick={onClose} variant="ghost" fullWidth>Cancel</Button>
         </div>
       </div>
@@ -313,4 +367,3 @@ EditConnectionModal.propTypes = {
   onSave: PropTypes.func.isRequired,
   onClose: PropTypes.func.isRequired,
 };
-

@@ -29,7 +29,7 @@ export default function CompressionStudioPage() {
       const res = await fetch("/api/compression/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ body: JSON.parse(input) }),
+        body: JSON.stringify(JSON.parse(input)),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));

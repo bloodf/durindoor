@@ -33,13 +33,13 @@ export const BRAND_LOGO_ALT = "";
 // /dashboard route redirects to /dashboard/usage).
 export const navItems = [
   { href: "/dashboard/usage", label: "Usage", icon: "bar_chart" },
-  { href: "/dashboard/providers", label: "Providers", icon: "dns" },
+  { href: "/dashboard/providers", label: "Providers", icon: "dns", exact: false },
   { href: "/dashboard/playground", label: "Playground", icon: "chat" },
   { href: "/dashboard/combos", label: "Combos", icon: "layers" },
   { href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage" },
   { href: "/dashboard/health", label: "Provider Health", icon: "monitor_heart" },
   { href: "/dashboard/compression-studio", label: "Compression Studio", icon: "compress" },
-  { href: "/dashboard/mcp-gateway", label: "MCP Gateway", icon: "hub" },
+  { href: "/dashboard/mcp-gateway", label: "MCP Gateway", icon: "hub", exact: false },
 ];
 
 // Collapsible Token Saver menu. Statistics renders the overview dashboard;
@@ -63,7 +63,7 @@ export const debugItems = [
 // Endpoint & Key and CLI Tools moved under System per the V2.1 nav restructure.
 export const systemItems = [
   { href: "/dashboard/endpoint", label: "Endpoint & Key", icon: "api" },
-  { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal" },
+  { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal", exact: false },
   { href: "/dashboard/proxy-pools", label: "Proxy Pools", icon: "lan" },
   { href: "/dashboard/skills", label: "Skills", icon: "extension" },
 ];

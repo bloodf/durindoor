@@ -103,9 +103,20 @@ describe("SidebarNavIcons", () => {
       const settings = "/dashboard/token-saver/settings";
       expect(isActivePath(stats, stats, true)).toBe(true);
       expect(isActivePath(settings, stats, true)).toBe(false);
-      expect(isActivePath(stats, settings, true)).toBe(false);
       expect(isActivePath(settings, settings, true)).toBe(true);
+      expect(isActivePath(stats, settings, true)).toBe(false);
     });
+  });
+
+  it("marks nested top-level nav items as exact: false so children stay highlighted", () => {
+    const providers = navItems.find((i) => i.href === "/dashboard/providers");
+    const mcp = navItems.find((i) => i.href === "/dashboard/mcp-gateway");
+    const cli = systemItems.find((i) => i.href === "/dashboard/cli-tools");
+    const usage = navItems.find((i) => i.href === "/dashboard/usage");
+    expect(providers.exact).toBe(false);
+    expect(mcp.exact).toBe(false);
+    expect(cli.exact).toBe(false);
+    expect(usage.exact).toBeUndefined();
   });
 
   it("NavIcon renders the requested Material Symbol glyph", () => {

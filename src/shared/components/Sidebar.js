@@ -105,12 +105,12 @@ export default function Sidebar({ onClose }) {
               onClick={onClose}
               className={cn(
                 "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                isActive(item.href, true)
+                isActive(item.href, item.exact !== false)
                   ? "bg-primary/10 text-primary"
                   : "text-text-muted hover:bg-surface-2 hover:text-text-main"
               )}
             >
-              <NavIcon icon={item.icon} isActive={isActive(item.href, true)} />
+              <NavIcon icon={item.icon} isActive={isActive(item.href, item.exact !== false)} />
               <span className="text-[13px] font-medium">{item.label}</span>
             </Link>
           ))}
@@ -216,12 +216,12 @@ export default function Sidebar({ onClose }) {
                 onClick={onClose}
                 className={cn(
                   "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                  isActive(item.href, true)
+                  isActive(item.href, item.exact !== false)
                     ? "bg-primary/10 text-primary"
                     : "text-text-muted hover:bg-surface-2 hover:text-text-main"
                 )}
               >
-                <NavIcon icon={item.icon} isActive={isActive(item.href, true)} />
+                <NavIcon icon={item.icon} isActive={isActive(item.href, item.exact !== false)} />
                 <span className="text-[13px] font-medium">{item.label}</span>
               </Link>
             ))}

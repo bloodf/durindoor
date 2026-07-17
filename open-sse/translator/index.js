@@ -178,6 +178,7 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     result,
     provider,
     thinkingIntent,
+    resolvedTranslationContext.modelCapabilities,
   );
   // Translator-local guards run after centralized thinking normalization.
   finalizeTranslatedRequest?.(translationModel, result);

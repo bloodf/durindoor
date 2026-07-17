@@ -241,7 +241,7 @@ export class DefaultExecutor extends BaseExecutor {
     return body;
   }
 
-  transformRequest(model, body, stream, credentials) {
+  transformRequest(model, body, stream, credentials, requestContext = null) {
     this.applyRequestDefaults(body);
     // Provider-specific request hook (e.g. SenseNova Token Plan clamps
     // max_tokens / max_completion_tokens above its 65536 ceiling).
@@ -260,14 +260,14 @@ export class DefaultExecutor extends BaseExecutor {
         // payloads, including providers that explicitly reject streaming.
         // Also drop stream_options: it's only meaningful with stream:true
         // (include_usage controls the final SSE usage chunk) and some
-        // OpenAI-compatible upstreams 400 on stream_options when stream is
-        // false (client sent it because it originally requested streaming).
+        // OpenAI-compatible upstreams 400 on stream_options when stream is false
+        // (client sent it because it originally requested streaming).
         transformed.stream = false;
         delete transformed.stream_options;
       }
       injectPromptCacheKey(this.provider, transformed, credentials);
-      applyParamRenames(this.provider, model, transformed);
-      stripUnsupportedParams(this.provider, model, transformed);
+      applyParamRenames(this.provider, model, transformed, requestContext?.modelCapabilities);
+      stripUnsupportedParams(this.provider, model, transformed, requestContext?.modelCapabilities);
     }
 
     return this.ensureThinkingBudget(injectReasoningContent({ provider: this.provider, model, body: transformed }), model);

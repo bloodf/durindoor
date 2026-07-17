@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCustomModels, addCustomModel, deleteCustomModel } from "@/models";
+import { getCustomModels, addCustomModel, updateCustomModel, deleteCustomModel } from "@/models";
 
 export const dynamic = "force-dynamic";
 
@@ -17,15 +17,33 @@ export async function GET() {
 // POST /api/models/custom - Add custom model
 export async function POST(request) {
   try {
-    const { providerAlias, id, type, name } = await request.json();
+    const { providerAlias, id, type, name, capabilities } = await request.json();
     if (!providerAlias || !id) {
       return NextResponse.json({ error: "providerAlias and id required" }, { status: 400 });
     }
-    const added = await addCustomModel({ providerAlias, id, type: type || "llm", name });
+    const added = await addCustomModel({ providerAlias, id, type: type || "llm", name, capabilities });
     return NextResponse.json({ success: true, added });
   } catch (error) {
     console.log("Error adding custom model:", error);
-    return NextResponse.json({ error: "Failed to add custom model" }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Failed to add custom model" }, { status: error.status || 500 });
+  }
+}
+
+// PATCH /api/models/custom - Edit custom model capabilities
+export async function PATCH(request) {
+  try {
+    const { providerAlias, id, type, name, capabilities } = await request.json();
+    if (!providerAlias || !id) {
+      return NextResponse.json({ error: "providerAlias and id required" }, { status: 400 });
+    }
+    const updated = await updateCustomModel({ providerAlias, id, type: type || "llm", name, capabilities });
+    if (!updated) {
+      return NextResponse.json({ error: "Custom model not found" }, { status: 404 });
+    }
+    return NextResponse.json({ success: true, updated });
+  } catch (error) {
+    console.log("Error updating custom model:", error);
+    return NextResponse.json({ error: error.message || "Failed to update custom model" }, { status: error.status || 500 });
   }
 }
 

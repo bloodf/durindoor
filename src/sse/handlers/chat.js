@@ -17,11 +17,12 @@ import {
 } from "@/lib/localDb";
 import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
 import { appendPxpipeEvent } from "@/lib/pxpipe/events.js";
-import { getModelInfo, getComboModels } from "../services/model.js";
+import { getModelInfo, getComboModels, resolveCustomCapabilities, parseModel } from "../services/model.js";
 import { recordTokenSaverEvent } from "@/lib/usageDb";
 import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
 import { applyVisionBridgeReroute } from "open-sse/services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
+import { getCustomModels } from "@/lib/localDb";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import {
@@ -657,6 +658,14 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     scope: provider,
   });
 
+  // Resolve request-scoped custom capabilities once, just before the retry loop.
+  // Custom model aliases are stored by provider prefix; requestPrefix carries
+  // the prefix the caller actually used (e.g. node alias or bare model alias).
+  const parsed = parseModel(modelStr);
+  const requestPrefix = parsed?.providerAlias || null;
+  const customModels = await getCustomModels();
+  const modelCapabilities = resolveCustomCapabilities(provider, model, requestPrefix, customModels);
+
   // Try with available accounts (fallback on errors)
   const excludeConnectionIds = new Set();
   const attemptCounts = new Map();
@@ -817,6 +826,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     const result = await handleChatCore({
       body: { ...structuredClone(body), model: `${provider}/${model}` },
       modelInfo: { provider, model },
+      modelCapabilities,
       credentials: refreshedCredentials,
       log,
       clientRawRequest,

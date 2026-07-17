@@ -511,10 +511,14 @@ async function buildModelsListImpl(kindFilter, guard) {
       const modelId = String(customModel.id).trim();
       if (!modelId) continue;
 
+      const providerId = providerAlias; // used for static fallback only
+      const staticCaps = getCapabilitiesForModel(providerId, modelId);
+      const customCaps = isRecord(customModel.capabilities) ? customModel.capabilities : {};
       models.push({
         id: `${providerAlias}/${modelId}`,
         object: "model",
         owned_by: providerAlias,
+        capabilities: { ...staticCaps, ...customCaps },
       });
     }
   } else {
@@ -633,6 +637,7 @@ async function buildModelsListImpl(kindFilter, guard) {
           .filter((modelId) => typeof modelId === "string" && modelId.trim() !== "");
 
         const customModelKindById = new Map();
+        const customCapabilitiesById = new Map();
         const customModelIds = customModels
           .filter((m) => {
             if (!m.id) return false;
@@ -646,7 +651,10 @@ async function buildModelsListImpl(kindFilter, guard) {
           .map((m) => {
             const modelId = String(m.id).trim();
             const kind = customModelKind(m);
-            if (modelId) customModelKindById.set(modelId, kind);
+            if (modelId) {
+              customModelKindById.set(modelId, kind);
+              if (isRecord(m.capabilities)) customCapabilitiesById.set(modelId, m.capabilities);
+            }
             return modelId;
           })
           .filter((modelId) => modelId !== "");
@@ -686,10 +694,12 @@ async function buildModelsListImpl(kindFilter, guard) {
           // modal + combo filters.
           if (hidePaidModels && isPaidModel(`${outputAlias}/${modelId}`)) continue;
 
-          const caps =
-            liveCapabilitiesById.get(modelId)
-            || capabilitiesFromServiceKind(customKind || liveKind)
-            || getCapabilitiesForModel(providerId, modelId);
+          const caps = {
+            ...getCapabilitiesForModel(providerId, modelId),
+            ...(capabilitiesFromServiceKind(customKind || liveKind) || {}),
+            ...(liveCapabilitiesById.get(modelId) || {}),
+            ...(customCapabilitiesById.get(modelId) || {}),
+          };
           const model = {
             id: `${outputAlias}/${modelId}`,
             object: "model",

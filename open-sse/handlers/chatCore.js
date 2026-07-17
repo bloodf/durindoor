@@ -128,12 +128,12 @@ function isCompactResponsesEndpoint(endpoint) {
  * legacy body marker remains accepted for compatibility, but is removed from
  * both working and diagnostic copies before either can leave the process.
  */
-function captureRequestContext(body, clientRawRequest) {
+function captureRequestContext(body, clientRawRequest, modelCapabilities) {
   const compact = isCompactResponsesEndpoint(clientRawRequest?.endpoint)
     || body?._compact === true
     || clientRawRequest?.body?._compact === true;
   const clientHeaders = Object.freeze({ ...(clientRawRequest?.headers || {}) });
-  return Object.freeze({ compact, clientHeaders });
+  return Object.freeze({ compact, clientHeaders, modelCapabilities });
 }
 
 function stripLegacyCompactMarker(body, clientRawRequest) {
@@ -212,7 +212,7 @@ async function cancelResponseBody(response) {
  *   errors. Legacy `info`/`debug`/`warn`/`error` remain supported.
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, compressionEnabled, compressionEngines, skipPonytailCommands = false, claudeClassifierCompat }) {
+export async function handleChatCore({ body, modelInfo, credentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, compressionEnabled, compressionEngines, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
   if (abortSignal?.aborted) return createErrorResult(499, "Request aborted");
   const { provider, model: requestedModel } = modelInfo;
   const requestStartTime = Date.now();
@@ -241,7 +241,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
     quotaCapacityUnavailable: true,
     quotaReason: reason || "capacity_exhausted",
   });
-  const requestContext = captureRequestContext(body, clientRawRequest);
+  const requestContext = captureRequestContext(body, clientRawRequest, modelCapabilities);
   ({ body, clientRawRequest } = stripLegacyCompactMarker(body, clientRawRequest));
 
   // Stable per-session color so all lines of one CLI conversation share a tag
@@ -373,7 +373,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
 
   // Auto-strip media blocks the model can't read (vision/audio/pdf) before translation.
   if (!passthrough) {
-    const caps = getCapabilitiesForModel(provider, cleanModel);
+    const caps = modelCapabilities || getCapabilitiesForModel(provider, cleanModel);
     if (stripUnsupportedModalities(body, sourceFormat, caps)) {
       log?.debug?.("MODALITY", `stripped unsupported media for ${provider}/${cleanModel}`);
     }
@@ -407,7 +407,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
   if (passthrough) {
     log?.debug?.("PASSTHROUGH", `${clientTool} → ${provider} | native lossless`);
     translatedBody = { ...structuredClone(body), model: cleanUpstreamModel };
-    applyThinking(targetFormat, cleanModel, translatedBody, provider, modelThinkingIntent);
+    applyThinking(targetFormat, cleanModel, translatedBody, provider, modelThinkingIntent, modelCapabilities);
     // Per-transport registry defaults (e.g. MiniMax openai transport → reasoning_split).
     applyTransportRequestDefaults(targetFormat, translatedBody, provider);
     // Normalize newer Cowork/CC beta shapes (adaptive thinking, mid-conversation system) the API rejects
@@ -426,7 +426,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
       stripList,
       connectionId,
       clientTool,
-      { thinkingIntent: modelThinkingIntent, capabilityModel: cleanModel },
+      { thinkingIntent: modelThinkingIntent, capabilityModel: cleanModel, modelCapabilities },
     );
     if (!translatedBody) {
       trackPendingRequest(cleanModel, provider, connectionId, false, true);
@@ -528,7 +528,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
         adaptive: {
           ...COMPRESSION_ADAPTIVE_CONFIG,
           estimatedTokens: estimateTokens(translatedBody),
-          modelContextLimit: getCapabilitiesForModel(provider, cleanModel).contextWindow,
+          modelContextLimit: (modelCapabilities || getCapabilitiesForModel(provider, cleanModel)).contextWindow,
           requestMaxTokens: translatedBody?.max_tokens ?? translatedBody?.max_completion_tokens ?? null,
         },
         log,

@@ -1,3 +1,28 @@
+import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
+
+import { parseSuffix } from "open-sse/translator/concerns/thinkingSuffix.js";
+import { PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
+
+export function resolveCustomCapabilities(provider, model, requestPrefix, customModels) {
+  if (!Array.isArray(customModels) || !model) return null;
+  const { cleanModel } = parseSuffix(model);
+  const cleanModelId = String(cleanModel).replace(/^\//, "");
+  const canonicalAlias = PROVIDER_ID_TO_ALIAS[provider] || provider;
+  for (const m of customModels) {
+    if (!m.id || !m.providerAlias) continue;
+    const storedId = String(m.id).replace(/^\//, "");
+    if (storedId !== cleanModelId) continue;
+    const alias = m.providerAlias;
+    if (alias === provider || alias === requestPrefix || alias === canonicalAlias) {
+      const staticCaps = getCapabilitiesForModel(provider, String(cleanModel));
+      const caps = m.capabilities;
+      const hasCaps = caps && typeof caps === "object" && !Array.isArray(caps) && Object.keys(caps).length > 0;
+      return hasCaps ? { ...staticCaps, ...caps } : staticCaps;
+    }
+  }
+  return null;
+}
+
 // Re-export from open-sse with localDb integration
 import { getModelAliases, getComboByName, getProviderNodes, getProviderConnections } from "@/lib/localDb";
 import { parseModel as parseModelCore, resolveModelAliasFromMap, getModelInfoCore, stripRedundantNodePrefix } from "open-sse/services/model.js";

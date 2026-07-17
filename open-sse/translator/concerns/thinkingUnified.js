@@ -87,11 +87,11 @@ export function extractThinking(body) {
 export const captureThinking = extractThinking;
 
 // Resolve thinking format: provider override > capability > derive(targetFormat).
-function resolveFormat(targetFormat, model, provider) {
+function resolveFormat(targetFormat, model, provider, caps = null) {
   const providerFmt = provider ? PROVIDERS[provider]?.thinkingFormat : null;
   if (providerFmt) return providerFmt;
-  const caps = getCapabilitiesForModel(provider, model);
-  if (caps.thinkingFormat) return caps.thinkingFormat;
+  const resolvedCaps = caps || getCapabilitiesForModel(provider, model);
+  if (resolvedCaps.thinkingFormat) return resolvedCaps.thinkingFormat;
   return FORMAT_TO_NATIVE[targetFormat] || "openai";
 }
 
@@ -327,7 +327,7 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null) {
 // Mutates and returns body. No-op when model has no reasoning capability.
 // `intent` is a pre-captured config (from captureThinking on the original body);
 // falls back to extracting from the current body when omitted.
-export function applyThinking(targetFormat, model, body, provider = null, intent = undefined) {
+export function applyThinking(targetFormat, model, body, provider = null, intent = undefined, modelCapabilities = null) {
   if (!body || typeof body !== "object") return body;
 
   // ponytail: ceiling = ollama under claude transport. Lift into PROVIDERS[ollama].quirks
@@ -364,7 +364,7 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
   }
 
   const cfg = override || intent || extractThinking(body);
-  const caps = getCapabilitiesForModel(provider, cleanModel);
+  const caps = modelCapabilities || getCapabilitiesForModel(provider, cleanModel);
 
   // Model cannot reason → strip any stray thinking fields.
   if (!caps.reasoning) {
@@ -373,7 +373,7 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
   }
   if (!cfg) return body;
 
-  const fmt = resolveFormat(targetFormat, cleanModel, provider);
+  const fmt = resolveFormat(targetFormat, cleanModel, provider, caps);
   stripAll(body);
   applyFormat(fmt, body, cfg, caps, cleanModel, provider);
   return body;

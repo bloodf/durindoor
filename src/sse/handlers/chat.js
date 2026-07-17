@@ -16,6 +16,7 @@ import {
   getProviderConnections, getQuotaReservationPressure,
 } from "@/lib/localDb";
 import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
+import { appendHeadroomEvent } from "@/lib/headroom/events.js";
 import { appendPxpipeEvent } from "@/lib/pxpipe/events.js";
 import { getModelInfo, getComboModels, loadCustomCapabilities, parseModel } from "../services/model.js";
 import { recordTokenSaverEvent } from "@/lib/usageDb";
@@ -955,6 +956,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       pxpipeTimeoutMs: chatSettings.pxpipeTimeoutMs,
       pxpipeTransform,
       onPxpipeEvent: appendPxpipeEvent,
+      onHeadroomEvent: appendHeadroomEvent,
       onTokenSaverEvent: (event) => {
         if (tokenSaverCollector) {
           tokenSaverCollector.latest = event;

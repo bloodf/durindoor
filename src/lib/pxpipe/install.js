@@ -1,123 +1,103 @@
-import fs from "fs";
-import path from "path";
-import { spawn, execSync } from "child_process";
-import { DATA_DIR } from "@/lib/dataDir.js";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { DATA_DIR } from "../dataDir.js";
 
 export const PXPIPE_DIR = path.join(DATA_DIR, "pxpipe");
-export const PXPIPE_PACKAGE = "pxpipe-proxy";
-const INSTALL_LOG = path.join(PXPIPE_DIR, "install.log");
-const INSTALL_TIMEOUT_MS = 5 * 60 * 1000;
 
-const IS_WIN = process.platform === "win32";
-const NPM_CMD = IS_WIN ? "npm.cmd" : "npm";
+export const PXPIPE_MISSING_CODE = "DEPENDENCY_MISSING";
 
-// Same PATH extension trick as headroom/detect.js: packaged/launchd environments
-// often miss the Node bin dirs.
-const EXTRA_BINS = IS_WIN
-  ? [`${process.env.ProgramFiles || ""}\\nodejs`, `${process.env.APPDATA || ""}\\npm`]
-  : ["/usr/local/bin", "/opt/homebrew/bin", `${process.env.HOME || ""}/.local/bin`, "/usr/bin", "/bin"];
-const EXTENDED_PATH = [...EXTRA_BINS, process.env.PATH || ""].filter(Boolean).join(path.delimiter);
+const MISSING_REASONS = {
+  not_resolved: "Bundled pxpipe-proxy dependency is missing; reinstall DurinDoor",
+  not_found: "Bundled pxpipe-proxy dependency is present but library entry is missing",
+  not_loaded: "Bundled pxpipe-proxy dependency is present but failed to load",
+};
 
-let installInFlight = null;
+const STANDALONE_ROOT_ENV = "DURINDOOR_STANDALONE_ROOT";
 
-function ensureDir() {
-  if (!fs.existsSync(PXPIPE_DIR)) fs.mkdirSync(PXPIPE_DIR, { recursive: true });
+
+const PXPIPE_TRANSFORM_SUBPATH = "./transform";
+
+function getExportedEntry(pkg, subpath) {
+  const exportDef = pkg?.exports?.[subpath];
+  if (typeof exportDef === "string") {
+    return exportDef.startsWith("./") ? exportDef : `./${exportDef}`;
+  }
+  if (!exportDef || typeof exportDef !== "object") return null;
+  const importPath = exportDef.import;
+  if (typeof importPath !== "string" || !importPath.endsWith(".js")) return null;
+  return importPath;
 }
 
-export function packageRoot() {
-  return path.join(PXPIPE_DIR, "node_modules", PXPIPE_PACKAGE);
+/**
+ * Find the installed pxpipe-proxy package root on disk. This function avoids
+ * import.meta.resolve because Next.js server bundling replaces it with a stub
+ * that cannot resolve ESM-only exports. Instead we look in the obvious places:
+ *   1. The standalone runtime root (production custom server sets this).
+ *   2. The node_modules tree above this source file (dev/tests).
+ *   3. process.cwd() as a last-ditch fallback (build-time scripts).
+ */
+function findPackageRoot() {
+  const standalone = process.env[STANDALONE_ROOT_ENV];
+  if (standalone) {
+    const root = path.join(standalone, "node_modules", "pxpipe-proxy");
+    if (fs.existsSync(root)) return root;
+  }
+  let dir = path.dirname(fileURLToPath(import.meta.url));
+  while (dir !== path.dirname(dir)) {
+    const candidate = path.join(dir, "node_modules", "pxpipe-proxy");
+    if (fs.existsSync(candidate)) return candidate;
+    dir = path.dirname(dir);
+  }
+  const cwdCandidate = path.join(process.cwd(), "node_modules", "pxpipe-proxy");
+  return fs.existsSync(cwdCandidate) ? cwdCandidate : null;
 }
 
-export function libraryEntry() {
-  return path.join(packageRoot(), "dist", "core", "library.js");
-}
-
-export function findNpm() {
+function resolveLibraryEntry() {
+  const root = findPackageRoot();
+  if (!root) return null;
+  const pkgJson = path.join(root, "package.json");
+  let exportPath = null;
   try {
-    const out = execSync(`${IS_WIN ? "where" : "which"} npm`, {
-      stdio: ["ignore", "pipe", "ignore"],
-      windowsHide: true,
-      env: { ...process.env, PATH: EXTENDED_PATH },
-    }).toString().trim();
-    return out ? out.split(/\r?\n/)[0].trim() : null;
+    const pkg = fs.existsSync(pkgJson) ? JSON.parse(fs.readFileSync(pkgJson, "utf8")) : {};
+    exportPath = getExportedEntry(pkg, PXPIPE_TRANSFORM_SUBPATH);
   } catch {
     return null;
   }
+  if (!exportPath) return null;
+  const resolvedRoot = path.resolve(root);
+  const entry = path.resolve(resolvedRoot, exportPath);
+  if (!entry.startsWith(`${resolvedRoot}${path.sep}`) && entry !== resolvedRoot) return null;
+  return fs.existsSync(entry) ? entry : null;
 }
 
-// { installed, version, path } — installed means the library entry exists on disk.
+export function packageRoot() {
+  return findPackageRoot() || "";
+}
+
+export function libraryEntry() {
+  return resolveLibraryEntry() || "";
+}
+
+// { installed, version, path, reason, code } — installed means the exported
+// library entry exists and is readable. The package is a declared dependency;
+// no runtime network install is performed.
 export function getInstallInfo() {
+  const root = findPackageRoot();
+  if (!root) {
+    return { installed: false, version: null, path: null, reason: MISSING_REASONS.not_resolved, code: PXPIPE_MISSING_CODE };
+  }
+  const entry = resolveLibraryEntry();
+  if (!entry) {
+    return { installed: false, version: null, path: root, reason: MISSING_REASONS.not_found, code: PXPIPE_MISSING_CODE };
+  }
   try {
-    const pkgJson = path.join(packageRoot(), "package.json");
-    if (!fs.existsSync(pkgJson) || !fs.existsSync(libraryEntry())) {
-      return { installed: false, version: null, path: null };
-    }
-    const pkg = JSON.parse(fs.readFileSync(pkgJson, "utf8"));
-    return { installed: true, version: pkg.version || null, path: packageRoot() };
+    const pkgJson = path.join(root, "package.json");
+    const pkg = fs.existsSync(pkgJson) ? JSON.parse(fs.readFileSync(pkgJson, "utf8")) : {};
+    return { installed: true, version: pkg.version || null, path: root };
   } catch {
-    return { installed: false, version: null, path: null };
+    // Unreadable package.json means the bundled dependency is corrupt.
+    return { installed: false, version: null, path: root, reason: MISSING_REASONS.not_loaded, code: PXPIPE_MISSING_CODE };
   }
 }
 
-export function isInstalling() {
-  return installInFlight !== null;
-}
-
-// Install (or repair by reinstalling) pxpipe-proxy into DATA_DIR/pxpipe.
-// Serialized: concurrent calls await the same run.
-export function installPxpipe() {
-  if (installInFlight) return installInFlight;
-  installInFlight = runInstall().finally(() => { installInFlight = null; });
-  return installInFlight;
-}
-
-async function runInstall() {
-  const npm = findNpm();
-  if (!npm) {
-    const err = new Error("npm not found on PATH — Node.js/npm is required to install PXPIPE");
-    err.code = "NPM_NOT_FOUND";
-    throw err;
-  }
-
-  ensureDir();
-  const pkgJson = path.join(PXPIPE_DIR, "package.json");
-  if (!fs.existsSync(pkgJson)) {
-    fs.writeFileSync(pkgJson, JSON.stringify({ name: "durindoor-pxpipe-host", private: true }, null, 2));
-  }
-
-  const outFd = fs.openSync(INSTALL_LOG, "a");
-  fs.writeSync(outFd, `\n[${new Date().toISOString()}] npm install ${PXPIPE_PACKAGE}@latest\n`);
-
-  await new Promise((resolve, reject) => {
-    const child = spawn(npm, ["install", `${PXPIPE_PACKAGE}@latest`, "--no-audit", "--no-fund", "--omit=dev"], {
-      cwd: PXPIPE_DIR,
-      stdio: ["ignore", outFd, outFd],
-      windowsHide: true,
-      env: { ...process.env, PATH: EXTENDED_PATH },
-    });
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      reject(new Error("npm install timed out after 5 minutes — see install.log"));
-    }, INSTALL_TIMEOUT_MS);
-    child.once("error", (e) => { clearTimeout(timer); reject(e); });
-    child.once("exit", (code) => {
-      clearTimeout(timer);
-      if (code === 0) resolve();
-      else reject(new Error(`npm install exited with code ${code} — see install.log`));
-    });
-  }).finally(() => fs.closeSync(outFd));
-
-  const info = getInstallInfo();
-  if (!info.installed) throw new Error("install finished but package is missing — see install.log");
-  return info;
-}
-
-export function getInstallLogTail(maxLines = 200) {
-  try {
-    if (!fs.existsSync(INSTALL_LOG)) return "";
-    const lines = fs.readFileSync(INSTALL_LOG, "utf8").split(/\r?\n/).filter(Boolean);
-    return lines.slice(-maxLines).join("\n");
-  } catch {
-    return "";
-  }
-}

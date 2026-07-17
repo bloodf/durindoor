@@ -69,6 +69,7 @@ export async function POST(request) {
     try {
       const result = await getEngine(id).apply(body, {});
       const fallbackReasons = computeFallbackReasons(result?.stats);
+      const raw = result?.body;
       results[id] = {
         status: result?.compressed === true ? "compressed" : "unchanged",
         compressed: result?.compressed === true,
@@ -85,6 +86,7 @@ export async function POST(request) {
           result?.stats?.fallbackApplied === true
             ? (result.stats.fallbackReason ?? fallbackReasons[0] ?? null)
             : null,
+        ...(raw !== undefined ? { raw } : {}),
       };
     } catch {
       results[id] = { status: "error" };

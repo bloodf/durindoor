@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Card, Button, Input, Modal, Toggle } from "@/shared/components";
 import TokenSaverOverview from "./components/TokenSaverOverview";
+import PxpipeClient from "../pxpipe/PxpipeClient";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { getCurrentLocale, onLocaleChange } from "@/i18n/runtime";
 import {
@@ -11,8 +12,7 @@ import {
   PONYTAIL_LEVELS,
 } from "../endpoint/endpointConstants";
 
-export default function TokenSaverClient() {
-  const [tab, setTab] = useState("overview");
+export default function TokenSaverClient({ view = "overview" }) {
   const [rtkEnabled, setRtkEnabledState] = useState(true);
   const [pxpipeEnabled, setPxpipeEnabled] = useState(false);
   const [pxpipeMinChars, setPxpipeMinChars] = useState("25000");
@@ -21,7 +21,6 @@ export default function TokenSaverClient() {
   const [pxpipeTimeoutMs, setPxpipeTimeoutMs] = useState("15000");
   const [pxpipeTimeoutInputValue, setPxpipeTimeoutInputValue] = useState("15000");
   const [pxpipeTimeoutError, setPxpipeTimeoutError] = useState("");
-  const [pxpipeAutoInstall, setPxpipeAutoInstall] = useState(true);
   const [pxpipeStatus, setPxpipeStatus] = useState({
     installed: false,
     installing: false,
@@ -310,12 +309,6 @@ export default function TokenSaverClient() {
     if (!res?.ok) setPxpipeEnabled(!value);
   };
 
-  const handlePxpipeAutoInstall = async (value) => {
-    setPxpipeAutoInstall(value);
-    const res = await patchSetting({ pxpipeAutoInstall: value });
-    if (!res?.ok) setPxpipeAutoInstall(!value);
-  };
-
   const handlePxpipeMinChars = (value) => {
     setPxpipeInputValue(value);
     setPxpipeMinCharsError("");
@@ -369,7 +362,6 @@ export default function TokenSaverClient() {
           setPonytailEnabled(!!data.ponytailEnabled);
           setPonytailLevel(data.ponytailLevel || "full");
           setPxpipeEnabled(!!data.pxpipeEnabled);
-          setPxpipeAutoInstall(data.pxpipeAutoInstall !== false);
           setPxpipeMinChars(String(data.pxpipeMinChars ?? 25000));
           setPxpipeInputValue(String(data.pxpipeMinChars ?? 25000));
           setPxpipeTimeoutMs(String(data.pxpipeTimeoutMs ?? 15000));
@@ -410,28 +402,12 @@ export default function TokenSaverClient() {
 
   return (
     <div className="space-y-6 p-6">
-      <div className="flex w-fit rounded-lg border border-border bg-surface-2 p-1" role="tablist" aria-label="Token Saver">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "overview"}
-          onClick={() => setTab("overview")}
-          className={`rounded-md px-4 py-1.5 text-sm font-medium ${tab === "overview" ? "bg-primary text-white" : "text-text-muted hover:text-text"}`}
-        >
-          Overview
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "settings"}
-          onClick={() => setTab("settings")}
-          className={`rounded-md px-4 py-1.5 text-sm font-medium ${tab === "settings" ? "bg-primary text-white" : "text-text-muted hover:text-text"}`}
-        >
-          Settings
-        </button>
-      </div>
-
-      {tab === "overview" ? <TokenSaverOverview /> : <>
+      {view === "overview" ? (
+        <>
+          <TokenSaverOverview />
+          <PxpipeClient embedded />
+        </>
+      ) : <>
       <Card id="rtk">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-lg font-semibold flex items-center gap-2">
@@ -482,6 +458,12 @@ export default function TokenSaverClient() {
               >
                 {headroomStatusLabel}
               </span>
+              <a
+                href="/dashboard/headroom"
+                className="text-xs text-primary underline hover:opacity-80"
+              >
+                Open full page →
+              </a>
               <button
                 type="button"
                 onClick={() => setShowHeadroomInstallModal(true)}
@@ -673,12 +655,6 @@ export default function TokenSaverClient() {
             <span className="material-symbols-outlined text-primary">image</span>
             PXPIPE
           </h2>
-          <a
-            href="/dashboard/pxpipe"
-            className="text-sm text-primary underline hover:opacity-80"
-          >
-            Open full page →
-          </a>
         </div>
         <div className="flex items-center justify-between pt-2 pb-4 border-b border-border gap-4">
           <div className="min-w-0 flex-1">
@@ -706,13 +682,10 @@ export default function TokenSaverClient() {
             </div>
             <div className="flex items-center gap-2">
               {!pxpipeStatus.installed ? (
-                <Button
-                  onClick={() => pxpipeAction("install")}
-                  disabled={pxpipeActionLoading}
-                  size="sm"
-                >
-                  {pxpipeActionLoading ? "Installing…" : "Install"}
-                </Button>
+                <p className="text-sm text-warning max-w-64">
+                  PXPIPE dependency missing. Reinstall the application
+                  (npm install) to restore it.
+                </p>
               ) : pxpipeStatus.running ? (
                 <Button
                   onClick={() => pxpipeAction("stop")}
@@ -788,18 +761,6 @@ export default function TokenSaverClient() {
           {pxpipeTimeoutError && (
             <p className="text-sm text-warning">{pxpipeTimeoutError}</p>
           )}
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium">Auto-install</p>
-              <p className="text-sm text-text-muted">
-                Install PXPIPE automatically on first use when enabled.
-              </p>
-            </div>
-            <Toggle
-              checked={pxpipeAutoInstall}
-              onChange={() => handlePxpipeAutoInstall(!pxpipeAutoInstall)}
-            />
-          </div>
           {pxpipeHealth && (
             <p className={`text-sm ${pxpipeHealth.healthy ? "text-success" : "text-warning"}`}>
               Health: {pxpipeHealth.healthy ? "OK" : pxpipeHealth.error || "Unhealthy"}

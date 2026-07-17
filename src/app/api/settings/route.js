@@ -114,11 +114,12 @@ export async function PATCH(request) {
         return NextResponse.json({ error: "Invalid pxpipeTimeoutMs" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
       }
     }
-    for (const key of ["pxpipeEnabled", "pxpipeAutoInstall"]) {
-      if (Object.prototype.hasOwnProperty.call(body, key) && typeof body[key] !== "boolean") {
-        return NextResponse.json({ error: `Invalid ${key}` }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
-      }
+    if (Object.prototype.hasOwnProperty.call(body, "pxpipeEnabled") && typeof body.pxpipeEnabled !== "boolean") {
+      return NextResponse.json({ error: "Invalid pxpipeEnabled" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
     }
+    // pxpipeAutoInstall was removed with runtime installs; strip so legacy
+    // clients can't persist dead config.
+    delete body.pxpipeAutoInstall;
 
     // Validate per-combo contextRequirements (upstream #6907 schema parity):
     //   minContextWindow: integer 0..10_000_000 (optional)

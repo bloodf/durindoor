@@ -52,7 +52,7 @@ export class AzureExecutor extends DefaultExecutor {
     return headers;
   }
 
-  transformRequest(model, body, stream, credentials) {
+  transformRequest(model, body, stream, credentials, requestContext = null) {
     // Azure bypasses DefaultExecutor.transformRequest; invoke the shared helper
     // directly. Clone before mutating to avoid caller side effects. (#6912/#6964)
     const transformed = { ...(body || {}) };

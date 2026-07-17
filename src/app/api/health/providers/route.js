@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { getHealthPayload, invalidateHealthCache } from "@/lib/healthMonitor";
-import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 
 export const dynamic = "force-dynamic";
 
@@ -18,8 +17,9 @@ export async function GET(request) {
     const payload = await getHealthPayload({ force });
     return NextResponse.json(payload, { headers: CORS_HEADERS });
   } catch (error) {
+    console.error("[health/providers] getHealthPayload failed:", error);
     return NextResponse.json(
-      { error: "Failed to compute provider health", message: sanitizeErrorMessage(error?.message) },
+      { error: "Unable to compute provider health" },
       { status: 500, headers: CORS_HEADERS }
     );
   }

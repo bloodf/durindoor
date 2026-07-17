@@ -520,18 +520,25 @@ export const PATTERN_CAPABILITIES = [
  * @param {number} [_depth] internal recursion depth guard
  * @returns {object|null} full capabilities object, or null for empty input
  */
-export function aggregateComboCapabilities(comboModels, comboLookup = null, aliasToProviderId = null, _depth = 0) {
+export function aggregateComboCapabilities(comboModels, comboLookup = null, aliasToProviderId = null, _depth = 0, customCapsById = null) {
   if (!comboModels?.length || _depth > 6) return null;
   const allCaps = comboModels.map((fullId) => {
     // Nested combo: bare name (no slash) that exists in the lookup — recurse
     if (!fullId.includes("/") && comboLookup?.[fullId]) {
-      return aggregateComboCapabilities(comboLookup[fullId], comboLookup, aliasToProviderId, _depth + 1)
+      return aggregateComboCapabilities(comboLookup[fullId], comboLookup, aliasToProviderId, _depth + 1, customCapsById)
           ?? getCapabilitiesForModel(null, fullId);
     }
     const slash = fullId.indexOf("/");
     const provider = slash === -1 ? null : fullId.slice(0, slash);
     const model = slash === -1 ? fullId : fullId.slice(slash + 1);
-    return getCapabilitiesForModel(aliasToProviderId?.[provider] ?? provider, model);
+    const providerId = aliasToProviderId?.[provider] ?? provider;
+    // Persisted custom-model overrides (keyed canonical "providerId/modelId")
+    // merge over the static catalog so advertised combo capabilities match
+    // routing. Members may use a static alias or a connection's custom output
+    // prefix; both normalize through aliasToProviderId above.
+    const custom = customCapsById?.get?.(`${providerId}/${model}`);
+    const staticCaps = getCapabilitiesForModel(providerId, model);
+    return custom ? { ...staticCaps, ...custom } : staticCaps;
   });
   const first = allCaps[0];
   return {

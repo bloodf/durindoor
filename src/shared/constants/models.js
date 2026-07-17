@@ -47,4 +47,5 @@ export const CAPACITY_META = {
   vision: { icon: "visibility", label: "Vision", desc: "Supports image input", color: "text-blue-500" },
   // search: temporarily hidden (feature not wired yet)
   reasoning: { icon: "neurology", label: "Reasoning", desc: "Supports reasoning / thinking", color: "text-amber-500" },
+  tools: { icon: "build", label: "Tools", desc: "Supports function calling", color: "text-purple-500" },
 };

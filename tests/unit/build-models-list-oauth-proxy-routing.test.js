@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   resolveConnectionProxyConfig: vi.fn(),
   resolveKiroModels: vi.fn(),
   resolveCopilotModels: vi.fn(),
+  proxyAwareFetch: vi.fn(),
 }));
 
 vi.mock("@/lib/localDb", () => ({
@@ -40,6 +41,9 @@ vi.mock("open-sse/services/copilotModels.js", () => ({
 
 vi.mock("open-sse/services/qoderModels.js", () => ({ resolveQoderModels: vi.fn() }));
 vi.mock("open-sse/services/clinepassModels.js", () => ({ resolveClinepassModels: vi.fn() }));
+vi.mock("open-sse/utils/proxyFetch.js", () => ({
+  proxyAwareFetch: mocks.proxyAwareFetch,
+}));
 
 import { buildModelsList, LLM_KIND } from "../../src/app/api/v1/models/buildModelsList.js";
 
@@ -108,6 +112,42 @@ describe("/v1/models OAuth proxy routing", () => {
     expect(mocks.resolveCopilotModels).toHaveBeenCalledWith(
       expect.objectContaining({ accessToken: "github-access" }),
       expect.objectContaining({ proxyOptions: githubRoute })
+    );
+  });
+
+  it("routes the ollama-local /api/tags probe through the connection proxy", async () => {
+    const localData = { connectionProxyEnabled: true, connectionProxyUrl: "http://proxy.local:8080" };
+    const localRoute = {
+      connectionProxyEnabled: true,
+      connectionProxyUrl: "http://proxy.local:8080",
+      strictProxy: true,
+      disableEnvProxy: true,
+    };
+    mocks.getProviderConnections.mockResolvedValue([
+      {
+        id: "conn-local",
+        provider: "ollama-local",
+        authType: "apikey",
+        apiKey: "local",
+        isActive: true,
+        providerSpecificData: localData,
+      },
+    ]);
+    mocks.resolveConnectionProxyConfig.mockResolvedValue(localRoute);
+    mocks.proxyAwareFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ models: [{ name: "nomic-embed-text" }] }),
+    });
+
+    const models = await buildModelsList(["embedding"], "block-metadata");
+
+    expect(models.some((m) => m.id === "ollama-local/nomic-embed-text")).toBe(true);
+    // guardedProbeFetch keeps redirect:manual (SSRF guard) while the injected
+    // fetcher carries the exact resolved connection route.
+    expect(mocks.proxyAwareFetch).toHaveBeenCalledWith(
+      "http://localhost:11434/api/tags",
+      expect.objectContaining({ method: "GET", redirect: "manual" }),
+      localRoute,
     );
   });
 });

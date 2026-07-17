@@ -98,9 +98,11 @@ describe("unauthorized chat request performs no provider dispatch", () => {
 
     expect(res.status).toBe(403);
 
-    // Model resolution runs once (needed to resolve the policy target).
-    // Model resolution runs at least once (vision bridge + handler).
+    // Model resolution runs to resolve the policy target.
+    expect(mocks.getModelInfo).toHaveBeenCalled();
 
+    // Capability DB lookup must not run for a denied request.
+    expect(mocks.loadCustomCapabilities).not.toHaveBeenCalled();
     // Policy was checked exactly once on the resolved target.
     expect(mocks.enforceApiKeyModelPolicy).toHaveBeenCalledOnce();
 

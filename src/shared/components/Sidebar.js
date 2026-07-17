@@ -8,37 +8,19 @@ import { cn } from "@/shared/utils/cn";
 import { APP_CONFIG, UPDATER_CONFIG } from "@/shared/constants/config";
 import { MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers";
 import UpdatePanel from "./UpdatePanel";
-
-// const VISIBLE_MEDIA_KINDS = ["embedding", "image", "imageToText", "tts", "stt", "webSearch", "webFetch", "video", "music"];
-const VISIBLE_MEDIA_KINDS = ["embedding", "image", "tts", "stt"];
-// Combined entry: webSearch + webFetch share one page at /dashboard/media-providers/web
-const COMBINED_WEB_ITEM = { id: "web", label: "Web Fetch & Search", icon: "travel_explore", href: "/dashboard/media-providers/web" };
-
-const navItems = [
-  { href: "/dashboard/endpoint", label: "Endpoint & Key", icon: "api" },
-  { href: "/dashboard/providers", label: "Providers", icon: "dns" },
-  { href: "/dashboard/playground", label: "Playground", icon: "chat" },
-  { href: "/dashboard/combos", label: "Combos", icon: "layers" },
-  { href: "/dashboard/usage", label: "Usage", icon: "bar_chart" },
-  { href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage" },
-  { href: "/dashboard/health", label: "Provider Health", icon: "monitor_heart" },
-  { href: "/dashboard/free-provider-rankings", label: "Free Providers", icon: "leaderboard" },
-  { href: "/dashboard/token-saver", label: "Token Saver", icon: "savings" },
-  { href: "/dashboard/compression-studio", label: "Compression Studio", icon: "compress" },
-  { href: "/dashboard/pxpipe", label: "PXPIPE", icon: "image" },
-  { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal" },
-  { href: "/dashboard/mcp-gateway", label: "MCP Gateway", icon: "hub" },
-];
-
-const debugItems = [
-  { href: "/dashboard/console-log", label: "Console Log", icon: "terminal" },
-  { href: "/dashboard/translator", label: "Translator", icon: "translate" },
-];
-
-const systemItems = [
-  { href: "/dashboard/proxy-pools", label: "Proxy Pools", icon: "lan" },
-  { href: "/dashboard/skills", label: "Skills", icon: "extension" },
-];
+import {
+  BRAND_LOGO_ALT,
+  BRAND_LOGO_SRC,
+  COMBINED_WEB_ITEM,
+  debugItems,
+  isActivePath,
+  NavIcon,
+  navItems,
+  PROFILE_NAV_ITEM,
+  systemItems,
+  tokenSaverMenu,
+  VISIBLE_MEDIA_KINDS,
+} from "./SidebarNavIcons";
 
 export default function Sidebar({ onClose }) {
   const pathname = usePathname();
@@ -48,6 +30,14 @@ export default function Sidebar({ onClose }) {
   const [enableTranslator, setEnableTranslator] = useState(false);
 
   const INSTALL_CMD = UPDATER_CONFIG.installCmdLatest;
+
+  const isActive = (href, exact = false) => isActivePath(pathname, href, exact);
+
+  const isTokenSaverSectionActive = tokenSaverMenu.children.some((child) =>
+    isActivePath(pathname, child.href, true)
+  );
+  const [userToggled, setUserToggled] = useState(null);
+  const tokenSaverOpen = userToggled ?? isTokenSaverSectionActive;
 
   useEffect(() => {
     fetch("/api/settings")
@@ -64,14 +54,6 @@ export default function Sidebar({ onClose }) {
       .catch(() => {});
   }, []);
 
-  const isActive = (href) => {
-    if (!pathname) return false;
-    if (href === "/dashboard/endpoint") {
-      return pathname === "/dashboard" || pathname.startsWith("/dashboard/endpoint");
-    }
-    return pathname.startsWith(href);
-  };
-
   return (
     <>
       <aside className="flex w-72 flex-col border-r border-border-subtle bg-vibrancy backdrop-blur-xl transition-colors duration-300 min-h-full">
@@ -79,7 +61,13 @@ export default function Sidebar({ onClose }) {
         <div className="px-6 py-4 flex flex-col gap-2">
           <Link href="/dashboard" className="flex items-center gap-3">
             <div className="flex items-center justify-center size-9 rounded-[10px] bg-gradient-to-br from-brand-500 to-brand-700 shadow-[var(--shadow-warm)]">
-              <span className="material-symbols-outlined text-white text-[20px]">hub</span>
+              <img
+                src={BRAND_LOGO_SRC}
+                alt={BRAND_LOGO_ALT}
+                width={36}
+                height={36}
+                className="object-contain"
+              />
             </div>
             <div className="flex flex-col">
               <h1 className="text-lg font-semibold tracking-tight text-text-main">
@@ -117,22 +105,52 @@ export default function Sidebar({ onClose }) {
               onClick={onClose}
               className={cn(
                 "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                isActive(item.href)
+                isActive(item.href, item.exact !== false)
                   ? "bg-primary/10 text-primary"
                   : "text-text-muted hover:bg-surface-2 hover:text-text-main"
               )}
             >
-              <span
-                className={cn(
-                  "material-symbols-outlined text-[18px]",
-                  isActive(item.href) ? "fill-1" : "group-hover:text-primary transition-colors"
-                )}
-              >
-                {item.icon}
-              </span>
+              <NavIcon icon={item.icon} isActive={isActive(item.href, item.exact !== false)} />
               <span className="text-[13px] font-medium">{item.label}</span>
             </Link>
           ))}
+
+          {/* Token Saver collapsible menu */}
+          <button
+            onClick={() => setUserToggled((open) => !(open ?? isTokenSaverSectionActive))}
+            className={cn(
+              "w-full flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
+              isTokenSaverSectionActive
+                ? "bg-primary/10 text-primary"
+                : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+            )}
+          >
+            <NavIcon icon={tokenSaverMenu.icon} isActive={isTokenSaverSectionActive} />
+            <span className="text-[13px] font-medium flex-1 text-left">{tokenSaverMenu.label}</span>
+            <span className="material-symbols-outlined text-[14px] transition-transform" style={{ transform: tokenSaverOpen ? "rotate(180deg)" : "rotate(0deg)" }}>
+              expand_more
+            </span>
+          </button>
+          {tokenSaverOpen && (
+            <div className="pl-4">
+              {tokenSaverMenu.children.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={onClose}
+                  className={cn(
+                    "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
+                    isActive(item.href, true)
+                      ? "bg-primary/10 text-primary"
+                      : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+                  )}
+                >
+                  <NavIcon icon={item.icon} isActive={isActive(item.href, true)} size="16" />
+                  <span className="text-sm">{item.label}</span>
+                </Link>
+              ))}
+            </div>
+          )}
 
           {/* System section */}
           <div className="pt-3 mt-2 space-y-0.5">
@@ -150,7 +168,7 @@ export default function Sidebar({ onClose }) {
                   : "text-text-muted hover:bg-surface-2 hover:text-text-main"
               )}
             >
-              <span className="material-symbols-outlined text-[18px]">perm_media</span>
+              <NavIcon icon="perm_media" isActive={pathname?.startsWith("/dashboard/media-providers") || false} />
               <span className="text-[13px] font-medium flex-1 text-left">Media Providers</span>
               <span className="material-symbols-outlined text-[14px] transition-transform" style={{ transform: mediaOpen ? "rotate(180deg)" : "rotate(0deg)" }}>
                 expand_more
@@ -170,7 +188,7 @@ export default function Sidebar({ onClose }) {
                         : "text-text-muted hover:bg-surface-2 hover:text-text-main"
                     )}
                   >
-                    <span className="material-symbols-outlined text-[16px]">{kind.icon}</span>
+                    <NavIcon icon={kind.icon} isActive={pathname?.startsWith(`/dashboard/media-providers/${kind.id}`) || false} size="16" />
                     <span className="text-sm">{kind.label}</span>
                   </Link>
                 ))}
@@ -185,7 +203,7 @@ export default function Sidebar({ onClose }) {
                       : "text-text-muted hover:bg-surface-2 hover:text-text-main"
                   )}
                 >
-                  <span className="material-symbols-outlined text-[16px]">{COMBINED_WEB_ITEM.icon}</span>
+                  <NavIcon icon={COMBINED_WEB_ITEM.icon} isActive={pathname?.startsWith(COMBINED_WEB_ITEM.href) || false} size="16" />
                   <span className="text-sm">{COMBINED_WEB_ITEM.label}</span>
                 </Link>
               </div>
@@ -198,19 +216,12 @@ export default function Sidebar({ onClose }) {
                 onClick={onClose}
                 className={cn(
                   "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                  isActive(item.href)
+                  isActive(item.href, item.exact !== false)
                     ? "bg-primary/10 text-primary"
                     : "text-text-muted hover:bg-surface-2 hover:text-text-main"
                 )}
               >
-                <span
-                  className={cn(
-                    "material-symbols-outlined text-[18px]",
-                    isActive(item.href) ? "fill-1" : "group-hover:text-primary transition-colors"
-                  )}
-                >
-                  {item.icon}
-                </span>
+                <NavIcon icon={item.icon} isActive={isActive(item.href, item.exact !== false)} />
                 <span className="text-[13px] font-medium">{item.label}</span>
               </Link>
             ))}
@@ -225,45 +236,30 @@ export default function Sidebar({ onClose }) {
                   onClick={onClose}
                   className={cn(
                     "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                    isActive(item.href)
+                    isActive(item.href, true)
                       ? "bg-primary/10 text-primary"
                       : "text-text-muted hover:bg-surface-2 hover:text-text-main"
                   )}
                 >
-                  <span
-                    className={cn(
-                      "material-symbols-outlined text-[18px]",
-                      isActive(item.href) ? "fill-1" : "group-hover:text-primary transition-colors"
-                    )}
-                  >
-                    {item.icon}
-                  </span>
+                  <NavIcon icon={item.icon} isActive={isActive(item.href, true)} />
                   <span className="text-[13px] font-medium">{item.label}</span>
                 </Link>
               ) : null;
             })}
 
-
-            {/* Settings */}
+            {/* Settings (profile) stays its own unrelated item */}
             <Link
-              href="/dashboard/profile"
+              href={PROFILE_NAV_ITEM.href}
               onClick={onClose}
               className={cn(
                 "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                isActive("/dashboard/profile")
+                isActive(PROFILE_NAV_ITEM.href, true)
                   ? "bg-primary/10 text-primary"
                   : "text-text-muted hover:bg-surface-2 hover:text-text-main"
               )}
             >
-              <span
-                className={cn(
-                  "material-symbols-outlined text-[18px]",
-                  isActive("/dashboard/profile") ? "fill-1" : "group-hover:text-primary transition-colors"
-                )}
-              >
-                settings
-              </span>
-              <span className="text-[13px] font-medium">Settings</span>
+              <NavIcon icon={PROFILE_NAV_ITEM.icon} isActive={isActive(PROFILE_NAV_ITEM.href, true)} />
+              <span className="text-[13px] font-medium">{PROFILE_NAV_ITEM.label}</span>
             </Link>
           </div>
         </nav>

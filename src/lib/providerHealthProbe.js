@@ -9,7 +9,7 @@
  * Covers every connection kind the user can configure:
  *   - registry providers (OpenAI/Claude/commandcode/etc.) via `probeRegistryProvider`
  *   - custom OpenAI-compatible (`openai-compatible-*`) → `${baseUrl}/models`
- *   - custom Anthropic-compatible (`anthropic-compatible-*`) → `${baseUrl}/v1/messages`
+ *   - custom Anthropic-compatible (`anthropic-compatible-*`) → normalized base URL + `/v1/messages`
  *   - local OpenAI-compatible (lm-studio, vllm, …) → `${baseUrl}/models`
  *
  * Every probe is:
@@ -76,7 +76,7 @@ function withTimeout(options) {
 
 async function probeOpenAICompatible(connection, effectiveProxy, fetcher) {
   const baseUrl = connection.providerSpecificData?.baseUrl;
-  if (!baseUrl) return { valid: false, status: null, error: "Missing base URL" };
+  if (!baseUrl) return { valid: false, status: null, unconfigured: true, error: "Missing base URL" };
   const url = `${String(baseUrl).replace(/\/$/, "")}/models`;
   try {
     assertOutboundUrlAllowed(url);
@@ -93,9 +93,10 @@ async function probeOpenAICompatible(connection, effectiveProxy, fetcher) {
 
 async function probeAnthropicCompatible(connection, effectiveProxy, fetcher) {
   let baseUrl = connection.providerSpecificData?.baseUrl;
-  if (!baseUrl) return { valid: false, status: null, error: "Missing base URL" };
+  if (!baseUrl) return { valid: false, status: null, unconfigured: true, error: "Missing base URL" };
   baseUrl = String(baseUrl).replace(/\/$/, "");
   if (baseUrl.endsWith("/messages")) baseUrl = baseUrl.slice(0, -9);
+  if (baseUrl.endsWith("/v1")) baseUrl = baseUrl.slice(0, -3);
   const url = `${baseUrl}/v1/messages`;
   const model = connection.defaultModel || "claude-3-haiku-20240307";
   try {

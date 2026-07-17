@@ -250,6 +250,9 @@ export async function POST(request) {
         if (normalizedBase.endsWith("/messages")) {
           normalizedBase = normalizedBase.slice(0, -9); // remove /messages
         }
+        if (normalizedBase.endsWith("/v1")) {
+          normalizedBase = normalizedBase.slice(0, -3); // remove /v1
+        }
 
         const messagesUrl = `${normalizedBase}/v1/messages`;
         const model = node.defaultModel || "claude-3-haiku-20240307";

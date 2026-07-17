@@ -10,13 +10,9 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import PropTypes from "prop-types";
 import { Card, Button } from "@/shared/components";
-
-const fmtTokens = (n) => {
-  if (n >= 1000000) return `${(n / 1000000).toFixed(2)}M`;
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
-  return String(n || 0);
-};
+import { formatPxpipeEvent, fmtTokens, PXPIPE_REASON_LABELS as REASON_LABELS } from "./formatPxpipeEvent.js";
 
 const fmtUptime = (ms) => {
   if (!ms || ms <= 0) return "—";
@@ -33,21 +29,6 @@ const WINDOW_TABS = [
   { id: "all", label: "All time" },
 ];
 
-const REASON_LABELS = {
-  applied: "Prompt exceeded threshold",
-  below_threshold: "Below size threshold",
-  not_profitable: "Compression not profitable",
-  below_min_chars: "Below minimum chars",
-  below_min_tokens: "Below minimum tokens",
-  unsupported_model: "Model not in allowlist",
-  unsupported_format: "Non-Claude request format",
-  timeout: "Compression timed out",
-  transform_error: "Transform error",
-  passthrough: "Passthrough",
-  disabled: "Disabled",
-  not_installed: "Not installed",
-};
-
 function SummaryCard({ label, value, sub, tone }) {
   return (
     <Card className="p-4">
@@ -58,7 +39,14 @@ function SummaryCard({ label, value, sub, tone }) {
   );
 }
 
-export default function PxpipeClient() {
+SummaryCard.propTypes = {
+  label: PropTypes.string.isRequired,
+  value: PropTypes.node,
+  sub: PropTypes.node,
+  tone: PropTypes.string,
+};
+
+export default function PxpipeClient({ embedded = false }) {
   const [status, setStatus] = useState(null);
   const [health, setHealth] = useState(null);
   const [stats, setStats] = useState(null);
@@ -102,16 +90,18 @@ export default function PxpipeClient() {
           : "Stopped";
 
   return (
-    <div className="space-y-6 p-6">
+    <div className={`space-y-6 ${embedded ? "" : "p-6"}`}>
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h2 className="text-lg font-semibold flex items-center gap-2">
           <span className="material-symbols-outlined text-primary">image</span>
           PXPIPE Dashboard
         </h2>
         <div className="flex items-center gap-2">
-          <a href="/dashboard/token-saver" className="text-xs text-primary underline hover:opacity-80">
-            Token Saver settings
-          </a>
+          {!embedded && (
+            <a href="/dashboard/token-saver/settings" className="text-xs text-primary underline hover:opacity-80">
+              Token Saver settings
+            </a>
+          )}
           <Button size="sm" variant="ghost" onClick={refresh} disabled={loading}>
             {loading ? "Refreshing…" : "Refresh"}
           </Button>
@@ -269,15 +259,19 @@ export default function PxpipeClient() {
       </Card>
 
       <Card className="p-4" id="logs">
-        <h3 className="font-medium mb-3">PXPIPE Logs</h3>
-        {logs?.installLog ? (
+        <h3 className="font-medium mb-3">Transform events</h3>
+        {logs?.events?.length ? (
           <pre className="rounded bg-black/5 dark:bg-white/5 p-3 text-xs font-mono overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap">
-            {logs.installLog}
+            {logs.events.map(formatPxpipeEvent).join("\n")}
           </pre>
         ) : (
-          <p className="text-sm text-text-muted">No install log yet.</p>
+          <p className="text-sm text-text-muted">No transform events yet.</p>
         )}
       </Card>
     </div>
   );
 }
+
+PxpipeClient.propTypes = {
+  embedded: PropTypes.bool,
+};

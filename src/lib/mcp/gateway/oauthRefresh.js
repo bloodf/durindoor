@@ -6,7 +6,7 @@ import { assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/
 
 const REFRESH_LEEWAY_MS = 60_000;
 const KEY = "__9routerGatewayRefresh";
-const MAX_REDIRECT_HOPS = 5;
+const DEFAULT_MAX_REDIRECT_HOPS = 10;
 
 function inflightStore() {
   if (!globalThis[KEY]) {
@@ -34,7 +34,7 @@ export function oauthMetaFromTokens(oauthTokens) {
   const clientSecret = oauthTokens.client?.clientSecret ?? oauthTokens.client_secret ?? null;
   const resource = oauthTokens.resource ?? null;
   if (!tokenEndpoint || !clientId) return null;
-  return { tokenEndpoint, clientId, clientSecret: clientSecret ?? null, resource };
+  return { tokenEndpoint, clientId, clientSecret: clientSecret ?? null, resource, maxRedirects: oauthTokens.maxRedirects };
 }
 
 /**
@@ -58,12 +58,22 @@ export async function ensureFreshToken(instance, meta) {
 
   const p = doRefresh(instance, meta)
     .then((newTokens) => ({ ...instance, oauthTokens: newTokens }))
-    .catch((e) => {
+    .catch(async (e) => {
       const msg = e instanceof Error ? e.message : String(e);
       console.warn(`[mcp-gw] refresh failed for ${instance.slug}: ${msg}`);
+      // A concurrent request may have succeeded while this refresh failed.
+      // If the stored access token is now different from the one we tried to
+      // refresh, leave that newer token in place and do not mark reauth.
+      const freshRow = await getInstanceById(instance.id).catch(() => null);
+      const freshTokens = freshRow?.oauthTokens;
+      if (freshTokens?.access_token && freshTokens.access_token !== instance.oauthTokens?.access_token) {
+        return { ...instance, oauthTokens: freshTokens };
+      }
+      const failedTokens = { ...(instance.oauthTokens ?? {}), needsReauth: true };
+      await updateInstance(instance.id, { oauthTokens: failedTokens }).catch(() => {});
       return {
         ...instance,
-        oauthTokens: { ...(instance.oauthTokens ?? {}), needsReauth: true },
+        oauthTokens: failedTokens,
       };
     })
     .finally(() => {
@@ -73,7 +83,7 @@ export async function ensureFreshToken(instance, meta) {
   return p;
 }
 
-async function doRefresh(instance, { tokenEndpoint, clientId, clientSecret, resource }) {
+export async function doRefresh(instance, { tokenEndpoint, clientId, clientSecret, resource, maxRedirects }) {
   const refresh = instance.oauthTokens?.refresh_token;
   if (!refresh) {
     throw new Error("no refresh_token — re-login required");
@@ -86,15 +96,30 @@ async function doRefresh(instance, { tokenEndpoint, clientId, clientSecret, reso
   if (clientSecret) body.set("client_secret", clientSecret);
   if (resource) body.set("resource", resource);
 
+  const maxHops = typeof maxRedirects === "number" && maxRedirects >= 0 ? maxRedirects : DEFAULT_MAX_REDIRECT_HOPS;
+
   // POST the refresh grant. Same-origin-only on 3xx — the AS may
   // legitimately 308/301 http→https or relocate the token endpoint,
   // but a cross-origin redirect would leak the refresh_token +
   // client_secret to an unrelated host. We manually re-validate every
   // hop via the SSRF guard and reject origin changes.
-  let currentUrl = tokenEndpoint;
+  let currentUrl;
+  try {
+    currentUrl = new URL(tokenEndpoint);
+  } catch {
+    throw new Error("token endpoint is not a valid URL");
+  }
+  try {
+    assertOutboundUrlAllowed(currentUrl);
+  } catch (err) {
+    if (err instanceof OutboundUrlGuardError) {
+      throw new Error(`token endpoint blocked: ${err.message}`);
+    }
+    throw err;
+  }
   let res = null;
-  for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop++) {
-    res = await fetch(currentUrl, {
+  for (let hop = 0; hop <= maxHops; hop++) {
+    res = await fetch(currentUrl.toString(), {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
       body: body.toString(),
@@ -103,6 +128,9 @@ async function doRefresh(instance, { tokenEndpoint, clientId, clientSecret, reso
     if (!(res.status >= 300 && res.status < 400)) break;
     const location = res.headers.get("location");
     if (!location) break;
+    if (hop === maxHops) {
+      throw new Error(`refresh exceeded maximum ${maxHops} redirect(s)`);
+    }
     let next;
     try {
       next = new URL(location, currentUrl);
@@ -117,10 +145,10 @@ async function doRefresh(instance, { tokenEndpoint, clientId, clientSecret, reso
       }
       throw err;
     }
-    if (next.origin !== new URL(currentUrl).origin) {
-      throw new Error(`refresh redirect crossed origin: ${new URL(currentUrl).origin} → ${next.origin}`);
+    if (next.origin !== currentUrl.origin) {
+      throw new Error(`refresh redirect crossed origin: ${currentUrl.origin} → ${next.origin}`);
     }
-    currentUrl = next.toString();
+    currentUrl = next;
   }
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -145,6 +173,47 @@ async function doRefresh(instance, { tokenEndpoint, clientId, clientSecret, reso
   };
   await updateInstance(instance.id, { oauthTokens: newTokens });
   return newTokens;
+}
+
+/**
+ * Force a token refresh for the given instance, ignoring expiry leeway.
+ * Reuses the per-instance inflight promise so concurrent forced refreshes
+ * share one network request and one rotating refresh_token.
+ * @param {object} instance
+ * @param {object} [meta]
+ * @returns {Promise<object | null>} the refreshed instance, or null on failure
+ */
+export async function refreshToken(instance, meta) {
+  const m = meta ?? oauthMetaFromTokens(instance.oauthTokens);
+  if (!m?.tokenEndpoint || !m?.clientId) return null;
+
+  const store = inflightStore();
+  const existing = store.get(instance.id);
+  if (existing) {
+    return existing.then((refreshed) =>
+      refreshed?.oauthTokens?.needsReauth ? null : refreshed
+    );
+  }
+
+  const p = doRefresh(instance, m)
+    .then((newTokens) => ({ ...instance, oauthTokens: newTokens }))
+    .catch(async (e) => {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn(`[mcp-gw] forced refresh failed for ${instance.slug}: ${msg}`);
+      const freshRow = await getInstanceById(instance.id).catch(() => null);
+      const freshTokens = freshRow?.oauthTokens;
+      if (freshTokens?.access_token && freshTokens.access_token !== instance.oauthTokens?.access_token) {
+        return { ...instance, oauthTokens: freshTokens };
+      }
+      const failedTokens = { ...(instance.oauthTokens ?? {}), needsReauth: true };
+      await updateInstance(instance.id, { oauthTokens: failedTokens }).catch(() => {});
+      return { ...instance, oauthTokens: failedTokens };
+    })
+    .finally(() => {
+      store.delete(instance.id);
+    });
+  store.set(instance.id, p);
+  return p.then((refreshed) => (refreshed?.oauthTokens?.needsReauth ? null : refreshed));
 }
 
 /**

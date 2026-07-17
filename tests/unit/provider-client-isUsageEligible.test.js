@@ -1,0 +1,45 @@
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/shared/constants/providers", () => ({
+  USAGE_SUPPORTED_PROVIDERS: ["claude", "codex", "ollama"],
+  USAGE_APIKEY_PROVIDERS: ["ollama"],
+}));
+
+vi.mock("@/lib/localDb", () => ({ getProviderConnections: vi.fn() }));
+vi.mock("@/lib/oauth/providers", () => ({ backfillCodexEmails: vi.fn() }));
+vi.mock("@/lib/oauth/services/cursorLocalStore.js", () => ({
+  backfillCursorEmails: vi.fn(),
+}));
+vi.mock("@/lib/providers/sanitizeProviderConnectionForClient.js", () => ({
+  sanitizeProviderConnectionForClient: vi.fn((c) => c),
+}));
+
+import { isUsageEligible } from "../../src/app/api/providers/client/route.js";
+
+describe("isUsageEligible", () => {
+  it("returns true for a supported OAuth provider", () => {
+    expect(isUsageEligible({ provider: "claude", authType: "oauth" })).toBe(true);
+  });
+
+  it("returns true for a supported API-key provider", () => {
+    expect(isUsageEligible({ provider: "ollama", authType: "apikey" })).toBe(true);
+  });
+
+  it("returns false for unsupported auth type on an API-key provider", () => {
+    expect(isUsageEligible({ provider: "ollama", authType: "cookie" })).toBe(false);
+  });
+
+  it("returns false for an unsupported provider even with OAuth", () => {
+    expect(isUsageEligible({ provider: "openai", authType: "oauth" })).toBe(false);
+  });
+
+  it("returns false for an unsupported provider with API key", () => {
+    expect(isUsageEligible({ provider: "openai", authType: "apikey" })).toBe(false);
+  });
+
+  it("returns false for ollama-local even with API key", () => {
+    expect(isUsageEligible({ provider: "ollama-local", authType: "apikey" })).toBe(false);
+  });
+});
+
+export {};

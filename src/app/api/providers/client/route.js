@@ -10,9 +10,10 @@ const MAX_PAGE_SIZE = 500;
 
 
 
-function isUsageEligible(connection) {
+export function isUsageEligible(connection) {
   return USAGE_SUPPORTED_PROVIDERS.includes(connection.provider) && (
-    connection.authType === "oauth" || USAGE_APIKEY_PROVIDERS.includes(connection.provider)
+    connection.authType === "oauth" ||
+    (connection.authType === "apikey" && USAGE_APIKEY_PROVIDERS.includes(connection.provider))
   );
 }
 

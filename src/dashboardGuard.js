@@ -232,8 +232,23 @@ export const __test__ = {
 export async function proxy(request) {
   const { pathname } = request.nextUrl;
 
+  // /api/mcp/control is a management MCP endpoint: it must always carry
+  // either the local CLI token, a configured API key, or a valid dashboard
+  // JWT, regardless of the requireLogin setting. This prevents an
+  // unauthenticated remote caller from toggling providers when login is
+  // disabled.
+  if (pathname === "/api/mcp/control" || pathname.startsWith("/api/mcp/control/")) {
+    if (await hasValidCliToken(request) || await hasValidApiKey(request) || await hasValidToken(request)) {
+      return NextResponse.next();
+    }
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   // Local-only gate for spawn-capable / host-secret routes.
-  if (LOCAL_ONLY_PATHS.some((p) => pathname.startsWith(p))) {
+  // /api/mcp/control is exempt: it is an authenticated management MCP endpoint
+  // and must use the same dashboard JWT / CLI auth as the other dashboard APIs.
+  const isMcpControlPath = pathname === "/api/mcp/control" || pathname.startsWith("/api/mcp/control/");
+  if (!isMcpControlPath && LOCAL_ONLY_PATHS.some((p) => pathname.startsWith(p))) {
     if (!(await canAccessLocalOnlyRoute(request))) {
       return NextResponse.json({ error: "Local only: CLI token required" }, { status: 403 });
     }

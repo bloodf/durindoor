@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import HeadroomClient from "./HeadroomClient";
 
 export default function HeadroomPage() {
-  redirect("/dashboard/token-saver/settings");
+  return <HeadroomClient />;
 }

@@ -1,7 +1,7 @@
 // HTTP/SSE upstream MCP client for the gateway.
 
 import { updateInstance } from "@/lib/localDb";
-import { ensureFreshToken, oauthMetaFromTokens } from "./oauthRefresh";
+import { ensureFreshToken, oauthMetaFromTokens, refreshToken } from "./oauthRefresh";
 import { retryWithBackoff } from "./retry";
 import { isJsonRpcResponse, isRecord } from "./guards";
 import { assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
@@ -81,6 +81,19 @@ function readAuthFromInstance(instance) {
   return typeof tok === "string" ? tok : null;
 }
 
+function markNeedsReauth(instance) {
+  return {
+    ...instance,
+    oauthTokens: { ...(instance.oauthTokens ?? {}), needsReauth: true },
+  };
+}
+
+function clearReauthFlag(instance) {
+  if (!instance?.oauthTokens) return instance;
+  const { needsReauth, ...rest } = instance.oauthTokens;
+  return { ...instance, oauthTokens: rest };
+}
+
 function buildHeaders(instance) {
   const headers = {
     "Content-Type": "application/json",
@@ -103,18 +116,22 @@ function buildHeaders(instance) {
  * Perform an MCP JSON-RPC POST against an upstream and return the first
  * matching response frame. Throws McpAuthError on 401/403.
  *
+ * OAuth instances: before the request, a stale access token is refreshed via
+ * {@link ensureFreshToken}. If the upstream still returns 401, the request
+ * is force-refreshed once via {@link refreshToken} and retried with the new
+ * token. Non-OAuth instances do not retry 401s.
+ *
  * @param {object} instance   parsed mcpInstances row
  * @param {object} jsonRpc    {jsonrpc, id, method, params}
  * @param {object} [opts]     {sessionId, timeoutMs, skipRetry}
  * @returns {Promise<object>} JSON-RPC response with injected sessionId
  */
 export async function mcpRequest(instance, jsonRpc, opts = {}) {
-  const doRequest = async () => {
-    if (!instance?.url) {
-      throw new Error(`instance ${instance?.slug ?? "?"} has no url`);
+  const doRequest = async (currentInstance) => {
+    if (!currentInstance?.url) {
+      throw new Error(`instance ${currentInstance?.slug ?? "?"} has no url`);
     }
 
-    let currentInstance = instance;
     let url = currentInstance.url;
 
     if (currentInstance.oauth) {
@@ -258,9 +275,29 @@ export async function mcpRequest(instance, jsonRpc, opts = {}) {
   };
 
   if (opts.skipRetry) {
-    return doRequest();
+    return doRequest(instance);
   }
-  return retryWithBackoff(doRequest, {
+
+  let currentInstance = instance;
+  let didAuthRetry = false;
+
+  const requestWithAuthRetry = async () => {
+    try {
+      return await doRequest(currentInstance);
+    } catch (e) {
+      if (e instanceof McpAuthError && e.status === 401 && currentInstance.oauth && !didAuthRetry) {
+        didAuthRetry = true;
+        const refreshed = await refreshToken(currentInstance);
+        if (refreshed && !refreshed.oauthTokens?.needsReauth) {
+          currentInstance = refreshed;
+          return await doRequest(currentInstance);
+        }
+      }
+      throw e;
+    }
+  };
+
+  return retryWithBackoff(requestWithAuthRetry, {
     maxAttempts: 3,
     baseDelayMs: 100,
     onRetry: (err, attempt, delayMs) => {

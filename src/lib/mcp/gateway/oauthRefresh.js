@@ -58,12 +58,14 @@ export async function ensureFreshToken(instance, meta) {
 
   const p = doRefresh(instance, meta)
     .then((newTokens) => ({ ...instance, oauthTokens: newTokens }))
-    .catch((e) => {
+    .catch(async (e) => {
       const msg = e instanceof Error ? e.message : String(e);
       console.warn(`[mcp-gw] refresh failed for ${instance.slug}: ${msg}`);
+      const failedTokens = { ...(instance.oauthTokens ?? {}), needsReauth: true };
+      await updateInstance(instance.id, { oauthTokens: failedTokens }).catch(() => {});
       return {
         ...instance,
-        oauthTokens: { ...(instance.oauthTokens ?? {}), needsReauth: true },
+        oauthTokens: failedTokens,
       };
     })
     .finally(() => {
@@ -91,10 +93,23 @@ async function doRefresh(instance, { tokenEndpoint, clientId, clientSecret, reso
   // but a cross-origin redirect would leak the refresh_token +
   // client_secret to an unrelated host. We manually re-validate every
   // hop via the SSRF guard and reject origin changes.
-  let currentUrl = tokenEndpoint;
+  let currentUrl;
+  try {
+    currentUrl = new URL(tokenEndpoint);
+  } catch {
+    throw new Error("token endpoint is not a valid URL");
+  }
+  try {
+    assertOutboundUrlAllowed(currentUrl);
+  } catch (err) {
+    if (err instanceof OutboundUrlGuardError) {
+      throw new Error(`token endpoint blocked: ${err.message}`);
+    }
+    throw err;
+  }
   let res = null;
-  for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop++) {
-    res = await fetch(currentUrl, {
+  for (let hop = 0; hop < MAX_REDIRECT_HOPS; hop++) {
+    res = await fetch(currentUrl.toString(), {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
       body: body.toString(),
@@ -117,10 +132,10 @@ async function doRefresh(instance, { tokenEndpoint, clientId, clientSecret, reso
       }
       throw err;
     }
-    if (next.origin !== new URL(currentUrl).origin) {
-      throw new Error(`refresh redirect crossed origin: ${new URL(currentUrl).origin} → ${next.origin}`);
+    if (next.origin !== currentUrl.origin) {
+      throw new Error(`refresh redirect crossed origin: ${currentUrl.origin} → ${next.origin}`);
     }
-    currentUrl = next.toString();
+    currentUrl = next;
   }
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -145,6 +160,42 @@ async function doRefresh(instance, { tokenEndpoint, clientId, clientSecret, reso
   };
   await updateInstance(instance.id, { oauthTokens: newTokens });
   return newTokens;
+}
+
+/**
+ * Force a token refresh for the given instance, ignoring expiry leeway.
+ * Reuses the per-instance inflight promise so concurrent forced refreshes
+ * share one network request and one rotating refresh_token.
+ * @param {object} instance
+ * @param {object} [meta]
+ * @returns {Promise<object | null>} the refreshed instance, or null on failure
+ */
+export async function refreshToken(instance, meta) {
+  const m = meta ?? oauthMetaFromTokens(instance.oauthTokens);
+  if (!m?.tokenEndpoint || !m?.clientId) return null;
+
+  const store = inflightStore();
+  const existing = store.get(instance.id);
+  if (existing) {
+    return existing.then((refreshed) =>
+      refreshed?.oauthTokens?.needsReauth ? null : refreshed
+    );
+  }
+
+  const p = doRefresh(instance, m)
+    .then((newTokens) => ({ ...instance, oauthTokens: newTokens }))
+    .catch(async (e) => {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn(`[mcp-gw] forced refresh failed for ${instance.slug}: ${msg}`);
+      const failedTokens = { ...(instance.oauthTokens ?? {}), needsReauth: true };
+      await updateInstance(instance.id, { oauthTokens: failedTokens }).catch(() => {});
+      return { ...instance, oauthTokens: failedTokens };
+    })
+    .finally(() => {
+      store.delete(instance.id);
+    });
+  store.set(instance.id, p);
+  return p.then((refreshed) => (refreshed?.oauthTokens?.needsReauth ? null : refreshed));
 }
 
 /**

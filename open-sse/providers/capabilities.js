@@ -99,8 +99,21 @@ export const MODEL_CAPABILITIES = {
 
   // GLM vision variant (text GLM has no vision)
   "glm-4.6v":          { vision: true, reasoning: true, thinkingFormat: "zai", contextWindow: 128000 },
-  // GLM-5.2 has 1M context — pattern *glm-5* only gives 200k, so override here
-  "glm-5.2":           { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
+  // GLM-5.x and GLM-5 have 1M context and 128K max output
+  "glm-5.2":           { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 131072 },
+  "glm-5.1":           { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 131072 },
+  "glm-5":             { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 131072 },
+  "glm-5-turbo":       { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 131072 },
+  // GLM-4.7 has 200K context, 128K max output
+  "glm-4.7":           { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 },
+  // GLM-4.7-flashx has 128K context (maxOutput not recorded in source)
+  "glm-4.7-flashx":    { reasoning: true, thinkingFormat: "zai", contextWindow: 131072 },
+  // GLM-4.6 has 200K context, 128K max output
+  "glm-4.6":           { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 },
+  // GLM-4.5 and 4-32b-0414-128k have 128K context (maxOutput not recorded in source)
+  "glm-4.5":           { reasoning: true, thinkingFormat: "zai", contextWindow: 131072 },
+  "glm-4.5-air":       { reasoning: true, thinkingFormat: "zai", contextWindow: 131072 },
+  "glm-4-32b-0414-128k": { reasoning: true, thinkingFormat: "zai", contextWindow: 131072 },
 
   // Qwen plain coder/text (no vision) — registry "vision-model" / "coder-model" aliases
   "vision-model":      { vision: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000 },

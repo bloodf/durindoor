@@ -41,6 +41,72 @@ function isRecord(value) {
 // Per-provider live model resolvers. Each receives a connection record and
 // returns { models: [{ id, name? }, ...] } | null on failure.
 // Adding a provider here makes /v1/models prefer the live catalog for it.
+// Known Ollama embedding families plus the `embed` substring heuristic.
+// Rationale: Ollama `/api/tags` exposes only `name`/`model` and optional
+// `details.family/families`; not every embedding model has "embed" in its
+// tag (e.g. `bge-m3`, `all-minilm`). We match these known families against the
+// normalized model ID and any available family metadata, falling back to the
+// substring heuristic. A capability probe (`/api/show`) would be one extra
+// round-trip per model, so we avoid it here in favor of this cheap, tested
+// classification. Expand this list as new Ollama embedding families appear.
+//
+// Match is exact on the normalized token sequence (e.g. `snowflake-arctic-embed`
+// matches only `snowflake arctic embed`, not `snowflake-arctic-instruct`).
+const OLLAMA_EMBEDDING_FAMILIES = [
+  "bge",
+  "minilm",
+  "nomic-embed",
+  "mxbai-embed",
+  "snowflake-arctic-embed",
+  "all-minilm",
+  "e5",
+];
+
+function normalizeEmbeddingHaystack(...parts) {
+  return parts
+    .filter((p) => typeof p === "string")
+    .join(" ")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function tokenSequenceMatches(tokens, sequence) {
+  if (sequence.length === 0) return false;
+  if (sequence.length === 1) return tokens.includes(sequence[0]);
+  for (let i = 0; i <= tokens.length - sequence.length; i++) {
+    let match = true;
+    for (let j = 0; j < sequence.length; j++) {
+      if (tokens[i + j] !== sequence[j]) {
+        match = false;
+        break;
+      }
+    }
+    if (match) return true;
+  }
+  return false;
+}
+
+function isOllamaEmbeddingModel(model) {
+  if (!isRecord(model)) return false;
+  const id = typeof model.id === "string" ? model.id : "";
+  const name = typeof model.name === "string" ? model.name : "";
+  if (!id && !name) return false;
+
+  if (/embed/.test(id.toLowerCase()) || /embed/.test(name.toLowerCase())) return true;
+
+  const details = isRecord(model.details) ? model.details : {};
+  const families = Array.isArray(details.families) ? details.families : [];
+  const haystack = normalizeEmbeddingHaystack(id, name, details.family, ...families);
+  const tokens = haystack.split(/\s+/).filter(Boolean);
+
+  for (const family of OLLAMA_EMBEDDING_FAMILIES) {
+    const sequence = normalizeEmbeddingHaystack(family).split(/\s+/).filter(Boolean);
+    if (tokenSequenceMatches(tokens, sequence)) return true;
+  }
+  return false;
+}
+
 const LIVE_MODEL_RESOLVERS = {
   kiro: async (conn) => {
     const psd = isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {};
@@ -148,7 +214,7 @@ const LIVE_MODEL_RESOLVERS = {
           if (!isRecord(m)) return null;
           const id = typeof m.id === "string" ? m.id : (typeof m.name === "string" ? m.name : "");
           if (!id) return null;
-          const isEmbedding = /embed/.test(id.toLowerCase());
+          const isEmbedding = isOllamaEmbeddingModel(m);
           return { id, name: id, ...(isEmbedding ? { kind: "embedding" } : {}) };
         })
         .filter(Boolean);

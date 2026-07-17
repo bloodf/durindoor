@@ -5,9 +5,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Card, Badge, Button, AddCustomEmbeddingModal } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
-import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS, getProvidersByKind, resolveProviderId, isLocalOllamaProvider } from "@/shared/constants/providers";
+import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS, getProvidersByKind } from "@/shared/constants/providers";
 import { translate } from "@/i18n/runtime";
 import { MediaProviderCard } from "../components/MediaProviderCard";
+import { getLocalEmbeddingProviders } from "./localEmbeddingResolver";
 
 // Kinds that support combos (currently disabled for image/tts — temporarily hidden).
 // webSearch/webFetch handled by /web page.
@@ -78,37 +79,32 @@ export default function MediaProviderKindPage() {
   useEffect(() => {
     if (!kindConfig) return;
     let cancelled = false;
+    let fetchedConnections = [];
+
     fetch("/api/providers", { cache: "no-store" })
       .then((r) => r.json())
-      .then((d) => { if (!cancelled) setConnections(d.connections || []); })
-      .catch(() => {});
+      .then((d) => {
+        if (cancelled) return;
+        fetchedConnections = d.connections || [];
+        setConnections(fetchedConnections);
+      })
+      .catch(() => {})
+      .then(() => {
+        if (!isEmbedding || cancelled) return;
+        fetch("/api/v1/models/embedding", { cache: "no-store" })
+          .then((r) => (r.ok ? r.json() : { data: [] }))
+          .then((d) => {
+            if (cancelled) return;
+            setLocalEmbeddingProviders(getLocalEmbeddingProviders(d.data, fetchedConnections));
+          })
+          .catch(() => { if (!cancelled) setLocalEmbeddingProviders([]); });
+      });
+
     if (isEmbedding) {
       fetch("/api/provider-nodes", { cache: "no-store" })
         .then((r) => r.json())
         .then((d) => { if (!cancelled) setCustomNodes((d.nodes || []).filter((n) => n.type === "custom-embedding")); })
         .catch(() => {});
-      fetch("/api/v1/models/embedding", { cache: "no-store" })
-        .then((r) => (r.ok ? r.json() : { data: [] }))
-        .then((d) => {
-          if (cancelled) return;
-          const byProvider = new Map();
-          for (const m of d.data || []) {
-            const ownedBy = typeof m.owned_by === "string" ? m.owned_by : "";
-            const providerId = resolveProviderId(ownedBy);
-            if (!isLocalOllamaProvider(providerId)) continue;
-            if (!byProvider.has(providerId)) {
-              const info = AI_PROVIDERS[providerId];
-              byProvider.set(providerId, {
-                id: providerId,
-                name: info?.name || "Ollama Local",
-                color: info?.color || "#ffffffff",
-                textIcon: info?.textIcon || "OL",
-              });
-            }
-          }
-          setLocalEmbeddingProviders(Array.from(byProvider.values()));
-        })
-        .catch(() => { if (!cancelled) setLocalEmbeddingProviders([]); });
     }
     if (supportsCombo) {
       fetch("/api/combos", { cache: "no-store" })

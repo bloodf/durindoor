@@ -73,4 +73,41 @@ describe("ollama-local embedding model discovery (#media-ollama-embeddings)", ()
     );
     expect(models.some((m) => m.owned_by === "ollama")).toBe(false);
   });
+
+  it("classifies bge-m3 and all-minilm as embedding models", async () => {
+    getProviderConnections.mockResolvedValue([
+      {
+        id: "conn-ollama-local",
+        provider: "ollama-local",
+        isActive: true,
+        apiKey: "",
+        providerSpecificData: { baseUrl: "http://localhost:11434" },
+      },
+    ]);
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        models: [
+          { id: "bge-m3", name: "bge-m3", details: { family: "bert" } },
+          { id: "all-minilm", name: "all-minilm" },
+          { id: "snowflake-arctic-embed-s", name: "snowflake-arctic-embed-s" },
+          { id: "snowflake-arctic-instruct", name: "snowflake-arctic-instruct" },
+          { id: "opaque-model", name: "bge-m3" },
+          { id: "general-purpose", name: "all-minilm" },
+          { id: "phi4", name: "phi4" },
+        ],
+      }),
+    });
+
+    const models = await buildModelsList(["embedding"], "block-metadata");
+
+    expect(models.some((m) => m.id === "ollama-local/bge-m3")).toBe(true);
+    expect(models.some((m) => m.id === "ollama-local/all-minilm")).toBe(true);
+    expect(models.some((m) => m.id === "ollama-local/snowflake-arctic-embed-s")).toBe(true);
+    expect(models.some((m) => m.id === "ollama-local/opaque-model")).toBe(true);
+    expect(models.some((m) => m.id === "ollama-local/general-purpose")).toBe(true);
+    expect(models.some((m) => m.id === "ollama-local/snowflake-arctic-instruct")).toBe(false);
+    expect(models.some((m) => m.id === "ollama-local/phi4")).toBe(false);
+  });
 });

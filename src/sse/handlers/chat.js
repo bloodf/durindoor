@@ -418,26 +418,9 @@ export async function handleChat(request, clientRawRequest = null) {
   const bypassResponse = handleBypassRequest(body, modelStr, userAgent, !!settings.ccFilterNaming);
   if (bypassResponse) return bypassResponse.response || bypassResponse;
 
-  const singleModelCaps = await buildSingleModelCapabilitiesMap(modelStr);
-  // Custom caps for the configured bridge target: a custom model persisted
-  // with vision:true is a valid target even if the static catalog disagrees.
-  const visionTargetCaps = settings?.visionBridgeEnabled === true && settings?.visionBridgeModel
-    ? await buildSingleModelCapabilitiesMap(String(settings.visionBridgeModel))
-    : null;
-  const vb = applyVisionBridgeReroute({ body, modelStr, settings, capabilities: singleModelCaps, targetCapabilities: visionTargetCaps });
-  if (vb.rerouted) {
-    const policyError = await enforceApiKeyModelPolicy(request, vb.modelStr);
-    if (policyError) {
-      log.warn("CHAT", `Vision Bridge target "${vb.toModel}" denied by API key policy; keeping "${modelStr}"`);
-    } else {
-      log.info("CHAT", `Vision Bridge reroute: ${vb.fromModel} -> ${vb.toModel}`);
-      body = vb.body;
-      modelStr = vb.modelStr;
-      // clientRawRequest intentionally keeps the ORIGINAL client body so usage
-      // logs record the model the caller actually asked for; the reroute only
-      // changes what we dispatch upstream.
-    }
-  }
+  // Vision Bridge capability resolution and reroute have moved to
+  // handleSingleModelChat so they run AFTER API-key policy enforcement for
+  // single-model requests. Denied requests no longer trigger DB lookups.
 
   // Check if model is a combo (has multiple models with fallback)
   // #6495 / F-4: filter paid members when the toggle is on. The auth ACL check
@@ -480,6 +463,8 @@ export async function handleChat(request, clientRawRequest = null) {
             request,
             apiKey,
             combineAbortSignals(request?.signal || null, panelSignal),
+            null,
+            { settings, allowVisionBridge: false },
           );
         },
         log,
@@ -507,7 +492,16 @@ export async function handleChat(request, clientRawRequest = null) {
         // previous attempt's event; the collector then holds only the latest
         // emitted event from the attempts that actually fired telemetry.
         tokenSaverCollector.latest = null;
-        return handleSingleModelChat(b, m, clientRawRequest, request, apiKey, combineAbortSignals(request?.signal || null, attemptSignal), tokenSaverCollector);
+        return handleSingleModelChat(
+          b,
+          m,
+          clientRawRequest,
+          request,
+          apiKey,
+          combineAbortSignals(request?.signal || null, attemptSignal),
+          tokenSaverCollector,
+          { settings, allowVisionBridge: false },
+        );
       },
       log,
       comboName: modelStr,
@@ -534,7 +528,7 @@ export async function handleChat(request, clientRawRequest = null) {
   }
 
   // Single model request
-  return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, null, null, vb.rerouted ? undefined : singleModelCaps);
+  return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, null, null, { settings, allowVisionBridge: true });
 }
 
 // Resolve custom capabilities for all combo members into a single map keyed
@@ -581,7 +575,8 @@ async function buildSingleModelCapabilitiesMap(modelStr) {
 /**
  * Handle single model chat request
  */
-async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, attemptSignal = null, tokenSaverCollector = null, preResolvedCapabilities = undefined) {
+async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, attemptSignal = null, tokenSaverCollector = null, options = {}) {
+  const { settings = null, allowVisionBridge = false, preResolvedCapabilities = undefined } = options;
   const requestSignal = attemptSignal || request?.signal || null;
   if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
   const modelInfo = await getModelInfo(modelStr);
@@ -619,6 +614,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
               request,
               apiKey,
               combineAbortSignals(requestSignal, panelSignal),
+              null,
+              { settings: chatSettings, allowVisionBridge: false },
             );
           },
           log,
@@ -653,6 +650,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             apiKey,
             combineAbortSignals(requestSignal, attemptSignal),
             nestedCollector,
+            { settings: chatSettings, allowVisionBridge: false },
           );
         },
         log,
@@ -698,6 +696,45 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   // the request started as a combo; the top-level combo name is not a model id.
   const policyError2 = await enforceApiKeyModelPolicy(request, `${provider}/${model}`);
   if (policyError2) return policyError2;
+
+  // Vision Bridge (#6640): after policy passes, resolve custom capabilities and
+  // reroute vision requests to the configured vision-capable model. Denied
+  // requests never reach this DB lookup. Combo members resolve their own caps
+  // upstream; this branch is only for single-model requests.
+  let modelCapabilities = preResolvedCapabilities;
+  if (allowVisionBridge && settings?.visionBridgeEnabled === true && modelCapabilities === undefined) {
+    const singleModelCaps = await buildSingleModelCapabilitiesMap(modelStr);
+    const visionTargetCaps = settings?.visionBridgeModel
+      ? await buildSingleModelCapabilitiesMap(String(settings.visionBridgeModel))
+      : null;
+    const vb = applyVisionBridgeReroute({ body, modelStr, settings, capabilities: singleModelCaps, targetCapabilities: visionTargetCaps });
+    if (vb.rerouted) {
+      const policyError = await enforceApiKeyModelPolicy(request, vb.modelStr);
+      if (policyError) {
+        log.warn("CHAT", `Vision Bridge target "${vb.toModel}" denied by API key policy; keeping "${modelStr}"`);
+      } else {
+        log.info("CHAT", `Vision Bridge reroute: ${vb.fromModel} -> ${vb.toModel}`);
+        // Re-resolve provider/model for the rerouted target and recurse into the
+        // retry loop with vision bridge disabled to prevent loops. The body/model
+        // update is scoped to the recursive call so the original stays intact.
+        const reroutedInfo = await getModelInfo(vb.modelStr);
+        if (reroutedInfo?.provider) {
+          return handleSingleModelChat(
+            vb.body,
+            vb.modelStr,
+            clientRawRequest,
+            request,
+            apiKey,
+            attemptSignal,
+            tokenSaverCollector,
+            { settings, allowVisionBridge: false, preResolvedCapabilities: visionTargetCaps },
+          );
+        }
+        // Invalid reroute target: fall through to original model.
+      }
+    }
+    modelCapabilities = singleModelCaps;
+  }
 
   // Pin the request to a specific connection when the client asks for one.
   // The header is preferred; body fields are accepted for backwards-compatible
@@ -754,10 +791,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   const parsed = parseModel(modelStr);
   const requestPrefix = parsed?.providerAlias || null;
   // The direct single-model path already resolved caps for the vision bridge;
-  // reuse that result (null = resolved, no custom row). Combo attempts pass
+  // reuse that result (undefined = not resolved yet). Combo attempts pass
   // undefined so each member resolves its own caps.
-  const modelCapabilities = preResolvedCapabilities !== undefined
-    ? preResolvedCapabilities
+  const resolvedModelCapabilities = modelCapabilities !== undefined
+    ? modelCapabilities
     : await loadCustomCapabilities(provider, model, requestPrefix);
 
   // Try with available accounts (fallback on errors)
@@ -929,7 +966,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     const result = await handleChatCore({
       body: { ...structuredClone(body), model: `${provider}/${model}` },
       modelInfo: { provider, model },
-      modelCapabilities,
+      modelCapabilities: resolvedModelCapabilities,
       credentials: refreshedCredentials,
       log,
       clientRawRequest,

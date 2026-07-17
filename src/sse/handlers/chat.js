@@ -537,13 +537,29 @@ export async function handleChat(request, clientRawRequest = null) {
 
 // Resolve custom capabilities for all combo members into a single map keyed
 // by the original member string. Falls back to static caps when no custom row.
-async function resolveComboCapabilitiesMap(members) {
+export async function resolveComboCapabilitiesMap(members, _depth = 0) {
   const map = new Map();
-  if (!Array.isArray(members)) return map;
+  if (!Array.isArray(members) || _depth > 6) return map;
   await Promise.all(
     members.map(async (member) => {
       const resolved = await getModelInfo(member);
-      if (!resolved?.provider || !resolved?.model) return;
+      if (!resolved?.provider || !resolved?.model) {
+        // Nested combo member: derive a representative caps entry so outer
+        // routing (vision promotion etc.) sees the nested pool's custom
+        // overrides. Any-member-true semantics match aggregateComboCapabilities.
+        const nestedMembers = await getComboModels(member);
+        if (!Array.isArray(nestedMembers) || nestedMembers.length === 0) return;
+        const nestedMap = await resolveComboCapabilitiesMap(nestedMembers, _depth + 1);
+        if (nestedMap.size === 0) return;
+        const agg = {};
+        for (const caps of nestedMap.values()) {
+          for (const [k, v] of Object.entries(caps)) {
+            if (v === true) agg[k] = true;
+          }
+        }
+        if (Object.keys(agg).length > 0) map.set(member, agg);
+        return;
+      }
       const requestPrefix = parseModel(member).providerAlias || null;
       const caps = await loadCustomCapabilities(resolved.provider, resolved.model, requestPrefix);
       if (caps) map.set(member, caps);

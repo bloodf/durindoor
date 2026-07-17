@@ -80,7 +80,8 @@ function isValidThinkingRange(value) {
   if (value === null) return true;
   if (typeof value !== "object" || Array.isArray(value)) return false;
   const { min, max } = value;
-  if (min !== undefined && min !== null && !isPositiveInteger(min)) return false;
+  // min 0 is legal (Gemini dynamic thinking budget_tokens: 0)
+  if (min !== undefined && min !== null && !(Number.isSafeInteger(min) && min >= 0)) return false;
   if (max !== undefined && max !== null && !isPositiveInteger(max)) return false;
   if (min !== undefined && min !== null && max !== undefined && max !== null && min > max) return false;
   return true;
@@ -139,7 +140,7 @@ export function normalizeCustomCapabilities(raw) {
     if (raw.thinkingRange === null) {
       out.thinkingRange = null;
     } else if (!isValidThinkingRange(raw.thinkingRange)) {
-      return { ok: false, error: "thinkingRange must be { min, max } with positive integers and min <= max" };
+      return { ok: false, error: "thinkingRange must be { min, max } with non-negative min, positive max, min <= max" };
     } else {
       out.thinkingRange = { ...raw.thinkingRange };
     }

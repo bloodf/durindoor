@@ -56,6 +56,36 @@ describe("handleChatCore Headroom diagnostics", () => {
     });
   });
 
+  it("logs a classified Headroom diagnostic reason when compression is skipped", async () => {
+    const log = { debug: vi.fn(), info: vi.fn(), warn: vi.fn() };
+    const onHeadroomEvent = vi.fn();
+
+    await handleChatCore({
+      body: { model: "gpt-4o", stream: false, messages: [{ role: "user", content: "hello" }] },
+      modelInfo: { provider: "openai", model: "gpt-4o" },
+      credentials: { apiKey: "test-key", providerSpecificData: {} },
+      log,
+      connectionId: "test-conn",
+      headroomEnabled: true,
+      headroomUrl: "http://localhost:8787",
+      headroomCompressUserMessages: false,
+      rtkEnabled: false,
+      cavemanEnabled: false,
+      ponytailEnabled: false,
+      onHeadroomEvent,
+      clientRawRequest: {
+        endpoint: "/v1/chat/completions",
+        body: {},
+        headers: { accept: "application/json" },
+      },
+    });
+
+    expect(onHeadroomEvent).toHaveBeenCalledWith(expect.objectContaining({
+      applied: false,
+      reason: "request-failed",
+    }));
+  });
+
   it("logs why Headroom was skipped on chat completions", async () => {
     const log = { debug: vi.fn(), info: vi.fn(), warn: vi.fn() };
 

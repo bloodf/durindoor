@@ -203,12 +203,16 @@ export default function HeadroomClient() {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-medium">Enable Headroom</p>
-            <p className="text-xs text-text-muted">Compress outgoing chat messages via the Headroom proxy.</p>
+            <p className="text-xs text-text-muted">
+              {status?.running
+                ? "Compress outgoing chat messages via the Headroom proxy."
+                : "Headroom proxy is unavailable; confirm the proxy URL before enabling."}
+            </p>
           </div>
           <Toggle
             checked={settings.headroomEnabled}
             onChange={handleToggleEnabled}
-            disabled={saving}
+            disabled={saving || !status?.running}
           />
         </div>
         <div className="flex flex-col gap-1">

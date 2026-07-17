@@ -527,13 +527,14 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
       });
     } catch { /* stats must not break requests */ }
   } else if (tokenSaverEnabled && headroomEnabled) {
+    const hrDiagnostic = classifyHeadroomDiagnostic(headroomDiagnostics, headroomStats, headroomEnabled);
     log?.warn?.("HEADROOM", `skipped: ${headroomDiagnostics.reason || "compression unavailable"}${headroomDiagnostics.endpoint ? ` (${headroomDiagnostics.endpoint})` : ""}`);
     try {
       onHeadroomEvent?.({
         provider,
         model: cleanModel,
         applied: false,
-        reason: String(headroomDiagnostics.reason || "skipped").replace(/\s+/g, "_").slice(0, 80),
+        reason: hrDiagnostic,
         durationMs: headroomDurationMs,
       });
     } catch { /* stats must not break requests */ }

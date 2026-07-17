@@ -128,7 +128,7 @@ export class MimoFreeExecutor extends BaseExecutor {
     return injectSystemMarker(body);
   }
 
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
+  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null }) {
     let jwt;
     try {
       jwt = await bootstrapJwt(proxyOptions);
@@ -138,7 +138,7 @@ export class MimoFreeExecutor extends BaseExecutor {
     }
 
     const url = this.buildUrl();
-    const transformedBody = this.transformRequest(model, body);
+    const transformedBody = this.clampCustomMaxOutput(this.transformRequest(model, body), requestContext);
     const headers = { ...this.buildHeaders(credentials, stream), "Authorization": `Bearer ${jwt}` };
     const bodyStr = JSON.stringify(transformedBody);
     log?.debug?.("FETCH", `MIMO-FREE → ${url} | body=${bodyStr.length}B`);

@@ -17,14 +17,6 @@ export function useModelCaps() {
         if (!res.ok) return;
         const data = await res.json();
         const customData = customRes.ok ? await customRes.json() : { models: [] };
-        const customCapsByFull = {};
-        for (const m of customData.models || []) {
-          if (!m.id || !m.providerAlias) continue;
-          const full = `${m.providerAlias}/${m.id}`;
-          const caps = m.capabilities || {};
-          customCapsByFull[full] = caps;
-          customCapsByFull[m.id] = caps;
-        }
         const full = {};
         const id = {};
         for (const m of data.models || []) {
@@ -32,10 +24,14 @@ export function useModelCaps() {
           if (m.fullModel) full[m.fullModel] = m.caps;
           if (m.model) id[m.model] = m.caps;
         }
-        for (const [fullModel, caps] of Object.entries(customCapsByFull)) {
-          full[fullModel] = { ...full[fullModel], ...caps };
-          const bare = fullModel.includes("/") ? fullModel.slice(fullModel.indexOf("/") + 1) : fullModel;
-          id[bare] = { ...id[bare], ...caps };
+        // Custom overrides stay provider-scoped: only the "providerAlias/id"
+        // key is written, so two providers sharing a model id never clobber
+        // each other. Bare-id lookups intentionally see no custom overrides —
+        // a bare id is ambiguous across providers.
+        for (const m of customData.models || []) {
+          if (!m.id || !m.providerAlias) continue;
+          const key = `${m.providerAlias}/${m.id}`;
+          full[key] = { ...full[key], ...(m.capabilities || {}) };
         }
         if (alive) { setByFull(full); setById(id); }
       } catch { /* ignore */ }

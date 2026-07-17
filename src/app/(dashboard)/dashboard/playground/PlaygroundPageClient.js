@@ -760,7 +760,7 @@ export default function PlaygroundPageClient() {
     : "auto";
 
   return (
-    <div className="relative flex-1 flex flex-col h-full min-h-0 min-w-0 bg-bg text-text-main overflow-hidden">
+    <div className="relative flex-1 flex flex-col h-full min-h-0 min-w-0 text-text-main overflow-hidden">
       <div className="relative mx-auto flex flex-1 h-full min-h-0 w-full max-w-4xl flex-col">
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 px-4 py-3 lg:px-6">
           <div ref={modelMenuRef} className="relative">

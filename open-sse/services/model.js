@@ -167,14 +167,16 @@ function inferProviderFromModelName(modelName) {
  * otherwise the reroute would hand images to a text-only model and silently
  * strip them downstream. Returns the normalized id or null when invalid.
  */
-function validateVisionTarget(target) {
+function validateVisionTarget(target, targetCapabilities = null) {
   if (typeof target !== "string") return null;
   const trimmed = target.trim();
   if (!trimmed) return null;
   const parsed = parseModel(trimmed);
   if (!parsed.provider || !parsed.model) return null;
-  const caps = getCapabilitiesForModel(parsed.provider, parsed.model);
-  return caps.vision === true ? `${parsed.provider}/${parsed.model}` : null;
+  // Custom-model overrides (vision persisted on the custom record) validate
+  // the target even when the static catalog says non-vision.
+  const caps = targetCapabilities || getCapabilitiesForModel(parsed.provider, parsed.model);
+  return caps?.vision === true ? `${parsed.provider}/${parsed.model}` : null;
 }
 
 /**
@@ -194,7 +196,7 @@ function validateVisionTarget(target) {
  * @param {object} [args.settings]  settings snapshot from getSettings()
  * @returns {{ body: object, modelStr: string, rerouted: boolean, fromModel?: string, toModel?: string }}
  */
-export function applyVisionBridgeReroute({ body, modelStr, settings } = {}) {
+export function applyVisionBridgeReroute({ body, modelStr, settings, capabilities = null, targetCapabilities = null } = {}) {
   if (!body || typeof body !== "object" || typeof modelStr !== "string") {
     return { body, modelStr, rerouted: false };
   }
@@ -214,8 +216,8 @@ export function applyVisionBridgeReroute({ body, modelStr, settings } = {}) {
   }
   // Already vision-capable — let the upstream handle it natively.
   const parsed = parseModel(modelStr);
-  const currentCaps = getCapabilitiesForModel(parsed.provider, parsed.model);
-  if (currentCaps.vision === true) {
+  const currentCaps = capabilities || getCapabilitiesForModel(parsed.provider, parsed.model);
+  if (currentCaps?.vision === true) {
     return { body, modelStr, rerouted: false };
   }
   // Vision Bridge requires an explicit operator-configured target that is
@@ -224,7 +226,7 @@ export function applyVisionBridgeReroute({ body, modelStr, settings } = {}) {
   // hand the request to a provider with no active connection and break it. An
   // empty/missing/invalid target therefore PASSTHROUGHS (request stays on the
   // original non-vision model) rather than guessing.
-  const target = validateVisionTarget(settings?.visionBridgeModel);
+  const target = validateVisionTarget(settings?.visionBridgeModel, targetCapabilities);
   if (!target) return { body, modelStr, rerouted: false };
   if (target === `${parsed.provider}/${parsed.model}`) {
     return { body, modelStr, rerouted: false };

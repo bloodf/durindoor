@@ -385,7 +385,7 @@ describe("DB SQLite layer — public API parity", () => {
   it("customModels: add/list/delete with dedupe", async () => {
     const ok1 = await sqliteDb.addCustomModel({ providerAlias: "p1", id: "m1", type: "llm", name: "Model 1" });
     const dup = await sqliteDb.addCustomModel({ providerAlias: "p1", id: "m1", type: "llm" });
-    expect(ok1).toBe(true);
+    expect(ok1).toMatchObject({ providerAlias: "p1", id: "m1" });
     expect(dup).toBe(false);
     const list = await sqliteDb.getCustomModels();
     expect(list.find((m) => m.id === "m1")).toBeDefined();

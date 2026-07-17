@@ -4,12 +4,14 @@ import {
   getProviderAlias,
   isAnthropicCompatibleProvider,
   isOpenAICompatibleProvider,
+  isLocalOllamaProvider,
 } from "@/shared/constants/providers";
 import { getProviderConnections, getCombos, getCustomModels, getModelAliases } from "@/lib/localDb";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { getSettings } from "@/lib/db/repos/settingsRepo";
 import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
+import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
@@ -17,6 +19,7 @@ import { resolveClinepassModels } from "open-sse/services/clinepassModels.js";
 import { aggregateComboCapabilities, capabilitiesFromServiceKind, getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 import { isPaidModel } from "open-sse/providers/pricing.js";
 import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
+import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 
 // In-flight request coalescing for `buildModelsList` (OmniRoute #6440):
 // concurrent `/v1/models` calls that hit before the first one resolves would
@@ -39,6 +42,72 @@ function isRecord(value) {
 // Per-provider live model resolvers. Each receives a connection record and
 // returns { models: [{ id, name? }, ...] } | null on failure.
 // Adding a provider here makes /v1/models prefer the live catalog for it.
+// Known Ollama embedding families plus the `embed` substring heuristic.
+// Rationale: Ollama `/api/tags` exposes only `name`/`model` and optional
+// `details.family/families`; not every embedding model has "embed" in its
+// tag (e.g. `bge-m3`, `all-minilm`). We match these known families against the
+// normalized model ID and any available family metadata, falling back to the
+// substring heuristic. A capability probe (`/api/show`) would be one extra
+// round-trip per model, so we avoid it here in favor of this cheap, tested
+// classification. Expand this list as new Ollama embedding families appear.
+//
+// Match is exact on the normalized token sequence (e.g. `snowflake-arctic-embed`
+// matches only `snowflake arctic embed`, not `snowflake-arctic-instruct`).
+const OLLAMA_EMBEDDING_FAMILIES = [
+  "bge",
+  "minilm",
+  "nomic-embed",
+  "mxbai-embed",
+  "snowflake-arctic-embed",
+  "all-minilm",
+  "e5",
+];
+
+function normalizeEmbeddingHaystack(...parts) {
+  return parts
+    .filter((p) => typeof p === "string")
+    .join(" ")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function tokenSequenceMatches(tokens, sequence) {
+  if (sequence.length === 0) return false;
+  if (sequence.length === 1) return tokens.includes(sequence[0]);
+  for (let i = 0; i <= tokens.length - sequence.length; i++) {
+    let match = true;
+    for (let j = 0; j < sequence.length; j++) {
+      if (tokens[i + j] !== sequence[j]) {
+        match = false;
+        break;
+      }
+    }
+    if (match) return true;
+  }
+  return false;
+}
+
+function isOllamaEmbeddingModel(model) {
+  if (!isRecord(model)) return false;
+  const id = typeof model.id === "string" ? model.id : "";
+  const name = typeof model.name === "string" ? model.name : "";
+  if (!id && !name) return false;
+
+  if (/embed/.test(id.toLowerCase()) || /embed/.test(name.toLowerCase())) return true;
+
+  const details = isRecord(model.details) ? model.details : {};
+  const families = Array.isArray(details.families) ? details.families : [];
+  const haystack = normalizeEmbeddingHaystack(id, name, details.family, ...families);
+  const tokens = haystack.split(/\s+/).filter(Boolean);
+
+  for (const family of OLLAMA_EMBEDDING_FAMILIES) {
+    const sequence = normalizeEmbeddingHaystack(family).split(/\s+/).filter(Boolean);
+    if (tokenSequenceMatches(tokens, sequence)) return true;
+  }
+  return false;
+}
+
 const LIVE_MODEL_RESOLVERS = {
   kiro: async (conn) => {
     const psd = isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {};
@@ -125,6 +194,41 @@ const LIVE_MODEL_RESOLVERS = {
       .filter((m) => typeof m.id === "string")
       .map((m) => ({ id: m.id, ...(typeof m.name === "string" ? { name: m.name } : {}) }));
     return models.length ? { models } : null;
+  },
+  "ollama-local": async (conn, guard) => {
+    const url = `${resolveOllamaLocalHost(conn)}/api/tags`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    try {
+      // Route through the connection proxy exactly like the embedding
+      // request path does, while keeping the SSRF guard: guardedProbeFetch
+      // validates the URL, the injected fetcher carries proxyOptions.
+      const psd = isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {};
+      const proxyOptions = await resolveConnectionProxyConfig(psd);
+      const proxiedFetch = (fetchUrl, init) => proxyAwareFetch(fetchUrl, init, proxyOptions || null);
+      const response = await guardedProbeFetch(url, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        signal: controller.signal,
+      }, guard, proxiedFetch);
+      if (!response.ok) return null;
+      const data = await response.json();
+      const list = parseOpenAIStyleModels(data);
+      if (!Array.isArray(list)) return null;
+      const models = list
+        .map((m) => {
+          if (!isRecord(m)) return null;
+          const id = typeof m.id === "string" ? m.id : (typeof m.name === "string" ? m.name : "");
+          if (!id) return null;
+          const isEmbedding = isOllamaEmbeddingModel(m);
+          return { id, name: id, ...(isEmbedding ? { kind: "embedding" } : {}) };
+        })
+        .filter(Boolean);
+      return models.length ? { models } : null;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   },
 };
 
@@ -330,6 +434,7 @@ async function fetchLocalPassthroughModels(connection, guard) {
 // Provider matches kindFilter when its serviceKinds intersect the requested kinds.
 // LLM is the default kind for providers missing serviceKinds.
 function providerMatchesKinds(providerId, kindFilter) {
+  if (isLocalOllamaProvider(providerId) && kindFilter.includes("embedding")) return true;
   const provider = AI_PROVIDERS[providerId];
   const serviceKinds = provider?.serviceKinds;
   const kinds = Array.isArray(serviceKinds) && serviceKinds.length > 0
@@ -451,6 +556,17 @@ async function buildModelsListImpl(kindFilter, guard) {
     }
   };
 
+  // Custom-model capability overrides — one map for all combo aggregations
+  // (no per-member DB reads). Keys are canonical `providerId/modelId`;
+  // aggregateComboCapabilities normalizes member prefixes (static alias OR a
+  // connection's custom output prefix) through aliasToProviderId before
+  // lookup, so `myproxy/model` finds a row stored under the provider alias.
+  const customCapsById = new Map(
+    customModels
+      .filter((m) => m?.id && m?.providerAlias && (m.kind || m.type || "llm") === "llm" && m?.capabilities && typeof m.capabilities === "object")
+      .map((m) => [`${aliasToProviderId[m.providerAlias] ?? m.providerAlias}/${m.id}`, m.capabilities]),
+  );
+
   // Combos first (filtered by kind). Web combos expose `kind` so AI knows search vs fetch.
   for (const combo of combos) {
     if (!comboMatchesKinds(combo, kindFilter)) continue;
@@ -488,7 +604,7 @@ async function buildModelsListImpl(kindFilter, guard) {
     if (combo.kind === "webSearch" || combo.kind === "webFetch") {
       entry.kind = combo.kind;
     } else {
-      const comboCaps = aggregateComboCapabilities(visibleMembers, comboByName, aliasToProviderId);
+      const comboCaps = aggregateComboCapabilities(visibleMembers, comboByName, aliasToProviderId, 0, customCapsById);
       if (comboCaps) entry.capabilities = comboCaps;
     }
     models.push(entry);
@@ -511,10 +627,14 @@ async function buildModelsListImpl(kindFilter, guard) {
       const modelId = String(customModel.id).trim();
       if (!modelId) continue;
 
+      const providerId = providerAlias; // used for static fallback only
+      const staticCaps = getCapabilitiesForModel(providerId, modelId);
+      const customCaps = isRecord(customModel.capabilities) ? customModel.capabilities : {};
       models.push({
         id: `${providerAlias}/${modelId}`,
         object: "model",
         owned_by: providerAlias,
+        capabilities: { ...staticCaps, ...customCaps },
       });
     }
   } else {
@@ -574,7 +694,7 @@ async function buildModelsListImpl(kindFilter, guard) {
         const liveResolver = LIVE_MODEL_RESOLVERS[providerId];
         if (liveResolver && !hasExplicitEnabledModels) {
           try {
-            const live = await liveResolver(conn);
+            const live = await liveResolver(conn, guard);
             if (live?.models?.length) {
               rawModelIds = live.models.map((m) => {
                 if (m.kind || m.type) liveModelKindById.set(m.id, m.kind || m.type);
@@ -584,6 +704,22 @@ async function buildModelsListImpl(kindFilter, guard) {
             }
           } catch (err) {
             console.log(`Live model fetch failed for ${providerId}: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        } else if (providerId === "ollama-local" && liveResolver && hasExplicitEnabledModels) {
+          // ollama-local only: explicit enabledModels keep the user's
+          // selection, but /api/tags still supplies kind metadata so a
+          // selected bge-m3 classifies as embedding instead of falling
+          // through to the LLM heuristic. Other providers keep their
+          // no-network fast path.
+          try {
+            const live = await liveResolver(conn, guard);
+            for (const m of live?.models ?? []) {
+              if (!rawModelIds.includes(m.id)) continue;
+              if (m.kind || m.type) liveModelKindById.set(m.id, m.kind || m.type);
+              if (isRecord(m.capabilities)) liveCapabilitiesById.set(m.id, m.capabilities);
+            }
+          } catch (err) {
+            console.log(`Live model classification failed for ${providerId}: ${err instanceof Error ? err.message : String(err)}`);
           }
         }
         // Local passthrough live discovery (lm-studio, vllm, lemonade). Hits
@@ -633,6 +769,7 @@ async function buildModelsListImpl(kindFilter, guard) {
           .filter((modelId) => typeof modelId === "string" && modelId.trim() !== "");
 
         const customModelKindById = new Map();
+        const customCapabilitiesById = new Map();
         const customModelIds = customModels
           .filter((m) => {
             if (!m.id) return false;
@@ -646,7 +783,10 @@ async function buildModelsListImpl(kindFilter, guard) {
           .map((m) => {
             const modelId = String(m.id).trim();
             const kind = customModelKind(m);
-            if (modelId) customModelKindById.set(modelId, kind);
+            if (modelId) {
+              customModelKindById.set(modelId, kind);
+              if (isRecord(m.capabilities)) customCapabilitiesById.set(modelId, m.capabilities);
+            }
             return modelId;
           })
           .filter((modelId) => modelId !== "");
@@ -686,10 +826,12 @@ async function buildModelsListImpl(kindFilter, guard) {
           // modal + combo filters.
           if (hidePaidModels && isPaidModel(`${outputAlias}/${modelId}`)) continue;
 
-          const caps =
-            liveCapabilitiesById.get(modelId)
-            || capabilitiesFromServiceKind(customKind || liveKind)
-            || getCapabilitiesForModel(providerId, modelId);
+          const caps = {
+            ...getCapabilitiesForModel(providerId, modelId),
+            ...(capabilitiesFromServiceKind(customKind || liveKind) || {}),
+            ...(liveCapabilitiesById.get(modelId) || {}),
+            ...(customCapabilitiesById.get(modelId) || {}),
+          };
           const model = {
             id: `${outputAlias}/${modelId}`,
             object: "model",

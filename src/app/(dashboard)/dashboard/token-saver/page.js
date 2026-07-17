@@ -1,5 +1,5 @@
 import TokenSaverClient from "./TokenSaverClient";
 
 export default function TokenSaverPage() {
-  return <TokenSaverClient />;
+  return <TokenSaverClient view="overview" />;
 }

@@ -26,9 +26,11 @@ vi.mock("@/lib/localDb", () => ({
   getApiKeyUsageLimitStatus: mocks.getApiKeyUsageLimitStatus,
 }));
 
-vi.mock("../../src/sse/services/model.js", () => ({
+vi.mock("../../src/sse/services/model.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   getComboModels: mocks.getComboModels,
   getModelInfo: mocks.getModelInfo,
+  loadCustomCapabilities: async () => null,
 }));
 
 vi.mock("../../src/sse/services/auth.js", () => ({

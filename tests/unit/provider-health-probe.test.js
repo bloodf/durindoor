@@ -117,6 +117,56 @@ describe("probeConnectionHealth", () => {
     expect(result.status).toBe(503);
   });
 
+  it("normalizes Anthropic-compatible base URL to avoid double /v1", async () => {
+    const calls = [];
+    const fetcher = async (url) => { calls.push(String(url)); return { ok: true, status: 200 }; };
+    const conn = {
+      id: "ac-url",
+      provider: "anthropic-compatible-norm",
+      name: "norm",
+      apiKey: "k",
+      providerSpecificData: { baseUrl: "https://api.anthropic.com/v1" },
+    };
+    const result = await probeConnectionHealth(conn, { fetcher, proxyConfig: null });
+    expect(result.valid).toBe(true);
+    expect(calls[0]).toBe("https://api.anthropic.com/v1/messages");
+  });
+
+  it("normalizes Anthropic-compatible base URL ending in /messages", async () => {
+    const calls = [];
+    const fetcher = async (url) => { calls.push(String(url)); return { ok: true, status: 200 }; };
+    const conn = {
+      id: "ac-msg",
+      provider: "anthropic-compatible-msg",
+      name: "msg",
+      apiKey: "k",
+      providerSpecificData: { baseUrl: "https://api.anthropic.com/v1/messages" },
+    };
+    const result = await probeConnectionHealth(conn, { fetcher, proxyConfig: null });
+    expect(result.valid).toBe(true);
+    expect(calls[0]).toBe("https://api.anthropic.com/v1/messages");
+  });
+
+  it("marks OpenAI-compatible missing base URL as unconfigured", async () => {
+    const result = await probeConnectionHealth(
+      { id: "o-miss", provider: "openai-compatible-miss", name: "miss", apiKey: "k", providerSpecificData: {} },
+      { fetcher: okFetch(), proxyConfig: null },
+    );
+    expect(result.unconfigured).toBe(true);
+    expect(result.valid).toBe(false);
+    expect(result.status).toBeNull();
+  });
+
+  it("marks Anthropic-compatible missing base URL as unconfigured", async () => {
+    const result = await probeConnectionHealth(
+      { id: "ac-miss", provider: "anthropic-compatible-miss", name: "miss", apiKey: "k", providerSpecificData: {} },
+      { fetcher: okFetch(), proxyConfig: null },
+    );
+    expect(result.unconfigured).toBe(true);
+    expect(result.valid).toBe(false);
+    expect(result.status).toBeNull();
+  });
+
   it("Devin specialty probe routes through proxy-aware fetcher and forces redirect:manual", async () => {
     const calls = [];
     const fetcher = async (url, options) => {

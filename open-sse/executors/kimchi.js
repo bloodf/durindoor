@@ -97,8 +97,8 @@ export class KimchiExecutor extends DefaultExecutor {
     super("kimchi");
   }
 
-  transformRequest(model, body, stream, credentials) {
-    const transformed = super.transformRequest(model, body, stream, credentials);
+  transformRequest(model, body, stream, credentials, requestContext = null) {
+    const transformed = super.transformRequest(model, body, stream, credentials, requestContext);
     if (!transformed || typeof transformed !== "object") return transformed;
 
     mergeTopLevelSystem(transformed);

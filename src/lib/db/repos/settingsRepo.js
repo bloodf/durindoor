@@ -50,13 +50,7 @@ const DEFAULT_SETTINGS = {
   headroomEnabled: false,
   headroomUrl: DEFAULT_HEADROOM_URL,
   headroomCompressUserMessages: false,
-  pxpipeEnabled: false,
-  cavemanEnabled: false,
-  cavemanLevel: "full",
-  quotaTrackerState: DEFAULT_QUOTA_TRACKER_STATE,
-  ponytailEnabled: false,
-  ponytailLevel: "full",
-  pxpipeAutoInstall: true,
+  pxpipeEnabled: true,
   pxpipeMinChars: 25000,
   pxpipeTimeoutMs: 15000,
   providerConcurrencyLimits: {},
@@ -81,8 +75,12 @@ const DEFAULT_SETTINGS = {
   // Any engine throw fail-opens and restores the body; the loop never throws.
   compressionEnabled: false,
   compressionEngines: {},
+  cavemanEnabled: false,
+  cavemanLevel: "full",
+  quotaTrackerState: DEFAULT_QUOTA_TRACKER_STATE,
+  ponytailEnabled: false,
+  ponytailLevel: "full",
 };
-
 async function readRaw() {
   const db = await getAdapter();
   const row = db.get(`SELECT data FROM settings WHERE id = 1`);

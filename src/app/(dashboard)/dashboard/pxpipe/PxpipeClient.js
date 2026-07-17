@@ -11,12 +11,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { Card, Button } from "@/shared/components";
-
-const fmtTokens = (n) => {
-  if (n >= 1000000) return `${(n / 1000000).toFixed(2)}M`;
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
-  return String(n || 0);
-};
+import { formatPxpipeEvent, fmtTokens, PXPIPE_REASON_LABELS as REASON_LABELS } from "./formatPxpipeEvent.js";
 
 const fmtUptime = (ms) => {
   if (!ms || ms <= 0) return "—";
@@ -32,21 +27,6 @@ const WINDOW_TABS = [
   { id: "last30d", label: "30 days" },
   { id: "all", label: "All time" },
 ];
-
-const REASON_LABELS = {
-  applied: "Prompt exceeded threshold",
-  below_threshold: "Below size threshold",
-  not_profitable: "Compression not profitable",
-  below_min_chars: "Below minimum chars",
-  below_min_tokens: "Below minimum tokens",
-  unsupported_model: "Model not in allowlist",
-  unsupported_format: "Non-Claude request format",
-  timeout: "Compression timed out",
-  transform_error: "Transform error",
-  passthrough: "Passthrough",
-  disabled: "Disabled",
-  not_installed: "Not installed",
-};
 
 function SummaryCard({ label, value, sub, tone }) {
   return (
@@ -269,13 +249,13 @@ export default function PxpipeClient() {
       </Card>
 
       <Card className="p-4" id="logs">
-        <h3 className="font-medium mb-3">PXPIPE Logs</h3>
-        {logs?.installLog ? (
+        <h3 className="font-medium mb-3">Transform events</h3>
+        {logs?.events?.length ? (
           <pre className="rounded bg-black/5 dark:bg-white/5 p-3 text-xs font-mono overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap">
-            {logs.installLog}
+            {logs.events.map(formatPxpipeEvent).join("\n")}
           </pre>
         ) : (
-          <p className="text-sm text-text-muted">No install log yet.</p>
+          <p className="text-sm text-text-muted">No transform events yet.</p>
         )}
       </Card>
     </div>

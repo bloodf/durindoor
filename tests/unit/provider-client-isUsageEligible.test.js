@@ -25,6 +25,14 @@ describe("isUsageEligible", () => {
     expect(isUsageEligible({ provider: "ollama", authType: "apikey" })).toBe(true);
   });
 
+  it("returns true for the stored api_key spelling (Kiro direct import)", () => {
+    expect(isUsageEligible({ provider: "ollama", authType: "api_key" })).toBe(true);
+  });
+
+  it("returns false for api_key on a provider without API-key usage support", () => {
+    expect(isUsageEligible({ provider: "claude", authType: "api_key" })).toBe(false);
+  });
+
   it("returns false for unsupported auth type on an API-key provider", () => {
     expect(isUsageEligible({ provider: "ollama", authType: "cookie" })).toBe(false);
   });

@@ -10,10 +10,14 @@ const MAX_PAGE_SIZE = 500;
 
 
 
+// Kiro's direct import persists authType "api_key" (src/app/api/oauth/kiro/
+// api-key/route.js); older rows use "apikey" — accept both spellings.
+const API_KEY_AUTH_TYPES = ["apikey", "api_key"];
+
 export function isUsageEligible(connection) {
   return USAGE_SUPPORTED_PROVIDERS.includes(connection.provider) && (
     connection.authType === "oauth" ||
-    (connection.authType === "apikey" && USAGE_APIKEY_PROVIDERS.includes(connection.provider))
+    (API_KEY_AUTH_TYPES.includes(connection.authType) && USAGE_APIKEY_PROVIDERS.includes(connection.provider))
   );
 }
 

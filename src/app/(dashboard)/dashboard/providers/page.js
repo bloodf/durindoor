@@ -27,7 +27,7 @@ import { useNotificationStore } from "@/store/notificationStore";
 import { useHeaderSearchStore } from "@/store/headerSearchStore";
 import ModelAvailabilityBadge from "./components/ModelAvailabilityBadge";
 import AddCompatibleModal from "./components/AddCompatibleModal";
-import { getProviderStatus, OAUTH_AUTH_TYPES } from "./providerFilters";
+import { getProviderStatus, OAUTH_AUTH_TYPES, OAUTH_STATUS_AUTH_TYPES } from "./providerFilters";
 
 function getStatusDisplay(connected, error, errorCode) {
   const parts = [];
@@ -351,7 +351,7 @@ export default function ProvidersPage() {
       ([key, info]) =>
         !info.hidden &&
         matchSearch(info.name) &&
-        matchStatus(key, OAUTH_AUTH_TYPES, info.noAuth),
+        matchStatus(key, OAUTH_STATUS_AUTH_TYPES, info.noAuth),
     ),
     "oauth",
   );

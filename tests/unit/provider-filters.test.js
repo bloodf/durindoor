@@ -3,6 +3,7 @@ import {
   isProviderConfigured,
   getProviderStatus,
   OAUTH_AUTH_TYPES,
+  OAUTH_STATUS_AUTH_TYPES,
 } from "../../src/app/(dashboard)/dashboard/providers/providerFilters.js";
 
 describe("providerFilters", () => {
@@ -158,6 +159,46 @@ describe("providerFilters", () => {
           ["oauth", "apikey", "api_key"],
         ),
       ).toBe("active");
+    });
+
+    it("treats OAuth providers with an API key as active", () => {
+      expect(
+        getProviderStatus(
+          [{ provider: "codebuddy-cn", authType: "apikey", isActive: true }],
+          "codebuddy-cn",
+          OAUTH_STATUS_AUTH_TYPES,
+        ),
+      ).toBe("active");
+    });
+
+    it("treats OAuth providers with an api_key as active", () => {
+      expect(
+        getProviderStatus(
+          [{ provider: "clinepass", authType: "api_key", isActive: true }],
+          "clinepass",
+          OAUTH_STATUS_AUTH_TYPES,
+        ),
+      ).toBe("active");
+    });
+
+    it("treats OAuth providers with only inactive API key as deactivated", () => {
+      expect(
+        getProviderStatus(
+          [{ provider: "codebuddy-cn", authType: "apikey", isActive: false }],
+          "codebuddy-cn",
+          OAUTH_STATUS_AUTH_TYPES,
+        ),
+      ).toBe("deactivated");
+    });
+
+    it("returns not-configured for OAuth providers without matching connection", () => {
+      expect(
+        getProviderStatus(
+          [{ provider: "openai", authType: "oauth", isActive: true }],
+          "codebuddy-cn",
+          OAUTH_STATUS_AUTH_TYPES,
+        ),
+      ).toBe("not-configured");
     });
   });
 });

@@ -5,6 +5,8 @@ export function isProviderConfigured(connections, providerId, noAuth = false) {
 
 export const OAUTH_AUTH_TYPES = ["oauth", "access_token"];
 
+export const OAUTH_STATUS_AUTH_TYPES = ["oauth", "access_token", "apikey", "api_key"];
+
 /**
  * Derive the dashboard status of a provider based on its connection rows and
  * free-provider opt-out setting.

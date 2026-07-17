@@ -6,6 +6,7 @@ import {
   debugItems,
   systemItems,
   tokenSaverMenu,
+  providersMenu,
   COMBINED_WEB_ITEM,
   PROFILE_NAV_ITEM,
   BRAND_LOGO_SRC,
@@ -18,17 +19,17 @@ describe("SidebarNavIcons", () => {
   it("maps top nav labels to expected icon glyphs", () => {
     const map = new Map(navItems.map((i) => [i.label, i.icon]));
     expect(map.get("Usage")).toBe("bar_chart");
-    expect(map.get("Providers")).toBe("dns");
     expect(map.get("Playground")).toBe("chat");
     expect(map.get("Combos")).toBe("layers");
-    expect(map.get("Quota Tracker")).toBe("data_usage");
-    expect(map.get("Provider Health")).toBe("monitor_heart");
     expect(map.get("Compression Studio")).toBe("compress");
     expect(map.get("MCP Gateway")).toBe("hub");
   });
 
   it("does not include removed or relocated entries in top nav", () => {
     const labels = new Set(navItems.map((i) => i.label));
+    expect(labels).not.toContain("Providers");
+    expect(labels).not.toContain("Quota Tracker");
+    expect(labels).not.toContain("Provider Health");
     expect(labels).not.toContain("Endpoint & Key");
     expect(labels).not.toContain("CLI Tools");
     expect(labels).not.toContain("Token Saver");
@@ -53,6 +54,23 @@ describe("SidebarNavIcons", () => {
     expect(map.get("CLI Tools")).toBe("terminal");
     expect(map.get("Proxy Pools")).toBe("lan");
     expect(map.get("Skills")).toBe("extension");
+  });
+
+  it("exposes a collapsible providers menu with configuration, health and quota", () => {
+    expect(providersMenu.label).toBe("Providers");
+    expect(providersMenu.icon).toBe("dns");
+    expect(providersMenu.children.map((c) => c.label)).toEqual([
+      "Configuration",
+      "Health",
+      "Quota Tracker",
+    ]);
+    expect(providersMenu.children.map((c) => c.href)).toEqual([
+      "/dashboard/providers",
+      "/dashboard/health",
+      "/dashboard/quota",
+    ]);
+    const config = providersMenu.children.find((c) => c.href === "/dashboard/providers");
+    expect(config.exact).toBe(false);
   });
 
   it("exposes a collapsible token saver menu with statistics, settings and headroom", () => {
@@ -110,10 +128,10 @@ describe("SidebarNavIcons", () => {
 
   it("marks nested top-level nav items as exact: false so children stay highlighted", () => {
     const providers = navItems.find((i) => i.href === "/dashboard/providers");
+    expect(providers).toBeUndefined();
     const mcp = navItems.find((i) => i.href === "/dashboard/mcp-gateway");
     const cli = systemItems.find((i) => i.href === "/dashboard/cli-tools");
     const usage = navItems.find((i) => i.href === "/dashboard/usage");
-    expect(providers.exact).toBe(false);
     expect(mcp.exact).toBe(false);
     expect(cli.exact).toBe(false);
     expect(usage.exact).toBeUndefined();

@@ -8,6 +8,7 @@ import {
   Badge,
   Button,
   Toggle,
+  Select,
 } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS } from "@/shared/constants/config";
@@ -26,7 +27,7 @@ import { useNotificationStore } from "@/store/notificationStore";
 import { useHeaderSearchStore } from "@/store/headerSearchStore";
 import ModelAvailabilityBadge from "./components/ModelAvailabilityBadge";
 import AddCompatibleModal from "./components/AddCompatibleModal";
-import { isProviderConfigured } from "./providerFilters";
+import { getProviderStatus, OAUTH_AUTH_TYPES } from "./providerFilters";
 
 function getStatusDisplay(connected, error, errorCode) {
   const parts = [];
@@ -109,7 +110,7 @@ export default function ProvidersPage() {
     useState(false);
   const [testingMode, setTestingMode] = useState(null);
   const [testResults, setTestResults] = useState(null);
-  const [providerFilter, setProviderFilter] = useState("all");
+  const [providerFilter, setProviderFilter] = useState("active");
   const notify = useNotificationStore();
   const searchQuery = useHeaderSearchStore((s) => s.query);
   const registerSearch = useHeaderSearchStore((s) => s.register);
@@ -306,10 +307,20 @@ export default function ProvidersPage() {
     }
   };
 
-  const matchConfigured = (key, noAuth = false) => {
-    if (providerFilter === "all") return true;
-    const configured = isProviderConfigured(connections, key, noAuth);
-    return providerFilter === "configured" ? configured : !configured;
+  const matchStatus = (key, authTypes, noAuth = false) =>
+    getProviderStatus(
+      connections,
+      key,
+      authTypes,
+      noAuth,
+      disabledFreeProviders,
+    ) === providerFilter;
+
+  const getFreeAuthTypes = (key, info) => {
+    if (key === "kiro") return ["oauth", "apikey", "api_key"];
+    if (Array.isArray(info.authModes) && info.authModes.length > 0) return info.authModes;
+    if (info.authType) return [info.authType];
+    return OAUTH_AUTH_TYPES;
   };
 
   const compatibleProviders = providerNodes
@@ -322,7 +333,7 @@ export default function ProvidersPage() {
       apiType: node.apiType,
       ...(node.iconUrl ? { iconUrl: node.iconUrl } : {}),
     }))
-    .filter((p) => matchSearch(p.name) && matchConfigured(p.id));
+    .filter((p) => matchSearch(p.name) && matchStatus(p.id, "apikey"));
 
   const anthropicCompatibleProviders = providerNodes
     .filter((node) => node.type === "anthropic-compatible")
@@ -333,16 +344,24 @@ export default function ProvidersPage() {
       textIcon: "AC",
       ...(node.iconUrl ? { iconUrl: node.iconUrl } : {}),
     }))
-    .filter((p) => matchSearch(p.name) && matchConfigured(p.id));
+    .filter((p) => matchSearch(p.name) && matchStatus(p.id, "apikey"));
 
   const oauthEntries = sortByPriority(
     Object.entries(OAUTH_PROVIDERS).filter(
-      ([key, info]) => !info.hidden && matchSearch(info.name) && matchConfigured(key, info.noAuth),
+      ([key, info]) =>
+        !info.hidden &&
+        matchSearch(info.name) &&
+        matchStatus(key, OAUTH_AUTH_TYPES, info.noAuth),
     ),
     "oauth",
   );
   const freeEntries = Object.entries(FREE_PROVIDERS)
-    .filter(([key, info]) => !info.hidden && matchSearch(info.name) && matchConfigured(key, info.noAuth))
+    .filter(
+      ([key, info]) =>
+        !info.hidden &&
+        matchSearch(info.name) &&
+        matchStatus(key, getFreeAuthTypes(key, info), info.noAuth),
+    )
     .sort(([, a], [, b]) => (b.noAuth ? 1 : 0) - (a.noAuth ? 1 : 0));
   const freeTierEntries = sortByPriority(
     Object.entries(FREE_TIER_PROVIDERS).filter(
@@ -350,16 +369,16 @@ export default function ProvidersPage() {
         !info.hidden &&
         matchSearch(info.name) &&
         (info.serviceKinds ?? ["llm"]).includes("llm") &&
-        matchConfigured(key, info.noAuth),
+        matchStatus(key, info.authType ?? "apikey", info.noAuth),
     ),
     "freeTier",
   ).sort(([, a], [, b]) => (b.noAuth ? 1 : 0) - (a.noAuth ? 1 : 0));
   // Web Cookie Providers: filter with search and sort by priority
   const webCookieEntries = sortByPriority(
     Object.entries(WEB_COOKIE_PROVIDERS).filter(
-      ([key, info]) => !info.hidden && matchSearch(info.name) && matchConfigured(key, info.noAuth),
+      ([key, info]) => !info.hidden && matchSearch(info.name) && matchStatus(key, "cookie", info.noAuth),
     ),
-    "apikey",
+    "cookie",
   );
   // API Key: connected providers first, then alphabetical by name.
   // Agent-only providers (e.g. Devin) are shown once an account is connected
@@ -371,7 +390,7 @@ export default function ProvidersPage() {
         ((info.serviceKinds ?? ["llm"]).includes("llm") ||
           getProviderStats(key, "apikey").total > 0) &&
         matchSearch(info.name) &&
-        matchConfigured(key, info.noAuth),
+        matchStatus(key, "apikey", info.noAuth),
     )
     .sort(([ka, a], [kb, b]) => {
       const ca = getProviderStats(ka, "apikey").total > 0 ? 0 : 1;
@@ -407,26 +426,18 @@ export default function ProvidersPage() {
   return (
     <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap gap-1.5">
-          {[
-            { key: "all", label: "All" },
-            { key: "configured", label: "Configured" },
-            { key: "unconfigured", label: "Unconfigured" },
-          ].map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => setProviderFilter(key)}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                providerFilter === key
-                  ? "bg-primary text-white"
-                  : "bg-bg border border-border text-text-muted hover:text-text-main"
-              }`}
-              aria-pressed={providerFilter === key}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <Select
+          label="Provider status"
+          aria-label="Provider status"
+          value={providerFilter}
+          onChange={(e) => setProviderFilter(e.target.value)}
+          options={[
+            { value: "active", label: "Active only" },
+            { value: "deactivated", label: "Deactivated" },
+            { value: "not-configured", label: "Not configured" },
+          ]}
+          className="w-full sm:w-56"
+        />
       </div>
 
       {!hasAnyResult && (
@@ -434,7 +445,7 @@ export default function ProvidersPage() {
           <span className="material-symbols-outlined text-[32px] text-text-muted mb-2">
             search_off
           </span>
-          <p className="text-text-muted text-sm">No providers match your search</p>
+          <p className="text-text-muted text-sm">No providers match current filters</p>
         </div>
       )}
 
@@ -525,9 +536,9 @@ export default function ProvidersPage() {
               key={key}
               providerId={key}
               provider={info}
-              stats={getProviderStats(key, "oauth")}
+              stats={getProviderStats(key, OAUTH_AUTH_TYPES)}
               authType="oauth"
-              onToggle={(active) => handleToggleProvider(key, "oauth", active)}
+              onToggle={(active) => handleToggleProvider(key, OAUTH_AUTH_TYPES, active)}
             />
           ))}
         </div>
@@ -562,12 +573,7 @@ export default function ProvidersPage() {
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
           {freeEntries.map(([key, info]) => {
-            // Kiro accepts both OAuth and api-key connections; count/toggle both
-            // so the card total matches the provider detail page (#kiro-apikey).
-            // Kiro's headless api-key flow persists authType "api_key" (underscore),
-            // while generic apikey providers use "apikey" — include both spellings.
-            const freeAuthTypes =
-              key === "kiro" ? ["oauth", "apikey", "api_key"] : "oauth";
+            const freeAuthTypes = getFreeAuthTypes(key, info);
             return (
               <ProviderCard
                 key={key}
@@ -662,9 +668,9 @@ export default function ProvidersPage() {
               key={key}
               providerId={key}
               provider={info}
-              stats={getProviderStats(key, "apikey")}
-              authType="apikey"
-              onToggle={(active) => handleToggleProvider(key, "apikey", active)}
+              stats={getProviderStats(key, "cookie")}
+              authType="cookie"
+              onToggle={(active) => handleToggleProvider(key, "cookie", active)}
             />
           ))}
         </div>

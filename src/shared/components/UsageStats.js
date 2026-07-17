@@ -225,15 +225,19 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
     Promise.all([
       fetch("/api/providers", { signal: controller.signal }).then((r) => r.ok ? r.json() : null),
       fetch("/api/provider-nodes", { signal: controller.signal }).then((r) => r.ok ? r.json() : null),
+      fetch("/api/settings", { signal: controller.signal }).then((r) => r.ok ? r.json() : null),
     ])
-      .then(([d, nodesData]) => {
+      .then(([d, nodesData, settings]) => {
         // Build node name lookup for custom providers
         const nodeNameMap = {};
         for (const node of (nodesData?.nodes || [])) {
           nodeNameMap[node.id] = node.name;
         }
+        const disabledFreeProviders = settings?.disabledFreeProviders || [];
+        const allConnections = d?.connections || [];
+        const configuredIds = new Set(allConnections.map((c) => c.provider));
         const seen = new Set();
-        const unique = (d?.connections || []).filter((c) => {
+        const unique = allConnections.filter((c) => {
           if (c.isActive === false) return false;
           if (!isLLMProvider(c.provider)) return false;
           if (seen.has(c.provider)) return false;
@@ -244,7 +248,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
           nodeName: nodeNameMap[c.provider] || null,
         }));
         const noAuthProviders = Object.values(FREE_PROVIDERS)
-          .filter((p) => p.noAuth && !seen.has(p.id) && isLLMProvider(p.id))
+          .filter((p) => p.noAuth && !configuredIds.has(p.id) && !disabledFreeProviders.includes(p.id) && isLLMProvider(p.id))
           .map((p) => ({ provider: p.id, name: p.name }));
         if (!controller.signal.aborted) setProviders([...unique, ...noAuthProviders]);
       })

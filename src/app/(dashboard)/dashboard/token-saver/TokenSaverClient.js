@@ -698,13 +698,10 @@ export default function TokenSaverClient() {
             </div>
             <div className="flex items-center gap-2">
               {!pxpipeStatus.installed ? (
-                <Button
-                  onClick={() => pxpipeAction("install")}
-                  disabled={pxpipeActionLoading}
-                  size="sm"
-                >
-                  {pxpipeActionLoading ? "Installing…" : "Install"}
-                </Button>
+                <p className="text-sm text-warning max-w-64">
+                  PXPIPE dependency missing. Reinstall the application
+                  (npm install) to restore it.
+                </p>
               ) : pxpipeStatus.running ? (
                 <Button
                   onClick={() => pxpipeAction("stop")}

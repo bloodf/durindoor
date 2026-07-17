@@ -4,7 +4,6 @@ import { fileURLToPath } from "node:url";
 import { DATA_DIR } from "../dataDir.js";
 
 export const PXPIPE_DIR = path.join(DATA_DIR, "pxpipe");
-const INSTALL_LOG = path.join(PXPIPE_DIR, "install.log");
 
 export const PXPIPE_MISSING_CODE = "DEPENDENCY_MISSING";
 
@@ -16,18 +15,6 @@ const MISSING_REASONS = {
 
 const STANDALONE_ROOT_ENV = "DURINDOOR_STANDALONE_ROOT";
 
-function ensureDir() {
-  if (!fs.existsSync(PXPIPE_DIR)) fs.mkdirSync(PXPIPE_DIR, { recursive: true });
-}
-
-function writeInstallLog(message) {
-  try {
-    ensureDir();
-    fs.appendFileSync(INSTALL_LOG, `[${new Date().toISOString()}] ${message}\n`);
-  } catch {
-    // Logging must never break status queries.
-  }
-}
 
 const PXPIPE_TRANSFORM_SUBPATH = "./transform";
 
@@ -108,34 +95,9 @@ export function getInstallInfo() {
     const pkgJson = path.join(root, "package.json");
     const pkg = fs.existsSync(pkgJson) ? JSON.parse(fs.readFileSync(pkgJson, "utf8")) : {};
     return { installed: true, version: pkg.version || null, path: root };
-  } catch (error) {
-    writeInstallLog(`getInstallInfo read error: ${error.message}`);
+  } catch {
+    // Unreadable package.json means the bundled dependency is corrupt.
     return { installed: false, version: null, path: root, reason: MISSING_REASONS.not_loaded, code: PXPIPE_MISSING_CODE };
   }
 }
 
-// Runtime npm install is no longer supported. The package is a direct
-// dependency. The install API remains so callers can surface a clear error.
-export function isInstalling() {
-  return false;
-}
-
-export function installPxpipe() {
-  const info = getInstallInfo();
-  if (info.installed) return Promise.resolve(info);
-  const err = new Error(info.reason || "PXPIPE dependency is not installed");
-  err.code = info.code || PXPIPE_MISSING_CODE;
-  err.surface = info.reason || "PXPIPE dependency is not installed";
-  writeInstallLog(`installPxpipe refused: ${err.message}`);
-  return Promise.reject(err);
-}
-
-export function getInstallLogTail(maxLines = 200) {
-  try {
-    if (!fs.existsSync(INSTALL_LOG)) return "";
-    const lines = fs.readFileSync(INSTALL_LOG, "utf8").split(/\r?\n/).filter(Boolean);
-    return lines.slice(-maxLines).join("\n");
-  } catch {
-    return "";
-  }
-}

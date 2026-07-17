@@ -1,4 +1,4 @@
-import { getInstallInfo, isInstalling } from "./install.js";
+import { getInstallInfo } from "./install.js";
 import { getLoadedInfo, loadPxpipe, selfTest } from "./loader.js";
 
 // Aggregate status for the Token Saver card and /api/pxpipe/status.
@@ -8,7 +8,6 @@ export function getPxpipeStatus() {
   const loaded = getLoadedInfo();
   return {
     installed: install.installed,
-    installing: isInstalling(),
     installMethod: "dependency",
     dependencyMissing: !install.installed && !!install.code,
     version: install.version,

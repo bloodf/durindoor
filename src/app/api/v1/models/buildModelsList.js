@@ -4,12 +4,14 @@ import {
   getProviderAlias,
   isAnthropicCompatibleProvider,
   isOpenAICompatibleProvider,
+  isLocalOllamaProvider,
 } from "@/shared/constants/providers";
 import { getProviderConnections, getCombos, getCustomModels, getModelAliases } from "@/lib/localDb";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { getSettings } from "@/lib/db/repos/settingsRepo";
 import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
+import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
@@ -125,6 +127,35 @@ const LIVE_MODEL_RESOLVERS = {
       .filter((m) => typeof m.id === "string")
       .map((m) => ({ id: m.id, ...(typeof m.name === "string" ? { name: m.name } : {}) }));
     return models.length ? { models } : null;
+  },
+  "ollama-local": async (conn, guard) => {
+    const url = `${resolveOllamaLocalHost(conn)}/api/tags`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    try {
+      const response = await guardedProbeFetch(url, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        signal: controller.signal,
+      }, guard);
+      if (!response.ok) return null;
+      const data = await response.json();
+      const list = parseOpenAIStyleModels(data);
+      if (!Array.isArray(list)) return null;
+      const models = list
+        .map((m) => {
+          if (!isRecord(m)) return null;
+          const id = typeof m.id === "string" ? m.id : (typeof m.name === "string" ? m.name : "");
+          if (!id) return null;
+          const isEmbedding = /embed/.test(id.toLowerCase());
+          return { id, name: id, ...(isEmbedding ? { kind: "embedding" } : {}) };
+        })
+        .filter(Boolean);
+      return models.length ? { models } : null;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   },
 };
 
@@ -330,6 +361,7 @@ async function fetchLocalPassthroughModels(connection, guard) {
 // Provider matches kindFilter when its serviceKinds intersect the requested kinds.
 // LLM is the default kind for providers missing serviceKinds.
 function providerMatchesKinds(providerId, kindFilter) {
+  if (isLocalOllamaProvider(providerId) && kindFilter.includes("embedding")) return true;
   const provider = AI_PROVIDERS[providerId];
   const serviceKinds = provider?.serviceKinds;
   const kinds = Array.isArray(serviceKinds) && serviceKinds.length > 0
@@ -574,7 +606,7 @@ async function buildModelsListImpl(kindFilter, guard) {
         const liveResolver = LIVE_MODEL_RESOLVERS[providerId];
         if (liveResolver && !hasExplicitEnabledModels) {
           try {
-            const live = await liveResolver(conn);
+            const live = await liveResolver(conn, guard);
             if (live?.models?.length) {
               rawModelIds = live.models.map((m) => {
                 if (m.kind || m.type) liveModelKindById.set(m.id, m.kind || m.type);

@@ -141,16 +141,13 @@ function flattenToolHistory(messages) {
 
 // Reorder combo models by capability fit. Stable; never drops a model (fallback intact).
 // Tier 0: satisfies all hard + all soft. Tier 1: all hard only. Tier 2: rest.
-export function reorderByCapabilities(models, required) {
+export function reorderByCapabilities(models, required, capabilitiesMap = null) {
   if (!required || required.size === 0 || !Array.isArray(models) || models.length <= 1) return models;
   const hard = [...required].filter((c) => HARD_CAPS.has(c));
   const soft = [...required].filter((c) => !HARD_CAPS.has(c));
 
   const tierOf = (m) => {
-    const slash = typeof m === "string" ? m.indexOf("/") : -1;
-    const provider = slash > 0 ? m.slice(0, slash) : "";
-    const model = slash > 0 ? m.slice(slash + 1) : m;
-    const caps = getCapabilitiesForModel(provider, model);
+    const caps = capabilitiesMap?.get?.(m) ?? getCapabilitiesForModelByModelStr(m);
     if (!hard.every((c) => caps[c] === true)) return 2;
     return soft.every((c) => caps[c] === true) ? 0 : 1;
   };
@@ -281,6 +278,13 @@ function _updateScore(comboName, modelStr, success, httpStatus) {
  * - Primary: score descending (healthier models first)
  * - Tie-break: LRU (least recently succeeded first) → natural round-robin when all healthy
  */
+function getCapabilitiesForModelByModelStr(modelStr) {
+  const slash = typeof modelStr === "string" ? modelStr.indexOf("/") : -1;
+  const provider = slash > 0 ? modelStr.slice(0, slash) : "";
+  const model = slash > 0 ? modelStr.slice(slash + 1) : modelStr;
+  return getCapabilitiesForModel(provider, model);
+}
+
 export function getSmartScoredModels(models, comboName) {
   if (!models || models.length <= 1) return models;
   const scores = comboScoringState.get(comboName);
@@ -583,10 +587,10 @@ export function classifyTask(body) {
   return { level: "standard", weight: taskWeight("standard"), ...s, reasons: reasons.length ? reasons : ["default"] };
 }
 
-function modelPowerScore(modelStr) {
+function modelPowerScore(modelStr, capabilitiesMap = null) {
   const { model } = splitModelString(modelStr);
   const id = `${modelStr || ""} ${model || ""}`.toLowerCase();
-  const caps = getModelCapabilities(modelStr);
+  const caps = capabilitiesMap?.get?.(modelStr) ?? getCapabilitiesForModelByModelStr(modelStr);
 
   let score = 35;
   if (caps.reasoning) score += 18;
@@ -610,10 +614,10 @@ function modelPowerScore(modelStr) {
   return Math.max(0, Math.min(150, score));
 }
 
-export function scoreModelForTask(modelStr, task = classifyTask({}), required = new Set()) {
-  const caps = getModelCapabilities(modelStr);
+export function scoreModelForTask(modelStr, task = classifyTask({}), required = new Set(), capabilitiesMap = null) {
+  const caps = capabilitiesMap?.get?.(modelStr) ?? getCapabilitiesForModelByModelStr(modelStr);
   const target = TASK_TARGET_POWER[task.level] || TASK_TARGET_POWER.standard;
-  const power = modelPowerScore(modelStr);
+  const power = modelPowerScore(modelStr, capabilitiesMap);
   let score = 100 - Math.abs(power - target);
 
   const hard = [...(required || [])].filter((c) => HARD_CAPS.has(c));
@@ -634,11 +638,11 @@ export function scoreModelForTask(modelStr, task = classifyTask({}), required = 
   return score;
 }
 
-export function reorderByTaskWeight(models, task = classifyTask({}), required = new Set()) {
+export function reorderByTaskWeight(models, task = classifyTask({}), required = new Set(), capabilitiesMap = null) {
   if (!Array.isArray(models) || models.length <= 1) return models;
 
   const reordered = models
-    .map((m, i) => ({ m, i, score: scoreModelForTask(m, task, required) }))
+    .map((m, i) => ({ m, i, score: scoreModelForTask(m, task, required, capabilitiesMap) }))
     .sort((a, b) => b.score - a.score || a.i - b.i)
     .map((x) => x.m);
 
@@ -856,6 +860,7 @@ export async function handleComboChat({
   quotaRanker = null,
   signal = null,
   contextRequirements = null,
+  capabilitiesMap = null,
 }) {
   const abortedResponse = () => new Response(
     JSON.stringify({ error: { message: "Request aborted" } }),
@@ -903,7 +908,7 @@ export async function handleComboChat({
     );
   }
 
-  const activeModels = filterByContextRequirements(models, contextRequirements, log);
+  const activeModels = filterByContextRequirements(models, contextRequirements, log, capabilitiesMap);
   if (!Array.isArray(activeModels) || activeModels.length === 0) {
     const msg = `Combo "${comboName}" has no models matching context requirements`;
     log.warn("COMBO", msg);
@@ -928,7 +933,7 @@ export async function handleComboChat({
   // dispatch order, and still leaves hard-capability-aware auto-switch to push
   // vision/audio models to the front when the request needs them. Same reference
   // when off.
-  rotatedModels = sortByContextSize(rotatedModels, contextRequirements, log);
+  rotatedModels = sortByContextSize(rotatedModels, contextRequirements, log, capabilitiesMap);
 
   // Required request capabilities hoisted so both the capability reorder and
   // (for task strategies) the task reorder can use the same set.
@@ -938,7 +943,7 @@ export async function handleComboChat({
   // explicit Fallback/Round Robin order for plain text requests.
   if (autoSwitch) {
     if (required.size > 0) {
-      const reordered = reorderByCapabilities(rotatedModels, required);
+      const reordered = reorderByCapabilities(rotatedModels, required, capabilitiesMap);
       if (reordered[0] !== rotatedModels[0]) {
         log.info("COMBO", `auto-switch for [${[...required].join(",")}] → ${reordered[0]}`);
       }
@@ -949,7 +954,7 @@ export async function handleComboChat({
   // Task-aware reordering (smart/task strategies) runs after context sort.
   if (autoSwitch && isTaskRoutingStrategy(comboStrategy)) {
     const task = classifyTask(body);
-    const taskReordered = reorderByTaskWeight(rotatedModels, task, required);
+    const taskReordered = reorderByTaskWeight(rotatedModels, task, required, capabilitiesMap);
     if (taskReordered[0] !== rotatedModels[0]) {
       const reasons = Array.isArray(task.reasons) && task.reasons.length ? ` (${task.reasons.join(", ")})` : "";
       log.info("COMBO", `smart-route task=${task.level}${reasons} → ${taskReordered[0]}`);
@@ -1338,7 +1343,7 @@ async function drainCancelledPanelCalls(calls, pendingIndexes, timeoutMs) {
  *   never called (same eligibility semantics as handleComboChat).
  * @returns {Promise<Response>}
  */
-export async function handleFusionChat({ body, models, handleSingleModel, log, comboName, judgeModel, tuning, contextRequirements = null }) {
+export async function handleFusionChat({ body, models, handleSingleModel, log, comboName, judgeModel, tuning, contextRequirements = null, capabilitiesMap = null }) {
   const allModels = Array.isArray(models) ? models.filter(Boolean) : [];
   if (allModels.length === 0) {
     return new Response(
@@ -1362,8 +1367,8 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
   // Context-requirements eligibility filter must run here too: the fusion
   // branch in chat.js returns before handleComboChat, so without this call a
   // configured min-context filter would be silently ignored for fusion combos.
-  const eligibleModels = filterByContextRequirements(allModels, contextRequirements, log);
-  const panel = sortByContextSize(eligibleModels, contextRequirements, log);
+  const eligibleModels = filterByContextRequirements(allModels, contextRequirements, log, capabilitiesMap);
+  const panel = sortByContextSize(eligibleModels, contextRequirements, log, capabilitiesMap);
   if (!Array.isArray(panel) || panel.length === 0) {
     const msg = `Combo "${comboName}" has no models matching context requirements`;
     log.warn("FUSION", msg);

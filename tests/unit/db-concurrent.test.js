@@ -134,8 +134,8 @@ describe("DB Concurrency — atomic safety", () => {
       promises.push(db.addCustomModel({ providerAlias: "racep", id: "racemodel", type: "llm", name: "r" }));
     }
     const results = await Promise.all(promises);
-    const trueCount = results.filter((r) => r === true).length;
-    expect(trueCount).toBe(1); // exactly one wins
+    const okResults = results.filter((r) => r && r.id === "racemodel");
+    expect(okResults).toHaveLength(1); // exactly one wins
     const all = await db.getCustomModels();
     expect(all.filter((m) => m.providerAlias === "racep" && m.id === "racemodel").length).toBe(1);
   });

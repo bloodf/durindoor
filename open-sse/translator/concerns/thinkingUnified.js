@@ -87,11 +87,21 @@ export function extractThinking(body) {
 export const captureThinking = extractThinking;
 
 // Resolve thinking format: provider override > capability > derive(targetFormat).
-function resolveFormat(targetFormat, model, provider) {
+function resolveFormat(targetFormat, model, provider, caps = null) {
+  const resolvedCaps = caps || getCapabilitiesForModel(provider, model);
+  // An explicitly persisted custom-model thinkingFormat (customKeys marker)
+  // outranks the registry-level provider default (e.g. a custom model behind
+  // OpenRouter that speaks claude-style thinking, not "openai").
+  if (
+    resolvedCaps?.thinkingFormat
+    && resolvedCaps.customKeys instanceof Set
+    && resolvedCaps.customKeys.has("thinkingFormat")
+  ) {
+    return resolvedCaps.thinkingFormat;
+  }
   const providerFmt = provider ? PROVIDERS[provider]?.thinkingFormat : null;
   if (providerFmt) return providerFmt;
-  const caps = getCapabilitiesForModel(provider, model);
-  if (caps.thinkingFormat) return caps.thinkingFormat;
+  if (resolvedCaps.thinkingFormat) return resolvedCaps.thinkingFormat;
   return FORMAT_TO_NATIVE[targetFormat] || "openai";
 }
 
@@ -327,14 +337,21 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null) {
 // Mutates and returns body. No-op when model has no reasoning capability.
 // `intent` is a pre-captured config (from captureThinking on the original body);
 // falls back to extracting from the current body when omitted.
-export function applyThinking(targetFormat, model, body, provider = null, intent = undefined) {
+export function applyThinking(targetFormat, model, body, provider = null, intent = undefined, modelCapabilities = null) {
   if (!body || typeof body !== "object") return body;
 
   // ponytail: ceiling = ollama under claude transport. Lift into PROVIDERS[ollama].quirks
   // or a capability flag if a second native-claude provider lands.
-  const preservesNativeClaudeThinking = PROVIDERS[provider]?.quirks?.preserveNativeClaudeThinking
+  // Explicit custom thinking-related overrides (customKeys marker) must not be
+  // bypassed by the native-Claude compatibility shortcut below.
+  const hasExplicitThinkingOverride =
+    modelCapabilities?.customKeys instanceof Set
+    && ["reasoning", "thinkingCanDisable", "thinkingRange", "thinkingFormat"]
+      .some((k) => modelCapabilities.customKeys.has(k));
+  const preservesNativeClaudeThinking = (PROVIDERS[provider]?.quirks?.preserveNativeClaudeThinking
     || provider === "ollama"
-    || provider === "ollama-local";
+    || provider === "ollama-local")
+    && !hasExplicitThinkingOverride;
   if (preservesNativeClaudeThinking && targetFormat === FORMATS.CLAUDE) {
     // WR-01: chatCore.js:66-68 injects `reasoning_effort` (OpenAI field) for level-mode
     // providerThinking configs. On the Claude wire it is not a valid Messages field.
@@ -364,7 +381,7 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
   }
 
   const cfg = override || intent || extractThinking(body);
-  const caps = getCapabilitiesForModel(provider, cleanModel);
+  const caps = modelCapabilities || getCapabilitiesForModel(provider, cleanModel);
 
   // Model cannot reason → strip any stray thinking fields.
   if (!caps.reasoning) {
@@ -373,7 +390,7 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
   }
   if (!cfg) return body;
 
-  const fmt = resolveFormat(targetFormat, cleanModel, provider);
+  const fmt = resolveFormat(targetFormat, cleanModel, provider, caps);
   stripAll(body);
   applyFormat(fmt, body, cfg, caps, cleanModel, provider);
   return body;

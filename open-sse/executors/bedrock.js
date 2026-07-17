@@ -404,7 +404,9 @@ export class BedrockExecutor extends BaseExecutor {
     });
   }
 
-  async execute({ model, body, stream, credentials, signal }) {
+  async execute({ model, body, stream, credentials, signal, requestContext = null }) {
+    // OpenAI-shape body converts to Converse below; clamp its token fields first.
+    body = this.clampCustomMaxOutput({ ...body }, requestContext);
     const url = this.buildUrl(model, stream, 0, credentials);
     const headers = this.buildHeaders(credentials);
     if (!credentials?.apiKey) {

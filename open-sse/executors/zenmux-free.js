@@ -292,7 +292,9 @@ export class ZenmuxFreeExecutor extends BaseExecutor {
     super("zenmux-free", PROVIDERS["zenmux-free"]);
   }
 
-  async execute({ body, credentials, signal, stream: wantStream, proxyOptions = null }) {
+  async execute({ body, credentials, signal, stream: wantStream, proxyOptions = null, requestContext = null }) {
+    // Clamp OpenAI-shape token fields before resolveMaxTokens reads them.
+    body = this.clampCustomMaxOutput({ ...body }, requestContext);
     const rawCookie = normalizeZenmuxCookie(credentials?.apiKey);
     const ctoken = extractZenmuxCtoken(rawCookie);
     if (!ctoken) {

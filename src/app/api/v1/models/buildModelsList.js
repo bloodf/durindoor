@@ -556,6 +556,17 @@ async function buildModelsListImpl(kindFilter, guard) {
     }
   };
 
+  // Custom-model capability overrides — one map for all combo aggregations
+  // (no per-member DB reads). Keys are canonical `providerId/modelId`;
+  // aggregateComboCapabilities normalizes member prefixes (static alias OR a
+  // connection's custom output prefix) through aliasToProviderId before
+  // lookup, so `myproxy/model` finds a row stored under the provider alias.
+  const customCapsById = new Map(
+    customModels
+      .filter((m) => m?.id && m?.providerAlias && (m.kind || m.type || "llm") === "llm" && m?.capabilities && typeof m.capabilities === "object")
+      .map((m) => [`${aliasToProviderId[m.providerAlias] ?? m.providerAlias}/${m.id}`, m.capabilities]),
+  );
+
   // Combos first (filtered by kind). Web combos expose `kind` so AI knows search vs fetch.
   for (const combo of combos) {
     if (!comboMatchesKinds(combo, kindFilter)) continue;
@@ -593,7 +604,7 @@ async function buildModelsListImpl(kindFilter, guard) {
     if (combo.kind === "webSearch" || combo.kind === "webFetch") {
       entry.kind = combo.kind;
     } else {
-      const comboCaps = aggregateComboCapabilities(visibleMembers, comboByName, aliasToProviderId);
+      const comboCaps = aggregateComboCapabilities(visibleMembers, comboByName, aliasToProviderId, 0, customCapsById);
       if (comboCaps) entry.capabilities = comboCaps;
     }
     models.push(entry);
@@ -616,10 +627,14 @@ async function buildModelsListImpl(kindFilter, guard) {
       const modelId = String(customModel.id).trim();
       if (!modelId) continue;
 
+      const providerId = providerAlias; // used for static fallback only
+      const staticCaps = getCapabilitiesForModel(providerId, modelId);
+      const customCaps = isRecord(customModel.capabilities) ? customModel.capabilities : {};
       models.push({
         id: `${providerAlias}/${modelId}`,
         object: "model",
         owned_by: providerAlias,
+        capabilities: { ...staticCaps, ...customCaps },
       });
     }
   } else {
@@ -754,6 +769,7 @@ async function buildModelsListImpl(kindFilter, guard) {
           .filter((modelId) => typeof modelId === "string" && modelId.trim() !== "");
 
         const customModelKindById = new Map();
+        const customCapabilitiesById = new Map();
         const customModelIds = customModels
           .filter((m) => {
             if (!m.id) return false;
@@ -767,7 +783,10 @@ async function buildModelsListImpl(kindFilter, guard) {
           .map((m) => {
             const modelId = String(m.id).trim();
             const kind = customModelKind(m);
-            if (modelId) customModelKindById.set(modelId, kind);
+            if (modelId) {
+              customModelKindById.set(modelId, kind);
+              if (isRecord(m.capabilities)) customCapabilitiesById.set(modelId, m.capabilities);
+            }
             return modelId;
           })
           .filter((modelId) => modelId !== "");
@@ -807,10 +826,12 @@ async function buildModelsListImpl(kindFilter, guard) {
           // modal + combo filters.
           if (hidePaidModels && isPaidModel(`${outputAlias}/${modelId}`)) continue;
 
-          const caps =
-            liveCapabilitiesById.get(modelId)
-            || capabilitiesFromServiceKind(customKind || liveKind)
-            || getCapabilitiesForModel(providerId, modelId);
+          const caps = {
+            ...getCapabilitiesForModel(providerId, modelId),
+            ...(capabilitiesFromServiceKind(customKind || liveKind) || {}),
+            ...(liveCapabilitiesById.get(modelId) || {}),
+            ...(customCapabilitiesById.get(modelId) || {}),
+          };
           const model = {
             id: `${outputAlias}/${modelId}`,
             object: "model",

@@ -19,6 +19,21 @@ export function makeKv(scope) {
       const db = await getAdapter();
       db.run(`INSERT INTO kv(scope, key, value) VALUES(?, ?, ?) ON CONFLICT(scope, key) DO UPDATE SET value = excluded.value`, [scope, key, stringifyJson(value)]);
     },
+    // Atomic read-merge-write on one key: runs inside a single transaction so
+    // concurrent updates serialize instead of losing the earlier merge.
+    async update(key, mergeFn) {
+      const db = await getAdapter();
+      let out;
+      db.transaction(() => {
+        const row = db.get(`SELECT value FROM kv WHERE scope = ? AND key = ?`, [scope, key]);
+        const current = row ? parseJson(row.value, null) : null;
+        out = mergeFn(current);
+        if (out !== undefined) {
+          db.run(`INSERT INTO kv(scope, key, value) VALUES(?, ?, ?) ON CONFLICT(scope, key) DO UPDATE SET value = excluded.value`, [scope, key, stringifyJson(out)]);
+        }
+      });
+      return out;
+    },
     async setMany(obj) {
       const db = await getAdapter();
       db.transaction(() => {

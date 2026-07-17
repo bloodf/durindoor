@@ -14,8 +14,8 @@ export class CodeBuddyExecutor extends DefaultExecutor {
     super("codebuddy-cn");
   }
 
-  transformRequest(model, body, stream, credentials) {
-    const transformed = super.transformRequest(model, body, stream, credentials);
+  transformRequest(model, body, stream, credentials, requestContext = null) {
+    const transformed = super.transformRequest(model, body, stream, credentials, requestContext);
     transformed.stream = true;
 
     // CodeBuddy only surfaces model reasoning when the request carries the CLI's

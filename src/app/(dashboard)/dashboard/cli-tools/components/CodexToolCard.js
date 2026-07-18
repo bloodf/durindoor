@@ -163,7 +163,7 @@ model = "${selectedModel}"
 model_provider = "9router"
 
 [model_providers.9router]
-name = "9Router"
+name = "DurinDoor"
 base_url = "${getEffectiveBaseUrl()}"
 wire_api = "responses"
 

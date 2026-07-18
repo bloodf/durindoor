@@ -118,7 +118,7 @@ export async function GET(request, { params }) {
  * Aggregate usage from local usageHistory for providers without public quota APIs.
  * xAI does not expose a public per-account quota endpoint (the billing console
  * requires a session cookie, not an API key), so we surface real spend and token
- * usage from 9router's own request log over the last 30 days, grouped per model.
+ * usage from DurinDoor's own request log over the last 30 days, grouped per model.
  */
 async function aggregateLocalUsage(connection, label) {
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();

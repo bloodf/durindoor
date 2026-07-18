@@ -174,7 +174,7 @@ export async function POST(request) {
 
     return NextResponse.json({
       success: true,
-      message: "jcode configured successfully. Use: jcode --provider-profile 9router",
+      message: "jcode configured successfully. Use: jcode --provider-profile durindoor",
       configPath: getConfigPath(),
     });
   } catch (error) {
@@ -204,7 +204,7 @@ export async function DELETE() {
 
     return NextResponse.json({
       success: true,
-      message: "9router configuration removed from jcode",
+      message: "durindoor configuration removed from jcode",
     });
   } catch (error) {
     console.error("Error removing jcode configuration:", error);

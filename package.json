@@ -1,6 +1,6 @@
 {
   "name": "durindoor",
-  "version": "2.0.0",
+  "version": "2.1.1",
   "description": "DurinDoor AI Gateway",
   "private": true,
   "packageManager": "npm@10.8.2",
@@ -64,7 +64,7 @@
   "optionalDependencies": {
     "better-sqlite3": "^12.11.1"
   },
-  "comment_better_sqlite3": "kept in optionalDependencies so npm install doesn't fail on systems without build tools — sql.js is used as fallback at runtime",
+  "comment_better_sqlite3": "kept in optionalDependencies so npm install doesn't fail on systems without build tools \u2014 sql.js is used as fallback at runtime",
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.2",
     "eslint": "^9",

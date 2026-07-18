@@ -263,7 +263,7 @@ export default function ModelSelectModal({
     // Show connected providers and no-auth providers. Custom compatible-provider
     // nodes are covered by activeConnectionIds (connection.provider === node id),
     // so they appear only with a non-disabled connection — the parent already
-    // filtered disabled connections out of activeProviders (9router #2526).
+    // filtered disabled connections out of activeProviders (DurinDoor #2526).
     const providerIdsToShow = new Set([
       ...activeConnectionIds,           // Connected providers (incl. active custom nodes)
       ...noAuthIds,                     // No-auth providers (kind-filtered)

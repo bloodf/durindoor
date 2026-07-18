@@ -61,10 +61,10 @@ export default function GetStarted() {
               <div className="p-6 font-mono text-sm leading-relaxed overflow-x-auto">
                 <div 
                   className="flex items-center gap-2 mb-4 group cursor-pointer"
-                  onClick={() => handleCopy("npx 9router")}
+                  onClick={() => handleCopy("npx durindoor")}
                 >
                   <span className="text-green-400">$</span>
-                  <span className="text-white">npx 9router</span>
+                  <span className="text-white">npx durindoor</span>
                   <span className="ml-auto text-gray-500 text-xs opacity-0 group-hover:opacity-100">
                     {copied === "landing" ? "✓ Copied" : "Copy"}
                   </span>

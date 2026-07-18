@@ -1,6 +1,6 @@
 /**
  * Free no-auth providers: cloud free providers that need no credentials.
- * NOT local infrastructure (ollama-local, 9router, LM Studio, etc.) or media-only
+ * NOT local infrastructure (ollama-local, DurinDoor, LM Studio, etc.) or media-only
  * providers (edge-tts, google-tts, local-device, coqui, tortoise, searxng).
  *
  * Defined as: category === "free" && noAuth === true.

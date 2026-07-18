@@ -33,12 +33,12 @@ const readConfig = async () => {
 
 const has9RouterConfig = (config) => {
   if (!Array.isArray(config)) return false;
-  return config.some((entry) => entry.name === "9Router");
+  return config.some((entry) => entry.name === "DurinDoor");
 };
 
 const get9RouterEntry = (config) => {
   if (!Array.isArray(config)) return null;
-  return config.find((entry) => entry.name === "9Router") || null;
+  return config.find((entry) => entry.name === "DurinDoor") || null;
 };
 
 // GET - Read current copilot config
@@ -61,7 +61,7 @@ export async function GET() {
   }
 }
 
-// POST - Apply 9Router config to chatLanguageModels.json
+// POST - Apply DurinDoor config to chatLanguageModels.json
 export async function POST(request) {
   try {
     const { baseUrl, apiKey, models } = await request.json();
@@ -82,11 +82,11 @@ export async function POST(request) {
     } catch { /* No existing config */ }
 
     const endpointUrl = `${baseUrl}/chat/completions#models.ai.azure.com`;
-    const idx = config.findIndex((entry) => entry.name === "9Router");
+    const idx = config.findIndex((entry) => entry.name === "DurinDoor");
     const keyToUse = apiKey || (idx >= 0 ? config[idx]?.apiKey : null) || "sk_durindoor";
 
     const newEntry = {
-      name: "9Router",
+      name: "DurinDoor",
       vendor: "azure",
       apiKey: keyToUse,
       models: models.map((id) => ({
@@ -120,7 +120,7 @@ export async function POST(request) {
   }
 }
 
-// DELETE - Remove 9Router entry from chatLanguageModels.json
+// DELETE - Remove DurinDoor entry from chatLanguageModels.json
 export async function DELETE() {
   try {
     const configPath = getConfigPath();
@@ -137,12 +137,12 @@ export async function DELETE() {
       throw error;
     }
 
-    config = config.filter((e) => e.name !== "9Router");
+    config = config.filter((e) => e.name !== "DurinDoor");
     await fs.writeFile(configPath, JSON.stringify(config, null, 2));
 
     return NextResponse.json({
       success: true,
-      message: "9Router removed from Copilot config",
+      message: "DurinDoor removed from Copilot config",
     });
   } catch (error) {
     console.log("Error resetting copilot settings:", error);

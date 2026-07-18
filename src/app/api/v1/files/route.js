@@ -1,4 +1,4 @@
-// OpenAI Files collection — local filesystem store under ~/.9router/files/<id>.
+// OpenAI Files collection — local filesystem store under ~/.9router/files/<id>. (DurinDoor data directory)
 import { uploadFile, listFiles } from "open-sse/services/localFilesBatches.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";

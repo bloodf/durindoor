@@ -204,7 +204,7 @@ export async function DELETE() {
 
     return NextResponse.json({
       success: true,
-      message: "9router configuration removed from jcode",
+      message: "durindoor configuration removed from jcode",
     });
   } catch (error) {
     console.error("Error removing jcode configuration:", error);

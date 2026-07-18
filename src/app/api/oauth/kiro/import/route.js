@@ -32,7 +32,7 @@ export async function POST(request) {
 
     let resolvedProfileArn = profileArn || null;
 
-    // Unified SSO cache resolution (9router PR #2615): if the pasted refresh
+    // Unified SSO cache resolution (DurinDoor PR #2615): if the pasted refresh
     // token matches a local AWS SSO cache entry that declares external_idp
     // (Microsoft Entra), validate it against the Microsoft token endpoint
     // instead of the AWS OIDC / social endpoints, which reject such tokens.

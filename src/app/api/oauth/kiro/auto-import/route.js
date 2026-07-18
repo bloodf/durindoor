@@ -4,7 +4,7 @@ import { resolveKiroCredentialsFromSsoCache } from "open-sse/services/kiroModels
 /**
  * GET /api/oauth/kiro/auto-import
  * Auto-detect and extract Kiro refresh token from the AWS SSO cache.
- * Delegates to the unified SSO cache resolver (9router PR #2615), which
+ * Delegates to the unified SSO cache resolver (DurinDoor PR #2615), which
  * accepts Builder ID, external_idp (Microsoft Entra), and organization
  * (codewhisperer-scoped) tokens; resolves clientId/clientSecret from the
  * linked client registration file; and returns the profileArn verbatim.

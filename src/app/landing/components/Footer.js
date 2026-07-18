@@ -36,7 +36,7 @@ export default function Footer() {
             <h4 className="font-bold text-white">Resources</h4>
             <a className="text-gray-400 hover:text-[#f97815] text-sm transition-colors" href="https://github.com/bloodf/durindoor#readme" target="_blank" rel="noopener noreferrer">Documentation</a>
             <a className="text-gray-400 hover:text-[#f97815] text-sm transition-colors" href="https://github.com/bloodf/durindoor" target="_blank" rel="noopener noreferrer">GitHub</a>
-            <a className="text-gray-400 hover:text-[#f97815] text-sm transition-colors" href="https://www.npmjs.com/package/9router" target="_blank" rel="noopener noreferrer">NPM</a>
+            <a className="text-gray-400 hover:text-[#f97815] text-sm transition-colors" href="https://www.npmjs.com/package/durindoor" target="_blank" rel="noopener noreferrer">NPM</a>
           </div>
           
           {/* Legal */}
@@ -51,7 +51,7 @@ export default function Footer() {
           <p className="text-gray-600 text-sm">© 2025 DurinDoor. All rights reserved.</p>
           <div className="flex gap-6">
             <a className="text-gray-600 hover:text-white text-sm transition-colors" href="https://github.com/bloodf/durindoor" target="_blank" rel="noopener noreferrer">GitHub</a>
-            <a className="text-gray-600 hover:text-white text-sm transition-colors" href="https://www.npmjs.com/package/9router" target="_blank" rel="noopener noreferrer">NPM</a>
+            <a className="text-gray-600 hover:text-white text-sm transition-colors" href="https://www.npmjs.com/package/durindoor" target="_blank" rel="noopener noreferrer">NPM</a>
           </div>
         </div>
       </div>

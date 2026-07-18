@@ -1,10 +1,9 @@
 # Changelog
 
-## [2.1.1] - 2026-07-18
+## [2.1.2] - 2026-07-18
 
 ### Fixes
-- Rebrand all user-visible 9router/9Router references to DurinDoor in the webui
-- Wire-format compat identifiers preserved (config keys, env vars, data paths)
+- Complete rebrand: all remaining user-visible 9router/9Router references replaced with DurinDoor
 
 # 2.0.0
 

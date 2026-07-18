@@ -42,7 +42,7 @@ function clampNumber(body, key, ceiling) {
 }
 
 // Remove unsupported params from body in place; returns body.
-export function stripUnsupportedParams(provider, model, body) {
+export function stripUnsupportedParams(provider, model, body, caps = null) {
   if (!model || !body || typeof body !== "object") return body;
   for (const rule of STRIP_RULES) {
     if (rule.provider && rule.provider !== provider) continue;
@@ -84,7 +84,7 @@ export function stripUnsupportedParams(provider, model, body) {
       }
     }
     if (rule.clampToModelMaxOutput || Number.isFinite(rule.maxOutputCap)) {
-      const modelCeiling = getCapabilitiesForModel(provider, model).maxOutput;
+      const modelCeiling = (caps || getCapabilitiesForModel(provider, model)).maxOutput;
       const candidates = [];
       if (rule.clampToModelMaxOutput && Number.isFinite(modelCeiling) && modelCeiling > 0) {
         candidates.push(modelCeiling);

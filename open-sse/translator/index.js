@@ -178,6 +178,7 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     result,
     provider,
     thinkingIntent,
+    resolvedTranslationContext.modelCapabilities,
   );
   // Translator-local guards run after centralized thinking normalization.
   finalizeTranslatedRequest?.(translationModel, result);
@@ -217,7 +218,8 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
       result = normalizeClaudePassthrough(result, "", provider);
     }
     const apiKey = credentials?.accessToken || credentials?.apiKey || null;
-    result = prepareClaudeRequest(result, provider, apiKey, connectionId, credentials?.rawHeaders, clientSessionId);
+    const customMaxOutput = resolvedTranslationContext.modelCapabilities?.maxOutput ?? null;
+    result = prepareClaudeRequest(result, provider, apiKey, connectionId, credentials?.rawHeaders, clientSessionId, customMaxOutput);
   }
 
   // Claude cloaking: rename client tools with _cc suffix (anti-ban)

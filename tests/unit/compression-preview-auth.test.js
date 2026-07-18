@@ -23,10 +23,10 @@ vi.mock("open-sse/services/compression/index.js", () => ({
 const { POST } = await import("../../src/app/api/compression/preview/route.js");
 
 // Dashboard-context request: NO `Authorization: Bearer` and NO `x-api-key`
-// header. The Compression Studio page at
-// `src/app/(dashboard)/dashboard/compression-studio/page.js:30-35 runPreview`
-// POSTs this way because `src/dashboardGuard.js:262-289` already authenticated
-// the dashboard session (dashboard JWT) at the proxy layer.
+// header. The Test Savers page at
+// `src/app/(dashboard)/dashboard/compression-studio/page.js` POSTs this way
+// because `src/dashboardGuard.js:262-289` already authenticated the dashboard
+// session (dashboard JWT) at the proxy layer.
 function dashboardJsonRequest(body) {
   return new Request("https://durindoor.local/api/compression/preview", {
     method: "POST",
@@ -44,7 +44,6 @@ describe("POST /api/compression/preview — dashboard-context auth (R1)", () => 
       stats: { savingsPercent: 10 },
     });
     mocks.applyB.mockResolvedValue({
-      body: { model: "x", messages: [] },
       compressed: false,
       stats: null,
     });
@@ -60,6 +59,8 @@ describe("POST /api/compression/preview — dashboard-context auth (R1)", () => 
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.results["engine-a"].status).toBe("compressed");
+    expect(json.results["engine-a"].raw).toEqual({ model: "x", messages: [] });
+    expect(json.results["engine-b"].raw).toBeUndefined();
     expect(mocks.applyA).toHaveBeenCalled();
   });
 

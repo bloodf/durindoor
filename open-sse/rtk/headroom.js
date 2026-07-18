@@ -429,8 +429,8 @@ export function isHeadroomPhantomSavings(stats, diagnostics, minShrinkRatio = 0.
  * @param {object} diagnostics The diagnostics sink passed to compressWithHeadroom.
  * @param {object|null} stats The compressWithHeadroom return (null on skip).
  * @param {boolean} enabled Whether Headroom was enabled for the request.
- * @returns {string} One of: compressed, disabled, missing-proxy-url, timeout,
- *   http-error, unsafe-responses-input, translation-failed, unsupported-shape,
+ * @returns {string} One of: compressed, disabled, missing-proxy-url, request-failed,
+ *   timeout, http-error, unsafe-responses-input, translation-failed, unsupported-shape,
  *   invalid-proxy-response, unexpected-error, other-skip.
  */
 export function classifyHeadroomDiagnostic(diagnostics, stats, enabled) {
@@ -440,6 +440,7 @@ export function classifyHeadroomDiagnostic(diagnostics, stats, enabled) {
   const reason = String(diagnostics?.reason || "").toLowerCase();
   if (reason.includes("missing proxy url")) return "missing-proxy-url";
   if (reason.includes("timeout") || reason.includes("abort")) return "timeout";
+  if (reason.includes("request failed")) return "request-failed";
   if (reason.includes("proxy returned http")) return "http-error";
   if (reason.includes("openai-responses tool/reasoning")) return "unsafe-responses-input";
   if (reason.includes("did not translate") || reason.includes("translate to messages")) return "translation-failed";

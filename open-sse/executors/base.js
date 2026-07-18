@@ -63,6 +63,32 @@ export function waitForRetryDelay(delayMs, signal = null) {
  * BaseExecutor - Base class for provider executors
  */
 export class BaseExecutor {
+  /**
+   * Clamp token-limit fields to a custom-model maxOutput override.
+   * Runs centrally in execute() after transformRequest, covering every
+   * executor: OpenAI-style (max_tokens/max_completion_tokens), Responses
+   * (max_output_tokens), Claude (max_tokens), and Gemini-envelope bodies
+   * (generationConfig.maxOutputTokens, incl. Antigravity's request wrapper).
+   * Executors building non-JSON/binary bodies clamp in their own transform.
+   * No-op without a custom cap; never invents absent fields.
+   */
+  clampCustomMaxOutput(body, requestContext, fields = ["max_tokens", "max_completion_tokens", "max_output_tokens"]) {
+    const customMax = requestContext?.modelCapabilities?.maxOutput;
+    if (!body || typeof body !== "object" || !(Number.isFinite(customMax) && customMax > 0)) return body;
+    for (const field of fields) {
+      if (typeof body[field] === "number" && body[field] > customMax) {
+        body[field] = customMax;
+      }
+    }
+    for (const holder of [body, body.request]) {
+      const gc = holder?.generationConfig;
+      if (gc && typeof gc.maxOutputTokens === "number" && gc.maxOutputTokens > customMax) {
+        gc.maxOutputTokens = customMax;
+      }
+    }
+    return body;
+  }
+
   constructor(provider, config) {
     this.provider = provider;
     this.config = config;
@@ -269,7 +295,10 @@ export class BaseExecutor {
       // placing private markers on provider credentials or outbound JSON bodies.
       // Extra arguments are backward-compatible with executors that do not use it.
       const url = this.buildUrl(model, stream, urlIndex, credentials, requestContext);
-      const transformedBody = this.transformRequest(model, body, stream, credentials, requestContext);
+      const transformedBody = this.clampCustomMaxOutput(
+        this.transformRequest(model, body, stream, credentials, requestContext),
+        requestContext,
+      );
       const headers = this.buildHeaders(credentials, stream, requestContext);
       // Forward the client's request id through the relay (OmniRoute#7093),
       // without overriding an id the executor already set. Headers may arrive

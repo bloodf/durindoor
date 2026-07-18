@@ -43,6 +43,10 @@ export async function handleCountTokens(request) {
   // count_tokens is best-effort: a single credential attempt is enough (the core
   // falls back to the estimate on any failure / no native endpoint).
   const credentials = (await getProviderCredentials(provider, new Set(), model)) || {};
+  if (credentials.providerDisabled) {
+    return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
+  }
+
   const result = await handleCountTokensCore({ body, modelInfo: { provider, model }, credentials, log });
   return result.response;
 }

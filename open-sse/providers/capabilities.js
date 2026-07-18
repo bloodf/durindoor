@@ -76,6 +76,8 @@ export function capabilitiesFromServiceKind(kind) {
  * otherwise mis-match. Only declare deltas vs DEFAULT.
  */
 export const MODEL_CAPABILITIES = {
+  // Kimi K3: 1M context, always reasons, reasoning_effort "max" only (cannot disable), vision + tools.
+  "kimi-k3": { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 262144 },
   // Claude 4.6/4.7/4.8 and Kiro Sonnet 5 have 1M context + adaptive thinking (override generic claude pattern)
   "claude-opus-4.6":   { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   "claude-opus-4.7":   { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
@@ -97,8 +99,21 @@ export const MODEL_CAPABILITIES = {
 
   // GLM vision variant (text GLM has no vision)
   "glm-4.6v":          { vision: true, reasoning: true, thinkingFormat: "zai", contextWindow: 128000 },
-  // GLM-5.2 has 1M context — pattern *glm-5* only gives 200k, so override here
-  "glm-5.2":           { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
+  // GLM-5.x and GLM-5 have 1M context and 128K max output
+  "glm-5.2":           { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 131072 },
+  "glm-5.1":           { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 131072 },
+  "glm-5":             { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 131072 },
+  "glm-5-turbo":       { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 131072 },
+  // GLM-4.7 has 200K context, 128K max output
+  "glm-4.7":           { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 },
+  // GLM-4.7-flashx has 128K context (maxOutput not recorded in source)
+  "glm-4.7-flashx":    { reasoning: true, thinkingFormat: "zai", contextWindow: 131072 },
+  // GLM-4.6 has 200K context, 128K max output
+  "glm-4.6":           { reasoning: true, thinkingFormat: "zai", contextWindow: 200000, maxOutput: 131072 },
+  // GLM-4.5 and 4-32b-0414-128k have 128K context (maxOutput not recorded in source)
+  "glm-4.5":           { reasoning: true, thinkingFormat: "zai", contextWindow: 131072 },
+  "glm-4.5-air":       { reasoning: true, thinkingFormat: "zai", contextWindow: 131072 },
+  "glm-4-32b-0414-128k": { reasoning: true, thinkingFormat: "zai", contextWindow: 131072 },
 
   // Qwen plain coder/text (no vision) — registry "vision-model" / "coder-model" aliases
   "vision-model":      { vision: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000 },
@@ -447,6 +462,7 @@ export const PATTERN_CAPABILITIES = [
   { pattern: "*qwen*",          caps: { reasoning: true, thinkingFormat: "qwen", contextWindow: 262144 } },
 
   // ── Kimi (enabled→reasoning_effort; K2.7-code cannot disable) ─────
+  { pattern: "*kimi*k3*",       caps: { reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144 } },
   { pattern: "*kimi*k2.7*code*", caps: { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144, maxOutput: 262144 } },
   { pattern: "*kimi*k2*",       caps: { vision: true, reasoning: true, thinkingFormat: "kimi", contextWindow: 262144, maxOutput: 262144 } },
   { pattern: "*kimi*",          caps: { reasoning: true, thinkingFormat: "kimi", contextWindow: 262144 } },
@@ -466,7 +482,7 @@ export const PATTERN_CAPABILITIES = [
 
   // ── MiniMax (M3 = adaptive; M2.x cannot disable) ─────────────────
   { pattern: "*minimax*image*", caps: { imageOutput: true } },
-  { pattern: "*minimax-m3*",    caps: { vision: true, reasoning: true, thinkingFormat: "minimax", contextWindow: 1000000, maxOutput: 131072 } },
+  { pattern: "*minimax-m3*",    caps: { vision: true, reasoning: true, thinkingFormat: "minimax", contextWindow: 512000, maxOutput: 131072 } },
   { pattern: "*minimax-m2.7*",  caps: { vision: true, reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 204800, maxOutput: 131072 } },
   { pattern: "*minimax-m2.5*",  caps: { vision: true, reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 204800, maxOutput: 131072 } },
   { pattern: "*minimax*",       caps: { reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 } },
@@ -520,18 +536,25 @@ export const PATTERN_CAPABILITIES = [
  * @param {number} [_depth] internal recursion depth guard
  * @returns {object|null} full capabilities object, or null for empty input
  */
-export function aggregateComboCapabilities(comboModels, comboLookup = null, aliasToProviderId = null, _depth = 0) {
+export function aggregateComboCapabilities(comboModels, comboLookup = null, aliasToProviderId = null, _depth = 0, customCapsById = null) {
   if (!comboModels?.length || _depth > 6) return null;
   const allCaps = comboModels.map((fullId) => {
     // Nested combo: bare name (no slash) that exists in the lookup — recurse
     if (!fullId.includes("/") && comboLookup?.[fullId]) {
-      return aggregateComboCapabilities(comboLookup[fullId], comboLookup, aliasToProviderId, _depth + 1)
+      return aggregateComboCapabilities(comboLookup[fullId], comboLookup, aliasToProviderId, _depth + 1, customCapsById)
           ?? getCapabilitiesForModel(null, fullId);
     }
     const slash = fullId.indexOf("/");
     const provider = slash === -1 ? null : fullId.slice(0, slash);
     const model = slash === -1 ? fullId : fullId.slice(slash + 1);
-    return getCapabilitiesForModel(aliasToProviderId?.[provider] ?? provider, model);
+    const providerId = aliasToProviderId?.[provider] ?? provider;
+    // Persisted custom-model overrides (keyed canonical "providerId/modelId")
+    // merge over the static catalog so advertised combo capabilities match
+    // routing. Members may use a static alias or a connection's custom output
+    // prefix; both normalize through aliasToProviderId above.
+    const custom = customCapsById?.get?.(`${providerId}/${model}`);
+    const staticCaps = getCapabilitiesForModel(providerId, model);
+    return custom ? { ...staticCaps, ...custom } : staticCaps;
   });
   const first = allCaps[0];
   return {

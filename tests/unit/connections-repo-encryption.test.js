@@ -36,7 +36,7 @@ async function freshLocalDb() {
 }
 
 describe("connectionsRepo encryption (SEC-B-02)", () => {
-  it("stores accessToken/refreshToken/apiKey/idToken as encrypted blobs at rest", async () => {
+  it("stores configured sensitive fields as encrypted blobs at rest", async () => {
     const repo = await freshRepo();
     const conn = await repo.createProviderConnection({
       provider: "openai",
@@ -46,6 +46,7 @@ describe("connectionsRepo encryption (SEC-B-02)", () => {
       refreshToken: "RT-secret-2",
       apiKey: "sk-secret-3",
       idToken: "ID-secret-4",
+      firecrawlHeaders: JSON.stringify({ "x-secret": "header-value" }),
       email: "enc@example.com",
     });
 
@@ -59,12 +60,15 @@ describe("connectionsRepo encryption (SEC-B-02)", () => {
       expect(value).toHaveProperty("v", 1);
       expect(value).toHaveProperty("iv");
       expect(value).toHaveProperty("ct");
-      // Plaintext never appears in the JSON column.
-      expect(row.data).not.toContain("AT-secret-1");
-      expect(row.data).not.toContain("RT-secret-2");
-      expect(row.data).not.toContain("sk-secret-3");
-      expect(row.data).not.toContain("ID-secret-4");
     }
+
+    // Plaintext never appears in the JSON column.
+    expect(row.data).not.toContain("AT-secret-1");
+    expect(row.data).not.toContain("RT-secret-2");
+    expect(row.data).not.toContain("sk-secret-3");
+    expect(row.data).not.toContain("ID-secret-4");
+    expect(row.data).not.toContain("x-secret");
+    expect(row.data).not.toContain("header-value");
   });
 
   it("decrypts on read so callers see plaintext", async () => {

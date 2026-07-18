@@ -38,22 +38,29 @@ const PATTERN_THINKING = [
   { pattern: "*gpt-5.6-terra*", levels: ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"] },
   // Luna accepts max; ultra falls back to max in applyThinking.
   { pattern: "*gpt-5.6-luna*", levels: ["none", "minimal", "low", "medium", "high", "xhigh", "max"] },
+  // K3 only accepts max reasoning effort.
+  { pattern: "*kimi-k3*", levels: ["max"] },
   { pattern: "*codex*", levels: ["low", "medium", "high", "xhigh"] }, // codex cannot disable thinking
 ];
 
 // Returns valid thinking levels for a model, or null when the model has no reasoning.
 export function getThinkingLevels(provider, model) {
   const caps = getCapabilitiesForModel(provider, model);
-  if (!caps.reasoning) return null;
-  const hit = PATTERN_THINKING.find((p) => matchPattern(p.pattern, model));
+  return getThinkingLevelsFromCapabilities(caps, provider, model);
+}
+
+/**
+ * Derive selectable thinking levels from an already-resolved capability object.
+ * @param {object} caps
+ * @param {string} [provider] - provider id, used for Kiro-specific filtering
+ * @param {string} [model] - model id, used for pattern overrides
+ */
+export function getThinkingLevelsFromCapabilities(caps, provider = null, model = null) {
+  if (!caps || !caps.reasoning) return null;
+  const modelId = model || "";
+  const hit = PATTERN_THINKING.find((p) => matchPattern(p.pattern, modelId));
   let levels = hit?.levels || FORMAT_LEVELS[caps.thinkingFormat] || L.base;
   if (caps.thinkingCanDisable === false) levels = levels.filter((l) => l !== "none");
-  // Kiro (kiro/kr) maps each level to a numeric budget that buildThinkingSystemPrefix
-  // clamps to 32000 (effortToBudget: xhigh=32768, max=128000 → both clamp to 32000;
-  // ultra is absent from LEVEL_TO_BUDGET). So `ultra` is unrecognised and `max`
-  // yields the same effective budget as `xhigh` — neither is a distinct tier on the
-  // Kiro wire. The global *gpt-5.6-sol*/*gpt-5.6-terra* patterns advertise both for
-  // Codex; drop them for Kiro so the picker only offers effective levels (#2596).
   if (provider === "kiro" || provider === "kr") levels = levels.filter((l) => l !== "ultra" && l !== "max");
   return levels;
 }

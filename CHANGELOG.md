@@ -1,3 +1,29 @@
+# Changelog
+
+## [2.1.0] - 2026-07-17
+
+### Features
+- Provider health fixes, free badges, account filter, local Ollama quota fix
+- Token Saver collapsible menu (Statistics/Settings), PxPipe embedded
+- MCP Gateway OAuth 401 retry + DurinDoor control MCP server
+- Playground v2: dashboard restyle, grouped models, connection pinning, effort selector
+- Custom model capability editor with runtime resolution (vision, tools, thinking, max output)
+- Model catalog refresh: Kimi K3, Z.ai GLM, MiniMax, OpenAI (sourced data)
+- Local Ollama embedding models in Media Providers
+- Firecrawl server-side auto-detect with SSRF allowlist
+- Headroom webUI with stats persistence
+- Usage page as webui home; System menu for Endpoint/CLI Tools
+- Deploy static-asset fix (standalone bundling)
+- Claude quota admin-permissions fix
+- Free no-auth provider enable/disable toggle (disabled by default)
+- Brand icon (icon-512.png) + favicon fix
+- Playground grid background visible (transparent page, solid bubbles)
+- Provider filter dropdown (active/deactivated/not configured), Health submenu
+- Compression Studio → Test Savers revamp with structured form
+- Auto-configure scripts (Headroom, PxPipe, Caveman, Ponytail, RTK, Firecrawl)
+- Security: policy enforcement before capability lookup
+- Headroom standalone cleanup (harness configs repointed to DurinDoor gateway)
+
 # 2.0.0
 
 ## Features

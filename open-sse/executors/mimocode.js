@@ -265,9 +265,12 @@ export class MimocodeExecutor extends BaseExecutor {
   }
 
   async execute(input) {
-    const { model, stream, body, signal, log, credentials = {} } = input;
+    const { model, stream, body, signal, log, credentials = {}, requestContext = null } = input;
     const url = this.buildUrl(model, stream);
-    const transformedBody = this.transformRequest(model, body, stream, credentials);
+    const transformedBody = this.clampCustomMaxOutput(
+      this.transformRequest(model, body, stream, credentials),
+      requestContext,
+    );
 
     if (signal?.aborted) {
       return {

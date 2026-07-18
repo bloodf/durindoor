@@ -68,8 +68,12 @@ export default {
   models: [
     { id: "MiniMax-M3", name: "MiniMax M3" },
     { id: "MiniMax-M2.7", name: "MiniMax M2.7" },
+    { id: "MiniMax-M2.7-highspeed", name: "MiniMax M2.7 Highspeed" },
     { id: "MiniMax-M2.5", name: "MiniMax M2.5" },
+    { id: "MiniMax-M2.5-highspeed", name: "MiniMax M2.5 Highspeed" },
     { id: "MiniMax-M2.1", name: "MiniMax M2.1" },
+    { id: "MiniMax-M2.1-highspeed", name: "MiniMax M2.1 Highspeed" },
+    { id: "MiniMax-M2", name: "MiniMax M2" },
     { id: "image-01", name: "MiniMax Image-01", params: ["n","size","response_format"], kind: "image" },
     { id: "image-01-live", name: "MiniMax Image-01 Live", params: ["n","size","response_format"], kind: "image" },
     { id: "speech-2.8-hd", name: "Speech 2.8 HD", kind: "tts" },

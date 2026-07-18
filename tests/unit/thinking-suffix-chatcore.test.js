@@ -77,6 +77,7 @@ vi.mock("../../open-sse/rtk/headroom.js", () => ({
   formatHeadroomLog: vi.fn(() => ""),
   formatHeadroomSizeLog: vi.fn(() => ""),
   isHeadroomPhantomSavings: vi.fn(() => false),
+  classifyHeadroomDiagnostic: (reason) => reason,
 }));
 
 vi.mock("../../open-sse/rtk/pxpipe.js", () => ({

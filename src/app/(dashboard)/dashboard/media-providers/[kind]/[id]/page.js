@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useState, useEffect } from "react";
 import { Card, Badge, Button, AddCustomEmbeddingModal, NoAuthProxyCard, ProviderInfoCard } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
-import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS, isCustomEmbeddingProvider } from "@/shared/constants/providers";
+import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS, isCustomEmbeddingProvider, isLocalOllamaProvider } from "@/shared/constants/providers";
 import ConnectionsCard from "@/app/(dashboard)/dashboard/providers/components/ConnectionsCard";
 import ModelsCard from "@/app/(dashboard)/dashboard/providers/components/ModelsCard";
 import { KIND_EXAMPLE_CONFIG } from "./components/exampleShared";
@@ -65,7 +65,11 @@ export default function MediaProviderDetailPage() {
     return <div className="text-text-muted text-sm py-12 text-center">Loading...</div>;
   }
 
-  const kinds = isCustom ? ["embedding"] : (provider.serviceKinds ?? ["llm"]);
+  const baseKinds = provider.serviceKinds ?? ["llm"];
+  const localEmbeddingOverride = isLocalOllamaProvider(provider.id) && kind === "embedding";
+  const kinds = isCustom
+    ? ["embedding"]
+    : (localEmbeddingOverride ? Array.from(new Set([...baseKinds, "embedding"])) : baseKinds);
   if (!isCustom && !kinds.includes(kind)) return notFound();
 
   return (

@@ -16,8 +16,9 @@ import {
   getProviderConnections, getQuotaReservationPressure,
 } from "@/lib/localDb";
 import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
+import { appendHeadroomEvent } from "@/lib/headroom/events.js";
 import { appendPxpipeEvent } from "@/lib/pxpipe/events.js";
-import { getModelInfo, getComboModels } from "../services/model.js";
+import { getModelInfo, getComboModels, loadCustomCapabilities, parseModel } from "../services/model.js";
 import { recordTokenSaverEvent } from "@/lib/usageDb";
 import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
 import { applyVisionBridgeReroute } from "open-sse/services/model.js";
@@ -46,6 +47,7 @@ import {
   getModelUpstreamId,
   PROVIDER_ID_TO_ALIAS,
 } from "open-sse/config/providerModels.js";
+import { resolveProviderId } from "@/shared/constants/providers.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
@@ -375,21 +377,11 @@ export async function handleChat(request, clientRawRequest = null) {
   // combo resolution. The rerouted target is policy-rechecked — a vision model
   // the caller's API key is not allowed to use must not be reachable via the
   // bridge; on denial we keep the original model and let normal policy gates run.
-  const vb = applyVisionBridgeReroute({ body, modelStr, settings });
-  if (vb.rerouted) {
-    const policyError = await enforceApiKeyModelPolicy(request, vb.modelStr);
-    if (policyError) {
-      log.warn("CHAT", `Vision Bridge target "${vb.toModel}" denied by API key policy; keeping "${modelStr}"`);
-    } else {
-      log.info("CHAT", `Vision Bridge reroute: ${vb.fromModel} -> ${vb.toModel}`);
-      body = vb.body;
-      modelStr = vb.modelStr;
-      // clientRawRequest intentionally keeps the ORIGINAL client body so usage
-      // logs record the model the caller actually asked for; the reroute only
-      // changes what we dispatch upstream.
-    }
-  }
-
+  //
+  // Custom capabilities resolve BEFORE the bridge so a user-added vision override
+  // on a compatible node or bare alias is honored. Both run AFTER the local
+  // ponytail/bypass interceptors below — local commands must answer without
+  // any model/DB lookup.
   // Per-request token-saver bypass (#2609): `X-DurinDoor-Token-Saver: off`
   // (or legacy `X-9Router-Token-Saver: off`) disables the local Ponytail
   // slash-command interceptor so the request reaches the provider untransformed.
@@ -426,6 +418,10 @@ export async function handleChat(request, clientRawRequest = null) {
   const bypassResponse = handleBypassRequest(body, modelStr, userAgent, !!settings.ccFilterNaming);
   if (bypassResponse) return bypassResponse.response || bypassResponse;
 
+  // Vision Bridge capability resolution and reroute have moved to
+  // handleSingleModelChat so they run AFTER API-key policy enforcement for
+  // single-model requests. Denied requests no longer trigger DB lookups.
+
   // Check if model is a combo (has multiple models with fallback)
   // #6495 / F-4: filter paid members when the toggle is on. The auth ACL check
   // above intentionally calls getComboModels without the flag so combo
@@ -450,6 +446,7 @@ export async function handleChat(request, clientRawRequest = null) {
     // combo access control above remains the gate for combo names.
     if (comboStrategy === "fusion") {
       log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: fusion)`);
+      const capabilitiesMap = await resolveComboCapabilitiesMap(comboModels);
       return handleFusionChat({
         body,
         models: comboModels,
@@ -466,6 +463,8 @@ export async function handleChat(request, clientRawRequest = null) {
             request,
             apiKey,
             combineAbortSignals(request?.signal || null, panelSignal),
+            null,
+            { settings, allowVisionBridge: false },
           );
         },
         log,
@@ -473,9 +472,11 @@ export async function handleChat(request, clientRawRequest = null) {
         judgeModel: comboStrategies[modelStr]?.judgeModel,
         tuning: comboStrategies[modelStr]?.fusionTuning,
         contextRequirements: perCombo.contextRequirements,
+        capabilitiesMap,
       });
     }
 
+    const capabilitiesMap = await resolveComboCapabilitiesMap(comboModels);
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
     const comboTimeoutMs = perCombo?.timeoutMs || COMBO_MODEL_TIMEOUT_MS || 0;
     log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit}, timeout: ${comboTimeoutMs || "off"})`);
@@ -491,7 +492,16 @@ export async function handleChat(request, clientRawRequest = null) {
         // previous attempt's event; the collector then holds only the latest
         // emitted event from the attempts that actually fired telemetry.
         tokenSaverCollector.latest = null;
-        return handleSingleModelChat(b, m, clientRawRequest, request, apiKey, combineAbortSignals(request?.signal || null, attemptSignal), tokenSaverCollector);
+        return handleSingleModelChat(
+          b,
+          m,
+          clientRawRequest,
+          request,
+          apiKey,
+          combineAbortSignals(request?.signal || null, attemptSignal),
+          tokenSaverCollector,
+          { settings, allowVisionBridge: false },
+        );
       },
       log,
       comboName: modelStr,
@@ -499,6 +509,7 @@ export async function handleChat(request, clientRawRequest = null) {
       comboStickyLimit,
       contextRequirements: perCombo.contextRequirements,
       comboTimeoutMs,
+      capabilitiesMap,
       quotaRanker: (ordered) => rankComboModelsByQuota(
         ordered,
         settings,
@@ -517,13 +528,55 @@ export async function handleChat(request, clientRawRequest = null) {
   }
 
   // Single model request
-  return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey);
+  return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, null, null, { settings, allowVisionBridge: true });
+}
+
+// Resolve custom capabilities for all combo members into a single map keyed
+// by the original member string. Falls back to static caps when no custom row.
+export async function resolveComboCapabilitiesMap(members, _depth = 0) {
+  const map = new Map();
+  if (!Array.isArray(members) || _depth > 6) return map;
+  await Promise.all(
+    members.map(async (member) => {
+      const resolved = await getModelInfo(member);
+      if (!resolved?.provider || !resolved?.model) {
+        // Nested combo member: derive a representative caps entry so outer
+        // routing (vision promotion etc.) sees the nested pool's custom
+        // overrides. Any-member-true semantics match aggregateComboCapabilities.
+        const nestedMembers = await getComboModels(member);
+        if (!Array.isArray(nestedMembers) || nestedMembers.length === 0) return;
+        const nestedMap = await resolveComboCapabilitiesMap(nestedMembers, _depth + 1);
+        if (nestedMap.size === 0) return;
+        const agg = {};
+        for (const caps of nestedMap.values()) {
+          for (const [k, v] of Object.entries(caps)) {
+            if (v === true) agg[k] = true;
+          }
+        }
+        if (Object.keys(agg).length > 0) map.set(member, agg);
+        return;
+      }
+      const requestPrefix = parseModel(member).providerAlias || null;
+      const caps = await loadCustomCapabilities(resolved.provider, resolved.model, requestPrefix);
+      if (caps) map.set(member, caps);
+    })
+  );
+  return map;
+}
+
+async function buildSingleModelCapabilitiesMap(modelStr) {
+  const resolved = await getModelInfo(modelStr);
+  if (!resolved?.provider || !resolved?.model) return null;
+  const requestPrefix = parseModel(modelStr).providerAlias || null;
+  const caps = await loadCustomCapabilities(resolved.provider, resolved.model, requestPrefix);
+  return caps;
 }
 
 /**
  * Handle single model chat request
  */
-async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, attemptSignal = null, tokenSaverCollector = null) {
+async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, attemptSignal = null, tokenSaverCollector = null, options = {}) {
+  const { settings = null, allowVisionBridge = false, preResolvedCapabilities = undefined } = options;
   const requestSignal = attemptSignal || request?.signal || null;
   if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
   const modelInfo = await getModelInfo(modelStr);
@@ -561,6 +614,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
               request,
               apiKey,
               combineAbortSignals(requestSignal, panelSignal),
+              null,
+              { settings: chatSettings, allowVisionBridge: false },
             );
           },
           log,
@@ -568,6 +623,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           judgeModel: comboStrategies[modelStr]?.judgeModel,
           tuning: comboStrategies[modelStr]?.fusionTuning,
           contextRequirements: perCombo.contextRequirements,
+          capabilitiesMap: await resolveComboCapabilitiesMap(comboModels),
         });
       }
 
@@ -578,6 +634,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       // it so nested fallback attempts do not double-count rows.
       const ownsCollector = !tokenSaverCollector;
       const nestedCollector = tokenSaverCollector || { latest: null };
+      const nestedCapabilitiesMap = await resolveComboCapabilitiesMap(comboModels);
       const nestedResult = await handleComboChat({
         body,
         models: comboModels,
@@ -593,6 +650,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             apiKey,
             combineAbortSignals(requestSignal, attemptSignal),
             nestedCollector,
+            { settings: chatSettings, allowVisionBridge: false },
           );
         },
         log,
@@ -601,6 +659,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         comboStickyLimit,
         contextRequirements: perCombo.contextRequirements,
         comboTimeoutMs,
+        capabilitiesMap: nestedCapabilitiesMap,
         quotaRanker: (ordered) => rankComboModelsByQuota(
           ordered,
           chatSettings,
@@ -638,6 +697,75 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   const policyError2 = await enforceApiKeyModelPolicy(request, `${provider}/${model}`);
   if (policyError2) return policyError2;
 
+  // Vision Bridge (#6640): after policy passes, resolve custom capabilities and
+  // reroute vision requests to the configured vision-capable model. Denied
+  // requests never reach this DB lookup. Combo members resolve their own caps
+  // upstream; this branch is only for single-model requests.
+  let modelCapabilities = preResolvedCapabilities;
+  if (allowVisionBridge && settings?.visionBridgeEnabled === true && modelCapabilities === undefined) {
+    const singleModelCaps = await buildSingleModelCapabilitiesMap(modelStr);
+    const visionTargetCaps = settings?.visionBridgeModel
+      ? await buildSingleModelCapabilitiesMap(String(settings.visionBridgeModel))
+      : null;
+    const vb = applyVisionBridgeReroute({ body, modelStr, settings, capabilities: singleModelCaps, targetCapabilities: visionTargetCaps });
+    if (vb.rerouted) {
+      const policyError = await enforceApiKeyModelPolicy(request, vb.modelStr);
+      if (policyError) {
+        log.warn("CHAT", `Vision Bridge target "${vb.toModel}" denied by API key policy; keeping "${modelStr}"`);
+      } else {
+        log.info("CHAT", `Vision Bridge reroute: ${vb.fromModel} -> ${vb.toModel}`);
+        // Re-resolve provider/model for the rerouted target and recurse into the
+        // retry loop with vision bridge disabled to prevent loops. The body/model
+        // update is scoped to the recursive call so the original stays intact.
+        const reroutedInfo = await getModelInfo(vb.modelStr);
+        if (reroutedInfo?.provider) {
+          return handleSingleModelChat(
+            vb.body,
+            vb.modelStr,
+            clientRawRequest,
+            request,
+            apiKey,
+            attemptSignal,
+            tokenSaverCollector,
+            { settings, allowVisionBridge: false, preResolvedCapabilities: visionTargetCaps },
+          );
+        }
+        // Invalid reroute target: fall through to original model.
+      }
+    }
+    modelCapabilities = singleModelCaps;
+  }
+
+  // Pin the request to a specific connection when the client asks for one.
+  // The header is preferred; body fields are accepted for backwards-compatible
+  // clients but stripped before the core sees them.
+  const rawConnectionPin = request.headers.get("x-connection-id")
+    || body.connectionId
+    || body.connection_id
+    || null;
+  let preferredConnectionId = null;
+  if (rawConnectionPin) {
+    const requestedId = String(rawConnectionPin);
+    const canonicalProvider = resolveProviderId(provider);
+    const activeConnections = await getProviderConnections({ provider: canonicalProvider, isActive: true });
+    const pinnedConnection = activeConnections.find((c) => c.id === requestedId);
+    if (!pinnedConnection) {
+      log.warn("CHAT", `x-connection-id not found for provider ${canonicalProvider}: ${requestedId.slice(0, 8)}`);
+      return errorResponse(
+        HTTP_STATUS.BAD_REQUEST,
+        `Connection ${requestedId.slice(0, 8)}... is not active for provider '${canonicalProvider}'.`
+      );
+    }
+    preferredConnectionId = pinnedConnection.id;
+    log.info("CHAT", `[${provider}/${model}] pinned to connection ${preferredConnectionId.slice(0, 8)}`);
+  }
+  // Strip router-only connection pin from upstream request body.
+  if (body.connectionId !== undefined || body.connection_id !== undefined) {
+    body = { ...body };
+    delete body.connectionId;
+    delete body.connection_id;
+  }
+
   // Strip reasoning_content for providers that reject it (Mistral, etc.)
   // Preserve for providers that require it (DeepSeek thinking mode)
   if (!provider.startsWith("deepseek")) {
@@ -656,6 +784,18 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     body,
     scope: provider,
   });
+
+  // Resolve request-scoped custom capabilities once, just before the retry loop.
+  // Custom model aliases are stored by provider prefix; requestPrefix carries
+  // the prefix the caller actually used (e.g. node alias or bare model alias).
+  const parsed = parseModel(modelStr);
+  const requestPrefix = parsed?.providerAlias || null;
+  // The direct single-model path already resolved caps for the vision bridge;
+  // reuse that result (undefined = not resolved yet). Combo attempts pass
+  // undefined so each member resolves its own caps.
+  const resolvedModelCapabilities = modelCapabilities !== undefined
+    ? modelCapabilities
+    : await loadCustomCapabilities(provider, model, requestPrefix);
 
   // Try with available accounts (fallback on errors)
   const excludeConnectionIds = new Set();
@@ -687,14 +827,27 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         modelCandidates,
         quotaFamily,
         sessionId: routingSessionId,
+        preferredConnectionId,
       });
     } catch (error) {
       if (error?.name === "AbortError" || requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
       throw error;
     }
 
-    // All accounts unavailable
-    if (!credentials || credentials.allRateLimited) {
+    // If the caller pinned a connection, the selected credential must match it
+    // exactly. Otherwise the account has been excluded/quota-blocked/rotated and
+    // the pin is no longer honored.
+    if (preferredConnectionId && credentials?.connectionId && credentials.connectionId !== preferredConnectionId) {
+      log.warn("CHAT", `[${provider}/${model}] pinned connection ${preferredConnectionId.slice(0, 8)} not selected; refusing rotation`);
+      return errorResponse(HTTP_STATUS.BAD_REQUEST, `Connection ${preferredConnectionId.slice(0, 8)}... is not available for provider '${provider}'.`);
+    }
+
+    // All accounts unavailable or provider disabled
+    if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
+      if (credentials?.providerDisabled) {
+        log.warn("CHAT", `[${provider}/${model}] free no-auth provider disabled by settings`);
+        return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
+      }
       if (credentials?.allRateLimited) {
         const storedStatus = Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;
         const combinedRateLimit = aggregateRateLimitBlockers(attemptedBlockers, {
@@ -817,6 +970,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     const result = await handleChatCore({
       body: { ...structuredClone(body), model: `${provider}/${model}` },
       modelInfo: { provider, model },
+      modelCapabilities: resolvedModelCapabilities,
       credentials: refreshedCredentials,
       log,
       clientRawRequest,
@@ -843,6 +997,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       pxpipeTimeoutMs: chatSettings.pxpipeTimeoutMs,
       pxpipeTransform,
       onPxpipeEvent: appendPxpipeEvent,
+      onHeadroomEvent: appendHeadroomEvent,
       onTokenSaverEvent: (event) => {
         if (tokenSaverCollector) {
           tokenSaverCollector.latest = event;
@@ -895,6 +1050,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
     if (result.success) return result.response;
     if (requestAborted(request, requestSignal) || result.status === 499) return result.response;
+    if (preferredConnectionId) {
+      // A pinned connection must not rotate. Return the failure response immediately.
+      log.warn("CHAT", `[${provider}/${model}] pinned connection ${preferredConnectionId.slice(0, 8)} failed; pin is terminal`);
+      return result.response;
+    }
     if (result.quotaCapacityUnavailable) {
       // A local atomic-capacity race is not provider evidence. Release/expiry is
       // owned by the lifecycle; exclude this account and try a sibling without

@@ -74,7 +74,12 @@ async function handleSingleModelImageEdit(modelStr, formData, request, apiKey) {
   while (true) {
     const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model);
 
-    if (!credentials || credentials.allRateLimited) {
+    // All accounts unavailable or provider disabled
+    if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
+      if (credentials?.providerDisabled) {
+        log.warn("IMAGE_EDIT", `[${provider}/${model}] free no-auth provider disabled by settings`);
+        return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
+      }
       if (credentials?.allRateLimited) {
         const msg = lastError || credentials.lastError || "Unavailable";
         const status = lastStatus || Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;

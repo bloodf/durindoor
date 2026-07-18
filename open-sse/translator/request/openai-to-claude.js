@@ -13,13 +13,17 @@ import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 const CLAUDE_OAUTH_TOOL_PREFIX = "";
 
 // Convert OpenAI request to Claude format
-export function openaiToClaudeRequest(model, body, stream) {
+export function openaiToClaudeRequest(model, body, stream, credentials = null, translationContext = null) {
   // Tool name mapping for Claude OAuth (capitalizedName → originalName)
   const toolNameMap = new Map();
   // Cap max_tokens at the model's real output ceiling (e.g. Opus 4.8 = 128000),
   // not the conservative 64000 default — otherwise a high-output model is
   // pre-clamped here before prepareClaudeRequest's model-aware step runs.
-  const modelCeiling = getCapabilitiesForModel(null, model).maxOutput || undefined;
+  // Custom-model overrides (translationContext.modelCapabilities.maxOutput)
+  // take precedence over the static catalog ceiling.
+  const customCeiling = translationContext?.modelCapabilities?.maxOutput;
+  const modelCeiling = (Number.isFinite(customCeiling) && customCeiling > 0 ? customCeiling : undefined)
+    ?? (getCapabilitiesForModel(null, model).maxOutput || undefined);
   const result = {
     model: model,
     // Honor OpenAI's newer max_completion_tokens cap when max_tokens is absent —

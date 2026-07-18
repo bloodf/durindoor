@@ -1,28 +1,10 @@
 # Changelog
 
-## [2.1.0] - 2026-07-17
+## [2.1.1] - 2026-07-18
 
-### Features
-- Provider health fixes, free badges, account filter, local Ollama quota fix
-- Token Saver collapsible menu (Statistics/Settings), PxPipe embedded
-- MCP Gateway OAuth 401 retry + DurinDoor control MCP server
-- Playground v2: dashboard restyle, grouped models, connection pinning, effort selector
-- Custom model capability editor with runtime resolution (vision, tools, thinking, max output)
-- Model catalog refresh: Kimi K3, Z.ai GLM, MiniMax, OpenAI (sourced data)
-- Local Ollama embedding models in Media Providers
-- Firecrawl server-side auto-detect with SSRF allowlist
-- Headroom webUI with stats persistence
-- Usage page as webui home; System menu for Endpoint/CLI Tools
-- Deploy static-asset fix (standalone bundling)
-- Claude quota admin-permissions fix
-- Free no-auth provider enable/disable toggle (disabled by default)
-- Brand icon (icon-512.png) + favicon fix
-- Playground grid background visible (transparent page, solid bubbles)
-- Provider filter dropdown (active/deactivated/not configured), Health submenu
-- Compression Studio → Test Savers revamp with structured form
-- Auto-configure scripts (Headroom, PxPipe, Caveman, Ponytail, RTK, Firecrawl)
-- Security: policy enforcement before capability lookup
-- Headroom standalone cleanup (harness configs repointed to DurinDoor gateway)
+### Fixes
+- Rebrand all user-visible 9router/9Router references to DurinDoor in the webui
+- Wire-format compat identifiers preserved (config keys, env vars, data paths)
 
 # 2.0.0
 
@@ -32,6 +14,7 @@
 - **GitHub Copilot**: route Claude models through Copilot's native `/v1/messages` endpoint so prompt-cache token counts (`cached_tokens`) surface; non-Claude models keep `/chat/completions` (upstream 9router #2608).
 - **Token Saver**: aggregate token-saver telemetry with per-request persistence and period aggregation, dashboard overview, stats API + live stream, and fail-open recording on chat and /v1/responses (#2562).
 - **Updater**: one-click Update in the dashboard sidebar (auto install + restart via the detached updater status endpoint, bounded poll with manual fallback; decolua/9router #2575).
+- **Auto-configure**: add idempotent Headroom, PxPipe, Firecrawl, and RTK/Caveman/Ponytail setup scripts, plus CLI, API route, and dashboard System menu.
 
 ## Fixes
 - **MiniMax-M3**: attach the OpenAI transport in the dashboard translator step 3 so the executor uses the `/v1/text/chatcompletion_v2` endpoint and matching headers; clamp unsupported `tool_choice` values (`"required"` and function objects) to `"auto"` on the OpenAI transport (upstream decolua/9router#2533).

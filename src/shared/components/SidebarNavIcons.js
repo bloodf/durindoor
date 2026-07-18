@@ -75,6 +75,7 @@ export const debugItems = [
 // Endpoint & Key and CLI Tools moved under System per the V2.1 nav restructure.
 export const systemItems = [
   { href: "/dashboard/endpoint", label: "Endpoint & Key", icon: "api" },
+  { href: "/dashboard/auto-configure", label: "Auto-configure", icon: "auto_fix" },
   { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal", exact: false },
   { href: "/dashboard/proxy-pools", label: "Proxy Pools", icon: "lan" },
   { href: "/dashboard/skills", label: "Skills", icon: "extension" },

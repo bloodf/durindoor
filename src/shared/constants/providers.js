@@ -99,8 +99,24 @@ export function isAnthropicCompatibleProvider(providerId) {
   return typeof providerId === "string" && providerId.startsWith(ANTHROPIC_COMPATIBLE_PREFIX);
 }
 
+export function isLocalOllamaProvider(providerId) {
+  return providerId === "ollama-local";
+}
+
 export function isCustomEmbeddingProvider(providerId) {
   return typeof providerId === "string" && providerId.startsWith(CUSTOM_EMBEDDING_PREFIX);
+}
+
+/**
+ * Classify a provider by its free-tier status for badge rendering.
+ * @param {string} providerId
+ * @returns {"free" | "freeTier" | null}
+ */
+export function classifyFreeProvider(providerId) {
+  if (typeof providerId !== "string") return null;
+  if (FREE_PROVIDERS[providerId]) return "free";
+  if (FREE_TIER_PROVIDERS[providerId]) return "freeTier";
+  return null;
 }
 
 // All providers (combined)

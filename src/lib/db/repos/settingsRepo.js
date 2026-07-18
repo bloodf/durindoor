@@ -50,13 +50,7 @@ const DEFAULT_SETTINGS = {
   headroomEnabled: false,
   headroomUrl: DEFAULT_HEADROOM_URL,
   headroomCompressUserMessages: false,
-  pxpipeEnabled: false,
-  cavemanEnabled: false,
-  cavemanLevel: "full",
-  quotaTrackerState: DEFAULT_QUOTA_TRACKER_STATE,
-  ponytailEnabled: false,
-  ponytailLevel: "full",
-  pxpipeAutoInstall: true,
+  pxpipeEnabled: true,
   pxpipeMinChars: 25000,
   pxpipeTimeoutMs: 15000,
   providerConcurrencyLimits: {},
@@ -81,6 +75,14 @@ const DEFAULT_SETTINGS = {
   // Any engine throw fail-opens and restores the body; the loop never throws.
   compressionEnabled: false,
   compressionEngines: {},
+  cavemanEnabled: false,
+  cavemanLevel: "full",
+  quotaTrackerState: DEFAULT_QUOTA_TRACKER_STATE,
+  ponytailEnabled: false,
+  ponytailLevel: "full",
+  // Default: free no-auth providers remain enabled unless the user explicitly
+  // disables them via Settings > Providers.
+  disabledFreeProviders: [],
 };
 
 async function readRaw() {
@@ -97,16 +99,15 @@ function mergeWithDefaults(raw) {
     ...((raw || {}).quotaTrackerState || {}),
   };
   for (const [key, defVal] of Object.entries(DEFAULT_SETTINGS)) {
-    if (merged[key] === undefined) {
-      if (
-        key === "outboundProxyEnabled" &&
-        typeof merged.outboundProxyUrl === "string" &&
-        merged.outboundProxyUrl.trim()
-      ) {
-        merged[key] = true;
-      } else {
-        merged[key] = defVal;
-      }
+    if (merged[key] !== undefined) continue;
+    if (
+      key === "outboundProxyEnabled" &&
+      typeof merged.outboundProxyUrl === "string" &&
+      merged.outboundProxyUrl.trim()
+    ) {
+      merged[key] = true;
+    } else {
+      merged[key] = defVal;
     }
   }
   return merged;

@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   getModelAliases: vi.fn(),
   getProviderNodes: vi.fn(),
   getProviderConnections: vi.fn(),
+  getSettings: vi.fn().mockResolvedValue({ disabledFreeProviders: [] }),
 }));
 
 vi.mock("@/lib/localDb", () => ({
@@ -23,6 +24,7 @@ vi.mock("@/lib/localDb", () => ({
   getModelAliases: mocks.getModelAliases,
   getProviderNodes: mocks.getProviderNodes,
   getProviderConnections: mocks.getProviderConnections,
+  getSettings: mocks.getSettings,
 }));
 
 async function loadGetComboModels() {

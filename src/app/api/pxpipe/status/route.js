@@ -11,7 +11,6 @@ export async function GET() {
     return NextResponse.json({
       ...status,
       enabled: !!settings.pxpipeEnabled,
-      autoInstall: !!settings.pxpipeAutoInstall,
       minChars: settings.pxpipeMinChars,
       timeoutMs: settings.pxpipeTimeoutMs,
     });

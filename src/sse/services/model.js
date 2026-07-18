@@ -1,5 +1,78 @@
+import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
+
+import { parseSuffix } from "open-sse/translator/concerns/thinkingSuffix.js";
+import { PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
+
+export function resolveCustomCapabilities(provider, model, requestPrefix, customModels) {
+  if (!Array.isArray(customModels) || !model) return null;
+  const { cleanModel } = parseSuffix(model);
+  const cleanModelId = String(cleanModel).replace(/^\//, "");
+  const canonicalAlias = PROVIDER_ID_TO_ALIAS[provider] || provider;
+  for (const m of customModels) {
+    if (!m.id || !m.providerAlias) continue;
+    // The same provider/model id may carry sibling records of other types
+    // (image, embedding). Chat capability resolution reads only LLM records.
+    // Same fallback as providerCustomModels: kind || type || "llm".
+    if ((m.kind || m.type || "llm") !== "llm") continue;
+    const storedId = String(m.id).replace(/^\//, "");
+    if (storedId !== cleanModelId) continue;
+    const alias = m.providerAlias;
+    if (alias === provider || alias === requestPrefix || alias === canonicalAlias) {
+      const staticCaps = getCapabilitiesForModel(provider, String(cleanModel));
+      const caps = m.capabilities;
+      const hasCaps = caps && typeof caps === "object" && !Array.isArray(caps) && Object.keys(caps).length > 0;
+      const merged = hasCaps ? { ...staticCaps, ...caps } : { ...staticCaps };
+      // Consumers that must distinguish "explicitly persisted on the custom
+      // row" from "inherited static/default" (e.g. strict context routing)
+      // read this non-enumerable marker; spreads/JSON drop it harmlessly.
+      Object.defineProperty(merged, "customKeys", {
+        value: new Set(hasCaps ? Object.keys(caps) : []),
+        enumerable: false,
+      });
+      return merged;
+    }
+  }
+  return null;
+}
+
+// Async wrapper owning the DB lookup so callers (chat handler) don't fetch
+// the whole custom-model catalog themselves — keeps localDb mocking scoped
+// to this service's tests. Fail-open: lookup errors mean "no custom caps".
+export async function loadCustomCapabilities(provider, model, requestPrefix) {
+  try {
+    const customModels = await getCustomModels();
+    const direct = resolveCustomCapabilities(provider, model, requestPrefix, customModels);
+    if (direct) return direct;
+    // Compatible-provider nodes store custom rows under the node PREFIX as
+    // providerAlias, while getModelInfo resolves to the internal node id. A
+    // bare alias (requestPrefix null) or id-addressed request would miss the
+    // row, so retry with the node's prefix as the effective alias.
+    if (provider && (provider.startsWith("openai-compatible") || provider.startsWith("anthropic-compatible") || /^[0-9a-f-]{16,}$/i.test(provider))) {
+      const nodes = [
+        ...(await getProviderNodes({ type: "openai-compatible" })),
+        ...(await getProviderNodes({ type: "anthropic-compatible" })),
+      ];
+      const node = nodes.find((n) => n.id === provider);
+      if (node?.prefix && node.prefix !== requestPrefix) {
+        return resolveCustomCapabilities(provider, model, node.prefix, customModels);
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 // Re-export from open-sse with localDb integration
-import { getModelAliases, getComboByName, getProviderNodes, getProviderConnections } from "@/lib/localDb";
+import { isFreeNoAuthProviderDisabled } from "@/sse/services/freeProviderGate.js";
+import {
+  getModelAliases,
+  getComboByName,
+  getProviderNodes,
+  getProviderConnections,
+  getCustomModels,
+  getSettings,
+} from "@/lib/localDb";
 import { parseModel as parseModelCore, resolveModelAliasFromMap, getModelInfoCore, stripRedundantNodePrefix } from "open-sse/services/model.js";
 import { filterPaidModels } from "open-sse/providers/pricing.js";
 import { isAutoComboId, familyOfAutoId, resolveAutoCombo } from "open-sse/services/autoComboResolver.js";
@@ -115,8 +188,12 @@ export async function getAutoComboCatalog() {
     if (entry.alias) idToKey.set(entry.alias, key);
   }
   // Chat-eligible no-auth entries come from the canonical config (registry
-  // derived — never a hardcoded provider list).
-  const noAuthEntries = Object.values(NOAUTH_PROVIDERS);
+  // derived — never a hardcoded provider list). Drop any disabled by the
+  // free-provider enable toggle.
+  const settings = await getSettings().catch(() => null);
+  const noAuthEntries = Object.values(NOAUTH_PROVIDERS).filter(
+    (entry) => !isFreeNoAuthProviderDisabled(entry.id, settings)
+  );
   const getModels = (key) => PROVIDER_MODELS[key];
   const catalog = {};
   const inactiveKeys = new Set();

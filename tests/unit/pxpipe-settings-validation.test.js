@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getSettings: vi.fn(),
   updateSettings: vi.fn(),
+  runHealthCheck: vi.fn(),
 }));
 
 vi.mock("next/server", () => ({
@@ -17,6 +18,7 @@ vi.mock("open-sse/services/combo.js", () => ({
   resetComboScoring: vi.fn(),
 }));
 vi.mock("@/shared/services/quotaAutoPing", () => ({ runQuotaAutoPingTick: vi.fn() }));
+vi.mock("@/lib/pxpipe/service.js", () => ({ runHealthCheck: mocks.runHealthCheck }));
 
 const settingsRoute = await import("../../src/app/api/settings/route.js");
 
@@ -31,7 +33,6 @@ describe("settings API PXPIPE validation", () => {
     mocks.updateSettings.mockImplementation(async (patch) => ({ ...patch }));
     mocks.getSettings.mockResolvedValue({
       pxpipeEnabled: false,
-      pxpipeAutoInstall: true,
       pxpipeMinChars: 25000,
       pxpipeTimeoutMs: 15000,
     });
@@ -77,20 +78,19 @@ describe("settings API PXPIPE validation", () => {
     expect(mocks.updateSettings).not.toHaveBeenCalled();
   });
 
-  it("rejects non-boolean pxpipeAutoInstall", async () => {
+  it("strips legacy pxpipeAutoInstall instead of persisting it", async () => {
     const response = await settingsRoute.PATCH({
-      json: async () => ({ pxpipeAutoInstall: 1 }),
+      json: async () => ({ pxpipeAutoInstall: 1, pxpipeEnabled: true }),
     });
 
-    expect(response.status).toBe(400);
-    expect(response.body).toEqual({ error: "Invalid pxpipeAutoInstall" });
-    expect(mocks.updateSettings).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    // removed key must never reach persistence
+    expect(mocks.updateSettings).toHaveBeenCalledWith({ pxpipeEnabled: true });
   });
 
   it("accepts valid pxpipe values and echoes them back from GET", async () => {
     const patch = {
       pxpipeEnabled: true,
-      pxpipeAutoInstall: false,
       pxpipeMinChars: 40000,
       pxpipeTimeoutMs: 60000,
     };
@@ -113,6 +113,12 @@ describe("settings API PXPIPE validation", () => {
  */
 describe("pxpipe health route", () => {
   it("GET returns the same shape as POST", async () => {
+    mocks.runHealthCheck.mockResolvedValue({
+      healthy: true,
+      checks: [{ id: "installed", ok: true, detail: "v0.9.0" }],
+      error: null,
+    });
+
     const healthRoute = await import("../../src/app/api/pxpipe/health/route.js");
 
     expect(typeof healthRoute.GET).toBe("function");

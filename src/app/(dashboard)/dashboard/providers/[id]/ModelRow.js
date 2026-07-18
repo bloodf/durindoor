@@ -1,7 +1,7 @@
 import PropTypes from "prop-types";
 import { CapacityBadges } from "@/shared/components";
 
-export default function ModelRow({ model, fullModel, alias, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting, onDisable, caps, thinkingSuffix }) {
+export default function ModelRow({ model, fullModel, alias, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting, onDisable, onEdit, caps, thinkingSuffix }) {
   const displayModel = thinkingSuffix ? `${fullModel}(${thinkingSuffix})` : fullModel;
   const borderColor = testStatus === "ok"
     ? "border-green-500/40"
@@ -60,6 +60,15 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
             {copied === `model-${model.id}` ? "Copied!" : "Copy"}
           </span>
         </div>
+        {isCustom && onEdit ? (
+          <button
+            onClick={onEdit}
+            className="ml-auto rounded p-0.5 text-text-muted opacity-100 transition-opacity hover:bg-sidebar hover:text-primary sm:opacity-0 sm:group-hover:opacity-100"
+            title="Edit custom model capabilities"
+          >
+            <span className="material-symbols-outlined text-sm">edit</span>
+          </button>
+        ) : null}
         {isCustom ? (
           <button
             onClick={onDeleteAlias}
@@ -97,6 +106,7 @@ ModelRow.propTypes = {
   onTest: PropTypes.func,
   isTesting: PropTypes.bool,
   onDisable: PropTypes.func,
+  onEdit: PropTypes.func,
   caps: PropTypes.object,
   thinkingSuffix: PropTypes.string,
 };

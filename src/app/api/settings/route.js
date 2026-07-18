@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { FREE_NO_AUTH_PROVIDER_IDS } from "@/shared/constants/freeNoAuthProviders";
 import { getSettings, updateSettings } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation, resetComboScoring } from "open-sse/services/combo.js";
@@ -114,13 +115,24 @@ export async function PATCH(request) {
         return NextResponse.json({ error: "Invalid pxpipeTimeoutMs" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
       }
     }
-    for (const key of ["pxpipeEnabled", "pxpipeAutoInstall"]) {
-      if (Object.prototype.hasOwnProperty.call(body, key) && typeof body[key] !== "boolean") {
-        return NextResponse.json({ error: `Invalid ${key}` }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
-      }
+    if (Object.prototype.hasOwnProperty.call(body, "pxpipeEnabled") && typeof body.pxpipeEnabled !== "boolean") {
+      return NextResponse.json({ error: "Invalid pxpipeEnabled" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
     }
+    // pxpipeAutoInstall was removed with runtime installs; strip so legacy
+    // clients can't persist dead config.
+    delete body.pxpipeAutoInstall;
 
-    // Validate per-combo contextRequirements (upstream #6907 schema parity):
+    if (Object.prototype.hasOwnProperty.call(body, "disabledFreeProviders")) {
+      const ids = body.disabledFreeProviders;
+      if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string")) {
+        return NextResponse.json({ error: "Invalid disabledFreeProviders" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
+      const unknown = ids.filter((id) => !FREE_NO_AUTH_PROVIDER_IDS.includes(id));
+      if (unknown.length > 0) {
+        return NextResponse.json({ error: `Unknown free provider(s): ${unknown.join(", ")}` }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
+      body.disabledFreeProviders = Array.from(new Set(ids));
+    }
     //   minContextWindow: integer 0..10_000_000 (optional)
     //   preferLargeContext: boolean (optional)
     //   contextFilterMode: "strict" | "lenient" (optional)

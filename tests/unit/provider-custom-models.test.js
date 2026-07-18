@@ -15,6 +15,7 @@ describe("provider custom model rows", () => {
         fullModel: "ollama/minimax-m2.5",
         source: "custom",
         type: "llm",
+        capabilities: {},
       },
     ]);
     expect(getProviderCustomModelRows({ customModels, providerAlias: "opencode-go" })).toEqual([
@@ -24,6 +25,7 @@ describe("provider custom model rows", () => {
         fullModel: "opencode-go/minimax-m2.5",
         source: "custom",
         type: "llm",
+        capabilities: {},
       },
     ]);
   });
@@ -48,6 +50,7 @@ describe("provider custom model rows", () => {
         fullModel: "ollama/custom-a",
         source: "custom",
         type: "llm",
+        capabilities: {},
       },
       {
         id: "legacy-b",
@@ -55,6 +58,25 @@ describe("provider custom model rows", () => {
         fullModel: "ollama/legacy-b",
         source: "legacyAlias",
         type: "llm",
+      },
+    ]);
+  });
+
+  it("surfaces custom capabilities on rows", () => {
+    const rows = getProviderCustomModelRows({
+      customModels: [
+        { providerAlias: "ollama", id: "custom-cap", type: "llm", name: "Custom Cap", capabilities: { vision: true, tools: true, contextWindow: 32000 } },
+      ],
+      providerAlias: "ollama",
+    });
+    expect(rows).toEqual([
+      {
+        id: "custom-cap",
+        name: "Custom Cap",
+        fullModel: "ollama/custom-cap",
+        source: "custom",
+        type: "llm",
+        capabilities: { vision: true, tools: true, contextWindow: 32000 },
       },
     ]);
   });
@@ -78,6 +100,7 @@ describe("provider custom model rows", () => {
         fullModel: "ollama/custom-llm",
         source: "custom",
         type: "llm",
+        capabilities: {},
       },
     ]);
   });

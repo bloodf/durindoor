@@ -17,7 +17,7 @@ import {
 import { readQuotaPortableStateSync, writeQuotaPortableStateSync } from "./repos/quotaSnapshotsRepo.js";
 import { assertNoActiveQuotaReservationsSync } from "./repos/quotaReservationsRepo.js";
 import { SENSITIVE_CONNECTION_FIELDS } from "./repos/connectionsRepo.js";
-import { isEncryptedBlob, decryptField } from "../crypto/columnCrypto.js";
+import { isEncryptedBlob, decryptField, encryptField } from "../crypto/columnCrypto.js";
 
 function assertUniqueNonEmpty(rows, field, label, { revealDuplicate = true } = {}) {
   const seen = new Set();
@@ -240,7 +240,7 @@ export {
 // Aliases (model + custom + mitm)
 export {
   getModelAliases, setModelAlias, deleteModelAlias,
-  getCustomModels, addCustomModel, deleteCustomModel,
+  getCustomModels, addCustomModel, updateCustomModel, deleteCustomModel,
   getMitmAlias, setMitmAliasAll,
 } from "./repos/aliasRepo.js";
 
@@ -390,6 +390,12 @@ export async function importDb(payload, { now = Date.now() } = {}) {
 
     for (const c of payload.providerConnections || []) {
       const { id, provider, authType, name, email, priority, isActive, createdAt, updatedAt, ...rest } = c;
+      for (const field of SENSITIVE_CONNECTION_FIELDS) {
+        const value = rest[field];
+        if (typeof value === "string" && value.length > 0 && !isEncryptedBlob(value)) {
+          rest[field] = encryptField(value, id);
+        }
+      }
       db.run(
         `INSERT OR REPLACE INTO providerConnections(id, provider, authType, name, email, priority, isActive, data, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [id, provider, authType || "oauth", name || null, email || null, priority || null, isActive === false ? 0 : 1, stringifyJson(rest), createdAt || new Date().toISOString(), updatedAt || new Date().toISOString()]

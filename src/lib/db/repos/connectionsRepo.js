@@ -21,12 +21,13 @@ export const SENSITIVE_CONNECTION_FIELDS = Object.freeze([
   "refreshToken",
   "apiKey",
   "idToken",
+  "firecrawlHeaders",
 ]);
 
 const OPTIONAL_FIELDS = [
   "displayName", "email", "globalPriority", "defaultModel",
   "accessToken", "refreshToken", "expiresAt", "tokenType",
-  "scope", "projectId", "apiKey", "testStatus",
+  "scope", "projectId", "apiKey", "testStatus", "firecrawlHeaders",
   "lastTested", "lastError", "lastErrorAt", "rateLimitedUntil", "expiresIn", "errorCode",
   "consecutiveUseCount", "idToken", "lastRefreshAt",
 ];

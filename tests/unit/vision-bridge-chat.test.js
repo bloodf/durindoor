@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   getProviderCredentials: vi.fn(),
   handleChatCore: vi.fn(),
   enforceApiKeyModelPolicy: vi.fn(),
+  loadCustomCapabilities: vi.fn(),
 }));
 
 vi.mock("@/lib/localDb", () => ({
@@ -15,9 +16,11 @@ vi.mock("@/lib/localDb", () => ({
   getApiKeyUsageLimitStatus: vi.fn(async () => ({ exceeded: false, usedTokens: 0, limitTokens: 0 })),
 }));
 
-vi.mock("../../src/sse/services/model.js", () => ({
+vi.mock("../../src/sse/services/model.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   getComboModels: mocks.getComboModels,
   getModelInfo: mocks.getModelInfo,
+  loadCustomCapabilities: mocks.loadCustomCapabilities,
 }));
 
 vi.mock("../../src/sse/services/auth.js", () => ({
@@ -86,15 +89,22 @@ describe("Vision Bridge (#6640) chat wiring", () => {
     vi.clearAllMocks();
     mocks.getSettings.mockResolvedValue(baseSettings());
     mocks.getComboModels.mockResolvedValue(null);
+    mocks.getModelInfo.mockImplementation((modelStr) => {
+      if (modelStr === NON_VISION) return Promise.resolve({ provider: "minimax", model: "MiniMax-M2.1" });
+      if (modelStr === VISION) return Promise.resolve({ provider: "openai", model: "gpt-4o" });
+      return Promise.resolve({ provider: "openai", model: "gpt-4o" });
+    });
+    mocks.loadCustomCapabilities.mockImplementation(async (_provider, model) => {
+      if (model === "MiniMax-M2.1") return { vision: false };
+      if (model === "gpt-4o") return { vision: true };
+      return null;
+    });
     mocks.enforceApiKeyModelPolicy.mockResolvedValue(null);
     mocks.getProviderCredentials.mockResolvedValue({ apiKey: "k", providerSpecificData: {} });
     mocks.handleChatCore.mockResolvedValue({ success: true, response: new Response("ok", { status: 200 }) });
   });
 
   it("reroutes image+non-vision request to the configured vision model at dispatch", async () => {
-    // getModelInfo resolves the REROUTED target (vision model) post-bridge.
-    mocks.getModelInfo.mockResolvedValue({ provider: "openai", model: "gpt-4o" });
-
     const res = await handleChat(imageRequest(NON_VISION));
 
     expect(res.status).toBe(200);
@@ -102,12 +112,23 @@ describe("Vision Bridge (#6640) chat wiring", () => {
     const call = mocks.handleChatCore.mock.calls[0][0];
     expect(call.body.model).toBe(VISION);
     expect(call.modelInfo).toEqual({ provider: "openai", model: "gpt-4o" });
-    // Policy gate saw the rerouted target, not the original non-vision model.
-    expect(mocks.enforceApiKeyModelPolicy).toHaveBeenCalledWith(expect.anything(), VISION);
+    // Ordering invariant: original model policy checked before any capability DB
+    // lookup, and the bridge-target policy checked before dispatch.
+    const policyModels = mocks.enforceApiKeyModelPolicy.mock.calls.map(([, modelStr]) => modelStr);
+    expect(policyModels[0]).toBe(NON_VISION);
+    expect(policyModels).toContain(VISION);
+    const policyOrder = mocks.enforceApiKeyModelPolicy.mock.invocationCallOrder;
+    const capsOrder = mocks.loadCustomCapabilities.mock.invocationCallOrder;
+    const dispatchOrder = mocks.handleChatCore.mock.invocationCallOrder;
+    expect(capsOrder.length).toBeGreaterThan(0);
+    expect(dispatchOrder.length).toBe(1);
+    expect(policyOrder[0]).toBeLessThan(capsOrder[0]);
+    expect(capsOrder[0]).toBeLessThan(dispatchOrder[0]);
+    const targetPolicyOrder = policyOrder[policyModels.lastIndexOf(VISION)];
+    expect(targetPolicyOrder).toBeLessThan(dispatchOrder[0]);
   });
 
   it("forwards the original image message content to handleChatCore after reroute", async () => {
-    mocks.getModelInfo.mockResolvedValue({ provider: "openai", model: "gpt-4o" });
     const messages = [
       {
         role: "user",
@@ -134,7 +155,6 @@ describe("Vision Bridge (#6640) chat wiring", () => {
 
   it("keeps the original model when the bridge is disabled", async () => {
     mocks.getSettings.mockResolvedValue(baseSettings({ visionBridgeEnabled: false }));
-    mocks.getModelInfo.mockResolvedValue({ provider: "minimax", model: "MiniMax-M2.1" });
 
     const res = await handleChat(imageRequest(NON_VISION));
 
@@ -143,7 +163,6 @@ describe("Vision Bridge (#6640) chat wiring", () => {
   });
 
   it("keeps the original model when the rerouted target is denied by API key policy", async () => {
-    mocks.getModelInfo.mockResolvedValue({ provider: "minimax", model: "MiniMax-M2.1" });
     // Bridge-target policy check returns an error Response → bridge must NOT apply.
     mocks.enforceApiKeyModelPolicy.mockImplementation(async (_req, modelStr) =>
       modelStr === VISION ? new Response("denied", { status: 403 }) : null,
@@ -158,7 +177,6 @@ describe("Vision Bridge (#6640) chat wiring", () => {
   });
 
   it("does not reroute when the request has no current-turn image", async () => {
-    mocks.getModelInfo.mockResolvedValue({ provider: "minimax", model: "MiniMax-M2.1" });
     const textOnly = new Request("http://localhost/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

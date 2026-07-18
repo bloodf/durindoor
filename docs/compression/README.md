@@ -99,3 +99,22 @@ Compression never breaks a request:
   no header.
 
 Engines never mutate the caller's body; each step works on a fresh value.
+
+## PXPIPE installation model
+
+PXPIPE (image-compression transform) ships as a **direct dependency**
+(`pxpipe-proxy` in `package.json`); `scripts/build-app.mjs` copies it (and
+`gpt-tokenizer`) into `.next/standalone/node_modules`, so a normal
+`npm install` + build produces a working PXPIPE out of the box.
+
+There is **no runtime install endpoint**: the former `/api/pxpipe/install`
+route and dashboard Install/Auto-install actions were removed. Detection
+(`src/lib/pxpipe/install.js` `getInstallInfo`) only checks that the bundled
+package resolves and exposes its `./transform` entry.
+
+If status reports `DEPENDENCY_MISSING`, the installation is corrupt —
+reinstall the application (`npm install`, or redeploy the standalone build).
+`/api/pxpipe/start` responds `409` and the Token Saver card shows repair
+guidance while the dependency is absent; Start stays disabled. The PXPIPE
+dashboard's log card lists real transform events from
+`src/lib/pxpipe/events.js` (JSONL, rotated), not installer logs.

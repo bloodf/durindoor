@@ -113,7 +113,7 @@ export class GithubExecutor extends BaseExecutor {
     return end === messages.length ? messages : messages.slice(0, end);
   }
 
-  transformRequest(model, body, stream, credentials) {
+  transformRequest(model, body, stream, credentials, requestContext = null) {
     const transformed = { ...body };
     // Scoped to /chat/completions: the /responses route bypasses transformRequest
     // and its converter maps max_tokens but drops max_completion_tokens, so running
@@ -258,7 +258,7 @@ export class GithubExecutor extends BaseExecutor {
      * the "github" branch KEEPS unvalidated blocks (see normalizeClaudePassthrough),
      * so we force the validating path to strip them for this route.
      */
-    normalizeClaudePassthrough(transformedBody, model, "claude");
+    normalizeClaudePassthrough(transformedBody, model, "claude", requestContext?.modelCapabilities?.maxOutput ?? null);
 
     /**
      * Parallel-tool-use guard (Codex #291 P2): translateRequest converts OpenAI
@@ -578,7 +578,7 @@ export class GithubExecutor extends BaseExecutor {
     };
   }
 
-  async executeWithResponsesEndpoint({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
+  async executeWithResponsesEndpoint({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null }) {
     const url = this.config.responsesUrl;
     // GitHub's /responses branch is always converted through an SSE transformer
     // below. Keep the upstream Responses request streaming even when the
@@ -587,6 +587,9 @@ export class GithubExecutor extends BaseExecutor {
     const headers = this.buildHeaders(credentials, responsesStream);
 
     const transformedBody = openaiToOpenAIResponsesRequest(model, body, responsesStream, credentials);
+    // Custom-model maxOutput: the Responses converter emits max_output_tokens;
+    // clamp AFTER conversion so escalation from /chat/completions keeps the cap.
+    this.clampCustomMaxOutput(transformedBody, requestContext, ["max_output_tokens"]);
 
     log?.debug("GITHUB", "Sending translated request to /responses");
 

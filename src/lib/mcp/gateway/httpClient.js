@@ -1,7 +1,7 @@
 // HTTP/SSE upstream MCP client for the gateway.
 
-import { updateInstance } from "@/lib/localDb";
-import { ensureFreshToken, oauthMetaFromTokens } from "./oauthRefresh";
+import { updateInstance, getInstanceById } from "@/lib/localDb";
+import { ensureFreshToken, oauthMetaFromTokens, refreshToken } from "./oauthRefresh";
 import { retryWithBackoff } from "./retry";
 import { isJsonRpcResponse, isRecord } from "./guards";
 import { assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
@@ -44,12 +44,13 @@ function clearSessionEntry(instance) {
 }
 
 export class McpAuthError extends Error {
-  constructor(message, { status, slug, body } = {}) {
+  constructor(message, { status, slug, body, freshTokens } = {}) {
     super(message);
     this.name = "McpAuthError";
     this.status = status;
     this.slug = slug;
     this.body = body;
+    this.freshTokens = freshTokens;
   }
 }
 
@@ -81,6 +82,19 @@ function readAuthFromInstance(instance) {
   return typeof tok === "string" ? tok : null;
 }
 
+function markNeedsReauth(instance) {
+  return {
+    ...instance,
+    oauthTokens: { ...(instance.oauthTokens ?? {}), needsReauth: true },
+  };
+}
+
+function clearReauthFlag(instance) {
+  if (!instance?.oauthTokens) return instance;
+  const { needsReauth, ...rest } = instance.oauthTokens;
+  return { ...instance, oauthTokens: rest };
+}
+
 function buildHeaders(instance) {
   const headers = {
     "Content-Type": "application/json",
@@ -103,18 +117,22 @@ function buildHeaders(instance) {
  * Perform an MCP JSON-RPC POST against an upstream and return the first
  * matching response frame. Throws McpAuthError on 401/403.
  *
+ * OAuth instances: before the request, a stale access token is refreshed via
+ * {@link ensureFreshToken}. If the upstream still returns 401, the request
+ * is force-refreshed once via {@link refreshToken} and retried with the new
+ * token. Non-OAuth instances do not retry 401s.
+ *
  * @param {object} instance   parsed mcpInstances row
  * @param {object} jsonRpc    {jsonrpc, id, method, params}
  * @param {object} [opts]     {sessionId, timeoutMs, skipRetry}
  * @returns {Promise<object>} JSON-RPC response with injected sessionId
  */
 export async function mcpRequest(instance, jsonRpc, opts = {}) {
-  const doRequest = async () => {
-    if (!instance?.url) {
-      throw new Error(`instance ${instance?.slug ?? "?"} has no url`);
+  const doRequest = async (currentInstance, { persistAuthFailure = false } = {}) => {
+    if (!currentInstance?.url) {
+      throw new Error(`instance ${currentInstance?.slug ?? "?"} has no url`);
     }
 
-    let currentInstance = instance;
     let url = currentInstance.url;
 
     if (currentInstance.oauth) {
@@ -206,19 +224,42 @@ export async function mcpRequest(instance, jsonRpc, opts = {}) {
 
       if (res.status === 401 || res.status === 403) {
         const body = await res.text().catch(() => "");
-        // Durably flag OAuth instances as needing login + capture the
-        // WWW-Authenticate challenge so the authorize route can do RFC 9728
-        // discovery without a second round-trip. Best-effort: never mask the
-        // auth error if the persist fails (row may be gone mid-flight).
         if (currentInstance.oauth && currentInstance.id) {
-          const challenge = res.headers.get("www-authenticate");
-          await updateInstance(currentInstance.id, {
-            oauthTokens: {
-              ...(currentInstance.oauthTokens ?? {}),
-              needsReauth: true,
-              ...(challenge ? { _lastChallenge: challenge } : {}),
-            },
-          }).catch(() => {});
+          const sentToken = readAuthFromInstance(currentInstance);
+          const latestRow = await getInstanceById(currentInstance.id).catch(() => null);
+          const latestTokens = latestRow?.oauthTokens;
+          const latestToken = typeof latestTokens?.access_token === "string" ? latestTokens.access_token : null;
+          // If another request has already refreshed and persisted a newer
+          // usable token, do not clobber it with needsReauth. Hand the fresh
+          // token up to the retry loop instead.
+          if (latestToken && latestToken !== sentToken && !latestTokens.needsReauth) {
+            throw new McpAuthError(`upstream ${res.status} for ${currentInstance.slug}`, {
+              status: res.status,
+              ...(currentInstance.slug !== undefined ? { slug: currentInstance.slug } : {}),
+              body: body.slice(0, 500),
+              freshTokens: latestTokens,
+            });
+          }
+          // Do not persist needsReauth on the first 401; a concurrent
+          // refresh may have already written a newer token that we just
+          // failed to observe. The outer retry loop will re-read the DB,
+          // reuse any in-flight refresh, or force-refresh itself, and only
+          // then persist needsReauth if the retry also fails.
+          if (persistAuthFailure) {
+            const finalRow = await getInstanceById(currentInstance.id).catch(() => null);
+            const finalTokens = finalRow?.oauthTokens;
+            const finalToken = typeof finalTokens?.access_token === "string" ? finalTokens.access_token : null;
+            if (!finalToken || finalToken === sentToken || finalTokens.needsReauth) {
+              const challenge = res.headers.get("www-authenticate");
+              await updateInstance(currentInstance.id, {
+                oauthTokens: {
+                  ...(currentInstance.oauthTokens ?? {}),
+                  needsReauth: true,
+                  ...(challenge ? { _lastChallenge: challenge } : {}),
+                },
+              }).catch(() => {});
+            }
+          }
         }
         throw new McpAuthError(`upstream ${res.status} for ${currentInstance.slug}`, {
           status: res.status,
@@ -258,9 +299,52 @@ export async function mcpRequest(instance, jsonRpc, opts = {}) {
   };
 
   if (opts.skipRetry) {
-    return doRequest();
+    return doRequest(instance, { persistAuthFailure: true });
   }
-  return retryWithBackoff(doRequest, {
+
+  let currentInstance = instance;
+  let didAuthRetry = false;
+
+  const requestWithAuthRetry = async () => {
+    try {
+      return await doRequest(currentInstance);
+    } catch (e) {
+      if (e instanceof McpAuthError && e.status === 401 && currentInstance.oauth && !didAuthRetry) {
+        didAuthRetry = true;
+        if (e.freshTokens && !e.freshTokens.needsReauth && e.freshTokens.access_token) {
+          currentInstance = { ...currentInstance, oauthTokens: e.freshTokens };
+          return await doRequest(currentInstance, { persistAuthFailure: true });
+        }
+        // Sequence guard: re-read DB immediately before starting a forced
+        // refresh. If another request has already refreshed while this one
+        // was waiting for its stale 401, use the newer token instead of
+        // refreshing with our stale refresh_token and potentially clobbering
+        // the valid bundle.
+        const preRefreshRow = await getInstanceById(currentInstance.id).catch(() => null);
+        const preRefreshTokens = preRefreshRow?.oauthTokens;
+        if (preRefreshTokens && !preRefreshTokens.needsReauth && preRefreshTokens.access_token && preRefreshTokens.access_token !== currentInstance.oauthTokens?.access_token) {
+          currentInstance = { ...currentInstance, oauthTokens: preRefreshTokens };
+          return await doRequest(currentInstance, { persistAuthFailure: true });
+        }
+        const refreshed = await refreshToken(currentInstance);
+        if (refreshed && !refreshed.oauthTokens?.needsReauth) {
+          currentInstance = refreshed;
+          return await doRequest(currentInstance, { persistAuthFailure: true });
+        }
+        // A concurrent request may have refreshed while we awaited our
+        // forced refresh. Read the DB once more before surfacing the 401.
+        const latestRow = await getInstanceById(currentInstance.id).catch(() => null);
+        const latestTokens = latestRow?.oauthTokens;
+        if (latestTokens && !latestTokens.needsReauth && latestTokens.access_token) {
+          currentInstance = { ...currentInstance, oauthTokens: latestTokens };
+          return await doRequest(currentInstance, { persistAuthFailure: true });
+        }
+      }
+      throw e;
+    }
+  };
+
+  return retryWithBackoff(requestWithAuthRetry, {
     maxAttempts: 3,
     baseDelayMs: 100,
     onRetry: (err, attempt, delayMs) => {

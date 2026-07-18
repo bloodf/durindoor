@@ -33,13 +33,24 @@ export const BRAND_LOGO_ALT = "";
 // /dashboard route redirects to /dashboard/usage).
 export const navItems = [
   { href: "/dashboard/usage", label: "Usage", icon: "bar_chart" },
-  { href: "/dashboard/providers", label: "Providers", icon: "dns", exact: false },
   { href: "/dashboard/playground", label: "Playground", icon: "chat" },
   { href: "/dashboard/combos", label: "Combos", icon: "layers" },
   { href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage" },
   { href: "/dashboard/health", label: "Provider Health", icon: "monitor_heart" },
   { href: "/dashboard/mcp-gateway", label: "MCP Gateway", icon: "hub", exact: false },
 ];
+
+// Collapsible Providers menu. Configuration is the provider grid; Health and
+// Quota Tracker were promoted from top-level to this group.
+export const providersMenu = {
+  icon: "dns",
+  label: "Providers",
+  children: [
+    { href: "/dashboard/providers", label: "Configuration", icon: "settings", exact: false },
+    { href: "/dashboard/health", label: "Health", icon: "monitor_heart" },
+    { href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage" },
+  ],
+};
 
 // Collapsible Token Saver menu. Statistics renders the overview dashboard;
 // Settings holds the RTK/Headroom/PXPIPE toggles; Headroom links to the

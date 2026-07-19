@@ -36,24 +36,32 @@ import {
   buildClientMetadataDocument,
   isPubliclyFetchableBase,
 } from "@/lib/mcp/gateway/oauthCimd";
+import { getTailscaleStatus, getTunnelStatus } from "@/lib/tunnel";
+import { selectOAuthPublicBase } from "@/lib/mcp/gateway/oauthPublicBase";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const CALLBACK_TIMEOUT_MS = 300_000;
 
-// Compute the public base URL for OAuth redirect_uri and CIMD client IDs.
-// Priority: explicit env override > X-Forwarded headers > request URL.
-// OAuth AS require a publicly reachable redirect_uri; localhost works only
-// for local dev. Behind cloudflared the X-Forwarded-* headers carry the
-// public origin. For non-forwarded deployments set MCP_GATEWAY_OAUTH_PUBLIC_URL.
-function appBase(request) {
+// Compute OAuth redirect/CIMD origin. Explicit env wins, then an active public
+// tunnel, then reverse-proxy headers and finally the request origin.
+async function appBase(request) {
   const envOverride =
     process.env.MCP_GATEWAY_OAUTH_PUBLIC_URL ||
     process.env.OAUTH_PUBLIC_BASE_URL;
-  if (envOverride) {
-    try { return new URL(envOverride).origin; } catch { /* invalid, fall through */ }
+  try {
+    const [tailscale, tunnel] = await Promise.all([
+      getTailscaleStatus(),
+      getTunnelStatus(),
+    ]);
+    const publicBase = selectOAuthPublicBase({ envOverride, tailscale, tunnel });
+    if (publicBase) return publicBase;
+  } catch {
+    const publicBase = selectOAuthPublicBase({ envOverride });
+    if (publicBase) return publicBase;
   }
+
   const url = new URL(request.url);
   const proto =
     (request.headers.get("x-forwarded-proto") || "")
@@ -91,7 +99,7 @@ function buildAuthorizeUrl(opts) {
 }
 
 async function ensureClient(instance, request) {
-  const currentBase = appBase(request);
+  const currentBase = await appBase(request);
   const currentRedirect = currentBase + "/api/mcp-gateway/oauth/" + instance.id + "/callback";
   if (instance.oauthTokens?.client?.clientId) {
     // CIMD clients do not use redirect_uri; always safe to reuse.
@@ -122,7 +130,7 @@ async function ensureClient(instance, request) {
     // pre-registration needed. The AS fetches that URL server-to-server, so it
     // must resolve to a public origin.
     if (meta?.client_id_metadata_document_supported) {
-      const base = appBase(request);
+      const base = await appBase(request);
       if (!isPubliclyFetchableBase(base)) {
         throw new Error("this server uses client-id metadata documents, which require a public URL — open the dashboard via your public/tunnel URL (not localhost) and retry, or set a client_id manually");
       }
@@ -189,7 +197,7 @@ export async function GET(request, context) {
     const raw = await getInstanceById(id);
     if (!raw) return NextResponse.json({ error: "instance not found" }, { status: 404 });
     const doc = buildClientMetadataDocument({
-      base: appBase(request),
+      base: await appBase(request),
       instanceId: id,
       slug: raw.slug,
       scope: raw.oauthTokens?.scope,
@@ -202,7 +210,7 @@ export async function GET(request, context) {
     if (!raw) return NextResponse.json({ error: "instance not found" }, { status: 404 });
     const instance = toOauthInstance(raw);
     if (!instance.url) return NextResponse.json({ error: "instance has no url" }, { status: 400 });
-    const base = appBase(request);
+    const base = await appBase(request);
     if (!isOAuthCapableBase(base)) {
       return NextResponse.json({
         error: "OAuth requires a public HTTPS URL. Set MCP_GATEWAY_OAUTH_PUBLIC_URL env var or access the dashboard through your Cloudflare tunnel.",
@@ -259,7 +267,7 @@ export async function GET(request, context) {
       }
     }
     const pkce = generatePKCE();
-    const redirectUri = `${appBase(request)}/api/mcp-gateway/oauth/${instance.id}/callback`;
+    const redirectUri = `${await appBase(request)}/api/mcp-gateway/oauth/${instance.id}/callback`;
     const authUrl = buildAuthorizeUrl({
       authorizationEndpoint: meta.authorization_endpoint,
       clientId: client.clientId,

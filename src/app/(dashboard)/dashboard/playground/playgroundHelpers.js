@@ -108,3 +108,20 @@ export function groupModelsByProvider(connections = [], normalizedModels = []) {
     .filter((group) => group.models.length > 0)
     .sort((a, b) => a.providerName.localeCompare(b.providerName));
 }
+
+/**
+ * Slice a sorted session list for a single history page, clamping the page
+ * when the list has shrunk below the current page (e.g. after deletions).
+ * @param {Array} items
+ * @param {number} currentPage 1-indexed
+ * @param {number} [pageSize=10]
+ * @returns {{page:number, items:Array, totalPages:number}}
+ */
+export function paginateSessions(items, currentPage, pageSize = 10) {
+  const safeItems = Array.isArray(items) ? items : [];
+  const safePageSize = pageSize > 0 ? Math.floor(pageSize) : 10;
+  const totalPages = Math.max(1, Math.ceil(safeItems.length / safePageSize));
+  const page = Math.min(Math.max(1, Number(currentPage) || 1), totalPages);
+  const start = (page - 1) * safePageSize;
+  return { page, items: safeItems.slice(start, start + safePageSize), totalPages };
+}

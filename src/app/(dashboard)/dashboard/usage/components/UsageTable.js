@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useMemo, Fragment } from "react";
 import PropTypes from "prop-types";
 import Card from "@/shared/components/Card";
 import Badge from "@/shared/components/Badge";
+import Pagination from "@/shared/components/Pagination";
+import { usePagination } from "@/shared/hooks/usePagination";
 
 const fmt = (n) => new Intl.NumberFormat().format(n || 0);
 const fmtCost = (n) => `$${(n || 0).toFixed(2)}`;
@@ -168,6 +170,12 @@ export default function UsageTable({
     ];
   }, [viewMode]);
 
+  const { pageItems: pageGroups, page, pageSize, setPage, setPageSize, totalItems, totalPages } = usePagination({
+    items: groupedData,
+    pageSize: 20,
+    resetKey: `${tableType}-${sortBy}-${sortOrder}`,
+  });
+
   const totalColSpan = columns.length + valueColumns.length;
 
   return (
@@ -202,7 +210,7 @@ export default function UsageTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {groupedData.map((group) => (
+            {pageGroups.map((group) => (
               <Fragment key={group.groupKey}>
                 {/* Group summary row */}
                 <tr
@@ -234,7 +242,7 @@ export default function UsageTable({
                 ))}
               </Fragment>
             ))}
-            {groupedData.length === 0 && (
+            {pageGroups.length === 0 && (
               <tr>
                 <td colSpan={totalColSpan} className="px-6 py-8 text-center text-text-muted">
                   {emptyMessage}
@@ -244,6 +252,15 @@ export default function UsageTable({
           </tbody>
         </table>
       </div>
+      {totalPages > 1 && (
+        <Pagination
+          currentPage={page}
+          pageSize={pageSize}
+          totalItems={totalItems}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+        />
+      )}
     </Card>
   );
 }

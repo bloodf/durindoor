@@ -21,6 +21,7 @@ export default function TokenSaverClient({ view = "overview" }) {
   const [pxpipeTimeoutMs, setPxpipeTimeoutMs] = useState("15000");
   const [pxpipeTimeoutInputValue, setPxpipeTimeoutInputValue] = useState("15000");
   const [pxpipeTimeoutError, setPxpipeTimeoutError] = useState("");
+  const [pxpipeAllowedModelsInputValue, setPxpipeAllowedModelsInputValue] = useState("");
   const [pxpipeStatus, setPxpipeStatus] = useState({
     installed: false,
     installing: false,
@@ -331,7 +332,17 @@ export default function TokenSaverClient({ view = "overview" }) {
     }
   };
 
-  /** Persist pxpipeTimeoutMs on blur; inline error outside 1000–120000. */
+  /** Persist pxpipeAllowedModels on blur; normalize to string array. */
+  const handlePxpipeAllowedModelsBlur = () => {
+    const nextArray = pxpipeAllowedModelsInputValue.split(",").map((m) => m.trim()).filter(Boolean);
+    const next = nextArray.join(", ");
+    setPxpipeAllowedModelsInputValue(next);
+    patchSetting({ pxpipeAllowedModels: nextArray });
+  };
+
+  const handlePxpipeAllowedModelsChange = (value) => {
+    setPxpipeAllowedModelsInputValue(value);
+  };
   const handlePxpipeTimeoutBlur = () => {
     if (pxpipeTimeoutInputValue === "") {
       setPxpipeTimeoutInputValue(pxpipeTimeoutMs);
@@ -366,6 +377,8 @@ export default function TokenSaverClient({ view = "overview" }) {
           setPxpipeInputValue(String(data.pxpipeMinChars ?? 25000));
           setPxpipeTimeoutMs(String(data.pxpipeTimeoutMs ?? 15000));
           setPxpipeTimeoutInputValue(String(data.pxpipeTimeoutMs ?? 15000));
+          const allowed = Array.isArray(data.pxpipeAllowedModels) ? data.pxpipeAllowedModels : [];
+          setPxpipeAllowedModelsInputValue(allowed.join(", "));
           refreshHeadroomStatus();
           refreshPxpipeStatus();
         }
@@ -761,6 +774,20 @@ export default function TokenSaverClient({ view = "overview" }) {
           {pxpipeTimeoutError && (
             <p className="text-sm text-warning">{pxpipeTimeoutError}</p>
           )}
+          <div className="flex items-center gap-3">
+            <label className="text-sm text-text-muted shrink-0">Allowed models</label>
+            <Input
+              type="text"
+              placeholder="claude-fable-5, blackboxai/anthropic/claude-fable-5"
+              value={pxpipeAllowedModelsInputValue}
+              onChange={(e) => handlePxpipeAllowedModelsChange(e.target.value)}
+              onBlur={handlePxpipeAllowedModelsBlur}
+              className="w-full max-w-md text-sm"
+            />
+          </div>
+          <p className="text-xs text-text-muted">
+            Comma-separated model ids. Empty leaves the built-in safe default (Claude Fable only).
+          </p>
           {pxpipeHealth && (
             <p className={`text-sm ${pxpipeHealth.healthy ? "text-success" : "text-warning"}`}>
               Health: {pxpipeHealth.healthy ? "OK" : pxpipeHealth.error || "Unhealthy"}

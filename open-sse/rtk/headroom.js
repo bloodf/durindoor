@@ -4,8 +4,21 @@ import {
   openaiResponsesToOpenAIRequest,
   openaiToOpenAIResponsesRequest,
 } from "../translator/request/openai-responses.js";
+import {
+  getHeadroomCircuitState,
+  getHeadroomStatusStats,
+  incrementHeadroomFailures,
+  resetHeadroomCircuit,
+} from "./headroomCircuit.js";
 
 const DEFAULT_TIMEOUT_MS = 15000;
+const RETRY_BACKOFF_MS = 100;
+
+export {
+  getHeadroomCircuitState,
+  getHeadroomStatusStats,
+  resetHeadroomCircuit,
+} from "./headroomCircuit.js";
 
 function jsonBytes(value) {
   try {
@@ -31,8 +44,10 @@ function captureSizeSnapshot(body) {
   };
 }
 
-function setDiagnostic(diagnostics, reason) {
-  if (diagnostics && !diagnostics.reason) diagnostics.reason = reason;
+function setDiagnostic(diagnostics, reason, code) {
+  if (!diagnostics || diagnostics.reason) return;
+  diagnostics.reason = reason;
+  if (code) diagnostics.code = code;
 }
 
 function scrubSensitiveUrlText(text) {
@@ -270,35 +285,52 @@ function applyKiroHeadroomMessages(projection, compressedMessages, diagnostics) 
   }
   return true;
 }
-
-// POST messages to Headroom /v1/compress; returns compressed messages + stats or null.
+// POST messages to Headroom /v1/compress; one transient retry, then fail open.
 async function callCompress(url, messages, model, timeoutMs, compressUserMessages, diagnostics) {
   const endpoint = buildCompressEndpoint(url);
   diagnostics.endpoint = maskEndpoint(endpoint);
+  if (getHeadroomCircuitState().degraded) {
+    setDiagnostic(diagnostics, "proxy circuit is degraded", "proxy-down");
+    return null;
+  }
   const payload = { messages, model };
   if (compressUserMessages) payload.config = { compress_user_messages: true };
-  let res;
-  try {
-    res = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-  } catch (error) {
-    setDiagnostic(diagnostics, `request failed: ${describeFetchError(error)}`);
-    return null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!res.ok) {
+        if (attempt === 0 && (res.status === 429 || res.status >= 500)) {
+          await new Promise((resolve) => setTimeout(resolve, RETRY_BACKOFF_MS));
+          continue;
+        }
+        incrementHeadroomFailures();
+        setDiagnostic(diagnostics, `proxy returned HTTP ${res.status}`, "http-status");
+        return null;
+      }
+      const data = await res.json();
+      if (!Array.isArray(data?.messages)) {
+        incrementHeadroomFailures();
+        setDiagnostic(diagnostics, "proxy response missing messages[]");
+        return null;
+      }
+      resetHeadroomCircuit();
+      return data;
+    } catch (error) {
+      if (attempt === 0) {
+        await new Promise((resolve) => setTimeout(resolve, RETRY_BACKOFF_MS));
+        continue;
+      }
+      incrementHeadroomFailures();
+      setDiagnostic(diagnostics, `request failed: ${describeFetchError(error)}`);
+      return null;
+    }
   }
-  if (!res.ok) {
-    setDiagnostic(diagnostics, `proxy returned HTTP ${res.status}`);
-    return null;
-  }
-  const data = await res.json();
-  if (!Array.isArray(data?.messages)) {
-    setDiagnostic(diagnostics, "proxy response missing messages[]");
-    return null;
-  }
-  return data;
+  return null;
 }
 
 // Compress request body via Headroom proxy. Fail-open: returns null on any error.
@@ -325,7 +357,7 @@ export async function compressWithHeadroom(body, { enabled, url, model, format, 
     if (format === "claude") {
       const oai = claudeToOpenAIRequest(model, body, false);
       if (!Array.isArray(oai?.messages)) {
-        setDiagnostic(diagnostics, "Claude request did not translate to messages[]");
+        setDiagnostic(diagnostics, "Claude request did not translate to messages[]", "translation-failed");
         return null;
       }
       const data = await callCompress(url, oai.messages, model, timeoutMs, compressUserMessages, diagnostics || {});
@@ -391,7 +423,7 @@ export async function compressWithHeadroom(body, { enabled, url, model, format, 
     if (diagnostics) diagnostics.after = captureSizeSnapshot(body);
     return data;
   } catch (error) {
-    setDiagnostic(diagnostics, `unexpected error: ${error?.message || String(error)}`);
+    setDiagnostic(diagnostics, `unexpected error: ${error?.message || String(error)}`, "translation-failed");
     return null;
   }
 }
@@ -436,6 +468,9 @@ export function isHeadroomPhantomSavings(stats, diagnostics, minShrinkRatio = 0.
 export function classifyHeadroomDiagnostic(diagnostics, stats, enabled) {
   if (stats) return "compressed";
   if (!enabled) return "disabled";
+  if (diagnostics?.code === "proxy-down") return "proxy-down";
+  if (diagnostics?.code === "http-status") return "http-status";
+  if (diagnostics?.code === "translation-failed") return "translation-failed";
 
   const reason = String(diagnostics?.reason || "").toLowerCase();
   if (reason.includes("missing proxy url")) return "missing-proxy-url";

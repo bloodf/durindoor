@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createAutoRefreshScheduler,
+  getConnectionLabel,
+  getRefreshConnections,
   getRefreshCountdown,
 } from "@/app/(dashboard)/dashboard/usage/components/ProviderLimits/utils.js";
 
@@ -19,6 +21,22 @@ describe("quota auto-refresh scheduler", () => {
     expect(getRefreshCountdown(now + 60_000, now)).toBe(60);
     expect(getRefreshCountdown(now + 1, now)).toBe(1);
     expect(getRefreshCountdown(now - 1, now)).toBe(0);
+  });
+
+  it("marks only connections selected for a throttled refresh as loading", () => {
+    const visibleConnections = [
+      { id: "openai-1", provider: "openai" },
+      { id: "claude-1", provider: "claude" },
+    ];
+
+    expect(getRefreshConnections(visibleConnections, false, 1, 3)).toEqual([
+      visibleConnections[0],
+    ]);
+  });
+
+  it("prefers canonical provider names over stale stored labels", () => {
+    expect(getConnectionLabel({ provider: "ollama", name: "Ollama Production" })).toBe("Ollama Cloud");
+    expect(getConnectionLabel({ provider: "custom-provider", name: "My Gateway" })).toBe("My Gateway");
   });
 
   it("keeps one refresh timer and one countdown timer", async () => {

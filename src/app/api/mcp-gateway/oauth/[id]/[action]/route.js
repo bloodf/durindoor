@@ -36,7 +36,6 @@ import {
   buildClientMetadataDocument,
   isPubliclyFetchableBase,
 } from "@/lib/mcp/gateway/oauthCimd";
-import { getTailscaleStatus, getTunnelStatus } from "@/lib/tunnel";
 import { selectOAuthPublicBase } from "@/lib/mcp/gateway/oauthPublicBase";
 
 export const dynamic = "force-dynamic";
@@ -51,6 +50,7 @@ async function appBase(request) {
     process.env.MCP_GATEWAY_OAUTH_PUBLIC_URL ||
     process.env.OAUTH_PUBLIC_BASE_URL;
   try {
+    const { getTailscaleStatus, getTunnelStatus } = await import("@/lib/tunnel");
     const [tailscale, tunnel] = await Promise.all([
       getTailscaleStatus(),
       getTunnelStatus(),

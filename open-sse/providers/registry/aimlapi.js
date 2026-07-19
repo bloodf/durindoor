@@ -16,12 +16,6 @@ export default {
   category: "apikey",
   transport: {
     baseUrl: "https://api.aimlapi.com/v1/chat/completions",
-    auth: {
-      apiKey: {
-        header: "Authorization",
-        scheme: "bearer",
-      },
-    },
     // AI/ML API is OpenAI-compatible even when routing to Claude/Gemini model families.
     thinkingFormat: "openai",
   },

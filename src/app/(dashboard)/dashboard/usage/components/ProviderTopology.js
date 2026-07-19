@@ -10,6 +10,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
+import { createVisiblePoller } from "@/shared/utils/visiblePoller";
 
 // Force-stop FE animation if a provider stays active longer than this
 const FE_ACTIVE_TIMEOUT_MS = 60000;
@@ -225,8 +226,9 @@ export default function ProviderTopology({ providers = [], activeRequests = [], 
 
   useEffect(() => {
     if (rawActiveSet.size === 0) return;
-    const id = setInterval(() => setTick((t) => t + 1), FE_ACTIVE_TICK_MS);
-    return () => clearInterval(id);
+    const poller = createVisiblePoller({ callback: () => setTick((t) => t + 1), intervalMs: FE_ACTIVE_TICK_MS, jitter: 0 });
+    poller.start();
+    return () => poller.stop();
   }, [rawActiveSet]);
 
   const activeSet = useMemo(() => {

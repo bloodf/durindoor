@@ -118,6 +118,13 @@ export async function PATCH(request) {
     if (Object.prototype.hasOwnProperty.call(body, "pxpipeEnabled") && typeof body.pxpipeEnabled !== "boolean") {
       return NextResponse.json({ error: "Invalid pxpipeEnabled" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
     }
+    if (Object.prototype.hasOwnProperty.call(body, "pxpipeAllowedModels")) {
+      const raw = body.pxpipeAllowedModels;
+      if (!Array.isArray(raw) || raw.some((m) => typeof m !== "string")) {
+        return NextResponse.json({ error: "Invalid pxpipeAllowedModels" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
+      body.pxpipeAllowedModels = Array.from(new Set(raw.map((m) => m.trim()).filter(Boolean)));
+    }
     // pxpipeAutoInstall was removed with runtime installs; strip so legacy
     // clients can't persist dead config.
     delete body.pxpipeAutoInstall;

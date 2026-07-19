@@ -19,6 +19,7 @@ import {
   getConnectionQuotaRemaining,
   sortVisibleConnections,
   buildLoadingState,
+  getRefreshConnections,
   filterQuotaStateByConnections,
   getConnectionsEmptyMessage,
   getPageSizeLabel,
@@ -1013,12 +1014,15 @@ export default function ProviderLimits() {
       // Throttle Claude: poll its quota every Nth auto-tick (manual force bypasses)
       const tick = (tickCountRef.current += 1);
       const claudeEvery = Math.round(CLAUDE_REFRESH_INTERVAL_MS / REFRESH_INTERVAL_MS);
-      const shouldFetch = (conn) =>
-        force || conn.provider !== "claude" || tick % claudeEvery === 0;
-
       const visibleConnections = await fetchConnections(page);
+      const refreshConnections = getRefreshConnections(
+        visibleConnections,
+        force,
+        tick,
+        claudeEvery,
+      );
 
-      setLoading(buildLoadingState(visibleConnections));
+      setLoading(buildLoadingState(refreshConnections));
       setErrors((prev) =>
         filterQuotaStateByConnections(prev, visibleConnections),
       );
@@ -1027,9 +1031,7 @@ export default function ProviderLimits() {
       );
 
       await Promise.all(
-        visibleConnections
-          .filter(shouldFetch)
-          .map((conn) => fetchQuota(conn.id, conn.provider)),
+        refreshConnections.map((conn) => fetchQuota(conn.id, conn.provider)),
       );
 
       setLastUpdated(new Date());

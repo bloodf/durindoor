@@ -10,6 +10,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/shared/components";
 import { useNotificationStore } from "@/store/notificationStore";
+import { createVisiblePoller } from "@/shared/utils/visiblePoller";
 
 const STATUS_CONFIG = {
   available: { icon: "check_circle", color: "#22c55e", label: "Available" },
@@ -42,8 +43,9 @@ export default function ModelAvailabilityBadge() {
 
   useEffect(() => {
     fetchStatus();
-    const interval = setInterval(fetchStatus, 30000);
-    return () => clearInterval(interval);
+    const poller = createVisiblePoller({ callback: fetchStatus, intervalMs: 30_000 });
+    poller.start();
+    return () => poller.stop();
   }, [fetchStatus]);
 
   // Close popover on outside click

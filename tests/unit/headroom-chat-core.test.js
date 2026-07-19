@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { resetHeadroomCircuit } from "../../open-sse/rtk/headroomCircuit.js";
 
 const { executeMock } = vi.hoisted(() => ({
   executeMock: vi.fn(),
@@ -37,6 +38,7 @@ const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
 
 describe("handleChatCore Headroom diagnostics", () => {
   beforeEach(() => {
+    resetHeadroomCircuit();
     vi.clearAllMocks();
     global.fetch = vi.fn(async (url) => {
       if (String(url).includes("/v1/compress")) {

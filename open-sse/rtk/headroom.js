@@ -31,8 +31,10 @@ function captureSizeSnapshot(body) {
   };
 }
 
-function setDiagnostic(diagnostics, reason) {
-  if (diagnostics && !diagnostics.reason) diagnostics.reason = reason;
+function setDiagnostic(diagnostics, reason, code) {
+  if (!diagnostics || diagnostics.reason) return;
+  diagnostics.reason = reason;
+  if (code) diagnostics.code = code;
 }
 
 function scrubSensitiveUrlText(text) {
@@ -286,11 +288,11 @@ async function callCompress(url, messages, model, timeoutMs, compressUserMessage
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
-    setDiagnostic(diagnostics, `request failed: ${describeFetchError(error)}`);
+    setDiagnostic(diagnostics, `request failed: ${describeFetchError(error)}`, "proxy-down");
     return null;
   }
   if (!res.ok) {
-    setDiagnostic(diagnostics, `proxy returned HTTP ${res.status}`);
+    setDiagnostic(diagnostics, `proxy returned HTTP ${res.status}`, "http-status");
     return null;
   }
   const data = await res.json();
@@ -325,7 +327,7 @@ export async function compressWithHeadroom(body, { enabled, url, model, format, 
     if (format === "claude") {
       const oai = claudeToOpenAIRequest(model, body, false);
       if (!Array.isArray(oai?.messages)) {
-        setDiagnostic(diagnostics, "Claude request did not translate to messages[]");
+        setDiagnostic(diagnostics, "Claude request did not translate to messages[]", "translation-failed");
         return null;
       }
       const data = await callCompress(url, oai.messages, model, timeoutMs, compressUserMessages, diagnostics || {});
@@ -391,7 +393,7 @@ export async function compressWithHeadroom(body, { enabled, url, model, format, 
     if (diagnostics) diagnostics.after = captureSizeSnapshot(body);
     return data;
   } catch (error) {
-    setDiagnostic(diagnostics, `unexpected error: ${error?.message || String(error)}`);
+    setDiagnostic(diagnostics, `unexpected error: ${error?.message || String(error)}`, "translation-failed");
     return null;
   }
 }
@@ -436,6 +438,9 @@ export function isHeadroomPhantomSavings(stats, diagnostics, minShrinkRatio = 0.
 export function classifyHeadroomDiagnostic(diagnostics, stats, enabled) {
   if (stats) return "compressed";
   if (!enabled) return "disabled";
+  if (diagnostics?.code === "proxy-down") return "proxy-down";
+  if (diagnostics?.code === "http-status") return "http-status";
+  if (diagnostics?.code === "translation-failed") return "translation-failed";
 
   const reason = String(diagnostics?.reason || "").toLowerCase();
   if (reason.includes("missing proxy url")) return "missing-proxy-url";

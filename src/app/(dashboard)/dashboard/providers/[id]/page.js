@@ -113,6 +113,8 @@ export default function ProviderDetailPage() {
       },
     }));
   const [suggestedModels, setSuggestedModels] = useState([]);
+  const [syncingModels, setSyncingModels] = useState(false);
+  const [modelsFetchedAt, setModelsFetchedAt] = useState(null);
   const [kiloFreeModels, setKiloFreeModels] = useState([]);
   const [disabledModelIds, setDisabledModelIds] = useState([]);
   const [confirmState, setConfirmState] = useState(null);
@@ -544,6 +546,18 @@ export default function ProviderDetailPage() {
     if (!fetcher) return;
     fetchSuggestedModels(fetcher).then(setSuggestedModels);
   }, [providerId]);
+
+  const handleSyncModels = async () => {
+    const fetcher = (OAUTH_PROVIDERS[providerId] || APIKEY_PROVIDERS[providerId] || FREE_PROVIDERS[providerId] || FREE_TIER_PROVIDERS[providerId])?.modelsFetcher;
+    if (!fetcher) return;
+    setSyncingModels(true);
+    try {
+      setSuggestedModels(await fetchSuggestedModels(fetcher, { force: true }));
+      setModelsFetchedAt(new Date());
+    } finally {
+      setSyncingModels(false);
+    }
+  };
 
   const handleSetAlias = async (modelId, alias, providerAliasOverride = providerAlias) => {
     const fullModel = `${providerAliasOverride}/${modelId}`;
@@ -1351,6 +1365,18 @@ export default function ProviderDetailPage() {
               {importingQoderModels ? "progress_activity" : "download"}
             </span>
             {importingQoderModels ? translate("Fetching...") : translate("Fetch Qoder Models")}
+          </button>
+        )}
+
+        {(OAUTH_PROVIDERS[providerId] || APIKEY_PROVIDERS[providerId] || FREE_PROVIDERS[providerId] || FREE_TIER_PROVIDERS[providerId])?.modelsFetcher && (
+          <button
+            onClick={handleSyncModels}
+            disabled={syncingModels}
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-primary/40 px-3 py-2 text-xs text-primary transition-colors hover:bg-primary/5 sm:w-auto disabled:opacity-50"
+            title={modelsFetchedAt ? `Last synced ${modelsFetchedAt.toLocaleString()}` : "Fetch latest provider models"}
+          >
+            <span className={`material-symbols-outlined text-sm ${syncingModels ? "animate-spin" : ""}`}>sync</span>
+            {syncingModels ? "Syncing…" : "Sync models"}
           </button>
         )}
 

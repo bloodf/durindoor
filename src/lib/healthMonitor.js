@@ -1,7 +1,7 @@
 /**
- * Provider Health Monitor — short-TTL cached availability probes for the
- * user's configured provider connections.
- *
+ * Provider Health Monitor — cached availability probes for the user's
+ * configured provider connections. A 60-second cache prevents provider probe
+ * traffic from becoming quota traffic; forced refresh remains explicit.
  * Port of OmniRoute's monitoring health service + PR #6553 (1s payload cache),
  * adapted to DurinDoor. Targets come from `getProviderConnections()` (the
  * connections the user actually configured — including custom OpenAI/Anthropic-
@@ -44,7 +44,7 @@ import { inspectProviderQuota } from "@/shared/services/providerQuotaPreflight";
  * @property {string|null} error    sanitized
  */
 
-export const HEALTH_PAYLOAD_TTL_MS = 1000;
+export const HEALTH_PAYLOAD_TTL_MS = 60_000;
 const PUBLIC_QUOTA_REASONS = new Set(["available", "low", "exhausted", "cooldown", "unknown", "stale", "tracker_error", "missing"]);
 const PUBLIC_QUOTA_FRESHNESS = new Set(["fresh", "stale", "missing"]);
 

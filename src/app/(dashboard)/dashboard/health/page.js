@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Badge, Button, Card } from "@/shared/components";
+import { createVisiblePoller } from "@/shared/utils/visiblePoller";
 
 const STATE_VARIANT = {
   healthy: "success",
@@ -37,6 +38,7 @@ export default function HealthPage() {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [headroom, setHeadroom] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async (force = false) => {
@@ -44,8 +46,12 @@ export default function HealthPage() {
     try {
       const url = force ? "/api/health/providers?force=1" : "/api/health/providers";
       const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setData(await res.json());
+      const [healthData, headroomRes] = await Promise.all([
+        res.json(),
+        fetch("/api/headroom/status", { cache: "no-store" }).catch(() => null),
+      ]);
+      setData(healthData);
+      if (headroomRes?.ok) setHeadroom(await headroomRes.json());
     } catch (err) {
       setError(err?.message || "Failed to load health");
     } finally {
@@ -56,8 +62,9 @@ export default function HealthPage() {
 
   useEffect(() => {
     load(false);
-    const id = setInterval(() => load(false), 5000);
-    return () => clearInterval(id);
+    const poller = createVisiblePoller({ callback: () => load(false), intervalMs: 60_000 });
+    poller.start();
+    return () => poller.stop();
   }, [load]);
 
   const onRefresh = async () => {
@@ -101,6 +108,18 @@ export default function HealthPage() {
         <SummaryCard label="Blocked" value={summary.blocked} variant="error" />
         <SummaryCard label="Unconfigured" value={summary.unconfigured} />
       </div>
+      <Card padding="sm">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="font-medium">Headroom compression proxy</div>
+            <div className="text-xs text-text-muted">{headroom?.url || "Not configured"}</div>
+          </div>
+          <Badge variant={headroom?.running ? "success" : "warning"} size="sm">
+            {headroom?.running ? "Healthy" : "Unavailable (fail-open)"}
+          </Badge>
+        </div>
+      </Card>
+
 
       <Card>
         <div className="overflow-x-auto">

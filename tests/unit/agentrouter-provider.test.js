@@ -1,25 +1,20 @@
 import { describe, expect, it } from "vitest";
 import agentrouter from "../../open-sse/providers/registry/agentrouter.js";
-import { PROVIDERS } from "../../open-sse/config/providers.js";
+import { PROVIDERS } from "../../open-sse/providers/index.js";
 import { DefaultExecutor } from "../../open-sse/executors/default.js";
 
 describe("AgentRouter provider", () => {
-  it("uses the Claude CLI spoof fingerprint with explicit x-api-key auth", () => {
+  it("uses dynamic x-api-key auth without static spoof headers", () => {
     const executor = new DefaultExecutor("agentrouter");
     const headers = executor.buildHeaders({ apiKey: "sk-agentrouter" }, false);
 
     expect(headers).toMatchObject({
-      "Anthropic-Version": "2023-06-01",
-      "Anthropic-Beta": expect.stringContaining("claude-code-20250219"),
-      "User-Agent": expect.stringContaining("claude-cli/"),
-      "X-App": "cli",
-      "X-Stainless-Helper-Method": "stream",
-      "X-Stainless-Lang": "js",
-      "X-Stainless-Runtime": "node",
       "x-api-key": "sk-agentrouter",
     });
-    expect(headers["Anthropic-Beta"]).toContain("oauth-2025-04-20");
+    expect(headers["Anthropic-Version"]).toBeUndefined();
+    expect(headers["User-Agent"]).toBeUndefined();
     expect(headers.Authorization).toBeUndefined();
+    expect(agentrouter.transport.headers).toBeUndefined();
   });
 
   it("keeps the source Claude passthrough and context settings stable", () => {

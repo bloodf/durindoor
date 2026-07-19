@@ -12,6 +12,8 @@ import {
 } from "recharts";
 import PropTypes from "prop-types";
 import { Card, Button } from "@/shared/components";
+import Pagination from "@/shared/components/Pagination";
+import { usePagination } from "@/shared/hooks/usePagination";
 import { formatPxpipeEvent, fmtTokens, PXPIPE_REASON_LABELS as REASON_LABELS } from "./formatPxpipeEvent.js";
 
 const fmtUptime = (ms) => {
@@ -77,6 +79,35 @@ export default function PxpipeClient({ embedded = false }) {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  const recent = stats?.recent || [];
+  const {
+    pageItems,
+    page,
+    pageSize,
+    setPage,
+    setPageSize,
+    totalItems,
+    totalPages,
+  } = usePagination({
+    items: recent,
+    pageSize: 20,
+    resetKey: windowId,
+  });
+
+  const events = logs?.events || [];
+  const {
+    pageItems: eventPageItems,
+    page: eventPage,
+    pageSize: eventPageSize,
+    setPage: setEventPage,
+    setPageSize: setEventPageSize,
+    totalItems: eventTotalItems,
+    totalPages: eventTotalPages,
+  } = usePagination({
+    items: events,
+    pageSize: 20,
+  });
 
   const w = stats?.windows?.[windowId];
   const statusLabel = !status
@@ -209,8 +240,10 @@ export default function PxpipeClient({ embedded = false }) {
               </tr>
             </thead>
             <tbody>
-              {(stats?.recent || []).slice(0, 50).map((ev, i) => (
-                <tr key={`${ev.ts}-${i}`} className="border-b border-border/50">
+              {pageItems.map((ev, i) => {
+                const absoluteIndex = (page - 1) * pageSize + i;
+                return (
+                <tr key={`${ev.ts}-${absoluteIndex}`} className="border-b border-border/50">
                   <td className="py-1.5 pr-3 whitespace-nowrap text-text-muted">
                     {new Date(ev.ts).toLocaleString()}
                   </td>
@@ -244,9 +277,10 @@ export default function PxpipeClient({ embedded = false }) {
                       {ev.applied ? "Compressed" : REASON_LABELS[ev.reason] || ev.reason}
                     </span>
                   </td>
-                </tr>
-              ))}
-              {(!stats?.recent || stats.recent.length === 0) && (
+                  </tr>
+                );
+              })}
+              {recent.length === 0 && (
                 <tr>
                   <td colSpan={8} className="py-6 text-center text-text-muted text-sm">
                     No PXPIPE activity yet
@@ -256,14 +290,34 @@ export default function PxpipeClient({ embedded = false }) {
             </tbody>
           </table>
         </div>
+        {totalPages > 1 && (
+          <Pagination
+            currentPage={page}
+            pageSize={pageSize}
+            totalItems={totalItems}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
+        )}
       </Card>
 
       <Card className="p-4" id="logs">
         <h3 className="font-medium mb-3">Transform events</h3>
-        {logs?.events?.length ? (
-          <pre className="rounded bg-black/5 dark:bg-white/5 p-3 text-xs font-mono overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap">
-            {logs.events.map(formatPxpipeEvent).join("\n")}
-          </pre>
+        {events.length ? (
+          <>
+            <pre className="rounded bg-black/5 dark:bg-white/5 p-3 text-xs font-mono overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap">
+              {eventPageItems.map(formatPxpipeEvent).join("\n")}
+            </pre>
+            {eventTotalPages > 1 && (
+              <Pagination
+                currentPage={eventPage}
+                pageSize={eventPageSize}
+                totalItems={eventTotalItems}
+                onPageChange={setEventPage}
+                onPageSizeChange={setEventPageSize}
+              />
+            )}
+          </>
         ) : (
           <p className="text-sm text-text-muted">No transform events yet.</p>
         )}

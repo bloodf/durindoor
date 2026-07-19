@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Badge, Button, Card } from "@/shared/components";
+import Pagination from "@/shared/components/Pagination";
+import { usePagination } from "@/shared/hooks/usePagination";
 import { createVisiblePoller } from "@/shared/utils/visiblePoller";
 
 const STATE_VARIANT = {
@@ -80,6 +82,11 @@ export default function HealthPage() {
   const summary = data?.summary || {};
   const providers = data?.providers || [];
 
+  const { pageItems, page, pageSize, setPage, setPageSize, totalItems, totalPages } = usePagination({
+    items: providers,
+    pageSize: 20,
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -113,9 +120,21 @@ export default function HealthPage() {
           <div>
             <div className="font-medium">Headroom compression proxy</div>
             <div className="text-xs text-text-muted">{headroom?.url || "Not configured"}</div>
+            {headroom?.circuit?.degraded && (
+              <div className="mt-1 text-xs text-yellow-600 dark:text-yellow-400">
+                Circuit degraded: {headroom.circuit.consecutiveFailures} consecutive failures
+              </div>
+            )}
           </div>
-          <Badge variant={headroom?.running ? "success" : "warning"} size="sm">
-            {headroom?.running ? "Healthy" : "Unavailable (fail-open)"}
+          <Badge
+            variant={headroom?.running ? (headroom?.circuit?.degraded ? "warning" : "success") : "warning"}
+            size="sm"
+          >
+            {headroom?.running
+              ? headroom?.circuit?.degraded
+                ? `Degraded (${headroom.circuit.consecutiveFailures})`
+                : "Healthy"
+              : "Unavailable (fail-open)"}
           </Badge>
         </div>
       </Card>
@@ -141,7 +160,7 @@ export default function HealthPage() {
               {!loading && providers.length === 0 && (
                 <tr><td colSpan={6} className="py-6 text-center text-text-muted">No active connections configured.</td></tr>
               )}
-              {providers.map((p) => (
+              {pageItems.map((p) => (
                 <tr key={p.id} className="border-b border-border-subtle/50">
                   <td className="py-2 pr-4 font-medium">{p.name}</td>
                   <td className="py-2 pr-4 text-text-muted">{p.provider}</td>
@@ -163,6 +182,16 @@ export default function HealthPage() {
           </table>
         </div>
       </Card>
+
+      {totalPages > 1 && (
+        <Pagination
+          currentPage={page}
+          pageSize={pageSize}
+          totalItems={totalItems}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+        />
+      )}
 
       {data?.timestamp && (
         <p className="text-xs text-text-muted">Last computed: {new Date(data.timestamp).toLocaleString()}</p>

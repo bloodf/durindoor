@@ -93,3 +93,61 @@ describe("compressWithPxpipe gates", () => {
     expect(formatPxpipeLog(null)).toBeNull();
   });
 });
+
+describe("compressWithPxpipe allowedModels", () => {
+  it("applies transform for an explicitly allowed model", async () => {
+    const transform = vi.fn().mockResolvedValue({
+      applied: true,
+      reason: "applied",
+      body: new TextEncoder().encode(JSON.stringify({ model: "custom-fable", messages: [{ role: "user", content: "imaged" }] })),
+      info: { compressedChars: 25000, imageCount: 1, imageBytes: 1000, imagePixels: 750000 },
+    });
+    const { body, summary } = await compressWithPxpipe(claudeBody(), {
+      enabled: true, format: "claude", model: "custom-fable", minChars: 1000,
+      allowedModels: ["custom-fable"], transform,
+    });
+    expect(transform).toHaveBeenCalled();
+    expect(body).toBeTruthy();
+    expect(summary.applied).toBe(true);
+  });
+
+  it("blocks a model not in the explicit allow-list", async () => {
+    const transform = vi.fn();
+    const diagnostics = {};
+    const result = await compressWithPxpipe(claudeBody(), {
+      enabled: true, format: "claude", model: "claude-sonnet-4", minChars: 1000,
+      allowedModels: ["claude-fable-5"], transform, diagnostics,
+    });
+    expect(result).toBeNull();
+    expect(diagnostics.reason).toBe("not_allowed");
+    expect(transform).not.toHaveBeenCalled();
+  });
+
+  it("preserves the hard-coded safe default when allow-list is unset", async () => {
+    const transform = vi.fn();
+    const diagnostics = {};
+    const result = await compressWithPxpipe(claudeBody(), {
+      enabled: true, format: "claude", model: "claude-sonnet-4", minChars: 1000,
+      transform, diagnostics,
+    });
+    expect(result).toBeNull();
+    expect(diagnostics.reason).toBe("unsupported_model");
+    expect(transform).not.toHaveBeenCalled();
+  });
+
+  it("allows a non-Fable OpenAI model when explicitly listed", async () => {
+    const transform = vi.fn().mockResolvedValue({
+      applied: true,
+      reason: "applied",
+      body: new TextEncoder().encode(JSON.stringify({ model: "blackboxai/custom", messages: [] })),
+      info: { compressedChars: 1000, imageCount: 1, imageBytes: 500, imagePixels: 375000 },
+    });
+    const body = { model: "blackboxai/custom", messages: [{ role: "user", content: bigText }] };
+    const { summary } = await compressWithPxpipe(body, {
+      enabled: true, format: "openai", model: "blackboxai/custom", minChars: 1000,
+      allowedModels: ["blackboxai/custom"], transform,
+    });
+    expect(transform).toHaveBeenCalled();
+    expect(summary.applied).toBe(true);
+  });
+});

@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Card from "./Card";
+import Pagination from "./Pagination";
+import { usePagination } from "@/shared/hooks/usePagination";
 
 export default function RequestLogger({ resetNonce = 0 } = {}) {
   const [logs, setLogs] = useState([]);
@@ -37,6 +39,22 @@ export default function RequestLogger({ resetNonce = 0 } = {}) {
     }
   };
 
+  const validLogs = useMemo(() => logs.filter((log) => log.split(" | ").length >= 7), [logs]);
+
+  const {
+    pageItems,
+    page,
+    pageSize,
+    setPage,
+    setPageSize,
+    totalItems,
+    totalPages,
+  } = usePagination({
+    items: validLogs,
+    pageSize: 20,
+    resetKey: resetNonce,
+  });
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
@@ -62,7 +80,7 @@ export default function RequestLogger({ resetNonce = 0 } = {}) {
         <div className="p-0 overflow-x-auto max-h-[600px] overflow-y-auto font-mono text-xs">
           {loading && logs.length === 0 ? (
             <div className="p-8 text-center text-text-muted">Loading logs...</div>
-          ) : logs.length === 0 ? (
+          ) : validLogs.length === 0 ? (
             <div className="p-8 text-center text-text-muted">No logs recorded yet.</div>
           ) : (
             <table className="w-full text-left border-collapse whitespace-nowrap">
@@ -78,9 +96,8 @@ export default function RequestLogger({ resetNonce = 0 } = {}) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50">
-                {logs.map((log, i) => {
+                {pageItems.map((log, i) => {
                   const parts = log.split(" | ");
-                  if (parts.length < 7) return null;
 
                   const status = parts[6];
                   const isPending = status.includes("PENDING");
@@ -88,7 +105,7 @@ export default function RequestLogger({ resetNonce = 0 } = {}) {
                   const isSuccess = status.includes("OK");
 
                   return (
-                    <tr key={i} className={`hover:bg-primary/5 transition-colors ${isPending ? 'bg-primary/5' : ''}`}>
+                    <tr key={(page - 1) * pageSize + i} className={`hover:bg-primary/5 transition-colors ${isPending ? 'bg-primary/5' : ''}`}>
                       <td className="px-3 py-1.5 border-r border-border text-text-muted">{parts[0]}</td>
                       <td className="px-3 py-1.5 border-r border-border font-medium">{parts[1]}</td>
                       <td className="px-3 py-1.5 border-r border-border">
@@ -113,6 +130,9 @@ export default function RequestLogger({ resetNonce = 0 } = {}) {
           )}
         </div>
       </Card>
+      {totalPages > 1 && (
+        <Pagination currentPage={page} pageSize={pageSize} totalItems={totalItems} onPageChange={setPage} onPageSizeChange={setPageSize} />
+      )}
       <div className="text-[10px] text-text-muted italic">
         Logs are loaded from the request history database.
       </div>

@@ -53,6 +53,7 @@ const DEFAULT_SETTINGS = {
   pxpipeEnabled: true,
   pxpipeMinChars: 25000,
   pxpipeTimeoutMs: 15000,
+  pxpipeAllowedModels: [],
   providerConcurrencyLimits: {},
   // Optional upstream routing overrides. Shape:
   // { [providerId]: { enabled, mode: "native"|"cliproxyapi"|"fallback", cliproxyapiModelMapping } }

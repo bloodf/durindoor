@@ -5,20 +5,23 @@ export default {
   uiAlias: "adp-web",
   display: {
     name: "Adapta Web",
-    icon: "smart_toy",
+    icon: "adapta-web",
     color: "#2563EB",
     textIcon: "AD",
     website: "https://agent.adapta.one",
   },
-  category: "webCookie",
-  authType: "cookie",
-  authHint: "Paste the .clerk.agent.adapta.one __client cookie value from agent.adapta.one.",
-  serviceKinds: ["llm"],
+  category: "apikey",
+  authType: "apikey",
   transport: {
     baseUrl: "https://agent.adapta.one/api/chat/stream/v1",
     format: "openai",
     executor: "adapta-web",
-    authType: "cookie",
+    auth: {
+      apiKey: {
+        header: "Authorization",
+        scheme: "bearer",
+      },
+    },
   },
   models: [
     { id: "adapta-one", name: "Adapta ONE (Auto)" },

@@ -48,13 +48,32 @@ function isSupportedModel(format, model) {
   return false;
 }
 
+function hasExplicitAllowedModels(allowedModels) {
+  return Array.isArray(allowedModels) && allowedModels.length > 0;
+}
+
+// Effective model predicate: when the user has configured an explicit allow-list,
+// that list replaces the hard-coded gate. When unset (empty), keep the legacy
+// safe-default whitelist so existing deployments keep current behavior.
+function isPxpipeAllowedModel(format, model, allowedModels) {
+  if (!model) return false;
+  if (hasExplicitAllowedModels(allowedModels)) {
+    return allowedModels.some((m) => String(m) === String(model));
+  }
+  return isSupportedModel(format, model);
+}
+
+function isOpenAiFormat(format) {
+  return [FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI_RESPONSE].includes(format);
+}
+
 // Transform a Claude-format request body through pxpipe. Returns
 // { body: <new body object> | null, summary, applied, reason, info?, originalChars?, durationMs? }.
 // Returns `null` for early no-op cases (disabled or unsupported model) so
 // callers can short-circuit without inspecting the summary shape.
 // opts.transform is injected by the host (src side) so open-sse stays free of
 // filesystem/install concerns and remains usable standalone.
-export async function compressWithPxpipe(body, { enabled, format, model, minChars, timeoutMs, transform, diagnostics } = {}) {
+export async function compressWithPxpipe(body, { enabled, format, model, minChars, timeoutMs, transform, diagnostics, allowedModels } = {}) {
   // Back-compat discriminator: newer callers (pxpipe-stage) pass format+model
   // and expect `null` + `diagnostics.reason` for early no-op cases. Legacy
   // callers pass neither and read the nested summary.reason shape.
@@ -65,28 +84,29 @@ export async function compressWithPxpipe(body, { enabled, format, model, minChar
     return skipped("disabled");
   }
 
-  // Model gate (only on the new contract): null + diagnostics for known
-  // unsupported model ids. Triggered for Claude-format non-fable ids and
-  // OpenAI-format blackbox aliases whose path is not Anthropic/Fable.
-  if (isNewContract && body && !isSupportedModel(format, model)) {
-    const openaiBlackboxNonAnthropic = [FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI_RESPONSE].includes(format)
-      && /^blackboxai\//.test(String(model))
-      && !isSupportedModel(format, model);
-    const claudeUnsupported = format === FORMATS.CLAUDE && !isSupportedModel(format, model);
-    if (openaiBlackboxNonAnthropic || claudeUnsupported) {
-      if (diagnostics) diagnostics.reason = "unsupported_model";
-      return null;
+  // Model gate (only on the new contract): null + diagnostics when the model
+  // is not allowed. An explicit allow-list replaces the hard-coded whitelist;
+  // when unset the legacy safe-default gate is preserved.
+  if (isNewContract && body && !isPxpipeAllowedModel(format, model, allowedModels)) {
+    if (diagnostics) {
+      diagnostics.reason = hasExplicitAllowedModels(allowedModels) ? "not_allowed" : "unsupported_model";
     }
+    return null;
+  }
+
+  // Only Claude-format bodies and OpenAI-shaped Blackbox Anthropic aliases are
+  // supported wire formats. The allow-list governs *which* model may enter; the
+  // format still determines how the body is rewritten for the transformer.
+  const openAiAllowed = isOpenAiFormat(format) && isNewContract && isPxpipeAllowedModel(format, model, allowedModels);
+  if (format !== FORMATS.CLAUDE && !openAiAllowed) {
+    return skipped("unsupported_format", { detail: format });
   }
 
   // Blackbox's Anthropic/Fable alias is transported through an OpenAI-shaped
-  // request even though pxpipe's transformer is model-specific. Allow that
-  // exact route; all other non-Claude wire formats remain fail-open skips.
-  const isOpenAiFable = [FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI_RESPONSE].includes(format)
-    && isSupportedModel(format, model);
-  if (format !== FORMATS.CLAUDE && !isOpenAiFable) {
-    return skipped("unsupported_format", { detail: format });
-  }
+  // request even though pxpipe's transformer is model-specific. Strip the
+  // Blackbox routing prefix before passing to the transformer; all other models
+  // flow through with their original id.
+  const isOpenAiFable = isOpenAiFormat(format) && /^blackboxai\/anthropic\//.test(String(model));
 
   if (!body) {
     const r = skipped("missing_body");
@@ -94,10 +114,10 @@ export async function compressWithPxpipe(body, { enabled, format, model, minChar
     return r;
   }
   if (typeof transform !== "function") {
-    // pxpipe-stage contract: when supported model but no transform, prefer
+    // pxpipe-stage contract: when allowed model but no transform, prefer
     // not_profitable so the caller treats it as a profitability skip.
     // Legacy callers still get not_installed.
-    const reason = isNewContract && isSupportedModel(format, model) ? "not_profitable" : "not_installed";
+    const reason = isNewContract && isPxpipeAllowedModel(format, model, allowedModels) ? "not_profitable" : "not_installed";
     const r = skipped(reason, reason === "not_profitable" ? { detail: "not_installed" } : undefined);
     if (diagnostics) diagnostics.reason = r.reason;
     return r;

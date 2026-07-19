@@ -2,12 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge, Button, Card, ProviderIcon, SegmentedControl, Select } from "@/shared/components";
+import Pagination from "@/shared/components/Pagination";
 import { getModelsByProviderId, isChatModel } from "@/shared/constants/models";
 import { isAnthropicCompatibleProvider, isOpenAICompatibleProvider } from "@/shared/constants/providers";
 import { createSseParser } from "@/lib/playground/sse";
 import { sanitizeErrorText } from "@/lib/playground/errors";
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
-import { getConnectionOptions, getModelReasoningOptions, groupModelsByProvider, normalizeReasoningEffort } from "./playgroundHelpers";
+import { getConnectionOptions, getModelReasoningOptions, groupModelsByProvider, normalizeReasoningEffort, paginateSessions } from "./playgroundHelpers";
 
 const STORAGE_KEYS = {
   sessions: "basic-chat.sessions",
@@ -209,6 +210,7 @@ export default function PlaygroundPageClient() {
   const [isHydrated, setIsHydrated] = useState(false);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyPage, setHistoryPage] = useState(1);
   const fileInputRef = useRef(null);
   const abortRef = useRef(null);
   const loadAbortRef = useRef(null);
@@ -369,6 +371,22 @@ export default function PlaygroundPageClient() {
   const currentSession = useMemo(() => sessions.find((session) => session.id === activeSessionId) || null, [sessions, activeSessionId]);
   const currentMessages = currentSession?.messages || [];
   const sessionItems = useMemo(() => [...sessions].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()), [sessions]);
+  const paginatedSessions = useMemo(() => paginateSessions(sessionItems, historyPage, 10), [sessionItems, historyPage]);
+
+  // Keep the history page valid as sessions change: reset to page 1 when the
+  // list grows (new chat pushed to the top), clamp to the last page when it
+  // shrinks (deletions). Renders use the clamped value from paginatedSessions;
+  // this effect keeps state in sync.
+  const prevSessionCountRef = useRef(sessionItems.length);
+  useEffect(() => {
+    const prev = prevSessionCountRef.current;
+    prevSessionCountRef.current = sessionItems.length;
+    if (sessionItems.length > prev) {
+      if (historyPage !== 1) setHistoryPage(1);
+    } else if (historyPage !== paginatedSessions.page) {
+      setHistoryPage(paginatedSessions.page);
+    }
+  }, [sessionItems.length, historyPage, paginatedSessions.page]);
   const canSend = !isSending && !!activeModel && (draft.trim().length > 0 || attachments.length > 0);
 
   useEffect(() => {
@@ -879,7 +897,7 @@ export default function PlaygroundPageClient() {
                 <div className="rounded-[16px] border border-dashed border-border-subtle bg-surface p-4 text-sm text-text-muted">
                   No conversations yet.
                 </div>
-              ) : sessionItems.map((session) => {
+              ) : paginatedSessions.items.map((session) => {
                 const isActive = session.id === activeSessionId;
                 const latestMessage = [...(session.messages || [])].reverse().find((message) => message.role === "user") || session.messages?.[0];
                 return (
@@ -900,6 +918,16 @@ export default function PlaygroundPageClient() {
                 );
               })}
             </div>
+            {sessionItems.length > paginatedSessions.items.length ? (
+              <div className="border-t border-black/5 px-2 py-1 dark:border-white/5">
+                <Pagination
+                  currentPage={paginatedSessions.page}
+                  pageSize={10}
+                  totalItems={sessionItems.length}
+                  onPageChange={setHistoryPage}
+                />
+              </div>
+            ) : null}
           </Card>
         ) : null}
 

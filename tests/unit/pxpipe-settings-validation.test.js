@@ -78,6 +78,37 @@ describe("settings API PXPIPE validation", () => {
     expect(mocks.updateSettings).not.toHaveBeenCalled();
   });
 
+  it("rejects non-array pxpipeAllowedModels", async () => {
+    const response = await settingsRoute.PATCH({
+      json: async () => ({ pxpipeAllowedModels: "claude-fable-5" }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({ error: "Invalid pxpipeAllowedModels" });
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-string items in pxpipeAllowedModels", async () => {
+    const response = await settingsRoute.PATCH({
+      json: async () => ({ pxpipeAllowedModels: ["claude-fable-5", 5] }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({ error: "Invalid pxpipeAllowedModels" });
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
+  });
+
+  it("normalizes pxpipeAllowedModels to trimmed, deduplicated strings", async () => {
+    const response = await settingsRoute.PATCH({
+      json: async () => ({ pxpipeAllowedModels: ["  claude-fable-5  ", "", "claude-fable-5", "custom-fable"] }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.updateSettings).toHaveBeenCalledWith({
+      pxpipeAllowedModels: ["claude-fable-5", "custom-fable"],
+    });
+  });
+
   it("strips legacy pxpipeAutoInstall instead of persisting it", async () => {
     const response = await settingsRoute.PATCH({
       json: async () => ({ pxpipeAutoInstall: 1, pxpipeEnabled: true }),
@@ -93,6 +124,7 @@ describe("settings API PXPIPE validation", () => {
       pxpipeEnabled: true,
       pxpipeMinChars: 40000,
       pxpipeTimeoutMs: 60000,
+      pxpipeAllowedModels: ["claude-fable-5"],
     };
     const patchResponse = await settingsRoute.PATCH({ json: async () => patch });
 

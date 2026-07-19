@@ -4,6 +4,7 @@ import {
   getModelReasoningOptions,
   groupModelsByProvider,
   normalizeReasoningEffort,
+  paginateSessions,
 } from "./playgroundHelpers.js";
 
 describe("getConnectionOptions", () => {
@@ -120,5 +121,45 @@ describe("playgroundHelpers", () => {
     it("falls back to auto when options are missing", () => {
       expect(normalizeReasoningEffort(null, "low")).toBe("auto");
     });
+  });
+});
+
+describe("paginateSessions", () => {
+  const items = Array.from({ length: 25 }, (_, index) => ({ id: `s${index + 1}` }));
+
+  it("returns the current slice for page 3 with the default page size", () => {
+    const result = paginateSessions(items, 3);
+    expect(result.totalPages).toBe(3);
+    expect(result.page).toBe(3);
+    expect(result.items).toHaveLength(5);
+    expect(result.items.map((s) => s.id)).toEqual(["s21", "s22", "s23", "s24", "s25"]);
+  });
+
+  it("clamps an out-of-range page back to the last page", () => {
+    const result = paginateSessions(items, 9);
+    expect(result.page).toBe(3);
+    expect(result.items).toHaveLength(5);
+    expect(result.items.map((s) => s.id)).toEqual(["s21", "s22", "s23", "s24", "s25"]);
+  });
+
+  it("clamps to page 1 when the list shrinks below the current page", () => {
+    const small = items.slice(0, 3);
+    const result = paginateSessions(small, 5);
+    expect(result.page).toBe(1);
+    expect(result.totalPages).toBe(1);
+    expect(result.items).toHaveLength(3);
+  });
+
+  it("honors a custom page size", () => {
+    const result = paginateSessions(items, 2, 7);
+    expect(result.totalPages).toBe(4);
+    expect(result.items.map((s) => s.id)).toEqual(["s8", "s9", "s10", "s11", "s12", "s13", "s14"]);
+  });
+
+  it("handles empty input", () => {
+    const result = paginateSessions([], 1);
+    expect(result.page).toBe(1);
+    expect(result.totalPages).toBe(1);
+    expect(result.items).toEqual([]);
   });
 });

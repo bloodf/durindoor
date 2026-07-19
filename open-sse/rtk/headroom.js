@@ -4,19 +4,21 @@ import {
   openaiResponsesToOpenAIRequest,
   openaiToOpenAIResponsesRequest,
 } from "../translator/request/openai-responses.js";
+import {
+  getHeadroomCircuitState,
+  getHeadroomStatusStats,
+  incrementHeadroomFailures,
+  resetHeadroomCircuit,
+} from "./headroomCircuit.js";
 
 const DEFAULT_TIMEOUT_MS = 15000;
-const CIRCUIT_FAILURE_THRESHOLD = 3;
 const RETRY_BACKOFF_MS = 100;
-let consecutiveFailures = 0;
 
-export function getHeadroomCircuitState() {
-  return { degraded: consecutiveFailures >= CIRCUIT_FAILURE_THRESHOLD, consecutiveFailures };
-}
-
-export function resetHeadroomCircuit() {
-  consecutiveFailures = 0;
-}
+export {
+  getHeadroomCircuitState,
+  getHeadroomStatusStats,
+  resetHeadroomCircuit,
+} from "./headroomCircuit.js";
 
 function jsonBytes(value) {
   try {
@@ -306,13 +308,13 @@ async function callCompress(url, messages, model, timeoutMs, compressUserMessage
           await new Promise((resolve) => setTimeout(resolve, RETRY_BACKOFF_MS));
           continue;
         }
-        consecutiveFailures += 1;
+        incrementHeadroomFailures();
         setDiagnostic(diagnostics, `proxy returned HTTP ${res.status}`, "http-status");
         return null;
       }
       const data = await res.json();
       if (!Array.isArray(data?.messages)) {
-        consecutiveFailures += 1;
+        incrementHeadroomFailures();
         setDiagnostic(diagnostics, "proxy response missing messages[]");
         return null;
       }
@@ -323,8 +325,8 @@ async function callCompress(url, messages, model, timeoutMs, compressUserMessage
         await new Promise((resolve) => setTimeout(resolve, RETRY_BACKOFF_MS));
         continue;
       }
-      consecutiveFailures += 1;
-      setDiagnostic(diagnostics, `request failed: ${describeFetchError(error)}`, "proxy-down");
+      incrementHeadroomFailures();
+      setDiagnostic(diagnostics, `request failed: ${describeFetchError(error)}`);
       return null;
     }
   }

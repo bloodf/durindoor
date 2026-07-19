@@ -163,6 +163,7 @@ describe("thinking suffix at the chatCore provider boundary", () => {
       },
       headroomEnabled: true,
       pxpipeEnabled: true,
+      pxpipeAllowedModels: ["claude-sonnet-4.5"],
       onPxpipeEvent,
       log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     });
@@ -184,6 +185,7 @@ describe("thinking suffix at the chatCore provider boundary", () => {
 
     expect(mocks.headroom.mock.calls[0][1].model).toBe("claude-sonnet-4.5");
     expect(mocks.pxpipe.mock.calls[0][1].model).toBe("claude-sonnet-4.5");
+    expect(mocks.pxpipe.mock.calls[0][1].allowedModels).toEqual(["claude-sonnet-4.5"]);
     expect(onPxpipeEvent).toHaveBeenCalledWith(expect.objectContaining({
       provider: "kiro",
       model: "claude-sonnet-4.5",

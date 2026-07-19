@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Card, Button } from "@/shared/components";
+import { Card, Button, Input } from "@/shared/components";
 import { CONSOLE_LOG_CONFIG } from "@/shared/constants/config";
 import { startConsoleLogTransport } from "./transport";
 
@@ -22,8 +22,16 @@ function colorLine(line) {
 
 export default function ConsoleLogClient() {
   const [logs, setLogs] = useState([]);
+  const [level, setLevel] = useState("ALL");
+  const [search, setSearch] = useState("");
+  const [paused, setPaused] = useState(false);
   const logRef = useRef(null);
   const transportRef = useRef(null);
+  const pausedRef = useRef(false);
+
+  useEffect(() => {
+    pausedRef.current = paused;
+  }, [paused]);
 
   const handleClear = async () => {
     try {
@@ -38,25 +46,20 @@ export default function ConsoleLogClient() {
 
   useEffect(() => {
     transportRef.current = startConsoleLogTransport({
-      onSnapshot: (nextLogs) => {
-        setLogs(nextLogs.slice(-CONSOLE_LOG_CONFIG.maxLines));
-      },
       onEvent: (msg) => {
+        if (pausedRef.current) return;
         if (msg.type === "init") {
           setLogs(msg.logs.slice(-CONSOLE_LOG_CONFIG.maxLines));
         } else if (msg.type === "line") {
-          setLogs((prev) => {
-            const next = [...prev, msg.line];
-            return next.length > CONSOLE_LOG_CONFIG.maxLines ? next.slice(-CONSOLE_LOG_CONFIG.maxLines) : next;
-          });
+          setLogs((prev) => [...prev, msg.line].slice(-CONSOLE_LOG_CONFIG.maxLines));
         } else if (msg.type === "lines") {
-          setLogs((prev) => {
-            const next = [...prev, ...msg.lines];
-            return next.length > CONSOLE_LOG_CONFIG.maxLines ? next.slice(-CONSOLE_LOG_CONFIG.maxLines) : next;
-          });
+          setLogs((prev) => [...prev, ...msg.lines].slice(-CONSOLE_LOG_CONFIG.maxLines));
         } else if (msg.type === "clear") {
           setLogs([]);
         }
+      },
+      onSnapshot: (nextLogs) => {
+        setLogs(nextLogs.slice(-CONSOLE_LOG_CONFIG.maxLines));
       },
     });
 
@@ -72,25 +75,33 @@ export default function ConsoleLogClient() {
     logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [logs]);
 
+  const visibleLogs = logs.filter((line) =>
+    (level === "ALL" || line.includes(`[${level}]`))
+    && (!search || line.toLowerCase().includes(search.toLowerCase()))
+  );
+
   return (
     <div className="">
       <Card>
-        <div className="flex items-center justify-end px-4 pt-3 pb-2">
-          <Button size="sm" variant="outline" icon="delete" onClick={handleClear}>
-            Clear
+        <div className="flex flex-wrap items-center justify-end gap-2 px-4 pt-3 pb-2">
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search logs" className="max-w-xs" />
+          <select value={level} onChange={(e) => setLevel(e.target.value)} className="rounded border border-border bg-surface px-2 py-1 text-sm">
+            {["ALL", ...Object.keys(LOG_LEVEL_COLORS)].map((value) => <option key={value}>{value}</option>)}
+          </select>
+          <Button size="sm" variant="outline" icon={paused ? "play_arrow" : "pause"} onClick={() => setPaused((value) => !value)}>
+            {paused ? "Resume" : "Pause"}
           </Button>
+          <Button size="sm" variant="outline" icon="delete" onClick={handleClear}>Clear</Button>
         </div>
         <div
           ref={logRef}
           className="bg-black rounded-b-lg p-4 text-xs font-mono h-[calc(100vh-220px)] overflow-y-auto"
         >
-          {logs.length === 0 ? (
-            <span className="text-text-muted">No console logs yet.</span>
+          {visibleLogs.length === 0 ? (
+            <span className="text-text-muted">No matching console logs.</span>
           ) : (
             <div className="space-y-0.5">
-              {logs.map((line, i) => (
-                <div key={i}>{colorLine(line)}</div>
-              ))}
+              {visibleLogs.map((line, i) => <div key={i}>{colorLine(line)}</div>)}
             </div>
           )}
         </div>

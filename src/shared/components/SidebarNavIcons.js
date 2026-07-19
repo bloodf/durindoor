@@ -79,6 +79,8 @@ export const systemItems = [
   { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal", exact: false },
   { href: "/dashboard/proxy-pools", label: "Proxy Pools", icon: "lan" },
   { href: "/dashboard/skills", label: "Skills", icon: "extension" },
+  { href: "/dashboard/mcp-help", label: "MCP Help", icon: "help" },
+  { href: "/dashboard/api-docs", label: "API Docs", icon: "description" },
 ];
 
 // Profile/settings is rendered separately so it stays unrelated to the Token

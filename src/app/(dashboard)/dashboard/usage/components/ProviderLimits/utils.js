@@ -1,4 +1,5 @@
 import { getModelsByProviderId } from "open-sse/config/providerModels.js";
+import { AI_PROVIDERS } from "@/shared/constants/providers";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 export const QUOTA_CACHE_KEY = "quotaCacheData";
@@ -124,8 +125,10 @@ export function createAutoRefreshScheduler({
 // │ otherwise a composite of the display name and array index).                │
 // └────────────────────────────────────────────────────────────────────────────┘
 
+/** Prefer registry names so stale saved labels cannot misidentify providers. */
 export function getConnectionLabel(connection) {
-  return connection.name?.trim()
+  return AI_PROVIDERS[connection.provider]?.name?.trim()
+    || connection.name?.trim()
     || connection.email?.trim()
     || connection.displayName?.trim()
     || null;
@@ -183,6 +186,13 @@ export function sortVisibleConnections(
       (getConnectionLabel(a) || "").localeCompare(getConnectionLabel(b) || "")
     );
   });
+}
+
+/** Returns the exact connection set that a refresh will fetch and mark loading. */
+export function getRefreshConnections(connections, force, tick, claudeEvery) {
+  return connections.filter((connection) =>
+    force || connection.provider !== "claude" || tick % claudeEvery === 0
+  );
 }
 
 export function buildLoadingState(connections) {

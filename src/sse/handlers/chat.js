@@ -996,6 +996,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       pxpipeMinChars: chatSettings.pxpipeMinChars,
       pxpipeTimeoutMs: chatSettings.pxpipeTimeoutMs,
       pxpipeTransform,
+      pxpipeAllowedModels: chatSettings.pxpipeAllowedModels,
       onPxpipeEvent: appendPxpipeEvent,
       onHeadroomEvent: appendHeadroomEvent,
       onTokenSaverEvent: (event) => {

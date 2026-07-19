@@ -15,6 +15,11 @@ export const REACHABLE_MISS_THRESHOLD = 5;
 export const CLIENT_PING_FAST_MS = 10000;
 export const CLIENT_PING_SLOW_MS = 60000;
 export const CLIENT_PING_TIMEOUT_MS = 5000;
+/** Endpoint rows show actual composite service state; settingsEnabled remains toggle intent. */
+export const getCompositeEndpointEnabled = (status) => status?.enabled === true;
+
+/** Local endpoint stays local even when dashboard is opened through a remote tunnel. */
+export const getLocalEndpointUrl = () => "http://localhost:20128/v1";
 
 export const CAVEMAN_LEVELS = [
   { id: "lite", label: "Lite", desc: "Drop filler, keep grammar" },

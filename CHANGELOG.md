@@ -1,10 +1,3 @@
-# Changelog
-
-## [2.1.2] - 2026-07-18
-
-### Fixes
-- Complete rebrand: all remaining user-visible 9router/9Router references replaced with DurinDoor
-
 # 2.0.0
 
 ## Features

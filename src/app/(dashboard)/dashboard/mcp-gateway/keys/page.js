@@ -197,7 +197,7 @@ export default function McpGatewayKeysPage() {
                       )}
                       <button
                         onClick={() => isShown ? hideKey(k.id) : revealKey(k)}
-                        className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
+                        className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-all"
                         title={isShown ? "Hide key" : "Show key"}
                       >
                         <span className="material-symbols-outlined text-[14px]">
@@ -210,7 +210,7 @@ export default function McpGatewayKeysPage() {
                           const val = cached || (await revealKey(k));
                           if (val) copy(val, k.id);
                         }}
-                        className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
+                        className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-all"
                         title="Copy key"
                       >
                         <span className="material-symbols-outlined text-[14px]">
@@ -226,7 +226,7 @@ export default function McpGatewayKeysPage() {
                     <Button size="sm" variant="ghost" icon="tune" onClick={() => setEditingKey(k.id)}>Grants</Button>
                     <button
                       onClick={() => setConfirmDelete(k.id)}
-                      className="p-2 hover:bg-red-500/10 rounded text-red-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
+                      className="p-2 hover:bg-red-500/10 rounded text-red-500 transition-all"
                     >
                       <span className="material-symbols-outlined text-[18px]">delete</span>
                     </button>

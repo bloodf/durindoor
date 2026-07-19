@@ -11,6 +11,8 @@ import {
   STATUS_POLL_FAST_MS,
   REACHABLE_MISS_THRESHOLD,
   CLIENT_PING_FAST_MS,
+  getCompositeEndpointEnabled,
+  getLocalEndpointUrl,
 } from "./endpointConstants";
 import { clientPingUrl, clientPingAny } from "./endpointPing";
 import EndpointRow from "./components/EndpointRow";
@@ -201,20 +203,20 @@ export default function APIPageClient({ machineId }) {
     }
   }, []);
 
-  // Trust user intent (settingsEnabled): UI stays "enabled" while watchdog restarts process
+  // Render actual composite state; settingsEnabled remains server-side restart intent.
   const syncTunnelStatus = async () => {
     try {
       const statusRes = await fetch("/api/tunnel/status", { cache: "no-store" });
       if (!statusRes.ok) return;
       const data = await statusRes.json();
-      const tEnabled = data.tunnel?.settingsEnabled ?? data.tunnel?.enabled ?? false;
+      const tEnabled = getCompositeEndpointEnabled(data.tunnel);
       const tUrl = data.tunnel?.tunnelUrl || "";
       setTunnelUrl(tUrl);
       setTunnelPublicUrl(data.tunnel?.publicUrl || "");
       setTunnelEnabled(tEnabled);
       updateReachable(null, tunnelClientReachableRef, tunnelMissRef, setTunnelReachable, tunnelEverReachableRef, setTunnelEverReachable);
 
-      const tsEn = data.tailscale?.settingsEnabled ?? data.tailscale?.enabled ?? false;
+      const tsEn = getCompositeEndpointEnabled(data.tailscale);
       const tsUrlVal = data.tailscale?.tunnelUrl || "";
       setTsUrl(tsUrlVal);
       setTsEnabled(tsEn);
@@ -238,14 +240,14 @@ export default function APIPageClient({ machineId }) {
       }
       if (statusRes.ok) {
         const data = await statusRes.json();
-        const tEnabled = data.tunnel?.settingsEnabled ?? data.tunnel?.enabled ?? false;
+        const tEnabled = getCompositeEndpointEnabled(data.tunnel);
         const tUrl = data.tunnel?.tunnelUrl || "";
         setTunnelUrl(tUrl);
         setTunnelPublicUrl(data.tunnel?.publicUrl || "");
         setTunnelEnabled(tEnabled);
         updateReachable(null, tunnelClientReachableRef, tunnelMissRef, setTunnelReachable, tunnelEverReachableRef, setTunnelEverReachable);
 
-        const tsEn = data.tailscale?.settingsEnabled ?? data.tailscale?.enabled ?? false;
+        const tsEn = getCompositeEndpointEnabled(data.tailscale);
         const tsUrlVal = data.tailscale?.tunnelUrl || "";
         setTsUrl(tsUrlVal);
         setTsEnabled(tsEn);
@@ -789,14 +791,7 @@ export default function APIPageClient({ machineId }) {
     setEditKeyStatus(null);
   };
 
-  const [baseUrl, setBaseUrl] = useState("/v1");
-
-  // Hydration fix: Only access window on client side
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      setBaseUrl(`${window.location.origin}/v1`);
-    }
-  }, []);
+  const currentEndpoint = getLocalEndpointUrl();
 
   if (loading) {
     return (
@@ -807,7 +802,6 @@ export default function APIPageClient({ machineId }) {
     );
   }
 
-  const currentEndpoint = baseUrl;
 
   return (
     <div className="flex flex-col gap-8">

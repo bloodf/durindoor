@@ -1,22 +1,22 @@
 # Contributing
 
-DurinDoor uses a `dev`-first workflow. Open pull requests against `dev` unless a maintainer asks for a different target.
+DurinDoor uses a single-branch workflow on `main` (post v2.2.0). Open pull requests against `main`.
 
 ## Development Workflow
 
 1. Fork or clone the repository.
-2. Create a branch from `dev`.
+2. Create a branch from `main`.
 3. Make focused changes.
 4. Run the relevant checks.
 5. Commit with a conventional commit message.
-6. Open a pull request targeting `dev`.
+6. Open a pull request targeting `main`.
 
 ## Branches
 
 | Branch | Purpose |
 | --- | --- |
-| `dev` | Active development and normal pull request target. |
-| `main` | Controlled release branch. Do not target directly unless instructed. |
+| `main` | Default branch, integration + release source, nightly pre-release source. All pull requests target `main`. |
+| (retained) | `dev` was retired in v2.2.0; `release/X.Y.Z` is the cutover branch for production release PRs. |
 
 ## Commit Messages
 
@@ -61,7 +61,7 @@ Use Node `20.20.2` and npm `10.8.2`; update and commit lockfiles when dependenci
 
 ## Pull Request Checklist
 
-- The PR targets `dev`.
+- The PR targets `main`.
 - The change is scoped and explained.
 - Docs are updated when behavior changes.
 - Relevant tests or manual validation are listed.

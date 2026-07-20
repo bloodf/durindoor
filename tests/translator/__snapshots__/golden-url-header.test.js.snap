@@ -3546,8 +3546,8 @@ exports[`GOLDEN buildUrl (default executor providers) > alicode → url (stream 
 
 exports[`GOLDEN buildUrl (default executor providers) > alicode-intl → url (stream + non-stream) 1`] = `
 {
-  "nonStream": "https://coding-intl.dashscope.aliyuncs.com/v1/chat/completions",
-  "stream": "https://coding-intl.dashscope.aliyuncs.com/v1/chat/completions",
+  "nonStream": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
+  "stream": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
 }
 `;
 

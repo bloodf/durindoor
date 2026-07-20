@@ -3,9 +3,9 @@
 ## Development workflow
 
 1. Fork the repository.
-2. Create a branch from `dev`.
+2. Create a branch from `main`.
 3. Make focused, well-scoped changes.
-4. Open a pull request targeting `dev`.
+4. Open a pull request targeting `main`.
 
 ## Commits
 
@@ -23,7 +23,7 @@ Use conventional commits:
 - Fill out the pull request template completely.
 - Include tests for behavioral changes.
 - Justify any new dependency in the PR description.
-- Target `dev` only. Pull requests targeting `main` will be closed.
+- Target `main` only. Pull requests targeting other branches will be closed.
 
 ## Documentation
 

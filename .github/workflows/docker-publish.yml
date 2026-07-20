@@ -1,8 +1,8 @@
 name: Build and Push Docker Image
 
 # Two-branch release model:
-#   dev   → nightly pre-releases (nightly.yml)
-#   main  → controlled production releases (release.yml on published; v* tags only)
+#   
+#   main  → controlled production releases; dev branch is the integration source
 # Docker images only build on v* tags (controlled production), never nightly-*.
 
 on:

@@ -62,7 +62,7 @@ This project uses conventional commits. The authoritative contract is `AGENTS.md
 
 **Mandatory pre-push checklist**:
 ```bash
-npx commitlint --from=origin/dev --to=HEAD
+npx commitlint --from=origin/main --to=HEAD
 ```
 Must exit `0` before every `git push`; rewrite commits if it fails.
 
@@ -84,11 +84,10 @@ Replace `<pr-title>` with the actual PR title; rewrite the title if it fails.
 
 ## Branch Model
 
-Two-branch release model:
-- `main` — controlled production releases via GitHub Releases (`release.yml`, publishes to npm on `release: published`)
-- `dev` — active development + nightly pre-releases (`nightly.yml`, runs daily at 02:00 UTC, marked `prerelease: true`)
+Single-branch release model (post v2.2.0):
+- `main` is the default branch and the source for both production releases and nightly pre-releases. Release flow: feature PR → `main` → tag (`vX.Y.Z`) → `release.yml` publishes to npm and `docker-publish.yml` builds multi-arch images. `nightly.yml` runs daily at 02:00 UTC and publishes a `nightly-YYYY-MM-DD` GitHub pre-release.
 
-Default PR target is `dev`. PR target rules, worktree discipline, CI gates, and AI-review handling are in `AGENTS.md` §6.
+Default PR target is `main`. PR target rules, worktree discipline, CI gates, and AI-review handling are in `AGENTS.md` §6.
 ---
 
 # Upstream CLAUDE.md (ported from decolua/9router #2354)

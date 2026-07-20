@@ -6,7 +6,7 @@ It is the only project-level agent contract. Per-subsystem guides that used to l
 
 ## 0. TL;DR for a fresh session
 
-1. You are working in a fork of `decolua/9router` (DurinDoor). Look at the active branch first; it is one of the in-flight `port/upstream-*` / `fix/*` / `ci/*` work, or `dev`.
+1. You are working in a fork of `decolua/9router` (DurinDoor). Look at the active branch first; it is one of the in-flight `port/upstream-*` / `fix/*` / `ci/*` work, or `main` (the default branch since v2.2.0).
 2. Read `package.json` scripts and `.commitlintrc.cjs` before changing build or commit conventions.
 3. If you are the Hermes cron agent looking after the repo, also read `~/.hermes/agentic-engineering.json` (if present) before declaring work complete.
 4. Conventional Commits are enforced by `commitlint.yml` in CI. The config lives at `.commitlintrc.cjs`; allowed types and length rules are defined there.
@@ -170,15 +170,14 @@ Provider-agnostic SSE engine: one OpenAI-style request → any provider (LLM cha
 
 ### 6.1 Target
 
-- Default PR target: `bloodf/durindoor:dev`.
-- Do NOT target `main` directly. `main` is the released branch (release.yml, publishes to npm on `release: published`).
+- Default PR target: `bloodf/durindoor:main`.
 - Do NOT target `decolua/9router:dev` from this fork. Upstream PRs are sent from dedicated `port/upstream-*` branches after maintainer review.
 
 ### 6.2 Worktree discipline
 
 - One worktree per task. Worktree path follows `.omc/wt-<short-name>/` (see existing `.omc/wt-baseline/`, `.omc/wt-migration-script/`, etc. for the convention).
-- Each worktree branches from `origin/dev` (or from an in-flight `port/upstream-*` branch when porting a specific upstream PR).
-- Force-push only on the branch being amended; never force-push to `dev` or `main`.
+- Each worktree branches from `origin/main` (or from an in-flight `port/upstream-*` branch when porting a specific upstream PR).
+- Force-push only on the branch being amended; never force-push to `main`.
 - Do not delete another agent's `.omc/wt-*` worktree.
 
 ### 6.3 Commit and PR title format
@@ -186,7 +185,7 @@ Provider-agnostic SSE engine: one OpenAI-style request → any provider (LLM cha
 - Commit subject follows Conventional Commits (`.commitlintrc.cjs`).
 - **Pre-push checklist (mandatory):** before every `git push`, run:
   ```bash
-  npx commitlint --from=origin/dev --to=HEAD
+  npx commitlint --from=origin/main --to=HEAD
   ```
   This command must exit `0`; if it fails, rewrite the violating commits before pushing.
 - **PR title checklist (mandatory):** because squash-merge uses the PR title as the commit subject, the PR title itself must also satisfy the convention. Validate it with:
@@ -215,7 +214,7 @@ Provider-agnostic SSE engine: one OpenAI-style request → any provider (LLM cha
 - If GitHub Actions minutes are exhausted (verify at `https://github.com/settings/billing` or the org-level page), the agent MUST run the equivalent checks locally before merging:
   - `npm run lint` (replaces `ci.yml` lint job)
   - `cd tests && npm run test:ci` (replaces `test.yml`)
-  - `npx commitlint --from=origin/dev --to=HEAD` (replaces `commitlint.yml`)
+  - `npx commitlint --from=origin/main --to=HEAD` (replaces `commitlint.yml`)
   - Attach the local check output to the PR body (a fenced ```bash ... ``` block per command, with exit codes), so reviewers can see what was run and that it passed.
 - The "skip CI to save hours" exception is not allowed. If hours are out and local checks can't run, the PR waits.
 
@@ -244,7 +243,7 @@ cd tests && npm install && npm run test:ci
 npm run lint
 
 # commit / PR helpers
-npx commitlint --from=origin/dev --to=HEAD    # validate commit subjects locally
+npx commitlint --from=origin/main --to=HEAD    # validate commit subjects locally
 git push -u origin feat/<branch>              # push a feature branch
-gh pr create --base dev --head feat/<branch>  # open a PR against dev
+gh pr create --base main --head feat/<branch>  # open a PR against dev
 ```

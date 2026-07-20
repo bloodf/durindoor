@@ -5,6 +5,23 @@
 import { describe, it, expect } from "vitest";
 import { parseBulkKeyRow, prepareBulkKeyRows } from "../../src/app/(dashboard)/dashboard/providers/[id]/apiKeyBulk.js";
 
+import { getAccountIdProviderData, isAccountIdValid, getProviderHelp } from "../../src/app/(dashboard)/dashboard/providers/[id]/apiKeyBulk.js";
+
+describe("single-entry accountId validation", () => {
+  it("rejects whitespace and trims accepted account IDs", () => {
+    expect(isAccountIdValid("   ")).toBe(false);
+    expect(getAccountIdProviderData("  account-1  ")).toEqual({ accountId: "account-1" });
+    expect(getAccountIdProviderData("   ")).toBeUndefined();
+  });
+});
+
+describe("provider help", () => {
+  it("uses Snowflake-specific help instead of Cloudflare copy", () => {
+    expect(getProviderHelp("snowflake")).toMatchObject({ href: expect.stringContaining("snowflake") });
+    expect(getProviderHelp("snowflake").text).not.toContain("Cloudflare");
+    expect(getProviderHelp("cloudflare-ai").text).toContain("Cloudflare");
+  });
+  });
 describe("parseBulkKeyRow", () => {
   describe("standard providers (no accountId required)", () => {
     it("parses name|apiKey into a usable row", () => {

@@ -2,7 +2,7 @@ import { QUOTA_V7_TABLES } from "./migrations/quota-v7-schema.js";
 import { QUOTA_V8_TABLES } from "./migrations/quota-v8-schema.js";
 
 // Latest schema version — bumped when a migration is added in ./migrations/
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 export const PRAGMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -241,6 +241,22 @@ export const TABLES = {
       totalRequests: "INTEGER DEFAULT 0",
       updatedAt: "TEXT",
     },
+  },
+  // Manual model capability overrides per provider/model target. The UI stores
+  // targets in the same provider/model shape used by combos, so provider-specific
+  // model caps do not leak across providers that expose the same model id.
+  modelCapabilityOverrides: {
+    columns: {
+      provider: "TEXT NOT NULL",
+      modelId: "TEXT NOT NULL",
+      overrideKey: "TEXT NOT NULL",
+      overrideValue: "TEXT NOT NULL",
+      refreshedAt: "TEXT NOT NULL DEFAULT (datetime('now'))",
+    },
+    primaryKey: "PRIMARY KEY (provider, modelId, overrideKey)",
+    indexes: [
+      "CREATE INDEX IF NOT EXISTS idx_model_capability_overrides_key ON modelCapabilityOverrides(overrideKey)",
+    ],
   },
 };
 

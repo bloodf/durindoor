@@ -145,7 +145,7 @@ npx vitest run unit/capabilities.test.js   # single file (path relative to tests
 
 Two authoritative docs already exist — read them before working in these areas rather than re-deriving:
 - `docs/ARCHITECTURE.md` — full system: request lifecycle, combo/account fallback, OAuth + token refresh, cloud sync, data model.
-- `open-sse/AGENTS.md` — the routing/translation engine's own conventions and "how to add a provider/executor/translator". **Read this before editing anything under `open-sse/`.**
+- `AGENTS.md` (root) — the repository-wide agent contract; for `open-sse/` changes the routing/translation engine section applies. **Read this before editing anything under `open-sse/`.**
 
 ### Request flow (the thing to understand first)
 `src/app/api/v1/*` route (Next rewrite maps `/v1/*` → `/api/v1/*` in `next.config.mjs`)

@@ -1,7 +1,7 @@
 name: Commitlint
 on:
   pull_request:
-    branches: [dev, main]
+    branches: [main]
 jobs:
   commitlint:
     runs-on: ubuntu-latest

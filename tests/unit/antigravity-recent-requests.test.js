@@ -1,3 +1,4 @@
+import "../translator/registerAll.js";
 import { describe, expect, it, vi } from "vitest";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 import {
@@ -234,5 +235,90 @@ describe("Antigravity Recent Requests usage", () => {
     expect(completed?.usage?.prompt_tokens).toBeGreaterThan(0);
     expect(completed?.usage?.completion_tokens).toBeGreaterThan(0);
     expect(completed?.usage?.estimated).toBe(true);
+  });
+});
+
+describe("passthrough terminal events", () => {
+  it("waits for OpenAI include_usage chunk before completing", async () => {
+    let completed = null;
+    const stream = createPassthroughStreamWithLogger(
+      "openai-compatible",
+      null,
+      null,
+      "model",
+      "conn-1",
+      { stream_options: { include_usage: true } },
+      (content, usage) => { completed = { content, usage }; },
+      null,
+    );
+    const writer = stream.writable.getWriter();
+    const reader = stream.readable.getReader();
+    const readAll = (async () => { while (!(await reader.read()).done) {} })();
+
+    await writer.write(new TextEncoder().encode(`data: ${JSON.stringify({
+      choices: [{ delta: { content: "answer" }, finish_reason: "stop" }],
+    })}\n\n`));
+    expect(completed).toBeNull();
+
+    await writer.write(new TextEncoder().encode(`data: ${JSON.stringify({
+      choices: [], usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 },
+    })}\n\n`));
+    await writer.close();
+    await readAll;
+
+    expect(completed?.content?.content).toBe("answer");
+    expect(completed?.usage?.estimated).not.toBe(true);
+    expect(completed?.usage?.completion_tokens).toBe(1);
+  });
+  it("waits for translated OpenAI include_usage chunk before completing", async () => {
+    let completed = null;
+    const stream = createSSETransformStreamWithLogger(
+      FORMATS.OPENAI,
+      FORMATS.OPENAI,
+      "openai-compatible",
+      null,
+      null,
+      "model",
+      "conn-1",
+      { stream: true, stream_options: { include_usage: true } },
+      (content, usage) => { completed = { content, usage }; },
+      null,
+    );
+    const writer = stream.writable.getWriter();
+    const reader = stream.readable.getReader();
+    const readAll = (async () => { while (!(await reader.read()).done) {} })();
+
+    await writer.write(new TextEncoder().encode(`data: ${JSON.stringify({
+      choices: [{ delta: { content: "translated answer" }, finish_reason: "stop" }],
+    })}\n\n`));
+    expect(completed).toBeNull();
+
+    await writer.write(new TextEncoder().encode(`data: ${JSON.stringify({
+      choices: [], usage: { prompt_tokens: 7, completion_tokens: 4, total_tokens: 11 },
+    })}\n\n`));
+    await writer.close();
+    await readAll;
+
+    expect(completed?.content?.content).toBe("translated answer");
+    expect(completed?.usage).toMatchObject({ prompt_tokens: 7, completion_tokens: 4 });
+    expect(completed?.usage?.estimated).not.toBe(true);
+  });
+});
+
+describe("Gemini raw thought passthrough", () => {
+  it("keeps thought parts out of completed visible content", async () => {
+    let completed = null;
+    const stream = createPassthroughStreamWithLogger(
+      "antigravity", null, null, "model", "conn-1", {},
+      (content) => { completed = content; }, null,
+    );
+    await writeAndCollect(stream, [`data: ${JSON.stringify({ response: {
+      candidates: [{ content: { parts: [
+        { thought: true, text: "private thought" },
+        { text: "visible answer" },
+      ] }, finishReason: "STOP" }],
+    } })}\n\n`]);
+
+    expect(completed).toEqual({ content: "visible answer", thinking: "private thought" });
   });
 });

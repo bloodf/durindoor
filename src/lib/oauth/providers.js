@@ -365,10 +365,15 @@ const PROVIDERS = {
       const displayName =
         [extra?.user?.firstName, extra?.user?.lastName].filter(Boolean).join(" ").trim() || null;
 
+      // Branch fix/feat/durindoor-fixes-ports: absolute expiresAt enables proactive refresh.
+      const expiresAt = tokens.expires_in
+        ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
+        : null;
       return {
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token || null,
         expiresIn: tokens.expires_in,
+        expiresAt,
         scope: tokens.scope,
         // Top-level for dashboard connection cards.
         email,

@@ -77,7 +77,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `alibaba` |  | apikey | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions` |
 | `alibaba-cn` |  | apikey | `https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions` |
 | `alicode` |  | apikey | `https://coding.dashscope.aliyuncs.com/v1/chat/completions` |
-| `alicode-intl` |  | apikey | `https://coding-intl.dashscope.aliyuncs.com/v1/chat/completions` |
+| `alicode-intl` |  | apikey | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions` |
 | `anthropic` | claude | apikey | `https://api.anthropic.com/v1/messages` |
 | `antigravity` | antigravity | oauth | `` |
 | `api-airforce` |  | apikey | `https://api.airforce/v1/chat/completions` |

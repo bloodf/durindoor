@@ -22,27 +22,26 @@ describe("AgentRouter provider", () => {
     expect(headers.Authorization).toBeUndefined();
   });
 
-  it("keeps the source Claude passthrough and context settings stable", () => {
+  it("keeps Claude passthrough and context settings stable", () => {
     expect(agentrouter.passthroughModels).toBe(true);
     expect(PROVIDERS.agentrouter).toMatchObject({
       format: "claude",
       defaultContextLength: 128000,
-      auth: {
-        apiKey: { header: "x-api-key", scheme: "raw" },
-        hooks: ["claudeOverlay"],
-      },
+      auth: { combined: true, header: "x-api-key", scheme: "raw" },
     });
   });
 
-  it("keeps every advertised model on the source Claude wire endpoint", () => {
-    expect(PROVIDERS.agentrouter.transports).toBeUndefined();
-    expect(PROVIDERS.agentrouter.baseUrl).toBe("https://agentrouter.org/v1/messages");
-    expect(agentrouter.models).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: "deepseek-v3.2" }),
-        expect.objectContaining({ id: "claude-opus-4-6" }),
-      ]),
+  it("exposes a multi-transport mapping for mixed OpenAI/Claude models", () => {
+    expect(PROVIDERS.agentrouter.transports).toHaveLength(2);
+    const openai = PROVIDERS.agentrouter.transports.find((t) => t.format === "openai");
+    const claude = PROVIDERS.agentrouter.transports.find((t) => t.format === "claude");
+    expect(openai?.baseUrl).toBe("https://agentrouter.org/v1/chat/completions");
+    expect(claude?.baseUrl).toBe("https://agentrouter.org/v1/messages");
+    expect(agentrouter.models).toContainEqual(
+      expect.objectContaining({ id: "deepseek-v3.2", targetFormat: "openai" })
     );
-    expect(agentrouter.models.every((model) => model.targetFormat === undefined)).toBe(true);
+    expect(agentrouter.models).toContainEqual(
+      expect.objectContaining({ id: "claude-opus-4-6", targetFormat: "claude" })
+    );
   });
 });

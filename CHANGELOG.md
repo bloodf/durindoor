@@ -1,3 +1,19 @@
+# 2.2.0
+
+## Features
+- **AgentRouter runtime transports** — add per-format `transports[]` (claude + openai) and per-model `targetFormat` so AgentRouter Claude models stay on the source Claude wire while `deepseek-v3.2` routes to the OpenAI transport (PR #126 regression fix).
+- **AliCode Intl endpoint** — switch `open-sse/providers/registry/alicode-intl.js` baseUrl from `coding-intl.dashscope.aliyuncs.com/v1/...` to `dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions` so standard DashScope keys work.
+- **xAI Grok CLI proactive refresh** — `grok-cli` OAuth `mapTokens` now stores absolute `expiresAt` in addition to `expiresIn`, enabling proactive token refresh instead of waiting for the 40-45 minute silent-expiry window.
+- **Model capability overrides** — new migration `011-model-capability-overrides` adds per-key model capability overrides; `SCHEMA_VERSION=11`. Headroom circuit breaker already on dev via #356; bulk-add API-key overwrite already on dev via `apiKeyConnectionName.js`; Grok Build protocol fingerprint already on dev inline in `grok-cli.js` executor; Thai i18n and featherless registry already on dev.
+- **Auto-combo engine + resolver + preview** — combo engine backend analysis, resolver wiring, and compression preview route/dashboard page merged.
+- **Catalog allowlist tooling** — reviewed orphan allowlist to diff tool.
+- **Codex review followups** — persistence, usage, stream, and translator Codex review findings closed.
+
+## Fixes
+- **MCP transport race hardening** — stdio/HTTP/SSE transport races in MCP gateway hardened.
+- **Migrations** — consolidated migration registry (now 004-010 + 011).
+- **AliCode Intl** — `alicode-intl` compatible-mode endpoint fixes the fork-original URL.
+
 # 2.0.0
 
 ## Features

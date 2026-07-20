@@ -132,6 +132,9 @@ function convertGeminiContent(content) {
     if (reasoningContent) {
       result.reasoning_content = reasoningContent;
     }
+    if (reasoningContent) {
+      result.reasoning_content = reasoningContent;
+    }
     result.tool_calls = toolCalls;
     return result;
   }

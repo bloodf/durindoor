@@ -468,6 +468,20 @@ describe("handleNonStreamingResponse: synthetic SSE respects client format", () 
     const message = (await result.response.json()).choices[0].message;
     expect(message).toEqual({ role: "assistant", content: "visible answer", reasoning_content: "native reasoning" });
   });
+  it("preserves wrapped Antigravity text and inlineData in native SSE", async () => {
+    const responseBody = { response: { candidates: [{ content: { parts: [
+      { text: "wrapped caption" },
+      { inlineData: { mimeType: "image/png", data: "d3JhcHBlZA==" } },
+    ] }, finishReason: "STOP" }] } };
+    const result = await handleNonStreamingResponse(baseOptions({
+      providerResponse: makeProviderResponse(responseBody),
+      sourceFormat: FORMATS.ANTIGRAVITY,
+      targetFormat: FORMATS.ANTIGRAVITY,
+    }));
+    const text = await result.response.text();
+    expect(text).toContain("wrapped caption");
+    expect(text).toContain("d3JhcHBlZA==");
+  });
 
   it("still returns the client-shaped Claude JSON body (not SSE) for a real non-streaming request", async () => {
     // streamToClient:false — same sourceFormat/targetFormat as the SSE test

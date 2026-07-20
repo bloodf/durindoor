@@ -46,7 +46,14 @@ export async function recordApiKeyUsage(apiKey, usage) {
   const db = await getAdapter();
   const row = db.get(`SELECT id FROM apiKeys WHERE key = ?`, [apiKey]);
   if (!row) return;
-  incrementApiKeyUsageSync(db, row.id, usage);
+  try {
+    incrementApiKeyUsageSync(db, row.id, usage);
+  } catch (err) {
+    if (err?.message?.includes("no such table: apiKeyUsageTotals")) {
+      return;
+    }
+    throw err;
+  }
 }
 
 /**

@@ -3,7 +3,11 @@
 // AI, Snowflake Cortex) must require a non-empty final accountId. Invalid rows
 // must NOT be POSTed — they should be counted failed in the bulk submit loop.
 import { describe, it, expect } from "vitest";
-import { parseBulkKeyRow, prepareBulkKeyRows } from "../../src/app/(dashboard)/dashboard/providers/[id]/apiKeyBulk.js";
+import {
+  parseBulkKeyRow,
+  prepareBulkKeyRows,
+  getBulkGuidance,
+} from "../../src/app/(dashboard)/dashboard/providers/[id]/apiKeyBulk.js";
 
 import { getAccountIdProviderData, isAccountIdValid, getProviderHelp } from "../../src/app/(dashboard)/dashboard/providers/[id]/apiKeyBulk.js";
 
@@ -21,7 +25,65 @@ describe("provider help", () => {
     expect(getProviderHelp("snowflake").text).not.toContain("Cloudflare");
     expect(getProviderHelp("cloudflare-ai").text).toContain("Cloudflare");
   });
+});
+
+describe("getBulkGuidance", () => {
+  // Contract: the SAME requiresAccountId flag that gates row validation must
+  // also gate the bulk format + placeholder. A requiresAccountId provider
+  // (Snowflake Cortex, Cloudflare Workers AI) can never accept a key-only row,
+  // so its guidance MUST advertise only accountId-bearing shapes and MUST NOT
+  // present a key-only/auto-named example. Helper returns plain fields; the
+  // modal renders them as real JSX so no raw <code> string is ever printed.
+
+  describe("requiresAccountId providers (cloudflare-ai, snowflake)", () => {
+    it("reports the name|apiKey|accountId format and disallows key-only", () => {
+      const { format, allowsKeyOnly } = getBulkGuidance({ requiresAccountId: true });
+      expect(format).toBe("name|apiKey|accountId");
+      expect(allowsKeyOnly).toBe(false);
+    });
+
+    it("placeholder contains only accountId-bearing rows (no key-only row)", () => {
+      const { placeholder } = getBulkGuidance({ requiresAccountId: true });
+      const lines = placeholder.split("\n");
+      // Every example row must carry the trailing accountId segment.
+      for (const line of lines) {
+        expect(line.split("|").length).toBeGreaterThanOrEqual(3);
+      }
+      expect(placeholder).toMatch(/\|acc|\|def|\|ghi/);
+      // The legacy key-only auto-named row must not appear.
+      expect(placeholder).not.toContain("sk-key-only-auto-named");
+    });
+
+    it("is driven by the same flag for any account-ID-required provider", () => {
+      // Snowflake and Cloudflare share the flag; guidance must be identical
+      // shape-wise regardless of which provider string is in play, because the
+      // decision is requiresAccountId, not the provider id.
+      const a = getBulkGuidance({ requiresAccountId: true });
+      const b = getBulkGuidance({ requiresAccountId: true, provider: "snowflake" });
+      expect(a).toEqual(b);
+    });
   });
+
+  describe("standard providers (no accountId required)", () => {
+    it("reports name|apiKey format and allows key-only rows", () => {
+      const { format, allowsKeyOnly } = getBulkGuidance({ requiresAccountId: false });
+      expect(format).toBe("name|apiKey");
+      expect(allowsKeyOnly).toBe(true);
+    });
+
+    it("retains the existing placeholder including the key-only auto-named row", () => {
+      const { placeholder } = getBulkGuidance({ requiresAccountId: false });
+      expect(placeholder).toContain("name1|sk-key1");
+      expect(placeholder).toContain("name2|sk-key2");
+      expect(placeholder).toContain("sk-key-only-auto-named");
+    });
+
+    it("default call (no opts) matches the ordinary-provider behavior", () => {
+      expect(getBulkGuidance()).toEqual(getBulkGuidance({ requiresAccountId: false }));
+    });
+  });
+});
+
 describe("parseBulkKeyRow", () => {
   describe("standard providers (no accountId required)", () => {
     it("parses name|apiKey into a usable row", () => {
@@ -168,9 +230,9 @@ describe("prepareBulkKeyRows", () => {
       expect(result.items).toEqual([]);
     });
 
-    it("counts a row whose only segment is empty as failed", () => {
-      // Defensive: a row that survives .filter(Boolean) (e.g. contains a
-      // whitespace-only segment) must still be excluded.
+    it("accepts a row with an empty name segment and auto-names it", () => {
+      // Empty first segment falls back to defaultName; apiKey + accountId are
+      // intact, so the row is valid and eligible for POST.
       const lines = ["|sk-key|acc-1"];
       const result = prepareBulkKeyRows(lines, { requiresAccountId: true });
       // The first segment is empty after trim, but auto-naming via defaultName

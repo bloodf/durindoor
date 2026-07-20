@@ -12,6 +12,28 @@ export function getProviderHelp(provider) {
   }
   return { text: "Find your Cloudflare Account ID in the right sidebar of dash.cloudflare.com.", href: "https://dash.cloudflare.com" };
 }
+
+// Bulk "Add Keys" guidance, driven by the SAME requiresAccountId flag that
+// parseBulkKeyRow uses for row validation — so a user is never shown a row
+// shape the parser would reject. Returns plain fields the modal renders as
+// real JSX (no raw <code> string is ever printed).
+export function getBulkGuidance(opts) {
+  const { requiresAccountId = false } = opts || {};
+  if (requiresAccountId) {
+    return {
+      format: "name|apiKey|accountId",
+      allowsKeyOnly: false,
+      placeholder:
+        "name1|sk-key1|acc123456\nname2|sk-key2|def789012\nname3|sk-key3|ghi345678",
+    };
+  }
+  return {
+    format: "name|apiKey",
+    allowsKeyOnly: true,
+    placeholder:
+      "name1|sk-key1\nname2|sk-key2\nsk-key-only-auto-named",
+  };
+}
 // Pure parser + validator for the "Bulk Add" rows in AddApiKeyModal.
 //
 // One row per line. Three shapes depending on the provider:

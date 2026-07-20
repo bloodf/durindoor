@@ -1,5 +1,21 @@
-// Rebuild lifetime API-key totals from authoritative usageHistory rows.
-// Called after schema-v6 migration and after one-time legacy JSON import.
+/**
+ * Rebuild lifetime totals for every current API key from authoritative
+ * usageHistory rows. Called after schema-v6 migration and after one-time
+ * legacy JSON import.
+ *
+ * Adapter contract: `exec(sql)`, `all(sql, params?)`, and `run(sql, params?)`
+ * must all finish synchronously; Promise-returning adapters are unsupported.
+ * This is verified by the native better-sqlite3 API and its wrapper in
+ * `adapters/betterSqliteAdapter.js`, which directly returns `db.exec()` and
+ * prepared-statement `.all()` / `.run()` results without `await`.
+ *
+ * Schema contract: `apiKeys(id, key)` and
+ * `usageHistory(id, apiKey, promptTokens, completionTokens, cost)` must exist.
+ * The helper creates `apiKeyUsageTotals(apiKeyId PRIMARY KEY, totalTokens,
+ * totalCost, totalRequests, updatedAt)` when absent, then replaces the row for
+ * each current `apiKeys.id`. It intentionally leaves rollups without a current
+ * API-key row untouched; pruning those rows is a separate lifecycle decision.
+ */
 export function ensureAndBackfillApiKeyUsageTotals(db) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS apiKeyUsageTotals (
@@ -10,8 +26,6 @@ export function ensureAndBackfillApiKeyUsageTotals(db) {
       updatedAt TEXT
     )
   `);
-  db.exec(`DELETE FROM apiKeyUsageTotals WHERE apiKeyId NOT IN (SELECT id FROM apiKeys)`);
-
   const updatedAt = new Date().toISOString();
   const rows = db.all(`
     SELECT

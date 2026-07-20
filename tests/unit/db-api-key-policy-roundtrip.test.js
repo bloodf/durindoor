@@ -162,6 +162,27 @@ describe("apiKeyUsageTotals table lifecycle", () => {
       totalRequests: 2,
     });
   });
+
+  it("does not delete rollups without a current API key", async () => {
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const db = await getAdapter();
+    const orphan = {
+      apiKeyId: "deleted-key-id",
+      totalTokens: 99,
+      totalCost: 1.25,
+      totalRequests: 3,
+      updatedAt: "2026-01-03T00:00:00.000Z",
+    };
+    db.run(
+      `INSERT INTO apiKeyUsageTotals(apiKeyId, totalTokens, totalCost, totalRequests, updatedAt) VALUES(?, ?, ?, ?, ?)`,
+      [orphan.apiKeyId, orphan.totalTokens, orphan.totalCost, orphan.totalRequests, orphan.updatedAt]
+    );
+
+    const { ensureAndBackfillApiKeyUsageTotals } = await import("@/lib/db/migrations/apiKeyUsageTotalsBackfill.js");
+    ensureAndBackfillApiKeyUsageTotals(db);
+
+    expect(db.get(`SELECT * FROM apiKeyUsageTotals WHERE apiKeyId = ?`, [orphan.apiKeyId])).toEqual(orphan);
+  });
 });
 
 describe("exportDb / importDb round-trip of apiKeys.policy + expiresAt", () => {

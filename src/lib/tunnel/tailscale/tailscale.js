@@ -239,7 +239,7 @@ function bgRefreshFunnelUrl(port) {
 }
 
 /** Get actual funnel URL from Self.DNSName (sync, authoritative — avoids hostname-conflict suffix). */
-function getActualFunnelUrl() {
+export function getActualFunnelUrl() {
   const bin = getTailscaleBin();
   if (!bin) return null;
   try {

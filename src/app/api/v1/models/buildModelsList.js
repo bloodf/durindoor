@@ -62,6 +62,7 @@ const OLLAMA_EMBEDDING_FAMILIES = [
   "snowflake-arctic-embed",
   "all-minilm",
   "e5",
+  "gte",
 ];
 
 function normalizeEmbeddingHaystack(...parts) {

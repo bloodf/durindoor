@@ -133,7 +133,7 @@ async function probeAnthropicCompatible(connection, effectiveProxy, fetcher) {
 }
 
 const LOCAL_OPENAI_COMPATIBLE_PROVIDERS = new Set([
-  "9router", "lm-studio", "vllm", "lemonade", "llamafile", "llama-cpp",
+  "9router", "ollama-local", "lm-studio", "vllm", "lemonade", "llamafile", "llama-cpp",
   "triton", "docker-model-runner", "xinference", "oobabooga",
 ]);
 
@@ -231,6 +231,16 @@ async function probeRegistry(connection, fetcher, effectiveProxy) {
 export async function probeConnectionHealth(connection, opts = {}) {
   const fetcher = opts.fetcher;
   if (!connection) return { valid: false, status: null, error: "no connection" };
+
+  // Health probes must use the SAME credential the live chat path uses. OAuth
+  // connections (claude, codex, gemini-cli, …) store their bearer token in
+  // `accessToken`, not `apiKey`; probing with the (absent) apiKey 401s and
+  // reports a healthy, actively-serving account as "down". Fall back to the
+  // OAuth token so every probe path (which reads `connection.apiKey`) sends the
+  // real credential. Never overwrite an existing apiKey.
+  if (!connection.apiKey && connection.accessToken) {
+    connection = { ...connection, apiKey: connection.accessToken };
+  }
 
   let effectiveProxy = opts.proxyConfig;
   if (effectiveProxy === undefined) {

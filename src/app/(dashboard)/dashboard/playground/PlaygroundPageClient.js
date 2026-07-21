@@ -778,123 +778,169 @@ export default function PlaygroundPageClient() {
     : "auto";
 
   return (
-    <div className="relative flex-1 flex flex-col h-full min-h-0 min-w-0 text-text-main overflow-hidden">
-      <div className="relative mx-auto flex flex-1 h-full min-h-0 w-full max-w-4xl flex-col">
-        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 px-4 py-3 lg:px-6">
-          <div ref={modelMenuRef} className="relative">
-            <button
-              type="button"
-              onClick={() => setModelMenuOpen((value) => !value)}
-              className="flex items-center gap-3 rounded-2xl border border-border-subtle bg-surface px-4 py-3 text-left transition hover:bg-surface-2"
-            >
-              {activeProviderGroup ? (
-                <ProviderIcon
-                  src={`/providers/${activeProviderGroup.providerId}.png`}
-                  alt={activeProviderGroup.providerName}
-                  size={24}
-                  className="rounded object-contain shrink-0"
-                  fallbackText={activeProviderGroup.providerId.slice(0, 2).toUpperCase()}
+    <div className="relative flex flex-1 flex-col h-full min-h-0 min-w-0 overflow-hidden bg-bg text-text">
+      <div className="relative mx-auto flex h-full min-h-0 w-full max-w-4xl flex-1 flex-col">
+        {/* ---------- Toolbar ---------- */}
+        <header className="sticky top-0 z-20 shrink-0 border-b border-border-subtle bg-bg/85 px-3 py-3 backdrop-blur-md sm:px-4 lg:px-6">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Model selector */}
+            <div ref={modelMenuRef} className="relative min-w-0 flex-1 sm:flex-none">
+              <button
+                type="button"
+                onClick={() => setModelMenuOpen((value) => !value)}
+                aria-haspopup="listbox"
+                aria-expanded={modelMenuOpen}
+                className="flex w-full items-center gap-3 rounded-[12px] border border-border bg-surface px-3 py-2.5 text-left transition hover:bg-surface-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 sm:w-auto"
+              >
+                {activeProviderGroup ? (
+                  <ProviderIcon
+                    src={`/providers/${activeProviderGroup.providerId}.png`}
+                    alt={activeProviderGroup.providerName}
+                    size={28}
+                    className="shrink-0 rounded-[8px] object-contain"
+                    fallbackText={activeProviderGroup.providerId.slice(0, 2).toUpperCase()}
+                  />
+                ) : (
+                  <span className="flex size-7 shrink-0 items-center justify-center rounded-[8px] bg-surface-2 text-text-muted">
+                    <span className="material-symbols-outlined text-[18px]">smart_toy</span>
+                  </span>
+                )}
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1.5">
+                    <span className="truncate text-sm font-semibold text-text">{modelLabel}</span>
+                    <span className="material-symbols-outlined shrink-0 text-[18px] text-text-muted">expand_more</span>
+                  </span>
+                  <span className="block truncate text-xs text-text-muted">{modelSubLabel}</span>
+                </span>
+              </button>
+
+              {modelMenuOpen ? (
+                <Card
+                  padding="none"
+                  className="absolute left-0 top-[calc(100%+8px)] z-30 w-[min(520px,calc(100vw-1.5rem))] shadow-[var(--shadow-elev)]"
+                >
+                  <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-text-subtle">Models</p>
+                      <p className="text-xs text-text-muted">From connected providers</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setModelMenuOpen(false)}
+                      className="rounded-full p-1 text-text-muted transition hover:bg-surface-2 hover:text-text"
+                      aria-label="Close model list"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">close</span>
+                    </button>
+                  </div>
+                  <div className="max-h-[60vh] space-y-2 overflow-y-auto p-2 custom-scrollbar">
+                    {providerGroups.map((group) => (
+                      <div key={group.providerId} className="rounded-[12px] border border-border-subtle bg-bg p-2">
+                        <div className="flex items-center justify-between px-1.5 py-1.5">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <ProviderIcon
+                              src={`/providers/${group.providerId}.png`}
+                              alt={group.providerName}
+                              size={20}
+                              className="shrink-0 rounded-[6px] object-contain"
+                              fallbackText={group.providerId.slice(0, 2).toUpperCase()}
+                            />
+                            <p className="truncate text-sm font-semibold text-text">{group.providerName}</p>
+                          </div>
+                          <Badge size="sm" variant="default">{group.models.length}</Badge>
+                        </div>
+                        <div className="grid gap-1.5 sm:grid-cols-2">
+                          {group.models.map((model) => {
+                            const isActive = model.id === activeModelId;
+                            return (
+                              <button
+                                key={model.id}
+                                type="button"
+                                onClick={() => handleSelectModel(model.id)}
+                                aria-pressed={isActive}
+                                className={`rounded-[10px] border px-3 py-2.5 text-left transition ${isActive ? "border-brand-500/50 bg-brand-500/10" : "border-border-subtle bg-surface hover:bg-surface-2 hover:border-border"}`}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <p className="truncate text-sm font-medium text-text">{model.name}</p>
+                                    <p className="truncate text-[11px] text-text-muted">{model.requestModel}</p>
+                                  </div>
+                                  {isActive ? <span className="material-symbols-outlined shrink-0 text-[18px] text-brand-500">check_circle</span> : null}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              ) : null}
+            </div>
+
+            {/* Secondary controls */}
+            <div className="flex flex-wrap items-center gap-2">
+              {activeConnectionOptions.length > 1 ? (
+                <Select
+                  label="Connection"
+                  selectClassName="min-w-[10rem]"
+                  options={activeConnectionOptions}
+                  value={connectionValue}
+                  onChange={(event) => setActiveConnectionId(event.target.value)}
+                  placeholder="Select connection"
                 />
               ) : null}
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-text-main">{modelLabel}</span>
-                  <span className="material-symbols-outlined text-[18px] text-text-muted">expand_more</span>
-                </div>
-                <p className="truncate text-xs text-text-muted">{modelSubLabel}</p>
-              </div>
-            </button>
-
-            {modelMenuOpen ? (
-              <Card padding="none" className="absolute left-0 top-[calc(100%+10px)] z-30 w-[min(520px,calc(100vw-2rem))] shadow-2xl shadow-black/5">
-                <div className="border-b border-border-subtle px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.22em] text-text-muted">Models</p>
-                  <p className="text-sm text-text-muted">Only from connected providers</p>
-                </div>
-                <div className="max-h-[60vh] overflow-y-auto p-2 custom-scrollbar">
-                  {providerGroups.map((group) => (
-                    <div key={group.providerId} className="mb-2 rounded-[16px] border border-border-subtle bg-bg p-2">
-                      <div className="flex items-center justify-between px-2 py-2">
-                        <div className="flex items-center gap-2">
-                          <ProviderIcon
-                            src={`/providers/${group.providerId}.png`}
-                            alt={group.providerName}
-                            size={18}
-                            className="rounded object-contain shrink-0"
-                            fallbackText={group.providerId.slice(0, 2).toUpperCase()}
-                          />
-                          <p className="text-sm font-semibold text-text-main">{group.providerName}</p>
-                        </div>
-                        <Badge size="sm" variant="default">{group.models.length}</Badge>
-                      </div>
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {group.models.map((model) => {
-                          const isActive = model.id === activeModelId;
-                          return (
-                            <button
-                              key={model.id}
-                              type="button"
-                              onClick={() => handleSelectModel(model.id)}
-                              className={`rounded-[14px] border px-3 py-3 text-left transition ${isActive ? "border-primary/40 bg-primary/15" : "border-border-subtle bg-surface hover:bg-surface-2"}`}
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0">
-                                  <p className="truncate text-sm font-medium text-text-main">{model.name}</p>
-                                  <p className="truncate text-[11px] text-text-muted">{model.requestModel}</p>
-                                </div>
-                                {isActive ? <span className="material-symbols-outlined text-[18px] text-primary">check_circle</span> : null}
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            ) : null}
-          </div>
-
-          <div className="flex items-center gap-2">
-            {activeConnectionOptions.length > 1 ? (
-              <Select
-                label="Connection"
-                selectClassName="min-w-[10rem]"
-                options={activeConnectionOptions}
-                value={connectionValue}
-                onChange={(event) => setActiveConnectionId(event.target.value)}
-                placeholder="Select connection"
-              />
-            ) : null}
-            {reasoningOptions && reasoningOptions.length > 1 ? (
-              <SegmentedControl
+              {reasoningOptions && reasoningOptions.length > 1 ? (
+                <SegmentedControl
+                  size="sm"
+                  options={reasoningOptions.map((option) => ({ value: option, label: humanize(option) }))}
+                  value={reasoningEffort}
+                  onChange={setReasoningEffort}
+                />
+              ) : null}
+              <Button
+                variant="outline"
                 size="sm"
-                options={reasoningOptions.map((option) => ({ value: option, label: humanize(option) }))}
-                value={reasoningEffort}
-                onChange={setReasoningEffort}
-              />
-            ) : null}
-            <button
-              type="button"
-              onClick={() => setHistoryOpen((value) => !value)}
-              className="rounded-2xl border border-border-subtle bg-surface px-4 py-3 text-sm text-text-main transition hover:bg-surface-2"
-            >
-              History
-            </button>
-            <Button variant="ghost" size="sm" icon="delete" onClick={handleDeleteCurrentChat} disabled={!activeSessionId || sessions.length === 0}>
-              Clear
-            </Button>
-          </div>
-        </div>
-
-        {historyOpen ? (
-          <Card padding="none" className="absolute right-4 top-[72px] z-20 w-[min(360px,calc(100vw-2rem))] shadow-2xl shadow-black/5 lg:right-6">
-            <div className="px-3 py-2">
-              <p className="text-xs uppercase tracking-[0.22em] text-text-muted">Recent chats</p>
+                icon="history"
+                onClick={() => setHistoryOpen((value) => !value)}
+                aria-expanded={historyOpen}
+                aria-haspopup="dialog"
+              >
+                History
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                icon="delete"
+                onClick={handleDeleteCurrentChat}
+                disabled={!activeSessionId || sessions.length === 0}
+              >
+                Clear
+              </Button>
             </div>
-            <div className="max-h-[48vh] space-y-2 overflow-y-auto p-1 custom-scrollbar">
+          </div>
+        </header>
+
+        {/* ---------- History popover ---------- */}
+        {historyOpen ? (
+          <Card
+            padding="none"
+            className="absolute right-3 top-[68px] z-30 w-[min(360px,calc(100vw-1.5rem))] shadow-[var(--shadow-elev)] sm:right-4 lg:right-6"
+          >
+            <div className="flex items-center justify-between px-3 py-2">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-text-subtle">Recent chats</p>
+              <button
+                type="button"
+                onClick={() => setHistoryOpen(false)}
+                className="rounded-full p-1 text-text-muted transition hover:bg-surface-2 hover:text-text"
+                aria-label="Close history"
+              >
+                <span className="material-symbols-outlined text-[16px]">close</span>
+              </button>
+            </div>
+            <div className="max-h-[48vh] space-y-1.5 overflow-y-auto p-1.5 custom-scrollbar">
               {sessionItems.length === 0 ? (
-                <div className="rounded-[16px] border border-dashed border-border-subtle bg-surface p-4 text-sm text-text-muted">
+                <div className="rounded-[10px] border border-dashed border-border-subtle bg-surface p-4 text-sm text-text-muted">
                   No conversations yet.
                 </div>
               ) : paginatedSessions.items.map((session) => {
@@ -905,21 +951,22 @@ export default function PlaygroundPageClient() {
                     key={session.id}
                     type="button"
                     onClick={() => handleSelectSession(session.id)}
-                    className={`w-full rounded-[16px] border px-3 py-3 text-left transition ${isActive ? "border-primary/40 bg-primary/15" : "border-border-subtle bg-surface hover:bg-surface-2"}`}
+                    aria-pressed={isActive}
+                    className={`w-full rounded-[10px] border px-3 py-2.5 text-left transition ${isActive ? "border-brand-500/50 bg-brand-500/10" : "border-border-subtle bg-surface hover:bg-surface-2 hover:border-border"}`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-text-main">{session.title}</p>
-                        <p className="mt-1 truncate text-xs text-text-muted">{textValue(latestMessage?.content) || "Empty chat"}</p>
+                        <p className="truncate text-sm font-medium text-text">{session.title}</p>
+                        <p className="mt-0.5 truncate text-xs text-text-muted">{textValue(latestMessage?.content) || "Empty chat"}</p>
                       </div>
-                      <span className="text-[10px] text-text-subtle shrink-0">{formatRelativeTime(session.updatedAt)}</span>
+                      <span className="shrink-0 text-[10px] text-text-subtle">{formatRelativeTime(session.updatedAt)}</span>
                     </div>
                   </button>
                 );
               })}
             </div>
             {sessionItems.length > paginatedSessions.items.length ? (
-              <div className="border-t border-black/5 px-2 py-1 dark:border-white/5">
+              <div className="border-t border-border-subtle px-2 py-1">
                 <Pagination
                   currentPage={paginatedSessions.page}
                   pageSize={10}
@@ -931,120 +978,224 @@ export default function PlaygroundPageClient() {
           </Card>
         ) : null}
 
+        {/* ---------- Load error ---------- */}
         {loadError ? (
-          <div className="mt-4 rounded-[18px] border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-700 dark:text-red-100">
+          <div className="mx-3 mt-3 rounded-[12px] border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-700 dark:text-red-200 sm:mx-4 lg:mx-6">
             <div className="flex items-start gap-3">
-              <span className="material-symbols-outlined text-[20px]">error</span>
-              <p className="text-sm leading-6">{loadError}</p>
+              <span className="material-symbols-outlined mt-0.5 text-[18px] text-red-600 dark:text-red-300">error</span>
+              <p className="leading-6">{loadError}</p>
             </div>
           </div>
         ) : null}
 
-        <div className="flex flex-1 flex-col min-h-0">
-          <div className="flex-1 overflow-y-auto py-4 custom-scrollbar">
+        {/* ---------- Thread + composer ---------- */}
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex-1 overflow-y-auto px-3 py-4 custom-scrollbar sm:px-4 lg:px-6">
             {currentMessages.length === 0 ? (
               <div className="flex min-h-[50vh] items-center justify-center px-4 text-center">
                 <div className="max-w-xl space-y-4">
-                  <div className="mx-auto flex size-16 items-center justify-center rounded-[20px] border border-border-subtle bg-surface text-text-muted">
-                    <span className="material-symbols-outlined text-[30px]">chat</span>
+                  <div className="mx-auto flex size-16 items-center justify-center rounded-[20px] border border-border-subtle bg-surface text-brand-500">
+                    <span className="material-symbols-outlined text-[32px]">forum</span>
                   </div>
                   <div className="space-y-2">
-                    <h2 className="text-2xl font-semibold text-text-main">Playground</h2>
+                    <h2 className="text-2xl font-semibold text-text">Playground</h2>
                     <p className="text-sm leading-6 text-text-muted">
                       Chat against the local /v1 endpoint with any model from connected providers. Select a model and start streaming.
                     </p>
+                    {activeModel ? (
+                      <p className="inline-flex items-center gap-1.5 rounded-full border border-border-subtle bg-surface px-3 py-1 text-xs font-medium text-text-muted">
+                        <span className="size-1.5 rounded-full bg-brand-500" />
+                        {activeProviderGroup?.providerName || activeModel.providerName} · {activeModel.name}
+                      </p>
+                    ) : null}
                   </div>
                 </div>
               </div>
             ) : null}
 
-            <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-4">
+            <ol className="mx-auto flex w-full max-w-3xl flex-col gap-5">
               {currentMessages.map((message) => {
                 const isUser = message.role === "user";
                 const isAssistant = message.role === "assistant";
                 const isStreaming = isAssistant && message.id === streamingMessageId && message.status === "streaming";
+                const isError = message.status === "error";
                 const content = textValue(message.content) || (isAssistant ? streamingText : "");
+                const assistantName = activeModel?.name || "Assistant";
 
                 return (
-                  <div key={message.id} className={`flex w-full ${isUser ? "justify-end" : "justify-start"} mb-6`}>
-                    <div className={`max-w-[min(88%,42rem)] ${isUser ? "rounded-3xl bg-surface-2 px-5 py-3.5 text-text-main" : "text-text-main"}`}>
-                      <div className="mb-1 flex items-center justify-between gap-3">
-                        <span className="text-xs font-semibold">{isUser ? "You" : activeModel?.name || "Assistant"}</span>
+                  <li
+                    key={message.id}
+                    className={`flex w-full gap-3 ${isUser ? "justify-end" : "justify-start"}`}
+                  >
+                    {/* Avatar (assistant only) */}
+                    {!isUser ? (
+                      <span
+                        className="mt-0.5 flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-[10px] border border-border-subtle bg-surface"
+                        aria-hidden="true"
+                      >
+                        {activeProviderGroup ? (
+                          <ProviderIcon
+                            src={`/providers/${activeProviderGroup.providerId}.png`}
+                            alt=""
+                            size={20}
+                            className="rounded object-contain"
+                            fallbackText={activeProviderGroup.providerId.slice(0, 2).toUpperCase()}
+                          />
+                        ) : (
+                          <span className="material-symbols-outlined text-[18px] text-text-muted">smart_toy</span>
+                        )}
+                      </span>
+                    ) : null}
+
+                    <div className={`flex min-w-0 max-w-[min(88%,42rem)] flex-col ${isUser ? "items-end" : "items-start"}`}>
+                      {/* Role label */}
+                      <div className={`mb-1 flex items-center gap-2 px-1 ${isUser ? "flex-row-reverse" : ""}`}>
+                        <span className="text-xs font-semibold text-text">{isUser ? "You" : assistantName}</span>
+                        {isStreaming ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-brand-500/10 px-2 py-0.5 text-[10px] font-medium text-brand-500">
+                            <span className="size-1.5 animate-pulse rounded-full bg-brand-500" />
+                            streaming
+                          </span>
+                        ) : null}
+                        {isError ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-medium text-red-600 dark:text-red-300">
+                            <span className="material-symbols-outlined text-[12px]">error</span>
+                            error
+                          </span>
+                        ) : null}
                       </div>
 
+                      {/* Attachments */}
                       {message.attachments?.length ? (
-                        <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 mt-2">
+                        <div className={`mb-2 grid grid-cols-2 gap-2 sm:grid-cols-3 ${isUser ? "justify-items-end" : ""}`}>
                           {message.attachments.map((attachment) => (
-                            <a key={attachment.id} href={attachment.dataUrl} target="_blank" rel="noreferrer" className="overflow-hidden rounded-[18px] border border-border-subtle bg-surface">
+                            <a
+                              key={attachment.id}
+                              href={attachment.dataUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="block overflow-hidden rounded-[12px] border border-border-subtle bg-surface transition hover:border-brand-500/40"
+                            >
                               <img src={attachment.dataUrl} alt={attachment.name} className="h-28 w-full object-cover" />
                             </a>
                           ))}
                         </div>
                       ) : null}
 
-                      <div className="whitespace-pre-wrap break-words text-[15px] leading-7">
+                      {/* Bubble */}
+                      <div
+                        className={`w-full whitespace-pre-wrap break-words rounded-[16px] px-4 py-3 text-[15px] leading-7 transition-colors ${
+                          isUser
+                            ? "rounded-tr-sm bg-brand-500/10 text-text"
+                            : isError
+                              ? "rounded-tl-sm border border-red-500/25 bg-red-500/5 text-text"
+                              : "rounded-tl-sm border border-border-subtle bg-surface text-text"
+                        }`}
+                      >
                         {content}
-                        {isAssistant && isStreaming && !streamingText ? <span className="inline-block animate-pulse">▋</span> : null}
+                        {isAssistant && isStreaming && !streamingText ? (
+                          <span className="ml-0.5 inline-block animate-pulse text-text-muted">▋</span>
+                        ) : null}
                       </div>
                     </div>
-                  </div>
+                  </li>
                 );
               })}
-            </div>
+            </ol>
           </div>
 
-          <div className="shrink-0 pt-2">
+          {/* ---------- Composer ---------- */}
+          <div className="shrink-0 border-t border-border-subtle bg-bg/85 px-3 py-3 backdrop-blur-md sm:px-4 lg:px-6">
             {attachments.length > 0 ? (
-              <div className="mx-auto mb-3 flex w-full max-w-3xl flex-wrap gap-2 px-4">
+              <div className="mx-auto mb-2.5 flex w-full max-w-3xl flex-wrap gap-2">
                 {attachments.map((attachment) => (
-                  <div key={attachment.id} className="flex items-center gap-2 rounded-full border border-border-subtle bg-surface px-3 py-2">
-                    <span className="text-xs text-text-main max-w-[12rem] truncate">{attachment.name}</span>
-                    <button type="button" onClick={() => removeAttachment(attachment.id)} className="text-text-muted hover:text-text-main" aria-label="Remove attachment">
-                      <span className="material-symbols-outlined text-[18px]">close</span>
+                  <div
+                    key={attachment.id}
+                    className="group flex items-center gap-2 rounded-full border border-border-subtle bg-surface py-1 pl-2 pr-1"
+                  >
+                    <img
+                      src={attachment.dataUrl}
+                      alt={attachment.name}
+                      className="size-7 rounded-full object-cover"
+                    />
+                    <span className="max-w-[10rem] truncate text-xs text-text">{attachment.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeAttachment(attachment.id)}
+                      className="flex size-6 items-center justify-center rounded-full text-text-muted transition hover:bg-surface-2 hover:text-text"
+                      aria-label={`Remove ${attachment.name}`}
+                    >
+                      <span className="material-symbols-outlined text-[16px]">close</span>
                     </button>
                   </div>
                 ))}
               </div>
             ) : null}
 
-            <div className="mx-auto w-full max-w-3xl px-4 pb-2">
-              <div className="rounded-[26px] bg-surface border border-border-subtle px-3 pt-3 pb-2 shadow-[0_0_15px_rgba(0,0,0,0.10)] ring-1 ring-border-subtle">
+            <div className="mx-auto w-full max-w-3xl">
+              <div className="rounded-[16px] border border-border-subtle bg-surface shadow-[var(--shadow-soft)] transition focus-within:border-brand-500/40 focus-within:shadow-[var(--shadow-focus)]">
                 <textarea
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Message AI"
+                  placeholder={`Message ${activeModel?.name || "model"}`}
                   rows={1}
-                  className="w-full resize-none bg-transparent px-2 text-[15px] leading-6 text-text-main outline-none placeholder:text-text-muted custom-scrollbar max-h-[25vh] overflow-y-auto"
+                  aria-label="Message input"
+                  className="max-h-[25vh] w-full resize-none overflow-y-auto bg-transparent px-4 pt-3 text-[15px] leading-6 text-text outline-none placeholder:text-text-muted custom-scrollbar"
                 />
 
-                <div className="mt-2 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => fileInputRef.current?.click()} disabled={!activeModel || loadingData} className="p-2 text-text-muted hover:text-text-main transition rounded-full hover:bg-surface-2">
+                <div className="flex items-center justify-between gap-3 px-2 pb-2 pt-1">
+                  <div className="flex min-w-0 items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={!activeModel || loadingData}
+                      className="flex size-9 items-center justify-center rounded-full text-text-muted transition hover:bg-surface-2 hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label="Attach image"
+                      title="Attach image"
+                    >
                       <span className="material-symbols-outlined text-[20px]">attach_file</span>
                     </button>
                     <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleAttachFiles} />
-                    <span className="text-xs font-medium text-text-subtle truncate max-w-[120px]">{activeModel ? activeModel.name : "No model"}</span>
+                    <span className="truncate pl-1 text-xs font-medium text-text-subtle">
+                      {activeModel ? activeModel.name : "No model"}
+                    </span>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex shrink-0 items-center gap-2">
                     {isSending ? (
-                      <button type="button" onClick={handleStop} className="p-2 text-text-main bg-surface-2 hover:bg-surface-3 transition rounded-full h-8 w-8 flex items-center justify-center">
-                        <span className="material-symbols-outlined text-[16px]">stop</span>
-                      </button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        icon="stop"
+                        onClick={handleStop}
+                      >
+                        Stop
+                      </Button>
                     ) : null}
-                    <button onClick={sendMessage} disabled={!canSend} className={`h-8 w-8 rounded-full flex items-center justify-center transition ${canSend ? 'bg-primary text-white hover:opacity-90' : 'bg-surface-3 text-text-muted cursor-not-allowed'}`}>
-                      <span className="material-symbols-outlined text-[16px]">arrow_upward</span>
+                    <button
+                      type="button"
+                      onClick={sendMessage}
+                      disabled={!canSend}
+                      aria-label="Send message"
+                      className={`flex size-9 items-center justify-center rounded-full transition ${
+                        canSend
+                          ? "bg-brand-500 text-white hover:bg-brand-600 active:scale-95"
+                          : "cursor-not-allowed bg-surface-3 text-text-subtle"
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-[18px]">arrow_upward</span>
                     </button>
                   </div>
                 </div>
               </div>
+
+              <p className="mt-2 px-1 text-center text-[11px] text-text-subtle">
+                Enter to send · Shift+Enter for newline · Model list is filtered from connected providers.
+              </p>
             </div>
           </div>
-
-          <p className="mx-auto mt-2 max-w-3xl px-4 pb-4 text-center text-[11px] text-text-subtle">
-            Model list is filtered from connected providers.
-          </p>
         </div>
       </div>
     </div>

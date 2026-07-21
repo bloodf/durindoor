@@ -111,7 +111,10 @@ export default function UsageChart({ period = "7d" }) {
                 border: "1px solid var(--color-border)",
                 borderRadius: "8px",
                 fontSize: "12px",
+                color: "var(--color-text)",
               }}
+              labelStyle={{ color: "var(--color-text)" }}
+              itemStyle={{ color: "var(--color-text)" }}
               formatter={(value, name) =>
                 name === "tokens" ? [fmtTokens(value), "Tokens"] : [fmtCost(value), "Cost"]
               }

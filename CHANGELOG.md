@@ -1,3 +1,12 @@
+# 2.2.2
+
+## Fixes
+- **Providers config: unconnected local providers hidden** — under the default "Active only" filter, local no-auth infrastructure providers in the API-Key category (LM Studio, llama.cpp, llamafile, docker-model-runner, 9router, …) were shown as "active" without any connection, cluttering the grid. They now require a connection to appear under "Active only" and remain available under "Not configured" for setup. Genuine free no-auth cloud providers (free/freeTier categories) are unaffected (`providers/page.js`).
+
+## Improvements
+- **Headroom "Recent events" table is paginated** — the events table now uses the shared client-side pagination (20/page, adjustable) instead of rendering every row (`headroom/HeadroomClient.js`).
+- **PXPIPE allowlist is easier to manage** — the Token Saver → PXPIPE "Allowed models" field now: explains *why* a model shows "Model not in allowlist" in History (PXPIPE only shrinks image payloads for allowlisted models); renders the current allowlist as removable chips; and offers one-click **quick-add buttons for models recently blocked** as `unsupported_model`, so operators no longer hand-copy model ids out of the History table (`token-saver/TokenSaverClient.js`).
+
 # 2.2.1
 
 ## Fixes

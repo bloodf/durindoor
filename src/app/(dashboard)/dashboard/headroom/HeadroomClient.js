@@ -11,6 +11,8 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { Card, Button, Input, Toggle } from "@/shared/components";
+import Pagination from "@/shared/components/Pagination";
+import { usePagination } from "@/shared/hooks/usePagination";
 
 const fmtTokens = (n) => {
   if (n >= 1000000) return `${(n / 1000000).toFixed(2)}M`;
@@ -182,6 +184,16 @@ export default function HeadroomClient() {
           ? "Stopped"
           : "Not installed";
 
+  const {
+    pageItems: recentPageItems,
+    page: recentPage,
+    pageSize: recentPageSize,
+    setPage: setRecentPage,
+    setPageSize: setRecentPageSize,
+    totalItems: recentTotalItems,
+    totalPages: recentTotalPages,
+  } = usePagination({ items: stats?.recent || [], pageSize: 20, resetKey: windowId });
+
   return (
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -327,8 +339,8 @@ export default function HeadroomClient() {
                   </td>
                 </tr>
               ) : (
-                stats.recent.map((ev) => (
-                  <tr key={ev.ts} className="border-b border-border last:border-0">
+                recentPageItems.map((ev, i) => (
+                  <tr key={`${ev.ts}-${(recentPage - 1) * recentPageSize + i}`} className="border-b border-border last:border-0">
                     <td className="py-2 whitespace-nowrap">{new Date(ev.ts).toLocaleString()}</td>
                     <td className="py-2">{ev.provider ? `${ev.provider} / ${ev.model}` : "—"}</td>
                     <td className="py-2">
@@ -348,6 +360,15 @@ export default function HeadroomClient() {
             </tbody>
           </table>
         </div>
+        {recentTotalPages > 1 && (
+          <Pagination
+            currentPage={recentPage}
+            pageSize={recentPageSize}
+            totalItems={recentTotalItems}
+            onPageChange={setRecentPage}
+            onPageSizeChange={setRecentPageSize}
+          />
+        )}
       </Card>
     </div>
   );

@@ -22,6 +22,8 @@ export default function TokenSaverClient({ view = "overview" }) {
   const [pxpipeTimeoutInputValue, setPxpipeTimeoutInputValue] = useState("15000");
   const [pxpipeTimeoutError, setPxpipeTimeoutError] = useState("");
   const [pxpipeAllowedModelsInputValue, setPxpipeAllowedModelsInputValue] = useState("");
+  const [pxpipeAllowedModels, setPxpipeAllowedModels] = useState([]);
+  const [pxpipeBlockedModels, setPxpipeBlockedModels] = useState([]);
   const [pxpipeStatus, setPxpipeStatus] = useState({
     installed: false,
     installing: false,
@@ -284,6 +286,33 @@ export default function TokenSaverClient({ view = "overview" }) {
     }
   }, []);
 
+  /**
+   * Pull recent PXPIPE transform events and surface the distinct models that
+   * were rejected as "unsupported_model" (not in the allowlist). These become
+   * one-click quick-add suggestions so the operator doesn't have to hand-copy
+   * model ids out of the History table.
+   */
+  const refreshPxpipeBlockedModels = useCallback(async () => {
+    try {
+      const res = await fetch("/api/pxpipe/logs?limit=200", { headers: { "Cache-Control": "no-store" } });
+      if (!res.ok) return;
+      const data = await res.json();
+      const events = Array.isArray(data?.events) ? data.events : [];
+      const seen = new Set();
+      const blocked = [];
+      for (const ev of events) {
+        if (ev?.reason !== "unsupported_model" || !ev?.model) continue;
+        const id = ev.model;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        blocked.push(id);
+      }
+      setPxpipeBlockedModels(blocked);
+    } catch {
+      /* non-fatal: quick-add suggestions are best-effort */
+    }
+  }, []);
+
   const pxpipeAction = useCallback(async (endpoint) => {
     setPxpipeActionError("");
     setPxpipeActionLoading(true);
@@ -332,16 +361,30 @@ export default function TokenSaverClient({ view = "overview" }) {
     }
   };
 
+  /** Persist a new allowlist (dedup, trim) and keep array + input string in sync. */
+  const persistPxpipeAllowedModels = (nextArray) => {
+    const cleaned = Array.from(new Set(nextArray.map((m) => m.trim()).filter(Boolean)));
+    setPxpipeAllowedModels(cleaned);
+    setPxpipeAllowedModelsInputValue(cleaned.join(", "));
+    patchSetting({ pxpipeAllowedModels: cleaned });
+  };
+
   /** Persist pxpipeAllowedModels on blur; normalize to string array. */
   const handlePxpipeAllowedModelsBlur = () => {
-    const nextArray = pxpipeAllowedModelsInputValue.split(",").map((m) => m.trim()).filter(Boolean);
-    const next = nextArray.join(", ");
-    setPxpipeAllowedModelsInputValue(next);
-    patchSetting({ pxpipeAllowedModels: nextArray });
+    persistPxpipeAllowedModels(pxpipeAllowedModelsInputValue.split(","));
   };
 
   const handlePxpipeAllowedModelsChange = (value) => {
     setPxpipeAllowedModelsInputValue(value);
+  };
+
+  const addPxpipeAllowedModel = (modelId) => {
+    if (!modelId || pxpipeAllowedModels.includes(modelId)) return;
+    persistPxpipeAllowedModels([...pxpipeAllowedModels, modelId]);
+  };
+
+  const removePxpipeAllowedModel = (modelId) => {
+    persistPxpipeAllowedModels(pxpipeAllowedModels.filter((m) => m !== modelId));
   };
   const handlePxpipeTimeoutBlur = () => {
     if (pxpipeTimeoutInputValue === "") {
@@ -378,14 +421,16 @@ export default function TokenSaverClient({ view = "overview" }) {
           setPxpipeTimeoutMs(String(data.pxpipeTimeoutMs ?? 15000));
           setPxpipeTimeoutInputValue(String(data.pxpipeTimeoutMs ?? 15000));
           const allowed = Array.isArray(data.pxpipeAllowedModels) ? data.pxpipeAllowedModels : [];
+          setPxpipeAllowedModels(allowed);
           setPxpipeAllowedModelsInputValue(allowed.join(", "));
           refreshHeadroomStatus();
           refreshPxpipeStatus();
+          refreshPxpipeBlockedModels();
         }
       } catch {}
     };
     loadSettings();
-  }, [refreshHeadroomStatus, refreshPxpipeStatus]);
+  }, [refreshHeadroomStatus, refreshPxpipeStatus, refreshPxpipeBlockedModels]);
 
   const headroomRunning = !!headroomStatus.running;
   const headroomStatusLabel = headroomStatus.loading
@@ -774,8 +819,34 @@ export default function TokenSaverClient({ view = "overview" }) {
           {pxpipeTimeoutError && (
             <p className="text-sm text-warning">{pxpipeTimeoutError}</p>
           )}
-          <div className="flex items-center gap-3">
-            <label className="text-sm text-text-muted shrink-0">Allowed models</label>
+          <div className="flex flex-col gap-2">
+            <label className="text-sm text-text-muted">Allowed models</label>
+            <p className="text-xs text-text-muted max-w-xl">
+              PXPIPE only shrinks image payloads for models on this allowlist; every
+              other model passes through untouched and is logged as{" "}
+              <span className="text-warning">Model not in allowlist</span> in History.
+              Empty leaves the built-in safe default (Claude Fable only).
+            </p>
+            {pxpipeAllowedModels.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {pxpipeAllowedModels.map((m) => (
+                  <span
+                    key={m}
+                    className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary text-xs px-2 py-0.5 font-mono"
+                  >
+                    {m}
+                    <button
+                      type="button"
+                      onClick={() => removePxpipeAllowedModel(m)}
+                      aria-label={`Remove ${m} from allowlist`}
+                      className="hover:text-danger transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-[14px] leading-none">close</span>
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
             <Input
               type="text"
               placeholder="claude-fable-5, blackboxai/anthropic/claude-fable-5"
@@ -784,10 +855,30 @@ export default function TokenSaverClient({ view = "overview" }) {
               onBlur={handlePxpipeAllowedModelsBlur}
               className="w-full max-w-md text-sm"
             />
+            <p className="text-xs text-text-muted">
+              Type comma-separated model ids, or use the quick-add buttons below. Changes save on blur.
+            </p>
+            {pxpipeBlockedModels.filter((m) => !pxpipeAllowedModels.includes(m)).length > 0 && (
+              <div className="flex flex-col gap-1.5 pt-1">
+                <span className="text-xs text-text-muted">Recently blocked (click to allow):</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {pxpipeBlockedModels
+                    .filter((m) => !pxpipeAllowedModels.includes(m))
+                    .map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => addPxpipeAllowedModel(m)}
+                        className="inline-flex items-center gap-1 rounded-full border border-dashed border-primary/40 text-xs px-2 py-0.5 font-mono text-text-muted hover:text-primary hover:border-primary transition-colors"
+                      >
+                        <span className="material-symbols-outlined text-[14px] leading-none">add</span>
+                        {m}
+                      </button>
+                    ))}
+                </div>
+              </div>
+            )}
           </div>
-          <p className="text-xs text-text-muted">
-            Comma-separated model ids. Empty leaves the built-in safe default (Claude Fable only).
-          </p>
           {pxpipeHealth && (
             <p className={`text-sm ${pxpipeHealth.healthy ? "text-success" : "text-warning"}`}>
               Health: {pxpipeHealth.healthy ? "OK" : pxpipeHealth.error || "Unhealthy"}

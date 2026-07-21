@@ -383,6 +383,12 @@ export default function ProvidersPage() {
   // API Key: connected providers first, then alphabetical by name.
   // Agent-only providers (e.g. Devin) are shown once an account is connected
   // even though they are not LLM chat providers.
+  // NOTE: pass noAuth=false here on purpose. Local no-auth infra in the apikey
+  // category (lm-studio, llama-cpp, docker-model-runner, 9router, ...) must NOT
+  // be reported as "active" until it actually has a connection — otherwise the
+  // default "Active only" view lists a wall of unconnected local providers.
+  // Genuine free no-auth CLOUD providers live in the free/freeTier categories,
+  // which keep their own noAuth-active behavior above.
   const apikeyEntries = Object.entries(APIKEY_PROVIDERS)
     .filter(
       ([key, info]) =>
@@ -390,7 +396,7 @@ export default function ProvidersPage() {
         ((info.serviceKinds ?? ["llm"]).includes("llm") ||
           getProviderStats(key, "apikey").total > 0) &&
         matchSearch(info.name) &&
-        matchStatus(key, "apikey", info.noAuth),
+        matchStatus(key, "apikey"),
     )
     .sort(([ka, a], [kb, b]) => {
       const ca = getProviderStats(ka, "apikey").total > 0 ? 0 : 1;

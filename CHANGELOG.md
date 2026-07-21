@@ -1,3 +1,21 @@
+# 2.2.6
+
+## Fixes
+- **Provider health false "down"** — the health page overlays recent successful requests onto probe state, so an account actively serving traffic is reported healthy even when its independent probe disagrees (probe-host 5xx, or an OAuth token the probe can't replay). `blocked` (SSRF) and `unconfigured` states are never overridden (`healthMonitor.js`, `usageRepo.getRecentlyActiveConnectionIds`).
+- **Quota tracker phantom card** — a disabled (`isActive:false`) non-OAuth connection no longer renders a quota card (e.g. a stale cloud "ollama" row kept only for history). OAuth rows stay visible so they can be reconnected (`api/providers/client/route.js`).
+- **Usage "by Account" columns** — the Account/Model/Provider columns were misaligned by one, so the Provider column showed the model and the Account column showed the provider. The account table now leads with the group key like the other breakdowns (`UsageStats.js`).
+- **Oversized provider icons** — `ProviderIcon` now caps the rendered image at its `size` prop, so PNGs with a larger natural size stop overflowing their box across the providers, quota, and usage surfaces (`ProviderIcon.js`).
+
+## Improvements
+- **Model context windows** — the provider detail page shows each model's context window next to the capability badges (`contextWindow` is now threaded through `/api/models` and `useModelCaps` into `ModelRow`).
+- **Playground reasoning effort** — the effort control is now a themed Select (options already dynamic per model) aligned with the model selector, replacing the misaligned segmented control (`PlaygroundPageClient.js`).
+- **Usage by Provider** — a new breakdown table backed by the existing `byProvider` aggregate (`UsageStats.js`).
+- **Unified chart tooltips** — the token-saver, pxpipe, and headroom charts now use the same themed tooltip as the Usage page via a shared `chartTooltip.js` (`UsageChart.js`, `TokenSaverOverview.js`, `PxpipeClient.js`, `HeadroomClient.js`).
+- **Usage date range** — the period pill bar is now a Select of presets plus a calendar `DateRangePicker`. Selecting a preset syncs the calendar; a custom range filters the stats cards + table end-to-end (`/api/usage/stats` and `getUsageStats` accept optional `startDate`/`endDate`). The chart, whose endpoint is preset-only, shows an honest note while a custom range is active.
+
+## Tests / tooling
+- Added `health-monitor-recent-activity.test.js`, custom-range cases in `usage-period-aggregation.test.js`, and disabled-connection cases in `provider-client-isUsageEligible.test.js`. Updated the usage route/handler source-assertion tests for the new call signature and props.
+
 # 2.2.5
 
 ## Fixes

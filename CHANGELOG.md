@@ -1,3 +1,18 @@
+# 2.2.1
+
+## Fixes
+- **Sidebar duplicates** — removed the duplicate top-level "Quota Tracker" and "Provider Health" nav entries; they now live only under the collapsible Providers menu (`SidebarNavIcons.js`).
+- **MCP Gateway OAuth connect** — `window.open(url, "_blank", "noopener,noreferrer")` returns `null` (the `noopener`/`noreferrer` tokens suppress the window handle), so the OAuth "Connect" flow always reported "popup blocked" and never started status polling. Dropped the features string so the popup handle and polling work (`mcp-gateway/page.js`).
+- **Dead/duplicate dashboard routes removed** — deleted the orphaned `mcp-gateway/keys` and `mcp-gateway/servers` sub-routes (unreachable clones; the hub page already renders both) and the unreachable `providers/new` page (legacy form with a dead "Connect with OAuth2" button; the real OAuth flow lives under `providers/[id]`).
+- **Usage overview** — removed a stale commented-out duplicate "Cached Tokens" card in `OverviewCards.js`.
+
+## Changes
+- **Ollama Cloud hidden from the UI** — set `hidden: true` on the `ollama` cloud registry entry so it no longer appears in the provider grid / media-provider lists. The provider stays fully functional for existing connections (registry, usage, executor, translation untouched); Ollama Local is unaffected.
+
+## Tests / tooling
+- **vitest worktree isolation** — exclude `**/.omc/**` (the current worktree convention) from test collection, matching the existing `**/.claude/**` exclude, so nested in-flight worktrees no longer break collection.
+- **`build-models-list-noauth` isolation** — the suite now mocks `getSettings` so it no longer leaks to the operator's real `~/.9router` settings DB (where keyless providers like Pollinations / The Old LLM may be opted out), which had been hiding the keyless catalog under test.
+
 # 2.2.0
 
 ## Features

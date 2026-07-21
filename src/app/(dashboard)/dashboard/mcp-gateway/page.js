@@ -157,7 +157,7 @@ export default function McpGatewayPage() {
         notify({ type: "error", message: authBody.error ?? `authorize failed (${authRes.status})` });
         return;
       }
-      const popup = window.open(authBody.url, "_blank", "noopener,noreferrer");
+      const popup = window.open(authBody.url, "_blank");
       if (!popup) {
         notify({ type: "error", message: "popup blocked — allow popups for this site" });
         return;

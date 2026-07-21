@@ -7,6 +7,7 @@
 import fs from "fs";
 import path from "path";
 import { toResponsesUsage } from "../translator/concerns/usage.js";
+import { isInternalReasoningPlaceholder } from "../utils/reasoningPlaceholder.js";
 
 // Create log directory for responses (Node.js only)
 export function createResponsesLogger(model, logsDir = null) {
@@ -312,7 +313,7 @@ export function createResponsesApiTransformStream(logger = null) {
         }
 
         // Handle reasoning_content (OpenAI native format)
-        if (delta.reasoning_content) {
+        if (delta.reasoning_content && !isInternalReasoningPlaceholder(delta.reasoning_content)) {
           startReasoning(controller, idx);
           emitReasoningDelta(controller, delta.reasoning_content);
         }

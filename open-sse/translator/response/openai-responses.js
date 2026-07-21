@@ -13,6 +13,7 @@ import { buildChunk } from "../concerns/chunk.js";
 import { buildUsage, toResponsesUsage } from "../concerns/usage.js";
 import { fallbackToolCallId } from "../concerns/toolCall.js";
 import { reasoningDelta, extractReasoningText } from "../concerns/reasoning.js";
+import { isInternalReasoningPlaceholder } from "../../utils/reasoningPlaceholder.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, OPENAI_FINISH, MODEL_FALLBACK } from "../schema/index.js";
 
 /** Collect events while preserving the stream-wide sequence across deferred completion. */
@@ -92,7 +93,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
 
   // Handle reasoning across vendor shapes (reasoning_content / reasoning / reasoning_details)
   const reasoningText = extractReasoningText(delta);
-  if (reasoningText) {
+  if (reasoningText && !isInternalReasoningPlaceholder(reasoningText)) {
     startReasoning(state, emit, idx);
     emitReasoningDelta(state, emit, reasoningText);
   }
@@ -660,7 +661,7 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
   // Reasoning summary delta → emit as reasoning_content for client thinking display
   if (eventType === "response.reasoning_summary_text.delta") {
     const delta = data.delta || "";
-    if (!delta) return null;
+    if (!delta || isInternalReasoningPlaceholder(delta)) return null;
     return buildChunk(
       { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
       reasoningDelta(delta)

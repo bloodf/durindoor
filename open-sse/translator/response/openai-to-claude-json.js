@@ -2,6 +2,7 @@ import { ROLE } from "../schema/roles.js";
 import { CLAUDE_BLOCK } from "../schema/blocks.js";
 import { CLAUDE_STOP, OPENAI_FINISH } from "../schema/finishReasons.js";
 import { MODEL_FALLBACK } from "../schema/defaults.js";
+import { extractReasoningText } from "../concerns/reasoning.js";
 
 /**
  * Convert non-streaming OpenAI Chat Completions response to Anthropic Messages format.
@@ -19,9 +20,13 @@ export function translateOpenAIToClaudeIfNeeded(responseBody, sourceFormat, opti
 
   const content = [];
 
-  // Claude emits thinking before visible text for mixed content.
-  if (typeof msg.reasoning_content === "string" && msg.reasoning_content.length > 0) {
-    content.push({ type: CLAUDE_BLOCK.THINKING, thinking: msg.reasoning_content });
+  // Claude emits thinking before visible text for mixed content. Read every
+  // reasoning alias (reasoning_content, reasoning, reasoning_text, details[]) so
+  // an empty-content Copilot turn with only reasoning_text still yields a thinking
+  // block instead of a bare "(empty response)" that detectMalformed rejects (502).
+  const reasoningText = extractReasoningText(msg);
+  if (reasoningText.length > 0) {
+    content.push({ type: CLAUDE_BLOCK.THINKING, thinking: reasoningText });
   }
   if (typeof msg.content === "string" && msg.content.length > 0) {
     content.push({ type: CLAUDE_BLOCK.TEXT, text: msg.content });

@@ -68,9 +68,9 @@ export async function createInstance(data) {
   const r = instanceToRow(inst);
   try {
     db.run(
-      `INSERT INTO mcpInstances(id, slug, title, kind, transport, url, command, args, env, headers, oauth, oauthTokens, enabled, createdAt)
-       VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [r.id, r.slug, r.title ?? null, r.kind, r.transport, r.url ?? null, r.command ?? null, r.args ?? null, r.env ?? null, r.headers ?? null, r.oauth, r.oauthTokens ?? null, r.enabled, r.createdAt],
+      `INSERT INTO mcpInstances(id, slug, title, kind, transport, url, command, args, env, headers, oauth, oauthTokens, providerConnectionId, enabled, createdAt)
+       VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [r.id, r.slug, r.title ?? null, r.kind, r.transport, r.url ?? null, r.command ?? null, r.args ?? null, r.env ?? null, r.headers ?? null, r.oauth, r.oauthTokens ?? null, r.providerConnectionId ?? null, r.enabled, r.createdAt],
     );
   } catch (e) {
     if (isUniqueViolation(e)) throw new Error(`Slug '${inst.slug}' already exists`);
@@ -90,8 +90,8 @@ export async function updateInstance(id, data) {
     const r = instanceToRow(merged);
     try {
       db.run(
-        `UPDATE mcpInstances SET slug=?, title=?, kind=?, transport=?, url=?, command=?, args=?, env=?, headers=?, oauth=?, oauthTokens=?, enabled=? WHERE id=?`,
-        [r.slug, r.title ?? null, r.kind, r.transport, r.url ?? null, r.command ?? null, r.args ?? null, r.env ?? null, r.headers ?? null, r.oauth, r.oauthTokens ?? null, r.enabled, id],
+        `UPDATE mcpInstances SET slug=?, title=?, kind=?, transport=?, url=?, command=?, args=?, env=?, headers=?, oauth=?, oauthTokens=?, providerConnectionId=?, enabled=? WHERE id=?`,
+        [r.slug, r.title ?? null, r.kind, r.transport, r.url ?? null, r.command ?? null, r.args ?? null, r.env ?? null, r.headers ?? null, r.oauth, r.oauthTokens ?? null, r.providerConnectionId ?? null, r.enabled, id],
       );
     } catch (e) {
       if (isUniqueViolation(e)) throw new Error(`Slug '${r.slug}' already exists`);

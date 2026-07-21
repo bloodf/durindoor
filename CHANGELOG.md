@@ -1,3 +1,16 @@
+# 2.2.4
+
+## Fixes
+- **MCP instance enable/disable row toggle** — toggling an instance's enabled flag previously required opening the Edit modal. The instance row now exposes a `<Toggle>` that calls the existing `PUT /api/mcp-gateway/instances/[id]` directly, and the new helper `toggleInstanceEnabled` keeps the list in sync (`mcp-gateway/page.js`).
+
+## Improvements
+- **z.ai MCP auto-provision** — adding a z.ai API key in Providers can now create a z.ai MCP server in one click. The "New instance" modal exposes a "Z.AI MCP" preset that pre-fills the slug, title, kind, transport, and `https://api.z.ai/api/mcp/web_search_prime/mcp` URL; entering the `providerConnectionId` of a stored z.ai connection persists the reference. The API route validates that the connection exists, is active, and resolves to the `zai` canonical provider (`mcp-gateway/page.js`, `api/mcp-gateway/instances/route.js`).
+
+## Tests / tooling
+- **MCP providerConnectionId field** — added migration 012 (`mcp-provider-connection`) and the `providerConnectionId` column on `mcpInstances`. Fresh DBs pick the column up via the canonical `TABLES.mcpInstances`; v11 DBs catch up via the new migration, which tolerates the duplicate-column / missing-table errors so the chain stays idempotent (`db/migrations/012-mcp-provider-connection.js`, `db/schema.js`).
+- **z.ai server-side Authorization** — `httpClient.buildHeaders` now resolves `providerConnectionId` server-side, decrypts the stored `apiKey`, and injects `Authorization: Bearer …` only for the pinned `https://api.z.ai/api/mcp/…` URL. The key never appears in the instance row, the API response, or any client-supplied payload (`mcp/gateway/httpClient.js`).
+- **Test isolation** — `mcp-zai-provider-connection.test.js` covers the new column round-trip, the `updateInstance` preservation contract, and `getEnabledInstancesByIds` filtering.
+
 # 2.2.3
 
 ## Fixes

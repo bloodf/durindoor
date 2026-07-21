@@ -403,6 +403,15 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
   salvageOrphanedToolResults(body);
   fixMissingToolResponses(body);
 
+  // Headroom: compress the SOURCE messages BEFORE translation so every output
+  // format (commandcode, ollama, gemini, ...) is covered, not just openai/claude.
+  // Uses sourceFormat so body.messages is present. Reporting happens after
+  // translation from the captured stats. Optional external proxy; fail-open.
+  const headroomDiagnostics = {};
+  const headroomStartedAt = Date.now();
+  const headroomStats = await compressWithHeadroom(body, { enabled: tokenSaverEnabled && headroomEnabled, url: headroomUrl, model: cleanUpstreamModel, format: sourceFormat, compressUserMessages: headroomCompressUserMessages, diagnostics: headroomDiagnostics });
+  const headroomDurationMs = Date.now() - headroomStartedAt;
+
   let translatedBody;
   let toolNameMap;
   if (passthrough) {
@@ -496,11 +505,6 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
     xf.push(`RTK −${saved}B(${pct}%)`);
   }
 
-  // Headroom: optional external proxy compression; fail open if proxy is absent.
-  const headroomDiagnostics = {};
-  const headroomStartedAt = Date.now();
-  const headroomStats = await compressWithHeadroom(translatedBody, { enabled: tokenSaverEnabled && headroomEnabled, url: headroomUrl, model: cleanUpstreamModel, format: finalFormat, compressUserMessages: headroomCompressUserMessages, diagnostics: headroomDiagnostics });
-  const headroomDurationMs = Date.now() - headroomStartedAt;
   if (headroomStats) {
     const before = headroomStats.tokens_before || 0;
     const after = headroomStats.tokens_after || 0;

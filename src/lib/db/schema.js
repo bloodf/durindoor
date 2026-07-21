@@ -2,7 +2,7 @@ import { QUOTA_V7_TABLES } from "./migrations/quota-v7-schema.js";
 import { QUOTA_V8_TABLES } from "./migrations/quota-v8-schema.js";
 
 // Latest schema version — bumped when a migration is added in ./migrations/
-export const SCHEMA_VERSION = 11;
+export const SCHEMA_VERSION = 12;
 
 export const PRAGMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -127,6 +127,7 @@ export const TABLES = {
       headers: "TEXT",
       oauth: "INTEGER DEFAULT 0",
       oauthTokens: "TEXT",
+      providerConnectionId: "TEXT",
       enabled: "INTEGER DEFAULT 1",
       createdAt: "TEXT NOT NULL",
     },

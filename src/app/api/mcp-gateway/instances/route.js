@@ -14,10 +14,14 @@ const VALID_TRANSPORTS = new Set(["http", "sse", "stdio"]);
 
 function stripSecrets(inst) {
   if (!inst) return inst;
-  const { headers: _h, env: _e, oauthTokens: _o, ...out } = inst;
-  void _h; void _e;
+  const { headers: _h, env: _e, oauthTokens: _o, providerConnectionId: _p, ...out } = inst;
+  void _h; void _e; void _p;
   out.oauthStatus = deriveOauthStatus(!!inst.oauth, _o);
   out.oauthClientConfigured = !!(_o && _o.client && _o.client.clientId);
+  // Expose only whether a connection is referenced, never the id (which is
+  // an internal foreign key and could be probed by an unauthenticated UI
+  // surface for enumeration).
+  out.hasProviderConnection = typeof inst.providerConnectionId === "string" && inst.providerConnectionId.length > 0;
   return out;
 }
 
@@ -85,6 +89,29 @@ export async function POST(request) {
       body.headers = sanitizeInstanceHeaders(body.headers);
     }
 
+    // providerConnectionId is a server-side shortcut for MCP backends whose
+    // auth is a stored provider key (z.ai today; future providers can register
+    // here). The server resolves the secret at HTTP time — the API key never
+    // appears in the response, the stored row, or any client-supplied field.
+    // Currently only the z.ai MCP endpoint is supported; any other URL/canonical
+    // combination is rejected to avoid leaking the key to an unexpected host.
+    if (body.providerConnectionId != null && body.providerConnectionId !== "") {
+      const { resolveProviderId } = await import("@/shared/constants/providers.js");
+      const { getProviderConnectionById } = await import("@/lib/db/repos/connectionsRepo.js");
+      const conn = await getProviderConnectionById(body.providerConnectionId);
+      if (!conn) return NextResponse.json({ error: "providerConnectionId not found" }, { status: 404 });
+      if (conn.isActive === false) {
+        return NextResponse.json({ error: "providerConnection is paused" }, { status: 400 });
+      }
+      const canonical = resolveProviderId(conn.provider);
+      if (canonical !== "zai") {
+        return NextResponse.json({ error: "Only the z.ai provider can be referenced as a providerConnectionId" }, { status: 400 });
+      }
+      if (!(body.url || "").startsWith("https://api.z.ai/api/mcp/")) {
+        return NextResponse.json({ error: "URL must be the z.ai MCP endpoint (https://api.z.ai/api/mcp/...)" }, { status: 400 });
+      }
+    }
+
     // Fold any manually-entered OAuth client credentials into oauthTokens.
     const oauthTokens = mergeOauthClientConfig(null, body);
     if (oauthTokens) body.oauthTokens = oauthTokens;
@@ -97,4 +124,4 @@ export async function POST(request) {
     }
     return NextResponse.json({ error: err.message || String(e) }, { status: 500 });
   }
-}
+ }

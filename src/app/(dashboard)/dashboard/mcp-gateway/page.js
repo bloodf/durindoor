@@ -132,11 +132,22 @@ export default function McpGatewayPage() {
       return false;
     }
     notify({ type: "success", message: isNew ? "Instance created" : "Instance updated" });
-    setEditing(null);
-    await reload();
     return true;
   }
 
+   async function toggleInstanceEnabled(id, enabled) {
+    const res = await fetch(`/api/mcp-gateway/instances/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      notify({ type: "error", message: body.error ?? `toggle failed (${res.status})` });
+      return;
+    }
+    await reload();
+  }
   async function deleteInstance(id) {
     const res = await fetch(`/api/mcp-gateway/instances/${id}`, { method: "DELETE" });
     if (!res.ok) {
@@ -262,7 +273,6 @@ export default function McpGatewayPage() {
       return;
     }
     notify({ type: "success", message: "Grants updated" });
-    await reload();
   }
 
   return (
@@ -335,12 +345,17 @@ export default function McpGatewayPage() {
                       </div>
                     )}
                   </div>
-                  <div className="flex gap-1 shrink-0">
+                  <div className="flex gap-1 shrink-0 items-center">
+                    <Toggle
+                      size="sm"
+                      checked={!!i.enabled}
+                      onChange={(v) => toggleInstanceEnabled(i.id, v)}
+                      title={i.enabled ? "Disable instance" : "Enable instance"}
+                    />
                     <Button size="sm" variant="ghost" icon="play_arrow" onClick={() => testInstance(i.id)} loading={test?.loading}>Test</Button>
                     {i.oauth && (
                       <Button
                         size="sm"
-                        variant={i.oauthStatus === "connected" ? "ghost" : "primary"}
                         icon="login"
                         onClick={() => connectInstance(i.id)}
                       >
@@ -471,6 +486,24 @@ function InstanceEditModal({ initial, onClose, onSave }) {
       }
     >
       <div className="space-y-3">
+        {!form.id && (
+          <div className="flex items-center gap-2 text-xs text-text-muted">
+            <span>Preset:</span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => patch({
+                slug: "zai-search",
+                title: "Z.AI Web Search",
+                kind: "http",
+                transport: "http",
+                url: "https://api.z.ai/api/mcp/web_search_prime/mcp",
+              })}
+            >
+              Z.AI MCP
+            </Button>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <Input label="Slug" required value={form.slug} onChange={(e) => patch({ slug: e.target.value.toLowerCase() })} placeholder="jira-acme" hint="lowercase, digits, dashes; 2-40 chars; no __" />
           <Input label="Title" value={form.title} onChange={(e) => patch({ title: e.target.value })} placeholder="Jira (Acme)" />
@@ -489,9 +522,17 @@ function InstanceEditModal({ initial, onClose, onSave }) {
             <Input label="Env (JSON object)" value={form.env} onChange={(e) => patch({ env: e.target.value })} hint='e.g. {"API_KEY":"..."}' />
           </>
         )}
-
-        {isHttpLike && (
+         {isHttpLike && (
           <Input label="Headers (JSON object)" value={form.headers} onChange={(e) => patch({ headers: e.target.value })} hint='merged into every request; cannot override Content-Type/Accept/mcp-*' />
+        )}
+        {isHttpLike && (
+          <Input
+            label="Provider Connection ID (optional)"
+            value={form.providerConnectionId || ""}
+            onChange={(e) => patch({ providerConnectionId: e.target.value || undefined })}
+            placeholder="e.g. conn-… (z.ai API key stored in Providers)"
+            hint="Resolves to a stored z.ai API key for the URL https://api.z.ai/api/mcp/..."
+          />
         )}
 
         <div className="flex items-center gap-6 pt-1">

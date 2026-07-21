@@ -1,10 +1,12 @@
 // HTTP/SSE upstream MCP client for the gateway.
 
-import { updateInstance, getInstanceById } from "@/lib/localDb";
+import { getProviderConnectionById } from "@/lib/db/repos/connectionsRepo.js";
+import { resolveProviderId } from "@/shared/constants/providers.js";
 import { ensureFreshToken, oauthMetaFromTokens, refreshToken } from "./oauthRefresh";
 import { retryWithBackoff } from "./retry";
 import { isJsonRpcResponse, isRecord } from "./guards";
 import { assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
+import { updateInstance, getInstanceById } from "@/lib/localDb";
 
 const TIMEOUT_MS = 30_000;
 const DEFAULT_PROTOCOL_VERSION = "2025-06-18";
@@ -94,8 +96,7 @@ function clearReauthFlag(instance) {
   const { needsReauth, ...rest } = instance.oauthTokens;
   return { ...instance, oauthTokens: rest };
 }
-
-function buildHeaders(instance) {
+async function buildHeaders(instance) {
   const headers = {
     "Content-Type": "application/json",
     "Accept": "application/json, text/event-stream",
@@ -106,6 +107,17 @@ function buildHeaders(instance) {
       const kl = k.toLowerCase();
       if (kl === "content-type" || kl === "accept" || kl.startsWith("mcp-")) continue;
       headers[k] = String(v);
+    }
+  }
+  // Inject Authorization: Bearer for connection-backed instances. Only the z.ai
+  // MCP endpoint currently uses this mechanism; the URL is checked so a
+  // stray connection id cannot be used to leak the apiKey to an arbitrary host.
+  if (instance.providerConnectionId) {
+    const conn = await getProviderConnectionById(instance.providerConnectionId).catch(() => null);
+    const canonical = conn ? resolveProviderId(conn.provider) : null;
+    if (canonical === "zai" && conn?.apiKey && (instance.url || "").startsWith("https://api.z.ai/api/mcp/")) {
+      headers.Authorization = `Bearer ${conn.apiKey}`;
+      return headers;
     }
   }
   const token = readAuthFromInstance(instance);
@@ -152,7 +164,7 @@ export async function mcpRequest(instance, jsonRpc, opts = {}) {
     const timer = setTimeout(() => ac.abort(), timeoutMs);
 
     try {
-      const headers = buildHeaders(currentInstance);
+      const headers = await buildHeaders(currentInstance);
       if (opts.sessionId) headers["mcp-session-id"] = opts.sessionId;
 
       // SSRF / redirect handling. We do NOT let the runtime auto-follow

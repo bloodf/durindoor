@@ -40,7 +40,7 @@ async function createLogSession(sourceFormat, targetFormat, model) {
   
   try {
     if (!fs.existsSync(LOGS_DIR)) {
-      fs.mkdirSync(LOGS_DIR, { recursive: true });
+      fs.mkdirSync(LOGS_DIR, { recursive: true, mode: 0o700 });
     }
     
     const timestamp = formatTimestamp();
@@ -48,7 +48,7 @@ async function createLogSession(sourceFormat, targetFormat, model) {
     const folderName = `${sourceFormat}_${targetFormat}_${safeModel}_${timestamp}`;
     const sessionPath = path.join(LOGS_DIR, folderName);
     
-    fs.mkdirSync(sessionPath, { recursive: true });
+    fs.mkdirSync(sessionPath, { recursive: true, mode: 0o700 });
     
     return sessionPath;
   } catch (err) {
@@ -63,7 +63,7 @@ function writeJsonFile(sessionPath, filename, data) {
   
   try {
     const filePath = path.join(sessionPath, filename);
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), { mode: 0o600 });
   } catch (err) {
     console.log(`[LOG] Failed to write ${filename}:`, err.message);
   }
@@ -294,7 +294,7 @@ export function logError(provider, { error, url, model, requestBody }) {
   
   try {
     if (!fs.existsSync(LOGS_DIR)) {
-      fs.mkdirSync(LOGS_DIR, { recursive: true });
+      fs.mkdirSync(LOGS_DIR, { recursive: true, mode: 0o700 });
     }
     
     const date = new Date().toISOString().split("T")[0];

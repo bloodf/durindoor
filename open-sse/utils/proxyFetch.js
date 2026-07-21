@@ -483,9 +483,15 @@ async function getDispatcher(proxyUrl) {
     // undici 8.6+ defaults to forwarding plain-HTTP as an origin request
     // (GET http://host/…) which CONNECT-only proxies reject with 501. Safe on
     // undici <8.6: unknown option, ignored (those versions already tunneled).
+    // Long-lived SSE streams must not be cut off by undici's default 300s
+    // headers/body timeouts on a slow proxy hop (#1570). connectTimeout and
+    // headersTimeout stay bounded (tunable via env); bodyTimeout:0 disables the
+    // idle-body deadline so a streaming response can run indefinitely.
+    const connectTimeout = parseInt(process.env.PROXY_CONNECT_TIMEOUT_MS, 10) || 90000;
+    const headersTimeout = parseInt(process.env.PROXY_HEADERS_TIMEOUT_MS, 10) || 300000;
     proxyDispatchers.set(
       cacheKey,
-      new ProxyAgent({ uri: normalized, proxyTunnel: true }),
+      new ProxyAgent({ uri: normalized, proxyTunnel: true, connectTimeout, headersTimeout, bodyTimeout: 0 }),
     );
   }
 

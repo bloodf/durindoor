@@ -82,6 +82,50 @@ export function fixToolUseOrdering(messages) {
     }
   }
 
+  // Pass 3: Claude accepts a tool_result only for a tool_use in the IMMEDIATELY
+  // previous assistant message. Compacted cross-model history can retain an
+  // output after dropping its call; keep that output as user text instead of
+  // sending an invalid structured reference or discarding useful context (#2663).
+  for (let i = 0; i < merged.length; i++) {
+    const msg = merged[i];
+    if (msg.role !== ROLE.USER || !Array.isArray(msg.content)) continue;
+
+    const previous = merged[i - 1];
+    const validIds = new Set(
+      previous?.role === ROLE.ASSISTANT && Array.isArray(previous.content)
+        ? previous.content
+          .filter((block) => block.type === CLAUDE_BLOCK.TOOL_USE && block.id)
+          .map((block) => block.id)
+        : []
+    );
+    const pairedById = new Map();
+    const otherContent = [];
+
+    for (const block of msg.content) {
+      if (block.type !== CLAUDE_BLOCK.TOOL_RESULT) {
+        otherContent.push(block);
+        continue;
+      }
+      if (validIds.has(block.tool_use_id) && !pairedById.has(block.tool_use_id)) {
+        pairedById.set(block.tool_use_id, block);
+        continue;
+      }
+      const serialized = typeof block.content === "string"
+        ? block.content
+        : JSON.stringify(block.content ?? "");
+      otherContent.push({
+        type: CLAUDE_BLOCK.TEXT,
+        text: `[Unpaired tool result ${block.tool_use_id || "unknown"}]\n${serialized ?? ""}`,
+      });
+    }
+
+    if (pairedById.size === 0 && msg.content.every((b) => b.type !== CLAUDE_BLOCK.TOOL_RESULT)) continue;
+    const pairedResults = [...validIds].map((id) =>
+      pairedById.get(id) || { type: CLAUDE_BLOCK.TOOL_RESULT, tool_use_id: id, content: "" }
+    );
+    msg.content = [...pairedResults, ...otherContent];
+  }
+
   return merged;
 }
 

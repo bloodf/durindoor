@@ -270,6 +270,12 @@ export class DefaultExecutor extends BaseExecutor {
       stripUnsupportedParams(this.provider, model, transformed, requestContext?.modelCapabilities);
     }
 
+    // reasoning_content is an OpenAI-compatibility field. Anthropic Messages
+    // transports carry thinking blocks natively and may reject this extra key,
+    // so skip the injection when the resolved transport speaks Claude (#2705).
+    if (credentials?.runtimeTransport?.format === "claude") {
+      return this.ensureThinkingBudget(transformed, model, requestContext?.modelCapabilities);
+    }
     return this.ensureThinkingBudget(injectReasoningContent({ provider: this.provider, model, body: transformed }), model, requestContext?.modelCapabilities);
   }
 

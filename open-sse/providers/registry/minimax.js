@@ -28,6 +28,7 @@ export default {
     headers: { ...CLAUDE_API_HEADERS },
     quirks: {
       dropOutputConfig: true,
+      ensureThinkingSignature: true,
     },
     reasoningInject: {
       scope: "all",

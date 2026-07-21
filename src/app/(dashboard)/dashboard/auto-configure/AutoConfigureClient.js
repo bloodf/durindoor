@@ -2,23 +2,11 @@
 
 import { useState } from "react";
 import { Badge } from "@/shared/components";
+import { serviceStatus } from "./autoConfigureStatus.js";
 
 // Derive a status badge + tone for a single service report.
 // Service reports have shape: { changed?, wouldChange?, actions: [], installed?, detected?, running? }
 // Absence (pxpipe/firecrawl not present, headroom not reachable) must surface as "Unavailable"
-// before change flags — otherwise an absent service mislabels as "Up to date".
-function serviceStatus(svc, dryRun) {
-  if (!svc) return { label: "Unknown", variant: "default" };
-  // Change wins over absence: a dry-run can plan to install an absent service
-  // (e.g. headroom installed:false, wouldInstall:true, wouldChange:true).
-  const willChange = dryRun ? svc.wouldChange : svc.changed;
-  if (willChange) return { label: dryRun ? "Would change" : "Changed", variant: "warning" };
-  // Firecrawl reports `detected` when a probe ran; pxpipe/headroom report `installed`.
-  // Absent services that would NOT change (pxpipe/firecrawl not present) surface here.
-  const present = svc.detected !== false && svc.installed !== false;
-  if (!present) return { label: "Unavailable", variant: "default" };
-  return { label: "Up to date", variant: "success" };
-}
 
 // Service display config keyed on report.services entries from runAutoConfigure.
 const SERVICE_META = {

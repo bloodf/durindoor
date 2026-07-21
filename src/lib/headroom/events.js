@@ -237,7 +237,8 @@ export function getHeadroomStats({ timelineDays = 30, recentLimit = 100 } = {}) 
   const timeline = new Map();
   for (let i = timelineDays - 1; i >= 0; i--) {
     const key = dateKey(startOfToday - i * DAY_MS);
-    timeline.set(key, { date: key, tokensSaved: 0, compressed: 0, requests: 0 });
+    // Padded no-event day: tokensSaved is null until an event confirms it.
+    timeline.set(key, { date: key, tokensSaved: null, compressed: 0, requests: 0 });
   }
 
   // Fold persisted all-time totals so rotated-out history still counts.
@@ -251,9 +252,13 @@ export function getHeadroomStats({ timelineDays = 30, recentLimit = 100 } = {}) 
     if (ev.ts >= now - 30 * DAY_MS) accumulate(windows.last30d, ev);
 
     const key = dateKey(ev.ts);
+
     const bucket = timeline.get(key);
     if (bucket) {
       bucket.requests++;
+      // Any observed event for the day confirms a real measurement
+      // (applied:true contributes tokens; applied:false is a confirmed zero).
+      if (bucket.tokensSaved === null) bucket.tokensSaved = 0;
       if (ev.applied) {
         bucket.compressed++;
         bucket.tokensSaved += ev.tokensSaved || 0;

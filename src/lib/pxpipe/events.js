@@ -90,11 +90,16 @@ export function getPxpipeStats({ timelineDays = 30, recentLimit = 100 } = {}) {
     last7d: emptyTotals(),
     last30d: emptyTotals(),
   };
-
   const timeline = new Map();
   for (let i = timelineDays - 1; i >= 0; i--) {
     const day = new Date(startOfToday - i * DAY_MS);
-    timeline.set(day.toISOString().slice(0, 10), { date: day.toISOString().slice(0, 10), tokensSavedEst: 0, compressed: 0, requests: 0 });
+    // Padded no-event day: tokensSavedEst is null until an event confirms it.
+    timeline.set(day.toISOString().slice(0, 10), {
+      date: day.toISOString().slice(0, 10),
+      tokensSavedEst: null,
+      compressed: 0,
+      requests: 0,
+    });
   }
 
   for (const ev of events) {
@@ -103,11 +108,13 @@ export function getPxpipeStats({ timelineDays = 30, recentLimit = 100 } = {}) {
     else if (ev.ts >= startOfToday - DAY_MS) accumulate(windows.yesterday, ev);
     if (ev.ts >= now - 7 * DAY_MS) accumulate(windows.last7d, ev);
     if (ev.ts >= now - 30 * DAY_MS) accumulate(windows.last30d, ev);
-
     const key = new Date(ev.ts).toISOString().slice(0, 10);
     const bucket = timeline.get(key);
     if (bucket) {
       bucket.requests++;
+      // Any observed event for the day confirms a real measurement; only
+      // applied:true adds to the savings count.
+      if (bucket.tokensSavedEst === null) bucket.tokensSavedEst = 0;
       if (ev.applied) {
         bucket.compressed++;
         bucket.tokensSavedEst += ev.tokensSavedEst || 0;

@@ -19,7 +19,7 @@ export const CLIENT_PING_TIMEOUT_MS = 5000;
 export const getCompositeEndpointEnabled = (status) => status?.enabled === true;
 
 /** Local endpoint stays local even when dashboard is opened through a remote tunnel. */
-export const getLocalEndpointUrl = () => "http://localhost:20128/v1";
+export const getLocalEndpointUrl = (port = 20128) => `http://localhost:${port}/v1`;
 
 export const CAVEMAN_LEVELS = [
   { id: "lite", label: "Lite", desc: "Drop filler, keep grammar" },

@@ -110,6 +110,7 @@ export async function configureFirecrawl(settings, {
     changed: !dryRun && (settingsChanged || needsUpdate),
     wouldChange: settingsChanged || needsUpdate,
     detected: true,
+    running: !!detected.ok,
     baseUrl,
     actions: report.actions,
     updates,

@@ -35,7 +35,7 @@ import {
   formatKeyExpiry,
 } from "./apiKeyExpiry";
 
-export default function APIPageClient({ machineId }) {
+export default function APIPageClient({ machineId, localPort = 20128 }) {
   const [keys, setKeys] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -55,9 +55,11 @@ export default function APIPageClient({ machineId }) {
   const [editKey, setEditKey] = useState(null);
   const [editKeyAllowedCombos, setEditKeyAllowedCombos] = useState([]);
   const [editKeyExpiryPreset, setEditKeyExpiryPreset] = useState("never");
+  const [editKeyDailyLimitTokens, setEditKeyDailyLimitTokens] = useState("");
   const [editKeyCustomExpiresAt, setEditKeyCustomExpiresAt] = useState("");
   const [editKeyStatus, setEditKeyStatus] = useState(null);
-  const [editKeyPolicy, setEditKeyPolicy] = useState(emptyApiKeyPolicyDraft);
+  const [tunnelExternal, setTunnelExternal] = useState(null);
+  const [tsExternal, setTsExternal] = useState(null);
   const [editKeyPolicyDirty, setEditKeyPolicyDirty] = useState(false);
 
   const [requireApiKey, setRequireApiKey] = useState(false);
@@ -214,13 +216,15 @@ export default function APIPageClient({ machineId }) {
       setTunnelUrl(tUrl);
       setTunnelPublicUrl(data.tunnel?.publicUrl || "");
       setTunnelEnabled(tEnabled);
+      setTunnelExternal(data.tunnel?.externalTunnel || null);
       updateReachable(null, tunnelClientReachableRef, tunnelMissRef, setTunnelReachable, tunnelEverReachableRef, setTunnelEverReachable);
 
       const tsEn = getCompositeEndpointEnabled(data.tailscale);
       const tsUrlVal = data.tailscale?.tunnelUrl || "";
       setTsUrl(tsUrlVal);
       setTsEnabled(tsEn);
-      updateReachable(null, tsClientReachableRef, tsMissRef, setTsReachable, tsEverReachableRef, setTsEverReachable);
+      setTsExternal(data.tailscale?.systemTailscale || null);
+      updateReachable(null, tsClientReachableRef, tsMissRef, setTsReachable, tsEverReachableRef, setTunnelEverReachableRef);
     } catch { /* ignore poll errors */ }
   };
 
@@ -245,13 +249,15 @@ export default function APIPageClient({ machineId }) {
         setTunnelUrl(tUrl);
         setTunnelPublicUrl(data.tunnel?.publicUrl || "");
         setTunnelEnabled(tEnabled);
+        setTunnelExternal(data.tunnel?.externalTunnel || null);
         updateReachable(null, tunnelClientReachableRef, tunnelMissRef, setTunnelReachable, tunnelEverReachableRef, setTunnelEverReachable);
 
         const tsEn = getCompositeEndpointEnabled(data.tailscale);
         const tsUrlVal = data.tailscale?.tunnelUrl || "";
         setTsUrl(tsUrlVal);
         setTsEnabled(tsEn);
-        updateReachable(null, tsClientReachableRef, tsMissRef, setTsReachable, tsEverReachableRef, setTsEverReachable);
+        setTsExternal(data.tailscale?.systemTailscale || null);
+        updateReachable(null, tsClientReachableRef, tsMissRef, setTsReachable, tsEverReachableRef, setTunnelEverReachable);
       }
     } catch (error) {
       console.log("Error loading settings:", error);
@@ -739,9 +745,9 @@ export default function APIPageClient({ machineId }) {
     }
   };
 
-  const handleUpdateKeyDetails = async (id, allowedCombos, expiresAt, policyPatch) => {
+  const handleUpdateKeyDetails = async (id, allowedCombos, expiresAt, policyPatch, dailyLimitTokens = null) => {
     try {
-      const payload = { allowedCombos, expiresAt };
+      const payload = { allowedCombos, expiresAt, dailyLimitTokens };
       // Edit sends field patches, not a replacement policy envelope. This
       // preserves forward-compatible fields that this UI does not understand.
       if (policyPatch) Object.assign(payload, policyPatch);
@@ -786,12 +792,13 @@ export default function APIPageClient({ machineId }) {
     setEditKeyAllowedCombos(Array.isArray(key.allowedCombos) ? [...key.allowedCombos] : []);
     setEditKeyExpiryPreset(expiry.selection);
     setEditKeyCustomExpiresAt(expiry.customLocalValue);
+    setEditKeyDailyLimitTokens(key.dailyLimitTokens == null ? "" : String(key.dailyLimitTokens));
     setEditKeyPolicy(apiKeyPolicyToDraft(key.policy));
     setEditKeyPolicyDirty(false);
     setEditKeyStatus(null);
   };
 
-  const currentEndpoint = getLocalEndpointUrl();
+  const currentEndpoint = getLocalEndpointUrl(localPort);
 
   if (loading) {
     return (
@@ -825,26 +832,23 @@ export default function APIPageClient({ machineId }) {
           {/* Cloudflare Tunnel */}
           <div className="flex items-center gap-2">
             <span className={`text-xs font-mono px-1.5 py-0.5 rounded shrink-0 min-w-[88px] text-center ${
-              tunnelEnabled ? "bg-primary/10 text-primary" : "bg-surface-2 text-text-muted"
+
+              tunnelEnabled || tunnelExternal ? "bg-primary/10 text-primary" : "bg-surface-2 text-text-muted"
             }`}>Tunnel</span>
-            {tunnelEnabled && !tunnelLoading && tunnelReachable ? (
-              <>
-                <Input value={`${tunnelPublicUrl || tunnelUrl}/v1`} readOnly className="flex-1 font-mono text-sm" />
+            {tunnelExternal && !tunnelEnabled ? (
+              <div className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded border border-primary/30 bg-primary/5 text-sm text-primary">
+                <span className="material-symbols-outlined text-sm">cloud_done</span>
+                <span className="font-medium">External</span>
+                <Input value={`${tunnelExternal.tunnelUrl}/v1`} readOnly className="flex-1 font-mono text-sm bg-transparent border-0" />
                 <button
-                  onClick={() => copy(`${tunnelPublicUrl || tunnelUrl}/v1`, "tunnel_url")}
+                  onClick={() => copy(`${tunnelExternal.tunnelUrl}/v1`, "tunnel_url")}
                   className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-colors shrink-0"
+                  title="Copy URL"
                 >
                   <span className="material-symbols-outlined text-[18px]">{copied === "tunnel_url" ? "check" : "content_copy"}</span>
                 </button>
-                <button
-                  onClick={() => setShowDisableTunnelModal(true)}
-                  className="p-2 hover:bg-red-500/10 rounded text-red-500 transition-colors shrink-0"
-                  title="Disable Tunnel"
-                >
-                  <span className="material-symbols-outlined text-[18px]">power_settings_new</span>
-                </button>
-              </>
-            ) : tunnelEnabled && !tunnelLoading && !tunnelReachable ? (
+              </div>
+            ) : tunnelEnabled && !tunnelLoading && tunnelReachable ? (
               <>
                 <div className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded border border-amber-300 dark:border-amber-800 bg-amber-500/5 text-sm text-amber-600 dark:text-amber-400">
                   <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
@@ -917,9 +921,23 @@ export default function APIPageClient({ machineId }) {
           {/* Tailscale */}
           <div className="flex items-center gap-2">
             <span className={`text-xs font-mono px-1.5 py-0.5 rounded shrink-0 min-w-[88px] text-center ${
-              tsEnabled ? "bg-primary/10 text-primary" : "bg-surface-2 text-text-muted"
+
+              tsEnabled || tsExternal ? "bg-primary/10 text-primary" : "bg-surface-2 text-text-muted"
             }`}>Tailscale</span>
-            {tsEnabled && !tsLoading && tsReachable ? (
+            {tsExternal && !tsEnabled ? (
+              <div className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded border border-primary/30 bg-primary/5 text-sm text-primary">
+                <span className="material-symbols-outlined text-sm">vpn_lock</span>
+                <span className="font-medium">External</span>
+                <Input value={`${tsExternal.tunnelUrl}/v1`} readOnly className="flex-1 font-mono text-sm bg-transparent border-0" />
+                <button
+                  onClick={() => copy(`${tsExternal.tunnelUrl}/v1`, "ts_url")}
+                  className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-colors shrink-0"
+                  title="Copy URL"
+                >
+                  <span className="material-symbols-outlined text-[18px]">{copied === "ts_url" ? "check" : "content_copy"}</span>
+                </button>
+              </div>
+            ) : tsEnabled && !tsLoading && tsReachable ? (
               <>
                 <Input value={`${tsUrl}/v1`} readOnly className="flex-1 font-mono text-sm" />
                 <button
@@ -1125,19 +1143,9 @@ export default function APIPageClient({ machineId }) {
                     {" · "}Cost: {policyUsage.cost}
                     {(policyUsage.tokensExceeded || policyUsage.costExceeded) && " · Limit reached"}
                   </p>
-                  <div className="flex flex-wrap items-center gap-1 mt-1">
-                    <span className="text-xs text-text-muted">Daily limit:</span>
-                    <Input
-                      type="number"
-                      min="0"
-                      step="1"
-                      value={key.dailyLimitTokens ?? ""}
-                      onChange={(e) => setKeys(prev => prev.map(k => k.id === key.id ? { ...k, dailyLimitTokens: e.target.value } : k))}
-                      onBlur={(e) => handleUpdateKeyLimit(key.id, e.target.value)}
-                      placeholder="Unlimited"
-                      className="w-24 h-6 text-xs py-0"
-                    />
-                  </div>
+                  <p className="text-xs text-text-muted mt-1">
+                    Daily limit: {key.dailyLimitTokens == null ? "Unlimited" : key.dailyLimitTokens.toLocaleString()}
+                  </p>
                   <div className="flex flex-wrap items-center gap-1 mt-1">
                     <span className="text-xs text-text-muted">Combos:</span>
                     {Array.isArray(key.allowedCombos) && key.allowedCombos.length > 0 ? (
@@ -1508,7 +1516,15 @@ export default function APIPageClient({ machineId }) {
               onChange={(event) => { setEditKeyCustomExpiresAt(event.target.value); setEditKeyStatus(null); }}
             />
           )}
-          <p className="text-xs text-text-muted">Choose Never expires and save to clear the current expiry.</p>
+          <Input
+            label="Daily token limit"
+            type="number"
+            min="0"
+            step="1"
+            value={editKeyDailyLimitTokens}
+            onChange={(event) => { setEditKeyDailyLimitTokens(event.target.value); setEditKeyStatus(null); }}
+            placeholder="Unlimited (leave empty to clear)"
+          />
           {combos.length > 0 ? (
             <div>
               <p className="text-sm text-text-muted mb-2">Select which combos this key can access. Leave empty to allow all.</p>
@@ -1551,30 +1567,46 @@ export default function APIPageClient({ machineId }) {
           <div className="flex gap-2">
             <Button
               onClick={async () => {
-                if (editKey) {
-                  let expiresAt;
-                  let policy;
-                  try {
-                    expiresAt = expiryFromSelection(editKeyExpiryPreset, editKeyCustomExpiresAt);
-                    policy = apiKeyPolicyPatchFromDraft(editKeyPolicy, editKeyPolicyDirty);
-                  } catch (error) {
-                    setEditKeyStatus({ type: "error", message: error.message });
-                    return;
-                  }
-                  const updated = await handleUpdateKeyDetails(editKey.id, editKeyAllowedCombos, expiresAt, policy);
-                  if (!updated) return;
-                  setEditKey(null);
-                  setEditKeyAllowedCombos([]);
-                  setEditKeyPolicy(emptyApiKeyPolicyDraft());
-                  setEditKeyPolicyDirty(false);
-                  setEditKeyStatus(null);
+                if (!editKey) return;
+                let expiresAt;
+                let policy;
+                try {
+                  expiresAt = expiryFromSelection(editKeyExpiryPreset, editKeyCustomExpiresAt);
+                  policy = apiKeyPolicyPatchFromDraft(editKeyPolicy, editKeyPolicyDirty);
+                } catch (error) {
+                  setEditKeyStatus({ type: "error", message: error.message });
+                  return;
                 }
+                const parsedLimit = editKeyDailyLimitTokens.trim() === "" ? null : Number(editKeyDailyLimitTokens);
+                if (parsedLimit !== null && (!Number.isSafeInteger(parsedLimit) || parsedLimit < 0)) {
+                  setEditKeyStatus({ type: "error", message: "Daily limit must be a non-negative whole number" });
+                  return;
+                }
+                const updated = await handleUpdateKeyDetails(editKey.id, editKeyAllowedCombos, expiresAt, policy, parsedLimit);
+                if (!updated) return;
+                setEditKey(null);
+                setEditKeyAllowedCombos([]);
+                setEditKeyPolicy(emptyApiKeyPolicyDraft());
+                setEditKeyPolicyDirty(false);
+                setEditKeyStatus(null);
               }}
               fullWidth
             >
               Save
             </Button>
-            <Button onClick={() => { setEditKey(null); setEditKeyAllowedCombos([]); setEditKeyPolicy(emptyApiKeyPolicyDraft()); setEditKeyPolicyDirty(false); setEditKeyStatus(null); }} variant="ghost" fullWidth>Cancel</Button>
+            <Button
+              onClick={() => {
+                setEditKey(null);
+                setEditKeyAllowedCombos([]);
+                setEditKeyPolicy(emptyApiKeyPolicyDraft());
+                setEditKeyPolicyDirty(false);
+                setEditKeyStatus(null);
+              }}
+              variant="ghost"
+              fullWidth
+            >
+              Cancel
+            </Button>
           </div>
         </div>
       </Modal>
@@ -1595,4 +1627,5 @@ export default function APIPageClient({ machineId }) {
 
 APIPageClient.propTypes = {
   machineId: PropTypes.string.isRequired,
+  localPort: PropTypes.number,
 };

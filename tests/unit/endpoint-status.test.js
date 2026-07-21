@@ -10,7 +10,8 @@ describe("endpoint status presentation", () => {
     expect(getCompositeEndpointEnabled({ settingsEnabled: true, enabled: true })).toBe(true);
   });
 
-  it("keeps the Local row local when dashboard origin is remote", () => {
+  it("uses the server runtime port while keeping the Local row local", () => {
+    expect(getLocalEndpointUrl(11434)).toBe("http://localhost:11434/v1");
     expect(getLocalEndpointUrl()).toBe("http://localhost:20128/v1");
   });
 });

@@ -302,7 +302,10 @@ export default function HeadroomClient() {
               <XAxis dataKey="date" tick={{ fontSize: 12 }} tickFormatter={(d) => d.slice(5)} />
               <YAxis tick={{ fontSize: 12 }} tickFormatter={fmtTokens} />
               <Tooltip
-                formatter={(value) => [fmtTokens(value), "Tokens saved"]}
+                contentStyle={{ backgroundColor: "var(--color-bg, #0f172a)", border: "1px solid var(--color-border, #1e293b)", borderRadius: 8, fontSize: 12 }}
+                labelStyle={{ color: "var(--color-text-muted, #94a3b8)" }}
+                itemStyle={{ color: "var(--color-text, #e2e8f0)" }}
+                formatter={(value) => [fmtTokens(value || 0), "Tokens saved"]}
                 labelFormatter={(label) => `Date: ${label}`}
               />
               <Area

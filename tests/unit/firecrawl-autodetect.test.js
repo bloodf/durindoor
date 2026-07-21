@@ -106,6 +106,25 @@ describe("Firecrawl auto-detect probes", () => {
     );
   });
 
+  it("accepts a Firecrawl identity response at the root when /test is absent", async () => {
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 404 })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({
+          message: "Firecrawl API",
+          documentation_url: "https://docs.firecrawl.dev",
+        }),
+      });
+
+    const res = await probeFirecrawlEndpoint("http://127.0.0.1:3002");
+
+    expect(res.ok).toBe(true);
+    expect(global.fetch).toHaveBeenNthCalledWith(1, "http://127.0.0.1:3002/test", expect.anything());
+    expect(global.fetch).toHaveBeenNthCalledWith(2, "http://127.0.0.1:3002", expect.anything());
+  });
+
   it("returns 503-style failure when probe fails", async () => {
     global.fetch = vi.fn().mockRejectedValue(new Error("Connection refused"));
     const res = await probeFirecrawlEndpoint("http://127.0.0.1:3002");

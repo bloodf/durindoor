@@ -140,12 +140,24 @@ export async function getTunnelStatus() {
   // Lazy: skip PID probe entirely when user disabled tunnel
   const running = settingsEnabled ? isCloudflaredRunning() : false;
 
+  // Detect an externally managed cloudflared that the app does not own.
+  // isCloudflaredRunning only sees the app's spawnQuickTunnel PID file;
+  // any system-installed named tunnel (e.g. /etc/cloudflared/*.yml) is
+  // invisible to the app but still a working endpoint. If the operator
+  // persisted an external URL in settings and the app has no PID, surface
+  // that as an "external" state instead of an "Enable" CTA.
+  const externalTunnel =
+    !running && settings.tunnelUrl && !state?.tunnelUrl
+      ? { running: true, tunnelUrl: settings.tunnelUrl }
+      : null;
+
   return {
     enabled: settingsEnabled && running,
     settingsEnabled,
     tunnelUrl,
     shortId,
     publicUrl,
-    running
+    running,
+    externalTunnel,
   };
 }

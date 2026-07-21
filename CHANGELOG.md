@@ -1,3 +1,17 @@
+# 2.2.3
+
+## Fixes
+- **Auto-configure Headroom badge** — a reachable external headroom proxy (CLI not installed locally, port reachable) was reported as Unavailable. The status classifier now considers the `running` signal in addition to `installed/detected` (`auto-configure/AutoConfigureClient.js`, `autoConfigure/headroom.js`).
+- **Endpoint Local URL** — the displayed URL was hard-coded to port 20128 even when the service was running on a different port (e.g. 11434). It now reads the live `PORT` from the server (`endpoint/page.js`, `endpoint/endpointConstants.js`).
+- **Firecrawl auto-configure false Unavailable** — the probe was hitting `GET /test`, which is 404 on the running Firecrawl build. It now falls back to a single `GET /` on the same candidate when `/test` returns 4xx (`firecrawl/firecrawlConfig.js`).
+- **Endpoint Tunnel / Tailscale ready-but-Enable** — the rows showed "Enable" even when a Cloudflare named tunnel or a Tailscale system-daemon funnel was already serving the endpoint. The status APIs now surface `externalTunnel` / `systemTailscale`; the UI renders them as "External" with a copyable URL instead of a misleading Enable CTA (`tunnel/cloudflare/manager.js`, `tunnel/tailscale/manager.js`, `endpoint/EndpointPageClient.js`).
+- **API-key daily limit broken layout** — the inline `<Input>` on the API-key card broke the row when `Unlimited` was rendered. The limit is now edited inside the existing API-key edit modal; the row shows a read-only "Daily limit: …" line (`endpoint/EndpointPageClient.js`).
+- **PXPIPE / Headroom chart tooltips** — Recharts' default white tooltip was unreadable in dark mode and the timeline padded every day with `tokensSaved: 0`, hiding whether a day was a real measurement or just empty. The bucketing initializes `tokensSaved: null` and the tooltip uses theme colors plus a "No PXPIPE activity" label for null days.
+
+## Tests / tooling
+- **vitest worktree isolation** — exclude `**/.omc/**` from test collection.
+- **noauth-models test isolation** — `build-models-list-noauth.test.js` now mocks `getSettings` so it no longer leaks to the operator's real `~/.9router` settings DB.
+
 # 2.2.2
 
 ## Fixes

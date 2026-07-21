@@ -45,11 +45,19 @@ export async function probeFirecrawlEndpoint(baseUrl, { apiKey, headers } = {}) 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
   try {
-    const res = await fetch(`${base}/test`, { ...init, signal: ctrl.signal });
-    if (res.ok) {
-      return { ok: true, status: res.status, message: "Firecrawl reachable" };
+    const testRes = await fetch(`${base}/test`, { ...init, signal: ctrl.signal });
+    if (testRes.ok) {
+      return { ok: true, status: testRes.status, message: "Firecrawl reachable" };
     }
-    return { ok: false, status: res.status, error: `Firecrawl probe returned ${res.status}` };
+    // Some Firecrawl builds only respond at the root path. Fall back to a
+    // single GET / on the same candidate before giving up.
+    if (testRes.status === 404 || testRes.status === 405 || testRes.status === 501) {
+      const rootRes = await fetch(base, { ...init, signal: ctrl.signal });
+      if (rootRes.ok) {
+        return { ok: true, status: rootRes.status, message: "Firecrawl reachable" };
+      }
+    }
+    return { ok: false, status: testRes.status, error: `Firecrawl probe returned ${testRes.status}` };
   } catch (err) {
     return { ok: false, error: err.message || String(err) };
   } finally {

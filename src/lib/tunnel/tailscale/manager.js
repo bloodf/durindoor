@@ -120,11 +120,24 @@ export async function getTailscaleStatus() {
   // Skip probes entirely when disabled; check login before running (device removed = not logged in)
   const loggedIn = settingsEnabled ? isTailscaleLoggedIn() : false;
   const running = loggedIn ? isTailscaleRunning() : false;
+  // Detect an externally managed Tailscale daemon that already serves a
+  // system-socket Funnel. The app cannot manage it, but it does meet the
+  // user's intent of exposing the endpoint, so expose it as
+  // systemTailscale for the UI to show.
+  const systemTailscale = !running && isSystemDaemonRunning()
+    ? {
+        running: true,
+        tunnelUrl: (settings.tailscaleUrl && settings.tailscaleUrl.startsWith("http")
+          ? settings.tailscaleUrl
+          : getActualFunnelUrl()) || null,
+      }
+    : null;
   return {
     enabled: settingsEnabled && running,
     settingsEnabled,
     tunnelUrl,
     running,
-    loggedIn
+    loggedIn,
+    systemTailscale,
   };
 }

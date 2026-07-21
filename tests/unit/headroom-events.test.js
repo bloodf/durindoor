@@ -85,6 +85,24 @@ describe("headroom events", () => {
     expect(bucket.compressed).toBe(1);
   });
 
+  it("distinguishes padded no-event days from real zero-savings days", async () => {
+    // appendHeadroomEvent stamps the event with the current time, so use
+    // today's window to land a real event in the active timeline bucket.
+    const today = Date.now();
+    appendHeadroomEvent({ applied: false, reason: "skipped", ts: today });
+    await flush();
+
+    const stats = getHeadroomStats();
+    const todayKey = new Date(today).toISOString().slice(0, 10);
+    const realZero = stats.timeline.find((d) => d.date === todayKey);
+    const noEvent = stats.timeline.find((d) => d.requests === 0);
+
+    expect(realZero).toBeDefined();
+    expect(realZero.requests).toBe(1);
+    expect(realZero.tokensSaved).toBe(0);
+    expect(noEvent?.tokensSaved).toBeNull();
+  });
+
   it("preserves all-time totals across multiple log rotations", async () => {
     const dir = path.join(tmp, "headroom");
     fs.mkdirSync(dir, { recursive: true });

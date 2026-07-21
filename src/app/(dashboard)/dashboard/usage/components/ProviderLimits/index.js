@@ -1601,7 +1601,7 @@ export default function ProviderLimits() {
                         src={`/providers/${conn.provider}.png`}
                         alt={conn.provider}
                         size={32}
-                        className="object-contain"
+                        className="object-contain max-w-full max-h-full"
                         fallbackText={
                           conn.provider?.slice(0, 2).toUpperCase() || "PR"
                         }

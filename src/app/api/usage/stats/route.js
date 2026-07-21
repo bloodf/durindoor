@@ -13,7 +13,12 @@ export async function GET(request) {
       return NextResponse.json({ error: "Invalid period" }, { status: 400 });
     }
 
-    const stats = await getUsageStats(period);
+    // Optional custom calendar range (YYYY-MM-DD). getUsageStats validates the
+    // shape/order defensively and ignores it unless both are well-formed.
+    const startDate = searchParams.get("startDate") || undefined;
+    const endDate = searchParams.get("endDate") || undefined;
+
+    const stats = await getUsageStats(period, { startDate, endDate });
     return NextResponse.json(stats);
   } catch (error) {
     console.error("[API] Failed to get usage stats:", error);

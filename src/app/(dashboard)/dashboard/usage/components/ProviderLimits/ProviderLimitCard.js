@@ -66,8 +66,8 @@ export default function ProviderLimitCard({
             <ProviderIcon
               src={`/providers/${provider}.png`}
               alt={provider || "Provider"}
-              size={40}
-              className="object-contain rounded-lg"
+              size={28}
+              className="object-contain rounded-lg max-w-full max-h-full"
               fallbackText={provider?.slice(0, 2).toUpperCase() || "PR"}
               fallbackColor={providerColor}
             />

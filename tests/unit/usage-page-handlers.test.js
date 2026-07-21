@@ -32,14 +32,14 @@ describe("usage page handleReset (CR-D-2)", () => {
   });
 
   it("passes resetNonce to UsageStats, RequestLogger and RequestDetailsTab", () => {
-    expect(pageSrc).toContain("<UsageStats period={period} setPeriod={setPeriod} hidePeriodSelector resetNonce={resetNonce} />");
+    expect(pageSrc).toMatch(/<UsageStats\b[^>]*\bresetNonce=\{resetNonce\}[^>]*\/>/);
     expect(pageSrc).toContain("<RequestLogger resetNonce={resetNonce} />");
     expect(pageSrc).toContain("<RequestDetailsTab resetNonce={resetNonce} />");
   });
 
   it("UsageStats accepts resetNonce and refetches stats on change", () => {
     expect(statsSrc).toMatch(/resetNonce = 0/);
-    expect(statsSrc).toMatch(/\}, \[period, statsRequestGuard, resetNonce\]\);/);
+    expect(statsSrc).toMatch(/\}, \[period,[^\]]*resetNonce\]\);/);
   });
 
   it("RequestLogger accepts resetNonce and refetches logs on change", () => {

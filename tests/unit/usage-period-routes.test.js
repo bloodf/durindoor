@@ -29,21 +29,21 @@ describe("usage period API validation", () => {
   it.each(periods)("accepts %s in both stats and chart routes", async (period) => {
     expect((await statsRoute.GET(request("stats", period))).status).toBe(200);
     expect((await chartRoute.GET(request("chart", period))).status).toBe(200);
-    expect(mocks.getUsageStats).toHaveBeenCalledWith(period);
+    expect(mocks.getUsageStats).toHaveBeenCalledWith(period, { startDate: undefined, endDate: undefined });
     expect(mocks.getChartData).toHaveBeenCalledWith(period);
   });
 
   it("defaults a missing period to 7d", async () => {
     await statsRoute.GET(request("stats"));
     await chartRoute.GET(request("chart"));
-    expect(mocks.getUsageStats).toHaveBeenCalledWith("7d");
+    expect(mocks.getUsageStats).toHaveBeenCalledWith("7d", { startDate: undefined, endDate: undefined });
     expect(mocks.getChartData).toHaveBeenCalledWith("7d");
   });
 
   it("defaults an empty period to 7d", async () => {
     await statsRoute.GET(request("stats", ""));
     await chartRoute.GET(request("chart", ""));
-    expect(mocks.getUsageStats).toHaveBeenCalledWith("7d");
+    expect(mocks.getUsageStats).toHaveBeenCalledWith("7d", { startDate: undefined, endDate: undefined });
     expect(mocks.getChartData).toHaveBeenCalledWith("7d");
   });
 

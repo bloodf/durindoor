@@ -132,6 +132,7 @@ export default function ProviderIcon({
       alt={alt}
       width={size}
       height={size}
+      style={{ maxWidth: size, maxHeight: size }}
       className={className}
       onError={() => setStage(s => s + 1)}
     />

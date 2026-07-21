@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import PropTypes from "prop-types";
 import { Card, Button } from "@/shared/components";
+import { chartTooltipContentStyle, chartTooltipLabelStyle, chartTooltipItemStyle } from "@/shared/components/chartTooltip";
 import Pagination from "@/shared/components/Pagination";
 import { usePagination } from "@/shared/hooks/usePagination";
 import { formatPxpipeEvent, fmtTokens, PXPIPE_REASON_LABELS as REASON_LABELS } from "./formatPxpipeEvent.js";
@@ -212,9 +213,9 @@ export default function PxpipeClient({ embedded = false }) {
               <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.2} />
               <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(d) => d.slice(5)} />
               <Tooltip
-                contentStyle={{ backgroundColor: "var(--color-bg, #0f172a)", border: "1px solid var(--color-border, #1e293b)", borderRadius: 8, fontSize: 12 }}
-                labelStyle={{ color: "var(--color-text-muted, #94a3b8)" }}
-                itemStyle={{ color: "var(--color-text, #e2e8f0)" }}
+                contentStyle={chartTooltipContentStyle}
+                labelStyle={chartTooltipLabelStyle}
+                itemStyle={chartTooltipItemStyle}
                 formatter={(v) => [v == null ? "No PXPIPE activity" : `${fmtTokens(v)} tokens`, "Tokens saved"]}
                 labelFormatter={(d) => d}
               />

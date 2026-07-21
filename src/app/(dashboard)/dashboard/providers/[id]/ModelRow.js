@@ -29,6 +29,13 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
           <span className="flex min-w-0 items-center text-[9px] gap-1 pl-1">
             {model.name && <span className="truncate text-[9px] italic text-text-muted/70">{model.name}</span>}
             <CapacityBadges caps={caps} colorOverride="text-text-muted/70" size={12} />
+            {caps?.contextWindow ? (
+              <span className="shrink-0 rounded bg-sidebar px-1 text-[9px] font-medium text-text-muted/70">
+                {caps.contextWindow >= 1000000
+                  ? `${(caps.contextWindow / 1000000).toFixed(caps.contextWindow % 1000000 ? 1 : 0)}M`
+                  : `${Math.round(caps.contextWindow / 1000)}K`} ctx
+              </span>
+            ) : null}
           </span>
         </div>
         {onTest && (

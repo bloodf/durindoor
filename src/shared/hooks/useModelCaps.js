@@ -48,7 +48,7 @@ export function useModelCaps() {
     if (byId[bare]) return byId[bare];
     const provider = key.includes("/") ? key.slice(0, key.indexOf("/")) : null;
     const c = getCapabilitiesForModel(provider, bare);
-    return { vision: c.vision, search: c.search, reasoning: c.reasoning, tools: c.tools };
+    return { vision: c.vision, search: c.search, reasoning: c.reasoning, tools: c.tools, contextWindow: c.contextWindow };
   };
 
   return { getCaps };

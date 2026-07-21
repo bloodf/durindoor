@@ -14,7 +14,9 @@ import {
 import { handleComboChat } from "../../open-sse/services/combo.js";
 
 const log = { info: () => {}, warn: () => {}, debug: () => {} };
-const okResponse = () => new Response(null, { status: 200 });
+// A real combo success carries content; an empty 200 body now triggers the
+// empty-body retry (#2689), so use a minimal non-empty body here.
+const okResponse = () => new Response('{"choices":[{"message":{"content":"ok"}}]}', { status: 200 });
 const errorResponse = () => new Response(null, { status: 503 });
 
 

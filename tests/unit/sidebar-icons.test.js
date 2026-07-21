@@ -21,8 +21,6 @@ describe("SidebarNavIcons", () => {
     expect(map.get("Usage")).toBe("bar_chart");
     expect(map.get("Playground")).toBe("chat");
     expect(map.get("Combos")).toBe("layers");
-    expect(map.get("Quota Tracker")).toBe("data_usage");
-    expect(map.get("Provider Health")).toBe("monitor_heart");
     expect(map.get("MCP Gateway")).toBe("hub");
   });
 
@@ -34,6 +32,10 @@ describe("SidebarNavIcons", () => {
     expect(labels).not.toContain("Token Saver");
     expect(labels).not.toContain("PXPIPE");
     expect(labels).not.toContain("Free Providers");
+    // Quota Tracker and Provider Health live only under the Providers menu;
+    // they must not also appear as top-level entries (no duplicate nav rows).
+    expect(labels).not.toContain("Quota Tracker");
+    expect(labels).not.toContain("Provider Health");
   });
 
   it("centralizes debug and combined web icon glyphs", () => {

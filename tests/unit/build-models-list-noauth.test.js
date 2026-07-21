@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   getCustomModels: vi.fn(),
   getModelAliases: vi.fn(),
   getDisabledModels: vi.fn(),
+  getSettings: vi.fn(),
 }));
 
 vi.mock("@/lib/localDb", () => ({
@@ -24,6 +25,10 @@ vi.mock("@/lib/disabledModelsDb", () => ({
   getDisabledModels: mocks.getDisabledModels,
 }));
 
+vi.mock("@/lib/db/repos/settingsRepo", () => ({
+  getSettings: mocks.getSettings,
+}));
+
 describe("buildModelsList no-auth provider visibility", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -31,6 +36,11 @@ describe("buildModelsList no-auth provider visibility", () => {
     mocks.getCustomModels.mockResolvedValue([]);
     mocks.getModelAliases.mockResolvedValue({});
     mocks.getDisabledModels.mockResolvedValue({});
+    // Isolate from the machine's real ~/.9router settings: buildModelsList reads
+    // getSettings() for disabledFreeProviders / hidePaidModels. Without this mock
+    // the test leaks to the operator DB, where pollinations/theoldllm may be
+    // opted out, hiding the keyless catalog under test.
+    mocks.getSettings.mockResolvedValue({ disabledFreeProviders: [], hidePaidModels: false });
   });
 
   it("includes no-auth providers when only unrelated connections exist", async () => {

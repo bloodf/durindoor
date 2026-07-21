@@ -15,14 +15,15 @@ export default defineConfig({
     environment: "node",
     globals: true,
     include: ["**/*.test.js"],
-    // Don't scan into git worktrees nested under .claude/ — they carry their
-    // own copies of the test files but lack an installed node_modules (open-sse,
-    // etc.), which makes provider imports fail during collection.
+    // Don't scan into git worktrees nested under .omc/ or .claude/ — they carry
+    // their own copies of the test files but lack an installed node_modules
+    // (open-sse, etc.), which makes provider imports fail during collection.
     // *.live.test.js are live smoke tests hitting real upstreams (network +
     // real accounts); they are excluded from the default/CI run — run them
     // explicitly when needed.
     exclude: [
       "**/node_modules/**",
+      "**/.omc/**",
       "**/.claude/**",
       "**/dist/**",
       "**/*.live.test.js",

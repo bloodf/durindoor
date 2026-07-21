@@ -35,8 +35,6 @@ export const navItems = [
   { href: "/dashboard/usage", label: "Usage", icon: "bar_chart" },
   { href: "/dashboard/playground", label: "Playground", icon: "chat" },
   { href: "/dashboard/combos", label: "Combos", icon: "layers" },
-  { href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage" },
-  { href: "/dashboard/health", label: "Provider Health", icon: "monitor_heart" },
   { href: "/dashboard/mcp-gateway", label: "MCP Gateway", icon: "hub", exact: false },
 ];
 

@@ -46,6 +46,12 @@ function canonicalizeRuntimePaths() {
   process.env.DATA_DIR = DATA_DIR;
   process.env[STANDALONE_ROOT_ENV] = require("fs").realpathSync(__dirname);
   process.env[SINGLE_PROCESS_RUNTIME_ENV] = "1";
+  // Security: the dashboard exposes privileged endpoints (tunnel install, daemon
+  // start) that run system commands, so bind to loopback by default. Next's
+  // standalone server reads HOSTNAME (defaulting to 0.0.0.0); pin it to 127.0.0.1
+  // unless an operator deliberately overrode it. Expose it publicly only behind
+  // your own auth/proxy by setting HOSTNAME=0.0.0.0 (#2725).
+  if (!process.env.HOSTNAME) process.env.HOSTNAME = "127.0.0.1";
   return DATA_DIR;
 }
 

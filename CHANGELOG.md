@@ -1,3 +1,24 @@
+# 2.2.5
+
+## Fixes
+- **Endpoint page crash** — the authenticated `/dashboard/endpoint` page failed to load because `tunnel/tailscale/manager.js` called `isSystemDaemonRunning()` and `getActualFunnelUrl()` without importing them (and `getActualFunnelUrl` was unexported), so `/api/tunnel/status` 500'd and flooded the console with a `ReferenceError`. Both symbols are now exported and imported (`tunnel/tailscale/tailscale.js`, `tunnel/tailscale/manager.js`). The page client also had a lost `editKeyPolicy` state binding and two `updateReachable` calls wired to the wrong Tailscale setter — restored and corrected (`endpoint/EndpointPageClient.jsx`).
+- **Provider health false "down"** — the health probe read `connection.apiKey`, but OAuth accounts (claude/codex) store their token in `accessToken`, so actively-serving accounts probed as down with a false 401. The probe now falls back to the OAuth token, and `ollama-local` was added to the local-probe set so a local Ollama server is probed at `localhost:11434` instead of the cloud catalog (`providerHealthProbe.js`).
+- **Local Ollama embedding models missing** — added the `gte` family to `OLLAMA_EMBEDDING_FAMILIES` so GTE-family local embed models are tagged as embeddings (`api/v1/models/buildModelsList.js`).
+- **Console log level colors** — a global-flag regex made the level lookup always `undefined`, so every line rendered green. Level detection now reads the capture group correctly (`console-log/ConsoleLogClient.js`).
+- **Profile data-directory label** — removed a duplicated `(DurinDoor data directory)` parenthetical (`profile/page.js`).
+
+## Improvements
+- **Dashboard UI revamp** — redesigned the Playground, MCP Help, API Docs, and Console Log pages for usability: sectioned cards, proper toolbars, responsive layout, and accessibility (labels, roles, focus rings). The usage chart tooltip now uses a themed text color so hovered values are legible in both themes (`playground/PlaygroundPageClient.js`, `mcp-help/page.js`, `api-docs/page.js`, `console-log/ConsoleLogClient.js`, `usage/components/UsageChart.js`).
+- **OAuth session durability** — Claude/Codex refresh is serialized through one coordinator and quota reads skip proactive refresh for rotation-group providers, so quota sweeps no longer rotate multiple account families. Expired sessions persist a durable `reauth_required` state with an in-place account reconnect instead of losing credentials (OAuth credential manager, quota tracker, connections repo, providers dashboard).
+- **Context-window capabilities** — corrected under-reported context windows for Claude Opus 4.6/4.7/4.8, GPT-5.5/5.6 family, Kimi K2.x, MiniMax M2.x/M3, and Z.ai GLM-5.x/4.x so the operator-visible window matches the published one (`providers/capabilities.js`, `services/model.js`).
+
+## Ports
+- **OmniRoute** — Responses API custom-tool schema + non-stream input (#7905), `reasoning_text` acceptance + internal-reasoning replay-sentinel suppression (#7919/#7912), Anthropic thinking-signature recovery + client-abort resilience (#7906/#7908).
+- **decolua/9router upstream** — proxy timeouts, log permissions, MiniMax signature, Claude usage/reconcile, combos, K3 (batch 1); Codex encrypted-content recovery (#2667) + combo empty-body retry (#2689) (batch 2); Codex id_token account binding (#1819), Kiro credit-exhaustion vs daily-probe cooldown (#2664), headroom compression before translation (#2698), loopback dashboard bind by default (#2725).
+
+## Tests / tooling
+- **Endpoint regression test** — `tests/unit/endpoint-page-client-regression.test.js` renders `EndpointPageClient.jsx` via `react-dom/server` and guards the restored `editKeyPolicy` state and the corrected Tailscale reachability wiring.
+
 # 2.2.4
 
 ## Fixes

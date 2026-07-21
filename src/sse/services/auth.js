@@ -930,7 +930,11 @@ export async function clearAccountError(connectionId, currentConnection, model =
       return expiry && new Date(expiry).getTime() > now;
     });
     const clearObj = Object.fromEntries(keysToClear.map(k => [k, null]));
-    if (remainingActiveLocks.length === 0) {
+    // Never let ordinary request success clear a durable reauth_required state;
+    // only a successful OAuth reconnect (which writes testStatus:"active"
+    // directly) may revive the account. See connectionsRepo fallback-clear guard.
+    const reauthPinned = conn.testStatus === "reauth_required" || conn.errorCode === "REAUTH";
+    if (!reauthPinned && remainingActiveLocks.length === 0) {
       Object.assign(clearObj, { testStatus: "active", lastError: null, lastErrorAt: null, backoffLevel: 0 });
     }
     if (Object.keys(clearObj).length > 0) await updateProviderConnection(connectionId, clearObj);

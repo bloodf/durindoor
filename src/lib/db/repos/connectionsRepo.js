@@ -477,7 +477,13 @@ export async function clearProviderConnectionFallbackState(id, {
     const activeLocks = Object.entries(merged).some(
       ([key, value]) => key.startsWith(MODEL_LOCK_PREFIX) && activeTimestamp(value, eventMs),
     );
-    if (!activeLocks && (Date.parse(existing.lastErrorAt || "") || 0) <= eventMs) {
+    // A durable reauth_required state means the OAuth refresh token is dead and
+    // only a fresh OAuth reconnect can revive the account. Ordinary request
+    // success must NOT silently clear it back to "active" — otherwise the row
+    // looks healthy while every request 401s. Only a successful OAuth
+    // replacement (updateProviderConnection with testStatus:"active") clears it.
+    const reauthPinned = existing.testStatus === "reauth_required" || existing.errorCode === "REAUTH";
+    if (!reauthPinned && !activeLocks && (Date.parse(existing.lastErrorAt || "") || 0) <= eventMs) {
       Object.assign(merged, {
         testStatus: "active",
         lastError: null,

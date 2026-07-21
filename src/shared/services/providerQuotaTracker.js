@@ -10,6 +10,7 @@ import {
 } from "@/lib/db/index.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { refreshAndUpdateCredentials } from "@/shared/services/providerCredentials";
+import { rotationGroupFor } from "open-sse/services/refreshSerializer.js";
 import {
   canonicalizeQuotaNow,
   normalizeQuotaIdentifier,
@@ -258,7 +259,19 @@ export function createProviderQuotaTracker({
       const proxyConfig = proxyResolver ? await proxyResolver(connection.providerSpecificData) : null;
       controller.signal.throwIfAborted();
       proxyOptions = proxyOptionsFromConfig(proxyConfig);
-      if (connection.authType === "oauth" && credentialRefresher) {
+      // Rotation-group providers (Codex "openai-auth0", Claude "anthropic-oauth")
+      // mint a single-use refresh_token per refresh. A quota sweep touches many
+      // sibling accounts near the same reset boundary; proactively refreshing
+      // them in parallel makes Auth0/Anthropic revoke the whole token family and
+      // brick every account but the last (openai/codex#9648). Skip proactive
+      // refresh for them here and read quota with the still-valid access token;
+      // genuine expiry is handled by the serialized reactive 401 path. Mirrors
+      // the quotaAutoPing.js guard.
+      if (
+        connection.authType === "oauth"
+        && credentialRefresher
+        && rotationGroupFor(connection.provider) === null
+      ) {
         const refreshed = await credentialRefresher(connection, false, proxyOptions, {
           signal: controller.signal,
           shouldCommit: () => isCurrent(keys, generation),

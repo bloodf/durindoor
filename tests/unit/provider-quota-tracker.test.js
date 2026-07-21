@@ -477,6 +477,43 @@ describe("provider quota tracker", () => {
     expect(h.repository.recordQuotaFetchFailure).not.toHaveBeenCalled();
   });
 
+  it("skips proactive credential refresh for rotation-group providers and reads quota with the current token", async () => {
+    // Codex ("openai-auth0") and Claude ("anthropic-oauth") mint single-use
+    // refresh tokens; a quota sweep must not proactively refresh them in
+    // parallel or Auth0/Anthropic revoke the whole token family. The still-valid
+    // access token is used for the quota read; genuine expiry is left to the
+    // serialized reactive 401 path.
+    const credentialRefresher = vi.fn();
+    const adapter = {
+      config: { sourceId: "demo:quota:v1", freshnessMs: 60_000 },
+      fetchQuota: vi.fn().mockResolvedValue(success()),
+    };
+    const repository = {
+      replaceProviderQuotaSnapshotsForSource: vi.fn().mockResolvedValue([]),
+      recordQuotaFetchFailure: vi.fn().mockResolvedValue(null),
+    };
+    const tracker = createProviderQuotaTracker({
+      resolveAdapter: vi.fn(() => adapter),
+      repository,
+      proxyResolver: vi.fn().mockResolvedValue({}),
+      credentialRefresher,
+      now: () => START,
+      cacheTtlMs: 1_000,
+      maxCacheEntries: 512,
+    });
+
+    const result = await tracker.refresh(
+      connection("conn-codex", { provider: "codex", authType: "oauth" }),
+    );
+
+    // The guard's contract: NO proactive refresh, but the quota read still
+    // proceeds with the current access token. The read's own outcome depends on
+    // adapter/snapshot binding, which is not what this test pins.
+    expect(credentialRefresher).not.toHaveBeenCalled();
+    expect(adapter.fetchQuota).toHaveBeenCalledTimes(1);
+    expect(result).toBeTruthy();
+  });
+
   it("treats a connection deleted during credential refresh as superseded", async () => {
     const credentialRefresher = vi.fn(async () => {
       const error = new Error("deleted");

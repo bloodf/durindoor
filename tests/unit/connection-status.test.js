@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { filterActiveConnections } from "../../src/shared/utils/connectionStatus.js";
+import { filterActiveConnections, getStatusVariant } from "../../src/shared/utils/connectionStatus.js";
 
 describe("filterActiveConnections", () => {
   it("keeps explicitly enabled connections", () => {
@@ -34,5 +34,26 @@ describe("filterActiveConnections", () => {
   it("returns an empty list for invalid input", () => {
     expect(filterActiveConnections()).toEqual([]);
     expect(filterActiveConnections(null)).toEqual([]);
+  });
+});
+
+describe("getStatusVariant", () => {
+  it("marks reauth_required as an error status", () => {
+    expect(getStatusVariant(true, "reauth_required")).toBe("error");
+  });
+
+  it("keeps the other error statuses as error", () => {
+    for (const status of ["error", "expired", "unavailable"]) {
+      expect(getStatusVariant(true, status)).toBe("error");
+    }
+  });
+
+  it("treats active/success as success", () => {
+    expect(getStatusVariant(true, "active")).toBe("success");
+    expect(getStatusVariant(true, "success")).toBe("success");
+  });
+
+  it("lets an explicitly disabled row override reauth_required", () => {
+    expect(getStatusVariant(false, "reauth_required")).toBe("default");
   });
 });

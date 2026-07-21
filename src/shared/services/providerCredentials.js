@@ -197,7 +197,38 @@ function validatedMetadataValue(field, value) {
   return safeMetadataString(value);
 }
 
-async function reconcileConcurrentRotation(connection, expectedRefreshContext, getConnection, delays, wait) {
+async function persistReauthRequired(connection, expectedRefreshContext, updateProviderConnectionImpl, now) {
+  // Mark the connection as needing a fresh OAuth reconnect WITHOUT clearing the
+  // (now-dead) access/refresh tokens and WITHOUT deactivating the row. The
+  // compare-and-swap fingerprint guarantees we only pin state that still
+  // matches the credentials we tried to refresh — a concurrent winner that
+  // already rotated the tokens is left untouched. errorCode:"REAUTH" is the
+  // sentinel the fallback-state clear guards honour so ordinary request success
+  // cannot silently flip it back to "active".
+  try {
+    await updateProviderConnectionImpl(
+      connection.id,
+      {
+        testStatus: "reauth_required",
+        lastError: "OAuth session expired. Reconnect this account.",
+        errorCode: "REAUTH",
+        lastErrorAt: new Date(safeRefreshClock(now)).toISOString(),
+      },
+      { expectedRefreshContext },
+    );
+  } catch {
+    // Best-effort: a persistence failure must not mask the reauth signal.
+  }
+}
+
+async function reconcileConcurrentRotation(
+  connection,
+  expectedRefreshContext,
+  getConnection,
+  delays,
+  wait,
+  { updateProviderConnectionImpl = null, now = Date.now } = {},
+) {
   for (const delay of delays) {
     if (delay > 0) await wait(delay);
     const current = await getConnection(connection.id);
@@ -211,6 +242,11 @@ async function reconcileConcurrentRotation(connection, expectedRefreshContext, g
       && current.provider === connection.provider
       && !providerRefreshContextMatches(current, expectedRefreshContext)
     ) return { connection: current, refreshed: false };
+  }
+  // No newer credential won the rotation race: the refresh token is genuinely
+  // dead. Pin a durable reauth_required state before surfacing the error.
+  if (updateProviderConnectionImpl) {
+    await persistReauthRequired(connection, expectedRefreshContext, updateProviderConnectionImpl, now);
   }
   throw reauthorizationError();
 }
@@ -287,6 +323,7 @@ export async function refreshAndUpdateCredentials(
         getProviderConnectionByIdImpl,
         reconcileDelays,
         wait,
+        { updateProviderConnectionImpl, now },
       );
     }
     if (!refreshResult) {

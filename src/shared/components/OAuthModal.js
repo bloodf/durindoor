@@ -49,6 +49,7 @@ export default function OAuthModal({
   idcConfig,
   proxyPools = [],
   proxyPoolsReady = false,
+  connectionId = null,
 }) {
   const [step, setStep] = useState("waiting");
   const [authData, setAuthData] = useState(null);
@@ -76,8 +77,9 @@ export default function OAuthModal({
       onSuccess,
       provider,
       proxyPoolsReady,
+      connectionId,
     };
-  }, [idcConfig, isOpen, oauthMeta, onClose, onSuccess, provider, proxyPoolsReady]);
+  }, [idcConfig, isOpen, oauthMeta, onClose, onSuccess, provider, proxyPoolsReady, connectionId]);
 
   const resetView = useCallback(() => {
     setAuthData(null);
@@ -287,6 +289,7 @@ export default function OAuthModal({
           ownerId: flow.ownerId,
           ...selection,
           ...(options.oauthMeta ? { meta: options.oauthMeta } : {}),
+          ...(options.connectionId ? { connectionId: options.connectionId } : {}),
         }),
         signal: flow.controller.signal,
       });
@@ -742,4 +745,6 @@ OAuthModal.propTypes = {
   })),
   /** Prevents a flow from starting before the async pool lookup completes. */
   proxyPoolsReady: PropTypes.bool,
+  /** When set, the flow replaces this existing connection in place (Reconnect). */
+  connectionId: PropTypes.string,
 };

@@ -259,6 +259,15 @@ async function beginAuthorization(provider, input) {
     resolvedProxy.proxyOptions,
   );
 
+  // Reconnect flow: when the client supplies a target connection id, carry it
+  // in the bound flow payload so completion replaces that row instead of
+  // creating a duplicate. Validated as a bounded string; the completion path
+  // re-checks provider + authType before committing.
+  const reconnectConnectionId =
+    typeof input.connectionId === "string" && input.connectionId.length > 0 && input.connectionId.length <= 128
+      ? input.connectionId
+      : undefined;
+
   const flow = createBoundOAuthFlow({
     provider,
     state: authData.state,
@@ -268,6 +277,7 @@ async function beginAuthorization(provider, input) {
       redirectUri,
       meta,
       proxySelection: resolvedProxy.selection,
+      ...(reconnectConnectionId ? { connectionId: reconnectConnectionId } : {}),
     },
     intent,
   });

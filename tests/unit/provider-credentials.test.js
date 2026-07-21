@@ -310,7 +310,7 @@ describe("provider credential refresh service", () => {
   });
 
   it.each(["invalid_grant", "unrecoverable_refresh_error"])(
-    "fails closed without a write for %s",
+    "pins a durable reauth_required state and throws for %s",
     async (errorCode) => {
       const executor = {
         needsRefresh: vi.fn(() => true),
@@ -322,7 +322,22 @@ describe("provider credential refresh service", () => {
         code: "PROVIDER_REAUTH_REQUIRED",
         message: "Failed to refresh credentials. Please re-authorize the connection.",
       });
-      expect(deps.updateProviderConnectionImpl).not.toHaveBeenCalled();
+      // The refresh token is genuinely dead (no concurrent winner rotated it),
+      // so a durable reauth_required state is pinned before the throw. Tokens are
+      // preserved (never present in the patch) and isActive is left untouched.
+      expect(deps.updateProviderConnectionImpl).toHaveBeenCalledTimes(1);
+      const [id, patch, opts] = deps.updateProviderConnectionImpl.mock.calls[0];
+      expect(id).toBe("conn-1");
+      expect(patch).toMatchObject({
+        testStatus: "reauth_required",
+        errorCode: "REAUTH",
+        lastError: "OAuth session expired. Reconnect this account.",
+      });
+      expect(patch).toHaveProperty("lastErrorAt");
+      expect(patch).not.toHaveProperty("accessToken");
+      expect(patch).not.toHaveProperty("refreshToken");
+      expect(patch).not.toHaveProperty("isActive");
+      expect(opts).toMatchObject({ expectedRefreshContext: expect.any(Object) });
     },
   );
 

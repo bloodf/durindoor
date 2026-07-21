@@ -58,6 +58,9 @@ export default function ProviderDetailPage() {
   const [proxyPoolsReadyForProvider, setProxyPoolsReadyForProvider] = useState(null);
   const proxyPoolsReady = proxyPoolsReadyForProvider === providerId;
   const [showOAuthModal, setShowOAuthModal] = useState(false);
+  // When set, the open OAuth modal replaces this existing connection in place
+  // (the Reconnect flow) instead of creating a new row. Cleared on close/success.
+  const [reconnectConnectionId, setReconnectConnectionId] = useState(null);
   const [showIFlowCookieModal, setShowIFlowCookieModal] = useState(false);
   const [showImportTokenModal, setShowImportTokenModal] = useState(false);
   const [importTokenValue, setImportTokenValue] = useState("");
@@ -839,6 +842,14 @@ export default function ProviderDetailPage() {
   const handleOAuthSuccess = () => {
     fetchConnections();
     setShowOAuthModal(false);
+    setReconnectConnectionId(null);
+  };
+
+  // Reconnect an expired OAuth account: re-run the same OAuth flow but stamp the
+  // target connection id so completion replaces the failed row in place.
+  const handleReconnect = (conn) => {
+    setReconnectConnectionId(conn.id);
+    openOAuthConnection();
   };
 
   const handleIFlowCookieSuccess = () => {
@@ -1166,6 +1177,7 @@ export default function ProviderDetailPage() {
                   setShowEditModal(true);
                 }}
                 onDelete={() => handleDelete(conn.id)}
+                onReconnect={() => handleReconnect(conn)}
                 oneByOneStatus={oneByOneResults[conn.id] || null}
               />
             </div>
@@ -1953,9 +1965,10 @@ export default function ProviderDetailPage() {
           provider={providerId}
           providerInfo={providerInfo}
           onSuccess={handleOAuthSuccess}
-          onClose={() => setShowOAuthModal(false)}
+          onClose={() => { setShowOAuthModal(false); setReconnectConnectionId(null); }}
           proxyPools={proxyPools}
           proxyPoolsReady={proxyPoolsReady}
+          connectionId={reconnectConnectionId}
         />
       )}
       {providerId === "iflow" && (

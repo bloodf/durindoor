@@ -111,6 +111,10 @@ current fork before deciding to port or record DUPLICATE.
 | #2697 | Bare `k3` capability pattern → 1M K3 window instead of the 200K default. |
 | #2667 | Codex 400 invalid_encrypted_content one-shot recovery (strip encrypted reasoning, retry same account) + non-fallback classification. |
 | #2689 | Combo empty-200 body retry (non-streaming only, to avoid consuming a live stream). |
+| #1819 | Bind Codex requests to the id_token account when provider data lacks it (centralized resolveCodexAccountId id_token fallback threaded through executor/usage/reset-credit/quotaAutoPing/quota-tracker). |
+| #2664 | Confirmed Kiro monthly-credit exhaustion → daily-probe cooldown cap (per-provider RESET_COOLDOWN_CAP_MS; async parseUpstreamError with a best-effort quota lookup for the real reset). |
+| #2698 | Run headroom compression before translation (on the source body + sourceFormat) so all output formats are covered, not just openai/claude. |
+| #2725 | Bind the dashboard to loopback (HOSTNAME=127.0.0.1) by default in the custom server + dev server (DurinDoor uses a custom server, not `next start`). OPERATOR NOTE in the commit. |
 
 ### DUPLICATE (already present in the fork; verified, not re-ported)
 | PR | Evidence |
@@ -124,26 +128,22 @@ current fork before deciding to port or record DUPLICATE.
 | #2652 | `*claude*fable*` pattern already uses `claude-adaptive`. |
 
 ### Verified GAP but DEFERRED to dedicated follow-up PRs
-These are real gaps, but each is a large multi-file FEATURE (not a targeted fix)
-that deserves its own focused PR with full testing per the one-PR-per-concern
-discipline in AGENTS.md §6. Bundling them into this campaign branch would produce
-an unreviewable mega-diff and risk correctness in hot paths. Subagent parallelism
-was unavailable (quota-exhausted), so they are queued rather than rushed.
+These remaining items are real gaps, but each is a large multi-file rewrite /
+feature, is gated on review, or is a dirty upstream PR. Each deserves its own
+focused PR with full diff reconciliation and testing per the one-PR-per-concern
+discipline in AGENTS.md §6; bundling them here would produce an unreviewable
+mega-diff and risk breaking working subsystems.
 
 | PR | Scope | Why deferred |
 |----|-------|--------------|
-| #1819 | codex workspace-account binding (7 files, new `codexAccount.js`) | new shared service + usage/quotaAutoPing wiring + new API route |
-| #2664 | kiro confirmed-credit-exhaustion cooldown (errorConfig + kiro executor + auth cooldown math) | touches the security-sensitive `markAccountUnavailable` reset-cap math |
-| #2688 / #2681 | kiro malformed/nested tool_call wrapper repair (large kiro executor additions) | flagged dirty in the plan; large transport-repair logic, re-evaluate upstream completeness first |
-| #2647 | grok-cli Responses codec (new 551-line `grok-cli-compat.js`) | large standalone codec module |
+| #2647 | grok-cli Responses codec (new 551-line grok-cli-compat.js + a net rewrite of grok-cli.js, +114/-339) | large rewrite of a working executor; must be diff-reconciled against DurinDoor's diverged grok-cli in its own PR |
 | #2453 | per-key daily token limits (17 files: usage repos, UI, pricing) | large cross-cutting feature |
 | #2454 | exact cost/tier/cache usage accounting (large) | large cross-cutting usage feature |
-| #2698 | move headroom compression before translation | hot-path reorder entangled with rtk/caveman/ponytail/pxpipe + event/logging plumbing; needs careful restructuring |
 | #2710 | provider-request correlation/observability (12 files, requestId threading) | large cross-cutting observability feature |
-| #2713 / #2666 / #2736 | OpenAI Responses stream reconstruction + keep-alive + cache-affinity (streaming refactors, ordering-constrained) | large interdependent streaming refactors; #2713→#2666→#2736 ordering |
-| #2343 | media remote-JSON size caps + provider hardening (large) | large media-subsystem feature |
-| #2723 / #2724 | usage dashboard UI: denser tracker, daily request usage (UI + repos) | UI feature; #2723 must not pull globals.css until UI approved |
-| #2725 | bind dev/start to 127.0.0.1 | DurinDoor uses a custom server (next-owner-server.cjs / custom-server.js), NOT `next dev/start`; the PR's package.json flag does not apply — bind behavior must be verified/fixed in the custom server instead |
+| #2713 / #2666 / #2736 | OpenAI Responses stream reconstruction + keep-alive + cache-affinity | large interdependent streaming refactors; ordering-constrained #2713→#2666→#2736 |
+| #2343 | media remote-JSON size caps + provider hardening | large media-subsystem feature |
+| #2723 / #2724 | usage dashboard UI: denser tracker, daily request usage | UI features; #2723 must NOT pull src/app/globals.css until UI work is approved (plan §55) |
+| #2688 / #2681 | kiro malformed/nested tool_call wrapper repair | upstream merge state is DIRTY — the PR itself has unresolved conflicts; per plan §57, skip a dirty/incomplete upstream diff and re-evaluate when it lands cleanly |
 
 If the maintainer wants any deferred item pulled into this branch or a dedicated
 follow-up, they can be ported next with the same verify-then-implement discipline.

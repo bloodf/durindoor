@@ -124,6 +124,7 @@ describe("Codex reset credits", () => {
       "new-token",
       expect.objectContaining({ connectionProxyEnabled: true, connectionProxyUrl: "http://proxy.local", strictProxy: false }),
       { workspaceId: "acct_123" },
+      undefined,
     );
   });
 
@@ -156,7 +157,7 @@ describe("Codex reset credits", () => {
     expect(await response.json()).toEqual(resetCredits);
     expect(mocks.refreshAndUpdateCredentials).toHaveBeenNthCalledWith(1, connection, false, expect.any(Object));
     expect(mocks.refreshAndUpdateCredentials).toHaveBeenNthCalledWith(2, refreshedConnection, true, expect.any(Object));
-    expect(mocks.getCodexRateLimitResetCredits).toHaveBeenNthCalledWith(2, "forced-token", expect.any(Object), {});
+    expect(mocks.getCodexRateLimitResetCredits).toHaveBeenNthCalledWith(2, "forced-token", expect.any(Object), {}, undefined);
   });
 
   it("POST returns 409 when there are no reset credits to consume", async () => {
@@ -192,6 +193,7 @@ describe("Codex reset credits", () => {
       expect.any(String),
       expect.objectContaining({ strictProxy: false }),
       {},
+      undefined,
     );
   });
 });

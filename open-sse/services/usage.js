@@ -36,7 +36,7 @@ const USAGE_HANDLERS = {
   antigravity: (c) => getAntigravityUsage(c.accessToken, c.providerDataWithProjectId, c.proxyOptions),
   agy: (c) => getAntigravityUsage(c.accessToken, c.providerDataWithProjectId, c.proxyOptions),
   claude: (c) => getClaudeUsage(c.accessToken ?? c.apiKey, c.proxyOptions, c.authType),
-  codex: (c) => getCodexUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
+  codex: (c) => getCodexUsage(c.accessToken, c.providerSpecificData, c.proxyOptions, c.idToken),
   kiro: (c) => getKiroUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
   qoder: (c) => getQoderUsage(c.accessToken, c.proxyOptions),
   qwen: (c) => getQwenUsage(c.accessToken, c.providerSpecificData),
@@ -55,7 +55,7 @@ const USAGE_HANDLERS = {
 };
 
 export async function getUsageForProvider(connection, proxyOptions = null) {
-  const { provider, accessToken, apiKey, authType, providerSpecificData, projectId, id: connectionId } = connection;
+  const { provider, accessToken, apiKey, authType, providerSpecificData, projectId, idToken, id: connectionId } = connection;
   const providerDataWithProjectId = {
     ...(providerSpecificData || {}),
     ...(projectId ? { projectId } : {}),
@@ -63,5 +63,5 @@ export async function getUsageForProvider(connection, proxyOptions = null) {
 
   const handler = USAGE_HANDLERS[provider];
   if (!handler) return { message: `Usage API not implemented for ${provider}` };
-  return await handler({ provider, accessToken, apiKey, authType, providerSpecificData, providerDataWithProjectId, proxyOptions, connectionId });
+  return await handler({ provider, accessToken, apiKey, authType, providerSpecificData, providerDataWithProjectId, proxyOptions, connectionId, idToken });
 }

@@ -158,7 +158,7 @@ export async function fetchCodexQuota(context) {
   if (hasConflictingCodexAccountIds(providerData)) {
     return providerFailure(config, { outcome: "malformed" });
   }
-  const accountId = resolveCodexAccountId(providerData);
+  const accountId = resolveCodexAccountId(providerData, connection?.idToken);
   const headers = {
     Authorization: `Bearer ${token}`,
     Accept: "application/json",

@@ -64,14 +64,18 @@ function looksLikeProxyOptions(value) {
   );
 }
 
-function normalizeCodexUsageArgs(providerSpecificData, proxyOptions) {
+function normalizeCodexUsageArgs(providerSpecificData, proxyOptions, idToken = null) {
   if (!proxyOptions && looksLikeProxyOptions(providerSpecificData)) {
-    return [{}, providerSpecificData];
+    // Ambiguous legacy call: the 2nd arg is really proxyOptions. Keep it as the
+    // account source only when it (or the idToken) still resolves an account id.
+    return resolveCodexAccountId(providerSpecificData, idToken)
+      ? [providerSpecificData, providerSpecificData]
+      : [{}, providerSpecificData];
   }
   return [providerSpecificData || {}, proxyOptions];
 }
 
-function buildCodexHeaders(accessToken, providerSpecificData = {}, extra = {}) {
+function buildCodexHeaders(accessToken, providerSpecificData = {}, extra = {}, idToken = null) {
   const headers = {
     "Authorization": `Bearer ${accessToken}`,
     "Accept": "application/json",
@@ -79,7 +83,7 @@ function buildCodexHeaders(accessToken, providerSpecificData = {}, extra = {}) {
     "User-Agent": "codex_cli_rs/0.136.0",
     ...extra,
   };
-  applyCodexAccountHeader(headers, providerSpecificData);
+  applyCodexAccountHeader(headers, providerSpecificData, "ChatGPT-Account-ID", idToken);
   return headers;
 }
 
@@ -189,13 +193,13 @@ function getCodexReviewRateLimit(data) {
   }) || null;
 }
 
-export async function getCodexUsage(accessToken, providerSpecificData = {}, proxyOptions = null) {
-  [providerSpecificData, proxyOptions] = normalizeCodexUsageArgs(providerSpecificData, proxyOptions);
+export async function getCodexUsage(accessToken, providerSpecificData = {}, proxyOptions = null, idToken = null) {
+  [providerSpecificData, proxyOptions] = normalizeCodexUsageArgs(providerSpecificData, proxyOptions, idToken);
 
   try {
     const response = await proxyAwareFetch(CODEX_CONFIG.usageUrl, {
       method: "GET",
-      headers: buildCodexHeaders(accessToken, providerSpecificData),
+      headers: buildCodexHeaders(accessToken, providerSpecificData, {}, idToken),
     }, proxyOptions);
 
     if (!response.ok) {
@@ -223,14 +227,14 @@ export async function getCodexUsage(accessToken, providerSpecificData = {}, prox
   }
 }
 
-export async function getCodexRateLimitResetCredits(accessToken, proxyOptions = null, providerSpecificData = null) {
+export async function getCodexRateLimitResetCredits(accessToken, proxyOptions = null, providerSpecificData = null, idToken = null) {
   if (!accessToken) {
     throw new Error("No Codex access token available. Please re-authorize the connection.");
   }
 
   const headers = buildCodexHeaders(accessToken, providerSpecificData, {
     "OpenAI-Beta": "codex-1",
-  });
+  }, idToken);
 
   const response = await proxyAwareFetch(CODEX_CONFIG.resetCreditsUrl, {
     method: "GET",
@@ -253,12 +257,15 @@ export async function getCodexRateLimitResetCredits(accessToken, proxyOptions = 
 }
 
 // Consume one Codex rate-limit reset credit (irreversible, spends 1 credit)
-export async function consumeCodexRateLimitResetCredit(accessToken, redeemRequestId, proxyOptions = null, providerSpecificData = null) {
+export async function consumeCodexRateLimitResetCredit(accessToken, redeemRequestId, proxyOptions = null, providerSpecificData = null, idToken = null) {
   if (!accessToken) {
     throw new Error("No Codex access token available. Please re-authorize the connection.");
   }
   if (!redeemRequestId || typeof redeemRequestId !== "string") {
     throw new Error("A redeem request id is required to consume a Codex reset credit.");
+  }
+  if (!resolveCodexAccountId(providerSpecificData, idToken)) {
+    throw new Error("A ChatGPT account ID is required to consume a Codex reset credit. Please re-authorize the connection.");
   }
 
   let response;
@@ -266,7 +273,7 @@ export async function consumeCodexRateLimitResetCredit(accessToken, redeemReques
   try {
     response = await proxyAwareFetch(CODEX_CONFIG.resetCreditsConsumeUrl, {
       method: "POST",
-      headers: buildCodexHeaders(accessToken, providerSpecificData || {}, { "Content-Type": "application/json" }),
+      headers: buildCodexHeaders(accessToken, providerSpecificData || {}, { "Content-Type": "application/json" }, idToken),
       body: JSON.stringify({ redeem_request_id: redeemRequestId }),
     }, proxyOptions);
 

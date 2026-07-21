@@ -217,6 +217,7 @@ async function sendCodexPing(connection, providerConfig, proxyOptions, deps, sig
       accessToken: connection.accessToken,
       connectionId: connection.id,
       providerSpecificData: connection.providerSpecificData,
+      idToken: connection.idToken,
     },
     proxyOptions,
     signal,

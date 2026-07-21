@@ -575,7 +575,7 @@ export class CodexExecutor extends BaseExecutor {
     // older/custom rows may use workspaceId/accountId. Prefer explicit workspaceId
     // but fall back to chatgptAccountId/accountId so requests don't cross-bind to
     // the wrong OpenAI account and surface as token_invalid after adding another account.
-    applyCodexAccountHeader(headers, credentials?.providerSpecificData);
+    applyCodexAccountHeader(headers, credentials?.providerSpecificData, "ChatGPT-Account-ID", credentials?.idToken);
     return headers;
   }
 

@@ -99,10 +99,16 @@ function collectResponsesOutput(responseBody) {
       continue;
     }
     if (item?.type === RESPONSES_ITEM.FUNCTION_CALL || item?.type === "custom_tool_call") {
+      // A native custom_tool_call carries its raw payload in `input` (a string),
+      // not `arguments`. Wrap it as { input: <raw> } so downstream JSON parsing
+      // does not collapse it to {} (OmniRoute #7905).
+      const args = item?.type === "custom_tool_call"
+        ? (typeof item.input === "string" ? JSON.stringify({ input: item.input }) : JSON.stringify(item.input || {}))
+        : (typeof item.arguments === "string" ? item.arguments : JSON.stringify(item.arguments || {}));
       toolCalls.push({
         id: item.call_id || item.id || `call_${toolCalls.length}`,
         name: item.name || "",
-        arguments: typeof item.arguments === "string" ? item.arguments : JSON.stringify(item.arguments || {}),
+        arguments: args,
       });
     }
   }

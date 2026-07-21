@@ -211,6 +211,26 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       .map(tool => {
         // Already in Chat Completions format: { type: "function", function: { name, ... } }
         if (tool.function) return tool;
+        // Responses API custom (freeform) tool: { type: "custom", name, description }.
+        // Chat Completions has no custom-tool type, so normalize it to a function
+        // tool whose single parameter is the raw `input` string. The response
+        // translator re-emits it as a custom_tool_call by name (OmniRoute #7905).
+        if (tool.type === "custom" && typeof tool.name === "string" && tool.name.trim() !== "") {
+          return {
+            type: OPENAI_BLOCK.FUNCTION,
+            function: {
+              name: tool.name,
+              description: String(tool.description || ""),
+              parameters: {
+                type: "object",
+                properties: { input: { type: "string" } },
+                required: ["input"],
+                additionalProperties: false,
+              },
+              strict: tool.strict,
+            },
+          };
+        }
         // Responses API function tool: { type: "function", name, description, parameters }
         // Only convert when a non-empty name is present; skip hosted tools without one.
         const name = tool.name;

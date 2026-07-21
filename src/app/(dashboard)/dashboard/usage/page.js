@@ -1,12 +1,31 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { UsageStats, RequestLogger, CardSkeleton, SegmentedControl, ConfirmModal, Button } from "@/shared/components";
-import { USAGE_PERIOD_OPTIONS } from "@/lib/usagePeriods.js";
+import { UsageStats, RequestLogger, CardSkeleton, SegmentedControl, ConfirmModal, Button, Select, DateRangePicker } from "@/shared/components";
+import { USAGE_PERIOD_OPTIONS, getUsageCalendarCutoff, toLocalDateKey, addLocalCalendarDays } from "@/lib/usagePeriods.js";
 import RequestDetailsTab from "./components/RequestDetailsTab";
 
 const PERIODS = USAGE_PERIOD_OPTIONS;
+// Appended to the preset list so a manually-edited calendar range has a label.
+const CUSTOM_PERIOD = { value: "custom", label: "Custom", disabled: true };
+
+/**
+ * Map a preset period id to a `{ startDate, endDate }` pair (YYYY-MM-DD) for the
+ * calendar display. The actual usage query is always the exact preset (e.g.
+ * period=24h uses a rolling 24h window); native date inputs are date-only, so
+ * `today`/`24h`/`all` are special-cased as calendar approximations: today =
+ * today, 24h ≈ yesterday (date-only), all = empty start (no lower bound).
+ * @returns {{ startDate: string, endDate: string }}
+ */
+function presetToRange(preset) {
+  const endDate = toLocalDateKey(new Date());
+  if (preset === "today") return { startDate: endDate, endDate };
+  if (preset === "24h") return { startDate: toLocalDateKey(addLocalCalendarDays(new Date(), -1)), endDate };
+  if (preset === "all") return { startDate: "", endDate };
+  const cutoff = getUsageCalendarCutoff(preset);
+  return { startDate: cutoff ? toLocalDateKey(cutoff) : "", endDate };
+}
 
 const RESET_PERIODS = [
   { value: "5m", label: "5 minutes" },
@@ -31,12 +50,33 @@ export default function UsagePage() {
 function UsageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-
+  // `period` is a valid preset; `customRange` is the calendar's window. Selecting
+  // a preset syncs the calendar to that preset's computed start/end. Editing the
+  // calendar to a window that diverges from the preset flips the Select to
+  // "Custom" and re-queries the stats/table via startDate/endDate (the chart,
+  // whose endpoint is preset-only, is replaced by an honest note while custom).
+  const [customRange, setCustomRange] = useState(() => presetToRange("today"));
   const [period, setPeriod] = useState("today");
   const [resetModalOpen, setResetModalOpen] = useState(false);
   const [resetPeriod, setResetPeriod] = useState("all");
   const [resetting, setResetting] = useState(false);
   const [resetNonce, setResetNonce] = useState(0);
+
+  // Select shows "custom" whenever the calendar diverges from the active preset.
+  const selectValue = useMemo(() => {
+    const preset = presetToRange(period);
+    return preset.startDate === customRange.startDate && preset.endDate === customRange.endDate
+      ? period
+      : "custom";
+  }, [period, customRange]);
+
+  const handlePresetChange = (value) => {
+    if (value === "custom") return; // Custom is reached only by editing the calendar.
+    setPeriod(value);
+    setCustomRange(presetToRange(value));
+  };
+
+  const handleRangeChange = ({ startDate, endDate }) => setCustomRange({ startDate, endDate });
 
   const tabFromUrl = searchParams.get("tab");
   const activeTab = tabFromUrl && ["overview", "logs", "details"].includes(tabFromUrl)
@@ -90,15 +130,26 @@ function UsageContent() {
           />
         </div>
         {activeTab === "overview" && (
-          <div className="flex min-w-0 flex-1 items-center justify-end gap-2 overflow-hidden">
-            <div className="overflow-x-auto">
-              <SegmentedControl
-                options={PERIODS}
-                value={period}
-                onChange={setPeriod}
-                size="sm"
-                className="min-w-max"
+          <div className="flex min-w-0 flex-1 flex-col items-stretch justify-end gap-2 sm:flex-row sm:items-center sm:overflow-visible">
+            <div className="flex min-w-0 flex-wrap items-center gap-2 sm:justify-end">
+              <Select
+                aria-label="Usage period preset"
+                options={[...PERIODS, CUSTOM_PERIOD]}
+                value={selectValue}
+                onChange={(e) => handlePresetChange(e.target.value)}
+                placeholder="Period"
+                className="min-w-[8rem]"
               />
+              <DateRangePicker
+                startDate={customRange.startDate}
+                endDate={customRange.endDate}
+                onChange={handleRangeChange}
+              />
+              {selectValue === "custom" && (
+                <p className="w-full text-xs text-text-muted sm:w-auto">
+                  Custom range is a visual selection — pick a preset to refetch stats.
+                </p>
+              )}
             </div>
             <Button
               variant="outline"
@@ -115,7 +166,7 @@ function UsageContent() {
 
       {activeTab === "overview" && (
         <Suspense fallback={<CardSkeleton />}>
-          <UsageStats period={period} setPeriod={setPeriod} hidePeriodSelector resetNonce={resetNonce} />
+          <UsageStats period={period} setPeriod={setPeriod} customRange={customRange} isCustomRange={selectValue === "custom"} hidePeriodSelector resetNonce={resetNonce} />
         </Suspense>
       )}
       {activeTab === "logs" && <RequestLogger resetNonce={resetNonce} />}

@@ -15,6 +15,10 @@ const MAX_PAGE_SIZE = 500;
 const API_KEY_AUTH_TYPES = ["apikey", "api_key"];
 
 export function isUsageEligible(connection) {
+  // A disabled (isActive:false) api-key/free-tier row must not render a quota
+  // card — e.g. a stale cloud "ollama" connection kept only for history. OAuth
+  // rows stay eligible even when inactive so the user can still reconnect them.
+  if (connection.isActive === false && connection.authType !== "oauth") return false;
   return USAGE_SUPPORTED_PROVIDERS.includes(connection.provider) && (
     connection.authType === "oauth" ||
     (API_KEY_AUTH_TYPES.includes(connection.authType) && USAGE_APIKEY_PROVIDERS.includes(connection.provider))

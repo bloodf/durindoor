@@ -13,6 +13,7 @@ import {
   Legend,
 } from "recharts";
 import Card from "@/shared/components/Card";
+import { chartTooltipContentStyle, chartTooltipLabelStyle, chartTooltipItemStyle } from "@/shared/components/chartTooltip";
 import { createLatestRequestGuard } from "@/shared/utils/requestFreshness";
 
 const fmtTokens = (n) => {
@@ -106,15 +107,9 @@ export default function UsageChart({ period = "7d" }) {
               width={50}
             />
             <Tooltip
-              contentStyle={{
-                backgroundColor: "var(--color-bg)",
-                border: "1px solid var(--color-border)",
-                borderRadius: "8px",
-                fontSize: "12px",
-                color: "var(--color-text)",
-              }}
-              labelStyle={{ color: "var(--color-text)" }}
-              itemStyle={{ color: "var(--color-text)" }}
+              contentStyle={chartTooltipContentStyle}
+              labelStyle={chartTooltipLabelStyle}
+              itemStyle={chartTooltipItemStyle}
               formatter={(value, name) =>
                 name === "tokens" ? [fmtTokens(value), "Tokens"] : [fmtCost(value), "Cost"]
               }

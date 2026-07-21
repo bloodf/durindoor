@@ -116,6 +116,38 @@ describe("usage period aggregation", () => {
     }
   });
 
+  it("filters by an explicit custom startDate/endDate range (inclusive local days)", async () => {
+    await seed();
+    const nowMs = now.getTime();
+    // Count seeded rows whose LOCAL calendar day falls in [start, end] inclusive.
+    const inRange = (startKey, endKey) =>
+      timestamps.filter((ts) => {
+        if (ts > nowMs) return false; // future rows excluded
+        const d = new Date(ts);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        return key >= startKey && key <= endKey;
+      }).length;
+
+    // 2026-07-09 .. 2026-07-10 (end === today, reconstructed from live history).
+    const stats = await db.getUsageStats("all", { startDate: "2026-07-09", endDate: "2026-07-10" });
+    expect(stats.totalRequests).toBe(inRange("2026-07-09", "2026-07-10"));
+    expect(sumRequests(stats.byProvider)).toBe(stats.totalRequests);
+    expect(sumRequests(stats.byModel)).toBe(stats.totalRequests);
+
+    // A single past day.
+    const single = await db.getUsageStats("all", { startDate: "2026-07-04", endDate: "2026-07-04" });
+    expect(single.totalRequests).toBe(inRange("2026-07-04", "2026-07-04"));
+
+    // Reversed dates are normalized (start/end swapped), not empty.
+    const reversed = await db.getUsageStats("all", { startDate: "2026-07-10", endDate: "2026-07-09" });
+    expect(reversed.totalRequests).toBe(inRange("2026-07-09", "2026-07-10"));
+
+    // Malformed dates are ignored → falls back to the preset ("all").
+    const ignored = await db.getUsageStats("all", { startDate: "nope", endDate: "2026-07-10" });
+    const allStats = await db.getUsageStats("all");
+    expect(ignored.totalRequests).toBe(allStats.totalRequests);
+  });
+
   it("keeps stats and chart token-detail and cost totals equal", async () => {
     await seed();
     for (const period of ["today", "24h", "7d", "90d", "365d", "all"]) {

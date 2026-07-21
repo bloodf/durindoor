@@ -164,6 +164,33 @@ async function ensureRingInitialized() {
   } catch {}
 }
 
+/**
+ * Connection ids that completed a SUCCESSFUL request within `withinMs`.
+ *
+ * The health probe fires an independent validation request that can disagree
+ * with the live chat path (a 5xx/timeout on the probe host, or an OAuth token
+ * the probe can't use), so a provider that is actively serving traffic can read
+ * as "down". Real request success is the strongest liveness signal; the health
+ * monitor overlays this set to avoid reporting a working account as down.
+ *
+ * @param {number} withinMs lookback window in milliseconds
+ * @param {number} [now] epoch ms (injectable for tests)
+ * @returns {Promise<Set<string>>}
+ */
+export async function getRecentlyActiveConnectionIds(withinMs, now = Date.now()) {
+  await ensureRingInitialized();
+  const cutoff = now - withinMs;
+  const ids = new Set();
+  for (const item of recentRing.items) {
+    if (!item.connectionId) continue;
+    // status defaults to "ok"; anything explicitly "error" is not a success.
+    if (item.status && item.status !== "ok") continue;
+    const ts = item.timestamp ? Date.parse(item.timestamp) : NaN;
+    if (Number.isFinite(ts) && ts >= cutoff) ids.add(item.connectionId);
+  }
+  return ids;
+}
+
 async function calculateCost(provider, model, tokens) {
   if (!tokens) return 0;
   try {
@@ -430,7 +457,41 @@ function loadDaysInRange(adapter, maxDays, now = new Date()) {
   return rows;
 }
 
-export async function getUsageStats(period = "all") {
+// Like loadDaysInRange but bounded by explicit inclusive local date keys
+// (YYYY-MM-DD) instead of a rolling day count. Used by the usage page's custom
+// calendar range. `endKey` >= today reconstructs the current day from live
+// history (usageDaily has no row for today yet), matching loadDaysInRange.
+function loadDaysInDateRange(adapter, startKey, endKey, now = new Date()) {
+  const todayKey = toLocalDateKey(now);
+  const rows = adapter.all(
+    `SELECT dateKey, data FROM usageDaily WHERE dateKey >= ? AND dateKey <= ? AND dateKey < ? ORDER BY dateKey ASC`,
+    [startKey, endKey, todayKey],
+  );
+  if (endKey >= todayKey && startKey <= todayKey) {
+    const startOfToday = new Date(now);
+    startOfToday.setHours(0, 0, 0, 0);
+    const todayRows = adapter.all(
+      `SELECT timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens,
+              completionTokens, cost, status, tokens
+         FROM usageHistory WHERE timestamp >= ? AND timestamp <= ? ORDER BY id ASC`,
+      [startOfToday.toISOString(), now.toISOString()],
+    );
+    if (todayRows.length > 0) {
+      const day = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0 };
+      for (const row of todayRows) {
+        const tokens = parseJson(row.tokens, {});
+        aggregateEntryToDay(day, {
+          ...row,
+          tokens: { prompt_tokens: row.promptTokens || 0, completion_tokens: row.completionTokens || 0, ...tokens },
+        });
+      }
+      rows.push({ dateKey: todayKey, data: stringifyJson(day) });
+    }
+  }
+  return rows;
+}
+
+export async function getUsageStats(period = "all", opts = {}) {
   const db = await getAdapter();
   const now = new Date();
 
@@ -559,11 +620,26 @@ export async function getUsageStats(period = "all") {
     }
   }
 
-  const useDailySummary = period !== "24h" && period !== "today";
+  // Custom calendar range (YYYY-MM-DD, inclusive). Validated defensively: both
+  // present, well-formed, and start <= end. When active it forces the daily-
+  // summary path bounded by the explicit dates, independent of the preset.
+  const rawStart = typeof opts.startDate === "string" ? opts.startDate.trim() : "";
+  const rawEnd = typeof opts.endDate === "string" ? opts.endDate.trim() : "";
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  let customStart = DATE_RE.test(rawStart) ? rawStart : "";
+  let customEnd = DATE_RE.test(rawEnd) ? rawEnd : "";
+  if (customStart && customEnd && customStart > customEnd) {
+    [customStart, customEnd] = [customEnd, customStart];
+  }
+  const hasCustomRange = Boolean(customStart && customEnd);
+
+  const useDailySummary = hasCustomRange || (period !== "24h" && period !== "today");
 
   if (useDailySummary) {
     const maxDays = getUsagePeriodDays(period);
-    const dayRows = loadDaysInRange(db, maxDays, now);
+    const dayRows = hasCustomRange
+      ? loadDaysInDateRange(db, customStart, customEnd, now)
+      : loadDaysInRange(db, maxDays, now);
 
     for (const dr of dayRows) {
       const dateKey = dr.dateKey;

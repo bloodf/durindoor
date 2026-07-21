@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Card } from "@/shared/components";
 import { USAGE_PERIOD_OPTIONS } from "@/lib/usagePeriods.js";
+import { chartTooltipContentStyle, chartTooltipLabelStyle, chartTooltipItemStyle } from "@/shared/components/chartTooltip";
 
 const bytes = (value) => {
   const n = Number(value) || 0;
@@ -106,7 +107,12 @@ export default function TokenSaverOverview() {
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.15)" vertical={false} />
                   <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="rgba(148,163,184,0.4)" />
                   <YAxis tickFormatter={bytes} tick={{ fontSize: 11 }} stroke="rgba(148,163,184,0.4)" width={70} />
-                  <Tooltip formatter={(value) => bytes(value)} />
+                  <Tooltip
+                    contentStyle={chartTooltipContentStyle}
+                    labelStyle={chartTooltipLabelStyle}
+                    itemStyle={chartTooltipItemStyle}
+                    formatter={(value) => bytes(value)}
+                  />
                   <Area type="monotone" dataKey="actualBytesSaved" stroke="var(--color-primary, #6366f1)" fill="url(#tokenSaverBytes)" strokeWidth={2} />
                 </AreaChart>
               </ResponsiveContainer>

@@ -30,6 +30,13 @@
 import { getProviderConnections } from "@/lib/db/repos/connectionsRepo";
 import { probeConnectionHealth, sanitizeErrorMessage, AUTH_FAILURE_STATUSES } from "@/lib/providerHealthProbe";
 import { inspectProviderQuota } from "@/shared/services/providerQuotaPreflight";
+import { getRecentlyActiveConnectionIds } from "@/lib/db/repos/usageRepo";
+
+// A connection that served a successful request within this window is treated
+// as reachable even when its independent probe says otherwise (real traffic is
+// a stronger liveness signal than a probe host that 5xx'd or rejected an OAuth
+// token the live chat path accepts).
+const RECENT_ACTIVITY_WINDOW_MS = 10 * 60 * 1000;
 
 /** @typedef {"healthy"|"degraded"|"down"|"blocked"|"unconfigured"|"unknown"} HealthState */
 
@@ -194,6 +201,27 @@ async function buildPayload(opts) {
           quota: publicQuotaDecision(quotaDecisions.get(connections[i]?.id)),
         }
   );
+
+  // Overlay real request success: an independent probe can disagree with the
+  // live chat path (probe-host 5xx, or an OAuth token the probe can't replay),
+  // so a provider actively serving traffic can read as down/degraded. If the
+  // connection completed a successful request recently, trust that over the
+  // probe. Never override `blocked` (SSRF guard) or `unconfigured` (no key).
+  const OVERRIDABLE = new Set(["down", "degraded", "unknown"]);
+  const recentActivityLoader = opts.recentActivityLoader ?? getRecentlyActiveConnectionIds;
+  let recentlyActive;
+  try {
+    recentlyActive = await recentActivityLoader(RECENT_ACTIVITY_WINDOW_MS, now());
+  } catch {
+    recentlyActive = new Set();
+  }
+  for (const p of providers) {
+    if (recentlyActive.has(p.id) && OVERRIDABLE.has(p.state)) {
+      p.state = "healthy";
+      p.error = null;
+      p.recentlyActive = true;
+    }
+  }
 
   const summary = { healthy: 0, degraded: 0, down: 0, blocked: 0, unconfigured: 0, unknown: 0, quotaUnavailable: 0, total: providers.length };
   for (const p of providers) {

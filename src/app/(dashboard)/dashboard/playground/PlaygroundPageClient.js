@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Badge, Button, Card, ProviderIcon, SegmentedControl, Select } from "@/shared/components";
+import { Badge, Button, Card, ProviderIcon, Select } from "@/shared/components";
 import Pagination from "@/shared/components/Pagination";
 import { getModelsByProviderId, isChatModel } from "@/shared/constants/models";
 import { isAnthropicCompatibleProvider, isOpenAICompatibleProvider } from "@/shared/constants/providers";
@@ -790,7 +790,7 @@ export default function PlaygroundPageClient() {
                 onClick={() => setModelMenuOpen((value) => !value)}
                 aria-haspopup="listbox"
                 aria-expanded={modelMenuOpen}
-                className="flex w-full items-center gap-3 rounded-[12px] border border-border bg-surface px-3 py-2.5 text-left transition hover:bg-surface-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 sm:w-auto"
+                className="flex h-[52px] w-full items-center gap-3 rounded-[12px] border border-border bg-surface px-3 py-2.5 text-left transition hover:bg-surface-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 sm:w-auto"
               >
                 {activeProviderGroup ? (
                   <ProviderIcon
@@ -891,11 +891,13 @@ export default function PlaygroundPageClient() {
                 />
               ) : null}
               {reasoningOptions && reasoningOptions.length > 1 ? (
-                <SegmentedControl
-                  size="sm"
+                <Select
+                  aria-label="Reasoning effort"
+                  selectClassName="h-[52px] min-w-[9rem] py-2.5"
                   options={reasoningOptions.map((option) => ({ value: option, label: humanize(option) }))}
                   value={reasoningEffort}
-                  onChange={setReasoningEffort}
+                  onChange={(event) => setReasoningEffort(event.target.value)}
+                  placeholder="Effort"
                 />
               ) : null}
               <Button

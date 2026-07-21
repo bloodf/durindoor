@@ -54,6 +54,18 @@ describe("isUsageEligible", () => {
   it("returns false for ollama-local even with API key", () => {
     expect(isUsageEligible({ provider: "ollama-local", authType: "apikey" })).toBe(false);
   });
+
+  it("returns false for a disabled api-key ollama row (stale cloud connection)", () => {
+    expect(isUsageEligible({ provider: "ollama", authType: "apikey", isActive: false })).toBe(false);
+  });
+
+  it("returns true for an active api-key ollama row", () => {
+    expect(isUsageEligible({ provider: "ollama", authType: "apikey", isActive: true })).toBe(true);
+  });
+
+  it("keeps a disabled OAuth claude row eligible so it can be reconnected", () => {
+    expect(isUsageEligible({ provider: "claude", authType: "oauth", isActive: false })).toBe(true);
+  });
 });
 
 export {};

@@ -159,11 +159,21 @@ const MODEL_COLUMNS = [
 ];
 
 const ACCOUNT_COLUMNS = [
+  // ponytail: Account must be the first (group-key) column, matching MODEL/API_KEY/ENDPOINT.
+  // Prior order (Model/Provider/Account/...) misaligned cells by one; PROVIDER col showed model.
+  { field: "accountName", label: "Account" },
   { field: "rawModel", label: "Model" },
   { field: "provider", label: "Provider" },
-  { field: "accountName", label: "Account" },
   { field: "requests", label: "Requests", align: "right" },
   { field: "lastUsed", label: "Last Used", align: "right" },
+];
+
+const PROVIDER_COLUMNS = [
+  // byProvider rows are keyed by provider slug and carry only request/token/cost
+  // totals — no rawModel, accountName, or lastUsed. sortData exposes the slug
+  // as `item.key`; Requests is the only extra leading column before value cells.
+  { field: "key", label: "Provider" },
+  { field: "requests", label: "Requests", align: "right" },
 ];
 
 const API_KEY_COLUMNS = [
@@ -184,6 +194,7 @@ const ENDPOINT_COLUMNS = [
 
 const TABLE_OPTIONS = [
   { value: "model", label: "Usage by Model" },
+  { value: "provider", label: "Usage by Provider" },
   { value: "account", label: "Usage by Account" },
   { value: "apiKey", label: "Usage by API Key" },
   { value: "endpoint", label: "Usage by Endpoint" },
@@ -191,7 +202,7 @@ const TABLE_OPTIONS = [
 
 const PERIODS = USAGE_PERIOD_OPTIONS;
 
-export default function UsageStats({ period: periodProp, setPeriod: setPeriodProp, hidePeriodSelector = false, resetNonce = 0 } = {}) {
+export default function UsageStats({ period: periodProp, setPeriod: setPeriodProp, customRange = null, isCustomRange = false, hidePeriodSelector = false, resetNonce = 0 } = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -245,7 +256,10 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
       setFetching(true);
     }
 
-    fetch(`/api/usage/stats?period=${encodeURIComponent(period)}`, { signal: controller.signal })
+    const rangeParams = customRange?.startDate && customRange?.endDate
+      ? `&startDate=${encodeURIComponent(customRange.startDate)}&endDate=${encodeURIComponent(customRange.endDate)}`
+      : "";
+    fetch(`/api/usage/stats?period=${encodeURIComponent(period)}${rangeParams}`, { signal: controller.signal })
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
         if (data && !controller.signal.aborted && requestToken.isCurrent()) {
@@ -266,7 +280,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
       controller.abort();
       requestToken.cancel();
     };
-  }, [period, statsRequestGuard, resetNonce]);
+  }, [period, customRange?.startDate, customRange?.endDate, statsRequestGuard, resetNonce]);
 
   // SSE connection - real-time updates for activeRequests + recentRequests only
   useEffect(() => {
@@ -335,6 +349,28 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
               <td className="px-6 py-3"><Badge variant={item.pending > 0 ? "primary" : "neutral"} size="sm">{item.provider}</Badge></td>
               <td className="px-6 py-3 text-right">{fmt(item.requests)}</td>
               <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(item.lastUsed)}</td>
+            </>
+          ),
+        };
+      }
+      case "provider": {
+        // byProvider is { slug: { requests, promptTokens, completionTokens, cachedTokens,
+        // reasoningTokens, cacheCreationTokens, cost } } — no rawModel/lastUsed/accountName.
+        // sortData surfaces the slug as item.key; group by it so each provider is one row.
+        return {
+          columns: PROVIDER_COLUMNS,
+          groupedData: groupDataByKey(sortData(stats.byProvider, {}, sortBy, sortOrder), "key"),
+          storageKey: "usage-stats:expanded-providers",
+          emptyMessage: "No provider usage recorded yet.",
+          renderSummaryCells: (group) => (
+            <>
+              <td className="px-6 py-3 text-right">{fmt(group.summary.requests)}</td>
+            </>
+          ),
+          renderDetailCells: (item) => (
+            <>
+              <td className="px-6 py-3 font-medium">{item.key}</td>
+              <td className="px-6 py-3 text-right">{fmt(item.requests)}</td>
             </>
           ),
         };
@@ -476,8 +512,14 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
         </div>
       )}
 
-      {/* Token / Cost chart - sync period */}
-      {loading ? spinner : <UsageChart period={period} />}
+      {/* Token / Cost chart — preset ranges only. On a custom calendar range the
+          chart endpoint has no matching window, so show an honest note instead
+          of a graph that disagrees with the cards/table above. */}
+      {loading ? spinner : isCustomRange ? (
+        <div className="flex h-40 items-center justify-center rounded-lg border border-border bg-surface text-sm text-text-muted">
+          Chart shows preset ranges only — pick a preset to view the graph.
+        </div>
+      ) : <UsageChart period={period} />}
 
       {/* Table with dropdown selector */}
       <div className="flex flex-col gap-3">

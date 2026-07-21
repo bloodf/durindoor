@@ -13,10 +13,17 @@ const LOG_LEVEL_COLORS = {
   DEBUG: "text-purple-400",
 };
 
+// Detect the log level from the first bracketed token, e.g. "[INFO] ...".
+// NOTE: use a non-global regex and read capture group [1]; a /g match returns
+// full-match strings (["[INFO]"]) whose [1] is undefined, so every line would
+// fall back to the default color.
+function getLogLevel(line) {
+  const match = line.match(/\[(\w+)\]/);
+  return match ? match[1] : null;
+}
+
 function colorLine(line) {
-  const match = line.match(/\[(\w+)\]/g);
-  const levelTag = match ? match[1]?.replace(/\[|\]/g, "") : null;
-  const color = LOG_LEVEL_COLORS[levelTag] || "text-green-400";
+  const color = LOG_LEVEL_COLORS[getLogLevel(line)] || "text-green-400";
   return <span className={color}>{line}</span>;
 }
 
@@ -81,31 +88,64 @@ export default function ConsoleLogClient() {
   );
 
   return (
-    <div className="">
-      <Card>
-        <div className="flex flex-wrap items-center justify-end gap-2 px-4 pt-3 pb-2">
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search logs" className="max-w-xs" />
-          <select value={level} onChange={(e) => setLevel(e.target.value)} className="rounded border border-border bg-surface px-2 py-1 text-sm">
+    <Card className="flex flex-col overflow-hidden p-0">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-surface px-4 py-2.5">
+        <div className="flex items-center gap-2">
+          <span className="material-symbols-outlined text-text-muted text-lg">terminal</span>
+          <h2 className="text-sm font-semibold">Console Log</h2>
+          <span className="rounded bg-surface-2 px-1.5 py-0.5 text-xs text-text-muted tabular-nums">
+            {visibleLogs.length}/{logs.length}
+          </span>
+          {paused && (
+            <span className="rounded bg-yellow-500/15 px-1.5 py-0.5 text-xs font-medium text-yellow-500">Paused</span>
+          )}
+        </div>
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search logs"
+            aria-label="Search console logs"
+            className="max-w-xs"
+          />
+          <select
+            value={level}
+            onChange={(e) => setLevel(e.target.value)}
+            aria-label="Filter by log level"
+            className="rounded border border-border bg-surface-2 px-2 py-1 text-sm"
+          >
             {["ALL", ...Object.keys(LOG_LEVEL_COLORS)].map((value) => <option key={value}>{value}</option>)}
           </select>
-          <Button size="sm" variant="outline" icon={paused ? "play_arrow" : "pause"} onClick={() => setPaused((value) => !value)}>
+          <Button
+            size="sm"
+            variant="outline"
+            icon={paused ? "play_arrow" : "pause"}
+            aria-pressed={paused}
+            onClick={() => setPaused((value) => !value)}
+          >
             {paused ? "Resume" : "Pause"}
           </Button>
           <Button size="sm" variant="outline" icon="delete" onClick={handleClear}>Clear</Button>
         </div>
-        <div
-          ref={logRef}
-          className="bg-black rounded-b-lg p-4 text-xs font-mono h-[calc(100vh-220px)] overflow-y-auto"
-        >
-          {visibleLogs.length === 0 ? (
-            <span className="text-text-muted">No matching console logs.</span>
-          ) : (
-            <div className="space-y-0.5">
-              {visibleLogs.map((line, i) => <div key={i}>{colorLine(line)}</div>)}
-            </div>
-          )}
-        </div>
-      </Card>
-    </div>
+      </div>
+      <div
+        ref={logRef}
+        role="log"
+        aria-live={paused ? "off" : "polite"}
+        className="bg-ink p-4 text-xs font-mono leading-relaxed h-[calc(100vh-220px)] overflow-y-auto"
+      >
+        {visibleLogs.length === 0 ? (
+          <div className="flex h-full items-center justify-center text-text-muted">
+            {logs.length === 0 ? "No console logs yet." : "No matching console logs."}
+          </div>
+        ) : (
+          <div className="space-y-0.5">
+            {visibleLogs.map((line, i) => (
+              <div key={i} className="rounded px-1 hover:bg-white/5">{colorLine(line)}</div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Card>
   );
 }

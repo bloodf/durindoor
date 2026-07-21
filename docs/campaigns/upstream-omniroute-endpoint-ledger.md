@@ -89,26 +89,61 @@ Plan numbers DROPPED as incorrect vs models.dev:
 | #7905 | PARTIAL | Ported the two behavior-fixing units (type:custom schema normalization; non-stream custom_tool_call input). The streaming custom_tool_call lifecycle was already DUPLICATE. The additional_tools/namespace flattening + customToolNames Set threading was NOT ported: DurinDoor's Responses translator has no additional_tools/namespace intake, so no failing behavior to fix. |
 | #7933 | NOT APPLICABLE | DurinDoor has no request-size combo compatibility filter (`evaluateContextLimit`) to attach a persisted context override to; the mismatch the PR fixes cannot reproduce. Porting would require adding a structural feature, not a bug fix. |
 
-## 5. Upstream decolua/9router ports (Tier 1 + Tier 2) — NOT ACTIONABLE
+## 5. Upstream decolua/9router ports (Tier 1 + Tier 2)
 
-The plan listed 35 upstream PR numbers (#2713, #2666, #2736, #2723, #2724, #2725,
-#2710, #2709, #2454, #2453, #2747, #2667, #2663, #2647, #1819, #2658, #2657, #1570,
-#2652, #2686, #1488, #2731, #2279, #2691, #2705, #2706, #2689, #2697, #2698, #1717,
-#2343, plus the Tier-2 UI set).
+CORRECTION: the plan's upstream PR numbers are OPEN (unmerged) pull requests
+against decolua/9router:master, not merged commits. An earlier draft of this
+ledger wrongly concluded they did not exist because it searched merged history
+(`git log --grep`) instead of open PRs; each was then re-verified OPEN via the
+GitHub PR API. Every listed PR's live diff was read and compared against the
+current fork before deciding to port or record DUPLICATE.
 
-Verification against the live `upstream/master` (decolua/9router):
-- `git fetch upstream` then `git log upstream/master --grep "(#N)"` for every listed PR.
-- Upstream uses the `(#N)` squash-merge subject format (273 such refs in history).
-- The **highest PR number present in upstream/master is #2596**. Every listed PR
-  >= #2647 therefore cannot exist upstream, and the in-range lower ones (#1488, #1570,
-  #1717, #1819, #2279, #2343, #2453, #2454, #2647, #2652, #2658, #2663, #2667, ...)
-  produce ZERO matches with the exact `(#N)` format.
+### Ported (genuine gaps, with tests)
+| PR | Change |
+|----|--------|
+| #1570 | Bound proxy ProxyAgent connect/headers timeouts (env-tunable); bodyTimeout:0 so long SSE survives a slow proxy. |
+| #2709 | Request-log dirs 0o700 / files 0o600 (logs hold masked-but-sensitive request data). |
+| #2706 | `ensureThinkingSignature` quirk on minimax/minimax-cn + empty-signature injection on unsigned Anthropic thinking-block starts in stream.js. |
+| #2705 | Skip reasoning_content injection in DefaultExecutor when the runtime transport speaks Claude. |
+| #2658 | Fold Claude cache tokens into OpenAI prompt_tokens via new `claudeUsageToOpenAI()` in the non-stream Claude usage mapping. |
+| #2663 | Reconcile Claude tool_result blocks against the immediately-previous tool_use; demote unpaired results to user text. |
+| #2686 | Show non-media combo kinds on the combos page (was filtering to `llm` only). |
+| #2697 | Bare `k3` capability pattern → 1M K3 window instead of the 200K default. |
+| #2667 | Codex 400 invalid_encrypted_content one-shot recovery (strip encrypted reasoning, retry same account) + non-fallback classification. |
+| #2689 | Combo empty-200 body retry (non-streaming only, to avoid consuming a live stream). |
 
-Conclusion: none of the plan's 35 upstream PR numbers correspond to real merged
-commits in the actual upstream. There is no source diff to port from. Per the delivery
-contract (no fabricated outputs) and the plan's own §67 ("if a real-life repo check
-reveals a different number of port-acceptable PRs, record the delta in the campaign
-ledger"), this section is recorded as NOT ACTIONABLE rather than fabricating ports.
+### DUPLICATE (already present in the fork; verified, not re-ported)
+| PR | Evidence |
+|----|----------|
+| #2747 | `nextOutputIndex`/`msgOutputIndexes`/`funcOutputIndexes` already allocated in openai-responses.js + index.js. |
+| #2657 | `injectMessagesSystem` already has the `m.type === "message"` guard + input_text developer-message creation. |
+| #2691 | `applyParamRenames` already renames max_tokens→max_completion_tokens for o1/o3/o4 + gpt-5.x (azure calls it). |
+| #2279 | claude-to-openai already keeps string tool input; openai-to-claude already has `deduplicateDoubledJson`. |
+| #1488 | build-cli.js already has the nested-standalone `server.js` discovery. |
+| #2731 | kiro.js already lacks the transport-coupled REPAIR_INSTRUCTIONS/short-final heuristics this PR removes. |
+| #2652 | `*claude*fable*` pattern already uses `claude-adaptive`. |
 
-If the maintainer can supply the real upstream PR identifiers or the intended
-behaviors, they can be re-scoped and ported in a follow-up.
+### Verified GAP but DEFERRED to dedicated follow-up PRs
+These are real gaps, but each is a large multi-file FEATURE (not a targeted fix)
+that deserves its own focused PR with full testing per the one-PR-per-concern
+discipline in AGENTS.md §6. Bundling them into this campaign branch would produce
+an unreviewable mega-diff and risk correctness in hot paths. Subagent parallelism
+was unavailable (quota-exhausted), so they are queued rather than rushed.
+
+| PR | Scope | Why deferred |
+|----|-------|--------------|
+| #1819 | codex workspace-account binding (7 files, new `codexAccount.js`) | new shared service + usage/quotaAutoPing wiring + new API route |
+| #2664 | kiro confirmed-credit-exhaustion cooldown (errorConfig + kiro executor + auth cooldown math) | touches the security-sensitive `markAccountUnavailable` reset-cap math |
+| #2688 / #2681 | kiro malformed/nested tool_call wrapper repair (large kiro executor additions) | flagged dirty in the plan; large transport-repair logic, re-evaluate upstream completeness first |
+| #2647 | grok-cli Responses codec (new 551-line `grok-cli-compat.js`) | large standalone codec module |
+| #2453 | per-key daily token limits (17 files: usage repos, UI, pricing) | large cross-cutting feature |
+| #2454 | exact cost/tier/cache usage accounting (large) | large cross-cutting usage feature |
+| #2698 | move headroom compression before translation | hot-path reorder entangled with rtk/caveman/ponytail/pxpipe + event/logging plumbing; needs careful restructuring |
+| #2710 | provider-request correlation/observability (12 files, requestId threading) | large cross-cutting observability feature |
+| #2713 / #2666 / #2736 | OpenAI Responses stream reconstruction + keep-alive + cache-affinity (streaming refactors, ordering-constrained) | large interdependent streaming refactors; #2713→#2666→#2736 ordering |
+| #2343 | media remote-JSON size caps + provider hardening (large) | large media-subsystem feature |
+| #2723 / #2724 | usage dashboard UI: denser tracker, daily request usage (UI + repos) | UI feature; #2723 must not pull globals.css until UI approved |
+| #2725 | bind dev/start to 127.0.0.1 | DurinDoor uses a custom server (next-owner-server.cjs / custom-server.js), NOT `next dev/start`; the PR's package.json flag does not apply — bind behavior must be verified/fixed in the custom server instead |
+
+If the maintainer wants any deferred item pulled into this branch or a dedicated
+follow-up, they can be ported next with the same verify-then-implement discipline.

@@ -5,6 +5,7 @@
 import { createHash } from "node:crypto";
 import { checkFallbackError, formatRetryAfter } from "./accountFallback.js";
 import { unavailableResponse } from "../utils/error.js";
+import { isLocalStreamLifecycleError } from "../utils/streamLifecycle.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { filterByContextRequirements, sortByContextSize, validateContextRequirementsMembers } from "./combo/contextRequirements.js";
 import { resolveReasoningBufferedMaxTokens } from "./reasoningTokenBuffer.js";
@@ -847,6 +848,36 @@ export function getComboModelsFromData(modelStr, combosData, options = {}) {
  * @param {number} [options.comboTimeoutMs=0] - Per-model timeout; 0 disables
  * @returns {Promise<Response>}
  */
+/**
+ * Whether a successful (2xx) NON-STREAMING response has a meaningful body.
+ * Returns true when the body is empty or a known "empty output" shape despite
+ * a 200. Streaming/opaque responses are trusted (caller must not read them).
+ * @param {Response} response
+ * @returns {Promise<boolean>}
+ */
+async function isBodyEmpty(response) {
+  let bodyText = "";
+  try {
+    bodyText = await response.clone().text();
+  } catch {
+    return false; // opaque/streaming — trust the transport layer
+  }
+  return (
+    !bodyText ||
+    bodyText === "{}" ||
+    bodyText === "[]" ||
+    bodyText === '{"choices":[]}' ||
+    bodyText === '{"choices":""}' ||
+    bodyText === '{"choices":[{}]}' ||
+    bodyText === '{"choices":[{"delta":{},"finish_reason":null}]}' ||
+    bodyText === '{"choices":[{"message":{"content":""}}]}' ||
+    bodyText === '{"choices":[{"message":{}}]}' ||
+    bodyText === '{"content":""}' ||
+    bodyText === '{"content":[]}' ||
+    bodyText === '{"text":""}'
+  );
+}
+
 export async function handleComboChat({
   body,
   models,
@@ -1057,7 +1088,6 @@ export async function handleComboChat({
         log.warn("COMBO", `Model ${modelStr} timed out after ${comboTimeoutMs}ms, falling to next`);
         continue;
       }
-
       // Success (2xx) - return response
       if (result.ok) {
         if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, true, null);
@@ -1066,6 +1096,23 @@ export async function handleComboChat({
           if (actuallyRotated) {
             advanceRoundRobinPointerPastServedModel(activeModels, comboName, comboStickyLimit, modelStr);
           }
+        }
+        // Non-streaming only: some providers return 200 with an empty body when
+        // the model produced no output. Retry the same model once before falling
+        // to the next; streaming responses are trusted (reading them would defeat
+        // streaming) (#2689).
+        if (!body?.stream && (await isBodyEmpty(result))) {
+          log.warn("COMBO", `Model ${modelStr} returned 200 but empty body, retrying once`);
+          const retryResult = await handleSingleModel(body, modelStr);
+          if (retryResult.ok && !(await isBodyEmpty(retryResult))) {
+            log.info("COMBO", `Model ${modelStr} succeeded on retry`);
+            return retryResult;
+          }
+          // Still empty after retry: fall to the next model without setting
+          // lastError so the final failure reflects a genuine error, not empty.
+          log.warn("COMBO", `Model ${modelStr} still empty after retry, falling to next`);
+          releaseFailedAffinity(modelStr, i);
+          continue;
         }
         log.info("COMBO", `Model ${modelStr} succeeded`);
         return result;
@@ -1090,6 +1137,16 @@ export async function handleComboChat({
       // Normalize error text to string (Worker-safe)
       if (typeof errorText !== "string") {
         try { errorText = JSON.stringify(errorText); } catch { errorText = String(errorText); }
+      }
+
+      // A client-side abort that surfaced without a 499 (bare
+      // request_signal_aborted / "Client disconnected" / "operation was aborted"
+      // defaulting to 502) is a local stream lifecycle event, not a provider
+      // failure. Do not spend a fallback attempt or accrue cooldown on it
+      // (OmniRoute #7907/#7908) — surface the abort directly.
+      if (isLocalStreamLifecycleError(errorText)) {
+        releaseFailedAffinity(modelStr, i);
+        return abortedResponse();
       }
 
       // Check if should fallback to next model

@@ -4,6 +4,7 @@ import { trackPendingRequest, appendRequestLog } from "@/lib/usageDb.js";
 import { extractUsage, mergeUsage, hasValidUsage, estimateUsage, logUsage, addBufferToUsage, filterUsageForFormat, COLORS } from "./usageTracking.js";
 import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE } from "./streamHelpers.js";
 import { PROVIDERS } from "../config/providers.js";
+import { CLAUDE_BLOCK } from "../translator/schema/index.js";
 import { getOpenAIResponsesEventName, isOpenAIResponsesTerminalEvent, formatIncompleteOpenAIResponsesStreamFailure } from "./responsesStreamHelpers.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
 import { createThinkTagStreamExtractor } from "./thinkStripper.js";
@@ -323,8 +324,20 @@ export function createSSEStream(options = {}) {
                 }
               }
 
-              // Ensure OpenAI-required fields are present on streaming chunks (Letta compat)
+              // Some Anthropic-compatible providers (MiniMax) omit `signature`
+              // from the thinking block start. Strict Messages clients deserialize
+              // that field before the later signature_delta arrives, so inject an
+              // empty placeholder when the provider quirk requests it (#2706).
               let fieldsInjected = false;
+              if (
+                PROVIDERS[provider]?.quirks?.ensureThinkingSignature &&
+                parsed.type === "content_block_start" &&
+                parsed.content_block?.type === CLAUDE_BLOCK.THINKING &&
+                parsed.content_block.signature === undefined
+              ) {
+                parsed.content_block.signature = "";
+                fieldsInjected = true;
+              }
               if (parsed.choices !== undefined) {
                 if (!parsed.object) { parsed.object = "chat.completion.chunk"; fieldsInjected = true; }
                 if (!parsed.created) { parsed.created = Math.floor(Date.now() / 1000); fieldsInjected = true; }

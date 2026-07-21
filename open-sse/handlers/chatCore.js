@@ -30,6 +30,7 @@ import { handleNonStreamingResponse } from "./chatCore/nonStreamingHandler.js";
 import { handleStreamingResponse, buildOnStreamComplete } from "./chatCore/streamingHandler.js";
 import { resolveStreamFlag } from "./chatCore/streamFlag.js";
 import { createEmptyRetryStream } from "./chatCore/emptyStreamGuard.js";
+import { isAnthropicThinkingSignatureError, stripHistoricalThinkingForSignatureRecovery } from "./chatCore/thinkingSignatureRecovery.js";
 import { detectClientTool, isNativePassthrough, isCodexOriginatedHeaders } from "../utils/clientDetector.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
 import { salvageOrphanedToolResults, fixMissingToolResponses } from "../translator/concerns/toolCall.js";
@@ -402,6 +403,15 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
   salvageOrphanedToolResults(body);
   fixMissingToolResponses(body);
 
+  // Headroom: compress the SOURCE messages BEFORE translation so every output
+  // format (commandcode, ollama, gemini, ...) is covered, not just openai/claude.
+  // Uses sourceFormat so body.messages is present. Reporting happens after
+  // translation from the captured stats. Optional external proxy; fail-open.
+  const headroomDiagnostics = {};
+  const headroomStartedAt = Date.now();
+  const headroomStats = await compressWithHeadroom(body, { enabled: tokenSaverEnabled && headroomEnabled, url: headroomUrl, model: cleanUpstreamModel, format: sourceFormat, compressUserMessages: headroomCompressUserMessages, diagnostics: headroomDiagnostics });
+  const headroomDurationMs = Date.now() - headroomStartedAt;
+
   let translatedBody;
   let toolNameMap;
   if (passthrough) {
@@ -495,11 +505,6 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
     xf.push(`RTK −${saved}B(${pct}%)`);
   }
 
-  // Headroom: optional external proxy compression; fail open if proxy is absent.
-  const headroomDiagnostics = {};
-  const headroomStartedAt = Date.now();
-  const headroomStats = await compressWithHeadroom(translatedBody, { enabled: tokenSaverEnabled && headroomEnabled, url: headroomUrl, model: cleanUpstreamModel, format: finalFormat, compressUserMessages: headroomCompressUserMessages, diagnostics: headroomDiagnostics });
-  const headroomDurationMs = Date.now() - headroomStartedAt;
   if (headroomStats) {
     const before = headroomStats.tokens_before || 0;
     const after = headroomStats.tokens_after || 0;
@@ -969,18 +974,61 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
     trackPendingRequest(cleanModel, provider, connectionId, false, true);
     let parsedError;
     try {
-      parsedError = await parseUpstreamError(providerResponse, executor, { signal: providerSignal });
+      parsedError = await parseUpstreamError(providerResponse, executor, { signal: providerSignal, credentials, proxyOptions });
     } catch (error) {
       if (error?.name === "AbortError") {
         streamController.handleError(error);
+        finishProviderRequest();
         return { ...createErrorResult(499, "Request aborted"), attemptStartedAt: latestProviderAttemptStartedAt };
       }
       parsedError = { statusCode: providerResponse.status || 502, message: "Upstream provider error", resetsAtMs: null, rateLimitEvidence: null };
-    } finally {
-      finishProviderRequest();
     }
-    await settleQuota(false, "upstream_error");
-    const { statusCode, message, resetsAtMs, rateLimitEvidence } = parsedError;
+
+    // One-shot Anthropic thinking-signature recovery (OmniRoute #7906): on the
+    // exact `400 Invalid signature in thinking block`, retry ONCE with historical
+    // thinking omitted (active tool-use cycle preserved) before any cooldown/
+    // fallback accounting. Any other failure flows through unchanged.
+    if (
+      !providerSignal?.aborted
+      && isAnthropicThinkingSignatureError({ provider, status: parsedError.statusCode, message: parsedError.message })
+    ) {
+      const recoveryBody = stripHistoricalThinkingForSignatureRecovery(translatedBody);
+      if (recoveryBody !== translatedBody) {
+        translatedBody = recoveryBody;
+        try {
+          const retry = await executeProvider();
+          providerResponse = retry.response;
+          providerUrl = retry.url;
+          providerHeaders = retry.headers;
+          finalBody = retry.transformedBody;
+          reqLogger.logTargetRequest(providerUrl, providerHeaders, finalBody);
+          if (providerResponse.ok) {
+            log?.info?.("THINKING_SIGNATURE", `Recovered ${provider}/${cleanModel} after one historical-thinking retry`);
+          } else {
+            try {
+              parsedError = await parseUpstreamError(providerResponse, executor, { signal: providerSignal, credentials, proxyOptions });
+            } catch {
+              parsedError = { statusCode: providerResponse.status || 502, message: "Upstream provider error", resetsAtMs: null, rateLimitEvidence: null };
+            }
+          }
+        } catch (error) {
+          if (error?.name === "AbortError") {
+            streamController.handleError(error);
+            finishProviderRequest();
+            return { ...createErrorResult(499, "Request aborted"), attemptStartedAt: latestProviderAttemptStartedAt };
+          }
+          // Retry itself errored non-abort: fall through with the original error.
+        }
+      }
+    }
+
+    // Recovery succeeded — the OK path below handles the streamed response.
+    if (providerResponse.ok) {
+      finishProviderRequest();
+    } else {
+      finishProviderRequest();
+      await settleQuota(false, "upstream_error");
+      const { statusCode, message, resetsAtMs, rateLimitEvidence } = parsedError;
     appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${statusCode}` }).catch(() => { });
     saveRequestDetail(buildRequestDetail({
       provider, model: cleanModel, connectionId,
@@ -1005,6 +1053,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
     }
     reqLogger.logError(new Error(message), finalBody || translatedBody);
     return { ...createErrorResult(statusCode, errMsg, resetsAtMs, undefined, rateLimitEvidence), attemptStartedAt: latestProviderAttemptStartedAt };
+    }
   }
 
   // Antigravity/AGY empty-stream guard — oh-my-pi parity: bytes (thinking included)

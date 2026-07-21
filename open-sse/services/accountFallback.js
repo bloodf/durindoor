@@ -42,6 +42,15 @@ export function checkFallbackError(status, errorText, backoffLevel = 0) {
     return { shouldFallback: false, cooldownMs: 0 };
   }
 
+  // Codex invalid_encrypted_content is a stale-reasoning request issue recovered
+  // in-place by the Codex executor; switching accounts will not fix it (#2667).
+  const invalidEncryptedContent = lowerError.includes("invalid_encrypted_content") ||
+    (lowerError.includes("encrypted content") &&
+      (lowerError.includes("could not be verified") || lowerError.includes("could not be decrypted or parsed")));
+  if (Number(status) === 400 && invalidEncryptedContent) {
+    return { shouldFallback: false, cooldownMs: 0 };
+  }
+
   // A per-request content rejection (e.g. provider content filter blocking a
   // single prompt) is not an account/auth/quota failure; it must never lock the
   // connection or trigger the account-fallback cooldown chain.

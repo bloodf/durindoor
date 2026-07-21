@@ -11,19 +11,6 @@ const CODEX_ORIGINATOR = "codex_cli_rs";
 const CODEX_MODEL_SUFFIX = "-image";
 const CODEX_REF_DETAIL = "high";
 
-function decodeAccountId(idToken) {
-  try {
-    const parts = String(idToken || "").split(".");
-    if (parts.length !== 3) return null;
-    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const pad = (4 - (b64.length % 4)) % 4;
-    const payload = JSON.parse(Buffer.from(b64 + "=".repeat(pad), "base64").toString("utf8"));
-    return payload?.["https://api.openai.com/auth"]?.chatgpt_account_id || null;
-  } catch {
-    return null;
-  }
-}
-
 function stripImageSuffix(model) {
   return model.endsWith(CODEX_MODEL_SUFFIX) ? model.slice(0, -CODEX_MODEL_SUFFIX.length) : model;
 }
@@ -149,7 +136,7 @@ export default {
   stream: true,
   buildUrl: () => CODEX_RESPONSES_URL,
   buildHeaders: (creds) => {
-    const accountId = resolveCodexAccountId(creds?.providerSpecificData) || decodeAccountId(creds?.idToken);
+    const accountId = resolveCodexAccountId(creds?.providerSpecificData, creds?.idToken);
     const headers = {
       "accept": "text/event-stream, application/json",
       "authorization": `Bearer ${creds?.accessToken || ""}`,

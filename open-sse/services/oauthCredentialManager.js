@@ -4,6 +4,7 @@ import {
   refreshTokenByProvider,
 } from "./tokenRefresh.js";
 import { proxyRouteFingerprint } from "./tokenRefresh/dedup.js";
+import { serializeRefresh } from "./refreshSerializer.js";
 import { PROVIDER_OAUTH } from "../providers/index.js";
 import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
 import { digestMemoryKey } from "../utils/memoryKey.js";
@@ -284,11 +285,20 @@ export async function refreshProviderCredentials(provider, credentials, log, pro
   const effectiveProxyOptions = resolveCredentialProxyOptions(credentials, proxyOptions);
 
   return withCredentialRefreshLock(provider, credentials, async () => {
-    const refreshed = await refreshTokenByProvider(
-      provider,
-      credentials,
-      log,
-      effectiveProxyOptions
+    // Serialize the network refresh across every connection in the same
+    // rotation group (e.g. Codex + openai share one Auth0 client_id; all Claude
+    // accounts share the anthropic-oauth family). Two sibling accounts must
+    // never POST to /oauth/token concurrently, or Auth0/Anthropic refresh_token
+    // family revocation bricks the losers. The per-token withCredentialRefreshLock
+    // dedup above cannot see cross-account collisions; non-rotating providers
+    // pass straight through serializeRefresh with no locking.
+    const refreshed = await serializeRefresh(provider, () =>
+      refreshTokenByProvider(
+        provider,
+        credentials,
+        log,
+        effectiveProxyOptions
+      )
     );
     return mergeRefreshedCredentials(provider, credentials, refreshed);
   }, effectiveProxyOptions);

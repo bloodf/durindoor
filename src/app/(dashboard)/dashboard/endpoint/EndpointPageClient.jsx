@@ -58,6 +58,7 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
   const [editKeyDailyLimitTokens, setEditKeyDailyLimitTokens] = useState("");
   const [editKeyCustomExpiresAt, setEditKeyCustomExpiresAt] = useState("");
   const [editKeyStatus, setEditKeyStatus] = useState(null);
+  const [editKeyPolicy, setEditKeyPolicy] = useState(emptyApiKeyPolicyDraft);
   const [tunnelExternal, setTunnelExternal] = useState(null);
   const [tsExternal, setTsExternal] = useState(null);
   const [editKeyPolicyDirty, setEditKeyPolicyDirty] = useState(false);
@@ -224,7 +225,7 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
       setTsUrl(tsUrlVal);
       setTsEnabled(tsEn);
       setTsExternal(data.tailscale?.systemTailscale || null);
-      updateReachable(null, tsClientReachableRef, tsMissRef, setTsReachable, tsEverReachableRef, setTunnelEverReachableRef);
+      updateReachable(null, tsClientReachableRef, tsMissRef, setTsReachable, tsEverReachableRef, setTsEverReachable);
     } catch { /* ignore poll errors */ }
   };
 
@@ -257,7 +258,7 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
         setTsUrl(tsUrlVal);
         setTsEnabled(tsEn);
         setTsExternal(data.tailscale?.systemTailscale || null);
-        updateReachable(null, tsClientReachableRef, tsMissRef, setTsReachable, tsEverReachableRef, setTunnelEverReachable);
+        updateReachable(null, tsClientReachableRef, tsMissRef, setTsReachable, tsEverReachableRef, setTsEverReachable);
       }
     } catch (error) {
       console.log("Error loading settings:", error);

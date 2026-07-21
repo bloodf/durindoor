@@ -1,7 +1,7 @@
 export function getStatusVariant(isActive, effectiveStatus) {
   if (isActive === false) return "default";
   if (effectiveStatus === "active" || effectiveStatus === "success") return "success";
-  if (effectiveStatus === "error" || effectiveStatus === "expired" || effectiveStatus === "unavailable") return "error";
+  if (effectiveStatus === "error" || effectiveStatus === "expired" || effectiveStatus === "unavailable" || effectiveStatus === "reauth_required") return "error";
   return "default";
 }
 

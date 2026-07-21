@@ -8,7 +8,7 @@ import { MEMORY_CONFIG } from "open-sse/config/runtimeConfig.js";
 import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
 import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, buildModelLockUpdate, getActiveModelLockUntil, isPassthroughConnectionWideError } from "open-sse/services/accountFallback.js";
-import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
+import { MAX_RATE_LIMIT_COOLDOWN_MS, RESET_COOLDOWN_CAP_MS } from "open-sse/config/errorConfig.js";
 import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
 import * as log from "../utils/logger.js";
 import { timingSafeEqual } from "node:crypto";
@@ -779,12 +779,16 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
       ? parsedEvidenceReset
       : resetsAtMs;
   const providerReset = Number(rawProviderReset);
+  // Provider-specific precise cooldown (codex resets_at, kiro confirmed credit
+  // exhaustion) is capped at a provider-appropriate max so a far-future reset
+  // doesn't lock the account past its next low-frequency recheck (#2664).
+  const cooldownCapMs = RESET_COOLDOWN_CAP_MS[provider] ?? MAX_RATE_LIMIT_COOLDOWN_MS;
   const normalizedReset = Number.isFinite(providerReset) && providerReset > now
-    ? Math.min(providerReset, now + MAX_RATE_LIMIT_COOLDOWN_MS)
+    ? Math.min(providerReset, now + cooldownCapMs)
     : null;
   if (normalizedReset !== null) {
     shouldFallback = true;
-    cooldownMs = Math.ceil(Math.min(normalizedReset - now, MAX_RATE_LIMIT_COOLDOWN_MS));
+    cooldownMs = Math.ceil(Math.min(normalizedReset - now, cooldownCapMs));
     newBackoffLevel = 0;
   } else {
     ({ shouldFallback, cooldownMs, newBackoffLevel } = fallbackResult);
@@ -797,7 +801,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     : now + cooldownMs;
   const legacyCooldownMs = Math.max(
     0,
-    Math.min(Math.ceil(deadline - observedAt), MAX_RATE_LIMIT_COOLDOWN_MS),
+    Math.min(Math.ceil(deadline - observedAt), cooldownCapMs),
   );
   const reasonCode = Number(status) === 429
     ? "rate_limited"
@@ -930,7 +934,11 @@ export async function clearAccountError(connectionId, currentConnection, model =
       return expiry && new Date(expiry).getTime() > now;
     });
     const clearObj = Object.fromEntries(keysToClear.map(k => [k, null]));
-    if (remainingActiveLocks.length === 0) {
+    // Never let ordinary request success clear a durable reauth_required state;
+    // only a successful OAuth reconnect (which writes testStatus:"active"
+    // directly) may revive the account. See connectionsRepo fallback-clear guard.
+    const reauthPinned = conn.testStatus === "reauth_required" || conn.errorCode === "REAUTH";
+    if (!reauthPinned && remainingActiveLocks.length === 0) {
       Object.assign(clearObj, { testStatus: "active", lastError: null, lastErrorAt: null, backoffLevel: 0 });
     }
     if (Object.keys(clearObj).length > 0) await updateProviderConnection(connectionId, clearObj);

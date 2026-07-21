@@ -5,6 +5,7 @@
 import { createHash } from "node:crypto";
 import { checkFallbackError, formatRetryAfter } from "./accountFallback.js";
 import { unavailableResponse } from "../utils/error.js";
+import { isLocalStreamLifecycleError } from "../utils/streamLifecycle.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { filterByContextRequirements, sortByContextSize, validateContextRequirementsMembers } from "./combo/contextRequirements.js";
 import { resolveReasoningBufferedMaxTokens } from "./reasoningTokenBuffer.js";
@@ -1057,7 +1058,6 @@ export async function handleComboChat({
         log.warn("COMBO", `Model ${modelStr} timed out after ${comboTimeoutMs}ms, falling to next`);
         continue;
       }
-
       // Success (2xx) - return response
       if (result.ok) {
         if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, true, null);
@@ -1090,6 +1090,16 @@ export async function handleComboChat({
       // Normalize error text to string (Worker-safe)
       if (typeof errorText !== "string") {
         try { errorText = JSON.stringify(errorText); } catch { errorText = String(errorText); }
+      }
+
+      // A client-side abort that surfaced without a 499 (bare
+      // request_signal_aborted / "Client disconnected" / "operation was aborted"
+      // defaulting to 502) is a local stream lifecycle event, not a provider
+      // failure. Do not spend a fallback attempt or accrue cooldown on it
+      // (OmniRoute #7907/#7908) — surface the abort directly.
+      if (isLocalStreamLifecycleError(errorText)) {
+        releaseFailedAffinity(modelStr, i);
+        return abortedResponse();
       }
 
       // Check if should fallback to next model

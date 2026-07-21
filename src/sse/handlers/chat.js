@@ -25,6 +25,7 @@ import { applyVisionBridgeReroute } from "open-sse/services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
+import { isLocalStreamLifecycleError } from "open-sse/utils/streamLifecycle.js";
 import {
   getComboModelQuotaHealth,
   handleComboChat,
@@ -1060,7 +1061,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     });
 
     if (result.success) return result.response;
-    if (requestAborted(request, requestSignal) || result.status === 499) return result.response;
+    // A client-side abort (named AbortError, or a bare request_signal_aborted /
+    // "Client disconnected" / "operation was aborted" that defaulted to 502) is a
+    // local stream lifecycle event, NOT a provider failure. Return without cooling
+    // down the account or accruing fallback state (OmniRoute #7907/#7908).
+    if (requestAborted(request, requestSignal) || result.status === 499 || isLocalStreamLifecycleError(result.error)) return result.response;
     if (preferredConnectionId) {
       // A pinned connection must not rotate. Return the failure response immediately.
       log.warn("CHAT", `[${provider}/${model}] pinned connection ${preferredConnectionId.slice(0, 8)} failed; pin is terminal`);

@@ -30,6 +30,7 @@ import { handleNonStreamingResponse } from "./chatCore/nonStreamingHandler.js";
 import { handleStreamingResponse, buildOnStreamComplete } from "./chatCore/streamingHandler.js";
 import { resolveStreamFlag } from "./chatCore/streamFlag.js";
 import { createEmptyRetryStream } from "./chatCore/emptyStreamGuard.js";
+import { isAnthropicThinkingSignatureError, stripHistoricalThinkingForSignatureRecovery } from "./chatCore/thinkingSignatureRecovery.js";
 import { detectClientTool, isNativePassthrough, isCodexOriginatedHeaders } from "../utils/clientDetector.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
 import { salvageOrphanedToolResults, fixMissingToolResponses } from "../translator/concerns/toolCall.js";
@@ -973,14 +974,57 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
     } catch (error) {
       if (error?.name === "AbortError") {
         streamController.handleError(error);
+        finishProviderRequest();
         return { ...createErrorResult(499, "Request aborted"), attemptStartedAt: latestProviderAttemptStartedAt };
       }
       parsedError = { statusCode: providerResponse.status || 502, message: "Upstream provider error", resetsAtMs: null, rateLimitEvidence: null };
-    } finally {
-      finishProviderRequest();
     }
-    await settleQuota(false, "upstream_error");
-    const { statusCode, message, resetsAtMs, rateLimitEvidence } = parsedError;
+
+    // One-shot Anthropic thinking-signature recovery (OmniRoute #7906): on the
+    // exact `400 Invalid signature in thinking block`, retry ONCE with historical
+    // thinking omitted (active tool-use cycle preserved) before any cooldown/
+    // fallback accounting. Any other failure flows through unchanged.
+    if (
+      !providerSignal?.aborted
+      && isAnthropicThinkingSignatureError({ provider, status: parsedError.statusCode, message: parsedError.message })
+    ) {
+      const recoveryBody = stripHistoricalThinkingForSignatureRecovery(translatedBody);
+      if (recoveryBody !== translatedBody) {
+        translatedBody = recoveryBody;
+        try {
+          const retry = await executeProvider();
+          providerResponse = retry.response;
+          providerUrl = retry.url;
+          providerHeaders = retry.headers;
+          finalBody = retry.transformedBody;
+          reqLogger.logTargetRequest(providerUrl, providerHeaders, finalBody);
+          if (providerResponse.ok) {
+            log?.info?.("THINKING_SIGNATURE", `Recovered ${provider}/${cleanModel} after one historical-thinking retry`);
+          } else {
+            try {
+              parsedError = await parseUpstreamError(providerResponse, executor, { signal: providerSignal });
+            } catch {
+              parsedError = { statusCode: providerResponse.status || 502, message: "Upstream provider error", resetsAtMs: null, rateLimitEvidence: null };
+            }
+          }
+        } catch (error) {
+          if (error?.name === "AbortError") {
+            streamController.handleError(error);
+            finishProviderRequest();
+            return { ...createErrorResult(499, "Request aborted"), attemptStartedAt: latestProviderAttemptStartedAt };
+          }
+          // Retry itself errored non-abort: fall through with the original error.
+        }
+      }
+    }
+
+    // Recovery succeeded — the OK path below handles the streamed response.
+    if (providerResponse.ok) {
+      finishProviderRequest();
+    } else {
+      finishProviderRequest();
+      await settleQuota(false, "upstream_error");
+      const { statusCode, message, resetsAtMs, rateLimitEvidence } = parsedError;
     appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${statusCode}` }).catch(() => { });
     saveRequestDetail(buildRequestDetail({
       provider, model: cleanModel, connectionId,
@@ -1005,6 +1049,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
     }
     reqLogger.logError(new Error(message), finalBody || translatedBody);
     return { ...createErrorResult(statusCode, errMsg, resetsAtMs, undefined, rateLimitEvidence), attemptStartedAt: latestProviderAttemptStartedAt };
+    }
   }
 
   // Antigravity/AGY empty-stream guard — oh-my-pi parity: bytes (thinking included)

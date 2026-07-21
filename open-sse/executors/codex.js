@@ -503,6 +503,40 @@ function createReplayBody(reader, chunks, terminalError = null) {
   });
 }
 
+// Codex sometimes rejects a request whose historical reasoning item carries an
+// `encrypted_content` blob it can no longer verify (cache/account boundary),
+// returning 400 invalid_encrypted_content. Detect that exact failure so the
+// executor can retry ONCE with the bad encrypted reasoning stripped (#2667).
+async function isInvalidEncryptedContentResponse(response) {
+  if (response?.status !== HTTP_STATUS.BAD_REQUEST || typeof response.clone !== "function") return false;
+  try {
+    const payload = JSON.parse(await response.clone().text());
+    const error = payload?.error || payload;
+    if (error?.code === "invalid_encrypted_content") return true;
+    const message = typeof error?.message === "string" ? error.message.toLowerCase() : "";
+    return message.includes("encrypted content") &&
+      (message.includes("could not be verified") || message.includes("could not be decrypted or parsed"));
+  } catch {
+    return false;
+  }
+}
+
+// Drop the unverifiable encrypted_content from reasoning items; keep the item
+// only when it still carries a usable summary/content, else remove it entirely.
+function removeInvalidEncryptedReasoning(body) {
+  if (!Array.isArray(body?.input)) return 0;
+  let removed = 0;
+  body.input = body.input.filter((item) => {
+    if (!item || item.type !== "reasoning" || !Object.hasOwn(item, "encrypted_content")) return true;
+    delete item.encrypted_content;
+    removed++;
+    const hasSummary = Array.isArray(item.summary) ? item.summary.length > 0 : Boolean(item.summary);
+    const hasContent = Array.isArray(item.content) ? item.content.length > 0 : Boolean(item.content);
+    return hasSummary || hasContent;
+  });
+  return removed;
+}
+
 function codexSseErrorResponse(status, message) {
   return new Response(JSON.stringify({
     error: {
@@ -609,6 +643,7 @@ export class CodexExecutor extends BaseExecutor {
     const retryConfig = { ...DEFAULT_RETRY_CONFIG, ...this.config.retry };
     const { attempts, delayMs } = resolveRetryEntry(retryConfig[503]);
     let attempt = 0;
+    let encryptedRecoveryAttempted = false;
     while (true) {
       throwIfAborted(args.signal);
       const result = await super.execute({
@@ -616,6 +651,16 @@ export class CodexExecutor extends BaseExecutor {
         body: cloneRequestBody(requestBody),
         requestContext,
       });
+      // One-shot recovery: on a 400 invalid_encrypted_content, strip the
+      // unverifiable encrypted reasoning and retry the SAME account once (#2667).
+      if (!encryptedRecoveryAttempted && await isInvalidEncryptedContentResponse(result.response)) {
+        const removed = removeInvalidEncryptedReasoning(requestBody);
+        if (removed > 0) {
+          encryptedRecoveryAttempted = true;
+          args.log?.warn?.("RETRY", `CODEX | invalid encrypted reasoning; retrying same account without ${removed} encrypted item(s)`);
+          continue;
+        }
+      }
       let peek;
       try {
         peek = await this._peekSseTransientError(result.response, args.signal);

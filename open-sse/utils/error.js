@@ -372,11 +372,15 @@ export async function parseUpstreamError(response, executor = null, options = {}
     bodyText = "";
   }
 
-  // Let executor-specific parser extract provider-specific fields (e.g. codex resetsAtMs)
+  // Let the executor-specific parser extract provider-specific fields (e.g. codex
+  // resetsAtMs, kiro confirmed credit-exhaustion reset). parseError may be sync
+  // (codex) or async (kiro, which may issue a follow-up quota lookup) — awaiting a
+  // plain value is a no-op, so both shapes work. Credentials/proxyOptions are
+  // threaded through options for parsers that need a follow-up lookup.
   let executorParsed = null;
   if (executor && typeof executor.parseError === "function") {
     try {
-      const parsed = executor.parseError(response, bodyText);
+      const parsed = await executor.parseError(response, bodyText, options?.credentials ?? null, options?.proxyOptions ?? null);
       if (parsed && typeof parsed === "object") {
         executorParsed = parsed;
       }

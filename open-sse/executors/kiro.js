@@ -15,7 +15,47 @@ import {
 } from "../config/kiroRegions.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { resolveContinuationId, extractClientSessionId } from "../utils/sessionManager.js";
+import { getKiroUsage } from "../services/usage/kiro.js";
+import { KIRO_CREDIT_EXHAUSTION_PROBE_MS } from "../config/errorConfig.js";
 
+// Confirmed monthly-credit exhaustion signal from CodeWhisperer's 402
+// (AWS ServiceQuotaExceededException / MONTHLY_REQUEST_COUNT). Some surfaces
+// flatten cause.name/cause.reason onto the top-level object, so both are checked.
+// Any other 402 stays ambiguous and keeps the generic 402 cooldown.
+const KIRO_QUOTA_EXCEEDED_EXCEPTION = "ServiceQuotaExceededException";
+const KIRO_QUOTA_EXCEEDED_REASON = "MONTHLY_REQUEST_COUNT";
+const KIRO_RESET_LOOKUP_TIMEOUT_MS = 8000;
+
+function isConfirmedKiroCreditExhaustion(bodyText) {
+  if (!bodyText) return false;
+  try {
+    const json = JSON.parse(bodyText);
+    const name = json?.name ?? json?.cause?.name;
+    const reason = json?.reason ?? json?.cause?.reason;
+    if (name === KIRO_QUOTA_EXCEEDED_EXCEPTION && reason === KIRO_QUOTA_EXCEEDED_REASON) return true;
+  } catch { /* not JSON — fall through to the text check */ }
+  const lower = bodyText.toLowerCase();
+  return lower.includes(KIRO_QUOTA_EXCEEDED_EXCEPTION.toLowerCase())
+    && lower.includes(KIRO_QUOTA_EXCEEDED_REASON.toLowerCase());
+}
+
+function earliestDepletedResetMs(quotas) {
+  let earliest = null;
+  for (const quota of Object.values(quotas || {})) {
+    if (!quota || quota.unlimited || !(quota.total > 0) || quota.remaining > 0 || !quota.resetAt) continue;
+    const ms = new Date(quota.resetAt).getTime();
+    if (!Number.isFinite(ms)) continue;
+    if (earliest === null || ms < earliest) earliest = ms;
+  }
+  return earliest;
+}
+
+function withKiroLookupTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((resolve) => setTimeout(() => resolve(null), ms)),
+  ]);
+}
 // Strict AWS region id allowlist (incl. GovCloud partition `us-gov-west-1`),
 // matching the Bedrock validator shape. Used as a trust-boundary guard before
 // interpolating a stored/ARN-derived region into a `q.<region>.amazonaws.com`
@@ -142,6 +182,34 @@ export async function resolveKiroProfileArnAcrossRegions(
 export class KiroExecutor extends BaseExecutor {
   constructor() {
     super("kiro", PROVIDERS.kiro);
+  }
+
+  /**
+   * Classify a Kiro 402 as confirmed monthly-credit exhaustion vs. ambiguous. Only a
+   * confirmed match gets a precise cooldown; everything else falls through to the base
+   * classifier and keeps the generic 402 cooldown. The 402 body carries no reset time,
+   * so on a confirmed match this makes a best-effort follow-up to Kiro's quota API for
+   * the trustworthy resetAt; if unreachable/timed-out/nothing-depleted, it falls back to
+   * a bounded daily-probe window (markAccountUnavailable caps either at
+   * KIRO_CREDIT_EXHAUSTION_PROBE_MS via RESET_COOLDOWN_CAP_MS).
+   */
+  async parseError(response, bodyText, credentials = null, proxyOptions = null) {
+    if (response.status !== 402 || !isConfirmedKiroCreditExhaustion(bodyText)) {
+      return super.parseError ? super.parseError(response, bodyText) : null;
+    }
+    let resetsAtMs = null;
+    try {
+      const accessToken = credentials?.apiKey || credentials?.accessToken;
+      const usage = await withKiroLookupTimeout(
+        getKiroUsage(accessToken, credentials?.providerSpecificData, proxyOptions),
+        KIRO_RESET_LOOKUP_TIMEOUT_MS,
+      );
+      resetsAtMs = earliestDepletedResetMs(usage?.quotas);
+    } catch { /* best-effort only — fall back to the daily probe below */ }
+    if (!resetsAtMs || resetsAtMs <= Date.now()) {
+      resetsAtMs = Date.now() + KIRO_CREDIT_EXHAUSTION_PROBE_MS;
+    }
+    return { status: 402, message: "Kiro monthly credit limit reached", resetsAtMs };
   }
 
   buildHeaders(credentials, stream = true) {

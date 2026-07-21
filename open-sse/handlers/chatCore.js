@@ -970,7 +970,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
     trackPendingRequest(cleanModel, provider, connectionId, false, true);
     let parsedError;
     try {
-      parsedError = await parseUpstreamError(providerResponse, executor, { signal: providerSignal });
+      parsedError = await parseUpstreamError(providerResponse, executor, { signal: providerSignal, credentials, proxyOptions });
     } catch (error) {
       if (error?.name === "AbortError") {
         streamController.handleError(error);
@@ -1002,7 +1002,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
             log?.info?.("THINKING_SIGNATURE", `Recovered ${provider}/${cleanModel} after one historical-thinking retry`);
           } else {
             try {
-              parsedError = await parseUpstreamError(providerResponse, executor, { signal: providerSignal });
+              parsedError = await parseUpstreamError(providerResponse, executor, { signal: providerSignal, credentials, proxyOptions });
             } catch {
               parsedError = { statusCode: providerResponse.status || 502, message: "Upstream provider error", resetsAtMs: null, rateLimitEvidence: null };
             }

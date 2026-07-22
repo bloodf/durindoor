@@ -238,21 +238,77 @@ function bgRefreshFunnelUrl(port) {
     });
 }
 
-/** Get actual funnel URL from Self.DNSName (sync, authoritative — avoids hostname-conflict suffix). */
-export function getActualFunnelUrl() {
+// Run a tailscale subcommand synchronously, trying the app socket, then the
+// system socket, then the default (no --socket) so it works whether the funnel
+// is served by 9Router's own tailscaled or a system-installed one. Returns
+// parsed JSON, or null if every socket fails.
+function execTailscaleJsonSync(subArgs) {
   const bin = getTailscaleBin();
   if (!bin) return null;
-  try {
-    const out = execSync(`"${bin}" ${SOCKET_FLAG.join(" ")} status --json`, {
-      encoding: "utf8",
-      windowsHide: true,
-      env: { ...process.env, PATH: EXTENDED_PATH },
-      timeout: 5000,
-    });
-    const json = JSON.parse(out);
-    const dnsName = json.Self?.DNSName?.replace(/\.$/, "");
-    return dnsName ? `https://${dnsName}` : null;
-  } catch { return null; }
+  for (const socketArgs of [SOCKET_FLAG, SYSTEM_SOCKET_FLAG, []]) {
+    try {
+      const out = execSync(`"${bin}" ${socketArgs.join(" ")} ${subArgs}`, {
+        encoding: "utf8", windowsHide: true, env: { ...process.env, PATH: EXTENDED_PATH }, timeout: 5000,
+      });
+      return JSON.parse(out);
+    } catch { /* try next socket */ }
+  }
+  return null;
+}
+
+// Pure: resolve the public funnel port (":<port>" or "") that fronts `localPort`
+// from a parsed `funnel status --json`. `funnel status` returns a `Web` map
+// keyed `"<host>:<funnelPort>"` whose handlers carry `Proxy:
+// "http://localhost:<localPort>"`. Match the entry whose proxy target port
+// equals our server port; a 443 funnel is implicit so it returns "". Falls back
+// to the sole funnel port when only one exists. Exported for tests.
+export function resolveFunnelPortFromJson(funnelJson, localPort) {
+  const web = funnelJson?.Web;
+  const target = Number.parseInt(String(localPort ?? process.env.PORT ?? ""), 10);
+
+  if (web && typeof web === "object" && Number.isFinite(target)) {
+    for (const key of Object.keys(web)) {
+      const handlers = web[key]?.Handlers;
+      if (!handlers || typeof handlers !== "object") continue;
+      const proxied = Object.values(handlers).some((h) => {
+        const m = typeof h?.Proxy === "string" ? h.Proxy.match(/:(\d+)(?:\/|$)/) : null;
+        return m && Number.parseInt(m[1], 10) === target;
+      });
+      if (proxied) {
+        const fp = Number.parseInt(String(key).split(":").pop(), 10);
+        return Number.isFinite(fp) && fp !== 443 ? `:${fp}` : "";
+      }
+    }
+  }
+
+  const tcp = funnelJson?.TCP;
+  if (tcp && typeof tcp === "object") {
+    const ports = Object.keys(tcp).filter((p) => tcp[p]?.HTTPS).map((p) => Number.parseInt(p, 10)).filter(Number.isFinite);
+    if (ports.length === 1 && ports[0] !== 443) return `:${ports[0]}`;
+  }
+  return "";
+}
+
+// Pure: build the funnel URL from parsed `status --json` + `funnel status
+// --json`. Returns null when Self.DNSName is missing. Exported for tests.
+export function deriveTailscaleFunnelUrl(statusJson, funnelJson, localPort) {
+  const dnsName = statusJson?.Self?.DNSName?.replace(/\.$/, "");
+  if (!dnsName) return null;
+  return `https://${dnsName}${resolveFunnelPortFromJson(funnelJson, localPort)}`;
+}
+
+/**
+ * Actual Tailscale funnel URL for this node: `https://<Self.DNSName>[:port]`.
+ * Reads `Self.DNSName` (authoritative — avoids the hostname-conflict suffix)
+ * over whichever tailscaled socket answers, and appends the funnel port that
+ * fronts our local server (matched from `funnel status`). Sync; returns null if
+ * tailscale can't be reached at all.
+ * @param {number|string} [localPort] server port (defaults to process.env.PORT)
+ */
+export function getActualFunnelUrl(localPort) {
+  const statusJson = execTailscaleJsonSync("status --json");
+  const funnelJson = execTailscaleJsonSync("funnel status --json");
+  return deriveTailscaleFunnelUrl(statusJson, funnelJson, localPort);
 }
 
 /** Get funnel URL from tailscale status (cached, non-blocking) */

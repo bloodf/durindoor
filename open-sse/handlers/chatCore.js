@@ -47,6 +47,7 @@ import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
 import { extractThinking } from "../translator/concerns/thinkingUnified.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { maskSensitiveUrl } from "../utils/requestLogger.js";
+import { isOpencodeGoProvider, stripBooleanReasoning } from "../services/opencodeReasoningSanitizer.js";
 
 // Neutral adaptive config forwarded to the compression seam. mode:"off" short-
 // circuits resolveAdaptivePlan before it dereferences budget fields, but the
@@ -447,6 +448,14 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
     // Kiro carries the provider model inside every native userInputMessage.
     // Adding a stray OpenAI-style top-level model obscures boundary validation.
     if (targetFormat !== FORMATS.KIRO) translatedBody.model = cleanUpstreamModel;
+  }
+
+  // opencode-go backed providers (opencode-go, opencode, opencode-zen) use a Go
+  // ChatCompletionRequest struct where `reasoning` is a structured type; a bare
+  // boolean `reasoning: true/false` (valid per the OpenAI API) 400s on the Go
+  // side. Strip the boolean so the upstream applies its own default. (#7891)
+  if (isOpencodeGoProvider(provider)) {
+    stripBooleanReasoning(translatedBody);
   }
 
   // Dedupe duplicate built-in tools when equivalent MCP tools are present (Claude clients only).

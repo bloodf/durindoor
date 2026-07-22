@@ -1,3 +1,12 @@
+# 2.2.9
+
+## Ports
+- **`service_tier` passthrough** (upstream `c97963c`) — the OpenAI→Responses request conversion now forwards `service_tier`, so Responses API callers keep their requested provisioning tier instead of falling back to the default (`translator/request/openai-responses.js`).
+- **opencode-go boolean `reasoning` strip** (OmniRoute #7891) — providers backed by the opencode-go backend (opencode-go, opencode, opencode-zen) 400 on a boolean `reasoning: true/false` because their Go request struct types `reasoning` as a structured object. DurinDoor now strips the boolean before forwarding so the upstream applies its own default; object/string forms are left untouched (`services/opencodeReasoningSanitizer.js`, hooked in `chatCore`).
+
+## Notes
+- Scanned decolua/9router and OmniRoute for further portable fixes; the remaining candidates were already present (drop-temperature-for-all-Claude, Gemini 429 `RetryInfo.retryDelay` parsing), not applicable (Codex Responses Lite `parallel_tool_calls`), or too large/risky for a clean port (TitleCase tool-name normalization). Recorded in the port PR for the campaign ledger.
+
 # 2.2.8
 
 ## Fixes

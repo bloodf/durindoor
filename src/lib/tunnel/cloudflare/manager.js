@@ -151,6 +151,17 @@ export async function getTunnelStatus() {
       ? { running: true, tunnelUrl: settings.tunnelUrl }
       : null;
 
+  // Every distinct, non-empty URL this tunnel is reachable at, so the UI can
+  // show ALL configured endpoints (stable worker shortlink + the ephemeral /
+  // custom quick-tunnel URL) instead of guessing a single "the" URL. Ordered
+  // most-stable first; de-duplicated.
+  const allUrls = [...new Set([
+    publicUrl,
+    settings.tunnelUrl || "",
+    tunnelUrl,
+    externalTunnel?.tunnelUrl || "",
+  ].filter(Boolean))];
+
   return {
     enabled: settingsEnabled && running,
     settingsEnabled,
@@ -159,5 +170,6 @@ export async function getTunnelStatus() {
     publicUrl,
     running,
     externalTunnel,
+    allUrls,
   };
 }

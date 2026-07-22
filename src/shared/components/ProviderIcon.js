@@ -113,11 +113,11 @@ export default function ProviderIcon({
   if (stage >= candidates.length || !src) {
     return (
       <span
-        className={`inline-flex items-center justify-center font-bold rounded-lg ${className}`.trim()}
+        className={`inline-flex items-center justify-center font-bold rounded-lg bg-surface-2 text-text-main ${className}`.trim()}
         style={{
           width: size,
           height: size,
-          color: fallbackColor,
+          color: fallbackColor || undefined,
           fontSize: Math.max(10, Math.floor(size * 0.38)),
         }}
       >

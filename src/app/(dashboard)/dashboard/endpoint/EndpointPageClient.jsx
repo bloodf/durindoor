@@ -74,6 +74,7 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
   const [tunnelReachable, setTunnelReachable] = useState(false);
   const [tunnelUrl, setTunnelUrl] = useState("");
   const [tunnelPublicUrl, setTunnelPublicUrl] = useState("");
+  const [tunnelAllUrls, setTunnelAllUrls] = useState([]);
   const [tunnelLoading, setTunnelLoading] = useState(false);
   const [tunnelProgress, setTunnelProgress] = useState("");
   const [tunnelStatus, setTunnelStatus] = useState(null);
@@ -216,6 +217,7 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
       const tUrl = data.tunnel?.tunnelUrl || "";
       setTunnelUrl(tUrl);
       setTunnelPublicUrl(data.tunnel?.publicUrl || "");
+      setTunnelAllUrls(Array.isArray(data.tunnel?.allUrls) ? data.tunnel.allUrls : []);
       setTunnelEnabled(tEnabled);
       setTunnelExternal(data.tunnel?.externalTunnel || null);
       updateReachable(null, tunnelClientReachableRef, tunnelMissRef, setTunnelReachable, tunnelEverReachableRef, setTunnelEverReachable);
@@ -249,6 +251,7 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
         const tUrl = data.tunnel?.tunnelUrl || "";
         setTunnelUrl(tUrl);
         setTunnelPublicUrl(data.tunnel?.publicUrl || "");
+        setTunnelAllUrls(Array.isArray(data.tunnel?.allUrls) ? data.tunnel.allUrls : []);
         setTunnelEnabled(tEnabled);
         setTunnelExternal(data.tunnel?.externalTunnel || null);
         updateReachable(null, tunnelClientReachableRef, tunnelMissRef, setTunnelReachable, tunnelEverReachableRef, setTunnelEverReachable);
@@ -925,7 +928,7 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
 
               tsEnabled || tsExternal ? "bg-primary/10 text-primary" : "bg-surface-2 text-text-muted"
             }`}>Tailscale</span>
-            {tsExternal && !tsEnabled ? (
+            {tsExternal?.tunnelUrl && !tsEnabled ? (
               <div className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded border border-primary/30 bg-primary/5 text-sm text-primary">
                 <span className="material-symbols-outlined text-sm">vpn_lock</span>
                 <span className="font-medium">External</span>
@@ -1017,6 +1020,24 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
               </Button>
             )}
           </div>
+          {tunnelAllUrls.length > 1 && (
+            <div className="mt-1 flex flex-col gap-1.5 rounded-lg border border-border bg-surface-2/50 p-2">
+              <p className="text-xs font-medium text-text-muted px-1">All Cloudflare endpoints</p>
+              {tunnelAllUrls.map((u) => (
+                <div key={u} className="flex items-center gap-2 px-2 py-1 rounded bg-surface text-sm">
+                  <span className="material-symbols-outlined text-[16px] text-text-muted shrink-0">link</span>
+                  <Input value={`${u}/v1`} readOnly className="flex-1 font-mono text-xs bg-transparent border-0" />
+                  <button
+                    onClick={() => copy(`${u}/v1`, `all_${u}`)}
+                    className="p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-colors shrink-0"
+                    title="Copy URL"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">{copied === `all_${u}` ? "check" : "content_copy"}</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Pre-enable security gate banner */}
@@ -1156,13 +1177,6 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
                     ) : (
                       <span className="text-xs text-text-muted">All</span>
                     )}
-                    <button
-                      onClick={() => beginEditKey(key)}
-                      className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
-                      title="Edit key access and expiry"
-                    >
-                      <span className="material-symbols-outlined text-[14px]">edit</span>
-                    </button>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1185,6 +1199,13 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
                     }}
                     title={key.isActive ? "Pause key" : "Resume key"}
                   />
+                  <button
+                    onClick={() => beginEditKey(key)}
+                    className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
+                    title="Edit key access and expiry"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">edit</span>
+                  </button>
                   <button
                     onClick={() => handleDeleteKey(key.id)}
                     className="p-2 hover:bg-red-500/10 rounded text-red-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"

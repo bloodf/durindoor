@@ -114,8 +114,15 @@ function mapResult(conn, result, latencyMs, quotaDecision) {
     };
   }
   const status = result.status ?? null;
+  // "no probe for provider" means we have no way to reach a health endpoint for
+  // this provider (e.g. cursor's protobuf transport, an OAuth-only backend) —
+  // NOT that it is down. Report `unknown` so a provider actively serving traffic
+  // is not painted red; the recent-activity overlay upgrades it to healthy when
+  // there is real request success.
+  const noProbeAvailable = status === null && result.error === "no probe for provider";
   let state = /** @type {HealthState} */ ("unknown");
   if (result.valid) state = "healthy";
+  else if (noProbeAvailable) state = "unknown";
   else if (status !== null && AUTH_FAILURE_STATUSES.has(status)) state = "degraded";
   else if (status !== null && status >= 500) state = "down";
   else if (status === null) state = "down";

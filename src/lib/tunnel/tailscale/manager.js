@@ -127,9 +127,11 @@ export async function getTailscaleStatus() {
   const systemTailscale = !running && isSystemDaemonRunning()
     ? {
         running: true,
-        tunnelUrl: (settings.tailscaleUrl && settings.tailscaleUrl.startsWith("http")
-          ? settings.tailscaleUrl
-          : getActualFunnelUrl()) || null,
+        // Derive the funnel URL live from the tailscale CLI (authoritative and
+        // always current — includes the funnel port fronting our server). Fall
+        // back to a persisted http(s) URL only if the CLI can't resolve one.
+        tunnelUrl: getActualFunnelUrl(process.env.PORT)
+          || (settings.tailscaleUrl && settings.tailscaleUrl.startsWith("http") ? settings.tailscaleUrl : null),
       }
     : null;
   return {

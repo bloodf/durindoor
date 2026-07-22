@@ -1,3 +1,8 @@
+# 2.2.8
+
+## Fixes
+- **Tailscale funnel URL** — the endpoint page showed `null/v1` for Tailscale even when the funnel was live. `getActualFunnelUrl` queried only the app's own tailscaled socket (a system-managed daemon doesn't answer it) and never included the funnel port. It now tries the app → system → default socket, reads `Self.DNSName`, and appends the funnel port that fronts the local server (matched from `funnel status --json`'s `Web → Proxy` mapping), producing e.g. `https://<host>.ts.net:11434`. The status manager prefers this live CLI value over any stale persisted URL. Pure derivation is unit-tested (`tunnel/tailscale/tailscale.js`, `tunnel/tailscale/manager.js`).
+
 # 2.2.7
 
 ## Fixes

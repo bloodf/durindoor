@@ -1,3 +1,11 @@
+# 2.3.0
+
+## Improvements
+- **MCP Help page** — now documents both MCP surfaces end to end: the gateway (aggregating registered upstream MCP servers) and the control server (DurinDoor's own management tools). Added the three transports (streamable-HTTP, SSE, stdio bridge), the `<instanceSlug>__<toolName>` namespacing convention, the seven control tools at `POST /api/mcp/control`, the upstream-server OAuth flow (discovery → registration → PKCE login → auto-refresh/reauth), and a troubleshooting section (`mcp-help/page.js`). This is the first workstream of the control/MCP/parity roadmap (`docs/superpowers/specs/2026-07-22-control-mcp-parity-roadmap.md`).
+
+## Tests / tooling
+- Added `tests/unit/mcp-help-content.test.js` asserting the MCP Help page documents every surface (both servers, all transports, namespacing, the seven control tools, the OAuth flow, and troubleshooting).
+
 # 2.2.9
 
 ## Ports

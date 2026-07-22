@@ -1,6 +1,6 @@
 {
   "name": "durindoor",
-  "version": "2.2.6",
+  "version": "2.2.7",
   "description": "DurinDoor AI Gateway",
   "private": true,
   "packageManager": "npm@10.8.2",

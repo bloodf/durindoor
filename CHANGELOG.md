@@ -1,3 +1,21 @@
+# 2.2.7
+
+## Fixes
+- **Themed Select** — the shared `Select` component was a native `<select>` whose OS-rendered popup ignored the dashboard theme. Rewritten as a fully-themed, keyboard-accessible custom dropdown with the same prop API, so every callsite (playground, usage, media providers, MCP gateway, …) now looks consistent (`Select.js`).
+- **Endpoint Tailscale `null/v1`** — the External row rendered `null/v1` when the Tailscale funnel URL was unavailable; it is now guarded so a null URL no longer shows (`endpoint/EndpointPageClient.jsx`).
+- **Endpoint Cloudflare URLs** — the page now lists ALL configured Cloudflare tunnel URLs (stable worker shortlink + quick/custom) via a new `allUrls` status field, instead of guessing a single URL and hiding the user's custom tunnel (`tunnel/cloudflare/manager.js`, `endpoint/EndpointPageClient.jsx`).
+- **Local Ollama embedding card missing** — `dashboardGuard` now accepts the dashboard session JWT for safe GET reads of `/api/models` and `/api/v1/models/*`. The embedding page's model-list fetch carries the session cookie (not an API key) and a remote/Tailscale dashboard is not loopback, so it was getting 401 and the local-Ollama embedding card never rendered. The API-key gate is unchanged for chat/completions and other LLM traffic; POST still requires a key (`dashboardGuard.js`).
+- **Provider health false "down"** — `no probe for provider` (cursor's protobuf transport, OAuth-only backends) now maps to `unknown` instead of `down`, so an unprobeable provider that is actively serving traffic is not painted red (`healthMonitor.js`).
+- **Provider-icon fallback** — providers without an icon file now show a readable lettered badge instead of a blank square (`ProviderIcon.js`).
+
+## Improvements
+- **Playground labels** — added "Model" and "Effort" labels above the toolbar controls (`PlaygroundPageClient.js`).
+- **API key edit button** — moved the edit (pencil) into the top-right action cluster beside the delete button (`endpoint/EndpointPageClient.jsx`).
+- **Headroom reliability** — the compression-proxy circuit breaker was a latching breaker that stayed degraded until process restart (the only reset path could never run once open). It now self-heals via a 60s cooldown + half-open probe (`rtk/headroomCircuit.js`).
+
+## Tests / tooling
+- Added dashboard-guard JWT-for-models cases, a headroom half-open recovery test, and a health `no-probe → unknown` test.
+
 # 2.2.6
 
 ## Fixes

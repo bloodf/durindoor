@@ -23,6 +23,17 @@ const CLIENT_CONFIG = `{
   }
 }`;
 
+// The seven management tools exposed by the control server (/api/mcp/control).
+const CONTROL_TOOLS = [
+  ["list_providers", "List built-in AI providers and their registry metadata."],
+  ["list_connections", "List all configured provider connections (no credentials)."],
+  ["toggle_connection_active", "Enable or disable a single connection by ID."],
+  ["toggle_provider_active", "Enable or disable every connection for a provider ID."],
+  ["usage_stats", "Aggregate usage statistics for a time period."],
+  ["token_saver_stats", "Token-saver statistics for a time period."],
+  ["model_list", "List available LLM models in OpenAI-compatible format."],
+];
+
 function Section({ title, children }) {
   return (
     <Card>
@@ -53,11 +64,14 @@ export default function McpHelpPage() {
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <h1 className="text-xl font-semibold text-text">MCP Gateway Help</h1>
+        <h1 className="text-xl font-semibold text-text">MCP Help</h1>
         <p className="text-sm text-text-muted">
-          Connect Model Context Protocol clients to DurinDoor&apos;s embedded
-          streamable-HTTP MCP gateway. The gateway aggregates your registered
-          MCP server instances behind a single authenticated endpoint.
+          DurinDoor speaks the Model Context Protocol on two surfaces: the{" "}
+          <strong className="font-medium text-text">gateway</strong>, which
+          aggregates your registered upstream MCP servers behind one
+          authenticated endpoint, and the{" "}
+          <strong className="font-medium text-text">control server</strong>,
+          which exposes DurinDoor&apos;s own management tools to MCP clients.
         </p>
       </div>
 
@@ -77,16 +91,43 @@ export default function McpHelpPage() {
         </p>
       </Section>
 
-      <Section title="Transport &amp; endpoint">
+      <Section title="Transports">
         <p>
-          The gateway accepts JSON-RPC <code className="rounded bg-surface-2 px-1.5 py-0.5">POST</code> requests
-          at the streamable-HTTP endpoint below:
+          The gateway supports three transports. Most clients use
+          streamable-HTTP.
         </p>
-        <CodeBlock label="Endpoint">POST /api/mcp-gateway/message</CodeBlock>
+        <ul className="list-disc space-y-1.5 pl-5">
+          <li>
+            <strong className="font-medium text-text">Streamable-HTTP</strong> —
+            one JSON-RPC{" "}
+            <code className="rounded bg-surface-2 px-1.5 py-0.5">POST</code> per
+            request at{" "}
+            <code className="rounded bg-surface-2 px-1.5 py-0.5">/api/mcp-gateway/message</code>.
+            Notifications return{" "}
+            <code className="rounded bg-surface-2 px-1.5 py-0.5">202 Accepted</code>.
+          </li>
+          <li>
+            <strong className="font-medium text-text">SSE</strong> — open a
+            stream at{" "}
+            <code className="rounded bg-surface-2 px-1.5 py-0.5">GET /api/mcp-gateway/sse</code>;
+            the handshake returns the per-session message endpoint and responses
+            are pushed over{" "}
+            <code className="rounded bg-surface-2 px-1.5 py-0.5">text/event-stream</code>.
+          </li>
+          <li>
+            <strong className="font-medium text-text">Stdio bridge</strong> —
+            allowlisted local plugins are bridged to SSE from a child process;
+            arbitrary commands are never spawned.
+          </li>
+        </ul>
         <p>
-          Responses are streamed as{" "}
-          <code className="rounded bg-surface-2 px-1.5 py-0.5">text/event-stream</code>{" "}
-          for server-driven messages.
+          Aggregated tools are namespaced{" "}
+          <code className="rounded bg-surface-2 px-1.5 py-0.5">&lt;instanceSlug&gt;__&lt;toolName&gt;</code>,
+          so a <code className="rounded bg-surface-2 px-1.5 py-0.5">search</code>{" "}
+          tool on an instance with slug{" "}
+          <code className="rounded bg-surface-2 px-1.5 py-0.5">brave</code> is
+          called as{" "}
+          <code className="rounded bg-surface-2 px-1.5 py-0.5">brave__search</code>.
         </p>
       </Section>
 
@@ -149,6 +190,99 @@ export default function McpHelpPage() {
           with a key created under MCP Gateway → Keys.
         </p>
         <CodeBlock label="MCP client config (JSON)">{CLIENT_CONFIG}</CodeBlock>
+      </Section>
+
+      <Section title="Control server (manage DurinDoor)">
+        <p>
+          Separate from the gateway, DurinDoor runs a{" "}
+          <strong className="font-medium text-text">control</strong> MCP server
+          that exposes management tools for DurinDoor itself. It is a JSON-RPC
+          2.0 server at{" "}
+          <code className="rounded bg-surface-2 px-1.5 py-0.5">POST /api/mcp-gateway/message</code>
+          &apos;s sibling,{" "}
+          <code className="rounded bg-surface-2 px-1.5 py-0.5">POST /api/mcp/control</code>,
+          and is authenticated by your dashboard session or CLI token — not by a
+          gateway key.
+        </p>
+        <p className="text-text-muted">Available tools:</p>
+        <ul className="space-y-1.5">
+          {CONTROL_TOOLS.map(([name, desc]) => (
+            <li key={name} className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
+              <code className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-xs">{name}</code>
+              <span className="text-sm text-text-muted">{desc}</span>
+            </li>
+          ))}
+        </ul>
+      </Section>
+
+      <Section title="Connecting upstream servers over OAuth">
+        <p>
+          When you register an upstream MCP server that requires OAuth, DurinDoor
+          runs the full authorization-code flow for you:
+        </p>
+        <ul className="list-disc space-y-1.5 pl-5">
+          <li>
+            <strong className="font-medium text-text">Discovery</strong> — reads
+            the server&apos;s{" "}
+            <code className="rounded bg-surface-2 px-1.5 py-0.5">WWW-Authenticate</code>{" "}
+            challenge and the{" "}
+            <code className="rounded bg-surface-2 px-1.5 py-0.5">.well-known</code>{" "}
+            protected-resource / authorization-server metadata.
+          </li>
+          <li>
+            <strong className="font-medium text-text">Registration</strong> —
+            Dynamic Client Registration, or a Client ID Metadata Document when
+            the server supports it.
+          </li>
+          <li>
+            <strong className="font-medium text-text">Login</strong> — click{" "}
+            <strong className="font-medium text-text">Connect</strong> on the
+            instance; DurinDoor opens the provider&apos;s consent page with PKCE
+            and a resource indicator, then exchanges the code and stores the
+            tokens.
+          </li>
+          <li>
+            <strong className="font-medium text-text">Refresh</strong> — tokens
+            are refreshed automatically before expiry and on a 401. If a refresh
+            token is permanently rejected, the instance shows{" "}
+            <strong className="font-medium text-text">Needs login</strong> — click
+            Connect again to re-authorize.
+          </li>
+        </ul>
+        <p className="text-text-muted">
+          OAuth requires a publicly reachable callback, so it works over a
+          configured tunnel or Tailscale, not a loopback-only host.
+        </p>
+      </Section>
+
+      <Section title="Troubleshooting">
+        <ul className="list-disc space-y-1.5 pl-5">
+          <li>
+            <strong className="font-medium text-text">401 from the gateway</strong>{" "}
+            — the gateway key is missing, invalid, or disabled. Confirm you sent
+            a <em>gateway</em> key (not a dashboard API key) as a Bearer token.
+          </li>
+          <li>
+            <strong className="font-medium text-text">A tool is missing</strong>{" "}
+            — its instance is disabled or not granted to your key. Enable the
+            instance and add a grant under MCP Gateway → Keys.
+          </li>
+          <li>
+            <strong className="font-medium text-text">Instance shows Needs login</strong>{" "}
+            — the upstream OAuth token expired and could not refresh. Click
+            Connect to re-authorize.
+          </li>
+          <li>
+            <strong className="font-medium text-text">Blocked URL</strong> — an
+            upstream URL was rejected by the SSRF guard (loopback / private
+            ranges are blocked for HTTP instances).
+          </li>
+          <li>
+            <strong className="font-medium text-text">Stdio spawn failed</strong>{" "}
+            — the command is not on the local-plugin allowlist, or the process
+            exited; check the instance command and logs.
+          </li>
+        </ul>
       </Section>
     </div>
   );

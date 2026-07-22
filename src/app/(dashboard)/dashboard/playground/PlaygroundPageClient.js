@@ -784,7 +784,9 @@ export default function PlaygroundPageClient() {
         <header className="sticky top-0 z-20 shrink-0 border-b border-border-subtle bg-bg/85 px-3 py-3 backdrop-blur-md sm:px-4 lg:px-6">
           <div className="flex flex-wrap items-center gap-3">
             {/* Model selector */}
-            <div ref={modelMenuRef} className="relative min-w-0 flex-1 sm:flex-none">
+            <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-none">
+              <span className="px-0.5 text-xs font-medium text-text-muted">Model</span>
+              <div ref={modelMenuRef} className="relative min-w-0">
               <button
                 type="button"
                 onClick={() => setModelMenuOpen((value) => !value)}
@@ -876,6 +878,7 @@ export default function PlaygroundPageClient() {
                   </div>
                 </Card>
               ) : null}
+              </div>
             </div>
 
             {/* Secondary controls */}
@@ -892,8 +895,9 @@ export default function PlaygroundPageClient() {
               ) : null}
               {reasoningOptions && reasoningOptions.length > 1 ? (
                 <Select
+                  label="Effort"
                   aria-label="Reasoning effort"
-                  selectClassName="h-[52px] min-w-[9rem] py-2.5"
+                  selectClassName="h-[46px] min-w-[9rem] py-2.5"
                   options={reasoningOptions.map((option) => ({ value: option, label: humanize(option) }))}
                   value={reasoningEffort}
                   onChange={(event) => setReasoningEffort(event.target.value)}

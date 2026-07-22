@@ -160,7 +160,22 @@ async function hasValidGatewayKey(request) {
 async function canAccessPublicLlmApi(request) {
   if (isLocalRequest(request)) return true;
   if (await hasValidCliToken(request)) return true;
-  return await hasValidApiKey(request);
+  if (await hasValidApiKey(request)) return true;
+  // The dashboard itself reads model catalogs (`/api/models`, `/api/v1/models/*`)
+  // to render provider/embedding grids. Those fetches carry the session cookie,
+  // not an API key, and remote dashboards (e.g. over Tailscale) are not
+  // `isLocalRequest`. Accept a valid dashboard JWT for SAFE (GET/HEAD) reads of
+  // the model-list endpoints only — never for chat/completions or other LLM
+  // traffic, which still require an API key.
+  const method = String(request.method || "GET").toUpperCase();
+  const pathname = request.nextUrl.pathname;
+  const isModelListRead =
+    (method === "GET" || method === "HEAD") &&
+    (pathname === "/api/models" ||
+      pathname === "/api/v1/models" ||
+      pathname.startsWith("/api/v1/models/"));
+  if (isModelListRead && (await hasValidToken(request))) return true;
+  return false;
 }
 
 async function canAccessLocalOnlyRoute(request) {

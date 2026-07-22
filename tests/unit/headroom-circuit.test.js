@@ -65,6 +65,26 @@ describe("Headroom retry circuit", () => {
     expect(getHeadroomCircuitState().consecutiveFailures).toBe(0);
   });
 
+  it("recovers via half-open after the cooldown window elapses", async () => {
+    // Test the breaker's time-based recovery directly with an injected clock —
+    // no fake timers (which deadlock against the async retry/backoff path).
+    const { incrementHeadroomFailures, getHeadroomCircuitState: circuitState } =
+      await import("../../open-sse/rtk/headroomCircuit.js");
+    // incrementHeadroomFailures stamps openedAt = Date.now(); base the synthetic
+    // clock on that real instant so the elapsed math is meaningful.
+    for (let i = 0; i < THRESHOLD; i += 1) incrementHeadroomFailures();
+    const openedAt = Date.now();
+    // Open immediately after tripping.
+    expect(circuitState(openedAt).degraded).toBe(true);
+    expect(circuitState(openedAt).halfOpen).toBe(false);
+    // Still open partway through the cooldown.
+    expect(circuitState(openedAt + 30_000).degraded).toBe(true);
+    // After the 60s cooldown the circuit is half-open (not degraded → one probe
+    // is allowed through instead of latching degraded forever).
+    expect(circuitState(openedAt + 61_000).degraded).toBe(false);
+    expect(circuitState(openedAt + 61_000).halfOpen).toBe(true);
+  });
+
   it("exposes status stats without importing browser modules", () => {
     const stats = getHeadroomStatusStats();
     expect(stats).toHaveProperty("degraded");

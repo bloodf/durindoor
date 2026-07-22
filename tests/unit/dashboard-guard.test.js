@@ -99,6 +99,34 @@ describe("dashboard guard public LLM API access", () => {
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 
+  it("allows a remote dashboard session (JWT cookie) to GET the model-list API", async () => {
+    // The dashboard reads /api/v1/models/* to render provider/embedding grids;
+    // those fetches carry the session cookie, not an API key, and a Tailscale
+    // dashboard is not loopback. A valid dashboard JWT must pass for model reads.
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+    const req = request("/api/v1/models/embedding", { host: "cortexos.example.ts.net" });
+    req.cookies.get = vi.fn((name) => (name === "auth_token" ? { value: "valid-jwt" } : undefined));
+    const response = await proxy(req);
+    expect(response).toBe(mocks.nextResponse);
+  });
+
+  it("still rejects a dashboard JWT on remote chat/completions (API key only)", async () => {
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+    const req = request("/v1/chat/completions", { host: "router.example.com" });
+    req.cookies.get = vi.fn((name) => (name === "auth_token" ? { value: "valid-jwt" } : undefined));
+    const response = await proxy(req);
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("API key required for remote API access");
+  });
+
+  it("still rejects a remote POST to the model-list API with only a dashboard JWT", async () => {
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+    const req = request("/api/v1/models/embedding", { host: "router.example.com" }, "POST");
+    req.cookies.get = vi.fn((name) => (name === "auth_token" ? { value: "valid-jwt" } : undefined));
+    const response = await proxy(req);
+    expect(response.status).toBe(401);
+  });
+
   it("rejects remote beta public LLM API without API key", async () => {
     const response = await proxy(request("/v1beta/models", { host: "router.example.com" }));
 

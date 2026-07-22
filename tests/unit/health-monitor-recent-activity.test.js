@@ -76,4 +76,29 @@ describe("healthMonitor recent-activity overlay", () => {
 
     expect(payload.providers[0].state).toBe("down");
   });
+
+  it("maps 'no probe for provider' to unknown (not down), and healthy when recently active", async () => {
+    const clock = fakeClock();
+    const loader = async () => [CONN("cursor", "cursor"), CONN("codex", "codex")];
+    // No health endpoint exists for these providers → probe returns null status.
+    const prober = async () => ({ valid: false, status: null, error: "no probe for provider" });
+    // codex served a request recently; cursor did not.
+    const recentActivityLoader = async () => new Set(["codex"]);
+
+    const payload = await getHealthPayload({
+      now: clock.now,
+      connectionsLoader: loader,
+      prober,
+      recentActivityLoader,
+      force: true,
+    });
+
+    const cursor = payload.providers.find((p) => p.id === "cursor");
+    const codex = payload.providers.find((p) => p.id === "codex");
+    // Unprobeable + idle → neutral "unknown", never a false "down".
+    expect(cursor.state).toBe("unknown");
+    // Unprobeable + recently serving traffic → healthy via the overlay.
+    expect(codex.state).toBe("healthy");
+    expect(payload.summary.down).toBe(0);
+  });
 });

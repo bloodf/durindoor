@@ -1,3 +1,12 @@
+# 2.3.1
+
+## Improvements
+- **Copy an API key after creation** — API keys and MCP gateway keys can now be re-copied from their list rows via a "Copy key" action, not only at creation time. The raw secret is fetched on demand from a dedicated, guarded reveal route (`GET /api/keys/[id]/reveal` and `GET /api/mcp-gateway/keys/[id]/reveal`) so it is never dumped into the list response; the gateway reveal route keeps the same local-request restriction as gateway key creation.
+- **"All combos" select in create-key** — the endpoint create-key modal now exposes an explicit "All combos" option (checked = unrestricted access), making the previously implicit "empty means all combos" behavior a visible, selectable control.
+
+## Tests / tooling
+- Added `tests/unit/api-keys-reveal-route.test.js` covering both reveal routes: raw-secret return, 404 on missing key, and the gateway route's local-only 403.
+
 # 2.3.0
 
 ## Improvements

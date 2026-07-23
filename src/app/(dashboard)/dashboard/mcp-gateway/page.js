@@ -248,6 +248,18 @@ export default function McpGatewayPage() {
     await reload();
   }
 
+  // Reveal a stored gateway-key secret (masked in the list) and copy it. The
+  // raw key is fetched on demand from the local-only reveal route.
+  async function revealAndCopyKey(id) {
+    const res = await fetch(`/api/mcp-gateway/keys/${id}/reveal`);
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || !body.key) {
+      notify({ type: "error", message: body.error ?? "reveal failed" });
+      return;
+    }
+    copy(body.key, `reveal_${id}`);
+  }
+
   async function deleteKey(id) {
     const res = await fetch(`/api/mcp-gateway/keys/${id}`, { method: "DELETE" });
     if (!res.ok) {
@@ -396,6 +408,14 @@ export default function McpGatewayPage() {
                 </div>
                 <div className="flex gap-1 shrink-0">
                   <Button size="sm" variant="ghost" icon="tune" onClick={() => setEditingKey(k.id)}>Grants</Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    icon={copied === `reveal_${k.id}` ? "check" : "content_copy"}
+                    onClick={() => revealAndCopyKey(k.id)}
+                  >
+                    {copied === `reveal_${k.id}` ? "Copied" : "Copy key"}
+                  </Button>
                   <Button size="sm" variant="ghost" icon="delete" onClick={() => setConfirmDelete({ kind: "key", id: k.id })} />
                 </div>
               </div>

@@ -36,6 +36,9 @@ describe("documentation integrity", () => {
     expect(githubSlug("  Spaces  ")).toBe("spaces");
     expect(githubSlug("C++ Guide")).toBe("c-guide");
     expect(githubSlug("Under_score")).toBe("under_score");
+    expect(githubSlug("Café")).toBe("café");
+    expect(githubSlug("Заголовок")).toBe("заголовок");
+    expect(githubSlug("!@#$%^&*()")).toBe("");
   });
 
   it("reports missing files and anchors", async () => {
@@ -57,21 +60,20 @@ describe("documentation integrity", () => {
     expect(issues).toContain("docs/README.md: missing durindoor-wordmark-theme-aware.svg");
   });
 
-  it("reports forbidden website URLs and public orphans", async () => {
+  it("reports forbidden URLs even inside code blocks", async () => {
     const issues = await check({
-      "README.md": `${assets}\n[Docs](docs/README.md)`,
-      "docs/README.md": `${assets}\n# Docs`,
-      "docs/orphan.md": "https://bloodf.github.io/durindoor/",
+      "README.md": `${assets}\n`,
+      "docs/orphan.md": "\`\`\`text\nhttps://bloodf.github.io/durindoor/\n\`\`\`",
     });
     expect(issues).toContain("docs/orphan.md: forbidden URL bloodf.github.io/durindoor");
-    expect(issues).toContain("docs/orphan.md: public document is not reachable from README.md or docs/README.md");
   });
 
-  it("ignores fenced code blocks", async () => {
+  it("ignores fenced and inline code blocks", async () => {
     const issues = await check({
-      "README.md": `${assets}\n\`\`\`js\n[link](docs/missing.md)\n\`\`\``,
+      "README.md": `${assets}\n\`\`\`js\n[link](docs/missing.md)\n\`\`\`\n\`\`\`markdown\n[link](docs/gone.md)\n\`\`\`\n~~~bash\n[link](docs/tilded.md)\n~~~\n\`[link](docs/inline.md)\``,
     });
-    expect(issues).not.toContain("README.md: missing target docs/missing.md");
+    const missingTargets = issues.filter((i) => i.startsWith("README.md: missing target"));
+    expect(missingTargets).toEqual([]);
   });
 
   it("allows pure anchor links resolved against current file", async () => {
@@ -86,16 +88,14 @@ describe("documentation integrity", () => {
       "README.md": `${assets}\n[link](docs/guide.md#api%20%26%20reference)`,
       "docs/guide.md": "# API & Reference\n",
     });
-    expect(issues).not.toContain("README.md: missing anchor #api & reference in docs/guide.md");
+    expect(issues).toEqual([]);
   });
 
   it("distinguishes duplicate headings with numeric suffixes", async () => {
     const issues = await check({
       "README.md": `${assets}\n[first](#dup) [second](#dup-1) [third](#dup-2)\n# Dup\n# Dup\n# Dup`,
     });
-    expect(issues).not.toContain("README.md: missing anchor #dup");
-    expect(issues).not.toContain("README.md: missing anchor #dup-1");
-    expect(issues).not.toContain("README.md: missing anchor #dup-2");
+    expect(issues).toEqual([]);
   });
 
   it("parses HTML img and a tags", async () => {

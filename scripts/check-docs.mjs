@@ -57,14 +57,36 @@ export const FORBIDDEN_PUBLIC_TEXT = [
 export function githubSlug(value) {
   let s = value
     .toLowerCase()
-    .replace(/[^\w\s-]/g, "")
+    .replace(/[^\p{L}\p{N}_\s-]/gu, "")
     .replace(/\s/g, "-")
     .replace(/^-+|-+$/g, "");
-  return s === "" ? value : s;
+  return s === "" ? "" : s;
 }
 
 function stripCodeBlocks(text) {
-  return text.replace(/```[\s\S]*?```/g, "");
+  const lines = text.split("\n");
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const fenceMatch = lines[i].match(/^(\s{0,3})(`{3,}|~{3,})/);
+    if (fenceMatch) {
+      const fenceChar = fenceMatch[2][0];
+      const fenceLen = fenceMatch[2].length;
+      i++;
+      while (i < lines.length) {
+        const closeMatch = lines[i].match(/^(\s{0,3})(`{3,}|~{3,})/);
+        if (closeMatch && closeMatch[2][0] === fenceChar && closeMatch[2].length >= fenceLen) {
+          i++;
+          break;
+        }
+        i++;
+      }
+    } else {
+      out.push(lines[i]);
+      i++;
+    }
+  }
+  return out.join("\n").replace(/`[^`]*`/g, "");
 }
 
 function* linksIn(source, text) {
@@ -111,17 +133,21 @@ export async function validateDocumentation({ root, files, readText }) {
   const fileSet = new Set(files);
   const issues = [];
   const contents = Object.create(null);
+  const stripped = Object.create(null);
   const headings = Object.create(null);
   const links = [];
   const entryPoints = ["README.md", "docs/README.md"];
 
   for (const file of files) {
-    contents[file] = stripCodeBlocks(await read(file));
-    headings[file] = headingsFor(contents[file]);
+    const original = await read(file);
+    contents[file] = original;
+    stripped[file] = stripCodeBlocks(original);
+    headings[file] = headingsFor(original);
   }
 
   for (const file of files) {
     const text = contents[file];
+    const rendered = stripped[file];
 
     for (const asset of REQUIRED_ASSETS) {
       if (entryPoints.includes(file) && !text.includes(asset)) {
@@ -137,7 +163,7 @@ export async function validateDocumentation({ root, files, readText }) {
       }
     }
 
-    for (const link of linksIn(file, text)) {
+    for (const link of linksIn(file, rendered)) {
       const resolved = resolveLink(file, link.raw);
       if (!resolved) continue;
       links.push({ from: file, ...resolved });
@@ -197,7 +223,7 @@ export async function validateDocumentation({ root, files, readText }) {
 }
 
 export async function validateRepository(cwd) {
-  const { stdout } = await execFileAsync("git", ["ls-files", "-z", "*.md"], { cwd });
+  const { stdout } = await execFileAsync("git", ["ls-files", "-z", "--", "*.md"], { cwd });
   const files = stdout
     ? stdout.split("\0").filter((f) => f !== "" && f.endsWith(".md"))
     : [];

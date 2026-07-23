@@ -27,6 +27,7 @@ For users getting their first request through the gateway.
 - [Provider Nodes and Custom Providers](providers/cheap.md): OpenAI-compatible nodes, Anthropic-compatible nodes, custom embeddings, and provider aliases.
 - [Free and Local Providers](providers/free.md): no-auth, local, browser-cookie, and local-device providers.
 - [Claude Code](integration/claude-code.md)
+- [Ollama + Claude Code](integration/ollama-claude.md)
 - [OpenAI Codex](integration/codex.md)
 - [Cursor](integration/cursor.md)
 - [Cline](integration/cline.md)
@@ -43,6 +44,7 @@ For users getting their first request through the gateway.
 For operators running DurinDoor in production or on a team server.
 
 - [Local Deployment](deployment/localhost.md)
+- [Docker](../DOCKER.md)
 - [Cloud and Docker Deployment](deployment/cloud.md)
 - [Static Assets and Reverse Proxy](deployment/static-assets.md)
 - [Startup and Runtime Operations](operations/startup.md)

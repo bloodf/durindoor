@@ -13,7 +13,6 @@ per-PR detail that shipped under those interim labels.
 - **Privacy: Google Analytics fully removed** — beacon, `@next/third-parties` import, and dependency deleted (stronger than upstream #2775's opt-in).
 - **Verified upstream ports** — 9router #2800 (openai-compatible thinking format), #2748 (CLI clean build), #2798 (proxy-pool relay); OmniRoute #8238 (drop Gemini civic-integrity safety).
 - **Combo provider / model-family invariants** (2.3.2, OmniRoute #8304) — declarative `allowedProviders` / `allowedModelFamilies` with atomic validation; `combos.invariant` column (migration 013).
-- **Port roadmap** — `docs/campaigns/upstream-omniroute-port-roadmap.md` tiers the remaining portable upstream/OmniRoute work.
 
 # 2.3.2
 
@@ -22,9 +21,6 @@ per-PR detail that shipped under those interim labels.
 
 ## Tests / tooling
 - Added `tests/unit/combo-invariants.test.js` covering the validator: no-op without constraints, family/provider rejection, slash-qualified provider derivation, nested `invariant` + combo-ref skipping, and unknown-family rejection.
-
-## Notes
-- OmniRoute #8307 (Codex image account-fallback) was evaluated and found **already implemented** by DurinDoor's generic image account-fallback loop (`imageGeneration.js` + model-scoped locking in `markAccountUnavailable`); it was intentionally not ported to avoid a divergent Codex-specific path. See `docs/campaigns/upstream-omniroute-port-roadmap.md`.
 
 # 2.3.1
 
@@ -38,7 +34,7 @@ per-PR detail that shipped under those interim labels.
 # 2.3.0
 
 ## Improvements
-- **MCP Help page** — now documents both MCP surfaces end to end: the gateway (aggregating registered upstream MCP servers) and the control server (DurinDoor's own management tools). Added the three transports (streamable-HTTP, SSE, stdio bridge), the `<instanceSlug>__<toolName>` namespacing convention, the seven control tools at `POST /api/mcp/control`, the upstream-server OAuth flow (discovery → registration → PKCE login → auto-refresh/reauth), and a troubleshooting section (`mcp-help/page.js`). This is the first workstream of the control/MCP/parity roadmap (`docs/superpowers/specs/2026-07-22-control-mcp-parity-roadmap.md`).
+- **MCP Help page** — documents both MCP surfaces end to end: the gateway (aggregating registered upstream MCP servers) and the control server (DurinDoor's own management tools). It covers the three transports (streamable HTTP, SSE, and the stdio bridge), the `<instanceSlug>__<toolName>` namespacing convention, the seven control tools at `POST /api/mcp/control`, the upstream-server OAuth flow, and troubleshooting.
 
 ## Tests / tooling
 - Added `tests/unit/mcp-help-content.test.js` asserting the MCP Help page documents every surface (both servers, all transports, namespacing, the seven control tools, the OAuth flow, and troubleshooting).

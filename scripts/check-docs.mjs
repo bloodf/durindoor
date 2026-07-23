@@ -24,9 +24,11 @@ export const COMMUNITY_FILES = new Set([
   "CODE_OF_CONDUCT.md",
   "CONTRIBUTING.md",
   "CHANGELOG.md",
+  "DOCKER.md",
   ".github/CONTRIBUTING.md",
   ".github/SECURITY.md",
   ".github/PULL_REQUEST_TEMPLATE.md",
+  ".github/CHANGELOG_TEMPLATE.md",
   ".github/ISSUE_TEMPLATE/bug_report.md",
   ".github/ISSUE_TEMPLATE/feature_request.md",
 ]);

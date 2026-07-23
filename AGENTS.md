@@ -20,7 +20,7 @@ Every change developed in this repository — regardless of stream (upstream-por
 
 1. **Documentation updates — ALWAYS required.** Pick the smallest fitting form:
    - Inline JSDoc / module-header comments for the change site.
-   - A `README.md`, `docs/`, or `gitbook/content/<locale>/` update.
+   - A `README.md` or `docs/` update.
    - A scoped `.md` file committed with the change (e.g. an ADR for architecture decisions).
    - For docs-only / config-only PRs, the PR body serves as the documentation; link from `CHANGELOG.md` if user-visible.
 

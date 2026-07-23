@@ -11,34 +11,30 @@ Use `.env.example` as the machine-readable starter file and this page as the exp
 | `JWT_SECRET` | `openssl rand -hex 32` output | Production | Signs dashboard session tokens. Changing it invalidates active sessions. |
 | `INITIAL_PASSWORD` | a strong password | First production boot | Initial dashboard password when no password exists yet. Change it in the dashboard after first login. |
 | `DATA_DIR` | `/var/lib/durindoor` or `/app/data` | Production | Persistent storage for the SQLite database, auth secrets, logs, runtime helpers, tunnels, MITM files, and backups. |
-| `API_KEY_SECRET` | `openssl rand -hex 32` output | Production | Used to validate the CRC section of generated DurinDoor API keys. Keep stable across redeploys. |
+| `API_KEY_SECRET` | `openssl rand -hex 32` output | Production | Keeps generated API keys valid across redeploys. |
 
-The default data path intentionally remains `~/.9router` on macOS/Linux and `%APPDATA%\9router` on Windows for migration compatibility.
+The native default remains `~/.9router` on macOS/Linux and `%APPDATA%\9router` on Windows for migration compatibility.
 
 ## Runtime Server
 
 | Variable | Default | Description |
 | --- | --- | --- |
 | `PORT` | `20128` | HTTP port for the production gateway and dashboard. |
-| `HOSTNAME` | runtime dependent | Bind address. Use `0.0.0.0` in containers and remote deployments. |
-| `NODE_ENV` | development unless set by runtime | Set to `production` for production starts. |
-| `BASE_URL` | local URL | Server-side URL for routes that need the current instance origin. |
-| `NEXT_PUBLIC_BASE_URL` | local URL | Browser-visible base URL. Use the public HTTPS origin for remote deployments. |
-| `CLOUD_URL` | project default | Optional remote/cloud endpoint value used by selected features. |
-| `NEXT_PUBLIC_CLOUD_URL` | project default | Browser-visible cloud endpoint value. |
-| `TRUST_PROXY` | `false` | When `true`, dashboard login rate limiting trusts forwarded IP headers from a reverse proxy. Only enable behind a trusted proxy. |
-| `AUTH_COOKIE_SECURE` | `false` | Forces secure dashboard cookies when set to `true`. Use with HTTPS. |
-| `SHUTDOWN_SECRET` | unset | Required secret for the shutdown API when configured. |
+| `HOSTNAME` | runtime dependent | Bind address. Use `0.0.0.0` only in containers or deliberately exposed deployments. |
+| `NODE_ENV` | development unless set | Use `production` for production starts. |
+| `BASE_URL` | local URL | Server-side origin for callbacks and selected routes. |
+| `NEXT_PUBLIC_BASE_URL` | local URL | Browser-visible origin. Use the public HTTPS origin for remote deployments. |
+| `TRUST_PROXY` | `false` | Trust forwarded IP headers only behind a trusted reverse proxy. |
+| `AUTH_COOKIE_SECURE` | `false` | Force secure dashboard cookies when using HTTPS. |
+| `SHUTDOWN_SECRET` | unset | Secret for the shutdown API when configured. |
 
 ## API Access and Identity
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `REQUIRE_API_KEY` | `false` in example | When enabled by settings/runtime paths, client requests must include a valid DurinDoor API key. |
 | `MACHINE_ID_SALT` | `endpoint-proxy-salt` | Salt used when deriving the local machine identifier embedded in generated API keys. |
 | `ROUTER_API_KEY` | unset | Optional automation key used by selected internal or external workflows. |
-| `OPENAI_API_KEY` | unset | Not required by DurinDoor itself. Only use when a tool or provider-specific workflow expects it. |
-
+| `OPENAI_API_KEY` | unset | Not required by DurinDoor itself; set only for a provider-specific workflow that expects it. |
 ## Observability and Logs
 
 | Variable | Default | Description |
@@ -63,9 +59,9 @@ DurinDoor can send upstream provider calls through HTTP, HTTPS, SOCKS, or manage
 | `HTTPS_PROXY` / `https_proxy` | Proxy URL for HTTPS upstream requests. |
 | `ALL_PROXY` / `all_proxy` | Fallback proxy URL for all protocols. |
 | `NO_PROXY` / `no_proxy` | Comma-separated hosts that bypass the proxy. |
-| `NINE_ROUTER_PROXY_URL` | Internal managed proxy URL set by dashboard proxy settings. |
-| `NINE_ROUTER_NO_PROXY` | Internal managed no-proxy list set by dashboard proxy settings. |
-| `NINE_ROUTER_PROXY_MANAGED` | Internal marker for dashboard-managed proxy env state. |
+| `NINE_ROUTER_PROXY_URL` *(compatibility)* | Internal managed proxy URL set by dashboard proxy settings. |
+| `NINE_ROUTER_NO_PROXY` *(compatibility)* | Internal managed no-proxy list set by dashboard proxy settings. |
+| `NINE_ROUTER_PROXY_MANAGED` *(compatibility)* | Internal marker for dashboard-managed proxy env state. |
 
 Prefer dashboard proxy settings for normal operation. Use process-level proxy variables for container or platform-level egress control.
 
@@ -151,11 +147,11 @@ override its provider default with `providerSpecificData.cliproxyapiMode =
 | --- | --- | --- |
 | `NEXT_DIST_DIR` | `.next` | Next.js output directory. |
 | `NEXT_TRACING_ROOT_MODE` | project root | Set to `workspace` when CLI packaging needs workspace-level file tracing. |
-| `NINEROUTER_PROXY_CLIENT_MAX_BODY_SIZE` | `128mb` | Next.js proxy client body-size limit for large LLM requests. |
+| `NINEROUTER_PROXY_CLIENT_MAX_BODY_SIZE` *(compatibility)* | `128mb` | Next.js proxy client body-size limit for large LLM requests. |
 | `NEXT_TELEMETRY_DISABLED` | unset | Set to `1` to disable Next.js telemetry. |
 
-## Updater Internals
+## Updater Internals *(internal)*
 
-These variables are used by the packaged updater and are not normally set by operators:
+These variables are used by the packaged updater. They are not normally set by operators and may change without notice:
 
 `UPDATER_APP_PORT`, `UPDATER_LINGER_MS`, `UPDATER_PKG_NAME`, `UPDATER_PORT`, `UPDATER_RELAUNCH`, `UPDATER_RELAUNCH_ARGS`, `UPDATER_RELAUNCH_CMD`, `UPDATER_RETRIES`, `UPDATER_RETRY_DELAY_MS`, `UPDATER_SCRIPT_PATH`, `UPDATER_TAIL_LINES`, `UPDATER_WAIT_CHECK_MS`, `UPDATER_WAIT_MAX_MS`, `UPDATER_WAIT_MIN_MS`.

@@ -14,6 +14,8 @@ Sidecars should treat `sidecar.eligible` as a candidate signal. Providers with
 custom executors, OAuth/session flows, dynamic URLs, or pool config stay on the
 JavaScript fallback path until the sidecar implements equivalent behavior.
 
+CLIProxyAPI is optional. DurinDoor remains the fallback for providers whose auth, URL construction, session pooling, or executor behavior cannot be represented safely in the manifest.
+
 CLIProxyAPI requests receive an `X-OmniRoute-Provider-Manifest-Url` header.
 The header is derived only from trusted server configuration, never from
 inbound request headers such as `Origin`. Set `OMNIROUTE_PROVIDER_MANIFEST_URL`

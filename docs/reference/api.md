@@ -237,3 +237,18 @@ Health does not require the same provider setup as model routes. Use `/v1/models
 - Tool calls, image blocks, audio, and reasoning fields are provider-format sensitive.
 - Combos should only mix models that can handle the client workflow.
 - Use request logs to see the provider and model that actually handled a request.
+
+
+## Realtime WebSocket
+
+```text
+GET /v1/realtime  (WebSocket upgrade)
+```
+
+DurinDoor exposes an OpenAI-Realtime-shaped WebSocket endpoint. See [Realtime Behavior](../features/realtime.md) for authentication, events, validation, limits, and cleanup.
+
+## Related Gateway Features
+
+- [MCP Gateway](../features/mcp-gateway.md)
+- [Compression](../features/compression.md)
+- [Realtime Behavior](../features/realtime.md)

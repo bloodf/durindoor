@@ -76,17 +76,21 @@ Rollback reverts to the prior image or source revision and restores the backup.
 
 Named volume: follow [Data Management](data-management.md#restoring-a-docker-named-volume) to restore from your pre-upgrade backup.
 
-Host bind mount: follow [Data Management](data-management.md#restoring-a-host-directory) to restore from your pre-upgrade backup, then restart with the old image:
+
+Host bind mount: verify `DATA_DIR` is set to an absolute path on the host, then follow [Data Management](data-management.md#restoring-a-host-directory) to restore from your pre-upgrade backup, then restart with the old image:
 
 ```bash
+case "$DATA_DIR" in
+  /*) ;;
+  *) echo "ERROR: DATA_DIR must be an absolute path, got '$DATA_DIR'" >&2; exit 1 ;;
+esac
 docker stop durindoor && docker rm durindoor
 docker run -d \
   --name durindoor \
+  --env-file .env \
   -p 20128:20128 \
-  -v durindoor-data:/app/data \
+  -v "$DATA_DIR:/app/data" \
   -e DATA_DIR=/app/data \
-  -e JWT_SECRET="your-secret" \
-  -e API_KEY_SECRET="your-secret" \
   ghcr.io/bloodf/durindoor:<old-version>
 ```
 

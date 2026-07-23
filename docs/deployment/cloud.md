@@ -30,13 +30,11 @@ Pin production deployments to a version tag. The `latest` tag moves forward and 
 ```bash
 docker run -d \
   --name durindoor \
+  --env-file .env \
   -p 20128:20128 \
   -e PORT=20128 \
   -e HOSTNAME=0.0.0.0 \
   -e DATA_DIR=/app/data \
-  -e JWT_SECRET="CHANGE_ME" \
-  -e API_KEY_SECRET="CHANGE_ME" \
-  -e INITIAL_PASSWORD="CHANGE_ME" \
   -v durindoor-data:/app/data \
   ghcr.io/bloodf/durindoor:3.9.0
 ```
@@ -55,31 +53,32 @@ services:
       PORT: "20128"
       HOSTNAME: "0.0.0.0"
       DATA_DIR: /app/data
-      JWT_SECRET: CHANGE_ME_LONG_RANDOM_VALUE
-      API_KEY_SECRET: CHANGE_ME_LONG_RANDOM_VALUE
-      INITIAL_PASSWORD: CHANGE_ME_STRONG_PASSWORD
+      JWT_SECRET: "${JWT_SECRET:?set JWT_SECRET in .env}"
+      API_KEY_SECRET: "${API_KEY_SECRET:?set API_KEY_SECRET in .env}"
+      INITIAL_PASSWORD: "${INITIAL_PASSWORD:?set INITIAL_PASSWORD in .env}"
       NODE_ENV: production
     volumes:
       - durindoor-data:/app/data
+    env_file:
+      - .env
 
 volumes:
   durindoor-data:
     name: durindoor-data
 ```
-
-
-Set all `CHANGE_ME` values in a `.env` file loaded via `env_file` rather than hardcoding secrets in the compose file.
+Set all secrets in the `.env` file; the compose file uses `env_file` to load them.
 
 ## Persistent storage
 
 The named volume `durindoor-data` survives container removal and restart. Without it, all data is lost when the container is removed.
-
 On a new host, copy the volume contents to the new machine before starting:
 
 ```bash
 # On old host
+docker stop durindoor
 docker run --rm -v durindoor-data:/data -v "$PWD:/backup" alpine \
   tar czf /backup/durindoor-data.tar.gz -C /data .
+docker start durindoor
 
 # On new host
 docker volume create durindoor-data

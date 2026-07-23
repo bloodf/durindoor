@@ -20,7 +20,7 @@ Start with the entry skill, then load the capability skill needed for the reques
 ```bash
 export DURINDOOR_URL="http://localhost:20128"
 export DURINDOOR_KEY="YOUR_DURINDOOR_API_KEY"
-curl "$DURINDOOR_URL/api/health"
+curl -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/api/health"
 ```
 
 Use discovery endpoints in each skill instead of copying model IDs from old examples. Available models depend on the running version and configured providers.

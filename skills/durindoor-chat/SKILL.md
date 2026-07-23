@@ -10,8 +10,8 @@ Requires `DURINDOOR_URL` and, when enabled, `DURINDOOR_KEY`.
 ## Discover
 
 ```bash
-curl "$DURINDOOR_URL/v1/models" | jq -r '.data[].id'
-MODEL_ID="$(curl -s "$DURINDOOR_URL/v1/models" | jq -r '.data[0].id')"
+curl -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/v1/models" | jq -r '.data[].id'
+MODEL_ID="$(curl -s -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/v1/models" | jq -r '.data[0].id')"
 ```
 
 ## OpenAI format

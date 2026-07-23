@@ -8,9 +8,9 @@ description: Generate images through DurinDoor with a model discovered from /v1/
 ## Discover
 
 ```bash
-curl "$DURINDOOR_URL/v1/models/image" | jq -r '.data[].id'
-MODEL_ID="$(curl -s "$DURINDOOR_URL/v1/models/image" | jq -r '.data[0].id')"
-curl "$DURINDOOR_URL/v1/models/info?id=$MODEL_ID"
+curl -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/v1/models/image" | jq -r '.data[].id'
+MODEL_ID="$(curl -s -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/v1/models/image" | jq -r '.data[0].id')"
+curl -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/v1/models/info?id=$MODEL_ID"
 ```
 
 ## Generate

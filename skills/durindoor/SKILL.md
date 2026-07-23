@@ -10,7 +10,7 @@ description: Set up and discover capabilities on a DurinDoor AI gateway. Use whe
 ```bash
 export DURINDOOR_URL="http://localhost:20128"
 export DURINDOOR_KEY="YOUR_DURINDOOR_API_KEY"
-curl "$DURINDOOR_URL/api/health"
+curl -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/api/health"
 ```
 
 Send authenticated requests with `Authorization: Bearer $DURINDOOR_KEY`. Omit the header only when the gateway explicitly allows unauthenticated requests.
@@ -18,13 +18,13 @@ Send authenticated requests with `Authorization: Bearer $DURINDOOR_KEY`. Omit th
 ## Discover models
 
 ```bash
-curl "$DURINDOOR_URL/v1/models"             # chat and combos
-curl "$DURINDOOR_URL/v1/models/image"       # image generation
-curl "$DURINDOOR_URL/v1/models/tts"         # text-to-speech
-curl "$DURINDOOR_URL/v1/models/stt"         # speech-to-text
-curl "$DURINDOOR_URL/v1/models/embedding"   # embeddings
-curl "$DURINDOOR_URL/v1/models/web"         # web search and fetch; inspect kind
-curl "$DURINDOOR_URL/v1/models/rerank"      # reranking
+curl -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/v1/models"             # chat and combos
+curl -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/v1/models/image"       # image generation
+curl -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/v1/models/tts"         # text-to-speech
+curl -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/v1/models/stt"         # speech-to-text
+curl -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/v1/models/embedding"   # embeddings
+curl -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/v1/models/web"         # web search and fetch; inspect kind
+curl -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/v1/models/rerank"      # reranking
 ```
 
 Use a returned `data[].id` as the request's `model`. Web entries identify `kind` as `webSearch` or `webFetch`. `/v1/models/web` discovers models; requests go to `POST /v1/search` or `POST /v1/web/fetch`.

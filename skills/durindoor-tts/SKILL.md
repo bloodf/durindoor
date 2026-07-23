@@ -8,15 +8,15 @@ description: Convert text to speech through DurinDoor using a model discovered f
 ## Discover
 
 ```bash
-curl "$DURINDOOR_URL/v1/models/tts" | jq -r '.data[].id'
-MODEL_ID="$(curl -s "$DURINDOOR_URL/v1/models/tts" | jq -r '.data[0].id')"
-curl "$DURINDOOR_URL/v1/models/info?id=$MODEL_ID"
+curl -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/v1/models/tts" | jq -r '.data[].id'
+MODEL_ID="$(curl -s -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/v1/models/tts" | jq -r '.data[0].id')"
+curl -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/v1/models/info?id=$MODEL_ID"
 ```
 
 Some providers expose voices separately:
 
 ```bash
-curl "$DURINDOOR_URL/v1/audio/voices?provider=edge-tts" | jq -r '.data[].model'
+curl -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/v1/audio/voices?provider=edge-tts" | jq -r '.data[].model'
 ```
 
 Use the exact model or voice ID returned by discovery. Do not add a provider prefix unless the response includes it.

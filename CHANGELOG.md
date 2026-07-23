@@ -1,3 +1,14 @@
+# 2.3.2
+
+## Improvements
+- **Combo provider / model-family invariants** (port of OmniRoute #8304) — a combo may now declare `allowedProviders` and/or `allowedModelFamilies` (top-level or under `invariant`). On create/update every non-combo-ref target is validated; a violating target aborts the write atomically. Persisted in a new nullable `combos.invariant` column (migration 013, idempotent).
+
+## Tests / tooling
+- Added `tests/unit/combo-invariants.test.js` covering the validator: no-op without constraints, family/provider rejection, slash-qualified provider derivation, nested `invariant` + combo-ref skipping, and unknown-family rejection.
+
+## Notes
+- OmniRoute #8307 (Codex image account-fallback) was evaluated and found **already implemented** by DurinDoor's generic image account-fallback loop (`imageGeneration.js` + model-scoped locking in `markAccountUnavailable`); it was intentionally not ported to avoid a divergent Codex-specific path. See `docs/campaigns/upstream-omniroute-port-roadmap.md`.
+
 # 2.3.1
 
 ## Improvements

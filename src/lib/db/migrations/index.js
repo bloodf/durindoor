@@ -13,8 +13,9 @@ import m009 from "./009-encrypt-credentials.js";
 import m010 from "./010-token-saver-events.js";
 import m011 from "./011-model-capability-overrides.js";
 import m012 from "./012-mcp-provider-connection.js";
+import m013 from "./013-combo-invariant.js";
 
-export const MIGRATIONS = [m001, m002, m003, m004, m005, m006, m007, m008, m009, m010, m011, m012].sort(
+export const MIGRATIONS = [m001, m002, m003, m004, m005, m006, m007, m008, m009, m010, m011, m012, m013].sort(
 );
 
 export function latestVersion() {

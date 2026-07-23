@@ -195,10 +195,6 @@ exports[`GOLDEN request: OpenAI → Gemini > full body (system/image/tool/tool_r
       "category": "HARM_CATEGORY_HARASSMENT",
       "threshold": "OFF",
     },
-    {
-      "category": "HARM_CATEGORY_CIVIC_INTEGRITY",
-      "threshold": "OFF",
-    },
   ],
   "systemInstruction": {
     "parts": [

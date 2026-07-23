@@ -1,74 +1,57 @@
 # DurinDoor Test Suite
 
-Vitest suite covering the open-sse handlers, translator, provider executors, DB
-layer, and security audits (plus the original `/v1/embeddings` unit tests).
+The `tests/` package covers routing handlers, translators, providers, executors, persistence, security, the CLI, and repository contracts.
 
-## Setup
+## Requirements and setup
 
-Vitest is a local dev dependency of this `tests/` package — no global install and
-no `/tmp` workarounds. From the repo root, make sure app dependencies are
-installed, then install the test dependencies:
+Use Node.js `20.20.2` and npm `10.8.2`.
 
 ```bash
-npm ci                  # repo root — installs open-sse/src deps + better-sqlite3
-cd tests && npm ci      # installs the locked Vitest dependency graph
-```
-
-## Running Tests
-
-```bash
+npm ci --no-audit --no-fund
 cd tests
-npm test           # full suite, verbose reporter
-npm run test:watch # watch mode
+npm ci --no-audit --no-fund
 ```
 
-## CI gate (zero-failure)
+Set disposable `HOME` and `DATA_DIR` values for commands that can touch runtime storage.
 
-The recovery baseline is empty. CI requires direct Vitest success and treats
-any raw failure as a regression; `__baseline__/known-fails.txt` must remain
-empty. Bug-exposure tests that intentionally use `it.fails` remain governed by
-the translator convention in `AGENTS.md` and are not baseline exceptions.
+## Focused tests
+
+Run tests from this directory and load the repository config:
 
 ```bash
-cd tests
-npm run test:ci    # runs the suite (JSON) then the no-regression gate
+npx vitest run --config vitest.config.js unit/example.test.js
+npx vitest run --config vitest.config.js translator/example.test.js
 ```
 
-`test:ci` fails closed on startup, collection, runtime, stale-report, and parse
-errors. It deletes old reports first, writes `.test-results.json` and
-`.test-results.junit.xml`, and reports raw failures, known failures, and stale
-baseline entries separately; all three counts must be zero. This is what
-`.github/workflows/test.yml`, Nightly, and release workflows run and upload on
-every attempt.
+Translator tests that call `translateRequest` or `translateResponse` must import `translator/registerAll.js`; otherwise the bundler-only lazy registration can produce a false pass.
 
-Use Node `20.20.2` and npm `10.8.2`. For an unwrapped raw run, use `npm test`;
-for the authoritative report-producing gate, use `npm run test:ci`. Build and
-test commands must point `HOME` and `DATA_DIR` at disposable directories so
-they cannot read or migrate an operator database.
+## Full suite
 
-## Test Files
+```bash
+npm test
+```
 
-| File | What it tests |
-|------|--------------|
-| `unit/embeddingsCore.test.js` | `open-sse/handlers/embeddingsCore.js` — core logic: body builder, URL router, headers, handler flow |
-| `unit/embeddings.cloud.test.js` | `cloud/src/handlers/embeddings.js` — cloud worker handler: auth, validation, rate limits, CORS |
+For the authoritative CI and baseline gate:
 
-## Coverage Summary (59 tests)
+```bash
+npm run test:ci
+```
 
-### `embeddingsCore.test.js` (36 tests)
-- `buildEmbeddingsBody`: single string, array, encoding_format, default float
-- `buildEmbeddingsUrl`: openai, openrouter, openai-compatible-*, unsupported providers
-- `buildEmbeddingsHeaders`: per-provider header sets, fallback to accessToken
-- `handleEmbeddingsCore` input validation: missing, wrong type, null, empty
-- `handleEmbeddingsCore` success: response format, CORS, Content-Type, callbacks
-- `handleEmbeddingsCore` errors: 400/429/500, network error, invalid JSON
-- `handleEmbeddingsCore` token refresh: 401 retry, graceful fallback
+`test:ci` removes stale result files, runs Vitest with machine-readable output, writes `.test-results.json` and `.test-results.junit.xml`, then verifies the curated baseline. It fails closed on startup, collection, runtime, report, parse, new-failure, and stale-baseline errors.
 
-### `embeddings.cloud.test.js` (23 tests)
-- CORS OPTIONS: 200 response, empty body, correct headers
-- Authentication: missing key, bad format, old-format key, wrong key value, valid key
-- Body validation: invalid JSON, missing model, missing input, bad model
-- Happy path: single string, array, correct delegation, CORS header, machineId override
-- Rate limiting: all accounts rate-limited → 503 + Retry-After, no credentials → 400
-- Error propagation: non-fallback errors passed through, 429 exhausts accounts
-- machineId override: validates key, rejects wrong key
+Do not add entries to `__baseline__/known-fails.txt`. Remove entries when a covered failure is fixed.
+
+## Test groups
+
+- `unit/`: application, API, database, provider, executor, CLI, security, and build contracts.
+- `translator/`: offline request/response translation and bug-exposure tests.
+- `translator/real/`: credential-backed provider smoke tests, enabled explicitly with `RUN_REAL=1`.
+- `functional/` and route-specific suites: end-to-end behavior where present.
+
+Real-provider tests use active local connections and can consume quota. Run them only with explicit credentials and intent:
+
+```bash
+RUN_REAL=1 npx vitest run --config vitest.config.js translator/real/
+```
+
+Credential, account, and quota errors may be skipped by the real-test harness; application and protocol failures remain failures.

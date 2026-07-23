@@ -10,10 +10,23 @@ afterEach(async () => Promise.all(roots.splice(0).map((root) => rm(root, { recur
 const assets =
   '<img src="durindoor-banner.png"> <img src="durindoor-wordmark-theme-aware.svg">';
 
+const COMMUNITY_FIXTURES = {
+  "CODE_OF_CONDUCT.md": "# Code of Conduct\n",
+  "CONTRIBUTING.md": "# Contributing\n",
+  "CHANGELOG.md": "# Changelog\n",
+  ".github/CONTRIBUTING.md": "# Contributing\n",
+  ".github/SECURITY.md": "# Security\n",
+  ".github/PULL_REQUEST_TEMPLATE.md": "# PR Template\n",
+  ".github/CHANGELOG_TEMPLATE.md": "# Changelog Template\n",
+  ".github/ISSUE_TEMPLATE/bug_report.md": "# Bug Report\n",
+  ".github/ISSUE_TEMPLATE/feature_request.md": "# Feature Request\n",
+};
+
 async function fixture(files) {
   const root = await mkdtemp(path.join(tmpdir(), "durindoor-docs-"));
   roots.push(root);
-  await Promise.all(Object.entries(files).map(async ([name, text]) => {
+  const all = { ...COMMUNITY_FIXTURES, ...files };
+  await Promise.all(Object.entries(all).map(async ([name, text]) => {
     const target = path.join(root, name);
     await mkdir(path.dirname(target), { recursive: true });
     await writeFile(target, text);
@@ -25,8 +38,9 @@ async function fixture(files) {
 }
 
 async function check(files) {
+  const all = { ...COMMUNITY_FIXTURES, ...files };
   const root = await fixture(files);
-  return validateDocumentation({ root, files: Object.keys(files) });
+  return validateDocumentation({ root, files: Object.keys(all) });
 }
 
 describe("documentation integrity", () => {
@@ -153,5 +167,35 @@ describe("documentation integrity", () => {
       "z.md: missing target b.md",
       "z.md: missing target c.md",
     ]);
+  });
+
+  it("reports documented npm scripts missing from package.json", async () => {
+    const issues = await check({
+      "README.md": `${assets}\nRun \`npm run nonexistent-script\` to test.`,
+      "package.json": '{"name":"test","scripts":{"build":"node build.js"}}',
+    });
+    expect(issues).toContain("README.md: documented npm script 'nonexistent-script' not found in package.json");
+  });
+
+  it("reports missing required community files", async () => {
+    const root = await fixture({
+      "README.md": assets,
+      "docs/README.md": assets,
+      "package.json": '{"name":"test"}',
+    });
+    const issues = await validateDocumentation({
+      root,
+      files: ["README.md", "docs/README.md", "package.json"],
+    });
+    expect(issues).toContain("repository: missing required community file CODE_OF_CONDUCT.md");
+    expect(issues).toContain("repository: missing required community file .github/SECURITY.md");
+  });
+
+  it("does not flag existing npm scripts", async () => {
+    const issues = await check({
+      "README.md": `${assets}\nRun \`npm run build\`.`,
+      "package.json": '{"name":"test","scripts":{"build":"node build.js"}}',
+    });
+    expect(issues).not.toContain(expect.stringMatching(/npm script 'build'/));
   });
 });

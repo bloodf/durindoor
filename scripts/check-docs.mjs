@@ -199,6 +199,29 @@ export async function validateDocumentation({ root, files, readText }) {
     }
   }
 
+  // Contract #8: documented root npm scripts must exist in package.json.
+  for (const file of files) {
+    const text = contents[file];
+    for (const match of text.matchAll(/`npm run ([a-z:][a-zA-Z0-9:-]*)`/g)) {
+      const script = match[1];
+      try {
+        const pkg = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
+        if (!pkg.scripts || !pkg.scripts[script]) {
+          issues.push(`${file}: documented npm script '${script}' not found in package.json`);
+        }
+      } catch {
+        // package.json unreadable — skip script validation.
+      }
+    }
+  }
+
+  // Contract #9: required standard community files must exist.
+  for (const required of COMMUNITY_FILES) {
+    if (!fileSet.has(required)) {
+      issues.push(`repository: missing required community file ${required}`);
+    }
+  }
+
   // Reachability from the two public entry points, walking all Markdown links.
   const reachable = new Set();
   const stack = [...entryPoints.filter((f) => fileSet.has(f))];

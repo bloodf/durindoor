@@ -1,3 +1,20 @@
+# 3.9.0
+
+Release consolidating the work merged since 2.3.0. The intermediate 2.3.1 /
+2.3.2 `package.json` bumps collided with pre-existing tags from divergent
+history (the tag namespace runs to v3.8.x), so this release is numbered
+**3.9.0** — above the entire tag namespace — to stay monotonic and
+collision-free. No behavior change from 2.3.2; the sections below are the
+per-PR detail that shipped under those interim labels.
+
+## What's included
+- **Copy an API key after creation** (2.3.1) — re-copy API keys and MCP gateway keys from list rows via guarded reveal routes.
+- **API keys list redesign** — status badges, metadata chips, grouped row actions, key-count header.
+- **Privacy: Google Analytics fully removed** — beacon, `@next/third-parties` import, and dependency deleted (stronger than upstream #2775's opt-in).
+- **Verified upstream ports** — 9router #2800 (openai-compatible thinking format), #2748 (CLI clean build), #2798 (proxy-pool relay); OmniRoute #8238 (drop Gemini civic-integrity safety).
+- **Combo provider / model-family invariants** (2.3.2, OmniRoute #8304) — declarative `allowedProviders` / `allowedModelFamilies` with atomic validation; `combos.invariant` column (migration 013).
+- **Port roadmap** — `docs/campaigns/upstream-omniroute-port-roadmap.md` tiers the remaining portable upstream/OmniRoute work.
+
 # 2.3.2
 
 ## Improvements

@@ -25,6 +25,8 @@ The native default remains `~/.9router` on macOS/Linux and `%APPDATA%\9router` o
 | `BASE_URL` | local URL | Server-side origin for callbacks and selected routes. |
 | `NEXT_PUBLIC_BASE_URL` | local URL | Browser-visible origin. Use the public HTTPS origin for remote deployments. |
 | `TRUST_PROXY` | `false` | Trust forwarded IP headers only behind a trusted reverse proxy. |
+| `CLOUD_URL` | unset | Optional server-side origin for a separately configured remote DurinDoor endpoint. DurinDoor does not provide a hosted default. |
+| `NEXT_PUBLIC_CLOUD_URL` | unset | Browser-visible remote endpoint used by selected CLI-tool helpers when cloud mode is configured. |
 | `AUTH_COOKIE_SECURE` | `false` | Force secure dashboard cookies when using HTTPS. |
 | `SHUTDOWN_SECRET` | unset | Secret for the shutdown API when configured. |
 

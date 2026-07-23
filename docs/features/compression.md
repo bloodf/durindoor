@@ -28,15 +28,16 @@ These engines have a real implementation in this tree and can be dispatched:
 The catalog also names `ccr`, `lite`, `rtk`, `relevance`, `aggressive`, `llmlingua`, and `ultra` as metadata-only placeholders with `available: false`. They can appear in listings and validation errors but are not dispatched. Heavy engines such as LLMLingua/ONNX runtime are not shipped in this tree.
 
 
-## Bypass header precedence
+## Per-request bypass
 
-A client can bypass compression for a single request by sending:
+Send this header on a chat request to disable every token saver, including the compression seam, for that request:
 
 ```http
-X-DurinDoor-No-Compression: 1
+X-DurinDoor-Token-Saver: off
 ```
 
-If the header is present, the compression seam returns the body untouched and emits no compression header. This header is checked before any engine runs.
+The legacy `X-9Router-Token-Saver: off` header remains accepted for wire compatibility. When both headers are present, `X-DurinDoor-Token-Saver` takes precedence. Only the exact value `off`, case-insensitive, bypasses savers.
+
 
 ## Fail-open behavior
 

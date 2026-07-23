@@ -103,6 +103,11 @@ if (appPkg.version !== cliPkg.version) {
 }
 
 // Step 1: Build app with Next.js (workspace tracing root → traced node_modules in standalone).
+// Remove any stale staged build so compiled modules never survive across runs
+// (port of decolua/9router #2748). Prevents stale-module runtime bugs.
+if (fs.existsSync(buildDistDir)) {
+  fs.rmSync(buildDistDir, { recursive: true, force: true });
+}
 console.log("1️⃣  Building Next.js app...");
 try {
   execSync("npm run build", {

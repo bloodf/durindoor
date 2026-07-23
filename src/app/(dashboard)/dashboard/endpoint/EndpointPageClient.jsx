@@ -1112,6 +1112,11 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <span className="material-symbols-outlined text-primary">vpn_key</span>
             API Keys
+            {keys.length > 0 && (
+              <span className="rounded-full bg-primary/10 text-primary text-xs font-medium px-2 py-0.5">
+                {keys.length}
+              </span>
+            )}
           </h2>
           <Button icon="add" onClick={() => setShowAddModal(true)}>
             Create Key
@@ -1156,56 +1161,65 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
               return (
               <div
                 key={key.id}
-                className={`group flex items-center justify-between py-3 border-b border-black/[0.03] dark:border-white/[0.03] last:border-b-0 ${key.isActive === false ? "opacity-60" : ""}`}
+                className={`group flex items-start justify-between gap-3 rounded-lg px-3 py-3 -mx-3 transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.02] ${key.isActive === false ? "opacity-60" : ""}`}
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{key.name}</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <code className="text-xs text-text-muted font-mono">
-                      {key.maskedKey || "***"}
-                    </code>
-                    <button
-                      type="button"
-                      onClick={() => revealAndCopyKey(key.id)}
-                      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
-                      title="Reveal and copy the full key"
+                  {/* Name + status */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-sm font-semibold truncate">{key.name}</p>
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                        key.isActive === false
+                          ? "bg-orange-500/10 text-orange-500"
+                          : "bg-green-500/10 text-green-600 dark:text-green-400"
+                      }`}
                     >
-                      <span className="material-symbols-outlined text-[14px]">
-                        {copied === `reveal_${key.id}` ? "check" : "content_copy"}
-                      </span>
-                      {copied === `reveal_${key.id}` ? "Copied" : "Copy key"}
-                    </button>
+                      <span className={`h-1.5 w-1.5 rounded-full ${key.isActive === false ? "bg-orange-500" : "bg-green-500"}`} />
+                      {key.isActive === false ? "Paused" : "Active"}
+                    </span>
                   </div>
-                  <p className="text-xs text-text-muted mt-1">
-                    Created {new Date(key.createdAt).toLocaleDateString()}
-                  </p>
-                  {key.isActive === false && (
-                    <p className="text-xs text-orange-500 mt-1">Paused</p>
-                  )}
-                  <p className={`text-xs mt-1 ${formatKeyExpiry(key.expiresAt).danger ? "text-red-500" : "text-text-muted"}`}>
-                    {formatKeyExpiry(key.expiresAt).text}
-                  </p>
-                  <p className={`text-xs mt-1 ${policyInvalid || policyUsage.tokensExceeded || policyUsage.costExceeded ? "text-red-500" : "text-text-muted"}`}>
-                    Models: {policyInvalid ? "Invalid policy" : (key.policy?.allowedModels?.length ? `${key.policy.allowedModels.length} selected` : "All")}
-                    {" · "}Tokens: {policyUsage.tokens}
-                    {" · "}Cost: {policyUsage.cost}
-                    {(policyUsage.tokensExceeded || policyUsage.costExceeded) && " · Limit reached"}
-                  </p>
-                  <p className="text-xs text-text-muted mt-1">
-                    Daily limit: {key.dailyLimitTokens == null ? "Unlimited" : key.dailyLimitTokens.toLocaleString()}
-                  </p>
-                  <div className="flex flex-wrap items-center gap-1 mt-1">
-                    <span className="text-xs text-text-muted">Combos:</span>
+                  {/* Masked key */}
+                  <code className="mt-1 block text-xs text-text-muted font-mono">
+                    {key.maskedKey || "***"}
+                  </code>
+                  {/* Metadata chips */}
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+                    <span className="inline-flex items-center gap-1 rounded bg-black/[0.04] dark:bg-white/[0.04] px-1.5 py-0.5 text-text-muted">
+                      <span className="material-symbols-outlined text-[13px]">schedule</span>
+                      Created {new Date(key.createdAt).toLocaleDateString()}
+                    </span>
+                    <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 ${formatKeyExpiry(key.expiresAt).danger ? "bg-red-500/10 text-red-500" : "bg-black/[0.04] dark:bg-white/[0.04] text-text-muted"}`}>
+                      <span className="material-symbols-outlined text-[13px]">event</span>
+                      {formatKeyExpiry(key.expiresAt).text}
+                    </span>
+                    <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 ${policyInvalid || policyUsage.tokensExceeded || policyUsage.costExceeded ? "bg-red-500/10 text-red-500" : "bg-black/[0.04] dark:bg-white/[0.04] text-text-muted"}`}>
+                      <span className="material-symbols-outlined text-[13px]">tune</span>
+                      {policyInvalid ? "Invalid policy" : `Models: ${key.policy?.allowedModels?.length ? key.policy.allowedModels.length : "All"}`}
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded bg-black/[0.04] dark:bg-white/[0.04] px-1.5 py-0.5 text-text-muted">
+                      <span className="material-symbols-outlined text-[13px]">data_usage</span>
+                      {policyUsage.tokens} tok · {policyUsage.cost}
+                      {(policyUsage.tokensExceeded || policyUsage.costExceeded) && " · limit reached"}
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded bg-black/[0.04] dark:bg-white/[0.04] px-1.5 py-0.5 text-text-muted">
+                      <span className="material-symbols-outlined text-[13px]">speed</span>
+                      {key.dailyLimitTokens == null ? "No daily limit" : `${key.dailyLimitTokens.toLocaleString()}/day`}
+                    </span>
+                  </div>
+                  {/* Combos */}
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                    <span className="text-[11px] text-text-muted">Combos:</span>
                     {Array.isArray(key.allowedCombos) && key.allowedCombos.length > 0 ? (
                       key.allowedCombos.map((c) => (
-                        <span key={c} className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">{c}</span>
+                        <span key={c} className="text-[11px] bg-primary/10 text-primary px-1.5 py-0.5 rounded">{c}</span>
                       ))
                     ) : (
-                      <span className="text-xs text-text-muted">All</span>
+                      <span className="text-[11px] bg-primary/10 text-primary px-1.5 py-0.5 rounded">All</span>
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                {/* Actions */}
+                <div className="flex items-center gap-1 shrink-0">
                   <Toggle
                     size="sm"
                     checked={key.isActive ?? true}
@@ -1226,6 +1240,15 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
                     title={key.isActive ? "Pause key" : "Resume key"}
                   />
                   <button
+                    onClick={() => revealAndCopyKey(key.id)}
+                    className={`p-2 rounded transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100 ${copied === `reveal_${key.id}` ? "text-green-600 dark:text-green-400" : "text-text-muted hover:text-primary hover:bg-black/5 dark:hover:bg-white/5"}`}
+                    title="Reveal and copy the full key"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">
+                      {copied === `reveal_${key.id}` ? "check" : "content_copy"}
+                    </span>
+                  </button>
+                  <button
                     onClick={() => beginEditKey(key)}
                     className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
                     title="Edit key access and expiry"
@@ -1235,6 +1258,7 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
                   <button
                     onClick={() => handleDeleteKey(key.id)}
                     className="p-2 hover:bg-red-500/10 rounded text-red-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
+                    title="Delete key"
                   >
                     <span className="material-symbols-outlined text-[18px]">delete</span>
                   </button>

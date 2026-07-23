@@ -63,5 +63,8 @@ alongside the standalone output. If you customize the Docker build, keep those
 
 * `docs/deployment/localhost.md` — local production start.
 * `docs/deployment/cloud.md` — Docker and remote deployment.
+* [Upgrading](../operations/upgrading.md) — release notes, backup, version changes
+* [Data Management](../operations/data-management.md) — backup, restore, migration
+* [Security](../operations/security.md) — dashboard access, API keys, secrets
 * `scripts/build-app.mjs` — the build script.
 * `scripts/verify-static-assets.mjs` — the smoke test.

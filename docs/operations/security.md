@@ -206,3 +206,9 @@ If an upstream provider credential leaks:
 2. Update the DurinDoor provider connection.
 3. Check provider-side billing and audit logs.
 4. Review DurinDoor usage logs.
+
+## Related pages
+
+- [Upgrading](upgrading.md) — release notes, backup, version changes
+- [Data Management](data-management.md) — backup, restore, migration
+- [Startup](startup.md) — health checks, verification, restart

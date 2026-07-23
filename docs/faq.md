@@ -10,7 +10,7 @@ No. DurinDoor does not train or host foundation models by itself. It connects to
 
 ## Why do some paths still say 9Router?
 
-DurinDoor is a fork of 9Router. Some names remain for compatibility, especially the default data directory, legacy CLI alias, and some wire-format identifiers. This prevents avoidable migration breakage.
+DurinDoor is a fork of 9Router. Some names remain for compatibility, especially the default data directory and some wire-format identifiers. The default data directory without an override is `~/.9router` on macOS/Linux and `%APPDATA%\9router` on Windows. The CLI command is `durindoor`; there is no `9router` command alias. This prevents avoidable migration breakage.
 
 ## What is the default port?
 
@@ -81,3 +81,11 @@ Use [Environment Variables](reference/environment.md). `.env.example` is the sta
 ## How do I contribute?
 
 Use [Contributing](development/contributing.md). Pull requests should normally target `dev`.
+
+## Next steps
+
+- [Installation](getting-started/installation.md) — production configuration and data paths
+- [Upgrading](../operations/upgrading.md) — release notes, backup, version changes
+- [Data Management](../operations/data-management.md) — backup, restore, migration
+- [Startup](../operations/startup.md) — health checks, verification, restart
+- [Security](../operations/security.md) — dashboard access, API keys, secrets

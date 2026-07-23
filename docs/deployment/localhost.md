@@ -70,7 +70,7 @@ Press `Ctrl+C` in the terminal where DurinDoor is running. If it is running as a
 ## Backing Up Data
 
 ```bash
-cp -R ~/.9router ~/.9router.backup
+cp -a -- ~/.9router ~/.9router.backup-$(date +%Y%m%d%H%M%S)
 ```
 
 If `DATA_DIR` is custom, back up that directory instead.
@@ -80,3 +80,10 @@ If `DATA_DIR` is custom, back up that directory instead.
 To reach DurinDoor from another device, bind to a reachable interface and make sure the network firewall allows the port. Do not expose the dashboard to a shared network without a strong password and trusted network controls.
 
 For remote access, prefer a VPN, SSH tunnel, Tailscale, Cloudflare Tunnel, or a reverse proxy with HTTPS and authentication.
+
+## Next steps
+
+- [Upgrading](../operations/upgrading.md) — release notes, backup, version changes
+- [Data Management](../operations/data-management.md) — backup, restore, migration
+- [Startup](../operations/startup.md) — health checks, verification, restart
+- [Security](../operations/security.md) — dashboard access, API keys, secrets

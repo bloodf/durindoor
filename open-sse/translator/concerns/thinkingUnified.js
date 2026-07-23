@@ -99,6 +99,15 @@ function resolveFormat(targetFormat, model, provider, caps = null) {
   ) {
     return resolvedCaps.thinkingFormat;
   }
+  // Dynamic OpenAI-compatible gateways speak the OpenAI wire format regardless
+  // of the underlying model family. A Qwen model served through such a gateway
+  // must emit reasoning_effort, not native enable_thinking/thinking_budget,
+  // which strict compatible upstreams reject with HTTP 400 (port of
+  // decolua/9router #2800). An explicit persisted thinkingFormat (handled above)
+  // still wins for operators who know their upstream speaks a native format.
+  if (typeof provider === "string" && provider.startsWith("openai-compatible-")) {
+    return "openai";
+  }
   const providerFmt = provider ? PROVIDERS[provider]?.thinkingFormat : null;
   if (providerFmt) return providerFmt;
   if (resolvedCaps.thinkingFormat) return resolvedCaps.thinkingFormat;

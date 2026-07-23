@@ -30,7 +30,8 @@ Both transports share the same JSON-RPC handler and authentication.
 | \"/api/mcp-gateway\" | POST | Streamable HTTP JSON-RPC gateway endpoint |
 | \"/api/mcp-gateway/sse\" | GET | SSE endpoint; returns a message URL for this session |
 | \"/api/mcp-gateway/message\" | POST | SSE companion; send JSON-RPC through the session |
-| \"/api/mcp-gateway/instances\" | GET / POST / PATCH / DELETE | Register, update, test, and remove upstream instances |
+| `/api/mcp-gateway/instances` | GET / POST | List and create upstream instances |
+| `/api/mcp-gateway/instances/:id` | GET / PUT / DELETE | Read, update, and remove one upstream instance |
 | \"/api/mcp-gateway/instances/:id/test\" | POST | Probe an instance by listing its tools |
 | \"/api/mcp-gateway/keys\" | GET / POST | Create and list gateway keys |
 | \"/api/mcp-gateway/oauth/:id/authorize\" | GET | Start the OAuth flow for an instance |

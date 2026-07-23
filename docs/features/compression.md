@@ -10,8 +10,7 @@ The single execution path is \"runCompressionSeam\" in the chat core. There is n
 
 The dashboard has two related compression surfaces:
 
-- \"/dashboard/compression\" (Compression Studio V2) renders the pipeline editor. Modes include off, lite, standard, aggressive, ultra, rtk, stacked, and caveman. Selecting \"stacked\" runs the configured stack; selecting \"caveman\" runs only the caveman engine with full intensity.
-- \"/dashboard/compression-studio\" (Test Savers) dry-runs engines against an arbitrary payload and reports per-engine savings.
+- `/dashboard/compression-studio` (Compression Studio V2) renders the pipeline editor. Modes include off, lite, standard, aggressive, ultra, rtk, stacked, and caveman. Selecting `stacked` runs the configured stack; selecting `caveman` runs only the caveman engine with full intensity. The same page (Test Savers) also dry-runs engines against an arbitrary payload and reports per-engine savings.
 
 Studio settings are stored in the standard settings row with the \"compressionV2*\" prefix. The legacy \"rtkEnabled\", \"cavemanEnabled\", \"headroomEnabled\", and \"ponytailEnabled\" flags are kept unchanged so installations that do not enable V2 see no behaviour change.
 
@@ -92,9 +91,8 @@ If status reports \"DEPENDENCY_MISSING\", the installation is corrupt. Reinstall
 
 ## Observability
 
-- \"/api/compression/telemetry\" returns aggregated savings over an in-memory ring buffer.
-- \"/api/compression/telemetry/record\" is the fire-and-forget deposit endpoint used by the chat core.
-- \"/dashboard/compression/live\" shows real-time per-engine savings, total bytes saved, and recent runs (10-second auto-refresh).
+- `/api/compression/preview` dry-runs the engine catalog against an arbitrary payload and reports per-engine status and savings.
+- The chat core records compression savings into the standard usage and request-detail storage, visible in the dashboard usage views.
 
 ## Troubleshooting
 

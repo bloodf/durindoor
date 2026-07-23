@@ -82,6 +82,12 @@ describe("documentation integrity", () => {
     });
     expect(issues).toEqual([]);
   });
+  it("uses stripped text when checking anchors, ignoring fenced headings", async () => {
+    const issues = await check({
+      "README.md": `${assets}\n[x](#fake)\n\`\`\`markdown\n# fake\n\`\`\``,
+    });
+    expect(issues).toContain("README.md: missing anchor #fake in README.md");
+  });
 
   it("resolves URL-encoded fragments", async () => {
     const issues = await check({

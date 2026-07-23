@@ -142,7 +142,7 @@ export async function validateDocumentation({ root, files, readText }) {
     const original = await read(file);
     contents[file] = original;
     stripped[file] = stripCodeBlocks(original);
-    headings[file] = headingsFor(original);
+    headings[file] = headingsFor(stripped[file]);
   }
 
   for (const file of files) {

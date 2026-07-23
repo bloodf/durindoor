@@ -75,7 +75,6 @@ For stable lookup pages for routes, environment variables, compatibility, and ru
 - [MCP Gateway](features/mcp-gateway.md)
 - [Realtime Behavior](features/realtime.md)
 - [Compression](features/compression.md)
-- [Open Provider Catalog](providers/omniroute-open-provider-catalog.md)
 - [Local Router Providers](providers/local-router-providers.md)
 - [Compatibility and Migration](#compatibility)
 - [Architecture](ARCHITECTURE.md)

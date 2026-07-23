@@ -80,12 +80,12 @@ Use [Environment Variables](reference/environment.md). `.env.example` is the sta
 
 ## How do I contribute?
 
-Use [Contributing](development/contributing.md). Pull requests should normally target `dev`.
+Use [Contributing](development/contributing.md). Pull requests target `main`.
 
 ## Next steps
 
 - [Installation](getting-started/installation.md) — production configuration and data paths
-- [Upgrading](../operations/upgrading.md) — release notes, backup, version changes
-- [Data Management](../operations/data-management.md) — backup, restore, migration
-- [Startup](../operations/startup.md) — health checks, verification, restart
-- [Security](../operations/security.md) — dashboard access, API keys, secrets
+- [Upgrading](operations/upgrading.md) — release notes, backup, version changes
+- [Data Management](operations/data-management.md) — backup, restore, migration
+- [Startup](operations/startup.md) — health checks, verification, restart
+- [Security](operations/security.md) — dashboard access, API keys, secrets

@@ -71,7 +71,13 @@ If all OpenAI connections fail, combo fallback may try the next model
 
 ## Provider Identifiers
 
-DurinDoor uses provider identifiers internally and in model strings. Examples include `openai`, `anthropic`, `gemini`, `cc`, `cx`, `kiro`, and custom compatible prefixes. The exact list comes from the provider registry in the running version.
+DurinDoor uses provider identifiers internally and in model strings. Examples include `openai`, `anthropic`, `gemini`, `cc`, `kiro`, and custom compatible prefixes. The exact list comes from the provider registry in the running version.
+
+### Live Provider Catalogs
+
+Some OpenAI-compatible providers, including `hcnsec`, load available models from the upstream `/v1/models` endpoint and expose them without a static seed list. Use the dashboard or DurinDoor's `GET /v1/models` response as the source of truth.
+
+When the add-key dialog creates default connection names, it chooses the first unused name in the `main`, `main-2`, `main-3`, ... sequence. Reopening the dialog after a successful add clears prior secrets and provider-specific fields; background refreshes while the dialog is open preserve in-progress input.
 
 ## OmniRoute OAuth Provider Slice
 

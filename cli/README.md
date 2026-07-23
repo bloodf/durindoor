@@ -1,122 +1,66 @@
-# DurinDoor — AI Gateway CLI
+# DurinDoor CLI
 
-**DurinDoor** is a self-hosted AI gateway that unifies multiple LLM providers behind a single OpenAI-compatible API.
+The `durindoor` package installs and runs the DurinDoor self-hosted AI gateway.
 
-[![npm](https://img.shields.io/npm/v/durindoor.svg)](https://www.npmjs.com/package/durindoor)
-[![License](https://img.shields.io/npm/l/durindoor.svg)](https://github.com/bloodf/durindoor/blob/main/LICENSE)
+- [Full documentation](../docs/README.md)
+- [Installation](../docs/getting-started/installation.md)
+- [CLI package on npm](https://www.npmjs.com/package/durindoor)
+- [Container image](https://github.com/bloodf/durindoor/pkgs/container/durindoor)
 
-[🌐 Website](https://bloodf.github.io/durindoor/) • [📖 Full Docs](https://github.com/bloodf/durindoor)
+## Requirements
 
----
+- Node.js `20.20.2`
+- npm `10.8.2`
 
-## 🤔 Why DurinDoor?
-
-**Stop wasting money, tokens, and hitting limits:**
-
-- ❌ Subscription quota expires unused every month
-- ❌ Rate limits stop you mid-coding
-- ❌ Tool outputs (git diff, grep, ls...) burn tokens fast
-- ❌ Expensive APIs ($20-50/month per provider)
-- ❌ Manual switching between providers
-
-**DurinDoor solves this:**
-
-- ✅ **Token Saver** — Auto-compress tool_result, save tokens
-- ✅ **Maximize subscriptions** — Track quota, use every bit before reset
-- ✅ **Auto fallback** — Subscription → Cheap → Free, zero downtime
-- ✅ **Multi-account** — Round-robin between accounts per provider
-- ✅ **Universal** — Works with any OpenAI/Claude-compatible CLI
-
----
-
-## ⚡ Quick Start
-
-**Option 1 — npm (recommended for desktop):**
+## Install and start
 
 ```bash
-npm install -g durindoor
+npm install --global durindoor
 durindoor
-
-# Or run directly with npx
-npx durindoor
 ```
 
-**Option 2 — Docker (server/VPS):**
+The dashboard opens at `http://localhost:20128/dashboard`. Create an API key, connect a provider, then configure clients with:
+
+```text
+Base URL: http://localhost:20128/v1
+API key:  YOUR_DURINDOOR_API_KEY
+Model:    choose an ID returned by GET /v1/models
+```
+
+Use `npx durindoor` for a one-time run without a global install.
+
+## Options
+
+```text
+-p, --port <port>   Port to run the server (default: 20128)
+-H, --host <host>   Host to bind (default: 0.0.0.0)
+-n, --no-browser    Do not open the browser automatically
+-l, --log           Show server logs
+-t, --tray          Run in system tray mode
+    --skip-update   Skip the update check
+-h, --help          Show help
+-v, --version       Show version
+```
+
+Run `durindoor --help` for the installed version's authoritative option list.
+
+## Data
+
+Native installations use these defaults when `DATA_DIR` is not set:
+
+- macOS/Linux: `~/.9router`
+- Windows: `%APPDATA%\9router`
+
+Docker deployments normally set `DATA_DIR=/app/data` and mount a persistent host directory or named volume there. See [Data Management](../docs/operations/data-management.md) before moving, restoring, or deleting data.
+
+## Updating
 
 ```bash
-docker run -d --name durindoor -p 20128:20128 \
-  -v "$HOME/.durindoor:/app/data" -e DATA_DIR=/app/data \
-  ghcr.io/bloodf/durindoor:latest
+npm update --global durindoor
 ```
 
-Published images: [GHCR](https://github.com/bloodf/durindoor/pkgs/container/durindoor) (multi-platform amd64/arm64).
+Read the [changelog](../CHANGELOG.md) and [upgrade guide](../docs/operations/upgrading.md), then back up `DATA_DIR` before updating.
 
-🎉 Dashboard opens at `http://localhost:20128`
+## License
 
-**2. Connect a FREE provider (no signup needed):**
-
-Dashboard → Providers → Connect **Kiro AI** (free Claude unlimited) or **OpenCode Free** (no auth) → Done!
-
-**3. Use in your CLI tool:**
-
-```
-Claude Code/Codex/OpenClaw/Cursor/Cline Settings:
-  Endpoint: http://localhost:20128/v1
-  API Key:  [copy from dashboard]
-  Model:    kr/claude-sonnet-4.5
-```
-
-That's it! Start coding with free AI models.
-
----
-
-## 🚀 CLI Options
-
-```bash
-durindoor                    # Start with default settings
-durindoor --port 8080        # Custom port
-durindoor --no-browser       # Don't open browser
-durindoor --skip-update      # Skip auto-update check
-durindoor --help             # Show all options
-```
-
-**Dashboard**: `http://localhost:20128/dashboard`
-
----
-
-## 🛠️ Supported CLI Tools
-
-Claude-Code • OpenClaw • Codex • OpenCode • Cursor • Antigravity • Cline • Continue • Droid • Roo • Copilot • Kilo Code • Gemini CLI • Qwen Code • iFlow • Crush • Crusher • Aider
-
-Any tool supporting OpenAI/Claude-compatible API works.
-
----
-
-## 💾 Data Location
-
-- **macOS/Linux**: `<<~/.durindoor>>/db/data.sqlite` (legacy/migration compatibility)
-- **Windows**: `%APPDATA%/durindoor/db/data.sqlite` (legacy/migration compatibility)
-- **Docker**: `/app/data/db/data.sqlite` (mount `$HOME/.durindoor` to persist)
-
-If you have an existing `<<~/.durindoor>>` directory from the previous project, DurinDoor will migrate it on first run.
-
----
-
-## 📚 Documentation
-
-Full docs, advanced setup, video tutorials & development guide:
-
-- **GitHub**: https://github.com/bloodf/durindoor
-- **Full README**: https://github.com/bloodf/durindoor/blob/main/README.md
-- **Website**: https://bloodf.github.io/durindoor/
-
----
-
-## 🙏 Acknowledgments
-
-- **[durindoor](https://github.com/bloodf/durindoor)** — Original project by decolua, forked as the foundation for DurinDoor.
-- **[CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)** — Original Go implementation
-
-## 📄 License
-
-MIT License - see [LICENSE](LICENSE) for details.
+[MIT](LICENSE)

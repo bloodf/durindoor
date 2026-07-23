@@ -716,6 +716,22 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
     }
   };
 
+  // Reveal the stored secret for an existing key (masked in the list) and copy
+  // it. The raw key never rides in the list response; it is fetched on demand.
+  const revealAndCopyKey = async (id) => {
+    try {
+      const res = await fetch(`/api/keys/${id}/reveal`);
+      const data = await res.json();
+      if (res.ok && data.key) {
+        copy(data.key, `reveal_${id}`);
+      } else {
+        setKeyStatus({ type: "error", message: data.error || "Failed to reveal key" });
+      }
+    } catch {
+      setKeyStatus({ type: "error", message: "Failed to reveal key" });
+    }
+  };
+
   const handleDeleteKey = async (id) => {
     setConfirmState({
       title: "Delete API Key",
@@ -1148,7 +1164,17 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
                     <code className="text-xs text-text-muted font-mono">
                       {key.maskedKey || "***"}
                     </code>
-                    <span className="text-[11px] text-text-muted">Secret shown only at creation</span>
+                    <button
+                      type="button"
+                      onClick={() => revealAndCopyKey(key.id)}
+                      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
+                      title="Reveal and copy the full key"
+                    >
+                      <span className="material-symbols-outlined text-[14px]">
+                        {copied === `reveal_${key.id}` ? "check" : "content_copy"}
+                      </span>
+                      {copied === `reveal_${key.id}` ? "Copied" : "Copy key"}
+                    </button>
                   </div>
                   <p className="text-xs text-text-muted mt-1">
                     Created {new Date(key.createdAt).toLocaleDateString()}
@@ -1273,8 +1299,17 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
           {combos.length > 0 && (
             <div>
               <p className="text-sm font-medium mb-2">Allowed Combos</p>
-              <p className="text-xs text-text-muted mb-2">Leave empty to allow all combos. Select specific combos to restrict access.</p>
+              <p className="text-xs text-text-muted mb-2">Choose &quot;All combos&quot; for unrestricted access, or select specific combos to restrict this key.</p>
               <div className="flex flex-col gap-1.5 max-h-40 overflow-y-auto border border-border rounded-lg p-2">
+                <label className="flex items-center gap-2 cursor-pointer text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    checked={newKeyAllowedCombos.length === 0}
+                    onChange={() => setNewKeyAllowedCombos([])}
+                    className="rounded border-border"
+                  />
+                  <span>All combos</span>
+                </label>
                 {combos.map((combo) => (
                   <label key={combo.id || combo.name} className="flex items-center gap-2 cursor-pointer text-sm">
                     <input

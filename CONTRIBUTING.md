@@ -1,18 +1,18 @@
 # Contributing to DurinDoor
 
-Thank you for joining the fellowship.
+Thank you for contributing to DurinDoor.
 
-## How to contribute
+## Before you start
 
-1. Open an issue to discuss significant changes before opening a pull request.
-2. Fork the repository and create a feature branch from `dev`.
-3. Make your changes with clear, focused commits.
-4. Ensure tests pass and the project builds cleanly.
-5. Submit a pull request targeting `dev` with a detailed description.
+- Open an issue to discuss significant changes before opening a pull request.
+- Pull requests target the `main` branch.
+- Use [Node.js 20.20.2](https://nodejs.org/) and npm 10.8.2 for development.
+- Run the test suite and any affected checks before submitting.
+- Keep documentation updated for user-facing or behavioral changes.
 
-## Commit convention
+## Commit messages
 
-All commits must follow [Conventional Commits](https://www.conventionalcommits.org/):
+Use [Conventional Commits](https://www.conventionalcommits.org/):
 
 ```
 type(scope): description
@@ -20,19 +20,11 @@ type(scope): description
 
 Common types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`.
 
-## Documentation
+## Useful links
 
-Project documentation lives in [`docs/`](docs/README.md) as Markdown. Keep English docs as the canonical source and do not add generated translation files or a docs web app to this repository.
-
-## Full contributor guide
-
-See [docs/development/contributing.md](docs/development/contributing.md) for the full workflow, review expectations, documentation rules, and provider contribution notes.
-
-## Code style
-
-- Follow the existing patterns in the codebase.
-- Keep changes focused and minimal.
-- Write clear commit messages and PR descriptions.
+- [Detailed contributor guide](docs/development/contributing.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Security policy](.github/SECURITY.md)
 
 ## License
 

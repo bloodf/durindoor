@@ -1,36 +1,8 @@
 # Contributing to DurinDoor
 
-## Development workflow
+Thanks for helping improve DurinDoor.
 
-1. Fork the repository.
-2. Create a branch from `main`.
-3. Make focused, well-scoped changes.
-4. Open a pull request targeting `main`.
+- Read the full contribution guidelines in [CONTRIBUTING.md](../CONTRIBUTING.md).
+- For the development workflow, build instructions, review expectations, and provider contribution notes, see [docs/development/contributing.md](../docs/development/contributing.md).
 
-## Commits
-
-Use conventional commits:
-
-- `feat:` — new feature
-- `fix:` — bug fix
-- `refactor:` — code change that neither fixes a bug nor adds a feature
-- `docs:` — documentation only
-- `ci:` — continuous integration / build / deployment
-- `chore:` — maintenance, tooling, or other non-code change
-
-## Pull requests
-
-- Fill out the pull request template completely.
-- Include tests for behavioral changes.
-- Justify any new dependency in the PR description.
-- Target `main` only. Pull requests targeting other branches will be closed.
-
-## Documentation
-
-Documentation lives in `docs/` as English-only Markdown. Do not commit non-English Markdown documentation or generated docs translations. Non-English language assets belong in the web UI localization layer, and the docs web app must not be added back into this repository.
-
-For the full contributor guide, see `docs/development/contributing.md`.
-
-## Review
-
-All pull requests require review by a maintainer and must pass automated checks.
+Pull requests must target the `main` branch. Pull requests opened against other branches will be closed unless explicitly requested by a maintainer.

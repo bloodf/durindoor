@@ -60,7 +60,7 @@ Then point any OpenAI-compatible tool at `http://localhost:20128/v1` using that 
 
 ## Compatibility
 
-DurinDoor is a fork of [9router](https://github.com/decolua/9router). Existing data under `~/.9router`, the `9router` CLI alias, legacy API keys, and the compatibility headers `X-9Router-*` remain supported so prior installations can migrate without losing data.
+DurinDoor is a fork of [9router](https://github.com/decolua/9router). Existing data under `~/.9router`, legacy API keys, and the compatibility headers `X-9Router-*` remain supported so prior installations can migrate without losing data.
 
 ## Project
 

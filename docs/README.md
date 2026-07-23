@@ -12,7 +12,7 @@
 
 DurinDoor is a self-hosted AI gateway for developer tools, scripts, and applications that need one stable OpenAI-compatible API in front of many AI providers. It stores provider credentials locally, routes requests to upstream services, and records usage so operators can see what was used and why.
 
-DurinDoor is a fork of 9router. Some compatibility names remain intentionally visible in storage paths, API key prefixes, CLI aliases, and internal headers so existing installations can migrate without losing data.
+DurinDoor is a fork of 9router. Some compatibility names remain intentionally visible in storage paths, API key formats/prefixes, and internal headers so existing installations can migrate without losing data.
 
 This repository is the canonical source for DurinDoor documentation. There is no separate documentation website; GitHub-rendered Markdown is the source of truth.
 

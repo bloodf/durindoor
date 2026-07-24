@@ -129,7 +129,7 @@ DurinDoor includes routes for chat, responses, messages, models, embeddings, ima
 DurinDoor is a fork of [9router](https://github.com/decolua/9router). These compatibility names remain supported:
 
 - Storage path `~/.9router` (use `DATA_DIR` to override).
-- Legacy API keys with the `9router-` or `durindoor-` prefix.
+- Legacy API keys in the `sk-<8 hex>` shape and current keys in the `sk-<machineId>-<keyId>-<crc8>` shape.
 - Internal headers prefixed with `X-9Router-` and their `X-DurinDoor-` equivalents.
 
 ## Operator Essentials

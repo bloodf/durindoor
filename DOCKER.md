@@ -9,12 +9,14 @@ Requirements: Docker, persistent storage for `DATA_DIR`. Node.js is bundled in t
 ```bash
 docker run -d \
   --name durindoor \
-  -p 20128:20128 \
+  -p 127.0.0.1:20128:20128 \
   -v "$HOME/.durindoor:/app/data" \
   -e DATA_DIR=/app/data \
-  -e JWT_SECRET="change-me" \
-  -e INITIAL_PASSWORD="change-me" \
+  -e JWT_SECRET="$(openssl rand -hex 32)" \
+  -e INITIAL_PASSWORD="$(openssl rand -hex 16)" \
   ghcr.io/bloodf/durindoor:latest
+
+This binds to localhost only and generates random secrets. For production, see [Cloud and Docker deployment](docs/deployment/cloud.md).
 ```
 
 Open http://localhost:20128 — sign in, change the password, add a provider, create an API key.

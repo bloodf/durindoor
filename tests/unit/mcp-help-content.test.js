@@ -3,10 +3,9 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { resolve, dirname } from "node:path";
 
-// WS1 (MCP Help page). The page is a JSX-in-.js server component, which the
-// repo's vitest esbuild does not transform for SSR, so we assert the documented
-// surfaces are present in the source. Each check maps to a done-state item in
-// docs/superpowers/specs/2026-07-22-control-mcp-parity-roadmap.md (WS1).
+// The MCP Help page is a JSX-in-.js server component, which the repository's
+// Vitest esbuild does not transform for SSR, so this test checks that both MCP
+// surfaces and their current control contracts remain documented in source.
 
 const here = dirname(fileURLToPath(import.meta.url));
 const src = readFileSync(

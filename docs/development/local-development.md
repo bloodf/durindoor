@@ -1,89 +1,105 @@
 # Local Development
 
-This page is for contributors working on DurinDoor itself.
+## Requirements
 
-## Prerequisites
+- Node.js `20.20.2`
+- npm `10.8.2`
+- Git
+- A browser for dashboard work
 
-- Node.js compatible with the repository's Next.js version.
-- npm.
-- Git.
-- A browser for dashboard testing.
-- Optional provider credentials for live provider testing.
-
-## Install Dependencies
+## Install
 
 ```bash
-npm install --no-audit --no-fund
+nvm use
+npm ci --no-audit --no-fund
+cd tests && npm ci --no-audit --no-fund
 ```
 
-## Start the Development Server
+## Isolate development data
+
+Do not point development commands at an operator database.
+
+```bash
+export HOME="$PWD/.dev-home"
+export DATA_DIR="$PWD/.data-dev"
+mkdir -p "$HOME" "$DATA_DIR"
+```
+
+These directories contain credentials and databases. Keep them untracked and remove them only after confirming they are disposable.
+
+## Run the app
 
 ```bash
 npm run dev
 ```
 
-Open:
-
-```text
-http://localhost:20127/dashboard
-```
-
-Use a separate `DATA_DIR` for development so local testing does not modify production credentials:
-
-```bash
-DATA_DIR="$PWD/.data-dev" npm run dev
-```
-
-## Build
+Open `http://localhost:20127/dashboard`. Production and CLI starts use port `20128`.
 
 ```bash
 npm run build
+npm start
 ```
 
-If `next` is missing, run `npm install --no-audit --no-fund` first.
-
-## Lint
-
-```bash
-npm run lint
-```
-
-## Tests
-
-```bash
-npm run test:ci
-```
-
-Translator-focused tests live under `tests/translator/`. Some tests are offline; real-provider smoke tests require local credentials and explicit flags.
-
-## Project Layout
+## Repository map
 
 | Path | Purpose |
 | --- | --- |
-| `src/app` | Next.js app routes and dashboard pages. |
-| `src/app/api` | Dashboard and compatibility API routes. |
-| `src/sse` | Request handlers and routing layer. |
-| `open-sse` | Provider execution, translation, streaming, and core modality logic. |
-| `src/lib/db` | SQLite schema, migrations, repositories, and persistence paths. |
-| `src/lib/oauth` | OAuth provider flows and helpers. |
-| `src/mitm` | Optional MITM server and certificate logic. |
-| `cli` | Global CLI package, tray helpers, and local menus. |
-| `docs` | Markdown documentation. |
-| `tests` | Vitest tests and baselines. |
+| `src/app` | Next.js dashboard and API routes. |
+| `src/sse` | Client request handlers and routing entry points. |
+| `open-sse` | Provider executors, translators, modality handlers, fallback, and usage logic. |
+| `open-sse/providers/registry` | Provider definitions, endpoints, models, aliases, and capabilities. |
+| `src/lib/db` | SQLite schema, migrations, repositories, and backups. |
+| `src/lib/oauth` | OAuth flows and token handling. |
+| `src/mitm` | Optional interception and certificate logic. |
+| `cli` | Published CLI package and packaged runtime. |
+| `docs` | Canonical Markdown documentation. |
+| `tests` | Vitest suite and fail-closed baseline gate. |
 
-## Development Data
+## Focused tests
 
-Default development data still resolves to the compatibility path unless `DATA_DIR` is set. Use a disposable path while developing:
+Run Vitest from `tests/` and always load `vitest.config.js`:
 
 ```bash
-export DATA_DIR="$PWD/.data-dev"
+cd tests
+npx vitest run --config vitest.config.js unit/example.test.js
+npx vitest run --config vitest.config.js translator/example.test.js
 ```
 
-Do not commit `.data-dev`, provider credentials, database files, local logs, or runtime artifacts.
+Translator tests that call translation entry points must import `translator/registerAll.js`.
+
+## Full checks
+
+```bash
+npm run lint
+npm run build
+npm run check:docs
+npm run check:agent-index
+npm run check:registry-index
+npm run catalog:diff
+cd tests && npm run test:ci
+```
+
+## Generated indexes
+
+After provider registry changes:
+
+```bash
+npm run gen:registry-index
+npm run check:registry-index
+```
+
+After provider or executor navigation changes:
+
+```bash
+npm run gen:agent-index
+npm run check:agent-index
+```
+
+Commit generated output when it changes.
 
 ## Debugging
 
-Useful variables:
+Use test data before enabling detailed logs:
 
 ```bash
 LOG_LEVEL=DEBUG
@@ -94,4 +110,4 @@ CURSOR_PROTOBUF_DEBUG=1
 DEBUG_MITM=1
 ```
 
-Only enable request body logging with test data.
+Request logs may include prompts, responses, filenames, and URLs. Disable them after diagnosis.

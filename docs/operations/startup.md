@@ -1,36 +1,36 @@
 # Startup and Runtime Operations
 
-This page explains how to start, stop, verify, and operate DurinDoor in common environments.
+How to start, stop, verify, and operate DurinDoor.
 
-## Runtime Modes
+## Runtime modes
 
-| Mode | Command | Best for |
-| --- | --- | --- |
-| Global CLI | `durindoor` | Personal desktop use and local tools. |
-| `npx` | `npx durindoor` | Quick evaluation without global install. |
-| Source development | `npm run dev` | Contributor development. |
-| Source production | `npm run build && npm start` | Manual server deployments. |
-| Docker | `docker run ...` or Docker Compose | VPS, home server, and team deployments. |
+| Mode | Command | Port | Best for |
+|---|---|---|---|
+| Global CLI | `durindoor` | 20128 | Personal desktop use |
+| npx | `npx durindoor` | 20128 | Quick evaluation |
+| Source dev | `npm run dev` | 20127 | Contributor development |
+| Source prod | `npm run build && npm start` | 20128 | Manual server deployments |
+| Docker | `docker run …` | 20128 | VPS, home server, team |
 
-## First Startup
+## First startup
 
-1. Install DurinDoor or clone the repository.
-2. Choose a persistent `DATA_DIR`.
-3. Start the server.
-4. Open `http://localhost:20128/dashboard`.
-5. Sign in with the initial password.
+1. Install or clone.
+2. Set `DATA_DIR` to a persistent path.
+3. Set `JWT_SECRET` and `INITIAL_PASSWORD` for remote exposure.
+4. Start the server.
+5. Open http://localhost:20128/dashboard and sign in.
 6. Change the password.
-7. Create a DurinDoor API key.
-8. Add at least one provider connection.
+7. Add a provider connection.
+8. Create a DurinDoor API key.
 9. Send a test request.
 
-## CLI Startup
+## CLI
 
 ```bash
 durindoor
 ```
 
-Useful options:
+Options:
 
 ```bash
 durindoor --port 8080
@@ -39,74 +39,52 @@ durindoor --skip-update
 durindoor --help
 ```
 
-The CLI starts the Next.js server, opens the dashboard unless disabled, and stores runtime helper files under `DATA_DIR`.
-
-## Source Startup
+## Source
 
 Development:
 
 ```bash
 npm install --no-audit --no-fund
-npm run dev
+npm run dev   # port 20127
 ```
 
-Production from source:
+Production:
 
 ```bash
 npm install --no-audit --no-fund
 npm run build
-npm start
+npm start    # port 20128
 ```
 
-Development uses port `20127`. Production uses `PORT`, defaulting to `20128`.
-
-## Docker Startup
-
-Replace `<version>` with a published release image tag, for example `0.5.18`.
+## Docker
 
 ```bash
 docker run -d \
   --name durindoor \
   -p 20128:20128 \
-  -e PORT=20128 \
-  -e HOSTNAME=0.0.0.0 \
+  -v "$HOME/.durindoor:/app/data" \
   -e DATA_DIR=/app/data \
-  -e JWT_SECRET="CHANGE_ME_LONG_RANDOM_VALUE" \
-  -e API_KEY_SECRET="CHANGE_ME_LONG_RANDOM_VALUE" \
-  -e INITIAL_PASSWORD="CHANGE_ME_STRONG_PASSWORD" \
-  -v durindoor-data:/app/data \
-  ghcr.io/bloodf/durindoor:<version>
+  -e JWT_SECRET="change-me" \
+  -e INITIAL_PASSWORD="change-me" \
+  ghcr.io/bloodf/durindoor:3.9.0
 ```
 
-Check logs:
+See [Cloud Deployment](../deployment/cloud.md) for the full production compose setup.
 
-```bash
-docker logs -f durindoor
-```
-
-Stop and start:
-
-```bash
-docker stop durindoor
-docker start durindoor
-```
-
-## Health Checks
-
-Use the health endpoint for uptime checks:
+## Health checks
 
 ```bash
 curl http://localhost:20128/api/health
 ```
 
-Use `/v1/models` to verify authentication and provider/model visibility:
+Check model visibility:
 
 ```bash
 curl http://localhost:20128/v1/models \
   -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY"
 ```
 
-## Smoke Test
+## Smoke test
 
 ```bash
 curl http://localhost:20128/v1/chat/completions \
@@ -114,46 +92,53 @@ curl http://localhost:20128/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "MODEL_ID_OR_COMBO",
-    "messages": [
-      {"role": "user", "content": "Reply with OK."}
-    ],
+    "messages": [{"role": "user", "content": "Reply OK."}],
     "max_tokens": 16
   }'
 ```
 
-## Graceful Shutdown
-
-For CLI or source starts, press `Ctrl+C`.
-
-For Docker:
+## Graceful shutdown
 
 ```bash
+# CLI / source
+Ctrl+C
+
+# Docker
 docker stop durindoor
 ```
 
-If `SHUTDOWN_SECRET` is configured, automation can call the shutdown API with the configured secret. Prefer normal process-manager stop commands when possible.
+Always stop before backing up or upgrading. See [Data Management](data-management.md).
 
-## Restart After Configuration Changes
+## Restart after configuration changes
 
-Restart DurinDoor after changing:
+Restart after changing: `PORT`, `HOSTNAME`, `DATA_DIR`, `JWT_SECRET`, `API_KEY_SECRET`, proxy variables, or OAuth overrides.
 
-- `PORT`
-- `HOSTNAME`
-- `DATA_DIR`
-- `JWT_SECRET`
-- `API_KEY_SECRET`
-- proxy environment variables
-- OAuth client overrides
-- build-related variables
+Dashboard settings stored in the database usually do not require a restart.
 
-Dashboard settings stored in the database usually do not require a process restart.
+## Logs
 
-## Common Startup Failures
+```bash
+# Docker
+docker logs -f durindoor
 
-| Symptom | Likely cause | Fix |
-| --- | --- | --- |
-| Port already in use | Another process owns `20128` | Start with `--port`, set `PORT`, or stop the conflicting process. |
-| Dashboard login loops | Cookie or `JWT_SECRET` issue | Use stable `JWT_SECRET`; set `AUTH_COOKIE_SECURE=true` only behind HTTPS. |
-| Data disappears after container restart | Missing persistent volume | Mount a volume and set `DATA_DIR=/app/data`. |
-| OAuth callback fails | Wrong public URL | Set `BASE_URL`, `NEXT_PUBLIC_BASE_URL`, or `MCP_GATEWAY_OAUTH_PUBLIC_URL` as needed. |
-| API keys stop validating after redeploy | `API_KEY_SECRET` changed | Keep `API_KEY_SECRET` stable. |
+# Source / CLI
+# Runtime logs go to DATA_DIR/logs/
+```
+
+## Common startup failures
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Port in use | Another process owns 20128 | Stop the process or start on a different port |
+| Login loops | Cookie or `JWT_SECRET` issue | Keep `JWT_SECRET` stable; set `AUTH_COOKIE_SECURE=true` behind HTTPS |
+| Data disappears after restart | Missing volume mount | Mount a volume and set `DATA_DIR=/app/data` |
+| OAuth callback fails | Wrong public URL | Set `BASE_URL` or `NEXT_PUBLIC_BASE_URL` |
+| API keys invalid after redeploy | `API_KEY_SECRET` changed | Keep `API_KEY_SECRET` stable across deploys |
+| Health check fails | DurinDoor not reachable | Confirm port, firewall, container publish |
+
+## Next steps
+
+- [Upgrading](upgrading.md) — release notes, backup, version changes
+- [Data Management](data-management.md) — backup, restore, migration
+- [Security](security.md) — dashboard access, API keys, secrets
+- [Troubleshooting](../troubleshooting.md) — isolation guide for common failures

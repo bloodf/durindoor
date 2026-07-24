@@ -1,59 +1,99 @@
-# DurinDoor Documentation
+<p align="center">
+  <a href="https://github.com/bloodf/durindoor/blob/main/assets/durindoor-banner.png">
+    <img src="https://raw.githubusercontent.com/bloodf/durindoor/main/assets/durindoor-banner.png" alt="Ancient stone portal glowing green in dark ruins" width="100%">
+  </a>
+</p>
 
-DurinDoor is a self-hosted AI gateway for developer tools, scripts, and applications that need one stable API in front of many AI providers. It exposes OpenAI-compatible endpoints, stores provider credentials locally, routes requests to upstream providers, and records usage so operators can see what was used and why.
+<p align="center">
+  <a href="https://github.com/bloodf/durindoor/blob/main/assets/durindoor-wordmark-theme-aware.svg">
+    <img src="https://raw.githubusercontent.com/bloodf/durindoor/main/assets/durindoor-wordmark-theme-aware.svg" alt="DurinDoor — Speak, friend, and enter. One guarded gateway for every AI provider" width="760">
+  </a>
+</p>
 
-DurinDoor is a fork of 9Router. Some compatibility names remain intentionally visible in storage paths, API key prefixes, CLI aliases, and internal headers so existing installations can migrate without losing data.
+DurinDoor is a self-hosted AI gateway for developer tools, scripts, and applications that need one stable OpenAI-compatible API in front of many AI providers. It stores provider credentials locally, routes requests to upstream services, and records usage so operators can see what was used and why.
 
-## Documentation Index
+DurinDoor is a fork of 9router. Some compatibility names remain intentionally visible in storage paths, API key formats/prefixes, and internal headers so existing installations can migrate without losing data.
 
-### Getting Started
+This repository is the canonical source for DurinDoor documentation. There is no separate documentation website; GitHub-rendered Markdown is the source of truth.
+
+## Users
+
+For users getting their first request through the gateway.
 
 - [Quick Start](getting-started/quick-start.md): install, start, create an API key, and send the first request.
 - [Installation](getting-started/installation.md): npm, source, Docker, configuration, upgrades, and data paths.
 - [Usage Guide](guides/usage.md): dashboard workflow, API keys, model selection, combos, SDK examples, and monitoring.
-
-### Providers
-
 - [Provider Connections](providers/subscription.md): OAuth, API key, cookie, and account-based providers.
 - [Provider Nodes and Custom Providers](providers/cheap.md): OpenAI-compatible nodes, Anthropic-compatible nodes, custom embeddings, and provider aliases.
 - [Free and Local Providers](providers/free.md): no-auth, local, browser-cookie, and local-device providers.
-
-### Features
-
-- [Smart Routing](features/smart-routing.md): model resolution, provider selection, account fallback, and format translation.
-- [Combos and Fallback](features/combos.md): ordered model chains, retry behavior, exclusions, and operating patterns.
-- [Usage and Quota Tracking](features/quota-tracking.md): request logs, cost estimates, provider limits, and reset windows.
-
-### Integrations
-
 - [Claude Code](integration/claude-code.md)
+- [Ollama + Claude Code](integration/ollama-claude.md)
 - [OpenAI Codex](integration/codex.md)
 - [Cursor](integration/cursor.md)
 - [Cline](integration/cline.md)
 - [Roo](integration/roo.md)
 - [Continue](integration/continue.md)
 - [Other OpenAI-Compatible Tools](integration/other-tools.md)
+- [Combos and Fallback](features/combos.md): ordered model chains, retry behavior, exclusions, and operating patterns.
+- [Smart Routing](features/smart-routing.md): model resolution, provider selection, account fallback, and format translation.
+- [FAQ](faq.md)
+- [Troubleshooting](troubleshooting.md)
 
-### Deployment and Operations
+## Operators
+
+For operators running DurinDoor in production or on a team server.
 
 - [Local Deployment](deployment/localhost.md)
+- [Docker](../DOCKER.md)
 - [Cloud and Docker Deployment](deployment/cloud.md)
+- [Static Assets and Reverse Proxy](deployment/static-assets.md)
 - [Startup and Runtime Operations](operations/startup.md)
+- [Upgrading DurinDoor](operations/upgrading.md)
+- [Data Management and Backup](operations/data-management.md)
 - [Security and Production Hardening](operations/security.md)
+- [Usage and Quota Tracking](features/quota-tracking.md)
+- [MCP Gateway](features/mcp-gateway.md)
+- [Realtime Behavior](features/realtime.md)
+- [Compression](features/compression.md)
 - [Troubleshooting](troubleshooting.md)
 - [FAQ](faq.md)
 
-### Reference
+## Contributors
 
-- [Environment Variables](reference/environment.md)
-- [API Reference](reference/api.md)
-- [Architecture](ARCHITECTURE.md)
-- [MCP Gateway Notes](pr-mcp-gateway.md)
-
-### Development
+For developers working on the DurinDoor codebase, provider registry, or documentation.
 
 - [Contributing](development/contributing.md)
 - [Local Development](development/local-development.md)
+- [Architecture](ARCHITECTURE.md)
+- [tests/README.md](../tests/README.md)
+
+## API & Reference
+
+For stable lookup pages for routes, environment variables, compatibility, and runtime behavior.
+
+- [API Reference](reference/api.md)
+- [Environment Variables](reference/environment.md)
+- [Provider Plugin Manifest](reference/provider-plugin-manifest.md)
+- [MCP Gateway](features/mcp-gateway.md)
+- [Realtime Behavior](features/realtime.md)
+- [Compression](features/compression.md)
+- [Local Router Providers](providers/local-router-providers.md)
+- [Compatibility and Migration](#compatibility)
+- [Architecture](ARCHITECTURE.md)
+
+## Package Documentation
+
+- [cli/README.md](../cli/README.md)
+- [skills/README.md](../skills/README.md)
+
+## Community and Project
+
+- [Security](../.github/SECURITY.md)
+- [Contributing](../CONTRIBUTING.md)
+- [Code of Conduct](../CODE_OF_CONDUCT.md)
+- [Changelog](../CHANGELOG.md)
+- [License](../LICENSE)
+- [Acknowledgments](../README.md#acknowledgments)
 
 ## Core Concepts
 
@@ -82,7 +122,15 @@ DurinDoor is a fork of 9Router. Some compatibility names remain intentionally vi
 
 ## Supported API Families
 
-DurinDoor includes routes for chat, responses, messages, models, embeddings, image generation, image edits, speech, transcription, translation, moderation, reranking, web search, web fetch, and token counting. Availability still depends on the selected upstream provider and configured credentials.
+DurinDoor includes routes for chat, responses, messages, models, embeddings, image generation, image edits, speech, transcription, translation, moderation, reranking, web search, web fetch, and token counting. Availability depends on the selected upstream provider and configured credentials.
+
+## Compatibility
+
+DurinDoor is a fork of [9router](https://github.com/decolua/9router). These compatibility names remain supported:
+
+- Storage path `~/.9router` (use `DATA_DIR` to override).
+- Legacy API keys in the `sk-<8 hex>` shape and current keys in the `sk-<machineId>-<keyId>-<crc8>` shape.
+- Internal headers prefixed with `X-9Router-` and their `X-DurinDoor-` equivalents.
 
 ## Operator Essentials
 

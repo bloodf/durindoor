@@ -1,57 +1,55 @@
 # Quick Start
 
-This guide starts DurinDoor locally and sends one OpenAI-compatible request through the gateway.
+Start DurinDoor locally and send one request through the gateway.
+
+**Requirements:** Node.js 20.20.2, npm 10.8.2.
 
 ## 1. Install
-
-Install the CLI package globally:
 
 ```bash
 npm install -g durindoor
 ```
 
-DurinDoor also keeps the legacy `9router` binary alias for migration compatibility, but new documentation uses `durindoor`.
+Or run without installing:
 
-## 2. Start the Gateway
+```bash
+npx durindoor
+```
+
+## 2. Start the gateway
 
 ```bash
 durindoor
 ```
 
-The server listens on `http://localhost:20128` by default. The dashboard is available at:
+Default URLs:
 
-```text
-http://localhost:20128/dashboard
-```
+| Surface | URL |
+|---|---|
+| Dashboard | http://localhost:20128/dashboard |
+| API base | http://localhost:20128/v1 |
+| Health check | http://localhost:20128/api/health |
 
-On first run, DurinDoor creates a data directory, initializes the local database, and prepares dashboard authentication. If the dashboard asks for a password, use the configured `INITIAL_PASSWORD` or the local default, then change it before exposing the instance to a network.
+On first run, DurinDoor creates `DATA_DIR` and initializes the database. Sign in with the `INITIAL_PASSWORD` set in your environment, or the local default if none was set. Change the password before exposing the instance.
 
-## 3. Add a Provider
+## 3. Add a provider
 
-Open the dashboard and add at least one provider connection.
+Open the dashboard → Providers. Add at least one connection:
 
-| Provider type | Dashboard path | Credential type |
-| --- | --- | --- |
-| OAuth provider | Providers, then Connect | Browser login, device code, or OAuth callback |
-| API key provider | Providers, then Add API Key | Provider API key or token |
-| Compatible provider node | Provider Nodes | OpenAI-compatible or Anthropic-compatible endpoint |
-| Local provider | Media Providers or Provider Nodes | Local URL, no remote account if the service supports it |
+| Provider type | Credential |
+|---|---|
+| OAuth | Browser login, device code, or OAuth callback |
+| API key | Provider API key or token |
+| Compatible endpoint | OpenAI-compatible or Anthropic-compatible URL |
+| Local provider | Local URL, no remote account |
 
-After saving, use the provider test action when available. A connection must be active before model requests can succeed.
+## 4. Create a DurinDoor API key
 
-## 4. Create a DurinDoor API Key
+Dashboard → Settings or Endpoint → API Keys → Create Key.
 
-Create a client API key in the dashboard:
+Use this key in client tools. New keys have the shape `sk-<machine>-<key>-<crc>`. Older `sk-*` keys remain supported.
 
-```text
-Dashboard -> Settings or Endpoint -> API Keys -> Create Key
-```
-
-Use this key in client tools. New keys have the shape `sk-<machine>-<key>-<crc>`. Older `sk-*` keys remain supported for compatibility.
-
-## 5. Send a Test Request
-
-Replace `YOUR_DURINDOOR_API_KEY` and `MODEL_ID` with values from your dashboard.
+## 5. Send a test request
 
 ```bash
 curl http://localhost:20128/v1/chat/completions \
@@ -61,15 +59,16 @@ curl http://localhost:20128/v1/chat/completions \
     "model": "MODEL_ID",
     "messages": [
       {"role": "user", "content": "Reply with one short sentence."}
-    ]
+    ],
+    "max_tokens": 32
   }'
 ```
 
-If the request succeeds, DurinDoor is ready for CLI tools and applications.
+Replace `MODEL_ID` with a model from your dashboard.
 
-## 6. Connect a Tool
+## 6. Connect a tool
 
-Use this generic configuration for OpenAI-compatible clients:
+OpenAI-compatible clients:
 
 ```text
 Base URL: http://localhost:20128/v1
@@ -77,28 +76,16 @@ API key:  your DurinDoor API key
 Model:    a model ID, alias, or combo name from the dashboard
 ```
 
-For Claude-compatible clients, use the integration-specific guide because some tools expect Anthropic environment variable names.
+For Claude-compatible clients, use the integration-specific guide because some tools expect `ANTHROPIC_BASE_URL`.
 
-## 7. Create a Combo
+## 7. Create a combo
 
-A combo gives client tools one stable model name while DurinDoor handles fallback.
+Dashboard → Combos → Create. Name it, add two or more models in priority order, then send requests with that combo name as the model.
 
-```text
-Dashboard -> Combos -> Create
-Name: coding-default
-Models:
-  1. primary model
-  2. backup model
-  3. last-resort model
-```
+## Next steps
 
-Then send requests with `"model": "coding-default"`.
-
-## Next Steps
-
-- Read [Installation](installation.md) for production configuration and data paths.
-- Read [Usage Guide](../guides/usage.md) for dashboard workflow and SDK examples.
-- Read [Provider Connections](../providers/subscription.md) for credential types.
-- Read [Combos and Fallback](../features/combos.md) for routing strategy.
-- Read [API Reference](../reference/api.md) for supported endpoints.
-- Read [Troubleshooting](../troubleshooting.md) if the first request fails.
+- [Installation](installation.md) — production configuration and data paths
+- [Usage Guide](../guides/usage.md) — dashboard workflow and SDK examples
+- [Combos and Fallback](../features/combos.md) — routing strategy
+- [API Reference](../reference/api.md) — supported endpoints
+- [Troubleshooting](../troubleshooting.md) — if the first request fails

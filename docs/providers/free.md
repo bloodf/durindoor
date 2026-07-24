@@ -46,9 +46,9 @@ Use cookie-backed providers for personal or experimental workflows unless your t
 
 A no-auth provider should only be used when the upstream is protected by the network boundary or runs locally. Do not expose a no-auth upstream to the public internet through DurinDoor without adding an outer access-control layer.
 
-## SenseNova Token Plan
+## Xiaomi Token Plan
 
-SenseNova routes through the OpenAI-compatible Token Plan endpoint (`https://token.sensenova.cn/v1/chat/completions`). The upstream caps `max_tokens` at 65,536, so DurinDoor clamps requests at that ceiling. Supported chat models are `sensenova-6.7-flash-lite`, `deepseek-v4-flash`, and `glm-5.2`.
+The `xiaomi-tokenplan` provider uses the SenseNova Token Plan service. Its catalog is discovered at runtime, so use the dashboard or `GET /v1/models` instead of copying model IDs from documentation. Provider limits and available models can change upstream.
 
 ## Local Device Media
 

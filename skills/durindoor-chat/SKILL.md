@@ -1,73 +1,40 @@
 ---
 name: durindoor-chat
-description: Chat / code generation via DurinDoor using OpenAI /v1/chat/completions or Anthropic /v1/messages format with streaming + auto-fallback combos. Use when the user wants to ask an LLM, generate code, summarize text, or run prompts through DurinDoor.
+description: Send chat and code-generation requests through DurinDoor using OpenAI or Anthropic request formats.
 ---
 
-# DurinDoor — Chat
+# DurinDoor Chat
 
-Requires `DURINDOOR_URL` (and `DURINDOOR_KEY` if auth enabled). See https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/master/skills/durindoor/SKILL.md for setup.
-
-## Endpoints
-
-- `POST $DURINDOOR_URL/v1/chat/completions` — OpenAI format
-- `POST $DURINDOOR_URL/v1/messages` — Anthropic format
+Requires `DURINDOOR_URL` and, when enabled, `DURINDOOR_KEY`.
 
 ## Discover
 
 ```bash
-curl $DURINDOOR_URL/v1/models | jq '.data[].id'
-# Per-model metadata (contextWindow, params)
-curl "$DURINDOOR_URL/v1/models/info?id=openai/gpt-4o"
+curl -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/v1/models" | jq -r '.data[].id'
+MODEL_ID="$(curl -s -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/v1/models" | jq -r '.data[0].id')"
 ```
-
-Combos (e.g. `vip`, `mycodex`) auto-fallback through multiple providers.
 
 ## OpenAI format
 
 ```bash
-curl -X POST $DURINDOOR_URL/v1/chat/completions \
+curl -X POST "$DURINDOOR_URL/v1/chat/completions" \
   -H "Authorization: Bearer $DURINDOOR_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"model":"openai/gpt-5","messages":[{"role":"user","content":"Hi"}],"stream":false}'
+  -d "{\"model\":\"$MODEL_ID\",\"messages\":[{\"role\":\"user\",\"content\":\"Hi\"}],\"stream\":false}"
 ```
 
-JS (OpenAI SDK):
-
-```js
-import OpenAI from "openai";
-const client = new OpenAI({ baseURL: `${process.env.DURINDOOR_URL}/v1`, apiKey: process.env.DURINDOOR_KEY });
-const res = await client.chat.completions.create({
-  model: "openai/gpt-5",
-  messages: [{ role: "user", content: "Hi" }],
-  stream: true,
-});
-for await (const chunk of res) process.stdout.write(chunk.choices[0]?.delta?.content || "");
-```
+For streaming, set `stream:true` and consume SSE until `data: [DONE]`.
 
 ## Anthropic format
 
 ```bash
-curl -X POST $DURINDOOR_URL/v1/messages \
+curl -X POST "$DURINDOOR_URL/v1/messages" \
   -H "Authorization: Bearer $DURINDOOR_KEY" \
   -H "anthropic-version: 2023-06-01" \
   -H "Content-Type: application/json" \
-  -d '{"model":"cc/claude-opus-4-7","max_tokens":1024,"messages":[{"role":"user","content":"Hi"}]}'
+  -d "{\"model\":\"$MODEL_ID\",\"max_tokens\":1024,\"messages\":[{\"role\":\"user\",\"content\":\"Hi\"}]}"
 ```
 
-## Response shape
+Use only a model or combo returned by discovery. Provider availability changes with connections and gateway version.
 
-OpenAI (`/v1/chat/completions`):
-```json
-{ "id": "chatcmpl-...", "object": "chat.completion", "model": "openai/gpt-5",
-  "choices": [{ "index": 0, "message": { "role": "assistant", "content": "Hello!" }, "finish_reason": "stop" }],
-  "usage": { "prompt_tokens": 8, "completion_tokens": 2, "total_tokens": 10 } }
-```
-
-Streaming (`stream:true`) emits SSE: `data: {choices:[{delta:{content:"..."}}]}\n\n` ... `data: [DONE]\n\n`.
-
-Anthropic (`/v1/messages`):
-```json
-{ "id": "msg_...", "type": "message", "role": "assistant", "model": "cc/claude-opus-4-7",
-  "content": [{ "type": "text", "text": "Hello!" }],
-  "stop_reason": "end_turn", "usage": { "input_tokens": 8, "output_tokens": 2 } }
-```
+Reference: https://github.com/bloodf/durindoor/blob/main/docs/reference/api.md

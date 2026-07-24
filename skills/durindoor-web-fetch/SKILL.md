@@ -1,99 +1,27 @@
 ---
 name: durindoor-web-fetch
-description: Fetch URL → markdown / text / HTML via DurinDoor /v1/web/fetch using Firecrawl / Jina Reader / Tavily Extract / Exa Contents. Use when the user wants to scrape a webpage, extract URL content, read article, or convert a URL to markdown.
+description: Fetch a URL through DurinDoor with a webFetch model discovered from /v1/models/web.
 ---
 
-# DurinDoor — Web Fetch
-
-Requires `DURINDOOR_URL` (and `DURINDOOR_KEY` if auth enabled). See https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/master/skills/durindoor/SKILL.md for setup.
+# DurinDoor Web Fetch
 
 ## Discover
 
 ```bash
-curl $DURINDOOR_URL/v1/models/web | jq '.data[] | select(.kind=="webFetch") | .id'
-# Per-provider params
-curl "$DURINDOOR_URL/v1/models/info?id=firecrawl/fetch"
+curl -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/v1/models/web" | jq -r '.data[] | select(.kind=="webFetch") | .id'
+MODEL_ID="$(curl -s -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/v1/models/web" | jq -r '.data[] | select(.kind=="webFetch") | .id' | head -n1)"
+curl -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/v1/models/info?id=$MODEL_ID"
 ```
 
-IDs end in `/fetch` (e.g. `firecrawl/fetch`, `jina/fetch`). `fetch-combo` chains providers with auto-fallback.
+## Fetch
 
-## Endpoint
-
-`POST $DURINDOOR_URL/v1/web/fetch`
-
-| Field | Required | Notes |
-|---|---|---|
-| `model` (or `provider`) | yes | from `/v1/models/web` (e.g. `firecrawl` or `jina-reader`) |
-| `url` | yes | URL to extract |
-| `format` | no | `markdown` (default) / `text` / `html` |
-| `max_characters` | no | truncate output |
-
-## Examples
-
-### Jina Reader
 ```bash
-curl -X POST $DURINDOOR_URL/v1/web/fetch \
+curl -X POST "$DURINDOOR_URL/v1/web/fetch" \
   -H "Authorization: Bearer $DURINDOOR_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"model":"jina-reader","url":"https://durindoor.com","format":"markdown"}'
+  -d "{\"model\":\"$MODEL_ID\",\"url\":\"https://example.com\",\"format\":\"markdown\"}"
 ```
 
-### Exa
-```bash
-curl -X POST $DURINDOOR_URL/v1/web/fetch \
-  -H "Authorization: Bearer $DURINDOOR_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"model":"exa","url":"https://example.com","format":"markdown","max_characters":0}'
-```
+`model` and `url` are required. Formats, truncation, rendering, and extraction options depend on the selected provider. The normalized response contains URL, title, content, metadata, usage, and metrics.
 
-### Firecrawl
-```bash
-curl -X POST $DURINDOOR_URL/v1/web/fetch \
-  -H "Authorization: Bearer $DURINDOOR_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"model":"firecrawl","url":"https://example.com","format":"markdown","max_characters":0}'
-```
-
-### Tavily
-```bash
-curl -X POST $DURINDOOR_URL/v1/web/fetch \
-  -H "Authorization: Bearer $DURINDOOR_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"model":"tavily","url":"https://example.com","format":"markdown","max_characters":0}'
-```
-
-
-JS:
-
-```js
-const r = await fetch(`${process.env.DURINDOOR_URL}/v1/web/fetch`, {
-  method: "POST",
-  headers: { "Authorization": `Bearer ${process.env.DURINDOOR_KEY}`, "Content-Type": "application/json" },
-  body: JSON.stringify({ model: "fetch-combo", url: "https://example.com", format: "markdown", max_characters: 5000 }),
-});
-const { data } = await r.json();
-console.log(data.title, data.content.length);
-```
-
-## Response shape
-
-```json
-{
-  "provider": "jina-reader",
-  "url": "...",
-  "title": "...",
-  "content": { "format": "markdown", "text": "...", "length": 1234 },
-  "metadata": { "author": null, "published_at": null, "language": null },
-  "usage": { "fetch_cost_usd": 0 },
-  "metrics": { "response_time_ms": 850, "upstream_latency_ms": 700 }
-}
-```
-
-## Provider quirks
-
-| Provider | Auth | Best for |
-|---|---|---|
-| `firecrawl` | Bearer | JS-rendered pages, `format=markdown/html` |
-| `jina-reader` | Bearer (optional) | Free tier (~1M chars/mo); fastest plain markdown |
-| `tavily` | Bearer | Bulk extract; returns `raw_content` |
-| `exa` | `x-api-key` | Pre-indexed pages; fast text extraction |
+Reference: https://github.com/bloodf/durindoor/blob/main/docs/reference/api.md

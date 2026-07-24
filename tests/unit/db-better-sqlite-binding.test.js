@@ -2,8 +2,7 @@ import { describe, expect, it, afterEach } from "vitest";
 import { createBetterSqliteAdapter } from "../../src/lib/db/adapters/betterSqliteAdapter.js";
 
 // Regression test for upstream 9router #2530 (issue #2529): params must be
-// spread into the statement call, not passed as one array. Root cause and
-// reproduction notes: docs/ports/upstream-2530.md.
+// spread into the statement call, not passed as one array.
 describe("betterSqliteAdapter parameter binding", () => {
   let adapter;
 

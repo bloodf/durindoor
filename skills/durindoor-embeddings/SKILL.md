@@ -1,69 +1,27 @@
 ---
 name: durindoor-embeddings
-description: Generate vector embeddings via DurinDoor /v1/embeddings using OpenAI / Gemini / Mistral / Voyage / Nvidia / GitHub embedding models for RAG, semantic search, similarity. Use when the user wants embeddings, vectors, RAG, semantic search, or to embed text.
+description: Generate vector embeddings through DurinDoor using a model discovered from /v1/models/embedding.
 ---
 
-# DurinDoor — Embeddings
-
-Requires `DURINDOOR_URL` (and `DURINDOOR_KEY` if auth enabled). See https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/master/skills/durindoor/SKILL.md for setup.
+# DurinDoor Embeddings
 
 ## Discover
 
 ```bash
-curl $DURINDOOR_URL/v1/models/embedding | jq '.data[].id'
-# Per-model dimensions
-curl "$DURINDOOR_URL/v1/models/info?id=openai/text-embedding-3-small"
+curl -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/v1/models/embedding" | jq -r '.data[].id'
+MODEL_ID="$(curl -s -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/v1/models/embedding" | jq -r '.data[0].id')"
+curl -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/v1/models/info?id=$MODEL_ID"
 ```
 
-## Endpoint
-
-`POST $DURINDOOR_URL/v1/embeddings`
-
-| Field | Required | Notes |
-|---|---|---|
-| `model` | yes | from `/v1/models/embedding` |
-| `input` | yes | string OR array of strings |
-| `encoding_format` | no | `float` (default) / `base64` |
-| `dimensions` | no | OpenAI v3 only |
-
-## Examples
+## Embed text
 
 ```bash
-curl -X POST $DURINDOOR_URL/v1/embeddings \
+curl -X POST "$DURINDOOR_URL/v1/embeddings" \
   -H "Authorization: Bearer $DURINDOOR_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"model":"openai/text-embedding-3-small","input":["hello","world"]}'
+  -d "{\"model\":\"$MODEL_ID\",\"input\":[\"hello\",\"world\"]}"
 ```
 
-JS:
+`input` accepts a string or array. Optional dimensions, encoding format, and batch limits depend on the selected model. The response uses OpenAI-compatible `data[].embedding` arrays.
 
-```js
-const r = await fetch(`${process.env.DURINDOOR_URL}/v1/embeddings`, {
-  method: "POST",
-  headers: { "Authorization": `Bearer ${process.env.DURINDOOR_KEY}`, "Content-Type": "application/json" },
-  body: JSON.stringify({ model: "gemini/text-embedding-004", input: "RAG chunk text" }),
-});
-const { data } = await r.json();
-console.log(data[0].embedding.length);  // dimension
-```
-
-## Response shape
-
-```json
-{ "object": "list", "model": "openai/text-embedding-3-small",
-  "data": [
-    { "object": "embedding", "index": 0, "embedding": [0.0123, -0.045, ...] },
-    { "object": "embedding", "index": 1, "embedding": [...] }
-  ],
-  "usage": { "prompt_tokens": 5, "total_tokens": 5 } }
-```
-
-## Provider quirks
-
-| Provider | Notes |
-|---|---|
-| `openai`, `openrouter`, `mistral`, `voyage-ai`, `fireworks`, `together`, `nebius`, `github`, `nvidia`, `jina-ai` | Native OpenAI shape — `dimensions` works only on OpenAI v3 (`text-embedding-3-*`) |
-| `gemini`, `google_ai_studio` | Server auto-converts to `embedContent`/`batchEmbedContents` — send OpenAI shape |
-| `openai-compatible-*`, `custom-embedding-*` | Custom `baseUrl` from credentials |
-
-Batch (`input` as array) is faster; some providers cap batch size.
+Reference: https://github.com/bloodf/durindoor/blob/main/docs/reference/api.md

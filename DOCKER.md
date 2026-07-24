@@ -1,128 +1,82 @@
-# DurinDoor
+# DurinDoor Docker
 
-Run DurinDoor in a container. Published image: [`ghcr.io/bloodf/durindoor`](https://github.com/bloodf/durindoor/pkgs/container/durindoor) — multi-platform `linux/amd64` + `linux/arm64`.
+Run DurinDoor in a container. Image: [`ghcr.io/bloodf/durindoor`](https://github.com/bloodf/durindoor/pkgs/container/durindoor) — multi-platform `linux/amd64` + `linux/arm64`.
 
----
+Requirements: Docker, persistent storage for `DATA_DIR`. Node.js is bundled in the image; the local build uses Node.js 20.20.2 and npm 10.8.2.
 
-# 👤 For Users
-
-## Quick start
+## One command
 
 ```bash
 docker run -d \
-  -p 20128:20128 \
+  --name durindoor \
+  -p 127.0.0.1:20128:20128 \
   -v "$HOME/.durindoor:/app/data" \
   -e DATA_DIR=/app/data \
-  --name durindoor \
+  -e JWT_SECRET="$(openssl rand -hex 32)" \
+  -e INITIAL_PASSWORD="$(openssl rand -hex 16)" \
   ghcr.io/bloodf/durindoor:latest
+
+This binds to localhost only and generates random secrets. For production, see [Cloud and Docker deployment](docs/deployment/cloud.md).
 ```
 
-App listens on port `20128`. Open: http://localhost:20128
+Open http://localhost:20128 — sign in, change the password, add a provider, create an API key.
 
-## Manage container
+## Docker Compose
 
 ```bash
-docker logs -f durindoor        # view logs
-docker stop durindoor           # stop
-docker start durindoor          # start again
-docker rm -f durindoor          # remove
+curl -fsSL https://raw.githubusercontent.com/bloodf/durindoor/main/docker-compose.yml -o docker-compose.yml
 ```
+
+Or copy from this repository's `docker-compose.yml`. Review the file and set all secrets in `.env` before `docker compose up -d`.
+
+For production compose with TLS, secrets, and optional Headroom, see [Cloud and Docker deployment](docs/deployment/cloud.md).
 
 ## Data persistence
 
-```bash
--v "$HOME/.durindoor:/app/data" \
--e DATA_DIR=/app/data
-```
-
-Without `DATA_DIR`, the app falls back to `<<~/.durindoor>>/` (macOS/Linux) or `<<%APPDATA%/durindoor%>>\` (Windows) for migration compatibility. In the container, `DATA_DIR=/app/data` makes the bind mount work.
-
-Data layout under `$DATA_DIR/`:
-
 ```text
-$DATA_DIR/
-├── db/
-│   ├── data.sqlite       # main SQLite database
-│   └── backups/          # auto backups
-└── ...                   # certs, logs, runtime configs
+Host path:        $HOME/.durindoor (or any bind path you choose)
+Container path:   /app/data/db/data.sqlite
+DATA_DIR in container: /app/data
 ```
 
-Host path: `$HOME/.durindoor/db/data.sqlite`
-Container path: `/app/data/db/data.sqlite`
+Without the bind mount or named volume, data lives inside the container and is lost on removal. Always mount a volume.
 
-## Optional env vars
+Bind mount example:
 
 ```bash
-docker run -d \
-  -p 20128:20128 \
-  -v "$HOME/.durindoor:/app/data" \
-  -e DATA_DIR=/app/data \
-  -e PORT=20128 \
-  -e HOSTNAME=0.0.0.0 \
-  -e DEBUG=true \
-  --name durindoor \
-  ghcr.io/bloodf/durindoor:latest
+-v "$HOME/.durindoor:/app/data"
 ```
 
-## Optional Headroom sidecar
+Named volume example:
 
-The DurinDoor image does not bundle Python or Headroom. To use Headroom in Docker, run it as a separate service and point DurinDoor at that proxy:
-
-```yaml
-services:
-  durindoor:
-    image: ghcr.io/bloodf/durindoor:latest
-    ports:
-      - "20128:20128"
-    volumes:
-      - "$HOME/.durindoor:/app/data"
-    environment:
-      DATA_DIR: /app/data
-      HEADROOM_URL: http://headroom:8787
-    depends_on:
-      - headroom
-
-  headroom:
-    image: ghcr.io/chopratejas/headroom:latest
-    ports:
-      - "8787:8787"
+```bash
+-v durindoor-data:/app/data
 ```
 
-In the dashboard, open `Endpoint` → `Token Saver` → `Headroom`, confirm the URL is `http://headroom:8787`, recheck status, then enable Headroom.
+See [Data Management](docs/operations/data-management.md) for backup, restore, and volume guidance.
 
-If Headroom runs on the Docker host instead of as a sidecar, use `http://host.docker.internal:8787` on macOS/Windows. On Linux, add `--add-host=host.docker.internal:host-gateway` or the equivalent compose `extra_hosts` entry.
-
-## Update to latest
+## Update
 
 ```bash
 docker pull ghcr.io/bloodf/durindoor:latest
-docker rm -f durindoor
-# re-run the quick start command
+docker stop durindoor && docker rm durindoor
+# re-run the one-command above
 ```
 
----
+Pin to a version tag (e.g. `3.9.0`) for production. `latest` is convenient for quick evaluation.
 
-# 🛠 For Developers
+## Headroom sidecar (optional)
 
-## Build image locally (test)
+Headroom is an optional token-saver proxy. To enable it alongside DurinDoor, add the Headroom service to your compose file as shown in [Cloud and Docker deployment](docs/deployment/cloud.md). Do not publish port `8787` to the host unless the port is protected by authentication.
+
+## Logs
 
 ```bash
-docker build -t durindoor .
-
-docker run --rm -p 20128:20128 \
-  -v "$HOME/.durindoor:/app/data" \
-  -e DATA_DIR=/app/data \
-  durindoor
+docker logs -f durindoor
 ```
 
-## Publish (automatic via CI)
+## Next steps
 
-Push a git tag `v*` → GitHub Actions builds multi-platform (amd64+arm64) and pushes to:
-- `ghcr.io/bloodf/durindoor:v{version}` + `:latest`
-
-```bash
-# Or manually
-git tag v0.5.x && git push origin v0.5.x
-```
-
-Workflow: `.github/workflows/docker-publish.yml`
+- [Cloud and Docker deployment](docs/deployment/cloud.md) — production compose, TLS, secrets, upgrades, rollback
+- [Data management](docs/operations/data-management.md) — backup, restore, migration for bind mounts and named volumes
+- [Security](docs/operations/security.md) — dashboard access, API keys, secrets

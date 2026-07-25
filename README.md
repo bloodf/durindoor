@@ -155,7 +155,7 @@ Pin a version tag for production; do not rely on `latest` for stability:
 ```bash
 docker run -d \
   --name durindoor \
-  -p 20128:20128 \
+  -p 127.0.0.1:20128:20128 \
   -v "$HOME/.durindoor:/app/data" \
   -e DATA_DIR=/app/data \
   -e JWT_SECRET="change-me" \
@@ -322,7 +322,7 @@ See [Architecture](docs/ARCHITECTURE.md) for the request lifecycle, routing inte
 
 DurinDoor stores provider credentials and routes model traffic — treat it as sensitive infrastructure.
 
-- **Prefer localhost-only binding.** The CLI binds `0.0.0.0` by default, so run `durindoor --host 127.0.0.1` for local-only use. Source runs default to `127.0.0.1` when `HOSTNAME` is unset. Docker sets `HOSTNAME=0.0.0.0` inside the container; keep it private with the published port mapping or set `HOSTNAME=127.0.0.1` when appropriate. Do not expose the dashboard publicly with only the default password.
+- **Prefer localhost-only binding.** The CLI binds `0.0.0.0` by default, so run `durindoor --host 127.0.0.1` for local-only use. Source runs default to `127.0.0.1` when `HOSTNAME` is unset. Docker sets `HOSTNAME=0.0.0.0` inside the container; keep it private with host-side mapping such as `-p 127.0.0.1:20128:20128`. Do not expose the dashboard publicly with only the default password.
 - **Separate DurinDoor keys from upstream credentials.** Client tools use DurinDoor API keys; upstream provider keys, OAuth tokens, and cookies stay in `DATA_DIR` and are never sent to client-facing routes.
 - **Set explicit production secrets.** Define `JWT_SECRET`, `API_KEY_SECRET`, and a strong `INITIAL_PASSWORD` before any remote exposure.
 - **Use HTTPS and restrict dashboard access.** Reverse proxy with auth, VPN, firewall, or trusted-network allowlist; set `AUTH_COOKIE_SECURE=true` behind HTTPS.

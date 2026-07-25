@@ -79,6 +79,14 @@ Some OpenAI-compatible providers, including `hcnsec`, load available models from
 
 When the add-key dialog creates default connection names, it chooses the first unused name in the `main`, `main-2`, `main-3`, ... sequence. Reopening the dialog after a successful add clears prior secrets and provider-specific fields; background refreshes while the dialog is open preserve in-progress input.
 
+### Current 1M model catalog corrections
+
+- Claude Code exposes `claude-opus-5`; the dashboard's default Opus mapping points to `cc/claude-opus-5`.
+- Anthropic Opus 5, Sonnet 5, Fable 5, Opus 4.8, Opus 4.7, Opus 4.6, and Sonnet 4.6 use a native 1M context window and do not require a beta header.
+- Direct OpenAI GPT-5.6 (`gpt-5.6`, Sol, Terra, Luna) and GPT-5.5 resolve with a 1.05M context window and 128k max output.
+- Kiro GPT-5.6 Sol/Terra/Luna use the same approved 1.05M catalog context in DurinDoor while keeping Kiro's existing 32k output capability.
+- The running `/v1/models` response remains the source of truth for configured connections.
+
 ## OmniRoute OAuth Provider Slice
 
 DurinDoor ports OAuth/session providers only when the runtime transport, credential serialization, and token refresh behavior are covered by local tests.

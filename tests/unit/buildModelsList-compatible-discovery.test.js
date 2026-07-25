@@ -103,4 +103,37 @@ describe("buildModelsList — compatible provider discovery", () => {
       }),
     );
   });
+
+  it("treats configured custom models on a compatible node as an explicit whitelist", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: [{ id: "upstream-model" }] }),
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const providerId = "openai-compatible-chat-deadbeef-1234-5678-90ab-cdef01234567";
+    stubConnections([
+      {
+        id: "conn-dex",
+        provider: providerId,
+        apiKey: "sk-local",
+        isActive: true,
+        providerSpecificData: {
+          baseUrl: "http://127.0.0.1:11434",
+          prefix: "dex",
+        },
+      },
+    ]);
+    localDb.getCustomModels.mockResolvedValue([
+      { id: "custom-one", providerAlias: "dex", kind: "llm" },
+      { id: "custom-two", providerAlias: providerId, kind: "llm" },
+    ]);
+
+    const models = await buildModelsList([LLM_KIND]);
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    const dexIds = models.map((model) => model.id).filter((id) => id.startsWith("dex/"));
+    expect(dexIds).toEqual(["dex/custom-one", "dex/custom-two"]);
+    expect(models.some((model) => model.id === "dex/upstream-model")).toBe(false);
+  });
 });

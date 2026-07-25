@@ -1,3 +1,13 @@
+# 3.9.1
+
+Patch release with the README handbook revamp, current 1M model catalog corrections, and targeted upstream gateway fixes.
+
+## What's included
+- **README handbook revamp** — journey-first project README with quick navigation, quick start, tool integrations, capabilities, API surface, architecture, security guidance, and documentation links.
+- **1M model catalog corrections** — Claude Opus 5 added to Claude Code and Anthropic catalogs; Claude Code Opus defaults to `cc/claude-opus-5`; `opus[1m]` and `sonnet[1m]` aliases recognized; Anthropic/OpenAI/Codex/Kiro big-context capability metadata corrected.
+- **Ollama terminal stream fix** — terminal Ollama chunks now preserve content, reasoning, and non-empty tool calls in the final SSE delta and request details.
+- **Compatible-node model whitelist fix** — custom models configured on OpenAI/Anthropic-compatible nodes now act as an explicit whitelist instead of also exposing the full upstream model catalog.
+
 # 3.9.0
 
 Release consolidating the work merged since 2.3.0. The intermediate 2.3.1 /

@@ -79,9 +79,9 @@ export function stripKiroSyntheticSuffixes(id) {
  * buildKiroModelVariants, all pointing back at the bare upstream id.
  */
 export const KIRO_GPT_5_6_FAMILY = [
-  { id: "gpt-5.6-sol",   name: "GPT 5.6 Sol",   contextLength: 272000, rateMultiplier: 2.4 },
-  { id: "gpt-5.6-terra", name: "GPT 5.6 Terra", contextLength: 272000, rateMultiplier: 1.2 },
-  { id: "gpt-5.6-luna",  name: "GPT 5.6 Luna",  contextLength: 272000, rateMultiplier: 0.6 },
+  { id: "gpt-5.6-sol",   name: "GPT 5.6 Sol",   contextLength: 1050000, rateMultiplier: 2.4 },
+  { id: "gpt-5.6-terra", name: "GPT 5.6 Terra", contextLength: 1050000, rateMultiplier: 1.2 },
+  { id: "gpt-5.6-luna",  name: "GPT 5.6 Luna",  contextLength: 1050000, rateMultiplier: 0.6 },
 ];
 
 /**
@@ -93,6 +93,6 @@ export function buildKiroGpt56Variants(base) {
     contextLength: base.contextLength,
     rateMultiplier: base.rateMultiplier,
     upstreamModelId: base.id,
-    description: `Experimental preview of OpenAI ${base.name} with 272k context window`,
+    description: `Experimental preview of OpenAI ${base.name} with 1.05M context window`,
   });
 }

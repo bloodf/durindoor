@@ -166,7 +166,7 @@ describe("aggregateComboCapabilities — aliasToProviderId custom-prefix mapping
       null,
       { mykr: "kiro" },
     );
-    expect(caps.contextWindow).toBe(272000);
+    expect(caps.contextWindow).toBe(1050000);
     expect(caps.thinkingFormat).toBe("kiro");
     expect(caps.maxOutput).toBe(32000);
   });
@@ -177,14 +177,14 @@ describe("aggregateComboCapabilities — aliasToProviderId custom-prefix mapping
       null,
       { mykr: "kiro" },
     );
-    expect(caps.contextWindow).toBe(272000);
+    expect(caps.contextWindow).toBe(1050000);
     expect(caps.thinkingFormat).toBe("kiro");
   });
 
   it("alias map survives nested-combo recursion", () => {
     const lookup = { "kiro-inner": ["mykr/gpt-5.6-sol"] };
     const caps = aggregateComboCapabilities(["kiro-inner"], lookup, { mykr: "kiro" });
-    expect(caps.contextWindow).toBe(272000);
+    expect(caps.contextWindow).toBe(1050000);
     expect(caps.thinkingFormat).toBe("kiro");
   });
 

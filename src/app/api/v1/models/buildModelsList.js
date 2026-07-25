@@ -688,12 +688,18 @@ async function buildModelsListImpl(kindFilter, guard) {
             )
           : providerModels.map((model) => model.id);
 
-        if (isCompatibleProvider && rawModelIds.length === 0) {
+        const hasConfiguredCustomModels = customModels.some((model) => {
+          const alias = model?.providerAlias;
+          return alias === staticAlias || alias === outputAlias || alias === providerId;
+        });
+
+        if (isCompatibleProvider && rawModelIds.length === 0 && !hasConfiguredCustomModels) {
           // Compatible providers (openai-compatible-*, anthropic-compatible-*) may
           // carry a UUID-v4 suffix in their node ID, which would falsely match
           // the old UUID suffix guard and skip dynamic model discovery. Always
           // attempt a live /models fetch for compatible providers (through the
-          // SSRF validation guard).
+          // SSRF validation guard), unless persisted custom models define an
+          // explicit whitelist for the node.
           rawModelIds = await fetchCompatibleModelIds(conn, guard);
         }
 

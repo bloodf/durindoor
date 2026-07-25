@@ -24,9 +24,29 @@ describe("capabilities contextWindow resolution", () => {
     ["anthropic", "claude-opus-4-7-thinking", 1000000],
     ["anthropic", "claude-opus-4.6-thinking", 1000000],
     ["anthropic", "claude-opus-4.7-thinking", 1000000],
-    // GPT-5.x codex family keeps DurinDoor's 400K provider cap.
-    ["codex", "gpt-5.6-sol-ultra", 400000],
-    ["openai", "gpt-5.5", 400000],
+    // Direct OpenAI GPT-5.6 surfaces override the generic *gpt-5* 400K fallback.
+    ["openai", "gpt-5.5", 1050000],
+    ["openai", "gpt-5.6", 1050000],
+    ["openai", "gpt-5.6-sol", 1050000],
+    ["openai", "gpt-5.6-terra", 1050000],
+    ["openai", "gpt-5.6-luna", 1050000],
+    // Codex/CX GPT-5.x surfaces get the same 1.05M provider override, including
+    // Codex-specific review and ultra ids.
+    ["codex", "gpt-5.5", 1050000],
+    ["codex", "gpt-5.5-review", 1050000],
+    ["codex", "gpt-5.6-sol", 1050000],
+    ["codex", "gpt-5.6-sol-review", 1050000],
+    ["codex", "gpt-5.6-sol-ultra", 1050000],
+    ["codex", "gpt-5.6-terra", 1050000],
+    ["codex", "gpt-5.6-terra-review", 1050000],
+    ["codex", "gpt-5.6-luna", 1050000],
+    ["codex", "gpt-5.6-luna-review", 1050000],
+    // Codex/CX review aliases.
+    ["cx", "gpt-5.5", 1050000],
+    ["cx", "gpt-5.5-review", 1050000],
+    ["cx", "gpt-5.6-sol-review", 1050000],
+    ["cx", "gpt-5.6-terra-review", 1050000],
+    ["cx", "gpt-5.6-luna-review", 1050000],
     // Kimi K2.x = 256K (262144).
     ["moonshot", "kimi-k2.7", 262144],
     ["moonshot", "kimi-k2.5", 262144],
@@ -47,6 +67,32 @@ describe("capabilities contextWindow resolution", () => {
     const caps = getCapabilitiesForModel("zai", "glm-4.6v");
     expect(caps.contextWindow).toBe(128000);
     expect(caps.vision).toBe(true);
+  });
+
+  it.each([
+    ["openai", "gpt-5.5"],
+    ["openai", "gpt-5.6"],
+    ["openai", "gpt-5.6-sol"],
+    ["openai", "gpt-5.6-terra"],
+    ["openai", "gpt-5.6-luna"],
+    ["codex", "gpt-5.5"],
+    ["codex", "gpt-5.5-review"],
+    ["codex", "gpt-5.6-sol"],
+    ["codex", "gpt-5.6-sol-review"],
+    ["codex", "gpt-5.6-sol-ultra"],
+    ["codex", "gpt-5.6-terra"],
+    ["codex", "gpt-5.6-terra-review"],
+    ["codex", "gpt-5.6-luna"],
+    ["codex", "gpt-5.6-luna-review"],
+    ["cx", "gpt-5.5"],
+    ["cx", "gpt-5.5-review"],
+    ["cx", "gpt-5.6-sol-review"],
+    ["cx", "gpt-5.6-terra-review"],
+    ["cx", "gpt-5.6-luna-review"],
+  ])("%s/%s exposes 1.05M context and 128K max output", (provider, model) => {
+    const caps = getCapabilitiesForModel(provider, model);
+    expect(caps.contextWindow).toBe(1050000);
+    expect(caps.maxOutput).toBe(128000);
   });
 
   it("never lets the generic claude budget pattern win over the opus-4.6/4.7 1M window", () => {

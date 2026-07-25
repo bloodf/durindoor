@@ -36,15 +36,15 @@ describe("getCapabilitiesForModel", () => {
   });
 
   // decolua/9router#2596 — every Kiro GPT-5.6 synthetic variant resolves the
-  // family's 272k context / 32k output (the Kiro wire caps inferenceConfig
+  // family's 1.05M context / 32k output (the Kiro wire caps inferenceConfig
   // .maxTokens at 32000) / Kiro-native thinking under both
   // provider keys, a vendor-prefixed id ("openai/gpt-5.6-sol") hits the same
   // provider override as the bare id, and the dash-version form ("gpt-5-6-sol")
-  // is normalized to the same 272k row instead of the generic 400k *gpt-5*
+  // is normalized to the same 1.05M row instead of the generic 400k *gpt-5*
   // pattern. thinkingFormat "kiro" keeps applyThinking from adding a stray
   // top-level reasoning_effort to the CodeWhisperer payload.
   const kiroGpt56Expected = {
-    contextWindow: 272000,
+    contextWindow: 1050000,
     maxOutput: 32000,
     thinkingFormat: "kiro",
     reasoning: true,
@@ -52,7 +52,7 @@ describe("getCapabilitiesForModel", () => {
     search: true,
   };
 
-  it("reports Kiro GPT 5.6 models with the Kiro 272k context window", () => {
+  it("reports Kiro GPT 5.6 models with the Kiro 1.05M context window", () => {
     // Representative ids across all 3 tiers and all 4 suffix shapes — the
     // exact 12-id contract is pinned in kiro-model-slots.test.js.
     for (const provider of ["kiro", "kr"]) {
@@ -70,7 +70,7 @@ describe("getCapabilitiesForModel", () => {
     }
   });
 
-  it("normalizes dash-version Kiro GPT-5.6 ids to the same 272k capability row", () => {
+  it("normalizes dash-version Kiro GPT-5.6 ids to the same 1.05M capability row", () => {
     // Kiro accepts "5-6" at the wire; the caps map is keyed by dotted ids, so
     // the lookup normalizes digit-dash-digit. Without it these fall through to
     // the generic *gpt-5* 400k pattern. Synthetic suffixes stay intact.

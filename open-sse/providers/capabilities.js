@@ -78,6 +78,8 @@ export function capabilitiesFromServiceKind(kind) {
 export const MODEL_CAPABILITIES = {
   // Kimi K3: 1M context, always reasons, reasoning_effort "max" only (cannot disable), vision + tools.
   "kimi-k3": { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 262144 },
+  // Claude Opus 5: native 1M context window + adaptive thinking.
+  "claude-opus-5":   { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   // Claude 4.6/4.7/4.8 and Kiro Sonnet 5 have 1M context + adaptive thinking (override generic claude pattern)
   "claude-opus-4.6":   { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   "claude-opus-4.7":   { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
@@ -140,8 +142,33 @@ const KIRO_GPT_5_6_PROVIDER_CAPS = Object.fromEntries(
   }])
 );
 
+// Direct OpenAI GPT-5.5/5.6 surfaces override the generic *gpt-5* 400K pattern
+// (1.05M context / 128K max output). Codex and its CX alias get the same
+// base values, plus Codex-specific review and ultra ids.
+const DIRECT_GPT_5_5_6_CAPS = {
+  "gpt-5.5":              { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
+  "gpt-5.6":              { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
+  "gpt-5.6-sol":          { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
+  "gpt-5.6-terra":        { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
+  "gpt-5.6-luna":         { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
+};
+
+const CODEX_GPT_5_6_CAPS = {
+  ...DIRECT_GPT_5_5_6_CAPS,
+  "gpt-5.5-review":       { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
+  "gpt-5.6-sol-review":   { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
+  "gpt-5.6-sol-ultra":    { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
+  "gpt-5.6-terra-review": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
+  "gpt-5.6-luna-review":  { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
+};
+
 export const PROVIDER_CAPABILITIES = {
-  // Kiro GPT-5.6 family (decolua/9router#2596): 272k context, Kiro-native
+  // Direct OpenAI GPT-5.5/5.6 family and Codex/CX aliases expose 1.05M context
+  // window and 128K max output, overriding the generic *gpt-5* 400K fallback pattern.
+  openai: DIRECT_GPT_5_5_6_CAPS,
+  codex: CODEX_GPT_5_6_CAPS,
+  cx: CODEX_GPT_5_6_CAPS,
+  // Kiro GPT-5.6 family (decolua/9router#2596): 1.05M context, Kiro-native
   // thinking (<thinking_mode> prefix), vision + search. thinkingFormat "kiro"
   // keeps applyThinking from adding a stray top-level reasoning_effort to the
   // CodeWhisperer payload. One shared descriptor spread over every
@@ -399,7 +426,9 @@ export const PROVIDER_CAPABILITIES = {
  * a broad family pattern swallowing an exception (e.g. glm-4.6v vs glm-5).
  */
 export const PATTERN_CAPABILITIES = [
-  // ── Claude (4.6+ = adaptive thinking; older/haiku = budget) ──────
+  // ── Claude (4.6+ = adaptive thinking; 5 = 1M context; older/haiku = budget) ──────
+  { pattern: "*claude*opus-5*",     caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
+  { pattern: "*claude*sonnet-5*",   caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
   { pattern: "*claude*opus-4.6*",   caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive" } },
   { pattern: "*claude*opus-4.7*",   caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive" } },
   { pattern: "*claude*opus-4.8*",   caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive" } },
@@ -608,7 +637,7 @@ export function getCapabilitiesForModel(provider, model) {
     // Kiro accepts dash-form version ids ("gpt-5-6-sol") at the wire, but the
     // caps map is keyed by the dotted catalog ids. Normalize digit-dash-digit
     // ("5-6" → "5.6", synthetic -thinking/-agentic suffixes untouched) so the
-    // dash form hits the same 272k GPT-5.6 row instead of the generic 400k
+    // dash form hits the same 1.05M GPT-5.6 row instead of the generic 400k
     // *gpt-5* pattern. Scoped to kiro/kr so other providers are unaffected.
     if (provider === "kiro" || provider === "kr") {
       const normalized = normalizeModelId(model);

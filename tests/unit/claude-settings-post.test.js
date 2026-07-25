@@ -51,6 +51,7 @@ vi.mock("next/server", async () => {
 });
 
 const { POST } = await import("@/app/api/cli-tools/claude-settings/route.js");
+import { CLI_TOOLS } from "../../src/shared/constants/cliTools.js";
 
 describe("claude-settings POST", () => {
   beforeEach(() => {
@@ -73,7 +74,7 @@ describe("claude-settings POST", () => {
 
   it("strips cc/ prefix from ANTHROPIC_DEFAULT_*_MODEL values", async () => {
     const response = await postEnv({
-      ANTHROPIC_DEFAULT_OPUS_MODEL: "cc/claude-opus-4-8",
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "cc/claude-opus-5",
       ANTHROPIC_DEFAULT_SONNET_MODEL: "cc/claude-sonnet-5",
       ANTHROPIC_DEFAULT_HAIKU_MODEL: "cc/claude-haiku-4-5-20251001",
       ANTHROPIC_DEFAULT_FABLE_MODEL: "cc/claude-fable-5",
@@ -81,7 +82,7 @@ describe("claude-settings POST", () => {
 
     expect(response.status).toBe(200);
     const written = JSON.parse(mocks.writeFile.mock.calls[0][1]);
-    expect(written.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("claude-opus-4-8");
+    expect(written.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("claude-opus-5");
     expect(written.env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("claude-sonnet-5");
     expect(written.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("claude-haiku-4-5-20251001");
     expect(written.env.ANTHROPIC_DEFAULT_FABLE_MODEL).toBe("claude-fable-5");
@@ -89,22 +90,22 @@ describe("claude-settings POST", () => {
 
   it("preserves non-cc namespaced model IDs", async () => {
     const response = await postEnv({
-      ANTHROPIC_DEFAULT_OPUS_MODEL: "acme/claude-opus-4-8",
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "acme/claude-opus-5",
     });
 
     expect(response.status).toBe(200);
     const written = JSON.parse(mocks.writeFile.mock.calls[0][1]);
-    expect(written.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("acme/claude-opus-4-8");
+    expect(written.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("acme/claude-opus-5");
   });
 
   it("leaves bare model IDs unchanged", async () => {
     const response = await postEnv({
-      ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-opus-4-8",
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-opus-5",
     });
 
     expect(response.status).toBe(200);
     const written = JSON.parse(mocks.writeFile.mock.calls[0][1]);
-    expect(written.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("claude-opus-4-8");
+    expect(written.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("claude-opus-5");
   });
 
   it("normalizes ANTHROPIC_BASE_URL to end with /v1", async () => {
@@ -125,5 +126,21 @@ describe("claude-settings POST", () => {
     expect(response.status).toBe(200);
     const written = JSON.parse(mocks.writeFile.mock.calls[0][1]);
     expect(written.env.ANTHROPIC_BASE_URL).toBe("http://gateway/9router/v1");
+  });
+
+  it("includes opus[1m] and sonnet[1m] aliases", () => {
+    expect(CLI_TOOLS.claude.modelAliases).toContain("opus[1m]");
+    expect(CLI_TOOLS.claude.modelAliases).toContain("sonnet[1m]");
+  });
+
+  it("maps opus default to cc/claude-opus-5 and keeps other defaults", () => {
+    const opus = CLI_TOOLS.claude.defaultModels.find((m) => m.id === "opus");
+    expect(opus.defaultValue).toBe("cc/claude-opus-5");
+    const sonnet = CLI_TOOLS.claude.defaultModels.find((m) => m.id === "sonnet");
+    expect(sonnet.defaultValue).toBe("cc/claude-sonnet-5");
+    const fable = CLI_TOOLS.claude.defaultModels.find((m) => m.id === "fable");
+    expect(fable.defaultValue).toBe("cc/claude-fable-5");
+    const haiku = CLI_TOOLS.claude.defaultModels.find((m) => m.id === "haiku");
+    expect(haiku.defaultValue).toBe("cc/claude-haiku-4-5-20251001");
   });
 });

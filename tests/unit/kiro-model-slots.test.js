@@ -36,9 +36,9 @@ describe("Kiro MITM model slots", () => {
   // below pins the exact same ids/rates from the descriptor.
   it("offers mappable slots for the GPT-5.6 family base ids", () => {
     const byId = new Map(kiro.defaultModels.map((m) => [m.id, m]));
-    expect(byId.get("gpt-5.6-sol")).toMatchObject({ alias: "gpt-5.6-sol", contextLength: 272000, rateMultiplier: 2.4 });
-    expect(byId.get("gpt-5.6-terra")).toMatchObject({ alias: "gpt-5.6-terra", contextLength: 272000, rateMultiplier: 1.2 });
-    expect(byId.get("gpt-5.6-luna")).toMatchObject({ alias: "gpt-5.6-luna", contextLength: 272000, rateMultiplier: 0.6 });
+    expect(byId.get("gpt-5.6-sol")).toMatchObject({ alias: "gpt-5.6-sol", contextLength: 1050000, rateMultiplier: 2.4 });
+    expect(byId.get("gpt-5.6-terra")).toMatchObject({ alias: "gpt-5.6-terra", contextLength: 1050000, rateMultiplier: 1.2 });
+    expect(byId.get("gpt-5.6-luna")).toMatchObject({ alias: "gpt-5.6-luna", contextLength: 1050000, rateMultiplier: 0.6 });
   });
 });
 
@@ -56,7 +56,7 @@ describe("Kiro static provider models", () => {
 
 // Guards the Kiro GPT-5.6 Sol/Terra/Luna family ported from decolua/9router#2596:
 // every descriptor in KIRO_GPT_5_6_FAMILY expands to the 4 synthetic variants
-// (base/-thinking/-agentic/-thinking-agentic), each carrying the family's 272k
+// (base/-thinking/-agentic/-thinking-agentic), each carrying the family's 1.05M
 // context, per-tier rate multiplier, and an upstreamModelId pointing back at
 // the bare upstream id. Expectations iterate the exported descriptor — no
 // duplicate hardcoded list of ids in the test.
@@ -106,7 +106,7 @@ describe("Kiro GPT-5.6 family (decolua/9router#2596)", () => {
         rateMultiplier: variant.rateMultiplier,
         upstreamModelId: variant.upstreamModelId,
       });
-      expect(model.description).toContain("272k context window");
+      expect(model.description).toContain("1.05M context window");
     }
   });
 

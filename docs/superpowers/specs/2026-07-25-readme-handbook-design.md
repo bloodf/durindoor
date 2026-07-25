@@ -1,7 +1,7 @@
 # DurinDoor README Handbook Revamp
 
-**Date:** 2026-07-25  
-**Status:** Approved design  
+**Date:** 2026-07-25<br>
+**Status:** Approved design<br>
 **Target branch:** `docs/readme-handbook`, based on `origin/main`
 
 ## Purpose

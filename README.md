@@ -322,7 +322,7 @@ See [Architecture](docs/ARCHITECTURE.md) for the request lifecycle, routing inte
 
 DurinDoor stores provider credentials and routes model traffic — treat it as sensitive infrastructure.
 
-- **Localhost-first.** Bind to `127.0.0.1` by default. Do not expose the dashboard publicly with only the default password.
+- **Prefer localhost-only binding.** The CLI binds `0.0.0.0` by default, so run `durindoor --host 127.0.0.1` for local-only use. Source and Docker deployments default `HOSTNAME` to `127.0.0.1`. Do not expose the dashboard publicly with only the default password.
 - **Separate DurinDoor keys from upstream credentials.** Client tools use DurinDoor API keys; upstream provider keys, OAuth tokens, and cookies stay in `DATA_DIR` and are never sent to client-facing routes.
 - **Set explicit production secrets.** Define `JWT_SECRET`, `API_KEY_SECRET`, and a strong `INITIAL_PASSWORD` before any remote exposure.
 - **Use HTTPS and restrict dashboard access.** Reverse proxy with auth, VPN, firewall, or trusted-network allowlist; set `AUTH_COOKIE_SECURE=true` behind HTTPS.

@@ -1,7 +1,7 @@
 # Model Catalog 1M Corrections Design
 
-**Date:** 2026-07-25  
-**Status:** Approved scope  
+**Date:** 2026-07-25<br>
+**Status:** Approved scope<br>
 **Target branch:** `feat/model-catalog-1m-corrections`, based on `origin/main`
 
 ## Purpose

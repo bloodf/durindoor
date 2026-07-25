@@ -655,6 +655,17 @@ export function createSSEStream(options = {}) {
           continue;
         }
 
+        // Ollama native format. Terminal `done: true` events can carry the
+        // final assistant payload, and request logging must see it too.
+        if (typeof parsed.message?.content === "string" && parsed.message.content) {
+          totalContentLength += parsed.message.content.length;
+          accumulatedContent += parsed.message.content;
+        }
+        if (typeof parsed.message?.thinking === "string" && parsed.message.thinking) {
+          totalContentLength += parsed.message.thinking.length;
+          accumulatedThinking += parsed.message.thinking;
+        }
+
         // Claude format - content
         if (parsed.delta?.text) {
           totalContentLength += parsed.delta.text.length;
@@ -916,7 +927,7 @@ export function createSSEStream(options = {}) {
         if (buffer.trim()) {
           const parsed = parseSSELine(buffer.trim());
           currentUpstreamEvent = observeBufferedUpstream(buffer.trim(), currentUpstreamEvent);
-          if (parsed && !parsed.done) {
+          if (parsed && (!parsed.done || targetFormat === FORMATS.OLLAMA)) {
             const translated = translateResponse(targetFormat, sourceFormat, parsed, state);
 
             if (translated?._openaiIntermediate) {

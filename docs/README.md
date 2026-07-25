@@ -65,6 +65,7 @@ For developers working on the DurinDoor codebase, provider registry, or document
 - [Contributing](development/contributing.md)
 - [Local Development](development/local-development.md)
 - [Architecture](ARCHITECTURE.md)
+- [Upstream 2801/2818 Port Ledger](campaigns/upstream-2801-2818-ledger.md)
 - [tests/README.md](../tests/README.md)
 
 ## API & Reference

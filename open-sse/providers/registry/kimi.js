@@ -58,4 +58,16 @@ export default {
     endpoint: "https://api.moonshot.cn/v1/chat/completions",
     pricingUrl: "https://platform.moonshot.ai/docs/pricing/chat",
   },
+  oauth: {
+    clientId: "17e5f671-d194-4dfb-9706-5516cb48c098",
+    deviceCodeUrl: "https://auth.kimi.com/api/oauth/device_authorization",
+    tokenUrl: "https://auth.kimi.com/api/oauth/token",
+    refreshUrl: "https://auth.kimi.com/api/oauth/token",
+    refreshLeadMs: 300000,
+    authorizeDeviceUrl: "https://www.kimi.com/code/authorize_device",
+  },
+  features: {
+    usage: true,
+    usageApikey: true,
+  },
 };

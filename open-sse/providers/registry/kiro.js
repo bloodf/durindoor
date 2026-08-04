@@ -1,4 +1,8 @@
-import { KIRO_GPT_5_6_FAMILY, buildKiroGpt56Variants } from "../models/kiroVariants.js";
+import {
+  KIRO_GPT_5_6_FAMILY,
+  buildKiroGpt56Variants,
+  buildKiroModelVariants,
+} from "../models/kiroVariants.js";
 
 export default {
   id: "kiro",
@@ -45,6 +49,7 @@ export default {
   },
   models: [
     // Opus (added per kiro.dev/changelog/models and kiro.dev/docs/models)
+    ...buildKiroModelVariants("claude-opus-5", "Claude Opus 5"),
     { id: "claude-opus-4.8", name: "Claude Opus 4.8" },
     { id: "claude-opus-4.8-thinking", name: "Claude Opus 4.8 (Thinking)" },
     { id: "claude-opus-4.8-agentic", name: "Claude Opus 4.8 (Agentic)" },

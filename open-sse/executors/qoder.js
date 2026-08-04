@@ -28,6 +28,7 @@ import { createHash } from "crypto";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { sanitizeErrorMessage } from "../utils/error.js";
 import { SSE_DONE } from "../utils/sseConstants.js";
 import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { FORMATS } from "../translator/formats.js";
@@ -366,8 +367,7 @@ async function exchangeJobToken(pat, proxyOptions = null, signal = null) {
     proxyOptions,
   );
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`qoder PAT exchange failed: ${res.status} ${text.slice(0, 200)}`);
+    throw new Error(`qoder PAT exchange failed with HTTP ${res.status}`);
   }
   const data = await res.json();
   if (!data.token) throw new Error("qoder PAT exchange returned no job token");
@@ -377,7 +377,7 @@ async function exchangeJobToken(pat, proxyOptions = null, signal = null) {
     const parsed = Date.parse(data.expires_at);
     if (!Number.isNaN(parsed)) expiresAt = parsed;
   } else if (typeof data.expires_in === "number" && data.expires_in > 0) {
-    expiresAt = Date.now() + data.expires_in;
+    expiresAt = Date.now() + data.expires_in * 1000;
   }
   return { jobToken: data.token, jobRefreshToken: data.refresh_token || "", expiresAt };
 }
@@ -416,6 +416,7 @@ async function resolvePatCredential(pat, proxyOptions = null, signal = null) {
   }
   const { jobToken, expiresAt } = await exchangeJobToken(pat, proxyOptions, signal);
   const userId = await fetchUserIdForJobToken(jobToken, proxyOptions, signal);
+  if (!userId) throw new Error("qoder PAT exchange could not resolve user identity");
   const entry = { accessToken: jobToken, userId, expiresAt };
   patJobCache.set(pat, entry);
   return entry;
@@ -459,9 +460,10 @@ export class QoderExecutor extends BaseExecutor {
           },
         };
       } catch (err) {
-        log?.error?.("QODER", `PAT exchange failed: ${err.message}`);
+        const message = sanitizeErrorMessage(err?.message || "qoder PAT exchange failed");
+        log?.error?.("QODER", message);
         const fakeResp = new Response(
-          JSON.stringify({ error: { message: `qoder PAT exchange failed: ${err.message}` } }),
+          JSON.stringify({ error: { message } }),
           { status: 401, headers: { "Content-Type": "application/json" } },
         );
         return { response: fakeResp, url, headers: {}, transformedBody: body };

@@ -36,4 +36,10 @@ Scope: commits reviewed from 2026-07-25 through 2026-08-04. Source anchors and u
 
 ## Verification
 
-Focused tests were run after every port. Full suite, JSON artifact, lint, build, and isolated runtime smoke results are recorded by the final campaign gate.
+- Focused regression tests passed after every port.
+- `cd tests && npm run test:ci`: `Raw failures: 0`, `Known failures still failing: 0`, `Stale baseline entries now passing: 0`.
+- `cd tests && npm run test:json && npm run gate`: zero raw failures and no baseline regressions.
+- `npm run lint`: exit 0 with pre-existing warnings only.
+- `npm run build`: production standalone build completed.
+- `npm run verify:static`: isolated standalone/static-asset smoke passed on an ephemeral port and temporary data directory.
+- Registry-index, documentation-integrity, and commitlint checks passed.

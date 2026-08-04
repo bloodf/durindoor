@@ -542,9 +542,9 @@ export default function ProvidersPage() {
               key={key}
               providerId={key}
               provider={info}
-              stats={getProviderStats(key, OAUTH_AUTH_TYPES)}
+              stats={getProviderStats(key, OAUTH_STATUS_AUTH_TYPES)}
               authType="oauth"
-              onToggle={(active) => handleToggleProvider(key, OAUTH_AUTH_TYPES, active)}
+              onToggle={(active) => handleToggleProvider(key, OAUTH_STATUS_AUTH_TYPES, active)}
             />
           ))}
         </div>

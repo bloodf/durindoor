@@ -63,6 +63,23 @@ describe("transformToOllama — SSE conversion path (pre-existing behavior)", ()
     expect(JSON.parse(lines[2])).toMatchObject({ done: true });
   });
 
+  it("forwards OpenAI reasoning_content as Ollama thinking", async () => {
+    const res = transformToOllama(
+      sseResponse([
+        'data: {"choices":[{"delta":{"reasoning_content":"think"},"finish_reason":null}]}',
+        "data: [DONE]",
+      ]),
+      "qwen3",
+    );
+
+    const lines = await readLines(res);
+    expect(JSON.parse(lines[0])).toEqual({
+      model: "qwen3",
+      message: { role: "assistant", content: "", thinking: "think" },
+      done: false,
+    });
+  });
+
   it("ignores SSE control lines (event:, comments, blanks) without emitting anything", async () => {
     const res = transformToOllama(
       sseResponse([

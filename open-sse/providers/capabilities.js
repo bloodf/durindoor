@@ -168,6 +168,12 @@ export const PROVIDER_CAPABILITIES = {
   openai: DIRECT_GPT_5_5_6_CAPS,
   codex: CODEX_GPT_5_6_CAPS,
   cx: CODEX_GPT_5_6_CAPS,
+  // Poolside Laguna — OpenAI-compatible, all reasoning-capable (262K context, 32K max output).
+  poolside: {
+    "laguna-s-2.1":  { reasoning: true, thinkingFormat: "openai", contextWindow: 262000, maxOutput: 32000 },
+    "laguna-xs-2.1": { reasoning: true, thinkingFormat: "openai", contextWindow: 262000, maxOutput: 32000 },
+    "laguna-m.1":    { reasoning: true, thinkingFormat: "openai", contextWindow: 262000, maxOutput: 32000 },
+  },
   // Kiro GPT-5.6 family (decolua/9router#2596): 1.05M context, Kiro-native
   // thinking (<thinking_mode> prefix), vision + search. thinkingFormat "kiro"
   // keeps applyThinking from adding a stray top-level reasoning_effort to the

@@ -86,7 +86,6 @@ export function toResponsesUsage(raw) {
 
   const inputTokens = n(raw.input_tokens) || n(raw.prompt_tokens);
   const outputTokens = n(raw.output_tokens) || n(raw.completion_tokens);
-  if (!inputTokens && !outputTokens) return null;
 
   const usage = {
     input_tokens: inputTokens,

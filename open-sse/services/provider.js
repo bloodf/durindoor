@@ -74,7 +74,7 @@ export function detectFormat(body) {
       if (firstContent?.type === "text" && !body.model?.includes("/")) {
         // Could be Claude or OpenAI multimodal
         // Check for Claude-specific fields
-        if (body.system || body.anthropic_version) {
+        if (body.system || body.anthropic_version || body["anthropic-version"]) {
           return "claude";
         }
         // Check if image format is Claude (source.type) vs OpenAI (image_url.url)
@@ -97,7 +97,7 @@ export function detectFormat(body) {
     
     // If content is string, it's likely OpenAI (Claude also supports this)
     // Check for other Claude-specific indicators
-    if (body.system !== undefined || body.anthropic_version) {
+    if (body.system !== undefined || body.anthropic_version || body["anthropic-version"]) {
       return "claude";
     }
   }

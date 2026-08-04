@@ -245,8 +245,20 @@ export async function getAllAccessTokens(userInfo, log) {
   return results;
 }
 
+const TRANSIENT_REFRESH_CODES = new Set(["ECONNRESET", "ETIMEDOUT", "UND_ERR_SOCKET"]);
+
+function isTransientRefreshError(error) {
+  const status = Number(error?.status || error?.statusCode || error?.response?.status);
+  return TRANSIENT_REFRESH_CODES.has(error?.code)
+    || TRANSIENT_REFRESH_CODES.has(error?.cause?.code)
+    || (status >= 500 && status < 600);
+}
+
 export async function refreshWithRetry(refreshFn, maxRetries = 3, log = null) {
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
+  let attempt = 0;
+  let immediateRetries = 0;
+
+  while (attempt < maxRetries) {
     if (attempt > 0) {
       const delay = attempt * 1000;
       log?.debug?.("TOKEN_REFRESH", `Retry ${attempt}/${maxRetries} after ${delay}ms`);
@@ -256,10 +268,17 @@ export async function refreshWithRetry(refreshFn, maxRetries = 3, log = null) {
     try {
       const result = await refreshFn();
       if (result) return result;
+      attempt += 1;
     } catch (error) {
+      if (isTransientRefreshError(error) && immediateRetries < 3) {
+        immediateRetries += 1;
+        log?.debug?.("TOKEN_REFRESH", `Immediate retry ${immediateRetries}/3 after transient error`);
+        continue;
+      }
+      attempt += 1;
       log?.warn?.(
         "TOKEN_REFRESH",
-        `Attempt ${attempt + 1}/${maxRetries} failed: ${sanitizeErrorMessage(error?.message || error)}`,
+        `Attempt ${attempt}/${maxRetries} failed: ${sanitizeErrorMessage(error?.message || error)}`,
       );
     }
   }

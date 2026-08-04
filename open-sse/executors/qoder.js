@@ -28,6 +28,7 @@ import { createHash } from "crypto";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { sanitizeErrorMessage } from "../utils/error.js";
 import { SSE_DONE } from "../utils/sseConstants.js";
 import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { FORMATS } from "../translator/formats.js";
@@ -38,7 +39,11 @@ import {
 } from "../services/providerAttemptContext.js";
 import {
   QODER_CHAT_URL_ENCODED,
+  QODER_JOB_TOKEN_EXCHANGE_URL,
+  QODER_USERINFO_URL,
   QODER_MODEL_MAP,
+  QODER_IDE_VERSION,
+  QODER_CLIENT_TYPE,
 } from "../shared/qoder/constants.js";
 import { getQoderModelConfig, resolveQoderModels } from "../services/qoderModels.js";
 
@@ -258,13 +263,9 @@ function wrapQoderSSE(response, model) {
     rawDoneSeen = true;
   };
 
-  // Process one already-extracted SSE line (no trailing newline). Returns
-  // false when the line indicated end-of-stream so the caller can stop
-  // forwarding any remaining chunks after [DONE].
   const processLine = (line, controller) => {
     const trimmed = line.replace(/\r$/, "").trim();
-    if (!trimmed) return;
-    if (!trimmed.startsWith("data:")) return;
+    if (!trimmed || !trimmed.startsWith("data:")) return;
     if (rawDoneSeen) {
       emitFailure(controller);
       return;
@@ -289,10 +290,6 @@ function wrapQoderSSE(response, model) {
       observeRawDone(controller);
       return;
     }
-    // Inner is an OpenAI-shaped chunk. Strip any embedded newlines so the
-    // SSE frame stays a single event (a literal "\n" inside `inner` would
-    // otherwise split the frame across multiple data: lines and downstream
-    // parsers would reassemble them as separate events).
     const sanitized = inner.replace(/\r?\n/g, "");
     let parsed;
     try { parsed = JSON.parse(sanitized); }
@@ -316,13 +313,7 @@ function wrapQoderSSE(response, model) {
       }
     },
     flush(controller) {
-      // Finalize the decoder so any pending multi-byte sequence is
-      // released into `buffer` instead of being silently dropped.
       buffer += decoder.decode();
-      // Drain any trailing line that arrived without a terminating newline
-      // (e.g. upstream closed the socket immediately after the last write,
-      // or a CDN stripped the final CRLF). Without this, the chunk that
-      // carries finish_reason is silently lost.
       if (buffer.length > 0) {
         processLine(buffer, controller);
         buffer = "";
@@ -331,16 +322,11 @@ function wrapQoderSSE(response, model) {
         controller.enqueue(encoder.encode(SSE_DONE));
         downstreamDoneEmitted = true;
       }
-      if (!downstreamDoneEmitted) {
-        emitFailure(controller);
-      }
+      if (!downstreamDoneEmitted) emitFailure(controller);
     },
   });
 
-  const transformed = response.body.pipeThrough(transform);
-  // Build a Response with passable headers; the streaming handler reads
-  // `.body` as a ReadableStream regardless of Content-Type.
-  return new Response(transformed, {
+  return new Response(response.body.pipeThrough(transform), {
     status: response.status,
     statusText: response.statusText,
     headers: {
@@ -348,6 +334,92 @@ function wrapQoderSSE(response, model) {
       "Cache-Control": "no-cache",
     },
   });
+}
+
+// ── PAT (Personal Access Token) → job-token exchange ───────────────────────
+// PATs (pt-...) cannot sign COSY requests directly. Exchange them for a
+// short-lived job token (jt-...) via /api/v1/jobToken/exchange (plain JSON,
+// not COSY-signed), then resolve the userId from userinfo. Mirrors the
+// official qodercli flow. Cached per-PAT until near-expiry.
+const PAT_PREFIX = "pt-";
+const PAT_REFRESH_BUFFER_MS = 5 * 60 * 1000;
+const patJobCache = new Map();
+
+export function isQoderPat(token) {
+  return typeof token === "string" && token.startsWith(PAT_PREFIX);
+}
+
+async function exchangeJobToken(pat, proxyOptions = null, signal = null) {
+  const res = await proxyAwareFetch(
+    QODER_JOB_TOKEN_EXCHANGE_URL,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "User-Agent": "qodercli/1.0.0",
+        "Cosy-Version": QODER_IDE_VERSION,
+        "Cosy-ClientType": QODER_CLIENT_TYPE,
+      },
+      body: JSON.stringify({ personal_token: pat }),
+      signal,
+    },
+    proxyOptions,
+  );
+  if (!res.ok) {
+    throw new Error(`qoder PAT exchange failed with HTTP ${res.status}`);
+  }
+  const data = await res.json();
+  if (!data.token) throw new Error("qoder PAT exchange returned no job token");
+
+  let expiresAt = Date.now() + 24 * 60 * 60 * 1000;
+  if (data.expires_at) {
+    const parsed = Date.parse(data.expires_at);
+    if (!Number.isNaN(parsed)) expiresAt = parsed;
+  } else if (typeof data.expires_in === "number" && data.expires_in > 0) {
+    expiresAt = Date.now() + data.expires_in * 1000;
+  }
+  return { jobToken: data.token, jobRefreshToken: data.refresh_token || "", expiresAt };
+}
+
+async function fetchUserIdForJobToken(jobToken, proxyOptions = null, signal = null) {
+  try {
+    const res = await proxyAwareFetch(
+      QODER_USERINFO_URL,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${jobToken}`,
+          Accept: "application/json",
+          "User-Agent": "qodercli/1.0.0",
+        },
+        signal,
+      },
+      proxyOptions,
+    );
+    if (!res.ok) return "";
+    const info = await res.json().catch(() => ({}));
+    return info.id || info.userId || info.user_id || "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Exchange a PAT for a job token + userId, caching until near-expiry so repeat
+ * chat requests don't re-exchange. Returns { accessToken, userId }.
+ */
+async function resolvePatCredential(pat, proxyOptions = null, signal = null) {
+  const cached = patJobCache.get(pat);
+  if (cached && cached.expiresAt - Date.now() > PAT_REFRESH_BUFFER_MS) {
+    return cached;
+  }
+  const { jobToken, expiresAt } = await exchangeJobToken(pat, proxyOptions, signal);
+  const userId = await fetchUserIdForJobToken(jobToken, proxyOptions, signal);
+  if (!userId) throw new Error("qoder PAT exchange could not resolve user identity");
+  const entry = { accessToken: jobToken, userId, expiresAt };
+  patJobCache.set(pat, entry);
+  return entry;
 }
 
 export class QoderExecutor extends BaseExecutor {
@@ -368,6 +440,35 @@ export class QoderExecutor extends BaseExecutor {
     // Clamp OpenAI-shape token fields before the qoder payload derives maxTokens.
     body = this.clampCustomMaxOutput({ ...body }, requestContext);
     const url = this.buildUrl();
+
+    // PAT (pt-...) → exchange for short-lived job token + resolve userId so
+    // downstream COSY signing + catalog fetch work. Device tokens (dt-...) and
+    // job tokens (jt-...) skip this and are used directly.
+    const rawToken = credentials?.apiKey || credentials?.accessToken;
+    if (isQoderPat(rawToken)) {
+      try {
+        const resolved = await resolvePatCredential(rawToken, proxyOptions, signal);
+        credentials = {
+          ...credentials,
+          accessToken: resolved.accessToken,
+          apiKey: undefined,
+          providerSpecificData: {
+            authMethod: "pat",
+            ...(credentials?.providerSpecificData || {}),
+            userId: resolved.userId || credentials?.providerSpecificData?.userId || "",
+            machineId: credentials?.providerSpecificData?.machineId || "",
+          },
+        };
+      } catch (err) {
+        const message = sanitizeErrorMessage(err?.message || "qoder PAT exchange failed");
+        log?.error?.("QODER", message);
+        const fakeResp = new Response(
+          JSON.stringify({ error: { message } }),
+          { status: 401, headers: { "Content-Type": "application/json" } },
+        );
+        return { response: fakeResp, url, headers: {}, transformedBody: body };
+      }
+    }
 
     const psd = credentials?.providerSpecificData || {};
     if (!psd.userId) {
@@ -493,4 +594,6 @@ export const __test__ = {
   normalizeMessages,
   wrapQoderSSE,
   buildQoderRequestBody,
+  isQoderPat,
+  resolvePatCredential,
 };

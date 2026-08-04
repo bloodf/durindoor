@@ -1039,6 +1039,26 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         const valid = res.status !== 401 && res.status !== 403;
         return { valid, error: valid ? null : "Invalid API key" };
       }
+      case "qoder": {
+        // A successful PAT-to-job-token exchange proves the personal token.
+        const raw = connection.apiKey || "";
+        const pat = raw.startsWith("pt-") ? raw : `pt-${raw}`;
+        const res = await fetchWithConnectionProxy(
+          "https://openapi.qoder.sh/api/v1/jobToken/exchange",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+              "Cosy-Version": "1.0.1",
+              "Cosy-ClientType": "5",
+            },
+            body: JSON.stringify({ personal_token: pat }),
+          },
+          effectiveProxy,
+        );
+        return { valid: res.ok, error: res.ok ? null : "Invalid Personal Access Token" };
+      }
       default: {
         const result = await probeRegistryProvider(
           connection.provider,

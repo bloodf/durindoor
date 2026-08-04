@@ -85,7 +85,7 @@ export async function GET() {
 // POST - Backup old fields and write new settings
 export async function POST(request) {
   try {
-    const { env } = await request.json();
+    const { env, maxContextTokens } = await request.json();
     
     if (!env || typeof env !== "object") {
       return NextResponse.json(
@@ -146,6 +146,14 @@ export async function POST(request) {
       },
     };
 
+    // CLAUDE_CODE_MAX_CONTEXT_TOKENS — only set when a concrete value is chosen;
+    // "Default" removes the key so Claude Code falls back to the model's window.
+    if (maxContextTokens) {
+      newSettings.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS = String(maxContextTokens);
+    } else {
+      delete newSettings.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS;
+    }
+
     // Write new settings
     await fs.writeFile(settingsPath, JSON.stringify(newSettings, null, 2));
 
@@ -170,6 +178,7 @@ const RESET_ENV_KEYS = [
   "ANTHROPIC_DEFAULT_SONNET_MODEL",
   "ANTHROPIC_DEFAULT_HAIKU_MODEL",
   "API_TIMEOUT_MS",
+  "CLAUDE_CODE_MAX_CONTEXT_TOKENS",
 ];
 
 // DELETE - Reset settings (remove env fields)

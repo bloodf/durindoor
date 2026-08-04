@@ -1,3 +1,18 @@
+# 3.10.0
+
+Upstream and OmniRoute sync release adding provider, authentication, quota, and translation capabilities verified against the 2026-07-25 through 2026-08-04 source window.
+
+## What's included
+- **New and refreshed providers** — added Poolside and Morph, Kiro Claude Opus 5 variants, refreshed Qoder models, and Qoder Personal Access Token authentication with guarded job-token exchange caching.
+- **Quota and usage coverage** — added Kimi Coding and DeepSeek usage handlers plus SuperGrok's gRPC-web weekly pool while preserving existing REST quota rows.
+- **Claude Code configuration** — added persisted `CLAUDE_CODE_MAX_CONTEXT_TOKENS` presets, manual configuration output, and reset support.
+- **Translator and executor fixes** — repaired empty Gemini tool schemas, stripped invalid non-stream Antigravity options, normalized terminal Responses usage, forwarded Claude `output_config.effort` and Ollama thinking, and hardened Claude format detection.
+- **Reliability fixes** — transient token-refresh failures retry immediately without consuming the normal retry budget, and provider dashboard counts now include both API-key and OAuth modes consistently.
+
+## Compatibility and verification
+- Existing API-key formats and accepted 9router wire forms remain compatible; no destructive migration is included.
+- Full Vitest/no-regression, lint, production build, generated-index, documentation-integrity, commitlint, and isolated standalone smoke gates passed. Detailed verdicts live in `docs/campaigns/upstream-omniroute-2026-08-04-ledger.md`.
+
 # 3.9.1
 
 Patch release with the README handbook revamp, current 1M model catalog corrections, and targeted upstream gateway fixes.

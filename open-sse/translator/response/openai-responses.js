@@ -471,7 +471,7 @@ function closeToolCall(state, emit, idx) {
 function sendCompleted(state, emit) {
   if (!state.completedSent) {
     state.completedSent = true;
-    const usage = toResponsesUsage(state.usage);
+    const usage = toResponsesUsage(state.usage) || { input_tokens: 0, output_tokens: 0, total_tokens: 0 };
     emit("response.completed", {
       type: "response.completed",
       response: {
@@ -482,7 +482,7 @@ function sendCompleted(state, emit) {
         status: "completed",
         background: false,
         error: null,
-        ...(usage ? { usage } : {})
+        usage,
       }
     });
   }

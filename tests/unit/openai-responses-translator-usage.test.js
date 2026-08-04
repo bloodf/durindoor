@@ -7,8 +7,8 @@ import "../../open-sse/translator/response/openai-responses.js";
 
 function completedUsage(chunks) {
   const state = initState(FORMATS.OPENAI_RESPONSES);
-  for (const chunk of chunks) {
-    if (chunk.usage) state.usage = chunk.usage;
+  for (const chunk of [...chunks, null]) {
+    if (chunk?.usage) state.usage = chunk.usage;
     const events = translateResponse(FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, chunk, state);
     const completed = events.find((e) => e?.event === "response.completed");
     if (completed) return completed.data.response.usage;
@@ -31,9 +31,9 @@ describe("toResponsesUsage", () => {
     });
   });
 
-  it("returns null when no token counts are present", () => {
+  it("zero-fills an empty usage object", () => {
     expect(toResponsesUsage(null)).toBeNull();
-    expect(toResponsesUsage({})).toBeNull();
+    expect(toResponsesUsage({})).toEqual({ input_tokens: 0, output_tokens: 0, total_tokens: 0 });
   });
 });
 
@@ -51,10 +51,10 @@ describe("openai-responses translator", () => {
     expect(usage.input_tokens_details.cached_tokens).toBe(4);
   });
 
-  it("omits usage when upstream never reported token counts", () => {
+  it("emits zero usage when upstream never reported token counts", () => {
     expect(completedUsage([
       { id: "chatcmpl-z", choices: [{ index: 0, delta: { role: "assistant", content: "ok" } }] },
       { id: "chatcmpl-z", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
-    ])).toBeUndefined();
+    ])).toEqual({ input_tokens: 0, output_tokens: 0, total_tokens: 0 });
   });
 });

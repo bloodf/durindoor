@@ -223,6 +223,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `minimax-cn` | claude | apikey | `https://api.minimaxi.com/anthropic/v1/messages` |
 | `mistral` |  | apikey | `https://api.mistral.ai/v1/chat/completions` |
 | `mmf` |  | apikey | `https://api.xiaomimimo.com/api/free-ai/openai/chat` |
+| `morph` |  | apikey | `https://api.morphllm.com/v1/chat/completions` |
 | `muse-spark-web` | openai | webCookie | `https://www.meta.ai/api/graphql` |
 | `nanobanana` |  | apikey | `https://api.nanobananaapi.ai/v1/chat/completions` |
 | `nebius` |  | apikey | `https://api.studio.nebius.ai/v1/chat/completions` |
@@ -245,10 +246,11 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `playht` |  | apikey | `` |
 | `poe` |  | apikey | `https://api.poe.com/v1/chat/completions` |
 | `pollinations` | openai | free | `https://gen.pollinations.ai/v1/chat/completions` |
+| `poolside` |  | freeTier | `https://inference.poolside.ai/v1/chat/completions` |
 | `puter` | openai | apikey | `https://api.puter.com/puterai/openai/v1/chat/completions` |
 | `qianfan` |  | apikey | `https://qianfan.baidubce.com/v2/chat/completions` |
 | `qiniu` |  | apikey | `https://api.qnaigc.com/v1/chat/completions` |
-| `qoder` |  | free | `https://api3.qoder.sh/algo/api/v2/service/pro/sse/agent_chat_generation` |
+| `qoder` |  | oauth | `https://api3.qoder.sh/algo/api/v2/service/pro/sse/agent_chat_generation` |
 | `qoder-cn` |  | free | `https://gateway.qoder.com.cn/algo/api/v2/service/pro/sse/agent_chat_generation` |
 | `qwen` |  | oauth | `https://portal.qwen.ai/v1/chat/completions` |
 | `recraft` |  | apikey | `` |

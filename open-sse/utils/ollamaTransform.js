@@ -85,6 +85,7 @@ export function transformToOllama(response, model) {
 
         const delta = parsed.choices?.[0]?.delta || {};
         const content = delta.content || "";
+        const thinking = delta.reasoning_content || delta.thinking || "";
         const toolCalls = delta.tool_calls;
 
         if (toolCalls) {
@@ -96,6 +97,15 @@ export function transformToOllama(response, model) {
             if (tc.function?.name) pendingToolCalls[idx].function.name += tc.function.name;
             if (tc.function?.arguments) pendingToolCalls[idx].function.arguments += tc.function.arguments;
           }
+        }
+
+        if (thinking) {
+          const ollama = JSON.stringify({
+            model,
+            message: { role: "assistant", content: "", thinking },
+            done: false,
+          }) + "\n";
+          controller.enqueue(encoder.encode(ollama));
         }
 
         if (content) {

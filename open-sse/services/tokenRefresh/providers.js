@@ -298,12 +298,15 @@ export function classifyOAuthRefreshError(errorText = "", status = 0) {
   const code = parsed?.error?.code || parsed?.error || parsed?.error_code || "";
   const description = parsed?.error_description || parsed?.message || errorText || "";
   const combined = `${code} ${description}`.toLowerCase();
-  const permanent = [
+  const markerPermanent = [
     "refresh_token_expired",
     "refresh_token_reused",
     "refresh_token_invalidated",
     "invalid_grant",
+    "token_expired",
+    "could not validate your token",
   ].some((marker) => combined.includes(marker));
+  const permanent = status === 401 || markerPermanent;
 
   return { status, code, description, permanent };
 }

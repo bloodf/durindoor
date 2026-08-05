@@ -136,9 +136,55 @@
 | #8629 | OmniRoute | [v3.8.50] fix(claude): preserve signed thinking turns during obfuscation | DEFER (obfuscation target absent) | OmniRoute adds `hasSignedThinking` guard in `claudeCodeObfuscation.ts` + `systemTransforms.ts` to skip text mutation on assistant turns with thinking/redacted_thinking. DD `open-sse/utils/claudeCloaking.js` handles only tool-name cloaking (`_cc` suffix) and billing-header injection; no assistant-content text obfuscation exists. Guard has no target in DD. |
 |
 ### Verdict summary
+| Verdict | Count | PRs |
+|---------|-------|-----|
+| GAP → ported | 4 | #3018, #1425, #1337, #422 |
+| DUPLICATE | 22 | #2911, #2869, #2831, #2800, #2787, #2770, #2762, #2760, #2706, #2652, #2323, #2312, #2295, #2147, #2001, #1460, #1264, #1193, #1007, #976, #628, #466 |
+| DEFER | 22 | #2927, #2925, #2691, #2688, #2681, #2369, #1936, #1600, #1599, #1412, #1273, #875, #873, #865, #392, #9437, #9397, #9163, #9114, #9058, #9004, #8629 |
+| **Total** | **48** | |
+INS.PRE 143:
+
+## Theme: resilience
+
+### 9router candidates (8)
+
+| PR | Source | Title | Verdict | Evidence / commit |
+|----|--------|-------|---------|-------------------|
+| #3033 | 9router | fix(github): hold monthly-exhausted accounts until reset | DEFER (auth-service rewrite) | Requires `githubMonthlyResetMs` helper plus account-wide `modelLock_*` gate ahead of `resetsAtMs`; spans `src/sse/services/auth.js` markAccountUnavailable and shared lock service. Belongs in auth-oauth theme with real provider coverage. |
+| #3012 | 9router | fix(cooldown): honour provider-reported quota reset times | DEFER (cooldown policy change) | Reshapes 7d/5min defaults to 31d/30min and adds monthly tier plus two `ERROR_RULES` text patterns; reroutes backoff across `open-sse/services/accountFallback.js` and `config/errorConfig.js`. Provider-policy change requires auth-oauth gate. |
+| #2798 | 9router | fix(proxy-pools): relay test timeout to 30s + reliable endpoint | DUPLICATE | `src/app/api/proxy-pools/[id]/test/route.js:6` already uses 30s timeout and ipify endpoint. |
+| #2784 | 9router | feat(providers): configurable error cooldown policies | DEFER (executor parser migration) | Adds `parseError` overrides in `default.js` and `opencode-go.js` plus `parseUpstreamError` wiring across chatCore/embeddingsCore/imageGenerationCore/search/fetch/ttsCore/sttCore. Multi-handler retry/timeout migration. |
+| #1821 | 9router | fix(codex): treat OpenAI 401/token_expired as permanent refresh failure | GAP → ported | `open-sse/services/tokenRefresh/providers.js:297-308` now detects OpenAI HTTP 401 with `token_expired`/`could not validate your token` markers and returns `permanent:true`; regression in `tests/unit/codex-permanent-refresh.test.js`. |
+| #879 | 9router | fix(executors): parse retryAfter timestamp for precise backoff on 429 | DEFER (handler parser migration) | Adds `parseError` override to `default.js`/`opencode-go.js` and threads `errorCode`/`resetsAtMs` through every SSE handler including `sttCore.js:27-33`; handler-wide parser migration. |
+| #640 | 9router | fix: prevent infinite retry loop when account errors | DUPLICATE | `src/sse/handlers/chat.js:876-882,1101-1105` already implements credential pool exhaustion gating, excludeConnectionIds, and MAX_ACCOUNT_ATTEMPTS_PER_REQUEST. |
+| #584 | 9router | feat: minimum quota reserve + account cooldown | DEFER (new feature) | New `/api/quota-reserve` route, `quotaReserveState` service, dashboard `CooldownBadge` UI, and `EditConnectionModal` fields; multi-file feature spanning SSE handlers, shared services, and Next.js UI. |
+
+### OmniRoute candidates (7)
+
+| PR | Source | Title | Verdict | Evidence / commit |
+|----|--------|-------|---------|-------------------|
+| #9351 | OmniRoute | fix(antigravity): propagate switchAuth signal from 429 engine to retry guard | DEFER (missing decide429 engine) | DD `open-sse/executors/antigravity.js:388-411 computeRetryDelay` has no decide429/handleAntigravityRateLimit; absent engine means no switchAuth signal exists to propagate. |
+| #9328 | OmniRoute | fix(rate-limit): patch Bottleneck doExpire capacity leak | DEFER (Bottleneck dependency absent) | DD has zero Bottleneck references; no `bottleneckPatch`/`rateLimitManager` modules. Architecture-specific to OmniRoute's Bottleneck-based queue. |
+| #9283 | OmniRoute | fix(providers): raise provider probe timeout 5s → 8s | DEFER (safeOutboundFetch absent) | DD has zero `safeOutboundFetch` references; probe layer lives in non-existent `src/shared/network/`. |
+| #9164 | OmniRoute | fix(rate-limit): separate queue wait from execution timeout | DEFER (comboPredicates absent) | DD lacks `comboPredicates.ts` module with `isLocalQueueCapacityErrorBody`, RATE_LIMIT_QUEUE_* codes, and combo early-return on local queue capacity. |
+| #8870 | OmniRoute | fix(adobe-firefly): cap gpt-image refs at 2 + adaptive poll timeout | DEFER (Adobe provider absent) | DD has no `adobeFirefly` provider; image generation providers list lacks the target. |
+| #8477 | OmniRoute | [v3.8.50] fix(api): retry Codex image generation by account | DEFER (route.ts conflict-resolved subset) | DD `src/app/api/v1/images/generations/route.js` is a thin wrapper; the sibling-account retry loop, `isCodexChatGptModelAccessError` predicate, and `lockModel` after model-access 400 require a cross-cutting route rewrite alongside imageGenerationCore. |
+| #8307 | OmniRoute | [v3.8.50] fix(api): retry Codex image generation by account | DEFER (cross-source duplicate of #8477) | Same core functional fix as #8477 plus OmniRoute-only CI/docs (Turbopack, QUALITY_GATES, changelog); consolidate under #8477 in auth-oauth or provider-fixes. |
+
+### Verdict summary
 
 | Verdict | Count | PRs |
 |---------|-------|-----|
+| GAP → ported | 1 | #1821 |
+| DUPLICATE | 2 | #2798, #640 |
+| DEFER | 12 | #3033, #3012, #2784, #879, #584, #9351, #9328, #9283, #9164, #8870, #8477, #8307 |
+| **Total** | **15** | |
+
+| Source | GAP → ported | DUPLICATE | DEFER |
+|--------|---------------|-----------|-------|
+| 9router (8) | 1 | 2 | 5 |
+| OmniRoute (7) | 0 | 0 | 7 |
+| **Total** | **1** | **2** | **12** |
 | GAP → ported | 4 | #3018, #1425, #1337, #422 |
 | DUPLICATE | 22 | #2911, #2869, #2831, #2800, #2787, #2770, #2762, #2760, #2706, #2652, #2323, #2312, #2295, #2147, #2001, #1460, #1264, #1193, #1007, #976, #628, #466 |
 | DEFER | 22 | #2927, #2925, #2691, #2688, #2681, #2369, #1936, #1600, #1599, #1412, #1273, #875, #873, #865, #392, #9437, #9397, #9163, #9114, #9058, #9004, #8629 |
@@ -149,3 +195,18 @@
 | 9router (41) | 4 | 22 | 15 |
 | OmniRoute (7) | 0 | 0 | 7 |
 | **Total** | **4** | **22** | **22** |
+
+### Verdict summary
+
+| Verdict | Count | PRs |
+|---------|-------|-----|
+| GAP → ported | 5 | #3018, #1425, #1337, #422, #1821 |
+| DUPLICATE | 24 | #2320, #2299, #1843, #1568, #1232, #1084, #651, #345, #286, #9380, #9003, #8976, #8948, #8888, #2911, #2869, #2831, #2800, #2787, #2770, #2762, #2760, #2706, #2652, #2323, #2312, #2295, #2147, #2001, #1460, #1264, #1193, #1007, #976, #628, #466, #2798, #640, #422 |
+| DEFER | 143 | #3013, #2713, #1938, #1805, #1717, #1399, #882, #9457, #9440, #9414, #9381, #9378, #9281, #9198, #9196, #9191, #9184, #9115, #9090, #9086, #9063, #9050, #9006, #8934, #8807, #8774, #8772, #8755, #8704, #8338, #2927, #2925, #2691, #2688, #2681, #2369, #1936, #1600, #1599, #1412, #1273, #875, #873, #865, #392, #9437, #9397, #9163, #9114, #9058, #9004, #8629, #3033, #3012, #2784, #879, #584, #9351, #9328, #9283, #9164, #8870, #8477, #8307, … |
+| **Total** | **172** | |
+
+| Source | GAP → ported | DUPLICATE | DEFER |
+|--------|---------------|-----------|-------|
+| 9router (49) | 5 | 26 | 18 |
+| OmniRoute (14) | 0 | 0 | 14 |
+| **Total** | **5** | **26** | **32** |

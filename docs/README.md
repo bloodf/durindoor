@@ -70,6 +70,8 @@ For developers working on the DurinDoor codebase, provider registry, or document
 - [Upstream + OmniRoute 2026-08-04 Ledger](campaigns/upstream-omniroute-2026-08-04-ledger.md)
 - [Stability Port Campaign Ledger](campaigns/stability-port-2026-08-ledger.md)
 - [Stability Port Campaign Audit](campaigns/2026-08-stability-audit.md)
+- [Stability Port Campaign Review Handoff](campaigns/2026-08-stability-review-handoff.md)
+- [Stability Campaign Repair Handoff](campaigns/2026-08-stability-repair-handoff.md)
 - [tests/README.md](../tests/README.md)
 
 ## API & Reference

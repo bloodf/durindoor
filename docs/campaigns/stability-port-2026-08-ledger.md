@@ -218,3 +218,71 @@
 | #8285 | OmniRoute | feat(ui): add global model search to Combo builder | DEFER (other-theme ownership: GlobalModelSearchPanel — upstream blocked on i18n placeholders in 43 locale files) | DD has no `GlobalModelSearchPanel.tsx`. Upstream blocked by maintainer on `__MISSING__` i18n placeholders in 43 locale files. |
 | #8718 | OmniRoute | fix(test): revive orphaned vitest tests and fix CI routing | DEFER (other-theme ownership: vitest CI infrastructure for TS combo module — DD uses plain JS, not applicable) | Test/CI-only: 22 files (vitest.config.ts, orphan test revivals). DD uses plain JS with no Vitest config. Not applicable to DurinDoor. |
 | #8719 | OmniRoute | fix(combo): fallback to t.provider in comboTargetLimits & add null guard in getTokenLimit | DEFER (absent Omni TS combo service: contextManager.ts TS context-manager + comboTargetLimits wiring) | `contextManager.ts` is an OmniRoute TypeScript source file not present in DD. `chatCore.ts` provider override + `getTokenLimit` null guard requires Omni TS context-manager target absent from DD. |
+## Theme: auth-oauth
+
+**Candidates:** 46 (9router only)  **Verdicts:** DUPLICATE=11 · DEFER=35
+
+### 9router candidates (46)
+
+| PR | Source | Title | Verdict | Evidence / commit |
+|----|--------|-------|---------|-------------------|
+| #3011 | 9router | fix(oauth): keep `open` external so xAI/Grok token refresh works on Windows | DEFER (CLI/dashboard: Windows `open` shell spawn) | xAI OAuth already uses `openUrlInBrowser()` in `src/lib/oauth/utils/server.js:71`; fix targets Windows shell UX, not OAuth mechanics. |
+| #3009 | 9router | fix(providers): count apikey connections for ollama freeTier provider | DEFER (provider policy: freeTier apikey-connection count per node) | Ollama freeTier already in DD; adding per-node apikey-connection counting requires usage service + provider-node routing policy change. |
+| #3005 | 9router | fix(auth): redirect active sessions from /login | DEFER (dashboard: active-session redirect from /login page) | DD `/login` page has no active-session redirect guard; requires dashboard UI + session-state wiring. |
+| #2993 | 9router | fix: freeTier/apikey providers without authModes default to apikey in dualAuthTypes | DEFER (provider policy: freeTier in dualAuthTypes default) | `dualAuthTypes` in `src/lib/oauth/providers.js`; adding `freeTier` requires provider-policy decision + DB migration. |
+| #2979 | 9router | fix(cloudflare-ai): declare API key authentication | DEFER (provider addition: Cloudflare AI Gateway API-key provider) | `cloudflare-ai` executor absent from DD; requires new provider registration + API-key auth wiring. |
+| #2966 | 9router | fix(oauth): resolve ReferenceError searchParams is not defined in POST handler | DEFER (OAuth subsystem: POST handler searchParams guard for proxy selection) | DD POST handler lacks the searchParams proxy-selection guard added by upstream; requires OAuth POST handler to safely handle searchParams proxy parameters. |
+| #2926 | 9router | fix(auth): accept valid x-api-key even when an Authorization header is present (Claude Code) | DEFER (OAuth subsystem: claude-code user-agent x-api-key precedence) | DD `auth.js:984-985` checks `x-api-key` but has no `claude-code` UA guard; requires auth + UA detection + precedence logic. |
+| #2919 | 9router | fix(usage): group API-key statistics by stable key identity | DEFER (usage subsystem: stable API-key group-by identity) | DD `usageRepo.js` has `groupByKey`; `apiKeyUsageTotalsRepo.js` lacks `keyIdentity`. Stable group-by requires DB + usage service change. |
+| #2851 | 9router | feat(frontier-for-all): add provider with OAuth device-code login | DEFER (provider addition: FrontierForAll OAuth device-code provider) | `frontier-for-all` absent from `src/lib/oauth/providers.js:66108 bytes`; requires new provider registration + OAuth device-code flow. |
+| #2849 | 9router | fix(claude): align CLI fingerprint and session headers | DEFER (CLI: session header fingerprint alignment) | DD has no CLI headless executor; fingerprint alignment requires dedicated CLI auth feature. |
+| #2848 | 9router | fix(claude): harden OAuth usage quota polling | DEFER (OAuth subsystem: per-connection usage quota polling) | DD `quotaAutoPing.js:20659 bytes` has `OAuth`-aware polling; hardening per-connection requires OAuth scope decision. |
+| #2755 | 9router | fix(cursor): implement real PKCE OAuth login | DEFER (provider addition: Cursor PKCE OAuth executor) | DD has cursor OAuth service but no cursor executor; PKCE requires executor + service co-design. |
+| #2672 | 9router | feat(xai): track OAuth quotas in dashboard | DUPLICATE | DD `providers/[id]/page.js` already has xAI quota tracking; xai OAuth quota display already wired in dashboard. |
+| #2553 | 9router | feat(usage): show API key client activity | DEFER (dashboard: per-API-key client activity display) | Per-key client activity requires usage service + dashboard UI work. |
+| #2331 | 9router | fix(providers): allow multiple API-key connections per compatible node | DUPLICATE | DD `connectionsRepo.js:25356 bytes` already has multi-connection support; provider-node multi-API-key design already present. |
+| #2210 | 9router | fix(usage): avoid API key stats collisions | DEFER (usage subsystem: stable-key collision dedup) | DD `apiKeyUsageTotalsRepo.js` groups by `apiKeyId`; collision avoidance requires stable-key identity + dedup strategy. |
+| #2152 | 9router | update add multiple apikey at providers | DUPLICATE | DD `AddApiKeyModal` already supports multiple API keys per provider; multi-API-key management already present. |
+| #2148 | 9router | feat(cursor): add Cursor identity backfill, usage tracking, and OAuth executor fixes | DEFER (multi-file feature: 3 unrelated fixes — identity backfill + usage + OAuth executor) | Bundle must be split for independent review. |
+| #2124 | 9router | feat: add ZenMux Free provider (session-cookie based free-tier LLM) | DUPLICATE | DD already registers `zenmux-free` executor; ZenMux Free session-cookie provider already implemented. |
+| #2030 | 9router | feat: add admin api key management | DEFER (dashboard: admin API key management UI) | Admin API-key management requires dashboard role/permission design + admin API routes. |
+| #1883 | 9router | feat(cli): add and document headless command mode and API key/provider management | DUPLICATE | DD `cli-tools/route.js` already implements headless command mode + provider management; CLI headless already present. |
+| #1848 | 9router | feat(glm): add Z.AI OAuth Coding Plan with captcha and API key parity | DEFER (provider addition: Z.AI OAuth + captcha) | Z.AI OAuth already in DD; captcha + API key parity requires provider-specific OAuth captcha flow. |
+| #1711 | 9router | feat: auth session persistence + antigravity fallbacks + codex OAuth refresh + models envelope | DEFER (multi-file feature: 4 unrelated fixes — must be split) | Four distinct changes bundled; codex OAuth refresh (#717) is already DUPLICATE independently. |
+| #1561 | 9router | feat(dashboard): show which API key was used per recent request (#1258) | DEFER (dashboard: per-request API key indicator) | Per-request API key display requires usage request-detail UI + DB join. |
+| #1348 | 9router | fix(tailscale): honor TAILSCALE_AUTHKEY login | DEFER (provider addition: Tailscale authkey executor) | Tailscale executor absent from DD; requires new provider registration. |
+| #1340 | 9router | Handle non-JSON OAuth errors | DEFER (OAuth subsystem: non-JSON OAuth error handling) | Adding non-JSON OAuth error handling requires OAuth error-surface design decision. |
+| #1332 | 9router | Add API key scoped provider connections and dashboard controls | DEFER (multi-file feature: API-key scoped connections + dashboard controls) | Scoped API-key connections requires DB schema + dashboard controls; must be split. |
+| #1313 | 9router | Add CAS dashboard login | DEFER (dashboard: QuotaGate dashboard login) | Title says CAS dashboard login; QuotaGate dashboard login requires dashboard UI + auth provider wiring. |
+| #1288 | 9router | feat(providers): add SumoPod and X5Lab as API key providers | DEFER (provider addition: SumoPod + X5Lab API-key providers) | `sumopod` and `x5lab` executors absent from DD; require new provider registrations. |
+| #1286 | 9router | feat(xai): add xAI Grok provider with OAuth + API key auth | DUPLICATE | DD `xai.js` OAuth service already implements xAI Grok OAuth + API-key dual auth; xAI Grok provider already registered. |
+| #1249 | 9router | Fix OAuth redirect URI handling for remote deployments | DUPLICATE | DD `oauth/utils/server.js` already handles `redirect_uri` for remote/Caddy deployments; remote redirect URI logic present. |
+| #1158 | 9router | feat(api-keys): enhance API key management with daily token limits, e… | DEFER (dashboard: per-API-key daily token limits UI) | Per-key daily limits requires dashboard + API key policy service + DB schema changes. |
+| #1107 | 9router | feat: api key token control + qol | DEFER (dashboard: API key token control — scope ambiguous) | Specific scope ambiguous; deferred until concrete feature. |
+| #931 | 9router | feat: add per-API-key device/connection tracking | DEFER (DB schema: per-API-key device/connection tracking) | Per-key device tracking requires per-key session/device registry. |
+| #900 | 9router | Harden Antigravity OAuth, quota handling, and compatibility tests | DEFER (OAuth subsystem: Antigravity OAuth hardening + quota + tests) | DD `antigravity.js` has OAuth; hardening requires real-provider verification + quota policy. |
+| #884 | 9router | fix: connection proxy not applied — preserve proxyPoolId on token refresh, use proxyAwareFetch in models sync | DEFER (OAuth subsystem: proxyPoolId on token refresh + proxyAwareFetch) | DD `tokenRefresh.js` lacks `proxyPoolId` and `proxyAwareFetch`; requires OAuth + proxy co-design. |
+| #758 | 9router | feat: add Antigravity auto-login with Puppeteer Stealth & Token Scheduler | DEFER (OAuth subsystem: Antigravity Puppeteer auto-login + Token Scheduler) | Antigravity Puppeteer auto-login requires headless browser infra + token scheduler. |
+| #717 | 9router | fix: align codex oauth models and request contract | DUPLICATE | DD `codex.js` OAuth service already aligns models and request contract; codex executor OAuth refresh already implemented. |
+| #665 | 9router | fix: add API key support for OpenCode Go provider (closes #662) | DEFER (provider addition: OpenCode Go API-key provider) | `opencode` executor absent from DD; requires new provider registration. |
+| #646 | 9router | fix: enable Apply button for Codex CLI card when no API key dropdown (closes #591) | DEFER (dashboard: Codex CLI Apply button without API key dropdown) | Codex CLI Apply button without dropdown requires provider-card UI design. |
+| #641 | 9router | fix: add qwen-code provider for Qwen OAuth with user_code (closes #626) | DUPLICATE | DD `qoder.js` (7379 bytes) already implements Qwen OAuth with `user_code` device flow; qwen-code provider already registered. |
+| #600 | 9router | feat: allow api key restriction by quota, models | DEFER (dashboard: per-API-key quota/model restrictions) | Per-key quota and model restrictions require API key policy service + dashboard UI. |
+| #534 | 9router | feat: add Nous Research as built-in OAuth provider | DEFER (provider addition: Nous Research OAuth) | `nous` executor absent from DD; Nous Research OAuth requires new provider registration. |
+| #518 | 9router | fix: fetch API Key Compatible provider models for /v1/models endpoint | DUPLICATE | DD `buildModelsList.js:696-703` already performs dynamic model discovery for `isCompatibleProvider` via `fetchCompatibleModelIds`; compatible-provider model fetching already present. |
+| #297 | 9router | feat: add manual token refresh, time-based filters, and fix provider auth issues | DEFER (OAuth subsystem: manual token refresh + time filters + provider auth — bundled) | Manual token refresh + time filters + provider auth fixes; bundled feature needs separation. |
+| #224 | 9router | feat(api-keys): add per-API-key model allowlist filtering | DUPLICATE | DD `apiKeyPolicy.js` already implements per-API-key model allowlisting via `allowModels` field; per-key allowlist already present. |
+
+### Verdict summary
+
+| Verdict | Count | PRs |
+|---------|-------|-----|
+| DUPLICATE | 11 | #2672, #2331, #2152, #2124, #1883, #1286, #1249, #717, #641, #518, #224 |
+| DEFER | 35 | #3011, #3009, #3005, #2993, #2979, #2966, #2926, #2919, #2851, #2849, #2848, #2755, #2553, #2210, #2148, #2030, #1848, #1711, #1561, #1348, #1340, #1332, #1313, #1288, #1158, #1107, #931, #900, #884, #758, #665, #646, #600, #534, #297 |
+| GAP → ported | 0 | — |
+| **Total** | **46** | |
+
+| Source | GAP → ported | DUPLICATE | DEFER |
+|--------|-------------|-----------|-------|
+| 9router (46) | 0 | 11 | 35 |
+| **Total** | **0** | **11** | **35** |

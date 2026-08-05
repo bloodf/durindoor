@@ -864,7 +864,7 @@ export class CodexExecutor extends BaseExecutor {
     // Priority: explicit reasoning.effort > reasoning_effort param > model suffix > default (low)
     // resolveOpenAiEffort keeps model-aware semantic support; resolveCodexWireEffort maps Ultra→Max for wire.
     if (!body.reasoning) {
-      const semantic = resolveOpenAiEffort(body.reasoning_effort || modelEffort || 'low', "codex", body.model);
+      const semantic = resolveOpenAiEffort(body.reasoning_effort || modelEffort || 'medium', "codex", body.model);
       const effort = resolveCodexWireEffort(semantic, this.config);
       body.reasoning = { effort, summary: "auto" };
     } else {

@@ -109,4 +109,9 @@ describe("Codex effort wire encoding (official Ultra→Max)", () => {
     expect(body.reasoning.effort).toBe("ULTRA");
     expect(body.reasoning.effort).not.toBe("max");
   });
+  it("defaults unspecified Codex reasoning effort to medium", async () => {
+    await executeWithEffort("gpt-5.4", {});
+    expect(parsePostedBody().reasoning.effort).toBe("medium");
+  });
+
 });

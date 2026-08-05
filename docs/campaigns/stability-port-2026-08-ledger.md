@@ -286,3 +286,64 @@
 |--------|-------------|-----------|-------|
 | 9router (46) | 0 | 11 | 35 |
 | **Total** | **0** | **11** | **35** |
+
+## Theme: db-usage
+
+**Candidates:** 38 (9router only)  **Verdicts:** DUPLICATE=16 · DEFER=22
+
+### 9router candidates (38)
+
+| PR | Source | Title | Verdict | Evidence / commit |
+|----|--------|-------|---------|-------------------|
+| #412 | 9router | perf(chat): cache request-scoped DB lookups + fix translator normalization & cursor auto-import | DEFER (perf: request-scoped DB lookup cache — chat perf optimization, not a DB/usage fix) | `usageRepo.js:319-321` uses synchronous better-sqlite3 transactions; request-scoped DB cache is perf tuning, not DB-stability or usage-tracking fix. |
+| #424 | 9router | fix(usage): correct stats truncation at 10k requests and make history cap configurable | DUPLICATE | `requestDetailsRepo.js:27,124-129` — `observabilityMaxRecords` configurable via settings + `OBSERVABILITY_MAX_RECORDS` env var; pruning beyond cap at `requestDetailsRepo.js:124-129`. |
+| #447 | 9router | fix(db/docker): bootstrap db.json on first run & set DATA_DIR in Docker | DUPLICATE | `Dockerfile:27` sets `DATA_DIR=/app/data`; `docker-compose.yml:13` sets `DATA_DIR: /app/data`; `migrate.js:310-322` runs `importLegacyMain/Usage/Disabled/Details` on fresh DB to seed SQLite from legacy `db.json`. |
+| #639 | 9router | fix: show actual computed cost in usage dashboard (closes #530) | DUPLICATE | `usageRepo.js:93-94` computes cost from `cached_tokens`/`cache_read_input_tokens`; `pricing/page.js:105` documents the formula. |
+| #652 | 9router | fix: guard against corrupt JSON in request-details.json DB (closes #506) | DUPLICATE | `requestDetailsRepo.js:184,195` parses each row field through fallback-safe `parseJson()` which returns a safe default on malformed JSON; corrupt rows are handled gracefully. |
+| #702 | 9router | fix #681: separate usage tracking for Ollama Cloud vs local instances | DEFER (provider policy: Ollama Cloud vs local distinction) | DD has no `ollama-cloud` provider distinction; `local-ollama` vs cloud Ollama requires provider-level classification in `usageRepo.js`. |
+| #1296 | 9router | feat(usage): add custom usage script support for providers | DEFER (new feature: custom usage script provider API — requires executor + usage aggregation design) | DD has no `custom usage script` provider API; new provider script system requires executor + usage aggregation design. |
+| #1426 | 9router | Send account context for Codex usage | DUPLICATE | `lib/oauth/providers.js:198-203`, `connectionsRepo.js:85-90`, `bulk-import/route.js:43-90` — `chatgptAccountId` + `chatgptPlanType` stored in `providerSpecificData` and sent on every Codex request. |
+| #1427 | 9router | Keep quota accounts active until all pools empty | DEFER (provider policy: pool-drain account lifecycle) | `providerQuotaSnapshots` tracks quota state; pool-drain keep-alive until all pools empty requires executor + quota reservation co-design. |
+| #1498 | 9router | fix: reset CLI password against SQLite settings | DEFER (CLI: reset CLI password against SQLite settings) | DD CLI tools exist; password-reset against SQLite settings requires CLI + auth co-design. |
+| #1681 | 9router | feat: per-key cost quota + request attribution for shared gateways | DUPLICATE | User confirmed DD implements per-key cost quota; `schema.js:233-242` enforces `maxCostUsd` and stores `totalCost` per API key. |
+| #1716 | 9router | Enhance error handling and implement group lock for quota management | DEFER (DB: group lock for quota management — requires DB locking + quota co-design) | DD uses SQLite transactions; explicit group-lock mutex for quota management requires DB locking + quota service co-design. |
+| #1738 | 9router | fix: count alternate usage token fields | DEFER (usage: alternate token field normalization) | `usageRepo.js` maps standard token fields; alternate field normalization requires provider-specific token shape mapping co-design. |
+| #1794 | 9router | fix: avoid exposing api keys in logs and usage history | DUPLICATE | `usageRepo.js:21-24` `maskApiKey()` strips key material; `secretRedaction.js:6-7` redacts `apikey`/`accesstoken`/`refreshtoken`; `usageRepo.js:403,533-544` use `maskApiKey()` for all API-key display. |
+| #1819 | 9router | fix(codex): bind usage and quota calls to ChatGPT account | DEFER (provider policy: Codex ChatGPT account binding for usage + quota calls) | `chatgptAccountId` stored in `providerSpecificData`; binding usage/quota calls to account requires executor + quota + usage co-design. |
+| #1898 | 9router | fix(usage): eliminate zero-token duplicate entries in streaming usage | DUPLICATE | `usageRepo.js:288-293,563-568` — zero-token duplicate entries already eliminated by the existing streaming deduplication logic. |
+| #1900 | 9router | feat(usage): add cached tokens and cache hit % metrics | DEFER (UI/usage: cache hit % percentage display) | `usageRepo.js:557-558,923-956` populates `cachedTokens` count; `RequestDetailsTab.js:111-139` shows raw `cache_read_input_tokens`; no `cache_hit_pct` or derived hit-rate percentage shown in the UI; cached-token counts alone insufficient. |
+| #1919 | 9router | fix(quota): collapse quota rows, sort by remaining desc | DEFER (UI: collapse quota rows + sort-by-remaining desc) | `QuotaTable.js:72-79` has `remaining-asc`/`remaining-desc` sort modes; collapse quota rows UI requires dashboard design. |
+| #2128 | 9router | fix(usage): honor provider remaining percentages in quota cards | DUPLICATE | `QuotaTable.js:45-55`, `utils.js:406-416,486-511,631-653` — `remainingPercentage` used throughout quota card rendering. |
+| #2137 | 9router | fix: persist quota filter state | DEFER (UI: persist quota filter state) | `ProviderLimits/index.js:113-166` persists via URL params; additional localStorage persistence requires dashboard UI. |
+| #2150 | 9router | feat(xai): surface Grok usage on quota dashboard via local usageHistory aggregation | DEFER (UI/provider: xAI/Grok usage on quota dashboard via local usageHistory) | DD surfaces Grok quota in `utils.js:684-703`; local usageHistory aggregation for xAI requires usage aggregation design. |
+| #2153 | 9router | feat(quota): add opencode and opencode-go to quota tracking via local usageHistory aggregation | DEFER (UI/provider: OpenCode quota via local usageHistory aggregation) | OpenCode quota via local usageHistory aggregation requires usage aggregation design. |
+| #2272 | 9router | Feat/add reset usage | DUPLICATE | `src/app/api/usage/reset/route.js` + `usageRepo.js:1066` — `resetUsageHistory(period)` wired to `VALID_PERIODS` including `all`. |
+| #2415 | 9router | feat(usage): add all time period | DUPLICATE | `usagePeriods.js:24,26-27` — `EMPTY_ALL_TIME_CHART_DAYS`, `USAGE_PERIOD_DAYS` with `all: null` (no date filter). |
+| #2658 | 9router | fix(usage): include Claude cache tokens in prompt totals | DUPLICATE | `usageRepo.js:92-94` + `committedTokens.js:32-34` — `cache_read_input_tokens` included in committed token calculation. |
+| #2668 | 9router | feat: include usage data in database backups | DUPLICATE | `backupDbLite()` copies every table except `requestDetails`; `usageHistory` is a distinct table included in the backup; full SQLite fallback also copies the entire DB. |
+| #2723 | 9router | feat(quota): denser tracker UI, Available filter, 7d-hourly graphs | DEFER (UI: denser quota tracker UI + Available filter + 7d-hourly graphs) | DD quota tracker exists; denser tracker + Available filter + 7d-hourly graphs require dashboard design. |
+| #2724 | 9router | feat(grok): show current-day request usage | DEFER (UI/provider: Grok current-day request usage display) | DD quota dashboard shows current period; current-day Grok display requires usage aggregation design. |
+| #2769 | 9router | feat: add multi-reference image generation and quota-aware failover | DEFER (new feature: multi-reference image generation + quota-aware failover) | DD image gen exists; multi-reference + quota-aware failover requires new feature design. |
+| #2776 | 9router | fix(db): encrypt provider connection secrets at rest (AES-256-GCM) | DUPLICATE | Migration 009 (`migrations/009-encrypt-credentials.js`) + `lib/crypto/columnCrypto.js` — AES-256-GCM encryption of `accessToken`, `refreshToken`, `apiKey`, `idToken` on `providerConnections`. |
+| #2811 | 9router | Include commandcode cache reads in usage statistics | DEFER (usage: CommandCode cache read token tracking) | DD tracks CommandCode usage (`providerProbe.js:114-129`); cache read token tracking requires executor + usage co-design. |
+| #2850 | 9router | fix(claude): guard inactive quota auto-ping | DEFER (provider policy: inactive quota auto-ping guard) | `quotaAutoPing.js:288-292` skips stable-time windows (`nowBeforeRefresh < priorResetAt - refreshAheadMs`); no inactive-connection guard demonstrated; requires verification. |
+| #2853 | 9router | fix(codex): preserve quota window duration | DEFER (provider policy: Codex quota window duration preservation) | DD quota tracking for Codex exists; window duration preservation requires quota tracker + provider co-design. |
+| #2909 | 9router | fix(qoder): show organization quota with zero total | DEFER (UI/provider: show org quota with zero total — opposite of DD behavior) | `utils.js:596-603` skips `(!quota || total === 0)` — candidate asks to show it, DD explicitly hides it; opposite of behavior. |
+| #2972 | 9router | feat(usage-stats): change default view mode from 'costs' to 'tokens' | DUPLICATE | `UsageChart.js:30` — `useState("tokens")`; `UsageTable.js:37` — `if (viewMode === "tokens")`. |
+| #2980 | 9router | fix(db): implement ENABLE_REQUEST_LOGS env var override | DUPLICATE | `src/app/api/settings/route.js:25` — `process.env.ENABLE_REQUEST_LOGS === "true"`. |
+| #2992 | 9router | feat(antigravity): show Gemini 3.6 Flash usage bars in quota tracker | DEFER (UI/provider: Gemini 3.6 Flash usage bars) | DD renders generic `remainingPercentage` bars; no Gemini 3.6 Flash-specific match; 3.6 Flash bars require provider work. |
+| #3016 | 9router | fix(codebuddy): dodge Tencent filter for CN, add usage tracking & normalize messages for INT | DEFER (provider: CodeBuddy CN Tencent filter dodge + INT message normalization) | DD has `codebuddy-cn` (`oauth/providers.js:1511-1514`); Tencent filter dodge + INT normalization require provider-specific executor work. |
+
+### Verdict summary
+
+| Verdict | Count | PRs |
+|---------|-------|-----|
+| DUPLICATE | 16 | #424, #447, #639, #652, #1426, #1681, #1794, #1898, #2128, #2272, #2415, #2658, #2668, #2776, #2972, #2980 |
+| DEFER | 22 | #412, #702, #1296, #1427, #1498, #1716, #1738, #1819, #1900, #1919, #2137, #2150, #2153, #2723, #2724, #2769, #2811, #2850, #2853, #2909, #2992, #3016 |
+| GAP → ported | 0 | — |
+| **Total** | **38** | |
+
+| Source | GAP → ported | DUPLICATE | DEFER |
+|--------|-------------|-----------|-------|
+| 9router (38) | 0 | 16 | 22 |
+| **Total** | **0** | **16** | **22** |

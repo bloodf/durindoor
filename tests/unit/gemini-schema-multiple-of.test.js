@@ -12,6 +12,13 @@ describe("UNSUPPORTED_SCHEMA_CONSTRAINTS includes multipleOf", () => {
   });
 });
 
+describe("advanced unsupported schema constraints", () => {
+  it("strips keywords Gemini has no field for", () => {
+    const keywords = ["uniqueItems", "contains", "unevaluatedProperties", "unevaluatedItems", "contentSchema"];
+    for (const keyword of keywords) expect(UNSUPPORTED_SCHEMA_CONSTRAINTS).toContain(keyword);
+  });
+});
+
 describe("cleanJSONSchemaForAntigravity strips multipleOf", () => {
   it("removes multipleOf from a top-level number property", () => {
     const schema = {

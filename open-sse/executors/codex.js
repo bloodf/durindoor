@@ -853,7 +853,7 @@ export class CodexExecutor extends BaseExecutor {
     body.model = getModelUpstreamId("cx", body.model || model);
 
     // Extract thinking level from model name suffix
-    // e.g., gpt-5.3-codex-high → high, gpt-5.3-codex → low (default)
+    // e.g., gpt-5.3-codex-high → high, gpt-5.3-codex → medium (default)
     const effortSplit = splitCodexEffortSuffix(body.model);
     const modelEffort = effortSplit.effort;
     if (modelEffort) {
@@ -861,7 +861,7 @@ export class CodexExecutor extends BaseExecutor {
       body.model = effortSplit.model;
     }
 
-    // Priority: explicit reasoning.effort > reasoning_effort param > model suffix > default (low)
+    // Priority: explicit reasoning.effort > reasoning_effort param > model suffix > default (medium)
     // resolveOpenAiEffort keeps model-aware semantic support; resolveCodexWireEffort maps Ultra→Max for wire.
     if (!body.reasoning) {
       const semantic = resolveOpenAiEffort(body.reasoning_effort || modelEffort || 'medium', "codex", body.model);

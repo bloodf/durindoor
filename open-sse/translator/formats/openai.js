@@ -5,6 +5,28 @@ import { collapseTextParts } from "../concerns/message.js";
 // Re-export valid-type lists (moved to schema/blocks.js) to keep existing importers working.
 export { VALID_OPENAI_CONTENT_TYPES, VALID_OPENAI_MESSAGE_TYPES };
 
+const NUMERIC_SCHEMA_KEYWORDS = [
+  "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum",
+  "minLength", "maxLength", "minItems", "maxItems",
+  "minProperties", "maxProperties", "multipleOf",
+];
+
+export function coerceSchemaNumericConstraints(schema) {
+  if (!schema || typeof schema !== "object") return schema;
+  if (Array.isArray(schema)) {
+    for (const item of schema) coerceSchemaNumericConstraints(item);
+    return schema;
+  }
+  for (const key of NUMERIC_SCHEMA_KEYWORDS) {
+    if (typeof schema[key] === "string" && schema[key].trim() !== "") {
+      const value = Number(schema[key]);
+      if (Number.isFinite(value)) schema[key] = value;
+    }
+  }
+  for (const value of Object.values(schema)) coerceSchemaNumericConstraints(value);
+  return schema;
+}
+
 // Filter messages to OpenAI standard format
 // Remove: thinking, redacted_thinking, signature, and other non-OpenAI blocks
 // opts.preserveCacheControl: keep cache_control on content blocks (e.g. for DashScope/alicode)
@@ -87,7 +109,10 @@ export function filterToOpenAIFormat(body, opts = {}) {
   if (body.tools && Array.isArray(body.tools) && body.tools.length > 0) {
     body.tools = body.tools.map(tool => {
       // Already OpenAI format
-      if (tool.type === OPENAI_BLOCK.FUNCTION && tool.function) return tool;
+      if (tool.type === OPENAI_BLOCK.FUNCTION && tool.function) {
+        coerceSchemaNumericConstraints(tool.function.parameters);
+        return tool;
+      }
       
       // Claude format: {name, description, input_schema}
       if (tool.name && (tool.input_schema || tool.description)) {
@@ -95,8 +120,8 @@ export function filterToOpenAIFormat(body, opts = {}) {
           type: OPENAI_BLOCK.FUNCTION,
           function: {
             name: tool.name,
-            description: String(tool.description || ""),
-            parameters: tool.input_schema || { type: "object", properties: {} }
+            description: typeof tool.description === "string" ? tool.description : "",
+            parameters: coerceSchemaNumericConstraints(tool.input_schema || { type: "object", properties: {} })
           }
         };
       }
@@ -107,8 +132,8 @@ export function filterToOpenAIFormat(body, opts = {}) {
           type: OPENAI_BLOCK.FUNCTION,
           function: {
             name: fn.name,
-            description: String(fn.description || ""),
-            parameters: fn.parameters || { type: "object", properties: {} }
+            description: typeof fn.description === "string" ? fn.description : "",
+            parameters: coerceSchemaNumericConstraints(fn.parameters || { type: "object", properties: {} })
           }
         }));
       }

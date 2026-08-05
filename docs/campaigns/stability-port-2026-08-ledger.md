@@ -90,7 +90,7 @@
 | #2800 | 9router | fix(thinking): keep compatible Qwen requests OpenAI-shaped | DUPLICATE | `open-sse/translator/concerns/thinkingUnified.js:102-109` — explicit comment: "Dynamic OpenAI-compatible gateways speak the OpenAI wire format...". Bug absent. |
 | #2787 | 9router | fix(codex): preserve GPT-5.6 max reasoning | DUPLICATE | `open-sse/providers/thinkingLevels.js:27-31` — `*gpt-5.6-sol/terra/luna*` patterns with `"max"` and `"ultra"` → `"max"` conversion at `resolveOpenAiEffort` line 237. Bug absent. |
 | #2770 | 9router | feat(usage): surface Claude thinking token counts to clients | DUPLICATE | `open-sse/utils/usageTracking.js:47,229,517`; `openai-to-claude-json.js:68-69`; `requestDetail.js` exposes `reasoning_tokens`. Bug absent. |
-| #2762 | 9router | fix(pricing): stop billing reasoning tokens twice | DUPLICATE | `open-sse/utils/pricing.js:505-514` — `billedReasoningTokens = Math.min(outputTokens, reasoningTokens)` with separate reasoning rate; comment at line 507. Bug absent. |
+| #2762 | 9router | fix(pricing): stop billing reasoning tokens twice | DUPLICATE | `open-sse/providers/pricing.js:510-516` — `billedReasoningTokens = Math.min(outputTokens, reasoningTokens)` with separate reasoning rate. Bug absent. |
 | #2760 | 9router | fix(capabilities): correct thinking format and limits for the 4.6+ Claude generation | DUPLICATE | `open-sse/providers/capabilities.js:82-103` — explicit `claude-opus-4.6/4.7/4.8/5`, `claude-sonnet-4.6/5` entries with `thinkingFormat: "claude-adaptive"`, `contextWindow: 1000000`. Bug absent. |
 | #2706 | 9router | fix(minimax): normalize unsigned thinking block starts | DUPLICATE | `open-sse/handlers/chatCore/thinkingSignatureRecovery.js` — thinking signature recovery (ported from OmniRoute #7906). Bug absent. |
 | #2691 | 9router | fix(azure): send max_completion_tokens for gpt-5/o-series reasoning deployments | DEFER (Azure Responses route) | Chat-completions rename exists; remaining `/responses` bypass requires route/executor design outside translator-local scope and Azure-specific request tests. |
@@ -120,7 +120,7 @@
 | #865 | 9router | feat(cx): add reasoning effort variants for GPT-5.5 and GPT-5.4 | DEFER (provider catalog theme) | Adds provider model aliases/catalog variants; belongs in provider-fixes with current catalog verification, not translator behavior. |
 | #628 | 9router | fix: strip default values from tool schema in antigravity-to-openai | DUPLICATE | `open-sse/translator/request/antigravity-to-openai.js:36-43` — same `delete cleaned.default` normalization. Bug absent. |
 | #466 | 9router | Fix responses transformer to properly close reasoning before message content | DUPLICATE | `open-sse/transformer/responsesTransformer.js:337` and `open-sse/translator/request/openai-responses.js:111` — `closeReasoning` already called before content handling. Bug absent. |
-| #422 | 9router | fix: coerce string numeric JSON Schema constraints to integers | DUPLICATE | `open-sse/translator/helpers/openaiHelper.js:88,100,125-162` — `coerceSchemaNumericConstraints` present with same string→integer coercion. Bug absent. |
+| #422 | 9router | fix: coerce string numeric JSON Schema constraints to integers | GAP → ported | Added recursive numeric-string coercion across the common OpenAI filter, Claude→OpenAI, and both Responses request converters; regressions in `tests/unit/openai-schema-numeric-constraints.test.js`. |
 | #392 | 9router | feat: bypass agent tool-call loops to save GitHub Copilot quota | DEFER (routing/executor feature) | Agent-loop bypass and dynamic `X-Initiator` alter request routing and provider headers across GitHub/xAI; dedicated provider PR required. |
 
 ### OmniRoute candidates (7)
@@ -139,13 +139,13 @@
 
 | Verdict | Count | PRs |
 |---------|-------|-----|
-| GAP → ported | 3 | #3018, #1425, #1337 |
-| DUPLICATE | 23 | #2911, #2869, #2831, #2800, #2787, #2770, #2762, #2760, #2706, #2652, #2323, #2312, #2295, #2147, #2001, #1460, #1264, #1193, #1007, #976, #628, #466, #422 |
+| GAP → ported | 4 | #3018, #1425, #1337, #422 |
+| DUPLICATE | 22 | #2911, #2869, #2831, #2800, #2787, #2770, #2762, #2760, #2706, #2652, #2323, #2312, #2295, #2147, #2001, #1460, #1264, #1193, #1007, #976, #628, #466 |
 | DEFER | 22 | #2927, #2925, #2691, #2688, #2681, #2369, #1936, #1600, #1599, #1412, #1273, #875, #873, #865, #392, #9437, #9397, #9163, #9114, #9058, #9004, #8629 |
 | **Total** | **48** | |
 
 | Source | GAP → ported | DUPLICATE | DEFER |
 |--------|---------------|-----------|-------|
-| 9router (41) | 3 | 23 | 15 |
+| 9router (41) | 4 | 22 | 15 |
 | OmniRoute (7) | 0 | 0 | 7 |
-| **Total** | **3** | **23** | **22** |
+| **Total** | **4** | **22** | **22** |

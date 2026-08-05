@@ -4,6 +4,7 @@ import { adjustMaxTokens } from "../formats/maxTokens.js";
 import { encodeDataUri } from "../concerns/image.js";
 import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, CLAUDE_REDACTED_THINKING_BLOCKS } from "../schema/index.js";
 import { collapseTextParts } from "../concerns/message.js";
+import { coerceSchemaNumericConstraints } from "../formats/openai.js";
 
 function stripAnthropicBillingHeader(text) {
   if (typeof text !== "string") return "";
@@ -80,8 +81,8 @@ export function claudeToOpenAIRequest(model, body, stream) {
       type: OPENAI_BLOCK.FUNCTION,
       function: {
         name: tool.name,
-        description: String(tool.description || ""),
-        parameters: tool.input_schema || { type: "object", properties: {} }
+        description: typeof tool.description === "string" ? tool.description : "",
+        parameters: coerceSchemaNumericConstraints(tool.input_schema || { type: "object", properties: {} })
       }
     }));
   }

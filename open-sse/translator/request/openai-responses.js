@@ -8,6 +8,7 @@ import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { normalizeResponsesInput } from "../formats/responsesApi.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM } from "../schema/index.js";
+import { coerceSchemaNumericConstraints } from "../formats/openai.js";
 
 // Responses API enforces max 64 chars on call_id (#393)
 const MAX_CALL_ID_LEN = 64;
@@ -220,7 +221,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
             type: OPENAI_BLOCK.FUNCTION,
             function: {
               name: tool.name,
-              description: String(tool.description || ""),
+              description: typeof tool.description === "string" ? tool.description : "",
               parameters: {
                 type: "object",
                 properties: { input: { type: "string" } },
@@ -239,7 +240,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
           type: OPENAI_BLOCK.FUNCTION,
           function: {
             name,
-            description: String(tool.description || ""),
+            description: typeof tool.description === "string" ? tool.description : "",
             parameters: normalizeToolParameters(tool.parameters),
             strict: tool.strict
           }
@@ -274,8 +275,8 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
  */
 function normalizeToolParameters(params) {
   if (!params) return { type: "object", properties: {} };
-  if (params.type === "object" && !params.properties) return { ...params, properties: {} };
-  return params;
+  const normalized = params.type === "object" && !params.properties ? { ...params, properties: {} } : params;
+  return coerceSchemaNumericConstraints(normalized);
 }
 
 /**
@@ -394,7 +395,7 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
         return {
           type: OPENAI_BLOCK.FUNCTION,
           name: tool.function.name,
-          description: String(tool.function.description || ""),
+          description: typeof tool.function.description === "string" ? tool.function.description : "",
           parameters: normalizeToolParameters(tool.function.parameters),
           strict: tool.function.strict
         };

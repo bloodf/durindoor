@@ -84,6 +84,19 @@ describe("injectReasoningContent — DeepSeek thinking round-trip", () => {
   });
 });
 
+describe("injectReasoningContent — Xiaomi thinking round-trip", () => {
+  for (const provider of ["xiaomi-mimo", "xiaomi-tokenplan"]) {
+    it(`injects reasoning_content for ${provider}`, () => {
+      const out = injectReasoningContent({
+        provider,
+        model: "mimo-v2",
+        body: bodyWith([{ role: "assistant", content: "answer" }]),
+      });
+      expect(out.messages[0].reasoning_content).toBeDefined();
+    });
+  }
+});
+
 describe("injectReasoningContent — MiniMax thinking round-trip", () => {
   const minimaxAssistantMsg = { role: "assistant", content: "here is a response", reasoning_content: "" };
   const minimaxAssistantWithToolCall = {

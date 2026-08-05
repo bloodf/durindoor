@@ -11,7 +11,8 @@ const providerRuleFor = (provider) => PROVIDERS[provider]?.reasoningInject;
 // Model-level rules: matched by predicate against model id
 const MODEL_RULES = [
   { match: m => /^kimi-/i.test(m || ""), scope: "toolCalls" },
-  { match: m => /deepseek/i.test(m || ""), scope: "all" }
+  { match: m => /deepseek/i.test(m || ""), scope: "all" },
+  { match: (_m, provider) => provider === "xiaomi-mimo" || provider === "xiaomi-tokenplan", scope: "all" }
 ];
 
 const DEEPSEEK_V4_PRO = "deepseek-v4-pro";
@@ -69,7 +70,7 @@ function applyDeepSeekV4ProAlias({ provider, model, body }) {
 
 export function injectReasoningContent({ provider, model, body }) {
   const providerRule = providerRuleFor(provider);
-  const modelRule = MODEL_RULES.find(r => r.match(model));
+  const modelRule = MODEL_RULES.find(r => r.match(model, provider));
   const rule = providerRule || modelRule;
   const nextBody = applyDeepSeekV4ProAlias({ provider, model, body });
   return applyRule(nextBody, rule);

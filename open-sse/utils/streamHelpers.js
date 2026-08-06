@@ -140,7 +140,7 @@ function cleanUsagePayload(payload) {
 
 // Format output as SSE
 export function formatSSE(data, sourceFormat) {
-  if (data === null || data === undefined) return "data: null\n\n";
+  if (data === null || data === undefined) return "";
   if (data && data.done) return "data: [DONE]\n\n";
 
   // OpenAI Responses API format

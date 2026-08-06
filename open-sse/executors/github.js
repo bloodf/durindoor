@@ -550,7 +550,9 @@ export class GithubExecutor extends BaseExecutor {
               for (const encoded of encodeAll(heldTerminalChunks)) controller.enqueue(encoded);
               heldTerminalChunks = null;
             }
-            controller.enqueue(new TextEncoder().encode(SSE_DONE));
+            if (body?.stream === true || rawDoneSeen) {
+              controller.enqueue(new TextEncoder().encode(SSE_DONE));
+            }
             doneEmitted = true;
           } else {
             emitFailure(controller);
@@ -677,7 +679,9 @@ export class GithubExecutor extends BaseExecutor {
         }
         if (!doneEmitted) {
           if (rawTerminal.outcome === "success" && !failureEmitted) {
-            controller.enqueue(new TextEncoder().encode(SSE_DONE));
+            if (body?.stream === true || rawDoneSeen) {
+              controller.enqueue(new TextEncoder().encode(SSE_DONE));
+            }
             doneEmitted = true;
           } else {
             emitFailure(controller);

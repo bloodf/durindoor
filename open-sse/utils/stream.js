@@ -153,9 +153,9 @@ export function createSSEStream(options = {}) {
       if (responsesStreamState) responsesStreamState.responseId = chunk.response.id;
     }
   };
-  const captureOpenAIResponsesTerminal = (eventName, chunk) => {
-    if (responsesStreamState && isOpenAIResponsesTerminalEvent(eventName, chunk)) {
-      responsesStreamState.terminalSeen = true;
+  const syncOpenAIResponsesTerminal = () => {
+    if (responsesStreamState) {
+      responsesStreamState.terminalSeen = upstreamTerminal.outcome === "success";
     }
   };
   const observeBufferedUpstream = (text, pendingEventName = null) => {
@@ -168,18 +168,23 @@ export function createSSEStream(options = {}) {
       }
       if (!line.startsWith("data:") && !line.startsWith("{")) continue;
       const parsed = parseSSELine(line, targetFormat);
-      if (parsed?.done) upstreamTerminal.observe({ rawDone: true, eventName });
-      else if (parsed) {
+      if (parsed?.done) {
+        upstreamTerminal.observe({ rawDone: true, eventName });
+        syncOpenAIResponsesTerminal();
+      } else if (parsed) {
         upstreamTerminal.observe({ chunk: parsed, eventName });
         captureOpenAIResponsesResponseId(eventName, parsed);
-        captureOpenAIResponsesTerminal(eventName, parsed);
+        syncOpenAIResponsesTerminal();
         if (
           targetFormat === FORMATS.CLAUDE
           && parsed?.type === "message_stop"
           && upstreamTerminal.outcome === "success"
         ) claudeTerminalSeen = true;
       }
-      else if (line.startsWith("{") || line.slice(5).trim()) upstreamTerminal.fail();
+      else if (line.startsWith("{") || line.slice(5).trim()) {
+        upstreamTerminal.fail();
+        syncOpenAIResponsesTerminal();
+      }
       eventName = null;
     }
     return eventName;
@@ -307,6 +312,7 @@ export function createSSEStream(options = {}) {
             pendingInlineThinkingOutput = flushInlineThinkingStates();
             streamDoneSent = true;
             upstreamTerminal.observe({ rawDone: true, eventName: upstreamEventForLine });
+            syncOpenAIResponsesTerminal();
           }
 
           if (trimmed.startsWith("data:") && !isDoneLine && trimmed.slice(5).trim()) {
@@ -314,7 +320,7 @@ export function createSSEStream(options = {}) {
               const parsed = JSON.parse(trimmed.slice(5).trim());
               upstreamTerminal.observe({ chunk: parsed, eventName: upstreamEventForLine });
               captureOpenAIResponsesResponseId(upstreamEventForLine, parsed);
-              captureOpenAIResponsesTerminal(upstreamEventForLine, parsed);
+              syncOpenAIResponsesTerminal();
               if (
                 targetFormat === FORMATS.CLAUDE
                 && parsed?.type === "message_stop"
@@ -605,6 +611,7 @@ export function createSSEStream(options = {}) {
               }
             } catch {
               upstreamTerminal.fail();
+              syncOpenAIResponsesTerminal();
               // Skip non-JSON data lines silently — don't forward garbage to clients.
               // Upstream providers sometimes return plain-text errors (HTML, rate-limit
               // messages) in the SSE stream that would break downstream JSON decoders.
@@ -632,7 +639,10 @@ export function createSSEStream(options = {}) {
 
         const parsed = parseSSELine(trimmed, targetFormat);
         if (!parsed) {
-          if (trimmed.startsWith("data:") && trimmed.slice(5).trim()) upstreamTerminal.fail();
+          if (trimmed.startsWith("data:") && trimmed.slice(5).trim()) {
+            upstreamTerminal.fail();
+            syncOpenAIResponsesTerminal();
+          }
           continue;
         }
 
@@ -643,17 +653,17 @@ export function createSSEStream(options = {}) {
           ? getOpenAIResponsesEventName(currentOpenAIResponsesEvent, parsed)
           : currentUpstreamEvent;
         captureOpenAIResponsesResponseId(openAIResponsesEventName, parsed);
-        captureOpenAIResponsesTerminal(openAIResponsesEventName, parsed);
 
         upstreamTerminal.observe({
           chunk: parsed,
           eventName: openAIResponsesEventName,
           rawDone: parsed?.done === true,
         });
+        syncOpenAIResponsesTerminal();
         currentUpstreamEvent = null;
 
-        if (isOpenAIResponsesStream && isOpenAIResponsesTerminalEvent(openAIResponsesEventName, parsed)) {
-          openAIResponsesTerminalSeen = true;
+        if (isOpenAIResponsesStream) {
+          openAIResponsesTerminalSeen = upstreamTerminal.outcome === "success";
         }
 
         // For Ollama: done=true is the final chunk with finish_reason/usage, must translate

@@ -126,6 +126,69 @@ describe("GithubExecutor /responses escalation streaming", () => {
     expect(text).not.toContain("data: [DONE]");
   });
 
+  it.each([
+    ["Messages", "executeWithMessagesEndpoint", [
+      `event: message_start\ndata: ${JSON.stringify({ type: "message_start", message: { id: "msg_1", usage: { input_tokens: 1, output_tokens: 0 } } })}`,
+      `event: message_delta\ndata: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 1 } })}`,
+      `event: message_stop\ndata: ${JSON.stringify({ type: "message_stop" })}`,
+    ].join("\n\n")],
+    ["Responses", "executeWithResponsesEndpoint", [
+      `event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response: { status: "completed" } })}`,
+    ].join("\n\n")],
+  ])("synthesizes DONE for %s only when request body stream is true", async (_route, method, raw) => {
+    for (const stream of [false, undefined, true]) {
+      proxyAwareFetchMock.mockResolvedValueOnce(new Response(`${raw}\n\n`, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }));
+      const body = stream === undefined
+        ? { messages: [{ role: "user", content: "hello" }] }
+        : { messages: [{ role: "user", content: "hello" }], stream };
+      const result = await new GithubExecutor()[method]({
+        model: method === "executeWithMessagesEndpoint" ? "claude-sonnet-4.6" : "gpt-5.5-codex",
+        body,
+        stream: true,
+        credentials: { copilotToken: "ghu_test" },
+        log: { debug: vi.fn() },
+      });
+
+      const text = await result.response.text();
+      expect(text.includes("data: [DONE]"), `body.stream=${stream}`).toBe(stream === true);
+    }
+  });
+
+  it.each([
+    ["Messages", "executeWithMessagesEndpoint", [
+      `event: message_start\ndata: ${JSON.stringify({ type: "message_start", message: { id: "msg_1", usage: { input_tokens: 1, output_tokens: 0 } } })}`,
+      `event: message_delta\ndata: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 1 } })}`,
+      `event: message_stop\ndata: ${JSON.stringify({ type: "message_stop" })}`,
+      "data: [DONE]",
+    ].join("\n\n")],
+    ["Responses", "executeWithResponsesEndpoint", [
+      `event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response: { status: "completed" } })}`,
+      "data: [DONE]",
+    ].join("\n\n")],
+  ])("preserves genuine upstream DONE for non-streaming %s requests", async (_route, method, raw) => {
+    for (const stream of [false, undefined]) {
+      proxyAwareFetchMock.mockResolvedValueOnce(new Response(`${raw}\n\n`, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }));
+      const body = stream === undefined
+        ? { messages: [{ role: "user", content: "hello" }] }
+        : { messages: [{ role: "user", content: "hello" }], stream };
+      const result = await new GithubExecutor()[method]({
+        model: method === "executeWithMessagesEndpoint" ? "claude-sonnet-4.6" : "gpt-5.5-codex",
+        body,
+        stream: false,
+        credentials: { copilotToken: "ghu_test" },
+        log: { debug: vi.fn() },
+      });
+
+      expect(await result.response.text()).toContain("data: [DONE]");
+    }
+  });
+
   it("never logs an arbitrary Copilot token error body", async () => {
     const canary = "opaque-copilot-error-body-987654321";
     const response = new Response(canary, { status: 401 });

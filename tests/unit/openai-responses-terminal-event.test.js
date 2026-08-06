@@ -212,6 +212,35 @@ describe("OpenAI Responses streaming termination", () => {
     expect(buildAbortedResponsesTerminalBytes(responsesStreamState)).toBeNull();
   });
 
+  it.each([
+    ["contradictory terminal", [
+      "event: response.created",
+      `data: ${JSON.stringify({ type: "response.created", response: { id: "resp_test", status: "in_progress" } })}`,
+      "",
+      "event: response.completed",
+      `data: ${JSON.stringify({ type: "response.failed", response: { id: "resp_test", status: "failed" } })}`,
+      "",
+    ].join("\n")],
+    ["post-terminal frame", [
+      "event: response.created",
+      `data: ${JSON.stringify({ type: "response.created", response: { id: "resp_test", status: "in_progress" } })}`,
+      "",
+      "event: response.completed",
+      `data: ${JSON.stringify({ type: "response.completed", response: { id: "resp_test", status: "completed" } })}`,
+      "",
+      "event: response.output_text.delta",
+      `data: ${JSON.stringify({ type: "response.output_text.delta", delta: "late" })}`,
+      "",
+    ].join("\n")],
+  ])("keeps abort recovery authoritative after a %s", async (_label, input) => {
+    const responsesStreamState = {};
+    await runPassthrough(input, responsesStreamState);
+
+    const recovery = new TextDecoder().decode(buildAbortedResponsesTerminalBytes(responsesStreamState));
+    expect(parseFailure(recovery).id).toBe("resp_test");
+    expect(recovery).toContain("data: [DONE]");
+  });
+
   it("does not generate a fallback when an existing response ID is available", () => {
     const now = vi.spyOn(Date, "now");
 

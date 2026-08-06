@@ -143,8 +143,7 @@ const KIRO_GPT_5_6_PROVIDER_CAPS = Object.fromEntries(
 );
 
 // Direct OpenAI GPT-5.5/5.6 surfaces override the generic *gpt-5* 400K pattern
-// (1.05M context / 128K max output). Codex and its CX alias get the same
-// base values, plus Codex-specific review and ultra ids.
+// (1.05M raw model context / 128K max output).
 const DIRECT_GPT_5_5_6_CAPS = {
   "gpt-5.5":              { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
   "gpt-5.6":              { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
@@ -153,14 +152,22 @@ const DIRECT_GPT_5_5_6_CAPS = {
   "gpt-5.6-luna":         { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
 };
 
-const CODEX_GPT_5_6_CAPS = {
-  ...DIRECT_GPT_5_5_6_CAPS,
-  "gpt-5.5-review":       { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
-  "gpt-5.6-sol-review":   { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
-  "gpt-5.6-sol-ultra":    { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
-  "gpt-5.6-terra-review": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
-  "gpt-5.6-luna-review":  { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
-};
+// Codex (ChatGPT-plan backend) does NOT serve the raw 1.05M window: OpenAI caps
+// the effective session input at 272K tokens (prompts past 272K are rejected or
+// billed at the 2x higher-usage tier, and Codex has cut the served window to
+// 258K-272K in recent releases — openai/codex#32486, #32806). Advertising 1.05M
+// here made clients defer compaction until the upstream 400'd. Use the
+// documented 272K input threshold as the honest window for every Codex id.
+const CODEX_GPT_5_6_WINDOW = 272000;
+const codexGpt56Entry = () => ({
+  vision: true, reasoning: true, search: true, thinkingFormat: "openai",
+  contextWindow: CODEX_GPT_5_6_WINDOW, maxOutput: 128000,
+});
+const CODEX_GPT_5_6_CAPS = Object.fromEntries([
+  "gpt-5.5", "gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
+  "gpt-5.5-review", "gpt-5.6-sol-review", "gpt-5.6-sol-ultra",
+  "gpt-5.6-terra-review", "gpt-5.6-luna-review",
+].map((id) => [id, codexGpt56Entry()]));
 
 export const PROVIDER_CAPABILITIES = {
   // Direct OpenAI GPT-5.5/5.6 family and Codex/CX aliases expose 1.05M context
@@ -503,7 +510,9 @@ export const PATTERN_CAPABILITIES = [
   { pattern: "*qwen*",          caps: { reasoning: true, thinkingFormat: "qwen", contextWindow: 262144 } },
 
   // ── Kimi (enabled→reasoning_effort; K2.7-code cannot disable) ─────
-  { pattern: "*kimi*k3*",       caps: { reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144 } },
+  // Kimi K3: 1M context (1048576) on api.moonshot.ai — keep pattern in sync with
+  // the exact "kimi-k3" row so prefixed/variant ids don't fall to 262K.
+  { pattern: "*kimi*k3*",       caps: { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 262144 } },
   // K3 routes through the bare upstream id `k3` (no "kimi" prefix); match it to
   // the K3 window so it does not fall to the generic 200K default (#2697).
   { pattern: "k3",              caps: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 262144 } },
@@ -526,7 +535,10 @@ export const PATTERN_CAPABILITIES = [
 
   // ── MiniMax (M3 = adaptive; M2.x cannot disable) ─────────────────
   { pattern: "*minimax*image*", caps: { imageOutput: true } },
-  { pattern: "*minimax-m3*",    caps: { vision: true, reasoning: true, thinkingFormat: "minimax", contextWindow: 512000, maxOutput: 131072 } },
+  // MiniMax M3 native API: 1M context (512K is only the guaranteed floor per
+  // minimax.io/models/text/m3). Host-specific overrides (fireworks/nvidia/
+  // codebuddy) keep their own smaller served windows above.
+  { pattern: "*minimax-m3*",    caps: { vision: true, reasoning: true, thinkingFormat: "minimax", contextWindow: 1000000, maxOutput: 131072 } },
   { pattern: "*minimax-m2.7*",  caps: { vision: true, reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 204800, maxOutput: 131072 } },
   { pattern: "*minimax-m2.5*",  caps: { vision: true, reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 204800, maxOutput: 131072 } },
   { pattern: "*minimax*",       caps: { reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 } },

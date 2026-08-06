@@ -46,14 +46,14 @@ describe("Kimi K3 reasoning wiring", () => {
 });
 
 describe("MiniMax M3 capabilities", () => {
-  it("context window capped at 512k", () => {
+  it("context window is the native-API 1M", () => {
     const caps = getCapabilitiesForModel(null, "MiniMax-M3");
-    expect(caps.contextWindow).toBe(512000);
+    expect(caps.contextWindow).toBe(1000000);
   });
 
-  it("minimax-m3 variant also capped at 512k", () => {
+  it("minimax-m3 variant also resolves the 1M window", () => {
     const caps = getCapabilitiesForModel(null, "minimax-m3");
-    expect(caps.contextWindow).toBe(512000);
+    expect(caps.contextWindow).toBe(1000000);
   });
 });
 

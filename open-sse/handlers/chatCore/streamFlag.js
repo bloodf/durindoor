@@ -10,6 +10,8 @@
  * @param {object} opts
  * @param {boolean} opts.providerRequiresStreaming - provider has `forceStream: true`
  * @param {boolean} [opts.bodyStream] - the request body's `stream` value
+ * @param {boolean} [opts.protocolImpliedStreaming] - omitted `stream` means streaming for
+ *   the request protocol (Antigravity, Gemini, or Gemini CLI)
  * @param {boolean} [opts.forceNonStreaming] - request must not stream regardless of
  *   client preference or provider default (e.g. image-generation models,
  *   providers with `forceNonStreaming: true`, deepseek-tui `-p` mode)
@@ -20,11 +22,12 @@
 export function resolveStreamFlag({
   providerRequiresStreaming,
   bodyStream,
+  protocolImpliedStreaming = false,
   forceNonStreaming = false,
   clientPrefersJson = false,
   clientPrefersSSE = false,
 }) {
-  let stream = providerRequiresStreaming ? true : bodyStream === true;
+  let stream = providerRequiresStreaming || bodyStream === true || (bodyStream === undefined && protocolImpliedStreaming);
 
   // Hard non-streaming cases (image-gen, deepseek-tui -p) override everything.
   if (forceNonStreaming) stream = false;
@@ -33,7 +36,7 @@ export function resolveStreamFlag({
   // provider only accepts streaming. For stream-only providers we keep
   // streaming and convert the accumulated stream to JSON for the client,
   // instead of sending stream:false upstream (which 400s). (#2031)
-  if (clientPrefersJson && !clientPrefersSSE && bodyStream !== true && !providerRequiresStreaming) {
+  if (clientPrefersJson && !clientPrefersSSE && bodyStream !== true && !providerRequiresStreaming && !protocolImpliedStreaming) {
     stream = false;
   }
 

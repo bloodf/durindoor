@@ -1,5 +1,6 @@
 // Guards forceStream moved from chatCore hardcode → PROVIDERS schema (#5).
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { FORMATS } from "../../open-sse/translator/formats.js";
 
 const { executeMock } = vi.hoisted(() => ({
   executeMock: vi.fn(),
@@ -143,6 +144,33 @@ function makeOptions(bodyStream) {
   };
 }
 
+function makeProtocolOptions(sourceFormat, bodyStream) {
+  const provider = sourceFormat === FORMATS.ANTIGRAVITY
+    ? "antigravity"
+    : sourceFormat === FORMATS.GEMINI_CLI
+      ? "gemini-cli"
+      : "gemini";
+  const body = {
+    model: "gemini-2.5-pro",
+    contents: [{ role: "user", parts: [{ text: "hello" }] }],
+  };
+  if (bodyStream !== undefined) body.stream = bodyStream;
+
+  return {
+    body,
+    sourceFormatOverride: sourceFormat,
+    modelInfo: { provider, model: body.model },
+    credentials: { accessToken: "tok-test", refreshToken: "refresh-test" },
+    clientRawRequest: {
+      endpoint: "/v1beta/models/gemini-2.5-pro:streamGenerateContent",
+      body,
+      headers: { accept: "text/event-stream" },
+    },
+    connectionId: `${sourceFormat}-connection`,
+    log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  };
+}
+
 function makeAgyImageOptions() {
   const body = {
     model: "gemini-3-flash-image",
@@ -210,6 +238,30 @@ describe("forceStream provider config", () => {
     expect(executeMock).toHaveBeenCalledTimes(1);
     expect(executeMock.mock.calls[0][0].stream).toBe(true);
   });
+
+  it.each([FORMATS.ANTIGRAVITY, FORMATS.GEMINI, FORMATS.GEMINI_CLI])(
+    "keeps omitted %s protocol requests on the streaming executor path",
+    async (sourceFormat) => {
+      const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+
+      await handleChatCore(makeProtocolOptions(sourceFormat));
+
+      expect(executeMock).toHaveBeenCalledTimes(1);
+      expect(executeMock.mock.calls[0][0].stream).toBe(true);
+    },
+  );
+
+  it.each([FORMATS.ANTIGRAVITY, FORMATS.GEMINI, FORMATS.GEMINI_CLI])(
+    "honors explicit stream:false for %s protocol requests",
+    async (sourceFormat) => {
+      const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+
+      await handleChatCore(makeProtocolOptions(sourceFormat, false));
+
+      expect(executeMock).toHaveBeenCalledTimes(1);
+      expect(executeMock.mock.calls[0][0].stream).toBe(false);
+    },
+  );
 
   it("synthesizes SSE for streaming clients when Galadriel is forced non-streaming upstream", async () => {
     const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");

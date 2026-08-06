@@ -332,7 +332,8 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
   }
 
   const isCompactRequest = requestContext?.compact === true;
-  const clientRequestedStreaming = !isCompactRequest && (body.stream === true || sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI);
+  const protocolImpliedStreaming = body.stream === undefined && (sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI);
+  const clientRequestedStreaming = !isCompactRequest && (body.stream === true || protocolImpliedStreaming);
   const providerRequiresStreaming = !isCompactRequest && PROVIDERS[provider]?.forceStream === true;
   // Image generation models require non-streaming (Google v1internal:generateContent)
   const modelType = getModelType(alias, cleanModel);
@@ -352,6 +353,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
   let stream = isCompactRequest ? false : resolveStreamFlag({
     providerRequiresStreaming,
     bodyStream: body.stream,
+    protocolImpliedStreaming,
     forceNonStreaming:
       (isImageGenModel && (provider === "antigravity" || provider === "gemini-cli" || provider === "agy"))
       || providerForcesNonStreaming

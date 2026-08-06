@@ -55,6 +55,25 @@ describe("resolveStreamFlag (#2031)", () => {
     expect(resolveStreamFlag({ providerRequiresStreaming: false })).toBe(false);
   });
 
+  it("streams an omitted protocol-implied request without restoring the ordinary omission default", () => {
+    expect(
+      resolveStreamFlag({
+        providerRequiresStreaming: false,
+        protocolImpliedStreaming: true,
+      })
+    ).toBe(true);
+  });
+
+  it("honors explicit stream:false over protocol-implied streaming", () => {
+    expect(
+      resolveStreamFlag({
+        providerRequiresStreaming: false,
+        bodyStream: false,
+        protocolImpliedStreaming: true,
+      })
+    ).toBe(false);
+  });
+
   it("AI21 quirk forceNonStreamingWithTools downgrades to non-streaming when tools are present", () => {
     expect(PROVIDERS["ai21"]?.quirks?.forceNonStreamingWithTools).toBe(true);
     const body = { model: "jamba-large-1.7", messages: [], tools: [{ type: "function" }] };

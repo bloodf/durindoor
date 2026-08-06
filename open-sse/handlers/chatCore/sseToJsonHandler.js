@@ -1,5 +1,6 @@
 import { convertResponsesStreamToJson } from "../../transformer/streamToJsonConverter.js";
 import { createErrorResult, readBoundedResponseText } from "../../utils/error.js";
+import { canonicalizeUsage } from "../../utils/usageTracking.js";
 import { HTTP_STATUS, MAX_PROVIDER_BODY_BYTES, PROVIDER_BODY_TIMEOUT_MS } from "../../config/runtimeConfig.js";
 import { FORMATS } from "../../translator/formats.js";
 import { PROVIDERS } from "../../config/providers.js";
@@ -200,10 +201,36 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       if (!["completed", "incomplete"].includes(jsonResponse?.status)) {
         return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Provider stream ended before a coherent terminal");
       }
-      const usage = jsonResponse.usage || {};
-      appendLog({ tokens: usage, status: "200 OK" });
-      saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, silent: true });
-      if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime } }));
+      const rawUsage = jsonResponse.usage || {};
+      const responseDetails = rawUsage.input_tokens_details || {};
+      const nonnegative = (value) => Math.max(0, Number.isFinite(Number(value)) ? Number(value) : 0);
+      const sanitizedUsage = { ...rawUsage };
+      for (const key of ["input_tokens", "output_tokens", "total_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"]) {
+        if (sanitizedUsage[key] !== undefined) sanitizedUsage[key] = nonnegative(sanitizedUsage[key]);
+      }
+      const normalizedUsage = canonicalizeUsage({
+        ...sanitizedUsage,
+        ...(responseDetails.cached_tokens !== undefined ? { cached_tokens: nonnegative(responseDetails.cached_tokens) } : {}),
+        prompt_tokens_details: rawUsage.prompt_tokens_details ?? responseDetails,
+      }) || {};
+      const inTokens = normalizedUsage.prompt_tokens || 0;
+      const outTokens = normalizedUsage.completion_tokens || 0;
+      const cacheRead = normalizedUsage.cached_tokens || 0;
+      const cacheCreate = normalizedUsage.cache_creation_input_tokens || 0;
+      const cacheDetails = (cacheRead > 0 || cacheCreate > 0)
+        ? { prompt_tokens_details: {
+              ...(cacheRead > 0 ? { cached_tokens: cacheRead } : {}),
+              ...(cacheCreate > 0 ? { cache_creation_tokens: cacheCreate } : {}) } }
+        : {};
+      jsonResponse.usage = {
+        input_tokens: inTokens,
+        output_tokens: outTokens,
+        total_tokens: normalizedUsage.total_tokens ?? (inTokens + outTokens),
+        ...(cacheDetails.prompt_tokens_details ? { input_tokens_details: cacheDetails.prompt_tokens_details } : {}),
+      };
+      appendLog({ tokens: normalizedUsage, status: "200 OK" });
+      saveUsageStats({ provider, model, tokens: normalizedUsage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, silent: true });
+      if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage: normalizedUsage, latency: { total: Date.now() - requestStartTime } }));
 
       // When the client asked for the Responses API format, return the converted JSON directly.
       // responsesApiToOpenAICompletion would project it to chat.completion shape and lose Responses fields.
@@ -214,7 +241,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         saveRequestDetail(buildRequestDetail({
           ...ctx,
           latency: { ttft: totalLatency, total: totalLatency },
-          tokens: { prompt_tokens: usage.input_tokens || 0, completion_tokens: usage.output_tokens || 0 },
+          tokens: { prompt_tokens: inTokens, completion_tokens: outTokens },
           response: { content: jsonResponse.output?.map?.(o => o.type === "message" ? o.content?.map?.(c => c.type === "output_text" ? c.text : "").join("") : "").join("") || null, thinking: null, finish_reason: jsonResponse.status === "completed" ? "stop" : jsonResponse.status || "unknown" },
           status: "success"
         }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});
@@ -224,15 +251,31 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       }
 
       const openAICompletion = responsesApiToOpenAICompletion(jsonResponse, model);
+      // Cache-aware usage must survive projection so the client can distinguish a
+      // 90%-cached request from a cheap one. (#3020)
+      openAICompletion.usage = {
+        prompt_tokens: inTokens,
+        completion_tokens: outTokens,
+        total_tokens: normalizedUsage.total_tokens ?? (inTokens + outTokens),
+        ...cacheDetails
+      };
       const claudeCompat = shouldEnableClaudeCompat(claudeClassifierCompat, sourceFormat, body);
       const finalResp = projectCompletionToClientFormat(openAICompletion, sourceFormat, { claudeCompat, model });
+      if (sourceFormat === FORMATS.CLAUDE && (cacheRead > 0 || cacheCreate > 0)) {
+        // Claude exposes uncached input separately; malformed provider totals clamp at zero.
+        finalResp.usage.input_tokens = Math.max(0, inTokens - cacheRead - cacheCreate);
+        if (cacheRead > 0) finalResp.usage.cache_read_input_tokens = cacheRead;
+        if (cacheCreate > 0) finalResp.usage.cache_creation_input_tokens = cacheCreate;
+      } else if ([FORMATS.GEMINI, FORMATS.GEMINI_CLI, FORMATS.ANTIGRAVITY, FORMATS.VERTEX].includes(sourceFormat) && cacheRead > 0) {
+        finalResp.response.usageMetadata.cachedContentTokenCount = cacheRead;
+      }
       logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "sse-json-responses", requestBody: body, translatedBody, providerBody: jsonResponse, clientBody: finalResp });
 
       const totalLatency = Date.now() - requestStartTime;
       saveRequestDetail(buildRequestDetail({
         ...ctx,
         latency: { ttft: totalLatency, total: totalLatency },
-        tokens: { prompt_tokens: usage.input_tokens || 0, completion_tokens: usage.output_tokens || 0 },
+        tokens: { prompt_tokens: inTokens, completion_tokens: outTokens },
         response: { content: openAICompletion.choices?.[0]?.message?.content || null, thinking: openAICompletion.choices?.[0]?.message?.reasoning_content || null, finish_reason: openAICompletion.choices?.[0]?.finish_reason || "unknown" },
         status: "success"
       }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});

@@ -66,7 +66,11 @@ function processSSEMessage(msg, state) {
       }
       const details = u.input_tokens_details || u.prompt_tokens_details;
       if (details && typeof details.cached_tokens === "number") {
-        state.usage.cache_read_input_tokens = details.cached_tokens;
+        state.usage.cached_tokens = details.cached_tokens;
+      }
+      if (details && typeof details.cache_creation_tokens === "number") {
+        if (state.usage.cached_tokens === undefined) state.usage.cached_tokens = 0;
+        state.usage.cache_creation_input_tokens = details.cache_creation_tokens;
       }
     }
   }

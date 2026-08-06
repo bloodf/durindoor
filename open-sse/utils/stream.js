@@ -883,11 +883,9 @@ export function createSSEStream(options = {}) {
             appendRequestLog({ model, provider, connectionId, tokens: null, status: "200 OK" }).catch(() => { });
           }
           
-          // IMPORTANT: In passthrough mode we still must terminate the SSE stream.
-          // Some clients (e.g. OpenClaw) expect the OpenAI-style sentinel:
-          //   data: [DONE]\n\n
-          // Without it they can hang until timeout and trigger failover.
-          // Gemini-family clients (Antigravity, Vertex, Gemini) reject this sentinel with 400 syntax errors.
+          // Explicitly streaming passthrough responses need the OpenAI sentinel;
+          // non-streaming requests must remain JSON-only. Gemini-family clients
+          // reject the sentinel with 400 syntax errors.
           const isGeminiFamily = GEMINI_PASSTHROUGH_PROVIDERS.has(provider);
           const isClaudeStream = targetFormat === FORMATS.CLAUDE;
           const isResponsesStream = targetFormat === FORMATS.OPENAI_RESPONSES;
@@ -907,6 +905,7 @@ export function createSSEStream(options = {}) {
             !streamDoneSent
             && !isGeminiFamily
             && !isClaudeStream
+            && body?.stream === true
             && upstreamTerminal.outcome !== "failure"
           ) {
             const doneOutput = "data: [DONE]\n\n";
@@ -975,7 +974,7 @@ export function createSSEStream(options = {}) {
           openAIResponsesTerminalSeen = true;
         }
 
-        if (keepsOpenAIResponsesFormat && !openAIResponsesDoneSent && !streamDoneSent) {
+        if (keepsOpenAIResponsesFormat && body?.stream === true && !openAIResponsesDoneSent && !streamDoneSent) {
           const doneOutput = "data: [DONE]\n\n";
           reqLogger?.appendConvertedChunk?.(doneOutput);
           controller.enqueue(sharedEncoder.encode(doneOutput));

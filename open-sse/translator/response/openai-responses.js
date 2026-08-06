@@ -21,6 +21,10 @@ function createEventEmitter(state) {
   const events = [];
   const emit = (eventType, data) => {
     data.sequence_number = ++state.seq;
+    if (eventType === "response.output_item.done" && Number.isInteger(data.output_index) && data.output_index >= 0) {
+      state.completedOutputItems ||= [];
+      state.completedOutputItems.push({ outputIndex: data.output_index, sequence: data.sequence_number, item: data.item });
+    }
     events.push({ event: eventType, data });
   };
   return { events, emit };
@@ -33,6 +37,20 @@ function createEventEmitter(state) {
 export function openaiToOpenAIResponsesResponse(chunk, state) {
   if (!chunk) {
     return flushEvents(state);
+  }
+
+  const choice = chunk.choices?.[0];
+  if (choice) {
+    const choiceIndex = choice.index === undefined ? 0 : choice.index;
+    const toolCalls = choice.delta?.tool_calls;
+    if (
+      !Number.isInteger(choiceIndex)
+      || choiceIndex < 0
+      || (Array.isArray(toolCalls) && toolCalls.some((tc) => {
+        const toolIndex = tc.index === undefined ? 0 : tc.index;
+        return !Number.isInteger(toolIndex) || toolIndex < 0;
+      }))
+    ) return [];
   }
 
   if (chunk.model) state.model = chunk.model;
@@ -56,8 +74,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
 
   const { events, emit } = createEventEmitter(state);
 
-  const choice = chunk.choices[0];
-  const idx = choice.index || 0;
+  const idx = choice.index === undefined ? 0 : choice.index;
   const delta = choice.delta || {};
 
   // Emit initial events
@@ -307,7 +324,7 @@ function closeMessage(state, emit, idx) {
 }
 
 function emitToolCall(state, emit, tc) {
-  const tcIdx = tc.index ?? 0;
+  const tcIdx = tc.index === undefined ? 0 : tc.index;
   let outputIndex = state.funcOutputIndexes[tcIdx];
   const newCallId = tc.id;
   const funcName = tc.function?.name;
@@ -472,6 +489,15 @@ function sendCompleted(state, emit) {
   if (!state.completedSent) {
     state.completedSent = true;
     const usage = toResponsesUsage(state.usage) || { input_tokens: 0, output_tokens: 0, total_tokens: 0 };
+    const output = [];
+    const seenOutputIndexes = new Set();
+    for (const { outputIndex, item } of (state.completedOutputItems || [])
+      .filter(({ outputIndex }) => Number.isInteger(outputIndex) && outputIndex >= 0)
+      .toSorted((left, right) => left.outputIndex - right.outputIndex || left.sequence - right.sequence)) {
+      if (seenOutputIndexes.has(outputIndex)) continue;
+      seenOutputIndexes.add(outputIndex);
+      if (outputIndex === output.length) output.push(item);
+    }
     emit("response.completed", {
       type: "response.completed",
       response: {
@@ -483,6 +509,7 @@ function sendCompleted(state, emit) {
         background: false,
         error: null,
         usage,
+        output,
       }
     });
   }

@@ -1,29 +1,19 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/usageDb.js", () => ({
+  appendRequestLog: vi.fn(() => Promise.resolve()),
+  saveRequestDetail: vi.fn(() => Promise.resolve()),
+  trackPendingRequest: vi.fn(),
+  saveRequestUsage: vi.fn(() => Promise.resolve()),
+}));
 
 import { FORMATS } from "../../open-sse/translator/formats.js";
-import { createSSETransformStreamWithLogger } from "../../open-sse/utils/stream.js";
+import { createPassthroughStreamWithLogger, createSSETransformStreamWithLogger } from "../../open-sse/utils/stream.js";
+import { handleStreamingResponse } from "../../open-sse/handlers/chatCore/streamingHandler.js";
+import { buildAbortedResponsesTerminalBytes, formatIncompleteOpenAIResponsesStreamFailure } from "../../open-sse/utils/responsesStreamHelpers.js";
 
-async function runTransform(input) {
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream({
-    start(controller) {
-      controller.enqueue(encoder.encode(input));
-      controller.close();
-    },
-  });
-
-  const output = stream.pipeThrough(
-    createSSETransformStreamWithLogger(
-      FORMATS.OPENAI_RESPONSES,
-      FORMATS.OPENAI_RESPONSES,
-      "codex",
-      null,
-      null,
-      "gpt-5.5",
-    ),
-  );
-
-  const reader = output.getReader();
+async function readOutput(stream) {
+  const reader = stream.getReader();
   const decoder = new TextDecoder();
   let text = "";
 
@@ -33,8 +23,55 @@ async function runTransform(input) {
     text += decoder.decode(value, { stream: true });
   }
 
-  text += decoder.decode();
-  return text;
+  return text + decoder.decode();
+}
+
+function sourceStream(input) {
+  const encoder = new TextEncoder();
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode(input));
+      controller.close();
+    },
+  });
+}
+
+function parseFailure(output) {
+  const data = output.match(/event: response\.failed\ndata: ([^\n]+)/)?.[1];
+  expect(data).toBeDefined();
+  return JSON.parse(data).response;
+}
+
+function runTransform(input) {
+  return readOutput(sourceStream(input).pipeThrough(
+    createSSETransformStreamWithLogger(
+      FORMATS.OPENAI_RESPONSES,
+      FORMATS.OPENAI_RESPONSES,
+      "codex",
+      null,
+      null,
+      "gpt-5.5",
+    ),
+  ));
+}
+
+function runPassthrough(input, responsesStreamState = null) {
+  return readOutput(sourceStream(input).pipeThrough(
+    createPassthroughStreamWithLogger(
+      "codex",
+      null,
+      null,
+      "gpt-5.5",
+      null,
+      { stream: true },
+      null,
+      null,
+      FORMATS.OPENAI_RESPONSES,
+      null,
+      null,
+      responsesStreamState,
+    ),
+  ));
 }
 
 describe("OpenAI Responses streaming termination", () => {
@@ -51,6 +88,7 @@ describe("OpenAI Responses streaming termination", () => {
     expect(output).toContain("event: response.failed");
     expect(output).toContain('"type":"response.failed"');
     expect(output).not.toContain("data: null");
+    expect(parseFailure(output).id).toBe("resp_test");
     expect(output).not.toContain("data: [DONE]");
   });
 
@@ -92,5 +130,99 @@ describe("OpenAI Responses streaming termination", () => {
     expect(output.indexOf("event: response.failed")).toBeLessThan(output.indexOf("data: [DONE]"));
     expect(output.match(/data: \[DONE\]/g)).toHaveLength(1);
     expect(output).not.toContain("data: null");
+    expect(parseFailure(output).id).toBe("resp_test");
+  });
+
+  it("retains the created response ID when passthrough recovery synthesizes failure", async () => {
+    const output = await runPassthrough([
+      `event: response.created`,
+      `data: ${JSON.stringify({ type: "response.created", response: { id: "resp_test", status: "in_progress" } })}`,
+      "",
+      `event: response.output_text.delta`,
+      `data: ${JSON.stringify({ type: "response.output_text.delta", delta: "partial" })}`,
+      "",
+    ].join("\n"));
+
+    expect(parseFailure(output).id).toBe("resp_test");
+  });
+
+  it("retains a response ID when response.created is identified by payload type", async () => {
+    const output = await runPassthrough([
+      `data: ${JSON.stringify({ type: "response.created", response: { id: "resp_test", status: "in_progress" } })}`,
+      "",
+    ].join("\n"));
+
+    expect(parseFailure(output).id).toBe("resp_test");
+  });
+
+  it("retains the created response ID when an upstream abort synthesizes failure", async () => {
+    const encoder = new TextEncoder();
+    let pullCount = 0;
+    const providerResponse = new Response(new ReadableStream({
+      pull(controller) {
+        pullCount++;
+        if (pullCount === 1) {
+          controller.enqueue(encoder.encode([
+            "event: response.created",
+            `data: ${JSON.stringify({ type: "response.created", response: { id: "resp_test", status: "in_progress" } })}`,
+            "",
+            "",
+          ].join("\n")));
+        } else {
+          controller.error(new Error("stream stall timeout"));
+        }
+      },
+    }), { headers: { "content-type": "text/event-stream" } });
+    let connected = true;
+    const result = await handleStreamingResponse({
+      providerResponse,
+      provider: "codex",
+      model: "gpt-5.5",
+      sourceFormat: FORMATS.OPENAI_RESPONSES,
+      targetFormat: FORMATS.OPENAI_RESPONSES,
+      body: { stream: true },
+      stream: true,
+      requestStartTime: Date.now(),
+      streamController: {
+        signal: new AbortController().signal,
+        startTime: Date.now(),
+        isConnected: () => connected,
+        handleActivity: () => {},
+        handleComplete: () => { connected = false; },
+        handleError: () => { connected = false; },
+        handleDisconnect: () => { connected = false; },
+        abort: () => { connected = false; },
+      },
+    });
+
+    expect(parseFailure(await result.response.text()).id).toBe("resp_test");
+  });
+
+  it("does not synthesize failure after a completed response aborts", async () => {
+    const responsesStreamState = {};
+    const input = [
+      "event: response.completed",
+      `data: ${JSON.stringify({ type: "response.completed", response: { id: "resp_test", status: "completed" } })}`,
+      "",
+      "",
+    ].join("\n");
+
+    await runPassthrough(input, responsesStreamState);
+
+    expect(buildAbortedResponsesTerminalBytes(responsesStreamState)).toBeNull();
+  });
+
+  it("does not generate a fallback when an existing response ID is available", () => {
+    const now = vi.spyOn(Date, "now");
+
+    expect(parseFailure(formatIncompleteOpenAIResponsesStreamFailure("resp_test")).id).toBe("resp_test");
+    expect(now).not.toHaveBeenCalled();
+    now.mockRestore();
+  });
+
+  it("generates a fallback response ID when no created ID was observed", () => {
+    const response = parseFailure(formatIncompleteOpenAIResponsesStreamFailure());
+
+    expect(response.id).toMatch(/^resp_\d+$/);
   });
 });

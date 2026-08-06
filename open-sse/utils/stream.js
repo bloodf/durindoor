@@ -67,7 +67,8 @@ export function createSSEStream(options = {}) {
     onCoherentTerminal = null,
     providerBody = null,
     apiKey = null,
-    claudeClassifierCompat = "off"
+    claudeClassifierCompat = "off",
+    responsesStreamState = null,
   } = options;
 
   let buffer = "";
@@ -128,6 +129,7 @@ export function createSSEStream(options = {}) {
   let currentUpstreamEvent = null;
   let openAIResponsesTerminalSeen = false;
   let openAIResponsesDoneSent = false;
+  let openAIResponsesResponseId = null;
   let streamDoneSent = false;  // track duplicate [DONE] across transform + flush
   let claudeTerminalSeen = false;
   const terminalBody = providerBody || body;
@@ -141,6 +143,21 @@ export function createSSEStream(options = {}) {
       ?? terminalBody?.generationConfig?.candidateCount
       ?? terminalBody?.generation_config?.candidate_count,
   });
+  const captureOpenAIResponsesResponseId = (eventName, chunk) => {
+    if (
+      !openAIResponsesResponseId
+      && getOpenAIResponsesEventName(eventName, chunk) === "response.created"
+      && typeof chunk?.response?.id === "string"
+    ) {
+      openAIResponsesResponseId = chunk.response.id;
+      if (responsesStreamState) responsesStreamState.responseId = chunk.response.id;
+    }
+  };
+  const captureOpenAIResponsesTerminal = (eventName, chunk) => {
+    if (responsesStreamState && isOpenAIResponsesTerminalEvent(eventName, chunk)) {
+      responsesStreamState.terminalSeen = true;
+    }
+  };
   const observeBufferedUpstream = (text, pendingEventName = null) => {
     let eventName = pendingEventName;
     for (const rawLine of String(text || "").split(/\r?\n/)) {
@@ -154,6 +171,8 @@ export function createSSEStream(options = {}) {
       if (parsed?.done) upstreamTerminal.observe({ rawDone: true, eventName });
       else if (parsed) {
         upstreamTerminal.observe({ chunk: parsed, eventName });
+        captureOpenAIResponsesResponseId(eventName, parsed);
+        captureOpenAIResponsesTerminal(eventName, parsed);
         if (
           targetFormat === FORMATS.CLAUDE
           && parsed?.type === "message_stop"
@@ -294,6 +313,8 @@ export function createSSEStream(options = {}) {
             try {
               const parsed = JSON.parse(trimmed.slice(5).trim());
               upstreamTerminal.observe({ chunk: parsed, eventName: upstreamEventForLine });
+              captureOpenAIResponsesResponseId(upstreamEventForLine, parsed);
+              captureOpenAIResponsesTerminal(upstreamEventForLine, parsed);
               if (
                 targetFormat === FORMATS.CLAUDE
                 && parsed?.type === "message_stop"
@@ -621,6 +642,8 @@ export function createSSEStream(options = {}) {
         const openAIResponsesEventName = isOpenAIResponsesStream
           ? getOpenAIResponsesEventName(currentOpenAIResponsesEvent, parsed)
           : currentUpstreamEvent;
+        captureOpenAIResponsesResponseId(openAIResponsesEventName, parsed);
+        captureOpenAIResponsesTerminal(openAIResponsesEventName, parsed);
 
         upstreamTerminal.observe({
           chunk: parsed,
@@ -638,7 +661,7 @@ export function createSSEStream(options = {}) {
         if (parsed && parsed.done && targetFormat !== FORMATS.OLLAMA) {
           // Synthesize response.failed if the Responses stream never sent a terminal event
           if (keepsOpenAIResponsesFormat && !openAIResponsesTerminalSeen) {
-            const failedOutput = formatIncompleteOpenAIResponsesStreamFailure();
+            const failedOutput = formatIncompleteOpenAIResponsesStreamFailure(openAIResponsesResponseId);
             reqLogger?.appendConvertedChunk?.(failedOutput);
             controller.enqueue(sharedEncoder.encode(failedOutput));
             openAIResponsesTerminalSeen = true;
@@ -893,7 +916,7 @@ export function createSSEStream(options = {}) {
             throw new Error("Claude passthrough stream ended before message_stop");
           }
           if (isResponsesStream && upstreamTerminal.outcome !== "success") {
-            const failedOutput = formatIncompleteOpenAIResponsesStreamFailure();
+            const failedOutput = formatIncompleteOpenAIResponsesStreamFailure(openAIResponsesResponseId);
             upstreamTerminal.observe({
               eventName: "response.failed",
               chunk: { type: "response.failed", response: { status: "failed" } },
@@ -968,7 +991,7 @@ export function createSSEStream(options = {}) {
         // Synthesize response.failed if a Responses passthrough stream never reached a terminal event
         const keepsOpenAIResponsesFormat = targetFormat === FORMATS.OPENAI_RESPONSES && sourceFormat === FORMATS.OPENAI_RESPONSES;
         if (keepsOpenAIResponsesFormat && !openAIResponsesTerminalSeen) {
-          const failedOutput = formatIncompleteOpenAIResponsesStreamFailure();
+          const failedOutput = formatIncompleteOpenAIResponsesStreamFailure(openAIResponsesResponseId);
           reqLogger?.appendConvertedChunk?.(failedOutput);
           controller.enqueue(sharedEncoder.encode(failedOutput));
           openAIResponsesTerminalSeen = true;
@@ -1013,7 +1036,7 @@ export function createSSEStream(options = {}) {
   });
 }
 
-export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, claudeClassifierCompat = "off", onCoherentTerminal = null, providerBody = null) {
+export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, claudeClassifierCompat = "off", onCoherentTerminal = null, providerBody = null, responsesStreamState = null) {
   return createSSEStream({
     mode: STREAM_MODE.TRANSLATE,
     targetFormat,
@@ -1028,11 +1051,12 @@ export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, p
     onCoherentTerminal,
     providerBody,
     apiKey,
-    claudeClassifierCompat
+    claudeClassifierCompat,
+    responsesStreamState,
   });
 }
 
-export function createPassthroughStreamWithLogger(provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, targetFormat = null, onCoherentTerminal = null, providerBody = null) {
+export function createPassthroughStreamWithLogger(provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, targetFormat = null, onCoherentTerminal = null, providerBody = null, responsesStreamState = null) {
   return createSSEStream({
     mode: STREAM_MODE.PASSTHROUGH,
     targetFormat,
@@ -1045,6 +1069,7 @@ export function createPassthroughStreamWithLogger(provider = null, reqLogger = n
     onStreamComplete,
     onCoherentTerminal,
     providerBody,
+    responsesStreamState,
     apiKey
   });
 }

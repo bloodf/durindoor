@@ -29,18 +29,20 @@ export function isOpenAIResponsesTerminalEvent(eventName, chunk) {
 const sharedEncoder = new TextEncoder();
 
 // Encoded response.failed + [DONE] payload for aborted/stalled Responses passthrough streams
-export function buildAbortedResponsesTerminalBytes() {
-  return sharedEncoder.encode(`${formatIncompleteOpenAIResponsesStreamFailure()}data: [DONE]\n\n`);
+export function buildAbortedResponsesTerminalBytes(responseState) {
+  if (responseState?.terminalSeen) return null;
+  return sharedEncoder.encode(`${formatIncompleteOpenAIResponsesStreamFailure(responseState)}data: [DONE]\n\n`);
 }
 
 // Synthesize a response.failed event for streams that close without a terminal event
-export function formatIncompleteOpenAIResponsesStreamFailure() {
+export function formatIncompleteOpenAIResponsesStreamFailure(responseState) {
+  const responseId = typeof responseState === "string" ? responseState : responseState?.responseId;
   return formatSSE({
     event: "response.failed",
     data: {
       type: "response.failed",
       response: {
-        id: `resp_${Date.now()}`,
+        id: responseId || `resp_${Date.now()}`,
         status: "failed",
         error: {
           type: "stream_error",

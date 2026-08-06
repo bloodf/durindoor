@@ -159,9 +159,9 @@ function openAICompletionToClientSSE(responseBody, fallbackModel, sourceFormat) 
 /**
  * Translate non-streaming response body from upstream format → client format.
  *
- * `targetFormat` is what the **client** asked for (i.e. the source format the
- * client sent). `sourceFormat` is the format the upstream returned in. When
- * they differ, we convert.
+ * `targetFormat` is the provider/upstream response format. `sourceFormat` is
+ * the client/request format. When they differ, convert the upstream response
+ * back to the shape requested by the client.
  *
  * Most branches translate into OpenAI chat.completion shape (the legacy
  * default). The OPENAI_RESPONSES branch is an exception: it returns whichever

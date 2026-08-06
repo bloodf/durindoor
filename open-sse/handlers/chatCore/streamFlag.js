@@ -24,7 +24,7 @@ export function resolveStreamFlag({
   clientPrefersJson = false,
   clientPrefersSSE = false,
 }) {
-  let stream = providerRequiresStreaming ? true : bodyStream !== false;
+  let stream = providerRequiresStreaming ? true : bodyStream === true;
 
   // Hard non-streaming cases (image-gen, deepseek-tui -p) override everything.
   if (forceNonStreaming) stream = false;

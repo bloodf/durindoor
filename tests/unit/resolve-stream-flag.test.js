@@ -51,8 +51,8 @@ describe("resolveStreamFlag (#2031)", () => {
     ).toBe(false);
   });
 
-  it("ordinary provider with no special flags streams by default", () => {
-    expect(resolveStreamFlag({ providerRequiresStreaming: false })).toBe(true);
+  it("ordinary provider defaults to non-streaming when stream is omitted", () => {
+    expect(resolveStreamFlag({ providerRequiresStreaming: false })).toBe(false);
   });
 
   it("AI21 quirk forceNonStreamingWithTools downgrades to non-streaming when tools are present", () => {

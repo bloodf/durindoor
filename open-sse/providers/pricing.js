@@ -260,16 +260,14 @@ export const MODEL_PRICING = {
   "MiniMax-M2.5-highspeed":       { input: 0.60,  output: 2.40,  cached: 0.03,  cache_creation: 0.375 },
   "MiniMax-M2.7":                 { input: 0.30,  output: 1.20,  cached: 0.06,  cache_creation: 0.375 },
   "MiniMax-M2.7-highspeed":       { input: 0.60,  output: 2.40,  cached: 0.06,  cache_creation: 0.375 },
-  // MiniMax-M3 standard pricing applies to requests with ≤512K input tokens.
-  // Requests above 512K input tokens fall into a higher-rate long-context tier;
-  // this catalog does not model that tier, and the advertised capability
-  // context window is capped to 512K. See first-party docs:
-  // https://platform.minimax.io/docs/guides/pricing-paygo
-  "MiniMax-M3":                   { input: 0.30,  output: 1.20,  cached: 0.06  },
+  // MiniMax-M3 doubles input, output, and cache-read rates only when canonical
+  // input exceeds 512K tokens; base fields stay numeric for existing consumers.
+  // See https://platform.minimax.io/docs/guides/pricing-paygo
+  "MiniMax-M3":                   { input: 0.30,  output: 1.20,  cached: 0.06,  longContext: { threshold: 512000, input: 0.60, output: 2.40, cached: 0.12 } },
   "minimax-m2.1":                 { input: 0.30,  output: 1.20,  cached: 0.03,  cache_creation: 0.375 },
   "minimax-m2.5":                 { input: 0.30,  output: 1.20,  cached: 0.03,  cache_creation: 0.375 },
   "minimax-m2.7":                 { input: 0.30,  output: 1.20,  cached: 0.06,  cache_creation: 0.375 },
-  "minimax-m3":                   { input: 0.30,  output: 1.20,  cached: 0.06  },
+  "minimax-m3":                   { input: 0.30,  output: 1.20,  cached: 0.06,  longContext: { threshold: 512000, input: 0.60, output: 2.40, cached: 0.12 } },
 
   // === Grok ===
   "grok-code-fast-1":             { input: 0.50,  output: 2.00,  cached: 0.25,  reasoning: 3.00,   cache_creation: 0.50  },
@@ -495,11 +493,15 @@ export function calculateCostFromTokens(tokens, pricing) {
   // prompt_tokens is cache-inclusive (see canonicalizeUsage): cached + cache_creation
   // are subsets, so subtract both to avoid charging them at the full input rate.
   const nonCachedInput = Math.max(0, inputTokens - cachedTokens - cacheCreationTokens);
+  // Optional tier metadata keeps flat/custom pricing backward-compatible.
+  const effectivePricing = pricing.longContext && inputTokens > pricing.longContext.threshold
+    ? pricing.longContext
+    : pricing;
 
-  cost += nonCachedInput * (pricing.input / 1000000);
+  cost += nonCachedInput * (effectivePricing.input / 1000000);
 
   if (cachedTokens > 0) {
-    cost += cachedTokens * ((pricing.cached || pricing.input) / 1000000);
+    cost += cachedTokens * ((effectivePricing.cached || effectivePricing.input) / 1000000);
   }
 
   const outputTokens = tokens.completion_tokens || tokens.output_tokens || 0;
@@ -511,13 +513,13 @@ export function calculateCostFromTokens(tokens, pricing) {
     ? Math.min(outputTokens, reasoningTokens)
     : reasoningTokens;
   const visibleOutputTokens = Math.max(0, outputTokens - billedReasoningTokens);
-  cost += visibleOutputTokens * (pricing.output / 1000000);
+  cost += visibleOutputTokens * (effectivePricing.output / 1000000);
   if (billedReasoningTokens > 0) {
-    cost += billedReasoningTokens * ((pricing.reasoning || pricing.output) / 1000000);
+    cost += billedReasoningTokens * ((pricing.reasoning || effectivePricing.output) / 1000000);
   }
 
   if (cacheCreationTokens > 0) {
-    cost += cacheCreationTokens * ((pricing.cache_creation || pricing.input) / 1000000);
+    cost += cacheCreationTokens * ((pricing.cache_creation || effectivePricing.input) / 1000000);
   }
 
   return cost;

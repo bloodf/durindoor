@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { getModelTargetFormat } from "../../open-sse/config/providerModels.js";
 import providers from "../../cli/src/cli/menus/providers.js";
 import { getThinkingLevels } from "../../open-sse/providers/thinkingLevels.js";
@@ -25,10 +25,24 @@ describe("Kimi K3 reasoning wiring", () => {
     expect(getThinkingLevels(null, "kimi-k3")).toEqual(["max"]);
   });
 
-  it("does not allow disabling reasoning", () => {
-    const caps = getCapabilitiesForModel(null, "kimi-k3");
-    expect(caps.reasoning).toBe(true);
-    expect(caps.thinkingCanDisable).toBe(false);
+  it("keeps the exact native Kimi descriptor with its configurable output ceiling", () => {
+    expect(getCapabilitiesForModel("moonshot", "kimi-k3")).toMatchObject({
+      contextWindow: 1048576,
+      maxOutput: 1048576,
+      vision: true,
+      videoInput: true,
+      reasoning: true,
+      thinkingCanDisable: false,
+    });
+  });
+
+  it("keeps unsupported Kimi K3 variants on the conservative fallback", () => {
+    expect(getCapabilitiesForModel(null, "vendor/kimi-k3-preview")).toMatchObject({
+      contextWindow: 262144,
+      maxOutput: 64000,
+      vision: false,
+      videoInput: false,
+    });
   });
 
   it("emits reasoning_effort=max even when caller asks none", () => {
@@ -46,15 +60,42 @@ describe("Kimi K3 reasoning wiring", () => {
 });
 
 describe("MiniMax M3 capabilities", () => {
-  it("context window is the native-API 1M", () => {
-    const caps = getCapabilitiesForModel(null, "MiniMax-M3");
-    expect(caps.contextWindow).toBe(1000000);
+  it.each([
+    ["minimax", "MiniMax-M3"],
+    ["minimax-cn", "MiniMax-M3"],
+  ])("%s/%s exposes the native-API descriptor", (provider, model) => {
+    expect(getCapabilitiesForModel(provider, model)).toMatchObject({
+      contextWindow: 1000000,
+      maxOutput: 131072,
+      vision: true,
+      videoInput: true,
+      reasoning: true,
+      thinkingFormat: "minimax",
+    });
   });
 
-  it("minimax-m3 variant also resolves the 1M window", () => {
-    const caps = getCapabilitiesForModel(null, "minimax-m3");
-    expect(caps.contextWindow).toBe(1000000);
+  it.each([
+    [null, "MiniMax-M3"],
+    [null, "minimax-m3"],
+    ["openrouter", "minimax-m3"],
+    ["minimax", "minimax-m3"],
+    ["minimax-cn", "minimax-m3"],
+    [null, "vendor/minimax-m3"],
+  ])("%s/%s stays at the conservative 512K fallback", (provider, model) => {
+    expect(getCapabilitiesForModel(provider, model)).toMatchObject({
+      contextWindow: 512000,
+      maxOutput: 131072,
+    });
   });
+
+  it.each([
+    ["fireworks", "accounts/fireworks/models/minimax-m3", 524287, 512000],
+    ["nvidia", "minimaxai/minimax-m3", 512000, 131072],
+    ["codebuddy-cn", "minimax-m3", 512000, 48000],
+  ])("preserves the %s/%s host override", (provider, model, contextWindow, maxOutput) => {
+    expect(getCapabilitiesForModel(provider, model)).toMatchObject({ contextWindow, maxOutput });
+  });
+
 });
 
 describe("GLM Flash zero pricing", () => {

@@ -30,24 +30,6 @@ describe("capabilities contextWindow resolution", () => {
     ["openai", "gpt-5.6-sol", 1050000],
     ["openai", "gpt-5.6-terra", 1050000],
     ["openai", "gpt-5.6-luna", 1050000],
-    // Codex/CX GPT-5.x surfaces serve the 272K effective session window (OpenAI
-    // caps Codex input at 272K despite the 1.05M raw model spec — openai/codex
-    // #32486, #32806), including Codex-specific review and ultra ids.
-    ["codex", "gpt-5.5", 272000],
-    ["codex", "gpt-5.5-review", 272000],
-    ["codex", "gpt-5.6-sol", 272000],
-    ["codex", "gpt-5.6-sol-review", 272000],
-    ["codex", "gpt-5.6-sol-ultra", 272000],
-    ["codex", "gpt-5.6-terra", 272000],
-    ["codex", "gpt-5.6-terra-review", 272000],
-    ["codex", "gpt-5.6-luna", 272000],
-    ["codex", "gpt-5.6-luna-review", 272000],
-    // Codex/CX review aliases.
-    ["cx", "gpt-5.5", 272000],
-    ["cx", "gpt-5.5-review", 272000],
-    ["cx", "gpt-5.6-sol-review", 272000],
-    ["cx", "gpt-5.6-terra-review", 272000],
-    ["cx", "gpt-5.6-luna-review", 272000],
     // Kimi K2.x = 256K (262144).
     ["moonshot", "kimi-k2.7", 262144],
     ["moonshot", "kimi-k2.5", 262144],
@@ -55,7 +37,7 @@ describe("capabilities contextWindow resolution", () => {
     // the guaranteed floor per minimax.io/models/text/m3).
     ["minimax", "minimax-m2.5", 204800],
     ["minimax", "minimax-m2.7", 204800],
-    ["minimax", "minimax-m3", 1000000],
+    ["minimax", "MiniMax-M3", 1000000],
     // Z.ai GLM: 5.2 is 1M, 5/5.1 are 200K, 4.7 is 200K.
     ["zai", "glm-5.2", 1000000],
     ["zai", "glm-5", 200000],
@@ -83,24 +65,22 @@ describe("capabilities contextWindow resolution", () => {
     expect(caps.maxOutput).toBe(128000);
   });
 
-  it.each([
-    ["codex", "gpt-5.5"],
-    ["codex", "gpt-5.5-review"],
-    ["codex", "gpt-5.6-sol"],
-    ["codex", "gpt-5.6-sol-review"],
-    ["codex", "gpt-5.6-sol-ultra"],
-    ["codex", "gpt-5.6-terra"],
-    ["codex", "gpt-5.6-terra-review"],
-    ["codex", "gpt-5.6-luna"],
-    ["codex", "gpt-5.6-luna-review"],
-    ["cx", "gpt-5.5"],
-    ["cx", "gpt-5.5-review"],
-    ["cx", "gpt-5.6-sol-review"],
-    ["cx", "gpt-5.6-terra-review"],
-    ["cx", "gpt-5.6-luna-review"],
-  ])("%s/%s exposes the 272K Codex session window and 128K max output", (provider, model) => {
+  it.each(
+    ["codex", "cx"].flatMap((provider) => [
+      "gpt-5.5",
+      "gpt-5.6",
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "gpt-5.6-luna",
+      "gpt-5.5-review",
+      "gpt-5.6-sol-review",
+      "gpt-5.6-sol-ultra",
+      "gpt-5.6-terra-review",
+      "gpt-5.6-luna-review",
+    ].map((model) => [provider, model])),
+  )("%s/%s exposes 1.05M total context and 128K max output", (provider, model) => {
     const caps = getCapabilitiesForModel(provider, model);
-    expect(caps.contextWindow).toBe(272000);
+    expect(caps.contextWindow).toBe(1050000);
     expect(caps.maxOutput).toBe(128000);
   });
 

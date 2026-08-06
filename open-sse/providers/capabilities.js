@@ -76,8 +76,10 @@ export function capabilitiesFromServiceKind(kind) {
  * otherwise mis-match. Only declare deltas vs DEFAULT.
  */
 export const MODEL_CAPABILITIES = {
-  // Kimi K3: 1M context, always reasons, reasoning_effort "max" only (cannot disable), vision + tools.
-  "kimi-k3": { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 262144 },
+  // Kimi K3: 1M configurable output ceiling, native vision/video input,
+  // always-on reasoning, and documented low/high/max effort levels. Runtime
+  // effort normalization is handled separately and may expose a narrower set.
+  "kimi-k3": { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 1048576 },
   // Claude Opus 5: native 1M context window + adaptive thinking.
   "claude-opus-5":   { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   // Claude 4.6/4.7/4.8 and Kiro Sonnet 5 have 1M context + adaptive thinking (override generic claude pattern)
@@ -143,7 +145,7 @@ const KIRO_GPT_5_6_PROVIDER_CAPS = Object.fromEntries(
 );
 
 // Direct OpenAI GPT-5.5/5.6 surfaces override the generic *gpt-5* 400K pattern
-// (1.05M raw model context / 128K max output).
+// (1.05M total context / 128K max output).
 const DIRECT_GPT_5_5_6_CAPS = {
   "gpt-5.5":              { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
   "gpt-5.6":              { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
@@ -152,16 +154,12 @@ const DIRECT_GPT_5_5_6_CAPS = {
   "gpt-5.6-luna":         { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
 };
 
-// Codex (ChatGPT-plan backend) does NOT serve the raw 1.05M window: OpenAI caps
-// the effective session input at 272K tokens (prompts past 272K are rejected or
-// billed at the 2x higher-usage tier, and Codex has cut the served window to
-// 258K-272K in recent releases — openai/codex#32486, #32806). Advertising 1.05M
-// here made clients defer compaction until the upstream 400'd. Use the
-// documented 272K input threshold as the honest window for every Codex id.
-const CODEX_GPT_5_6_WINDOW = 272000;
+// Codex/CX total context and output limits remain provider-specific unverified
+// rollback values. They are not source-confirmed; restore the prior 1.05M/128K
+// descriptors rather than treating the unsupported 272K input tier as capacity.
 const codexGpt56Entry = () => ({
   vision: true, reasoning: true, search: true, thinkingFormat: "openai",
-  contextWindow: CODEX_GPT_5_6_WINDOW, maxOutput: 128000,
+  contextWindow: 1050000, maxOutput: 128000,
 });
 const CODEX_GPT_5_6_CAPS = Object.fromEntries([
   "gpt-5.5", "gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
@@ -169,12 +167,18 @@ const CODEX_GPT_5_6_CAPS = Object.fromEntries([
   "gpt-5.6-terra-review", "gpt-5.6-luna-review",
 ].map((id) => [id, codexGpt56Entry()]));
 
+const MINIMAX_M3_NATIVE_CAPS = {
+  "MiniMax-M3": { vision: true, videoInput: true, reasoning: true, thinkingFormat: "minimax", contextWindow: 1000000, maxOutput: 131072 },
+};
+
 export const PROVIDER_CAPABILITIES = {
   // Direct OpenAI GPT-5.5/5.6 family and Codex/CX aliases expose 1.05M context
   // window and 128K max output, overriding the generic *gpt-5* 400K fallback pattern.
   openai: DIRECT_GPT_5_5_6_CAPS,
   codex: CODEX_GPT_5_6_CAPS,
   cx: CODEX_GPT_5_6_CAPS,
+  minimax: MINIMAX_M3_NATIVE_CAPS,
+  "minimax-cn": MINIMAX_M3_NATIVE_CAPS,
   // Poolside Laguna — OpenAI-compatible, all reasoning-capable (262K context, 32K max output).
   poolside: {
     "laguna-s-2.1":  { reasoning: true, thinkingFormat: "openai", contextWindow: 262000, maxOutput: 32000 },
@@ -510,9 +514,8 @@ export const PATTERN_CAPABILITIES = [
   { pattern: "*qwen*",          caps: { reasoning: true, thinkingFormat: "qwen", contextWindow: 262144 } },
 
   // ── Kimi (enabled→reasoning_effort; K2.7-code cannot disable) ─────
-  // Kimi K3: 1M context (1048576) on api.moonshot.ai — keep pattern in sync with
-  // the exact "kimi-k3" row so prefixed/variant ids don't fall to 262K.
-  { pattern: "*kimi*k3*",       caps: { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 262144 } },
+  // Kimi K3 variants are unverified; keep the conservative family fallback.
+  { pattern: "*kimi*k3*",       caps: { reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144, maxOutput: 64000 } },
   // K3 routes through the bare upstream id `k3` (no "kimi" prefix); match it to
   // the K3 window so it does not fall to the generic 200K default (#2697).
   { pattern: "k3",              caps: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 262144 } },
@@ -532,13 +535,12 @@ export const PATTERN_CAPABILITIES = [
   { pattern: "*deepseek-r*",    caps: { reasoning: true, thinkingFormat: "deepseek", thinkingCanDisable: false, contextWindow: 128000 } },
   { pattern: "*deepseek-chat*", caps: { contextWindow: 128000 } },
   { pattern: "*deepseek*",      caps: { reasoning: true, thinkingFormat: "deepseek", contextWindow: 128000 } },
-
   // ── MiniMax (M3 = adaptive; M2.x cannot disable) ─────────────────
   { pattern: "*minimax*image*", caps: { imageOutput: true } },
-  // MiniMax M3 native API: 1M context (512K is only the guaranteed floor per
-  // minimax.io/models/text/m3). Host-specific overrides (fireworks/nvidia/
-  // codebuddy) keep their own smaller served windows above.
-  { pattern: "*minimax-m3*",    caps: { vision: true, reasoning: true, thinkingFormat: "minimax", contextWindow: 1000000, maxOutput: 131072 } },
+  // Native MiniMax providers override this conservative generic/third-party
+  // M3 descriptor above. Existing host-specific rows retain precedence.
+  { pattern: "*minimax-m3*",    caps: { vision: true, reasoning: true, thinkingFormat: "minimax", contextWindow: 512000, maxOutput: 131072 } },
+
   { pattern: "*minimax-m2.7*",  caps: { vision: true, reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 204800, maxOutput: 131072 } },
   { pattern: "*minimax-m2.5*",  caps: { vision: true, reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 204800, maxOutput: 131072 } },
   { pattern: "*minimax*",       caps: { reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 } },

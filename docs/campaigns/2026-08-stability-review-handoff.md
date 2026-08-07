@@ -15,11 +15,11 @@ everything else with precise `DEFER` reasons, and produce a cumulative ledger.
 ## Read first
 
 1. `AGENTS.md` — repository contract (binding).
-2. `docs/campaigns/2026-08-stability-handoff.md` — campaign handoff with status
-   snapshot, theme inventory, recipes, and pre-existing failure inventory.
+2. `docs/campaigns/2026-08-stability-repair-handoff.md` — committed campaign
+   repair plan, status workflow, and supported-runtime gate instructions.
 3. `docs/campaigns/stability-port-2026-08-ledger.md` — cumulative campaign ledger
-   (lives on every themed branch; the final version is on
-   `port/provider-fixes-stability`).
+   (lives on every themed branch; inspect its current version through the mapped
+   worktree and current PR diff).
 
 ## Branches to review
 
@@ -34,22 +34,28 @@ everything else with precise `DEFER` reasons, and produce a cumulative ledger.
 | db-usage | `port/db-usage-stability` | [#394](https://github.com/bloodf/durindoor/pull/394) |
 | provider-fixes | `port/provider-fixes-stability` | [#395](https://github.com/bloodf/durindoor/pull/395) |
 
-Worktrees (already created on disk):
-- `~/.omc/wt-sse-streaming-stability`
-- `~/.omc/wt-translator-stability`
-- `~/.omc/wt-combo-routing-stability`
-- `~/.omc/wt-resilience-stability`
-- `~/.omc/wt-mcp-gateway-stability`
-- `~/.omc/wt-auth-oauth-stability`
-- `~/.omc/wt-db-usage-stability`
-- `~/.omc/wt-provider-fixes-stability`
+Discover worktrees before branch-specific checks:
+
+  git worktree list --porcelain
+
+Record each `worktree`, `HEAD`, and `branch` tuple, then match it to
+`gh pr view <N> -R bloodf/durindoor --json number,headRefName,headRefOid,url`.
+As of 2026-08-07, examples were `/home/cortexos/.omp/wt/391-54e088a`
+through `/home/cortexos/.omp/wt/396-54e088a`, with local branches `pr-391`
+through `pr-396`. These paths may expire; do not use an example until the
+porcelain output and PR head metadata confirm it. The three ledger-only themes
+may have no worktree and require an approved isolated checkout.
 
 ## Focus per branch
 
-1. **Source-of-truth inspection.** For each `GAP → ported` row in the ledger, open
-   the upstream PR (`pr://decolua/9router/<N>/diff/all` or
-   `pr://diegosouzapw/OmniRoute/<N>/diff/all` or `gh pr view --json files -R <owner>/<repo> <N>`).
-   Confirm the cited DD file:line anchor still exists at the current branch HEAD.
+1. **Source-of-truth inspection.** For each `GAP → ported` row in the ledger,
+   fetch the patch, not only its file metadata. For 9router, run
+   `gh pr diff 3020 -R decolua/9router`; query metadata separately with
+   `gh pr view 3020 -R decolua/9router --json number,title,url,headRefOid`.
+   For OmniRoute, run `gh pr diff 9457 -R diegosouzapw/OmniRoute` and
+   `gh pr view 9457 -R diegosouzapw/OmniRoute --json number,title,url,headRefOid`.
+   The harness equivalent is `pr://<owner>/<repo>/<N>/diff/all`. Confirm the
+   cited DurinDoor file:line anchor still exists at branch HEAD.
 2. **Evidence accuracy.** For each `DUPLICATE` row, confirm the cited DD file
    actually implements the behavior. Fabricated citations are a real failure mode
    (the translator #422 row was a manufactured duplicate; we caught and ported it
@@ -68,13 +74,12 @@ Worktrees (already created on disk):
    the body must carry the upstream PR URL.
 7. **Baseline impact.** `tests/__baseline__/known-fails.txt` must remain empty
    (0 lines) on every branch.
-8. **Pre-existing environment failures.** Two failures reproduce on a clean
-   `origin/main` worktree and are NOT this campaign's responsibility:
-   - `tests/unit/security-hardening.test.js` (wiring — 2 cases) — native
-     `better-sqlite3` ABI mismatch on Node 20+.
-   - `tests/unit/xai-oauth-service.test.js` (PKCE — 2 cases) — Node 24 fetch/PKCE
-     timeout.
-   Do not ask for these to be fixed inside the campaign.
+8. **Environment attribution.** Run both disputed suites from a clean
+   `origin/main` worktree with the repository-supported Node `20.20.2` and npm
+   `10.8.2` before classifying them:
+   `(cd tests && npx vitest run --config vitest.config.js unit/security-hardening.test.js unit/xai-oauth-service.test.js)`.
+   Node 24 results from the 2026-08-05 audit are unsupported-runtime historical
+   evidence only. They do not establish a supported-runtime pass or failure.
 
 ## Specific items to verify
 
@@ -127,32 +132,37 @@ Worktrees (already created on disk):
 
 ```text
 You are auditing the 2026-08 stability port campaign for the DurinDoor
-bloodf/durindoor fork. The campaign's authoritative plan is at
-docs/campaigns/2026-08-stability-handoff.md and the per-candidate ledger is at
-docs/campaigns/stability-port-2026-08-ledger.md. Read AGENTS.md first; the
+bloodf/durindoor fork. The committed repair plan is at
+docs/campaigns/2026-08-stability-repair-handoff.md and the per-candidate ledger
+is at docs/campaigns/stability-port-2026-08-ledger.md. Read AGENTS.md first; the
 repo contract is binding.
 
 Inspect, in order:
-1. The 9 port commits on branches port/sse-streaming-stability,
-   port/translator-stability, port/resilience-stability (3 + 4 + 1 = 8 branches
-   worth of worktrees, plus the cumulative ledger on every themed branch).
-2. The 5 zero-port ledger-only themes: combo-routing, mcp-gateway, auth-oauth,
-   db-usage, provider-fixes. Verify the deferred reasons match the live upstream
-   diffs (do not trust summary text).
-3. The cumulative ledger arithmetic at the campaign terminus
-   (port/provider-fixes-stability, commit e03a8d610).
+1. Derive the exact per-theme and per-port inventory from the current ledger row
+   tables and each theme and campaign summary; do not use counts in this prompt
+   as the inventory authority. The repaired ledger's current cross-check is 15
+   total ports, including 6 provider-fixes ports. It currently shows four
+   zero-port themes: combo-routing, mcp-gateway, auth-oauth, and db-usage.
+2. Inspect every port commit in that derived inventory. For every zero-port
+   theme, verify the deferred reasons against the live upstream diffs rather
+   than trusting summary text.
+3. Reconcile the cumulative ledger arithmetic in the current
+   [PR #395 diff](https://github.com/bloodf/durindoor/pull/395/files). Do not treat
+   its mutable history as evidence of the bytes inspected in the old audit.
 4. The known-fails baseline (must remain 0 lines on every branch).
-5. The two pre-existing environment failures (security-hardening, xai-oauth) —
-   reproduce on origin/main and are NOT this campaign's bugs.
+5. The disputed environment suites on clean origin/main with Node 20.20.2/npm
+   10.8.2. Do not use the historical Node 24 run as supported-runtime evidence.
 
 For each port commit:
-- Fetch the upstream PR via pr://decolua/9router/<N>/diff/all (or OmniRoute
-  equivalent) and confirm the local code change matches.
+- Fetch the concrete upstream patch with `gh pr diff <N> -R decolua/9router` or
+  `gh pr diff <N> -R diegosouzapw/OmniRoute`. Query metadata separately with
+  `gh pr view <N> -R <owner>/<repo> --json number,title,url,headRefOid`. The
+  harness equivalent is `pr://<owner>/<repo>/<N>/diff/all`.
 - Read the cited DD file:line and confirm it exists at the branch HEAD.
 - Read the cited test and confirm it asserts a real property of the fix.
-- Run the test file via `npx vitest run --config tests/vitest.config.js
-  tests/unit/<name>` from the relevant worktree.
-
+- From the relevant worktree root, run the concrete test path inside the tests
+  package. Example: `(cd tests && npx vitest run --config vitest.config.js
+  unit/sse-to-json-cache-tokens-3020.test.js)`.
 For each ledger row:
 - DUPLICATE: confirm the cited file/symbol/line range still implements the
   behavior. Fabricated citations are a Critical finding.
@@ -199,20 +209,21 @@ real-provider tests.
 
 - **Sonic agent wrote to the wrong branch.** Once (db-usage), the ledger-only
   commit landed on the user's dirty primary checkout (`tracking/main`) instead of
-  the dedicated worktree. Recover by `git reset --hard <user-tip>` on the primary
-  and cherry-pick the commit to the worktree. Verify the worktree path with
-  `git worktree list` before any state-changing action.
+  the dedicated worktree. Preserve the user tip, restore it with the repository's
+  approved non-destructive recovery procedure, and apply the campaign commit to
+  the intended worktree. Verify paths with `git worktree list` before mutation.
 - **Scout corrupted a worktree file.** During db-usage triage, a scout ran
   `git checkout` of `open-sse/services/usage/codex.js` inside a worktree, overwriting
   the file with the primary-checkout's dirty 10-line truncated version. The
   worktree had the correct 299-line version; the primary had the truncated one.
-  Recover by restoring from `git show HEAD:open-sse/services/usage/codex.js` (or
-  `git restore` from the worktree's HEAD) — never `git checkout` a tracked file
-  into or out of a worktree.
-- **Provider stream failures.** Pre-existing `tests/unit/security-hardening.test.js`
-  (native better-sqlite3 ABI) and `tests/unit/xai-oauth-service.test.js` (Node 24
-  PKCE timeout) reproduce on a clean `origin/main` worktree. Do not report these
-  as campaign regressions; attribute them to the environment.
+  From the affected worktree root, use
+  `git restore --source=HEAD -- open-sse/services/usage/codex.js`; never copy a
+  tracked file between worktrees.
+- **Provider stream attribution.** The 2026-08-05 audit ran
+  `tests/unit/security-hardening.test.js` and
+  `tests/unit/xai-oauth-service.test.js` only with Node 24. Treat those results as
+  unsupported-runtime history. Re-run both with Node 20.20.2/npm 10.8.2 before
+  calling either result pre-existing or campaign-caused.
 
 ## Report format
 

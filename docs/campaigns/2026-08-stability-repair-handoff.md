@@ -34,40 +34,56 @@ Do not merge any campaign PR. The maintainer decides whether and when to merge.
 
 ## Binding sources
 
-Before Phase 0, dispatch one batched read-only source-indexing wave. Agents read:
+Before Phase 0, run `git worktree list --porcelain` from the primary checkout.
+Record each `worktree`, `HEAD`, and `branch` tuple, then match PRs with
+`gh pr view <N> -R bloodf/durindoor --json number,headRefName,headRefOid,url`.
+Do not infer a path from a theme or reuse the examples below without confirming
+the live output. Dispatch one batched read-only source-indexing wave after the
+mapping is recorded. Agents read:
 
 1. `AGENTS.md`
-2. `.omc/wt-stability-campaign-audit/docs/campaigns/2026-08-stability-review-handoff.md`
-3. `.omc/wt-stability-campaign-audit/docs/campaigns/2026-08-stability-audit.md`
-4. `.omc/wt-stability-campaign-audit/docs/campaigns/stability-port-2026-08-ledger.md`
-5. `.omc/wt-stability-campaign-audit/docs/campaigns/2026-08-stability-repair-handoff.md`
-6. `package.json`, `tests/package.json`, `.commitlintrc.cjs`
+2. `<PR396_WORKTREE>/docs/campaigns/2026-08-stability-review-handoff.md`
+3. `<PR396_WORKTREE>/docs/campaigns/2026-08-stability-audit.md`
+4. `<PR396_WORKTREE>/docs/campaigns/stability-port-2026-08-ledger.md`
+5. `<PR396_WORKTREE>/docs/campaigns/2026-08-stability-repair-handoff.md`
+6. `<PR396_WORKTREE>/package.json`, `<PR396_WORKTREE>/tests/package.json`, and
+   `<PR396_WORKTREE>/.commitlintrc.cjs`
 7. Live PRs #391-#396, including every review thread and current diff
 
 They save indexed, hashed, compact artifacts. The parent reads only those
-artifacts, not the full sources. Branch-local ledgers remain live repair targets;
-the audit-worktree ledger is the immutable audited snapshot.
-
+artifacts, not the full sources. Branch-local ledgers remain live repair targets.
+Historical document bytes remain reproducible through
+`git show 79fb45ccca71187202ff3347bfe2856b6b93c624:docs/campaigns/2026-08-stability-audit.md`
+and `git show e03a8d610e18d32931ca50cf51b1de76c3a208cc:docs/campaigns/stability-port-2026-08-ledger.md`.
+Old rewritten port commits and test/commitlint command outputs lack retained
+immutable provenance; treat those claims as historical notes and use current PR
+diff/check evidence for the new verdict.
 The audit is evidence, not infallible truth. Several delegated audits disagreed
 about ledger classifications and arithmetic. Resolve disagreements from live
 upstream PR diffs and current DurinDoor source. Never copy a verdict because a
 prior report says it is correct.
 
-## Existing worktrees
+## Worktree discovery
 
-- `.omc/wt-sse-streaming-stability` — `port/sse-streaming-stability`, PR #391
-- `.omc/wt-translator-stability` — `port/translator-stability`, PR #392
-- `.omc/wt-combo-routing-stability` — `port/combo-routing-stability`, no PR
-- `.omc/wt-resilience-stability` — `port/resilience-stability`, PR #393
-- `.omc/wt-mcp-gateway-stability` — `port/mcp-gateway-stability`, no PR
-- `.omc/wt-auth-oauth-stability` — `port/auth-oauth-stability`, no PR
-- `.omc/wt-db-usage-stability` — `port/db-usage-stability`, PR #394
-- `.omc/wt-provider-fixes-stability` — `port/provider-fixes-stability`, PR #395
-- `.omc/wt-stability-campaign-audit` — `docs/stability-campaign-audit`, PR #396
+Paths are runtime state, not campaign constants. Run:
 
-The primary checkout contains user work. Never edit it, restore it, reset it,
-clean it, or use it to copy tracked files into a worktree. Never modify or
-remove unrelated `.omc/wt-*` worktrees.
+  git worktree list --porcelain
+
+As of 2026-08-07, the live PR checkout examples were:
+
+- `/home/cortexos/.omp/wt/391-54e088a` — local `pr-391`, PR #391
+- `/home/cortexos/.omp/wt/392-54e088a` — local `pr-392`, PR #392
+- `/home/cortexos/.omp/wt/393-54e088a` — local `pr-393`, PR #393
+- `/home/cortexos/.omp/wt/394-54e088a` — local `pr-394`, PR #394
+- `/home/cortexos/.omp/wt/395-54e088a` — local `pr-395`, PR #395
+- `/home/cortexos/.omp/wt/396-54e088a` — local `pr-396`, PR #396
+
+These examples may expire. Match the live porcelain tuples to PR metadata before
+reading or mutating a checkout. Combo-routing, MCP-gateway, and auth-oauth have no
+PR mapping in this snapshot; discover their branch worktree, or create an approved
+isolated worktree if none exists. The primary checkout contains user work. Never
+edit it, restore it, reset it, clean it, or use it to copy tracked files into a
+worktree. Never modify or remove an unrelated discovered worktree.
 
 ## Orchestration contract
 
@@ -136,10 +152,11 @@ unverified inspection. Delegate those actions to named branch-scoped agents.
    On mismatch, perform no mutation; transactionally mark this branch and every
    descendant state/gate/review/CI/thread/readiness artifact stale, release the
    mutation lease, and rebuild in order. Before any push, also record the remote
-   branch SHA. Push an existing branch with:
-   `git push --force-with-lease=refs/heads/<branch>:<recorded-remote-sha> <remote> <gated-sha>:refs/heads/<branch>`.
-   For a new branch, fetch, prove `refs/heads/<branch>` is absent, then run:
-   `git push --force-with-lease=refs/heads/<branch>: <remote> <gated-sha>:refs/heads/<branch>`.
+   branch SHA. The following commented templates are inert until an operator
+   replaces every uppercase token with checkpointed values and removes `#`:
+   `# git push --force-with-lease=refs/heads/BRANCH:RECORDED_REMOTE_SHA REMOTE GATED_SHA:refs/heads/BRANCH`.
+   For a new branch, fetch and prove `refs/heads/BRANCH` is absent first, then
+   use: `# git push --force-with-lease=refs/heads/BRANCH: REMOTE GATED_SHA:refs/heads/BRANCH`.
    Stop unless the remote ref is absent and stop on any lease mismatch.
 10. Never use `git reset --hard`, `git clean`, blind `git rebase --skip`, or a
     cross-worktree `git checkout`. On rebase conflict, abort, inspect the commit,
@@ -285,7 +302,7 @@ gate-runner, branch-operator, PR-operator, and readiness-verifier agents.
 
 ### PR #391 — SSE
 
-Worktree: `.omc/wt-sse-streaming-stability`.
+Worktree: use the live path mapped to PR #391 by the discovery step.
 
 Required repairs, subject to live verification:
 
@@ -314,19 +331,19 @@ Required repairs, subject to live verification:
       counts after all ports and reclassifications.
 - [ ] Resolve all four existing Codex P2 threads only after tests prove fixes.
 
-Focused gate from the PR worktree root:
+Focused gate from the PR worktree root. Vitest runs inside the `tests` package;
+if #651 is ported, add its concrete `unit/...test.js` path before running:
 
-  npx vitest run --config tests/vitest.config.js \
-    tests/unit/sse-to-json-cache-tokens-3020.test.js \
-    tests/unit/resolve-stream-flag.test.js \
-    tests/unit/sse-null-frame.test.js \
-    tests/unit/responses-completed-output.test.js \
-    tests/unit/responses-usage-trailing-6965.test.js \
-    <new-651-test-if-ported>
+  (cd tests && npx vitest run --config vitest.config.js \
+    unit/sse-to-json-cache-tokens-3020.test.js \
+    unit/resolve-stream-flag.test.js \
+    unit/sse-null-frame.test.js \
+    unit/responses-completed-output.test.js \
+    unit/responses-usage-trailing-6965.test.js)
 
 ### PR #392 — translator
 
-Worktree: `.omc/wt-translator-stability`.
+Worktree: use the live path mapped to PR #392 by the discovery step.
 
 - [ ] Make Gemini unsupported-keyword stripping schema-node-aware. Strip the five
       unsupported constraints in schema positions while preserving legitimate
@@ -342,14 +359,14 @@ Worktree: `.omc/wt-translator-stability`.
 - [ ] Update PR body, test totals, ledger counts, and commit URLs.
 - [ ] Resolve the existing Gemini P2 thread after the regression test passes.
 
-Focused gate:
+Focused gate from the PR worktree root. Add concrete paths for any newly ported
+GAPs before running:
 
-  npx vitest run --config tests/vitest.config.js \
-    tests/unit/codex-effort-wire.test.js \
-    tests/unit/gemini-schema-multiple-of.test.js \
-    tests/unit/openai-schema-numeric-constraints.test.js \
-    tests/unit/reasoningContentInjector.test.js \
-    <tests-for-newly-ported-gaps>
+  (cd tests && npx vitest run --config vitest.config.js \
+    unit/codex-effort-wire.test.js \
+    unit/gemini-schema-multiple-of.test.js \
+    unit/openai-schema-numeric-constraints.test.js \
+    unit/reasoningContentInjector.test.js)
 
 
 ### Per-branch integration and gate sequence
@@ -381,8 +398,8 @@ After a branch's content writers finish:
 Local gate for every PR: baseline 0 lines, diff scope, clean status before/after,
 docs checker whenever the diff contains Markdown/docs,
 `npx commitlint --from=origin/main --to=HEAD`, optional declared-base commitlint,
-and PR-title commitlint. For runtime/test changes, use Node 20.20.2/npm 10.8.2
-and run focused tests, `cd tests && npm run test:ci`, `npm run lint`,
+and PR-title commitlint. For runtime/test changes, use Node 20.20.2/npm 10.8.2,
+run focused tests and `(cd tests && npm run test:ci)`, then run `npm run lint`,
 `npm run check:agent-index`, an isolated `npm run build`, and LSP diagnostics.
 Derive any additional local equivalents from the live workflow files.
 
@@ -413,7 +430,7 @@ readiness record stale, then rebuild in dependency order.
 
 ### Combo-routing
 
-Worktree: `.omc/wt-combo-routing-stability`.
+Worktree: use the discovered `port/combo-routing-stability` checkout; create an approved isolated worktree if absent.
 
 - [ ] Replay the authoritative 62-row combo section onto the chosen clean stack;
       discard the divergent stale ledger lineage.
@@ -427,7 +444,7 @@ Worktree: `.omc/wt-combo-routing-stability`.
 
 ### PR #393 — resilience
 
-Worktree: `.omc/wt-resilience-stability`.
+Worktree: use the live path mapped to PR #393 by the discovery step.
 
 - [ ] Rebuild on the final combo-routing remote SHA.
 - [ ] Add non-401 tests for `token_expired`, `unauthorized_client`, and/or
@@ -440,14 +457,15 @@ Worktree: `.omc/wt-resilience-stability`.
       summary block.
 - [ ] Recompute resilience rows, source split, and summary mechanically. Do not
       reuse the contradictory prior totals.
-- [ ] Keep the port and docs commits isolated, update #393 metadata, then run:
+- [ ] Keep the port and docs commits isolated, update #393 metadata, then run
+      from the PR worktree root:
 
-      npx vitest run --config tests/vitest.config.js \
-        tests/unit/oauth-classify-token-expired.test.js
+      (cd tests && npx vitest run --config vitest.config.js \
+        unit/oauth-classify-token-expired.test.js)
 
 ### MCP-gateway
 
-Worktree: `.omc/wt-mcp-gateway-stability`.
+Worktree: use the discovered `port/mcp-gateway-stability` checkout; create an approved isolated worktree if absent.
 
 - [ ] Rebuild from the clean resilience base without inherited malformed ledger
       blocks.
@@ -461,7 +479,7 @@ Worktree: `.omc/wt-mcp-gateway-stability`.
 
 ### Auth-oauth
 
-Worktree: `.omc/wt-auth-oauth-stability`.
+Worktree: use the discovered `port/auth-oauth-stability` checkout; create an approved isolated worktree if absent.
 
 - [ ] Rebuild all 46 rows from the Phase 1 artifact. The prior 0/11/35 total is
       invalid until a mechanical recount proves it.
@@ -480,11 +498,12 @@ Worktree: `.omc/wt-auth-oauth-stability`.
 
 ### PR #394 — DB usage
 
-Worktree: `.omc/wt-db-usage-stability`.
+Worktree: use the live path mapped to PR #394 by the discovery step.
 
 - [ ] Rebuild the branch on the clean auth-oauth base.
-- [ ] Remove inherited `e691fc2e1` format-detection runtime changes and test;
-      current main already covers the behavior and the DB PR must be truthful.
+- [ ] Remove inherited format-detection runtime changes and test recorded in
+      [PR #394](https://github.com/bloodf/durindoor/pull/394); current main
+      already covers the behavior and the DB PR must be truthful.
 - [ ] Never use blind `rebase --skip`. If a mixed commit conflicts, abort,
       inspect it, edit the rebase todo, keep the ledger delta, and drop only the
       proven inherited runtime delta.
@@ -505,7 +524,7 @@ and PR operators act only after an independent verifier accepts it.
 
 ## Phase 4 — Rebuild PR #395 as the eight-theme terminus
 
-Worktree: `.omc/wt-provider-fixes-stability`.
+Worktree: use the live path mapped to PR #395 by the discovery step.
 
 Do not start this edit until corrected outputs from SSE, translator, combo,
 resilience, MCP, auth, and DB are fixed on their approved branch tips.
@@ -528,11 +547,13 @@ resilience, MCP, auth, and DB are fixed on their approved branch tips.
 - [ ] Rewrite #395 body so “ledger-only,” port count, test count, candidate count,
       files, dependencies, and all-eight-theme claim match the actual diff.
 
-Run focused tests for every new provider port, then:
+Run focused tests for every new provider port, then run this sequence from the
+PR worktree root. The subshell returns to that root before lint, docs, and
+commitlint:
 
-  cd tests && npm run test:ci
+  (cd tests && npm run test:ci)
   npm run lint
-  node scripts/check-docs.mjs
+  npm run check:docs
   npx commitlint --from=port/db-usage-stability --to=HEAD
 
 Also validate baseline, LSP diagnostics, PR title, and live CI. Request a fresh
@@ -541,22 +562,23 @@ Resolve all findings and verified-bot threads before marking #395 ready.
 
 ## Phase 5 — Repair and refresh audit PR #396
 
-Worktree: `.omc/wt-stability-campaign-audit`.
+Worktree: use the live path mapped to PR #396 by the discovery step.
 
 - [ ] Rebase #396 on the corrected provider-fixes tip.
 - [ ] Commit `docs/campaigns/2026-08-stability-review-handoff.md` so the audit's
       source of record is fetchable in the PR tree.
 - [ ] Keep `docs/campaigns/2026-08-stability-repair-handoff.md` linked from the
       docs index.
-- [ ] Replace every dead reference to
-      `docs/campaigns/2026-08-stability-handoff.md` with the committed review
-      handoff unless a real authoritative plan is recovered from source.
+- [ ] Confirm every campaign-plan citation resolves to the committed
+      `docs/campaigns/2026-08-stability-repair-handoff.md` or
+      `docs/campaigns/2026-08-stability-review-handoff.md` source.
 - [ ] Rerun clean-origin attribution in a clean origin/main worktree using the
       repository-supported Node `20.20.2` and npm `10.8.2`. Record exact versions,
-      commands, exit codes, and results for:
+      commands, exit codes, and results. From that clean worktree root, run:
 
-      tests/unit/security-hardening.test.js
-      tests/unit/xai-oauth-service.test.js
+      (cd tests && npx vitest run --config vitest.config.js \
+        unit/security-hardening.test.js \
+        unit/xai-oauth-service.test.js)
 
       Do not change package engine declarations merely to make the evidence fit.
       If the supported runtime is unavailable, label prior Node 24 evidence
@@ -567,8 +589,8 @@ Worktree: `.omc/wt-stability-campaign-audit`.
       candidate totals, tests, branch graph, findings, concerns, and verdict from
       observed evidence. Do not change `REJECT` to `APPROVED` because fixes were
       attempted; change it only when every finding is demonstrably closed.
-- [ ] Resolve the three existing #396 Codex P2 threads with links to committed
-      fixes and supported-runtime evidence.
+- [ ] Resolve all six existing #396 review comments and any new actionable
+      threads with links to committed fixes and supported-runtime evidence.
 - [ ] Run `node scripts/check-docs.mjs`, commitlint from the provider branch,
       PR-title commitlint, and GitHub CI.
 

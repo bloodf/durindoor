@@ -1,44 +1,54 @@
-# Stability Port Campaign — Consolidated Audit Report
+# Stability Port Campaign — Pre-Repair Audit Snapshot
 
-**Date:** 2026-08-05  
-**Target:** 8-theme stability port campaign for `bloodf/durindoor` (fork of `decolua/9router`, cross-fork source `diegosouzapw/OmniRoute`)  
-**Audit worktree:** `.omc/wt-stability-campaign-audit` (`docs/stability-campaign-audit`)  
-**Campaign terminus:** `port/provider-fixes-stability` @ `e03a8d610`  
+> **Historical document snapshot, not a current readiness verdict.** Two
+> immutable document blobs preserve the 2026-08-05 record: the
+> [audit report at `79fb45ccca71187202ff3347bfe2856b6b93c624`](https://github.com/bloodf/durindoor/commit/79fb45ccca71187202ff3347bfe2856b6b93c624)
+> and the [terminus ledger at `e03a8d610e18d32931ca50cf51b1de76c3a208cc`](https://github.com/bloodf/durindoor/commit/e03a8d610e18d32931ca50cf51b1de76c3a208cc).
+> The old rewritten port commits and test/commitlint command outputs lack retained
+> immutable provenance. Treat their claims as unreproducible historical notes.
+> Current readiness requires a new audit of final pushed branch tips with Node
+> 20.20.2/npm 10.8.2.
+
+**Date:** 2026-08-05
+**Target:** 8-theme stability port campaign for `bloodf/durindoor` (fork of `decolua/9router`, cross-fork source `diegosouzapw/OmniRoute`)
+**Current PR #396 checkout example:** `/home/cortexos/.omp/wt/396-54e088a` on 2026-08-07; rediscover with `git worktree list --porcelain` because this path is not durable
+**Historical campaign terminus ledger:** [`e03a8d610e18d32931ca50cf51b1de76c3a208cc`](https://github.com/bloodf/durindoor/commit/e03a8d610e18d32931ca50cf51b1de76c3a208cc); current PR diffs and checks do not prove old source/test bytes or command results
 **Model disclosure:** Parent synthesis ran on `durindoor/cx/gpt-5.6-sol`. Delegated reviewer subagents were frequently routed to `durindoor/cc/claude-opus-4-8` by the task harness; the substitution is noted in this report as required by the review handoff.
 
 ```yaml
-auditSummary:
+snapshotStatus: HISTORICAL_DOCUMENT_BLOBS_REPRODUCIBLE_COMMAND_EVIDENCE_UNAVAILABLE
+supportedRuntimeRecheck: PENDING_NODE_20_20_2_NPM_10_8_2
+historicalAuditReport:
+  commit: 79fb45ccca71187202ff3347bfe2856b6b93c624
   portsReviewed: 9
   duplicatesSpotChecked: 95
   defersSpotChecked: 202
-  ledgersValidated:
-    - port/sse-streaming-stability
-    - port/translator-stability
-    - port/resilience-stability
-    - port/combo-routing-stability (ledger-only; divergent lineage)
-    - port/mcp-gateway-stability (ledger-only; no PR path)
-    - port/auth-oauth-stability (ledger-only)
-    - port/db-usage-stability (#394 stack)
-    - port/provider-fixes-stability (#395 stack)
-  knownFailsBaseline: { lines: 0, expected: 0 }
+historicalTerminusLedger:
+  commit: e03a8d610e18d32931ca50cf51b1de76c3a208cc
+  themes: [sse-streaming, translator, combo-routing, auth-oauth, db-usage, provider-fixes]
+  candidates: 285
+  ports: 8
+  duplicates: 92
+  defers: 185
+  omittedThemes: [resilience, mcp-gateway]
+historicalOperationalClaims:
+  knownFailsBaseline: "report says 0 lines; command output unavailable"
   preExistingEnvFailuresReproduced: []
 
 findings:
   - severity: Critical
     theme: campaign-documents
-    pr: "n/a"
-    location: "docs/campaigns/2026-08-stability-handoff.md"
+    pr: "#396"
+    location: "docs/campaigns/2026-08-stability-review-handoff.md"
     issue: >
-      The review handoff and verifier prompt cite an authoritative plan at
-      docs/campaigns/2026-08-stability-handoff.md, but the file does not exist in
-      any checkout, worktree, or git history. Only the review handoff
-      (docs/campaigns/2026-08-stability-review-handoff.md) is present. The
-      campaign therefore lacks a discoverable authoritative plan, and the
-      verifier instructions reference a dead document.
+      At audit time, the review handoff cited a nonexistent campaign plan. The
+      committed source is now
+      docs/campaigns/2026-08-stability-repair-handoff.md, and the review handoff
+      points to it. This finding records the pre-repair defect rather than a
+      current dead reference.
     recommendation: >
-      Create the missing plan or retitle all references to the review handoff;
-      ensure every future campaign has one authoritative document that matches
-      the file name used in instructions and PR bodies.
+      Keep campaign instructions anchored to the committed repair handoff and
+      verify its presence in the final PR tree.
 
   - severity: Critical
     theme: resilience
@@ -59,29 +69,27 @@ findings:
   - severity: Critical
     theme: combo-routing
     pr: "ledger-only"
-    location: "port/combo-routing-stability branch HEAD 01f0f351b vs. ledger"
+    location: "historical audit blob: former port/combo-routing-stability tip"
     issue: >
-      The combo-routing ledger section with 62 rows exists only on the divergent
-      91a787cd lineage, not on the branch HEAD (01f0f351b) that the campaign
-      claims as the combo worktree tip. The HEAD ledger contains only SSE and
-      translator themes. Combo therefore has no verifiable ledger at the stated
-      campaign terminus, and its arithmetic (10 duplicate / 52 defer) cannot be
-      validated against the actual branch.
+      The immutable audit report says the 62-row combo-routing ledger existed
+      only on one local lineage and not on the inspected branch tip, whose ledger
+      contained only SSE and translator themes. The report blob preserves that
+      claim; its cited old branch-tip source objects are not retained as published
+      evidence, so recheck current lineage before acting.
     recommendation: >
-      Reconcile the combo-routing lineage: either 91a787cd is the real combo tip
-      and 01f0f351b is stale, or the 62-row ledger must be replayed onto the
-      current branch. Do not report a combo count without a ledger on the branch
-      HEAD.
+      Rebuild the combo-routing conclusion from the current branch and PR diff.
+      Replay the 62-row ledger only if current evidence supports it. Do not
+      report a combo count without a ledger on the current branch HEAD.
 
   - severity: Critical
     theme: mcp-gateway
     pr: "ledger-only"
     location: "port/mcp-gateway-stability"
     issue: >
-      MCP-gateway has no PR and no merge path. The terminus branch
-      (port/provider-fixes-stability) and the audit worktree ledger contain only
-      six themes, omitting both resilience and mcp-gateway despite #395 claiming
-      a cumulative record for all eight themes.
+      The immutable terminus ledger contains six themes and omits resilience and
+      mcp-gateway, matching the historical report's statement that MCP-gateway
+      had no PR or merge path. Verify current completeness from the current #395
+      diff before acting.
     recommendation: >
       Either create an MCP PR with the ledger-only deferrals or remove the claim
       that the campaign records all eight themes. Do not merge a cumulative
@@ -94,10 +102,12 @@ findings:
     issue: >
       #395 claims a zero-port / ledger-only / no-tests scope, but its diff and
       ancestry inherit open-sse/services/provider.js and
-      tests/translator/format-detection.test.js from e691fc2e1, a stale-v3.9.1
+      tests/translator/format-detection.test.js, visible in
+      [PR #394](https://github.com/bloodf/durindoor/pull/394) and
+      [PR #395](https://github.com/bloodf/durindoor/pull/395), from a stale-v3.9.1
       format-detection port. The current main already handles anthropic-version
-      via #389, making the inherited code redundant or divergent. The PR body is
-      therefore inaccurate and the branch is not ledger-only.
+      via #389, making the inherited code redundant or divergent. The PR body
+      is therefore inaccurate and the branch is not ledger-only.
     recommendation: >
       Rebase the provider-fixes branch on current main, drop the redundant
       format-detection code, and rewrite the PR body to match the real diff.
@@ -153,14 +163,17 @@ findings:
   - severity: Important
     theme: sse-streaming
     pr: "#391 / #3020"
-    location: "port/sse-streaming-stability e2403e298"
+    location: "unreproducible historical note about the former PR #391 history"
     issue: >
-      The follow-up commit e2403e298 normalizes inclusive/exclusive cache usage
-      but mixes #3020 source changes with #721 test edits and omits the
-      upstream PR URL from the commit body, violating commit-isolation rules.
+      The 2026-08-05 notes alleged that a follow-up commit mixed #3020 source
+      changes with #721 test edits and omitted the upstream PR URL. Branch
+      rewriting removed the old commit, and the audit retained no immutable
+      commit or patch artifact, so this commit-isolation claim cannot be
+      reproduced from current PR #391 history.
     recommendation: >
-      Split the mixed commit into a #3020-only change and a #721-only test
-      commit, each with the correct upstream URL in the body.
+      Inspect the current [PR #391 diff](https://github.com/bloodf/durindoor/pull/391/files)
+      and [checks](https://github.com/bloodf/durindoor/pull/391/checks). Require
+      isolation fixes only when current immutable commit IDs and diffs support them.
 
   - severity: Important
     theme: sse-streaming
@@ -204,15 +217,17 @@ findings:
 
   - severity: Important
     theme: translator
+    location: "unreproducible historical note about the former PR #392 history"
     pr: "#392 / #422"
-    location: "port/translator-stability 43eb1a869"
     issue: >
-      The #422 commit edits Codex comments that belong to #1425 (lines 856 and
-      864), violating commit isolation. The coercion itself reaches all four
-      converter routes correctly, but the commit is not single-purpose.
+      The 2026-08-05 notes alleged that the #422 commit also edited Codex
+      comments belonging to #1425. Branch rewriting removed the old inspected
+      commit, and no immutable commit or patch artifact was retained. Current PR
+      #392 history cannot prove that historical commit-isolation claim.
     recommendation: >
-      Move the #1425 comment changes into the #1425 commit and keep #422 limited
-      to numeric-constraint coercion.
+      Inspect the current [PR #392 diff](https://github.com/bloodf/durindoor/pull/392/files)
+      and [checks](https://github.com/bloodf/durindoor/pull/392/checks). Change
+      current history only if current immutable commit IDs and diffs show mixing.
 
   - severity: Important
     theme: resilience
@@ -319,51 +334,48 @@ findings:
 
 concerns:
   - >
-    The PR #395 terminus claims to be the cumulative record for all 8 themes,
-    but the ledger at e03a8d610 contains only SSE, translator, combo-routing,
-    auth-oauth, db-usage, and provider-fixes. Resilience and mcp-gateway are
-    absent. This is not a counting discrepancy; it is a missing-theme defect.
+    The immutable terminus ledger at e03a8d610e18d32931ca50cf51b1de76c3a208cc
+    contains six themes and omits resilience and mcp-gateway. Its mechanically
+    summed theme totals are 285 candidates: 8 ports, 92 duplicates, 185 defers.
   - >
-    Two separate branch lineages exist: Lineage A (combo 01f0f351b → #1821 →
-    resilience e62ff5146 → MCP 99689895b) and Lineage B from stale v3.9.1 base
-    e01f542 (format-detection e691fc2e1 → combo 91a787cd → auth 60b1135f4 → DB
-    ea4c803b9 → provider e03a8d610). Lineage B is behind current main by two
-    commits. #394 and #395 sit on Lineage B and carry redundant/divergent code.
+    The immutable audit report describes two local branch lineages. Its named old
+    source commits are not all retained as published evidence, so rebuild current
+    ancestry conclusions from current immutable commit IDs before acting.
   - >
-    The handoff instructs reviewers to treat
-    docs/campaigns/2026-08-stability-handoff.md as the authoritative plan, but
-    that file is absent. This report uses the review handoff
-    (docs/campaigns/2026-08-stability-review-handoff.md) as the closest available
-    source of record and notes the dead citation explicitly.
+    The review handoff cited a nonexistent plan during the historical audit. It
+    now points to docs/campaigns/2026-08-stability-repair-handoff.md. The final
+    audit must verify that source at repaired branch tips.
   - >
-    All 8 campaign worktrees keep tests/__baseline__/known-fails.txt at 0
-    lines/0 bytes, and commitlint passed on the appropriate ranges for each
-    branch. These baseline checks are clean, but they do not compensate for the
-    ledger and source defects above.
+    The audit report says tests/__baseline__/known-fails.txt had 0 lines and
+    commitlint passed on eight worktrees. No retained command output reproduces
+    those operational claims. Run both checks on current final tips.
 
 cleanOriginAttribution:
   - path: tests/unit/security-hardening.test.js
-    status: not-reproduced-as-pre-existing
+    status: unreproducible-historical-note; supported-runtime-recheck-pending
     evidence: >
-      Run on a clean origin/main worktree at ee1eddf1 with Node
-      v24.19.0/npm 12.0.2: all 20/20 tests passed. The handoff's claim of a
-      native better-sqlite3 ABI mismatch did not reproduce in this environment.
+      The notes reported 20/20 passing on clean origin/main with Node
+      v24.19.0/npm 12.0.2, but retained no immutable tree ID and command output.
+      Node 24 is unsupported. Re-run on the current immutable origin/main commit
+      with Node 20.20.2/npm 10.8.2 and preserve output.
   - path: tests/unit/xai-oauth-service.test.js
-    status: not-reproduced-as-pre-existing
+    status: unreproducible-historical-note; supported-runtime-recheck-pending
     evidence: >
-      Run on a clean origin/main worktree at ee1eddf1 with Node
-      v24.19.0/npm 12.0.2: all 5/5 tests passed. The handoff's claim of a Node
-      24 fetch/PKCE timeout did not reproduce in this environment.
+      The notes reported 5/5 passing in the same environment, but retained no
+      immutable tree ID and command output. Re-run on the current immutable
+      origin/main commit with Node 20.20.2/npm 10.8.2 and preserve output before
+      assigning pass, failure, or pre-existing status.
 
-verdict: REJECT
+verdict: HISTORICAL_REJECT_PENDING_FINAL_BRANCH_TIPS
 ```
 
 ## Scope and method
 
-This audit reviewed the 8-theme stability port campaign from evidence gathered
-by independent theme, port, PR, arithmetic, and ancestry reviewers. The parent
-orchestrator independently ran the focused tests, origin checks, and commitlint
-gates reported below; the report-writing subagent did not rerun them.
+The immutable audit-report and terminus-ledger blobs preserve historical
+document bytes and make their text and ledger arithmetic reproducible with
+`git show`. They do not preserve old rewritten port patches or command output.
+Treat historical test, gate, and commit-isolation statements as unaudited notes
+until current immutable source and newly retained output confirm them.
 
 Work reviewed:
 
@@ -378,138 +390,136 @@ Work reviewed:
 | db-usage | `port/db-usage-stability` | #394 | ledger-only, but PR diff carries inherited code |
 | provider-fixes | `port/provider-fixes-stability` | #395 | ledger-only, but PR diff carries inherited code |
 
-Spot-check method: for every port commit, the evidence bundle contains the
-upstream PR diff, the cited DD file:line anchor, the test assertion, and the
-focused vitest result. For ledger-only themes, every row was inspected for
-source-backed evidence; fabricated or inverted citations are flagged as findings.
+The historical audit and terminus ledger documents are retained. The old source
+patches and command-output bundle are not. Current mutable PR pages help locate
+today's diff and checks but do not prove source or test results from 2026-08-05.
 
-## Port verification table
+## Historical port notes and current inspection links
 
-| Theme | Upstream PR | DD commit | Cited file:line anchor | Test file | Tests | Result |
-|-------|-------------|-----------|------------------------|-----------|-------|--------|
-| sse-streaming | #3020 | a3803e100 (initial), e2403e298 (follow-up) | `open-sse/handlers/chatCore/sseToJsonHandler.js:212-220` | `tests/unit/sse-to-json-cache-tokens-3020.test.js` | 14 total | pass |
-| sse-streaming | #1272 | dcc871ee9 | `open-sse/handlers/chatCore/streamFlag.js:27` | `tests/unit/resolve-stream-flag.test.js` | 14 total | pass |
-| sse-streaming | #1148 | 6f966d887 | `open-sse/translator/index.js:254-256`, `open-sse/utils/streamHelpers.js:143` | `tests/unit/sse-null-frame.test.js` | 14 total | pass (but missing `registerAll.js` import) |
-| sse-streaming | #721 | f99ceb044 | `open-sse/transformer/responsesTransformer.js:88-92`, `open-sse/translator/response/openai-responses.js:22-28,491-493` | `tests/unit/responses-completed-output.test.js` | 14 total | pass (but incomplete coverage) |
-| translator | #3018 | 703d98d9c | `open-sse/translator/formats/gemini.js:25` | `tests/unit/gemini-schema-multiple-of.test.js` | 30 total | pass |
-| translator | #1425 | 3694d3ebb | `open-sse/executors/codex.js:867` | `tests/unit/codex-effort-wire.test.js` | 30 total | pass |
-| translator | #1337 | 0c180f182 | `open-sse/utils/reasoningContentInjector.js:15` | `tests/unit/reasoningContentInjector.test.js` | 30 total | pass |
-| translator | #422 | 43eb1a869 | `open-sse/translator/formats/openai.js`, `open-sse/translator/request/claude-to-openai.js:84-85,124`, `open-sse/translator/request/openai-responses.js:279` | `tests/unit/openai-schema-numeric-constraints.test.js` | 30 total | pass (but commit edits #1425 comments) |
-| resilience | #1821 | 4fa1153e9 | `open-sse/services/tokenRefresh/providers.js:301-309` | `tests/unit/oauth-classify-token-expired.test.js` | 3 | pass (but marker assertions both use 401) |
+| Theme | Upstream PR | Current PR diff | Current checks | Historical test note | Provenance status |
+|-------|-------------|-----------------|----------------|----------------------|-------------------|
+| sse-streaming | #3020 | [#391 current diff](https://github.com/bloodf/durindoor/pull/391/files) | [#391 current checks](https://github.com/bloodf/durindoor/pull/391/checks) | `sse-to-json-cache-tokens-3020.test.js`; reported in 14-test run | old commit and output unavailable |
+| sse-streaming | #1272 | [#391 current diff](https://github.com/bloodf/durindoor/pull/391/files) | [#391 current checks](https://github.com/bloodf/durindoor/pull/391/checks) | `resolve-stream-flag.test.js`; reported in 14-test run | old commit and output unavailable |
+| sse-streaming | #1148 | [#391 current diff](https://github.com/bloodf/durindoor/pull/391/files) | [#391 current checks](https://github.com/bloodf/durindoor/pull/391/checks) | `sse-null-frame.test.js`; reported pass with coverage defect | old commit and output unavailable |
+| sse-streaming | #721 | [#391 current diff](https://github.com/bloodf/durindoor/pull/391/files) | [#391 current checks](https://github.com/bloodf/durindoor/pull/391/checks) | `responses-completed-output.test.js`; reported pass with incomplete coverage | old commit and output unavailable |
+| translator | #3018 | [#392 current diff](https://github.com/bloodf/durindoor/pull/392/files) | [#392 current checks](https://github.com/bloodf/durindoor/pull/392/checks) | `gemini-schema-multiple-of.test.js`; reported in 30-test run | old commit and output unavailable |
+| translator | #1425 | [#392 current diff](https://github.com/bloodf/durindoor/pull/392/files) | [#392 current checks](https://github.com/bloodf/durindoor/pull/392/checks) | `codex-effort-wire.test.js`; reported in 30-test run | old commit and output unavailable |
+| translator | #1337 | [#392 current diff](https://github.com/bloodf/durindoor/pull/392/files) | [#392 current checks](https://github.com/bloodf/durindoor/pull/392/checks) | `reasoningContentInjector.test.js`; reported in 30-test run | old commit and output unavailable |
+| translator | #422 | [#392 current diff](https://github.com/bloodf/durindoor/pull/392/files) | [#392 current checks](https://github.com/bloodf/durindoor/pull/392/checks) | `openai-schema-numeric-constraints.test.js`; reported pass with isolation concern | old commit and output unavailable |
+| resilience | #1821 | [#393 current diff](https://github.com/bloodf/durindoor/pull/393/files) | [#393 current checks](https://github.com/bloodf/durindoor/pull/393/checks) | `oauth-classify-token-expired.test.js`; reported 3-test pass with weak assertions | old commit and output unavailable |
 
-**Focused test totals:**
-- SSE: 4 files, 14 tests passed.
-- Translator: 4 files, 30 tests passed.
-- Resilience: 1 file, 3 tests passed.
-- All commitlint ranges passed on the audited branches.
+**Unreproducible historical totals:** SSE 14, translator 30, resilience 3. The
+audit retained no command output or immutable tested tree IDs. Run the focused
+tests on current PR heads and use current check evidence for any new verdict.
 
 ## Ledger/theme summary table
 
-| Theme | Candidates | As-written ports | As-written duplicate | As-written defer | Source-backed issues | Verdict |
-|-------|------------|------------------|----------------------|------------------|----------------------|---------|
-| sse-streaming | 48 | 4 | 14 | 30 | Conservative corrected 6 GAP / 12 DUP / 30 DEFER; citation defects #8948/#9003; count drift 49→52 | reject |
-| translator | 48 | 4 | 22 | 22 | 4/22/22 arithmetic passes but multiple false DUPLICATES (#2762, #628, #1193, #2001, #1264) | reject |
-| combo-routing | 62 | 0 | 10 | 52 | Ledger section only on divergent 91a787cd; missing from branch HEAD 01f0f351b; missing summary tables | reject |
-| resilience | 15 listed (14 distinct) | 1 | 2 | 11 (plus phantom #3012) | Duplicate #1821; phantom #3012; nonexistent test citation | reject |
-| mcp-gateway | 7 | 0 | 1 | 6 | Minor path-prefix errors; no PR path | reject |
-| auth-oauth | 46 | 0 | 11 | 35 | Many fabricated/inverted citations; reviewers disagreed on partial-bundle taxonomy | reject |
-| db-usage | 38 | 0 | 16 | 22 | #424 cites the wrong table; #2811 is a compact GAP; several DEFER rows are already DUPLICATE | reject |
-| provider-fixes | 43 | 0 | 19 | 24 | High-confidence GAPs mislabeled DEFER; fabricated/stale scope (#3023 etc.) | reject |
-| **Total** | **306** | **9** | **95** | **202** | **Cumulative arithmetic is not trustworthy** | **REJECT** |
+| Theme | Historical candidates | Reported ports | Reported duplicate | Reported defer | Historical issue note | Historical verdict |
+|-------|-----------------------|----------------|--------------------|----------------|-----------------------|--------------------|
+| sse-streaming | 48 | 4 | 14 | 30 | Notes proposed 6 GAP / 12 DUP / 30 DEFER and named citation defects #8948/#9003 | reject |
+| translator | 48 | 4 | 22 | 22 | Notes named possible false DUPLICATES #2762, #628, #1193, #2001, #1264 | reject |
+| combo-routing | 62 | 0 | 10 | 52 | Notes described a divergent lineage and missing summary tables | reject |
+| resilience | 15 listed (14 distinct) | 1 | 2 | 11 (plus phantom #3012) | Notes named duplicate #1821, phantom #3012, and a bad test citation | reject |
+| mcp-gateway | 7 | 0 | 1 | 6 | Notes named path-prefix errors and no PR path | reject |
+| auth-oauth | 46 | 0 | 11 | 35 | Notes named fabricated/inverted citations and disputed taxonomy | reject |
+| db-usage | 38 | 0 | 16 | 22 | Notes named a wrong #424 citation and disputed classifications | reject |
+| provider-fixes | 43 | 0 | 19 | 24 | Notes named mislabeled gaps and stale scope | reject |
+| **Audit-report aggregate** | **306** | **9** | **95** | **202** | **Includes themes absent from terminus ledger** | **REJECT** |
 
-The as-written campaign totals (9 port / 95 duplicate / 202 defer = 306) are
-arithmetically consistent with the per-theme as-written counts, but the
-source-backed semantic totals differ because of the misclassified rows listed
-above. This report therefore does **not** endorse the 9/95/202 totals as
-audited fact; it reports the as-written counts with their known defects.
+The immutable terminus ledger has six themes and mechanically sums to 285
+candidates: 8 ports, 92 duplicates, and 185 defers. The immutable audit report
+adds separate resilience and MCP findings and reports 306 / 9 / 95 / 202, but its
+own resilience duplicate/phantom-row finding explains why that aggregate cannot
+serve as valid cumulative ledger arithmetic. Recalculate from repaired tips.
 
 ## Document and arithmetic integrity
 
 Defects found in campaign documents and arithmetic:
 
-1. **Missing authoritative plan.** `docs/campaigns/2026-08-stability-handoff.md` is
-   cited as the authoritative plan but does not exist in git. Only the review
-   handoff (`docs/campaigns/2026-08-stability-review-handoff.md`) is present.
-2. **Missing themes at terminus.** The terminus ledger at `e03a8d610` contains
-   only six themes; resilience and mcp-gateway are absent despite #395 claiming a
-   cumulative record for all eight.
-3. **Resilience ledger corruption.** 15 rows list only 14 distinct candidates;
-   #1821 is duplicated, #3012 is a phantom summary-only reference, and the cited
-   test file does not exist.
-4. **Combo-routing ledger divergence.** The 62-row combo ledger exists on the
-   stale Lineage B (`91a787cd`), not on the stated branch HEAD (`01f0f351b`).
-5. **Cumulative arithmetic contradictions.** Early resilience / MCP / auth
-   ledgers contain literal `INS.PRE 143:`, duplicated translator tables,
-   truncated `…`, and self-contradictory cumulative totals (172/143 versus source
-   split 61/32). No valid cumulative arithmetic exists at the terminus.
-6. **Verifier instruction typo.** The handoff verifier says "9 ports" but writes
-   `(3 + 4 + 1 = 8)`; the correct decomposition is 4 SSE + 4 translator + 1
-   resilience = 9 ports across 3 of the 8 branches.
+1. **Dead plan citation at audit time.** The review handoff cited a nonexistent
+   plan. It now names the committed
+   `docs/campaigns/2026-08-stability-repair-handoff.md` source.
+2. **Reported missing themes at terminus.** Historical notes said the former #395
+   ledger contained six themes and omitted resilience and mcp-gateway. Verify the
+   current ledger through the [current PR #395 diff](https://github.com/bloodf/durindoor/pull/395/files).
+3. **Reported resilience ledger corruption.** Notes described 15 rows with 14
+   distinct candidates, duplicate #1821, phantom #3012, and a bad test citation.
+4. **Reported combo-routing ledger divergence.** The immutable audit report
+   describes a 62-row combo ledger on a stale local lineage rather than its
+   inspected branch tip.
+5. **Reported cumulative arithmetic contradictions.** The immutable audit report
+   records literal `INS.PRE 143:`, duplicated translator tables, truncated `…`,
+   and conflicting totals. Inspect those report bytes through `git show
+   79fb45ccca71187202ff3347bfe2856b6b93c624:docs/campaigns/2026-08-stability-audit.md`
+   and recompute current documents independently.
+6. **Historical verifier instruction typo.** The immutable audit report records
+   that the then-current handoff said "9 ports" but wrote `(3 + 4 + 1 = 8)`.
+   Recompute the current port inventory from the repaired ledger instead.
 
 ## PR and ancestry review
 
-- **#391 SSE** and **#392 translator** are direct from current main and are blocked
-  on approval/review because of unresolved valid bot P2 threads and the source
-  defects listed above.
-- **Lineage A:** `01f0f351b` (combo) → #1821 → `e62ff5146` (resilience) →
-  `99689895b` (MCP). MCP has no PR path and auth initially pointed to the same
-  MCP tip with no auth-specific delta.
-- **Lineage B:** from stale v3.9.1 base `e01f542` → `e691fc2e1` (format-detection
-  port) → `91a787cd` (combo) → `60b1135f4` (auth) → `ea4c803b9` (DB #394) →
-  `e03a8d610` (provider #395). This branch is behind current main by two commits.
-- **#394 / #395** PR bodies state zero-port / ledger-only / no tests, but their diffs
-  contain `open-sse/services/provider.js` and
-  `tests/translator/format-detection.test.js` inherited from `e691fc2e1`. Because
-  current main already handles `anthropic-version` via #389, this inherited code
-  is redundant or divergent and should be dropped on rebase.
-- **#395** must not merge until its claim of an all-eight-theme cumulative record
-  is true or corrected.
+The bullets below summarize historical audit-report claims whose cited old
+source commits are not all retained as published immutable evidence:
 
-## Baseline and environment results
+- Notes described #391 SSE and #392 translator as direct from then-current main
+  with unresolved review threads and source defects.
+- Notes described a combo-routing through resilience/MCP lineage and a separate
+  stale-v3.9.1 lineage through auth, #394, and #395.
+- Notes said #394/#395 claimed ledger-only scope while carrying provider and
+  format-detection test changes already handled by #389.
+- Notes said #395 lacked a complete all-eight-theme cumulative record.
 
-- `tests/__baseline__/known-fails.txt` was verified at 0 lines / 0 bytes on all
-  eight campaign worktrees. No campaign commit modifies the baseline.
-- Commitlint passed on the appropriate `origin/main..HEAD` range for each branch.
-- The two handoff-listed pre-existing environment failures were **not reproduced**
-  in the audit environment:
-  - `tests/unit/security-hardening.test.js`: 20/20 passed on clean `origin/main`
-    at `ee1eddf1` with Node v24.19.0 / npm 12.0.2.
-  - `tests/unit/xai-oauth-service.test.js`: 5/5 passed on the same clean
-    `origin/main` worktree.
-- The handoff attributes these failures to native `better-sqlite3` ABI mismatch
-  and Node 24 fetch/PKCE timeout; those failures did not occur in this
-  environment. They are therefore reported as **not reproduced** rather than as
-  confirmed pre-existing campaign regressions.
+Recompute every statement from current immutable commit IDs, current
+[#391](https://github.com/bloodf/durindoor/pull/391/files),
+[#392](https://github.com/bloodf/durindoor/pull/392/files),
+[#393](https://github.com/bloodf/durindoor/pull/393/files),
+[#394](https://github.com/bloodf/durindoor/pull/394/files), and
+[#395](https://github.com/bloodf/durindoor/pull/395/files) diffs, plus their
+current check pages. Do not treat these mutable pages as historical evidence.
 
-## Recommendations (prioritized)
+## Baseline and environment notes
 
-Because the verdict is **REJECT**, the campaign should not merge any themed PR
-until the following are addressed:
+- The immutable audit report says `tests/__baseline__/known-fails.txt` had 0
+  lines and commitlint passed across eight worktrees. Command output is
+  unavailable, so neither operational result is reproducible.
+- The report says `security-hardening.test.js` passed 20/20 and
+  `xai-oauth-service.test.js` passed 5/5 on clean origin/main with Node
+  v24.19.0/npm 12.0.2. The command output is unavailable, and Node 24 is
+  unsupported.
+- Re-run baseline, commitlint, and both suites on current immutable tips with
+  Node 20.20.2/npm 10.8.2. Preserve commands, versions, tree IDs, output, and
+  exit codes before making a current evidence claim.
 
-1. **Rebuild or reconcile the ledgers.** Start with resilience, combo-routing,
-   auth-oauth, db-usage, and provider-fixes. Remove duplicate/phantom rows,
-   correct fabricated citations, and reconcile the terminus so it contains all
-   eight themes or stops claiming it does.
-2. **Fix the source defects in the three ported PR branches.**
+## Historical recommendations recorded on 2026-08-05
+
+The historical **REJECT** produced the repair leads below. The current repaired
+branches were built to address them, so this list is neither a set of current
+merge blockers nor a current status report. A final reviewer must verify every
+item against the final immutable branch tips, current PR diffs, unresolved review
+threads, and current checks. Only that live final-tip audit can establish current
+findings or a readiness verdict.
+
+1. The audit called for rebuilding or reconciling the resilience, combo-routing,
+   auth-oauth, db-usage, and provider-fixes ledgers, removing duplicate or phantom
+   rows and false citations, and reconciling all eight themes.
+2. The audit called for source and test repairs in the three then-ported branches:
    - #391: split the mixed #3020/#721 commit, add `registerAll.js` to the #1148
-     test, complete #721 coverage for function calls and index guards.
-   - #392: scope #3018 keyword removal, move #1425 comment edits out of #422.
+     test, and complete #721 function-call and index-guard coverage.
+   - #392: scope #3018 keyword removal and move #1425 comment edits out of #422.
    - #393: add a non-401 marker test for #1821.
-3. **Rebase #394 and #395 on current main.** Drop the redundant
-   format-detection code from `e691fc2e1` and rewrite the PR bodies to match the
-   real diffs. Ensure #395 does not claim an all-eight-theme ledger until it
-   contains one.
-4. **Create the missing authoritative plan or fix every citation.** Either
-   write `docs/campaigns/2026-08-stability-handoff.md` or retitle all references
-   to the review handoff.
-5. **Do not merge MCP-gateway without a PR.** If the theme is truly
-   ledger-only, open a PR against the appropriate base so it can be reviewed.
+3. The audit called for rebasing #394 and #395, dropping redundant
+   format-detection code, aligning their bodies with their diffs, and withholding
+   an all-eight-theme claim until the ledger contained all eight themes.
+4. The audit called for plan citations to use
+   `docs/campaigns/2026-08-stability-repair-handoff.md`.
+5. The audit called for reviewable PR coverage of the ledger-only MCP-gateway
+   theme through the appropriate cumulative branch.
 
-## Final verdict
+## Historical verdict note
 
-**REJECT.** The campaign has 9 upstream ports that pass their focused tests, but
-the surrounding documentation is incomplete and in several places corrupt. The
-three ported PRs (#391, #392, #393) contain unresolved Important behavior bugs
-and test gaps; the cumulative ledger omits two themes and misclassifies rows
-across multiple themes; #394 and #395 misstate their scope; and the authoritative
-plan citation is dead. The campaign should not be merged as-is.
+The immutable audit report at
+[`79fb45ccca71187202ff3347bfe2856b6b93c624`](https://github.com/bloodf/durindoor/commit/79fb45ccca71187202ff3347bfe2856b6b93c624)
+records **REJECT**. That historical document verdict is reproducible, but its old
+source/test commits and gate output are not retained as immutable evidence, and
+it is not current readiness. Regenerate findings, counts, current PR diff/check
+links, supported-runtime results, and verdict after final repaired pushes.

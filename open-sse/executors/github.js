@@ -632,7 +632,11 @@ export class GithubExecutor extends BaseExecutor {
         currentEvent = trimmed.slice(6).trim() || null;
         return;
       }
-      if (!trimmed.startsWith("data:")) return;
+      if (!trimmed.startsWith("data:")) {
+        emitFailure(controller);
+        currentEvent = null;
+        return;
+      }
       const parsed = parseSSELine(trimmed);
       if (!parsed) {
         emitFailure(controller);
@@ -674,6 +678,10 @@ export class GithubExecutor extends BaseExecutor {
       flush(controller) {
         if (buffer.trim()) {
           processLine(buffer, controller);
+        }
+        if (currentEvent !== null) {
+          emitFailure(controller);
+          currentEvent = null;
         }
         if (!doneEmitted) {
           if (rawTerminal.outcome === "success" && !failureEmitted) {

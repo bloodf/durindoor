@@ -76,6 +76,54 @@ describe("GithubExecutor /responses escalation streaming", () => {
     expect(text).not.toContain("data: [DONE]");
   });
 
+  it.each([
+    ["unknown line after terminal", [
+      `event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response: { status: "completed" } })}`,
+      "unknown framing",
+    ].join("\n\n")],
+    ["dangling event after terminal", [
+      `event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response: { status: "completed" } })}`,
+      "event: response.output_text.delta",
+    ].join("\n\n")],
+    ["unknown line before terminal", [
+      "unknown framing",
+      `event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response: { status: "completed" } })}`,
+    ].join("\n\n")],
+  ])("rejects malformed Responses framing without DONE: %s", async (_label, raw) => {
+    proxyAwareFetchMock.mockResolvedValueOnce(new Response(raw, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    }));
+    const result = await new GithubExecutor().executeWithResponsesEndpoint({
+      model: "gpt-5.5-codex",
+      body: { messages: [] },
+      stream: true,
+      credentials: { copilotToken: "ghu_test" },
+      log: { debug: vi.fn() },
+    });
+    const text = await result.response.text();
+    expect(text).toContain("GitHub Responses stream failed");
+    expect(text).not.toContain("data: [DONE]");
+  });
+
+  it("emits DONE once for a valid Responses stream", async () => {
+    const raw = `event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response: { status: "completed" } })}\n\ndata: [DONE]\n\n`;
+    proxyAwareFetchMock.mockResolvedValueOnce(new Response(raw, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    }));
+    const result = await new GithubExecutor().executeWithResponsesEndpoint({
+      model: "gpt-5.5-codex",
+      body: { messages: [] },
+      stream: true,
+      credentials: { copilotToken: "ghu_test" },
+      log: { debug: vi.fn() },
+    });
+    const text = await result.response.text();
+    expect(text.match(/data: \[DONE\]/g)).toHaveLength(1);
+    expect(text).not.toContain("GitHub Responses stream failed");
+  });
+
   it("converts response.incomplete into a coherent length terminal", async () => {
     const raw = [
       `event: response.created\ndata: ${JSON.stringify({ type: "response.created", response: { id: "resp-incomplete" } })}`,

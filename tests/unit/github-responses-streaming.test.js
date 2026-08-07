@@ -135,7 +135,7 @@ describe("GithubExecutor /responses escalation streaming", () => {
     ["Responses", "executeWithResponsesEndpoint", [
       `event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response: { status: "completed" } })}`,
     ].join("\n\n")],
-  ])("synthesizes DONE for %s only when request body stream is true", async (_route, method, raw) => {
+  ])("synthesizes DONE for validated %s streams regardless of original body stream intent", async (_route, method, raw) => {
     for (const stream of [false, undefined, true]) {
       proxyAwareFetchMock.mockResolvedValueOnce(new Response(`${raw}\n\n`, {
         status: 200,
@@ -153,7 +153,7 @@ describe("GithubExecutor /responses escalation streaming", () => {
       });
 
       const text = await result.response.text();
-      expect(text.includes("data: [DONE]"), `body.stream=${stream}`).toBe(stream === true);
+      expect(text, `body.stream=${stream}`).toContain("data: [DONE]");
     }
   });
 

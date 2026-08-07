@@ -63,10 +63,6 @@ export function detectFormat(body) {
   // Claude format: messages with content as array of objects with type
   // Claude requires content to be array with specific structure
   if (body.messages && Array.isArray(body.messages)) {
-    // Kebab-case header key forwarded as a body field by some proxies
-    if (body["anthropic-version"]) {
-      return "claude";
-    }
     const firstMsg = body.messages[0];
     
     // If content is array, check if it follows Claude structure

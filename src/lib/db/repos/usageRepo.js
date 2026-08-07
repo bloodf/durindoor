@@ -794,8 +794,10 @@ export async function getUsageStats(period = "all", opts = {}) {
 
     for (const r of filtered) {
       const tokens = parseJson(r.tokens, {}) || {};
-      const promptTokens = tokens.prompt_tokens || 0;
-      const completionTokens = tokens.completion_tokens || 0;
+      // Stored JSON varies by provider; normalized columns remain the final
+      // fallback for imported or legacy rows without a usable token object.
+      const promptTokens = tokens.prompt_tokens ?? tokens.input_tokens ?? r.promptTokens ?? 0;
+      const completionTokens = tokens.completion_tokens ?? tokens.output_tokens ?? r.completionTokens ?? 0;
       const cachedTokens = tokens.cached_tokens || tokens.cache_read_input_tokens || 0;
       const reasoningTokens = tokens.reasoning_tokens
         || tokens.completion_tokens_details?.reasoning_tokens

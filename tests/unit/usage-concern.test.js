@@ -62,6 +62,16 @@ describe("toOpenAIUsage", () => {
     expect(u.total_tokens).toBe(99);
   });
 
+  it("commandcode: exposes AI SDK cachedInputTokens without changing ordinary usage", () => {
+    const u = toOpenAIUsage({ inputTokens: 8, outputTokens: 2, totalTokens: 10, cachedInputTokens: 4 }, "commandcode");
+    expect(u).toEqual({
+      prompt_tokens: 8,
+      completion_tokens: 2,
+      total_tokens: 10,
+      prompt_tokens_details: { cached_tokens: 4 },
+    });
+  });
+
   it("unknown kind / null raw -> null", () => {
     expect(toOpenAIUsage({}, "nope")).toBeNull();
     expect(toOpenAIUsage(null, "claude")).toBeNull();

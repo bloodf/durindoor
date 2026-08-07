@@ -417,6 +417,39 @@ export function getRemainingPercentage(quota) {
 
   return calculatePercentage(quota?.used, quota?.total);
 }
+export const QUOTA_TABLE_PAGE_SIZE = 10;
+export const QUOTA_TABLE_VISIBLE_ROWS = 2;
+export function toggleQuotaTableCollapsed(collapsed) {
+  return !collapsed;
+}
+
+/** Sort normalized quota rows and select the current collapsed or paged view. */
+export function getQuotaTableRows(quotas, sortMode = "default", collapsed = true, page = 1) {
+  const sorted = quotas.map((quota, index) => ({
+    ...quota,
+    index,
+    remaining: getRemainingPercentage(quota),
+  })).sort((a, b) => {
+    const difference = sortMode === "remaining-asc"
+      ? a.remaining - b.remaining
+      : b.remaining - a.remaining;
+    return difference || a.name.localeCompare(b.name);
+  });
+  const isExpandable = sorted.length > QUOTA_TABLE_VISIBLE_ROWS;
+  return {
+    sorted,
+    rows: collapsed
+      ? sorted.slice(0, QUOTA_TABLE_VISIBLE_ROWS)
+      : sorted.slice((page - 1) * QUOTA_TABLE_PAGE_SIZE, page * QUOTA_TABLE_PAGE_SIZE),
+    control: isExpandable ? {
+      ariaExpanded: !collapsed,
+      ariaLabel: collapsed ? "Show all quota rows" : "Show fewer quota rows",
+      label: collapsed ? `Show ${sorted.length - QUOTA_TABLE_VISIBLE_ROWS} more` : "Show less",
+      icon: collapsed ? "expand_more" : "expand_less",
+    } : null,
+  };
+}
+
 
 /**
  * Build a stable key used to identify a quota row for visibility settings.
@@ -564,6 +597,7 @@ export function parseQuotaData(provider, data) {
               total: quota.total || 0,
               remaining: quota.remaining,
               resetAt: quota.resetAt || null,
+              windowSeconds: quota.windowSeconds,
             });
           });
         }
@@ -585,21 +619,26 @@ export function parseQuotaData(provider, data) {
       case "qoder":
         // Qoder ships a `user` quota and (optionally) an `organization`
         // quota, both with same shape: {total, used, remaining, unit, resetAt}.
-        // Skip an organization bucket when its total is 0 — most personal
-        // Qoder accounts won't have one and rendering "0/0" is misleading.
+        // Skip only the empty organization placeholder synthesized for
+        // personal accounts; a zero total can still carry meaningful usage.
         // Don't forward Qoder's `remaining` field: it's an absolute credit
         // count, but getRemainingPercentage / QuotaTable interpret
         // `remaining` as a 0-100 percentage and would render 348 credits
         // as "348%". The percentage is computed from used/total instead.
         if (data.quotas) {
           Object.entries(data.quotas).forEach(([quotaType, quota]) => {
-            if (quotaType === "organization" && (!quota || (Number(quota.total) || 0) === 0)) {
+            if (
+              quotaType === "organization"
+              && (!quota || [quota.total, quota.used, quota.remaining]
+                .every((value) => (Number(value) || 0) === 0))
+            ) {
               return;
             }
             normalizedQuotas.push({
               name: quotaType === "user" ? "Personal" : quotaType === "organization" ? "Organization" : quotaType,
               used: quota.used || 0,
-              total: quota.total || 0,
+              total: Math.max(0, Number(quota.total) || 0)
+                || ((Number(quota.used) || 0) + (Number(quota.remaining) || 0)),
               unit: quota.unit,
               resetAt: quota.resetAt || null,
             });

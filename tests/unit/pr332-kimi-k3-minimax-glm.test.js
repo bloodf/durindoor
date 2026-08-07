@@ -5,6 +5,7 @@ import { getThinkingLevels } from "../../open-sse/providers/thinkingLevels.js";
 import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
 import { getPricingForModel } from "../../open-sse/providers/pricing.js";
 import { applyThinking } from "../../open-sse/translator/concerns/thinkingUnified.js";
+import { getExplicitModelOutputCap, resolveReasoningBufferedMaxTokens } from "../../open-sse/services/reasoningTokenBuffer.js";
 
 const { PROVIDER_MODELS } = providers.__test__;
 
@@ -25,19 +26,45 @@ describe("Kimi K3 reasoning wiring", () => {
     expect(getThinkingLevels(null, "kimi-k3")).toEqual(["max"]);
   });
 
-  it("keeps the exact native Kimi descriptor with its configurable output ceiling", () => {
-    expect(getCapabilitiesForModel("moonshot", "kimi-k3")).toMatchObject({
+  it("caps the configured kimi route at its coding API limit", () => {
+    expect(getCapabilitiesForModel("kimi", "kimi-k3")).toMatchObject({
       contextWindow: 1048576,
-      maxOutput: 1048576,
+      maxOutput: 262144,
       vision: true,
-      videoInput: true,
+      videoInput: false,
       reasoning: true,
       thinkingCanDisable: false,
     });
   });
 
-  it("keeps unsupported Kimi K3 variants on the conservative fallback", () => {
-    expect(getCapabilitiesForModel(null, "vendor/kimi-k3-preview")).toMatchObject({
+  it.each(["kimi", "kimi-coding-apikey", "kmca", "kimi-coding", "kmc"])(
+    "caps the %s route at its coding API limit",
+    (provider) => {
+      const modelStr = `${provider}/kimi-k3`;
+      const caps = getCapabilitiesForModel(provider, "kimi-k3");
+      const outputCap = getExplicitModelOutputCap(modelStr);
+
+      expect(caps).toMatchObject({
+        contextWindow: 1048576,
+        maxOutput: 262144,
+        vision: true,
+        videoInput: false,
+        reasoning: true,
+        thinkingCanDisable: false,
+      });
+      expect(outputCap).toBe(caps.maxOutput);
+      expect(resolveReasoningBufferedMaxTokens(modelStr, outputCap + 1)).toBe(outputCap);
+    },
+  );
+
+  it.each([
+    [null, "kimi-k3", "unscoped exact id"],
+    ["unknown-provider", "kimi-k3", "unknown exact id"],
+    ["unknown-provider", "k3", "unknown bare upstream id"],
+    ["openrouter", "moonshotai/kimi-k3", "vendor-prefixed third-party id"],
+    [null, "kimi-k3-preview", "wildcard variant"],
+  ])("keeps the %s/%s %s conservative", (provider, model) => {
+    expect(getCapabilitiesForModel(provider, model)).toMatchObject({
       contextWindow: 262144,
       maxOutput: 64000,
       vision: false,

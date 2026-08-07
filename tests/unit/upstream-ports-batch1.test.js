@@ -57,10 +57,9 @@ describe("#2658 — Claude usage folds cache tokens into prompt_tokens", () => {
   });
 });
 
-describe("#2697 — bare k3 upstream id resolves to the K3 window", () => {
-  it("resolves bare k3 to 1M context (not the 200K default)", () => {
-    const caps = getCapabilitiesForModel("moonshot", "k3");
-    expect(caps.contextWindow).toBe(1048576);
-    expect(caps.reasoning).toBe(true);
+describe("#2697 — bare k3 upstream id resolves to the coding-route window", () => {
+  it("keeps 1M context while respecting the configured coding output cap", () => {
+    const caps = getCapabilitiesForModel("kimi", "k3");
+    expect(caps).toMatchObject({ contextWindow: 1048576, maxOutput: 262144, videoInput: false, reasoning: true });
   });
 });

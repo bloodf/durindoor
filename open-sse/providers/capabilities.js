@@ -76,10 +76,6 @@ export function capabilitiesFromServiceKind(kind) {
  * otherwise mis-match. Only declare deltas vs DEFAULT.
  */
 export const MODEL_CAPABILITIES = {
-  // Kimi K3: 1M configurable output ceiling, native vision/video input,
-  // always-on reasoning, and documented low/high/max effort levels. Runtime
-  // effort normalization is handled separately and may expose a narrower set.
-  "kimi-k3": { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 1048576 },
   // Claude Opus 5: native 1M context window + adaptive thinking.
   "claude-opus-5":   { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   // Claude 4.6/4.7/4.8 and Kiro Sonnet 5 have 1M context + adaptive thinking (override generic claude pattern)
@@ -167,6 +163,15 @@ const CODEX_GPT_5_6_CAPS = Object.fromEntries([
   "gpt-5.6-terra-review", "gpt-5.6-luna-review",
 ].map((id) => [id, codexGpt56Entry()]));
 
+// Every configured Kimi provider currently targets api.kimi.com/coding. Keep
+// those routes at the registry's 262,144 output cap and do not infer video.
+// The 1,048,576-output platform API lives at api.moonshot.ai and has no
+// dedicated provider route here yet.
+const KIMI_K3_CODING_CAPS = {
+  "kimi-k3": { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 262144 },
+  k3: { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 262144 },
+};
+
 const MINIMAX_M3_NATIVE_CAPS = {
   "MiniMax-M3": { vision: true, videoInput: true, reasoning: true, thinkingFormat: "minimax", contextWindow: 1000000, maxOutput: 131072 },
 };
@@ -177,6 +182,11 @@ export const PROVIDER_CAPABILITIES = {
   openai: DIRECT_GPT_5_5_6_CAPS,
   codex: CODEX_GPT_5_6_CAPS,
   cx: CODEX_GPT_5_6_CAPS,
+  kimi: KIMI_K3_CODING_CAPS,
+  "kimi-coding-apikey": KIMI_K3_CODING_CAPS,
+  kmca: KIMI_K3_CODING_CAPS,
+  "kimi-coding": KIMI_K3_CODING_CAPS,
+  kmc: KIMI_K3_CODING_CAPS,
   minimax: MINIMAX_M3_NATIVE_CAPS,
   "minimax-cn": MINIMAX_M3_NATIVE_CAPS,
   // Poolside Laguna — OpenAI-compatible, all reasoning-capable (262K context, 32K max output).
@@ -516,9 +526,7 @@ export const PATTERN_CAPABILITIES = [
   // ── Kimi (enabled→reasoning_effort; K2.7-code cannot disable) ─────
   // Kimi K3 variants are unverified; keep the conservative family fallback.
   { pattern: "*kimi*k3*",       caps: { reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144, maxOutput: 64000 } },
-  // K3 routes through the bare upstream id `k3` (no "kimi" prefix); match it to
-  // the K3 window so it does not fall to the generic 200K default (#2697).
-  { pattern: "k3",              caps: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 262144 } },
+  { pattern: "k3",              caps: { reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144, maxOutput: 64000 } },
   { pattern: "*kimi*k2.7*code*", caps: { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144, maxOutput: 262144 } },
   { pattern: "*kimi*k2*",       caps: { vision: true, reasoning: true, thinkingFormat: "kimi", contextWindow: 262144, maxOutput: 262144 } },
   { pattern: "*kimi*",          caps: { reasoning: true, thinkingFormat: "kimi", contextWindow: 262144 } },

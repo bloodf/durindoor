@@ -189,7 +189,7 @@ export function createDisconnectAwareStream(transformStream, streamController, o
  * @param {TransformStream} transformStream - Transform stream for SSE
  * @param {object} streamController - Stream controller from createStreamController
  */
-export function pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal = null, stallTimeoutMs = STREAM_STALL_TIMEOUT_MS) {
+export function pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal = null, stallTimeoutMs = STREAM_STALL_TIMEOUT_MS, responsesStreamState = null) {
   let stallTimer = null;
   let chunkCount = 0;
   let totalBytes = 0;
@@ -228,6 +228,7 @@ export function pipeWithDisconnect(providerResponse, transformStream, streamCont
 
   const upstreamTap = new TransformStream({
     transform(chunk, controller) {
+      responsesStreamState?.postTerminalIngress?.observe(chunk);
       chunkCount++;
       const sz = chunk?.byteLength || chunk?.length || 0;
       totalBytes += sz;

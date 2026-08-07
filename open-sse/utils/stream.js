@@ -38,6 +38,62 @@ const STREAM_MODE = {
 };
 const GEMINI_PASSTHROUGH_PROVIDERS = new Set(["antigravity", "agy", "gemini", "gemini-cli", "gc", "vertex"]);
 
+function createResponsesPostTerminalIngress(responseState) {
+  const dataPrefix = "data:";
+  const doneValue = "[DONE]";
+  let phase = "leading";
+  let index = 0;
+
+  const invalidate = () => {
+    phase = "invalid";
+    responseState.terminalSeen = false;
+  };
+  const isWhitespace = (code) => code === 9 || code === 10 || code === 11 || code === 12 || code === 13 || code === 32;
+  const isHorizontalWhitespace = (code) => code === 9 || code === 32;
+  const observeCode = (code) => {
+    if (phase === "invalid") return;
+    if (phase === "leading") {
+      if (isWhitespace(code)) return;
+      if (code === dataPrefix.charCodeAt(0)) { phase = "data"; index = 1; return; }
+      invalidate();
+      return;
+    }
+    if (phase === "data") {
+      if (code === dataPrefix.charCodeAt(index)) {
+        if (++index === dataPrefix.length) { phase = "beforeDone"; index = 0; }
+      } else invalidate();
+      return;
+    }
+    if (phase === "beforeDone") {
+      if (isHorizontalWhitespace(code)) return;
+      if (code === doneValue.charCodeAt(0)) { phase = "done"; index = 1; return; }
+      invalidate();
+      return;
+    }
+    if (phase === "done") {
+      if (code === doneValue.charCodeAt(index)) {
+        if (++index === doneValue.length) phase = "trailing";
+      } else invalidate();
+      return;
+    }
+    if (!isWhitespace(code)) invalidate();
+  };
+
+  return {
+    observe(chunk) {
+      for (const code of chunk) observeCode(code);
+    },
+    observeText(text) {
+      for (let i = 0; i < text.length; i++) observeCode(text.charCodeAt(i));
+    },
+    markDoneSeen() {
+      if (phase === "leading") phase = "trailing";
+      else if (phase !== "trailing") invalidate();
+    },
+    invalidate,
+  };
+}
+
 /**
  * Create unified SSE transform stream
  * @param {object} options
@@ -144,18 +200,28 @@ export function createSSEStream(options = {}) {
       ?? terminalBody?.generation_config?.candidate_count,
   });
   const captureOpenAIResponsesResponseId = (eventName, chunk) => {
-    if (
-      !openAIResponsesResponseId
-      && getOpenAIResponsesEventName(eventName, chunk) === "response.created"
-      && typeof chunk?.response?.id === "string"
-    ) {
+    const resolvedEventName = getOpenAIResponsesEventName(eventName, chunk);
+    const payloadEventName = typeof chunk?.type === "string" ? chunk.type : null;
+    const eventNamesMatch = !eventName || !payloadEventName || eventName === payloadEventName;
+    const status = String(chunk?.response?.status || "").toLowerCase();
+    const identityIsCoherent = eventNamesMatch && (
+      (resolvedEventName === "response.created" && upstreamTerminal.outcome !== "failure")
+      || (["response.completed", "response.incomplete"].includes(resolvedEventName) && upstreamTerminal.outcome === "success")
+      || (resolvedEventName === "response.failed" && status === "failed")
+    );
+    if (!openAIResponsesResponseId && identityIsCoherent && typeof chunk?.response?.id === "string") {
       openAIResponsesResponseId = chunk.response.id;
       if (responsesStreamState) responsesStreamState.responseId = chunk.response.id;
     }
   };
   const syncOpenAIResponsesTerminal = () => {
-    if (responsesStreamState) {
-      responsesStreamState.terminalSeen = upstreamTerminal.outcome === "success";
+    if (!responsesStreamState) return;
+    if (upstreamTerminal.outcome === "success") {
+      responsesStreamState.terminalSeen = true;
+      responsesStreamState.postTerminalIngress ??= createResponsesPostTerminalIngress(responsesStreamState);
+    } else {
+      responsesStreamState.terminalSeen = false;
+      responsesStreamState.postTerminalIngress?.invalidate();
     }
   };
   const observeBufferedUpstream = (text, pendingEventName = null) => {
@@ -269,6 +335,7 @@ export function createSSEStream(options = {}) {
 
   return new TransformStream({
     transform(chunk, controller) {
+      const postTerminalIngressAtStart = responsesStreamState?.postTerminalIngress;
       if (!ttftAt) ttftAt = Date.now();
       const text = decoder.decode(chunk, { stream: true });
       buffer += text;
@@ -313,6 +380,9 @@ export function createSSEStream(options = {}) {
             streamDoneSent = true;
             upstreamTerminal.observe({ rawDone: true, eventName: upstreamEventForLine });
             syncOpenAIResponsesTerminal();
+            if (upstreamTerminal.outcome === "success") {
+              responsesStreamState?.postTerminalIngress?.markDoneSeen();
+            }
           }
 
           if (trimmed.startsWith("data:") && !isDoneLine && trimmed.slice(5).trim()) {
@@ -652,13 +722,12 @@ export function createSSEStream(options = {}) {
         const openAIResponsesEventName = isOpenAIResponsesStream
           ? getOpenAIResponsesEventName(currentOpenAIResponsesEvent, parsed)
           : currentUpstreamEvent;
-        captureOpenAIResponsesResponseId(openAIResponsesEventName, parsed);
-
         upstreamTerminal.observe({
           chunk: parsed,
           eventName: openAIResponsesEventName,
           rawDone: parsed?.done === true,
         });
+        captureOpenAIResponsesResponseId(openAIResponsesEventName, parsed);
         syncOpenAIResponsesTerminal();
         currentUpstreamEvent = null;
 
@@ -841,6 +910,9 @@ export function createSSEStream(options = {}) {
             sseEmittedCount++;
           }
         }
+      }
+      if (!postTerminalIngressAtStart && responsesStreamState?.postTerminalIngress && buffer) {
+        responsesStreamState.postTerminalIngress.observeText(buffer);
       }
     },
 

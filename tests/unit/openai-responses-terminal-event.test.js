@@ -74,6 +74,44 @@ function runPassthrough(input, responsesStreamState = null) {
   ));
 }
 
+async function runAbortedPassthroughChunks(chunks) {
+  const encoder = new TextEncoder();
+  let chunkIndex = 0;
+  const providerResponse = new Response(new ReadableStream({
+    async pull(controller) {
+      if (chunkIndex < chunks.length) {
+        controller.enqueue(encoder.encode(chunks[chunkIndex++]));
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        controller.error(new Error("stream stall timeout"));
+      }
+    },
+  }), { headers: { "content-type": "text/event-stream" } });
+  let connected = true;
+  const result = await handleStreamingResponse({
+    providerResponse,
+    provider: "codex",
+    model: "gpt-5.5",
+    sourceFormat: FORMATS.OPENAI_RESPONSES,
+    targetFormat: FORMATS.OPENAI_RESPONSES,
+    body: { stream: true },
+    stream: true,
+    requestStartTime: Date.now(),
+    streamController: {
+      signal: new AbortController().signal,
+      startTime: Date.now(),
+      isConnected: () => connected,
+      handleActivity: () => {},
+      handleComplete: () => { connected = false; },
+      handleError: () => { connected = false; },
+      handleDisconnect: () => { connected = false; },
+      abort: () => { connected = false; },
+    },
+  });
+
+  return result.response.text();
+}
+
 describe("OpenAI Responses streaming termination", () => {
   it("emits a response.failed event when a Responses stream closes before a terminal event", async () => {
     const output = await runTransform([
@@ -210,6 +248,52 @@ describe("OpenAI Responses streaming termination", () => {
     await runPassthrough(input, responsesStreamState);
 
     expect(buildAbortedResponsesTerminalBytes(responsesStreamState)).toBeNull();
+  });
+
+  it("keeps a completed response terminal when its trailing delimiter is split before abort", async () => {
+    const output = await runAbortedPassthroughChunks([
+      [
+        "event: response.completed",
+        `data: ${JSON.stringify({ type: "response.completed", response: { id: "resp_test", status: "completed" } })}`,
+        "",
+      ].join("\n"),
+      "\n",
+    ]);
+
+    expect(output).toContain("event: response.completed");
+    expect(output).not.toContain("event: response.failed");
+    expect(output).not.toContain("data: [DONE]");
+  });
+
+  it("keeps a completed response terminal followed by one split DONE before abort", async () => {
+    const output = await runAbortedPassthroughChunks([
+      [
+        "event: response.completed",
+        `data: ${JSON.stringify({ type: "response.completed", response: { id: "resp_test", status: "completed" } })}`,
+        "",
+        "",
+      ].join("\n"),
+      "data: [DO",
+      "NE]\n\n",
+    ]);
+
+    expect(output).not.toContain("event: response.failed");
+    expect(output.match(/data: \[DONE\]/g)).toHaveLength(1);
+  });
+
+  it("recovers when partial illegal data arrives after a completed response before abort", async () => {
+    const output = await runAbortedPassthroughChunks([
+      [
+        "event: response.completed",
+        `data: ${JSON.stringify({ type: "response.completed", response: { id: "resp_test", status: "completed" } })}`,
+        "",
+        "",
+      ].join("\n"),
+      `data: {"type":"response.output_text.delta"`,
+    ]);
+
+    expect(parseFailure(output).id).toBe("resp_test");
+    expect(output).toContain("data: [DONE]");
   });
 
   it.each([

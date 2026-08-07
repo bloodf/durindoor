@@ -218,6 +218,84 @@
 | #8285 | OmniRoute | feat(ui): add global model search to Combo builder | DEFER (other-theme ownership: GlobalModelSearchPanel — upstream blocked on i18n placeholders in 43 locale files) | DD has no `GlobalModelSearchPanel.tsx`. Upstream blocked by maintainer on `__MISSING__` i18n placeholders in 43 locale files. |
 | #8718 | OmniRoute | fix(test): revive orphaned vitest tests and fix CI routing | DEFER (other-theme ownership: vitest CI infrastructure for TS combo module — DD uses plain JS, not applicable) | Test/CI-only: 22 files (vitest.config.ts, orphan test revivals). DD uses plain JS with no Vitest config. Not applicable to DurinDoor. |
 | #8719 | OmniRoute | fix(combo): fallback to t.provider in comboTargetLimits & add null guard in getTokenLimit | DEFER (absent Omni TS combo service: contextManager.ts TS context-manager + comboTargetLimits wiring) | `contextManager.ts` is an OmniRoute TypeScript source file not present in DD. `chatCore.ts` provider override + `getTokenLimit` null guard requires Omni TS context-manager target absent from DD. |
+
+## Theme: resilience
+
+### 9router candidates (8)
+
+| PR | Source | Title | Verdict | Evidence / commit |
+|----|--------|-------|---------|-------------------|
+| #3033 | 9router | fix(github): hold monthly-exhausted accounts until reset | DEFER (auth-service rewrite) | Requires `githubMonthlyResetMs` helper plus account-wide `modelLock_*` gate ahead of `resetsAtMs`; spans `src/sse/services/auth.js` markAccountUnavailable and shared lock service. Belongs in auth-oauth theme with real provider coverage. |
+| #1821 | 9router | fix(codex): treat OpenAI 401/token_expired as permanent refresh failure | GAP → ported | `open-sse/services/tokenRefresh/providers.js:301-310` includes the marker list and the HTTP 401 permanent classification; regression in `tests/unit/oauth-classify-token-expired.test.js`. |
+| #2798 | 9router | fix(proxy-pools): relay test timeout to 30s + reliable endpoint | DUPLICATE | `src/app/api/proxy-pools/[id]/test/route.js:6,13-14` sets the 30s default timeout and the `https://api.ipify.org` relay target. |
+| #2784 | 9router | feat(providers): configurable error cooldown policies | DEFER (executor parser migration) | Adds `parseError` overrides in `default.js` and `opencode-go.js` plus `parseUpstreamError` wiring across chatCore/embeddingsCore/imageGenerationCore/search/fetch/ttsCore/sttCore. Multi-handler retry/timeout migration. |
+| #3012 | 9router | fix(cooldown): honour provider-reported quota reset times instead of re-probing spent accounts | DEFER (multi-provider quota cooldown subsystem) | [Upstream PR #3012](https://github.com/decolua/9router/pull/3012) spans provider cooldown policy, three executors, a shared Google quota parser, and focused quota-reset tests; port and gate the six-file behavior together. |
+| #879 | 9router | fix(executors): parse retryAfter timestamp for precise backoff on 429 | DEFER (handler parser migration) | Adds `parseError` override to `default.js`/`opencode-go.js` and threads `errorCode`/`resetsAtMs` through every SSE handler including `sttCore.js:27-33`; handler-wide parser migration. |
+| #640 | 9router | fix: prevent infinite retry loop when account errors | DUPLICATE | `src/sse/handlers/chat.js:67,903-910` declares the global request-attempt bound, excludes exhausted credentials, and enforces the bound before another fallback attempt. |
+| #584 | 9router | feat: minimum quota reserve + account cooldown | DEFER (new feature) | New `/api/quota-reserve` route, `quotaReserveState` service, dashboard `CooldownBadge` UI, and `EditConnectionModal` fields; multi-file feature spanning SSE handlers, shared services, and Next.js UI. |
+
+### OmniRoute candidates (7)
+
+| PR | Source | Title | Verdict | Evidence / commit |
+|----|--------|-------|---------|-------------------|
+| #9351 | OmniRoute | fix(antigravity): propagate switchAuth signal from 429 engine to retry guard | DEFER (missing decide429 engine) | DD `open-sse/executors/antigravity.js:388-411 computeRetryDelay` has no decide429/handleAntigravityRateLimit; absent engine means no switchAuth signal exists to propagate. |
+| #9328 | OmniRoute | fix(rate-limit): patch Bottleneck doExpire capacity leak | DEFER (Bottleneck dependency absent) | DD has zero Bottleneck references; no `bottleneckPatch`/`rateLimitManager` modules. Architecture-specific to OmniRoute's Bottleneck-based queue. |
+| #9283 | OmniRoute | fix(providers): raise provider probe timeout 5s → 8s | DEFER (safeOutboundFetch absent) | DD has zero `safeOutboundFetch` references; probe layer lives in non-existent `src/shared/network/`. |
+| #9164 | OmniRoute | fix(rate-limit): separate queue wait from execution timeout | DEFER (comboPredicates absent) | DD lacks `comboPredicates.ts` module with `isLocalQueueCapacityErrorBody`, RATE_LIMIT_QUEUE_* codes, and combo early-return on local queue capacity. |
+| #8870 | OmniRoute | fix(adobe-firefly): cap gpt-image refs at 2 + adaptive poll timeout | DEFER (Adobe provider absent) | DD has no `adobeFirefly` provider; image generation providers list lacks the target. |
+| #8477 | OmniRoute | [v3.8.50] fix(api): retry Codex image generation by account | DEFER (route.ts conflict-resolved subset) | DD `src/app/api/v1/images/generations/route.js` is a thin wrapper; the sibling-account retry loop, `isCodexChatGptModelAccessError` predicate, and `lockModel` after model-access 400 require a cross-cutting route rewrite alongside imageGenerationCore. |
+| #8307 | OmniRoute | [v3.8.50] fix(api): retry Codex image generation by account | DEFER (cross-source duplicate of #8477) | Same core functional fix as #8477 plus OmniRoute-only CI/docs (Turbopack, QUALITY_GATES, changelog); consolidate under #8477 in auth-oauth or provider-fixes. |
+
+### Verdict summary
+
+| Verdict | Count | PRs |
+|---------|-------|-----|
+| GAP → ported | 1 | #1821 |
+| DUPLICATE | 2 | #2798, #640 |
+| DEFER | 12 | #3033, #3012, #2784, #879, #584, #9351, #9328, #9283, #9164, #8870, #8477, #8307 |
+| **Total** | **15** | |
+
+| Source | GAP → ported | DUPLICATE | DEFER |
+|--------|---------------|-----------|-------|
+| 9router (8) | 1 | 2 | 5 |
+| OmniRoute (7) | 0 | 0 | 7 |
+| **Total** | **1** | **2** | **12** |
+
+## Theme: mcp-gateway
+
+**Candidates:** 7 (9router: 2 · OmniRoute: 5)  **Verdicts:** DUPLICATE=1 · DEFER=6
+
+### 9router candidates (2)
+
+| PR | Source | Title | Verdict | Evidence |
+|----|--------|-------|---------|----------|
+| #2234 | 9router | feat: MCP Gateway | DUPLICATE | DD has combined `src/app/(dashboard)/dashboard/mcp-gateway/page.js` + `error.js` managing instances and keys, all API routes under `src/app/api/mcp-gateway/` (instances, keys, message, oauth, route, sse), 17 gateway modules under `src/lib/mcp/gateway/`, and 5 test files: `mcp-gateway-keys-route`, `mcp-http-session`, `mcp-retry`, `mcp-stdio-init-state`, `mcp-stdio-reconnect`. Separate `/servers` and `/keys` dashboard pages are UI reorganisation only — not missing gateway functionality. |
+| #1335 | 9router | feat(cursor): parse Composer DeepSeek tool calls + forward custom tools via MCP enum 19 | DEFER (Composer parser absent: open-sse/utils/composerToolCalls.js absent in DD) | `open-sse/utils/composerToolCalls.js` — the DeepSeek-style Composer tool-call parser (`parseComposerToolCalls`, `createStreamingState`, `feedStreamingChunk`) — is absent from DD. DD's `open-sse/executors/cursor.js` has no `composerToolCalls` import. Fix cannot be localised without porting the full Composer streaming state machine. |
+
+### OmniRoute candidates (5)
+
+| PR | Source | Title | Verdict | Evidence |
+|----|--------|-------|---------|----------|
+| #8925 | OmniRoute | feat(mcp): add omniroute_create_combo tool | DEFER (new MCP tool: omniroute/mcp-server absent in DD) | OmniRoute's MCP server schemas and entrypoint are absent from DD. DD MCP control layer (`src/lib/mcp/control/tools.js`) has no `createCombo` or `omniroute_create_combo` tool. Fix cannot be localised without porting the full OmniRoute MCP server entrypoint. |
+| #9162 | OmniRoute | fix(mcp): prevent Node 24 MCP startup crash from auth cycle | DEFER (new MCP server entrypoint absent in DD) | The bundled OmniRoute stdio MCP entrypoint and its circular auth initializer are absent from DD. DD MCP control uses `src/app/api/mcp/control/route.js` + `src/lib/mcp/control/tools.js`; no equivalent startup cycle exists to patch. |
+| #9260 | OmniRoute | fix(mcp): preserve caller identity for internal REST hops | DEFER (new MCP infra: internalServiceAuth absent in DD) | OmniRoute's internal-service token hop-auth mechanism is absent from DD. DD MCP gateway uses `src/app/api/mcp-gateway/route.js` without this internal REST hop architecture. |
+| #9274 | OmniRoute | fix(mcp): remove non-standard x-provider field from omniroute_test_combo body | DEFER (new MCP test-combo tool absent in DD) | DD MCP control has no `testCombo` tool or request builder carrying the `x-provider` field. Fix cannot be localised without porting the tool itself. |
+| #9448 | OmniRoute | fix(mcp): persist and re-attach Gemini thoughtSignature on the direct Claude<->Gemini path | DEFER (direct translator path absent) | DD has hub paths through OpenAI translators; direct Claude-to-Gemini and Gemini-to-Claude translator pairs are absent. The thought-signature store and replay target a path DD does not implement. |
+
+### Verdict summary
+
+| Verdict | Count | PRs |
+|---------|-------|-----|
+| DUPLICATE | 1 | #2234 |
+| DEFER | 6 | #8925, #9162, #9260, #9274, #9448, #1335 |
+| **Total** | **7** | |
+
+| Source | GAP → ported | DUPLICATE | DEFER |
+|--------|-------------|---------|-------|
+| 9router (2) | 0 | 1 | 1 |
+| OmniRoute (5) | 0 | 0 | 5 |
+| **Total** | **0** | **1** | **6** |
+
 ## Theme: auth-oauth
 
 **Candidates:** 46 (9router only)  **Verdicts:** DUPLICATE=11 · DEFER=35
@@ -350,52 +428,52 @@
 
 ## Theme: provider-fixes
 
-**Candidates:** 43 (9router only)  **Verdicts:** DUPLICATE=19 · DEFER=24
+**Candidates:** 43 (9router only)  **Verdicts:** GAP → ported=6 · DUPLICATE=27 · DEFER=10
 
 ### 9router candidates (43)
 
 | PR | Source | Title | Verdict | Evidence / commit |
 |----|--------|-------|---------|-------------------|
-| #3023 | 9router | fix(claude): stop one client's anthropic-beta leaking onto every request | DEFER (provider policy: per-client anthropic-beta header isolation) | `anthropic-beta` header propagation across clients requires auth/path isolation design; no per-request header-scoped beta in DD `providers/claude.js`. |
+| #3023 | 9router | fix(claude): stop one client's anthropic-beta leaking onto every request | GAP → ported | `claudeHeaderCache.js` no longer treats request-scoped `anthropic-beta` as process-global identity; `DefaultExecutor` overlays a read-only identity copy and preserves the curated static beta list. Regression: `tests/unit/claude-header-forwarding.test.js`. |
 | #2988 | 9router | feat(codex): support GPT-5.6 Max and Ultra overrides | DUPLICATE | `open-sse/providers/thinkingLevels.js:36-40` — `*gpt-5.6-sol*/terra*` patterns already accept `max`/`ultra` levels; independently implemented in DD. |
 | #2952 | 9router | feat(qoder): deep protocol module — reusable Qoder/QoderWork CN implementation | DEFER (new feature: Qoder/COSY reusable deep protocol module) | `open-sse/executors/qoder.js` implements current Qoder/COSY signing; #2952 adds reusable Qoder/QoderWork CN module — separate architecture, new feature scope. |
 | #2943 | 9router | feat(codex): add transparent native provider transport | DUPLICATE | `open-sse/executors/codex.js:61-79` — Codex Responses Lite transport already implemented (`RESPONSES_LITE_TRANSPORT` + header passthrough); independently implemented in DD. |
 | #2928 | 9router | fix(codex): strip orphaned tool outputs | DUPLICATE | `open-sse/translator/concerns/toolCall.js:155-216` — `stripOrphanedToolResults()` + `salvageOrphanedToolResults()` already handle orphaned tool results across OpenAI/Anthropic. |
 | #2923 | 9router | fix(codex): normalize replayed call item IDs | DEFER (Codex replay normalization) | `call_item_id` normalization for replayed Codex requests; requires Codex-specific replay path verification. |
-| #2904 | 9router | fix(kiro): convert letter-dot-digit to letter-dash-digit in Claude model IDs before upstream dispatch | DUPLICATE | `open-sse/providers/models/schema.js:7-12` — `normalizeModelId()` converts digit-digit hyphens to dots; `open-sse/providers/capabilities.js:637-648` uses it for Kiro capability lookup; `tests/unit/kiro-model-id-format.test.js` confirms current upstream uses dotted IDs. |
+| #2904 | 9router | fix(kiro): convert letter-dot-digit to letter-dash-digit in Claude model IDs before upstream dispatch | DEFER (current live wire uses dotted IDs) | `tests/unit/kiro-model-id-format.test.js` pins dotted Claude IDs on current Kiro wire; `normalizeModelId()` only normalizes catalog/capability lookup. Reversing dispatch format needs new live-provider evidence. |
 | #2891 | 9router | fix(kiro): restore v0.5.20 payload and enable all effort levels | DEFER (Kiro wire migration: payload shape + effort levels) | Current `open-sse/executors/kiro.js`; #2891 restores a specific prior payload shape + enables effort levels — requires Kiro real-provider verification. |
 | #2796 | 9router | fix(codex): normalize additional_tools passthrough items | DEFER (Codex additional_tools normalization) | `additional_tools` passthrough normalization for Codex; requires Codex executor-specific behavior verification. |
 | #2761 | 9router | fix(github): route Claude models to Copilot's native format via chatCore | DUPLICATE | `open-sse/executors/github.js:28-149` — `/v1/messages` native routing already present; `claudeToCopilotMessage` translator already implemented. |
 | #2756 | 9router | fix(github): enforce Claude prompt limits | DEFER (GitHub prompt limit enforcement) | Claude prompt limit enforcement for Copilot; requires GitHub executor-specific prompt length validation. |
-| #2753 | 9router | feat(antigravity): add gemini-3.6 (low/medium/high) models | DEFER (provider catalog: Gemini 3.6 model registration) | Gemini 3.6 model variants in Antigravity catalog; requires catalog registration + pricing + capabilities work. |
-| #2685 | 9router | fix(cursor): HTTP/2 AgentService support + version bump to 3.12.17 | DEFER (provider policy: Cursor HTTP/2 + version fidelity) | `open-sse/executors/cursor.js` has HTTP/2 `http2` module import; version bump to 3.12.17 requires Cursor real-provider verification. |
-| #2667 | 9router | fix(codex): recover invalid encrypted history | DEFER (Codex encrypted history recovery) | Encrypted history recovery for Codex; requires Codex executor-specific history validation. |
+| #2753 | 9router | feat(antigravity): add gemini-3.6 (low/medium/high) models | GAP → ported | Added three catalog/CLI/MITM tier aliases over the registered `gemini-3.6-flash-tiered` wire model; pinned `thinkingLevel` travels as request intent while `getModelUpstreamId()` remains a clean wire ID. Regression: `tests/unit/antigravity-model-tiers.test.js`. |
+| #2685 | 9router | fix(cursor): HTTP/2 AgentService support + version bump to 3.12.17 | DUPLICATE | `open-sse/executors/cursor.js:36-49,313-416` already implements Node HTTP/2 AgentService transport with bounded buffering, abort/timeout handling, status validation, and fetch fallback; the version-string bump adds no missing runtime behavior. |
+| #2667 | 9router | fix(codex): recover invalid encrypted history | DUPLICATE | `open-sse/executors/codex.js:506-537,646-662` detects `invalid_encrypted_content`, removes only unverifiable encrypted reasoning, and retries once on the same account; `tests/unit/upstream-ports-batch2.test.js` protects fallback isolation. |
 | #2664 | 9router | fix(kiro): distinguish confirmed credit exhaustion from ambiguous 402s | DUPLICATE | `open-sse/executors/kiro.js:21-24,188-197` — `isConfirmedKiroCreditExhaustion()` already classifies confirmed vs ambiguous 402s. |
-| #2663 | 9router | fix(claude): reconcile compacted tool results | DEFER (Claude compacted tool result reconciliation) | Tool result reconciliation for Claude compact format; requires Claude executor-specific behavior verification. |
+| #2663 | 9router | fix(claude): reconcile compacted tool results | DUPLICATE | `open-sse/translator/formats/claude.js:85-127` reconciles results against the immediately preceding tool-use turn, retains paired results, fills missing pairs, and demotes orphans to user text; covered by `tests/unit/upstream-ports-batch1.test.js`. |
 | #2325 | 9router | fix(github): use goldeneye-free-auto as default model for Copilot free tier (#2276) | DEFER (provider policy: GitHub free-tier default model) | `open-sse/providers/registry/github-models.js` current; free-tier default model requires GitHub catalog + routing policy decision. |
 | #2321 | 9router | fix(antigravity): strip trailing assistant prefill for Vertex Claude models | DUPLICATE | `open-sse/translator/request/openai-to-claude.js:414-416` — trailing assistant prefill strip already present for Vertex/Claude models. |
-| #2319 | 9router | fix(kiro): wrap system messages in <system-reminder> before role→user conversion | DEFER (Kiro wire: system-reminder wrapping) | System message wrapping in `<system-reminder>` tags; requires Kiro real-provider verification. |
+| #2319 | 9router | fix(kiro): wrap system messages in <system-reminder> before role→user conversion | DUPLICATE | Current `openai-to-kiro.js` wraps system content in the successor `<instructions>` envelope; `tests/unit/kiro-system-reminder-wrap.test.js` documents why this intentionally supersedes `<system-reminder>`. |
 | #2317 | 9router | fix(antigravity): strip multipleOf from Gemini tool declaration schemas | DUPLICATE | `open-sse/translator/formats/gemini.js:10` — `multipleOf` already in the Gemini schema stripping list alongside `minItems`, `maxItems`, `format`. |
-| #2315 | 9router | fix(kiro): convert Claude model ID dots to dashes before upstream dispatch | DUPLICATE | Same as #2904 — `normalizeModelId()` at `open-sse/providers/models/schema.js:7-12` already handles digit-digit hyphen normalization for Kiro capability lookup. |
-| #2314 | 9router | fix(kiro): preserve IDC region across ARN discovery | DEFER (Kiro IDC region preservation) | IDC region across ARN discovery for Kiro; requires Kiro executor-specific region handling verification. |
-| #2183 | 9router | fix(kiro): stop injecting fake 'continue' user turn on tool-result turns | DEFER (Kiro continue-turn injection policy) | Fake continue-turn injection removal; requires Kiro executor-specific behavior verification. |
+| #2315 | 9router | fix(kiro): convert Claude model ID dots to dashes before upstream dispatch | DEFER (current live wire uses dotted IDs) | Same dispatch change as #2904. `normalizeModelId()` only normalizes catalog/capability lookup; `tests/unit/kiro-model-id-format.test.js` pins dotted Claude IDs on the current Kiro wire. Reversing dispatch format needs new live-provider evidence. |
+| #2314 | 9router | fix(kiro): preserve IDC region across ARN discovery | DUPLICATE | `open-sse/config/kiroRegions.js:52-71` resolves and preserves the profile ARN region; regional discovery/routing is covered by `tests/unit/kiro-regions.test.js` and `tests/unit/kiro-auto-import-arn.test.js`. |
+| #2183 | 9router | fix(kiro): stop injecting fake 'continue' user turn on tool-result turns | DUPLICATE | `open-sse/translator/request/openai-to-kiro.js:197-208` emits empty content when a turn carries tool results/images instead of injecting `continue`; `tests/unit/openai-to-kiro.test.js:294-327` covers the tool-result-only turn. |
 | #2149 | 9router | fix(cursor): enable OpenAI/OpenCode tool calling on Cursor route | DUPLICATE | `open-sse/executors/cursor.js:274-280` — `tools` from `body.tools` passed directly to `generateCursorBody`; OpenAI-shaped tools accepted and parsed by Cursor executor. |
 | #2146 | 9router | fix(claude): translate non-streaming OpenAI responses back to Anthropic format | DUPLICATE | `open-sse/translator/response/openai-responses-nonstream.js:120-150` — `openAIResponsesBodyToClaude()` translates full OpenAI Responses body to Claude format including tool_calls; independently implemented in DD. |
 | #2143 | 9router | fix(github): drop trailing assistant prefill for Copilot chat | DUPLICATE | `open-sse/executors/github.js:97-115` — `dropTrailingAssistantPrefill()` already drops trailing assistant messages for Copilot chat endpoint. |
 | #2009 | 9router | fix(kiro): support IAM Identity Center accounts outside us-east-1 | DUPLICATE | `open-sse/executors/kiro.js:68-113` — `KIRO_PROFILE_FALLBACK_REGIONS` already probes multiple regions; `ListAvailableProfiles` + `regionFromProfileArn` already handle IDC accounts outside us-east-1. |
 | #1958 | 9router | fix(antigravity): preserve inlineData parts for image-to-image editing | DUPLICATE | `open-sse/translator/request/gemini-to-openai.js:96-100`, `antigravity-to-openai.js:170-174` — `inlineData` parts already preserved via `encodeDataUri`. |
 | #1875 | 9router | fix(kiro): inject agentic chunked-write prompt only on first turn (not every turn) | DUPLICATE | `open-sse/translator/request/openai-to-kiro.js:432-436` — `isFirstTurn` guard already prevents agentic prompt re-injection on subsequent turns. |
-| #1652 | 9router | fix(kiro): add mappable "auto" model slot for Kiro agent mode | DEFER (Kiro auto model slot mapping) | Mappable auto model slot for Kiro agent mode; requires Kiro executor-specific model slot verification. |
+| #1652 | 9router | fix(kiro): add mappable "auto" model slot for Kiro agent mode | GAP → ported | Added the observed `auto` main-agent slot to `MITM_TOOLS.kiro.defaultModels`; regression in `tests/unit/kiro-model-slots.test.js` ensures MITM routing no longer passes it through to AWS. |
 | #1615 | 9router | fix(antigravity): protocol fidelity — correct ideVersion, User-Agent, production host, remove internal header leak | DUPLICATE | `open-sse/providers/shared.js:60-62` — `ANTIGRAVITY_IDE_VERSION = "2.1.1"` and `ANTIGRAVITY_IDE_USER_AGENT` already enforce protocol fidelity. |
 | #1573 | 9router | fix(kiro): emit valid concatenable tool_calls.arguments deltas | DUPLICATE | `open-sse/executors/kiro.js:653-675` — Kiro stream transformer accumulates `buffer` across chunks and emits complete `arguments` delta; valid concatenable deltas already implemented. |
 | #1463 | 9router | fix(cursor): resolve cu/default empty responses | DEFER (Cursor cu/default empty response) | `cu/default` empty response handling for Cursor; requires Cursor executor-specific empty response handling verification. |
-| #1418 | 9router | fix(codex): abort stalled initial upstream responses | DEFER (Codex stalled initial response abort) | Stalled initial upstream response abort for Codex; requires Codex executor-specific timeout/abort verification. |
-| #1383 | 9router | fix(antigravity-to-openai): preserve required fields in tool schemas (closes #1368) | DEFER (provider policy: Antigravity required field preservation) | Required field preservation in Antigravity tool schemas; requires Antigravity executor-specific schema handling verification. |
-| #1349 | 9router | fix(claude): normalize anthropic-version header | DEFER (Claude anthropic-version normalization) | `anthropic-version` header normalization for Claude; requires Claude executor-specific header handling. |
-| #1346 | 9router | fix(codex): migrate deprecated hooks config | DEFER (Codex deprecated hooks config) | Deprecated hooks configuration migration for Codex; requires Codex executor-specific config migration. |
-| #1316 | 9router | fix(cursor): strip Composer <｜final｜> sentinel markers leaking after #1310 | DEFER (Cursor sentinel marker stripping) | Composer sentinel marker stripping for Cursor; requires Cursor executor-specific sentinel handling. |
-| #1257 | 9router | feat(codex): bulk-import accounts from JSON files | DEFER (new feature: Codex bulk account import) | Bulk account import from JSON files for Codex; requires Codex executor-specific bulk import infrastructure. |
-| #1209 | 9router | fix(kiro): resolve Improperly formed request when tool_calls in history (#1184) | DEFER (Kiro improperly-formed request with tool_calls) | Improperly-formed request resolution for Kiro with `tool_calls` in history; requires Kiro executor-specific tool call validation. |
+| #1418 | 9router | fix(codex): abort stalled initial upstream responses | DUPLICATE | `open-sse/executors/codex.js:435-461` bounds SSE-prefix reads with `CODEX_SSE_PEEK_TIMEOUT_MS`; `tests/unit/provider-attempt-context.test.js` covers silent-prefix timeout and cancellation. |
+| #1383 | 9router | fix(antigravity-to-openai): preserve required fields in tool schemas (closes #1368) | DUPLICATE | `antigravity-to-openai.js:97-132` recursively normalizes supported schema members and never removes `required`; nested-schema regressions exercise the converter. |
+| #1349 | 9router | fix(claude): normalize anthropic-version header | GAP → ported | `ensureSingleHeader()` collapses casing variants to one lowercase `anthropic-version` before dispatch. Regression: `tests/unit/claude-header-forwarding.test.js`. |
+| #1346 | 9router | fix(codex): migrate deprecated hooks config | GAP → ported | `migrateCodexFeatureFlags()` renames `features.codex_hooks` to `features.hooks` without overriding an explicit new value; POST/DELETE settings paths apply it. Regression: `tests/unit/codex-config.test.js`. |
+| #1316 | 9router | fix(cursor): strip Composer <｜final｜> sentinel markers leaking after #1310 | GAP → ported | Cursor Composer projection strips full-width and ASCII final markers, withholds partial streamed opening and closing markers, and preserves valid HTML-leading output. Regression: `tests/unit/cursor-composer-thinking.test.js`. |
+| #1257 | 9router | feat(codex): bulk-import accounts from JSON files | DUPLICATE | `src/app/api/oauth/codex/bulk-import/route.js` accepts arrays/single/wrapped account objects, validates and imports serially without echoing tokens; `BulkImportCodexModal.js` and the provider page expose the dashboard flow. |
+| #1209 | 9router | fix(kiro): resolve Improperly formed request when tool_calls in history (#1184) | DUPLICATE | `openai-to-kiro.js` retains client tool schemas, merges adjacent user contexts without losing tool results, salvages orphaned results, and attaches tools to the current message; `tests/unit/openai-to-kiro.test.js` covers historical calls/results. |
 | #1103 | 9router | feat(codex): allow multiple workspaces within the same OpenAI account | DUPLICATE | `open-sse/executors/codex.js:373-380,573-577` — `workspaceId` binding + `x-codex-workspace-id` header already support multiple workspaces per OpenAI account. |
 | #980 | 9router | fix(claude): stop leaking think tags in OpenAI streams | DUPLICATE | `open-sse/translator/response/claude-to-openai.js:115-127` — `inThinkingBlock` state management prevents think-tag leakage; `thinkingBlockStarted = false` on block exit already present. |
 | #141 | 9router | feat(antigravity): initial steps for Antigravity anti-ban alignment | DEFER (provider policy: Antigravity anti-ban alignment) | Antigravity anti-ban alignment initial steps; requires Antigravity executor-specific anti-ban behavior design. |
@@ -404,12 +482,18 @@
 
 | Verdict | Count | PRs |
 |---------|-------|-----|
-| DUPLICATE | 19 | #2988, #2943, #2928, #2904, #2761, #2664, #2321, #2317, #2315, #2143, #1958, #1875, #1615, #1103, #980, #2149, #2146, #2009, #1573 |
-| DEFER | 24 | #3023, #2952, #2923, #2891, #2796, #2756, #2753, #2685, #2667, #2663, #2325, #2319, #2314, #2183, #1652, #1463, #1418, #1383, #1349, #1346, #1316, #1257, #1209, #141 |
-| GAP → ported | 0 | — |
+| GAP → ported | 6 | #3023, #2753, #1652, #1349, #1346, #1316 |
+| DUPLICATE | 27 | #2988, #2943, #2928, #2761, #2685, #2667, #2664, #2663, #2321, #2319, #2317, #2314, #2183, #2149, #2146, #2143, #2009, #1958, #1875, #1615, #1573, #1418, #1383, #1257, #1209, #1103, #980 |
+| DEFER | 10 | #2952, #2923, #2904, #2891, #2796, #2756, #2325, #2315, #1463, #141 |
 | **Total** | **43** | |
 
 | Source | GAP → ported | DUPLICATE | DEFER |
 |--------|-------------|-----------|-------|
-| 9router (43) | 0 | 19 | 24 |
-| **Total** | **0** | **19** | **24** |
+| 9router (43) | 6 | 27 | 10 |
+| **Total** | **6** | **27** | **10** |
+
+### Campaign cumulative summary
+
+| GAP → ported | DUPLICATE | DEFER | Total |
+|---------------|-----------|-------|-------|
+| 15 | 103 | 189 | 307 |

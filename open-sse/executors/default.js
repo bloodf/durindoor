@@ -105,19 +105,30 @@ function setAuth(headers, spec, token) {
   else headers[spec.header] = token;
 }
 
+function ensureSingleHeader(headers, name, fallbackValue) {
+  const lowerName = name.toLowerCase();
+  let value = headers[name];
+  for (const key of Object.keys(headers)) {
+    if (key.toLowerCase() !== lowerName) continue;
+    if (value === undefined) value = headers[key];
+    if (key !== name) delete headers[key];
+  }
+  headers[name] = value ?? fallbackValue;
+}
+
 // Resolve auth onto headers from a descriptor.
 function applyAuth(headers, desc, credentials) {
   if (desc.combined) {
     setAuth(headers, desc, credentials.apiKey || credentials.accessToken);
     applyExtraHeaders(headers, desc.extraHeaders, credentials);
-    if (desc.anthropicVersion && !headers["anthropic-version"]) headers["anthropic-version"] = ANTHROPIC_API_VERSION;
+    if (desc.anthropicVersion) ensureSingleHeader(headers, "anthropic-version", ANTHROPIC_API_VERSION);
     return;
   }
   // split apiKey/oauth: set only the matching branch (legacy: anthropic-compatible skips when both absent)
   if (credentials.apiKey) setAuth(headers, desc.apiKey, credentials.apiKey);
   else if (credentials.accessToken) setAuth(headers, desc.oauth, credentials.accessToken);
   applyExtraHeaders(headers, desc.extraHeaders, credentials);
-  if (desc.anthropicVersion && !headers["anthropic-version"]) headers["anthropic-version"] = ANTHROPIC_API_VERSION;
+  if (desc.anthropicVersion) ensureSingleHeader(headers, "anthropic-version", ANTHROPIC_API_VERSION);
 }
 
 function applyExtraHeaders(headers, extraHeaders, credentials) {
@@ -137,17 +148,14 @@ const HEADER_HOOKS = {
   claudeOverlay: (h) => {
     const cached = getCachedClaudeHeaders();
     if (!cached) return;
+    const overlay = {};
     for (const lcKey of Object.keys(cached)) {
+      if (lcKey === "anthropic-beta") continue;
       const titleKey = lcKey.replace(/(^|-)([a-z])/g, (_, sep, ch) => sep + ch.toUpperCase());
-      if (lcKey === "anthropic-beta") {
-        const staticBetaStr = h[titleKey] || h[lcKey] || "";
-        const flags = new Set(staticBetaStr.split(",").map(f => f.trim()).filter(Boolean));
-        for (const f of cached[lcKey].split(",").map(f => f.trim()).filter(Boolean)) flags.add(f);
-        cached[lcKey] = Array.from(flags).join(",");
-      }
       if (titleKey !== lcKey && h[titleKey] !== undefined) delete h[titleKey];
+      overlay[lcKey] = cached[lcKey];
     }
-    Object.assign(h, cached);
+    Object.assign(h, overlay);
   },
 };
 

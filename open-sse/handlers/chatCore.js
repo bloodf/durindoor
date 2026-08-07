@@ -8,7 +8,7 @@ import { COLORS } from "../utils/stream.js";
 import { createStreamController } from "../utils/streamHandler.js";
 import { classifyQuotaTerminalReason } from "../utils/quotaTerminalReason.js";
 import { createRequestLogger } from "../utils/requestLogger.js";
-import { getModelTargetFormat, getModelStrip, getModelUpstreamId, getCanonicalModelId, getModelType, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
+import { getModelTargetFormat, getModelStrip, getModelThinkingIntent, getModelUpstreamId, getCanonicalModelId, getModelType, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
 import { PROVIDERS } from "../config/providers.js";
 import { createErrorResult, parseUpstreamError, formatProviderError, sanitizeErrorMessage } from "../utils/error.js";
 import { HTTP_STATUS, VALIDATE_OUTBOUND } from "../config/runtimeConfig.js";
@@ -292,7 +292,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
   // provider dispatch consistently use the clean catalog identity.
   const parsedModel = parseSuffix(requestedModel);
   const cleanModel = parsedModel.cleanModel;
-  const modelThinkingIntent = parsedModel.override;
+  const modelThinkingIntent = parsedModel.override || getModelThinkingIntent(alias, cleanModel);
   body = { ...body, model: cleanModel };
   const modelTargetFormat = getModelTargetFormat(alias, cleanModel);
   // Multi-endpoint providers: model-required formats override client format.

@@ -50,7 +50,7 @@ describe("claudeHeaderCache", () => {
     const cached = cacheModule.getCachedClaudeHeaders();
     expect(cached).not.toBeNull();
     expect(cached["user-agent"]).toBe("claude-code/2.1.63 node/24.3.0");
-    expect(cached["anthropic-beta"]).toBe("claude-code-20250219,oauth-2025-04-20");
+    expect(cached["anthropic-beta"]).toBeUndefined();
     expect(cached["x-app"]).toBe("cli");
     expect(cached["x-stainless-os"]).toBe("MacOS");
     // Non-identity header must not leak in
@@ -150,11 +150,11 @@ describe("DefaultExecutor.buildHeaders() — claude provider", () => {
 
     // Live values should win over static providers.js values
     expect(headers["user-agent"]).toBe("claude-code/2.1.63 node/24.3.0");
-    // Beta flags are MERGED (static + cached) to preserve required flags like oauth
-    const betaFlags = headers["anthropic-beta"].split(",").map(s => s.trim());
-    expect(betaFlags).toContain("claude-code-20250219");
-    expect(betaFlags).toContain("oauth-2025-04-20");
-    expect(betaFlags).toContain("interleaved-thinking-2025-05-14");
+    // Request-scoped betas are never replayed from another client. Only the
+    // provider registry's curated static flags survive.
+    const beta = headers["Anthropic-Beta"] || headers["anthropic-beta"] || "";
+    expect(beta.split(",").map(s => s.trim())).toContain("oauth-2025-04-20");
+    expect(beta).not.toContain("context-1m-2025-08-07");
     expect(headers["x-stainless-package-version"]).toBe("0.74.0");
     expect(headers["x-stainless-os"]).toBe("MacOS");
   });
@@ -163,14 +163,44 @@ describe("DefaultExecutor.buildHeaders() — claude provider", () => {
     const executor = new DefaultExecutor("claude");
     const headers = executor.buildHeaders({ apiKey: "sk-test" }, true);
 
-    // Title-Case variants from providers.js must be gone
+    // Title-Case variants are removed only for identity keys present in cache.
     expect(headers["Anthropic-Version"]).toBeUndefined();
-    expect(headers["Anthropic-Beta"]).toBeUndefined();
     expect(headers["User-Agent"]).toBeUndefined();
     expect(headers["X-App"]).toBeUndefined();
-    // Lowercase variants must be present
     expect(headers["anthropic-version"]).toBe("2023-06-01");
     expect(headers["x-app"]).toBe("cli");
+    // anthropic-beta is request-scoped, so static beta remains unshadowed.
+    expect(headers["Anthropic-Beta"]).toBeTruthy();
+    expect(headers["anthropic-beta"]).toBeUndefined();
+  });
+
+  it("does not leak one client's context-1m beta onto later requests", async () => {
+    vi.resetModules();
+    const cache = await import("open-sse/utils/claudeHeaderCache.js");
+    cache.cacheClaudeHeaders({
+      "user-agent": "claude-code/2.1.63 node/24.3.0",
+      "x-app": "cli",
+      "anthropic-beta": "claude-code-20250219,oauth-2025-04-20,context-1m-2025-08-07",
+    });
+    expect(cache.getCachedClaudeHeaders()["anthropic-beta"]).toBeUndefined();
+
+    const mod = await import("open-sse/executors/default.js");
+    const Exec = mod.DefaultExecutor || mod.default;
+    const requestA = new Exec("claude").buildHeaders({ apiKey: "sk-a" }, true);
+    const requestB = new Exec("claude").buildHeaders({ apiKey: "sk-b" }, true);
+    for (const headers of [requestA, requestB]) {
+      const beta = headers["Anthropic-Beta"] || headers["anthropic-beta"] || "";
+      expect(beta).not.toContain("context-1m-2025-08-07");
+    }
+  });
+
+  it("treats the shared identity cache as read-only across repeated builds", async () => {
+    const cache = await import("open-sse/utils/claudeHeaderCache.js");
+    const before = structuredClone(cache.getCachedClaudeHeaders());
+    const executor = new DefaultExecutor("claude");
+    executor.buildHeaders({ apiKey: "sk-test" }, true);
+    executor.buildHeaders({ apiKey: "sk-test" }, true);
+    expect(cache.getCachedClaudeHeaders()).toEqual(before);
   });
 
   it("sets x-api-key auth when apiKey is provided", () => {
@@ -197,6 +227,27 @@ describe("DefaultExecutor.buildHeaders() — claude provider", () => {
     const executor = new DefaultExecutor("claude");
     const headers = executor.buildHeaders({ apiKey: "k" }, false);
     expect(headers["Accept"]).toBeUndefined();
+  });
+});
+
+describe("DefaultExecutor.buildHeaders() — AgentRouter", () => {
+  it("normalizes the primary Claude transport to one lowercase anthropic-version", async () => {
+    const { DefaultExecutor } = await import("open-sse/executors/default.js");
+    const headers = new DefaultExecutor("agentrouter").buildHeaders({ apiKey: "sk-test" }, true);
+    expect(headers["anthropic-version"]).toBe("2023-06-01");
+    expect(headers["Anthropic-Version"]).toBeUndefined();
+  });
+
+  it("normalizes the alternate Claude runtime transport", async () => {
+    const { DefaultExecutor } = await import("open-sse/executors/default.js");
+    const executor = new DefaultExecutor("agentrouter");
+    const credentials = {
+      apiKey: "sk-test",
+      runtimeTransport: executor.config.transports.find((transport) => transport.format === "claude"),
+    };
+    const headers = executor.buildHeaders(credentials, true);
+    expect(headers["anthropic-version"]).toBe("2023-06-01");
+    expect(headers["Anthropic-Version"]).toBeUndefined();
   });
 });
 
@@ -228,6 +279,7 @@ describe("DefaultExecutor.buildHeaders() — claude provider cold start (no cach
   });
 });
 
+
 // ─── anthropic-compatible header stripping ────────────────────────────────────
 
 describe("DefaultExecutor.buildHeaders() — anthropic-compatible stripping", () => {
@@ -237,6 +289,17 @@ describe("DefaultExecutor.buildHeaders() — anthropic-compatible stripping", ()
     vi.resetModules();
     const mod = await import("open-sse/executors/default.js");
     DefaultExecutor = mod.DefaultExecutor || mod.default;
+  });
+  it("emits one lowercase anthropic-version logical header", () => {
+    const executor = new DefaultExecutor("anthropic-compatible-custom");
+    executor.config.headers = { "Anthropic-Version": "2023-06-01" };
+    const headers = executor.buildHeaders({
+      apiKey: "key",
+      providerSpecificData: { baseUrl: "https://api.anthropic.com/v1" },
+    }, false);
+    expect(Object.keys(headers).filter((key) => key.toLowerCase() === "anthropic-version"))
+      .toEqual(["anthropic-version"]);
+    expect(headers["anthropic-version"]).toBe("2023-06-01");
   });
 
   it("strips x-app and anthropic-dangerous-direct-browser-access for non-Anthropic host", () => {

@@ -1,5 +1,8 @@
 import { ANTIGRAVITY_IDE_BASE_URL, ANTIGRAVITY_IDE_USER_AGENT, ANTIGRAVITY_OAUTH_CLIENT } from "../shared.js";
 
+// Gemini 3.6 exposes one wire model; these picker variants pin request effort.
+const GEMINI_36_FLASH_WIRE_ID = "gemini-3.6-flash-tiered";
+
 export default {
   id: "antigravity",
   priority: 20,
@@ -44,6 +47,10 @@ export default {
     clientSecret: ANTIGRAVITY_OAUTH_CLIENT.clientSecret, // Set via env var — see SECRETS_AND_CONFIG.md
   },
   models: [
+    { id: "gemini-3.6-flash-high", name: "Gemini 3.6 Flash (High)", upstreamModelId: GEMINI_36_FLASH_WIRE_ID, thinkingLevel: "high" },
+    { id: "gemini-3.6-flash-medium", name: "Gemini 3.6 Flash (Medium)", upstreamModelId: GEMINI_36_FLASH_WIRE_ID, thinkingLevel: "medium" },
+    { id: "gemini-3.6-flash-low", name: "Gemini 3.6 Flash (Low)", upstreamModelId: GEMINI_36_FLASH_WIRE_ID, thinkingLevel: "low" },
+    { id: GEMINI_36_FLASH_WIRE_ID, name: "Gemini 3.6 Flash (Wire)" },
     { id: "gemini-3-flash-agent", name: "Gemini 3.5 Flash (High)" },
     { id: "gemini-3.5-flash-low", name: "Gemini 3.5 Flash (Medium)", mandatory: true },
     { id: "gemini-3.5-flash-extra-low", name: "Gemini 3.5 Flash (Low)" },

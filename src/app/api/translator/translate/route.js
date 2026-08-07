@@ -6,6 +6,7 @@ import { parseSuffix } from "open-sse/translator/concerns/thinkingUnified.js";
 import {
   getCanonicalModelId,
   getModelTargetFormat,
+  getModelThinkingIntent,
   getModelUpstreamId,
   PROVIDER_ID_TO_ALIAS,
 } from "open-sse/config/providerModels.js";
@@ -32,7 +33,7 @@ function resolveRequestModel(provider, requestedModel) {
     capabilityModel: cleanModel,
     upstreamModel,
     translationModel,
-    thinkingIntent: override,
+    thinkingIntent: override || getModelThinkingIntent(alias, cleanModel),
     targetFormat,
   };
 }

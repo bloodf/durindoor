@@ -24,6 +24,11 @@ describe("Kiro MITM model slots", () => {
     expect(sonnet5.alias).toBe("claude-sonnet-5");
   });
 
+  it("offers a mappable slot for the main agent model id 'auto'", () => {
+    expect(kiro.defaultModels.find((model) => model.id === "auto"))
+      .toMatchObject({ alias: "auto" });
+  });
+
   it("offers a mappable slot for the background sub-task model id 'simple-task'", () => {
     const simpleTask = kiro.defaultModels.find((m) => m.id === "simple-task");
     expect(simpleTask).toBeTruthy();

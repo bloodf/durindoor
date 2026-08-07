@@ -66,12 +66,40 @@ function isComposerModel(model) {
   return /^composer(?:-|$)/i.test(modelId);
 }
 
+const COMPOSER_OPEN_MARKERS = ["<｜final｜>", "<|final|>"];
+const COMPOSER_CLOSE_MARKERS = ["<｜/final｜>", "<|/final|>"];
+
+function isPartialComposerMarker(value, markers) {
+  const candidate = value.trim().toLowerCase();
+  return candidate && markers.some((marker) => marker.toLowerCase().startsWith(candidate));
+}
+
+function stripPartialComposerCloseMarker(value) {
+  for (const marker of COMPOSER_CLOSE_MARKERS) {
+    for (let length = marker.length - 1; length > 0; length -= 1) {
+      if (value.toLowerCase().endsWith(marker.slice(0, length).toLowerCase())) {
+        return value.slice(0, -length);
+      }
+    }
+  }
+  return value;
+}
+
 function visibleComposerContentFromThinking(thinking) {
   if (!thinking) return "";
   const endTag = "</think>";
   const endIdx = thinking.lastIndexOf(endTag);
   if (endIdx < 0) return "";
-  return thinking.slice(endIdx + endTag.length).trimStart();
+  let visible = thinking.slice(endIdx + endTag.length).trimStart();
+  const openMarker = /^\s*<[｜|]\s*final\s*[｜|]>\s*/i;
+  const closeMarker = /\s*<[｜|]\s*\/\s*final\s*[｜|]>\s*$/i;
+  if (openMarker.test(visible)) {
+    visible = visible.replace(openMarker, "");
+  } else if (isPartialComposerMarker(visible, COMPOSER_OPEN_MARKERS)) {
+    return "";
+  }
+  visible = visible.replace(closeMarker, "").trim();
+  return stripPartialComposerCloseMarker(visible).trimEnd();
 }
 
 function decompressPayload(payload, flags, maxOutputLength = MAX_PROVIDER_BODY_BYTES) {

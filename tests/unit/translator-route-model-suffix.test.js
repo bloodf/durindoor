@@ -68,6 +68,40 @@ describe("translator console model suffix boundary", () => {
     expect(JSON.stringify(mocks.transformRequest.mock.calls[0][1])).not.toContain("(high)");
   });
 
+  it("passes Antigravity tier intent separately from the clean wire model", async () => {
+    const response = await POST({
+      json: async () => ({
+        step: 3,
+        body: {
+          provider: "antigravity",
+          model: "gemini-3.6-flash-high",
+          body: {
+            model: "gemini-3.6-flash-high",
+            messages: [{ role: "user", content: "hello" }],
+            stream: false,
+          },
+        },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.buildUrl).toHaveBeenCalledWith(
+      "gemini-3.6-flash-tiered",
+      false,
+      0,
+      expect.any(Object),
+    );
+    expect(mocks.transformRequest.mock.calls[0][0]).toBe("gemini-3.6-flash-tiered");
+    expect(mocks.transformRequest.mock.calls[0][1]).toMatchObject({
+      model: "gemini-3.6-flash-tiered",
+      request: {
+        generationConfig: {
+          thinkingConfig: { thinkingLevel: "high", includeThoughts: true },
+        },
+      },
+    });
+  });
+
   it("fails non-2xx and never leaks a credential when the provider's executor is fail-closed", async () => {
     // Regression: a blocked provider (e.g. devin cloud-agent, kind agent, no chat
     // transport) throws from buildUrl/buildHeaders. The route must map that to a

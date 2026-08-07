@@ -4,9 +4,11 @@
  * for forwarding to api.anthropic.com, replacing static hardcoded values.
  */
 
+// Identity-only. `anthropic-beta` is request-scoped and entitlement-sensitive,
+// so caching it would leak one client's feature flags onto later requests.
+// Outbound beta flags come from the provider registry's curated static list.
 const CLAUDE_IDENTITY_HEADERS = [
   "user-agent",
-  "anthropic-beta",
   "anthropic-version",
   "anthropic-dangerous-direct-browser-access",
   "x-app",

@@ -1,7 +1,7 @@
 import REGISTRY from "../providers/registry/index.js";
 // PROVIDER_MODELS now built from providers/registry (transport + models co-located)
 import { PROVIDER_MODELS } from "../providers/index.js";
-import { modelQuotaFamily, modelStrip, modelTargetFormat, normalizeModelId } from "../providers/models/schema.js";
+import { modelQuotaFamily, modelStrip, modelTargetFormat, modelThinkingLevel, normalizeModelId } from "../providers/models/schema.js";
 import { CODEX_REVIEW_SUFFIX } from "../providers/models/helpers.js";
 import { parseSuffix } from "../translator/concerns/thinkingSuffix.js";
 
@@ -83,18 +83,21 @@ export function getModelUpstreamId(aliasOrId, modelId) {
   // Only recognized request-only thinking controls participate in catalog
   // lookup. Unknown parentheses may be part of a real passthrough/custom model
   // ID and must remain opaque instead of being rewritten through a base alias.
-  // The control is never re-appended: provider-facing model IDs are always clean,
-  // while thinking intent travels in request-scoped translation context.
-  const parsed = parseSuffix(modelId);
-  const baseId = parsed.cleanModel;
+  const { cleanModel } = parseSuffix(modelId);
   const models = PROVIDER_MODELS[aliasOrId];
-  const found = findModel(models, baseId, aliasOrId);
+  const found = findModel(models, cleanModel, aliasOrId);
   if (found?.upstreamModelId) return found.upstreamModelId;
   if (found?.id) return found.id;
-  if (aliasOrId === "cx" && typeof baseId === "string" && baseId.endsWith(CODEX_REVIEW_SUFFIX)) {
-    return baseId.slice(0, -CODEX_REVIEW_SUFFIX.length);
+  if (aliasOrId === "cx" && typeof cleanModel === "string" && cleanModel.endsWith(CODEX_REVIEW_SUFFIX)) {
+    return cleanModel.slice(0, -CODEX_REVIEW_SUFFIX.length);
   }
-  return baseId;
+  return cleanModel;
+}
+
+export function getModelThinkingIntent(aliasOrId, modelId) {
+  const { cleanModel } = parseSuffix(modelId);
+  const level = modelThinkingLevel(findModel(PROVIDER_MODELS[aliasOrId], cleanModel, aliasOrId));
+  return level ? { mode: "level", level } : null;
 }
 
 /** Return the configured catalog id for a request model, or null for passthrough input. */

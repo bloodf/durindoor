@@ -7,6 +7,7 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { parseTOML, stringifyTOML } from "confbox";
+import { migrateCodexFeatureFlags } from "@/shared/utils/codexConfig";
 
 const execAsync = promisify(exec);
 
@@ -127,7 +128,7 @@ export async function POST(request) {
       const existingConfig = await fs.readFile(configPath, "utf-8");
       parsed = parsedToWritable(parseTOML(existingConfig));
     } catch { /* No existing config */ }
-
+    migrateCodexFeatureFlags(parsed);
     // Update only DurinDoor related fields (api_key goes to auth.json, not config.toml)
     parsed.model = model;
     parsed.model_provider = "9router";
@@ -194,6 +195,7 @@ export async function DELETE() {
       }
       throw error;
     }
+    migrateCodexFeatureFlags(parsed);
 
     // Remove DurinDoor related root fields only if they point to 9router
     if (parsed.model_provider === "9router") {

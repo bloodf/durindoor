@@ -28,6 +28,7 @@ export default {
         header: "x-api-key",
         scheme: "raw",
       },
+      anthropicVersion: true,
       hooks: [
         "claudeOverlay",
       ],
@@ -48,6 +49,7 @@ export default {
         header: "x-api-key",
         scheme: "raw",
         apiKey: { header: "x-api-key", scheme: "raw" },
+        anthropicVersion: true,
         hooks: ["claudeOverlay"],
       },
     },

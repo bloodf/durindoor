@@ -9,7 +9,7 @@ describe("AgentRouter provider", () => {
     const headers = executor.buildHeaders({ apiKey: "sk-agentrouter" }, false);
 
     expect(headers).toMatchObject({
-      "Anthropic-Version": "2023-06-01",
+      "anthropic-version": "2023-06-01",
       "Anthropic-Beta": expect.stringContaining("claude-code-20250219"),
       "User-Agent": expect.stringContaining("claude-cli/"),
       "X-App": "cli",
@@ -18,6 +18,9 @@ describe("AgentRouter provider", () => {
       "X-Stainless-Runtime": "node",
       "x-api-key": "sk-agentrouter",
     });
+    expect(Object.keys(headers).filter((key) => key.toLowerCase() === "anthropic-version")).toEqual([
+      "anthropic-version",
+    ]);
     expect(headers["Anthropic-Beta"]).toContain("oauth-2025-04-20");
     expect(headers.Authorization).toBeUndefined();
   });

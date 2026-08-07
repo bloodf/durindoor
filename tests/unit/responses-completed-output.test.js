@@ -92,6 +92,21 @@ describe("Responses terminal output", () => {
     }
   });
 
+  it("marks text items in progress when added and completed when finalized", async () => {
+    const chunks = [
+      { id: "chatcmpl-1", choices: [{ index: 0, delta: { content: "answer" }, finish_reason: null }] },
+      { id: "chatcmpl-1", choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage },
+    ];
+
+    for (const [events, key] of [[await transform(chunks), "type"], [translate(chunks), "event"]]) {
+      const added = events.find((event) => event[key] === "response.output_item.added");
+      const done = events.find((event) => event[key] === "response.output_item.done");
+      expect(key === "type" ? added.item.status : added.data.item.status).toBe("in_progress");
+      expect(key === "type" ? done.item.status : done.data.item.status).toBe("completed");
+      expect(completedOutput(events, key)[0].status).toBe("completed");
+    }
+  });
+
   it.each([-1, "0", 0.5, null, false])(
     "rejects invalid transformer tool_call.index %j before output lifecycle emission",
     async (index) => {

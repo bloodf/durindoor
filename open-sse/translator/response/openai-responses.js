@@ -255,7 +255,7 @@ function emitTextContent(state, emit, idx, content) {
     emit("response.output_item.added", {
       type: "response.output_item.added",
       output_index: outputIndex,
-      item: { id: msgId, type: RESPONSES_ITEM.MESSAGE, content: [], role: ROLE.ASSISTANT }
+      item: { id: msgId, type: RESPONSES_ITEM.MESSAGE, content: [], role: ROLE.ASSISTANT, status: "in_progress" }
     });
   }
 
@@ -317,7 +317,8 @@ function closeMessage(state, emit, idx) {
         id: msgId,
         type: RESPONSES_ITEM.MESSAGE,
         content: [{ type: RESPONSES_ITEM.OUTPUT_TEXT, annotations: [], logprobs: [], text: fullText }],
-        role: ROLE.ASSISTANT
+        role: ROLE.ASSISTANT,
+        status: "completed"
       }
     });
   }

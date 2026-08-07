@@ -79,6 +79,36 @@ describe("handleResponsesCore Ponytail boundary", () => {
     expect(mocks.recordTokenSaverEvent).not.toHaveBeenCalled();
   });
 
+  it("preserves native Responses input token details when buffering SSE", async () => {
+    const converted = { model: "demo", messages: [{ role: "user", content: "hello" }] };
+    const usage = {
+      input_tokens: 100,
+      output_tokens: 5,
+      total_tokens: 105,
+      input_tokens_details: { cached_tokens: 70, cache_creation_tokens: 10 },
+    };
+    const sse = [
+      `event: response.created\ndata: ${JSON.stringify({ type: "response.created", response: { id: "resp_1", status: "in_progress" } })}`,
+      `event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response: { id: "resp_1", status: "completed", usage } })}`,
+      "data: [DONE]",
+      "",
+    ].join("\n\n");
+    mocks.handlePonytailCommands.mockResolvedValue(null);
+    mocks.convertResponsesApiFormat.mockReturnValue(converted);
+    mocks.handleChatCore.mockResolvedValue({
+      success: true,
+      response: new Response(sse, { headers: { "Content-Type": "text/event-stream" } }),
+    });
+
+    const result = await handleResponsesCore({
+      body: { model: "demo", input: "hello", stream: false },
+      modelInfo: { provider: "demo", model: "demo" },
+      credentials: {},
+    });
+
+    expect(JSON.parse(await result.response.text()).usage).toEqual(usage);
+  });
+
   it("persists the captured token-saver event once after chatCore returns (port of 9router #2562)", async () => {
     const converted = { model: "demo", messages: [{ role: "user", content: "hello" }] };
     const upstream = {

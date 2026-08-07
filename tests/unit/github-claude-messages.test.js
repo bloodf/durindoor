@@ -93,10 +93,11 @@ describe("GithubExecutor native Claude /v1/messages routing (upstream #2608)", (
     expect(sent.response_format).toBeUndefined();
 
     const out = await readStream(result.response);
-    // OpenAI-shaped deltas stream live, finish frame + [DONE] close the stream.
+    // OpenAI-shaped deltas and finish frame survive conversion, but the forced
+    // upstream SSE must not expose [DONE] to this non-streaming client.
     expect(out).toContain('"content":"hi"');
     expect(out).toContain('"finish_reason":"stop"');
-    expect(out).toContain("[DONE]");
+    expect(out).not.toContain("[DONE]");
     expect(out).not.toContain("stream_error");
     // Cache usage surfaced from the native endpoint: cache_read (7) folded into
     // prompt_tokens (11 + 7 = 18) and reported as cached_tokens — the whole

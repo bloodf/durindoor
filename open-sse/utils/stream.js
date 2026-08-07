@@ -5,7 +5,7 @@ import { extractUsage, mergeUsage, hasValidUsage, estimateUsage, logUsage, addBu
 import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE } from "./streamHelpers.js";
 import { PROVIDERS } from "../config/providers.js";
 import { CLAUDE_BLOCK } from "../translator/schema/index.js";
-import { getOpenAIResponsesEventName, isOpenAIResponsesTerminalEvent, formatIncompleteOpenAIResponsesStreamFailure } from "./responsesStreamHelpers.js";
+import { getOpenAIResponsesEventName, formatIncompleteOpenAIResponsesStreamFailure } from "./responsesStreamHelpers.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
 import { createThinkTagStreamExtractor } from "./thinkStripper.js";
 import { resolveInlineThinkingFormat } from "../handlers/chatCore/inlineThinking.js";
@@ -186,6 +186,7 @@ export function createSSEStream(options = {}) {
   let openAIResponsesTerminalSeen = false;
   let openAIResponsesDoneSent = false;
   let openAIResponsesResponseId = null;
+  let openAIResponsesFailureTerminalSeen = false;
   let streamDoneSent = false;  // track duplicate [DONE] across transform + flush
   let claudeTerminalSeen = false;
   const terminalBody = providerBody || body;
@@ -214,9 +215,24 @@ export function createSSEStream(options = {}) {
       if (responsesStreamState) responsesStreamState.responseId = chunk.response.id;
     }
   };
+  const captureOpenAIResponsesFailureTerminal = (eventName, chunk) => {
+    const resolvedEventName = getOpenAIResponsesEventName(eventName, chunk);
+    const payloadEventName = typeof chunk?.type === "string" ? chunk.type : null;
+    const eventNamesMatch = !eventName || !payloadEventName || eventName === payloadEventName;
+    const status = String(chunk?.response?.status || "").toLowerCase();
+    const coherentFailure = eventNamesMatch && (
+      (resolvedEventName === "response.failed" && (!status || status === "failed"))
+      || (["response.cancelled", "response.canceled"].includes(resolvedEventName) && (!status || ["cancelled", "canceled"].includes(status)))
+      || resolvedEventName === "error"
+    );
+    if (!coherentFailure) return;
+    openAIResponsesFailureTerminalSeen = true;
+    openAIResponsesTerminalSeen = true;
+    if (responsesStreamState) responsesStreamState.terminalSeen = true;
+  };
   const syncOpenAIResponsesTerminal = () => {
     if (!responsesStreamState) return;
-    if (upstreamTerminal.outcome === "success") {
+    if (upstreamTerminal.outcome === "success" || openAIResponsesFailureTerminalSeen) {
       responsesStreamState.terminalSeen = true;
       responsesStreamState.postTerminalIngress ??= createResponsesPostTerminalIngress(responsesStreamState);
     } else {
@@ -240,6 +256,7 @@ export function createSSEStream(options = {}) {
       } else if (parsed) {
         upstreamTerminal.observe({ chunk: parsed, eventName });
         captureOpenAIResponsesResponseId(eventName, parsed);
+        captureOpenAIResponsesFailureTerminal(eventName, parsed);
         syncOpenAIResponsesTerminal();
         if (
           targetFormat === FORMATS.CLAUDE
@@ -380,6 +397,7 @@ export function createSSEStream(options = {}) {
             streamDoneSent = true;
             upstreamTerminal.observe({ rawDone: true, eventName: upstreamEventForLine });
             syncOpenAIResponsesTerminal();
+            if (openAIResponsesFailureTerminalSeen) continue;
             if (upstreamTerminal.outcome === "success") {
               responsesStreamState?.postTerminalIngress?.markDoneSeen();
             }
@@ -390,6 +408,7 @@ export function createSSEStream(options = {}) {
               const parsed = JSON.parse(trimmed.slice(5).trim());
               upstreamTerminal.observe({ chunk: parsed, eventName: upstreamEventForLine });
               captureOpenAIResponsesResponseId(upstreamEventForLine, parsed);
+              captureOpenAIResponsesFailureTerminal(upstreamEventForLine, parsed);
               syncOpenAIResponsesTerminal();
               if (
                 targetFormat === FORMATS.CLAUDE
@@ -728,11 +747,12 @@ export function createSSEStream(options = {}) {
           rawDone: parsed?.done === true,
         });
         captureOpenAIResponsesResponseId(openAIResponsesEventName, parsed);
+        captureOpenAIResponsesFailureTerminal(openAIResponsesEventName, parsed);
         syncOpenAIResponsesTerminal();
         currentUpstreamEvent = null;
 
         if (isOpenAIResponsesStream) {
-          openAIResponsesTerminalSeen = upstreamTerminal.outcome === "success";
+          openAIResponsesTerminalSeen = upstreamTerminal.outcome === "success" || openAIResponsesFailureTerminalSeen;
         }
 
         // For Ollama: done=true is the final chunk with finish_reason/usage, must translate
@@ -747,7 +767,7 @@ export function createSSEStream(options = {}) {
             sseEmittedCount++;
           }
 
-          if (keepsOpenAIResponsesFormat && !streamDoneSent) {
+          if (keepsOpenAIResponsesFormat && !openAIResponsesFailureTerminalSeen && !streamDoneSent) {
             const doneOutput = "data: [DONE]\n\n";
             reqLogger?.appendConvertedChunk?.(doneOutput);
             controller.enqueue(sharedEncoder.encode(doneOutput));
@@ -989,15 +1009,15 @@ export function createSSEStream(options = {}) {
           }
           
           // Explicitly streaming passthrough responses need the OpenAI sentinel;
-          // non-streaming requests must remain JSON-only. Gemini-family clients
-          // reject the sentinel with 400 syntax errors.
+          // non-streaming requests must remain JSON-only. Native Responses failures
+          // are already terminal and must not receive a success-looking sentinel.
           const isGeminiFamily = GEMINI_PASSTHROUGH_PROVIDERS.has(provider);
           const isClaudeStream = targetFormat === FORMATS.CLAUDE;
           const isResponsesStream = targetFormat === FORMATS.OPENAI_RESPONSES;
           if (isClaudeStream && !claudeTerminalSeen) {
             throw new Error("Claude passthrough stream ended before message_stop");
           }
-          if (isResponsesStream && upstreamTerminal.outcome !== "success") {
+          if (isResponsesStream && upstreamTerminal.outcome !== "success" && !openAIResponsesFailureTerminalSeen) {
             const failedOutput = formatIncompleteOpenAIResponsesStreamFailure(openAIResponsesResponseId);
             upstreamTerminal.observe({
               eventName: "response.failed",
@@ -1010,6 +1030,7 @@ export function createSSEStream(options = {}) {
             !streamDoneSent
             && !isGeminiFamily
             && !isClaudeStream
+            && !openAIResponsesFailureTerminalSeen
             && body?.stream === true
             && upstreamTerminal.outcome !== "failure"
           ) {
@@ -1079,7 +1100,7 @@ export function createSSEStream(options = {}) {
           openAIResponsesTerminalSeen = true;
         }
 
-        if (keepsOpenAIResponsesFormat && body?.stream === true && !openAIResponsesDoneSent && !streamDoneSent) {
+        if (keepsOpenAIResponsesFormat && !openAIResponsesFailureTerminalSeen && body?.stream === true && !openAIResponsesDoneSent && !streamDoneSent) {
           const doneOutput = "data: [DONE]\n\n";
           reqLogger?.appendConvertedChunk?.(doneOutput);
           controller.enqueue(sharedEncoder.encode(doneOutput));

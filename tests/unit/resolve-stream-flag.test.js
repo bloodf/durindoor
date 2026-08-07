@@ -55,6 +55,30 @@ describe("resolveStreamFlag (#2031)", () => {
     expect(resolveStreamFlag({ providerRequiresStreaming: false })).toBe(false);
   });
 
+  it("defaults omitted native Ollama /api/chat requests to streaming", () => {
+    expect(resolveStreamFlag({
+      providerRequiresStreaming: false,
+      sourceFormat: "openai",
+      requestPath: "/api/v1/api/chat",
+    })).toBe(true);
+  });
+
+  it("defaults omitted Ollama-format requests to streaming", () => {
+    expect(resolveStreamFlag({
+      providerRequiresStreaming: false,
+      sourceFormat: "ollama",
+    })).toBe(true);
+  });
+
+  it("keeps explicit stream:false on native Ollama /api/chat requests", () => {
+    expect(resolveStreamFlag({
+      providerRequiresStreaming: false,
+      bodyStream: false,
+      sourceFormat: "openai",
+      requestPath: "/api/v1/api/chat",
+    })).toBe(false);
+  });
+
   it("streams an omitted protocol-implied request without restoring the ordinary omission default", () => {
     expect(
       resolveStreamFlag({

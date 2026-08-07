@@ -28,7 +28,7 @@ import { buildRequestDetail, extractRequestConfig } from "./chatCore/requestDeta
 import { handleForcedSSEToJson } from "./chatCore/sseToJsonHandler.js";
 import { handleNonStreamingResponse } from "./chatCore/nonStreamingHandler.js";
 import { handleStreamingResponse, buildOnStreamComplete } from "./chatCore/streamingHandler.js";
-import { resolveStreamFlag } from "./chatCore/streamFlag.js";
+import { protocolDefaultsToStreaming, resolveStreamFlag } from "./chatCore/streamFlag.js";
 import { createEmptyRetryStream } from "./chatCore/emptyStreamGuard.js";
 import { isAnthropicThinkingSignatureError, stripHistoricalThinkingForSignatureRecovery } from "./chatCore/thinkingSignatureRecovery.js";
 import { detectClientTool, isNativePassthrough, isCodexOriginatedHeaders } from "../utils/clientDetector.js";
@@ -332,7 +332,13 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
   }
 
   const isCompactRequest = requestContext?.compact === true;
-  const protocolImpliedStreaming = body.stream === undefined && (sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI);
+  const requestPath = clientRawRequest?.endpoint || "";
+  const protocolImpliedStreaming = body.stream === undefined && (
+    sourceFormat === FORMATS.ANTIGRAVITY
+    || sourceFormat === FORMATS.GEMINI
+    || sourceFormat === FORMATS.GEMINI_CLI
+    || protocolDefaultsToStreaming({ sourceFormat, requestPath })
+  );
   const clientRequestedStreaming = !isCompactRequest && (body.stream === true || protocolImpliedStreaming);
   const providerRequiresStreaming = !isCompactRequest && PROVIDERS[provider]?.forceStream === true;
   // Image generation models require non-streaming (Google v1internal:generateContent)
@@ -354,6 +360,8 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
     providerRequiresStreaming,
     bodyStream: body.stream,
     protocolImpliedStreaming,
+    sourceFormat,
+    requestPath,
     forceNonStreaming:
       (isImageGenModel && (provider === "antigravity" || provider === "gemini-cli" || provider === "agy"))
       || providerForcesNonStreaming

@@ -201,7 +201,8 @@ export function createResponsesApiTransformStream(logger = null) {
           id: msgId,
           type: "message",
           content: [{ type: "output_text", annotations: [], logprobs: [], text: fullText }],
-          role: "assistant"
+          role: "assistant",
+          status: "completed"
         }
       });
     }
@@ -384,7 +385,7 @@ export function createResponsesApiTransformStream(logger = null) {
               emit(controller, "response.output_item.added", {
                 type: "response.output_item.added",
                 output_index: state.msgOutputIndexes[idx],
-                item: { id: msgId, type: "message", content: [], role: "assistant" }
+                item: { id: msgId, type: "message", content: [], role: "assistant", status: "in_progress" }
               });
             }
 

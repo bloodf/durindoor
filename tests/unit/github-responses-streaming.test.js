@@ -45,7 +45,7 @@ describe("GithubExecutor /responses escalation streaming", () => {
     }));
     const result = await new GithubExecutor().executeWithResponsesEndpoint({
       model: "gpt-5.5-codex",
-      body: { messages: [{ role: "user", content: "hello" }] },
+      body: { messages: [{ role: "user", content: "hello" }], stream: true },
       stream: true,
       credentials: { copilotToken: "ghu_test" },
       log: { debug: vi.fn() },
@@ -76,20 +76,11 @@ describe("GithubExecutor /responses escalation streaming", () => {
     expect(text).not.toContain("data: [DONE]");
   });
 
-  it.each([
-    ["unknown line after terminal", [
-      `event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response: { status: "completed" } })}`,
-      "unknown framing",
-    ].join("\n\n")],
-    ["dangling event after terminal", [
+  it("rejects a dangling event after a Responses terminal", async () => {
+    const raw = [
       `event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response: { status: "completed" } })}`,
       "event: response.output_text.delta",
-    ].join("\n\n")],
-    ["unknown line before terminal", [
-      "unknown framing",
-      `event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response: { status: "completed" } })}`,
-    ].join("\n\n")],
-  ])("rejects malformed Responses framing without DONE: %s", async (_label, raw) => {
+    ].join("\n\n");
     proxyAwareFetchMock.mockResolvedValueOnce(new Response(raw, {
       status: 200,
       headers: { "content-type": "text/event-stream" },
@@ -97,6 +88,58 @@ describe("GithubExecutor /responses escalation streaming", () => {
     const result = await new GithubExecutor().executeWithResponsesEndpoint({
       model: "gpt-5.5-codex",
       body: { messages: [] },
+      stream: true,
+      credentials: { copilotToken: "ghu_test" },
+      log: { debug: vi.fn() },
+    });
+    const text = await result.response.text();
+    expect(text).toContain("GitHub Responses stream failed");
+    expect(text).not.toContain("data: [DONE]");
+  });
+
+  it.each([
+    ["Responses", "executeWithResponsesEndpoint", [
+      "id: response-1",
+      "retry: 1000",
+      "x-trace: abc",
+      "extension-with-empty-value",
+      `event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response: { status: "completed" } })}`,
+      "x-after-terminal: ignored",
+    ].join("\n\n")],
+    ["Messages", "executeWithMessagesEndpoint", [
+      "id: message-1",
+      "retry: 1000",
+      "x-trace: abc",
+      `event: message_start\ndata: ${JSON.stringify({ type: "message_start", message: { id: "msg_1", usage: { input_tokens: 1, output_tokens: 0 } } })}`,
+      `event: message_delta\ndata: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 1 } })}`,
+      `event: message_stop\ndata: ${JSON.stringify({ type: "message_stop" })}`,
+      "x-after-terminal: ignored",
+    ].join("\n\n")],
+  ])("ignores legal non-data SSE fields on %s streams", async (_route, method, raw) => {
+    proxyAwareFetchMock.mockResolvedValueOnce(new Response(`${raw}\n\n`, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    }));
+    const result = await new GithubExecutor()[method]({
+      model: method === "executeWithMessagesEndpoint" ? "claude-sonnet-4.6" : "gpt-5.5-codex",
+      body: { messages: [{ role: "user", content: "hello" }], stream: true },
+      stream: true,
+      credentials: { copilotToken: "ghu_test" },
+      log: { debug: vi.fn() },
+    });
+    const text = await result.response.text();
+    expect(text).not.toContain("stream failed");
+    expect(text.match(/data: \[DONE\]/g)).toHaveLength(1);
+  });
+
+  it("still rejects malformed Responses data payloads", async () => {
+    proxyAwareFetchMock.mockResolvedValueOnce(new Response("data: {not-json}\n\n", {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    }));
+    const result = await new GithubExecutor().executeWithResponsesEndpoint({
+      model: "gpt-5.5-codex",
+      body: { messages: [], stream: true },
       stream: true,
       credentials: { copilotToken: "ghu_test" },
       log: { debug: vi.fn() },
@@ -114,7 +157,7 @@ describe("GithubExecutor /responses escalation streaming", () => {
     }));
     const result = await new GithubExecutor().executeWithResponsesEndpoint({
       model: "gpt-5.5-codex",
-      body: { messages: [] },
+      body: { messages: [], stream: true },
       stream: true,
       credentials: { copilotToken: "ghu_test" },
       log: { debug: vi.fn() },
@@ -137,7 +180,7 @@ describe("GithubExecutor /responses escalation streaming", () => {
     }));
     const result = await new GithubExecutor().executeWithResponsesEndpoint({
       model: "gpt-5.5-codex",
-      body: { messages: [] },
+      body: { messages: [], stream: true },
       stream: true,
       credentials: { copilotToken: "ghu_test" },
       log: { debug: vi.fn() },
@@ -183,8 +226,8 @@ describe("GithubExecutor /responses escalation streaming", () => {
     ["Responses", "executeWithResponsesEndpoint", [
       `event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response: { status: "completed" } })}`,
     ].join("\n\n")],
-  ])("synthesizes DONE for validated %s streams regardless of original body stream intent", async (_route, method, raw) => {
-    for (const stream of [false, undefined, true]) {
+  ])("emits DONE for validated %s conversions only when the original request streams", async (_route, method, raw) => {
+    for (const [stream, expectedDoneCount] of [[undefined, 0], [false, 0], [true, 1]]) {
       proxyAwareFetchMock.mockResolvedValueOnce(new Response(`${raw}\n\n`, {
         status: 200,
         headers: { "content-type": "text/event-stream" },
@@ -195,13 +238,13 @@ describe("GithubExecutor /responses escalation streaming", () => {
       const result = await new GithubExecutor()[method]({
         model: method === "executeWithMessagesEndpoint" ? "claude-sonnet-4.6" : "gpt-5.5-codex",
         body,
-        stream: true,
+        ...(stream === undefined ? {} : { stream }),
         credentials: { copilotToken: "ghu_test" },
         log: { debug: vi.fn() },
       });
 
       const text = await result.response.text();
-      expect(text, `body.stream=${stream}`).toContain("data: [DONE]");
+      expect(text.match(/data: \[DONE\]/g) ?? [], `stream=${stream}`).toHaveLength(expectedDoneCount);
     }
   });
 
@@ -216,8 +259,8 @@ describe("GithubExecutor /responses escalation streaming", () => {
       `event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response: { status: "completed" } })}`,
       "data: [DONE]",
     ].join("\n\n")],
-  ])("preserves genuine upstream DONE for non-streaming %s requests", async (_route, method, raw) => {
-    for (const stream of [false, undefined]) {
+  ])("does not expose upstream DONE for non-streaming %s requests", async (_route, method, raw) => {
+    for (const stream of [undefined, false]) {
       proxyAwareFetchMock.mockResolvedValueOnce(new Response(`${raw}\n\n`, {
         status: 200,
         headers: { "content-type": "text/event-stream" },
@@ -228,12 +271,12 @@ describe("GithubExecutor /responses escalation streaming", () => {
       const result = await new GithubExecutor()[method]({
         model: method === "executeWithMessagesEndpoint" ? "claude-sonnet-4.6" : "gpt-5.5-codex",
         body,
-        stream: false,
+        ...(stream === undefined ? {} : { stream }),
         credentials: { copilotToken: "ghu_test" },
         log: { debug: vi.fn() },
       });
 
-      expect(await result.response.text()).toContain("data: [DONE]");
+      expect(await result.response.text(), `stream=${stream}`).not.toContain("data: [DONE]");
     }
   });
 

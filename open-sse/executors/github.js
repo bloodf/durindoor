@@ -19,6 +19,12 @@ import { settleProviderAttemptDispatch, getCurrentProviderAttemptTimestamp, runQ
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import crypto from "crypto";
 
+function isIgnorableSSEField(line) {
+  const separator = line.indexOf(":");
+  const field = separator === -1 ? line : line.slice(0, separator);
+  return field !== "data" && field !== "event";
+}
+
 export class GithubExecutor extends BaseExecutor {
   constructor() {
     super("github", PROVIDERS.github);
@@ -463,12 +469,14 @@ export class GithubExecutor extends BaseExecutor {
         currentEvent = trimmed.slice(6).trim() || null;
         return;
       }
-      // Strict frame routing (same posture as executeWithResponsesEndpoint): any
-      // non-blank, non-comment line that is neither an event nor a data frame is a
-      // protocol violation — fail loudly rather than silently dropping it.
+      // SSE fields other than data/event (id, retry, and extensions) do not
+      // carry application payload and are ignored by conforming clients.
+
       if (!trimmed.startsWith("data:")) {
-        emitFailure(controller);
-        currentEvent = null;
+        if (!isIgnorableSSEField(trimmed)) {
+          emitFailure(controller);
+          currentEvent = null;
+        }
         return;
       }
       const parsed = parseSSELine(trimmed);
@@ -544,13 +552,13 @@ export class GithubExecutor extends BaseExecutor {
         }
         if (!doneEmitted) {
           if (rawTerminal.outcome === "success" && !failureEmitted) {
-            // Stream validated end-to-end — release the deferred finish frame(s),
-            // then [DONE].
+            // Stream validated end-to-end — release deferred finish frame(s),
+            // then expose [DONE] only to clients that originally requested SSE.
             if (heldTerminalChunks) {
               for (const encoded of encodeAll(heldTerminalChunks)) controller.enqueue(encoded);
               heldTerminalChunks = null;
             }
-            controller.enqueue(new TextEncoder().encode(SSE_DONE));
+            if (stream === true) controller.enqueue(new TextEncoder().encode(SSE_DONE));
             doneEmitted = true;
           } else {
             emitFailure(controller);
@@ -633,8 +641,10 @@ export class GithubExecutor extends BaseExecutor {
         return;
       }
       if (!trimmed.startsWith("data:")) {
-        emitFailure(controller);
-        currentEvent = null;
+        if (!isIgnorableSSEField(trimmed)) {
+          emitFailure(controller);
+          currentEvent = null;
+        }
         return;
       }
       const parsed = parseSSELine(trimmed);
@@ -685,7 +695,7 @@ export class GithubExecutor extends BaseExecutor {
         }
         if (!doneEmitted) {
           if (rawTerminal.outcome === "success" && !failureEmitted) {
-            controller.enqueue(new TextEncoder().encode(SSE_DONE));
+            if (stream === true) controller.enqueue(new TextEncoder().encode(SSE_DONE));
             doneEmitted = true;
           } else {
             emitFailure(controller);

@@ -156,6 +156,43 @@ describe("OpenAI Responses streaming termination", () => {
     expect(output).not.toContain("data: [DONE]");
   });
 
+  it.each([
+    ["response.failed", {
+      type: "response.failed",
+      response: { id: "resp_failed", status: "failed", error: { code: "upstream_failed", message: "provider failed" } },
+    }],
+    ["response.cancelled", {
+      type: "response.cancelled",
+      response: { id: "resp_cancelled", status: "cancelled", error: { code: "upstream_cancelled", message: "provider cancelled" } },
+    }],
+    ["response.canceled", {
+      type: "response.canceled",
+      response: { id: "resp_canceled", status: "canceled", error: { code: "upstream_canceled", message: "provider canceled" } },
+    }],
+    ["error", {
+      type: "error",
+      error: { code: "upstream_error", message: "provider error" },
+    }],
+  ])("preserves one native %s terminal without synthetic failure or DONE", async (eventName, payload) => {
+    const responsesStreamState = {};
+    const frame = [
+      `event: ${eventName}`,
+      `data: ${JSON.stringify(payload)}`,
+      "",
+    ].join("\n");
+
+    const eofOutput = await runPassthrough(frame, responsesStreamState);
+    const doneOutput = await runPassthrough(`${frame}\ndata: [DONE]\n\n`);
+
+    for (const output of [eofOutput, doneOutput]) {
+      expect(output.match(new RegExp(`event: ${eventName}`, "g"))).toHaveLength(1);
+      expect(output).toContain(`data: ${JSON.stringify(payload)}`);
+      expect(output).not.toContain("stream_disconnected");
+      expect(output).not.toContain("data: [DONE]");
+    }
+    expect(buildAbortedResponsesTerminalBytes(responsesStreamState)).toBeNull();
+  });
+
   it("emits response.failed before DONE when a Responses stream sends DONE without a terminal event", async () => {
     const output = await runTransform([
       `event: response.created`,

@@ -57,20 +57,25 @@ function processSSEMessage(msg, state) {
     }
     if (parsed.response?.usage) {
       const u = parsed.response.usage;
-      state.usage.input_tokens = u.input_tokens || 0;
+      const nativeDetails = u.input_tokens_details || u.prompt_tokens_details;
+      const hasNativeDetails = nativeDetails && typeof nativeDetails === "object" && !Array.isArray(nativeDetails);
+      const cacheRead = typeof nativeDetails?.cached_tokens === "number"
+        ? nativeDetails.cached_tokens
+        : (typeof u.cache_read_input_tokens === "number" ? u.cache_read_input_tokens : 0);
+      const cacheCreate = typeof nativeDetails?.cache_creation_tokens === "number"
+        ? nativeDetails.cache_creation_tokens
+        : (typeof u.cache_creation_input_tokens === "number" ? u.cache_creation_input_tokens : 0);
+      const foldsLegacyCache = !hasNativeDetails && (cacheRead > 0 || cacheCreate > 0);
+      state.usage.input_tokens = (u.input_tokens || 0) + (foldsLegacyCache ? cacheRead + cacheCreate : 0);
       state.usage.output_tokens = u.output_tokens || 0;
-      state.usage.total_tokens = u.total_tokens || 0;
-      if (u.cache_read_input_tokens || u.cache_creation_input_tokens) {
-        if (u.cache_read_input_tokens) state.usage.cache_read_input_tokens = u.cache_read_input_tokens;
-        if (u.cache_creation_input_tokens) state.usage.cache_creation_input_tokens = u.cache_creation_input_tokens;
-      }
-      const details = u.input_tokens_details || u.prompt_tokens_details;
-      if (details && typeof details.cached_tokens === "number") {
-        state.usage.cached_tokens = details.cached_tokens;
-      }
-      if (details && typeof details.cache_creation_tokens === "number") {
-        if (state.usage.cached_tokens === undefined) state.usage.cached_tokens = 0;
-        state.usage.cache_creation_input_tokens = details.cache_creation_tokens;
+      state.usage.total_tokens = foldsLegacyCache
+        ? state.usage.input_tokens + state.usage.output_tokens
+        : (u.total_tokens || state.usage.input_tokens + state.usage.output_tokens);
+      if (cacheRead >= 0 || cacheCreate >= 0) {
+        const inputTokensDetails = {};
+        if (cacheRead > 0) inputTokensDetails.cached_tokens = cacheRead;
+        if (cacheCreate > 0) inputTokensDetails.cache_creation_tokens = cacheCreate;
+        if (Object.keys(inputTokensDetails).length) state.usage.input_tokens_details = inputTokensDetails;
       }
     }
   }

@@ -82,7 +82,7 @@ export function claudeToOpenAIRequest(model, body, stream) {
       function: {
         name: tool.name,
         description: typeof tool.description === "string" ? tool.description : "",
-        parameters: coerceSchemaNumericConstraints(tool.input_schema || { type: "object", properties: {} })
+        parameters: coerceSchemaNumericConstraints(structuredClone(tool.input_schema || { type: "object", properties: {} }))
       }
     }));
   }

@@ -7,24 +7,78 @@ export { VALID_OPENAI_CONTENT_TYPES, VALID_OPENAI_MESSAGE_TYPES };
 
 const NUMERIC_SCHEMA_KEYWORDS = [
   "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum",
-  "minLength", "maxLength", "minItems", "maxItems",
+  "minLength", "maxLength", "minItems", "maxItems", "minContains", "maxContains",
   "minProperties", "maxProperties", "multipleOf",
 ];
 
-export function coerceSchemaNumericConstraints(schema) {
-  if (!schema || typeof schema !== "object") return schema;
-  if (Array.isArray(schema)) {
-    for (const item of schema) coerceSchemaNumericConstraints(item);
-    return schema;
-  }
-  for (const key of NUMERIC_SCHEMA_KEYWORDS) {
-    if (typeof schema[key] === "string" && schema[key].trim() !== "") {
-      const value = Number(schema[key]);
-      if (Number.isFinite(value)) schema[key] = value;
+function visitSchemaNodes(schema, visitor) {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return;
+
+  visitor(schema);
+
+  for (const keyword of ["properties", "$defs", "definitions", "patternProperties", "dependentSchemas", "dependencies"]) {
+    const children = schema[keyword];
+    if (children && typeof children === "object" && !Array.isArray(children)) {
+      for (const child of Object.values(children)) visitSchemaNodes(child, visitor);
     }
   }
-  for (const value of Object.values(schema)) coerceSchemaNumericConstraints(value);
+
+  for (const keyword of ["items", "prefixItems", "allOf", "anyOf", "oneOf"]) {
+    const children = schema[keyword];
+    if (Array.isArray(children)) {
+      for (const child of children) visitSchemaNodes(child, visitor);
+    } else if (keyword === "items") {
+      visitSchemaNodes(children, visitor);
+    }
+  }
+
+  for (const keyword of [
+    "additionalProperties", "contains", "propertyNames", "if", "then", "else", "not",
+    "unevaluatedProperties", "unevaluatedItems", "contentSchema",
+  ]) {
+    visitSchemaNodes(schema[keyword], visitor);
+  }
+}
+
+export function coerceSchemaNumericConstraints(schema) {
+  visitSchemaNodes(schema, node => {
+    for (const key of NUMERIC_SCHEMA_KEYWORDS) {
+      if (typeof node[key] === "string" && node[key].trim() !== "") {
+        const value = Number(node[key]);
+        if (Number.isFinite(value)) node[key] = value;
+      }
+    }
+  });
   return schema;
+}
+
+export function normalizeOpenAIResponsesToolSchemas(body) {
+  if (!Array.isArray(body.tools)) return body;
+
+  function normalizeTools(tools) {
+    let changed = false;
+    const normalized = tools.map(tool => {
+      if (!tool || typeof tool !== "object" || Array.isArray(tool)) return tool;
+      if (tool.type === OPENAI_BLOCK.FUNCTION && tool.parameters) {
+        changed = true;
+        const parameters = structuredClone(tool.parameters);
+        if (parameters.type === "object" && !parameters.properties) parameters.properties = {};
+        return { ...tool, parameters: coerceSchemaNumericConstraints(parameters) };
+      }
+      if (tool.type === "namespace" && Array.isArray(tool.tools)) {
+        const nested = normalizeTools(tool.tools);
+        if (nested !== tool.tools) {
+          changed = true;
+          return { ...tool, tools: nested };
+        }
+      }
+      return tool;
+    });
+    return changed ? normalized : tools;
+  }
+
+  const tools = normalizeTools(body.tools);
+  return tools === body.tools ? body : { ...body, tools };
 }
 
 // Filter messages to OpenAI standard format

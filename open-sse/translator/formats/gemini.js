@@ -7,7 +7,7 @@ import { OPENAI_BLOCK } from "../schema/index.js";
 export const UNSUPPORTED_SCHEMA_CONSTRAINTS = [
   // Basic constraints (not supported by Gemini API)
   "minLength", "maxLength", "exclusiveMinimum", "exclusiveMaximum",
-  "minItems", "maxItems", "multipleOf", "format",
+  "minItems", "maxItems", "minContains", "maxContains", "multipleOf", "format",
   // Claude rejects these in VALIDATED mode
   "default", "examples",
   // JSON Schema meta keywords
@@ -22,7 +22,7 @@ export const UNSUPPORTED_SCHEMA_CONSTRAINTS = [
   "dependencies", "dependentSchemas", "dependentRequired",
   // Other unsupported keywords
   "title", "optional", "deprecated", "if", "then", "else", "contentMediaType", "contentEncoding",
-  "uniqueItems", "contains", "unevaluatedProperties", "unevaluatedItems", "contentSchema",
+  "uniqueItems", "prefixItems", "contains", "unevaluatedProperties", "unevaluatedItems", "contentSchema",
   // UI/Styling properties (from Cursor tools - NOT JSON Schema standard)
   "cornerRadius", "fillColor", "fontFamily", "fontSize", "fontWeight",
   "gap", "padding", "strokeColor", "strokeThickness", "textColor"
@@ -175,98 +175,90 @@ export function generateProjectId() {
   return `${adj}-${noun}-${crypto.randomUUID().slice(0, 5)}`;
 }
 
-// Helper: Remove unsupported keywords recursively from object/array
-// Also strips all vendor extension fields (x- prefixed) not supported by Gemini
-function removeUnsupportedKeywords(obj, keywords) {
-  if (!obj || typeof obj !== "object") return;
+// Visit only actual JSON Schema nodes, never property maps or annotation payloads.
+function visitSchemaNodes(schema, visitor) {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return;
 
-  if (Array.isArray(obj)) {
-    for (const item of obj) {
-      removeUnsupportedKeywords(item, keywords);
-    }
-    return;
-  }
+  visitor(schema);
 
-  for (const key of Object.keys(obj)) {
-    if (keywords.includes(key) || key.startsWith("x-")) {
-      delete obj[key];
-      continue;
-    }
-
-    const value = obj[key];
-    if (value && typeof value === "object") {
-      removeUnsupportedKeywords(value, keywords);
+  for (const keyword of ["properties", "$defs", "definitions", "patternProperties", "dependentSchemas", "dependencies"]) {
+    const children = schema[keyword];
+    if (children && typeof children === "object" && !Array.isArray(children)) {
+      for (const child of Object.values(children)) visitSchemaNodes(child, visitor);
     }
   }
+
+  for (const keyword of ["items", "prefixItems", "allOf", "anyOf", "oneOf"]) {
+    const children = schema[keyword];
+    if (Array.isArray(children)) {
+      for (const child of children) visitSchemaNodes(child, visitor);
+    } else if (keyword === "items") {
+      visitSchemaNodes(children, visitor);
+    }
+  }
+
+  for (const keyword of [
+    "additionalProperties", "contains", "propertyNames", "if", "then", "else", "not",
+    "unevaluatedProperties", "unevaluatedItems", "contentSchema",
+  ]) {
+    visitSchemaNodes(schema[keyword], visitor);
+  }
+}
+
+// Remove unsupported keywords from schema nodes.
+// Also strips all vendor extension fields (x- prefixed) not supported by Gemini.
+function removeUnsupportedKeywords(schema, keywords) {
+  visitSchemaNodes(schema, node => {
+    for (const key of Object.keys(node)) {
+      if (keywords.includes(key) || key.startsWith("x-")) delete node[key];
+    }
+  });
 }
 
 // Convert const to enum
-function convertConstToEnum(obj) {
-  if (!obj || typeof obj !== "object") return;
-
-  if (obj.const !== undefined && !obj.enum) {
-    obj.enum = [obj.const];
-    delete obj.const;
-  }
-
-  for (const value of Object.values(obj)) {
-    if (value && typeof value === "object") {
-      convertConstToEnum(value);
+function convertConstToEnum(schema) {
+  visitSchemaNodes(schema, node => {
+    if (node.const !== undefined && !node.enum) {
+      node.enum = [node.const];
+      delete node.const;
     }
-  }
+  });
 }
 
 // Convert enum values to strings (Gemini requires string enum values + explicit type:"string")
-function convertEnumValuesToStrings(obj) {
-  if (!obj || typeof obj !== "object") return;
-
-  if (obj.enum && Array.isArray(obj.enum)) {
-    obj.enum = obj.enum.map(v => String(v));
-    // Gemini API requires type:"string" when enum is present — without it returns 400
-    if (!obj.type) {
-      obj.type = "string";
+function convertEnumValuesToStrings(schema) {
+  visitSchemaNodes(schema, node => {
+    if (node.enum && Array.isArray(node.enum)) {
+      node.enum = node.enum.map(v => String(v));
+      // Gemini API requires type:"string" when enum is present — without it returns 400
+      if (!node.type) node.type = "string";
     }
-  }
-
-  for (const value of Object.values(obj)) {
-    if (value && typeof value === "object") {
-      convertEnumValuesToStrings(value);
-    }
-  }
+  });
 }
 
 // Merge allOf schemas
-function mergeAllOf(obj) {
-  if (!obj || typeof obj !== "object") return;
+function mergeAllOf(schema) {
+  visitSchemaNodes(schema, node => {
+    if (!node.allOf || !Array.isArray(node.allOf)) return;
 
-  if (obj.allOf && Array.isArray(obj.allOf)) {
     const merged = {};
-
-    for (const item of obj.allOf) {
+    for (const item of node.allOf) {
       if (item.properties) {
         if (!merged.properties) merged.properties = {};
         Object.assign(merged.properties, item.properties);
       }
       if (item.required && Array.isArray(item.required)) {
         if (!merged.required) merged.required = [];
-        for (const req of item.required) {
-          if (!merged.required.includes(req)) {
-            merged.required.push(req);
-          }
+        for (const required of item.required) {
+          if (!merged.required.includes(required)) merged.required.push(required);
         }
       }
     }
 
-    delete obj.allOf;
-    if (merged.properties) obj.properties = { ...obj.properties, ...merged.properties };
-    if (merged.required) obj.required = [...(obj.required || []), ...merged.required];
-  }
-
-  for (const value of Object.values(obj)) {
-    if (value && typeof value === "object") {
-      mergeAllOf(value);
-    }
-  }
+    delete node.allOf;
+    if (merged.properties) node.properties = { ...node.properties, ...merged.properties };
+    if (merged.required) node.required = [...(node.required || []), ...merged.required];
+  });
 }
 
 // Select best schema from anyOf/oneOf
@@ -297,78 +289,52 @@ function selectBest(items) {
 }
 
 // Flatten anyOf/oneOf
-function flattenAnyOfOneOf(obj) {
-  if (!obj || typeof obj !== "object") return;
-
-  if (obj.anyOf && Array.isArray(obj.anyOf) && obj.anyOf.length > 0) {
-    const nonNullSchemas = obj.anyOf.filter(s => s && s.type !== "null");
-    if (nonNullSchemas.length > 0) {
-      const bestIdx = selectBest(nonNullSchemas);
-      const selected = nonNullSchemas[bestIdx];
-      delete obj.anyOf;
-      Object.assign(obj, selected);
+function flattenAnyOfOneOf(schema) {
+  visitSchemaNodes(schema, node => {
+    if (node.anyOf && Array.isArray(node.anyOf) && node.anyOf.length > 0) {
+      const nonNullSchemas = node.anyOf.filter(item => item && item.type !== "null");
+      if (nonNullSchemas.length > 0) {
+        const selected = nonNullSchemas[selectBest(nonNullSchemas)];
+        delete node.anyOf;
+        Object.assign(node, selected);
+      }
     }
-  }
 
-  if (obj.oneOf && Array.isArray(obj.oneOf) && obj.oneOf.length > 0) {
-    const nonNullSchemas = obj.oneOf.filter(s => s && s.type !== "null");
-    if (nonNullSchemas.length > 0) {
-      const bestIdx = selectBest(nonNullSchemas);
-      const selected = nonNullSchemas[bestIdx];
-      delete obj.oneOf;
-      Object.assign(obj, selected);
+    if (node.oneOf && Array.isArray(node.oneOf) && node.oneOf.length > 0) {
+      const nonNullSchemas = node.oneOf.filter(item => item && item.type !== "null");
+      if (nonNullSchemas.length > 0) {
+        const selected = nonNullSchemas[selectBest(nonNullSchemas)];
+        delete node.oneOf;
+        Object.assign(node, selected);
+      }
     }
-  }
-
-  for (const value of Object.values(obj)) {
-    if (value && typeof value === "object") {
-      flattenAnyOfOneOf(value);
-    }
-  }
+  });
 }
 
 // Flatten type arrays
-function flattenTypeArrays(obj) {
-  if (!obj || typeof obj !== "object") return;
-
-  if (obj.type && Array.isArray(obj.type)) {
-    const nonNullTypes = obj.type.filter(t => t !== "null");
-    obj.type = nonNullTypes.length > 0 ? nonNullTypes[0] : "string";
-  }
-
-  for (const value of Object.values(obj)) {
-    if (value && typeof value === "object") {
-      flattenTypeArrays(value);
+function flattenTypeArrays(schema) {
+  visitSchemaNodes(schema, node => {
+    if (node.type && Array.isArray(node.type)) {
+      const nonNullTypes = node.type.filter(type => type !== "null");
+      node.type = nonNullTypes.length > 0 ? nonNullTypes[0] : "string";
     }
-  }
+  });
 }
 
 /**
  * Infer missing `type: "object"` on schema nodes that carry `properties` but no
  * explicit `type` (Gemini requires the explicit type).
  *
- * Recurses ONLY into real schema nodes — the values of the `properties` map and
- * the `items` schema. Walking every value via `Object.values(obj)` is wrong: when a
- * schema property is itself named "properties", the properties-map dictionary would
- * be mistaken for a schema node and gain `type: "object"`, turning one of the
- * property values into the literal string `"object"` and triggering a Gemini 400.
- * Mutates `obj` in place.
+ * Uses the shared schema-node traversal convention and never visits a
+ * property-name dictionary or annotation payload. Mutates `schema` in place.
  *
- * @param {object} obj - JSON Schema node to normalize (mutated in place).
+ * @param {object} schema - JSON Schema node to normalize (mutated in place).
  * @returns {void}
  */
-function ensureObjectType(obj) {
-  if (!obj || typeof obj !== "object") return;
-  if (obj.properties && !obj.type) obj.type = "object";
-  // Recurse only into valid schema nodes: the values of the `properties` map and
-  // the `items` schema. Walking every value via Object.values(obj) is wrong: when a
-  // schema property is itself named "properties", the properties-map dictionary would
-  // be mistaken for a schema node and gain `type: "object"`, turning one of the
-  // property values into the literal string "object" -> Gemini 400.
-  if (obj.properties && typeof obj.properties === "object") {
-    for (const v of Object.values(obj.properties)) if (v && typeof v === "object") ensureObjectType(v);
-  }
-  if (obj.items && typeof obj.items === "object") ensureObjectType(obj.items);
+function ensureObjectType(schema) {
+  visitSchemaNodes(schema, node => {
+    if (node.properties && !node.type) node.type = "object";
+  });
 }
 
 // Clean JSON Schema for Antigravity API compatibility - removes unsupported keywords recursively
@@ -394,68 +360,44 @@ export function cleanJSONSchemaForAntigravity(schema) {
   removeUnsupportedKeywords(cleaned, UNSUPPORTED_SCHEMA_CONSTRAINTS);
 
   // Phase 4: Cleanup required fields recursively
-  function cleanupRequired(obj) {
-    if (!obj || typeof obj !== "object") return;
-
-    if (obj.required && Array.isArray(obj.required) && obj.properties) {
-      const validRequired = obj.required.filter(field =>
-        Object.prototype.hasOwnProperty.call(obj.properties, field)
+  visitSchemaNodes(cleaned, node => {
+    if (node.required && Array.isArray(node.required) && node.properties) {
+      const validRequired = node.required.filter(field =>
+        Object.prototype.hasOwnProperty.call(node.properties, field)
       );
       if (validRequired.length === 0) {
-        delete obj.required;
+        delete node.required;
       } else {
-        obj.required = validRequired;
+        node.required = validRequired;
       }
     }
-
-    // Recurse into nested objects
-    for (const value of Object.values(obj)) {
-      if (value && typeof value === "object") {
-        cleanupRequired(value);
-      }
-    }
-  }
-
-  cleanupRequired(cleaned);
+  });
 
   // Phase 5: Add placeholder for empty object schemas (Antigravity requirement)
-  function addPlaceholders(obj) {
-    if (!obj || typeof obj !== "object") return;
-
+  visitSchemaNodes(cleaned, node => {
     // Empty schema {} (no type, no properties) after $ref removal — treat as object with placeholder
-    if (Object.keys(obj).length === 0) {
-      obj.type = "object";
-      obj.properties = {
+    if (Object.keys(node).length === 0) {
+      node.type = "object";
+      node.properties = {
         reason: {
           type: "string",
           description: "Brief explanation of why you are calling this tool"
         }
       };
-      obj.required = ["reason"];
+      node.required = ["reason"];
       return;
     }
 
-    if (obj.type === "object") {
-      if (!obj.properties || Object.keys(obj.properties).length === 0) {
-        obj.properties = {
-          reason: {
-            type: "string",
-            description: "Brief explanation of why you are calling this tool"
-          }
-        };
-        obj.required = ["reason"];
-      }
+    if (node.type === "object" && (!node.properties || Object.keys(node.properties).length === 0)) {
+      node.properties = {
+        reason: {
+          type: "string",
+          description: "Brief explanation of why you are calling this tool"
+        }
+      };
+      node.required = ["reason"];
     }
-
-    // Recurse into nested objects
-    for (const value of Object.values(obj)) {
-      if (value && typeof value === "object") {
-        addPlaceholders(value);
-      }
-    }
-  }
-
-  addPlaceholders(cleaned);
+  });
 
   return cleaned;
 }

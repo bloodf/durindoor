@@ -287,6 +287,55 @@ describe("thinking suffix at the chatCore provider boundary", () => {
     expect(call.body.thinking.budget_tokens).toBeLessThan(call.body.max_tokens);
   });
 
+  it("normalizes native Codex Responses tool schemas before executor dispatch", async () => {
+    mocks.detectClientTool.mockReturnValue("codex");
+    mocks.isNativePassthrough.mockReturnValue(true);
+
+    const body = {
+      model: "gpt-5.4",
+      stream: true,
+      input: [{ role: "user", content: [{ type: "input_text", text: "hello" }] }],
+      tools: [
+        {
+          type: "function",
+          name: "tool",
+          parameters: { type: "object", contains: { type: "number", multipleOf: "2" }, minContains: "1" },
+        },
+        {
+          type: "namespace",
+          name: "codex_app",
+          tools: [{
+            type: "function",
+            name: "nested_tool",
+            parameters: { type: "array", prefixItems: [{ type: "number", minimum: "3" }], minItems: "1" },
+          }],
+        },
+      ],
+    };
+    const original = structuredClone(body);
+
+    await handleChatCore({
+      body,
+      modelInfo: { provider: "codex", model: "gpt-5.4" },
+      credentials: { accessToken: "codex-token", providerSpecificData: {} },
+      connectionId: "codex-connection-schema",
+      clientRawRequest: {
+        endpoint: "/v1/responses",
+        body,
+        headers: { accept: "text/event-stream", "user-agent": "codex-cli/0.144.1" },
+      },
+      log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    expect(mocks.execute).toHaveBeenCalledTimes(1);
+    const dispatched = mocks.execute.mock.calls[0][0].body;
+    expect(dispatched.tools[0].parameters.contains.multipleOf).toBe(2);
+    expect(dispatched.tools[0].parameters.minContains).toBe(1);
+    expect(dispatched.tools[1].tools[0].parameters.prefixItems[0].minimum).toBe(3);
+    expect(dispatched.tools[1].tools[0].parameters.minItems).toBe(1);
+    expect(body).toEqual(original);
+  });
+
   function abortOptions(signal, refreshCredentials = undefined) {
     return {
       body: { model: "gpt-5.4", stream: true, messages: [{ role: "user", content: "hello" }] },

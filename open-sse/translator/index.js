@@ -129,12 +129,18 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   // Expose to downstream translators (gemini-cli/antigravity envelopes) that run after envelope is stripped
   if (credentials) credentials._clientSessionId = clientSessionId;
 
-  // If same format, skip translation steps
-  if (sourceFormat !== targetFormat) {
+  const directFn = requestRegistry.get(`${sourceFormat}:${targetFormat}`);
+  if (sourceFormat === targetFormat) {
+    // Same-format request hooks perform format-specific outbound normalization
+    // without routing through another wire format.
+    if (directFn) {
+      result = directFn(translationModel, result, stream, credentials, resolvedTranslationContext);
+      finalizeTranslatedRequest = directFn.finalize;
+    }
+  } else {
     // Direct route: if a translator is registered for this exact source:target
     // pair, use it instead of pivoting through OpenAI. This is lossless for
     // pairs like claude:kiro (avoids the claude->openai->kiro double-hop).
-    const directFn = requestRegistry.get(`${sourceFormat}:${targetFormat}`);
     if (directFn) {
       result = directFn(translationModel, result, stream, credentials, resolvedTranslationContext);
       finalizeTranslatedRequest = directFn.finalize;

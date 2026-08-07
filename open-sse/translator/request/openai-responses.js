@@ -8,7 +8,7 @@ import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { normalizeResponsesInput } from "../formats/responsesApi.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM } from "../schema/index.js";
-import { coerceSchemaNumericConstraints } from "../formats/openai.js";
+import { coerceSchemaNumericConstraints, normalizeOpenAIResponsesToolSchemas } from "../formats/openai.js";
 
 // Responses API enforces max 64 chars on call_id (#393)
 const MAX_CALL_ID_LEN = 64;
@@ -275,9 +275,11 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
  */
 function normalizeToolParameters(params) {
   if (!params) return { type: "object", properties: {} };
-  const normalized = params.type === "object" && !params.properties ? { ...params, properties: {} } : params;
+  const normalized = structuredClone(params);
+  if (normalized.type === "object" && !normalized.properties) normalized.properties = {};
   return coerceSchemaNumericConstraints(normalized);
 }
+
 
 /**
  * Convert OpenAI Chat Completions to OpenAI Responses API format.
@@ -420,3 +422,4 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
 // Register both directions
 register(FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI, openaiResponsesToOpenAIRequest, null);
 register(FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, openaiToOpenAIResponsesRequest, null);
+register(FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI_RESPONSES, (_model, body) => normalizeOpenAIResponsesToolSchemas(body), null);

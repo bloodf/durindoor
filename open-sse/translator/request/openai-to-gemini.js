@@ -408,7 +408,7 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
     const functionDeclarations = [];
     for (const tool of claudeRequest.tools) {
       if (tool.name && tool.input_schema) {
-        const cleanedSchema = cleanJSONSchemaForAntigravity(tool.input_schema);
+        const cleanedSchema = cleanJSONSchemaForAntigravity(structuredClone(tool.input_schema));
         functionDeclarations.push({
           name: sanitizeGeminiFunctionName(tool.name),
           description: tool.description || "",

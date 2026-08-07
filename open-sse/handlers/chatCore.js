@@ -4,6 +4,7 @@ import { applyThinking, applyTransportRequestDefaults, parseSuffix } from "../tr
 import { FORMATS } from "../translator/formats.js";
 import { normalizeClaudePassthrough } from "../translator/formats/claude.js";
 import { validateOutboundPayload, stripInternalKeys, normalizeToolSchemaRoots } from "../translator/validate.js";
+import { normalizeOpenAIResponsesToolSchemas } from "../translator/formats/openai.js";
 import { COLORS } from "../utils/stream.js";
 import { createStreamController } from "../utils/streamHandler.js";
 import { classifyQuotaTerminalReason } from "../utils/quotaTerminalReason.js";
@@ -448,6 +449,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
     // Kiro carries the provider model inside every native userInputMessage.
     // Adding a stray OpenAI-style top-level model obscures boundary validation.
     if (targetFormat !== FORMATS.KIRO) translatedBody.model = cleanUpstreamModel;
+  }
+
+  // Native Responses clients bypass translateRequest; normalize their outbound
+  // function schemas at the shared provider boundary without touching source.
+  if (passthrough && targetFormat === FORMATS.OPENAI_RESPONSES) {
+    translatedBody = normalizeOpenAIResponsesToolSchemas(translatedBody);
   }
 
   // opencode-go backed providers (opencode-go, opencode, opencode-zen) use a Go

@@ -112,7 +112,7 @@
 | #1337 | 9router | Fix Xiaomi reasoning content echo | GAP → ported | Added all-message reasoning echo rules for `xiaomi-mimo` and `xiaomi-tokenplan`; regressions in `tests/unit/reasoningContentInjector.test.js`. |
 | #1273 | 9router | feat(kiro): bulk refresh-token import + thinking/agentic variants | DEFER (mixed UI/Kiro feature) | Model variants already exist; remaining bulk-import UI/API and inline thinking splitter are separate auth/provider features, not a translator-local stability fix. |
 | #1264 | 9router | fix(translator): strip temperature for Claude models with extended thinking | DUPLICATE | `openai-to-claude.js:18-32` strips temperature for `claude-opus-4`/`claude-sonnet-4`; lines 212-215 strip `result.temperature` when `result.thinking` set. Bug absent. |
-| #1193 | 9router | fix: Responses API MCP namespace + deepseek 思考后缀支持 | DUPLICATE | `openai-responses.js:65-110,216-230` — MCP namespace flattening, `custom_tool_call`/`custom_tool_call_output` handling, `toolNameNSMap` passthrough already present. Bug absent. |
+| #1193 | 9router | fix: Responses API MCP namespace + deepseek 思考后缀支持 | DEFER (broad namespace/state change, 8 files) | Eight-file change spans Responses request translation, transformer state, tool-name namespace round-tripping, and DeepSeek suffix parsing; current tree has only partial MCP/custom-tool handling, so this open/unmerged broad change needs dedicated protocol-state verification. |
 | #1007 | 9router | fix: normalize Codex custom tools (apply_patch) to { input: string } schema | DUPLICATE | `openai-responses.js:218-230` — exactly `tool.type === "custom" → { input: string }` normalization. Bug absent. |
 | #976 | 9router | fix(codex): preserve reasoning summary deltas | DUPLICATE | `responsesTransformer.js:123-127` emits `response.reasoning_summary_text.delta`; `openai-responses.js:662-665` maps to `delta.reasoning_content`. Bug absent. |
 | #875 | 9router | Fix empty Anthropic thinking blocks | DEFER (default-executor sanitizer) | Adds a new Anthropic history sanitizer in the default executor; requires signed/redacted thinking and tool-ID compatibility coverage in a dedicated PR. |
@@ -127,7 +127,7 @@
 
 | PR | Source | Title | Verdict | Evidence / commit |
 |----|--------|-------|---------|-------------------|
-| #9437 | OmniRoute | Feat/max reasoning effort | DEFER (target absent) | CHANGELOG regeneration + CI hygiene; `EFFORT_LEVELS` already includes `"max"` (`thinking.js:6,16`); `opencode-go` provider absent from DD registry. |
+| #9437 | OmniRoute | Feat/max reasoning effort | DEFER (shared reasoning policy) | `opencode-go` exists and is registered, but the shared OpenAI-family `thinkingLevels` policy does not allow `max`; this closed/unmerged broad shared-policy change needs dedicated provider/model verification. |
 | #9397 | OmniRoute | fix(providers): enforce gemini-web reasoning and tool constraints | DEFER (target absent) | `gemini-web` executor absent from `open-sse/executors/` (grep zero matches). Registry model + Playwright-based guard for non-existent executor. |
 | #9163 | OmniRoute | fix(kiro): preserve GPT-5.6 Max reasoning via Responses | DEFER (Kiro native reasoning wire) | Adds native Kiro reasoning fields and Responses normalization across request layers; must land with the broader Kiro wire-format migration and real-provider tests. |
 | #9114 | OmniRoute | [TS7] fix(types): preserve thinking signature recovery failure | DEFER (TypeScript-only, no runtime effect) | Pure TS type-widening fix; changes `recoverAnthropicThinkingSignature` parameter union. DD already ports behavioral recovery from OmniRoute #7906. TS-only type fix has no runtime effect in DD's JS target. |
@@ -140,12 +140,12 @@
 | Verdict | Count | PRs |
 |---------|-------|-----|
 | GAP → ported | 4 | #3018, #1425, #1337, #422 |
-| DUPLICATE | 22 | #2911, #2869, #2831, #2800, #2787, #2770, #2762, #2760, #2706, #2652, #2323, #2312, #2295, #2147, #2001, #1460, #1264, #1193, #1007, #976, #628, #466 |
-| DEFER | 22 | #2927, #2925, #2691, #2688, #2681, #2369, #1936, #1600, #1599, #1412, #1273, #875, #873, #865, #392, #9437, #9397, #9163, #9114, #9058, #9004, #8629 |
+| DUPLICATE | 21 | #2911, #2869, #2831, #2800, #2787, #2770, #2762, #2760, #2706, #2652, #2323, #2312, #2295, #2147, #2001, #1460, #1264, #1007, #976, #628, #466 |
+| DEFER | 23 | #2927, #2925, #2691, #2688, #2681, #2369, #1936, #1600, #1599, #1412, #1273, #1193, #875, #873, #865, #392, #9437, #9397, #9163, #9114, #9058, #9004, #8629 |
 | **Total** | **48** | |
 
 | Source | GAP → ported | DUPLICATE | DEFER |
 |--------|---------------|-----------|-------|
-| 9router (41) | 4 | 22 | 15 |
+| 9router (41) | 4 | 21 | 16 |
 | OmniRoute (7) | 0 | 0 | 7 |
-| **Total** | **4** | **22** | **22** |
+| **Total** | **4** | **21** | **23** |

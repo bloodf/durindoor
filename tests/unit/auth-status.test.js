@@ -34,6 +34,16 @@ describe("GET /api/auth/status", () => {
     expect((await GET()).body.authenticated).toBe(false);
   });
 
+  // Header.js reads `data.displayName` first when labelling the signed-in user,
+  // so the port that added `authenticated` must not drop the existing field.
+  it("keeps returning displayName for the header", async () => {
+    mocks.getDashboardAuthSession.mockResolvedValueOnce({ oidc: true, oidcName: "Ada Lovelace" });
+    expect((await GET()).body.displayName).toBe("Ada Lovelace");
+
+    mocks.getDashboardAuthSession.mockResolvedValueOnce(null);
+    expect((await GET()).body.displayName).toBe("Password user");
+  });
+
   it("fails closed when status dependencies throw", async () => {
     mocks.getSettings.mockRejectedValue(new Error("database unavailable"));
 

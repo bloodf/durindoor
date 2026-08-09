@@ -1,3 +1,6 @@
+import { APIKEY_PROVIDERS } from "@/shared/constants/config";
+import { FREE_TIER_PROVIDERS } from "@/shared/constants/providers";
+
 export function isProviderConfigured(connections, providerId, noAuth = false) {
   if (noAuth) return true;
   return connections.some((c) => c.provider === providerId);
@@ -6,6 +9,26 @@ export function isProviderConfigured(connections, providerId, noAuth = false) {
 export const OAUTH_AUTH_TYPES = ["oauth", "access_token"];
 
 export const OAUTH_STATUS_AUTH_TYPES = ["oauth", "access_token", "apikey", "api_key"];
+
+/**
+ * Returns auth scopes used to render a free-provider card. Registry rows that
+ * predate authModes still expose their API-key connection path.
+ *
+ * @param {string} providerId
+ * @param {{authModes?: string[], authType?: string}} provider
+ * @returns {string[]}
+ */
+export function getFreeAuthTypes(providerId, provider) {
+  if (providerId === "kiro") return ["oauth", "apikey", "api_key"];
+  if (Array.isArray(provider.authModes) && provider.authModes.length > 0) {
+    return provider.authModes;
+  }
+  if (provider.authType) return [provider.authType];
+  if (providerId in FREE_TIER_PROVIDERS || providerId in APIKEY_PROVIDERS) {
+    return ["oauth", "apikey", "api_key"];
+  }
+  return OAUTH_AUTH_TYPES;
+}
 
 /**
  * Derive the dashboard status of a provider based on its connection rows and

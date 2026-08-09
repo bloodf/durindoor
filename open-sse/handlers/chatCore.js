@@ -33,7 +33,7 @@ import { createEmptyRetryStream } from "./chatCore/emptyStreamGuard.js";
 import { isAnthropicThinkingSignatureError, stripHistoricalThinkingForSignatureRecovery } from "./chatCore/thinkingSignatureRecovery.js";
 import { detectClientTool, isNativePassthrough, isCodexOriginatedHeaders } from "../utils/clientDetector.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
-import { salvageOrphanedToolResults, fixMissingToolResponses } from "../translator/concerns/toolCall.js";
+import { salvageOrphanedToolResults, fixMissingToolResponses, normalizeOpenAIToolNames } from "../translator/concerns/toolCall.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
 import { compressMessages, resolveTokenSaverEnabled, normalizeTokenSaverEvent } from "../rtk/index.js";
@@ -298,8 +298,20 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
   // Multi-endpoint providers: model-required formats override client format.
   // GPT-5.6 tool calls with reasoning must use OpenAI Responses, even when the
   // client sends Chat Completions format.
-  const runtimeTransport = resolveTransport(provider, modelTargetFormat || sourceFormat);
-  const skipTranslation = runtimeTransport?.format === sourceFormat;
+  // Kimi API-key connections speak OpenAI Chat Completions against the platform
+  // endpoint (api.moonshot.cn), NOT the Kimi Code subscription endpoint that
+  // OAuth connections use. That API is OpenAI-compatible only, so a
+  // Claude-format client is translated rather than passed through
+  // (decolua/9router#3088, upstream issue #2881).
+  const apikeyTransportFormat = (provider === "kimi" && credentials?.authType === "apikey")
+    ? "openai-apikey"
+    : null;
+  const runtimeTransport = resolveTransport(provider, apikeyTransportFormat || modelTargetFormat || sourceFormat)
+    || resolveTransport(provider, modelTargetFormat || sourceFormat);
+  // The apikey transports carry lookup tags like "openai-apikey" that are not
+  // real wire formats — strip the suffix before it can reach a translator.
+  const transportFormat = runtimeTransport?.format?.replace(/-apikey$/, "") || null;
+  const skipTranslation = transportFormat === sourceFormat;
   // Attach the selected transport even when it was chosen by a model format override
   // (e.g. MiniMax-M3 → OpenAI for a Claude-source client, upstream decolua/9router#2533);
   // otherwise the executor falls back to the provider default endpoint and the override
@@ -307,7 +319,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
   if (runtimeTransport && credentials) credentials.runtimeTransport = runtimeTransport;
   const targetFormat = skipTranslation
     ? sourceFormat
-    : (modelTargetFormat || runtimeTransport?.format || getTargetFormat(provider, credentials));
+    : (apikeyTransportFormat ? transportFormat : (modelTargetFormat || transportFormat || getTargetFormat(provider, credentials)));
   const stripList = getModelStrip(alias, cleanModel);
   const cleanUpstreamModel = getModelUpstreamId(alias, cleanModel); // provider-facing model id
 
@@ -456,6 +468,19 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
   // side. Strip the boolean so the upstream applies its own default. (#7891)
   if (isOpencodeGoProvider(provider)) {
     stripBooleanReasoning(translatedBody);
+  }
+
+  // OpenAI-format upstreams enforce `^[a-zA-Z0-9_-]{1,64}$` on tool names, and a
+  // client relaying names minted elsewhere (MCP servers, other providers) can
+  // violate it. Rewrite to a safe alias and fold the mapping into the existing
+  // toolNameMap so the response path de-cloaks back to the client's own names.
+  // Providers can tighten the ceiling via `quirks.toolNameMaxLength`.
+  if (targetFormat === FORMATS.OPENAI) {
+    const toolNameMaxLength = PROVIDERS[provider]?.transport?.quirks?.toolNameMaxLength || 64;
+    const aliases = normalizeOpenAIToolNames(translatedBody, toolNameMaxLength);
+    if (aliases.size) {
+      toolNameMap = new Map([...(toolNameMap || new Map()), ...aliases]);
+    }
   }
 
   // Dedupe duplicate built-in tools when equivalent MCP tools are present (Claude clients only).

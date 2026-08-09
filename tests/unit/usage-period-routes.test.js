@@ -30,21 +30,27 @@ describe("usage period API validation", () => {
     expect((await statsRoute.GET(request("stats", period))).status).toBe(200);
     expect((await chartRoute.GET(request("chart", period))).status).toBe(200);
     expect(mocks.getUsageStats).toHaveBeenCalledWith(period, { startDate: undefined, endDate: undefined });
-    expect(mocks.getChartData).toHaveBeenCalledWith(period);
+    expect(mocks.getChartData).toHaveBeenCalledWith(period, undefined);
   });
 
   it("defaults a missing period to 7d", async () => {
     await statsRoute.GET(request("stats"));
     await chartRoute.GET(request("chart"));
     expect(mocks.getUsageStats).toHaveBeenCalledWith("7d", { startDate: undefined, endDate: undefined });
-    expect(mocks.getChartData).toHaveBeenCalledWith("7d");
+    expect(mocks.getChartData).toHaveBeenCalledWith("7d", undefined);
+  });
+
+  it("forwards browser timezone to chart data", async () => {
+    await chartRoute.GET(new Request("http://localhost/api/usage/chart?period=today&tz=America%2FLos_Angeles"));
+
+    expect(mocks.getChartData).toHaveBeenCalledWith("today", "America/Los_Angeles");
   });
 
   it("defaults an empty period to 7d", async () => {
     await statsRoute.GET(request("stats", ""));
     await chartRoute.GET(request("chart", ""));
     expect(mocks.getUsageStats).toHaveBeenCalledWith("7d", { startDate: undefined, endDate: undefined });
-    expect(mocks.getChartData).toHaveBeenCalledWith("7d");
+    expect(mocks.getChartData).toHaveBeenCalledWith("7d", undefined);
   });
 
   it.each([" 90d", "90D", "unknown", "all "])("rejects invalid value %j before repository access", async (period) => {

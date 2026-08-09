@@ -33,7 +33,8 @@ export default function UsageChart({ period = "7d" }) {
   const fetchData = useCallback(async (signal, requestToken) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/usage/chart?period=${encodeURIComponent(period)}`, { signal });
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const res = await fetch(`/api/usage/chart?period=${encodeURIComponent(period)}&tz=${encodeURIComponent(tz)}`, { signal });
       if (res.ok) {
         const json = await res.json();
         if (!signal.aborted && requestToken.isCurrent()) setData(json);

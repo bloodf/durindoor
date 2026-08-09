@@ -75,7 +75,10 @@ describe("official OpenAI force-stream request consistency", () => {
     });
   });
 
-  it("does not add forced-stream usage options for an explicit streaming request", async () => {
+  // decolua/9router#3081 asks every streaming request for usage, not only the
+  // forced-stream path: without stream_options.include_usage the final chunk
+  // carries no counts and the request records IN 0 · OUT 0.
+  it("also requests usage for an explicit streaming request", async () => {
     const executor = new DefaultExecutor("openai");
 
     await executor.execute({
@@ -88,7 +91,21 @@ describe("official OpenAI force-stream request consistency", () => {
     const [, init] = fetchMock.mock.calls[0];
     const upstreamBody = JSON.parse(init.body);
     expect(upstreamBody.stream).toBe(true);
-    expect(upstreamBody.stream_options).toBeUndefined();
+    expect(upstreamBody.stream_options).toEqual({ include_usage: true });
+  });
+
+  it("preserves stream_options the caller already supplied", async () => {
+    const executor = new DefaultExecutor("openai");
+
+    await executor.execute({
+      model: "gpt-5.6-luna",
+      body: { ...request({ stream: true }), stream_options: { include_usage: false } },
+      stream: true,
+      credentials: { apiKey: "sk-test" },
+    });
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(init.body).stream_options).toEqual({ include_usage: false });
   });
 
   it("preserves explicit non-streaming when the executor mode is non-streaming", async () => {

@@ -32,3 +32,20 @@ describe("provider display split (E1)", () => {
     expect(m.getProvidersByKind("tts").length).toBeGreaterThan(0);
   });
 });
+
+// port(upstream): 646b3b9b — cloudflare-ai free-tier registry must declare its
+// API-key auth path so its provider card exposes the apikey connection form.
+it("Cloudflare exposes API-key authentication on its free-tier card", async () => {
+  const { FREE_TIER_PROVIDERS } = await import("../../src/shared/constants/providers.js");
+  expect(FREE_TIER_PROVIDERS["cloudflare-ai"].authType).toBe("apikey");
+  expect(FREE_TIER_PROVIDERS["cloudflare-ai"].authModes).toEqual(["apikey"]);
+});
+
+// port(upstream): d6df6576 — ollama already supports API-key auth via
+// usageApikey; surface the same authType/authModes contract on its free-tier
+// card.
+it("Ollama exposes API-key authentication on its free-tier card", async () => {
+  const { FREE_TIER_PROVIDERS } = await import("../../src/shared/constants/providers.js");
+  expect(FREE_TIER_PROVIDERS["ollama"].authType).toBe("apikey");
+  expect(FREE_TIER_PROVIDERS["ollama"].authModes).toEqual(["apikey"]);
+});

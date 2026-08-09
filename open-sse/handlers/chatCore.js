@@ -33,7 +33,7 @@ import { createEmptyRetryStream } from "./chatCore/emptyStreamGuard.js";
 import { isAnthropicThinkingSignatureError, stripHistoricalThinkingForSignatureRecovery } from "./chatCore/thinkingSignatureRecovery.js";
 import { detectClientTool, isNativePassthrough, isCodexOriginatedHeaders } from "../utils/clientDetector.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
-import { salvageOrphanedToolResults, fixMissingToolResponses } from "../translator/concerns/toolCall.js";
+import { salvageOrphanedToolResults, fixMissingToolResponses, normalizeOpenAIToolNames } from "../translator/concerns/toolCall.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
 import { compressMessages, resolveTokenSaverEnabled, normalizeTokenSaverEvent } from "../rtk/index.js";
@@ -456,6 +456,19 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
   // side. Strip the boolean so the upstream applies its own default. (#7891)
   if (isOpencodeGoProvider(provider)) {
     stripBooleanReasoning(translatedBody);
+  }
+
+  // OpenAI-format upstreams enforce `^[a-zA-Z0-9_-]{1,64}$` on tool names, and a
+  // client relaying names minted elsewhere (MCP servers, other providers) can
+  // violate it. Rewrite to a safe alias and fold the mapping into the existing
+  // toolNameMap so the response path de-cloaks back to the client's own names.
+  // Providers can tighten the ceiling via `quirks.toolNameMaxLength`.
+  if (targetFormat === FORMATS.OPENAI) {
+    const toolNameMaxLength = PROVIDERS[provider]?.transport?.quirks?.toolNameMaxLength || 64;
+    const aliases = normalizeOpenAIToolNames(translatedBody, toolNameMaxLength);
+    if (aliases.size) {
+      toolNameMap = new Map([...(toolNameMap || new Map()), ...aliases]);
+    }
   }
 
   // Dedupe duplicate built-in tools when equivalent MCP tools are present (Claude clients only).

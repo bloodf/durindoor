@@ -68,6 +68,7 @@ For developers working on the DurinDoor codebase, provider registry, or document
 - [Upstream 2801/2818 Port Ledger](campaigns/upstream-2801-2818-ledger.md)
 - [Upstream Sync Watch](UPSTREAM_SYNC.md)
 - [Upstream + OmniRoute 2026-08-04 Ledger](campaigns/upstream-omniroute-2026-08-04-ledger.md)
+- [Upstream D2/D3 PR Ports Ledger](campaigns/upstream-d2d3-pr-ports-ledger.md)
 - [tests/README.md](../tests/README.md)
 
 ## API & Reference

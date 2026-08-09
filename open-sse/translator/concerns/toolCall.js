@@ -1,5 +1,101 @@
+import { createHash } from "node:crypto";
+
 // Tool call helper functions for translator
 
+/**
+ * Normalize function/tool names to the OpenAI naming constraint
+ * (`^[a-zA-Z0-9_-]{1,64}$`). Unsupported characters become underscores and
+ * overlong names are truncated with a deterministic hash suffix so two names
+ * sharing a prefix cannot collide.
+ *
+ * Covers OpenAI tool definitions (`tool.function.name`), Claude/raw
+ * definitions (`tool.name`), explicit tool choice, and every name carried in
+ * conversation history.
+ *
+ * Ported from decolua/9router#3116.
+ *
+ * @returns {Map<string,string>} alias → original name, for the response path.
+ */
+export function normalizeOpenAIToolNames(body, maxLength = 64) {
+  const aliases = new Map();
+  if (!body || typeof body !== "object") return aliases;
+  const memo = new Map();
+
+  const alias = (name) => {
+    if (!name || typeof name !== "string") return name;
+    if (memo.has(name)) return memo.get(name);
+
+    const safe = name.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const changed = safe !== name || safe.length > maxLength;
+    const shortened = changed
+      ? `${safe.slice(0, maxLength - 13)}_${createHash("sha256").update(name).digest("hex").slice(0, 12)}`
+      : safe;
+
+    if (shortened !== name) aliases.set(shortened, name);
+    memo.set(name, shortened);
+    return shortened;
+  };
+
+  if (Array.isArray(body.tools)) {
+    for (const tool of body.tools) {
+      if (tool?.function?.name) tool.function.name = alias(tool.function.name);
+      if (typeof tool?.name === "string") tool.name = alias(tool.name);
+    }
+  }
+
+  if (body.tool_choice) {
+    if (body.tool_choice.function?.name) body.tool_choice.function.name = alias(body.tool_choice.function.name);
+    if (typeof body.tool_choice.name === "string") body.tool_choice.name = alias(body.tool_choice.name);
+  }
+
+  if (Array.isArray(body.messages)) {
+    for (const message of body.messages) {
+      if (!message || typeof message !== "object") continue;
+      if (Array.isArray(message.tool_calls)) {
+        for (const call of message.tool_calls) {
+          if (call?.function?.name) call.function.name = alias(call.function.name);
+        }
+      }
+      if (Array.isArray(message.content)) {
+        for (const block of message.content) {
+          if (block?.type === "tool_use" && block.name) block.name = alias(block.name);
+        }
+      }
+      if (message.role === "tool" && message.name) message.name = alias(message.name);
+    }
+  }
+
+  return aliases;
+}
+
+/**
+ * Restore original tool names from the aliases {@link normalizeOpenAIToolNames}
+ * produced, so the client never sees the upstream-safe rewrite.
+ */
+export function restoreOpenAIToolNames(body, aliases) {
+  if (!aliases || typeof aliases.size !== "number" || !aliases.size) return false;
+
+  let changed = false;
+  const restoreCalls = (calls) => {
+    if (!Array.isArray(calls)) return;
+    for (const call of calls) {
+      const name = call?.function?.name;
+      if (name && aliases.has(name)) {
+        call.function.name = aliases.get(name);
+        changed = true;
+      }
+    }
+  };
+
+  if (Array.isArray(body?.choices)) {
+    for (const choice of body.choices) {
+      restoreCalls(choice?.delta?.tool_calls);
+      restoreCalls(choice?.message?.tool_calls);
+    }
+  }
+
+  return changed;
+}
 // Anthropic tool_use.id must match: ^[a-zA-Z0-9_-]+$
 const TOOL_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
@@ -470,4 +566,42 @@ export function salvageOrphanedToolResults(body) {
   } catch {
     return body;
   }
+}
+
+/**
+ * NVIDIA's endpoints reject the long opaque tool-call IDs other providers mint,
+ * so collapse each to a compact deterministic 9-hex identifier. Deterministic
+ * hashing keeps an assistant call and its tool result pointing at each other.
+ *
+ * Ported from decolua/9router#3116.
+ */
+export function nvidiaToolCallId(id) {
+  if (!id || typeof id !== "string") return id;
+  // Already a compact id — leave it alone so repeated passes are stable.
+  if (/^[a-zA-Z0-9]{9}$/.test(id)) return id;
+  return createHash("sha256").update(id).digest("hex").slice(0, 9);
+}
+
+/** Rewrite every tool-call identifier in a request body for NVIDIA. */
+export function normalizeNvidiaToolCallIds(body) {
+  if (!body || !Array.isArray(body.messages)) return body;
+  ensureToolCallIds(body);
+  for (const msg of body.messages) {
+    for (const tc of msg?.tool_calls || []) {
+      if (tc?.id) tc.id = nvidiaToolCallId(tc.id);
+    }
+    if (msg?.tool_call_id) msg.tool_call_id = nvidiaToolCallId(msg.tool_call_id);
+    if (Array.isArray(msg?.content)) {
+      for (const block of msg.content) {
+        if (!block || typeof block !== "object") continue;
+        if ((block.type === "tool_use" || block.type === "tool_result") && block.id) {
+          block.id = nvidiaToolCallId(block.id);
+        }
+        if (block.type === "tool_result" && block.tool_use_id) {
+          block.tool_use_id = nvidiaToolCallId(block.tool_use_id);
+        }
+      }
+    }
+  }
+  return body;
 }

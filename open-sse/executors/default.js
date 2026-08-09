@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { normalizeNvidiaToolCallIds } from "../translator/concerns/toolCall.js";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS, PROVIDER_OAUTH, resolveHerokuBaseUrl } from "../config/providers.js";
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE } from "../providers/shared.js";
@@ -307,6 +308,10 @@ export class DefaultExecutor extends BaseExecutor {
       this.defaultResponsesTextFormat(transformed);
       if (this.provider === "openai") {
         normalizeOpenAIToolCallIds(transformed);
+      }
+      // NVIDIA rejects the long opaque tool-call IDs other providers mint.
+      if (this.provider === "nvidia") {
+        normalizeNvidiaToolCallIds(transformed);
       }
       if (this.config.format === "openai" && stream === false) {
         // Resolved stream mode is authoritative for upstream OpenAI-compatible

@@ -29,6 +29,8 @@ export default {
     validateUrl: "https://integrate.api.nvidia.com/v1/models",
     quirks: {
       dropClientMetadata: true,
+      // NVIDIA enforces the OpenAI 64-char tool-name ceiling strictly.
+      toolNameMaxLength: 64,
     },
   },
   models: [

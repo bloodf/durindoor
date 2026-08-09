@@ -4,7 +4,11 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 const originalDataDir = process.env.DATA_DIR;
-const now = new Date("2026-07-10T07:30:00.000Z");
+// Anchor mid-afternoon in Los Angeles (23:30 UTC → 16:30 LA) so the fixture sits
+// well inside the LA calendar day. An anchor just after LA midnight leaves only
+// minutes of slack, and any real-clock leakage during the async DB write pushes
+// the row outside the queried window — green locally, red on a slower runner.
+const now = new Date("2026-07-10T23:30:00.000Z");
 let tempDir;
 let db;
 
@@ -26,7 +30,7 @@ beforeAll(async () => {
   await db.initDb();
   await db.updatePricing({ openai: { "gpt-tz": { input: 1, output: 1 } } });
   await db.saveRequestUsage({
-    timestamp: "2026-07-10T07:15:00.000Z",
+    timestamp: "2026-07-10T23:15:00.000Z",
     provider: "openai",
     model: "gpt-tz",
     connectionId: "tz-test",
@@ -56,7 +60,9 @@ describe("usage chart timezone", () => {
 
     expect(chart).toHaveLength(24);
     expect(chart[0].label).toMatch(/^00:00/);
-    expect(chart[0].tokens).toBe(15);
+    // 16:15 LA → the 17th hourly bucket of the LA day.
+    expect(chart[16].tokens).toBe(15);
+    expect(chart.reduce((sum, b) => sum + b.tokens, 0)).toBe(15);
   });
 
   it("ignores an invalid requested timezone", async () => {

@@ -6,9 +6,9 @@ const proxyMock = vi.hoisted(() => ({ impl: null }));
 vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
   proxyAwareFetch: (...args) => proxyMock.impl(...args),
 }));
-// Executor-family smoke: drive each touched executor family end-to-end against a
-// local mock upstream, so the ported code actually runs rather than being asserted.
-const MOCK = "http://127.0.0.1:20411";
+// Executor-family smoke: drive each family this campaign touched through its
+// real code path with the transport mocked, printing the observed values so a
+// green run shows what actually happened rather than only that nothing threw.
 
 const { getExecutor } = await import("../../open-sse/executors/index.js");
 const { getOllamaUsage } = await import("../../open-sse/services/usage/misc.js");
@@ -32,17 +32,20 @@ try {
   };
   const out = codex.transformRequest?.("gpt-5.6-sol", structuredClone(body), true) ?? body;
   const semantic = resolveOpenAiEffort("ultra", "codex", "gpt-5.6-sol");
-  const wire = out?.reasoning?.effort ?? "(transform did not set reasoning)";
+  const wire = out?.reasoning?.effort;
+  // Sol supports ultra semantically; the registry alias maps it to "max" on the
+  // wire. Both exact values matter — asserting only "not undefined" would stay
+  // green even if the transform stopped setting reasoning at all.
   record(
-    "codex: ultra effort survives resolution and reaches the wire body",
-    semantic === "ultra" && wire !== undefined,
-    `semantic=${semantic} wireEffort=${JSON.stringify(wire)}`,
+    "codex: ultra resolves semantically and maps to max on the wire",
+    semantic === "ultra" && wire === "max",
+    `semantic=${semantic} wireEffort=${JSON.stringify(wire)} (expected semantic=ultra wireEffort="max")`,
   );
 } catch (e) {
   record("codex", false, `threw: ${e.message}`);
 }
 
-// ── Ollama family: real usage round trip against the mock ───────────────────
+// ── Ollama family: usage round trip with the transport mocked ───────────────
 try {
   proxyMock.impl = async (url) => {
     const u = String(url);

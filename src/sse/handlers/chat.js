@@ -948,6 +948,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           refreshedCredentials.accessToken,
           refreshedCredentials.providerSpecificData,
           requestSignal,
+          provider,
         );
         if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
         if (pid) {

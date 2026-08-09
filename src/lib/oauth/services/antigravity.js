@@ -85,8 +85,8 @@ export class AntigravityService {
       "Authorization": `Bearer ${accessToken}`,
       "Content-Type": "application/json",
       "User-Agent": this.config.loadCodeAssistUserAgent,
-      "X-Goog-Api-Client": this.config.loadCodeAssistApiClient,
-      "Client-Metadata": this.config.loadCodeAssistClientMetadata,
+      // No X-Goog-Api-Client / Client-Metadata: Google fingerprints them and
+      // refuses to provision a cloudaicompanionProject.
     };
   }
 

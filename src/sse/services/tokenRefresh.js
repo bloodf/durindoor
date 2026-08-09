@@ -132,7 +132,7 @@ function _refreshProjectId(provider, connectionId, accessToken, proxyOptions) {
   // Evict the stale cached entry so getProjectIdForConnection does a real fetch
   invalidateProjectId(connectionId);
 
-  getProjectIdForConnection(connectionId, accessToken, proxyOptions)
+  getProjectIdForConnection(connectionId, accessToken, proxyOptions, null, provider)
     .then((projectId) => {
       if (!projectId) return;
       updateProviderCredentials(connectionId, { projectId }).catch((err) => {

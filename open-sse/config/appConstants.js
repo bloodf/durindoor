@@ -144,6 +144,15 @@ export const LOAD_CODE_ASSIST_HEADERS = {
   "User-Agent": "vscode/1.X.X (Antigravity/4.2.0)",
 };
 
+// The real Antigravity IDE does NOT send X-Goog-Api-Client / Client-Metadata on
+// loadCodeAssist / onboardUser. Google's backend fingerprints those headers and
+// silently refuses to provision a cloudaicompanionProject, so Antigravity gets
+// its own header set instead of mutating the shared Gemini CLI one.
+export const ANTIGRAVITY_LOAD_CODE_ASSIST_HEADERS = {
+  "Content-Type": "application/json",
+  "User-Agent": ANTIGRAVITY_IDE_USER_AGENT,
+};
+
 export const LOAD_CODE_ASSIST_METADATA = {
   ideType: "ANTIGRAVITY",
 };

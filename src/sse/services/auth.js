@@ -30,6 +30,15 @@ import { rankQuotaConnections } from "@/shared/services/quotaSelection";
 import { quotaDecisionDiagnostic } from "open-sse/services/quota/scoring.js";
 
 const CLI_AUTH_SALT = "9r-cli-auth";
+const GITHUB_MONTHLY_USAGE_LIMIT = "you've reached your additional usage limit for your plan";
+
+function githubMonthlyResetMs(status, errorText, provider) {
+  if (resolveProviderId(provider) !== "github" || Number(status) !== 402) return null;
+  if (!String(errorText || "").toLowerCase().includes(GITHUB_MONTHLY_USAGE_LIMIT)) return null;
+  const now = new Date();
+  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1);
+}
+
 
 export async function hasValidCliToken(request) {
   const supplied = request?.headers?.get?.("x-9r-cli-token");
@@ -753,6 +762,9 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     return { shouldFallback: true, cooldownMs: 0 };
   }
 
+  // GitHub premium-request exhaustion is account-wide until the next UTC month.
+  const githubResetAtMs = githubMonthlyResetMs(status, errorText, provider);
+
   // Provider-specific precise cooldown (e.g. codex usage_limit_reached resets_at) overrides backoff
   let shouldFallback, cooldownMs, newBackoffLevel;
   const now = Date.now();
@@ -783,12 +795,12 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   // exhaustion) is capped at a provider-appropriate max so a far-future reset
   // doesn't lock the account past its next low-frequency recheck (#2664).
   const cooldownCapMs = RESET_COOLDOWN_CAP_MS[provider] ?? MAX_RATE_LIMIT_COOLDOWN_MS;
-  const normalizedReset = Number.isFinite(providerReset) && providerReset > now
+  const normalizedReset = githubResetAtMs || (Number.isFinite(providerReset) && providerReset > now
     ? Math.min(providerReset, now + cooldownCapMs)
-    : null;
+    : null);
   if (normalizedReset !== null) {
     shouldFallback = true;
-    cooldownMs = Math.ceil(Math.min(normalizedReset - now, cooldownCapMs));
+    cooldownMs = Math.ceil(normalizedReset - now);
     newBackoffLevel = 0;
   } else {
     ({ shouldFallback, cooldownMs, newBackoffLevel } = fallbackResult);
@@ -801,7 +813,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     : now + cooldownMs;
   const legacyCooldownMs = Math.max(
     0,
-    Math.min(Math.ceil(deadline - observedAt), cooldownCapMs),
+    githubResetAtMs ? Math.ceil(deadline - observedAt) : Math.min(Math.ceil(deadline - observedAt), cooldownCapMs),
   );
   const reasonCode = Number(status) === 429
     ? "rate_limited"
@@ -825,7 +837,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     AI_PROVIDERS[resolveProviderId(provider)]?.passthroughConnectionWideErrors,
     status,
   );
-  const fallbackModel = resolveFallbackModelScope(provider, model, { accountWide: accountWideRuntime || passthroughConnectionError });
+  const fallbackModel = resolveFallbackModelScope(provider, model, { accountWide: githubResetAtMs || accountWideRuntime || passthroughConnectionError });
   let atomicApplied = false;
   try {
     const db = await import("@/lib/localDb");

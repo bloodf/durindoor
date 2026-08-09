@@ -4,6 +4,7 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { boundRelayStreamLifetime, fetchConnectTimeoutError, isRelaySseResponse } from "../utils/relayStreamLifecycle.js";
 import { dbg } from "../utils/debugLog.js";
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE } from "../providers/shared.js";
+import { getOpenAICompatibleType } from "../services/provider.js";
 import { findOffendingField } from "../config/providerFieldStrips.js";
 import { readBoundedResponseText } from "../utils/error.js";
 import {
@@ -140,7 +141,12 @@ export class BaseExecutor {
     if (this.provider?.startsWith?.("openai-compatible-")) {
       const baseUrl = credentials?.providerSpecificData?.baseUrl || OPENAI_COMPAT_BASE;
       const normalized = baseUrl.replace(/\/$/, "");
-      const path = this.provider.includes("responses") ? "/responses" : "/chat/completions";
+      // The stored apiType is authoritative: a node created as "…-responses-…"
+      // and later edited to Chat Completions must follow the edit. A bare
+      // substring check on the provider id ignores that and keeps dispatching
+      // to /responses. getOpenAICompatibleType applies the same precedence the
+      // rest of the runtime uses (stored apiType, then the id heuristic).
+      const path = getOpenAICompatibleType(this.provider, credentials) === "responses" ? "/responses" : "/chat/completions";
       return `${normalized}${path}`;
     }
     if (this.provider?.startsWith?.("anthropic-compatible-")) {

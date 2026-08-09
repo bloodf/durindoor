@@ -60,6 +60,8 @@ vi.mock("../../open-sse/services/tokenRefresh.js", () => ({
 
 vi.mock("../../open-sse/providers/capabilities.js", () => ({
   getCapabilitiesForModel: vi.fn(() => ({})),
+  // Unknown limits: the preflight must stay out of the way of these tests.
+  resolveModelLimits: vi.fn(() => ({ contextWindow: 0, maxOutput: 0, known: false, source: "default" })),
 }));
 
 vi.mock("../../open-sse/translator/concerns/modality.js", () => ({

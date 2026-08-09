@@ -89,6 +89,35 @@ export class BaseExecutor {
     return body;
   }
 
+  /**
+   * Output tokens the request will actually reserve against the context
+   * window — i.e. exactly what {@link clampCustomMaxOutput} will let through.
+   *
+   * The client's explicit value wins, but only up to the catalog cap, because
+   * the clamp rewrites anything larger down to that cap. Returning the raw
+   * client number would over-reserve and reject requests the provider would
+   * have accepted. Absent/zero/negative client values fall back to the cap, so
+   * a request naming no output limit is still charged the provider's default.
+   *
+   * Mirrors the clamp's field list, including both Gemini-envelope shapes.
+   */
+  resolveEffectiveOutputReservation(body, requestContext) {
+    const customMax = requestContext?.modelCapabilities?.maxOutput;
+    const cap = Number.isFinite(customMax) && customMax > 0 ? customMax : 0;
+    if (!body || typeof body !== "object") return cap;
+    const candidates = [
+      body.max_tokens,
+      body.max_completion_tokens,
+      body.max_output_tokens,
+      body?.generationConfig?.maxOutputTokens,
+      body?.request?.generationConfig?.maxOutputTokens,
+    ];
+    for (const value of candidates) {
+      if (Number.isFinite(value) && value > 0) return cap > 0 ? Math.min(value, cap) : value;
+    }
+    return cap;
+  }
+
   constructor(provider, config) {
     this.provider = provider;
     this.config = config;

@@ -93,6 +93,13 @@ DurinDoor has two fallback layers:
 
 A direct model request uses account fallback only. A combo request can use both layers.
 
+A model's context window and maximum output resolve through a single function,
+`resolveModelLimits` in `open-sse/providers/capabilities.js`, which reports
+whether the numbers are real catalog values or the generic floor. `handleChatCore`
+rejects an oversize request before dispatch instead of letting the provider
+return a 400, and stays silent when the model's real limit is unknown. See
+[Model Limits and Context Enforcement](reference/model-limits.md).
+
 ## Translation Layer
 
 The translation layer converts between OpenAI, Anthropic Claude, Gemini, OpenAI Responses, Kiro, Cursor, CommandCode, Ollama, Vertex, and other registered formats. Translators are organized under `open-sse/translator` and shared format logic lives in `open-sse/translator/concerns` and `open-sse/translator/formats`.

@@ -39,8 +39,8 @@ import { injectPonytail } from "../rtk/ponytail.js";
 import { compressMessages, resolveTokenSaverEnabled, normalizeTokenSaverEvent } from "../rtk/index.js";
 import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadroomPhantomSavings, classifyHeadroomDiagnostic } from "../rtk/headroom.js";
 import { compressWithPxpipe, normalizePxpipeResult } from "../rtk/pxpipe.js";
-import { getCapabilitiesForModel } from "../providers/capabilities.js";
-import { estimateTokens } from "./countTokensCore.js";
+import { getCapabilitiesForModel, resolveModelLimits } from "../providers/capabilities.js";
+import { estimateTokens, countInputTokens } from "./countTokensCore.js";
 import { runCompressionSeam } from "./chatCore/compressionHook.js";
 import { stripUnsupportedModalities } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
@@ -685,6 +685,52 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
   }
 
   const executor = getExecutor(provider);
+
+  // Ingress context-limit preflight (C1/C2). estimateTokens only fed compression
+  // planning, so an oversize request was still shipped upstream just to come back
+  // as a 400. Reject here instead, using the SAME output reservation the executor
+  // will clamp to, so the check and the clamp can never disagree.
+  //
+  // Deliberately silent when the limit is unknown: resolveModelLimits reports
+  // `known: false` for the bare capability floor, and rejecting on a guessed
+  // 200K would break every model whose real window is larger but undeclared.
+  // The message intentionally carries "input is too long" so the existing
+  // isDeterministicPayloadError classifier treats it as terminal and the
+  // fallback chain is skipped for a request no other model would accept.
+  const preflightLimits = resolveModelLimits(provider, cleanModel);
+  if (preflightLimits.known) {
+    // `requestContext.modelCapabilities` is null unless the caller passed caps,
+    // so fall back to the resolved catalog cap. Without this a known model whose
+    // request names no output field would reserve 0 and the check would only
+    // ever compare raw input against the window.
+    const reservationContext = requestContext?.modelCapabilities
+      ? requestContext
+      : { ...requestContext, modelCapabilities: { maxOutput: preflightLimits.maxOutput } };
+    const reservation = executor.resolveEffectiveOutputReservation?.(translatedBody, reservationContext) ?? 0;
+    // Prefer the provider's own /messages/count_tokens when it exposes one —
+    // the 4-chars-per-token heuristic is only a fallback, and rejecting on a
+    // bad count is worse than not rejecting at all. countInputTokens itself
+    // falls back to the estimate when the native call is absent or fails.
+    const { tokens: countedInput } = await countInputTokens({
+      body: translatedBody,
+      modelInfo: { provider, model: cleanModel },
+      credentials,
+      log,
+      signal: abortSignal,
+    });
+    const required = countedInput + reservation;
+    if (required > preflightLimits.contextWindow) {
+      const detail = `input is too long: ${required} tokens required (${countedInput} input + ${reservation} output reservation) exceeds the ${preflightLimits.contextWindow}-token context length of ${provider}/${cleanModel}`;
+      log?.warn?.("CHAT", `preflight reject | ${detail}`);
+      // The reservation was taken before translation; releasing it here keeps a
+      // locally-rejected request from holding provider capacity until the lease
+      // expires, since no dispatch path will settle it.
+      await settleQuota(false, "context_limit");
+      appendRequestLog({ model: cleanModel, provider, connectionId, status: "REJECTED (context limit)" }).catch(() => { });
+      return createErrorResult(HTTP_STATUS.BAD_REQUEST, detail);
+    }
+  }
+
   trackPendingRequest(cleanModel, provider, connectionId, true);
   appendRequestLog({ model: cleanModel, provider, connectionId, status: "PENDING" }).catch(() => { });
 

@@ -28,6 +28,8 @@ import {
   buildKiroGpt56Variants,
 } from "./models/kiroVariants.js";
 import { normalizeModelId } from "./models/schema.js";
+import REGISTRY from "./registry/index.js";
+
 
 /**
  * Safe floor — every resolved result is merged over this so consumers
@@ -696,4 +698,74 @@ export function getCapabilitiesForModel(provider, model) {
 
   // 4. Floor
   return finalize({ ...DEFAULT_CAPABILITIES });
+}
+
+/**
+ * Resolve the input/output limits advertised for a routed model.
+ *
+ * Unlike {@link getCapabilitiesForModel}, this labels the generic floor as
+ * unknown so callers never present it as a provider guarantee.
+ *
+ * @param {string} provider
+ * @param {string} model
+ * @returns {{contextWindow: number, maxOutput: number, known: boolean, source: "provider"|"exact"|"pattern"|"registry"|"default"}}
+ */
+export function resolveModelLimits(provider, model) {
+  const baseModel = typeof model === "string" && model.includes("/") ? model.split("/").pop() : model;
+  const positive = (value) => Number.isFinite(value) && value > 0;
+
+  // A capability row is evidence ONLY for the limits it actually declares.
+  // Plenty of rows exist purely to set feature flags (`{ tools: false }`,
+  // image-only descriptors), and merging DEFAULT_CAPABILITIES over those would
+  // publish the generic 200K/64K floor as a provider guarantee — the exact
+  // dishonesty this resolver exists to remove. Rows without a real
+  // contextWindow fall through to the next step instead.
+  const asLimits = (caps, source) => {
+    if (!positive(caps?.contextWindow)) return null;
+    return {
+      contextWindow: caps.contextWindow,
+      maxOutput: positive(caps.maxOutput) ? caps.maxOutput : DEFAULT_CAPABILITIES.maxOutput,
+      known: true,
+      source,
+    };
+  };
+
+  if (provider) {
+    const providerCaps = PROVIDER_CAPABILITIES[provider];
+    const ids = provider === "kiro" || provider === "kr"
+      ? [model, baseModel, normalizeModelId(model), normalizeModelId(baseModel)]
+      : [model, baseModel];
+    for (const id of ids) {
+      const hit = providerCaps?.[id] && asLimits(providerCaps[id], "provider");
+      if (hit) return hit;
+    }
+  }
+
+  for (const id of [baseModel, model]) {
+    const hit = MODEL_CAPABILITIES[id] && asLimits(MODEL_CAPABILITIES[id], "exact");
+    if (hit) return hit;
+  }
+
+  const registry = REGISTRY.find((entry) => entry.id === provider || entry.alias === provider || entry.uiAlias === provider);
+  const registryModel = registry?.models?.find((entry) => entry.id === model || entry.id === baseModel);
+  if (registryModel) {
+    const hit = asLimits({
+      contextWindow: registryModel.contextLength ?? registry.transport?.defaultContextLength,
+      maxOutput: registryModel.maxOutputTokens,
+    }, "registry");
+    if (hit) return hit;
+  }
+
+  for (const { pattern, caps } of PATTERN_CAPABILITIES) {
+    if (!matchPattern(pattern, baseModel) && !matchPattern(pattern, model)) continue;
+    const hit = asLimits(caps, "pattern");
+    if (hit) return hit;
+  }
+
+  return {
+    contextWindow: DEFAULT_CAPABILITIES.contextWindow,
+    maxOutput: DEFAULT_CAPABILITIES.maxOutput,
+    known: false,
+    source: "default",
+  };
 }

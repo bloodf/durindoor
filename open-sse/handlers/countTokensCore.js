@@ -111,6 +111,45 @@ export function estimateTokens(body) {
 }
 
 /**
+ * Count a request's input tokens, preferring the provider's native
+ * `/messages/count_tokens` endpoint and falling back to the heuristic estimate
+ * when no endpoint exists or the call fails.
+ *
+ * Extracted so the chatCore context preflight and the public count-tokens route
+ * agree on the number instead of each rolling their own counting.
+ *
+ * @returns {Promise<{ tokens: number, approximate: boolean }>}
+ */
+export async function countInputTokens({ body, modelInfo, credentials = null, log = null, signal = null }) {
+  const { provider, model } = modelInfo ?? {};
+  const url = deriveCountTokensUrl(PROVIDERS[provider]);
+  if (!url) return { tokens: estimateTokens(body), approximate: true };
+
+  try {
+    const headers = getExecutor(provider).buildHeaders(credentials || {}, false);
+    const res = await proxyAwareFetch(url, {
+      method: "POST",
+      headers,
+      // An already-translated body carries the provider-facing model id
+      // (upstreamModelId). Overwriting it with the catalog alias would make
+      // the upstream reject the count and silently degrade to the estimate.
+      body: JSON.stringify(typeof body?.model === "string" && body.model ? body : { ...body, model }),
+      ...(signal ? { signal } : {}),
+    });
+    if (res.ok) {
+      const json = await res.json();
+      const tokens = Number(json?.input_tokens);
+      if (Number.isFinite(tokens) && tokens >= 0) return { tokens, approximate: false };
+    } else {
+      log?.debug?.("COUNT-TOKENS", `native failed (${res.status}), falling back to estimate`);
+    }
+  } catch (err) {
+    log?.debug?.("COUNT-TOKENS", `native threw: ${err?.message}, falling back to estimate`);
+  }
+  return { tokens: estimateTokens(body), approximate: true };
+}
+
+/**
  * Core count_tokens handler. Calls the provider's native /messages/count_tokens
  * when the upstream is Claude-compatible; otherwise falls back to the heuristic
  * estimate, flagged approximate:true.
@@ -129,44 +168,13 @@ export async function handleCountTokensCore({
   log = null,
 }) {
   const { provider, model } = modelInfo;
-  const cfg = PROVIDERS[provider];
-  const url = deriveCountTokensUrl(cfg);
-
-  // No native endpoint → heuristic estimate.
-  if (!url) {
-    return {
-      success: true,
-      status: 200,
-      response: Response.json({ input_tokens: estimateTokens(body), approximate: true }),
-    };
+  if (deriveCountTokensUrl(PROVIDERS[provider])) {
+    log?.debug?.("COUNT-TOKENS", `${provider} | ${model} | native`);
   }
-
-  const executor = getExecutor(provider);
-  const headers = executor.buildHeaders(credentials || {}, false);
-  log?.debug?.("COUNT-TOKENS", `${provider} | ${model} | ${url}`);
-
-  try {
-    const res = await proxyAwareFetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ ...body, model }),
-    });
-    if (res.ok) {
-      const json = await res.json();
-      return {
-        success: true,
-        status: 200,
-        response: Response.json({ input_tokens: Number(json.input_tokens) || estimateTokens(body) }),
-      };
-    }
-    log?.debug?.("COUNT-TOKENS", `native failed (${res.status}), falling back to estimate`);
-  } catch (err) {
-    log?.debug?.("COUNT-TOKENS", `native threw: ${err?.message}, falling back to estimate`);
-  }
-
+  const { tokens, approximate } = await countInputTokens({ body, modelInfo, credentials, log });
   return {
     success: true,
     status: 200,
-    response: Response.json({ input_tokens: estimateTokens(body), approximate: true }),
+    response: Response.json(approximate ? { input_tokens: tokens, approximate: true } : { input_tokens: tokens }),
   };
 }

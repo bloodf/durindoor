@@ -1,4 +1,4 @@
-import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
+import { getCapabilitiesForModel, resolveModelLimits } from "open-sse/providers/capabilities.js";
 
 function isCodexUserAgent(request) {
   const originator = request.headers.get("originator") ?? "";
@@ -17,6 +17,10 @@ function toCodexModel(m) {
       ? m.id.split("/")[0] ?? ""
       : (m.owned_by ?? "");
   const caps = getCapabilitiesForModel(provider, m.id);
+  // Advertise the window only when it is a real catalog value. resolveModelLimits
+  // reports `known: false` for the generic floor, and publishing that as fact is
+  // how clients end up truncating against a limit the model does not have.
+  const limits = resolveModelLimits(provider, m.id);
   return {
     slug: m.id,
     display_name: m.id,
@@ -24,6 +28,9 @@ function toCodexModel(m) {
     supports_search_tool: !!caps?.search,
     tool_mode: "auto",
     multi_agent_version: null,
+    ...(limits.known
+      ? { context_window: limits.contextWindow, max_output_tokens: limits.maxOutput }
+      : {}),
   };
 }
 

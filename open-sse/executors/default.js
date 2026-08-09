@@ -255,6 +255,12 @@ export class DefaultExecutor extends BaseExecutor {
         delete transformed.client_metadata;
       }
       this.defaultResponsesTextFormat(transformed);
+      // Ask OpenAI-compatible upstreams to include usage in the final stream
+      // chunk so /v1 streaming requests record real token counts instead of
+      // IN 0 · OUT 0 (decolua/9router#3081, port of #3017 fix).
+      if (stream === true && transformed.messages && !transformed.stream_options) {
+        transformed.stream_options = { include_usage: true };
+      }
       if (this.config.format === "openai" && stream === false) {
         // Resolved stream mode is authoritative for upstream OpenAI-compatible
         // payloads, including providers that explicitly reject streaming.

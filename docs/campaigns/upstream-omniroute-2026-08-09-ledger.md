@@ -25,3 +25,40 @@ Scope: `decolua/9router` commits `6fcd27337..15223724c` (42 commits), `diegosouz
 ### Environment note
 
 `tests/node_modules`'s `better-sqlite3` native binding was compiled for NODE_MODULE_VERSION 115 (Node 20) while the workstation runs Node 24 (ABI 137), which failed 14 DB-backed suites on a clean `origin/main` checkout before any edit. Rebuilt the binding for the active runtime (`npx prebuild-install -r node -t 24.19.0` inside `node_modules/better-sqlite3`; the package's install script is blocked by the repo's `allowScripts` policy, so `npm rebuild` is a no-op). This is a local toolchain repair only — no repository file changed.
+
+## Workstream C — Context handling
+
+| Item | Verdict | Evidence | Action |
+| --- | --- | --- | --- |
+| Three disagreeing limit sources | FIXED | `providerPluginManifest.js`, `capabilities.js`, and the models info route each resolved limits independently, and `DEFAULT_CAPABILITIES` was merged into every unmatched lookup, so an unknown model was indistinguishable from a real 200K one — 529 of 1646 catalog models resolved to that floor. | Added `resolveModelLimits(provider, model)` returning `{ contextWindow, maxOutput, known, source }`. A row counts as evidence only when it declares a positive `contextWindow`, so feature-flag-only capability rows and limit-less registry entries fall through instead of republishing the floor as fact. |
+| No ingress enforcement | FIXED | `estimateTokens` only fed compression planning; an oversize request was translated, compressed, and shipped upstream purely to return a 400. | Preflight before dispatch: reject when input plus the output reservation exceeds a *known* window, counting via the provider's native `/messages/count_tokens` when one exists. Unknown limits never reject. The rejection settles the quota reservation and is phrased so `isDeterministicPayloadError` treats it as terminal. |
+| Clamp and reservation could disagree | FIXED | `clampCustomMaxOutput` only clamped an explicit client value, so the preflight would have charged a different number than the clamp shipped. | `resolveEffectiveOutputReservation` returns exactly what the clamp lets through (the client value capped at the catalog `maxOutput`, else the cap), covering both Gemini envelope shapes. |
+| Limits invisible to clients | FIXED | `toCodexModel` dropped the limit fields entirely and `buildInfo()` only emitted a window when the registry declared one, so capability-only models reported nothing. | Both endpoints publish limits for known models and omit them for unknown ones. Verified live: 1169 of 1335 models advertise limits where the deployed build advertises none. |
+
+Details and the live verification transcript live in
+[`docs/reference/model-limits.md`](../reference/model-limits.md).
+
+## Workstream A/D — Upstream ports
+
+Per-batch verdicts live in the batch ledgers:
+[A2-a](upstream-a2a-ports-ledger.md), [A2-b](upstream-a2b-ports-ledger.md),
+[A2-c](upstream-a2c-responses-lite-ledger.md), [D1](upstream-d1-pr-ports-ledger.md),
+and [D2/D3](upstream-d2d3-pr-ports-ledger.md). Commit-level verdicts for the
+whole `6fcd27337..15223724c` window, including every deferred item and the
+trigger that would justify revisiting it, live in
+[`docs/UPSTREAM_SYNC.md`](../UPSTREAM_SYNC.md).
+
+Two defects were found while triaging rather than ported from upstream:
+
+| Item | Evidence | Action |
+| --- | --- | --- |
+| `displayName` dropped from `/api/auth/status` | The `ae4f76c4` port added `authenticated` but removed `displayName` from both payloads. `Header.js` reads it first when labelling the signed-in user, so password sessions lost their label entirely. | Restored the field with a regression test. |
+| Compatible-node endpoint ignored the stored `apiType` | `buildUrl` used a substring check on the provider id, so a node created as `openai-compatible-responses-<uuid>` and later edited to Chat Completions kept dispatching to `/responses`. | Route through `getOpenAICompatibleType`, matching the precedence the rest of the runtime already used. |
+
+## Final gate
+
+- `cd tests && npm run test:ci`: 6425 tests, 6365 passed, **0 failed**; `Raw failures: 0`, `Known failures still failing: 0`, `Stale baseline entries now passing: 0`. The baseline file was not modified.
+- `npm run lint`: exit 0 (183 warnings, all pre-existing; 0 errors).
+- `npm run build`: production build completed.
+- `npm run check:docs` and `npm run check:registry-index`: passed.
+- `npx commitlint --from=origin/main --to=HEAD`: 0 problems.

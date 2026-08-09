@@ -59,7 +59,11 @@ describe("usage chart timezone", () => {
     const chart = await db.getChartData("today", "America/Los_Angeles");
 
     expect(chart).toHaveLength(24);
-    expect(chart[0].label).toMatch(/^00:00/);
+    // Node 20 and 24 disagree on how `hour12: false` renders midnight ("24:00"
+    // vs "00:00"), so assert the zone abbreviation the label carries instead of
+    // the hour text — that is what actually proves the requested timezone was
+    // used for bucketing.
+    expect(chart[0].label).toMatch(/(PDT|PST)/);
     // 16:15 LA → the 17th hourly bucket of the LA day.
     expect(chart[16].tokens).toBe(15);
     expect(chart.reduce((sum, b) => sum + b.tokens, 0)).toBe(15);

@@ -19,6 +19,8 @@ export default {
     },
   },
   category: "freeTier",
+  authType: "apikey",
+  authModes: ["apikey"],
   quirks: {
     preserveNativeClaudeThinking: true,
     normalizeNativeClaudeTransport: true,

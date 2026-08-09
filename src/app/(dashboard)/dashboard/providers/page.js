@@ -27,7 +27,7 @@ import { useNotificationStore } from "@/store/notificationStore";
 import { useHeaderSearchStore } from "@/store/headerSearchStore";
 import ModelAvailabilityBadge from "./components/ModelAvailabilityBadge";
 import AddCompatibleModal from "./components/AddCompatibleModal";
-import { getProviderStatus, OAUTH_AUTH_TYPES, OAUTH_STATUS_AUTH_TYPES } from "./providerFilters";
+import { getProviderStatus, getFreeAuthTypes, OAUTH_AUTH_TYPES, OAUTH_STATUS_AUTH_TYPES } from "./providerFilters";
 
 function getStatusDisplay(connected, error, errorCode) {
   const parts = [];
@@ -315,13 +315,6 @@ export default function ProvidersPage() {
       noAuth,
       disabledFreeProviders,
     ) === providerFilter;
-
-  const getFreeAuthTypes = (key, info) => {
-    if (key === "kiro") return ["oauth", "apikey", "api_key"];
-    if (Array.isArray(info.authModes) && info.authModes.length > 0) return info.authModes;
-    if (info.authType) return [info.authType];
-    return OAUTH_AUTH_TYPES;
-  };
 
   const compatibleProviders = providerNodes
     .filter((node) => node.type === "openai-compatible")

@@ -11,7 +11,7 @@ describe("gemini file_data PDF preservation", () => {
     ]);
     const inline = parts.find((p) => p.inlineData);
     expect(inline).toBeTruthy();
-    expect(inline.inlineData.mime_type).toBe("application/pdf");
+    expect(inline.inlineData.mimeType).toBe("application/pdf");
     expect(inline.inlineData.data).toBe(PDF_BASE64);
   });
 
@@ -21,7 +21,7 @@ describe("gemini file_data PDF preservation", () => {
     ]);
     const inline = parts.find((p) => p.inlineData);
     expect(inline).toBeTruthy();
-    expect(inline.inlineData.mime_type).toBe("application/pdf");
+    expect(inline.inlineData.mimeType).toBe("application/pdf");
     expect(inline.inlineData.data).toBe(PDF_BASE64);
   });
 
@@ -31,7 +31,7 @@ describe("gemini file_data PDF preservation", () => {
     ]);
     const inline = parts.find((p) => p.inlineData);
     expect(inline).toBeTruthy();
-    expect(inline.inlineData.mime_type).toBe("application/pdf");
+    expect(inline.inlineData.mimeType).toBe("application/pdf");
     expect(inline.inlineData.data).toBe(PDF_BASE64);
   });
 
@@ -41,7 +41,7 @@ describe("gemini file_data PDF preservation", () => {
     ]);
     const inline = parts.find((p) => p.inlineData);
     expect(inline).toBeTruthy();
-    expect(inline.inlineData.mime_type).toBe("application/pdf");
+    expect(inline.inlineData.mimeType).toBe("application/pdf");
     expect(inline.inlineData.data).toBe(PDF_BASE64);
   });
 
@@ -51,7 +51,7 @@ describe("gemini file_data PDF preservation", () => {
     ]);
     const inline = parts.find((p) => p.inlineData);
     expect(inline).toBeTruthy();
-    expect(inline.inlineData.mime_type).toBe("application/pdf");
+    expect(inline.inlineData.mimeType).toBe("application/pdf");
     expect(inline.inlineData.data).toBe(PDF_BASE64);
   });
 
@@ -69,7 +69,7 @@ describe("gemini file_data PDF preservation", () => {
     ]);
     const inline = parts.find((p) => p.inlineData);
     expect(inline).toBeTruthy();
-    expect(inline.inlineData.mime_type).toBe("image/png");
+    expect(inline.inlineData.mimeType).toBe("image/png");
     expect(inline.inlineData.data).toBe("iVBORw0KGgo=");
   });
 
@@ -79,6 +79,6 @@ describe("gemini file_data PDF preservation", () => {
     ]);
     const inline = parts.find((p) => p.inlineData);
     expect(inline).toBeTruthy();
-    expect(inline.inlineData.mime_type).toBe("application/pdf");
+    expect(inline.inlineData.mimeType).toBe("application/pdf");
   });
 });

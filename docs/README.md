@@ -71,6 +71,7 @@ For developers working on the DurinDoor codebase, provider registry, or document
 - [Upstream + OmniRoute 2026-08-09 Ledger](campaigns/upstream-omniroute-2026-08-09-ledger.md)
 - [Upstream A2-b Runtime-Correctness Ports Ledger](campaigns/upstream-a2b-ports-ledger.md)
 - [Upstream A2-c Responses Lite Ledger](campaigns/upstream-a2c-responses-lite-ledger.md)
+- [Upstream D1 PR Ports Ledger](campaigns/upstream-d1-pr-ports-ledger.md)
 - [tests/README.md](../tests/README.md)
 
 ## API & Reference

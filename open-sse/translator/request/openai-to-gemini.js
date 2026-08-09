@@ -16,6 +16,7 @@ import {
   generateProjectId,
   cleanJSONSchemaForAntigravity
 } from "../formats/gemini.js";
+import { parseDataUri } from "../concerns/image.js";
 import { deriveSessionId, toNumericSessionId } from "../../utils/sessionManager.js";
 import { ROLE, GEMINI_ROLE, OPENAI_BLOCK, CLAUDE_BLOCK } from "../schema/index.js";
 
@@ -363,6 +364,13 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
         for (const block of msg.content) {
           if (block.type === CLAUDE_BLOCK.TEXT) {
             parts.push({ text: block.text });
+          } else if (block.type === CLAUDE_BLOCK.IMAGE && block.source?.type === "base64") {
+            parts.push({
+              inlineData: {
+                mimeType: block.source.media_type || "image/png",
+                data: block.source.data
+              }
+            });
           } else if (block.type === CLAUDE_BLOCK.TOOL_USE) {
             parts.push({
               thoughtSignature: signature,
@@ -374,20 +382,44 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
             });
           } else if (block.type === CLAUDE_BLOCK.TOOL_RESULT) {
             let content = block.content;
+            const imageParts = [];
             if (Array.isArray(content)) {
-              content = content.map(c => c.type === CLAUDE_BLOCK.TEXT ? c.text : JSON.stringify(c)).join("\n");
+              const textItems = [];
+              for (const item of content) {
+                if (item.type === CLAUDE_BLOCK.IMAGE && item.source?.type === "base64") {
+                  imageParts.push({
+                    inlineData: {
+                      mimeType: item.source.media_type || "image/png",
+                      data: item.source.data
+                    }
+                  });
+                } else if (item.type === "image_url" && item.image_url?.url) {
+                  const parsed = parseDataUri(item.image_url.url);
+                  if (parsed) {
+                    imageParts.push({
+                      inlineData: {
+                        mimeType: parsed.mimeType || "image/png",
+                        data: parsed.base64
+                      }
+                    });
+                  }
+                } else if (item.type === CLAUDE_BLOCK.TEXT) {
+                  textItems.push(item.text);
+                }
+              }
+              content = textItems.join("\n");
             }
             // Resolve the original tool name from the id — Gemini requires it to match the functionCall name
             const resolvedName = toolUseIdToName[block.tool_use_id]
               ? sanitizeGeminiFunctionName(toolUseIdToName[block.tool_use_id])
               : "tool";
-            parts.push({
-              functionResponse: {
-                id: block.tool_use_id,
-                name: resolvedName,
-                response: { result: tryParseJSON(content) || content }
-              }
-            });
+            const functionResponse = {
+              id: block.tool_use_id,
+              name: resolvedName,
+              response: { result: tryParseJSON(content) || content }
+            };
+            if (imageParts.length > 0) functionResponse.parts = imageParts;
+            parts.push({ functionResponse });
           }
         }
       } else if (typeof msg.content === "string") {

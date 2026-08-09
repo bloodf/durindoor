@@ -95,6 +95,18 @@ export const MODEL_CAPABILITIES = {
   "claude-opus-4-6-thinking": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   "claude-opus-4.7-thinking": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   "claude-opus-4-7-thinking": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  // Kiro exposes -agentic / -thinking-agentic variants of Opus 4.7/4.8 (registry
+  // kiro.js). Without exact rows the dot forms hit *claude*opus-4.7|4.8* (which
+  // carry no limits → 200K/64K floor) and the dash forms fall further to the
+  // generic *claude*opus* budget pattern. Both keep the 1M adaptive contract.
+  "claude-opus-4.7-agentic":          { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4-7-agentic":          { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4.7-thinking-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4-7-thinking-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4.8-agentic":          { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4-8-agentic":          { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4.8-thinking-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4-8-thinking-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   "claude-sonnet-4.6": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   "claude-sonnet-4-6": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   "claude-sonnet-5": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
@@ -142,10 +154,13 @@ const KIRO_GPT_5_6_PROVIDER_CAPS = Object.fromEntries(
   }])
 );
 
-// Direct OpenAI GPT-5.5/5.6 surfaces override the generic *gpt-5* 400K pattern
-// (1.05M context / 128K max output). Codex and its CX alias get the same
-// base values, plus Codex-specific review and ultra ids.
+// Direct OpenAI GPT-5.4/5.5/5.6 surfaces override the generic *gpt-5* 400K
+// pattern (1.05M context / 128K max output — developers.openai.com model docs
+// reprice >272K input prompts for "models with a 1.05M context window"). Codex
+// and its CX alias get the same base values, plus Codex-specific review and
+// ultra ids. Mini/nano tiers are NOT 1.05M and keep the generic pattern.
 const DIRECT_GPT_5_5_6_CAPS = {
+  "gpt-5.4":              { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
   "gpt-5.5":              { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
   "gpt-5.6":              { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
   "gpt-5.6-sol":          { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
@@ -156,10 +171,22 @@ const DIRECT_GPT_5_5_6_CAPS = {
 const CODEX_GPT_5_6_CAPS = {
   ...DIRECT_GPT_5_5_6_CAPS,
   "gpt-5.5-review":       { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
+  // Same upstream model as "gpt-5.4" (registry codex.js sets upstreamModelId),
+  // so it must resolve the same window instead of the generic 400K pattern.
+  "gpt-5.4-review":       { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
   "gpt-5.6-sol-review":   { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
   "gpt-5.6-sol-ultra":    { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
   "gpt-5.6-terra-review": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
   "gpt-5.6-luna-review":  { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
+};
+
+// Native MiniMax hosts (platform.minimax.io / minimaxi.com) serve M3 at the
+// full 1M-token context with a 131,072 recommended output cap. Third-party
+// hosts (Fireworks, NIM, OpenRouter-style resellers) only guarantee the 512K
+// minimum, which is what the generic *minimax-m3* pattern carries — so the
+// native providers need an explicit override rather than the conservative row.
+const MINIMAX_M3_NATIVE_CAPS = {
+  "MiniMax-M3": { vision: true, videoInput: true, reasoning: true, thinkingFormat: "minimax", contextWindow: 1000000, maxOutput: 131072 },
 };
 
 export const PROVIDER_CAPABILITIES = {
@@ -168,6 +195,9 @@ export const PROVIDER_CAPABILITIES = {
   openai: DIRECT_GPT_5_5_6_CAPS,
   codex: CODEX_GPT_5_6_CAPS,
   cx: CODEX_GPT_5_6_CAPS,
+  // Native MiniMax endpoints serve the full 1M M3 window (see MINIMAX_M3_NATIVE_CAPS).
+  minimax: MINIMAX_M3_NATIVE_CAPS,
+  "minimax-cn": MINIMAX_M3_NATIVE_CAPS,
   // Poolside Laguna — OpenAI-compatible, all reasoning-capable (262K context, 32K max output).
   poolside: {
     "laguna-s-2.1":  { reasoning: true, thinkingFormat: "openai", contextWindow: 262000, maxOutput: 32000 },

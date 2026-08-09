@@ -27,6 +27,26 @@ describe("getCapabilitiesForModel", () => {
     expect(getCapabilitiesForModel("kiro", "claude-opus-4-8-thinking").contextWindow).toBe(1000000);
   });
 
+  // Kiro exposes -agentic / -thinking-agentic variants of Opus 4.7/4.8
+  // (open-sse/providers/registry/kiro.js). Before the exact MODEL_CAPABILITIES
+  // rows, the dot forms matched *claude*opus-4.7|4.8* (no limits → 200K/64K
+  // floor) and the dash forms fell through to the generic *claude*opus*
+  // budget pattern, silently downgrading a 1M model to 200K.
+  it("reports Kiro Claude Opus 4.7/4.8 agentic variants as 1M adaptive-thinking models", () => {
+    const expected = {
+      contextWindow: 1000000,
+      maxOutput: 128000,
+      thinkingFormat: "claude-adaptive",
+      reasoning: true,
+      vision: true,
+      search: true,
+    };
+    for (const version of ["4.7", "4-7", "4.8", "4-8"]) {
+      expect(getCapabilitiesForModel("kiro", `claude-opus-${version}-agentic`)).toMatchObject(expected);
+      expect(getCapabilitiesForModel("kiro", `claude-opus-${version}-thinking-agentic`)).toMatchObject(expected);
+    }
+  });
+
   it("reports Kiro Claude Sonnet 5 as a 1M adaptive-thinking model", () => {
     expect(getCapabilitiesForModel("kiro", "claude-sonnet-5")).toMatchObject(claudeSonnet5Expected);
     expect(getCapabilitiesForModel("kiro", "anthropic/claude-sonnet-5")).toMatchObject(claudeSonnet5Expected);
@@ -68,6 +88,36 @@ describe("getCapabilitiesForModel", () => {
       }
       expect(getCapabilitiesForModel(provider, "openai/gpt-5.6-sol"), `${provider} prefixed`).toMatchObject(kiroGpt56Expected);
     }
+  });
+
+  // Direct OpenAI GPT-5.4 ships the 1.05M context window
+  // (developers.openai.com/api/docs/models/gpt-5.4 — >272K input prompts are
+  // repriced for "models with a 1.05M context window"). Without exact rows it
+  // falls to the generic *gpt-5* 400K pattern. Only the ids the registries
+  // actually expose are asserted: openai.js and codex.js list "gpt-5.4", and
+  // codex.js additionally lists "gpt-5.4-review" (upstreamModelId "gpt-5.4").
+  // The mini/nano tiers are NOT 1.05M and must keep the generic pattern.
+  it("reports direct OpenAI GPT-5.4 with the 1.05M context window", () => {
+    const expected = {
+      contextWindow: 1050000,
+      maxOutput: 128000,
+      thinkingFormat: "openai",
+      reasoning: true,
+      vision: true,
+      search: true,
+    };
+    for (const provider of ["openai", "codex", "cx"]) {
+      expect(getCapabilitiesForModel(provider, "gpt-5.4"), `${provider}/gpt-5.4`).toMatchObject(expected);
+    }
+    // Codex-only review alias resolves the same upstream model.
+    for (const provider of ["codex", "cx"]) {
+      expect(getCapabilitiesForModel(provider, "gpt-5.4-review"), `${provider}/gpt-5.4-review`).toMatchObject(expected);
+    }
+  });
+
+  it("keeps GPT-5.4 mini/nano tiers on the generic 400K window", () => {
+    expect(getCapabilitiesForModel("openai", "gpt-5.4-mini").contextWindow).toBe(400000);
+    expect(getCapabilitiesForModel("openai", "gpt-5.4-nano").contextWindow).toBe(400000);
   });
 
   it("normalizes dash-version Kiro GPT-5.6 ids to the same 1.05M capability row", () => {

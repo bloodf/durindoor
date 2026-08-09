@@ -85,3 +85,27 @@ number, requests the provider would have accepted would be rejected locally.
   resolver, so capability-only models — those whose limits come from a pattern
   or a provider override rather than a registry field — stop reporting no
   window at all.
+
+## Verified behavior
+
+Confirmed against a dev server running this branch on an isolated port and data
+directory, using a locally-created API-key connection (the upstream key was
+deliberately invalid — the preflight runs before dispatch, so no provider call
+is needed to observe it):
+
+| Check | Result |
+| --- | --- |
+| `GET /v1/models` (Codex projection) | 1169 of 1335 models advertise `context_window` / `max_output_tokens`; the 166 unknown ones omit both. The currently deployed build advertises limits for **0** models. |
+| `openai/gpt-5.4` in `/v1/models` | `context_window: 1050000`, `max_output_tokens: 128000`. |
+| `GET /v1/models/info?id=openai/gpt-5.4` | `contextWindow: 1050000`, `maxOutput: 128000`. |
+| `GET /v1/models/info?id=nr/auto` (unknown) | No limit fields at all, rather than the 200K floor. |
+| Over-budget chat request (1.5M tokens to `openai/gpt-5.4`) | `HTTP 400` — `input is too long: 1501000 tokens required (1500000 input + 1000 output reservation) exceeds the 1050000-token context length of openai/gpt-5.4`. |
+| Under-budget chat request, same model | Passes the preflight and reaches dispatch. |
+
+### Client-side context configuration
+
+There is no client-side context-window override to set: the omp agent config
+(`~/.omp/agent/config.yml`) has no context-window or per-model limit key — its
+`modelRoles` entries only name models. Client visibility therefore depends
+entirely on what the server advertises, which is what the `/v1/models` and
+`/v1/models/info` changes above provide.

@@ -153,8 +153,18 @@ describe("chatCore ingress context-limit preflight", () => {
     });
   });
 
-  it("accepts a request one token under the context window", async () => {
-    // input + the OUTPUT_CAP reservation lands exactly on the limit.
+  // Three-point boundary: limit-1 and limit pass, limit+1 rejects.
+  it("accepts a request one token below the context window", async () => {
+    mocks.countInputTokens.mockResolvedValue({ tokens: CONTEXT_WINDOW - OUTPUT_CAP - 1, approximate: true });
+
+    const result = await handleChatCore(makeOptions());
+
+    expect(result?.status).not.toBe(400);
+    expect(mocks.execute).toHaveBeenCalled();
+  });
+
+  it("accepts a request that lands exactly on the context window", async () => {
+    // input + the OUTPUT_CAP reservation sums to exactly contextWindow.
     mocks.countInputTokens.mockResolvedValue({ tokens: CONTEXT_WINDOW - OUTPUT_CAP, approximate: true });
 
     const result = await handleChatCore(makeOptions());

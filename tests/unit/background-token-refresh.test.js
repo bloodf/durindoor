@@ -1,8 +1,11 @@
 /**
  * Background OAuth token-refresh scheduler.
  *
- * Covers pure selection (selectConnectionsNeedingRefresh) and a fake tick that
- * exercises checkAndRefreshToken dispatch + fail-open per connection.
+ * Covers pure selection (selectConnectionsNeedingRefresh) and tick orchestration
+ * with an INJECTED refreshConnection — so it verifies which connections are
+ * chosen and that per-connection failures are swallowed, but never the real
+ * refreshOne path. That path (force=true reaching checkAndRefreshToken) is
+ * covered by background-token-refresh-integration.test.js.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";

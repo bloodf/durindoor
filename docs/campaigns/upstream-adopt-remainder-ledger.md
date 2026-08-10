@@ -31,6 +31,25 @@ the observed values:
 | GitHub | `url=https://api.githubcopilot.com/chat/completions` with 13 auth/identity headers resolved. |
 | Background refresh | `refreshAttempts=1` — only the due OAuth connection is refreshed; a far-future one and an apikey one are skipped, and a provider failure is swallowed. |
 
+### Scheduler integration coverage
+
+The scheduler's own suite injects `refreshConnection`, so it verifies selection
+and fail-open behavior but never the default `refreshOne` path that production
+runs. `tests/unit/background-token-refresh-integration.test.js` closes that gap
+with the real path and only the network call and DB write mocked.
+
+The case that matters: `github`'s on-request lead is 5 minutes while the
+scheduler's is 30, so a token 10 minutes from expiry is scheduler-due but would
+be skipped by the ordinary lead check. The test asserts `refreshProviderCredentials`
+is called and the new token is persisted through `updateProviderConnection`.
+
+Verified load-bearing two ways — both leave the tick green while refreshing
+nothing, which is exactly the silent no-op this port risks:
+
+- Dropping `{ force: true }` turns it red.
+- Moving `force` into the third argument (upstream's slot, which this fork uses
+  for `proxyOptions`) turns it red.
+
 A live server on an isolated port and data directory additionally answered
 `GET /v1/models` and drove `POST /v1/chat/completions` through the full request
 pipeline to dispatch (failing only at the deliberately absent upstream with
@@ -38,7 +57,7 @@ pipeline to dispatch (failing only at the deliberately absent upstream with
 
 ## Verification
 
-- `cd tests && npm run test:ci`: 6455 tests, 6395 passed, **0 failed**; `Raw failures: 0`, `Baseline additions check: no additions`.
+- `cd tests && npm run test:ci`: 6460 tests, 6400 passed, **0 failed**; `Raw failures: 0`, `Baseline additions check: no additions`.
 - `npm run lint`: exit 0 (183 warnings, all pre-existing).
 - `npm run build`: production build completed.
 - `npm run check:docs`, `npm run check:registry-index`: passed.

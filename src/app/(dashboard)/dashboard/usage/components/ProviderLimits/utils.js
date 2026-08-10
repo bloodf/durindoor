@@ -1,5 +1,6 @@
 import { getModelsByProviderId } from "open-sse/config/providerModels.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
+import { getCodexPlanLabel } from "@/shared/utils/codexPlanLabel";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 export const QUOTA_CACHE_KEY = "quotaCacheData";
@@ -132,6 +133,38 @@ export function getConnectionLabel(connection) {
     || connection.email?.trim()
     || connection.displayName?.trim()
     || null;
+}
+
+/**
+ * Codex plan badge value: the live quota API's plan wins, with the connection's
+ * stored OAuth metadata as fallback. A stored plan is often stale (it is only
+ * written at authorization time), so preferring it would show the wrong tier
+ * after an upgrade; but it is better than no badge when the live read is
+ * unavailable or returns the "unknown" placeholder.
+ *
+ * Upstream decolua/9router#3210.
+ *
+ * @returns {string} display label, or "" when no badge should render.
+ */
+export function getCodexPlan(quota, connection) {
+  const live = getCodexPlanLabel(true, quota?.plan);
+  if (live) return live;
+  return getCodexPlanLabel(true, connection?.providerSpecificData?.chatgptPlanType);
+}
+
+/**
+ * Reduce a connection's live usage payload to a `[connectionId, plan]` entry,
+ * or null when the payload carries nothing renderable. Used by the provider
+ * page to build its connectionId → plan map (decolua/9router#3210).
+ */
+export function toCodexPlanEntry(connectionId, usage) {
+  const plan = getCodexPlanLabel(true, usage?.plan);
+  return plan ? [connectionId, plan] : null;
+}
+
+/** Build the connectionId → live plan map the provider page passes to rows. */
+export function buildCodexPlanMap(entries) {
+  return Object.fromEntries((entries || []).filter(Boolean));
 }
 
 export function getConnectionQuotaRemaining(connection, quotaData) {

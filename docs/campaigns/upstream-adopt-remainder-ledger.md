@@ -50,10 +50,26 @@ nothing, which is exactly the silent no-op this port risks:
 - Moving `force` into the third argument (upstream's slot, which this fork uses
   for `proxyOptions`) turns it red.
 
-A live server on an isolated port and data directory additionally answered
-`GET /v1/models` and drove `POST /v1/chat/completions` through the full request
-pipeline to dispatch (failing only at the deliberately absent upstream with
-`ECONNREFUSED`, which proves the pipeline ran).
+## Live provider round-trips
+
+The plan's final gate asks for a manual chat round-trip per touched executor
+family. Run against a dev server on an isolated port, using a copy of the
+production data directory so real credentials decrypt without touching
+production state (the copy was deleted afterwards).
+
+| Family | Result | Evidence |
+| --- | --- | --- |
+| Codex | **PASS** | `POST /v1/chat/completions` `cx/gpt-5.6-luna` → `HTTP 200`, `content: "pong"`, `total_tokens: 2495`. A second call with `reasoning_effort: "ultra"` against `cx/gpt-5.6-sol` also returned `HTTP 200`, exercising the `86131b9c` effort path end to end. |
+| Ollama | **PASS** | `ollama-local/llama3.2:1b` → `HTTP 200`, `content: "Pong."`, `total_tokens: 2034` from the local daemon. |
+| Antigravity | **NOT RUN — no credentials** | `agy/gemini-3-flash` → `HTTP 404 No active credentials for provider: agy`. This host has no Antigravity connection and the provider requires an interactive OAuth grant. |
+| GitHub | **NOT RUN — no credentials** | `gh/gpt-4o` → `HTTP 404 No active credentials for provider: github`. Same: no connection on this host, interactive OAuth required. |
+
+The Antigravity and GitHub changes therefore rest on unit coverage and the
+executor-family smoke, not a live call. Both are quota/usage-shaped rather than
+request-path changes (`services/usage/google.js` and `executors/github.js`
+monthly-402 handling), so the smoke exercises their real functions with only the
+transport mocked — but a reviewer with those OAuth grants should confirm before
+relying on them in production.
 
 ## Verification
 

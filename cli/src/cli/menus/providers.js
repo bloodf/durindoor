@@ -146,7 +146,7 @@ const AUTO_PING_SETTINGS_KEYS = {
 
 const AUTO_PING_DESCRIPTIONS = {
   claude: "sends a tiny request when the 5h quota resets",
-  codex: "starts the next 5h window with a tiny gpt-5.5 request",
+  codex: "starts the next 5h window with a tiny request to an available model",
 };
 
 /**

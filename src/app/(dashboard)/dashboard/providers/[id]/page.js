@@ -8,7 +8,7 @@ import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS,
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
-import { toCodexPlanEntry, buildCodexPlanMap } from "@/app/(dashboard)/dashboard/usage/components/ProviderLimits/utils";
+import { toCodexPlanEntry, buildCodexPlanMap } from "@/shared/utils/codexPlanLabel";
 import { translate } from "@/i18n/runtime";
 import { fetchSuggestedModels } from "@/shared/utils/providerModelsFetcher";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
@@ -47,15 +47,24 @@ export default function ProviderDetailPage() {
   const providerId = params.id;
   const currentProviderIdRef = useRef(null);
   const fetchConnectionsGenerationRef = useRef(0);
-  useEffect(() => {
-    currentProviderIdRef.current = providerId;
-  }, [providerId]);
   const { getCaps } = useModelCaps();
   const [connections, setConnections] = useState([]);
   /** connectionId → live Codex plan from the usage API (decolua/9router#3210). */
   const [codexPlans, setCodexPlans] = useState({});
   const [providerApiKeyConnectionNames, setProviderApiKeyConnectionNames] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    currentProviderIdRef.current = providerId;
+    // Clear the previous provider's rows immediately on switch. Without this the
+    // old connections and plan badges stay rendered under the new provider's
+    // header until its fetch resolves — and a stale in-flight response is
+    // discarded rather than clearing them, so they can persist indefinitely.
+    setConnections([]);
+    setCodexPlans({});
+    setProviderApiKeyConnectionNames([]);
+    setLoading(true);
+  }, [providerId]);
   const [providerNode, setProviderNode] = useState(null);
   const [proxyPools, setProxyPools] = useState([]);
   const [proxyPoolsReadyForProvider, setProxyPoolsReadyForProvider] = useState(null);

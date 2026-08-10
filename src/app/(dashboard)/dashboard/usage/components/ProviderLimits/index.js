@@ -42,8 +42,8 @@ import {
   ACCOUNT_FILTER_OPTIONS,
   QUOTA_SORT_OPTIONS,
   createAutoRefreshScheduler,
-  getCodexPlan,
 } from "./utils";
+import { getCodexPlan } from "@/shared/utils/codexPlanLabel";
 import Card from "@/shared/components/Card";
 import { ConfirmModal, EditConnectionModal } from "@/shared/components";
 import { USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";

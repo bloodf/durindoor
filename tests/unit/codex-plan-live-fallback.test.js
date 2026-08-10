@@ -9,7 +9,7 @@ import {
   getCodexPlan,
   toCodexPlanEntry,
   buildCodexPlanMap,
-} from "../../src/app/(dashboard)/dashboard/usage/components/ProviderLimits/utils.js";
+} from "../../src/shared/utils/codexPlanLabel.js";
 
 const stored = (plan) => ({ providerSpecificData: { chatgptPlanType: plan } });
 
@@ -100,8 +100,28 @@ describe("provider page wiring", () => {
 
     expect(page).toContain("toCodexPlanEntry");
     expect(page).toContain("buildCodexPlanMap");
+    // Shared util, not dashboard-internal ProviderLimits state.
+    expect(page).toContain('from "@/shared/utils/codexPlanLabel"');
+    expect(page).not.toContain("ProviderLimits/utils");
     expect(page).toMatch(/plan=\{codexPlans\[conn\.id\]\}/);
     expect(page).toContain("/api/usage/");
+  });
+
+  // A provider switch must not leave the previous provider's rows on screen
+  // while the new fetch is in flight — a stale response is discarded by the
+  // generation guard, so nothing else would clear them.
+  it("clears connections and plans when the provider changes", () => {
+    const page = readFileSync(
+      new URL("../../src/app/(dashboard)/dashboard/providers/[id]/page.js", import.meta.url),
+      "utf8",
+    );
+
+    const effect = page.slice(page.indexOf("currentProviderIdRef.current = providerId;"));
+    const body = effect.slice(0, effect.indexOf("}, [providerId]);"));
+    expect(body).toContain("setConnections([])");
+    expect(body).toContain("setCodexPlans({})");
+    expect(body).toContain("setProviderApiKeyConnectionNames([])");
+    expect(body).toContain("setLoading(true)");
   });
 
   it("gives ConnectionRow a plan prop that prefers live over stored", () => {

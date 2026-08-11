@@ -185,6 +185,28 @@ describe("MimoFreeExecutor", () => {
     expect(h["Accept"]).toBe("text/event-stream");
   });
 
+  it("buildHeaders uses credentials.connectionId as the session affinity when present", () => {
+    const h1 = exec.buildHeaders({ connectionId: "conn-123" }, true);
+    const h2 = exec.buildHeaders({ connectionId: "conn-456" }, true);
+    expect(h1["x-session-affinity"]).toBe("conn-123");
+    expect(h2["x-session-affinity"]).toBe("conn-456");
+  });
+
+  it("buildHeaders falls back to a generated id per call when connectionId is absent", () => {
+    const h3 = exec.buildHeaders({}, true);
+    const h4 = exec.buildHeaders({}, true);
+    expect(h3["x-session-affinity"]).not.toBe(h4["x-session-affinity"]);
+  });
+
+  it("treats the production noauth connection sentinel as an unidentifying affinity", () => {
+    const credentials = { connectionId: "noauth" };
+    const h1 = exec.buildHeaders(credentials, true);
+    const h2 = exec.buildHeaders(credentials, true);
+    expect(h1["x-session-affinity"]).toMatch(/^ses_[a-z0-9]{24}$/);
+    expect(h2["x-session-affinity"]).toMatch(/^ses_[a-z0-9]{24}$/);
+    expect(h1["x-session-affinity"]).not.toBe(h2["x-session-affinity"]);
+  });
+
   it("transformRequest injects the system marker", () => {
     const out = exec.transformRequest("mimo-auto", { messages: [{ role: "user", content: "hi" }] });
     expect(out.messages[0].content).toContain(MIMO_SYSTEM_MARKER);

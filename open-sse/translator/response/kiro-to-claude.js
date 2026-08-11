@@ -75,6 +75,15 @@ export function kiroToClaudeResponse(chunk, state) {
         ? data.usage.completion_tokens
         : 0;
     state.usage = { input_tokens: promptTokens, output_tokens: outputTokens };
+    // Cache tokens arrive either flat or nested under prompt_tokens_details;
+    // flat wins. Dropping them made every cached Kiro turn look uncached.
+    const details = data.usage.prompt_tokens_details;
+    for (const field of ["cache_read_input_tokens", "cache_creation_input_tokens"]) {
+      const value = typeof data.usage[field] === "number"
+        ? data.usage[field]
+        : (typeof details?.[field] === "number" ? details[field] : null);
+      if (value !== null) state.usage[field] = value;
+    }
     // Preserve Kiro credit metering attached upstream (executor meteringEvent)
     // so onStreamComplete persists credits on the Claude route too.
     const kiroCredits = data.usage.kiro_credits !== null && data.usage.kiro_credits !== undefined
@@ -162,13 +171,16 @@ export function kiroToClaudeResponse(chunk, state) {
     if (!state.toolArgBuffers) state.toolArgBuffers = new Map();
     for (const tc of delta.tool_calls) {
       const idx = tc.index ?? 0;
+      // Kiro echoes the sanitized name; restore what the client sent.
+      const sanitizedName = tc.function?.name || "";
+      const toolName = state?.toolNameMap?.get(sanitizedName) ?? sanitizedName;
       if (tc.id) {
         stopThinkingBlock(state, results);
         stopTextBlock(state, results);
         const toolBlockIndex = state.nextBlockIndex++;
         state.toolCalls.set(idx, {
           id: tc.id,
-          name: tc.function?.name || "",
+          name: toolName,
           blockIndex: toolBlockIndex,
         });
         results.push({
@@ -177,7 +189,7 @@ export function kiroToClaudeResponse(chunk, state) {
           content_block: {
             type: "tool_use",
             id: tc.id,
-            name: tc.function?.name || "",
+            name: toolName,
             input: {},
           },
         });

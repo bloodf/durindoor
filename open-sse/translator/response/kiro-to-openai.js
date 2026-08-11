@@ -17,6 +17,35 @@ function chunkMeta(state) {
 }
 
 /**
+ * Map sanitized tool names back to the names the client registered.
+ *
+ * Kiro rejects consecutive underscores, so openai-to-kiro collapses them and
+ * records the original in `state.toolNameMap`. Returns the chunk untouched
+ * when there is no map or nothing in it matches, so the common no-tool case
+ * allocates nothing.
+ */
+function restoreToolNames(chunk, state) {
+  const map = state?.toolNameMap;
+  if (!map || map.size === 0) return chunk;
+  let changed = false;
+  const choices = chunk.choices.map((choice) => {
+    const calls = choice?.delta?.tool_calls;
+    if (!Array.isArray(calls)) return choice;
+    let choiceChanged = false;
+    const mapped = calls.map((call) => {
+      const original = call?.function?.name ? map.get(call.function.name) : undefined;
+      if (!original || original === call.function.name) return call;
+      choiceChanged = true;
+      return { ...call, function: { ...call.function, name: original } };
+    });
+    if (!choiceChanged) return choice;
+    changed = true;
+    return { ...choice, delta: { ...choice.delta, tool_calls: mapped } };
+  });
+  return changed ? { ...chunk, choices } : chunk;
+}
+
+/**
  * Parse Kiro SSE event and convert to OpenAI format
  * Kiro events: assistantResponseEvent, codeEvent, supplementaryWebLinksEvent, etc.
  */
@@ -30,19 +59,24 @@ export function kiroToOpenAIResponse(chunk, state) {
   // Internal accounting is unaffected — stream.js extracted raw usage into
   // state before translation.
   if (chunk.object === "chat.completion.chunk" && chunk.choices) {
-    if (chunk.usage && (chunk.usage.kiro_credits !== undefined || chunk.usage.kiro_credit_unit !== undefined)) {
-      const { kiro_credits, kiro_credit_unit, ...usage } = chunk.usage;
+    // The Kiro executor converts the binary EventStream to OpenAI chunks
+    // itself, so a live tool call reaches here already shaped and carrying the
+    // sanitized name. This is the only seam that sees those chunks -- the raw
+    // toolUseEvent branch below never runs on the live path.
+    const restored = restoreToolNames(chunk, state);
+    if (restored.usage && (restored.usage.kiro_credits !== undefined || restored.usage.kiro_credit_unit !== undefined)) {
+      const { kiro_credits, kiro_credit_unit, ...usage } = restored.usage;
       // If stripping Kiro-only fields leaves a zero-field object, omit usage
       // entirely so OpenAI clients do not receive a present-but-empty usage
       // object on the finish chunk.
       if (Object.keys(usage).length === 0) {
-        const stripped = { ...chunk };
+        const stripped = { ...restored };
         delete stripped.usage;
         return stripped;
       }
-      return { ...chunk, usage };
+      return { ...restored, usage };
     }
-    return chunk;
+    return restored;
   }
   
   // Handle string chunk (raw SSE data)
@@ -125,7 +159,9 @@ export function kiroToOpenAIResponse(chunk, state) {
     state.hadToolUse = true;
     const toolUse = data.toolUseEvent || data;
     const toolCallId = toolUse.toolUseId || fallbackToolCallId();
-    const toolName = toolUse.name || "";
+    // Kiro echoes back the sanitized name; hand the client the name it sent.
+    const sanitized = toolUse.name || "";
+    const toolName = state?.toolNameMap?.get(sanitized) ?? sanitized;
     const toolInput = toolUse.input || {};
 
     // Each toolUseEvent in a turn must carry a unique index so downstream

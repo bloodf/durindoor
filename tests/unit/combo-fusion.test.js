@@ -220,6 +220,60 @@ describe("fusion combo", () => {
     expect(judgeBody.messages[2].role).toBe("tool");
   });
 
+  it("trims a trailing assistant turn from messages before panel fan-out", async () => {
+    const handleSingleModel = vi.fn(async () => okResponse("ans"));
+    await handleFusionChat({
+      body: { messages: [{ role: "user", content: "Q" }, { role: "assistant", content: "partial" }] },
+      models: ["p/a", "p/b"],
+      handleSingleModel,
+      log,
+      judgeModel: "p/judge",
+    });
+
+    for (const [panelBody] of handleSingleModel.mock.calls.filter(([,, isPanel]) => isPanel === true)) {
+      expect(panelBody.messages).toEqual([{ role: "user", content: "Q" }]);
+    }
+  });
+
+  it("trims a trailing assistant turn from Responses input before panel fan-out", async () => {
+    const handleSingleModel = vi.fn(async () => okResponse("ans"));
+    await handleFusionChat({
+      body: { input: [{ role: "user", content: "Q" }, { role: "assistant", content: "partial" }] },
+      models: ["p/a", "p/b"],
+      handleSingleModel,
+      log,
+      judgeModel: "p/judge",
+    });
+
+    for (const [panelBody] of handleSingleModel.mock.calls.filter(([,, isPanel]) => isPanel === true)) {
+      expect(panelBody.input).toEqual([{ role: "user", content: "Q" }]);
+    }
+  });
+
+  it("keeps a user-ending panel conversation and preserves all-assistant history", async () => {
+    const handleSingleModel = vi.fn(async () => okResponse("ans"));
+    const userEnding = [{ role: "user", content: "Q" }, { role: "assistant", content: "A" }, { role: "user", content: "follow-up" }];
+    const assistantOnly = [{ role: "assistant", content: "partial" }];
+    await handleFusionChat({
+      body: { messages: userEnding },
+      models: ["p/a", "p/b"],
+      handleSingleModel,
+      log,
+      judgeModel: "p/judge",
+    });
+    await handleFusionChat({
+      body: { input: assistantOnly },
+      models: ["p/a", "p/b"],
+      handleSingleModel,
+      log,
+      judgeModel: "p/judge",
+    });
+
+    const panelCalls = handleSingleModel.mock.calls.filter(([,, isPanel]) => isPanel === true);
+    expect(panelCalls.slice(0, 2).map(([panelBody]) => panelBody.messages)).toEqual([userEnding, userEnding]);
+    expect(panelCalls.slice(2).map(([panelBody]) => panelBody.input)).toEqual([assistantOnly, assistantOnly]);
+  });
+
   it("flattens Anthropic-style tool_use and tool_result blocks in arrays", async () => {
     const handleSingleModel = vi.fn(async () => okResponse("ans"));
     await handleFusionChat({

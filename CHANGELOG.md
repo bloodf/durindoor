@@ -1,3 +1,14 @@
+# 3.11.1
+
+Patch release preventing OpenAI-only streaming options from reaching Anthropic Messages.
+
+## What's fixed
+- **Claude streaming requests** — `DefaultExecutor` now keys `stream_options.include_usage` injection to the resolved runtime transport instead of any streaming body with `messages`. Direct and runtime-selected Claude transports no longer receive the unsupported `stream_options` field that Anthropic rejected with HTTP 400; OpenAI and `openai-apikey` transports keep usage reporting.
+
+## Compatibility and verification
+- No stored-data, API-key, or accepted wire-format changes.
+- The regression suite covers direct Claude, runtime-selected Claude, OpenAI, and normalized `openai-apikey` transports. Full Vitest/no-regression, lint, build, docs, generated-index, and commitlint gates passed in PR #401.
+
 # 3.11.0
 
 Model catalog corrections, real context-limit enforcement, and the 2026-08-09 upstream/OmniRoute port window.

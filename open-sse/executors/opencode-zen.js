@@ -33,7 +33,6 @@ export class OpenCodeZenExecutor extends BaseExecutor {
   }
 
   buildUrl(model) {
-    this._lastModel = model;
     if (isGeminiModel(model)) {
       throw new Error("OpenCode Zen Gemini models require the Google-compatible custom-provider route, which is not implemented yet");
     }
@@ -42,11 +41,11 @@ export class OpenCodeZenExecutor extends BaseExecutor {
     return `${BASE}/chat/completions`;
   }
 
-  buildHeaders(credentials, stream = true) {
+  buildHeaders(credentials, stream = true, requestContext = null, model = null) {
     const key = credentials?.apiKey || credentials?.accessToken;
     const headers = { "Content-Type": "application/json" };
 
-    if (isMessagesModel(this._lastModel)) {
+    if (isMessagesModel(model)) {
       headers["x-api-key"] = key;
       headers["anthropic-version"] = ANTHROPIC_API_VERSION;
     } else {

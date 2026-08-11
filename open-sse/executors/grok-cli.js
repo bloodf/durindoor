@@ -103,6 +103,23 @@ export function _resetGrokCliTurnStore() {
   sessionTurnStore.clear();
 }
 
+export function resolveGrokCliSessionId(credentials, body = null) {
+  return resolveSessionId({
+    headers: credentials?.rawHeaders,
+    body: body
+      ? {
+          prompt_cache_key: body.prompt_cache_key,
+          session_id: body.session_id,
+          conversation_id: body.conversation_id,
+          metadata: body.metadata,
+        }
+      : null,
+    connectionId: credentials?.connectionId || credentials?.id,
+    workspaceId: credentials?.providerSpecificData?.workspaceId,
+    scope: "grok-cli",
+  });
+}
+
 function stripStoredItemReferences(body) {
   if (!Array.isArray(body.input)) return;
   body.input = body.input.filter((item) => {
@@ -194,9 +211,6 @@ function resolveEffortFromModel(modelId) {
 export class GrokCliExecutor extends BaseExecutor {
   constructor() {
     super("grok-cli", PROVIDERS["grok-cli"]);
-    this._currentSessionId = null;
-    this._currentReqId = null;
-    this._currentTurnIdx = 1;
     // Stable per-machine fingerprint used when a connection has no deviceId.
     // Computed lazily; never overwritten by credential-supplied ids.
     this._defaultAgentId = null;
@@ -243,7 +257,7 @@ export class GrokCliExecutor extends BaseExecutor {
     return shouldRefreshCredentials("grok-cli", credentials);
   }
 
-  buildHeaders(credentials, stream = true) {
+  buildHeaders(credentials, stream = true, requestContext = null, model = null) {
     const headers = super.buildHeaders(credentials, stream);
 
     const staticHeaders = this.config.headers || {};
@@ -252,28 +266,20 @@ export class GrokCliExecutor extends BaseExecutor {
     }
 
     headers["x-xai-token-auth"] = this.config.tokenAuth || "xai-grok-cli";
-    const isGrokBuild = this._currentModel === GROK_BUILD_MODEL;
+    const isGrokBuild = model === GROK_BUILD_MODEL;
     if (isGrokBuild) {
       // Grok Build subscription protocol: official 0.2.99 wire fingerprint.
       headers["User-Agent"] = GROK_BUILD_USER_AGENT;
       headers["x-grok-client-identifier"] = GROK_BUILD_CLIENT_IDENTIFIER;
       headers["x-grok-client-version"] = GROK_BUILD_CLIENT_VERSION;
       for (const k of GROK_BUILD_OMITTED_HEADERS) delete headers[k];
-    } else {
-      headers["x-grok-client-identifier"] =
-        this.config.clientIdentifier || headers["x-grok-client-identifier"] || "grok-pager";
-      headers["x-grok-client-version"] =
-        this.config.clientVersion || headers["x-grok-client-version"] || "0.2.93";
-      headers["x-authenticateresponse"] = "authenticate-response";
     }
     if (!headers.Accept) headers.Accept = "application/json";
 
-    const sessionId = this._currentSessionId || credentials?.connectionId || crypto.randomUUID();
-    const reqId = this._currentReqId || crypto.randomUUID();
-    headers["x-grok-session-id"] = sessionId;
-    headers["x-grok-conv-id"] = sessionId;
-    headers["x-grok-req-id"] = reqId;
-    headers["x-grok-turn-idx"] = String(this._currentTurnIdx || 1);
+    const { grokCliSessionId: sessionId, grokCliRequestId: reqId, grokCliTurnIdx: turnIdx } = requestContext ?? {};
+    if (sessionId) headers["x-grok-conv-id"] = sessionId;
+    if (reqId) headers["x-grok-req-id"] = reqId;
+    if (turnIdx != null) headers["x-grok-turn-idx"] = String(turnIdx);
 
     // Agent/device id: credential value wins per-request; else the executor's
     // stable machine fingerprint (resolved in execute()). Credential ids are
@@ -283,7 +289,7 @@ export class GrokCliExecutor extends BaseExecutor {
       credentials?.providerSpecificData?.agentId ||
       this._defaultAgentId;
     if (agentId) headers["x-grok-agent-id"] = agentId;
-    if (this._currentModel) headers["x-grok-model-override"] = this._currentModel;
+    if (model) headers["x-grok-model-override"] = model;
     if (!isGrokBuild && this.config.compactionAt) {
       headers["x-compaction-at"] = String(this.config.compactionAt);
     }
@@ -316,15 +322,15 @@ export class GrokCliExecutor extends BaseExecutor {
     return super.parseError(response, bodyText);
   }
 
-  transformRequest(model, body, stream, credentials) {
-    this._currentSessionId = resolveSessionId({
+  transformRequest(model, body, stream, credentials, requestContext) {
+    const sessionId = resolveSessionId({
       headers: credentials?.rawHeaders,
       body,
       connectionId: credentials?.connectionId || credentials?.id,
       workspaceId: credentials?.providerSpecificData?.workspaceId,
       scope: "grok-cli",
     });
-    this._currentReqId = crypto.randomUUID();
+    const reqId = crypto.randomUUID();
 
     const normalized = normalizeResponsesInput(body.input);
     if (normalized) body.input = normalized;
@@ -343,17 +349,20 @@ export class GrokCliExecutor extends BaseExecutor {
     }
 
     stripStoredItemReferences(body);
-    normalizeGrokCliTools(body);
+    const turnIdx = resolveGrokCliTurnIdx(sessionId, body.input);
+    if (requestContext) {
+      requestContext.grokCliSessionId = sessionId;
+      requestContext.grokCliRequestId = reqId;
+      requestContext.grokCliTurnIdx = turnIdx;
+    }
 
+    body.stream = true;
+    body.store = false;
+    normalizeGrokCliTools(body);
     // xAI cli-chat-proxy enforces a maximum of 200 tools per request. Upstream decolua/9router#2534.
     if (Array.isArray(body.tools) && body.tools.length > 200) {
       body.tools = body.tools.slice(0, 200);
     }
-
-    this._currentTurnIdx = resolveGrokCliTurnIdx(this._currentSessionId, body.input);
-
-    body.stream = true;
-    body.store = false;
 
     // Resolve upstream model id (strip effort suffix from virtual models).
     let modelEffort = resolveEffortFromModel(body.model || model);
@@ -364,7 +373,6 @@ export class GrokCliExecutor extends BaseExecutor {
     // Catalog is keyed by primary alias `gc` (see open-sse/providers/index.js).
     resolvedModel = getModelUpstreamId("gc", resolvedModel) || resolvedModel;
     body.model = resolvedModel;
-    this._currentModel = resolvedModel;
 
     // Reasoning effort priority: explicit > reasoning_effort > model suffix > default high.
     // Non-reasoning models (grok-composer-2.5-fast, grok-build) must not send reasoning. Upstream decolua/9router#2534.

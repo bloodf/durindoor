@@ -139,9 +139,6 @@ describe("GrokCliExecutor (#2502)", () => {
 
   it("buildHeaders uses a generated agent id and never bleeds a credential id", () => {
     const ex = new GrokCliExecutor();
-    ex._currentSessionId = "sess";
-    ex._currentReqId = "req";
-    ex._currentTurnIdx = 1;
     ex._defaultAgentId = "machine-default"; // simulate execute() having resolved it
 
     const withCred = ex.buildHeaders({ providerSpecificData: { deviceId: "dev-A" } });

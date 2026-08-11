@@ -1,3 +1,4 @@
+import { createPrivateKey } from "node:crypto";
 import { PROVIDERS } from "../config/providers.js";
 import { OAUTH_ENDPOINTS, REFRESH_LEAD_MS } from "../config/appConstants.js";
 import {
@@ -53,6 +54,7 @@ export function getRefreshLeadMs(provider) {
 
 export function parseVertexSaJson(apiKey) {
   if (typeof apiKey !== "string") return null;
+
   try {
     const parsed = JSON.parse(apiKey);
     if (parsed.type === "service_account" && parsed.client_email && parsed.private_key && parsed.project_id) {
@@ -64,6 +66,26 @@ export function parseVertexSaJson(apiKey) {
   }
 }
 
+export function validateVertexSaKey(saJson) {
+  if (!saJson?.private_key) return "Vertex: service account JSON missing private_key";
+
+  let key;
+  try {
+    key = createPrivateKey(saJson.private_key.replace(/\\n/g, "\n"));
+  } catch {
+    return "Vertex: service account private_key is not a valid PEM key";
+  }
+
+  if (key.asymmetricKeyType !== "rsa") {
+    return `Vertex: service account private_key must be RSA (got ${key.asymmetricKeyType})`;
+  }
+
+  const bits = key.asymmetricKeyDetails?.modulusLength || 0;
+  return bits < 2048
+    ? `Vertex: service account private_key must be RSA-2048 or larger (RS256), got ${bits} bits`
+    : null;
+}
+
 // Cache Vertex tokens keyed by service account email { token, expiresAt }
 const vertexTokenCache = new Map();
 
@@ -73,6 +95,12 @@ export async function refreshVertexToken(saJson, log, proxyOptions = null) {
 
   if (cached && cached.expiresAt - Date.now() > 5 * 60 * 1000) {
     return { accessToken: cached.token, expiresAt: cached.expiresAt };
+  }
+
+  const keyError = validateVertexSaKey(saJson);
+  if (keyError) {
+    log?.error?.("TOKEN_REFRESH", keyError);
+    return null;
   }
 
   try {

@@ -10,6 +10,7 @@ import { normalizeProviderId } from "@/lib/providerNormalization";
 import { resolveConnectionParams } from "open-sse/executors/copilot-m365-connection.js";
 import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
 import { guardedProbeFetch, assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
+import { validateVertexSaKey } from "open-sse/services/tokenRefresh.js";
 
 const CLIENT_VALIDATION_ERROR = "URL validation failed";
 
@@ -623,13 +624,12 @@ export async function POST(request) {
 
         case "vertex": {
           // Raw key: probe global endpoint (always 404 for unknown model, never 401)
-          // SA JSON: attempt token mint via JWT assertion
+          // SA JSON: validate its signing key locally
           const saJson = (() => { try { const p = JSON.parse(apiKey); return p.type === "service_account" ? p : null; } catch { return null; } })();
           if (saJson) {
-            // Validate SA JSON has required fields
-            isValid = !!(saJson.client_email && saJson.private_key && saJson.project_id);
+            error = validateVertexSaKey(saJson);
+            isValid = !error;
           } else {
-            // Raw key: probe Vertex — 404 means key is valid (model just doesn't exist), 401 means invalid key
             const probeRes = await fetch(
               `https://aiplatform.googleapis.com/v1/publishers/google/models/__probe__:generateContent?key=${apiKey}`,
               { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }
@@ -642,7 +642,8 @@ export async function POST(request) {
         case "vertex-partner": {
           const saJson = (() => { try { const p = JSON.parse(apiKey); return p.type === "service_account" ? p : null; } catch { return null; } })();
           if (saJson) {
-            isValid = !!(saJson.client_email && saJson.private_key && saJson.project_id);
+            error = validateVertexSaKey(saJson);
+            isValid = !error;
           } else {
             const probeRes = await fetch(
               `https://aiplatform.googleapis.com/v1/publishers/google/models/__probe__:generateContent?key=${apiKey}`,

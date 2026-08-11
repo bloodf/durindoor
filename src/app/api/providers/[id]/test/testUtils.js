@@ -723,9 +723,9 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         return { valid, error: valid ? null : "Invalid API key" };
       }
       case "kimi": {
-        const res = await fetchWithConnectionProxy("https://api.kimi.com/coding/v1/messages", {
+        const res = await fetchWithConnectionProxy("https://api.moonshot.cn/v1/chat/completions", {
           method: "POST",
-          headers: { "x-api-key": connection.apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          headers: { Authorization: `Bearer ${connection.apiKey}`, "content-type": "application/json" },
           body: JSON.stringify({ model: "kimi-latest", max_tokens: 1, messages: [{ role: "user", content: "test" }] }),
         }, effectiveProxy);
         const valid = res.status !== 401 && res.status !== 403;

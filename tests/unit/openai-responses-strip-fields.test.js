@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { openaiResponsesToOpenAIRequest } from "../../open-sse/translator/request/openai-responses.js";
+import { openaiResponsesToOpenAIRequest, openaiToOpenAIResponsesRequest } from "../../open-sse/translator/request/openai-responses.js";
 
 /**
  * Guards fix for issue #2311:
@@ -65,5 +65,24 @@ describe("openaiResponsesToOpenAIRequest — strips Responses-API-only fields", 
     if ("temperature" in bodyWithExtra) {
       expect(result.temperature).toBe(0.7);
     }
+  });
+});
+
+describe("openaiToOpenAIResponsesRequest — prompt cache key", () => {
+  it("preserves a supplied prompt cache key", () => {
+    const result = openaiToOpenAIResponsesRequest("gpt-4o", {
+      messages: [{ role: "user", content: "hi" }],
+      prompt_cache_key: "stable-cache-key",
+    }, false, {});
+
+    expect(result.prompt_cache_key).toBe("stable-cache-key");
+  });
+
+  it("omits prompt cache key when the client did not supply one", () => {
+    const result = openaiToOpenAIResponsesRequest("gpt-4o", {
+      messages: [{ role: "user", content: "hi" }],
+    }, false, {});
+
+    expect(result).not.toHaveProperty("prompt_cache_key");
   });
 });

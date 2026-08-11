@@ -26,6 +26,8 @@ const KIRO_QUOTA_EXCEEDED_EXCEPTION = "ServiceQuotaExceededException";
 const KIRO_QUOTA_EXCEEDED_REASON = "MONTHLY_REQUEST_COUNT";
 const KIRO_RESET_LOOKUP_TIMEOUT_MS = 8000;
 
+const KIRO_TRUNCATION_STOP_REASONS = new Set(["model_context_window_exceeded", "max_tokens"]);
+
 function isConfirmedKiroCreditExhaustion(bodyText) {
   if (!bodyText) return false;
   try {
@@ -431,7 +433,8 @@ export class KiroExecutor extends BaseExecutor {
       reasoningChunkCount: 0,
       toolCallIndex: 0,
       seenToolIds: new Map(),
-      inThinking: false
+      inThinking: false,
+      stopReason: null
     };
     const rejectFraming = (controller) => {
       if (state.failureSeen) return;
@@ -605,15 +608,40 @@ export class KiroExecutor extends BaseExecutor {
 
           // Handle toolUseEvent
           if (eventType === "toolUseEvent" && event.payload) {
-            state.hasToolCalls = true;
             const toolUse = event.payload;
             const toolUses = Array.isArray(toolUse) ? toolUse : [toolUse];
 
             for (const singleToolUse of toolUses) {
+              // Kiro can batch several tool calls per event. A malformed
+              // entry (null, non-object, or unserializable input) must drop
+              // only that entry -- a valid sibling call in the same event
+              // still has to reach the client.
+              if (!singleToolUse || typeof singleToolUse !== "object") {
+                console.error("[Kiro] dropping malformed tool call entry");
+                continue;
+              }
+
               const toolCallId = singleToolUse.toolUseId || `call_${Date.now()}`;
-              const toolName = singleToolUse.name || "";
+              const toolName = typeof singleToolUse.name === "string" ? singleToolUse.name : "";
               const toolInput = singleToolUse.input;
 
+              let argumentsStr;
+              if (toolInput !== undefined) {
+                if (typeof toolInput === 'string') {
+                  argumentsStr = toolInput;
+                } else if (typeof toolInput === 'object') {
+                  try {
+                    argumentsStr = JSON.stringify(toolInput);
+                  } catch (error) {
+                    console.error(`[Kiro] dropping malformed tool input: ${error.message}`);
+                    continue;
+                  }
+                } else {
+                  continue;
+                }
+              }
+
+              state.hasToolCalls = true;
               let toolIndex;
               const isNewTool = !state.seenToolIds.has(toolCallId);
 
@@ -644,22 +672,16 @@ export class KiroExecutor extends BaseExecutor {
                   }]
                 };
                 chunkIndex++;
+                // Tool-only turns have no assistant text/reasoning content, so
+                // without counting the name here totalContentLength stays 0
+                // and the fallback usage estimate reports completion_tokens: 0.
+                state.totalContentLength += toolName.length;
                 controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(startChunk)}\n\n`));
               } else {
                 toolIndex = state.seenToolIds.get(toolCallId);
               }
 
-              if (toolInput !== undefined) {
-                let argumentsStr;
-
-                if (typeof toolInput === 'string') {
-                  argumentsStr = toolInput;
-                } else if (typeof toolInput === 'object') {
-                  argumentsStr = JSON.stringify(toolInput);
-                } else {
-                  continue;
-                }
-
+              if (argumentsStr !== undefined) {
                 const argsChunk = {
                   id: responseId,
                   object: "chat.completion.chunk",
@@ -679,6 +701,7 @@ export class KiroExecutor extends BaseExecutor {
                   }]
                 };
                 chunkIndex++;
+                state.totalContentLength += argumentsStr.length;
                 controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(argsChunk)}\n\n`));
               }
             }
@@ -687,6 +710,7 @@ export class KiroExecutor extends BaseExecutor {
           // Handle messageStopEvent
           if (eventType === "messageStopEvent") {
             state.rawTerminalSeen = true;
+            state.stopReason = event.payload?.stopReason || event.payload?.stop_reason || null;
           }
 
           // Handle contextUsageEvent to extract contextUsagePercentage
@@ -779,7 +803,7 @@ export class KiroExecutor extends BaseExecutor {
               choices: [{
                 index: 0,
                 delta: {},
-                finish_reason: state.hasToolCalls ? "tool_calls" : "stop"
+                finish_reason: state.hasToolCalls ? "tool_calls" : KIRO_TRUNCATION_STOP_REASONS.has(state.stopReason) && chunkIndex > 0 ? "length" : "stop"
               }]
             };
 
@@ -842,7 +866,7 @@ export class KiroExecutor extends BaseExecutor {
             choices: [{
               index: 0,
               delta: {},
-              finish_reason: state.hasToolCalls ? "tool_calls" : "stop"
+              finish_reason: state.hasToolCalls ? "tool_calls" : KIRO_TRUNCATION_STOP_REASONS.has(state.stopReason) && chunkIndex > 0 ? "length" : "stop"
               }]
           };
           if (state.usage) finishChunk.usage = state.usage;

@@ -202,6 +202,50 @@ describe("Kiro credit usage — executor", () => {
   });
 });
 
+describe("Kiro executor upstream #3113", () => {
+  it("estimates non-zero tool-only output from function name and arguments", async () => {
+    const executor = new KiroExecutor();
+    const argumentsJson = JSON.stringify({ path: "/tmp/large-file", recursive: true });
+    const frames = [
+      createMockFrame("toolUseEvent", { toolUseId: "tool-1", name: "read_file", input: JSON.parse(argumentsJson) }),
+      createMockFrame("messageStopEvent", {}),
+      createMockFrame("meteringEvent", { usage: 0.001, unit: "credit" }),
+      createMockFrame("contextUsageEvent", { contextUsagePercentage: 1 }),
+    ];
+    const output = await readAllSSE(executor.transformEventStreamToSSE({ body: framesStream(frames) }, "claude-test").body);
+    const usage = parseSSEObjects(output).find((object) => object.usage)?.usage;
+
+    expect(usage.completion_tokens).toBeGreaterThan(1);
+  });
+
+  it("keeps streamed output and closes context-window truncation as length", async () => {
+    const executor = new KiroExecutor();
+    const frames = [
+      createMockFrame("assistantResponseEvent", { content: "partial answer" }),
+      createMockFrame("messageStopEvent", { stopReason: "model_context_window_exceeded" }),
+    ];
+    const output = await readAllSSE(executor.transformEventStreamToSSE({ body: framesStream(frames) }, "claude-test").body);
+    const terminal = parseSSEObjects(output).at(-1);
+
+    expect(output).toContain("partial answer");
+    expect(terminal.choices[0].finish_reason).toBe("length");
+    expect(output).toContain("[DONE]");
+  });
+
+  it("drops malformed tool entries while retaining valid calls in the same event", async () => {
+    const executor = new KiroExecutor();
+    const frames = [
+      createMockFrame("toolUseEvent", [null, { toolUseId: "tool-2", name: "read_file", input: { path: "/tmp/a" } }]),
+      createMockFrame("messageStopEvent", {}),
+    ];
+    const output = await readAllSSE(executor.transformEventStreamToSSE({ body: framesStream(frames) }, "claude-test").body);
+
+    expect(output).toContain('"name":"read_file"');
+    expect(output).toContain('"finish_reason":"tool_calls"');
+    expect(output).toContain("[DONE]");
+  });
+});
+
 describe("Kiro credit usage — normalization", () => {
   it("extracts credit-only usage for internal persistence", () => {
     const usage = extractUsage({

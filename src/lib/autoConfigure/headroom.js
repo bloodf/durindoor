@@ -7,7 +7,7 @@ import {
   getHeadroomStatus,
   isLoopbackHeadroomUrl,
 } from "../headroom/detect.js";
-import { startHeadroomProxy } from "../headroom/process.js";
+import { startHeadroomProxy, stopHeadroomProxy } from "../headroom/process.js";
 
 const IS_WIN = process.platform === "win32";
 const WHICH_CMD = IS_WIN ? "where" : "which";
@@ -38,6 +38,21 @@ const MIN_VERSION = [3, 10];
 
 function logAction(report, dryRun, action) {
   report.actions.push(dryRun ? `would ${action}` : action);
+}
+
+const HEADROOM_HEALTH_ATTEMPTS = 5;
+const HEADROOM_HEALTH_INTERVAL_MS = 500;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForHeadroomHealth(url, attempts, wait) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if ((await detectHeadroom({ url })).running) return true;
+    if (attempt + 1 < attempts) await wait(HEADROOM_HEALTH_INTERVAL_MS);
+  }
+  return false;
 }
 
 function findUv() {
@@ -131,13 +146,19 @@ export async function installHeadroom({ python, uv } = {}) {
   }
 }
 
-export async function configureHeadroom(settings, { dryRun = false, url, install = installHeadroom } = {}) {
+export async function configureHeadroom(settings, {
+  dryRun = false,
+  url,
+  install = installHeadroom,
+  healthAttempts = HEADROOM_HEALTH_ATTEMPTS,
+  sleep: wait = sleep,
+} = {}) {
   const report = { changed: false, actions: [] };
 
   // Prefer caller-provided URL, then the configured URL, then the default.
   // A reachable external endpoint is usable even without a local CLI.
-  const effectiveUrl = url || settings.headroomUrl || DEFAULT_HEADROOM_URL;
-  const detected = await detectHeadroom({ url: effectiveUrl });
+  let effectiveUrl = url || settings.headroomUrl || DEFAULT_HEADROOM_URL;
+  let detected = await detectHeadroom({ url: effectiveUrl });
   const uv = findUv();
   const installPython = findPython310ForInstall();
   const canInstall = Boolean(uv || installPython);
@@ -145,6 +166,24 @@ export async function configureHeadroom(settings, { dryRun = false, url, install
   let installed = detected.installed;
   let running = detected.running;
   let wouldStart = false;
+
+  // A stale saved loopback URL may belong to another local service (for
+  // example Hindsight on :8888). Auto-configure owns local recovery, so fall
+  // back to Headroom's default port instead of repeatedly starting/probing the
+  // unrelated service. An explicit caller URL and external URLs remain sacred.
+  if (
+    !running
+    && !url
+    && settings.headroomUrl
+    && effectiveUrl !== DEFAULT_HEADROOM_URL
+    && isLoopbackHeadroomUrl(effectiveUrl)
+  ) {
+    report.actions.push(`saved Headroom URL is unreachable; recovering to ${DEFAULT_HEADROOM_URL}`);
+    effectiveUrl = DEFAULT_HEADROOM_URL;
+    detected = await detectHeadroom({ url: effectiveUrl });
+    installed ||= detected.installed;
+    running = detected.running;
+  }
 
   if (running) {
     report.actions.push(`headroom reachable at ${effectiveUrl}`);
@@ -164,13 +203,31 @@ export async function configureHeadroom(settings, { dryRun = false, url, install
         report.actions.push(`would start headroom proxy on ${effectiveUrl}`);
         wouldStart = true;
       } else {
+        let startResult;
         try {
           const port = parseInt(new URL(effectiveUrl).port || "8787", 10);
-          const startResult = await startHeadroomProxy({ port });
+          startResult = await startHeadroomProxy({ port });
           report.actions.push(startResult.alreadyRunning ? `headroom proxy already running on ${effectiveUrl}` : `started headroom proxy on ${effectiveUrl}`);
-          running = true;
         } catch (e) {
-          report.actions.push(`headroom install succeeded but start failed: ${e.message || String(e)}`);
+          report.actions.push(`headroom proxy start failed: ${e.message || String(e)}`);
+          return {
+            changed: false,
+            wouldChange: false,
+            wouldInstall: false,
+            installed: true,
+            running: false,
+            actions: report.actions,
+            updates: {},
+          };
+        }
+
+        if (await waitForHeadroomHealth(effectiveUrl, healthAttempts, wait)) {
+          running = true;
+        } else {
+          if (!startResult.alreadyRunning) {
+            try { stopHeadroomProxy(); } catch { /* health failure remains primary */ }
+          }
+          report.actions.push("headroom health check failed after start; see proxy.log");
           return {
             changed: false,
             wouldChange: false,

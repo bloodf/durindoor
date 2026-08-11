@@ -98,5 +98,9 @@ If status reports \"DEPENDENCY_MISSING\", the installation is corrupt. Reinstall
 
 - No compression header: compression is disabled, the request matched a bypass header, or every engine returned unchanged/rolled back. Check the dashboard settings and the request logs.
 - Unexpectedly large request: some engines only compress messages, not tool results. Verify which engines are enabled and the input shape.
-- Preview shows \"unavailable\" for an engine you expected: the engine is a catalog placeholder in this tree; it cannot be dispatched.
+- Preview shows "unavailable" for an engine you expected: the engine is a catalog placeholder in this tree; it cannot be dispatched.
 - PXPIPE "DEPENDENCY_MISSING": run "npm install" and rebuild; do not look for an install endpoint in the dashboard.
+- Headroom auto-configure shows it recovered the URL to the default port: the previously saved loopback URL was unreachable (possibly another service claimed that port), so auto-configure fell back to `http://localhost:8787`. No action needed; this is the intended recovery.
+- Headroom proxy started but remains unreachable: after auto-configure starts the proxy it polls `/health` for a few attempts. If the proxy still does not answer, auto-configure stops the proxy it just started and writes no enable or URL changes. A pre-existing proxy that was already running is left alone — only the process started in this run is cleaned up. Check the Headroom process logs and confirm port 8787 is available.
+- PXPIPE reports a health-check failure in auto-configure but was previously enabled: the bundled `pxpipe-proxy` module failed to load or returned an invalid transform shape. Auto-configure reports the error and skips writing `pxpipeEnabled`, leaving the previous setting intact. This is distinct from "DEPENDENCY_MISSING", which requires a fresh install.
+- Auto-configure dry-run preview does not health-check the PXPIPE module: the preview shows planned setting changes without loading or probing the transformer. A real (non-dry-run) run loads the module, performs a synthetic transform self-test, and surfaces failures.

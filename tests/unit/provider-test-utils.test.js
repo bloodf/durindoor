@@ -157,6 +157,40 @@ describe("testApiKeyConnection generic fallback (new batch providers)", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
+  it("probes Kimchi's OAuth validation endpoint with a Bearer API key", async () => {
+    const { result, fetchSpy } = await runTest("kimchi", async (url, options) => {
+      expect(String(url)).toBe("https://api.cast.ai/v1/llm/openai/supported-providers");
+      expect(options).toMatchObject({
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          Authorization: "Bearer sk-test",
+          "User-Agent": "kimchi/0.1.40",
+        },
+      });
+      return new Response("{}", { status: 200 });
+    });
+
+    expect(result.valid).toBe(true);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("probes TokenRouter's models endpoint with a Bearer API key", async () => {
+    const { result, fetchSpy } = await runTest("tokenrouter", async (url, options) => {
+      expect(String(url)).toBe("https://api.tokenrouter.com/v1/models");
+      expect(options.headers.Authorization).toBe("Bearer sk-test");
+      return new Response("{}", { status: 200 });
+    });
+
+    expect(result.valid).toBe(true);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+  it("reports TokenRouter API-key or base-URL errors", async () => {
+    const { result } = await runTest("tokenrouter", async () => new Response("{}", { status: 403 }));
+
+    expect(result).toMatchObject({ valid: false, error: "Invalid API key or base URL" });
+  });
+
   it("still reports unsupported for providers with no probe config and no api key", async () => {
     mocks.getProviderConnectionById.mockResolvedValue({
       id: "conn-unknown",

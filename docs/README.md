@@ -92,6 +92,7 @@ For developers working on the DurinDoor codebase, provider registry, or document
 - [Upstream #3175 Stream Finalization Ledger](campaigns/upstream-3175-stream-finalization-ledger.md)
 - [Upstream #3189 Fusion Trim Ledger](campaigns/upstream-3189-fusion-trim-ledger.md)
 - [Upstream #3190 Kimi Transport Ledger](campaigns/upstream-3190-kimi-transport-ledger.md)
+- [Upstream #3191/#3193 Provider-Auth Ports Ledger](campaigns/upstream-3190-3193-provider-auth-ledger.md)
 - [tests/README.md](../tests/README.md)
 - [Upstream #3223 Antigravity Prompt Ledger](campaigns/upstream-3223-antigravity-prompt-ledger.md)
 - [Upstream #3168 iFlow Auth Ledger](campaigns/upstream-3168-iflow-auth-ledger.md)

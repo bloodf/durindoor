@@ -83,3 +83,47 @@ describe("GitHub monthly usage exhaustion", () => {
     }
   });
 });
+
+describe("Codex invalidated OAuth credentials", () => {
+  it("quarantines a permanently invalidated profile until reauthorization", async () => {
+    dbMocks.getProviderConnections.mockResolvedValue([{
+      id: "codex-a", provider: "codex", name: "codex-a", backoffLevel: 3,
+    }]);
+
+    const result = await markAccountUnavailable(
+      "codex-a", 401, "Encountered invalidated oauth token for user, failing request", "codex", "gpt-5.6-sol",
+    );
+
+    expect(result).toEqual({ shouldFallback: true, cooldownMs: 0 });
+    expect(dbMocks.updateProviderConnection).toHaveBeenCalledWith(
+      "codex-a",
+      expect.objectContaining({
+        isActive: false,
+        testStatus: "reauth_required",
+        errorCode: 401,
+        backoffLevel: 0,
+      }),
+    );
+    expect(dbMocks.updateProviderConnection.mock.calls[0][1])
+      .not.toHaveProperty("modelLock_gpt-5.6-sol");
+  });
+
+  it("keeps ordinary Codex 401 failures on the model cooldown path", async () => {
+    dbMocks.getProviderConnections.mockResolvedValue([{
+      id: "codex-a", provider: "codex", name: "codex-a", backoffLevel: 0,
+    }]);
+
+    await markAccountUnavailable("codex-a", 401, "Unauthorized", "codex", "gpt-5.6-sol");
+
+    expect(dbMocks.updateProviderConnection).toHaveBeenCalledWith(
+      "codex-a",
+      expect.objectContaining({
+        "modelLock_gpt-5.6-sol": expect.any(String),
+        testStatus: "unavailable",
+        errorCode: 401,
+      }),
+    );
+    expect(dbMocks.updateProviderConnection.mock.calls[0][1])
+      .not.toHaveProperty("isActive");
+  });
+});

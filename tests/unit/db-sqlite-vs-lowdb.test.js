@@ -256,6 +256,51 @@ describe("DB SQLite layer — public API parity", () => {
     expect(first.id).not.toBe(second.id);
   });
 
+  it("providerConnections: Codex reauthorization restores a quarantined profile", async () => {
+    const original = await sqliteDb.createProviderConnection({
+      provider: "codex",
+      authType: "oauth",
+      accessToken: "old-access",
+      refreshToken: "old-refresh",
+      email: "reauth@example.test",
+      providerSpecificData: { chatgptAccountId: "account-reauth" },
+    });
+    await sqliteDb.updateProviderConnection(original.id, {
+      isActive: false,
+      testStatus: "reauth_required",
+      lastError: "invalidated oauth token",
+      lastErrorAt: "2026-08-09T00:00:00.000Z",
+      errorCode: 401,
+      backoffLevel: 4,
+      "modelLock_gpt-5.6-sol": "2099-01-01T00:00:00.000Z",
+    });
+
+    const updated = await sqliteDb.createProviderConnection({
+      provider: "codex",
+      authType: "oauth",
+      accessToken: "new-access",
+      refreshToken: "new-refresh",
+      email: "reauth@example.test",
+      providerSpecificData: { chatgptAccountId: "account-reauth" },
+    });
+
+    expect(updated).toMatchObject({
+      id: original.id,
+      isActive: true,
+      accessToken: "new-access",
+      refreshToken: "new-refresh",
+      testStatus: "active",
+    });
+    for (const field of [
+      "lastError",
+      "lastErrorAt",
+      "errorCode",
+      "backoffLevel",
+      "modelLock_gpt-5.6-sol",
+    ]) expect(updated).not.toHaveProperty(field);
+  });
+
+
   // Regression port of OmniRoute #6706 (avoid bare-email dedup of Codex OAuth
   // logins). Same-account merge, different-account isolation, and bare-email
   // isolation are covered by the Codex tests above; this adds the missing

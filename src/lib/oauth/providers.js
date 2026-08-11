@@ -513,13 +513,13 @@ const PROVIDERS = {
       return await response.json();
     },
     postExchange: async (tokens, proxyOptions) => {
-      // Numeric enums matching Antigravity binary ClientMetadata
+      // Google fingerprints X-Goog-Api-Client / Client-Metadata on these calls
+      // and then refuses to provision a cloudaicompanionProject, so the real
+      // Antigravity IDE sends neither.
       const loadHeaders = {
         "Authorization": `Bearer ${tokens.access_token}`,
         "Content-Type": "application/json",
         "User-Agent": ANTIGRAVITY_CONFIG.loadCodeAssistUserAgent,
-        "X-Goog-Api-Client": ANTIGRAVITY_CONFIG.loadCodeAssistApiClient,
-        "Client-Metadata": ANTIGRAVITY_CONFIG.loadCodeAssistClientMetadata,
         "x-request-source": "local",
       };
       const metadata = getOAuthClientMetadata();

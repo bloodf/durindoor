@@ -138,6 +138,7 @@ describe("Antigravity executor", () => {
   });
 });
 
+
 // Stability fixes: empty/aborted Antigravity streams must never surface as clean
 // end_turn to Claude Code (#2188, #2229, #2250, #2259, #2431).
 describe("Antigravity → OpenAI stream stability", () => {
@@ -411,5 +412,29 @@ describe("OpenAI → Antigravity error finish mapping", () => {
       choices: [{ index: 0, delta: {}, finish_reason: "error" }],
     }, state);
     expect(out.response.candidates[0].finishReason).toBe("OTHER");
+  });
+});
+
+describe("Claude → Antigravity image preservation", () => {
+  const PNG = "iVBORw0KGgo=";
+
+  it("keeps user images and tool-result images as Gemini inlineData", () => {
+    const request = openaiToAntigravityRequest("claude-opus-4-6", {
+      messages: [
+        { role: "user", content: [{ type: "text", text: "look" }, { type: "image_url", image_url: { url: `data:image/png;base64,${PNG}` } }] },
+        { role: "assistant", tool_calls: [{ id: "call_1", type: "function", function: { name: "inspect", arguments: "{}" } }] },
+        { role: "tool", tool_call_id: "call_1", content: [{ type: "text", text: "found it" }, { type: "image_url", image_url: { url: `data:image/png;base64,${PNG}` } }] }
+      ]
+    }, true, { projectId: "project-1" });
+
+    const userImage = request.request.contents[0].parts.find((part) => part.inlineData);
+    expect(userImage.inlineData).toEqual({ mimeType: "image/png", data: PNG });
+
+    const toolResponse = request.request.contents[2].parts[0].functionResponse;
+    const userText = request.request.contents[0].parts.find((part) => part.text);
+    expect(userText.text).toBe("look");
+    const toolText = toolResponse.response.result;
+    expect(toolText).toBe("found it");
+    expect(toolText).not.toContain("data:image/png");
   });
 });

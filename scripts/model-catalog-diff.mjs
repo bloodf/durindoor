@@ -182,11 +182,22 @@ export async function localAudit(registryOverride, formatsOverride, pricingOverr
       providerIds.set(key, idSet);
     }
 
-    // upstreamModelId must resolve to an id in the SAME provider.
+    // upstreamModelId normally aliases a sibling id in the SAME provider — that
+    // is what the alias mechanism is for, and a typo would otherwise route to a
+    // model that does not exist.
+    //
+    // Exception: a few providers expose a *wire-only* name that is deliberately
+    // not a catalog entry, e.g. Antigravity's tiered flash models are requested
+    // as `gemini-3.6-flash-tiered(high|medium|low)`. Those carry a parenthesised
+    // tier suffix that no catalog id ever uses, so allow exactly that shape
+    // rather than weakening the check for genuine typos.
+    const WIRE_ONLY_UPSTREAM_ID = /\((?:high|medium|low)\)$/;
     for (let i = 0; i < models.length; i++) {
       const raw = models[i];
       const m = typeof raw === "string" ? { id: raw } : raw || {};
-      if (m.upstreamModelId != null && !idSet.has(m.upstreamModelId)) {
+      if (m.upstreamModelId != null
+        && !idSet.has(m.upstreamModelId)
+        && !WIRE_ONLY_UPSTREAM_ID.test(m.upstreamModelId)) {
         addFinding(
           `${provider}:${m.id}`,
           `[${provider}] model "${m.id}" upstreamModelId "${m.upstreamModelId}" resolves to no id in this provider`

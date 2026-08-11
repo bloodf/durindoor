@@ -4,6 +4,7 @@ import { getSettings } from "@/lib/localDb";
 import { isOidcConfigured } from "@/lib/auth/oidc";
 import { getDashboardAuthSession } from "@/lib/auth/dashboardSession";
 
+/** Explicit `authenticated` boolean lets /login redirect already-signed-in sessions (port(upstream): ae4f76c4). */
 export async function GET() {
   try {
     const settings = await getSettings();
@@ -24,6 +25,7 @@ export async function GET() {
       hasPassword: !!settings.password,
       displayName,
       loginMethod,
+      authenticated: !!session,
       oidcName: oidcName || null,
       oidcEmail: oidcEmail || null,
       oidcLogin: !!session?.oidc,
@@ -37,6 +39,7 @@ export async function GET() {
       hasPassword: false,
       displayName: "Password user",
       loginMethod: "Password",
+      authenticated: false,
       oidcName: null,
       oidcEmail: null,
       oidcLogin: false,

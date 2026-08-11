@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { createLatestIntentQueue } from "@/shared/utils/latestIntentQueue";
-import { getCodexPlanLabel } from "@/shared/utils/codexPlanLabel";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import QuotaTable from "./QuotaTable";
 import Badge from "@/shared/components/Badge";
@@ -44,6 +43,7 @@ import {
   QUOTA_SORT_OPTIONS,
   createAutoRefreshScheduler,
 } from "./utils";
+import { getCodexPlan } from "@/shared/utils/codexPlanLabel";
 import Card from "@/shared/components/Card";
 import { ConfirmModal, EditConnectionModal } from "@/shared/components";
 import { USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
@@ -68,7 +68,7 @@ const AUTO_PING_SETTINGS_KEYS = {
 
 const AUTO_PING_TOOLTIPS = {
   claude: "When your 5h quota runs out, auto-sends a request the moment it resets so a new window starts right away.",
-  codex: "Auto-starts the next 5h Codex window after reset by sending a tiny gpt-5.5 request. Consumes a small amount of quota.",
+  codex: "Auto-starts the next 5h Codex window after reset by sending a tiny request to an available model. Consumes a small amount of quota.",
 };
 
 function kiroMethodLabel(conn) {
@@ -1576,8 +1576,10 @@ export default function ProviderLimits() {
           const isInactive = conn.isActive === false;
           const isCodex = conn.provider === "codex";
           // Codex plan label (e.g. "Plus", "Team", "Pro") — shown alongside the
-          // provider badge in the usage row. Hidden for non-Codex, empty, or "unknown".
-          const codexPlan = getCodexPlanLabel(isCodex, quota?.plan);
+          // provider badge. Live quota plan wins; the connection's stored OAuth
+          // metadata is the fallback so the badge survives an unavailable or
+          // "unknown" live read. Hidden for non-Codex rows and empty values.
+          const codexPlan = isCodex ? getCodexPlan(quota, conn) : "";
           const resetCreditCount = getCodexResetCreditCount(quota);
           const isResettingLimit = resettingLimitId === conn.id;
           const rowBusy = deletingId === conn.id || togglingId === conn.id || isResettingLimit;

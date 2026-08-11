@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { normalizeNvidiaToolCallIds } from "../translator/concerns/toolCall.js";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS, PROVIDER_OAUTH, resolveHerokuBaseUrl } from "../config/providers.js";
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE } from "../providers/shared.js";
@@ -12,7 +13,7 @@ import { resolveSessionId } from "../utils/sessionManager.js";
 import { getOpenAICompatibleType } from "../services/provider.js";
 import { refreshCodebuddyToken } from "../services/tokenRefresh.js";
 import { isOfficialAnthropicBaseUrl } from "../utils/anthropicHost.js";
-
+import { stripUnsupportedParams, applyParamRenames } from "../translator/concerns/paramSupport.js";
 // Opt-in prompt-cache key injection for openai-compatible providers.
 // OpenAI-style upstreams (Chat Completions + Responses) accept an optional
 // `prompt_cache_key` routing hint that pins a conversation to a cache shard,
@@ -47,7 +48,44 @@ export function injectPromptCacheKey(provider, body, credentials) {
   if (promptCacheKey) body.prompt_cache_key = promptCacheKey;
   return body;
 }
-import { stripUnsupportedParams, applyParamRenames } from "../translator/concerns/paramSupport.js";
+
+
+export const OPENAI_TOOL_CALL_ID_MAX_LENGTH = 64;
+export const OPENAI_TOOL_CALL_ID_PREFIX_LENGTH = 20;
+
+// OpenAI Chat Completions rejects tool-call IDs longer than 64 characters.
+// Normalize each distinct overlong ID once per request so assistant calls and
+// their tool results always keep the same relationship. A full SHA-256 digest
+// keeps IDs collision-resistant even when their retained prefixes are equal.
+// Source: decolua/9router#3167.
+export function normalizeOpenAIToolCallIds(body) {
+  if (!Array.isArray(body?.messages)) return body;
+
+  const normalizedIds = new Map();
+  const normalize = (id) => {
+    if (typeof id !== "string" || id.length <= OPENAI_TOOL_CALL_ID_MAX_LENGTH) return id;
+    if (normalizedIds.has(id)) return normalizedIds.get(id);
+
+    const prefix = id.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, OPENAI_TOOL_CALL_ID_PREFIX_LENGTH) || "call";
+    const digest = crypto.createHash("sha256").update(id).digest("base64url");
+    const normalized = `${prefix}_${digest}`;
+    normalizedIds.set(id, normalized);
+    return normalized;
+  };
+
+  for (const message of body.messages) {
+    if (message?.role === "assistant" && Array.isArray(message.tool_calls)) {
+      for (const toolCall of message.tool_calls) {
+        if (toolCall && Object.hasOwn(toolCall, "id")) toolCall.id = normalize(toolCall.id);
+      }
+    }
+    if (message?.role === "tool" && Object.hasOwn(message, "tool_call_id")) {
+      message.tool_call_id = normalize(message.tool_call_id);
+    }
+  }
+
+  return body;
+}
 
 // Auth header descriptors — derived from registry transport.auth, fallback to hardcoded defaults.
 const BEARER = { combined: true, header: "Authorization", scheme: "bearer" };
@@ -250,11 +288,37 @@ export class DefaultExecutor extends BaseExecutor {
     const transformed = this.applyJsonSchemaFallback(body);
 
     if (transformed && typeof transformed === "object") {
+      // The official OpenAI transport is force-streamed even for JSON clients.
+      // Keep the actual upstream body aligned with the executor's resolved mode;
+      // chat core converts the SSE response back to JSON for those clients.
+      if (this.provider === "openai" && stream === true) {
+        const clientRequestedStreaming = transformed.stream === true;
+        transformed.stream = true;
+        if (!clientRequestedStreaming) {
+          transformed.stream_options = {
+            ...transformed.stream_options,
+            include_usage: true,
+          };
+        }
+      }
       // quirk: some openai-compatible providers reject Anthropic's client_metadata field
       if (this.config.quirks?.dropClientMetadata) {
         delete transformed.client_metadata;
       }
       this.defaultResponsesTextFormat(transformed);
+      // Ask OpenAI-compatible upstreams to include usage in the final stream
+      // chunk so /v1 streaming requests record real token counts instead of
+      // IN 0 · OUT 0 (decolua/9router#3081, port of #3017 fix).
+      if (stream === true && transformed.messages && !transformed.stream_options) {
+        transformed.stream_options = { include_usage: true };
+      }
+      if (this.provider === "openai") {
+        normalizeOpenAIToolCallIds(transformed);
+      }
+      // NVIDIA rejects the long opaque tool-call IDs other providers mint.
+      if (this.provider === "nvidia") {
+        normalizeNvidiaToolCallIds(transformed);
+      }
       if (this.config.format === "openai" && stream === false) {
         // Resolved stream mode is authoritative for upstream OpenAI-compatible
         // payloads, including providers that explicitly reject streaming.

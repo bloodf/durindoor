@@ -4,6 +4,7 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { boundRelayStreamLifetime, fetchConnectTimeoutError, isRelaySseResponse } from "../utils/relayStreamLifecycle.js";
 import { dbg } from "../utils/debugLog.js";
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE } from "../providers/shared.js";
+import { getOpenAICompatibleType } from "../services/provider.js";
 import { findOffendingField } from "../config/providerFieldStrips.js";
 import { readBoundedResponseText } from "../utils/error.js";
 import {
@@ -89,6 +90,35 @@ export class BaseExecutor {
     return body;
   }
 
+  /**
+   * Output tokens the request will actually reserve against the context
+   * window — i.e. exactly what {@link clampCustomMaxOutput} will let through.
+   *
+   * The client's explicit value wins, but only up to the catalog cap, because
+   * the clamp rewrites anything larger down to that cap. Returning the raw
+   * client number would over-reserve and reject requests the provider would
+   * have accepted. Absent/zero/negative client values fall back to the cap, so
+   * a request naming no output limit is still charged the provider's default.
+   *
+   * Mirrors the clamp's field list, including both Gemini-envelope shapes.
+   */
+  resolveEffectiveOutputReservation(body, requestContext) {
+    const customMax = requestContext?.modelCapabilities?.maxOutput;
+    const cap = Number.isFinite(customMax) && customMax > 0 ? customMax : 0;
+    if (!body || typeof body !== "object") return cap;
+    const candidates = [
+      body.max_tokens,
+      body.max_completion_tokens,
+      body.max_output_tokens,
+      body?.generationConfig?.maxOutputTokens,
+      body?.request?.generationConfig?.maxOutputTokens,
+    ];
+    for (const value of candidates) {
+      if (Number.isFinite(value) && value > 0) return cap > 0 ? Math.min(value, cap) : value;
+    }
+    return cap;
+  }
+
   constructor(provider, config) {
     this.provider = provider;
     this.config = config;
@@ -111,7 +141,12 @@ export class BaseExecutor {
     if (this.provider?.startsWith?.("openai-compatible-")) {
       const baseUrl = credentials?.providerSpecificData?.baseUrl || OPENAI_COMPAT_BASE;
       const normalized = baseUrl.replace(/\/$/, "");
-      const path = this.provider.includes("responses") ? "/responses" : "/chat/completions";
+      // The stored apiType is authoritative: a node created as "…-responses-…"
+      // and later edited to Chat Completions must follow the edit. A bare
+      // substring check on the provider id ignores that and keeps dispatching
+      // to /responses. getOpenAICompatibleType applies the same precedence the
+      // rest of the runtime uses (stored apiType, then the id heuristic).
+      const path = getOpenAICompatibleType(this.provider, credentials) === "responses" ? "/responses" : "/chat/completions";
       return `${normalized}${path}`;
     }
     if (this.provider?.startsWith?.("anthropic-compatible-")) {

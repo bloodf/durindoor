@@ -43,6 +43,16 @@ export default {
       headers: { ...CLAUDE_API_HEADERS },
       auth: { combined: true, header: "x-api-key", scheme: "raw" },
     },
+    // API-key (platform) endpoint. api.moonshot.cn is the platform API base;
+    // intl platform keys work there too. An apikey connection must NOT be sent
+    // to the Kimi Code subscription endpoint above (decolua/9router#3088,
+    // upstream issue #2881). The `-apikey` suffix is a transport lookup key,
+    // not an output format.
+    {
+      format: "openai-apikey",
+      baseUrl: "https://api.moonshot.cn/v1/chat/completions",
+      auth: { combined: true, header: "Authorization", scheme: "bearer" },
+    },
   ],
   models: [
     { id: "kimi-k3", name: "Kimi K3" },

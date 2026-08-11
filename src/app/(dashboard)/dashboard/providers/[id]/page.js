@@ -8,6 +8,7 @@ import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS,
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
+import { toCodexPlanEntry, buildCodexPlanMap } from "@/shared/utils/codexPlanLabel";
 import { translate } from "@/i18n/runtime";
 import { fetchSuggestedModels } from "@/shared/utils/providerModelsFetcher";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
@@ -46,13 +47,24 @@ export default function ProviderDetailPage() {
   const providerId = params.id;
   const currentProviderIdRef = useRef(null);
   const fetchConnectionsGenerationRef = useRef(0);
-  useEffect(() => {
-    currentProviderIdRef.current = providerId;
-  }, [providerId]);
   const { getCaps } = useModelCaps();
   const [connections, setConnections] = useState([]);
+  /** connectionId → live Codex plan from the usage API (decolua/9router#3210). */
+  const [codexPlans, setCodexPlans] = useState({});
   const [providerApiKeyConnectionNames, setProviderApiKeyConnectionNames] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    currentProviderIdRef.current = providerId;
+    // Clear the previous provider's rows immediately on switch. Without this the
+    // old connections and plan badges stay rendered under the new provider's
+    // header until its fetch resolves — and a stale in-flight response is
+    // discarded rather than clearing them, so they can persist indefinitely.
+    setConnections([]);
+    setCodexPlans({});
+    setProviderApiKeyConnectionNames([]);
+    setLoading(true);
+  }, [providerId]);
   const [providerNode, setProviderNode] = useState(null);
   const [proxyPools, setProxyPools] = useState([]);
   const [proxyPoolsReadyForProvider, setProxyPoolsReadyForProvider] = useState(null);
@@ -360,7 +372,32 @@ export default function ProviderDetailPage() {
       if (connectionsRes.ok) {
         const allConnections = connectionsData.connections || [];
         const filtered = allConnections.filter(c => c.provider === providerId);
+
+        // Codex plan badges prefer the live usage plan; the connection's stored
+        // OAuth metadata is only written at authorization time, so it goes stale
+        // after an upgrade. Fails open per connection — a failed read leaves the
+        // stored value to serve as the fallback (decolua/9router#3210).
+        //
+        // Computed BEFORE any setState so the whole group lands atomically after
+        // one staleness check: setting rows first and bailing afterwards would
+        // leave a switched-away provider's connections rendered.
+        let plans = {};
+        if (providerId === "codex" && filtered.length > 0) {
+          const entries = await Promise.all(filtered.map(async (connection) => {
+            try {
+              const usageRes = await fetch(`/api/usage/${connection.id}`);
+              if (!usageRes.ok) return null;
+              return toCodexPlanEntry(connection.id, await usageRes.json());
+            } catch {
+              return null;
+            }
+          }));
+          plans = buildCodexPlanMap(entries);
+        }
+
+        if (!isCurrentRequest()) return;
         setConnections(filtered);
+        setCodexPlans(plans);
         // #6499 — the name-based collision scope in createProviderConnection is
         // (provider, authType=apikey, name): provider-local. Derive default-name
         // candidates from THIS provider's apikey connections only; using global
@@ -1141,6 +1178,7 @@ export default function ProviderDetailPage() {
             <div className="flex-1 min-w-0">
               <ConnectionRow
                 connection={conn}
+                plan={codexPlans[conn.id]}
                 proxyPools={proxyPools}
                 isOAuth={isOAuth}
                 isFirst={index === 0}

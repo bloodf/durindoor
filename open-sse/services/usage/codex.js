@@ -9,6 +9,8 @@ import { applyCodexAccountHeader, resolveCodexAccountId } from "../../shared/cod
 // Codex (OpenAI) API config
 const CODEX_CONFIG = {
   usageUrl: U("codex").url,
+  modelsUrl: U("codex").modelsUrl,
+  clientVersion: U("codex").clientVersion,
   resetCreditsUrl: U("codex").resetCreditsUrl,
   resetCreditsConsumeUrl: U("codex").resetCreditsConsumeUrl,
 };
@@ -226,6 +228,38 @@ export async function getCodexUsage(accessToken, providerSpecificData = {}, prox
     throw new Error(`Failed to fetch Codex usage: ${error.message}`);
   }
 }
+/**
+ * Live Codex model catalog for a connection, ordered by the catalog's own
+ * priority. Auto-ping uses the first entry instead of a hardcoded model: a
+ * fixed `gpt-5.5` request fails outright on an account whose plan does not
+ * expose it. Upstream decolua/9router#3213, issue #3212.
+ *
+ * Fail-open: any transport or shape problem yields an empty list, and the
+ * caller skips the ping rather than guessing a model.
+ */
+export async function getCodexModels(accessToken, proxyOptions = null, providerSpecificData = null, idToken = null) {
+  if (!CODEX_CONFIG.modelsUrl || !accessToken) return [];
+
+  try {
+    const url = new URL(CODEX_CONFIG.modelsUrl);
+    if (CODEX_CONFIG.clientVersion) url.searchParams.set("client_version", CODEX_CONFIG.clientVersion);
+
+    const response = await proxyAwareFetch(url, {
+      method: "GET",
+      headers: buildCodexHeaders(accessToken, providerSpecificData, {}, idToken),
+    }, proxyOptions);
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    const models = Array.isArray(data?.models) ? data.models : [];
+    return models
+      .filter((model) => model?.supported_in_api !== false && typeof model?.slug === "string" && model.slug)
+      .sort((a, b) => Number(a.priority || 0) - Number(b.priority || 0));
+  } catch {
+    return [];
+  }
+}
+
 
 export async function getCodexRateLimitResetCredits(accessToken, proxyOptions = null, providerSpecificData = null, idToken = null) {
   if (!accessToken) {

@@ -171,6 +171,17 @@ export function responsesApiToOpenAICompletion(responseBody, fallbackModel) {
     }));
 
   const usage = responseBody?.usage || {};
+  const inputTokens = usage.input_tokens || usage.prompt_tokens || 0;
+  const outputTokens = usage.output_tokens || usage.completion_tokens || 0;
+  const cachedTokens = usage.cache_read_input_tokens || usage.cached_tokens || 0;
+  const cacheCreationTokens = usage.cache_creation_input_tokens || 0;
+  const promptTokens = inputTokens + cachedTokens + cacheCreationTokens;
+  const promptTokenDetails = cachedTokens || cacheCreationTokens
+    ? {
+        ...(cachedTokens ? { cached_tokens: cachedTokens } : {}),
+        ...(cacheCreationTokens ? { cache_creation_tokens: cacheCreationTokens } : {}),
+      }
+    : undefined;
   const message = {
     role: "assistant",
     content: textContent || (toolCalls.length > 0 ? null : ""),
@@ -187,9 +198,10 @@ export function responsesApiToOpenAICompletion(responseBody, fallbackModel) {
     model: responseBody?.model || fallbackModel || "unknown",
     choices: [{ index: 0, message, finish_reason: finishReason }],
     usage: {
-      prompt_tokens: usage.input_tokens || usage.prompt_tokens || 0,
-      completion_tokens: usage.output_tokens || usage.completion_tokens || 0,
-      total_tokens: usage.total_tokens || ((usage.input_tokens || usage.prompt_tokens || 0) + (usage.output_tokens || usage.completion_tokens || 0)),
+      prompt_tokens: promptTokens,
+      ...(promptTokenDetails ? { prompt_tokens_details: promptTokenDetails } : {}),
+      completion_tokens: outputTokens,
+      total_tokens: usage.total_tokens || (promptTokens + outputTokens),
     },
   };
 }

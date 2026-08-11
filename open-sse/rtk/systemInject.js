@@ -84,7 +84,7 @@ function injectMessagesSystem(body, prompt, format) {
     // Check if already injected before appending
     const existing = extractTextFromOpenAIMessage(arr[idx]);
     if (isPromptAlreadyInjected(existing, prompt)) return;
-    appendToOpenAIMessage(arr[idx], prompt);
+    appendToOpenAIMessage(arr[idx], prompt, isResponses);
   } else if (isResponses) {
     // Responses Lite puts an `additional_tools` envelope first; system prompt
     // must land in a developer message AFTER it, never inside the envelope.
@@ -108,12 +108,17 @@ function extractTextFromOpenAIMessage(msg) {
   return '';
 }
 
-function appendToOpenAIMessage(msg, prompt) {
+/**
+ * @param {boolean} isResponses true when the target is a Responses `input[]`
+ *   array. Chat `messages[]` parts must be `{type:"text"}`: strict providers
+ *   (StepFun) reject the Responses-only `input_text` with
+ *   `400 Unrecognized chat message`. Upstream decolua/9router#3204, issue #3202.
+ */
+function appendToOpenAIMessage(msg, prompt, isResponses = false) {
   if (typeof msg.content === "string") {
     msg.content = `${msg.content}${SEP}${prompt}`;
   } else if (Array.isArray(msg.content)) {
-    // Responses-style array of parts {type:"input_text"|"text", text}
-    msg.content.push({ type: "input_text", text: prompt });
+    msg.content.push({ type: isResponses ? "input_text" : "text", text: prompt });
   } else {
     msg.content = prompt;
   }

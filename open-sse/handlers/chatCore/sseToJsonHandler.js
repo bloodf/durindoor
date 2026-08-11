@@ -205,6 +205,12 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, silent: true });
       if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime } }));
 
+      // Cache-inclusive prompt total for the recorded detail — same logic the
+      // client-facing response uses below, so the DB and the client can't disagree.
+      const inTokensForLog = (usage.input_tokens || 0)
+        + (usage.cache_read_input_tokens || usage.cached_tokens || 0)
+        + (usage.cache_creation_input_tokens || 0);
+
       // When the client asked for the Responses API format, return the converted JSON directly.
       // responsesApiToOpenAICompletion would project it to chat.completion shape and lose Responses fields.
       if (sourceFormat === FORMATS.OPENAI_RESPONSES) {
@@ -214,7 +220,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         saveRequestDetail(buildRequestDetail({
           ...ctx,
           latency: { ttft: totalLatency, total: totalLatency },
-          tokens: { prompt_tokens: usage.input_tokens || 0, completion_tokens: usage.output_tokens || 0 },
+          tokens: { prompt_tokens: inTokensForLog, completion_tokens: usage.output_tokens || 0 },
           response: { content: jsonResponse.output?.map?.(o => o.type === "message" ? o.content?.map?.(c => c.type === "output_text" ? c.text : "").join("") : "").join("") || null, thinking: null, finish_reason: jsonResponse.status === "completed" ? "stop" : jsonResponse.status || "unknown" },
           status: "success"
         }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});
@@ -232,7 +238,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       saveRequestDetail(buildRequestDetail({
         ...ctx,
         latency: { ttft: totalLatency, total: totalLatency },
-        tokens: { prompt_tokens: usage.input_tokens || 0, completion_tokens: usage.output_tokens || 0 },
+        tokens: { prompt_tokens: openAICompletion.usage?.prompt_tokens ?? inTokensForLog, completion_tokens: usage.output_tokens || 0 },
         response: { content: openAICompletion.choices?.[0]?.message?.content || null, thinking: openAICompletion.choices?.[0]?.message?.reasoning_content || null, finish_reason: openAICompletion.choices?.[0]?.finish_reason || "unknown" },
         status: "success"
       }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});

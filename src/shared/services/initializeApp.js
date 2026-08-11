@@ -105,6 +105,13 @@ export async function initializeApp() {
     startNetworkMonitor();
     autoStartMitm();
     startQuotaAutoPing();
+
+    // Proactive OAuth token refresh, independent of inbound requests (e.g.
+    // grok-cli's ~6h TTL expires while the router is idle). The scheduler is
+    // idempotent and fail-open, so a double start or an import failure is safe.
+    import("@/sse/services/backgroundTokenRefresh.js")
+      .then(({ startBackgroundTokenRefresh }) => startBackgroundTokenRefresh())
+      .catch((e) => console.log("[BackgroundTokenRefresh] scheduler start failed:", e.message));
   } catch (error) {
     console.error("[InitApp] Error:", error);
   }

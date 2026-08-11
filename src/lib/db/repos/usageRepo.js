@@ -888,22 +888,68 @@ export async function getUsageStats(period = "all", opts = {}) {
   return stats;
 }
 
-export async function getChartData(period = "7d") {
+function isValidTimeZone(timeZone) {
+  if (!timeZone || typeof timeZone !== "string") return false;
+  try {
+    // eslint-disable-next-line no-new
+    new Intl.DateTimeFormat("en-US", { timeZone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Offset (ms) to add to a UTC instant to get the wall-clock time in `timeZone`.
+function tzOffsetMs(date, timeZone) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  })
+    .formatToParts(date)
+    .reduce((acc, p) => { acc[p.type] = p.value; return acc; }, {});
+  const asUTC = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+  return asUTC - date.getTime();
+}
+
+// Start of "today" (00:00) expressed as a UTC epoch ms, for the given IANA timeZone.
+function startOfDayInTz(now, timeZone) {
+  const offset = tzOffsetMs(now, timeZone);
+  const localNow = new Date(now.getTime() + offset);
+  localNow.setUTCHours(0, 0, 0, 0);
+  return localNow.getTime() - offset;
+}
+
+export async function getChartData(period = "7d", timeZone) {
   const db = await getAdapter();
   const nowDate = new Date();
   const now = nowDate.getTime();
+  const tz = isValidTimeZone(timeZone) ? timeZone : undefined;
 
   if (period === "today") {
     const bucketMs = 3600000;
-    const startOfDay = new Date(nowDate);
-    startOfDay.setHours(0, 0, 0, 0);
-    const nextDay = new Date(startOfDay);
-    nextDay.setDate(nextDay.getDate() + 1);
-    const bucketCount = Math.round((nextDay.getTime() - startOfDay.getTime()) / bucketMs);
-    const startTime = startOfDay.getTime();
-    const endTime = nextDay.getTime();
+    let startTime;
+    let bucketCount;
+    if (tz) {
+      startTime = startOfDayInTz(nowDate, tz);
+      bucketCount = 24;
+    } else {
+      const startOfDay = new Date(nowDate);
+      startOfDay.setHours(0, 0, 0, 0);
+      const nextDay = new Date(startOfDay);
+      nextDay.setDate(nextDay.getDate() + 1);
+      bucketCount = Math.round((nextDay.getTime() - startOfDay.getTime()) / bucketMs);
+      startTime = startOfDay.getTime();
+    }
+    const endTime = startTime + bucketCount * bucketMs;
     const labelFn = (ts) => new Date(ts).toLocaleTimeString("en-US", {
       hour: "2-digit", minute: "2-digit", hour12: false, timeZoneName: "short",
+      ...(tz ? { timeZone: tz } : {}),
     });
     const buckets = Array.from({ length: bucketCount }, (_, i) => ({
       label: labelFn(startTime + i * bucketMs), tokens: 0, cachedTokens: 0,
@@ -936,7 +982,9 @@ export async function getChartData(period = "7d") {
   if (period === "24h") {
     const bucketCount = 24;
     const bucketMs = 3600000;
-    const labelFn = (ts) => new Date(ts).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+    const labelFn = (ts) => new Date(ts).toLocaleTimeString("en-US", {
+      hour: "2-digit", minute: "2-digit", hour12: false, ...(tz ? { timeZone: tz } : {}),
+    });
     const startTime = now - bucketCount * bucketMs;
     const buckets = Array.from({ length: bucketCount }, (_, i) => ({
       label: labelFn(startTime + i * bucketMs), tokens: 0, cachedTokens: 0,

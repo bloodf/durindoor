@@ -7,7 +7,7 @@ import PropTypes from "prop-types";
 import { Badge, Toggle, Tooltip } from "@/shared/components";
 import CooldownTimer from "./CooldownTimer";
 
-export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, onReconnect = null, oneByOneStatus = null, autoPing = null }) {
+export default function ConnectionRow({ connection, plan = null, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, onReconnect = null, oneByOneStatus = null, autoPing = null }) {
   const [showProxyDropdown, setShowProxyDropdown] = useState(false);
   const [updatingProxy, setUpdatingProxy] = useState(false);
   const proxyDropdownRef = useRef(null);
@@ -25,7 +25,7 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
         ? `Legacy: ${connection.providerSpecificData?.connectionProxyUrl}`
         : "";
   const autoPingTooltip = autoPing?.provider === "codex"
-    ? "Auto-starts the next 5h Codex window after reset by sending a tiny gpt-5.5 request. Consumes a small amount of quota."
+    ? "Auto-starts the next 5h Codex window after reset by sending a tiny request to an available model. Consumes a small amount of quota."
     : "When your 5h quota runs out, auto-sends a request the moment it resets so a new window starts right away.";
 
   let maskedProxyUrl = "";
@@ -80,11 +80,14 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
     || connection.displayName?.trim()
     || (isOAuthConnection ? "OAuth Account" : isCookieConnection ? "Cookie Account" : "API Key");
   // Codex plan label (e.g. "Plus", "Team", "Pro") — shown alongside the
-  // connection badges. Hidden for non-Codex, empty, or "unknown".
-  const codexPlan = getCodexPlanLabel(
-    connection.provider === "codex",
-    connection.providerSpecificData?.chatgptPlanType,
-  );
+  // connection badges. The live quota plan wins; the connection's stored OAuth
+  // metadata is only written at authorization time, so it goes stale after an
+  // upgrade and is used solely as a fallback. Hidden for non-Codex, empty, or
+  // "unknown" (decolua/9router#3210).
+  const isCodexConnection = connection.provider === "codex";
+  const codexPlan = isCodexConnection
+    ? (getCodexPlanLabel(true, plan) || getCodexPlanLabel(true, connection.providerSpecificData?.chatgptPlanType))
+    : "";
   const secondaryDisplayName = connection.name?.trim() && connection.email?.trim() && connection.name.trim() !== connection.email.trim()
     ? connection.email.trim()
     : connection.name?.trim() && connection.displayName?.trim() && connection.name.trim() !== connection.displayName.trim()
@@ -315,6 +318,8 @@ ConnectionRow.propTypes = {
     priority: PropTypes.number,
     globalPriority: PropTypes.number,
   }).isRequired,
+  /** Live Codex plan from the usage API; falls back to stored OAuth metadata. */
+  plan: PropTypes.string,
   proxyPools: PropTypes.arrayOf(PropTypes.shape({
     id: PropTypes.string,
     name: PropTypes.string,

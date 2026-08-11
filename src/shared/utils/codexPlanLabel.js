@@ -17,3 +17,33 @@ export function getCodexPlanLabel(isCodex, rawPlan) {
   if (!plan || plan.toLowerCase() === "unknown") return "";
   return plan;
 }
+
+/**
+ * Badge value for a Codex row: the live quota plan wins, with the connection's
+ * stored OAuth metadata as fallback. The stored value is only written at
+ * authorization time, so it goes stale after an upgrade — but it beats showing
+ * no badge when the live read is unavailable or returns "unknown".
+ *
+ * Upstream decolua/9router#3210.
+ *
+ * @returns {string} display label, or "" when no badge should render.
+ */
+export function getCodexPlan(quota, connection) {
+  const live = getCodexPlanLabel(true, quota?.plan);
+  if (live) return live;
+  return getCodexPlanLabel(true, connection?.providerSpecificData?.chatgptPlanType);
+}
+
+/**
+ * Reduce a connection's live usage payload to a `[connectionId, plan]` entry,
+ * or null when it carries nothing renderable.
+ */
+export function toCodexPlanEntry(connectionId, usage) {
+  const plan = getCodexPlanLabel(true, usage?.plan);
+  return plan ? [connectionId, plan] : null;
+}
+
+/** Build the connectionId → live plan map the provider page passes to rows. */
+export function buildCodexPlanMap(entries) {
+  return Object.fromEntries((entries || []).filter(Boolean));
+}

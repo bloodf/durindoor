@@ -33,14 +33,14 @@ import { createEmptyRetryStream } from "./chatCore/emptyStreamGuard.js";
 import { isAnthropicThinkingSignatureError, stripHistoricalThinkingForSignatureRecovery } from "./chatCore/thinkingSignatureRecovery.js";
 import { detectClientTool, isNativePassthrough, isCodexOriginatedHeaders } from "../utils/clientDetector.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
-import { salvageOrphanedToolResults, fixMissingToolResponses } from "../translator/concerns/toolCall.js";
+import { salvageOrphanedToolResults, fixMissingToolResponses, normalizeOpenAIToolNames } from "../translator/concerns/toolCall.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
 import { compressMessages, resolveTokenSaverEnabled, normalizeTokenSaverEvent } from "../rtk/index.js";
 import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadroomPhantomSavings, classifyHeadroomDiagnostic } from "../rtk/headroom.js";
 import { compressWithPxpipe, normalizePxpipeResult } from "../rtk/pxpipe.js";
-import { getCapabilitiesForModel } from "../providers/capabilities.js";
-import { estimateTokens } from "./countTokensCore.js";
+import { getCapabilitiesForModel, resolveModelLimits } from "../providers/capabilities.js";
+import { estimateTokens, countInputTokens } from "./countTokensCore.js";
 import { runCompressionSeam } from "./chatCore/compressionHook.js";
 import { stripUnsupportedModalities } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
@@ -298,8 +298,20 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
   // Multi-endpoint providers: model-required formats override client format.
   // GPT-5.6 tool calls with reasoning must use OpenAI Responses, even when the
   // client sends Chat Completions format.
-  const runtimeTransport = resolveTransport(provider, modelTargetFormat || sourceFormat);
-  const skipTranslation = runtimeTransport?.format === sourceFormat;
+  // Kimi API-key connections speak OpenAI Chat Completions against the platform
+  // endpoint (api.moonshot.cn), NOT the Kimi Code subscription endpoint that
+  // OAuth connections use. That API is OpenAI-compatible only, so a
+  // Claude-format client is translated rather than passed through
+  // (decolua/9router#3088, upstream issue #2881).
+  const apikeyTransportFormat = (provider === "kimi" && credentials?.authType === "apikey")
+    ? "openai-apikey"
+    : null;
+  const runtimeTransport = resolveTransport(provider, apikeyTransportFormat || modelTargetFormat || sourceFormat)
+    || resolveTransport(provider, modelTargetFormat || sourceFormat);
+  // The apikey transports carry lookup tags like "openai-apikey" that are not
+  // real wire formats — strip the suffix before it can reach a translator.
+  const transportFormat = runtimeTransport?.format?.replace(/-apikey$/, "") || null;
+  const skipTranslation = transportFormat === sourceFormat;
   // Attach the selected transport even when it was chosen by a model format override
   // (e.g. MiniMax-M3 → OpenAI for a Claude-source client, upstream decolua/9router#2533);
   // otherwise the executor falls back to the provider default endpoint and the override
@@ -307,7 +319,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
   if (runtimeTransport && credentials) credentials.runtimeTransport = runtimeTransport;
   const targetFormat = skipTranslation
     ? sourceFormat
-    : (modelTargetFormat || runtimeTransport?.format || getTargetFormat(provider, credentials));
+    : (apikeyTransportFormat ? transportFormat : (modelTargetFormat || transportFormat || getTargetFormat(provider, credentials)));
   const stripList = getModelStrip(alias, cleanModel);
   const cleanUpstreamModel = getModelUpstreamId(alias, cleanModel); // provider-facing model id
 
@@ -456,6 +468,19 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
   // side. Strip the boolean so the upstream applies its own default. (#7891)
   if (isOpencodeGoProvider(provider)) {
     stripBooleanReasoning(translatedBody);
+  }
+
+  // OpenAI-format upstreams enforce `^[a-zA-Z0-9_-]{1,64}$` on tool names, and a
+  // client relaying names minted elsewhere (MCP servers, other providers) can
+  // violate it. Rewrite to a safe alias and fold the mapping into the existing
+  // toolNameMap so the response path de-cloaks back to the client's own names.
+  // Providers can tighten the ceiling via `quirks.toolNameMaxLength`.
+  if (targetFormat === FORMATS.OPENAI) {
+    const toolNameMaxLength = PROVIDERS[provider]?.transport?.quirks?.toolNameMaxLength || 64;
+    const aliases = normalizeOpenAIToolNames(translatedBody, toolNameMaxLength);
+    if (aliases.size) {
+      toolNameMap = new Map([...(toolNameMap || new Map()), ...aliases]);
+    }
   }
 
   // Dedupe duplicate built-in tools when equivalent MCP tools are present (Claude clients only).
@@ -685,6 +710,52 @@ export async function handleChatCore({ body, modelInfo, credentials, log, refres
   }
 
   const executor = getExecutor(provider);
+
+  // Ingress context-limit preflight (C1/C2). estimateTokens only fed compression
+  // planning, so an oversize request was still shipped upstream just to come back
+  // as a 400. Reject here instead, using the SAME output reservation the executor
+  // will clamp to, so the check and the clamp can never disagree.
+  //
+  // Deliberately silent when the limit is unknown: resolveModelLimits reports
+  // `known: false` for the bare capability floor, and rejecting on a guessed
+  // 200K would break every model whose real window is larger but undeclared.
+  // The message intentionally carries "input is too long" so the existing
+  // isDeterministicPayloadError classifier treats it as terminal and the
+  // fallback chain is skipped for a request no other model would accept.
+  const preflightLimits = resolveModelLimits(provider, cleanModel);
+  if (preflightLimits.known) {
+    // `requestContext.modelCapabilities` is null unless the caller passed caps,
+    // so fall back to the resolved catalog cap. Without this a known model whose
+    // request names no output field would reserve 0 and the check would only
+    // ever compare raw input against the window.
+    const reservationContext = requestContext?.modelCapabilities
+      ? requestContext
+      : { ...requestContext, modelCapabilities: { maxOutput: preflightLimits.maxOutput } };
+    const reservation = executor.resolveEffectiveOutputReservation?.(translatedBody, reservationContext) ?? 0;
+    // Prefer the provider's own /messages/count_tokens when it exposes one —
+    // the 4-chars-per-token heuristic is only a fallback, and rejecting on a
+    // bad count is worse than not rejecting at all. countInputTokens itself
+    // falls back to the estimate when the native call is absent or fails.
+    const { tokens: countedInput } = await countInputTokens({
+      body: translatedBody,
+      modelInfo: { provider, model: cleanModel },
+      credentials,
+      log,
+      signal: abortSignal,
+    });
+    const required = countedInput + reservation;
+    if (required > preflightLimits.contextWindow) {
+      const detail = `input is too long: ${required} tokens required (${countedInput} input + ${reservation} output reservation) exceeds the ${preflightLimits.contextWindow}-token context length of ${provider}/${cleanModel}`;
+      log?.warn?.("CHAT", `preflight reject | ${detail}`);
+      // The reservation was taken before translation; releasing it here keeps a
+      // locally-rejected request from holding provider capacity until the lease
+      // expires, since no dispatch path will settle it.
+      await settleQuota(false, "context_limit");
+      appendRequestLog({ model: cleanModel, provider, connectionId, status: "REJECTED (context limit)" }).catch(() => { });
+      return createErrorResult(HTTP_STATUS.BAD_REQUEST, detail);
+    }
+  }
+
   trackPendingRequest(cleanModel, provider, connectionId, true);
   appendRequestLog({ model: cleanModel, provider, connectionId, status: "PENDING" }).catch(() => { });
 

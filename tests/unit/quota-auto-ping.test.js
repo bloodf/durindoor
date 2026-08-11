@@ -71,6 +71,7 @@ vi.mock("open-sse/services/usage/claude.js", () => ({
 
 vi.mock("open-sse/services/usage/codex.js", () => ({
   getCodexUsage: vi.fn(),
+  getCodexModels: vi.fn(),
 }));
 
 vi.mock("open-sse/executors/index.js", () => ({
@@ -86,6 +87,7 @@ describe("quota auto-ping", () => {
   let deps;
   let state;
   let getCodexUsage;
+  let getCodexModels;
   let getClaudeUsage;
   let getExecutor;
   let codexResponseText;
@@ -133,9 +135,14 @@ describe("quota auto-ping", () => {
     vi.useRealTimers();
     delete global.__quotaAutoPing;
 
-    ({ getCodexUsage } = await import("open-sse/services/usage/codex.js"));
+    ({ getCodexUsage, getCodexModels } = await import("open-sse/services/usage/codex.js"));
     ({ getClaudeUsage } = await import("open-sse/services/usage/claude.js"));
     getCodexUsage.mockReset();
+    getCodexModels.mockReset();
+    getCodexModels.mockResolvedValue([
+      { slug: "gpt-5.6-terra", priority: 1 },
+      { slug: "gpt-5.5", priority: 9 },
+    ]);
     getClaudeUsage.mockReset();
     ({ getExecutor } = await import("open-sse/executors/index.js"));
     ({
@@ -372,7 +379,7 @@ describe("quota auto-ping", () => {
     expect(deps.updateProviderConnection).not.toHaveBeenCalled();
   });
 
-  it("sends one tiny gpt-5.5 Codex request through the executor", async () => {
+  it("sends one tiny Codex request using the account's catalog model", async () => {
     deps.getSettings.mockResolvedValue({ codexAutoPing: { connections: { "codex-1": true } } });
     deps.getProviderConnections.mockImplementation(async ({ provider }) => (
       provider === "codex"
@@ -389,7 +396,7 @@ describe("quota auto-ping", () => {
     const executor = deps.getExecutor.mock.results[0].value;
     expect(deps.getExecutor).toHaveBeenCalledWith("codex");
     expect(executor.execute).toHaveBeenCalledWith(expect.objectContaining({
-      model: "gpt-5.5",
+      model: "gpt-5.6-terra",
       stream: true,
       credentials: expect.objectContaining({
         accessToken: "token",
@@ -397,7 +404,7 @@ describe("quota auto-ping", () => {
         providerSpecificData: { workspaceId: "ws-1" },
       }),
       body: {
-        model: "gpt-5.5",
+        model: "gpt-5.6-terra",
         input: [{
           type: "message",
           role: "user",
@@ -414,6 +421,121 @@ describe("quota auto-ping", () => {
       lastPingedResetAt: "2026-01-01T17:01:00.000Z",
       lastPingedResetKey: "2026-01-01T17:01:00.000Z",
     }));
+  });
+
+  // decolua/9router#3213 — the ping model comes from the account's live catalog.
+  // A fixed model 400s on plans that do not expose it.
+  it("queries the Codex catalog with the connection's account metadata", async () => {
+    deps.getSettings.mockResolvedValue({ codexAutoPing: { connections: { "codex-1": true } } });
+    deps.getProviderConnections.mockImplementation(async ({ provider }) => (
+      provider === "codex"
+        ? [{ id: "codex-1", provider: "codex", authType: "oauth", accessToken: "token", idToken: "id-token", providerSpecificData: { workspaceId: "ws-1" } }]
+        : []
+    ));
+    state.resetCache["codex:codex-1"] = "2026-01-01T17:00:00.000Z";
+    getCodexUsage.mockResolvedValue({
+      quotas: { session: { used: 1, total: 100, remaining: 99, resetAt: "2026-01-01T17:01:00.000Z" } },
+    });
+
+    await runQuotaAutoPingTick(deps, state);
+
+    expect(getCodexModels).toHaveBeenCalledTimes(1);
+    const [accessToken, , providerSpecificData, idToken] = getCodexModels.mock.calls[0];
+    expect(accessToken).toBe("token");
+    expect(providerSpecificData).toEqual({ workspaceId: "ws-1" });
+    expect(idToken).toBe("id-token");
+  });
+
+  it("skips the ping entirely when the catalog returns no supported model", async () => {
+    getCodexModels.mockResolvedValue([]);
+    deps.getSettings.mockResolvedValue({ codexAutoPing: { connections: { "codex-1": true } } });
+    deps.getProviderConnections.mockImplementation(async ({ provider }) => (
+      provider === "codex"
+        ? [{ id: "codex-1", provider: "codex", authType: "oauth", accessToken: "token" }]
+        : []
+    ));
+    state.resetCache["codex:codex-1"] = "2026-01-01T17:00:00.000Z";
+    getCodexUsage.mockResolvedValue({
+      quotas: { session: { used: 1, total: 100, remaining: 99, resetAt: "2026-01-01T17:01:00.000Z" } },
+    });
+
+    await runQuotaAutoPingTick(deps, state);
+
+    expect(deps.getExecutor).not.toHaveBeenCalled();
+    expect(deps.updateProviderConnection).not.toHaveBeenCalled();
+  });
+
+  // The blocking-window check keys quota resources BY MODEL, so it must run
+  // against the model the catalog selected. This fixture is deliberately
+  // model-scoped: the weekly window is exhausted for the selected model
+  // (gpt-5.6-terra) and available for the old hardcoded default (gpt-5.5), so
+  // the case can only pass when the selected model drives the check.
+  it("does not ping when the selected catalog model's long window is exhausted", async () => {
+    getCodexModels.mockResolvedValue([{ slug: "gpt-5.6-terra", priority: 1 }]);
+    deps.getSettings.mockResolvedValue({ codexAutoPing: { connections: { "codex-1": true } } });
+    deps.getProviderConnections.mockImplementation(async ({ provider }) => (
+      provider === "codex" ? [{ id: "codex-1", provider: "codex", authType: "oauth", accessToken: "token" }] : []
+    ));
+    state.resetCache["codex:codex-1"] = "2026-01-01T17:00:00.000Z";
+    getCodexUsage.mockResolvedValue({
+      quotas: { session: { used: 0, total: 100, remaining: 100, resetAt: "2026-01-01T17:01:00.000Z" } },
+    });
+
+    const nowMs = Date.now();
+    const weeklyFor = (model, exhausted) => ({
+      identity: {
+        connectionId: "codex-1",
+        provider: "codex",
+        accountKey: "scope:connection",
+        resourceKey: `model:${model}`,
+        dimensionKey: "requests:weekly",
+      },
+      state: exhausted ? "exhausted" : "available",
+      amounts: { limitKind: "unknown", limit: null, used: null, remaining: null, remainingRatio: null, unit: null },
+      timing: {
+        observedAt: new Date(nowMs - 1).toISOString(),
+        staleAt: new Date(nowMs + 60_000).toISOString(),
+        resetAt: "2026-01-03T12:00:00.000Z",
+        cooldownUntil: null,
+      },
+      provenance: { sourceType: "provider_api", sourceId: "codex:wham-usage:v1", reasonCode: null, metadata: {} },
+    });
+
+    // Capture the original implementation BEFORE overriding: reading it back off
+    // the same mock afterwards would return this override and recurse.
+    const baseImpl = deps.listProviderQuotaSnapshots.getMockImplementation();
+    deps.listProviderQuotaSnapshots.mockImplementation(async (query) => [
+      ...(await baseImpl(query)),
+      weeklyFor("gpt-5.6-terra", true),
+      weeklyFor("gpt-5.5", false),
+    ]);
+
+    await runQuotaAutoPingTick(deps, state);
+
+    expect(deps.getExecutor).not.toHaveBeenCalled();
+    expect(deps.updateProviderConnection).not.toHaveBeenCalled();
+  });
+
+  it("reads the catalog through the same proxy the ping is dispatched with", async () => {
+    deps.getSettings.mockResolvedValue({ codexAutoPing: { connections: { "codex-1": true } } });
+    deps.getProviderConnections.mockImplementation(async ({ provider }) => (
+      provider === "codex"
+        ? [{ id: "codex-1", provider: "codex", authType: "oauth", accessToken: "token", providerSpecificData: { connectionProxyEnabled: true } }]
+        : []
+    ));
+    state.resetCache["codex:codex-1"] = "2026-01-01T17:00:00.000Z";
+    getCodexUsage.mockResolvedValue({
+      quotas: { session: { used: 1, total: 100, remaining: 99, resetAt: "2026-01-01T17:01:00.000Z" } },
+    });
+
+    await runQuotaAutoPingTick(deps, state);
+
+    expect(getCodexModels).toHaveBeenCalledTimes(1);
+    const [, catalogProxyOptions] = getCodexModels.mock.calls[0];
+    // A catalog read that bypassed the connection's proxy could resolve a
+    // different account than the one the ping is charged to.
+    const executor = deps.getExecutor.mock.results[0].value;
+    expect(catalogProxyOptions).toEqual(executor.execute.mock.calls[0][0].proxyOptions);
   });
 
   it("does not ping same Codex reset twice when seconds drift", async () => {

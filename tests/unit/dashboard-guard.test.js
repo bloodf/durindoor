@@ -238,6 +238,15 @@ describe("dashboard guard local-only access", () => {
     expect(response.body.error).toBe("Local only: CLI token required");
   });
 
+  it.each(["/api/pxpipe/start", "/api/pxpipe/status"])("rejects %s from a non-loopback host", async (pathname) => {
+    const response = await proxy(request(pathname, {
+      host: "router.example.com",
+    }));
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe("Local only: CLI token required");
+  });
+
   it("rejects local-only route on loopback when requireLogin=true and no JWT", async () => {
     const response = await proxy(request("/api/mcp/filesystem/sse", {
       host: "localhost:20128",

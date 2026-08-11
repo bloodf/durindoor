@@ -5,6 +5,7 @@ import Link from "next/link";
 import { CardSkeleton } from "@/shared/components";
 import { CLI_TOOLS } from "@/shared/constants/cliTools";
 import { getModelsByProviderId, PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
+import { fallbackConnectionModels } from "../connectionModels";
 import {
   ClaudeToolCard, CodexToolCard, DroidToolCard, OpenClawToolCard,
   HermesToolCard, DefaultToolCard, OpenCodeToolCard, CoworkToolCard,
@@ -74,11 +75,14 @@ export default function ToolDetailClient({ toolId, machineId }) {
     activeProviders.forEach(conn => {
       const alias = PROVIDER_ID_TO_ALIAS[conn.provider] || conn.provider;
       const providerModels = getModelsByProviderId(conn.provider);
-      providerModels.forEach(m => {
-        const modelValue = `${alias}/${m.id}`;
+      const modelList = providerModels.length > 0
+        ? providerModels.map(m => ({ id: m.id, prefix: alias }))
+        : fallbackConnectionModels(conn).map(m => ({ id: m.id, prefix: conn.providerSpecificData?.prefix || alias }));
+      modelList.forEach(({ id, prefix }) => {
+        const modelValue = `${prefix}/${id}`;
         if (!seenModels.has(modelValue)) {
           seenModels.add(modelValue);
-          models.push({ value: modelValue, label: `${alias}/${m.id}`, provider: conn.provider, alias, connectionName: conn.name, modelId: m.id });
+          models.push({ value: modelValue, label: modelValue, provider: conn.provider, alias: prefix, connectionName: conn.name, modelId: id });
         }
       });
     });

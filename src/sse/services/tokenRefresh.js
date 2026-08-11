@@ -132,7 +132,7 @@ function _refreshProjectId(provider, connectionId, accessToken, proxyOptions) {
   // Evict the stale cached entry so getProjectIdForConnection does a real fetch
   invalidateProjectId(connectionId);
 
-  getProjectIdForConnection(connectionId, accessToken, proxyOptions)
+  getProjectIdForConnection(connectionId, accessToken, proxyOptions, null, provider)
     .then((projectId) => {
       if (!projectId) return;
       updateProviderCredentials(connectionId, { projectId }).catch((err) => {
@@ -217,17 +217,22 @@ export async function updateProviderCredentials(connectionId, newCredentials) {
  *
  * @param {string} provider
  * @param {object} credentials
+ * @param {object|null} [proxyOptions]
+ * @param {{ force?: boolean }} [options] force=true skips the on-request lead
+ *   check. The background scheduler passes it because it applies its own,
+ *   larger lead; the request path never does.
  * @returns {Promise<object>} updated credentials object
  */
-export async function checkAndRefreshToken(provider, credentials, proxyOptions = null) {
+export async function checkAndRefreshToken(provider, credentials, proxyOptions = null, options = {}) {
   let creds = { ...credentials };
   if (!creds.connectionId && creds.id) {
     creds.connectionId = creds.id;
   }
   const effectiveProxyOptions = _resolveCredentialProxyOptions(creds, proxyOptions);
+  const force = options?.force === true;
 
   // ── 1. Regular access-token expiry ────────────────────────────────────────
-  if (_shouldRefreshCredentials(provider, creds)) {
+  if (force || _shouldRefreshCredentials(provider, creds)) {
     const expiresAt = creds.expiresAt ? new Date(creds.expiresAt).getTime() : null;
     const remaining = expiresAt ? expiresAt - Date.now() : null;
     const refreshLead = _getRefreshLeadMs(provider);

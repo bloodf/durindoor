@@ -68,6 +68,13 @@ For developers working on the DurinDoor codebase, provider registry, or document
 - [Upstream 2801/2818 Port Ledger](campaigns/upstream-2801-2818-ledger.md)
 - [Upstream Sync Watch](UPSTREAM_SYNC.md)
 - [Upstream + OmniRoute 2026-08-04 Ledger](campaigns/upstream-omniroute-2026-08-04-ledger.md)
+- [Upstream + OmniRoute 2026-08-09 Ledger](campaigns/upstream-omniroute-2026-08-09-ledger.md)
+- [Upstream A2-b Runtime-Correctness Ports Ledger](campaigns/upstream-a2b-ports-ledger.md)
+- [Upstream A2-c Responses Lite Ledger](campaigns/upstream-a2c-responses-lite-ledger.md)
+- [Upstream D1 PR Ports Ledger](campaigns/upstream-d1-pr-ports-ledger.md)
+- [Upstream D2/D3 PR Ports Ledger](campaigns/upstream-d2d3-pr-ports-ledger.md)
+- [Upstream ADOPT-NOW Remainder Ledger](campaigns/upstream-adopt-remainder-ledger.md)
+- [Upstream #3204/#3210/#3213 Ports Ledger](campaigns/upstream-3204-3210-3213-ledger.md)
 - [tests/README.md](../tests/README.md)
 
 ## API & Reference
@@ -77,6 +84,7 @@ For stable lookup pages for routes, environment variables, compatibility, and ru
 - [API Reference](reference/api.md)
 - [Environment Variables](reference/environment.md)
 - [Provider Plugin Manifest](reference/provider-plugin-manifest.md)
+- [Model Limits and Context Enforcement](reference/model-limits.md)
 - [MCP Gateway](features/mcp-gateway.md)
 - [Realtime Behavior](features/realtime.md)
 - [Compression](features/compression.md)

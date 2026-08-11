@@ -7,7 +7,7 @@
  * This significantly reduces the risk of being flagged by Google's anti-abuse systems.
  */
 
-import { CLOUD_CODE_API, LOAD_CODE_ASSIST_HEADERS, LOAD_CODE_ASSIST_METADATA } from "../config/appConstants.js";
+import { CLOUD_CODE_API, LOAD_CODE_ASSIST_HEADERS, ANTIGRAVITY_LOAD_CODE_ASSIST_HEADERS, LOAD_CODE_ASSIST_METADATA } from "../config/appConstants.js";
 import { proxyRouteFingerprint } from "./tokenRefresh/dedup.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { readBoundedResponseText, sanitizeErrorMessage } from "../utils/error.js";
@@ -121,7 +121,7 @@ function subscribeToPending(entry, signal) {
     });
 }
 
-export async function getProjectIdForConnection(connectionId, accessToken, proxyOptions = null, signal = null) {
+export async function getProjectIdForConnection(connectionId, accessToken, proxyOptions = null, signal = null, provider = null) {
     if (!connectionId || !accessToken) return null;
     if (signal?.aborted) throw projectAbortError(signal.reason);
 
@@ -146,7 +146,7 @@ export async function getProjectIdForConnection(connectionId, accessToken, proxy
     const entry = { promise: null, controller, startedAt: Date.now(), subscribers: new Set(), settled: false };
     entry.promise = (async () => {
         try {
-            const projectId = await fetchProjectId(accessToken, controller.signal, proxyOptions);
+            const projectId = await fetchProjectId(accessToken, controller.signal, proxyOptions, provider);
             if (projectId && !controller.signal.aborted) {
                 projectIdCache.set(connectionId, {projectId, fetchedAt: Date.now()});
                 return projectId;
@@ -207,10 +207,13 @@ export function removeConnection(connectionId) {
  * @param {AbortSignal} signal
  * @returns {Promise<string|null>}
  */
-async function fetchProjectId(accessToken, signal, proxyOptions) {
+async function fetchProjectId(accessToken, signal, proxyOptions, provider = null) {
+    // Antigravity must not carry the Gemini CLI's Google-client fingerprints:
+    // the backend refuses to provision a project when it sees them.
+    const headers = provider === "antigravity" ? ANTIGRAVITY_LOAD_CODE_ASSIST_HEADERS : LOAD_CODE_ASSIST_HEADERS;
     const response = await proxyAwareFetch(CLOUD_CODE_API.loadCodeAssist, {
         method: "POST",
-        headers: { ...LOAD_CODE_ASSIST_HEADERS, "Authorization": `Bearer ${accessToken}` },
+        headers: { ...headers, "Authorization": `Bearer ${accessToken}` },
         body: JSON.stringify({ metadata: LOAD_CODE_ASSIST_METADATA }),
         signal
     }, proxyOptions);
@@ -242,7 +245,7 @@ async function fetchProjectId(accessToken, signal, proxyOptions) {
         }
     }
 
-    return onboardUser(accessToken, tierID, signal, proxyOptions);
+    return onboardUser(accessToken, tierID, signal, proxyOptions, provider);
 }
 
 /**
@@ -253,10 +256,12 @@ async function fetchProjectId(accessToken, signal, proxyOptions) {
  * @param {AbortSignal} externalSignal  – propagated from the connection's AbortController
  * @returns {Promise<string|null>}
  */
-async function onboardUser(accessToken, tierID, externalSignal, proxyOptions) {
+async function onboardUser(accessToken, tierID, externalSignal, proxyOptions, provider = null) {
     console.log(`[ProjectId] Onboarding user with tier: ${tierID}`);
 
     const reqBody = { tierId: tierID, metadata: LOAD_CODE_ASSIST_METADATA };
+    // Same fingerprint scoping as loadCodeAssist above.
+    const headers = provider === "antigravity" ? ANTIGRAVITY_LOAD_CODE_ASSIST_HEADERS : LOAD_CODE_ASSIST_HEADERS;
     const MAX_ATTEMPTS = 5;
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -272,7 +277,7 @@ async function onboardUser(accessToken, tierID, externalSignal, proxyOptions) {
         try {
             const response = await proxyAwareFetch(CLOUD_CODE_API.onboardUser, {
                 method: "POST",
-                headers: { ...LOAD_CODE_ASSIST_HEADERS, "Authorization": `Bearer ${accessToken}` },
+                headers: { ...headers, "Authorization": `Bearer ${accessToken}` },
                 body: JSON.stringify(reqBody),
                 signal: localCtrl.signal
             }, proxyOptions);

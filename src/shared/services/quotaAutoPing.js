@@ -9,6 +9,7 @@ import {
   getQuotaFetchState,
 } from "@/lib/localDb";
 import { getExecutor } from "open-sse/executors/index.js";
+import { getCodexModels } from "open-sse/services/usage/codex.js";
 import { CLAUDE_CLI_SPOOF_HEADERS } from "open-sse/providers/shared.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
@@ -30,7 +31,7 @@ const CLAUDE_PING_URL = "https://api.anthropic.com/v1/messages?beta=true";
 
 const providerHandlers = {
   claude: { sendPing: sendClaudePing },
-  codex: { sendPing: sendCodexPing },
+  codex: { sendPing: sendCodexPing, getModels: getCodexModels },
 };
 
 // Survive Next.js hot reload and keep one scheduler per server process.
@@ -208,10 +209,10 @@ async function cancelResponseBody(response, signal) {
   await awaitWithSignal(cancel.call(response.body, signal?.reason), signal);
 }
 
-async function sendCodexPing(connection, providerConfig, proxyOptions, deps, signal) {
+async function sendCodexPing(connection, providerConfig, model, proxyOptions, deps, signal) {
   const executor = deps.getExecutor("codex");
   const { response } = await executor.execute({
-    model: providerConfig.pingModel,
+    model,
     stream: true,
     credentials: {
       accessToken: connection.accessToken,
@@ -223,7 +224,7 @@ async function sendCodexPing(connection, providerConfig, proxyOptions, deps, sig
     signal,
     log: console,
     body: {
-      model: providerConfig.pingModel,
+      model,
       input: buildCodexPingInput(providerConfig.pingText),
       instructions: providerConfig.pingInstructions,
       reasoning: providerConfig.pingReasoningEffort
@@ -273,7 +274,13 @@ async function pingConnectionCore(conn, provider, providerConfig, handler, deps,
   const priorResetAt = priorSession?.timing?.resetAt || null;
   const preflight = await inspectProviderQuota([conn], {
     provider,
-    resourceKeys: buildQuotaResourceKeys({ provider, modelCandidates: [providerConfig.pingModel] }),
+    // Codex's model is not known yet (live catalog, resolved after reload), so
+    // scope this preflight to the provider's generic/session resources rather
+    // than a model we may not end up sending.
+    resourceKeys: buildQuotaResourceKeys({
+      provider,
+      modelCandidates: provider === "codex" ? [] : [providerConfig.pingModel],
+    }),
     now: nowBeforeRefresh,
     snapshotsLoader: async () => priorSnapshots,
     fetchStateLoader: deps.getQuotaFetchState
@@ -321,7 +328,12 @@ async function pingConnectionCore(conn, provider, providerConfig, handler, deps,
   if (providerConfig.pingWhenResetAtSlides && !resetAt) return;
 
   const now = Date.now();
-  if (hasBlockingLongWindow(
+  // Codex's ping model comes from the account's live catalog, which is only
+  // resolved after the connection reload below. Skip the model-scoped window
+  // check here rather than evaluating it against a model we may not send —
+  // it runs once, with the real model, before dispatch
+  // (decolua/9router#3213, issue #3212).
+  if (provider !== "codex" && hasBlockingLongWindow(
     snapshots,
     conn.id,
     provider,
@@ -427,15 +439,41 @@ async function pingConnectionCore(conn, provider, providerConfig, handler, deps,
       || !shouldPingForReset(providerConfig, priorResetAt, finalResetAt, finalNow)
     ) return;
   } else if (!shouldPingForReset(providerConfig, priorResetAt, triggerResetAt, finalNow)) return;
+  // Codex plans do not all expose the same models, so a fixed ping model fails
+  // outright on some accounts. Take the account's own preferred model from the
+  // live catalog, and skip rather than guess when it returns nothing.
+  //
+  // Resolved BEFORE the blocking-window check: that check keys quota resources
+  // by model, so evaluating it against a stale default while pinging a
+  // different model would consult the wrong window entirely.
+  let pingModel = providerConfig.pingModel;
+  if (provider === "codex" && typeof handler.getModels === "function") {
+    const catalog = await handler.getModels(
+      latestConnection.accessToken,
+      proxyOptions,
+      latestConnection.providerSpecificData,
+      latestConnection.idToken,
+    );
+    signal.throwIfAborted();
+    pingModel = catalog?.[0]?.slug;
+    if (!pingModel) {
+      state.pingFailureUntil[key] = Date.now() + C.failureCooldownMs;
+      console.warn(`[AutoPing] ${provider}:${conn.id}: no supported model available`);
+      return;
+    }
+  }
+
   if (hasBlockingLongWindow(
     finalSnapshots,
     conn.id,
     provider,
-    providerConfig.pingModel,
+    pingModel,
     finalNow,
   )) return;
 
-  const ok = await handler.sendPing(latestConnection, providerConfig, proxyOptions, deps, signal);
+  const ok = provider === "codex"
+    ? await handler.sendPing(latestConnection, providerConfig, pingModel, proxyOptions, deps, signal)
+    : await handler.sendPing(latestConnection, providerConfig, proxyOptions, deps, signal);
   signal.throwIfAborted();
   if (!ok) {
     // Do not mark reset as pinged unless upstream accepted the tiny request.

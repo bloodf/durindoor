@@ -84,8 +84,9 @@ export const QUOTA_AUTOPING_CONFIG = {
       resetAtDriftMs: 30000,
       minPingIntervalMs: 600000,
       skipWhenBlockingQuotaExhausted: true,
-      // Free and Plus Codex accounts both expose gpt-5.5; avoid fallback probes that waste requests.
-      pingModel: "gpt-5.5",
+      // No fixed ping model: Codex plans expose different catalogs, so the
+      // model is read from each account's live catalog at ping time
+      // (decolua/9router#3213, issue #3212).
       pingText: "hi",
       pingInstructions: "Reply with OK.",
       pingReasoningEffort: "none",

@@ -17,7 +17,7 @@ import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
 import { resolveClinepassModels } from "open-sse/services/clinepassModels.js";
-import { aggregateComboCapabilities, capabilitiesFromServiceKind, getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
+import { aggregateComboCapabilities, capabilitiesFromServiceKind, getCapabilitiesForModel, resolveModelLimits } from "open-sse/providers/capabilities.js";
 import { isPaidModel } from "open-sse/providers/pricing.js";
 import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
@@ -546,6 +546,20 @@ async function buildModelsListImpl(kindFilter, guard) {
     aliasToProviderId[providerId] = providerId;
   }
 
+  const attachModelLimits = (model, providerId, modelId, explicitCaps = {}) => {
+    // #3218: expose proven limits in OpenAI's flat model schema. Generic
+    // default capabilities are not evidence of a provider guarantee.
+    const positive = (value) => Number.isFinite(value) && value > 0;
+    let contextWindow = explicitCaps.contextWindow;
+    let maxOutput = explicitCaps.maxOutput;
+    const fallback = resolveModelLimits(providerId, modelId);
+    if (!positive(contextWindow) && fallback.known) contextWindow = fallback.contextWindow;
+    if (!positive(maxOutput) && fallback.known) maxOutput = fallback.maxOutput;
+    if (positive(contextWindow)) model.context_length = contextWindow;
+    if (positive(maxOutput)) model.max_completion_tokens = maxOutput;
+    return model;
+  };
+
   const addStaticProviderModels = (providerId, alias, { hasCredentials = false } = {}) => {
     if (!providerMatchesKinds(providerId, kindFilter)) return;
     for (const model of PROVIDER_MODELS[alias] ?? []) {
@@ -554,12 +568,17 @@ async function buildModelsListImpl(kindFilter, guard) {
       if (isDisabled(alias, model.id)) continue;
       // #6495 / F-4: drop paid static/keyless provider models when on.
       if (hidePaidModels && isPaidModel(`${alias}/${model.id}`)) continue;
-      models.push({
+      const caps = getCapabilitiesForModel(providerId, model.id);
+      const entry = {
         id: `${alias}/${model.id}`,
         object: "model",
         owned_by: alias,
-        capabilities: getCapabilitiesForModel(providerId, model.id),
-      });
+        capabilities: caps,
+      };
+      if (modelKind(model) === LLM_KIND) {
+        attachModelLimits(entry, providerId, model.id, caps);
+      }
+      models.push(entry);
     }
   };
 
@@ -638,12 +657,15 @@ async function buildModelsListImpl(kindFilter, guard) {
       const providerId = providerAlias; // used for static fallback only
       const staticCaps = getCapabilitiesForModel(providerId, modelId);
       const customCaps = isRecord(customModel.capabilities) ? customModel.capabilities : {};
-      models.push({
+      const mergedCaps = { ...staticCaps, ...customCaps };
+      const entry = {
         id: `${providerAlias}/${modelId}`,
         object: "model",
         owned_by: providerAlias,
-        capabilities: { ...staticCaps, ...customCaps },
-      });
+        capabilities: mergedCaps,
+      };
+      attachModelLimits(entry, providerId, modelId, customCaps);
+      models.push(entry);
     }
   } else {
     const providerResults = await Promise.all(
@@ -841,11 +863,14 @@ async function buildModelsListImpl(kindFilter, guard) {
           // modal + combo filters.
           if (hidePaidModels && isPaidModel(`${outputAlias}/${modelId}`)) continue;
 
-          const caps = {
-            ...getCapabilitiesForModel(providerId, modelId),
+          const explicitCaps = {
             ...(capabilitiesFromServiceKind(customKind || liveKind) || {}),
             ...(liveCapabilitiesById.get(modelId) || {}),
             ...(customCapabilitiesById.get(modelId) || {}),
+          };
+          const caps = {
+            ...getCapabilitiesForModel(providerId, modelId),
+            ...explicitCaps,
           };
           const model = {
             id: `${outputAlias}/${modelId}`,
@@ -853,6 +878,9 @@ async function buildModelsListImpl(kindFilter, guard) {
             owned_by: outputAlias,
             capabilities: caps,
           };
+          if (kind === LLM_KIND || allowAsLlm) {
+            attachModelLimits(model, providerId, modelId, explicitCaps);
+          }
           perProviderModels.push(model);
         }
 

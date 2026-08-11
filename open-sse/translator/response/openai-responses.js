@@ -305,6 +305,16 @@ function closeMessage(state, emit, idx) {
     });
   }
 }
+function splitToolName(state, name) {
+  const namespace = state.toolNamespaces?.[name];
+  if (!namespace) return { name };
+  const prefix = `${namespace}.`;
+  return {
+    name: name.startsWith(prefix) ? name.slice(prefix.length) : name,
+    namespace
+  };
+}
+
 
 function emitToolCall(state, emit, tc) {
   const tcIdx = tc.index ?? 0;
@@ -347,7 +357,7 @@ function emitToolCall(state, emit, tc) {
             type: RESPONSES_ITEM.FUNCTION_CALL,
             arguments: "",
             call_id: refCallId,
-            name: refName,
+            ...splitToolName(state, refName),
             status: "in_progress"
           }
     });
@@ -457,7 +467,7 @@ function closeToolCall(state, emit, idx) {
           type: RESPONSES_ITEM.FUNCTION_CALL,
           arguments: args,
           call_id: callId,
-          name: state.funcNames[idx] || "",
+          ...splitToolName(state, state.funcNames[idx] || ""),
           status: "completed"
         }
       });

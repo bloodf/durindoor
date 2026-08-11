@@ -1,3 +1,17 @@
+# 3.11.0
+
+Model catalog corrections, real context-limit enforcement, and the 2026-08-09 upstream/OmniRoute port window.
+
+## What's included
+- **Context limits are enforced, not guessed** — `resolveModelLimits(provider, model)` reports whether a limit is actually known and where it came from. A registry row counts as evidence only when it declares a positive context window, so capability-only rows no longer republish the generic 200k floor as a provider guarantee. Over-budget requests are rejected at ingress with exact token accounting instead of failing upstream, and `/v1/models` publishes limits only for models that genuinely have them.
+- **Model catalog fixes** — Kiro agentic Claude variants gained their missing capability rows, and verified 1M-context corrections landed for the models that actually support it.
+- **Upstream and OmniRoute ports** — the 2026-08-09 window, including a loopback-only fix for `/api/pxpipe/*`, Ollama Cloud usage reporting with a background OAuth refresh scheduler, Gemini 3.6 Flash registry entries plus quota bars, and translator/executor corrections.
+- **Codex fixes** — the CAVEMAN system-prompt injector no longer sends a Responses-only content part to chat providers; auto-ping picks its model from the account's live catalog rather than a hardcoded `gpt-5.5`; and the plan badge prefers the live plan with stored OAuth metadata as fallback.
+
+## Compatibility and verification
+- Existing API-key formats and accepted 9router wire forms remain compatible; no destructive migration is included.
+- Full Vitest/no-regression, lint, production build, generated-index, documentation-integrity, and commitlint gates passed. Per-workstream verdicts live under `docs/campaigns/`.
+
 # 3.10.0
 
 Upstream and OmniRoute sync release adding provider, authentication, quota, and translation capabilities verified against the 2026-07-25 through 2026-08-04 source window.

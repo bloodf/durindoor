@@ -100,6 +100,7 @@ For developers working on the DurinDoor codebase, provider registry, or document
 - [Upstream #3218 Model Limits Port Ledger](campaigns/upstream-3218-model-limits-ledger.md)
 - [Upstream #3220 Body Timeout Ledger](campaigns/upstream-3220-body-timeout-ledger.md)
 - [Upstream #3222 Client-Facing Terminal Tracker Ledger](campaigns/upstream-3222-client-terminal-ledger.md)
+- [Upstream #3231 Qoder cmodel Ledger](campaigns/upstream-3231-qoder-cmodel-ledger.md)
 - [tests/README.md](../tests/README.md)
 - [Upstream #3223 Antigravity Prompt Ledger](campaigns/upstream-3223-antigravity-prompt-ledger.md)
 - [Upstream #3168 iFlow Auth Ledger](campaigns/upstream-3168-iflow-auth-ledger.md)

@@ -784,15 +784,24 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     }
   };
 
+  // Set once buildOnStreamComplete runs (streaming path only); lets the
+  // disconnect/error callbacks below — defined before that call exists —
+  // finalize the placeholder detail row on interrupted streams. buildOnStreamComplete's
+  // internal `completed` guard makes this mutually exclusive with onStreamComplete,
+  // so a completion racing a disconnect can never double-write the row.
+  let abandonStreamingDetail = null;
+
   const streamController = createStreamController({
     onDisconnect: (reason) => {
       finishProviderRequest();
       settleQuota(false, "stream_cancel");
+      abandonStreamingDetail?.(typeof reason?.reason === "string" ? reason.reason : "client_disconnected");
       if (onDisconnect) onDisconnect(reason);
     },
     onError: (error) => {
       finishProviderRequest();
       settleQuota(false, classifyQuotaTerminalReason(error));
+      abandonStreamingDetail?.(error?.message === "stream stall timeout" ? "stall_timeout" : "stream_error");
     },
     onComplete: () => {
       finishProviderRequest();
@@ -1299,7 +1308,8 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   }
 
   // Streaming response
-  const { onStreamComplete, onCoherentTerminal, streamDetailId } = buildOnStreamComplete({ ...sharedCtx });
+  const { onStreamComplete, onCoherentTerminal, onStreamAbandoned, streamDetailId } = buildOnStreamComplete({ ...sharedCtx });
+  abandonStreamingDetail = onStreamAbandoned;
   try {
     const result = await handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, streamController, onStreamComplete, onCoherentTerminal, streamDetailId, signal: providerSignal });
     if (!result?.success) await settleQuota(false, "stream_error");

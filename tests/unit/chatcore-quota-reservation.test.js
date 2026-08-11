@@ -364,7 +364,9 @@ describe("chatCore quota reservation boundary", () => {
       const pending = handleChatCore(args(quota));
       await vi.advanceTimersByTimeAsync(PROVIDER_BODY_TIMEOUT_MS + 1);
       const result = await pending;
-      expect(result.status).toBe(502);
+      // #3220: a hung upstream body is a gateway timeout, not a malformed
+      // terminal. Previously indistinguishable from a truncated body (502).
+      expect(result.status).toBe(504);
       await vi.waitFor(() => expect(quota.settle).toHaveBeenCalledWith({ success: false, reason: "timeout" }));
       expect(quota.settle).toHaveBeenCalledTimes(1);
     } finally {

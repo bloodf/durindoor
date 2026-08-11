@@ -103,6 +103,20 @@ describe("chat upstream body lifecycle", () => {
     expect(trackDone).toHaveBeenCalledOnce();
   });
 
+  it("times out a hung forced-SSE body as a gateway timeout", async () => {
+    const trackDone = vi.fn();
+    const success = vi.fn();
+    const deferred = deferredResponse("text/event-stream");
+    const result = await handleForcedSSEToJson({
+      ...common(trackDone, success),
+      providerResponse: deferred.response,
+      responseBodyTimeoutMs: 1,
+    });
+    expect(result.status).toBe(504);
+    expect(success).not.toHaveBeenCalled();
+    expect(trackDone).toHaveBeenCalledOnce();
+  });
+
   it("holds non-streaming concurrency until JSON consumption finishes", async () => {
     const trackDone = vi.fn();
     const deferred = deferredResponse("application/json");
@@ -144,6 +158,21 @@ describe("chat upstream body lifecycle", () => {
     controller.abort();
     const result = await pending;
     expect(result.status).toBe(499);
+    expect(trackDone).toHaveBeenCalledOnce();
+  });
+
+  it("times out a hung non-streaming body as a gateway timeout", async () => {
+    const trackDone = vi.fn();
+    const deferred = deferredResponse("application/json");
+    const result = await handleNonStreamingResponse({
+      ...common(trackDone),
+      stream: false,
+      streamToClient: false,
+      providerResponse: deferred.response,
+      responseBodyTimeoutMs: 1,
+      reqLogger: { logProviderResponse: vi.fn(), logConvertedResponse: vi.fn() },
+    });
+    expect(result.status).toBe(504);
     expect(trackDone).toHaveBeenCalledOnce();
   });
 

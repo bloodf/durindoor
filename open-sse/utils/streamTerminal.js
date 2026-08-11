@@ -1,5 +1,6 @@
 import { FORMATS } from "../translator/formats.js";
 import { GEMINI_ERROR_FINISH_REASONS } from "../translator/schema/finishReasons.js";
+import { buildAbortedResponsesTerminalBytes } from "./responsesStreamHelpers.js";
 
 const RESPONSES_SUCCESS_EVENTS = new Set([
   "response.completed",
@@ -284,4 +285,46 @@ export function isCoherentNonStreamingResponse(chunk, format = FORMATS.OPENAI) {
   if (format === FORMATS.OLLAMA) return chunk.done === true;
 
   return isCoherentOpenAICompletion(chunk);
+}
+
+/**
+ * Track terminal events emitted to the client. This intentionally stays
+ * separate from createUpstreamTerminalTracker, which observes raw provider
+ * frames for account-health accounting.
+ */
+const clientTerminalEncoder = new TextEncoder();
+
+export function createTerminalTracker(format) {
+  if (![FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, FORMATS.CLAUDE].includes(format)) return null;
+  let terminated = false;
+
+  return {
+    observeClientFrame(frame) {
+      if (terminated || !frame) return;
+      if (format === FORMATS.OPENAI) {
+        terminated = /^data: \[DONE\]/m.test(frame)
+          || /"finish_reason"\s*:\s*"[^"\n]+"/.test(frame)
+          || /"error"\s*:\s*\{/.test(frame);
+      } else if (format === FORMATS.CLAUDE) {
+        terminated = /^event: (message_stop|error)/m.test(frame)
+          || frame.includes('"type":"message_stop"')
+          || frame.includes('"type":"error"');
+      } else {
+        terminated = /^event: (response\.(completed|done|incomplete|failed|cancelled|canceled)|error)/m.test(frame)
+          || /^data: \[DONE\]/m.test(frame)
+          || frame.includes('"type":"error"');
+      }
+    },
+    buildRecoveryBytes() {
+      if (terminated) return null;
+      terminated = true;
+      if (format === FORMATS.OPENAI) {
+        return clientTerminalEncoder.encode('data: {"error":{"type":"stream_error","message":"upstream_stream_incomplete","code":"stream_disconnected"}}\n\ndata: [DONE]\n\n');
+      }
+      if (format === FORMATS.CLAUDE) {
+        return clientTerminalEncoder.encode('event: error\ndata: {"type":"error","error":{"type":"stream_error","message":"Upstream stream ended before completing"}}\n\n');
+      }
+      return buildAbortedResponsesTerminalBytes();
+    },
+  };
 }

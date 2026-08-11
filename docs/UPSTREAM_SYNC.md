@@ -20,6 +20,12 @@ Unmerged changes stay on the watch list; do not port them until their final merg
 | [#3012](https://github.com/decolua/9router/pull/3012) | `fix(cooldown): honour provider-reported quota reset times instead of re-probing spent accounts` | Overlaps DurinDoor quota cooldown policy. | After merge, compare with `open-sse/services/quota/` normalization and cooldown scheduling. |
 | [#2997](https://github.com/decolua/9router/pull/2997) | `fix(proxyFetch): add undici connection pooling to prevent connection exhaustion` | Potential throughput and connection-pressure improvement for `proxyFetch`. | After merge, require a load test before adoption. |
 
+Full open-PR inventories for the 2026-08-11 review are recorded in
+[`docs/campaigns/upstream-9router-open-pr-audit-2026-08-11.md`](campaigns/upstream-9router-open-pr-audit-2026-08-11.md)
+and [`docs/campaigns/upstream-omniroute-2026-08-11-audit.md`](campaigns/upstream-omniroute-2026-08-11-audit.md).
+Rows classified ACTIVE-EVALUATION already have an open DurinDoor PR; every other
+row stays watchlisted under the rule above.
+
 ## Deferred upstream commits
 
 Reviewed in the 2026-08-09 window and deliberately NOT ported. Each carries the

@@ -80,6 +80,7 @@ For developers working on the DurinDoor codebase, provider registry, or document
 - [Upstream #3172 Reader Cleanup Ledger](campaigns/upstream-3172-ledger.md)
 - [Upstream #3169 Executor State Ledger](campaigns/upstream-3169-executor-state-ledger.md)
 - [Upstream #3170 Credential Isolation Ledger](campaigns/upstream-port-3170-credential-isolation-ledger.md)
+- [Upstream #3236 Empty Tool Calls Ledger](campaigns/upstream-3236-empty-tool-calls-ledger.md)
 - [tests/README.md](../tests/README.md)
 - [Upstream #3223 Antigravity Prompt Ledger](campaigns/upstream-3223-antigravity-prompt-ledger.md)
 - [Upstream #3168 iFlow Auth Ledger](campaigns/upstream-3168-iflow-auth-ledger.md)

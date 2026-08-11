@@ -286,6 +286,8 @@ export class DefaultExecutor extends BaseExecutor {
     this.config?.clampRequestBody?.(body);
     applyGlmtModelAlias(this.provider, model, body);
     const transformed = this.applyJsonSchemaFallback(body);
+    const transportFormat = credentials?.runtimeTransport?.format?.replace(/-apikey$/, "") || this.config.format;
+
 
     if (transformed && typeof transformed === "object") {
       // The official OpenAI transport is force-streamed even for JSON clients.
@@ -308,8 +310,10 @@ export class DefaultExecutor extends BaseExecutor {
       this.defaultResponsesTextFormat(transformed);
       // Ask OpenAI-compatible upstreams to include usage in the final stream
       // chunk so /v1 streaming requests record real token counts instead of
-      // IN 0 · OUT 0 (decolua/9router#3081, port of #3017 fix).
-      if (stream === true && transformed.messages && !transformed.stream_options) {
+      // IN 0 · OUT 0 (decolua/9router#3081, port of #3017 fix). Use the resolved
+      // runtime transport: multi-endpoint providers may select Claude even when
+      // their registry default is OpenAI, and Anthropic rejects stream_options.
+      if (transportFormat === "openai" && stream === true && transformed.messages && !transformed.stream_options) {
         transformed.stream_options = { include_usage: true };
       }
       if (this.provider === "openai") {

@@ -216,15 +216,21 @@ function ensureGeminiOutputFloor(body, floor, caps) {
 
 // Strip every known thinking field from a body (used before re-applying / when unsupported).
 function stripAll(body) {
-  delete body.thinking;
-  delete body.reasoning_effort;
-  delete body.reasoning;
-  delete body.thinkingConfig;
-  delete body.enable_thinking;
-  delete body.thinking_budget;
-  delete body.output_config;
-  if (body.generationConfig) delete body.generationConfig.thinkingConfig;
-  if (body.request?.generationConfig) delete body.request.generationConfig.thinkingConfig;
+  const targets = [body];
+  if (body.params && typeof body.params === "object" && Array.isArray(body.params.messages)) {
+    targets.push(body.params);
+  }
+  for (const target of targets) {
+    delete target.thinking;
+    delete target.reasoning_effort;
+    delete target.reasoning;
+    delete target.thinkingConfig;
+    delete target.enable_thinking;
+    delete target.thinking_budget;
+    delete target.output_config;
+    if (target.generationConfig) delete target.generationConfig.thinkingConfig;
+    if (target.request?.generationConfig) delete target.request.generationConfig.thinkingConfig;
+  }
 }
 
 // Map requested OpenAI effort to a level the model accepts.
@@ -255,6 +261,15 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null) {
       const level = toLevel(eff);
       // Config-driven: preserve supported effort; nearest sibling otherwise.
       if (level) body.reasoning_effort = resolveOpenAiEffort(level, provider, model);
+      break;
+    }
+    case "commandcode": {
+      const level = toLevel(eff);
+      const levels = getThinkingLevels(provider, model);
+      if (level && levels?.includes(level)) {
+        const params = body.params && typeof body.params === "object" ? body.params : body;
+        params.reasoning_effort = level;
+      }
       break;
     }
     case "claude-adaptive": {

@@ -49,7 +49,7 @@ export const DEFAULT_CAPABILITIES = {
   tools: true,          // function / tool calling
   reasoning: false,     // thinking / reasoning
   // thinking wire format (only meaningful when reasoning:true). null → derive from transport.format.
-  // enum: openai|claude-adaptive|claude-budget|gemini-level|gemini-budget|zai|qwen|deepseek|kimi|minimax|hunyuan|step|kiro
+  // enum: openai|commandcode|claude-adaptive|claude-budget|gemini-level|gemini-budget|zai|qwen|deepseek|kimi|minimax|hunyuan|step|kiro
   thinkingFormat: null,
   thinkingCanDisable: true,  // false → model cannot turn thinking off (clamp to min instead of disable)
   thinkingRange: null,       // { min, max } for budget formats; null = no clamp
@@ -197,6 +197,14 @@ export const PROVIDER_CAPABILITIES = {
   openai: DIRECT_GPT_5_5_6_CAPS,
   codex: CODEX_GPT_5_6_CAPS,
   cx: CODEX_GPT_5_6_CAPS,
+  commandcode: {
+    "meta/muse-spark-1.2-contributor": {
+      reasoning: true,
+      thinkingFormat: "commandcode",
+      thinkingCanDisable: false,
+      maxOutput: 32768,
+    },
+  },
   // Native MiniMax endpoints serve the full 1M M3 window (see MINIMAX_M3_NATIVE_CAPS).
   minimax: MINIMAX_M3_NATIVE_CAPS,
   "minimax-cn": MINIMAX_M3_NATIVE_CAPS,

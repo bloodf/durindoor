@@ -10,6 +10,8 @@
 
 import { describe, it, expect } from "vitest";
 import { openaiToCommandCodeRequest } from "../../open-sse/translator/request/openai-to-commandcode.js";
+import { applyThinking } from "../../open-sse/translator/concerns/thinkingUnified.js";
+import { FORMATS } from "../../open-sse/translator/formats.js";
 
 const MODEL = "moonshotai/Kimi-K2.6";
 
@@ -177,5 +179,43 @@ describe("openaiToCommandCodeRequest — tools schema conversion", () => {
       messages: [{ role: "user", content: "hi" }],
     }, true);
     expect(out.params.tools).toBeUndefined();
+  });
+});
+
+describe("openaiToCommandCodeRequest — Muse reasoning", () => {
+  const MUSE = "meta/muse-spark-1.2-contributor";
+  const request = () => openaiToCommandCodeRequest(MUSE, {
+    messages: [{ role: "user", content: "hi" }],
+  }, true);
+
+  it("places supported reasoning effort in the alpha params envelope", () => {
+    const out = request();
+    applyThinking(FORMATS.COMMANDCODE, MUSE, out, "commandcode", { mode: "level", level: "high" });
+
+    expect(out.params.reasoning_effort).toBe("high");
+  });
+
+  it("does not write unsupported reasoning levels to alpha params", () => {
+    const out = request();
+    applyThinking(FORMATS.COMMANDCODE, MUSE, out, "commandcode", { mode: "level", level: "minimal" });
+
+    expect(out.params.reasoning_effort).toBeUndefined();
+  });
+
+  it("strips a recognized thinking suffix from the outgoing model id", () => {
+    const out = openaiToCommandCodeRequest(`${MUSE}(high)`, {
+      messages: [{ role: "user", content: "hi" }],
+    }, true);
+
+    expect(out.params.model).toBe(MUSE);
+  });
+
+  it("clamps Muse output tokens to its provider capability", () => {
+    const out = openaiToCommandCodeRequest(MUSE, {
+      messages: [{ role: "user", content: "hi" }],
+      max_tokens: 64000,
+    }, true);
+
+    expect(out.params.max_tokens).toBe(32768);
   });
 });

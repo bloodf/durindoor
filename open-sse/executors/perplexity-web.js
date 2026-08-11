@@ -89,6 +89,21 @@ function cleanResponse(text, strip = true) {
   return t;
 }
 
+async function cancelAndReleaseReader(reader) {
+  let timer = null;
+  try {
+    const cancellation = Promise.resolve(reader.cancel()).catch(() => {});
+    await Promise.race([
+      cancellation,
+      new Promise((resolve) => { timer = setTimeout(resolve, 250); }),
+    ]);
+  } catch { /* cancellation is best-effort */ }
+  finally {
+    clearTimeout(timer);
+    try { reader.releaseLock(); } catch { /* already released */ }
+  }
+}
+
 async function* readPplxSseEvents(body, signal) {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -131,7 +146,7 @@ async function* readPplxSseEvents(body, signal) {
     const tail = flush();
     if (tail && tail !== "done") yield tail;
   } finally {
-    reader.releaseLock();
+    await cancelAndReleaseReader(reader);
   }
 }
 

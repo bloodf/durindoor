@@ -147,6 +147,9 @@ function getCodexRateLimitBody(snapshot) {
     : snapshot;
 }
 
+/**
+ * Normalizes one Codex quota window, preserving its finite duration in seconds.
+ */
 function formatCodexWindow(window) {
   const used = Math.max(0, Math.min(100, toFiniteNumber(window?.used_percent ?? window?.percent_used, 0)));
   return {
@@ -154,6 +157,7 @@ function formatCodexWindow(window) {
     total: 100,
     remaining: Math.max(0, 100 - used),
     resetAt: parseResetTime(window?.reset_at ?? window?.resets_at ?? window?.resetAt ?? null),
+    windowSeconds: toFiniteNumber(window?.limit_window_seconds, null),
     unlimited: false,
   };
 }

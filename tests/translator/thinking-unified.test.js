@@ -1,6 +1,7 @@
 // Unit tests for unified thinking normalization (thinkingUnified.js).
 // Covers extract, suffix parse, and per-provider apply per MATRIX (.docs/thinking/plan.md).
 import { describe, it, expect } from "vitest";
+import "./registerAll.js";
 import {
   parseSuffix,
   extractThinking,
@@ -86,6 +87,16 @@ describe("applyThinking per provider format", () => {
     const out = apply("claude", "claude-opus-4.8", { reasoning_effort: "high" }, "claude");
     expect(out.output_config).toEqual({ effort: "high" });
     expect(out.thinking).toEqual({ type: "adaptive", display: "summarized" });
+  });
+  it("claude adaptive maps auto/minimal/xhigh into its accepted effort enum", () => {
+    for (const [requested, expected] of [
+      ["auto", "high"],
+      ["minimal", "low"],
+      ["xhigh", "high"],
+    ]) {
+      const out = apply("claude", "claude-opus-4.8", { reasoning_effort: requested }, "claude");
+      expect(out.output_config.effort, requested).toBe(expected);
+    }
   });
   it("claude haiku → enabled+budget", () => {
     const out = apply("claude", "claude-haiku-4.5", { reasoning_effort: "high" }, "claude");

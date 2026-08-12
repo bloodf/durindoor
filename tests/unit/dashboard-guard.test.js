@@ -15,13 +15,19 @@ const mocks = vi.hoisted(() => ({
   verifyDashboardAuthToken: vi.fn(),
 }));
 
-vi.mock("next/server", () => ({
-  NextResponse: {
-    next: vi.fn(() => mocks.nextResponse),
-    json: mocks.jsonResponse,
-    redirect: vi.fn((url) => ({ status: 307, url })),
-  },
-}));
+vi.mock("next/server", () => {
+  class MockNextResponse {
+    constructor(body, init) {
+      this.status = init?.status || 200;
+      this.body = body;
+      this.headers = new Headers(init?.headers);
+    }
+  }
+  MockNextResponse.next = vi.fn(() => mocks.nextResponse);
+  MockNextResponse.json = mocks.jsonResponse;
+  MockNextResponse.redirect = vi.fn((url) => ({ status: 307, url }));
+  return { NextResponse: MockNextResponse };
+});
 
 vi.mock("@/lib/localDb", () => ({
   getSettings: mocks.getSettings,
@@ -63,6 +69,26 @@ describe("dashboard guard public LLM API access", () => {
 
     expect(response).toBe(mocks.nextResponse);
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("allows only OPTIONS preflight through remote public LLM auth", async () => {
+    const headers = {
+      host: "router.example.com",
+      "access-control-request-headers": "authorization, content-type",
+    };
+
+    const preflight = await proxy(request("/v1/chat/completions", headers, "OPTIONS"));
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("access-control-allow-origin")).toBe("*");
+    expect(preflight.headers.get("access-control-allow-methods")).toBe("GET, POST, OPTIONS");
+    expect(preflight.headers.get("access-control-allow-headers")).toBe("authorization, content-type");
+    expect(preflight.headers.get("access-control-max-age")).toBe("86400");
+
+    for (const method of ["GET", "POST"]) {
+      const response = await proxy(request("/v1/chat/completions", headers, method));
+      expect(response.status).toBe(401);
+      expect(response.body.error).toBe("API key required for remote API access");
+    }
   });
 
   it("rejects remote Host-spoof when real peer IP is non-loopback", async () => {

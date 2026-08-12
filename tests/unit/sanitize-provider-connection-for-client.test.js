@@ -66,6 +66,30 @@ describe("sanitizeProviderConnectionForClient", () => {
     expect(out.name).toMatch(/^aaaaaaaa\*\*\*$/);
   });
 
+  it.each([
+    ["null", null],
+    ["undefined", undefined],
+  ])("does not fabricate active for %s testStatus", (_label, testStatus) => {
+    const out = sanitizeProviderConnectionForClient({
+      id: "unknown-status",
+      provider: "kiro",
+      testStatus,
+    });
+
+    expect(out.testStatus).toBe(testStatus);
+    expect(out.testStatus).not.toBe("active");
+  });
+
+  it("passes through unknown future testStatus values", () => {
+    const out = sanitizeProviderConnectionForClient({
+      id: "future-status",
+      provider: "kiro",
+      testStatus: "degraded",
+    });
+
+    expect(out.testStatus).toBe("degraded");
+  });
+
   it("reports expired cooldowns active while preserving live cooldown status", () => {
     const expired = sanitizeProviderConnectionForClient({
       id: "expired",

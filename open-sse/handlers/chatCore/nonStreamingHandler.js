@@ -1,5 +1,4 @@
 import { FORMATS } from "../../translator/formats.js";
-import { needsTranslation } from "../../translator/index.js";
 import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.js";
 import { unwrapClinepassEnvelope } from "../../utils/clinepassEnvelope.js";
 import { addBufferToUsage, claudeUsageToOpenAI, filterUsageForFormat } from "../../utils/usageTracking.js";
@@ -176,7 +175,19 @@ function openAICompletionToClientSSE(responseBody, fallbackModel, sourceFormat) 
  * handles non-streaming JSON bodies.
  */
 export function translateNonStreamingResponse(responseBody, targetFormat, sourceFormat, options = {}) {
-  if (targetFormat === sourceFormat) return responseBody;
+  /** Normalize NVIDIA/vLLM's OpenAI reasoning alias on same-format passthrough. */
+  if (targetFormat === sourceFormat) {
+    if (targetFormat === FORMATS.OPENAI) {
+      for (const choice of responseBody?.choices || []) {
+        const message = choice?.message;
+        if (typeof message?.reasoning === "string" && !message.reasoning_content) {
+          message.reasoning_content = message.reasoning;
+          delete message.reasoning;
+        }
+      }
+    }
+    return responseBody;
+  }
 
   // When the client spoke Claude but the upstream spoke OpenAI (e.g. gpt-5.5-9router
   // routes to an OpenAI-format provider), convert the OpenAI body to Anthropic
@@ -414,9 +425,12 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime } }));
 
   const claudeCompat = shouldEnableClaudeCompat(claudeClassifierCompat, sourceFormat, body);
-  let translatedResponse = needsTranslation(targetFormat, sourceFormat)
-    ? translateNonStreamingResponse(responseBody, targetFormat, sourceFormat, { claudeCompat, model })
-    : responseBody;
+  let translatedResponse = translateNonStreamingResponse(
+    responseBody,
+    targetFormat,
+    sourceFormat,
+    { claudeCompat, model },
+  );
 
   /**
    * Provider translators normalize non-Claude JSON to an OpenAI completion.

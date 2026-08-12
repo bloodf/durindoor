@@ -5,7 +5,7 @@
 // `event: content_block_delta` etc. See review PRRT_kwDOTM9Pps6OxECd.
 import { describe, expect, it, vi } from "vitest";
 import "../translator/registerAll.js";
-import { handleNonStreamingResponse } from "../../open-sse/handlers/chatCore/nonStreamingHandler.js";
+import { handleNonStreamingResponse, translateNonStreamingResponse } from "../../open-sse/handlers/chatCore/nonStreamingHandler.js";
 import { handleForcedSSEToJson } from "../../open-sse/handlers/chatCore/sseToJsonHandler.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 import { getDefaultModel } from "../../open-sse/config/providerModels.js";
@@ -377,6 +377,18 @@ describe("handleNonStreamingResponse: synthetic SSE respects client format", () 
     } finally {
       normalizeResponse.mockRestore();
     }
+  });
+
+  it("normalizes NVIDIA message.reasoning on OpenAI passthrough", () => {
+    const body = {
+      choices: [{ message: { role: "assistant", content: "42", reasoning: "think step by step" }, finish_reason: "stop" }],
+    };
+
+    expect(translateNonStreamingResponse(body, FORMATS.OPENAI, FORMATS.OPENAI).choices[0].message).toEqual({
+      role: "assistant",
+      content: "42",
+      reasoning_content: "think step by step",
+    });
   });
 
   it("synthesizes extracted reasoning into SSE exactly once", async () => {

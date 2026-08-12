@@ -803,9 +803,10 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   let abandonStreamingDetail = null;
 
   const streamController = createStreamController({
+    externalSignal: abortSignal,
     onDisconnect: (reason) => {
       finishProviderRequest();
-      settleQuota(false, "stream_cancel");
+      settleQuota(false, abortSignal?.aborted ? "abort" : "stream_cancel");
       abandonStreamingDetail?.(typeof reason?.reason === "string" ? reason.reason : "client_disconnected");
       if (onDisconnect) onDisconnect(reason);
     },

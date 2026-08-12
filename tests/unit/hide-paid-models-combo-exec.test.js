@@ -44,10 +44,11 @@ describe("getComboModels hidePaidModels wiring", () => {
     mocks.getProviderConnections.mockResolvedValue([]);
   });
 
-  it("returns null for non-combo / provider-slash input regardless of toggle", async () => {
+  it("returns null for a provider/model input regardless of toggle", async () => {
+    mocks.getComboByName.mockResolvedValue(null);
     const getComboModels = await loadGetComboModels();
     expect(await getComboModels("anthropic/claude-sonnet-5", true)).toBe(null);
-    expect(mocks.getComboByName).not.toHaveBeenCalled();
+    expect(mocks.getComboByName).toHaveBeenCalledExactlyOnceWith("anthropic/claude-sonnet-5");
   });
 
   it("returns null when the name is not a combo", async () => {

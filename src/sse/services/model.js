@@ -1,7 +1,7 @@
 import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 
 import { parseSuffix } from "open-sse/translator/concerns/thinkingSuffix.js";
-import { PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
+import { isValidModel, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
 
 export function resolveCustomCapabilities(provider, model, requestPrefix, customModels) {
   if (!Array.isArray(customModels) || !model) return null;
@@ -221,6 +221,13 @@ export async function getAutoComboCatalog() {
   return catalog;
 }
 
+function isCatalogModelPath(modelStr) {
+  const slashIndex = modelStr.indexOf("/");
+  if (slashIndex < 1) return false;
+  const provider = modelStr.slice(0, slashIndex);
+  return isValidModel(PROVIDER_ID_TO_ALIAS[provider] || provider, modelStr.slice(slashIndex + 1));
+}
+
 /**
  * Check if model is a combo and get models list.
  *
@@ -232,6 +239,7 @@ export async function getAutoComboCatalog() {
  * is pure over the catalog (settings ignored), so the second argument stays the
  * F-4 boolean.
  *
+
  * When `hidePaidModels` is true (#6495 / F-4), paid members of a SAVED combo are
  * filtered out via pricing.js so chat/image/TTS combo routing honor the toggle.
  * The saved combo object is never mutated. Default `false` keeps ACL existence
@@ -254,10 +262,15 @@ export async function getComboModels(modelStr, hidePaidModels = false) {
     return filterPaidModels(resolveAutoCombo(family, catalog), hidePaidModels === true);
   }
 
-  // Only check if it's not in provider/model format
-  if (modelStr.includes("/")) return null;
-
-  const combo = await getComboByName(modelStr);
+  // Resolve combo by full name first, then by basename (part after the last
+  // slash) so client configs like `provider/combo-name` still hit the combo
+  // instead of forwarding the raw string to the upstream provider. Full-name
+  // match wins so a genuine `provider/model` never gets shadowed by a
+  // same-named combo.
+  let combo = await getComboByName(modelStr);
+  if (!combo && modelStr.includes("/") && !isCatalogModelPath(modelStr)) {
+    combo = await getComboByName(modelStr.split("/").pop());
+  }
   if (combo && combo.models && combo.models.length > 0) {
     return filterPaidModels(combo.models, hidePaidModels === true);
   }

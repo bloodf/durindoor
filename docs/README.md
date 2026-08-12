@@ -87,6 +87,7 @@ For developers working on the DurinDoor codebase, provider registry, or document
 - [Upstream #3082/#3114 Schema Walkers Ledger](campaigns/upstream-3082-3114-schema-walkers-ledger.md)
 - [Upstream #3113 Kiro Executor Ledger](campaigns/upstream-3113-kiro-executor-ledger.md)
 - [Upstream #3116 Passthrough Tool-Names Ledger](campaigns/upstream-3116-passthrough-toolnames-ledger.md)
+- [Upstream #3125 Combo Prefix Port Ledger](campaigns/upstream-3125-combo-prefix-ledger.md)
 - [tests/README.md](../tests/README.md)
 - [Upstream #3223 Antigravity Prompt Ledger](campaigns/upstream-3223-antigravity-prompt-ledger.md)
 - [Upstream #3168 iFlow Auth Ledger](campaigns/upstream-3168-iflow-auth-ledger.md)

@@ -25,7 +25,7 @@ function requestBody(conversationId) {
 describe("KiroExecutor systemPrompt surface compatibility", () => {
   beforeEach(() => {
     mocks.proxyAwareFetch.mockReset();
-    mocks.proxyAwareFetch.mockResolvedValue(new Response(new Uint8Array(), { status: 200 }));
+    mocks.proxyAwareFetch.mockImplementation(() => new Response(new Uint8Array(), { status: 200 }));
   });
 
   it("drops systemPrompt for kiro.dev while retaining it for CodeWhisperer", async () => {

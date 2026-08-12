@@ -26,4 +26,29 @@ describe("port #2649: Claude server-tool model normalization", () => {
       }],
     });
   });
+
+  it("strips the claude provider prefix from a nested tool model", () => {
+    const body = {
+      tools: [{
+        type: "advisor_20260301",
+        model: "claude/claude-opus-4-8",
+      }],
+    };
+
+    expect(normalizeClaudePassthrough(body).tools[0].model).toBe("claude-opus-4-8");
+  });
+
+  it.each([
+    "claude-opus-4-8",
+    "anthropic/claude-opus-4-8",
+  ])("leaves unknown nested tool model prefix unchanged: %s", (model) => {
+    const body = {
+      tools: [{
+        type: "advisor_20260301",
+        model,
+      }],
+    };
+
+    expect(normalizeClaudePassthrough(body).tools[0].model).toBe(model);
+  });
 });

@@ -30,8 +30,18 @@ describe("resolveStreamFlag (#2031)", () => {
     ).toBe(false);
   });
 
-  it("forceStream provider streams by default when no stream flag is given", () => {
+  it("forceStream provider streams when no stream flag is given", () => {
     expect(resolveStreamFlag({ providerRequiresStreaming: true })).toBe(true);
+  });
+
+  it("ordinary provider does not stream when no stream flag is given", () => {
+    expect(resolveStreamFlag({ providerRequiresStreaming: false })).toBe(false);
+  });
+
+  it("ordinary provider streams when stream:true is explicit", () => {
+    expect(
+      resolveStreamFlag({ providerRequiresStreaming: false, bodyStream: true })
+    ).toBe(true);
   });
 
   it("forceNonStreaming (e.g. image-gen) still wins over forceStream", () => {
@@ -49,10 +59,6 @@ describe("resolveStreamFlag (#2031)", () => {
         clientPrefersSSE: true,
       })
     ).toBe(false);
-  });
-
-  it("ordinary provider with no special flags streams by default", () => {
-    expect(resolveStreamFlag({ providerRequiresStreaming: false })).toBe(true);
   });
 
   it("AI21 quirk forceNonStreamingWithTools downgrades to non-streaming when tools are present", () => {

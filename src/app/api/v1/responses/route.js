@@ -22,17 +22,19 @@ export async function OPTIONS() {
 }
 
 /**
- * POST /v1/responses - OpenAI Responses API format
- * Now handled by translator pattern (openai-responses format auto-detected)
+ * POST /v1/responses - OpenAI Responses API format.
+ * Explicit `stream: true` requests open an early SSE response even when clients
+ * omit the Accept header, keeping slow provider setup alive until data arrives.
  */
 export async function POST(request) {
   await ensureInitialized();
+  const body = await request.clone().json().catch(() => null);
 
-  // Codex CLI and other Responses API consumers use SSE and may drop the
-  // connection if no bytes arrive within a few seconds. Keep the connection warm
-  // with early keepalives while the upstream produces its first token.
+  // Codex CLI and other Responses API consumers may drop the connection if no
+  // bytes arrive within a few seconds. Explicit stream intent is authoritative;
+  // Accept remains a compatibility fallback for clients that omit `stream`.
   const accept = String(request.headers.get("accept") || "").toLowerCase();
-  if (accept.includes("text/event-stream")) {
+  if (body?.stream === true || accept.includes("text/event-stream")) {
     return await withEarlyStreamKeepalive(handleChat(request), {
       signal: request.signal,
     });

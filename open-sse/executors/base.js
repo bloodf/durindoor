@@ -190,8 +190,11 @@ export class BaseExecutor {
     return headers;
   }
 
-  // Override in subclass for provider-specific transformations
-  transformRequest(model, body, stream, credentials) {
+  /**
+   * Override for provider-specific transformations. `targetUrl` is the resolved
+   * URL for this dispatch attempt, keeping surface-specific shaping request-local.
+   */
+  transformRequest(model, body, stream, credentials, requestContext = null, targetUrl = null) {
     return body;
   }
 
@@ -338,7 +341,7 @@ export class BaseExecutor {
       // Extra arguments are backward-compatible with executors that do not use them.
       const url = this.buildUrl(model, stream, urlIndex, credentials, requestContext);
       const transformedBody = this.clampCustomMaxOutput(
-        this.transformRequest(model, body, stream, credentials, requestContext),
+        this.transformRequest(model, body, stream, credentials, requestContext, url),
         requestContext,
       );
       const headers = this.buildHeaders(credentials, stream, requestContext, model);

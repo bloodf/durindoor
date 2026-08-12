@@ -31,4 +31,11 @@ export default {
   ],
   serviceKinds: ["image", "stt"],
   imageConfig: { baseUrl: "https://api-inference.huggingface.co/models" },
+  /** Routes HuggingFace speech-to-text presets through the ASR dispatch adapter. */
+  sttConfig: {
+    baseUrl: "https://api-inference.huggingface.co/models",
+    authType: "apikey",
+    authHeader: "bearer",
+    format: "huggingface-asr",
+  },
 };

@@ -78,6 +78,7 @@ For developers working on the DurinDoor codebase, provider registry, or document
 - [Upstream OmniRoute 2026-08-10 Ledger](campaigns/upstream-omniroute-2026-08-10-ledger.md)
 - [tests/README.md](../tests/README.md)
 - [Upstream #3223 Antigravity Prompt Ledger](campaigns/upstream-3223-antigravity-prompt-ledger.md)
+- [Upstream #3168 iFlow Auth Ledger](campaigns/upstream-3168-iflow-auth-ledger.md)
 
 ## API & Reference
 

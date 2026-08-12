@@ -197,7 +197,7 @@ describe("fusion combo", () => {
       judgeModel: "p/judge"
     });
 
-    // Panel calls keep every turn but tool turns are flattened to assistant prose.
+    // Panel calls keep every turn but tool turns are flattened to user prose.
     const panelCalls = handleSingleModel.mock.calls.filter(([,, isPanel]) => isPanel === true);
     expect(panelCalls.length).toBe(2);
     for (const [panelBody] of panelCalls) {
@@ -206,7 +206,7 @@ describe("fusion combo", () => {
       expect(panelBody.messages[0]).toEqual({ role: "user", content: "find files" });
       expect(panelBody.messages[1].tool_calls).toBeUndefined();
       expect(panelBody.messages[1].content).toContain("find");
-      expect(panelBody.messages[2].role).toBe("assistant");
+      expect(panelBody.messages[2].role).toBe("user");
       expect(panelBody.messages[2].content).toContain("['a.js']");
       expect(panelBody.messages[3]).toEqual({ role: "user", content: "describe it" });
     }
@@ -220,7 +220,28 @@ describe("fusion combo", () => {
     expect(judgeBody.messages[2].role).toBe("tool");
   });
 
-  it("trims a trailing assistant turn from messages before panel fan-out", async () => {
+  it("ends tool-terminated panel history on a user turn", async () => {
+    const handleSingleModel = vi.fn(async () => okResponse("ans"));
+    await handleFusionChat({
+      body: {
+        messages: [
+          { role: "user", content: "find files" },
+          { role: "assistant", content: "", tool_calls: [{ id: "c1", type: "function", function: { name: "find" } }] },
+          { role: "tool", tool_call_id: "c1", content: "['a.js']" },
+        ],
+      },
+      models: ["p/a", "p/b"],
+      handleSingleModel,
+      log,
+      judgeModel: "p/judge",
+    });
+
+    for (const [panelBody] of handleSingleModel.mock.calls.filter(([,, isPanel]) => isPanel === true)) {
+      expect(panelBody.messages.at(-1)).toEqual({ role: "user", content: "[Tool result: ['a.js']]" });
+    }
+  });
+
+  it("closes a trailing assistant turn with a user turn before panel fan-out", async () => {
     const handleSingleModel = vi.fn(async () => okResponse("ans"));
     await handleFusionChat({
       body: { messages: [{ role: "user", content: "Q" }, { role: "assistant", content: "partial" }] },
@@ -231,11 +252,15 @@ describe("fusion combo", () => {
     });
 
     for (const [panelBody] of handleSingleModel.mock.calls.filter(([,, isPanel]) => isPanel === true)) {
-      expect(panelBody.messages).toEqual([{ role: "user", content: "Q" }]);
+      expect(panelBody.messages).toEqual([
+        { role: "user", content: "Q" },
+        { role: "assistant", content: "partial" },
+        { role: "user", content: "Continue from where the previous assistant message left off." },
+      ]);
     }
   });
 
-  it("trims a trailing assistant turn from Responses input before panel fan-out", async () => {
+  it("closes a trailing assistant turn in Responses input before panel fan-out", async () => {
     const handleSingleModel = vi.fn(async () => okResponse("ans"));
     await handleFusionChat({
       body: { input: [{ role: "user", content: "Q" }, { role: "assistant", content: "partial" }] },
@@ -246,11 +271,15 @@ describe("fusion combo", () => {
     });
 
     for (const [panelBody] of handleSingleModel.mock.calls.filter(([,, isPanel]) => isPanel === true)) {
-      expect(panelBody.input).toEqual([{ role: "user", content: "Q" }]);
+      expect(panelBody.input).toEqual([
+        { role: "user", content: "Q" },
+        { role: "assistant", content: "partial" },
+        { role: "user", content: "Continue from where the previous assistant message left off." },
+      ]);
     }
   });
 
-  it("keeps a user-ending panel conversation and preserves all-assistant history", async () => {
+  it("keeps user-ending panel history and closes all-assistant history with a user turn", async () => {
     const handleSingleModel = vi.fn(async () => okResponse("ans"));
     const userEnding = [{ role: "user", content: "Q" }, { role: "assistant", content: "A" }, { role: "user", content: "follow-up" }];
     const assistantOnly = [{ role: "assistant", content: "partial" }];
@@ -271,7 +300,10 @@ describe("fusion combo", () => {
 
     const panelCalls = handleSingleModel.mock.calls.filter(([,, isPanel]) => isPanel === true);
     expect(panelCalls.slice(0, 2).map(([panelBody]) => panelBody.messages)).toEqual([userEnding, userEnding]);
-    expect(panelCalls.slice(2).map(([panelBody]) => panelBody.input)).toEqual([assistantOnly, assistantOnly]);
+    expect(panelCalls.slice(2).map(([panelBody]) => panelBody.input)).toEqual([
+      [...assistantOnly, { role: "user", content: "Continue from where the previous assistant message left off." }],
+      [...assistantOnly, { role: "user", content: "Continue from where the previous assistant message left off." }],
+    ]);
   });
 
   it("flattens Anthropic-style tool_use and tool_result blocks in arrays", async () => {

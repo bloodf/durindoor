@@ -51,4 +51,58 @@ describe("GitHub Claude prompt-limit preflight", () => {
     ]);
     expect(result.response.status).toBe(200);
   });
+
+  it("dispatches when token counting returns a server error", async () => {
+    mocks.proxyAwareFetch
+      .mockResolvedValueOnce(new Response("unavailable", { status: 503 }))
+      .mockResolvedValueOnce(new Response("generated", { status: 200 }));
+    const options = makeOptions();
+
+    const result = await new GithubExecutor().executeWithMessagesEndpoint(options);
+
+    expect(mocks.proxyAwareFetch.mock.calls.map(([url]) => url)).toEqual([
+      "https://api.githubcopilot.com/v1/messages/count_tokens",
+      "https://api.githubcopilot.com/v1/messages",
+    ]);
+    expect(result.response.status).toBe(200);
+    expect(options.log.warn).toHaveBeenCalledWith("GITHUB", "Prompt token preflight returned 503; continuing");
+  });
+
+  it("dispatches when token counting returns an unparseable body", async () => {
+    mocks.proxyAwareFetch
+      .mockResolvedValueOnce(new Response("not-json", { status: 200 }))
+      .mockResolvedValueOnce(new Response("generated", { status: 200 }));
+    const options = makeOptions();
+
+    const result = await new GithubExecutor().executeWithMessagesEndpoint(options);
+
+    expect(mocks.proxyAwareFetch.mock.calls.map(([url]) => url)).toEqual([
+      "https://api.githubcopilot.com/v1/messages/count_tokens",
+      "https://api.githubcopilot.com/v1/messages",
+    ]);
+    expect(result.response.status).toBe(200);
+    expect(options.log.warn).toHaveBeenCalledWith(
+      "GITHUB",
+      expect.stringMatching(/^Prompt token preflight failed: .*JSON.*; continuing$/),
+    );
+  });
+
+  it("dispatches when token counting rejects at the network layer", async () => {
+    mocks.proxyAwareFetch
+      .mockRejectedValueOnce(new TypeError("fetch failed"))
+      .mockResolvedValueOnce(new Response("generated", { status: 200 }));
+    const options = makeOptions();
+
+    const result = await new GithubExecutor().executeWithMessagesEndpoint(options);
+
+    expect(mocks.proxyAwareFetch.mock.calls.map(([url]) => url)).toEqual([
+      "https://api.githubcopilot.com/v1/messages/count_tokens",
+      "https://api.githubcopilot.com/v1/messages",
+    ]);
+    expect(result.response.status).toBe(200);
+    expect(options.log.warn).toHaveBeenCalledWith(
+      "GITHUB",
+      "Prompt token preflight failed: fetch failed; continuing",
+    );
+  });
 });

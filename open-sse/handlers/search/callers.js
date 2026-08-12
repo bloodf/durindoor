@@ -30,6 +30,8 @@
  * @property {Record<string,unknown>} [providerSpecificData]
  */
 
+import { assertOutboundUrlAllowed } from "../../utils/outboundUrlGuard.js";
+
 // ── Helpers ─────────────────────────────────────────────────────────────
 
 /**
@@ -63,13 +65,17 @@ export function getProviderSetting(params, key) {
 }
 
 /**
- * Resolve base URL with optional override from providerOptions.baseUrl.
+ * Resolve the search base URL, requiring caller-controlled overrides to be
+ * public HTTP(S) targets. Provider defaults are trusted administrator config.
+ *
  * @param {SearchProviderConfig} config
  * @param {SearchRequestParams} params
  * @returns {string}
+ * @throws {import("../../utils/outboundUrlGuard.js").OutboundUrlGuardError} When an override is invalid or targets a private address.
  */
 export function resolveBaseUrl(config, params) {
   const override = getProviderSetting(params, "baseUrl");
+  if (override) assertOutboundUrlAllowed(override, "public-only");
   return (override || config.baseUrl).replace(/\/+$/, "");
 }
 

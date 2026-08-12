@@ -1,4 +1,5 @@
 import { getInstallInfo } from "../pxpipe/install.js";
+import { selfTest } from "../pxpipe/loader.js";
 
 export function detectPxpipe() {
   const info = getInstallInfo();
@@ -11,7 +12,7 @@ export function detectPxpipe() {
   };
 }
 
-export function configurePxpipe(settings, { dryRun = false } = {}) {
+export async function configurePxpipe(settings, { dryRun = false } = {}) {
   const report = { changed: false, actions: [] };
   const detected = detectPxpipe();
 
@@ -24,6 +25,23 @@ export function configurePxpipe(settings, { dryRun = false } = {}) {
       actions: report.actions,
       updates: {},
     };
+  }
+
+  if (!dryRun) {
+    try {
+      const health = await selfTest();
+      if (health?.ok !== true) throw new Error(health?.reason || "self-test returned unhealthy");
+    } catch (error) {
+      const message = error.message || String(error);
+      return {
+        changed: false,
+        wouldChange: false,
+        installed: detected.installed,
+        running: false,
+        actions: [`pxpipe-proxy health check failed: ${message}`],
+        updates: {},
+      };
+    }
   }
 
   if (!settings.pxpipeEnabled) {
@@ -60,6 +78,7 @@ export function configurePxpipe(settings, { dryRun = false } = {}) {
     changed: report.changed && !dryRun,
     wouldChange: report.changed,
     installed: detected.installed,
+    running: dryRun ? null : true,
     actions: report.actions,
     updates,
   };

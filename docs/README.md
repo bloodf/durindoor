@@ -75,6 +75,7 @@ For developers working on the DurinDoor codebase, provider registry, or document
 - [Upstream D2/D3 PR Ports Ledger](campaigns/upstream-d2d3-pr-ports-ledger.md)
 - [Upstream ADOPT-NOW Remainder Ledger](campaigns/upstream-adopt-remainder-ledger.md)
 - [Upstream #3204/#3210/#3213 Ports Ledger](campaigns/upstream-3204-3210-3213-ledger.md)
+- [Upstream OmniRoute 2026-08-10 Ledger](campaigns/upstream-omniroute-2026-08-10-ledger.md)
 - [tests/README.md](../tests/README.md)
 - [Upstream #3223 Antigravity Prompt Ledger](campaigns/upstream-3223-antigravity-prompt-ledger.md)
 

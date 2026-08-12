@@ -25,7 +25,7 @@ import { configureToggles } from "../../../src/lib/autoConfigure/toggles.js";
 describe("runAutoConfigure", () => {
   it("aggregates service reports and returns changed", async () => {
     configureHeadroom.mockResolvedValue({ changed: true, wouldChange: true, updates: { headroomEnabled: true }, actions: ["headroom"] });
-    configurePxpipe.mockReturnValue({ changed: false, wouldChange: false, updates: {}, actions: [] });
+    configurePxpipe.mockResolvedValue({ changed: false, wouldChange: false, updates: {}, actions: [] });
     configureFirecrawl.mockResolvedValue({ changed: true, wouldChange: true, updates: { firecrawlBaseUrl: "http://127.0.0.1:3002" }, actions: ["firecrawl"], connection: null });
     configureToggles.mockReturnValue({ changed: false, wouldChange: false, updates: {}, actions: [] });
 
@@ -34,9 +34,28 @@ describe("runAutoConfigure", () => {
     expect(report.updates).toEqual({ headroomEnabled: true, firecrawlBaseUrl: "http://127.0.0.1:3002" });
   });
 
+  it("waits for the PxPipe report before aggregating it", async () => {
+    configureHeadroom.mockResolvedValue({ changed: false, wouldChange: false, updates: {}, actions: [] });
+    configurePxpipe.mockImplementation(() => new Promise((resolve) => {
+      setTimeout(() => resolve({
+        changed: true,
+        wouldChange: true,
+        updates: { pxpipeEnabled: true },
+        actions: ["pxpipe"],
+      }), 10);
+    }));
+    configureFirecrawl.mockResolvedValue({ changed: false, wouldChange: false, updates: {}, actions: [], connection: null });
+    configureToggles.mockReturnValue({ changed: false, wouldChange: false, updates: {}, actions: [] });
+
+    const report = await runAutoConfigure({}, {});
+    expect(report.services.pxpipe).toMatchObject({ changed: true });
+    expect(report.updates.pxpipeEnabled).toBe(true);
+    expect(report.actions).toContain("pxpipe");
+  });
+
   it("dry-run does not claim changed when services would change", async () => {
     configureHeadroom.mockResolvedValue({ changed: false, wouldChange: true, updates: {}, actions: [] });
-    configurePxpipe.mockReturnValue({ changed: false, wouldChange: false, updates: {}, actions: [] });
+    configurePxpipe.mockResolvedValue({ changed: false, wouldChange: false, updates: {}, actions: [] });
     configureFirecrawl.mockResolvedValue({ changed: false, wouldChange: true, updates: {}, actions: [], connection: null });
     configureToggles.mockReturnValue({ changed: false, wouldChange: false, updates: {}, actions: [] });
 
@@ -46,7 +65,7 @@ describe("runAutoConfigure", () => {
 
   it("passes undefined headroomUrl by default to preserve configured settings", async () => {
     configureHeadroom.mockResolvedValue({ changed: false, wouldChange: false, updates: {}, actions: [] });
-    configurePxpipe.mockReturnValue({ changed: false, wouldChange: false, updates: {}, actions: [] });
+    configurePxpipe.mockResolvedValue({ changed: false, wouldChange: false, updates: {}, actions: [] });
     configureFirecrawl.mockResolvedValue({ changed: false, wouldChange: false, updates: {}, actions: [], connection: null });
     configureToggles.mockReturnValue({ changed: false, wouldChange: false, updates: {}, actions: [] });
 
@@ -60,7 +79,7 @@ describe("runAutoConfigure", () => {
   it("uses FIRECRAWL_API_KEY env when no option provided via runAutoConfigure", async () => {
     vi.stubEnv("FIRECRAWL_API_KEY", "env-key");
     configureHeadroom.mockResolvedValue({ changed: false, wouldChange: false, updates: {}, actions: [] });
-    configurePxpipe.mockReturnValue({ changed: false, wouldChange: false, updates: {}, actions: [] });
+    configurePxpipe.mockResolvedValue({ changed: false, wouldChange: false, updates: {}, actions: [] });
     configureFirecrawl.mockResolvedValue({ changed: false, wouldChange: false, updates: {}, actions: [], connection: null });
     configureToggles.mockReturnValue({ changed: false, wouldChange: false, updates: {}, actions: [] });
 
@@ -77,7 +96,7 @@ describe("runAutoConfigure", () => {
 
   it("getAutoConfigureStatus returns wouldChange", async () => {
     configureHeadroom.mockResolvedValue({ changed: false, wouldChange: true, updates: {}, actions: ["a"] });
-    configurePxpipe.mockReturnValue({ changed: false, wouldChange: false, updates: {}, actions: [] });
+    configurePxpipe.mockResolvedValue({ changed: false, wouldChange: false, updates: {}, actions: [] });
     configureFirecrawl.mockResolvedValue({ changed: false, wouldChange: false, updates: {}, actions: [], connection: null });
     configureToggles.mockReturnValue({ changed: false, wouldChange: false, updates: {}, actions: [] });
 

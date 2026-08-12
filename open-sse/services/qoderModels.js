@@ -135,6 +135,36 @@ async function fetchQoderCatalogRaw(credentials, signal, proxyOptions = null) {
     });
   }
 
+  // Upstream sometimes omits the "cmodel" (Cantus) entry entirely, which
+  // makes qd/cmodel fail with "model_config for cmodel not yet known".
+  // Synthesize it from a real sibling config (preferred) or exact upstream
+  // defaults — but never touch an upstream-provided cmodel.
+  if (!rawConfigs.has("cmodel")) {
+    const fallbackConfig = body.chat.find((entry) => entry && entry.key && rawConfigs.has(entry.key)) || null;
+    const cmodelConfig = fallbackConfig
+      ? { ...fallbackConfig, key: "cmodel", display_name: "Cantus" }
+      : {
+          key: "cmodel",
+          enable: true,
+          display_name: "Cantus",
+          max_input_tokens: 131072,
+          max_output_tokens: 64000,
+          is_vl: false,
+          is_reasoning: false,
+          description: "Qoder Cantus (C-model)",
+        };
+    rawConfigs.set("cmodel", cmodelConfig);
+    models.push({
+      id: "cmodel",
+      name: "Cantus",
+      contextLength: Number(cmodelConfig.max_input_tokens) || 131_072,
+      isVL: !!cmodelConfig.is_vl,
+      isReasoning: !!cmodelConfig.is_reasoning,
+      maxOutputTokens: Number(cmodelConfig.max_output_tokens) || 0,
+      description: cmodelConfig.description || "",
+    });
+  }
+
   return { models, rawConfigs };
 }
 

@@ -84,6 +84,7 @@ For developers working on the DurinDoor codebase, provider registry, or document
 - [OmniRoute Open PR Audit — 2026-08-11](campaigns/upstream-omniroute-2026-08-11-audit.md)
 - [9router Open PR Audit — 2026-08-11](campaigns/upstream-9router-open-pr-audit-2026-08-11.md)
 - [Upstream #3107 Kiro Tool-Name & Cache Ledger](campaigns/upstream-3107-kiro-toolnames-ledger.md)
+- [Upstream #3082/#3114 Schema Walkers Ledger](campaigns/upstream-3082-3114-schema-walkers-ledger.md)
 - [tests/README.md](../tests/README.md)
 - [Upstream #3223 Antigravity Prompt Ledger](campaigns/upstream-3223-antigravity-prompt-ledger.md)
 - [Upstream #3168 iFlow Auth Ledger](campaigns/upstream-3168-iflow-auth-ledger.md)

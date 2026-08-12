@@ -181,9 +181,7 @@ function removeUnsupportedKeywords(obj, keywords, isPropertiesMap = false) {
   if (!obj || typeof obj !== "object") return;
 
   if (Array.isArray(obj)) {
-    for (const item of obj) {
-      removeUnsupportedKeywords(item, keywords);
-    }
+    for (const item of obj) removeUnsupportedKeywords(item, keywords);
     return;
   }
 
@@ -393,7 +391,10 @@ export function cleanJSONSchemaForAntigravity(schema) {
   // Phase 3: Remove all unsupported keywords at ALL levels (including inside arrays)
   removeUnsupportedKeywords(cleaned, UNSUPPORTED_SCHEMA_CONSTRAINTS);
 
-  // Phase 4: Cleanup required fields recursively
+  // Phase 4: Cleanup required fields recursively.
+  // Descend only into real schema nodes — the values of the `properties` map
+  // and the `items` schema. The name-map keys under `properties` are
+  // user-chosen parameter names, not schema keywords (#2884).
   function cleanupRequired(obj) {
     if (!obj || typeof obj !== "object") return;
 
@@ -408,17 +409,20 @@ export function cleanJSONSchemaForAntigravity(schema) {
       }
     }
 
-    // Recurse into nested objects
-    for (const value of Object.values(obj)) {
-      if (value && typeof value === "object") {
-        cleanupRequired(value);
+    if (obj.properties && typeof obj.properties === "object") {
+      for (const v of Object.values(obj.properties)) {
+        if (v && typeof v === "object") cleanupRequired(v);
       }
     }
+    if (obj.items && typeof obj.items === "object") cleanupRequired(obj.items);
   }
 
   cleanupRequired(cleaned);
 
-  // Phase 5: Add placeholder for empty object schemas (Antigravity requirement)
+  // Phase 5: Add placeholder for empty object schemas (Antigravity requirement).
+  // Descend only into real schema nodes — the values of the `properties` map
+  // and the `items` schema. The name-map keys under `properties` are
+  // user-chosen parameter names, not schema keywords (#2884).
   function addPlaceholders(obj) {
     if (!obj || typeof obj !== "object") return;
 
@@ -447,12 +451,12 @@ export function cleanJSONSchemaForAntigravity(schema) {
       }
     }
 
-    // Recurse into nested objects
-    for (const value of Object.values(obj)) {
-      if (value && typeof value === "object") {
-        addPlaceholders(value);
+    if (obj.properties && typeof obj.properties === "object") {
+      for (const v of Object.values(obj.properties)) {
+        if (v && typeof v === "object") addPlaceholders(v);
       }
     }
+    if (obj.items && typeof obj.items === "object") addPlaceholders(obj.items);
   }
 
   addPlaceholders(cleaned);

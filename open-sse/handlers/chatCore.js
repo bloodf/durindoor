@@ -441,6 +441,17 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     applyThinking(targetFormat, cleanModel, translatedBody, provider, modelThinkingIntent, modelCapabilities);
     // Per-transport registry defaults (e.g. MiniMax openai transport → reasoning_split).
     applyTransportRequestDefaults(targetFormat, translatedBody, provider);
+    /**
+     * Strip client-only content from Codex additional-tools envelopes while
+     * preserving their declared tools and every ordinary input item.
+     */
+    if (provider === "codex" && Array.isArray(translatedBody.input)) {
+      translatedBody.input = translatedBody.input.map((item) => {
+        if (item?.type !== "additional_tools") return item;
+        const { content, ...normalizedItem } = item;
+        return normalizedItem;
+      });
+    }
     // Normalize newer Cowork/CC beta shapes (adaptive thinking, mid-conversation system) the API rejects
     if (clientTool === "claude") normalizeClaudePassthrough(translatedBody, translatedBody.model, provider, modelCapabilities?.maxOutput ?? null);
   } else {

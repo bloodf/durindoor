@@ -132,11 +132,12 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
  * @param {object} [params.log] - Unified logger; `line(tag, symbol, message)`
  *   emits the DONE line when present.
  * @param {number} params.requestStartTime - `Date.now()` at request start (TTFT base).
- * @returns {{onStreamComplete: Function, streamDetailId: string}}
+ * @returns {{onStreamComplete: Function, onStreamAbandoned: Function, streamDetailId: string}}
  */
 export function buildOnStreamComplete({ provider, model, connectionId, apiKey, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest, pxpipe, reqTag, log, usageEventId, onRequestSuccess, getProviderAttemptStartedAt, terminalProvenance = null }) {
   const streamDetailId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   let coherentTerminalHandled = false;
+  let completed = false;
 
   const onCoherentTerminal = () => {
     if (
@@ -160,6 +161,8 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
   };
 
   const onStreamComplete = (contentObj, usage, ttftAt) => {
+    if (completed) return;
+    completed = true;
     const latency = {
       ttft: ttftAt ? ttftAt - requestStartTime : Date.now() - requestStartTime,
       total: Date.now() - requestStartTime
@@ -186,5 +189,31 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
     if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency }));
   };
 
-  return { onStreamComplete, onCoherentTerminal, streamDetailId };
+  // Finalize the placeholder row when the stream ends without onStreamComplete
+  // ever running: client disconnect, upstream stall timeout, or a mid-stream
+  // network error. Without this, the row saved by handleStreamingResponse stays
+  // "[Streaming in progress...]" with tokens 0/0 and status "success" forever.
+  // The `completed` guard (shared with onStreamComplete) makes the two mutually
+  // exclusive, so a completion race with a disconnect can never double-write.
+  // Reuses streamDetailId so the ON CONFLICT(id) upsert overwrites the placeholder.
+  const onStreamAbandoned = (reason) => {
+    if (completed) return;
+    completed = true;
+    const detail = `[Streaming interrupted: ${reason || "unknown"}]`;
+    saveRequestDetail(buildRequestDetail({
+      provider, model, connectionId,
+      latency: { ttft: 0, total: Date.now() - requestStartTime },
+      tokens: { prompt_tokens: 0, completion_tokens: 0 },
+      request: extractRequestConfig(body, stream),
+      providerRequest: finalBody || translatedBody || null,
+      providerResponse: detail,
+      response: { content: detail, thinking: null, type: "streaming" },
+      pxpipe,
+      status: "cancelled"
+    }, { id: streamDetailId })).catch(err => {
+      console.error("[RequestDetail] Failed to finalize interrupted stream:", err.message);
+    });
+  };
+
+  return { onStreamComplete, onCoherentTerminal, onStreamAbandoned, streamDetailId };
 }

@@ -247,6 +247,19 @@ export class AntigravityExecutor extends BaseExecutor {
     // Strip tools/toolConfig (handled separately) and blacklisted fields that Google rejects
     const { tools: _originalTools, toolConfig: _originalToolConfig, ...requestWithoutTools } = body.request || {};
     stripBlacklisted(requestWithoutTools);
+
+    // Rewrite competitive system prompts (e.g. Zed IDE's Claude SDK marker) to prevent
+    // Antigravity from flagging the request and immediately blocking it with a 429 Quota
+    // Exhausted response. Narrow, exact-string match only (upstream decolua/9router#3223) —
+    // see docs/campaigns/upstream-3223-antigravity-prompt-ledger.md for why this stays narrow.
+    if (requestWithoutTools.systemInstruction?.parts) {
+      const competitiveMarker = "You are a Claude agent, built on Anthropic's Claude Agent SDK.";
+      for (const part of requestWithoutTools.systemInstruction.parts) {
+        if (typeof part.text === "string" && part.text.includes(competitiveMarker)) {
+          part.text = part.text.split(competitiveMarker).join("");
+        }
+      }
+    }
     const generationConfig = { ...(requestWithoutTools.generationConfig || {}) };
     if (generationConfig.maxOutputTokens > MAX_ANTIGRAVITY_OUTPUT_TOKENS) {
       generationConfig.maxOutputTokens = MAX_ANTIGRAVITY_OUTPUT_TOKENS;

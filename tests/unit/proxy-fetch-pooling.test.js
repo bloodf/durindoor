@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { PROXY_FETCH_POOL_CONFIG } from "../../open-sse/config/runtimeConfig.js";
 
 import {
   __clearProxyDispatchersForTesting,
@@ -23,20 +24,21 @@ describe("proxyFetch connection pooling", () => {
     vi.restoreAllMocks();
   });
 
-  it("reuses a bounded direct pool across requests", async () => {
-    await Promise.all([
-      proxyAwareFetch("https://first.example.test/a", {}, { disableEnvProxy: true }),
-      proxyAwareFetch("https://second.example.test/b", {}, { disableEnvProxy: true }),
-    ]);
+  it("reuses one direct dispatcher beyond the configured connection cap", async () => {
+    const requestCount = PROXY_FETCH_POOL_CONFIG.directConnectionsPerOrigin + 1;
 
-    const firstDispatcher = fetchMock.mock.calls[0][1].dispatcher;
-    const secondDispatcher = fetchMock.mock.calls[1][1].dispatcher;
-    expect(firstDispatcher).toBe(secondDispatcher);
+    await Promise.all(Array.from({ length: requestCount }, (_, index) =>
+      proxyAwareFetch(`https://provider.example.test/${index}`, {}, { disableEnvProxy: true })
+    ));
+
+    const dispatchers = fetchMock.mock.calls.map(([, options]) => options.dispatcher);
+    expect(fetchMock).toHaveBeenCalledTimes(requestCount);
+    expect(new Set(dispatchers)).toHaveLength(1);
     expect(getDirectDispatcherOptionsForTest()).toMatchObject({
-      connections: 32,
-      keepAliveMaxTimeout: 60_000,
-      maxCachedSessions: 16,
-      pipelining: 1,
+      connections: PROXY_FETCH_POOL_CONFIG.directConnectionsPerOrigin,
+      keepAliveMaxTimeout: PROXY_FETCH_POOL_CONFIG.keepAliveMaxTimeoutMs,
+      maxCachedSessions: PROXY_FETCH_POOL_CONFIG.directMaxCachedSessions,
+      pipelining: PROXY_FETCH_POOL_CONFIG.pipelining,
     });
   });
 
@@ -56,5 +58,22 @@ describe("proxyFetch connection pooling", () => {
     const firstDispatcher = fetchMock.mock.calls[0][1].dispatcher;
     const secondDispatcher = fetchMock.mock.calls[1][1].dispatcher;
     expect(firstDispatcher).toBe(secondDispatcher);
+  });
+
+  it("keeps direct and proxy traffic on distinct dispatchers", async () => {
+    const proxyOptions = {
+      connectionProxyEnabled: true,
+      connectionProxyUrl: "http://selected-proxy.example.test:8080",
+      disableEnvProxy: true,
+    };
+
+    await Promise.all([
+      proxyAwareFetch("https://provider.example.test/direct", {}, { disableEnvProxy: true }),
+      proxyAwareFetch("https://provider.example.test/proxied", {}, proxyOptions),
+    ]);
+
+    const directDispatcher = fetchMock.mock.calls[0][1].dispatcher;
+    const proxyDispatcher = fetchMock.mock.calls[1][1].dispatcher;
+    expect(directDispatcher).not.toBe(proxyDispatcher);
   });
 });

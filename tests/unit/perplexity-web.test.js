@@ -174,6 +174,57 @@ describe("buildPplxRequestBody", () => {
   });
 });
 
+describe("PerplexityWebExecutor reader cleanup", () => {
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it("cancels the reader before releasing the lock, even when cancel never settles", async () => {
+    const callOrder = [];
+    const releaseLock = vi.fn(() => callOrder.push("release"));
+    const reader = {
+      read: vi.fn().mockResolvedValue({ value: new TextEncoder().encode("data: [DONE]\n\n"), done: false }),
+      cancel: vi.fn(() => { callOrder.push("cancel"); return new Promise(() => {}); }),
+      releaseLock,
+    };
+    global.fetch = vi.fn(async () => ({ ok: true, body: { getReader: () => reader } }));
+
+    const exec = new PerplexityWebExecutor();
+    const result = await Promise.race([
+      exec.execute({ model: "pplx-auto", body: { messages: [{ role: "user", content: "hi" }] }, stream: false, credentials: { apiKey: "c" } }),
+      new Promise((resolve) => setTimeout(() => resolve("timed out"), 350)),
+    ]);
+
+    expect(result).not.toBe("timed out");
+    expect(reader.cancel).toHaveBeenCalledOnce();
+    expect(releaseLock).toHaveBeenCalledOnce();
+    expect(callOrder).toEqual(["cancel", "release"]);
+  }, 1000);
+
+  it("cancels before releasing the reader lock on normal completion", async () => {
+    const callOrder = [];
+    const releaseLock = vi.fn(() => callOrder.push("release"));
+    const reader = {
+      read: vi.fn().mockResolvedValue({ value: new TextEncoder().encode("data: [DONE]\n\n"), done: false }),
+      cancel: vi.fn(() => { callOrder.push("cancel"); return Promise.resolve(); }),
+      releaseLock,
+    };
+    global.fetch = vi.fn(async () => ({ ok: true, body: { getReader: () => reader } }));
+
+    const exec = new PerplexityWebExecutor();
+    const { response } = await exec.execute({
+      model: "pplx-auto",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: { apiKey: "c" },
+    });
+    expect(response.status).toBe(200);
+    expect(reader.cancel).toHaveBeenCalledOnce();
+    expect(releaseLock).toHaveBeenCalledOnce();
+    expect(callOrder).toEqual(["cancel", "release"]);
+  });
+});
+
 describe("PerplexityWebExecutor.execute", () => {
   let capturedUrl;
   let capturedOpts;

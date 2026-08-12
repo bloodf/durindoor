@@ -1,6 +1,8 @@
 /**
  * Resolve whether to stream the request to the upstream provider.
  *
+ * OpenAI requests stream only when `stream: true` is explicit; omission defaults
+ * to non-streaming per the OpenAI API contract.
  * Some providers require streaming (`forceStream: true`, e.g. CommandCode) and
  * reject non-streaming requests with HTTP 400. Such providers must keep
  * streaming even when the client asked for a non-streaming/JSON response;
@@ -24,7 +26,7 @@ export function resolveStreamFlag({
   clientPrefersJson = false,
   clientPrefersSSE = false,
 }) {
-  let stream = providerRequiresStreaming ? true : bodyStream !== false;
+  let stream = providerRequiresStreaming ? true : bodyStream === true;
 
   // Hard non-streaming cases (image-gen, deepseek-tui -p) override everything.
   if (forceNonStreaming) stream = false;

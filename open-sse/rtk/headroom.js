@@ -1,3 +1,4 @@
+import { MAX_COMPRESS_BODY_BYTES } from "../config/runtimeConfig.js";
 import { claudeToOpenAIRequest } from "../translator/request/claude-to-openai.js";
 import { openaiToClaudeRequest } from "../translator/request/openai-to-claude.js";
 import {
@@ -333,9 +334,12 @@ async function callCompress(url, messages, model, timeoutMs, compressUserMessage
   return null;
 }
 
-// Compress request body via Headroom proxy. Fail-open: returns null on any error.
-// /v1/compress only understands OpenAI shape, so Claude bodies are translated
-// to OpenAI, compressed, then translated back using 9Router's own translators.
+/**
+ * Compress a request through Headroom, failing open without mutating the body
+ * when disabled, invalid, oversized, or when translation/proxy work fails.
+ *
+ * @returns {Promise<object|null>} Compression stats, or null when bypassed.
+ */
 export async function compressWithHeadroom(body, { enabled, url, model, format, compressUserMessages, timeoutMs = DEFAULT_TIMEOUT_MS, diagnostics = null } = {}) {
   if (!enabled) {
     setDiagnostic(diagnostics, "disabled");
@@ -351,7 +355,12 @@ export async function compressWithHeadroom(body, { enabled, url, model, format, 
   }
 
   try {
-    if (diagnostics) diagnostics.before = captureSizeSnapshot(body);
+    const sizeSnapshot = captureSizeSnapshot(body);
+    if (diagnostics) diagnostics.before = sizeSnapshot;
+    if (sizeSnapshot.bodyBytes > MAX_COMPRESS_BODY_BYTES) {
+      setDiagnostic(diagnostics, `skipped: payload too large (${sizeSnapshot.bodyBytes}B > ${MAX_COMPRESS_BODY_BYTES}B limit)`);
+      return null;
+    }
 
     // Claude shape: translate → OpenAI → compress → translate back.
     if (format === "claude") {

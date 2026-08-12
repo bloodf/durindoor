@@ -55,17 +55,17 @@ describe("AUDIT-002: API key masking", () => {
     expect(livePath.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("byApiKey object keys should use non-secret database or opaque IDs", () => {
+  it("byApiKey object keys should use stable non-secret identities", () => {
     const source = fs.readFileSync(
       path.resolve(repoRoot, "src/lib/db/repos/usageRepo.js"),
       "utf-8"
     );
-    // Internal aggregation may hash for grouping, but API responses must use a
-    // DB ID or request-local opaque ordinal rather than an offline verifier.
+    // Registered keys use DB IDs; deleted keys use installation-salted HMACs
+    // that cannot verify guesses without the private persisted salt.
     expect(source).toContain("function fingerprintApiKey");
     expect(source).toContain("function getPublicApiKeyIdentity");
     expect(source).toContain("`api-key:${keyInfo.id}`");
-    expect(source).toContain("`api-key:deleted-${ordinal}`");
+    expect(source).toContain("`api-key:${fingerprintApiKey(lookup, identitySalt)}`");
     // Should NOT use raw r.apiKey directly in the aggregation key template.
     expect(source).not.toContain("${r.apiKey}|${r.model}|${r.provider");
   });

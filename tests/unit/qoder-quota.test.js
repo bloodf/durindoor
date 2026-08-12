@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseQuotaData } from "../../src/app/(dashboard)/dashboard/usage/components/ProviderLimits/utils.js";
 
-describe("Qoder organization quota normalization", () => {
+describe("Qoder quota normalization", () => {
   it("shows zero-total organization usage with an inferred total", () => {
     expect(parseQuotaData("qoder", {
       quotas: {
@@ -20,6 +20,25 @@ describe("Qoder organization quota normalization", () => {
       total: 10000,
       unit: "credits",
       resetAt: "2026-07-31T16:00:00.000Z",
+    }]);
+  });
+
+  it("keeps an all-zero personal quota", () => {
+    expect(parseQuotaData("qoder", {
+      quotas: {
+        user: {
+          total: 0,
+          used: 0,
+          remaining: 0,
+          unit: "credits",
+        },
+      },
+    })).toEqual([{
+      name: "Personal",
+      used: 0,
+      total: 0,
+      unit: "credits",
+      resetAt: null,
     }]);
   });
 

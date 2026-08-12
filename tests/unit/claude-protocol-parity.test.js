@@ -56,6 +56,19 @@ describe("direct Claude protocol parity", () => {
     expect(body.system[0].text).toMatch(/cc_version=2\.1\.220\.[0-9a-f]{3};/);
   });
 
+  it("omits the Claude session header when no client session id is present", () => {
+    const credentials = { accessToken: "sk-ant-oat-test" };
+    translateToClaude(
+      { messages: [{ role: "user", content: "hello" }] },
+      credentials
+    );
+    const headers = new DefaultExecutor("claude").buildHeaders(credentials, true);
+
+    expect(credentials._clientSessionIsGenerated).toBe(true);
+    expect(headers).not.toHaveProperty("X-Claude-Code-Session-Id");
+    expect(headers).not.toHaveProperty("x-claude-code-session-id");
+  });
+
   it("keeps native Claude metadata aligned with the session header", () => {
     const credentials = { accessToken: "sk-ant-oat-test" };
     const body = translateToClaude(

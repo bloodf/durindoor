@@ -476,8 +476,8 @@ export class DefaultExecutor extends BaseExecutor {
     for (const hook of desc.hooks || []) HEADER_HOOKS[hook]?.(headers, credentials);
     applyAuth(headers, desc, credentials);
 
-    /** Keep transport identity aligned with the session captured before translation. */
-    if (this.provider === "claude" && credentials?._clientSessionId) {
+    /** Emit only client-provided session identity, never generated fallback affinity. */
+    if (this.provider === "claude" && credentials?._clientSessionId && !credentials._clientSessionIsGenerated) {
       delete headers["x-claude-code-session-id"];
       headers["X-Claude-Code-Session-Id"] = credentials._clientSessionId;
     }

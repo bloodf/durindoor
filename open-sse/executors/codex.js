@@ -5,7 +5,7 @@ import {
   refreshProviderCredentials,
   shouldRefreshCredentials,
 } from "../services/oauthCredentialManager.js";
-import { normalizeResponsesInput } from "../translator/formats/responsesApi.js";
+import { normalizeResponsesInput, normalizeStatelessResponseInput } from "../translator/formats/responsesApi.js";
 import { fetchImageAsBase64 } from "../translator/concerns/image.js";
 import { resolveOpenAiEffort } from "../translator/concerns/thinkingUnified.js";
 import { getModelUpstreamId } from "../config/providerModels.js";
@@ -259,8 +259,6 @@ function classifyCodexSseFrame(frame) {
   return { userOutput: false, kind: null, matched: null, message };
 }
 
-// Server-generated item id prefixes that Codex /responses cannot resolve when store=false
-const SERVER_ID_PATTERN = /^(rs|fc|resp|msg)_/;
 
 // Hosted tool types that Codex/OpenAI Responses executes server-side
 const CODEX_HOSTED_TOOL_TYPES = new Set([
@@ -312,18 +310,6 @@ function normalizeCodexAssistantHistory(body) {
   }
 }
 
-// Strip server-generated item IDs (rs_/fc_/resp_/msg_) from input — avoids 404 with store=false
-function stripStoredItemReferences(body) {
-  if (!Array.isArray(body.input)) return;
-  body.input = body.input.filter((item) => {
-    if (typeof item === "string" && SERVER_ID_PATTERN.test(item)) return false;
-    if (item && typeof item === "object" && !Array.isArray(item)) {
-      if (item.type === "item_reference") return false;
-      if (typeof item.id === "string" && SERVER_ID_PATTERN.test(item.id)) delete item.id;
-    }
-    return true;
-  });
-}
 
 // Flatten Chat-Completions tool shape into Responses flat format + filter unsupported tools
 function normalizeCodexTools(body) {
@@ -822,8 +808,8 @@ export class CodexExecutor extends BaseExecutor {
     convertSystemToDeveloperRole(body);
     // Rewrite replayed assistant history input_text/text parts → output_text (#6932)
     normalizeCodexAssistantHistory(body);
-    // Strip server-generated item IDs (rs_/fc_/resp_/msg_) — Codex /responses can't resolve when store=false
-    stripStoredItemReferences(body);
+    // Remove replay-only call item IDs and stored references that store=false cannot resolve.
+    body.input = normalizeStatelessResponseInput(body.input);
     // Flatten function tools + drop unsupported types
     normalizeCodexTools(body);
 

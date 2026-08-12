@@ -24,7 +24,7 @@ export async function runAutoConfigure(settings, options = {}) {
   };
 
   const headroom = await configureHeadroom(settings, { dryRun, url: headroomUrl });
-  const pxpipe = configurePxpipe(settings, { dryRun });
+  const pxpipe = await configurePxpipe(settings, { dryRun });
   const firecrawl = await configureFirecrawl(settings, {
     dryRun,
     apiKey: firecrawlOptions.apiKey ?? firecrawlApiKey,

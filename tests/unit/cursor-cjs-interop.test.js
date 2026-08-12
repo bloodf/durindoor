@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 
 const http2Binding = vi.hoisted(() => ({
@@ -11,11 +12,40 @@ vi.mock("module", () => ({
 }));
 
 describe("Cursor executor CJS interop", () => {
-  it("loads with createRequire and resolves the http2 binding", async () => {
-    const cursor = await import("../../open-sse/executors/cursor.js");
+  it("uses the createRequire-loaded http2 binding for executor requests", async () => {
+    const request = new EventEmitter();
+    request.write = vi.fn();
+    request.end = vi.fn(() => queueMicrotask(() => {
+      request.emit("response", { ":status": 418 });
+      request.emit("end");
+    }));
+    request.close = vi.fn();
+    request.destroy = vi.fn();
 
-    expect(cursor.CursorExecutor).toBeTypeOf("function");
+    const client = new EventEmitter();
+    client.request = vi.fn(() => request);
+    client.close = vi.fn();
+    client.destroy = vi.fn();
+    http2Binding.connect.mockReturnValue(client);
+
+    const { CursorExecutor } = await import("../../open-sse/executors/cursor.js");
+    const executor = new CursorExecutor();
+    const result = await executor.execute({
+      model: "cursor-model",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: {
+        accessToken: "token",
+        providerSpecificData: { machineId: "machine" },
+      },
+      proxyOptions: { proxyMode: "direct", disableEnvProxy: true },
+    });
+
     expect(requireHttp2).toHaveBeenCalledWith("http2");
-    expect(requireHttp2.mock.results[0].value).toBe(http2Binding);
+    expect(http2Binding.connect).toHaveBeenCalledWith(new URL(executor.buildUrl()).origin);
+    expect(client.request).toHaveBeenCalledOnce();
+    expect(request.write).toHaveBeenCalledOnce();
+    expect(request.end).toHaveBeenCalledOnce();
+    expect(result.response.status).toBe(418);
   });
 });

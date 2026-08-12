@@ -43,7 +43,6 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null, t
     result.stop_sequences = Array.isArray(body.stop) ? body.stop : [body.stop];
   }
 
-  // Temperature
   if (body.temperature !== undefined) {
     result.temperature = body.temperature;
   }
@@ -213,6 +212,11 @@ Respond ONLY with the JSON object, no other text.`);
 
   return result;
 }
+
+/** Strip temperature after centralized normalization activates Claude thinking. */
+openaiToClaudeRequest.finalize = (_model, body) => {
+  if (body.thinking && body.thinking.type !== "disabled") delete body.temperature;
+};
 
 // Get content blocks from single message
 function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {

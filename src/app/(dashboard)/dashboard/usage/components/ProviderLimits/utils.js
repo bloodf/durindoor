@@ -438,41 +438,101 @@ export function getQuotaVisibilityKey(quota, index) {
   return `${name}::${index}`;
 }
 
-function getProviderHiddenQuotaSet(provider, quotaVisibility) {
-  const hidden = quotaVisibility?.[provider]?.hidden;
-  return new Set(
-    (Array.isArray(hidden) ? hidden : [])
-      .map((item) => String(item).trim())
-      .filter(Boolean),
-  );
+/**
+ * Resolve hidden quota keys for a connection, falling back to its provider's
+ * legacy entry when no connection-specific preference exists.
+ *
+ * @param {string} scopeKey - Connection identifier
+ * @param {Object} quotaVisibility - Saved visibility settings
+ * @param {string} [legacyScopeKey] - Legacy provider identifier
+ * @returns {Set<string>} Normalized hidden quota keys
+ */
+function getHiddenQuotaSet(scopeKey, quotaVisibility, legacyScopeKey) {
+  const scopedHidden = quotaVisibility?.[scopeKey]?.hidden;
+  if (Array.isArray(scopedHidden)) {
+    return new Set(scopedHidden.map((item) => String(item).trim()).filter(Boolean));
+  }
+  if (legacyScopeKey && legacyScopeKey !== scopeKey) {
+    const legacyHidden = quotaVisibility?.[legacyScopeKey]?.hidden;
+    if (Array.isArray(legacyHidden)) {
+      return new Set(legacyHidden.map((item) => String(item).trim()).filter(Boolean));
+    }
+  }
+  return new Set();
 }
 
 /**
- * Return quota rows that should be visible for a provider.
+ * Update one connection's hidden quota keys. A first connection-scoped write
+ * starts from any legacy provider entry so existing preferences remain active.
  *
- * @param {string} provider - Provider identifier
+ * @param {Object} quotaVisibility - Saved visibility settings
+ * @param {string} connectionId - Connection identifier
+ * @param {string} provider - Legacy provider identifier
+ * @param {string} quotaKey - Stable quota row key
+ * @param {boolean} hidden - Whether the quota row should be hidden
+ * @returns {Object} Updated visibility settings
+ */
+export function updateQuotaVisibility(
+  quotaVisibility,
+  connectionId,
+  provider,
+  quotaKey,
+  hidden,
+) {
+  const connectionVisibility = quotaVisibility[connectionId];
+  const legacyVisibility = quotaVisibility[provider];
+  const hiddenKeys = new Set(
+    connectionVisibility?.hidden || (connectionId !== provider ? legacyVisibility?.hidden : []) || [],
+  );
+  if (hidden) hiddenKeys.add(quotaKey);
+  else hiddenKeys.delete(quotaKey);
+  return {
+    ...quotaVisibility,
+    [connectionId]: {
+      ...connectionVisibility,
+      hidden: [...hiddenKeys],
+    },
+  };
+}
+
+/**
+ * Return quota rows visible for a connection, with provider-keyed legacy fallback.
+ *
+ * @param {string} scopeKey - Connection identifier
  * @param {Array<Object>} [quotas=[]] - Normalized quota rows
- * @param {Object} [quotaVisibility={}] - Per-provider visibility settings
+ * @param {Object} [quotaVisibility={}] - Visibility settings by connection
+ * @param {string} [legacyScopeKey] - Legacy provider identifier
  * @returns {Array<Object>} Quota rows that are not hidden
  */
-export function filterQuotasByVisibility(provider, quotas = [], quotaVisibility = {}) {
+export function filterQuotasByVisibility(
+  scopeKey,
+  quotas = [],
+  quotaVisibility = {},
+  legacyScopeKey,
+) {
   if (!Array.isArray(quotas) || quotas.length === 0) return [];
-  const hidden = getProviderHiddenQuotaSet(provider, quotaVisibility);
+  const hidden = getHiddenQuotaSet(scopeKey, quotaVisibility, legacyScopeKey);
   if (hidden.size === 0) return quotas;
   return quotas.filter((quota, index) => !hidden.has(getQuotaVisibilityKey(quota, index)));
 }
 
 /**
- * Return quota rows that are currently hidden for a provider.
+ * Return quota rows hidden for a connection, with provider-keyed legacy fallback.
  *
- * @param {string} provider - Provider identifier
+ * @param {string} scopeKey - Connection identifier
  * @param {Array<Object>} [quotas=[]] - Normalized quota rows
- * @param {Object} [quotaVisibility={}] - Per-provider visibility settings
+ * @param {Object} [quotaVisibility={}] - Visibility settings by connection
+ * @param {string} [legacyScopeKey] - Legacy provider identifier
  * @returns {Array<Object>} Hidden quota rows
  */
-export function getHiddenQuotaRows(provider, quotas = [], quotaVisibility = {}) {
+export function getHiddenQuotaRows(
+  scopeKey,
+  quotas = [],
+  quotaVisibility = {},
+  legacyScopeKey,
+) {
   if (!Array.isArray(quotas) || quotas.length === 0) return [];
-  const hidden = getProviderHiddenQuotaSet(provider, quotaVisibility);
+  const hidden = getHiddenQuotaSet(scopeKey, quotaVisibility, legacyScopeKey);
   if (hidden.size === 0) return [];
   return quotas.filter((quota, index) => hidden.has(getQuotaVisibilityKey(quota, index)));
 }

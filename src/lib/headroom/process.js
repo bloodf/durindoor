@@ -41,7 +41,13 @@ export function getManagedPid() {
   return pid && isPidAlive(pid) ? pid : null;
 }
 
-export async function startHeadroomProxy({ port = DEFAULT_PORT } = {}) {
+/**
+ * Start the managed Headroom proxy with CPU-heavy Kompress disabled unless
+ * explicitly enabled by a caller.
+ *
+ * @param {{port?: number, kompress?: boolean}} [options] Proxy launch options.
+ */
+export async function startHeadroomProxy({ port = DEFAULT_PORT, kompress = false } = {}) {
   const safePort = Number(port) > 0 && Number(port) < 65536 ? Number(port) : DEFAULT_PORT;
   const binary = findHeadroomBinary();
   if (!binary) {
@@ -57,7 +63,7 @@ export async function startHeadroomProxy({ port = DEFAULT_PORT } = {}) {
   // spawn stdio requires fd numbers, not WriteStream objects.
   const outFd = fs.openSync(LOG_FILE, "a");
 
-  const child = spawn(binary, ["proxy", "--port", String(safePort)], {
+  const child = spawn(binary, ["proxy", "--port", String(safePort), ...(kompress ? [] : ["--disable-kompress"])], {
     stdio: ["ignore", outFd, outFd],
     detached: true,
     windowsHide: true,

@@ -10,6 +10,7 @@ import { handleForcedSSEToJson } from "../../open-sse/handlers/chatCore/sseToJso
 import { FORMATS } from "../../open-sse/translator/formats.js";
 import { getDefaultModel } from "../../open-sse/config/providerModels.js";
 import { PROVIDERS } from "../../open-sse/config/providers.js";
+import { REASONING_HEADER } from "../../open-sse/config/runtimeConfig.js";
 import { CLAUDE_BLOCK } from "../../open-sse/translator/schema/blocks.js";
 import { CLAUDE_STOP, GEMINI_FINISH, OPENAI_FINISH } from "../../open-sse/translator/schema/finishReasons.js";
 import { GEMINI_ROLE, ROLE } from "../../open-sse/translator/schema/roles.js";
@@ -202,6 +203,30 @@ describe("handleNonStreamingResponse: synthetic SSE respects client format", () 
     expect(text).toContain("I think therefore I am");
     expect(text).toContain("event: content_block_delta");
     expect(text).toContain("therefore I am");
+  });
+
+  it("keeps reasoning_content by default and strips it only on direct-response opt-out", async () => {
+    const completion = {
+      ...openaiCompletion,
+      choices: [{
+        index: 0,
+        message: { role: "assistant", reasoning_content: "private work", content: "answer" },
+        finish_reason: "stop",
+      }],
+    };
+    const request = async (headers = {}) => {
+      const result = await handleNonStreamingResponse(baseOptions({
+        providerResponse: makeProviderResponse(completion),
+        sourceFormat: FORMATS.OPENAI,
+        targetFormat: FORMATS.OPENAI,
+        streamToClient: false,
+        clientRawRequest: { endpoint: "/v1/chat/completions", headers },
+      }));
+      return (await result.response.json()).choices[0].message;
+    };
+
+    await expect(request()).resolves.toHaveProperty("reasoning_content", "private work");
+    await expect(request({ [REASONING_HEADER]: "off" })).resolves.not.toHaveProperty("reasoning_content");
   });
 
   it("extracts <think> reasoning into reasoning_content for OpenAI non-streaming clients", async () => {

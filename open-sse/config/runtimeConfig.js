@@ -11,7 +11,8 @@ export const HTTP_STATUS = {
   SERVER_ERROR: 500,
   BAD_GATEWAY: 502,
   SERVICE_UNAVAILABLE: 503,
-  GATEWAY_TIMEOUT: 504
+  GATEWAY_TIMEOUT: 504,
+  INSUFFICIENT_STORAGE: 507
 };
 
 // Re-export error config (backward compat)

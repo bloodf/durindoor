@@ -16,6 +16,10 @@ describe("kimchi registry entry", () => {
     assert.equal(kimchiEntry.category, "oauth");
   });
 
+  it("advertises OAuth and API-key authentication", () => {
+    assert.deepEqual(kimchiEntry.authModes, ["oauth", "apikey"]);
+  });
+
   it("points at the OpenAI-compatible gateway with an authenticated UA", () => {
     assert.equal(
       kimchiEntry.transport.baseUrl,

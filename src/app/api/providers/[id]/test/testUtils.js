@@ -668,6 +668,21 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         const valid = res.status !== 401 && res.status !== 403;
         return { valid, error: valid ? null : "Invalid API key or Azure configuration" };
       }
+      case "kimchi": {
+        const res = await fetchWithConnectionProxy(
+          KIMCHI_CONFIG.validationUrl,
+          {
+            method: "GET",
+            headers: {
+              Accept: "application/json",
+              Authorization: `Bearer ${connection.apiKey}`,
+              "User-Agent": "kimchi/0.1.40",
+            },
+          },
+          effectiveProxy,
+        );
+        return { valid: res.ok, error: res.ok ? null : "Invalid API key", refreshed: false };
+      }
       case "openai": {
         const res = await fetchWithConnectionProxy("https://api.openai.com/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
         return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
@@ -782,6 +797,13 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
       case "together": {
         const res = await fetchWithConnectionProxy("https://api.together.xyz/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
         return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+      }
+      case "tokenrouter": {
+        const baseUrl = connection.providerSpecificData?.baseUrl || "https://api.tokenrouter.com/v1";
+        const res = await fetchWithConnectionProxy(`${baseUrl.replace(/\/$/, "")}/models`, {
+          headers: { Authorization: `Bearer ${connection.apiKey}` },
+        }, effectiveProxy);
+        return { valid: res.ok, error: res.ok ? null : "Invalid API key or base URL" };
       }
       case "fireworks": {
         const res = await fetchWithConnectionProxy("https://api.fireworks.ai/inference/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);

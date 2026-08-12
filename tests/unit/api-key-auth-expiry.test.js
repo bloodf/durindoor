@@ -32,6 +32,22 @@ describe("API-key authentication expiry", () => {
     await expect(evaluateApiKeyAuth(null, { required: true, request: invalid })).resolves.toMatchObject({ ok: false, reason: "missing" });
   });
 
+  it("rejects a credentialless request without borrowing a stored API key", async () => {
+    const storedApiKey = "sk-valid-stored";
+    mocks.getApiKeyByKey.mockImplementation(async (key) => key === storedApiKey
+      ? { isActive: true, expiresAt: null }
+      : null);
+    const request = new Request("http://localhost/v1/chat");
+
+    expect(extractApiKeyCandidates(request)).toEqual([]);
+    await expect(resolveClientApiKey(request, { required: true })).resolves.toEqual({
+      apiKey: null,
+      auth: { ok: false, reason: "missing", stored: false },
+    });
+    expect(mocks.getApiKeyByKey).not.toHaveBeenCalledWith(storedApiKey);
+    expect(mocks.getApiKeyByKey).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["authorization", { Authorization: "Bearer sk-bearer" }, "http://localhost/v1/chat", "sk-bearer"],
     ["Anthropic", { "x-api-key": "sk-anthropic" }, "http://localhost/v1/messages", "sk-anthropic"],

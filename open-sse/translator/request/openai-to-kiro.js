@@ -168,12 +168,25 @@ function safeJSONParse(str, fallback) {
 }
 
 /**
+ * Kiro's CodeWhisperer API rejects tool names containing consecutive
+ * underscores, so `codex_app__send_message_to_thread` 400s. Collapse any run
+ * of underscores to a single one; the caller records the original name so the
+ * response translators can hand the client back the name it sent.
+ */
+function sanitizeKiroToolName(name) {
+  return typeof name === "string" ? name.replace(/_{2,}/g, "_") : name;
+}
+
+/**
  * Convert OpenAI messages to Kiro format
  * Rules: system/tool/user -> user role, merge consecutive same roles.
  *
  * Returns { history, currentMessage }.
+ *
+ * @param {Map<string,string>} toolNameMap - populated with sanitized→original
+ *   tool names for any name Kiro would have rejected.
  */
-function convertMessages(messages, tools, model) {
+function convertMessages(messages, tools, model, toolNameMap = new Map()) {
   let history = [];
   let currentMessage = null;
 
@@ -233,7 +246,12 @@ function convertMessages(messages, tools, model) {
           userMsg.userInputMessage.userInputMessageContext = {};
         }
         userMsg.userInputMessage.userInputMessageContext.tools = tools.map(t => {
-          const name = t.function?.name || t.name;
+          const originalName = t.function?.name || t.name;
+          // Kiro rejects consecutive underscores in a tool name. Collapse them
+          // and remember the original so response translators can restore the
+          // name the client actually asked for.
+          const name = sanitizeKiroToolName(originalName);
+          if (name !== originalName) toolNameMap.set(name, originalName);
           let description = t.function?.description || t.description || "";
 
           if (!description.trim()) {
@@ -543,7 +561,8 @@ export function openaiToKiroRequest(model, body, stream, credentials, translatio
     translationContext?.thinkingIntent,
   );
 
-  const { history, currentMessage } = convertMessages(messages, tools, kiroModelId);
+  const toolNameMap = new Map();
+  const { history, currentMessage } = convertMessages(messages, tools, kiroModelId, toolNameMap);
 
   // Resolve the profileArn (region-aligned) via the single source of truth.
   // Handles api_key (never the shared default), us-east-1 default fallback, and
@@ -604,6 +623,17 @@ export function openaiToKiroRequest(model, body, stream, credentials, translatio
     if (maxTokens) payload.inferenceConfig.maxTokens = maxTokens;
     if (temperature !== undefined) payload.inferenceConfig.temperature = temperature;
     if (topP !== undefined) payload.inferenceConfig.topP = topP;
+  }
+
+  // Non-enumerable so it never reaches the wire; chatCore lifts it off the
+  // translated body and hands it to the response translator.
+  if (toolNameMap.size > 0) {
+    Object.defineProperty(payload, "_toolNameMap", {
+      value: toolNameMap,
+      enumerable: false,
+      configurable: true,
+      writable: true,
+    });
   }
 
   return payload;

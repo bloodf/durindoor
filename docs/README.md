@@ -78,6 +78,7 @@ For developers working on the DurinDoor codebase, provider registry, or document
 - [Upstream OmniRoute 2026-08-10 Ledger](campaigns/upstream-omniroute-2026-08-10-ledger.md)
 - [Upstream #3171 MiMo Affinity Ledger](campaigns/upstream-3171-mimo-affinity-ledger.md)
 - [Upstream #3172 Reader Cleanup Ledger](campaigns/upstream-3172-ledger.md)
+- [Upstream #3169 Executor State Ledger](campaigns/upstream-3169-executor-state-ledger.md)
 - [tests/README.md](../tests/README.md)
 - [Upstream #3223 Antigravity Prompt Ledger](campaigns/upstream-3223-antigravity-prompt-ledger.md)
 - [Upstream #3168 iFlow Auth Ledger](campaigns/upstream-3168-iflow-auth-ledger.md)

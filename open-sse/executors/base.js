@@ -214,6 +214,10 @@ export class BaseExecutor {
 
   async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null, attemptStartedAt = null, onProviderAttempt = null, requestPolicy = null }) {
     if (signal?.aborted) throw requestAbortError(signal.reason);
+    // Callers (direct execute() calls, tests) may omit requestContext entirely.
+    // Allocate a fresh per-call object so executor request-scoped metadata
+    // (Grok session/req/turn ids, etc.) is always threaded, never dropped.
+    requestContext ??= {};
     const fallbackCount = this.getFallbackCount();
     let lastError = null;
     let lastStatus = 0;
@@ -328,13 +332,16 @@ export class BaseExecutor {
       if (signal?.aborted) throw requestAbortError(signal.reason);
       // Request context carries internal, request-scoped routing metadata without
       // placing private markers on provider credentials or outbound JSON bodies.
-      // Extra arguments are backward-compatible with executors that do not use it.
+      // Fork contract: buildHeaders(credentials, stream, requestContext, model).
+      // The third slot deliberately differs from upstream's URL slot so executor
+      // adaptations can consume request-scoped state without retaining it.
+      // Extra arguments are backward-compatible with executors that do not use them.
       const url = this.buildUrl(model, stream, urlIndex, credentials, requestContext);
       const transformedBody = this.clampCustomMaxOutput(
         this.transformRequest(model, body, stream, credentials, requestContext),
         requestContext,
       );
-      const headers = this.buildHeaders(credentials, stream, requestContext);
+      const headers = this.buildHeaders(credentials, stream, requestContext, model);
       // Forward the client's request id through the relay (OmniRoute#7093),
       // without overriding an id the executor already set. Headers may arrive
       // under any casing, so read them through a Headers instance. Relay-only:

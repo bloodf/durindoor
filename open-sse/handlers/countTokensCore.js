@@ -126,7 +126,7 @@ export async function countInputTokens({ body, modelInfo, credentials = null, lo
   if (!url) return { tokens: estimateTokens(body), approximate: true };
 
   try {
-    const headers = getExecutor(provider).buildHeaders(credentials || {}, false);
+    const headers = getExecutor(provider).buildHeaders(credentials || {}, false, null, model);
     const res = await proxyAwareFetch(url, {
       method: "POST",
       headers,

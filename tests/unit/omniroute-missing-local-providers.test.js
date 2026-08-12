@@ -177,7 +177,7 @@ describe("OmniRoute Batch G local/router provider parity", () => {
     const executor = new OpenCodeZenExecutor();
 
     expect(executor.buildUrl("claude-sonnet-4-6")).toBe("https://opencode.ai/zen/v1/messages");
-    let headers = executor.buildHeaders({ apiKey: "sk-test" }, false);
+    let headers = executor.buildHeaders({ apiKey: "sk-test" }, false, null, "claude-sonnet-4-6");
     expect(headers["x-api-key"]).toBe("sk-test");
     expect(headers["anthropic-version"]).toBeDefined();
     expect(headers.Authorization).toBeUndefined();
@@ -185,7 +185,7 @@ describe("OmniRoute Batch G local/router provider parity", () => {
     expect(executor.buildUrl("qwen3.6-plus")).toBe("https://opencode.ai/zen/v1/messages");
 
     expect(executor.buildUrl("gpt-5.2")).toBe("https://opencode.ai/zen/v1/responses");
-    headers = executor.buildHeaders({ apiKey: "sk-test" }, false);
+    headers = executor.buildHeaders({ apiKey: "sk-test" }, false, null, "gpt-5.2");
     expect(headers.Authorization).toBe("Bearer sk-test");
     expect(headers["x-api-key"]).toBeUndefined();
 

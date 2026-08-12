@@ -50,7 +50,7 @@ describe("OpenCode Go endpoint routing", () => {
 
     for (const model of MESSAGES_MODELS) {
       expect(executor.buildUrl(model)).toBe("https://opencode.ai/zen/go/v1/messages");
-      const headers = executor.buildHeaders({ apiKey: "sk-test" }, false);
+      const headers = executor.buildHeaders({ apiKey: "sk-test" }, false, null, model);
       expect(headers["x-api-key"]).toBe("sk-test");
       expect(headers["anthropic-version"]).toBeDefined();
       expect(headers.Authorization).toBeUndefined();
@@ -62,7 +62,7 @@ describe("OpenCode Go endpoint routing", () => {
 
     for (const model of CHAT_MODELS) {
       expect(executor.buildUrl(model)).toBe("https://opencode.ai/zen/go/v1/chat/completions");
-      const headers = executor.buildHeaders({ apiKey: "sk-test" }, false);
+      const headers = executor.buildHeaders({ apiKey: "sk-test" }, false, null, model);
       expect(headers.Authorization).toBe("Bearer sk-test");
       expect(headers["x-api-key"]).toBeUndefined();
       expect(headers["anthropic-version"]).toBeUndefined();

@@ -48,7 +48,7 @@ export async function handleModerationsCore({
   }
 
   const executor = getExecutor(provider);
-  const headers = executor.buildHeaders(credentials || {}, false);
+  const headers = executor.buildHeaders(credentials || {}, false, null, model);
   const url = deriveModerationsUrl(baseUrl);
 
   log?.debug?.("MODERATION", `${provider} | ${model} | ${url}`);

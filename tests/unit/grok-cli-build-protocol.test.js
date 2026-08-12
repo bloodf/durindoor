@@ -56,6 +56,7 @@ describe("grok-cli Grok Build subscription wire protocol (#2590)", () => {
         accessToken: "test-token",
         connectionId: "conn_test",
         providerSpecificData: { email: "u@example.com", userId: "uid-1" },
+        rawHeaders: { "x-session-id": "client-session-3169" },
       },
       log: null,
     });
@@ -88,6 +89,11 @@ describe("grok-cli Grok Build subscription wire protocol (#2590)", () => {
     expect(headers.Authorization).toBe("Bearer test-token");
     expect(headers["x-email"]).toBe("u@example.com");
     expect(headers["x-userid"]).toBe("uid-1");
+    // execute() callers may omit requestContext; BaseExecutor must allocate and
+    // thread one so request-scoped Grok metadata still reaches outbound headers.
+    expect(headers["x-grok-conv-id"]).toBe("client-session-3169");
+    expect(headers["x-grok-req-id"]).toMatch(/^[0-9a-f-]{36}$/);
+    expect(headers["x-grok-turn-idx"]).toBe("1");
 
     // Build never sends reasoning effort; summary continuity is kept and
     // encrypted reasoning is still requested for store=false multi-turn.

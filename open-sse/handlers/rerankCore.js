@@ -54,7 +54,7 @@ export async function handleRerankCore({
   }
 
   const executor = getExecutor(provider);
-  const headers = executor.buildHeaders(credentials || {}, false);
+  const headers = executor.buildHeaders(credentials || {}, false, null, model);
 
   log?.debug?.("RERANK", `${provider} | ${model} | ${url}`);
 

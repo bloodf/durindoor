@@ -323,6 +323,7 @@ export function initState(sourceFormat, requestBody) {
   // translators can classify custom tools using real metadata instead of
   // guessing from the tool name (e.g. apply_patch).
   const toolTypes = {};
+  const toolNamespaces = {};
   if (Array.isArray(requestBody?.tools)) {
     for (const tool of requestBody.tools) {
       const type = typeof tool?.type === "string" ? tool.type : "";
@@ -330,6 +331,14 @@ export function initState(sourceFormat, requestBody) {
         ? tool.function.name
         : (typeof tool?.name === "string" ? tool.name : "");
       if (name && type) toolTypes[name] = type;
+      if (type === "namespace" && name && Array.isArray(tool.tools)) {
+        for (const subtool of tool.tools) {
+          if (typeof subtool?.name === "string" && subtool.name) {
+            toolNamespaces[`${name}.${subtool.name}`] = name;
+            toolNamespaces[subtool.name] = name;
+          }
+        }
+      }
     }
   }
 
@@ -346,7 +355,8 @@ export function initState(sourceFormat, requestBody) {
     finishReasonSent: false,
     usage: null,
     contentBlockIndex: -1,
-    toolTypes
+    toolTypes,
+    toolNamespaces
   };
 
   // Add openai-responses specific fields

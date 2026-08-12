@@ -208,9 +208,25 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   // such as Gemini, which strictly validates function names.
   if (body.tools && Array.isArray(body.tools)) {
     result.tools = body.tools
-      .map(tool => {
+      .flatMap(tool => {
         // Already in Chat Completions format: { type: "function", function: { name, ... } }
         if (tool.function) return tool;
+        // Responses namespace tools have no Chat equivalent. Expand each declared
+        // subtool; response state keeps the namespace for the reverse projection.
+        if (tool.type === "namespace" && Array.isArray(tool.tools)) {
+          const namespace = typeof tool.name === "string" ? tool.name : "";
+          return tool.tools
+            .filter(subtool => typeof subtool?.name === "string" && subtool.name.trim() !== "")
+            .map(subtool => ({
+              type: OPENAI_BLOCK.FUNCTION,
+              function: {
+                name: namespace ? `${namespace}.${subtool.name}` : subtool.name,
+                description: String(subtool.description || tool.description || ""),
+                parameters: normalizeToolParameters(subtool.parameters),
+                strict: subtool.strict
+              }
+            }));
+        }
         // Responses API custom (freeform) tool: { type: "custom", name, description }.
         // Chat Completions has no custom-tool type, so normalize it to a function
         // tool whose single parameter is the raw `input` string. The response

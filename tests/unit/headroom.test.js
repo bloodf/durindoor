@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { compressWithHeadroom, formatHeadroomLog } from "../../open-sse/rtk/headroom.js";
+import { MAX_COMPRESS_BODY_BYTES } from "../../open-sse/config/runtimeConfig.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -35,6 +36,34 @@ describe("compressWithHeadroom", () => {
       model: "gpt-4o",
       messages: [{ role: "user", content: "long" }],
     });
+  });
+
+  it("skips oversize bodies while normal bodies still compress", async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({
+      messages: [{ role: "user", content: "short" }],
+      tokens_saved: 80,
+    }), { status: 200 }));
+    const oversizeContent = "x".repeat(MAX_COMPRESS_BODY_BYTES);
+    const oversizeBody = { messages: [{ role: "user", content: oversizeContent }] };
+    const normalBody = { messages: [{ role: "user", content: "long" }] };
+    const diagnostics = {};
+
+    const skipped = await compressWithHeadroom(oversizeBody, {
+      enabled: true,
+      url: "http://headroom:8787",
+      diagnostics,
+    });
+    const compressed = await compressWithHeadroom(normalBody, {
+      enabled: true,
+      url: "http://headroom:8787",
+    });
+
+    expect(skipped).toBeNull();
+    expect(oversizeBody.messages[0].content).toBe(oversizeContent);
+    expect(diagnostics.reason).toMatch(/^skipped: payload too large/);
+    expect(compressed.tokens_saved).toBe(80);
+    expect(normalBody.messages[0].content).toBe("short");
+    expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
   it("compresses responses input in-place", async () => {

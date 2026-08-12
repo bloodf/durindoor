@@ -1,5 +1,19 @@
-import { ERROR_RULES, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS, MAX_RATE_LIMIT_COOLDOWN_MS } from "../config/errorConfig.js";
+import { ERROR_RULES, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS, MAX_RATE_LIMIT_COOLDOWN_MS, REQUEST_REPLAY_BUFFER_ERROR } from "../config/errorConfig.js";
 import { parseRateLimitEvidence } from "../utils/error.js";
+import { HTTP_STATUS } from "../config/runtimeConfig.js";
+
+/**
+ * Identify Envoy retry-buffer overflow responses that are safe to replay on
+ * the same account because they carry no credential or quota evidence.
+ * @param {number} status - HTTP status code
+ * @param {unknown} errorText - Upstream error body
+ * @returns {boolean} Whether the request should be replayed in place
+ */
+export function isRequestReplayBufferError(status, errorText) {
+  if (Number(status) !== HTTP_STATUS.INSUFFICIENT_STORAGE) return false;
+  const message = typeof errorText === "string" ? errorText : JSON.stringify(errorText || "");
+  return message.toLowerCase().includes(REQUEST_REPLAY_BUFFER_ERROR);
+}
 
 /**
  * Calculate exponential backoff cooldown for rate limits (429)
@@ -31,6 +45,10 @@ export function checkFallbackError(status, errorText, backoffLevel = 0) {
     ? (typeof errorText === "string" ? errorText : JSON.stringify(errorText))
     : "";
   const lowerError = normalizedText.toLowerCase();
+
+  if (isRequestReplayBufferError(status, errorText)) {
+    return { shouldFallback: false, cooldownMs: 0 };
+  }
 
   // Port-pending guards are explicit feature-not-implemented errors; they should not
   // lock the user's connection or trigger the account fallback cooldown chain.

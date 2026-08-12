@@ -90,10 +90,11 @@ export function createStreamController({ onDisconnect, onError, onComplete, onAc
  * for long periods while raw bytes still flow (e.g. Kiro EventStream
  * binary frames buffering, Claude reasoning streams).
  */
-export function createDisconnectAwareStream(transformStream, streamController, onAbortTerminal = null) {
+export function createDisconnectAwareStream(transformStream, streamController, onAbortTerminal = null, terminalTracker = null) {
   const reader = transformStream.readable.getReader();
   const writer = transformStream.writable.getWriter();
   let terminalEmitted = false;
+  const decoder = terminalTracker ? new TextDecoder() : null;
 
   // Emit a synthesized terminal payload (e.g. Responses response.failed + [DONE]) once
   const emitTerminal = (controller) => {
@@ -103,6 +104,14 @@ export function createDisconnectAwareStream(transformStream, streamController, o
       const bytes = onAbortTerminal();
       if (bytes) controller.enqueue(bytes);
     } catch { /* best-effort terminal */ }
+  };
+  const emitClientRecovery = (controller) => {
+    if (terminalEmitted || !terminalTracker) return false;
+    const bytes = terminalTracker.buildRecoveryBytes();
+    if (!bytes) return false;
+    terminalEmitted = true;
+    controller.enqueue(bytes);
+    return true;
   };
 
   return new ReadableStream({
@@ -117,10 +126,17 @@ export function createDisconnectAwareStream(transformStream, streamController, o
         const { done, value } = await reader.read();
 
         if (done) {
-          streamController.handleComplete();
+          const trailingFrame = decoder?.decode();
+          if (trailingFrame) terminalTracker.observeClientFrame(trailingFrame);
+          if (emitClientRecovery(controller)) {
+            streamController.handleError(new Error("upstream stream ended before client terminal"));
+          } else {
+            streamController.handleComplete();
+          }
           controller.close();
           return;
         }
+        terminalTracker?.observeClientFrame(decoder.decode(value, { stream: true }));
         controller.enqueue(value);
       } catch (error) {
         const wasConnected = streamController.isConnected();
@@ -152,11 +168,13 @@ export function createDisconnectAwareStream(transformStream, streamController, o
           code === "UND_ERR_SOCKET"
         );
 
-        // Graceful close on network/abort, or when a structured terminal is available
-        // (Responses passthrough prefers response.failed + [DONE] over a raw transport error)
+        // Graceful close on network/abort, or when a structured terminal is available.
+        // Responses passthrough uses its existing abort terminal; all other known
+        // client formats synthesize their EOF recovery through terminalTracker.
         try {
           if (!wasConnected || isNetworkClose || onAbortTerminal) {
-            emitTerminal(controller);
+            if (terminalTracker) emitClientRecovery(controller);
+            else emitTerminal(controller);
             controller.close();
           } else {
             controller.error(error);
@@ -189,7 +207,7 @@ export function createDisconnectAwareStream(transformStream, streamController, o
  * @param {TransformStream} transformStream - Transform stream for SSE
  * @param {object} streamController - Stream controller from createStreamController
  */
-export function pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal = null, stallTimeoutMs = STREAM_STALL_TIMEOUT_MS) {
+export function pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal = null, stallTimeoutMs = STREAM_STALL_TIMEOUT_MS, terminalTracker = null) {
   let stallTimer = null;
   let chunkCount = 0;
   let totalBytes = 0;
@@ -251,6 +269,7 @@ export function pipeWithDisconnect(providerResponse, transformStream, streamCont
   return createDisconnectAwareStream(
     { readable: transformedBody, writable: { getWriter: () => ({ abort: () => Promise.resolve() }) } },
     wrappedController,
-    onAbortTerminal
+    onAbortTerminal,
+    terminalTracker,
   );
 }

@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   handleStreamingResponse: vi.fn(),
   handleNonStreamingResponse: vi.fn(),
   isCodexOriginatedHeaders: vi.fn(() => false),
+  detectClientTool: vi.fn(() => null),
+  isNativePassthrough: vi.fn(() => false),
   logClientRawRequest: vi.fn(),
   logRawRequest: vi.fn(),
   logTargetRequest: vi.fn(),
@@ -32,8 +34,8 @@ vi.mock("../../open-sse/utils/requestLogger.js", () => ({
 }));
 
 vi.mock("../../open-sse/utils/clientDetector.js", () => ({
-  detectClientTool: vi.fn(() => null),
-  isNativePassthrough: vi.fn(() => false),
+  detectClientTool: mocks.detectClientTool,
+  isNativePassthrough: mocks.isNativePassthrough,
   isCodexOriginatedHeaders: mocks.isCodexOriginatedHeaders,
 }));
 
@@ -114,9 +116,32 @@ describe("Codex compact request context in chatCore", () => {
     // clearAllMocks clears calls, not implementations — pin the detector to
     // non-Codex by default; echo tests opt in explicitly.
     mocks.isCodexOriginatedHeaders.mockReturnValue(false);
+    mocks.detectClientTool.mockReturnValue(null);
+    mocks.isNativePassthrough.mockReturnValue(false);
     mocks.handleStreamingResponse.mockImplementation(async ({ providerResponse }) => ({ success: true, response: providerResponse }));
     mocks.handleNonStreamingResponse.mockImplementation(async ({ providerResponse }) => ({ success: true, response: providerResponse }));
     mocks.refreshWithRetry.mockResolvedValue({ accessToken: "new-token" });
+  });
+  it("normalizes Codex additional_tools items without removing their tools", async () => {
+    mocks.detectClientTool.mockReturnValue("codex");
+    mocks.isNativePassthrough.mockReturnValue(true);
+    mocks.execute.mockResolvedValue(providerResult(200));
+    const options = makeOptions({ endpoint: "/v1/responses" });
+    options.body.input.unshift({
+      type: "additional_tools",
+      content: [{ type: "input_text", text: "must not reach Codex" }],
+      tools: [{ type: "web_search" }],
+    });
+    options.body.tools = [{ type: "function", name: "lookup" }];
+
+    await handleChatCore(options);
+
+    const outbound = mocks.execute.mock.calls[0][0].body;
+    expect(outbound.input[0]).toEqual({
+      type: "additional_tools",
+      tools: [{ type: "web_search" }],
+    });
+    expect(outbound.tools).toEqual([{ type: "function", name: "lookup" }]);
   });
 
   it("keeps the same frozen compact context across OAuth refresh retry", async () => {

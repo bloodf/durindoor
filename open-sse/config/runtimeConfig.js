@@ -44,6 +44,9 @@ export const MEMORY_CONFIG = {
   refreshDedupResultTtlMs: 10 * 1000,
 };
 
+// Client opt-out for reasoning_content on non-streaming responses.
+export const REASONING_HEADER = "x-9router-reasoning";
+
 // Parse a positive integer env override, falling back to a default.
 function envMs(name, def) {
   const raw = process.env[name];

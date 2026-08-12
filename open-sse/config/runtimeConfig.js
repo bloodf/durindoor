@@ -43,6 +43,17 @@ export const MEMORY_CONFIG = {
   refreshDedupResultTtlMs: 10 * 1000,
 };
 
+/** Shared undici pool limits for direct and proxy provider traffic. */
+export const PROXY_FETCH_POOL_CONFIG = Object.freeze({
+  directConnectionsPerOrigin: 32,
+  proxyConnectionsPerOrigin: 64,
+  directMaxCachedSessions: 16,
+  proxyMaxCachedSessions: 32,
+  keepAliveTimeoutMs: 4_000,
+  keepAliveMaxTimeoutMs: 60_000,
+  pipelining: 1,
+});
+
 // Parse a positive integer env override, falling back to a default.
 function envMs(name, def) {
   const raw = process.env[name];

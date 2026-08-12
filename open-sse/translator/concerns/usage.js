@@ -1,6 +1,6 @@
 // Build OpenAI usage object. Caller computes prompt/completion/total (provider math).
 // Optional details added only when > 0 (matches existing claude/gemini/codex behavior).
-export function buildUsage({ promptTokens, completionTokens, totalTokens, cachedTokens = 0, cacheCreationTokens = 0, reasoningTokens = 0 }) {
+export function buildUsage({ promptTokens, completionTokens, totalTokens, cachedTokens = 0, cacheCreationTokens = 0, reasoningTokens = 0, outputTokensDetails }) {
   const usage = { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: totalTokens };
   if (cachedTokens > 0 || cacheCreationTokens > 0) {
     usage.prompt_tokens_details = {};
@@ -10,6 +10,9 @@ export function buildUsage({ promptTokens, completionTokens, totalTokens, cached
   if (reasoningTokens > 0) {
     usage.completion_tokens_details = { reasoning_tokens: reasoningTokens };
   }
+  if (outputTokensDetails && typeof outputTokensDetails === "object") {
+    usage.output_tokens_details = outputTokensDetails;
+  }
   return usage;
 }
 
@@ -18,11 +21,24 @@ const n = (v) => (typeof v === "number" ? v : 0);
 // Per-provider raw token field-map + math. Returns buildUsage() args (NOT the usage object).
 // Keeps each provider's exact semantics: claude/gemini fold cache+reasoning, others don't.
 const USAGE_EXTRACTORS = {
+  /**
+   * Anthropic counts thinking inside output_tokens; expose its detail without
+   * adding it to completion_tokens or changing billing inputs.
+   */
   claude(raw) {
     const input = n(raw.input_tokens), output = n(raw.output_tokens);
     const cacheRead = n(raw.cache_read_input_tokens), cacheCreate = n(raw.cache_creation_input_tokens);
     const prompt = input + cacheRead + cacheCreate;
-    return { promptTokens: prompt, completionTokens: output, totalTokens: prompt + output, cachedTokens: cacheRead, cacheCreationTokens: cacheCreate };
+    const outputTokensDetails = raw.output_tokens_details;
+    return {
+      promptTokens: prompt,
+      completionTokens: output,
+      totalTokens: prompt + output,
+      cachedTokens: cacheRead,
+      cacheCreationTokens: cacheCreate,
+      reasoningTokens: n(outputTokensDetails?.thinking_tokens),
+      outputTokensDetails,
+    };
   },
   gemini(raw) {
     const cached = n(raw.cachedContentTokenCount);

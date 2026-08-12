@@ -138,6 +138,9 @@ export function claudeToOpenAIResponse(chunk, state) {
         const outputTokens = typeof chunk.usage.output_tokens === "number" ? chunk.usage.output_tokens : 0;
         const cacheReadTokens = typeof chunk.usage.cache_read_input_tokens === "number" ? chunk.usage.cache_read_input_tokens : (prev.cache_read_input_tokens || 0);
         const cacheCreationTokens = typeof chunk.usage.cache_creation_input_tokens === "number" ? chunk.usage.cache_creation_input_tokens : (prev.cache_creation_input_tokens || 0);
+        const outputTokensDetails = chunk.usage.output_tokens_details && typeof chunk.usage.output_tokens_details === "object"
+          ? chunk.usage.output_tokens_details
+          : prev.output_tokens_details;
 
         // prompt_tokens = input_tokens + cache_read + cache_creation (all prompt-side tokens)
         const promptTokens = inputTokens + cacheReadTokens + cacheCreationTokens;
@@ -149,6 +152,7 @@ export function claudeToOpenAIResponse(chunk, state) {
           input_tokens: inputTokens,
           output_tokens: outputTokens
         };
+        if (outputTokensDetails) state.usage.output_tokens_details = outputTokensDetails;
 
         if (cacheReadTokens > 0) state.usage.cache_read_input_tokens = cacheReadTokens;
         if (cacheCreationTokens > 0) state.usage.cache_creation_input_tokens = cacheCreationTokens;
@@ -165,7 +169,8 @@ export function claudeToOpenAIResponse(chunk, state) {
             input_tokens: state.usage.input_tokens || 0,
             output_tokens: state.usage.output_tokens || 0,
             cache_read_input_tokens: state.usage.cache_read_input_tokens,
-            cache_creation_input_tokens: state.usage.cache_creation_input_tokens
+            cache_creation_input_tokens: state.usage.cache_creation_input_tokens,
+            output_tokens_details: state.usage.output_tokens_details,
           }, "claude");
         }
 
@@ -187,7 +192,8 @@ export function claudeToOpenAIResponse(chunk, state) {
             input_tokens: state.usage.input_tokens || 0,
             output_tokens: state.usage.output_tokens || 0,
             cache_read_input_tokens: state.usage.cache_read_input_tokens,
-            cache_creation_input_tokens: state.usage.cache_creation_input_tokens
+            cache_creation_input_tokens: state.usage.cache_creation_input_tokens,
+            output_tokens_details: state.usage.output_tokens_details,
           }, "claude");
         }
         results.push(finalChunk);

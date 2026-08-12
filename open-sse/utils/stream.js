@@ -11,6 +11,7 @@ import { createThinkTagStreamExtractor } from "./thinkStripper.js";
 import { resolveInlineThinkingFormat } from "../handlers/chatCore/inlineThinking.js";
 import { INLINE_THINKING_FORMATS } from "../providers/schema.js";
 import { appendReasoningText } from "../translator/concerns/reasoning.js";
+import { restoreOpenAIToolNames } from "../translator/concerns/toolCall.js";
 import { createUpstreamTerminalTracker } from "./streamTerminal.js";
 import {
   createMinimaxThinkingStreamState,
@@ -290,9 +291,9 @@ export function createSSEStream(options = {}) {
             upstreamTerminal.observe({ rawDone: true, eventName: upstreamEventForLine });
           }
 
-          if (trimmed.startsWith("data:") && !isDoneLine && trimmed.slice(5).trim()) {
+          if ((isDataLine || trimmed.startsWith("{")) && !isDoneLine && (isDataLine ? trimmed.slice(5).trim() : trimmed)) {
             try {
-              const parsed = JSON.parse(trimmed.slice(5).trim());
+              const parsed = JSON.parse(isDataLine ? trimmed.slice(5).trim() : trimmed);
               upstreamTerminal.observe({ chunk: parsed, eventName: upstreamEventForLine });
               if (
                 targetFormat === FORMATS.CLAUDE
@@ -323,6 +324,7 @@ export function createSSEStream(options = {}) {
                   toolNameDecloaked = true;
                 }
               }
+              if (restoreOpenAIToolNames(parsed, toolNameMap)) toolNameDecloaked = true;
 
               // Some Anthropic-compatible providers (MiniMax) omit `signature`
               // from the thinking block start. Strict Messages clients deserialize
@@ -546,18 +548,19 @@ export function createSSEStream(options = {}) {
               // Gemini-family (response.candidates[0].finishReason) passthrough shapes.
               const isFinishChunk = parsed.choices?.some?.(choice => choice?.finish_reason)
                 || parsed.response?.candidates?.[0]?.finishReason;
+              const formatLine = (obj) => isDataLine ? `data: ${JSON.stringify(obj)}\n` : `${JSON.stringify(obj)}\n`;
               if (isFinishChunk && !hasValidUsage(usage)) {
                 const estimated = mergeUsage(usage, estimateUsage(body, totalContentLength, FORMATS.OPENAI));
                 parsed.usage = filterUsageForFormat(estimated, FORMATS.OPENAI);
-                output = `data: ${JSON.stringify(parsed)}\n`;
+                output = formatLine(parsed);
                 injectedUsage = true;
               } else if (isFinishChunk && usage) {
                 const buffered = addBufferToUsage(usage);
                 parsed.usage = filterUsageForFormat(buffered, FORMATS.OPENAI);
-                output = `data: ${JSON.stringify(parsed)}\n`;
+                output = formatLine(parsed);
                 injectedUsage = true;
               } else if (idFixed || fieldsInjected) {
-                output = `data: ${JSON.stringify(parsed)}\n`;
+                output = formatLine(parsed);
                 injectedUsage = true;
               }
 
@@ -579,7 +582,7 @@ export function createSSEStream(options = {}) {
                 }, usage, ttftAt);
               }
               if (toolNameDecloaked && !injectedUsage) {
-                output = `data: ${JSON.stringify(parsed)}\n`;
+                output = isDataLine ? `data: ${JSON.stringify(parsed)}\n` : `${JSON.stringify(parsed)}\n`;
                 injectedUsage = true;
               }
             } catch {

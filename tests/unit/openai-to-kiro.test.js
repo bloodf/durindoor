@@ -258,6 +258,40 @@ describe("openaiToKiroRequest", () => {
       expect(allJson).not.toContain("[Tool call:");
     });
 
+    it("canonicalizes unsupported tool schema keywords while preserving valid structure", () => {
+      const result = openaiToKiroRequest("claude-sonnet-4.6", {
+        messages: [{ role: "user", content: "Search" }],
+        tools: [{
+          type: "function",
+          function: {
+            name: "search",
+            parameters: {
+              oneOf: [
+                {
+                  type: "object",
+                  properties: {
+                    query: { type: "string", description: "Search query", $ref: "#/$defs/Query" },
+                  },
+                  required: ["query"],
+                },
+              ],
+              $defs: { Query: { type: "string" } },
+            },
+          },
+        }],
+      }, true, {});
+
+      const schema = result.conversationState.currentMessage.userInputMessage
+        .userInputMessageContext.tools[0].toolSpecification.inputSchema.json;
+      expect(schema).toEqual({
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Search query" },
+        },
+        required: ["query"],
+      });
+    });
+
     it("should salvage orphaned tool_result content as text instead of discarding it", () => {
       // Client provides tools, but compaction removed the assistant tool_use
       // message, leaving a tool_result whose tool_use_id matches nothing.

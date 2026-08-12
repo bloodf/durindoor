@@ -3,7 +3,7 @@
 // never hardcoded per-model here. See .docs/thinking/plan.md MATRIX VI-A.
 
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
-import { getThinkingLevels } from "../../providers/thinkingLevels.js";
+import { getThinkingLevels, getThinkingLevelsFromCapabilities } from "../../providers/thinkingLevels.js";
 import { PROVIDERS } from "../../providers/index.js";
 import { FORMATS } from "../formats.js";
 import { LEVEL_TO_BUDGET, budgetToLevel, effortToBudget, effortToThinkingLevel } from "./thinking.js";
@@ -141,6 +141,18 @@ function toGeminiThinkingLevel(cfg) {
   return effortToThinkingLevel(raw);
 }
 
+/**
+ * Resolve unified intent to a value accepted by Claude adaptive thinking.
+ * Unsupported levels fall back to high; minimal uses the nearest lower level.
+ */
+function toClaudeAdaptiveEffort(cfg, caps, provider) {
+  const level = toLevel(cfg);
+  const allowed = getThinkingLevelsFromCapabilities(caps, provider);
+  if (allowed?.includes(level)) return level;
+  if (level === "minimal" && allowed?.includes("low")) return "low";
+  return "high";
+}
+
 function toKimiReasoningEffort(cfg) {
   const level = toLevel(cfg);
   if (level === "auto") return "high";
@@ -275,8 +287,7 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null) {
     case "claude-adaptive": {
       // disabled must NOT carry display (Anthropic rejects display on type:"disabled").
       if (none && canDisable) { body.thinking = { type: "disabled" }; break; }
-      const level = toLevel(eff);
-      body.output_config = { effort: level === "xhigh" ? "high" : level };
+      body.output_config = { effort: toClaudeAdaptiveEffort(eff, caps, provider) };
       // Opus 4.7/4.8/Sonnet5/Fable5/Mythos5 default thinking.display to "omitted",
       // so explicitly request summarized to keep reasoning summary flowing to clients.
       // Harmless on 4.6/Sonnet4.6 where "summarized" is already the default.

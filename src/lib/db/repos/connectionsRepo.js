@@ -140,6 +140,20 @@ function deriveConnectionName(data, fallbackName) {
   return fallbackName;
 }
 
+// A returning Codex OAuth identity clears the quarantine state left by a
+// permanent token invalidation. Built on mergeProviderConnection so the
+// standard semantics still apply -- null/empty tokens never erase stored
+// ones, and providerSpecificData deep-merges (dropping it would lose
+// chatgptAccountId and break later dedup).
+function mergeCodexReauthorization(existing, data, now) {
+  const merged = { ...mergeProviderConnection(existing, data), updatedAt: now, isActive: true, testStatus: "active" };
+  for (const field of ["lastError", "lastErrorAt", "errorCode", "backoffLevel"]) delete merged[field];
+  for (const field of Object.keys(merged)) {
+    if (field.startsWith("modelLock_")) delete merged[field];
+  }
+  return merged;
+}
+
 export async function getProviderConnections(filter = {}) {
   const db = await getAdapter();
   const where = [];
@@ -252,7 +266,9 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
         error.code = "PROVIDER_CONNECTION_ALREADY_EXISTS";
         throw error;
       }
-      const merged = { ...mergeProviderConnection(existing, data), updatedAt: now };
+      const merged = data.provider === "codex" && data.authType === "oauth" && data.accessToken
+        ? mergeCodexReauthorization(existing, data, now)
+        : { ...mergeProviderConnection(existing, data), updatedAt: now };
       upsert(db, merged);
       result = merged;
       return;

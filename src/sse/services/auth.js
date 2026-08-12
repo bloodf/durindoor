@@ -31,6 +31,19 @@ import { quotaDecisionDiagnostic } from "open-sse/services/quota/scoring.js";
 
 const CLI_AUTH_SALT = "9r-cli-auth";
 const GITHUB_MONTHLY_USAGE_LIMIT = "you've reached your additional usage limit for your plan";
+const CODEX_PERMANENT_OAUTH_ERRORS = [
+  "invalidated oauth token",
+  "authentication token has been invalidated",
+  "refresh_token_invalidated",
+  "refresh_token_reused",
+  "refresh token already used",
+];
+
+function isCodexPermanentOAuthError(provider, status, errorText) {
+  if (provider !== "codex" || Number(status) !== 401) return false;
+  const text = String(errorText || "").toLowerCase();
+  return CODEX_PERMANENT_OAUTH_ERRORS.some((sig) => text.includes(sig));
+}
 
 function githubMonthlyResetMs(status, errorText, provider) {
   if (resolveProviderId(provider) !== "github" || Number(status) !== 402) return null;
@@ -748,6 +761,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     ? context.attemptStartedAt
     : Date.now();
   const connections = await getProviderConnections({ provider });
+
   throwIfAborted(signal);
   const conn = connections.find(c => c.id === connectionId);
   const backoffLevel = conn?.backoffLevel || 0;
@@ -759,6 +773,25 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
 
   if (isRecoverableCloudCodeProject403(provider, status, errorText)) {
     log.warn("AUTH", `${connectionId.slice(0, 8)} hit recoverable Cloud Code project 403; fallback without cooldown`);
+    return { shouldFallback: true, cooldownMs: 0 };
+  }
+
+  if (isCodexPermanentOAuthError(provider, status, errorText)) {
+    const clearLocks = Object.fromEntries(
+      Object.keys(conn || {})
+        .filter((field) => field.startsWith("modelLock_"))
+        .map((field) => [field, null]),
+    );
+    log.warn("AUTH", `${connectionId.slice(0, 8)} hit permanent Codex OAuth invalidation; quarantining for reauth [${status}]`);
+    await updateProviderConnection(connectionId, {
+      ...clearLocks,
+      testStatus: "reauth_required",
+      isActive: false,
+      errorCode: status,
+      lastError: "Codex OAuth token invalidated; reauthorization required",
+      lastErrorAt: new Date(observedAt).toISOString(),
+      backoffLevel: 0,
+    });
     return { shouldFallback: true, cooldownMs: 0 };
   }
 

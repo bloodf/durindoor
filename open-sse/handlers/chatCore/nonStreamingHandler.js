@@ -3,8 +3,9 @@ import { needsTranslation } from "../../translator/index.js";
 import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.js";
 import { unwrapClinepassEnvelope } from "../../utils/clinepassEnvelope.js";
 import { addBufferToUsage, claudeUsageToOpenAI, filterUsageForFormat } from "../../utils/usageTracking.js";
-import { createErrorResult, readBoundedResponseText } from "../../utils/error.js";
-import { HTTP_STATUS, MAX_PROVIDER_BODY_BYTES, PROVIDER_BODY_TIMEOUT_MS } from "../../config/runtimeConfig.js";
+import { createErrorResult } from "../../utils/error.js";
+import { readBodyWithTimeout, BodyReadTimeoutError } from "../../utils/bodyTimeout.js";
+import { HTTP_STATUS, MAX_PROVIDER_BODY_BYTES, RESPONSE_BODY_TIMEOUT_MS } from "../../config/runtimeConfig.js";
 import { parseSSEToOpenAIResponse } from "./sseToJsonHandler.js";
 import { buildRequestDetail, extractRequestConfig, extractUsageFromResponse, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { translateOpenAIToClaudeIfNeeded } from "../../translator/response/openai-to-claude-json.js";
@@ -316,7 +317,7 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
 /**
  * Handle non-streaming response from provider.
  */
-export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, streamToClient, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, trackDone, appendLog, pxpipe, reqTag, log, usageEventId, claudeClassifierCompat, signal = null, terminalProvenance = null }) {
+export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, streamToClient, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, trackDone, appendLog, pxpipe, reqTag, log, usageEventId, claudeClassifierCompat, signal = null, terminalProvenance = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS }) {
   try {
     const markSuccess = async () => {
       if (!onRequestSuccess || !["upstream", "validated"].includes(terminalProvenance)) return;
@@ -328,19 +329,24 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
 
   let responseText;
   try {
-    responseText = await readBoundedResponseText(providerResponse, {
+    responseText = await readBodyWithTimeout(providerResponse, {
       signal,
       maxBytes: MAX_PROVIDER_BODY_BYTES,
-      timeoutMs: PROVIDER_BODY_TIMEOUT_MS,
-      throwOnTimeout: true,
+      timeoutMs: responseBodyTimeoutMs,
     });
   } catch (error) {
     if (error?.name === "AbortError") {
       return { ...createErrorResult(499, "Request aborted"), quotaTerminalReason: "abort" };
     }
+    if (error instanceof BodyReadTimeoutError) {
+      return {
+        ...createErrorResult(HTTP_STATUS.GATEWAY_TIMEOUT, "Provider response body timed out"),
+        quotaTerminalReason: "timeout",
+      };
+    }
     return {
       ...createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Failed to read provider response"),
-      quotaTerminalReason: error?.name === "TimeoutError" ? "timeout" : "stream_error",
+      quotaTerminalReason: "stream_error",
     };
   }
 

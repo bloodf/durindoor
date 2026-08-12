@@ -94,6 +94,7 @@ export const FETCH_CONNECT_TIMEOUT_MS = envMs("FETCH_CONNECT_TIMEOUT_MS", 60 * 1
 // stream-to-JSON conversion. These prevent a provider-controlled body from
 // holding a concurrency slot forever or growing memory without limit.
 export const PROVIDER_BODY_TIMEOUT_MS = envMs("PROVIDER_BODY_TIMEOUT_MS", 120 * 1000);
+export const RESPONSE_BODY_TIMEOUT_MS = envMs("RESPONSE_BODY_TIMEOUT_MS", 120 * 1000);
 export const MAX_PROVIDER_BODY_BYTES = envMs("MAX_PROVIDER_BODY_BYTES", 8 * 1024 * 1024);
 export const MAX_RESPONSES_OUTPUT_ITEMS = envMs("MAX_RESPONSES_OUTPUT_ITEMS", 1024);
 

@@ -16,6 +16,8 @@ export function getQuotaCooldown(backoffLevel = 0) {
 /**
  * Check if error should trigger account fallback (switch to next account)
  * Config-driven: matches ERROR_RULES top-to-bottom (text rules first, then status)
+ * Known account/quota text rules take precedence; otherwise deterministic
+ * 400/422 client request failures do not rotate or cool down healthy accounts.
  * @param {number} status - HTTP status code
  * @param {string} errorText - Error message text
  * @param {number} backoffLevel - Current backoff level for exponential backoff
@@ -107,6 +109,10 @@ function checkFallbackErrorByRules(status, lowerError, backoffLevel) {
       }
       return { shouldFallback: true, cooldownMs: rule.cooldownMs };
     }
+  }
+
+  if (status === 400 || status === 422) {
+    return { shouldFallback: false, cooldownMs: 0 };
   }
 
   // Default: transient cooldown for any unmatched error

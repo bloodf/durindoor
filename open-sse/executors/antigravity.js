@@ -3,6 +3,7 @@ import { BaseExecutor } from "./base.js";
 import { readBoundedResponseText } from "../utils/error.js";
 import { PROVIDERS } from "../config/providers.js";
 import { OAUTH_ENDPOINTS, ANTIGRAVITY_HEADERS, AG_DEFAULT_TOOLS, AG_TOOL_SUFFIX } from "../config/appConstants.js";
+import { dbg } from "../utils/debugLog.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
@@ -18,6 +19,7 @@ function sanitizeFunctionName(name) {
   return s.substring(0, 64);
 }
 
+const SYSTEM_INSTRUCTION_CHAR_LIMIT = 4000;
 const MAX_RETRY_AFTER_MS = 10000;
 const ANTIGRAVITY_TRANSIENT_RETRY_MAX_MS = 15000;
 const MAX_ANTIGRAVITY_OUTPUT_TOKENS = 64000;
@@ -55,6 +57,53 @@ const ANTIGRAVITY_REQUEST_BLACKLIST = [
 const stripBlacklisted = obj => {
   for (const key of ANTIGRAVITY_REQUEST_BLACKLIST) delete obj[key];
 };
+
+// Compress tool schemas to reduce request body size while retaining call shape.
+const MAX_SCHEMA_DEPTH = 2;
+const MAX_ANTIGRAVITY_TOOL_COUNT = 40;
+const MAX_TOOL_DESC_CHARS = 200;
+const MAX_SCHEMA_DESC_CHARS = 150;
+
+function compressToolSchema(schema, depth) {
+  if (!schema || typeof schema !== "object") return schema;
+
+  if (depth >= MAX_SCHEMA_DEPTH) {
+    if (schema.type === "object" && schema.properties) {
+      const propNames = Object.keys(schema.properties);
+      return {
+        type: "string",
+        description: schema.description
+          ? `${schema.description} (JSON object with: ${propNames.join(", ")})`
+          : `JSON object with properties: ${propNames.join(", ")}`,
+      };
+    }
+    if (schema.type === "array" && schema.items) {
+      return { type: "array", items: { type: schema.items.type || "string" } };
+    }
+    return schema;
+  }
+
+  if (schema.type === "object" && schema.properties) {
+    const compressed = { ...schema, properties: {} };
+    for (const [key, value] of Object.entries(schema.properties)) {
+      compressed.properties[key] = compressToolSchema(value, depth + 1);
+    }
+    if (compressed.description?.length > MAX_SCHEMA_DESC_CHARS) {
+      compressed.description = compressed.description.substring(0, MAX_SCHEMA_DESC_CHARS - 3) + "...";
+    }
+    return compressed;
+  }
+
+  if (schema.type === "array" && schema.items) {
+    return { ...schema, items: compressToolSchema(schema.items, depth + 1) };
+  }
+
+  if (schema.description?.length > MAX_SCHEMA_DESC_CHARS) {
+    return { ...schema, description: schema.description.substring(0, MAX_SCHEMA_DESC_CHARS - 3) + "..." };
+  }
+
+  return schema;
+}
 
 // Image generation model name patterns
 const IMAGE_MODEL_PATTERNS = [
@@ -232,15 +281,48 @@ export class AntigravityExecutor extends BaseExecutor {
           const name = sanitizeFunctionName(fn.name);
           if (seenToolNames.has(name)) continue;
           seenToolNames.add(name);
+          let cleanedParams;
+          try {
+            cleanedParams = fn.parameters
+              ? cleanJSONSchemaForAntigravity(structuredClone(fn.parameters))
+              : { type: "object", properties: { reason: { type: "string", description: "Brief explanation" } }, required: ["reason"] };
+          } catch (schemaErr) {
+            console.warn(`[9Router] Schema conversion failed for tool "${name}": ${schemaErr.message}. Using fallback schema.`);
+            const safeProperties = Object.fromEntries(
+              Object.entries(fn.parameters?.properties || {}).map(([key, value]) => [key, { type: typeof value?.type === "string" ? value.type : "string", description: value?.description || "" }])
+            );
+            if (Object.keys(safeProperties).length === 0) safeProperties.reason = { type: "string", description: "Brief explanation" };
+            cleanedParams = {
+              type: "object",
+              properties: safeProperties,
+              required: (fn.parameters?.required || []).filter(required => safeProperties[required]),
+            };
+          }
+          cleanedParams = compressToolSchema(cleanedParams, 0);
           allDeclarations.push({
             ...fn,
             name,
-            parameters: fn.parameters
-              ? cleanJSONSchemaForAntigravity(structuredClone(fn.parameters))
-              : { type: "object", properties: { reason: { type: "string", description: "Brief explanation" } }, required: ["reason"] }
+            description: fn.description ? fn.description.substring(0, MAX_TOOL_DESC_CHARS) : "",
+            parameters: cleanedParams,
           });
         }
       }
+
+      if (allDeclarations.length > MAX_ANTIGRAVITY_TOOL_COUNT) {
+        const native = [];
+        const custom = [];
+        for (const declaration of allDeclarations) {
+          (AG_DEFAULT_TOOLS.has(declaration.name) ? native : custom).push(declaration);
+        }
+        const remaining = MAX_ANTIGRAVITY_TOOL_COUNT - native.length;
+        const pruned = [...native, ...custom.slice(0, Math.max(0, remaining))];
+        dbg("TOOLS", `Pruned ${allDeclarations.length} → ${pruned.length} tools for Antigravity (${native.length} native + ${Math.min(custom.length, remaining)} client)`);
+        allDeclarations.length = 0;
+        allDeclarations.push(...pruned);
+      }
+
+      const bodyEstimate = JSON.stringify(allDeclarations).length;
+      dbg("TOOLS", `Processed ${allDeclarations.length} tool declarations for Antigravity (~${Math.round(bodyEstimate / 1024)}KB): [${Array.from(seenToolNames).slice(0, 10).join(", ")}${seenToolNames.size > 10 ? "..." : ""}]`);
       tools = allDeclarations.length > 0 ? [{ functionDeclarations: allDeclarations }] : [];
     }
 
@@ -274,6 +356,30 @@ export class AntigravityExecutor extends BaseExecutor {
       safetySettings: undefined,
       ...(tools?.length > 0 && { toolConfig: { functionCallingConfig: { mode: "VALIDATED" } } })
     };
+
+    // Large system prompts exhaust the systemInstruction limit; preserve them in user content.
+    const sysInstr = transformedRequest.systemInstruction;
+    if (sysInstr) {
+      const sysText = sysInstr.parts?.map(part => part.text || "").join("") || "";
+      if (sysText.length > SYSTEM_INSTRUCTION_CHAR_LIMIT) {
+        const requestContents = transformedRequest.contents || [];
+        const firstUserIndex = requestContents.findIndex(content => content.role === "user");
+        if (firstUserIndex >= 0) {
+          const firstUser = requestContents[firstUserIndex];
+          const existingText = firstUser.parts?.filter(part => part.text !== undefined).map(part => part.text).join("") || "";
+          const otherParts = firstUser.parts?.filter(part => part.text === undefined) || [];
+          requestContents[firstUserIndex] = {
+            ...firstUser,
+            parts: [{ text: `[System Instructions]\n${sysText}\n\n[User Message]\n${existingText}` }, ...otherParts],
+          };
+        } else {
+          requestContents.unshift({ role: "user", parts: [{ text: sysText }] });
+        }
+        transformedRequest.contents = requestContents;
+        delete transformedRequest.systemInstruction;
+        dbg("TOOLS", `Embedded ${sysText.length} char system prompt into user content (exceeds ${SYSTEM_INSTRUCTION_CHAR_LIMIT} limit)`);
+      }
+    }
 
     // Strip blacklisted thinking fields from top-level body (set by thinkingUnified.js at root, not body.request)
     stripBlacklisted(body);

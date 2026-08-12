@@ -15,7 +15,7 @@ vi.mock("@/lib/localDb", () => ({
   validateApiKey: vi.fn(),
 }));
 
-const { evaluateApiKeyAuth, extractApiKey } = await import("../../src/sse/services/auth.js");
+const { evaluateApiKeyAuth, extractApiKey, extractApiKeyCandidates, resolveClientApiKey } = await import("../../src/sse/services/auth.js");
 
 describe("API-key authentication expiry", () => {
   beforeEach(() => {
@@ -39,6 +39,39 @@ describe("API-key authentication expiry", () => {
     ["Gemini query", {}, "http://localhost/v1beta/models?key=sk-query", "sk-query"],
   ])("extracts the %s credential shape", (_label, headers, url, expected) => {
     expect(extractApiKey(new Request(url, { headers }))).toBe(expected);
+  });
+
+  it("resolves a valid x-api-key when the Bearer credential is stale", async () => {
+    mocks.getApiKeyByKey.mockImplementation(async (key) => key === "sk-valid"
+      ? { isActive: true, expiresAt: null }
+      : null);
+    const request = new Request("http://localhost/v1/messages", {
+      headers: {
+        Authorization: "Bearer stale-session-token",
+        "x-api-key": "sk-valid",
+      },
+    });
+
+    expect(extractApiKeyCandidates(request)).toEqual(["stale-session-token", "sk-valid"]);
+    await expect(resolveClientApiKey(request, { required: true })).resolves.toMatchObject({
+      apiKey: "sk-valid",
+      auth: { ok: true, stored: true },
+    });
+  });
+
+  it("rejects when every presented credential is invalid", async () => {
+    mocks.getApiKeyByKey.mockResolvedValue(null);
+    const request = new Request("http://localhost/v1/messages", {
+      headers: {
+        Authorization: "Bearer stale-session-token",
+        "x-api-key": "sk-invalid",
+      },
+    });
+
+    await expect(resolveClientApiKey(request, { required: true })).resolves.toEqual({
+      apiKey: "stale-session-token",
+      auth: { ok: false, reason: "invalid", stored: false },
+    });
   });
 
   it("requires a key only when configured", async () => {

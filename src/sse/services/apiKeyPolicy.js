@@ -71,23 +71,23 @@ export async function recordApiKeyUsageForResponse(apiKey, response, usage) {
 /**
  * Enforce API key policy on a request: model allowlist + token/cost limits.
  *
- * Call this AFTER the shared evaluateApiKeyAuth guard.
- * If no API key is provided, returns null (allow — requireApiKey handles that case).
- * If the key has no policy or an empty allowedModels list, returns null (allow all).
- * If the model is not in the allowlist, returns a 403 error Response.
- * If token or cost limit is exceeded, returns a 429 error Response.
+ * Call this AFTER the shared credential resolver and pass its resolved key so
+ * stale lower-precedence credentials cannot bypass the authenticated key's
+ * policy. If no key is provided, legacy callers use the first credential.
+ * If the key has no policy or an empty allowedModels list, returns null.
  *
  * @param {Request} request
- * @param {string} modelStr - The model string from the request body
- * @returns {Promise<Response | null>} null if allowed, error Response if rejected
+ * @param {string} modelStr
+ * @param {string | null} [apiKey]
+ * @returns {Promise<Response | null>}
  */
-export async function enforceApiKeyModelPolicy(request, modelStr) {
+export async function enforceApiKeyModelPolicy(request, modelStr, apiKey) {
   // Skip policy enforcement for internal dashboard/CLI requests only when the CLI
   // token is genuinely valid. An arbitrary non-empty header should not bypass policy.
   const hasCli = await hasValidCliToken(request);
   if (hasCli) return null;
 
-  const apiKey = extractApiKey(request);
+  if (apiKey === undefined) apiKey = extractApiKey(request);
   if (!apiKey) return null;
 
   const keyRecord = await getApiKeyByKey(apiKey);

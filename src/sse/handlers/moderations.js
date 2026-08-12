@@ -2,8 +2,7 @@ import {
   getProviderCredentialsWithQuotaPreflight,
   markAccountUnavailable,
   clearAccountError,
-  extractApiKey,
-  evaluateApiKeyAuth,
+  resolveClientApiKey,
 } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
@@ -36,15 +35,15 @@ export async function handleModerations(request) {
 
   log.request("POST", `${url.pathname} | ${modelStr}`);
 
-  const apiKey = extractApiKey(request);
+  const settings = await getSettings();
+  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
+    required: settings.requireApiKey === true,
+  });
   if (apiKey) {
     log.debug("AUTH", "API key provided");
   } else {
     log.debug("AUTH", "No API key provided (local mode)");
   }
-
-  const settings = await getSettings();
-  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true, request });
   if (!apiKeyAuth.ok) return errorResponse(
     HTTP_STATUS.UNAUTHORIZED,
     apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
@@ -69,7 +68,7 @@ async function handleSingleModelModeration(modelStr, body, request, apiKey) {
   }
 
   const { provider, model } = modelInfo;
-  const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`);
+  const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (resolvedPolicyError) return resolvedPolicyError;
   const estimatedTokens = JSON.stringify(body.input).length / 4;
 

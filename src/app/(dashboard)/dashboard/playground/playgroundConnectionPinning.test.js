@@ -40,6 +40,10 @@ vi.mock("../../../../sse/services/auth.js", () => ({
   clearAccountError: mocks.clearAccountError,
   extractApiKey: vi.fn(() => null),
   evaluateApiKeyAuth: mocks.evaluateApiKeyAuth,
+  resolveClientApiKey: async (request, options) => ({
+    apiKey: null,
+    auth: await mocks.evaluateApiKeyAuth(null, { ...options, request }),
+  }),
   providerAllowsPublicNoAuthFallback: vi.fn(() => false),
   isProviderConnectionModelLocked: vi.fn(() => false),
 }));

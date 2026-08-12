@@ -1,4 +1,4 @@
-import { getProviderCredentialsWithQuotaPreflight, extractApiKey, evaluateApiKeyAuth, markAccountUnavailable } from "../services/auth.js";
+import { getProviderCredentialsWithQuotaPreflight, resolveClientApiKey, markAccountUnavailable } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { handleMusicGenerationCore } from "open-sse/handlers/musicGenerationCore.js";
@@ -15,8 +15,9 @@ export async function handleMusicGeneration(request) {
   }
 
   const settings = await getSettings();
-  const apiKey = extractApiKey(request);
-  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true, request });
+  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
+    required: settings.requireApiKey === true,
+  });
   if (!apiKeyAuth.ok) return errorResponse(
     HTTP_STATUS.UNAUTHORIZED,
     apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
@@ -27,7 +28,7 @@ export async function handleMusicGeneration(request) {
   const modelInfo = await getModelInfo(body.model);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
   const { provider, model } = modelInfo;
-  const policyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`);
+  const policyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (policyError) return policyError;
   const estimatedTokens = String(body.prompt || "").length / 4;
 

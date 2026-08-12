@@ -65,4 +65,23 @@ describe("sanitizeProviderConnectionForClient", () => {
     const out = sanitizeProviderConnectionForClient(c);
     expect(out.name).toMatch(/^aaaaaaaa\*\*\*$/);
   });
+
+  it("reports expired cooldowns active while preserving live cooldown status", () => {
+    const expired = sanitizeProviderConnectionForClient({
+      id: "expired",
+      provider: "kiro",
+      testStatus: "unavailable",
+      "modelLock_claude-opus-5": "2000-01-01T00:00:00Z",
+    });
+    const live = sanitizeProviderConnectionForClient({
+      id: "live",
+      provider: "kiro",
+      testStatus: "unavailable",
+      "modelLock_claude-opus-5": "2999-01-01T00:00:00Z",
+    });
+
+    expect(expired.testStatus).toBe("active");
+    expect(live.testStatus).toBe("unavailable");
+    expect(expired).not.toHaveProperty("modelLock_claude-opus-5");
+  });
 });

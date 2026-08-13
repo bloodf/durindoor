@@ -25,6 +25,8 @@ export default defineConfig({
       "**/node_modules/**",
       "**/.omc/**",
       "**/.claude/**",
+      /** omp-extension owns a Bun suite whose TypeScript SDK imports are not Node/Vitest inputs. */
+      "**/omp-extension/**",
       "**/dist/**",
       "**/*.live.test.js",
       ...(hasCloud ? [] : ["**/embeddings.cloud.test.js"]),

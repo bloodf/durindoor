@@ -1,7 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { resolveModelLimits } from "../../open-sse/providers/capabilities.js";
+import { getCapabilitiesForModel, resolveModelLimits } from "../../open-sse/providers/capabilities.js";
 import { PROVIDER_MODELS } from "../../open-sse/providers/index.js";
 import { BaseExecutor } from "../../open-sse/executors/base.js";
+const GROK_UNPUBLISHED_OUTPUT_IDS = new Set([
+  "grok-4.6",
+  "grok-4.5",
+  "grok-4.3",
+  "grok-4.20-0309-reasoning",
+  "grok-4.20-0309-non-reasoning",
+  "grok-4.20-multi-agent-0309",
+  "grok-build-0.1",
+  "grok-code-fast-1",
+  "grok-composer-2.5-fast",
+  "grok-build",
+]);
+
 
 describe("resolveModelLimits", () => {
   it("reports source and honesty for catalog, registry, pattern, and floor limits", () => {
@@ -33,8 +46,10 @@ describe("resolveModelLimits", () => {
 
   // A registry row that declares no limits is NOT evidence. Trusting the row's
   // absent fields would report `known: true` alongside undefined numbers —
-  // strictly worse than admitting the limit is unknown.
-  it("never reports a known limit without real numbers behind it", () => {
+  // strictly worse than admitting the limit is unknown. xAI documents
+  // max_completion_tokens as a 128K DEFAULT, not a maximum (docs.x.ai chat
+  // reference); storing it as maxOutput would impose a client-side ceiling xAI never published.
+  it("never reports a known limit without documented numbers behind it", () => {
     let checked = 0;
     for (const providerId of Object.keys(PROVIDER_MODELS)) {
       for (const entry of PROVIDER_MODELS[providerId] ?? []) {
@@ -44,7 +59,9 @@ describe("resolveModelLimits", () => {
         const limits = resolveModelLimits(providerId, id);
         if (!limits.known) continue;
         expect(limits.contextWindow, `${providerId}/${id} contextWindow`).toBeGreaterThan(0);
-        expect(limits.maxOutput, `${providerId}/${id} maxOutput`).toBeGreaterThan(0);
+        if (!(providerId === "xai" && id.toLowerCase().includes("grok"))) {
+          expect(limits.maxOutput, `${providerId}/${id} maxOutput`).toBeGreaterThan(0);
+        }
       }
     }
     expect(checked).toBeGreaterThan(1000);
@@ -58,6 +75,20 @@ describe("resolveModelLimits", () => {
     expect(resolveModelLimits("kimi-web", "k2d6")).toMatchObject({ known: false, source: "default" });
     // PROVIDER_CAPABILITIES["devin"]["devin"] is { tools: false }.
     expect(resolveModelLimits("devin", "devin")).toMatchObject({ known: false, source: "default" });
+  });
+
+  it("keeps Grok's unpublished output ceiling unset without weakening other exact models", () => {
+    // xAI documents max_completion_tokens as a 128K DEFAULT, not a maximum
+    // (docs.x.ai chat reference); storing it as maxOutput would impose a
+    // client-side ceiling xAI never published. The same applies to Grok CLI's
+    // HAR-captured catalog, which publishes contexts but no output ceilings.
+    for (const id of GROK_UNPUBLISHED_OUTPUT_IDS) {
+      expect(getCapabilitiesForModel("xai", id).maxOutput, id).toBeUndefined();
+    }
+    expect(getCapabilitiesForModel("zai", "glm-4.6v")).toMatchObject({
+      contextWindow: 128_000,
+      maxOutput: 64_000,
+    });
   });
 
   it("resolves a vendor-prefixed id against its bare model id", () => {

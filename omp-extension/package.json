@@ -1,0 +1,11 @@
+{
+  "name": "durindoor-omp-extension",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test"
+  },
+  "omp": {
+    "extensions": ["./index.ts"]
+  }
+}

@@ -73,6 +73,15 @@ export function capabilitiesFromServiceKind(kind) {
   return SERVICE_KIND_CAPABILITIES[kind] || null;
 }
 
+
+/** First-party xAI and Grok CLI publish defaults, not generated-token ceilings. */
+function hasUnpublishedGrokOutput(provider, model) {
+  if (typeof model !== "string") return false;
+  const id = model.toLowerCase();
+  return (provider === "xai" && id.includes("grok"))
+    || (provider === "grok-cli" && (id.includes("grok-build") || id.includes("grok-composer")));
+}
+
 /**
  * Canonical exact-id overrides — used for exceptions that patterns would
  * otherwise mis-match. Only declare deltas vs DEFAULT.
@@ -141,9 +150,24 @@ export const MODEL_CAPABILITIES = {
   "vision-model":      { vision: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000 },
   "coder-model":       { reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000 },
 
-  // Grok CLI non-reasoning coding models (cli-chat-proxy rejects reasoningEffort). Upstream decolua/9router#2534.
-  "grok-composer-2.5-fast": { vision: true, reasoning: false, search: false, thinkingFormat: null, contextWindow: 200000, maxOutput: 30000 },
-  "grok-build":            { vision: true, reasoning: false, search: false, thinkingFormat: null, contextWindow: 512000, maxOutput: 30000 },
+  /**
+   * Current xAI API catalog. Keep exact ids: Grok windows differ within the
+   * same family, and reasoning can be disabled only on grok-4.3. xAI documents
+   * 128K as the default generated-token budget but explicitly allows larger
+   * values; the ceiling is unpublished, so leave maxOutput unset.
+   */
+  "grok-4.6": { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 500000 },
+  "grok-4.5": { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 500000 },
+  "grok-4.3": { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000 },
+  "grok-4.20-0309-reasoning": { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000 },
+  "grok-4.20-0309-non-reasoning": { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000 },
+  "grok-4.20-multi-agent-0309": { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000 },
+  "grok-build-0.1": { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 262144 },
+  "grok-code-fast-1": { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 262144 },
+
+  // Grok CLI windows come from decolua/9router#2502's HAR-captured /v1/models; xAI documents 128K as a default, not an output ceiling.
+  "grok-composer-2.5-fast": { vision: true, reasoning: false, search: false, thinkingFormat: null, contextWindow: 200000 },
+  "grok-build":            { vision: true, reasoning: false, search: false, thinkingFormat: null, contextWindow: 256000 },
 };
 
 /**
@@ -173,6 +197,10 @@ const DIRECT_GPT_5_5_6_CAPS = {
 const CODEX_GPT_5_6_CAPS = {
   ...DIRECT_GPT_5_5_6_CAPS,
   "gpt-5.5-review":       { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
+  /** Effort suffixes are virtual aliases stripped by codex.js before the upstream request. */
+  "gpt-5.5-medium":       { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
+  "gpt-5.5-high":         { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
+  "gpt-5.5-xhigh":        { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
   // Same upstream model as "gpt-5.4" (registry codex.js sets upstreamModelId),
   // so it must resolve the same window instead of the generic 400K pattern.
   "gpt-5.4-review":       { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
@@ -472,6 +500,9 @@ export const PROVIDER_CAPABILITIES = {
  * a broad family pattern swallowing an exception (e.g. glm-4.6v vs glm-5).
  */
 export const PATTERN_CAPABILITIES = [
+  /** Embedders do not have chat-generation limits; null prevents family globs from inventing them. */
+  { pattern: "*embed*", caps: { tools: false, contextWindow: null, maxOutput: null } },
+
   // ── Claude (4.6+ = adaptive thinking; 5 = 1M context; older/haiku = budget) ──────
   { pattern: "*claude*opus-5*",     caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
   { pattern: "*claude*sonnet-5*",   caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
@@ -520,15 +551,20 @@ export const PATTERN_CAPABILITIES = [
 
   // ── Grok (vision + Live Search) ──────────────────────────────────
   { pattern: "*grok*image*",    caps: { imageOutput: true } },
-  // Grok Composer / Build (Grok CLI): no client-controlled reasoningEffort (xAI 400 if sent). Upstream decolua/9router#2534.
-  { pattern: "*grok-composer*", caps: { vision: true, reasoning: false, search: false, thinkingFormat: null, contextWindow: 200000, maxOutput: 30000 } },
-  { pattern: "*grok-build*",    caps: { vision: true, reasoning: false, search: false, thinkingFormat: null, contextWindow: 512000, maxOutput: 30000 } },
+  // Composer keeps the 200K window from decolua/9router#2502's HAR-captured Grok CLI /v1/models response.
+  { pattern: "*grok-composer*", caps: { vision: true, reasoning: false, search: false, thinkingFormat: null, contextWindow: 200000 } },
+  // Public aliases follow xAI's Grok Build 0.1 docs (256 Ki tokens, vision/tools/reasoning); exact CLI `grok-build` above keeps the HAR-reported 256K/non-reasoning caps.
+  { pattern: "*grok-build*",    caps: { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 262144 } },
   { pattern: "*grok-code*",     caps: { reasoning: true, thinkingFormat: "openai", contextWindow: 256000 } },
-  // Grok 4.5 (Grok CLI / Grok Build): 500k context per cli-chat-proxy /v1/models.
-  { pattern: "*grok-4.5*",      caps: { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 500000, maxOutput: 64000 } },
-  { pattern: "*grok-4*",        caps: { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 256000 } },
+  // Current 4.x models are 500K or 1M; 500K is the conservative floor that cannot over-promise.
+  { pattern: "*grok-4.5*",      caps: { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 500000 } },
+  { pattern: "*grok-4*",        caps: { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 500000 } },
+  // Keep retired Grok 3 ids usable for stored user configurations.
   { pattern: "*grok-3*",        caps: { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 131072 } },
   { pattern: "*grok*",          caps: { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 256000 } },
+
+  /** Cloudflare publishes 32,768 tokens for @cf/qwen/qwen2.5-coder-32b-instruct. */
+  { pattern: "*@cf/qwen/qwen2.5-coder-32b-instruct", caps: { reasoning: false, thinkingFormat: null, contextWindow: 32768 } },
 
   // ── Qwen (3.5+ = native vision/video; coder & max = text-only; QwQ = thinking-only) ─
   { pattern: "*qwen*vl*",       caps: { vision: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 262144 } },
@@ -570,6 +606,9 @@ export const PATTERN_CAPABILITIES = [
   { pattern: "*minimax-m3*",    caps: { vision: true, reasoning: true, thinkingFormat: "minimax", contextWindow: 512000, maxOutput: 131072 } },
   { pattern: "*minimax-m2.7*",  caps: { vision: true, reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 204800, maxOutput: 131072 } },
   { pattern: "*minimax-m2.5*",  caps: { vision: true, reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 204800, maxOutput: 131072 } },
+  /** MiniMax publishes 204,800 tokens for every M2-family model. */
+  { pattern: "*minimax-m2.1*",  caps: { reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 204800, maxOutput: 131072 } },
+  { pattern: "*minimax-m2",     caps: { reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 204800, maxOutput: 131072 } },
   { pattern: "*minimax*",       caps: { reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 } },
 
   // ── Xiaomi MiMo (vision + <think>-tag reasoning, always-on, can't disable) ──
@@ -694,14 +733,20 @@ export function getCapabilitiesForModel(provider, model) {
     }
   }
 
-  // 2. Canonical exact
-  if (MODEL_CAPABILITIES[baseModel]) return finalize({ ...DEFAULT_CAPABILITIES, ...MODEL_CAPABILITIES[baseModel] });
-  if (MODEL_CAPABILITIES[model]) return finalize({ ...DEFAULT_CAPABILITIES, ...MODEL_CAPABILITIES[model] });
+  const exactId = MODEL_CAPABILITIES[baseModel] ? baseModel : model;
+  const exactCaps = MODEL_CAPABILITIES[exactId];
+  if (exactCaps) {
+    const merged = { ...DEFAULT_CAPABILITIES, ...exactCaps };
+    if (hasUnpublishedGrokOutput(provider, exactId)) merged.maxOutput = undefined;
+    return finalize(merged);
+  }
 
   // 3. Pattern match (first match wins)
   for (const { pattern, caps } of PATTERN_CAPABILITIES) {
     if (matchPattern(pattern, baseModel) || matchPattern(pattern, model)) {
-      return finalize({ ...DEFAULT_CAPABILITIES, ...caps });
+      const merged = { ...DEFAULT_CAPABILITIES, ...caps };
+      if (hasUnpublishedGrokOutput(provider, baseModel)) merged.maxOutput = undefined;
+      return finalize(merged);
     }
   }
 
@@ -717,7 +762,7 @@ export function getCapabilitiesForModel(provider, model) {
  *
  * @param {string} provider
  * @param {string} model
- * @returns {{contextWindow: number, maxOutput: number, known: boolean, source: "provider"|"exact"|"pattern"|"registry"|"default"}}
+ * @returns {{contextWindow: number, maxOutput: number|undefined, known: boolean, source: "provider"|"exact"|"pattern"|"registry"|"default"}}
  */
 export function resolveModelLimits(provider, model) {
   const baseModel = typeof model === "string" && model.includes("/") ? model.split("/").pop() : model;
@@ -729,11 +774,13 @@ export function resolveModelLimits(provider, model) {
   // publish the generic 200K/64K floor as a provider guarantee — the exact
   // dishonesty this resolver exists to remove. Rows without a real
   // contextWindow fall through to the next step instead.
-  const asLimits = (caps, source) => {
+  const asLimits = (caps, source, unpublishedOutput = false) => {
     if (!positive(caps?.contextWindow)) return null;
     return {
       contextWindow: caps.contextWindow,
-      maxOutput: positive(caps.maxOutput) ? caps.maxOutput : DEFAULT_CAPABILITIES.maxOutput,
+      maxOutput: positive(caps.maxOutput)
+        ? caps.maxOutput
+        : unpublishedOutput ? undefined : DEFAULT_CAPABILITIES.maxOutput,
       known: true,
       source,
     };
@@ -751,7 +798,11 @@ export function resolveModelLimits(provider, model) {
   }
 
   for (const id of [baseModel, model]) {
-    const hit = MODEL_CAPABILITIES[id] && asLimits(MODEL_CAPABILITIES[id], "exact");
+    const hit = MODEL_CAPABILITIES[id] && asLimits(
+      MODEL_CAPABILITIES[id],
+      "exact",
+      hasUnpublishedGrokOutput(provider, id),
+    );
     if (hit) return hit;
   }
 
@@ -761,14 +812,16 @@ export function resolveModelLimits(provider, model) {
     const hit = asLimits({
       contextWindow: registryModel.contextLength ?? registry.transport?.defaultContextLength,
       maxOutput: registryModel.maxOutputTokens,
-    }, "registry");
+    }, "registry", hasUnpublishedGrokOutput(provider, baseModel));
     if (hit) return hit;
   }
 
   for (const { pattern, caps } of PATTERN_CAPABILITIES) {
     if (!matchPattern(pattern, baseModel) && !matchPattern(pattern, model)) continue;
-    const hit = asLimits(caps, "pattern");
+    const hit = asLimits(caps, "pattern", hasUnpublishedGrokOutput(provider, baseModel));
     if (hit) return hit;
+    // Explicit null is a terminal non-chat sentinel, not permission to try broader family globs.
+    if (caps?.contextWindow === null) break;
   }
 
   return {

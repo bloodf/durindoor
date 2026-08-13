@@ -48,19 +48,25 @@ describe("port #2534: xai strips reasoning params for grok-composer", () => {
   });
 });
 
-describe("port #2534: capabilities mark grok-composer / grok-build non-reasoning", () => {
-  it("getCapabilitiesForModel returns reasoning=false for grok-composer", () => {
+describe("port #2534: capabilities keep Grok CLI models non-reasoning", () => {
+  // #2534 covers the Grok CLI models: grok-build rejects client-controlled
+  // reasoning effort, while the distinct public xAI API model grok-build-0.1 supports it.
+  it("resolves the Grok CLI composer row without an invented output ceiling", () => {
     const caps = getCapabilitiesForModel("grok-cli", "grok-composer-2.5-fast");
     expect(caps.reasoning).toBe(false);
     expect(caps.thinkingFormat).toBeNull();
-    expect(caps.maxOutput).toBe(30000);
+    expect(caps.contextWindow).toBe(200000);
+    expect(caps.maxOutput).toBeUndefined();
   });
 
-  it("getCapabilitiesForModel returns reasoning=false for grok-build", () => {
-    const caps = getCapabilitiesForModel("grok-cli", "grok-build");
-    expect(caps.reasoning).toBe(false);
-    expect(caps.contextWindow).toBe(512000);
-    expect(caps.maxOutput).toBe(30000);
+  it("keeps Grok CLI Build distinct from public-API Grok Build 0.1", () => {
+    const cliCaps = getCapabilitiesForModel("grok-cli", "grok-build");
+    const apiCaps = getCapabilitiesForModel("xai", "grok-build-0.1");
+
+    expect(cliCaps).toMatchObject({ reasoning: false, thinkingFormat: null, contextWindow: 256000 });
+    expect(cliCaps.maxOutput).toBeUndefined();
+    expect(apiCaps).toMatchObject({ reasoning: true, thinkingFormat: "openai", contextWindow: 262144 });
+    expect(apiCaps.maxOutput).toBeUndefined();
   });
 
   it("pattern match also works for model ids with suffixes", () => {

@@ -1,8 +1,7 @@
 import { handleChat } from "@/sse/handlers/chat.js";
 import {
   clearAccountError,
-  evaluateApiKeyAuth,
-  extractApiKey,
+  resolveClientApiKey,
   getProviderCredentials,
   markAccountUnavailable,
 } from "@/sse/services/auth.js";
@@ -175,16 +174,16 @@ function buildGeminiNativeUrl(requestUrl, model, action) {
 
 async function validateGeminiNativeClientKey(request) {
   const settings = await getSettings();
-  const apiKey = extractApiKey(request);
-  const result = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true, request });
-  if (!result.ok && result.reason === "missing") {
-    return Response.json({ error: { message: "Missing API key" } }, { status: 401 });
+  const { apiKey, auth } = await resolveClientApiKey(request, {
+    required: settings.requireApiKey === true,
+  });
+  if (!auth.ok && auth.reason === "missing") {
+    return { apiKey, error: Response.json({ error: { message: "Missing API key" } }, { status: 401 }) };
   }
-  if (!result.ok) {
-    return Response.json({ error: { message: "Invalid API key" } }, { status: 401 });
+  if (!auth.ok) {
+    return { apiKey, error: Response.json({ error: { message: "Invalid API key" } }, { status: 401 }) };
   }
-
-  return null;
+  return { apiKey, error: null };
 }
 
 function buildGeminiNativeAuthHeaders(credentials) {
@@ -229,14 +228,14 @@ function getSafeGeminiNativeErrorText(error) {
 }
 
 async function forwardGeminiNativeRequest(request, body, model, action) {
-  const authError = await validateGeminiNativeClientKey(request);
+  const { apiKey, error: authError } = await validateGeminiNativeClientKey(request);
   if (authError) return authError;
 
   const modelId = normalizeGeminiNativeModel(model);
   if (!GEMINI_NATIVE_MODEL_PATTERN.test(modelId)) {
     return Response.json({ error: { message: "Invalid model" } }, { status: 400 });
   }
-  const policyError = await enforceApiKeyModelPolicy(request, `gemini/${modelId}`);
+  const policyError = await enforceApiKeyModelPolicy(request, `gemini/${modelId}`, apiKey);
   if (policyError) return policyError;
   const excludeConnectionIds = new Set();
   const bodyText = JSON.stringify(body);
@@ -337,7 +336,7 @@ async function forwardGeminiNativeRequest(request, body, model, action) {
       // request estimate closes the zero-accounting bypass; quota batch 5 adds
       // authoritative streamed non-chat usage and cost extraction.
       const committedTokens = Math.ceil(bodyText.length / 4);
-      await recordApiKeyUsageForResponse(extractApiKey(request), clientResponse, {
+      await recordApiKeyUsageForResponse(apiKey, clientResponse, {
         tokens: committedTokens,
         cost: 0,
       });

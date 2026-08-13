@@ -30,6 +30,7 @@ vi.mock("../../src/sse/services/auth.js", () => ({
   clearAccountError: vi.fn(),
   extractApiKey: vi.fn(() => "test-key"),
   evaluateApiKeyAuth: vi.fn(async () => ({ ok: true })),
+  resolveClientApiKey: vi.fn(async () => ({ apiKey: "test-key", auth: { ok: true } })),
 }));
 
 vi.mock("../../src/sse/services/apiKeyPolicy.js", () => ({
@@ -173,7 +174,7 @@ describe("Vision Bridge (#6640) chat wiring", () => {
     expect(res.status).toBe(200);
     expect(mocks.handleChatCore.mock.calls[0][0].body.model).toBe(NON_VISION);
     // Original model's own policy gate in handleSingleModelChat still ran.
-    expect(mocks.enforceApiKeyModelPolicy).toHaveBeenCalledWith(expect.anything(), NON_VISION);
+    expect(mocks.enforceApiKeyModelPolicy).toHaveBeenCalledWith(expect.anything(), NON_VISION, "test-key");
   });
 
   it("does not reroute when the request has no current-turn image", async () => {
@@ -188,6 +189,6 @@ describe("Vision Bridge (#6640) chat wiring", () => {
     expect(res.status).toBe(200);
     expect(mocks.handleChatCore.mock.calls[0][0].body.model).toBe(NON_VISION);
     // No bridge policy check against the vision target.
-    expect(mocks.enforceApiKeyModelPolicy).not.toHaveBeenCalledWith(expect.anything(), VISION);
+    expect(mocks.enforceApiKeyModelPolicy).not.toHaveBeenCalledWith(expect.anything(), VISION, "test-key");
   });
 });

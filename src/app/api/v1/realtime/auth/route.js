@@ -1,4 +1,4 @@
-import { extractApiKey, evaluateApiKeyAuth } from "@/sse/services/auth.js";
+import { resolveClientApiKey } from "@/sse/services/auth.js";
 import { getSettings } from "@/lib/localDb";
 
 /**
@@ -17,9 +17,10 @@ import { getSettings } from "@/lib/localDb";
  * `requireApiKey` or validate the key at all.
  */
 export async function GET(request) {
-  const apiKey = extractApiKey(request);
   const settings = await getSettings();
-  const auth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true, request });
+  const { auth } = await resolveClientApiKey(request, {
+    required: settings.requireApiKey === true,
+  });
   if (auth.ok) {
     return Response.json({ ok: true }, { headers: { "Access-Control-Allow-Origin": "*" } });
   }

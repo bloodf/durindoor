@@ -5,8 +5,7 @@ import {
   projectProviderCredentials,
   markAccountUnavailable,
   clearAccountError,
-  extractApiKey,
-  evaluateApiKeyAuth,
+  resolveClientApiKey,
   isProviderConnectionModelLocked,
   providerAllowsPublicNoAuthFallback,
 } from "../services/auth.js";
@@ -24,7 +23,7 @@ import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
 import { applyVisionBridgeReroute } from "open-sse/services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
-import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
+import { authErrorResponse, errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { isLocalStreamLifecycleError } from "open-sse/utils/streamLifecycle.js";
 import {
   getComboModelQuotaHealth,
@@ -319,27 +318,22 @@ export async function handleChat(request, clientRawRequest = null) {
 
   // Request summary is emitted as the unified "▶" line in chatCore (has fmt/thinking/account)
 
-  // Log API key (masked)
-  const authHeader = request.headers.get("Authorization");
-  const apiKey = extractApiKey(request);
-  if (authHeader && apiKey) {
-    const masked = log.maskKey(apiKey);
-    log.debug("AUTH", `API Key: ${masked}`);
+  const settings = await getSettings();
+  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
+    required: settings.requireApiKey === true,
+  });
+  if (apiKey) {
+    log.debug("AUTH", `API Key: ${log.maskKey(apiKey)}`);
   } else {
     log.debug("AUTH", "No API key provided (local mode)");
   }
-
-  // Stored credentials are always validated; local mode only permits unknown
-  // placeholders when API-key enforcement is disabled.
-  const settings = await getSettings();
-  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true, request });
   if (!apiKeyAuth.ok) {
     if (apiKeyAuth.reason === "missing") {
       log.warn("AUTH", "Missing API key (requireApiKey=true)");
-      return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
+      return authErrorResponse(clientRawRequest.endpoint, "Missing API key");
     }
     log.warn("AUTH", "Invalid API key");
-    return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
+    return authErrorResponse(clientRawRequest.endpoint, "Invalid API key");
   }
 
   // Per-key combo access control. Retain the authenticated record so local
@@ -705,7 +699,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
   // Enforce per-API-key model policy against the resolved underlying model when
   // the request started as a combo; the top-level combo name is not a model id.
-  const policyError2 = await enforceApiKeyModelPolicy(request, `${provider}/${model}`);
+  const policyError2 = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (policyError2) return policyError2;
 
   // Vision Bridge (#6640): after policy passes, resolve custom capabilities and
@@ -720,7 +714,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       : null;
     const vb = applyVisionBridgeReroute({ body, modelStr, settings, capabilities: singleModelCaps, targetCapabilities: visionTargetCaps });
     if (vb.rerouted) {
-      const policyError = await enforceApiKeyModelPolicy(request, vb.modelStr);
+      const policyError = await enforceApiKeyModelPolicy(request, vb.modelStr, apiKey);
       if (policyError) {
         log.warn("CHAT", `Vision Bridge target "${vb.toModel}" denied by API key policy; keeping "${modelStr}"`);
       } else {

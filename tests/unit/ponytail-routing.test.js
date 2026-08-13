@@ -31,6 +31,7 @@ vi.mock("../../src/sse/services/auth.js", () => ({
   clearAccountError: vi.fn(),
   extractApiKey: vi.fn(() => "sk-test"),
   evaluateApiKeyAuth: vi.fn(async () => ({ ok: true, stored: true })),
+  resolveClientApiKey: vi.fn(async () => ({ apiKey: "sk-test", auth: { ok: true, stored: true } })),
 }));
 vi.mock("../../src/sse/services/apiKeyPolicy.js", () => ({
   enforceApiKeyModelPolicy: mocks.enforceApiKeyModelPolicy,

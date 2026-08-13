@@ -1,14 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  evaluateApiKeyAuth: vi.fn(),
-  extractApiKey: vi.fn(),
+  resolveClientApiKey: vi.fn(),
   getSettings: vi.fn(),
 }));
 
 vi.mock("@/sse/services/auth.js", () => ({
-  evaluateApiKeyAuth: mocks.evaluateApiKeyAuth,
-  extractApiKey: mocks.extractApiKey,
+  resolveClientApiKey: mocks.resolveClientApiKey,
 }));
 vi.mock("@/lib/localDb", () => ({ getSettings: mocks.getSettings }));
 
@@ -17,9 +15,8 @@ const { GET } = await import("@/app/api/v1/realtime/auth/route.js");
 describe("realtime auth bridge", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.extractApiKey.mockReturnValue(null);
     mocks.getSettings.mockResolvedValue({ requireApiKey: true });
-    mocks.evaluateApiKeyAuth.mockResolvedValue({ ok: true, operator: true });
+    mocks.resolveClientApiKey.mockResolvedValue({ apiKey: null, auth: { ok: true, operator: true } });
   });
 
   it("passes the original request so CLI operator identity can be verified", async () => {
@@ -28,6 +25,6 @@ describe("realtime auth bridge", () => {
     });
     const response = await GET(request);
     expect(response.status).toBe(200);
-    expect(mocks.evaluateApiKeyAuth).toHaveBeenCalledWith(null, { required: true, request });
+    expect(mocks.resolveClientApiKey).toHaveBeenCalledWith(request, { required: true });
   });
 });

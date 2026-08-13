@@ -125,6 +125,36 @@ describe("dashboard guard public LLM API access", () => {
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 
+  it("accepts a valid x-api-key alongside a stale Bearer credential", async () => {
+    mocks.validateApiKey.mockImplementation(async (key) => key === "sk-valid");
+
+    const response = await proxy(request("/v1/messages", {
+      host: "router.example.com",
+      authorization: "Bearer stale-session-token",
+      "x-api-key": "sk-valid",
+    }));
+
+    expect(response).toBe(mocks.nextResponse);
+    expect(mocks.validateApiKey).toHaveBeenCalledWith("sk-valid");
+  });
+
+  it("rejects all-invalid Anthropic credentials with its native error envelope", async () => {
+    const response = await proxy(request("/v1/messages", {
+      host: "router.example.com",
+      authorization: "Bearer stale-session-token",
+      "x-api-key": "sk-invalid",
+    }));
+
+    expect(response.status).toBe(401);
+    expect(response.body).toEqual({
+      type: "error",
+      error: {
+        type: "authentication_error",
+        message: "API key required for remote API access",
+      },
+    });
+  });
+
   it("allows a remote dashboard session (JWT cookie) to GET the model-list API", async () => {
     // The dashboard reads /api/v1/models/* to render provider/embedding grids;
     // those fetches carry the session cookie, not an API key, and a Tailscale
@@ -492,5 +522,20 @@ describe("dashboard guard helpers", () => {
     });
 
     expect(__test__.extractApiKey(apiRequest)).toBe("header-key");
+  });
+
+  it("collects every presented credential once in precedence order", () => {
+    const apiRequest = request("/v1beta/models?key=query-key", {
+      authorization: "Bearer bearer-key",
+      "x-api-key": "header-key",
+      "x-goog-api-key": "google-key",
+    });
+
+    expect(__test__.extractApiKeyCandidates(apiRequest)).toEqual([
+      "bearer-key",
+      "header-key",
+      "google-key",
+      "query-key",
+    ]);
   });
 });

@@ -9,6 +9,7 @@ import { getAppVersion } from "./version.js";
 import { stringifyJson } from "./helpers/jsonCol.js";
 import { backfillApiKeyUsageTotals } from "./helpers/apiKeyUsageTotals.js";
 import { quotaStorageNeedsAdditiveRepair, verifyPublishedSchemaShapes } from "./helpers/schemaVerifier.js";
+import { runIntegrityCheckOrThrow } from "./helpers/integrityCheck.js";
 import { canonicalizeApiKeyExpiresAt } from "../../shared/utils/apiKeyExpiry.js";
 
 // Marker file: prevents re-importing legacy JSON when user wipes data.sqlite.
@@ -326,6 +327,7 @@ export async function runMigrationOnce(adapter) {
     } catch (err) {
       if (err instanceof MigrationAborted) {
         console.error(`[DB][migrate] aborted: ${err.message} | legacy JSON kept | backup: ${backupDir}`);
+        runIntegrityCheckOrThrow(adapter);
         return;
       }
       throw err;
@@ -334,12 +336,14 @@ export async function runMigrationOnce(adapter) {
     try { fs.writeFileSync(markerFile, new Date().toISOString()); } catch {}
     pruneOldBackups();
     console.log(`[DB][migrate] JSON → SQLite in ${Date.now() - t0}ms | legacy JSON kept at DATA_DIR | backup: ${backupDir}`);
+    runIntegrityCheckOrThrow(adapter);
     _migratedAdapters.add(adapter);
     return;
   }
 
   if (fresh) {
     setMetaSync(adapter, "appVersion", getAppVersion());
+    runIntegrityCheckOrThrow(adapter);
     _migratedAdapters.add(adapter);
     return;
   }
@@ -360,5 +364,6 @@ export async function runMigrationOnce(adapter) {
         : "";
     console.log(`[DB][migrate] Schema ${migInfo.from} → ${migInfo.to}${repair} | backup: ${preUpgradeBackupDir}`);
   }
+  runIntegrityCheckOrThrow(adapter);
   _migratedAdapters.add(adapter);
 }

@@ -11,15 +11,23 @@ function getTimeString() {
 /**
  * Create stream controller with abort and disconnect detection
  * @param {object} options
+ * @param {AbortSignal} options.externalSignal - Client signal forwarded into stream lifecycle cleanup
  * @param {function} options.onDisconnect - Callback when client disconnects
  * @param {object} options.log - Logger instance
  * @param {string} options.provider - Provider name
  * @param {string} options.model - Model name
  */
-export function createStreamController({ onDisconnect, onError, onComplete, onActivity, log, provider, model, reqTag = "" } = {}) {
+export function createStreamController({ externalSignal, onDisconnect, onError, onComplete, onActivity, log, provider, model, reqTag = "" } = {}) {
   const abortController = new AbortController();
   const startTime = Date.now();
   let disconnected = false;
+  let externalAbort = null;
+
+  const clearExternalAbort = () => {
+    if (!externalAbort) return;
+    externalSignal?.removeEventListener("abort", externalAbort);
+    externalAbort = null;
+  };
 
   // Only abnormal terminations are logged; normal completion is covered by "📊 done".
   // isError uses errorLine (always shown, ignores LOG_LEVEL) so failures survive quiet levels.
@@ -30,7 +38,7 @@ export function createStreamController({ onDisconnect, onError, onComplete, onAc
     else console.log(`[${getTimeString()}] ${symbol} ${provider}/${model} · ${status} · ${duration}ms`);
   };
 
-  return {
+  const streamController = {
     signal: abortController.signal,
     startTime,
 
@@ -44,6 +52,7 @@ export function createStreamController({ onDisconnect, onError, onComplete, onAc
     handleDisconnect: (reason = "client_closed") => {
       if (disconnected) return;
       disconnected = true;
+      clearExternalAbort();
 
       logStream("⚡", `DISCONNECT: ${reason}`);
       dbg("CTRL", `${provider}/${model} | disconnect=${reason} | dur=${Date.now() - startTime}ms`);
@@ -58,6 +67,7 @@ export function createStreamController({ onDisconnect, onError, onComplete, onAc
     handleComplete: () => {
       if (disconnected) return;
       disconnected = true;
+      clearExternalAbort();
 
       onComplete?.();
     },
@@ -66,6 +76,7 @@ export function createStreamController({ onDisconnect, onError, onComplete, onAc
     handleError: (error) => {
       if (disconnected) return;
       disconnected = true;
+      clearExternalAbort();
 
       onError?.(error);
 
@@ -77,8 +88,21 @@ export function createStreamController({ onDisconnect, onError, onComplete, onAc
       logStream("✗", `ERROR: ${sanitizeErrorMessage(error?.message || "stream failed")}`, true);
     },
 
-    abort: () => abortController.abort()
+    abort: (reason) => abortController.abort(reason)
   };
+
+  if (externalSignal) {
+    externalAbort = () => {
+      const reason = typeof externalSignal.reason === "string"
+        ? externalSignal.reason
+        : externalSignal.reason?.message || "client_closed";
+      streamController.handleDisconnect(reason);
+    };
+    if (externalSignal.aborted) externalAbort();
+    else externalSignal.addEventListener("abort", externalAbort, { once: true });
+  }
+
+  return streamController;
 }
 
 /**

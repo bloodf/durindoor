@@ -1004,42 +1004,58 @@ export async function clearAccountError(connectionId, currentConnection, model =
 }
 
 /**
- * Extract API key from request headers
- */
-/**
- * Resolve the API key credential used for the request.
- * Supports:
- * - Authorization: Bearer <key>
- * - x-api-key: <key>
- * - x-goog-api-key: <key> (Gemini native clients)
- * - ?key=<key> query parameter (Gemini native clients)
+ * Extract the first API key credential presented by a request.
  *
  * @param {Request} request
  * @returns {string | null}
  */
 export function extractApiKey(request) {
-  if (!request?.headers?.get) return null;
+  return extractApiKeyCandidates(request)[0] || null;
+}
 
-  // Check Authorization header first
+/**
+ * Extract every distinct API key credential presented by one request, in
+ * precedence order. Some Anthropic clients send a stale Bearer token beside a
+ * valid `x-api-key`, so authentication must check both without trusting any
+ * credential from another request.
+ *
+ * @param {Request} request
+ * @returns {string[]}
+ */
+export function extractApiKeyCandidates(request) {
+  if (!request?.headers?.get) return [];
+  const candidates = [];
+  const add = (value) => {
+    if (value && !candidates.includes(value)) candidates.push(value);
+  };
   const authHeader = request.headers.get("Authorization");
-  if (authHeader?.startsWith("Bearer ")) {
-    return authHeader.slice(7);
-  }
+  if (authHeader?.startsWith("Bearer ")) add(authHeader.slice(7));
+  add(request.headers.get("x-api-key"));
+  add(request.headers.get("x-goog-api-key"));
+  add(new URL(request.url).searchParams.get("key"));
+  return candidates;
+}
 
-  // Check Anthropic x-api-key header
-  const xApiKey = request.headers.get("x-api-key");
-  if (xApiKey) {
-    return xApiKey;
+/**
+ * Resolve all credentials presented by one request and return the credential
+ * that authenticated. Unknown placeholder keys remain allowed only in local
+ * mode, after every candidate has been checked for a valid stored identity.
+ *
+ * @param {Request} request
+ * @param {{ required?: boolean, now?: number }} options
+ * @returns {Promise<{apiKey: string | null, auth: object}>}
+ */
+export async function resolveClientApiKey(request, { required = false, now = Date.now() } = {}) {
+  const candidates = extractApiKeyCandidates(request);
+  if (await hasValidCliToken(request)) {
+    return { apiKey: candidates[0] || null, auth: { ok: true, reason: null, stored: false, operator: true } };
   }
-
-  // Check Gemini native header and query parameter
-  const googleApiKey = request.headers.get("x-goog-api-key");
-  if (googleApiKey) {
-    return googleApiKey;
+  for (const apiKey of candidates) {
+    const auth = await evaluateApiKeyCredential(apiKey, { required: true, now });
+    if (auth.ok) return { apiKey, auth };
   }
-
-  const url = new URL(request.url);
-  return url.searchParams.get("key") || null;
+  const apiKey = candidates[0] || null;
+  return { apiKey, auth: await evaluateApiKeyCredential(apiKey, { required, now }) };
 }
 
 /**
@@ -1058,10 +1074,7 @@ export async function isValidApiKey(apiKey) {
  * This prevents an expired or malformed stored key from becoming a policy/usage
  * identity when global API-key enforcement is disabled.
  */
-export async function evaluateApiKeyAuth(apiKey, { required = false, now = Date.now(), request = null } = {}) {
-  if (await hasValidCliToken(request)) {
-    return { ok: true, reason: null, stored: false, operator: true };
-  }
+async function evaluateApiKeyCredential(apiKey, { required, now }) {
   if (!apiKey) {
     return { ok: !required, reason: required ? "missing" : null, stored: false };
   }
@@ -1073,4 +1086,9 @@ export async function evaluateApiKeyAuth(apiKey, { required = false, now = Date.
 
   const valid = record.isActive === true && !isApiKeyExpired(record.expiresAt, now);
   return { ok: valid, reason: valid ? null : "invalid", stored: true };
+}
+
+export async function evaluateApiKeyAuth(apiKey, { required = false, now = Date.now(), request = null } = {}) {
+  if (request) return (await resolveClientApiKey(request, { required, now })).auth;
+  return evaluateApiKeyCredential(apiKey, { required, now });
 }

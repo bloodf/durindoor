@@ -11,6 +11,7 @@ import {
   resolveKiroThinkingBudget,
   buildThinkingSystemPrefix,
   KIRO_AGENTIC_SYSTEM_PROMPT,
+  normalizeKiroToolSchema,
   resolveKiroProfileArn
 } from "../../config/kiroConstants.js";
 import { parseDataUri } from "../concerns/image.js";
@@ -259,10 +260,7 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
           }
 
           const schema = t.function?.parameters || t.parameters || t.input_schema || {};
-          // Normalize schema: Kiro requires required[] and proper type/properties
-          const normalizedSchema = Object.keys(schema).length === 0
-            ? { type: "object", properties: {}, required: [] }
-            : { ...schema, required: schema.required ?? [] };
+          const normalizedSchema = normalizeKiroToolSchema(schema);
 
           return {
             toolSpecification: {

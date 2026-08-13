@@ -51,6 +51,31 @@ export function errorResponse(statusCode, message) {
 }
 
 /**
+ * Return a generic 401 using the client's native error envelope.
+ * Anthropic Messages clients require `authentication_error`; other endpoints
+ * retain the OpenAI-compatible response shape.
+ *
+ * @param {string | null} endpoint
+ * @param {string} message
+ * @returns {Response}
+ */
+export function authErrorResponse(endpoint, message) {
+  if (endpoint?.includes("/v1/messages")) {
+    return new Response(JSON.stringify({
+      type: "error",
+      error: { type: "authentication_error", message },
+    }), {
+      status: 401,
+      headers: {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+      },
+    });
+  }
+  return errorResponse(401, message);
+}
+
+/**
  * Write error to SSE stream (for streaming)
  * @param {WritableStreamDefaultWriter} writer - Stream writer
  * @param {number} statusCode - HTTP status code

@@ -91,7 +91,7 @@ export function filterUsageForFormat(usage, targetFormat) {
     default: [
       'prompt_tokens', 'completion_tokens', 'total_tokens',
       'cached_tokens', 'reasoning_tokens',
-      'prompt_tokens_details', 'completion_tokens_details',
+      'prompt_tokens_details', 'completion_tokens_details', 'output_tokens_details',
       'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks'
     ]
   };
@@ -108,7 +108,17 @@ export function filterUsageForFormat(usage, targetFormat) {
     fields = formatFields.default;
   }
 
-  return pickFields(fields);
+  const filtered = pickFields(fields);
+  // Client-only projection: expose Anthropic thinking without adding a
+  // canonical reasoning_tokens field that would alter downstream billing.
+  const thinkingTokens = usage.output_tokens_details?.thinking_tokens;
+  if (!formatFields[targetFormat] && typeof thinkingTokens === "number") {
+    filtered.completion_tokens_details = {
+      ...filtered.completion_tokens_details,
+      reasoning_tokens: thinkingTokens,
+    };
+  }
+  return filtered;
 }
 
 /**
@@ -155,6 +165,9 @@ export function normalizeUsage(usage) {
   }
   if (usage?.completion_tokens_details && typeof usage.completion_tokens_details === "object") {
     normalized.completion_tokens_details = usage.completion_tokens_details;
+  }
+  if (usage?.output_tokens_details && typeof usage.output_tokens_details === "object") {
+    normalized.output_tokens_details = usage.output_tokens_details;
   }
 
   if (Object.keys(normalized).length === 0) return null;
@@ -243,10 +256,11 @@ export function canonicalizeUsage(usage) {
 /**
  * Convert Claude's cache-exclusive input accounting to OpenAI's convention,
  * where prompt_tokens INCLUDES cached and newly-cached input tokens (#2658).
- * Without this, a cached Claude turn under-reports prompt_tokens in the
- * OpenAI-shaped non-stream response.
+ * Anthropic thinking is already included in output_tokens; expose its count as
+ * reasoning detail without adding it again or changing billing inputs.
  */
 export function claudeUsageToOpenAI(usage) {
+  const outputTokensDetails = usage?.output_tokens_details;
   const canonical = canonicalizeUsage({
     prompt_tokens: usage?.input_tokens,
     completion_tokens: usage?.output_tokens,
@@ -268,6 +282,13 @@ export function claudeUsageToOpenAI(usage) {
     if (canonical.cache_creation_input_tokens > 0) {
       result.prompt_tokens_details.cache_creation_tokens = canonical.cache_creation_input_tokens;
     }
+  }
+  const thinkingTokens = outputTokensDetails?.thinking_tokens;
+  if (typeof thinkingTokens === "number") {
+    result.completion_tokens_details = { reasoning_tokens: thinkingTokens };
+  }
+  if (outputTokensDetails && typeof outputTokensDetails === "object") {
+    result.output_tokens_details = outputTokensDetails;
   }
   return result;
 }
@@ -314,14 +335,15 @@ export function extractUsage(chunk) {
       cache_creation_input_tokens: u.cache_creation_input_tokens
     });
   }
-
-  // Claude format (message_delta event)
+  // Claude format (message_delta event). Anthropic reports thinking as a
+  // subset of output_tokens, so preserve the detail without inflating output.
   if (chunk.type === "message_delta" && chunk.usage && typeof chunk.usage === "object") {
     return normalizeUsage({
       prompt_tokens: chunk.usage.input_tokens || 0,
       completion_tokens: chunk.usage.output_tokens || 0,
       cache_read_input_tokens: chunk.usage.cache_read_input_tokens,
-      cache_creation_input_tokens: chunk.usage.cache_creation_input_tokens
+      cache_creation_input_tokens: chunk.usage.cache_creation_input_tokens,
+      output_tokens_details: chunk.usage.output_tokens_details,
     });
   }
 

@@ -1,8 +1,8 @@
 import { EventEmitter } from "events";
-import { createHash } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
-import { getMeta, setMeta } from "../helpers/metaStore.js";
+import { getMetaSync } from "../helpers/metaStore.js";
 import {
   EMPTY_ALL_TIME_CHART_DAYS,
   MAX_USAGE_CHART_BUCKETS,
@@ -27,13 +27,27 @@ function maskApiKey(key) {
   return "***";
 }
 
-function fingerprintApiKey(key) {
-  if (!key || typeof key !== "string") return null;
-  return `sha256:${createHash("sha256").update(key).digest("hex")}`;
+const USAGE_IDENTITY_SALT_META_KEY = "usageIdentitySalt";
+
+function getOrCreateUsageIdentitySalt(adapter) {
+  const existing = getMetaSync(adapter, USAGE_IDENTITY_SALT_META_KEY);
+  if (existing) return existing;
+  const generated = randomBytes(32).toString("hex");
+  adapter.run(`INSERT OR IGNORE INTO _meta(key, value) VALUES(?, ?)`, [USAGE_IDENTITY_SALT_META_KEY, generated]);
+  return getMetaSync(adapter, USAGE_IDENTITY_SALT_META_KEY);
 }
 
-function getApiKeyStatsKey(apiKey, model, provider) {
-  const keyIdentity = fingerprintApiKey(apiKey) || "local-no-key";
+/**
+ * Derives a stable installation-scoped identity without exposing API-key
+ * material or an offline-verifiable unsalted digest.
+ */
+function fingerprintApiKey(key, salt) {
+  if (!key || typeof key !== "string") return null;
+  return `hmac-sha256:${createHmac("sha256", salt).update(key).digest("hex")}`;
+}
+
+function getApiKeyStatsKey(apiKey, model, provider, salt) {
+  const keyIdentity = fingerprintApiKey(apiKey, salt) || "local-no-key";
   return `${keyIdentity}|${model}|${provider || "unknown"}`;
 }
 
@@ -87,7 +101,7 @@ function addToCounter(target, key, values) {
   if (values.meta) Object.assign(target[key], values.meta);
 }
 
-function aggregateEntryToDay(day, entry) {
+function aggregateEntryToDay(day, entry, identitySalt) {
   const promptTokens = entry.tokens?.prompt_tokens || entry.tokens?.input_tokens || 0;
   const completionTokens = entry.tokens?.completion_tokens || entry.tokens?.output_tokens || 0;
   const cachedTokens = entry.tokens?.cached_tokens || entry.tokens?.cache_read_input_tokens || 0;
@@ -122,7 +136,7 @@ function aggregateEntryToDay(day, entry) {
     addToCounter(day.byAccount, entry.connectionId, { ...vals, meta: { rawModel: entry.model, provider: entry.provider } });
   }
 
-  const akModelKey = getApiKeyStatsKey(entry.apiKey, entry.model, entry.provider);
+  const akModelKey = getApiKeyStatsKey(entry.apiKey, entry.model, entry.provider, identitySalt);
   addToCounter(day.byApiKey, akModelKey, { ...vals, meta: { rawModel: entry.model, provider: entry.provider, apiKey: entry.apiKey || null } });
 
   const endpoint = entry.endpoint || "Unknown";
@@ -301,6 +315,7 @@ export async function getActiveRequests() {
 export async function saveRequestUsage(entry) {
   try {
     const db = await getAdapter();
+    const identitySalt = getOrCreateUsageIdentitySalt(db);
 
     if (!entry.timestamp) entry.timestamp = new Date().toISOString();
     entry.cost = await calculateCost(entry.provider, entry.model, entry.tokens);
@@ -348,7 +363,7 @@ export async function saveRequestUsage(entry) {
         requests: 0, promptTokens: 0, completionTokens: 0, cost: 0,
         byProvider: {}, byModel: {}, byAccount: {}, byApiKey: {}, byEndpoint: {},
       };
-      aggregateEntryToDay(day, entry);
+      aggregateEntryToDay(day, entry, identitySalt);
       db.run(`INSERT INTO usageDaily(dateKey, data) VALUES(?, ?) ON CONFLICT(dateKey) DO UPDATE SET data = excluded.data`, [dateKey, stringifyJson(day)]);
 
       // Resolve the stored secret to its stable row id inside the same
@@ -412,7 +427,7 @@ export async function getUsageHistory(filter = {}) {
   }));
 }
 
-function loadDaysInRange(adapter, maxDays, now = new Date()) {
+function loadDaysInRange(adapter, maxDays, identitySalt, now = new Date()) {
   const todayKey = toLocalDateKey(now);
   const params = [];
   let lowerBound = "";
@@ -450,7 +465,7 @@ function loadDaysInRange(adapter, maxDays, now = new Date()) {
           completion_tokens: row.completionTokens || 0,
           ...tokens,
         },
-      });
+      }, identitySalt);
     }
     rows.push({ dateKey: todayKey, data: stringifyJson(day) });
   }
@@ -461,7 +476,7 @@ function loadDaysInRange(adapter, maxDays, now = new Date()) {
 // (YYYY-MM-DD) instead of a rolling day count. Used by the usage page's custom
 // calendar range. `endKey` >= today reconstructs the current day from live
 // history (usageDaily has no row for today yet), matching loadDaysInRange.
-function loadDaysInDateRange(adapter, startKey, endKey, now = new Date()) {
+function loadDaysInDateRange(adapter, startKey, endKey, identitySalt, now = new Date()) {
   const todayKey = toLocalDateKey(now);
   const rows = adapter.all(
     `SELECT dateKey, data FROM usageDaily WHERE dateKey >= ? AND dateKey <= ? AND dateKey < ? ORDER BY dateKey ASC`,
@@ -483,7 +498,7 @@ function loadDaysInDateRange(adapter, startKey, endKey, now = new Date()) {
         aggregateEntryToDay(day, {
           ...row,
           tokens: { prompt_tokens: row.promptTokens || 0, completion_tokens: row.completionTokens || 0, ...tokens },
-        });
+        }, identitySalt);
       }
       rows.push({ dateKey: todayKey, data: stringifyJson(day) });
     }
@@ -493,6 +508,7 @@ function loadDaysInDateRange(adapter, startKey, endKey, now = new Date()) {
 
 export async function getUsageStats(period = "all", opts = {}) {
   const db = await getAdapter();
+  const identitySalt = getOrCreateUsageIdentitySalt(db);
   const now = new Date();
 
   const [{ getProviderConnections }, { getApiKeys }, { getProviderNodes }] = await Promise.all([
@@ -517,9 +533,8 @@ export async function getUsageStats(period = "all", opts = {}) {
   const apiKeyMap = {};
   for (const k of allApiKeys) apiKeyMap[k.key] = { name: k.name, id: k.id, createdAt: k.createdAt };
 
-  // API responses use database IDs for registered keys and request-local
-  // opaque ordinals for deleted/unknown keys. Raw hashes remain an internal
-  // aggregation detail only and are never serialized to callers.
+  // API responses use database IDs for registered keys and salted HMACs for
+  // deleted/unknown keys. Neither identity contains raw key material.
   const unknownApiKeyIds = new Map();
   function getPublicApiKeyIdentity(apiKey, internalIdentity = apiKey) {
     if (!apiKey && (!internalIdentity || String(internalIdentity).startsWith("local-no-key"))) {
@@ -533,13 +548,13 @@ export async function getUsageStats(period = "all", opts = {}) {
         apiKeyMasked: maskApiKey(apiKey),
       };
     }
-    const lookup = internalIdentity || apiKey;
+    const lookup = apiKey || String(internalIdentity);
     if (!unknownApiKeyIds.has(lookup)) {
       unknownApiKeyIds.set(lookup, unknownApiKeyIds.size + 1);
     }
     const ordinal = unknownApiKeyIds.get(lookup);
     return {
-      id: `api-key:deleted-${ordinal}`,
+      id: `api-key:${fingerprintApiKey(lookup, identitySalt)}`,
       keyName: `Deleted API key ${ordinal}`,
       apiKeyMasked: maskApiKey(apiKey || "unknown"),
     };
@@ -638,8 +653,8 @@ export async function getUsageStats(period = "all", opts = {}) {
   if (useDailySummary) {
     const maxDays = getUsagePeriodDays(period);
     const dayRows = hasCustomRange
-      ? loadDaysInDateRange(db, customStart, customEnd, now)
-      : loadDaysInRange(db, maxDays, now);
+      ? loadDaysInDateRange(db, customStart, customEnd, identitySalt, now)
+      : loadDaysInRange(db, maxDays, identitySalt, now);
 
     for (const dr of dayRows) {
       const dateKey = dr.dateKey;
@@ -767,7 +782,7 @@ export async function getUsageStats(period = "all", opts = {}) {
       if (stats.byAccount[accountKey] && new Date(e.timestamp) > new Date(stats.byAccount[accountKey].lastUsed)) stats.byAccount[accountKey].lastUsed = e.timestamp;
     }
     for (const e of loadLastUsed(["provider", "model", "apiKey"])) {
-      const identity = getPublicApiKeyIdentity(e.apiKey, getApiKeyStatsKey(e.apiKey, e.model, e.provider));
+      const identity = getPublicApiKeyIdentity(e.apiKey, getApiKeyStatsKey(e.apiKey, e.model, e.provider, identitySalt));
       const apiKeyKey = `${identity.id}|${e.model}|${e.provider || "unknown"}`;
       if (stats.byApiKey[apiKeyKey] && new Date(e.timestamp) > new Date(stats.byApiKey[apiKeyKey].lastUsed)) stats.byApiKey[apiKeyKey].lastUsed = e.timestamp;
     }
@@ -851,7 +866,7 @@ export async function getUsageStats(period = "all", opts = {}) {
       }
 
       if (r.apiKey && typeof r.apiKey === "string") {
-        const identity = getPublicApiKeyIdentity(r.apiKey, fingerprintApiKey(r.apiKey));
+        const identity = getPublicApiKeyIdentity(r.apiKey, fingerprintApiKey(r.apiKey, identitySalt));
         const { keyName, apiKeyMasked } = identity;
         const apiKeyKey = identity.id;
         const akKey = `${identity.id}|${r.model}|${r.provider || "unknown"}`;
@@ -862,7 +877,7 @@ export async function getUsageStats(period = "all", opts = {}) {
         ake.requests++; ake.promptTokens += promptTokens; ake.completionTokens += completionTokens; ake.cachedTokens += cachedTokens; ake.reasoningTokens += reasoningTokens; ake.cacheCreationTokens += cacheCreationTokens; ake.cost += entryCost;
         if (new Date(r.timestamp) > new Date(ake.lastUsed)) ake.lastUsed = r.timestamp;
       } else {
-        const akKey = getApiKeyStatsKey(null, r.model, r.provider);
+        const akKey = getApiKeyStatsKey(null, r.model, r.provider, identitySalt);
         if (!stats.byApiKey[akKey]) {
           stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, rawProvider: r.provider, apiKeyMasked: null, keyName: "Local (No API Key)", apiKeyKey: "local-no-key", lastUsed: r.timestamp };
         }
@@ -927,6 +942,7 @@ function startOfDayInTz(now, timeZone) {
 
 export async function getChartData(period = "7d", timeZone) {
   const db = await getAdapter();
+  const identitySalt = getOrCreateUsageIdentitySalt(db);
   const nowDate = new Date();
   const now = nowDate.getTime();
   const tz = isValidTimeZone(timeZone) ? timeZone : undefined;
@@ -1013,7 +1029,7 @@ export async function getChartData(period = "7d", timeZone) {
   }
 
   const fixedDays = getChartDayBucketCount(period);
-  const dayRows = loadDaysInRange(db, fixedDays, nowDate)
+  const dayRows = loadDaysInRange(db, fixedDays, identitySalt, nowDate)
     .filter((row) => {
       try { localDateFromKey(row.dateKey); return true; } catch { return false; }
     });
@@ -1086,7 +1102,7 @@ const RESET_PERIOD_MS = {
 
 const VALID_RESET_PERIODS = new Set(["5m", "1h", "3h", "6h", "12h", "1d", "7d", "30d", "all"]);
 
-function rebuildDailyKeyInTx(db, dateKey) {
+function rebuildDailyKeyInTx(db, dateKey, identitySalt) {
   const start = localDateFromKey(dateKey);
   const end = addLocalCalendarDays(start, 1);
   const rows = db.all(
@@ -1106,7 +1122,7 @@ function rebuildDailyKeyInTx(db, dateKey) {
         completion_tokens: row.completionTokens || 0,
         ...parseJson(row.tokens, {}),
       },
-    });
+    }, identitySalt);
   }
   db.run(`INSERT INTO usageDaily(dateKey, data) VALUES(?, ?)`, [dateKey, stringifyJson(day)]);
 }
@@ -1117,6 +1133,7 @@ export async function resetUsageHistory(period) {
   }
 
   const db = await getAdapter();
+  const identitySalt = getOrCreateUsageIdentitySalt(db);
 
   db.transaction(() => {
     if (period === "all") {
@@ -1139,7 +1156,7 @@ export async function resetUsageHistory(period) {
       // Keep token-saver telemetry consistent with the usage windows it is
       // reported alongside (Codex P2 on #306).
       db.run(`DELETE FROM tokenSaverEvents WHERE timestamp < ?`, [cutoffIso]);
-      rebuildDailyKeyInTx(db, cutoffKey);
+      rebuildDailyKeyInTx(db, cutoffKey, identitySalt);
 
       // Recalculate totalRequestsLifetime from remaining history
       const remaining = db.get(`SELECT COUNT(*) AS cnt FROM usageHistory`);

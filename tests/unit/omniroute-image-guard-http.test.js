@@ -29,6 +29,7 @@ vi.mock("../../src/sse/services/auth.js", () => ({
   clearAccountError: vi.fn(),
   extractApiKey: vi.fn(() => "test-key"),
   evaluateApiKeyAuth: vi.fn(async () => ({ ok: true })),
+  resolveClientApiKey: vi.fn(async () => ({ apiKey: "test-key", auth: { ok: true } })),
 }));
 
 vi.mock("../../src/sse/services/apiKeyPolicy.js", () => ({

@@ -321,11 +321,14 @@ function formatDisplayName(modelName, modelId, rateMultiplier) {
 }
 
 /**
- * Fetch the raw model catalog from Kiro. Returns the array under `.models`
- * from the API response, or throws on network/HTTP error.
+ * Fetch the raw model catalog from Kiro. API-key credentials include Kiro's
+ * required `TokenType: API_KEY` discriminator; OAuth credentials omit it.
+ * Returns the array under `.models` from the API response, or throws on
+ * network/HTTP error.
  */
 async function fetchKiroCatalogRaw(credentials, signal, proxyOptions = null) {
   const profileArn = credentials?.providerSpecificData?.profileArn || "";
+  const authMethod = credentials?.providerSpecificData?.authMethod;
   const region = regionFromProfileArn(profileArn) || resolveKiroRegion(credentials) || KIRO_DEFAULT_REGION;
   const params = new URLSearchParams();
   params.set("origin", "AI_EDITOR");
@@ -334,7 +337,8 @@ async function fetchKiroCatalogRaw(credentials, signal, proxyOptions = null) {
 
   const headers = {
     ...buildKiroFingerprintHeaders(credentials),
-    "Authorization": `Bearer ${credentials?.accessToken || ""}`
+    "Authorization": `Bearer ${credentials?.accessToken || ""}`,
+    ...(authMethod === "api_key" ? { "TokenType": "API_KEY" } : {})
   };
 
   const controller = new AbortController();
@@ -386,7 +390,8 @@ function cacheKey(credentials) {
 
 /**
  * Resolve the live Kiro model catalog for a credential and expand each entry
- * into 9router variants (`-thinking`, `-agentic`, `-thinking-agentic`).
+ * into 9router variants (`-thinking`, `-agentic`, `-thinking-agentic`). Each
+ * variant retains the upstream input and output token limits.
  *
  * On any error (network, 4xx, 5xx), returns `null` so callers can fall back
  * to the static catalog without taking down the dashboard or `/v1/models`.
@@ -476,12 +481,14 @@ export async function resolveKiroModels(credentials, options = {}) {
     if (!upstreamId) continue;
     const display = formatDisplayName(m.modelName, upstreamId, m.rateMultiplier);
     const ctx = Number(m?.tokenLimits?.maxInputTokens) || 200_000;
+    const maxOutputTokens = Number(m?.tokenLimits?.maxOutputTokens) || null;
     for (const v of buildVariants(upstreamId, display)) {
       expanded.push({
         ...v,
         // Carry over context window + raw upstream metadata so the caller
         // (e.g. the dashboard models endpoint) can render it.
         contextLength: ctx,
+        ...(maxOutputTokens ? { maxOutputTokens } : {}),
         rateMultiplier: Number.isFinite(Number(m.rateMultiplier)) ? Number(m.rateMultiplier) : 1.0,
         upstreamModelId: upstreamId,
         description: m.description || ""

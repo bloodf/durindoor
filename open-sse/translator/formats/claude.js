@@ -138,6 +138,22 @@ function isAdaptiveThinkingModel(model) {
   return /claude-(fable|mythos)/i.test(model || "");
 }
 
+const CLAUDE_PROVIDER_MODEL_PREFIXES = ["cc/", "claude/"];
+
+/**
+ * Strip routing-only Claude provider prefixes from nested server-tool models
+ * while preserving every other tool field for Anthropic dispatch.
+ */
+function normalizeClaudeServerToolModels(tools) {
+  if (!Array.isArray(tools)) return;
+
+  for (const tool of tools) {
+    if (!tool || typeof tool !== "object" || typeof tool.model !== "string") continue;
+    const prefix = CLAUDE_PROVIDER_MODEL_PREFIXES.find((candidate) => tool.model.startsWith(candidate));
+    if (prefix) tool.model = tool.model.slice(prefix.length);
+  }
+}
+
 function handlesThinkingBlocks(provider) {
   return provider === "claude" || provider?.startsWith("anthropic-compatible") || provider === "deepseek";
 }
@@ -240,6 +256,8 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
       body.messages = messages;
     }
   }
+
+  normalizeClaudeServerToolModels(body.tools);
 
   // 3. Drop thinking blocks whose signature is not Claude's (combo mixes models,
   // so foreign signatures leak into history and Anthropic rejects them).

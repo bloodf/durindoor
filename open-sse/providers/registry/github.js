@@ -1,3 +1,8 @@
+import {
+  GITHUB_COUNT_TOKENS_PREFLIGHT_RATIO,
+  GITHUB_COUNT_TOKENS_TIMEOUT_MS,
+} from "../../config/github.js";
+
 export default {
   id: "github",
   priority: 40,
@@ -19,6 +24,9 @@ export default {
     baseUrl: "https://api.githubcopilot.com/chat/completions",
     responsesUrl: "https://api.githubcopilot.com/responses",
     messagesUrl: "https://api.githubcopilot.com/v1/messages",
+    countTokensUrl: "https://api.githubcopilot.com/v1/messages/count_tokens",
+    countTokensPreflightRatio: GITHUB_COUNT_TOKENS_PREFLIGHT_RATIO,
+    countTokensTimeoutMs: GITHUB_COUNT_TOKENS_TIMEOUT_MS,
     headers: {
       "copilot-integration-id": "vscode-chat",
       "editor-version": "vscode/1.110.0",

@@ -137,19 +137,28 @@ function isPublicLlmApi(pathname) {
 }
 
 function extractApiKey(request) {
+  return extractApiKeyCandidates(request)[0] || null;
+}
+
+/** Collect distinct credentials presented by this request in precedence order. */
+function extractApiKeyCandidates(request) {
+  const candidates = [];
+  const add = (value) => {
+    if (value && !candidates.includes(value)) candidates.push(value);
+  };
   const authHeader = request.headers.get("Authorization");
-  if (authHeader?.startsWith("Bearer ")) return authHeader.slice(7);
-  const apiKeyHeader = request.headers.get("x-api-key");
-  if (apiKeyHeader) return apiKeyHeader;
-  const googleApiKeyHeader = request.headers.get("x-goog-api-key");
-  if (googleApiKeyHeader) return googleApiKeyHeader;
-  return request.nextUrl.searchParams?.get("key") || null;
+  if (authHeader?.startsWith("Bearer ")) add(authHeader.slice(7));
+  add(request.headers.get("x-api-key"));
+  add(request.headers.get("x-goog-api-key"));
+  add(request.nextUrl.searchParams?.get("key"));
+  return candidates;
 }
 
 async function hasValidApiKey(request) {
-  const apiKey = extractApiKey(request);
-  if (!apiKey) return false;
-  return await validateApiKey(apiKey);
+  for (const apiKey of extractApiKeyCandidates(request)) {
+    if (await validateApiKey(apiKey)) return true;
+  }
+  return false;
 }
 
 async function hasValidGatewayKey(request) {
@@ -241,6 +250,7 @@ export const __test__ = {
   hasExactRequestOrigin,
   isPublicLlmApi,
   extractApiKey,
+  extractApiKeyCandidates,
   canAccessPublicLlmApi,
   canAccessLocalOnlyRoute,
 };
@@ -277,8 +287,34 @@ export async function proxy(request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  /**
+   * Browser preflights intentionally omit credentials, so answer only OPTIONS
+   * for the existing public LLM path set before its API-key auth gate.
+   */
+  if (request.method === "OPTIONS" && isPublicLlmApi(pathname)) {
+    const requestedHeaders = request.headers.get("access-control-request-headers");
+    return new NextResponse(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": requestedHeaders || "*",
+        "Access-Control-Max-Age": "86400",
+      },
+    });
+  }
+
   if (isPublicLlmApi(pathname)) {
     if (await canAccessPublicLlmApi(request)) return NextResponse.next();
+    if (pathname.includes("/v1/messages")) {
+      return NextResponse.json({
+        type: "error",
+        error: {
+          type: "authentication_error",
+          message: "API key required for remote API access",
+        },
+      }, { status: 401 });
+    }
     return NextResponse.json({ error: "API key required for remote API access" }, { status: 401 });
   }
 

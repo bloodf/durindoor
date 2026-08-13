@@ -30,6 +30,7 @@ import {
   resolveKiroThinkingBudget,
   buildThinkingSystemPrefix,
   KIRO_AGENTIC_SYSTEM_PROMPT,
+  normalizeKiroToolSchema,
   resolveKiroProfileArn,
 } from "../../config/kiroConstants.js";
 import { DEFAULT_IMAGE_MIME } from "../schema/index.js";
@@ -127,10 +128,7 @@ function convertClaudeMessagesToKiro(messages, tools, model) {
       const name = t.name;
       const description = t.description || `Tool: ${name}`;
       const schema = t.input_schema || {};
-      const normalizedSchema =
-        Object.keys(schema).length === 0
-          ? { type: "object", properties: {}, required: [] }
-          : { ...schema, required: schema.required ?? [] };
+      const normalizedSchema = normalizeKiroToolSchema(schema);
       return {
         toolSpecification: {
           name,

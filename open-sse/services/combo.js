@@ -884,6 +884,28 @@ export function getComboModelsFromData(modelStr, combosData, options = {}) {
  * @returns {Promise<Response>}
  */
 /**
+ * Return an error message embedded in a successful JSON response.
+ * Providers sometimes report backend failures with HTTP 200; cloning preserves
+ * the original body for either fallback or direct return.
+ * @param {Response} response
+ * @returns {Promise<string|null>}
+ */
+export async function detectUpstreamError(response) {
+  if (!response?.ok) return null;
+  const contentType = response.headers?.get?.("content-type")?.split(";", 1)[0].trim().toLowerCase();
+  if (contentType !== "application/json" && !contentType?.endsWith("+json")) return null;
+  try {
+    const payload = await response.clone().json();
+    const message = typeof payload?.error === "string"
+      ? payload.error
+      : payload?.error?.message ?? payload?.message ?? payload?.detail;
+    return typeof message === "string" && message.trim() ? message.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Whether a successful (2xx) NON-STREAMING response has a meaningful body.
  * Returns true when the body is empty or a known "empty output" shape despite
  * a 200. Streaming/opaque responses are trusted (caller must not read them).
@@ -1123,8 +1145,22 @@ export async function handleComboChat({
         log.warn("COMBO", `Model ${modelStr} timed out after ${comboTimeoutMs}ms, falling to next`);
         continue;
       }
-      // Success (2xx) - return response
+      // A provider can tunnel a backend failure through HTTP 200. Classify that
+      // payload before recording success so combo fallback can try the next model.
       if (result.ok) {
+        const upstreamError = await detectUpstreamError(result);
+        if (upstreamError) {
+          const { shouldFallback } = checkFallbackError(result.status, upstreamError);
+          if (!shouldFallback) {
+            log.warn("COMBO", `Model ${modelStr} returned 200 with a non-fallback error`);
+            return result;
+          }
+          if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, false, result.status);
+          releaseFailedAffinity(modelStr, i);
+          lastError = upstreamError;
+          log.warn("COMBO", `Model ${modelStr} returned 200 with an error, trying next`);
+          continue;
+        }
         if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, true, null);
         if (comboStrategy === "round-robin") {
           const actuallyRotated = modelStr !== rotatedModels[0];

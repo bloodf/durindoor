@@ -383,10 +383,9 @@ export function createResponsesApiTransformStream(logger = null) {
           }
         }
 
-        // Handle tool_calls
-        if (delta.tool_calls) {
-          closeMessage(controller, idx);
-
+        /** Keep interleaved tool calls from closing text before later deltas arrive. */
+        // output_text.done is emitted once finish_reason closes the message.
+        if (delta.tool_calls && delta.tool_calls.length) {
           for (const tc of delta.tool_calls) {
             const tcIdx = tc.index ?? 0;
             const newCallId = tc.id;

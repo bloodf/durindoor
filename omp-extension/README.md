@@ -15,14 +15,15 @@ Restart omp after installing.
 
 ## Configure
 
-Set these omp config keys:
+Set these environment variables before starting omp:
 
-- `durindoor.baseUrl`: OpenAI-compatible API base URL. Defaults to `http://127.0.0.1:11434/v1`.
-- `durindoor.apiKey`: DurinDoor API key used for discovery and model requests.
+- `DURINDOOR_BASE_URL`: OpenAI-compatible API base URL. Defaults to `http://127.0.0.1:11434/v1`.
+- `DURINDOOR_API_KEY`: Optional DurinDoor API key used for discovery and model requests. Leave unset when the gateway permits unauthenticated access.
 
 ```bash
-omp config set durindoor.baseUrl http://127.0.0.1:11434/v1
-omp config set durindoor.apiKey YOUR_DURINDOOR_KEY
+export DURINDOOR_BASE_URL=http://127.0.0.1:11434/v1
+export DURINDOOR_API_KEY=YOUR_DURINDOOR_KEY
+omp
 ```
 
 ## Model capability mapping

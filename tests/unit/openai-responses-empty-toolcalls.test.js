@@ -27,16 +27,16 @@ describe("OpenAI Chat stream to Responses empty tool_calls arrays", () => {
     expect(events.indexOf(textDone[0])).toBeGreaterThan(events.indexOf(textDeltas.at(-1)));
   });
 
-  it("closes output text before emitting a real tool call", () => {
+  it("keeps output text open while a real tool call is interleaved", () => {
     const events = translate([
-      { id: "tool-test", choices: [{ index: 0, delta: { content: "Let me run that.", tool_calls: [] }, finish_reason: null }] },
+      { id: "tool-test", choices: [{ index: 0, delta: { content: "Let me " }, finish_reason: null }] },
       { id: "tool-test", choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name: "exec", arguments: "" } }] }, finish_reason: null }] },
+      { id: "tool-test", choices: [{ index: 0, delta: { content: "run that." }, finish_reason: null }] },
+      { id: "tool-test", choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] },
     ]);
 
-    const textDone = events.find((event) => event.event === "response.output_text.done");
-    const toolAdded = events.find((event) => event.event === "response.output_item.added" && event.data.item?.type === "function_call");
-
-    expect(textDone.data.text).toBe("Let me run that.");
-    expect(events.indexOf(textDone)).toBeLessThan(events.indexOf(toolAdded));
+    const textDone = events.filter((event) => event.event === "response.output_text.done");
+    expect(textDone).toHaveLength(1);
+    expect(textDone[0].data.text).toBe("Let me run that.");
   });
 });

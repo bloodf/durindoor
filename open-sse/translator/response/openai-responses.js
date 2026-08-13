@@ -137,9 +137,9 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     }
   }
 
-  // Handle tool_calls (empty array is truthy; require a real call)
+  /** Keep interleaved tool calls from closing text before later deltas arrive. */
+  // output_text.done is emitted once finish_reason closes the message.
   if (delta.tool_calls && delta.tool_calls.length) {
-    closeMessage(state, emit, idx);
     for (const tc of delta.tool_calls) {
       emitToolCall(state, emit, tc);
     }

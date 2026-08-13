@@ -92,7 +92,11 @@ function hasUnpublishedOutput(provider, model) {
  * otherwise mis-match. Only declare deltas vs DEFAULT.
  */
 export const MODEL_CAPABILITIES = {
-  // Kimi K3: 1M context, always reasons, reasoning_effort "max" only (cannot disable), vision + tools.
+  /**
+   * Live probe 2026-08-13: GET https://api.kimi.com/coding/v1/models returned
+   * `{"id":"k3",...,"context_length":1048576,...}`. Keep the exact integer;
+   * this is not an inferred expansion of Moonshot's "1M" documentation label.
+   */
   "kimi-k3": { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 262144 },
   // Claude Opus 5: native 1M context window + adaptive thinking.
   "claude-opus-5":   { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
@@ -133,14 +137,23 @@ export const MODEL_CAPABILITIES = {
   // Gemini image-gen / OpenAI image / xai image variants
   "gpt-image-1":       { imageOutput: true, tools: false },
 
-  // GLM vision variant (text GLM has no vision)
+  /** Z.ai publishes GLM-4.6V's exact 128,000-token window and 32,768-token output limit. */
   "glm-4.6v":          { vision: true, reasoning: true, thinkingFormat: "zai", contextWindow: 128000, maxOutput: 32768 },
-  // GLM-5.2 has a 1M window; GLM-5.1/5/5-turbo are 200K (official z.ai / models.dev).
+  /**
+   * UNVERIFIED context integers for GLM-5.2/5.1/5/4.7 (live probe
+   * 2026-08-13): both GET https://api.z.ai/api/coding/paas/v4/models and GET
+   * https://api.z.ai/api/paas/v4/models returned only
+   * id/object/created/owned_by. Per-model GETs were equally bare, while
+   * deliberate overflow requests all returned 429 `Weekly/Monthly Limit
+   * Exhausted` before validating token count. Leave stored values unchanged
+   * until an upstream response states exact limits.
+   */
+  // GLM-5.2 has a stored 1M window; GLM-5.1/5/5-turbo have stored 200K windows.
   "glm-5.2":           { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
   "glm-5.1":           { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 },
   "glm-5":             { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 },
   "glm-5-turbo":       { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 },
-  // GLM-4.7 has 200K context, 128K max output
+  // GLM-4.7 stored context is 200K; live probes above did not expose an exact limit.
   "glm-4.7":           { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 },
   // GLM-4.7-flashx has 128K context (maxOutput not recorded in source)
   "glm-4.7-flashx":    { reasoning: true, thinkingFormat: "zai", contextWindow: 131072 },
@@ -615,12 +628,22 @@ export const PATTERN_CAPABILITIES = [
   { pattern: "*qwen*",          caps: { reasoning: true, thinkingFormat: "qwen", contextWindow: 262144 } },
 
   // ── Kimi (enabled→reasoning_effort; K2.7-code cannot disable) ─────
-  { pattern: "*kimi*k3*",       caps: { reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144 } },
+  /**
+   * Live probes 2026-08-13 confirmed exact integers rather than merely
+   * expanding Moonshot's ambiguous labels. `/coding/v1/models` returned
+   * context_length=262144 for upstream IDs kimi-for-coding,
+   * kimi-for-coding-highspeed, and k3-256k, while k3 returned
+   * context_length=1048576. Deliberate overflows for kimi-k2.7-code,
+   * kimi-k2.7-code-highspeed, kimi-k2.6, and kimi-k2.5 all returned
+   * `Your request exceeded model token limit: 262144`.
+   */
+  { pattern: "k3-256k",         caps: { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144 } },
   // K3 routes through the bare upstream id `k3` (no "kimi" prefix); match it to
   // the K3 window so it does not fall to the generic 200K default (#2697).
   { pattern: "k3",              caps: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 262144 } },
   // Moonshot documents a 32,768-token default for K2.x, but no maximum. A
   // default is not a safe client-side ceiling, so maxOutput remains unset.
+  // Exact K2.7 aliases confirmed by deliberate overflow errors described above.
   { pattern: "*kimi*k2.7*code*", caps: { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144, maxOutput: undefined } },
   { pattern: "*kimi*k2*",       caps: { vision: true, reasoning: true, thinkingFormat: "kimi", contextWindow: 262144, maxOutput: undefined } },
   { pattern: "*kimi*",          caps: { reasoning: true, thinkingFormat: "kimi", contextWindow: 262144 } },

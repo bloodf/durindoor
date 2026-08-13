@@ -1,15 +1,16 @@
 /**
  * Context-window resolution audit.
  *
- * These assertions pin the operator-observable `contextWindow` for flagship
- * families against their published windows (models.dev / vendor docs). Two were
- * genuine regressions before this audit:
- *   - claude-opus-4.6/4.7 "-thinking" variants resolved to the generic 200K
- *     budget floor instead of their real 1M window (no exact row; the
- *     *claude*opus-4.6* pattern does not match the dash form and carries no
- *     contextWindow).
- *   - glm-5 / glm-5.1 / glm-5-turbo carried a wrong 1M exact override; the
- *     official z.ai window is 200K (only glm-5.2 is 1M).
+ * These assertions pin operator-observable `contextWindow` values. Confirmed
+ * values cite live/provider evidence at the relevant assertion; GLM-5.2/5.1/5
+ * and 4.7 remain stored-value regressions because the 2026-08-13 live catalog
+ * and detail probes returned no limit fields, and overflow probes hit quota
+ * exhaustion before context validation.
+ *
+ * One genuine regression covered here: claude-opus-4.6/4.7 "-thinking"
+ * variants resolved to the generic 200K budget floor instead of their 1M
+ * window (no exact row; the *claude*opus-4.6* pattern does not match the dash
+ * form and carries no contextWindow).
  */
 import { describe, expect, it } from "vitest";
 import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
@@ -47,20 +48,32 @@ describe("capabilities contextWindow resolution", () => {
     ["cx", "gpt-5.6-sol-review", 1050000],
     ["cx", "gpt-5.6-terra-review", 1050000],
     ["cx", "gpt-5.6-luna-review", 1050000],
-    // Kimi K2.x = 256K (262144).
-    ["moonshot", "kimi-k2.7", 262144],
-    ["moonshot", "kimi-k2.5", 262144],
+    // Kimi values below are pinned separately against live API evidence.
     // MiniMax M2.x = 200K (204800); M3 = 512K.
     ["minimax", "minimax-m2.5", 204800],
     ["minimax", "minimax-m2.7", 204800],
     ["minimax", "minimax-m3", 512000],
-    // Z.ai GLM: 5.2 is 1M, 5/5.1 are 200K, 4.7 is 200K.
+    // Stored GLM values remain pinned but unverified by live API limit fields.
     ["zai", "glm-5.2", 1000000],
     ["zai", "glm-5", 200000],
     ["zai", "glm-5.1", 200000],
     ["zai", "glm-4.7", 200000],
   ])("%s/%s resolves to contextWindow %d", (provider, model, expected) => {
     expect(getCapabilitiesForModel(provider, model).contextWindow).toBe(expected);
+  });
+
+  it.each([
+    ["kimi-k3", 1048576],
+    ["k3", 1048576],
+    ["k3-256k", 262144],
+    ["kimi-k2.7-code", 262144],
+    ["kimi-k2.7-code-highspeed", 262144],
+    ["kimi-k2.6", 262144],
+    ["kimi-k2.5", 262144],
+  ])("keeps live-probed Kimi %s window at %d", (model, expected) => {
+    // 2026-08-13: Kimi `/coding/v1/models` returned exact k3/k3-256k context_length;
+    // deliberate K2.7/K2.6/K2.5 overflow errors stated model token limit 262144.
+    expect(getCapabilitiesForModel("kimi", model).contextWindow).toBe(expected);
   });
 
   it("keeps glm-4.6v vision even at its 128K window", () => {

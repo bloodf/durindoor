@@ -17,6 +17,7 @@ import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
 import { resolveClinepassModels } from "open-sse/services/clinepassModels.js";
+import { resolveLiveOpenAIModels } from "open-sse/services/liveModelLimits.js";
 import { aggregateComboCapabilities, capabilitiesFromServiceKind, getCapabilitiesForModel, resolveModelLimits } from "open-sse/providers/capabilities.js";
 import { isPaidModel } from "open-sse/providers/pricing.js";
 import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
@@ -109,6 +110,10 @@ function isOllamaEmbeddingModel(model) {
   }
   return false;
 }
+// Kimi's live `k3` id is verified as the static `kimi-k3`. Other live IDs
+// intentionally stay unmapped until upstream publishes a stable canonical ID.
+const KIMI_LIVE_MODEL_PROVIDERS = new Set(["kimi", "kimi-coding", "kimi-coding-apikey"]);
+const KIMI_LIVE_MODEL_ALIASES = { k3: "kimi-k3" };
 
 const LIVE_MODEL_RESOLVERS = {
   kiro: async (conn) => {
@@ -262,44 +267,6 @@ const parseOpenAIStyleModels = (data) => {
 const OPENAI_MODELS_FETCHER_TYPES = new Set(["openai", "openai-compatible"]);
 
 
-/**
- * Fetch dynamic model IDs for a provider that exposes `modelsFetcher` in its
- * registry config and has no static models (e.g. qiniu, bai, hackclub). Returns
- * an empty array on any error so callers can fall back to whatever they had.
- */
-async function fetchRegistryModelsFetcherIds(connection, guard) {
-  const providerId = connection?.provider;
-  const provider = providerId ? AI_PROVIDERS[providerId] : null;
-  const fetcher = provider?.modelsFetcher;
-  if (!fetcher || typeof fetcher.url !== "string" || !OPENAI_MODELS_FETCHER_TYPES.has(fetcher.type)) return [];
-  const apiKey = typeof connection.apiKey === "string" ? connection.apiKey : "";
-  if (!apiKey) return [];
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 5000);
-  try {
-    // #6966: SSRF-guarded (local-first) — see buildModelsList JSDoc.
-    const response = await guardedProbeFetch(fetcher.url, {
-      method: "GET",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      cache: "no-store",
-      signal: controller.signal,
-    }, guard);
-    if (!response.ok) return [];
-    const data = await response.json();
-    const list = Array.isArray(data) ? data : (data?.data ?? data?.models ?? data?.results);
-    if (!Array.isArray(list)) return [];
-    return Array.from(new Set(
-      list
-        .map((m) => (isRecord(m) ? (m.id || m.name || m.model) : ""))
-        .filter((id) => typeof id === "string" && id.trim() !== "")
-    ));
-  } catch {
-    return [];
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
 
 // LLM kind sentinel — combos/models with no explicit kind default to LLM
 export const LLM_KIND = "llm";
@@ -338,69 +305,6 @@ function customModelKind(m) {
   return MODEL_TYPE_TO_KIND[raw] ?? LLM_KIND;
 }
 
-async function fetchCompatibleModelIds(connection, guard) {
-  if (typeof connection.apiKey !== "string" || !connection.apiKey) return [];
-
-  const psd = isRecord(connection.providerSpecificData) ? connection.providerSpecificData : {};
-  const baseUrlRaw = typeof psd.baseUrl === "string" ? psd.baseUrl.trim().replace(/\/$/, "") : "";
-
-  if (!baseUrlRaw) return [];
-
-  let url = `${baseUrlRaw}/models`;
-  const headers = {
-    "Content-Type": "application/json",
-  };
-
-  if (isOpenAICompatibleProvider(connection.provider)) {
-    headers.Authorization = `Bearer ${connection.apiKey}`;
-  } else if (isAnthropicCompatibleProvider(connection.provider)) {
-    if (url.endsWith("/messages/models")) {
-      url = url.slice(0, -9);
-    } else if (url.endsWith("/messages")) {
-      url = `${url.slice(0, -9)}/models`;
-    }
-    headers["x-api-key"] = connection.apiKey;
-    headers["anthropic-version"] = "2023-06-01";
-    headers.Authorization = `Bearer ${connection.apiKey}`;
-  } else {
-    return [];
-  }
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 5000);
-  try {
-    // #6966: SSRF-guarded (local-first) — see buildModelsList JSDoc.
-    const response = await guardedProbeFetch(url, {
-      method: "GET",
-      headers,
-      cache: "no-store",
-      signal: controller.signal,
-    }, guard);
-
-    if (!response.ok) return [];
-
-    const data = await response.json();
-    const rawModels = parseOpenAIStyleModels(data);
-
-    return Array.from(
-      new Set(
-        rawModels
-          .map((model) => {
-            if (!isRecord(model)) return "";
-            return (typeof model.id === "string" ? model.id : undefined)
-              || (typeof model.name === "string" ? model.name : undefined)
-              || (typeof model.model === "string" ? model.model : undefined)
-              || "";
-          })
-          .filter((modelId) => typeof modelId === "string" && modelId.trim() !== "")
-      )
-    );
-  } catch {
-    return [];
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
 
 /**
  * Fetch model IDs for passthrough local providers (lm-studio, vllm, lemonade)
@@ -733,32 +637,52 @@ async function buildModelsListImpl(kindFilter, guard) {
           return alias === staticAlias || alias === outputAlias || alias === providerId;
         });
 
-        if (isCompatibleProvider && rawModelIds.length === 0 && !hasConfiguredCustomModels) {
-          // Compatible providers (openai-compatible-*, anthropic-compatible-*) may
-          // carry a UUID-v4 suffix in their node ID, which would falsely match
-          // the old UUID suffix guard and skip dynamic model discovery. Always
-          // attempt a live /models fetch for compatible providers (through the
-          // SSRF validation guard), unless persisted custom models define an
-          // explicit whitelist for the node.
-          rawModelIds = await fetchCompatibleModelIds(conn, guard);
-        }
 
-        // Config-driven live catalog override (e.g. Kiro returns dynamic
-        // -thinking/-agentic variants per account). On failure, fall back to
-        // whatever rawModelIds already holds.
-        const liveResolver = LIVE_MODEL_RESOLVERS[providerId];
-        if (liveResolver && !hasExplicitEnabledModels) {
+        // Live metadata precedence is user override > live upstream > static
+        // catalog > default. `explicitCaps` below applies custom/user metadata
+        // after live caps; static/default capability resolution is merged first.
+        // Generic OpenAI-compatible discovery is cached per endpoint/credential
+        // and fail-soft, so upstream errors leave rawModelIds and static caps intact.
+        const providerLiveResolver = LIVE_MODEL_RESOLVERS[providerId];
+        const registryFetcher = AI_PROVIDERS[providerId]?.modelsFetcher;
+        const genericFetcher = registryFetcher && OPENAI_MODELS_FETCHER_TYPES.has(registryFetcher.type)
+          ? registryFetcher
+          : null;
+        const isKimiLiveProvider = KIMI_LIVE_MODEL_PROVIDERS.has(providerId);
+        const compatibleLiveResolver = (isCompatibleProvider || genericFetcher || isKimiLiveProvider) && !hasConfiguredCustomModels
+          ? async (connection, liveGuard) => {
+              const psd = isRecord(connection.providerSpecificData) ? connection.providerSpecificData : {};
+              const proxyOptions = await resolveConnectionProxyConfig(psd);
+              return resolveLiveOpenAIModels(connection, {
+                guard: liveGuard,
+                proxyOptions,
+                endpoint: genericFetcher?.url || (isKimiLiveProvider ? "https://api.kimi.com/coding/v1/models" : undefined),
+                anthropic: isAnthropicCompatibleProvider(providerId),
+                modelAliases: isKimiLiveProvider ? KIMI_LIVE_MODEL_ALIASES : undefined,
+              });
+            }
+          : null;
+        const liveResolver = providerLiveResolver || compatibleLiveResolver;
+        if (liveResolver && (!hasExplicitEnabledModels || compatibleLiveResolver)) {
           try {
             const live = await liveResolver(conn, guard);
             if (live?.models?.length) {
-              rawModelIds = live.models.map((m) => {
+              const enrichExistingOnly = Boolean(compatibleLiveResolver) && rawModelIds.length > 0;
+              const servedIds = new Set(rawModelIds);
+              const liveModels = enrichExistingOnly
+                ? live.models.filter((m) => servedIds.has(m.id))
+                : live.models;
+              // Generic live metadata enriches configured/static catalogs; dedicated
+              // provider resolvers retain their account-specific live catalog behavior.
+              if (!hasExplicitEnabledModels && !enrichExistingOnly) rawModelIds = liveModels.map((m) => m.id);
+              for (const m of liveModels) {
+                if (!isRecord(m) || typeof m.id !== "string") continue;
                 if (m.kind || m.type) liveModelKindById.set(m.id, m.kind || m.type);
                 if (isRecord(m.capabilities)) liveCapabilitiesById.set(m.id, m.capabilities);
-                return m.id;
-              });
+              }
             }
-          } catch (err) {
-            console.log(`Live model fetch failed for ${providerId}: ${err instanceof Error ? err.message : String(err)}`);
+          } catch {
+            // Live discovery is optional metadata; static catalog remains authoritative fallback.
           }
         } else if (providerId === "ollama-local" && liveResolver && hasExplicitEnabledModels) {
           // ollama-local only: explicit enabledModels keep the user's
@@ -789,22 +713,6 @@ async function buildModelsListImpl(kindFilter, guard) {
             if (localPassthroughIds.length) rawModelIds = localPassthroughIds;
           } catch (err) {
             console.log(`Local passthrough model fetch failed for ${providerId}: ${err instanceof Error ? err.message : String(err)}`);
-          }
-        }
-        // Registry-driven modelsFetcher (e.g. qiniu exposes modelsFetcher in
-        // its registry entry). Fires only when no static models and no
-        // per-provider live resolver handled the empty case.
-        if (
-          rawModelIds.length === 0
-          && !hasExplicitEnabledModels
-          && !liveResolver
-          && AI_PROVIDERS[providerId]?.modelsFetcher
-        ) {
-          try {
-            const registryIds = await fetchRegistryModelsFetcherIds(conn, guard);
-            if (registryIds.length) rawModelIds = registryIds;
-          } catch (err) {
-            console.log(`modelsFetcher failed for ${providerId}: ${err instanceof Error ? err.message : String(err)}`);
           }
         }
 
@@ -980,17 +888,12 @@ async function buildModelsListImpl(kindFilter, guard) {
  *   - settled results are NEVER cached (next request observes fresh DB state),
  *   - a rejection cannot poison subsequent calls.
  *
- * OmniRoute #6966: every live model-list discovery fetch inside the impl
- * (`fetchCompatibleModelIds`, `fetchLocalPassthroughModels`,
- * `fetchRegistryModelsFetcherIds`) goes through `guardedProbeFetch` with the
- * SAME local-first SSRF guard tier as the provider test-connection path
- * (`getProviderValidationGuard`). A LAN-local OpenAI-compatible provider
- * (e.g. LM Studio on 192.168.x.x) whose connection test passes under the
- * default settings must also have its models listed; cloud-metadata / IPv4
- * link-local endpoints stay blocked before any socket opens, and
- * `redirect: "manual"` closes redirect-based SSRF past the initial-URL check.
- * Blocked endpoints land in each fetcher's `catch { return [] }`, so one bad
- * connection never breaks the aggregated list.
+ * OmniRoute #6966: live discovery fetches (`resolveLiveOpenAIModels` and
+ * `fetchLocalPassthroughModels`) use `guardedProbeFetch` with the same
+ * local-first SSRF guard tier as provider connection validation. LAN-local
+ * OpenAI-compatible servers remain available under the default guard, while
+ * cloud-metadata/link-local destinations and redirect-based SSRF stay blocked.
+ * Both fetchers fail soft, so one unavailable provider cannot break the list.
  *
  * @param {string[]} kindFilter - service kinds to include.
  * @param {"none"|"public-only"|"block-metadata"} [guard] - resolved SSRF guard

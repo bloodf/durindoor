@@ -80,4 +80,26 @@ describe("buildModelsList — registry modelsFetcher", () => {
     );
     vi.unstubAllGlobals();
   });
+  it("merges cached live limits into a static registry catalog", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: [{ id: "qwen-max", meta: { max_context_length: 262_144 } }] }),
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+    stubConnections([{
+      id: "conn-alibaba",
+      provider: "alibaba",
+      apiKey: "ak",
+      isActive: true,
+      providerSpecificData: {},
+    }]);
+
+    const first = await buildModelsList([LLM_KIND]);
+    const second = await buildModelsList([LLM_KIND]);
+
+    expect(first.find((model) => model.id === "ali/qwen-max").capabilities.contextWindow).toBe(262_144);
+    expect(second.find((model) => model.id === "ali/qwen-max").capabilities.contextWindow).toBe(262_144);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+  });
 });

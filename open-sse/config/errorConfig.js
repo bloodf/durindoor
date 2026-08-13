@@ -41,6 +41,9 @@ export const TRANSIENT_COOLDOWN_MS = 30 * 1000;
 // Hard cap for provider-reported rate limit cooldown (e.g. codex resets_at 5-6h, antigravity quota ~160h)
 export const MAX_RATE_LIMIT_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
 
+// Envoy emits this transport-level marker when its retry buffer overflows.
+export const REQUEST_REPLAY_BUFFER_ERROR = "exceeded request buffer limit while retrying upstream";
+
 // Confirmed Kiro credit exhaustion (monthly quota, `resetAt` from GetUsageLimits) can be
 // weeks away. Capping it at the generic 30-min window would re-probe a known-exhausted
 // account every 30 minutes; cap it at a low-frequency daily probe so the account is
@@ -73,7 +76,6 @@ export const ERROR_RULES = [
   // --- Text-based rules (checked first, order = priority) ---
   { text: "no credentials",           cooldownMs: COOLDOWN.long },
   { text: "request not allowed",      cooldownMs: COOLDOWN.short },
-  { text: "improperly formed request", cooldownMs: COOLDOWN.long },
   { text: "rate limit",               backoff: true },
   { text: "too many requests",        backoff: true },
   { text: "quota exceeded",           backoff: true },

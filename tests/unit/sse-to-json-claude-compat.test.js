@@ -6,6 +6,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { handleForcedSSEToJson } from "../../open-sse/handlers/chatCore/sseToJsonHandler.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
+import { REASONING_HEADER } from "../../open-sse/config/runtimeConfig.js";
 
 vi.mock("@/lib/usageDb.js", () => ({
   appendRequestLog: vi.fn(() => Promise.resolve()),
@@ -106,13 +107,26 @@ describe("handleForcedSSEToJson claudeClassifierCompat", () => {
     expect(types(json)).toContain("thinking");
   });
 
-  it("non-Claude sourceFormat is unaffected even when compat is always", async () => {
-    const json = await project(baseOpts({ sourceFormat: FORMATS.OPENAI, targetFormat: FORMATS.OPENAI, claudeClassifierCompat: "always" }));
-    // OpenAI passthrough: Claude-only compat gate must not alter other formats.
-    // The pre-projection strip still drops reasoning_content when content is
-    // present for non-Claude sources; the response shape stays chat.completion.
-    expect(json.object).toBe("chat.completion");
-    expect(json.choices?.[0]?.message?.content).toBe("ALLOW");
-    expect(json.choices?.[0]?.message?.reasoning_content).toBeUndefined();
+  it("keeps reasoning_content by default and strips it only on forced-SSE opt-out", async () => {
+    const openAIOptions = {
+      sourceFormat: FORMATS.OPENAI,
+      targetFormat: FORMATS.OPENAI,
+      claudeClassifierCompat: "always",
+    };
+    const kept = await project(baseOpts(openAIOptions));
+    const stripped = await project(baseOpts({
+      ...openAIOptions,
+      clientRawRequest: {
+        endpoint: "/v1/chat/completions",
+        headers: { [REASONING_HEADER]: "off" },
+      },
+    }));
+
+    expect(kept.object).toBe("chat.completion");
+    expect(kept.choices?.[0]?.message).toMatchObject({
+      content: "ALLOW",
+      reasoning_content: "secret chain",
+    });
+    expect(stripped.choices?.[0]?.message).not.toHaveProperty("reasoning_content");
   });
 });

@@ -287,6 +287,23 @@ export async function proxy(request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  /**
+   * Browser preflights intentionally omit credentials, so answer only OPTIONS
+   * for the existing public LLM path set before its API-key auth gate.
+   */
+  if (request.method === "OPTIONS" && isPublicLlmApi(pathname)) {
+    const requestedHeaders = request.headers.get("access-control-request-headers");
+    return new NextResponse(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": requestedHeaders || "*",
+        "Access-Control-Max-Age": "86400",
+      },
+    });
+  }
+
   if (isPublicLlmApi(pathname)) {
     if (await canAccessPublicLlmApi(request)) return NextResponse.next();
     if (pathname.includes("/v1/messages")) {

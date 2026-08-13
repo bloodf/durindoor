@@ -17,6 +17,8 @@ import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
 import { createUpstreamTerminalTracker } from "../utils/streamTerminal.js";
 import { settleProviderAttemptDispatch, getCurrentProviderAttemptTimestamp, runQuotaBearingProviderRequest } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
+import { GITHUB_CLAUDE_MAX_PROMPT_TOKENS } from "../config/github.js";
+import { estimateInputTokens } from "../utils/usageTracking.js";
 import crypto from "crypto";
 
 export class GithubExecutor extends BaseExecutor {
@@ -302,6 +304,48 @@ export class GithubExecutor extends BaseExecutor {
       });
       if (transformedBody.messages.length === 0) {
         throw new Error("GitHub /v1/messages request has no messages after empty-turn cleanup");
+      }
+    }
+
+    /**
+     * Ask Copilot for the authoritative Claude input-token count once the cheap
+     * estimate reaches the configured threshold, then reject above its prompt cap
+     * before the generation request is dispatched.
+     */
+    if (estimateInputTokens(transformedBody) >= GITHUB_CLAUDE_MAX_PROMPT_TOKENS * this.config.countTokensPreflightRatio) {
+      try {
+        const timeoutSignal = AbortSignal.timeout(this.config.countTokensTimeoutMs);
+        const countSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+        const countResponse = await proxyAwareFetch(this.config.countTokensUrl, {
+          method: "POST",
+          headers: this.buildHeaders(credentials, false),
+          body: JSON.stringify(transformedBody),
+          signal: countSignal,
+        }, proxyOptions);
+        if (countResponse.ok) {
+          const inputTokens = Number((await countResponse.json())?.input_tokens);
+          if (Number.isFinite(inputTokens) && inputTokens > GITHUB_CLAUDE_MAX_PROMPT_TOKENS) {
+            const errorBody = {
+              error: {
+                message: `Prompt is ${inputTokens} tokens; maximum for ${model} is ${GITHUB_CLAUDE_MAX_PROMPT_TOKENS}.`,
+                type: "invalid_request_error",
+                param: "messages",
+                code: "context_length_exceeded",
+              },
+            };
+            return {
+              response: Response.json(errorBody, { status: HTTP_STATUS.BAD_REQUEST }),
+              url: this.config.countTokensUrl,
+              headers,
+              transformedBody,
+            };
+          }
+        } else {
+          log?.warn?.("GITHUB", `Prompt token preflight returned ${countResponse.status}; continuing`);
+        }
+      } catch (error) {
+        if (signal?.aborted) throw error;
+        log?.warn?.("GITHUB", `Prompt token preflight failed: ${error?.message || error}; continuing`);
       }
     }
 

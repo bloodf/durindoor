@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { getKimchiUserAgent } from "../utils/kimchiUserAgent.js";
+import { extractLiveModelLimits } from "./liveModelLimits.js";
 
 export const KIMCHI_API = "https://llm.kimchi.dev";
 
@@ -54,9 +55,7 @@ export function normalizeKimchiModel(item) {
   const inputModalities = Array.isArray(item.input_modalities)
     ? item.input_modalities.filter((value) => value === "text" || value === "image")
     : [];
-  const limits = item.limits && typeof item.limits === "object" ? item.limits : {};
-  const contextLength = Number(limits.context_window || item.contextLength || item.context_length) || undefined;
-  const maxOutputTokens = Number(limits.max_output_tokens || item.maxOutputTokens || item.max_output_tokens) || undefined;
+  const { contextWindow: contextLength, maxOutput: maxOutputTokens } = extractLiveModelLimits(item);
   const upstreamProvider = typeof item.provider === "string" ? item.provider : "";
   const reasoning = item.reasoning === true;
   const kind = toModelKind(inputModalities);

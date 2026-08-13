@@ -103,7 +103,10 @@ describe("/v1/models OAuth proxy routing", () => {
       models: [{ id: "gpt-test", name: "GPT Test" }],
     });
 
-    await buildModelsList([LLM_KIND]);
+    const models = await buildModelsList([LLM_KIND]);
+
+    expect(models.some((model) => model.id === "kr/claude-test")).toBe(true);
+    expect(models.some((model) => model.id === "gh/gpt-test")).toBe(true);
 
     expect(mocks.resolveKiroModels).toHaveBeenCalledWith(
       expect.objectContaining({ accessToken: "kiro-access" }),

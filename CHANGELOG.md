@@ -1,3 +1,23 @@
+# 3.13.0
+
+Model-catalog accuracy release: adds Grok 4.6, corrects context windows that were wrong in both directions, fixes a Responses-transport translation bug, and ships an oh-my-pi extension that syncs the catalog into omp.
+
+## What's included
+- **Grok 4.6 and a refreshed xAI lineup** — `grok-4.6` (500K context, `xhigh` reasoning) is now the xAI default, alongside `grok-4.5` (500K), `grok-4.3` (1M, the only Grok that can disable thinking), the 4.20 family (1M), and `grok-build-0.1` (262K, renamed from `grok-code-fast-1`, old id retained as an alias). Ids absent from xAI's live docs were removed.
+- **Context-window corrections** — a Cloudflare-hosted 32B model no longer claims a 1M window (32,768 per Cloudflare's docs); `gpt-5.5` effort-suffix aliases report their real 1,050,000 rather than 400,000; MiniMax M2/M2.1 corrected to 204,800; an embedding model no longer advertises a chat context window.
+- **Responses transport fix** — a Chat Completions body targeting a Responses-only model now has `max_tokens` translated to `max_output_tokens` on both the message and pre-formed `input` paths. Previously such requests failed upstream with a field-shape 400.
+- **oh-my-pi extension** — `omp-extension/` discovers DurinDoor's `/v1/models` and registers every model in omp with its real context window, output limit, and capability flags. Fail-soft: a stopped gateway leaves omp fully usable.
+
+## Notes on unpublished limits
+`maxOutput` is deliberately left unset for first-party xAI models. xAI documents `max_completion_tokens` as a 128,000 **default**, not a maximum; storing it would impose a client-side ceiling xAI never published. A test asserts this contract with a control model that does have a real ceiling, so the exemption itself is falsifiable.
+
+Anthropic needed no change: 1M context is already the documented default on Opus 5/4.8/4.7/4.6, Sonnet 5/4.6 and Fable 5 — no beta header, no tier gate, and no `[1m]` model-id suffix exists.
+
+## Compatibility and verification
+- No stored-data, API-key, or wire-format changes.
+- Every catalog number is traceable to a vendor primary source; values that could not be confirmed were left unchanged rather than guessed.
+- Full Vitest/no-regression, lint, and commitlint gates green on `main`.
+
 # 3.12.0
 
 Upstream sync release covering 68 non-merge commits, including the 37-PR port campaign in #434–#470, with explicit client-default changes plus security, reliability, protocol, provider, and dashboard fixes.

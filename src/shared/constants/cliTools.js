@@ -373,6 +373,37 @@ export const CLI_TOOLS = {
       },
     ],
   },
+  /** Setup guide for the shipped omp-extension; the extension remains the single config source. */
+  omp: {
+    id: "omp",
+    name: "Oh My Pi",
+    image: "/providers/oh-my-pi.svg",
+    color: "#7C3AED",
+    description: "Oh My Pi coding agent with DurinDoor model discovery",
+    docsUrl: "https://github.com/can1357/oh-my-pi",
+    configType: "guide",
+    envVars: {
+      baseUrl: "DURINDOOR_BASE_URL",
+      apiKey: "DURINDOOR_API_KEY",
+    },
+    notes: [
+      { type: "info", text: "DurinDoor's shipped omp extension discovers models from /v1/models and routes them through OpenAI Chat Completions." },
+      { type: "warning", text: "Run these commands from the DurinDoor repository root, then restart omp." },
+    ],
+    guideSteps: [
+      { step: 1, title: "Install the shipped extension", value: "mkdir -p ~/.omp/agent/extensions && cp -r omp-extension ~/.omp/agent/extensions/durindoor", copyable: true },
+      { step: 2, title: "API Key", type: "apiKeySelector" },
+      { step: 3, title: "Base URL", type: "baseUrlSelector", desc: "Choose local, tunnel, cloud, or a saved custom endpoint." },
+      { step: 4, title: "Configure environment", desc: "Export these variables before starting omp." },
+      { step: 5, title: "Start omp", value: "omp", copyable: true },
+    ],
+    codeBlock: {
+      language: "shell",
+      code: `export DURINDOOR_BASE_URL={{baseUrl}}
+export DURINDOOR_API_KEY={{apiKey}}
+omp`,
+    },
+  },
   // HIDDEN: gemini-cli
   // "gemini-cli": {
   //   id: "gemini-cli",

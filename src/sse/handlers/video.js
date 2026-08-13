@@ -1,5 +1,5 @@
 import { getProviderCredentialsWithQuotaPreflight, markAccountUnavailable, clearAccountError, resolveClientApiKey } from "../services/auth.js";
-import { getSettings } from "@/lib/localDb";
+import { getSettings, getProviderConnectionById } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { handleVideoGenerationCore } from "open-sse/handlers/videoGenerationCore.js";
 import { handleVideoProxyCore, getVideoConfig, sanitizeSecrets, VIDEO_ACTIONS } from "open-sse/handlers/videoCore.js";
@@ -245,22 +245,26 @@ export async function handleVideoGet(request, requestId) {
 
   if (!requestId) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing video request id");
 
-  const provider = DEFAULT_VIDEO_PROVIDER;
-  const policyError = await enforceVideoPolicy(request, provider, "grok-imagine-video", apiKey);
-  if (policyError) return policyError;
-
   const preferredConnectionId = request.headers.get("x-connection-id") || null;
+  let provider = DEFAULT_VIDEO_PROVIDER;
+  if (preferredConnectionId) {
+    const pinnedConnection = await getProviderConnectionById(preferredConnectionId);
+    if (pinnedConnection?.provider && getVideoConfig(pinnedConnection.provider)) provider = pinnedConnection.provider;
+  }
+  const policyModel = getVideoConfig(provider)?.defaultModel || "grok-imagine-video";
+  const policyError = await enforceVideoPolicy(request, provider, policyModel, apiKey);
+  if (policyError) return policyError;
 
   const credentials = await getProviderCredentialsWithQuotaPreflight(provider, null, null, { preferredConnectionId });
   if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
     if (credentials?.providerDisabled) {
-      log.warn("VIDEO", `[${provider}/grok-imagine-video] free no-auth provider disabled by settings`);
+      log.warn("VIDEO", `[${provider}/${policyModel}] free no-auth provider disabled by settings`);
       return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
     }
     if (credentials?.allRateLimited) {
       return unavailableResponse(
         Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE,
-        `[${provider}/grok-imagine-video] ${credentials.lastError || "Unavailable"}`,
+        `[${provider}/${policyModel}] ${credentials.lastError || "Unavailable"}`,
         credentials.retryAfter,
         credentials.retryAfterHuman,
       );

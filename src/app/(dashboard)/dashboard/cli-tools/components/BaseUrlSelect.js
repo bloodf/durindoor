@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { UPDATER_CONFIG } from "@/shared/constants/config";
+import { formatEndpointPresetLabel, readLastCustomUrl, writeLastCustomUrl } from "./cliEndpointPresets";
 
 const STORAGE_KEY = "durindoor.cliToolEndpointPresets";
 const CUSTOM_VALUE = "__custom__";
@@ -48,8 +49,8 @@ const buildOptions = ({ requiresExternalUrl, tunnelEnabled, tunnelPublicUrl, tai
     const u = wrap(cloudUrl);
     opts.push({ value: "cloud", label: u, url: u });
   }
-  savedPresets.forEach((p) => {
-    opts.push({ value: `saved:${p.name}`, label: p.baseUrl, url: p.baseUrl, saved: true });
+  savedPresets.forEach((preset) => {
+    opts.push({ value: `saved:${preset.name}`, label: formatEndpointPresetLabel(preset), url: preset.baseUrl, saved: true });
   });
   opts.push({ value: CUSTOM_VALUE, label: "Custom URL...", url: "" });
   return opts;
@@ -104,16 +105,21 @@ export default function BaseUrlSelect({
       try { defaultName = new URL(trimmed).host; } catch {}
       const name = window.prompt("Save endpoint as:", defaultName);
       if (!name?.trim()) return;
-      const updated = [...savedPresets.filter((p) => p.name !== name.trim()), { name: name.trim(), baseUrl: trimmed }]
+      const savedName = name.trim();
+      const updated = [...savedPresets.filter((p) => p.name !== savedName), { name: savedName, baseUrl: trimmed }]
         .sort((a, b) => a.name.localeCompare(b.name));
       setSavedPresets(updated);
       writeSavedPresets(updated);
+      setMode(`saved:${savedName}`);
+      onChange(trimmed);
       return;
     }
     setMode(next);
     if (next === CUSTOM_VALUE) {
-      setCustomInput("");
-      onChange("");
+      const seed = (value || "").trim() || readLastCustomUrl();
+      setCustomInput(seed);
+      if (seed) writeLastCustomUrl(seed);
+      onChange(seed);
       return;
     }
     const opt = options.find((o) => o.value === next);
@@ -124,6 +130,7 @@ export default function BaseUrlSelect({
     const v = e.target.value;
     setCustomInput(v);
     onChange(v);
+    if (v.trim()) writeLastCustomUrl(v.trim());
   };
 
   const handleDeleteSaved = () => {
@@ -132,9 +139,10 @@ export default function BaseUrlSelect({
     const updated = savedPresets.filter((p) => p.name !== name);
     setSavedPresets(updated);
     writeSavedPresets(updated);
+    const seed = (value || "").trim() || readLastCustomUrl();
     setMode(CUSTOM_VALUE);
-    setCustomInput("");
-    onChange("");
+    setCustomInput(seed);
+    onChange(seed);
   };
 
   const isSaved = mode.startsWith("saved:");

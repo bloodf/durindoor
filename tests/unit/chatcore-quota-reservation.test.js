@@ -5,11 +5,20 @@ import {
   STREAM_STALL_TIMEOUT_MS,
 } from "../../open-sse/config/runtimeConfig.js";
 
-const { executeMock, executorState, requestLoggerState } = vi.hoisted(() => ({
-  executeMock: vi.fn(),
-  executorState: { noAuth: true },
-  requestLoggerState: { throwOnConvertedResponse: false },
-}));
+const { executeMock, executorState, requestLoggerState, activeSessions, trackPendingRequest } = vi.hoisted(() => {
+  const activeSessions = new Map();
+  return {
+    executeMock: vi.fn(),
+    executorState: { noAuth: true },
+    requestLoggerState: { throwOnConvertedResponse: false },
+    activeSessions,
+    trackPendingRequest: vi.fn((_model, _provider, _connectionId, started, error, session) => {
+      if (started && session?.requestId) activeSessions.set(session.requestId, "active");
+      else if (session?.requestId) activeSessions.set(session.requestId, error ? "error" : session.status || "done");
+      return session?.requestId || null;
+    }),
+  };
+});
 
 vi.mock("../../open-sse/executors/index.js", async () => {
   const context = await import("../../open-sse/services/providerAttemptContext.js");
@@ -35,9 +44,10 @@ vi.mock("../../open-sse/utils/requestLogger.js", () => ({
 }));
 
 vi.mock("@/lib/usageDb.js", () => ({
-  trackPendingRequest: vi.fn(),
+  trackPendingRequest,
   appendRequestLog: vi.fn(async () => {}),
   saveRequestDetail: vi.fn(async () => {}),
+  saveRequestUsage: vi.fn(async () => {}),
 }));
 
 const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
@@ -107,6 +117,7 @@ describe("chatCore quota reservation boundary", () => {
     executorState.noAuth = true;
     requestLoggerState.throwOnConvertedResponse = false;
     executeMock.mockResolvedValue(ollamaSuccess());
+    activeSessions.clear();
   });
 
   it("fails locally before dispatch when atomic capacity cannot be acquired", async () => {
@@ -150,6 +161,7 @@ describe("chatCore quota reservation boundary", () => {
     expect(quota.beginDispatch).toHaveBeenCalledOnce();
     expect(executeMock).toHaveBeenCalledOnce();
     expect(quota.settle).toHaveBeenCalledWith({ success: true, reason: "success" });
+    expect([...activeSessions.values()]).not.toContain("active");
   });
 
   it("releases on a non-2xx provider result without fabricating success", async () => {
@@ -164,6 +176,7 @@ describe("chatCore quota reservation boundary", () => {
     expect(result.success).toBe(false);
     expect(result.status).toBe(503);
     expect(quota.settle).toHaveBeenCalledWith({ success: false, reason: "upstream_error" });
+    expect([...activeSessions.values()]).not.toContain("active");
   });
 
   it("releases on a thrown transport error", async () => {
@@ -298,6 +311,7 @@ describe("chatCore quota reservation boundary", () => {
     await result.response.body.cancel("client_cancelled");
     await vi.waitFor(() => expect(quota.settle).toHaveBeenCalledWith({ success: false, reason: "stream_cancel" }));
     expect(quota.settle).toHaveBeenCalledTimes(1);
+    expect([...activeSessions.values()]).not.toContain("active");
   });
 
   it("releases an acquired physical ticket when an external abort wins during execute", async () => {

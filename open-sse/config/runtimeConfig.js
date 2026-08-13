@@ -44,6 +44,17 @@ export const MEMORY_CONFIG = {
   refreshDedupResultTtlMs: 10 * 1000,
 };
 
+/** Shared undici pool limits for direct and proxy provider traffic. */
+export const PROXY_FETCH_POOL_CONFIG = Object.freeze({
+  directConnectionsPerOrigin: 32,
+  proxyConnectionsPerOrigin: 64,
+  directMaxCachedSessions: 16,
+  proxyMaxCachedSessions: 32,
+  keepAliveTimeoutMs: 4_000,
+  keepAliveMaxTimeoutMs: 60_000,
+  pipelining: 1,
+});
+
 // Client opt-out for reasoning_content on non-streaming responses.
 export const REASONING_HEADER = "x-9router-reasoning";
 

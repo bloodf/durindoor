@@ -1,3 +1,22 @@
+# 3.12.0
+
+Upstream sync release covering 68 non-merge commits, including the 37-PR port campaign in #434–#470, with explicit client-default changes plus security, reliability, protocol, provider, and dashboard fixes.
+
+## Behavior changes
+- **Non-streaming is now the default** — when a client omits `stream`, DurinDoor now uses `stream: false` per the OpenAI specification (upstream #1272). Clients that relied on implicit streaming must now send `stream: true`.
+- **Reasoning content is preserved by default** — non-streaming replies now keep `reasoning_content`; stripping it is opt-in instead of the default (upstream #2774).
+
+## What's included
+- **Security and authentication** — search `baseUrl` values are protected by an SSRF guard (#3063); CORS `OPTIONS` preflight is exempt from auth on `/v1/*` without weakening authentication for any other method (#3025); a valid `x-api-key` is accepted alongside a stale `Authorization` header without borrowing stored credentials (#2926); API-key usage statistics use a salted, per-install HMAC identity instead of raw-key-derived grouping (#2919); and Claude session headers are emitted only for genuinely client-provided session IDs.
+- **Reliability and account rotation** — `proxyFetch` uses undici connection pooling to avoid connection exhaustion (#2997); HTTP 400/422 request errors no longer rotate accounts (#3181); Envoy HTTP 507 buffer-overflow responses replay on the same account (#2946); and concurrent OAuth quota polls are coalesced (#2848).
+- **Translator and protocol correctness** — empty `tool_calls` arrays no longer truncate replies (#3254); Responses targets receive nested reasoning effort (#3243); Gemini schema walkers preserve user property names and remove only stray node-level `value` markers (#3082/#3089); nested Claude server-tool models are normalized (#2649); and Kiro gains system-prompt, API-key model-discovery, and unsupported-tool-schema fixes (#2911/#3038/#3039).
+- **Providers and dashboard** — Hugging Face speech-to-text presets now include dispatchable STT configuration (#2600); Qoder organization quota renders even when its total is zero (#2909); quota rows stay scoped to their connection (#3122); providers return to active status after cooldown expiry (#3182); and Amp is marked unsupported (#2921).
+- **Additional gateway fixes** — streaming lifecycle, executor state, credential metadata, MiMo affinity, Responses tool namespacing and cache keys, Claude thinking limits and accounting, Antigravity schemas, Vertex credentials, Codex OAuth profiles, and binary-transport response formatting were corrected across the earlier and campaign work.
+
+## Compatibility and verification
+- No stored-data or API-key format changes. The `stream` default and `reasoning_content` preservation described above are the only client-visible defaults that shift.
+- Every ported change shipped with a unit test verified load-bearing by targeted revert. Full suite, lint, and commitlint are green on `main`.
+
 # 3.11.1
 
 Patch release preventing OpenAI-only streaming options from reaching Anthropic Messages.

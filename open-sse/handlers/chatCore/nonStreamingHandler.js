@@ -11,6 +11,7 @@ import { translateOpenAIToClaudeIfNeeded } from "../../translator/response/opena
 import { appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { decloakToolNames } from "../../utils/claudeCloaking.js";
 import { openAIResponsesBodyToClaude, openAIResponsesBodyToOpenAI } from "../../translator/response/openai-responses-nonstream.js";
+import { projectCompletionToClientFormat } from "../../translator/response/completionProjector.js";
 import { translateResponse, initState } from "../../translator/index.js";
 import { formatSSE } from "../../utils/streamHelpers.js";
 import { SSE_HEADERS_CORS } from "../../utils/sseConstants.js";
@@ -321,6 +322,14 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
   // Ollama
   if (targetFormat === FORMATS.OLLAMA) {
     return ollamaBodyToOpenAI(responseBody);
+  }
+
+  /**
+   * Binary transports decode their wire format into an OpenAI completion before
+   * this handler runs; project that completion back into the client's dialect.
+   */
+  if (Array.isArray(responseBody?.choices)) {
+    return projectCompletionToClientFormat(responseBody, sourceFormat, options);
   }
 
   return responseBody;

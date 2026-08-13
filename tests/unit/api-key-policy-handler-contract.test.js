@@ -24,8 +24,8 @@ const policyHandlers = authHandlers.filter((file) => !["chat.js", "countTokens.j
 describe("non-chat API-key policy contract", () => {
   it.each(authHandlers)("%s authenticates before model, executor, or provider work", (file) => {
     const source = fs.readFileSync(path.join(repoRoot, "src/sse/handlers", file), "utf8");
-    const guard = source.indexOf("await evaluateApiKeyAuth(");
-    expect(guard, `${file} must use the shared credential guard`).toBeGreaterThan(-1);
+    const guard = source.indexOf("await resolveClientApiKey(");
+    expect(guard, `${file} must use the shared credential resolver`).toBeGreaterThan(-1);
 
     for (const work of ["await getModelInfo(", "getExecutor(", "await getProviderCredentials("]) {
       const position = source.indexOf(work);
@@ -55,7 +55,7 @@ describe("non-chat API-key policy contract", () => {
       path.join(repoRoot, "src/app/api/v1beta/models/[...path]/route.js"),
       "utf8",
     );
-    const guard = source.indexOf("await evaluateApiKeyAuth(");
+    const guard = source.indexOf("await resolveClientApiKey(");
     const providerWork = source.indexOf("await getProviderCredentials(");
     expect(guard).toBeGreaterThan(-1);
     expect(providerWork).toBeGreaterThan(guard);

@@ -31,6 +31,10 @@ vi.mock("../../src/sse/services/auth.js", () => ({
   clearAccountError: mocks.clearAccountError,
   extractApiKey: mocks.extractApiKey,
   evaluateApiKeyAuth: mocks.evaluateApiKeyAuth,
+  resolveClientApiKey: async (request, options) => ({
+    apiKey: mocks.extractApiKey(request),
+    auth: await mocks.evaluateApiKeyAuth(mocks.extractApiKey(request), { ...options, request }),
+  }),
   hasValidCliToken: mocks.hasValidCliToken,
 }));
 

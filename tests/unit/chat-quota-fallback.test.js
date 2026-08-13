@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { quotaIdentityKey } from "../../src/shared/utils/quotaSnapshot.js";
+import { checkFallbackError } from "../../open-sse/services/accountFallback.js";
 
 vi.mock("open-sse/index.js", () => ({}), { virtual: true });
 
@@ -40,6 +41,10 @@ vi.mock("../../src/sse/services/auth.js", () => ({
   clearAccountError: mocks.clearAccountError,
   extractApiKey: vi.fn(() => null),
   evaluateApiKeyAuth: mocks.evaluateApiKeyAuth,
+  resolveClientApiKey: async (request, options) => ({
+    apiKey: null,
+    auth: await mocks.evaluateApiKeyAuth(null, { ...options, request }),
+  }),
   providerAllowsPublicNoAuthFallback: vi.fn(() => false),
 }));
 
@@ -402,6 +407,73 @@ describe("chat quota fallback orchestration", () => {
       expect.objectContaining({ connectionId: "conn-two" }),
       "gpt-5.4",
       expect.objectContaining({ provider: "codex", attemptStartedAt: expect.any(Number) }),
+    );
+  });
+
+  it("replays an Envoy request-buffer 507 once on the same account", async () => {
+    const first = selected("conn-one");
+    const second = selected("conn-two");
+    const preferredSelections = [];
+    mocks.getProviderCredentials.mockImplementation(async (_provider, excluded, _model, options) => {
+      preferredSelections.push(options?.preferredConnectionId || null);
+      if (options?.preferredConnectionId === first.connectionId) return first;
+      if (!excluded?.has(first.connectionId)) return first;
+      return second;
+    });
+    mocks.handleChatCore
+      .mockResolvedValueOnce({
+        success: false,
+        status: 507,
+        error: "[507]: exceeded request buffer limit while retrying upstream",
+        response: new Response("envoy-buffer-overflow", { status: 507 }),
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        response: new Response("replayed", { status: 200 }),
+      });
+
+    const response = await handleChat(request());
+
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe("replayed");
+    expect(preferredSelections).toEqual([null, "conn-one"]);
+    expect(mocks.handleChatCore.mock.calls.map(([options]) => options.connectionId)).toEqual(["conn-one", "conn-one"]);
+    expect(mocks.markAccountUnavailable).not.toHaveBeenCalled();
+    expect(checkFallbackError(507, "[507]: exceeded request buffer limit while retrying upstream"))
+      .toEqual({ shouldFallback: false, cooldownMs: 0 });
+  });
+
+  it.each([401, 429])("still rotates accounts for HTTP %i", async (status) => {
+    const first = selected("conn-one");
+    const second = selected("conn-two");
+    mocks.getProviderCredentials.mockImplementation(async (_provider, excluded) => {
+      if (!excluded?.has(first.connectionId)) return first;
+      return second;
+    });
+    mocks.handleChatCore
+      .mockResolvedValueOnce({
+        success: false,
+        status,
+        error: `HTTP ${status}`,
+        response: new Response(`HTTP ${status}`, { status }),
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        response: new Response("rotated", { status: 200 }),
+      });
+
+    const response = await handleChat(request());
+
+    expect(response.status).toBe(200);
+    expect(mocks.handleChatCore.mock.calls.map(([options]) => options.connectionId)).toEqual(["conn-one", "conn-two"]);
+    expect(mocks.markAccountUnavailable).toHaveBeenCalledWith(
+      "conn-one",
+      status,
+      `HTTP ${status}`,
+      "codex",
+      "gpt-5.4",
+      undefined,
+      expect.any(Object),
     );
   });
 

@@ -1,4 +1,4 @@
-import { getProviderCredentials, extractApiKey, evaluateApiKeyAuth } from "../services/auth.js";
+import { getProviderCredentials, resolveClientApiKey } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { handleCountTokensCore, estimateTokens } from "open-sse/handlers/countTokensCore.js";
@@ -22,8 +22,9 @@ export async function handleCountTokens(request) {
   }
 
   const settings = await getSettings();
-  const apiKey = extractApiKey(request);
-  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true, request });
+  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
+    required: settings.requireApiKey === true,
+  });
   if (!apiKeyAuth.ok) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
 
   const modelStr = body.model;
@@ -38,7 +39,7 @@ export async function handleCountTokens(request) {
   }
 
   const { provider, model } = modelInfo;
-  const policyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`);
+  const policyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (policyError) return policyError;
   // count_tokens is best-effort: a single credential attempt is enough (the core
   // falls back to the estimate on any failure / no native endpoint).

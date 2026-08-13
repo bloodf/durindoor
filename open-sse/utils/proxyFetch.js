@@ -1,6 +1,6 @@
 import { Readable } from "stream";
-import { Agent, setGlobalDispatcher } from "undici";
-import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
+import { Agent, ProxyAgent, setGlobalDispatcher } from "undici";
+import { MEMORY_CONFIG, PROXY_FETCH_POOL_CONFIG } from "../config/runtimeConfig.js";
 import { dbg } from "./debugLog.js";
 import { sanitizeErrorMessage } from "./error.js";
 import { digestMemoryKey } from "./memoryKey.js";
@@ -457,7 +457,9 @@ function resolveConnectionProxyUrl(targetUrl, proxyOptions) {
 }
 
 /**
- * Create proxy dispatcher lazily (undici-compatible)
+ * Create and cache one bounded undici proxy pool per selected proxy URL.
+ * Reusing the dispatcher preserves proxy affinity while limiting connections
+ * opened to each upstream origin under concurrent load.
  */
 async function getDispatcher(proxyUrl) {
   const normalized = normalizeProxyUrl(proxyUrl);
@@ -478,7 +480,6 @@ async function getDispatcher(proxyUrl) {
         // The entry is already detached; cleanup must not prevent replacement.
       }
     }
-    const { ProxyAgent } = await import("undici");
     // proxyTunnel: true forces a CONNECT tunnel even for plain-HTTP targets.
     // undici 8.6+ defaults to forwarding plain-HTTP as an origin request
     // (GET http://host/…) which CONNECT-only proxies reject with 501. Safe on
@@ -489,17 +490,34 @@ async function getDispatcher(proxyUrl) {
     // idle-body deadline so a streaming response can run indefinitely.
     const connectTimeout = parseInt(process.env.PROXY_CONNECT_TIMEOUT_MS, 10) || 90000;
     const headersTimeout = parseInt(process.env.PROXY_HEADERS_TIMEOUT_MS, 10) || 300000;
-    proxyDispatchers.set(
-      cacheKey,
-      new ProxyAgent({ uri: normalized, proxyTunnel: true, connectTimeout, headersTimeout, bodyTimeout: 0 }),
-    );
+    proxyDispatchers.set(cacheKey, new ProxyAgent({
+      uri: normalized,
+      proxyTunnel: true,
+      connectTimeout,
+      headersTimeout,
+      bodyTimeout: 0,
+      connections: PROXY_FETCH_POOL_CONFIG.proxyConnectionsPerOrigin,
+      keepAliveTimeout: PROXY_FETCH_POOL_CONFIG.keepAliveTimeoutMs,
+      keepAliveMaxTimeout: PROXY_FETCH_POOL_CONFIG.keepAliveMaxTimeoutMs,
+      maxCachedSessions: PROXY_FETCH_POOL_CONFIG.proxyMaxCachedSessions,
+      pipelining: PROXY_FETCH_POOL_CONFIG.pipelining,
+    }));
   }
 
   return proxyDispatchers.get(cacheKey);
 }
 
+/**
+ * Build options for the shared direct undici pool. One Agent is reused across
+ * calls and maintains a bounded pool per origin without changing route choice.
+ */
 export function getDirectDispatcherOptionsForTest() {
   return {
+    connections: PROXY_FETCH_POOL_CONFIG.directConnectionsPerOrigin,
+    keepAliveTimeout: PROXY_FETCH_POOL_CONFIG.keepAliveTimeoutMs,
+    keepAliveMaxTimeout: PROXY_FETCH_POOL_CONFIG.keepAliveMaxTimeoutMs,
+    maxCachedSessions: PROXY_FETCH_POOL_CONFIG.directMaxCachedSessions,
+    pipelining: PROXY_FETCH_POOL_CONFIG.pipelining,
     connect: {
       autoSelectFamily: true,
       autoSelectFamilyAttemptTimeout: 1000,
@@ -509,7 +527,6 @@ export function getDirectDispatcherOptionsForTest() {
 
 async function getDirectDispatcher() {
   if (directDispatcher) return directDispatcher;
-  const { Agent } = await import("undici");
   directDispatcher = new Agent(getDirectDispatcherOptionsForTest());
   return directDispatcher;
 }

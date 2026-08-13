@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   handleChatCore: vi.fn(),
   enforceApiKeyModelPolicy: vi.fn(),
   loadCustomCapabilities: vi.fn(),
+  warmLiveModelLimits: vi.fn(),
 }));
 
 vi.mock("@/lib/localDb", () => ({
@@ -44,6 +45,9 @@ vi.mock("../../src/sse/services/tokenRefresh.js", () => ({
 }));
 vi.mock("../../open-sse/handlers/chatCore.js", () => ({
   handleChatCore: mocks.handleChatCore,
+}));
+vi.mock("../../open-sse/services/liveModelLimits.js", () => ({
+  warmLiveModelLimits: mocks.warmLiveModelLimits,
 }));
 vi.mock("../../open-sse/services/projectId.js", () => ({
   getProjectIdForConnection: vi.fn(),
@@ -89,7 +93,8 @@ describe("chat policy enforcement sequence", () => {
     mocks.enforceApiKeyModelPolicy.mockResolvedValue(null); // allow
     mocks.loadCustomCapabilities.mockResolvedValue(null);
     mocks.getProviderCredentials.mockResolvedValue({ apiKey: "k" });
-    mocks.handleChatCore.mockResolvedValue(new Response("{}", { status: 200 }));
+    mocks.handleChatCore.mockResolvedValue({ success: true, response: new Response("{}", { status: 200 }) });
+    mocks.warmLiveModelLimits.mockReturnValue(undefined);
   });
 
   it("checks policy exactly once for a non-vision request (original model)", async () => {
@@ -101,6 +106,25 @@ describe("chat policy enforcement sequence", () => {
       "openai/gpt-4o",
       "sk-test",
     );
+  });
+
+  it("warms live limits without delaying or failing dispatch", async () => {
+    mocks.getModelInfo.mockResolvedValue({ provider: "api-airforce", model: "x-ai/grok-3" });
+    mocks.getProviderCredentials.mockResolvedValue({
+      apiKey: "catalog-key",
+      providerSpecificData: {},
+    });
+    mocks.warmLiveModelLimits.mockImplementation(() => { throw new Error("warm failed"); });
+
+    const response = await handleChat(chatRequest("hello", { model: "api-airforce/x-ai/grok-3" }));
+
+    expect(response.status).toBe(200);
+    expect(mocks.warmLiveModelLimits).toHaveBeenCalledWith(
+      "api-airforce",
+      expect.objectContaining({ apiKey: "catalog-key" }),
+      expect.objectContaining({ endpoint: "https://api.airforce/v1/models" }),
+    );
+    expect(mocks.handleChatCore).toHaveBeenCalledOnce();
   });
 
   it("denied original model returns 403 without credentials or dispatch", async () => {

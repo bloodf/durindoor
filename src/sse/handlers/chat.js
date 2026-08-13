@@ -22,6 +22,7 @@ import { recordTokenSaverEvent } from "@/lib/usageDb";
 import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
 import { applyVisionBridgeReroute } from "open-sse/services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
+import { warmLiveModelLimits } from "open-sse/services/liveModelLimits.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
 import { authErrorResponse, errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { isLocalStreamLifecycleError } from "open-sse/utils/streamLifecycle.js";
@@ -51,6 +52,7 @@ import { resolveProviderId } from "@/shared/constants/providers.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
+import { getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { validateChatRequestBody } from "open-sse/translator/validate.js";
 import {
   createQuotaReservationLifecycle,
@@ -97,6 +99,34 @@ function proxyOptionsFromCredentials(credentials) {
     disableEnvProxy: config.disableEnvProxy === true,
   };
 }
+const LIVE_MODEL_FETCHER_TYPES = new Set(["openai", "openai-compatible"]);
+const KIMI_LIVE_MODEL_PROVIDERS = new Set(["kimi", "kimi-coding", "kimi-coding-apikey"]);
+
+/**
+ * Warm live model limits after account selection without awaiting catalog I/O.
+ * The cached resolver owns TTL, negative caching, coalescing, and failures.
+ */
+export function warmRequestModelLimits(provider, credentials) {
+  try {
+    const registry = REGISTRY.find((entry) => entry.id === provider || entry.alias === provider || entry.uiAlias === provider);
+    const fetcher = registry?.modelsFetcher;
+    const genericFetcher = fetcher && LIVE_MODEL_FETCHER_TYPES.has(fetcher.type) ? fetcher : null;
+    const anthropic = provider?.startsWith("anthropic-compatible-");
+    const compatible = anthropic || provider?.startsWith("openai-compatible-");
+    const kimi = KIMI_LIVE_MODEL_PROVIDERS.has(provider);
+    if (!genericFetcher && !compatible && !kimi) return;
+    warmLiveModelLimits(provider, credentials, {
+      guard: getProviderValidationGuard(),
+      proxyOptions: proxyOptionsFromCredentials(credentials),
+      endpoint: genericFetcher?.url || (kimi ? "https://api.kimi.com/coding/v1/models" : undefined),
+      anthropic,
+      modelAliases: kimi ? { k3: "kimi-k3" } : undefined,
+    });
+  } catch {
+    // Catalog metadata is optional; request dispatch must remain fail-soft.
+  }
+}
+
 
 /**
  * #6457 / OmniRoute#6525: resolved registry model kind === "image" means the
@@ -960,6 +990,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       }
     }
     if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
+    warmRequestModelLimits(provider, refreshedCredentials);
 
     // Use shared chatCore
     const chatSettings = await getSettings();

@@ -654,6 +654,7 @@ async function buildModelsListImpl(kindFilter, guard) {
               const psd = isRecord(connection.providerSpecificData) ? connection.providerSpecificData : {};
               const proxyOptions = await resolveConnectionProxyConfig(psd);
               return resolveLiveOpenAIModels(connection, {
+                provider: providerId,
                 guard: liveGuard,
                 proxyOptions,
                 endpoint: genericFetcher?.url || (isKimiLiveProvider ? "https://api.kimi.com/coding/v1/models" : undefined),

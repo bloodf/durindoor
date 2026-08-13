@@ -741,7 +741,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // The message intentionally carries "input is too long" so the existing
   // isDeterministicPayloadError classifier treats it as terminal and the
   // fallback chain is skipped for a request no other model would accept.
-  const preflightLimits = resolveModelLimits(provider, cleanModel);
+  const preflightLimits = resolveModelLimits(provider, cleanModel, requestContext?.modelCapabilities, credentials);
   if (preflightLimits.known) {
     // `requestContext.modelCapabilities` is null unless the caller passed caps,
     // so fall back to the resolved catalog cap. Without this a known model whose

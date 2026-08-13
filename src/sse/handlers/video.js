@@ -245,7 +245,7 @@ export async function handleVideoGet(request, requestId) {
 
   if (!requestId) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing video request id");
 
-  const preferredConnectionId = request.headers.get("x-connection-id") || null;
+  const preferredConnectionId = request.headers.get("x-9router-connection-id") || request.headers.get("x-connection-id") || null;
   let provider = DEFAULT_VIDEO_PROVIDER;
   if (preferredConnectionId) {
     const pinnedConnection = await getProviderConnectionById(preferredConnectionId);

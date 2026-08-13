@@ -551,9 +551,10 @@ export const PATTERN_CAPABILITIES = [
 
   // ── Grok (vision + Live Search) ──────────────────────────────────
   { pattern: "*grok*image*",    caps: { imageOutput: true } },
-  // Grok CLI windows come from decolua/9router#2502's HAR-captured /v1/models; xAI documents 128K as a default, not an output ceiling.
+  // Composer keeps the 200K window from decolua/9router#2502's HAR-captured Grok CLI /v1/models response.
   { pattern: "*grok-composer*", caps: { vision: true, reasoning: false, search: false, thinkingFormat: null, contextWindow: 200000 } },
-  { pattern: "*grok-build*",    caps: { vision: true, reasoning: false, search: false, thinkingFormat: null, contextWindow: 256000 } },
+  // Public aliases follow xAI's Grok Build 0.1 docs (256 Ki tokens, vision/tools/reasoning); exact CLI `grok-build` above keeps the HAR-reported 256K/non-reasoning caps.
+  { pattern: "*grok-build*",    caps: { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 262144 } },
   { pattern: "*grok-code*",     caps: { reasoning: true, thinkingFormat: "openai", contextWindow: 256000 } },
   // Current 4.x models are 500K or 1M; 500K is the conservative floor that cannot over-promise.
   { pattern: "*grok-4.5*",      caps: { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 500000 } },

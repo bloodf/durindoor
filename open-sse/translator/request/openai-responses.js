@@ -295,6 +295,19 @@ function normalizeToolParameters(params) {
 }
 
 /**
+ * Normalize Chat Completions output limits at the shared Responses wire seam.
+ * Native max_output_tokens wins when both fields are present.
+ */
+function normalizeResponsesOutputLimit(source, target) {
+  if (target.max_output_tokens === undefined) {
+    if (source.max_output_tokens !== undefined) target.max_output_tokens = source.max_output_tokens;
+    else if (source.max_tokens !== undefined) target.max_output_tokens = source.max_tokens;
+  }
+  delete target.max_tokens;
+  return target;
+}
+
+/**
  * Convert OpenAI Chat Completions to OpenAI Responses API format.
  * Generic Responses transports preserve the caller's stream mode here so
  * non-streaming clients can receive JSON from native /responses endpoints.
@@ -304,7 +317,8 @@ function normalizeToolParameters(params) {
 export function openaiToOpenAIResponsesRequest(model, body, stream, credentials) {
   if (body.input) {
     const cleanInput = stripOrphanedToolOutputs(body.input);
-    return cleanInput === body.input ? { ...body, model, stream } : { ...body, input: cleanInput, model, stream };
+    const result = cleanInput === body.input ? { ...body, model, stream } : { ...body, input: cleanInput, model, stream };
+    return normalizeResponsesOutputLimit(body, result);
   }
 
   const result = {
@@ -419,9 +433,8 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
     });
   }
 
-  // Pass through other relevant fields
   if (body.temperature !== undefined) result.temperature = body.temperature;
-  if (body.max_tokens !== undefined) result.max_tokens = body.max_tokens;
+  normalizeResponsesOutputLimit(body, result);
   if (body.top_p !== undefined) result.top_p = body.top_p;
   if (body.reasoning !== undefined) result.reasoning = body.reasoning;
   if (body.reasoning_effort !== undefined) result.reasoning = { effort: body.reasoning_effort, summary: "auto" };

@@ -75,8 +75,25 @@ describe("xAI Grok catalog", () => {
     expect(resolveModelLimits(provider, model).maxOutput).toBeUndefined();
   });
 
-  it("uses the HAR-captured Grok CLI Build window for unlisted aliases", () => {
-    expect(getCapabilitiesForModel("xai", "grok-build-latest").contextWindow).toBe(256000);
+  it("uses documented public API capabilities for unlisted Build aliases", () => {
+    expect(getCapabilitiesForModel("xai", "grok-build-latest")).toMatchObject({
+      vision: true,
+      tools: true,
+      reasoning: true,
+      search: true,
+      thinkingFormat: "openai",
+      thinkingCanDisable: false,
+      contextWindow: 262144,
+    });
+  });
+
+  it.each(MODEL_IDS)("does not invent an xAI output ceiling for catalog model %s", (model) => {
+    expect(getCapabilitiesForModel("xai", model).maxOutput).toBeUndefined();
+  });
+
+  it("preserves provider-specific Grok output ceilings outside xAI and Grok CLI", () => {
+    expect(getCapabilitiesForModel("api-airforce", "x-ai/grok-3").maxOutput).toBeGreaterThan(0);
+    expect(resolveModelLimits("api-airforce", "x-ai/grok-3").maxOutput).toBe(65536);
   });
 
 });

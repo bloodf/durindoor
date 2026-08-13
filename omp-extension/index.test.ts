@@ -28,13 +28,15 @@ describe("DurinDoor model mapping", () => {
   it("maps omp token, input, reasoning, tool, and thinking fields", () => {
     const { models, skipped } = mapDurinDoorModels([
       {
-        id: "grok-4.6",
+        id: "xai/grok-4.6",
         capabilities: {
           vision: true,
           tools: true,
           search: true,
           reasoning: true,
           thinkingFormat: "openai",
+          thinkingCanDisable: false,
+          thinkingRange: { min: 1_024, max: 32_768 },
           contextWindow: 500_000,
           maxOutput: 128_000,
         },
@@ -45,8 +47,8 @@ describe("DurinDoor model mapping", () => {
     expect(skipped).toBe(1);
     expect(models).toEqual([
       {
-        id: "grok-4.6",
-        name: "grok-4.6",
+        id: "xai/grok-4.6",
+        name: "xai/grok-4.6",
         reasoning: true,
         input: ["text", "image"],
         supportsTools: true,
@@ -54,8 +56,35 @@ describe("DurinDoor model mapping", () => {
         contextWindow: 500_000,
         maxTokens: 128_000,
         compat: { thinkingFormat: "openai" },
+        thinking: {
+          mode: "effort",
+          efforts: ["minimal", "low", "medium", "high", "xhigh"],
+          requiresEffort: true,
+        },
       },
     ]);
+  });
+
+  it("keeps Chat Completions wire format while mapping upstream effort levels", () => {
+    const { models } = mapDurinDoorModels([
+      {
+        id: "cc/claude-opus-5",
+        capabilities: {
+          reasoning: true,
+          thinkingFormat: "claude-adaptive",
+          thinkingCanDisable: true,
+          thinkingRange: null,
+          contextWindow: 1_000_000,
+          maxOutput: 128_000,
+        },
+      },
+    ]);
+
+    expect(models[0]).toMatchObject({
+      id: "cc/claude-opus-5",
+      compat: { thinkingFormat: "openai" },
+      thinking: { mode: "effort", efforts: ["low", "medium", "high", "max"], requiresEffort: false },
+    });
   });
 
   it("skips malformed entries and non-positive output limits", () => {
@@ -120,6 +149,32 @@ describe("DurinDoor extension lifecycle", () => {
       await expect(state.handlers.get("session_start")?.({}, {})).resolves.toBeUndefined();
       expect(state.registrations).toHaveLength(0);
       expect(state.warnings).toHaveLength(1);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("registers provider-qualified gateway models through Chat Completions", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () =>
+      new Response(
+        '{"data":[{"id":"cx/gpt-5.6-sol","capabilities":{"reasoning":true,"thinkingFormat":"openai","thinkingCanDisable":true,"thinkingRange":null,"contextWindow":1050000,"maxOutput":128000}}]}',
+        { headers: { "content-type": "application/json" } },
+      );
+    try {
+      const state = fakePi({ "durindoor.apiKey": "test" });
+      durindoorExtension(state.pi as never);
+
+      await expect(state.handlers.get("session_start")?.({}, {})).resolves.toBeUndefined();
+      expect(state.registrations).toEqual([
+        [
+          "durindoor",
+          expect.objectContaining({
+            api: "openai-completions",
+            models: [expect.objectContaining({ id: "cx/gpt-5.6-sol", contextWindow: 1_050_000, maxTokens: 128_000 })],
+          }),
+        ],
+      ]);
     } finally {
       globalThis.fetch = originalFetch;
     }

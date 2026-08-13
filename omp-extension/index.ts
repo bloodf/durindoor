@@ -13,25 +13,56 @@ type OmpModel = {
   cost: { input: number; output: number; cacheRead: number; cacheWrite: number };
   contextWindow: number;
   maxTokens: number;
-  compat?: { thinkingFormat: "openai" | "openrouter" | "zai" | "qwen" | "qwen-chat-template" };
+  thinking?: {
+    mode: "effort";
+    efforts: readonly ("minimal" | "low" | "medium" | "high" | "xhigh" | "max")[];
+    requiresEffort?: boolean;
+  };
+  compat?: { thinkingFormat: "openai" | "openrouter" | "zai" | "kimi" | "qwen" | "qwen-chat-template" };
 };
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:11434/v1";
-const SUPPORTED_THINKING_FORMATS: Record<string, true> = {
-  openai: true,
-  openrouter: true,
-  zai: true,
-  qwen: true,
-  "qwen-chat-template": true,
-};
+const GATEWAY_THINKING_COMPAT: OmpModel["compat"] = { thinkingFormat: "openai" };
 
 function positiveNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
-function thinkingCompat(value: unknown): OmpModel["compat"] {
-  if (typeof value !== "string" || !SUPPORTED_THINKING_FORMATS[value]) return undefined;
-  return { thinkingFormat: value as NonNullable<OmpModel["compat"]>["thinkingFormat"] };
+/** omp sends OpenAI reasoning fields; DurinDoor translates them to each model's native thinking format. */
+function thinkingCompat(capabilities: Record<string, unknown>): OmpModel["compat"] {
+  return capabilities.reasoning === true ? GATEWAY_THINKING_COMPAT : undefined;
+}
+
+const THINKING_EFFORTS = {
+  openai: ["minimal", "low", "medium", "high", "xhigh"],
+  commandcode: ["low", "medium", "high", "xhigh", "max"],
+  "claude-adaptive": ["low", "medium", "high", "max"],
+  "claude-budget": ["low", "medium", "high", "xhigh", "max"],
+  "gemini-level": ["minimal", "low", "medium", "high"],
+  "gemini-budget": ["low", "medium", "high"],
+  zai: ["low"],
+  qwen: ["low", "medium", "high"],
+  kimi: ["low", "medium", "high", "max"],
+  deepseek: ["high", "max"],
+  minimax: ["low"],
+  hunyuan: ["low", "medium", "high"],
+  step: ["low", "medium", "high"],
+} as const;
+
+/** Maps DurinDoor's format-level effort surface; numeric budget clamping remains gateway-owned. */
+function thinkingConfig(capabilities: Record<string, unknown>): OmpModel["thinking"] {
+  if (capabilities.reasoning !== true) return undefined;
+  const efforts =
+    typeof capabilities.thinkingFormat === "string" && capabilities.thinkingFormat in THINKING_EFFORTS
+      ? THINKING_EFFORTS[capabilities.thinkingFormat as keyof typeof THINKING_EFFORTS]
+      : (["low", "medium", "high"] as const);
+  return {
+    mode: "effort",
+    efforts,
+    ...(typeof capabilities.thinkingCanDisable === "boolean" && {
+      requiresEffort: true,
+    }),
+  };
 }
 
 /** Maps DurinDoor capability metadata to omp's model budget and feature fields. */
@@ -59,7 +90,8 @@ export function mapDurinDoorModels(entries: unknown[]): { models: OmpModel[]; sk
       continue;
     }
 
-    const compat = thinkingCompat(capabilities.thinkingFormat);
+    const compat = thinkingCompat(capabilities);
+    const thinking = thinkingConfig(capabilities);
     models.push({
       id: entry.id,
       name: entry.id,
@@ -70,6 +102,7 @@ export function mapDurinDoorModels(entries: unknown[]): { models: OmpModel[]; sk
       contextWindow: capabilities.contextWindow,
       maxTokens: capabilities.maxOutput,
       ...(compat && { compat }),
+      ...(thinking && { thinking }),
     });
   }
 
@@ -109,6 +142,7 @@ async function refresh(pi: DurinDoorExtensionAPI): Promise<void> {
     pi.registerProvider("durindoor", {
       baseUrl,
       apiKey,
+      // omp always speaks Chat Completions to DurinDoor; gateway is the translation boundary for each upstream transport.
       api: "openai-completions",
       authHeader: Boolean(apiKey),
       models,

@@ -198,33 +198,51 @@ const LIVE_MODEL_RESOLVERS = {
     return models.length ? { models } : null;
   },
   "ollama-local": async (conn, guard) => {
-    const url = `${resolveOllamaLocalHost(conn)}/api/tags`;
+    const host = resolveOllamaLocalHost(conn);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
     try {
-      // Route through the connection proxy exactly like the embedding
-      // request path does, while keeping the SSRF guard: guardedProbeFetch
-      // validates the URL, the injected fetcher carries proxyOptions.
+      // /api/tags lists installed models but no served num_ctx. /api/ps is the
+      // authoritative live source for context_length; merge it when available.
       const psd = isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {};
       const proxyOptions = await resolveConnectionProxyConfig(psd);
       const proxiedFetch = (fetchUrl, init) => proxyAwareFetch(fetchUrl, init, proxyOptions || null);
-      const response = await guardedProbeFetch(url, {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-        cache: "no-store",
-        signal: controller.signal,
-      }, guard, proxiedFetch);
-      if (!response.ok) return null;
-      const data = await response.json();
-      const list = parseOpenAIStyleModels(data);
+      const fetchJson = async (path, required = false) => {
+        try {
+          const response = await guardedProbeFetch(`${host}${path}`, {
+            method: "GET",
+            headers: { "Content-Type": "application/json" },
+            cache: "no-store",
+            signal: controller.signal,
+          }, guard, proxiedFetch);
+          return response.ok ? response.json() : null;
+        } catch (error) {
+          if (required) throw error;
+          return null;
+        }
+      };
+      const tags = await fetchJson("/api/tags", true);
+      const list = parseOpenAIStyleModels(tags);
       if (!Array.isArray(list)) return null;
+      const running = parseOpenAIStyleModels(await fetchJson("/api/ps"));
+      const liveContexts = new Map(
+        running
+          .map((m) => [m?.name || m?.model, Number(m?.context_length)])
+          .filter(([id, contextWindow]) => typeof id === "string" && Number.isFinite(contextWindow) && contextWindow > 0),
+      );
       const models = list
         .map((m) => {
           if (!isRecord(m)) return null;
           const id = typeof m.id === "string" ? m.id : (typeof m.name === "string" ? m.name : "");
           if (!id) return null;
           const isEmbedding = isOllamaEmbeddingModel(m);
-          return { id, name: id, ...(isEmbedding ? { kind: "embedding" } : {}) };
+          const contextWindow = liveContexts.get(id);
+          return {
+            id,
+            name: id,
+            ...(isEmbedding ? { kind: "embedding" } : {}),
+            ...(contextWindow ? { capabilities: { contextWindow } } : {}),
+          };
         })
         .filter(Boolean);
       return models.length ? { models } : null;
@@ -920,6 +938,19 @@ async function buildModelsListImpl(kindFilter, guard) {
       const alias = PROVIDER_ID_TO_ALIAS[providerId] ?? getProviderAlias(providerId) ?? providerId;
       addStaticProviderModels(providerId, alias);
     }
+  }
+
+  /**
+   * Final catalog boundary: dynamic/custom metadata can override static caps,
+   * so omit structurally impossible ceilings after every source is merged.
+   * Source registry objects stay unchanged for separate vendor verification.
+   */
+  for (const model of models) {
+    const caps = model?.capabilities;
+    if (!Number.isFinite(caps?.contextWindow) || !Number.isFinite(caps?.maxOutput)) continue;
+    if (caps.maxOutput < caps.contextWindow) continue;
+    model.capabilities = { ...caps, maxOutput: undefined };
+    delete model.max_completion_tokens;
   }
 
   const dedupedModels = [];

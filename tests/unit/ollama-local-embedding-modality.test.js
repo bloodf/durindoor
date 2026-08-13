@@ -116,6 +116,52 @@ describe("ollama-local embedding model discovery (#media-ollama-embeddings)", ()
     expect(models.some((m) => m.id === "ollama-local/phi4")).toBe(false);
   });
 
+  it("uses /api/ps context_length for a currently served model", async () => {
+    getProviderConnections.mockResolvedValue([{
+      id: "conn-local",
+      provider: "ollama-local",
+      isActive: true,
+      apiKey: "local",
+      providerSpecificData: { baseUrl: "http://localhost:11434" },
+    }]);
+    global.fetch = vi.fn(async (url) => ({
+      ok: true,
+      json: async () => url.endsWith("/api/ps")
+        ? { models: [{ name: "llama3.2:1b", context_length: 8_192 }] }
+        : { models: [{ name: "llama3.2:1b", details: { family: "llama" } }] },
+    }));
+
+    const models = await buildModelsList(["llm"], "block-metadata");
+    const llama = models.find((model) => model.id === "ollama-local/llama3.2:1b");
+
+    expect(llama.capabilities.contextWindow).toBe(8_192);
+    expect(global.fetch).toHaveBeenCalledWith(
+      "http://localhost:11434/api/ps",
+      expect.objectContaining({ method: "GET", redirect: "manual" }),
+    );
+  });
+
+  it("keeps /api/tags discovery when /api/ps is unavailable", async () => {
+    getProviderConnections.mockResolvedValue([{
+      id: "conn-local",
+      provider: "ollama-local",
+      isActive: true,
+      apiKey: "local",
+      providerSpecificData: { baseUrl: "http://localhost:11434" },
+    }]);
+    global.fetch = vi.fn(async (url) => {
+      if (url.endsWith("/api/ps")) throw new Error("not supported");
+      return {
+        ok: true,
+        json: async () => ({ models: [{ name: "llama3.2:1b", details: { family: "llama" } }] }),
+      };
+    });
+
+    const models = await buildModelsList(["llm"], "block-metadata");
+
+    expect(models.some((model) => model.id === "ollama-local/llama3.2:1b")).toBe(true);
+  });
+
   it("classifies an explicitly enabled bge-m3 as embedding (enabledModels set)", async () => {
     getProviderConnections.mockResolvedValue([
       {

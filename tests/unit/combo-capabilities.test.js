@@ -109,13 +109,14 @@ describe("aggregateComboCapabilities — context/output limits", () => {
     expect(caps.contextWindow).toBe(262144);
   });
 
-  it("maxOutput is the maximum across all models", () => {
-    // mimo-v2.5: 131072; kimi-k2.5 (*kimi*k2* pattern): 262144
+  it("maxOutput is the maximum documented ceiling across all models", () => {
+    // Kimi K2.x publishes a 32K default but no ceiling, so only MiMo's
+    // documented 131,072-token ceiling contributes to the aggregate.
     const caps = aggregateComboCapabilities([
       "opencode-go/mimo-v2.5",
       "opencode-go/kimi-k2.5",
     ]);
-    expect(caps.maxOutput).toBe(262144);
+    expect(caps.maxOutput).toBe(131072);
   });
 });
 

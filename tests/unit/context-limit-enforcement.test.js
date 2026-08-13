@@ -59,7 +59,9 @@ describe("resolveModelLimits", () => {
         const limits = resolveModelLimits(providerId, id);
         if (!limits.known) continue;
         expect(limits.contextWindow, `${providerId}/${id} contextWindow`).toBeGreaterThan(0);
-        if (!(providerId === "xai" && id.toLowerCase().includes("grok"))) {
+        // Some vendors publish an output default but no maximum. Undefined is
+        // the honest value; any claimed ceiling must still be positive.
+        if (limits.maxOutput !== undefined) {
           expect(limits.maxOutput, `${providerId}/${id} maxOutput`).toBeGreaterThan(0);
         }
       }
@@ -87,7 +89,7 @@ describe("resolveModelLimits", () => {
     }
     expect(getCapabilitiesForModel("zai", "glm-4.6v")).toMatchObject({
       contextWindow: 128_000,
-      maxOutput: 64_000,
+      maxOutput: 32_768,
     });
   });
 

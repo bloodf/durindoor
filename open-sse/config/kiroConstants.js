@@ -55,6 +55,95 @@ export {
 export const KIRO_AGENTIC_SUFFIX = "-agentic";
 export const KIRO_THINKING_SUFFIX = "-thinking";
 
+export const KIRO_UNSUPPORTED_SCHEMA_KEYS = new Set([
+  "additionalProperties",
+  "anyOf",
+  "oneOf",
+  "allOf",
+  "not",
+  "$schema",
+  "$id",
+  "$ref",
+  "$defs",
+  "definitions",
+  "if",
+  "then",
+  "else",
+  "unevaluatedProperties",
+  "unevaluatedItems",
+  "contentEncoding",
+  "contentMediaType",
+]);
+
+function cleanKiroSchemaValue(value) {
+  if (Array.isArray(value)) return value.map(cleanKiroSchemaValue);
+  if (!value || typeof value !== "object") return value;
+
+  const cleaned = {};
+  for (const [key, child] of Object.entries(value)) {
+    if ((key === "properties" || key === "patternProperties")
+      && child && typeof child === "object" && !Array.isArray(child)) {
+      cleaned[key] = Object.fromEntries(
+        Object.entries(child).map(([name, schema]) => [name, cleanKiroSchemaValue(schema)])
+      );
+    } else if (!KIRO_UNSUPPORTED_SCHEMA_KEYS.has(key)) {
+      cleaned[key] = cleanKiroSchemaValue(child);
+    }
+  }
+  return cleaned;
+}
+
+/**
+ * Convert a client JSON Schema into Kiro's supported object-schema subset.
+ * Root combinators are flattened so their properties survive; unsupported
+ * schema keywords are removed recursively without treating property names as keywords.
+ */
+export function normalizeKiroToolSchema(schema) {
+  const source = schema && typeof schema === "object"
+    ? structuredClone(schema)
+    : {};
+  const rootBranches = ["allOf", "oneOf", "anyOf"].map((keyword) => [
+    keyword,
+    Array.isArray(source[keyword]) ? source[keyword] : [],
+  ]);
+  for (const [keyword] of rootBranches) delete source[keyword];
+
+  const cleaned = cleanKiroSchemaValue(source);
+  cleaned.type = "object";
+  if (!cleaned.properties || typeof cleaned.properties !== "object" || Array.isArray(cleaned.properties)) {
+    cleaned.properties = {};
+  }
+
+  const required = new Set(Array.isArray(cleaned.required) ? cleaned.required : []);
+  for (const [keyword, schemas] of rootBranches) {
+    const branches = schemas.map(normalizeKiroToolSchema);
+    for (const branch of branches) {
+      for (const [name, property] of Object.entries(branch.properties)) {
+        if (!Object.hasOwn(cleaned.properties, name)) cleaned.properties[name] = property;
+      }
+    }
+
+    if (keyword === "allOf") {
+      for (const branch of branches) {
+        for (const name of branch.required || []) required.add(name);
+      }
+    } else if (branches.length > 0) {
+      const common = new Set(branches[0].required || []);
+      for (const branch of branches.slice(1)) {
+        for (const name of common) {
+          if (!(branch.required || []).includes(name)) common.delete(name);
+        }
+      }
+      for (const name of common) required.add(name);
+    }
+  }
+
+  cleaned.required = [...required].filter(
+    (name) => typeof name === "string" && Object.hasOwn(cleaned.properties, name)
+  );
+  return cleaned;
+}
+
 // Public default CodeWhisperer profile ARNs (us-east-1), keyed by auth method.
 // Used when an account cannot resolve its own profileArn. Builder ID and social
 // (Google/GitHub) sign-ins map to different shared profiles.

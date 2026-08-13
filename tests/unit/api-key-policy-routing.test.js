@@ -17,6 +17,10 @@ vi.mock("../../src/sse/services/model.js", () => ({ getModelInfo: mocks.getModel
 vi.mock("../../src/sse/services/auth.js", () => ({
   extractApiKey: vi.fn(() => "sk-test"),
   evaluateApiKeyAuth: mocks.evaluateApiKeyAuth,
+  resolveClientApiKey: async (request, options) => ({
+    apiKey: "sk-test",
+    auth: await mocks.evaluateApiKeyAuth("sk-test", { ...options, request }),
+  }),
   getProviderCredentials: mocks.getProviderCredentials,
   getProviderCredentialsWithQuotaPreflight: vi.fn(),
   markAccountUnavailable: vi.fn(),
@@ -84,7 +88,7 @@ describe("resolved-target API-key policy routing", () => {
     const response = await handleModerations(request("/v1/moderations", { model: "friendly-alias", input: "hello" }));
 
     expect(response.status).toBe(403);
-    expect(mocks.enforce).toHaveBeenCalledWith(expect.any(Request), "openai/friendly-alias-resolved");
+    expect(mocks.enforce).toHaveBeenCalledWith(expect.any(Request), "openai/friendly-alias-resolved", "sk-test");
     expect(mocks.moderationCore).not.toHaveBeenCalled();
     expect(mocks.record).not.toHaveBeenCalled();
   });

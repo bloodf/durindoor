@@ -110,7 +110,7 @@ function extractRealtimeKey(req) {
  * The realtime socket runs in plain Node (no alias resolution), so it cannot
  * import `src/sse/services/auth.js` directly. Instead we call a tiny Next-owned
  * bridge route (`/api/v1/realtime/auth`) that reuses the EXACT auth code the
- * HTTP chat path uses (`extractApiKey` + `evaluateApiKeyAuth` +
+ * HTTP chat path uses (`resolveClientApiKey` +
  * `getSettings().requireApiKey`). A bad/expired/missing-when-required key → 401.
  *
  * @param {object} opts

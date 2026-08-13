@@ -21,6 +21,7 @@ import { toOpenAIUsage } from "../../translator/concerns/usage.js";
 import { isCoherentNonStreamingResponse } from "../../utils/streamTerminal.js";
 import { PROVIDERS } from "../../config/providers.js";
 import { CLAUDE_BLOCK } from "../../translator/schema/blocks.js";
+import { applyReasoningVisibility } from "../../utils/reasoningVisibility.js";
 
 const GEMINI_FAMILY_FORMATS = new Set([
   FORMATS.GEMINI,
@@ -471,14 +472,9 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     translatedResponse.usage = filterUsageForFormat(addBufferToUsage(translatedResponse.usage), sourceFormat);
   }
 
-  // Preserve native and extracted reasoning for the explicitly configured M3
-  // OpenAI response policy. Other providers retain the existing cleanup.
-  if (!isClaudeMessageResponse && isOpenAIChatResponse && !inlineThinking.configured) {
-    for (const choice of translatedResponse.choices) {
-      if (choice?.message?.reasoning_content && choice.message.content) {
-        delete choice.message.reasoning_content;
-      }
-    }
+  // OpenAI reasoning is preserved unless the client or deployment explicitly opts out.
+  if (!isClaudeMessageResponse && isOpenAIChatResponse) {
+    applyReasoningVisibility(translatedResponse, clientRawRequest);
   }
 
   reqLogger.logConvertedResponse(translatedResponse);

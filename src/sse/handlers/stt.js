@@ -1,5 +1,5 @@
 import {
-  extractApiKey, evaluateApiKeyAuth,
+  resolveClientApiKey,
   getProviderCredentialsWithQuotaPreflight, markAccountUnavailable,
 } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
@@ -30,8 +30,9 @@ export async function handleStt(request) {
   log.request("POST", `/v1/audio/transcriptions | ${modelStr}`);
 
   const settings = await getSettings();
-  const apiKey = extractApiKey(request);
-  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true, request });
+  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
+    required: settings.requireApiKey === true,
+  });
   if (!apiKeyAuth.ok) return errorResponse(
     HTTP_STATUS.UNAUTHORIZED,
     apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
@@ -44,7 +45,7 @@ export async function handleStt(request) {
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
   const { provider, model } = modelInfo;
-  const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`);
+  const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (resolvedPolicyError) return resolvedPolicyError;
   // Audio bytes are not model tokens. Stage 1 records the successful request;
   // authoritative speech usage accounting is completed in the quota program.

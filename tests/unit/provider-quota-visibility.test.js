@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   filterQuotasByVisibility,
   getHiddenQuotaRows,
+  updateQuotaVisibility,
   parseQuotaData,
 } from "@/app/(dashboard)/dashboard/usage/components/ProviderLimits/utils.js";
 
@@ -51,5 +52,62 @@ describe("provider quota visibility", () => {
       codex: { hidden: ["gemini-pro-agent"] },
     };
     expect(filterQuotasByVisibility("antigravity", quotas, visibility)).toHaveLength(2);
+  });
+
+  it("isolates hidden rows per connection when writing visibility", () => {
+    const quotas = parseQuotaData("antigravity", data);
+    const visibility = updateQuotaVisibility(
+      {},
+      "connection-a",
+      "antigravity",
+      "claude-opus-4-6-thinking",
+      true,
+    );
+
+    expect(visibility).toEqual({
+      "connection-a": { hidden: ["claude-opus-4-6-thinking"] },
+    });
+    expect(
+      filterQuotasByVisibility("connection-a", quotas, visibility, "antigravity").map(
+        (quota) => quota.modelKey,
+      ),
+    ).toEqual(["gemini-pro-agent"]);
+    expect(
+      filterQuotasByVisibility("connection-b", quotas, visibility, "antigravity"),
+    ).toHaveLength(2);
+  });
+
+  it("preserves legacy hidden rows during the first connection write", () => {
+    const visibility = updateQuotaVisibility(
+      { antigravity: { hidden: ["gemini-pro-agent"] } },
+      "connection-a",
+      "antigravity",
+      "claude-opus-4-6-thinking",
+      true,
+    );
+
+    expect(visibility.antigravity.hidden).toEqual(["gemini-pro-agent"]);
+    expect(visibility["connection-a"].hidden).toEqual([
+      "gemini-pro-agent",
+      "claude-opus-4-6-thinking",
+    ]);
+  });
+
+  it("falls back to legacy provider-keyed hidden rows when connection state is absent", () => {
+    const quotas = parseQuotaData("antigravity", data);
+    const visibility = {
+      antigravity: { hidden: ["claude-opus-4-6-thinking"] },
+    };
+
+    expect(
+      filterQuotasByVisibility("connection-a", quotas, visibility, "antigravity").map(
+        (quota) => quota.modelKey,
+      ),
+    ).toEqual(["gemini-pro-agent"]);
+    expect(
+      getHiddenQuotaRows("connection-a", quotas, visibility, "antigravity").map(
+        (quota) => quota.modelKey,
+      ),
+    ).toEqual(["claude-opus-4-6-thinking"]);
   });
 });

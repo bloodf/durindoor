@@ -69,6 +69,23 @@ describe("Claude usage", () => {
     expect(Object.keys(headers)).not.toContain("anthropic-beta");
   });
 
+  it("coalesces concurrent OAuth quota polls for the same credential", async () => {
+    let resolveResponse;
+    proxyAwareFetch.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveResponse = resolve;
+      })
+    );
+
+    const first = getClaudeUsage("oauth-token-concurrent", null, "oauth");
+    const second = getClaudeUsage("oauth-token-concurrent", null, "oauth");
+
+    expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
+    resolveResponse(jsonResponse(oauthSuccessBody()));
+    const [firstUsage, secondUsage] = await Promise.all([first, second]);
+    expect(firstUsage).toEqual(secondUsage);
+  });
+
   it("returns cached quotas with stale markers on 429", async () => {
     proxyAwareFetch.mockResolvedValueOnce(jsonResponse(oauthSuccessBody()));
     await getClaudeUsage("oauth-token-2", null, "oauth");
@@ -83,12 +100,15 @@ describe("Claude usage", () => {
     expect(usage.message).toBeUndefined();
   });
 
-  it("returns 429 message when no cached quota exists", async () => {
+  it("returns exact rate-limit error and suppresses polls during cooldown without cached quotas", async () => {
     proxyAwareFetch.mockResolvedValueOnce(jsonResponse({ error: "rate_limited" }, 429));
-    const usage = await getClaudeUsage("oauth-token-3", null, "oauth");
 
-    expect(usage.message).toBe("Rate limited, try again later.");
-    expect(usage.quotas).toBeUndefined();
+    const first = await getClaudeUsage("oauth-token-3", null, "oauth");
+    const second = await getClaudeUsage("oauth-token-3", null, "oauth");
+
+    expect(first).toEqual({ message: "Rate limited, try again later." });
+    expect(second).toEqual({ message: "Rate limited, try again later." });
+    expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
   });
 
   it("returns cached quotas with stale markers on 5xx", async () => {
@@ -113,16 +133,56 @@ describe("Claude usage", () => {
     expect(usage.quotas).toBeUndefined();
   });
 
-  it("falls back to legacy admin API for non-consumer OAuth 401 errors", async () => {
-    proxyAwareFetch
-      .mockResolvedValueOnce(jsonResponse({ error: { type: "unsupported_token_type", message: "OAuth token required" } }, 401))
-      .mockResolvedValueOnce(jsonResponse(legacySettingsBody()))
-      .mockResolvedValueOnce(jsonResponse(legacySuccessBody()));
+  it("treats every OAuth 401 as credential expiry without legacy fallback", async () => {
+    proxyAwareFetch.mockResolvedValueOnce(
+      jsonResponse({ error: { type: "unsupported_token_type", message: "OAuth token required" } }, 401)
+    );
 
     const usage = await getClaudeUsage("oauth-token-6", null, "oauth");
 
+    expect(usage.message).toBe(
+      "Claude authentication expired (401). Re-authorize or refresh the connection."
+    );
+    expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports an expired consumer OAuth credential on 401", async () => {
+    proxyAwareFetch.mockResolvedValueOnce(
+      jsonResponse({ error: { type: "invalid_token", message: "Invalid bearer token" } }, 401)
+    );
+
+    const usage = await getClaudeUsage("oauth-token-expired", null, "oauth");
+
+    expect(usage).toEqual({
+      message: "Claude authentication expired (401). Re-authorize or refresh the connection.",
+    });
+    expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([404, 405])("falls back to the legacy usage endpoint on OAuth HTTP %i", async (status) => {
+    proxyAwareFetch
+      .mockResolvedValueOnce(jsonResponse({ error: "unsupported_endpoint" }, status))
+      .mockResolvedValueOnce(jsonResponse(legacySettingsBody()))
+      .mockResolvedValueOnce(jsonResponse(legacySuccessBody()));
+
+    const usage = await getClaudeUsage(`oauth-token-legacy-${status}`, null, "oauth");
+
     expect(usage.plan).toBe("Pro");
     expect(usage.quotas).toMatchObject(legacySuccessBody());
+    expect(proxyAwareFetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("returns the OAuth error without legacy fallback on generic HTTP 400", async () => {
+    proxyAwareFetch.mockResolvedValueOnce(
+      jsonResponse({ error: { type: "invalid_request_error", message: "Malformed usage request" } }, 400)
+    );
+
+    const usage = await getClaudeUsage("oauth-token-generic-400", null, "oauth");
+
+    expect(usage).toEqual({
+      message: "Claude connected. Unable to fetch usage: Malformed usage request",
+    });
+    expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
   });
 
   it("does not fall back to legacy API for expired consumer OAuth 403", async () => {

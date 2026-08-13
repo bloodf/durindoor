@@ -2,8 +2,7 @@ import {
   getProviderCredentialsWithQuotaPreflight,
   markAccountUnavailable,
   clearAccountError,
-  extractApiKey,
-  evaluateApiKeyAuth,
+  resolveClientApiKey,
 } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
@@ -36,9 +35,10 @@ export async function handleImageEdit(request) {
   const url = new URL(request.url);
   log.request("POST", `${url.pathname} | ${modelStr}`);
 
-  const apiKey = extractApiKey(request);
   const settings = await getSettings();
-  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true, request });
+  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
+    required: settings.requireApiKey === true,
+  });
   if (!apiKeyAuth.ok) return errorResponse(
     HTTP_STATUS.UNAUTHORIZED,
     apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
@@ -61,7 +61,7 @@ async function handleSingleModelImageEdit(modelStr, formData, request, apiKey) {
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
   const { provider, model } = modelInfo;
-  const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`);
+  const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (resolvedPolicyError) return resolvedPolicyError;
   const prompt = formData.get("prompt");
   const estimatedTokens = prompt ? String(prompt).length / 4 : 0;

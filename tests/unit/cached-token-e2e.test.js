@@ -82,7 +82,7 @@ describe("cached-token end-to-end (persist + aggregate + cost)", () => {
     expect(hist[0].tokens.cached_tokens).toBe(600);
   });
 
-  it("keeps same-prefix API keys separated in usage stats", async () => {
+  it("keeps unknown API keys distinct with stable salted grouping identities", async () => {
     const keyA = "sk-sameprefix-visible-a";
     const keyB = "sk-sameprefix-visible-b";
 
@@ -111,14 +111,22 @@ describe("cached-token end-to-end (persist + aggregate + cost)", () => {
     expect(new Set(rows.map(([key]) => key)).size).toBe(2);
     expect(new Set(rows.map(([, row]) => row.apiKeyKey)).size).toBe(2);
     expect(new Set(rows.map(([, row]) => row.keyName)).size).toBe(2);
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const adapter = await getAdapter();
     for (const [key, row] of rows) {
-      expect(key).toMatch(/^api-key:deleted-[12]\|gpt-5\.5\|codex$/);
+      expect(key).toMatch(/^api-key:hmac-sha256:[a-f0-9]{64}\|gpt-5\.5\|codex$/);
       expect(key).not.toContain(keyA);
       expect(key).not.toContain(keyB);
       expect(row.apiKeyMasked).toBe("***");
-      expect(row.apiKeyKey).toMatch(/^api-key:deleted-[12]$/);
+      expect(row.apiKeyKey).toMatch(/^api-key:hmac-sha256:[a-f0-9]{64}$/);
       expect(row.keyName).toMatch(/^Deleted API key [12]$/);
       expect(row.requests).toBe(1);
     }
+    expect(adapter.get(`SELECT value FROM _meta WHERE key = 'usageIdentitySalt'`)?.value).toMatch(/^[a-f0-9]{64}$/);
+
+    const repeatedKeys = Object.keys((await db.getUsageStats("24h")).byApiKey)
+      .filter((key) => key.endsWith("|gpt-5.5|codex"))
+      .sort();
+    expect(repeatedKeys).toEqual(rows.map(([key]) => key).sort());
   });
 });

@@ -1,24 +1,16 @@
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 
-type DurinDoorExtensionAPI = ExtensionAPI & {
-  config?: { get(key: string): unknown };
-};
+type ProviderModel = NonNullable<Parameters<ExtensionAPI["registerProvider"]>[1]["models"]>[number];
+type OmpModel = ProviderModel & { supportsTools: boolean };
+type Effort = NonNullable<NonNullable<ProviderModel["thinking"]>["efforts"]>[number];
 
-type OmpModel = {
-  id: string;
-  name: string;
-  reasoning: boolean;
-  input: ("text" | "image")[];
-  supportsTools: boolean;
-  cost: { input: number; output: number; cacheRead: number; cacheWrite: number };
-  contextWindow: number;
-  maxTokens: number;
-  thinking?: {
-    mode: "effort";
-    efforts: readonly ("minimal" | "low" | "medium" | "high" | "xhigh" | "max")[];
-    requiresEffort?: boolean;
-  };
-  compat?: { thinkingFormat: "openai" | "openrouter" | "zai" | "kimi" | "qwen" | "qwen-chat-template" };
+const EFFORT = {
+  minimal: "minimal" as Effort,
+  low: "low" as Effort,
+  medium: "medium" as Effort,
+  high: "high" as Effort,
+  xhigh: "xhigh" as Effort,
+  max: "max" as Effort,
 };
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:11434/v1";
@@ -28,39 +20,45 @@ function positiveNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
+
 /** omp sends OpenAI reasoning fields; DurinDoor translates them to each model's native thinking format. */
 function thinkingCompat(capabilities: Record<string, unknown>): OmpModel["compat"] {
   return capabilities.reasoning === true ? GATEWAY_THINKING_COMPAT : undefined;
 }
 
-const THINKING_EFFORTS = {
-  openai: ["minimal", "low", "medium", "high", "xhigh"],
-  commandcode: ["low", "medium", "high", "xhigh", "max"],
-  "claude-adaptive": ["low", "medium", "high", "max"],
-  "claude-budget": ["low", "medium", "high", "xhigh", "max"],
-  "gemini-level": ["minimal", "low", "medium", "high"],
-  "gemini-budget": ["low", "medium", "high"],
-  zai: ["low"],
-  qwen: ["low", "medium", "high"],
-  kimi: ["low", "medium", "high", "max"],
-  deepseek: ["high", "max"],
-  minimax: ["low"],
-  hunyuan: ["low", "medium", "high"],
-  step: ["low", "medium", "high"],
-} as const;
+const THINKING_EFFORTS: Record<string, readonly Effort[]> = {
+  openai: [EFFORT.minimal, EFFORT.low, EFFORT.medium, EFFORT.high, EFFORT.xhigh],
+  commandcode: [EFFORT.low, EFFORT.medium, EFFORT.high, EFFORT.xhigh, EFFORT.max],
+  "claude-adaptive": [EFFORT.low, EFFORT.medium, EFFORT.high, EFFORT.max],
+  "claude-budget": [EFFORT.low, EFFORT.medium, EFFORT.high, EFFORT.xhigh, EFFORT.max],
+  "gemini-level": [EFFORT.minimal, EFFORT.low, EFFORT.medium, EFFORT.high],
+  "gemini-budget": [EFFORT.low, EFFORT.medium, EFFORT.high],
+  zai: [EFFORT.low],
+  qwen: [EFFORT.low, EFFORT.medium, EFFORT.high],
+  kimi: [EFFORT.low, EFFORT.medium, EFFORT.high, EFFORT.max],
+  deepseek: [EFFORT.high, EFFORT.max],
+  minimax: [EFFORT.low],
+  hunyuan: [EFFORT.low, EFFORT.medium, EFFORT.high],
+  step: [EFFORT.low, EFFORT.medium, EFFORT.high],
+};
 
-/** Maps DurinDoor's format-level effort surface; numeric budget clamping remains gateway-owned. */
-function thinkingConfig(capabilities: Record<string, unknown>): OmpModel["thinking"] {
+/** Maps exact gateway model contracts before falling back to format-level effort support. */
+function thinkingConfig(modelId: string, capabilities: Record<string, unknown>): OmpModel["thinking"] {
   if (capabilities.reasoning !== true) return undefined;
+  const bareModelId = modelId.toLowerCase().split("/").at(-1);
   const efforts =
-    typeof capabilities.thinkingFormat === "string" && capabilities.thinkingFormat in THINKING_EFFORTS
-      ? THINKING_EFFORTS[capabilities.thinkingFormat as keyof typeof THINKING_EFFORTS]
-      : (["low", "medium", "high"] as const);
+    bareModelId === "kimi-k3"
+      ? [EFFORT.max]
+      : bareModelId?.includes("gpt-5.6-sol") || bareModelId?.includes("gpt-5.6-terra") || bareModelId?.includes("gpt-5.6-luna")
+        ? [EFFORT.minimal, EFFORT.low, EFFORT.medium, EFFORT.high, EFFORT.xhigh, EFFORT.max]
+        : typeof capabilities.thinkingFormat === "string" && capabilities.thinkingFormat in THINKING_EFFORTS
+          ? THINKING_EFFORTS[capabilities.thinkingFormat]
+          : [EFFORT.low, EFFORT.medium, EFFORT.high];
   return {
     mode: "effort",
     efforts,
     ...(typeof capabilities.thinkingCanDisable === "boolean" && {
-      requiresEffort: true,
+      requiresEffort: !capabilities.thinkingCanDisable,
     }),
   };
 }
@@ -84,14 +82,15 @@ export function mapDurinDoorModels(entries: unknown[]): { models: OmpModel[]; sk
       continue;
     }
 
-    const capabilities = entry.capabilities;
+    const capabilities = entry.capabilities as Record<string, unknown>;
+
     if (!positiveNumber(capabilities.contextWindow) || !positiveNumber(capabilities.maxOutput)) {
       skipped++;
       continue;
     }
 
     const compat = thinkingCompat(capabilities);
-    const thinking = thinkingConfig(capabilities);
+    const thinking = thinkingConfig(entry.id, capabilities);
     models.push({
       id: entry.id,
       name: entry.id,
@@ -109,16 +108,17 @@ export function mapDurinDoorModels(entries: unknown[]): { models: OmpModel[]; sk
   return { models, skipped };
 }
 
-function configuredString(pi: DurinDoorExtensionAPI, key: string, fallback?: string): string | undefined {
-  const value = pi.config?.get(key);
+/** Reads non-empty DurinDoor settings from omp's process environment without exposing secret material. */
+function environmentString(key: "DURINDOOR_BASE_URL" | "DURINDOOR_API_KEY", fallback?: string): string | undefined {
+  const value = process.env[key];
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 /** Fetches current gateway metadata and atomically replaces omp's in-memory DurinDoor provider. */
-async function refresh(pi: DurinDoorExtensionAPI): Promise<void> {
-
+async function refresh(pi: ExtensionAPI): Promise<void> {
   try {
-    const baseUrl = configuredString(pi, "durindoor.baseUrl", DEFAULT_BASE_URL)!;
-    const apiKey = configuredString(pi, "durindoor.apiKey");
+    const baseUrl = environmentString("DURINDOOR_BASE_URL", DEFAULT_BASE_URL)!;
+    const apiKey = environmentString("DURINDOOR_API_KEY");
+    pi.logger.debug("DurinDoor API key configuration", { found: Boolean(apiKey) });
     const response = await fetch(`${baseUrl.replace(/\/+$/, "")}/models`, {
       headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,
     });
@@ -141,10 +141,11 @@ async function refresh(pi: DurinDoorExtensionAPI): Promise<void> {
     }
     pi.registerProvider("durindoor", {
       baseUrl,
-      apiKey,
+      // omp's OpenAI transport recognizes N/A as its no-auth sentinel and omits Authorization.
+      apiKey: apiKey ?? "N/A",
+      ...(apiKey && { authHeader: true }),
       // omp always speaks Chat Completions to DurinDoor; gateway is the translation boundary for each upstream transport.
       api: "openai-completions",
-      authHeader: Boolean(apiKey),
       models,
     });
     pi.logger.info("DurinDoor models refreshed", { registered: models.length, skipped });
@@ -156,10 +157,9 @@ async function refresh(pi: DurinDoorExtensionAPI): Promise<void> {
 }
 
 export default function durindoorExtension(pi: ExtensionAPI): void {
-  const api = pi as DurinDoorExtensionAPI;
-  pi.on("session_start", async () => refresh(api));
+  pi.on("session_start", async () => refresh(pi));
   pi.registerCommand("durindoor-refresh", {
     description: "Refresh models from DurinDoor",
-    handler: async () => refresh(api),
+    handler: async () => refresh(pi),
   });
 }

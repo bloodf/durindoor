@@ -2,8 +2,7 @@ import {
   getProviderCredentialsWithQuotaPreflight,
   markAccountUnavailable,
   clearAccountError,
-  extractApiKey,
-  evaluateApiKeyAuth,
+  resolveClientApiKey,
 } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
@@ -34,16 +33,15 @@ export async function handleEmbeddings(request) {
 
   log.request("POST", `${url.pathname} | ${modelStr}`);
 
-  // Log API key (masked)
-  const apiKey = extractApiKey(request);
+  const settings = await getSettings();
+  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
+    required: settings.requireApiKey === true,
+  });
   if (apiKey) {
     log.debug("AUTH", `API Key: ${log.maskKey(apiKey)}`);
   } else {
     log.debug("AUTH", "No API key provided (local mode)");
   }
-
-  const settings = await getSettings();
-  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true, request });
   if (!apiKeyAuth.ok) {
     if (apiKeyAuth.reason === "missing") {
       log.warn("AUTH", "Missing API key (requireApiKey=true)");
@@ -70,7 +68,7 @@ export async function handleEmbeddings(request) {
   }
 
   const { provider, model } = modelInfo;
-  const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`);
+  const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (resolvedPolicyError) return resolvedPolicyError;
   const estimatedTokens = JSON.stringify(body.input).length / 4;
 

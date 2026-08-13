@@ -2,8 +2,7 @@ import {
   getProviderCredentialsWithQuotaPreflight,
   markAccountUnavailable,
   clearAccountError,
-  extractApiKey,
-  evaluateApiKeyAuth,
+  resolveClientApiKey,
 } from "../services/auth.js";
 import { getSettings, getApiKeyByKey } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
@@ -37,9 +36,10 @@ export async function handleImageGeneration(request) {
   const binaryOutput = url.searchParams.get("response_format") === "binary";
   const modelStr = body.model;
 
-  const apiKey = extractApiKey(request);
   const settings = await getSettings();
-  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true, request });
+  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
+    required: settings.requireApiKey === true,
+  });
   if (!apiKeyAuth.ok) return errorResponse(
     HTTP_STATUS.UNAUTHORIZED,
     apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
@@ -92,7 +92,7 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, { wantsSt
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
   const { provider, model } = modelInfo;
-  const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`);
+  const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (resolvedPolicyError) return resolvedPolicyError;
   const estimatedTokens = String(body.prompt || "").length / 4;
 

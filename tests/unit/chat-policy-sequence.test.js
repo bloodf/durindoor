@@ -33,6 +33,7 @@ vi.mock("../../src/sse/services/auth.js", () => ({
   clearAccountError: vi.fn(),
   extractApiKey: vi.fn(() => "sk-test"),
   evaluateApiKeyAuth: vi.fn(async () => ({ ok: true, stored: true })),
+  resolveClientApiKey: vi.fn(async () => ({ apiKey: "sk-test", auth: { ok: true, stored: true } })),
 }));
 vi.mock("../../src/sse/services/apiKeyPolicy.js", () => ({
   enforceApiKeyModelPolicy: mocks.enforceApiKeyModelPolicy,
@@ -98,6 +99,7 @@ describe("chat policy enforcement sequence", () => {
     expect(mocks.enforceApiKeyModelPolicy).toHaveBeenCalledWith(
       expect.any(Request),
       "openai/gpt-4o",
+      "sk-test",
     );
   });
 

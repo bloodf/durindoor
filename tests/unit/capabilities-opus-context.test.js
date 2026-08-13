@@ -33,6 +33,18 @@ describe("Claude Opus 1M context capabilities", () => {
     });
   }
 
+  it("resolves every Claude 4.6+ pattern variant to 1M context and 128K output", () => {
+    for (const model of [
+      "claude-opus-4.6-preview",
+      "claude-opus-4.7-fast",
+      "claude-opus-4.8-preview",
+      "claude-sonnet-4.6-preview",
+      "claude-sonnet-4.7-fast",
+    ]) {
+      expect(getCapabilitiesForModel("cc", model)).toMatchObject(expected);
+    }
+  });
+
   it("keeps the older Opus 4.5 at the standard 200k context", () => {
     expect(getCapabilitiesForModel("cc", "claude-opus-4-5-20251101").contextWindow).toBe(200000);
   });

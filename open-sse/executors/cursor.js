@@ -25,6 +25,7 @@ import {
 } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import zlib from "zlib";
+import { createRequire } from "module";
 
 // Detect cloud environment
 const isCloudEnv = () => {
@@ -33,11 +34,15 @@ const isCloudEnv = () => {
   return false;
 };
 
-// Lazy import http2 (only in Node.js environment)
+/**
+ * Loads Node's HTTP/2 binding synchronously so CJS-mode transpilers do not
+ * inherit a top-level await from this ESM module.
+ */
 let http2 = null;
 if (!isCloudEnv()) {
   try {
-    http2 = await import("http2");
+    const require = createRequire(import.meta.url);
+    http2 = require("http2");
   } catch {
     // http2 not available
   }

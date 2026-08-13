@@ -1,5 +1,5 @@
 import {
-  extractApiKey, evaluateApiKeyAuth,
+  resolveClientApiKey,
   getProviderCredentialsWithQuotaPreflight, markAccountUnavailable,
 } from "../services/auth.js";
 import { getSettings, getApiKeyByKey } from "@/lib/localDb";
@@ -35,8 +35,9 @@ export async function handleTts(request) {
   log.request("POST", `${url.pathname} | ${modelStr} | format=${responseFormat}${language ? ` | lang=${language}` : ""}`);
 
   const settings = await getSettings();
-  const apiKey = extractApiKey(request);
-  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true, request });
+  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
+    required: settings.requireApiKey === true,
+  });
   if (!apiKeyAuth.ok) return errorResponse(
     HTTP_STATUS.UNAUTHORIZED,
     apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
@@ -89,7 +90,7 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, re
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
   const { provider, model } = modelInfo;
-  const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`);
+  const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (resolvedPolicyError) return resolvedPolicyError;
   const estimatedTokens = String(body.input).length / 4;
   log.info("ROUTING", `Provider: ${provider}, Voice: ${model}`);

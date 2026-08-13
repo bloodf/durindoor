@@ -5,8 +5,7 @@ import {
   projectProviderCredentials,
   markAccountUnavailable,
   clearAccountError,
-  extractApiKey,
-  evaluateApiKeyAuth,
+  resolveClientApiKey,
   isProviderConnectionModelLocked,
   providerAllowsPublicNoAuthFallback,
 } from "../services/auth.js";
@@ -24,7 +23,7 @@ import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
 import { applyVisionBridgeReroute } from "open-sse/services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
-import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
+import { authErrorResponse, errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { isLocalStreamLifecycleError } from "open-sse/utils/streamLifecycle.js";
 import {
   getComboModelQuotaHealth,
@@ -37,7 +36,7 @@ import { resolveTokenSaverEnabled } from "open-sse/rtk/index.js";
 import { HTTP_STATUS, COMBO_MODEL_TIMEOUT_MS } from "open-sse/config/runtimeConfig.js";
 import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
 import { detectFormat } from "open-sse/services/provider.js";
-import { isAntigravityCapacityError } from "open-sse/services/accountFallback.js";
+import { isAntigravityCapacityError, isRequestReplayBufferError } from "open-sse/services/accountFallback.js";
 import { resolveClientSessionId } from "open-sse/utils/sessionManager.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials } from "../services/tokenRefresh.js";
@@ -319,27 +318,22 @@ export async function handleChat(request, clientRawRequest = null) {
 
   // Request summary is emitted as the unified "▶" line in chatCore (has fmt/thinking/account)
 
-  // Log API key (masked)
-  const authHeader = request.headers.get("Authorization");
-  const apiKey = extractApiKey(request);
-  if (authHeader && apiKey) {
-    const masked = log.maskKey(apiKey);
-    log.debug("AUTH", `API Key: ${masked}`);
+  const settings = await getSettings();
+  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
+    required: settings.requireApiKey === true,
+  });
+  if (apiKey) {
+    log.debug("AUTH", `API Key: ${log.maskKey(apiKey)}`);
   } else {
     log.debug("AUTH", "No API key provided (local mode)");
   }
-
-  // Stored credentials are always validated; local mode only permits unknown
-  // placeholders when API-key enforcement is disabled.
-  const settings = await getSettings();
-  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true, request });
   if (!apiKeyAuth.ok) {
     if (apiKeyAuth.reason === "missing") {
       log.warn("AUTH", "Missing API key (requireApiKey=true)");
-      return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
+      return authErrorResponse(clientRawRequest.endpoint, "Missing API key");
     }
     log.warn("AUTH", "Invalid API key");
-    return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
+    return authErrorResponse(clientRawRequest.endpoint, "Invalid API key");
   }
 
   // Per-key combo access control. Retain the authenticated record so local
@@ -705,7 +699,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
   // Enforce per-API-key model policy against the resolved underlying model when
   // the request started as a combo; the top-level combo name is not a model id.
-  const policyError2 = await enforceApiKeyModelPolicy(request, `${provider}/${model}`);
+  const policyError2 = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (policyError2) return policyError2;
 
   // Vision Bridge (#6640): after policy passes, resolve custom capabilities and
@@ -720,7 +714,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       : null;
     const vb = applyVisionBridgeReroute({ body, modelStr, settings, capabilities: singleModelCaps, targetCapabilities: visionTargetCaps });
     if (vb.rerouted) {
-      const policyError = await enforceApiKeyModelPolicy(request, vb.modelStr);
+      const policyError = await enforceApiKeyModelPolicy(request, vb.modelStr, apiKey);
       if (policyError) {
         log.warn("CHAT", `Vision Bridge target "${vb.toModel}" denied by API key policy; keeping "${modelStr}"`);
       } else {
@@ -816,6 +810,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   let lastStatus = null;
   let antigravityCapacitySweeps = 0;
   let totalAttempts = 0;
+  let requestReplayConnectionId = null;
+  let requestReplayAttempted = false;
   const providerAlias = PROVIDER_ID_TO_ALIAS[provider] || provider;
   const upstreamModel = getModelUpstreamId(providerAlias, model);
   const quotaFamily = getModelQuotaFamily(providerAlias, model);
@@ -838,7 +834,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         modelCandidates,
         quotaFamily,
         sessionId: routingSessionId,
-        preferredConnectionId,
+        preferredConnectionId: preferredConnectionId || requestReplayConnectionId,
       });
     } catch (error) {
       if (error?.name === "AbortError" || requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
@@ -1067,6 +1063,13 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     // local stream lifecycle event, NOT a provider failure. Return without cooling
     // down the account or accruing fallback state (OmniRoute #7907/#7908).
     if (requestAborted(request, requestSignal) || result.status === 499 || isLocalStreamLifecycleError(result.error)) return result.response;
+    if (!requestReplayAttempted && isRequestReplayBufferError(result.status, result.error)) {
+      requestReplayAttempted = true;
+      requestReplayConnectionId = credentials.connectionId;
+      attemptCounts.delete(credentials.connectionId);
+      log.warn("RETRY", `ACC:${credentials.connectionName} replaying once after upstream request-buffer overflow`);
+      continue;
+    }
     if (preferredConnectionId) {
       // A pinned connection must not rotate. Return the failure response immediately.
       log.warn("CHAT", `[${provider}/${model}] pinned connection ${preferredConnectionId.slice(0, 8)} failed; pin is terminal`);

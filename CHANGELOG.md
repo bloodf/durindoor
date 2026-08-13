@@ -1,3 +1,18 @@
+# 3.15.1
+
+DurinDoor now refuses to start on a SQLite database whose structural check
+reports corruption. The guard runs after migrations and before the database
+adapter is accepted, preserving the original database for operator-led
+recovery instead of serving partially readable state.
+
+The regression fixture reproduces the production failure by corrupting the
+`quotaFetchStates` primary-key auto-index directly. Without the guard the
+database opens; with it, startup fails with SQLite's exact diagnostic.
+
+Recovery documentation now distinguishes the fast startup `quick_check` from
+full `integrity_check` and `foreign_key_check`, and notes that lightweight
+migration backups omit the auto-pruned `requestDetails` observability log.
+
 # 3.15.0
 
 Provider catalogs are now discovered live where the upstream supports it, 35 missing models were added, and six upstream 9Router fixes landed.

@@ -74,12 +74,17 @@ export function capabilitiesFromServiceKind(kind) {
 }
 
 
-/** First-party xAI and Grok CLI publish defaults, not generated-token ceilings. */
-function hasUnpublishedGrokOutput(provider, model) {
+/** Providers that publish an output default, but no enforceable ceiling. */
+function hasUnpublishedOutput(provider, model) {
   if (typeof model !== "string") return false;
   const id = model.toLowerCase();
-  return (provider === "xai" && id.includes("grok"))
-    || (provider === "grok-cli" && (id.includes("grok-build") || id.includes("grok-composer")));
+  if ((provider === "xai" && id.includes("grok"))
+    || (provider === "grok-cli" && (id.includes("grok-build") || id.includes("grok-composer")))) return true;
+  if ((provider === "kimi" || provider === "kimi-coding" || provider === "kimi-coding-apikey" || provider === "kmc" || provider === "kmca")
+    && id.includes("kimi-k2")) return true;
+  if ((provider === "cloudflare-ai" || provider === "cf") && id.startsWith("@cf/")) return true;
+  if (provider === "ollama-local" && id === "llama3.2:1b") return true;
+  return provider === "nvidia" && id === "moonshotai/kimi-k2.6";
 }
 
 /**
@@ -129,7 +134,7 @@ export const MODEL_CAPABILITIES = {
   "gpt-image-1":       { imageOutput: true, tools: false },
 
   // GLM vision variant (text GLM has no vision)
-  "glm-4.6v":          { vision: true, reasoning: true, thinkingFormat: "zai", contextWindow: 128000 },
+  "glm-4.6v":          { vision: true, reasoning: true, thinkingFormat: "zai", contextWindow: 128000, maxOutput: 32768 },
   // GLM-5.2 has a 1M window; GLM-5.1/5/5-turbo are 200K (official z.ai / models.dev).
   "glm-5.2":           { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
   "glm-5.1":           { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 },
@@ -219,12 +224,42 @@ const MINIMAX_M3_NATIVE_CAPS = {
   "MiniMax-M3": { vision: true, videoInput: true, reasoning: true, thinkingFormat: "minimax", contextWindow: 1000000, maxOutput: 131072 },
 };
 
+/**
+ * Provider-served limits override trained-model limits. Cloudflare publishes
+ * these context windows but no generated-token ceilings (its 256 value is a
+ * default), so maxOutput stays explicitly unset.
+ */
+const CLOUDFLARE_CAPS = {
+  "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b": { reasoning: true, thinkingFormat: "deepseek", thinkingCanDisable: false, contextWindow: 80000, maxOutput: undefined },
+  "@cf/moonshotai/kimi-k2.5": { vision: true, reasoning: true, thinkingFormat: "kimi", contextWindow: 256000, maxOutput: undefined },
+  "@cf/moonshotai/kimi-k2.6": { vision: true, reasoning: true, thinkingFormat: "kimi", contextWindow: 262144, maxOutput: undefined },
+  "@cf/zai-org/glm-4.7-flash": { reasoning: true, thinkingFormat: "zai", contextWindow: 131072, maxOutput: undefined },
+  "@cf/qwen/qwq-32b": { reasoning: true, thinkingFormat: "qwen", thinkingCanDisable: false, contextWindow: 24000, maxOutput: undefined },
+  "@cf/meta/llama-3.2-1b-instruct": { contextWindow: 60000, maxOutput: undefined },
+  "@cf/meta/llama-3.2-3b-instruct": { contextWindow: 80000, maxOutput: undefined },
+  "@cf/meta/llama-3.3-70b-instruct-fp8-fast": { contextWindow: 24000, maxOutput: undefined },
+};
+
+/** Auto-routing aliases have no fixed limits; their selected target owns them. */
+const VARIABLE_TARGET_CAPS = { contextWindow: null, maxOutput: null };
+
 export const PROVIDER_CAPABILITIES = {
   // Direct OpenAI GPT-5.5/5.6 family and Codex/CX aliases expose 1.05M context
   // window and 128K max output, overriding the generic *gpt-5* 400K fallback pattern.
   openai: DIRECT_GPT_5_5_6_CAPS,
   codex: CODEX_GPT_5_6_CAPS,
   cx: CODEX_GPT_5_6_CAPS,
+  "cloudflare-ai": CLOUDFLARE_CAPS,
+  cf: CLOUDFLARE_CAPS,
+  // Ollama's trained 131,072-token window is not its served window. The local
+  // daemon's /api/ps reports 4,096 for llama3.2:1b; /api/tags exposes no num_ctx.
+  "ollama-local": {
+    "llama3.2:1b": { contextWindow: 4096, maxOutput: undefined },
+  },
+  cursor: { default: VARIABLE_TARGET_CAPS },
+  cu: { default: VARIABLE_TARGET_CAPS },
+  "9router": { auto: VARIABLE_TARGET_CAPS },
+  nr: { auto: VARIABLE_TARGET_CAPS },
   commandcode: {
     "meta/muse-spark-1.2-contributor": {
       reasoning: true,
@@ -335,7 +370,8 @@ export const PROVIDER_CAPABILITIES = {
     "z-ai/glm-5.2": { reasoning: true, thinkingFormat: "openai", contextWindow: 200000, maxOutput: 128000 },
     "deepseek-ai/deepseek-v4-pro": { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 65536 },
     "deepseek-ai/deepseek-v4-flash": { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 65536 },
-    "moonshotai/kimi-k2.6": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 262144, maxOutput: 262144 },
+    // Moonshot publishes a 32,768 default, not a ceiling; do not clamp NVIDIA's route to an invented maximum.
+    "moonshotai/kimi-k2.6": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 262144, maxOutput: undefined },
     "meta/llama-3.2-11b-vision-instruct": { vision: true },
     "meta/llama-3.2-90b-vision-instruct": { vision: true },
     "mistralai/mistral-medium-3.5-128b": { reasoning: true, thinkingFormat: "openai", contextWindow: 128000 },
@@ -439,7 +475,6 @@ export const PROVIDER_CAPABILITIES = {
   },
 
   // StepFun — step-3.7-flash is documented as a vision-capable reasoning model.
-  // The generic *step-* pattern is reasoning-only, so override vision while
   // preserving the StepFun reasoning wire format.
   stepfun: {
     "step-3.7-flash": { vision: true, reasoning: true, thinkingFormat: "step", contextWindow: 262144 },
@@ -584,8 +619,10 @@ export const PATTERN_CAPABILITIES = [
   // K3 routes through the bare upstream id `k3` (no "kimi" prefix); match it to
   // the K3 window so it does not fall to the generic 200K default (#2697).
   { pattern: "k3",              caps: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 262144 } },
-  { pattern: "*kimi*k2.7*code*", caps: { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144, maxOutput: 262144 } },
-  { pattern: "*kimi*k2*",       caps: { vision: true, reasoning: true, thinkingFormat: "kimi", contextWindow: 262144, maxOutput: 262144 } },
+  // Moonshot documents a 32,768-token default for K2.x, but no maximum. A
+  // default is not a safe client-side ceiling, so maxOutput remains unset.
+  { pattern: "*kimi*k2.7*code*", caps: { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144, maxOutput: undefined } },
+  { pattern: "*kimi*k2*",       caps: { vision: true, reasoning: true, thinkingFormat: "kimi", contextWindow: 262144, maxOutput: undefined } },
   { pattern: "*kimi*",          caps: { reasoning: true, thinkingFormat: "kimi", contextWindow: 262144 } },
 
   // ── GLM / Z.ai (thinking.enabled; disable via enable_thinking:false) ─
@@ -642,6 +679,17 @@ export const PATTERN_CAPABILITIES = [
   { pattern: "*ling-*",         caps: { reasoning: true, contextWindow: 128000 } },
 ];
 
+/** Preserve unknown combo limits instead of coercing them to zero/NaN. */
+function minKnownLimit(caps, key) {
+  const values = caps.map((item) => item[key]).filter((value) => Number.isFinite(value) && value > 0);
+  return values.length ? Math.min(...values) : undefined;
+}
+
+function maxKnownLimit(caps, key) {
+  const values = caps.map((item) => item[key]).filter((value) => Number.isFinite(value) && value > 0);
+  return values.length ? Math.max(...values) : undefined;
+}
+
 /**
  * Aggregate capabilities for a combo from its constituent model IDs.
  * Each entry in comboModels is a fully-qualified "provider/model" string.
@@ -681,7 +729,7 @@ export function aggregateComboCapabilities(comboModels, comboLookup = null, alia
     return custom ? { ...staticCaps, ...custom } : staticCaps;
   });
   const first = allCaps[0];
-  return {
+  const combined = {
     vision:      allCaps.some((c) => c.vision),
     pdf:         allCaps.some((c) => c.pdf),
     audioInput:  allCaps.some((c) => c.audioInput),
@@ -694,9 +742,16 @@ export function aggregateComboCapabilities(comboModels, comboLookup = null, alia
     thinkingFormat:     first.thinkingFormat,
     thinkingCanDisable: first.thinkingCanDisable,
     thinkingRange:      first.thinkingRange,
-    contextWindow: Math.min(...allCaps.map((c) => c.contextWindow)),
-    maxOutput:     Math.max(...allCaps.map((c) => c.maxOutput)),
+    contextWindow: minKnownLimit(allCaps, "contextWindow"),
+    maxOutput:     maxKnownLimit(allCaps, "maxOutput"),
   };
+  return sanitizeModelLimits(combined);
+}
+
+/** Omit structurally impossible output ceilings while preserving source metadata. */
+function sanitizeModelLimits(caps) {
+  if (!Number.isFinite(caps?.contextWindow) || !Number.isFinite(caps?.maxOutput)) return caps;
+  return caps.maxOutput < caps.contextWindow ? caps : { ...caps, maxOutput: undefined };
 }
 
 /**
@@ -708,23 +763,21 @@ export function aggregateComboCapabilities(comboModels, comboLookup = null, alia
  * @returns {object} full capabilities object
  */
 export function getCapabilitiesForModel(provider, model) {
-  const finalize = (caps) => provider === "huggingchat" ? { ...caps, vision: false } : caps;
-
+  const finalize = (caps) => {
+    let result = provider === "huggingchat" ? { ...caps, vision: false } : caps;
+    // Workers AI pages publish max_tokens defaults, never enforceable ceilings.
+    if ((provider === "cloudflare-ai" || provider === "cf") && model?.startsWith("@cf/")) {
+      result = { ...result, maxOutput: undefined };
+    }
+    return sanitizeModelLimits(result);
+  };
   if (!model) return finalize({ ...DEFAULT_CAPABILITIES });
 
-  // Vendor-prefixed ids ("openai/gpt-5.6-sol") resolve against the bare id.
   const baseModel = model.includes("/") ? model.split("/").pop() : model;
-
-  // 1. Provider-specific override
   if (provider) {
     const providerCaps = PROVIDER_CAPABILITIES[provider];
     if (providerCaps?.[model]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[model] });
     if (providerCaps?.[baseModel]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[baseModel] });
-    // Kiro accepts dash-form version ids ("gpt-5-6-sol") at the wire, but the
-    // caps map is keyed by the dotted catalog ids. Normalize digit-dash-digit
-    // ("5-6" → "5.6", synthetic -thinking/-agentic suffixes untouched) so the
-    // dash form hits the same 1.05M GPT-5.6 row instead of the generic 400k
-    // *gpt-5* pattern. Scoped to kiro/kr so other providers are unaffected.
     if (provider === "kiro" || provider === "kr") {
       const normalized = normalizeModelId(model);
       const normalizedBase = normalizeModelId(baseModel);
@@ -737,20 +790,17 @@ export function getCapabilitiesForModel(provider, model) {
   const exactCaps = MODEL_CAPABILITIES[exactId];
   if (exactCaps) {
     const merged = { ...DEFAULT_CAPABILITIES, ...exactCaps };
-    if (hasUnpublishedGrokOutput(provider, exactId)) merged.maxOutput = undefined;
+    if (hasUnpublishedOutput(provider, exactId)) merged.maxOutput = undefined;
     return finalize(merged);
   }
 
-  // 3. Pattern match (first match wins)
   for (const { pattern, caps } of PATTERN_CAPABILITIES) {
     if (matchPattern(pattern, baseModel) || matchPattern(pattern, model)) {
       const merged = { ...DEFAULT_CAPABILITIES, ...caps };
-      if (hasUnpublishedGrokOutput(provider, baseModel)) merged.maxOutput = undefined;
+      if (hasUnpublishedOutput(provider, baseModel)) merged.maxOutput = undefined;
       return finalize(merged);
     }
   }
-
-  // 4. Floor
   return finalize({ ...DEFAULT_CAPABILITIES });
 }
 
@@ -767,20 +817,11 @@ export function getCapabilitiesForModel(provider, model) {
 export function resolveModelLimits(provider, model) {
   const baseModel = typeof model === "string" && model.includes("/") ? model.split("/").pop() : model;
   const positive = (value) => Number.isFinite(value) && value > 0;
-
-  // A capability row is evidence ONLY for the limits it actually declares.
-  // Plenty of rows exist purely to set feature flags (`{ tools: false }`,
-  // image-only descriptors), and merging DEFAULT_CAPABILITIES over those would
-  // publish the generic 200K/64K floor as a provider guarantee — the exact
-  // dishonesty this resolver exists to remove. Rows without a real
-  // contextWindow fall through to the next step instead.
   const asLimits = (caps, source, unpublishedOutput = false) => {
     if (!positive(caps?.contextWindow)) return null;
     return {
       contextWindow: caps.contextWindow,
-      maxOutput: positive(caps.maxOutput)
-        ? caps.maxOutput
-        : unpublishedOutput ? undefined : DEFAULT_CAPABILITIES.maxOutput,
+      maxOutput: unpublishedOutput ? undefined : positive(caps.maxOutput) ? caps.maxOutput : DEFAULT_CAPABILITIES.maxOutput,
       known: true,
       source,
     };
@@ -792,17 +833,13 @@ export function resolveModelLimits(provider, model) {
       ? [model, baseModel, normalizeModelId(model), normalizeModelId(baseModel)]
       : [model, baseModel];
     for (const id of ids) {
-      const hit = providerCaps?.[id] && asLimits(providerCaps[id], "provider");
+      const hit = providerCaps?.[id] && asLimits(providerCaps[id], "provider", hasUnpublishedOutput(provider, id));
       if (hit) return hit;
     }
   }
 
   for (const id of [baseModel, model]) {
-    const hit = MODEL_CAPABILITIES[id] && asLimits(
-      MODEL_CAPABILITIES[id],
-      "exact",
-      hasUnpublishedGrokOutput(provider, id),
-    );
+    const hit = MODEL_CAPABILITIES[id] && asLimits(MODEL_CAPABILITIES[id], "exact", hasUnpublishedOutput(provider, id));
     if (hit) return hit;
   }
 
@@ -812,15 +849,14 @@ export function resolveModelLimits(provider, model) {
     const hit = asLimits({
       contextWindow: registryModel.contextLength ?? registry.transport?.defaultContextLength,
       maxOutput: registryModel.maxOutputTokens,
-    }, "registry", hasUnpublishedGrokOutput(provider, baseModel));
+    }, "registry", hasUnpublishedOutput(provider, baseModel));
     if (hit) return hit;
   }
 
   for (const { pattern, caps } of PATTERN_CAPABILITIES) {
     if (!matchPattern(pattern, baseModel) && !matchPattern(pattern, model)) continue;
-    const hit = asLimits(caps, "pattern", hasUnpublishedGrokOutput(provider, baseModel));
+    const hit = asLimits(caps, "pattern", hasUnpublishedOutput(provider, baseModel));
     if (hit) return hit;
-    // Explicit null is a terminal non-chat sentinel, not permission to try broader family globs.
     if (caps?.contextWindow === null) break;
   }
 

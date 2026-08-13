@@ -830,14 +830,19 @@ export function getCapabilitiesForModel(provider, model) {
 /**
  * Resolve the input/output limits advertised for a routed model.
  *
- * Unlike {@link getCapabilitiesForModel}, this labels the generic floor as
- * unknown so callers never present it as a provider guarantee.
+ * Explicit request-scoped custom limits win when supplied. Caller-provided
+ * live limits are next, then static catalogs; a cold cache preserves the
+ * unknown-floor semantics instead of turning the default into an enforceable
+ * guarantee. This client-shared module stays synchronous and cache-agnostic.
  *
  * @param {string} provider
  * @param {string} model
- * @returns {{contextWindow: number, maxOutput: number|undefined, known: boolean, source: "provider"|"exact"|"pattern"|"registry"|"default"}}
+ * @param {object|null} customCaps
+ * @param {object|null} connection Reserved for request context compatibility.
+ * @param {object|null} liveLimits Already-resolved server-side cache value.
+ * @returns {{contextWindow: number, maxOutput: number|undefined, known: boolean, source: "custom"|"live"|"provider"|"exact"|"pattern"|"registry"|"default"}}
  */
-export function resolveModelLimits(provider, model) {
+export function resolveModelLimits(provider, model, customCaps = null, connection = null, liveLimits = null) {
   const baseModel = typeof model === "string" && model.includes("/") ? model.split("/").pop() : model;
   const positive = (value) => Number.isFinite(value) && value > 0;
   const asLimits = (caps, source, unpublishedOutput = false) => {
@@ -849,6 +854,27 @@ export function resolveModelLimits(provider, model) {
       source,
     };
   };
+  const customKeys = customCaps?.customKeys instanceof Set ? customCaps.customKeys : null;
+  const customContext = positive(customCaps?.contextWindow) && (!customKeys || customKeys.has("contextWindow"))
+    ? customCaps.contextWindow
+    : undefined;
+  const customOutput = positive(customCaps?.maxOutput) && (!customKeys || customKeys.has("maxOutput"))
+    ? customCaps.maxOutput
+    : undefined;
+  const liveCaps = liveLimits;
+  const preferredContext = customContext
+    ? { value: customContext, source: "custom" }
+    : positive(liveCaps?.contextWindow) ? { value: liveCaps.contextWindow, source: "live" } : null;
+  const preferredOutput = customOutput || (positive(liveCaps?.maxOutput) ? liveCaps.maxOutput : undefined);
+  const applyPreferred = (fallback) => ({
+    ...fallback,
+    ...(preferredContext ? {
+      contextWindow: preferredContext.value,
+      known: true,
+      source: preferredContext.source,
+    } : {}),
+    ...(preferredOutput ? { maxOutput: preferredOutput } : {}),
+  });
 
   if (provider) {
     const providerCaps = PROVIDER_CAPABILITIES[provider];
@@ -857,13 +883,13 @@ export function resolveModelLimits(provider, model) {
       : [model, baseModel];
     for (const id of ids) {
       const hit = providerCaps?.[id] && asLimits(providerCaps[id], "provider", hasUnpublishedOutput(provider, id));
-      if (hit) return hit;
+      if (hit) return applyPreferred(hit);
     }
   }
 
   for (const id of [baseModel, model]) {
     const hit = MODEL_CAPABILITIES[id] && asLimits(MODEL_CAPABILITIES[id], "exact", hasUnpublishedOutput(provider, id));
-    if (hit) return hit;
+    if (hit) return applyPreferred(hit);
   }
 
   const registry = REGISTRY.find((entry) => entry.id === provider || entry.alias === provider || entry.uiAlias === provider);
@@ -873,20 +899,20 @@ export function resolveModelLimits(provider, model) {
       contextWindow: registryModel.contextLength ?? registry.transport?.defaultContextLength,
       maxOutput: registryModel.maxOutputTokens,
     }, "registry", hasUnpublishedOutput(provider, baseModel));
-    if (hit) return hit;
+    if (hit) return applyPreferred(hit);
   }
 
   for (const { pattern, caps } of PATTERN_CAPABILITIES) {
     if (!matchPattern(pattern, baseModel) && !matchPattern(pattern, model)) continue;
     const hit = asLimits(caps, "pattern", hasUnpublishedOutput(provider, baseModel));
-    if (hit) return hit;
+    if (hit) return applyPreferred(hit);
     if (caps?.contextWindow === null) break;
   }
 
-  return {
+  return applyPreferred({
     contextWindow: DEFAULT_CAPABILITIES.contextWindow,
     maxOutput: DEFAULT_CAPABILITIES.maxOutput,
     known: false,
     source: "default",
-  };
+  });
 }

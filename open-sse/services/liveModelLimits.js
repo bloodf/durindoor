@@ -1,7 +1,6 @@
 import { createHash } from "crypto";
 
 import { guardedProbeFetch } from "../utils/outboundUrlGuard.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -24,6 +23,47 @@ const OUTPUT_KEYS = ["max_output_tokens", "max_completion_tokens", "maxOutputTok
 const catalogCache = new Map();
 /** @type {Map<string, Promise<{ models: object[] } | null>>} */
 const inFlight = new Map();
+/** @type {Map<string, { expiresAt: number, limits: { contextWindow?: number, maxOutput?: number } }>} */
+const modelLimitsCache = new Map();
+
+function connectionScope(connection) {
+  const id = connection?.id || connection?.connectionId;
+  if (id) return String(id);
+  const token = connection?.apiKey || connection?.accessToken;
+  return token ? createHash("sha256").update(String(token)).digest("hex") : "";
+}
+
+function modelLimitsKey(provider, connection, model) {
+  const scope = connectionScope(connection);
+  return provider && scope && model ? `${provider}\0${scope}\0${model}`.toLowerCase() : "";
+}
+
+function cacheModelLimits(provider, connection, models, expiresAt) {
+  if (!provider || !Array.isArray(models)) return;
+  for (const model of models) {
+    const id = modelId(model);
+    const limits = model?.capabilities;
+    const key = modelLimitsKey(provider, connection, id);
+    if (!key || !limits || typeof limits !== "object" || !Object.keys(limits).length) continue;
+    modelLimitsCache.set(key, { expiresAt, limits });
+  }
+}
+
+/**
+ * Read already-fetched live limits for the selected connection without I/O.
+ * Account scoping prevents sibling credentials with divergent catalogs from
+ * overwriting each other's request limits.
+ */
+export function getCachedLiveLimits(provider, model, connection) {
+  const key = modelLimitsKey(provider, connection, model);
+  if (!key) return null;
+  const cached = modelLimitsCache.get(key);
+  if (!cached || cached.expiresAt <= Date.now()) {
+    if (cached) modelLimitsCache.delete(key);
+    return null;
+  }
+  return { ...cached.limits };
+}
 
 function cacheKey(endpoint, token) {
   return createHash("sha256").update(`${endpoint}:${token}`).digest("hex");
@@ -57,8 +97,16 @@ export async function resolveLiveOpenAIModels(connection, options = {}) {
   const key = cacheKey(endpoint, `${token}:${options.anthropic === true}:${JSON.stringify(options.modelAliases || {})}`);
   const now = Date.now();
   const cached = catalogCache.get(key);
-  if (cached?.expiresAt > now) return cached.models ? { models: cached.models } : null;
-  if (inFlight.has(key)) return inFlight.get(key);
+  if (cached?.expiresAt > now) {
+    if (cached.models) cacheModelLimits(options.provider, connection, cached.models, cached.expiresAt);
+    return cached.models ? { models: cached.models } : null;
+  }
+  if (inFlight.has(key)) {
+    const result = await inFlight.get(key);
+    const expiresAt = catalogCache.get(key)?.expiresAt;
+    if (result?.models && expiresAt) cacheModelLimits(options.provider, connection, result.models, expiresAt);
+    return result;
+  }
 
   const promise = (async () => {
     const controller = new AbortController();
@@ -68,12 +116,14 @@ export async function resolveLiveOpenAIModels(connection, options = {}) {
       return null;
     };
     try {
-      const usesProxyRoute = options.proxyOptions?.connectionProxyEnabled === true
-        || Boolean(options.proxyOptions?.vercelRelayUrl)
-        || options.proxyOptions?.disableEnvProxy === true;
-      const transport = usesProxyRoute
-        ? (url, init) => proxyAwareFetch(url, init, options.proxyOptions)
-        : fetch;
+      let transport = (url, init) => globalThis.fetch(url, init);
+      if (options.proxyOptions?.connectionProxyEnabled === true
+        || options.proxyOptions?.vercelRelayUrl
+        || options.proxyOptions?.disableEnvProxy === true) {
+        /** Load the global-patching proxy transport only for active proxied discovery. */
+        const { proxyAwareFetch } = await import("../utils/proxyFetch.js");
+        transport = (url, init) => proxyAwareFetch(url, init, options.proxyOptions);
+      }
       const headers = {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
@@ -103,7 +153,9 @@ export async function resolveLiveOpenAIModels(connection, options = {}) {
         return [{ id, ...(Object.keys(limits).length ? { capabilities: limits } : {}) }];
       });
       if (!models.length) return cacheMiss();
-      catalogCache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, models });
+      const expiresAt = Date.now() + CACHE_TTL_MS;
+      catalogCache.set(key, { expiresAt, models });
+      cacheModelLimits(options.provider, connection, models, expiresAt);
       return { models };
     } catch {
       return cacheMiss();
@@ -119,9 +171,18 @@ export async function resolveLiveOpenAIModels(connection, options = {}) {
     if (inFlight.get(key) === promise) inFlight.delete(key);
   }
 }
+/**
+ * Start the cached resolver in the background. This intentionally returns
+ * void: callers cannot accidentally await catalog I/O on the request path.
+ */
+export function warmLiveModelLimits(provider, connection, options = {}) {
+  void resolveLiveOpenAIModels(connection, { ...options, provider }).catch(() => {});
+}
+
 
 export function clearLiveModelLimitsCache() {
   catalogCache.clear();
+  modelLimitsCache.clear();
   inFlight.clear();
 }
 function readLimit(source, keys) {

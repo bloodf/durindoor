@@ -468,13 +468,15 @@ async function buildModelsListImpl(kindFilter, guard) {
     aliasToProviderId[providerId] = providerId;
   }
 
-  const attachModelLimits = (model, providerId, modelId, explicitCaps = {}) => {
+  const attachModelLimits = (model, providerId, modelId, explicitCaps = {}, liveLimits = null) => {
     // #3218: expose proven limits in OpenAI's flat model schema. Generic
-    // default capabilities are not evidence of a provider guarantee.
+    // default capabilities are not evidence of a provider guarantee. Live
+    // metadata is injected by this server-only builder so capabilities.js
+    // remains safe for dashboard client bundles.
     const positive = (value) => Number.isFinite(value) && value > 0;
     let contextWindow = explicitCaps.contextWindow;
     let maxOutput = explicitCaps.maxOutput;
-    const fallback = resolveModelLimits(providerId, modelId);
+    const fallback = resolveModelLimits(providerId, modelId, explicitCaps, null, liveLimits);
     if (!positive(contextWindow) && fallback.known) contextWindow = fallback.contextWindow;
     if (!positive(maxOutput) && fallback.known) maxOutput = fallback.maxOutput;
     if (positive(contextWindow)) model.context_length = contextWindow;
@@ -654,6 +656,7 @@ async function buildModelsListImpl(kindFilter, guard) {
               const psd = isRecord(connection.providerSpecificData) ? connection.providerSpecificData : {};
               const proxyOptions = await resolveConnectionProxyConfig(psd);
               return resolveLiveOpenAIModels(connection, {
+                provider: providerId,
                 guard: liveGuard,
                 proxyOptions,
                 endpoint: genericFetcher?.url || (isKimiLiveProvider ? "https://api.kimi.com/coding/v1/models" : undefined),
@@ -789,11 +792,12 @@ async function buildModelsListImpl(kindFilter, guard) {
           // modal + combo filters.
           if (hidePaidModels && isPaidModel(`${outputAlias}/${modelId}`)) continue;
 
-          const explicitCaps = {
+          const customCaps = {
             ...(capabilitiesFromServiceKind(customKind || liveKind) || {}),
-            ...(liveCapabilitiesById.get(modelId) || {}),
             ...(customCapabilitiesById.get(modelId) || {}),
           };
+          const liveCaps = liveCapabilitiesById.get(modelId) || null;
+          const explicitCaps = { ...(liveCaps || {}), ...customCaps };
           const caps = {
             ...getCapabilitiesForModel(providerId, modelId),
             ...explicitCaps,
@@ -805,7 +809,7 @@ async function buildModelsListImpl(kindFilter, guard) {
             capabilities: caps,
           };
           if (kind === LLM_KIND || allowAsLlm) {
-            attachModelLimits(model, providerId, modelId, explicitCaps);
+            attachModelLimits(model, providerId, modelId, customCaps, liveCaps);
           }
           perProviderModels.push(model);
         }

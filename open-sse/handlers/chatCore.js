@@ -40,6 +40,7 @@ import { compressMessages, resolveTokenSaverEnabled, normalizeTokenSaverEvent } 
 import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadroomPhantomSavings, classifyHeadroomDiagnostic } from "../rtk/headroom.js";
 import { compressWithPxpipe, normalizePxpipeResult } from "../rtk/pxpipe.js";
 import { getCapabilitiesForModel, resolveModelLimits } from "../providers/capabilities.js";
+import { getCachedLiveLimits } from "../services/liveModelLimits.js";
 import { estimateTokens, countInputTokens } from "./countTokensCore.js";
 import { runCompressionSeam } from "./chatCore/compressionHook.js";
 import { stripUnsupportedModalities } from "../translator/concerns/modality.js";
@@ -741,15 +742,23 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // The message intentionally carries "input is too long" so the existing
   // isDeterministicPayloadError classifier treats it as terminal and the
   // fallback chain is skipped for a request no other model would accept.
-  const preflightLimits = resolveModelLimits(provider, cleanModel);
+  const baseModel = typeof cleanModel === "string" && cleanModel.includes("/") ? cleanModel.split("/").pop() : cleanModel;
+  /** Read the server-owned cache without letting client-shared capabilities import it. */
+  const liveLimits = getCachedLiveLimits(provider, cleanModel, credentials)
+    || getCachedLiveLimits(provider, baseModel, credentials);
+  const preflightLimits = resolveModelLimits(provider, cleanModel, requestContext?.modelCapabilities, credentials, liveLimits);
   if (preflightLimits.known) {
-    // `requestContext.modelCapabilities` is null unless the caller passed caps,
-    // so fall back to the resolved catalog cap. Without this a known model whose
-    // request names no output field would reserve 0 and the check would only
-    // ever compare raw input against the window.
-    const reservationContext = requestContext?.modelCapabilities
-      ? requestContext
-      : { ...requestContext, modelCapabilities: { maxOutput: preflightLimits.maxOutput } };
+    // Always reserve the output ceiling chosen by resolveModelLimits. It has
+    // already applied explicit-custom > live > static precedence; reusing the
+    // caller's inherited static caps here would make the window and reservation
+    // come from different sources.
+    const reservationContext = {
+      ...requestContext,
+      modelCapabilities: {
+        ...requestContext?.modelCapabilities,
+        maxOutput: preflightLimits.maxOutput,
+      },
+    };
     const reservation = executor.resolveEffectiveOutputReservation?.(translatedBody, reservationContext) ?? 0;
     // Prefer the provider's own /messages/count_tokens when it exposes one —
     // the 4-chars-per-token heuristic is only a fallback, and rejecting on a

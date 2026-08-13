@@ -136,22 +136,26 @@ describe("xAI video proxy (9router#2593)", () => {
     expect(res.headers.get("access-control-expose-headers")).toContain("x-9router-connection-id");
   });
 
-  it("GET polls MiniMax when the creation account header pins a MiniMax connection", async () => {
-    mocks.getProviderConnections.mockResolvedValue([{
-      id: "minimax-1",
-      provider: "minimax",
-      apiKey: "minimax-secret",
-      testStatus: "active",
-    }]);
+  it("polls MiniMax with the account header returned by MiniMax creation", async () => {
+    const minimaxConnection = { id: "minimax-1", provider: "minimax", apiKey: "minimax-secret", testStatus: "active" };
+    mocks.getProviderConnections.mockResolvedValue([minimaxConnection]);
     const fetchMock = vi.fn(async (url) => String(url).includes("/v2/query/video_generation/")
       ? new Response(JSON.stringify({
         task: { id: "task-mm", status: "succeeded", content: { url: "https://minimax.example/video.mp4" } },
       }), { status: 200, headers: { "content-type": "application/json" } })
-      : new Response("{}", { status: 200, headers: { "content-type": "application/json" } }));
+      : String(url).endsWith("/v2/video_generation")
+        ? new Response(JSON.stringify({ task_id: "task-mm" }), { status: 200, headers: { "content-type": "application/json" } })
+        : new Response("{}", { status: 200, headers: { "content-type": "application/json" } }));
     vi.stubGlobal("fetch", fetchMock);
 
+    const create = await handleVideoCreate(jsonRequest("http://localhost/v1/videos/generations", {
+      model: "minimax/MiniMax-H3", prompt: "A lantern over a lake", resolution: "2K", duration: 5, aspect_ratio: "16:9",
+    }), "generations");
+    const returnedHeader = create.headers.get("x-9router-connection-id");
+    expect(returnedHeader).toBe("minimax-1");
+
     const res = await handleVideoGet(new Request("http://localhost/v1/videos/task-mm", {
-      headers: { "x-connection-id": "minimax-1" },
+      headers: { "x-9router-connection-id": returnedHeader },
     }), "task-mm");
     const pollCall = fetchMock.mock.calls.find(([url]) => String(url).includes("/v2/query/video_generation/"));
 

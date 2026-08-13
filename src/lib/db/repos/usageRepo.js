@@ -266,7 +266,8 @@ function startActiveSession({ requestId = randomUUID(), clientId, sessionId, mod
   return requestId;
 }
 
-function finishActiveSession({ requestId, provider, model, connectionId, promptTokens, completionTokens, status }) {
+/** Finish one dashboard session by request id without mutating aggregate pending counters. */
+export function finishActiveSession({ requestId, promptTokens, completionTokens, status }) {
   const target = requestId ? activeSessions.get(requestId) : null;
   if (!target) return;
   target.promptTokens = promptTokens ?? target.promptTokens;
@@ -318,8 +319,6 @@ export function trackPendingRequest(model, provider, connectionId, started, erro
 
   if (started && session) {
     try { activeSessionRequestId = startActiveSession({ ...session, model, provider, connectionId }); } catch { /* telemetry must not block requests */ }
-  } else if (!started && session?.requestId) {
-    try { finishActiveSession({ requestId: session.requestId, status: error ? "error" : session.status || "done" }); } catch { /* telemetry must not block requests */ }
   }
   if (started) {
     clearTimeout(pendingTimers[timerKey]);

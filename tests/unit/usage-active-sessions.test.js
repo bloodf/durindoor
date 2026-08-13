@@ -5,13 +5,18 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "durindoor-active-sessions-"));
 process.env.DATA_DIR = dataDir;
-const { getActiveRequests, saveRequestUsage, trackPendingRequest } = await import("../../src/lib/db/repos/usageRepo.js");
-
+const { finishActiveSession, getActiveRequests, saveRequestUsage, trackPendingRequest } = await import("../../src/lib/db/repos/usageRepo.js");
 afterAll(() => fs.rmSync(dataDir, { recursive: true, force: true }));
 
 describe("live usage sessions (#3273)", () => {
   beforeEach(() => {
     global._activeSessions.clear();
+    global._pendingRequests.byModel = {};
+    global._pendingRequests.byAccount = {};
+    for (const key of Object.keys(global._pendingTimers)) {
+      clearTimeout(global._pendingTimers[key]);
+      delete global._pendingTimers[key];
+    }
     global._connectionMapCache.map = { "conn-1": "Primary account" };
     global._connectionMapCache.ts = Date.now();
   });
@@ -32,9 +37,11 @@ describe("live usage sessions (#3273)", () => {
     });
 
     const errorId = trackPendingRequest("gpt-5.6", "codex", "conn-1", true, false, { requestId: "error" });
-    trackPendingRequest("gpt-5.6", "codex", "conn-1", false, true, { requestId: errorId, status: "error" });
+    trackPendingRequest("gpt-5.6", "codex", "conn-1", false, true);
+    finishActiveSession({ requestId: errorId, status: "error" });
     const disconnectId = trackPendingRequest("gpt-5.6", "codex", "conn-1", true, false, { requestId: "disconnect" });
-    trackPendingRequest("gpt-5.6", "codex", "conn-1", false, true, { requestId: disconnectId, status: "error" });
+    trackPendingRequest("gpt-5.6", "codex", "conn-1", false, true);
+    finishActiveSession({ requestId: disconnectId, status: "error" });
 
     const { activeSessions } = await getActiveRequests();
     expect(activeSessions).toEqual(expect.arrayContaining([
@@ -53,5 +60,16 @@ describe("live usage sessions (#3273)", () => {
     const { activeSessions } = await getActiveRequests();
     expect(activeSessions.find((session) => session.requestId === first)).toMatchObject({ status: "active", promptTokens: null });
     expect(activeSessions.find((session) => session.requestId === second)).toMatchObject({ status: "done", promptTokens: 2, completionTokens: 3 });
+  });
+
+  it("does not decrement a concurrent pending request when an early-released session later succeeds", () => {
+    const first = trackPendingRequest("gpt-5.6", "codex", "conn-1", true, false, { requestId: "early-first" });
+    trackPendingRequest("gpt-5.6", "codex", "conn-1", true, false, { requestId: "still-running" });
+
+    trackPendingRequest("gpt-5.6", "codex", "conn-1", false);
+    expect(global._pendingRequests.byModel["gpt-5.6 (codex)"]).toBe(1);
+    finishActiveSession({ requestId: first, status: "done" });
+
+    expect(global._pendingRequests.byModel["gpt-5.6 (codex)"]).toBe(1);
   });
 });

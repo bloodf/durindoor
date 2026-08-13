@@ -5,7 +5,7 @@ import {
   STREAM_STALL_TIMEOUT_MS,
 } from "../../open-sse/config/runtimeConfig.js";
 
-const { executeMock, executorState, requestLoggerState, activeSessions, trackPendingRequest } = vi.hoisted(() => {
+const { executeMock, executorState, requestLoggerState, activeSessions, trackPendingRequest, finishActiveSession } = vi.hoisted(() => {
   const activeSessions = new Map();
   return {
     executeMock: vi.fn(),
@@ -17,6 +17,7 @@ const { executeMock, executorState, requestLoggerState, activeSessions, trackPen
       else if (session?.requestId) activeSessions.set(session.requestId, error ? "error" : session.status || "done");
       return session?.requestId || null;
     }),
+    finishActiveSession: vi.fn(({ requestId, status }) => activeSessions.set(requestId, status)),
   };
 });
 
@@ -45,6 +46,7 @@ vi.mock("../../open-sse/utils/requestLogger.js", () => ({
 
 vi.mock("@/lib/usageDb.js", () => ({
   trackPendingRequest,
+  finishActiveSession,
   appendRequestLog: vi.fn(async () => {}),
   saveRequestDetail: vi.fn(async () => {}),
   saveRequestUsage: vi.fn(async () => {}),
@@ -160,6 +162,9 @@ describe("chatCore quota reservation boundary", () => {
     expect(await result.response.json()).toBeTruthy();
     expect(quota.beginDispatch).toHaveBeenCalledOnce();
     expect(executeMock).toHaveBeenCalledOnce();
+    const finishCalls = trackPendingRequest.mock.calls.filter(([, , , started]) => started === false);
+    expect(finishCalls).toHaveLength(1);
+    expect(finishActiveSession).toHaveBeenCalledWith(expect.objectContaining({ status: "done" }));
     expect(quota.settle).toHaveBeenCalledWith({ success: true, reason: "success" });
     expect([...activeSessions.values()]).not.toContain("active");
   });

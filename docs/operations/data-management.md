@@ -126,13 +126,16 @@ docker run --rm \
 ## Startup integrity check
 
 DurinDoor runs SQLite `PRAGMA quick_check` after schema migration and before
-the database is accepted for use. Startup stops if SQLite reports a corrupt
-table or index; DurinDoor does not attempt automatic repair or overwrite the
-database.
+the database is accepted for use. Startup stops on corruption reported by
+that check; it is a fast structural check, not a substitute for
+`PRAGMA integrity_check` or `PRAGMA foreign_key_check`. DurinDoor does not
+attempt automatic repair or overwrite the database.
 
 If startup reports `SQLite integrity check failed`, stop all writers and
 preserve the database together with its `-wal` and `-shm` sidecars before
-recovery. Prefer restoring the newest verified backup. Any manual
+recovery. Restore only a backup whose integrity and required tables you have
+verified. Migration safety backups made with the lightweight backup path omit
+the non-critical, auto-pruned `requestDetails` observability log. Any manual
 `REINDEX`, `VACUUM`, or data salvage must operate on a copy and pass
 `PRAGMA integrity_check` before it replaces the active database.
 

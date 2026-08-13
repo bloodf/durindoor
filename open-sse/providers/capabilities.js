@@ -197,6 +197,10 @@ const DIRECT_GPT_5_5_6_CAPS = {
 const CODEX_GPT_5_6_CAPS = {
   ...DIRECT_GPT_5_5_6_CAPS,
   "gpt-5.5-review":       { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
+  /** Effort suffixes are virtual aliases stripped by codex.js before the upstream request. */
+  "gpt-5.5-medium":       { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
+  "gpt-5.5-high":         { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
+  "gpt-5.5-xhigh":        { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
   // Same upstream model as "gpt-5.4" (registry codex.js sets upstreamModelId),
   // so it must resolve the same window instead of the generic 400K pattern.
   "gpt-5.4-review":       { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
@@ -496,6 +500,9 @@ export const PROVIDER_CAPABILITIES = {
  * a broad family pattern swallowing an exception (e.g. glm-4.6v vs glm-5).
  */
 export const PATTERN_CAPABILITIES = [
+  /** Embedders do not have chat-generation limits; null prevents family globs from inventing them. */
+  { pattern: "*embed*", caps: { tools: false, contextWindow: null, maxOutput: null } },
+
   // ── Claude (4.6+ = adaptive thinking; 5 = 1M context; older/haiku = budget) ──────
   { pattern: "*claude*opus-5*",     caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
   { pattern: "*claude*sonnet-5*",   caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
@@ -555,6 +562,9 @@ export const PATTERN_CAPABILITIES = [
   { pattern: "*grok-3*",        caps: { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 131072 } },
   { pattern: "*grok*",          caps: { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 256000 } },
 
+  /** Cloudflare publishes 32,768 tokens for @cf/qwen/qwen2.5-coder-32b-instruct. */
+  { pattern: "*@cf/qwen/qwen2.5-coder-32b-instruct", caps: { reasoning: false, thinkingFormat: null, contextWindow: 32768 } },
+
   // ── Qwen (3.5+ = native vision/video; coder & max = text-only; QwQ = thinking-only) ─
   { pattern: "*qwen*vl*",       caps: { vision: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 262144 } },
   { pattern: "*qwen*omni*",     caps: { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 262144, maxOutput: 65536 } },
@@ -595,6 +605,9 @@ export const PATTERN_CAPABILITIES = [
   { pattern: "*minimax-m3*",    caps: { vision: true, reasoning: true, thinkingFormat: "minimax", contextWindow: 512000, maxOutput: 131072 } },
   { pattern: "*minimax-m2.7*",  caps: { vision: true, reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 204800, maxOutput: 131072 } },
   { pattern: "*minimax-m2.5*",  caps: { vision: true, reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 204800, maxOutput: 131072 } },
+  /** MiniMax publishes 204,800 tokens for every M2-family model. */
+  { pattern: "*minimax-m2.1*",  caps: { reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 204800, maxOutput: 131072 } },
+  { pattern: "*minimax-m2",     caps: { reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 204800, maxOutput: 131072 } },
   { pattern: "*minimax*",       caps: { reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 } },
 
   // ── Xiaomi MiMo (vision + <think>-tag reasoning, always-on, can't disable) ──
@@ -806,6 +819,8 @@ export function resolveModelLimits(provider, model) {
     if (!matchPattern(pattern, baseModel) && !matchPattern(pattern, model)) continue;
     const hit = asLimits(caps, "pattern", hasUnpublishedGrokOutput(provider, baseModel));
     if (hit) return hit;
+    // Explicit null is a terminal non-chat sentinel, not permission to try broader family globs.
+    if (caps?.contextWindow === null) break;
   }
 
   return {

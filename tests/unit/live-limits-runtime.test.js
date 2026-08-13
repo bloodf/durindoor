@@ -167,6 +167,26 @@ describe("live model limits in request preflight", () => {
     expect(fetch).toHaveBeenCalledOnce();
   });
 
+  it("uses live max output instead of inherited static reservation", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      data: [{ id: MODEL, context_window: 100_000, max_output_tokens: 10_000 }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } })));
+    await resolveLiveOpenAIModels(connection, {
+      provider: PROVIDER,
+      endpoint: "https://catalog.test/v1/models",
+      guard: "none",
+    });
+    mocks.countInputTokens.mockResolvedValue({ tokens: 95_000, approximate: true });
+
+    const inheritedCaps = { contextWindow: STATIC_WINDOW, maxOutput: OUTPUT_CAP };
+    Object.defineProperty(inheritedCaps, "customKeys", { value: new Set(), enumerable: false });
+    const result = await handleChatCore(options(inheritedCaps));
+
+    expect(result).toMatchObject({ success: false, status: 400 });
+    expect(result.error).toContain("95000 input + 10000 output reservation");
+    expect(mocks.execute).not.toHaveBeenCalled();
+  });
+
   it("uses the unchanged static path when the live cache is cold", async () => {
     mocks.countInputTokens.mockResolvedValue({ tokens: STATIC_WINDOW - OUTPUT_CAP + 1, approximate: true });
 

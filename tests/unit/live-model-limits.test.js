@@ -16,6 +16,7 @@ it("does not replace global fetch when imported", () => {
     globalThis.fetch = mock;
     await import("./open-sse/services/liveModelLimits.js");
     if (globalThis.fetch !== mock || calls !== 0) process.exit(1);
+  `], {
     cwd: new URL("../..", import.meta.url),
     encoding: "utf8",
   });
@@ -67,6 +68,30 @@ describe("extractLiveModelLimits", () => {
       expect(getCachedLiveLimits("test", "model-x", connection)).toEqual({ contextWindow: 128_000, maxOutput: 8_000 });
       expect(getCachedLiveLimits("test", "model-x", { ...connection, apiKey: "other-key" })).toBeNull();
       expect(fetch).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+      clearLiveModelLimitsCache();
+    }
+  });
+  it("indexes every coalesced caller under its own provider and connection", async () => {
+    clearLiveModelLimitsCache();
+    let releaseFetch;
+    vi.stubGlobal("fetch", vi.fn(() => new Promise((resolve) => {
+      releaseFetch = () => resolve(new Response(JSON.stringify({
+        data: [{ id: "model-x", context_window: 128_000 }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    })));
+    const first = { apiKey: "shared-key", connectionId: "first", providerSpecificData: { baseUrl: "https://catalog.test/v1" } };
+    const second = { apiKey: "shared-key", connectionId: "second", providerSpecificData: { baseUrl: "https://catalog.test/v1" } };
+    try {
+      const firstResult = resolveLiveOpenAIModels(first, { provider: "provider-a", guard: "none" });
+      const secondResult = resolveLiveOpenAIModels(second, { provider: "provider-b", guard: "none" });
+      releaseFetch();
+      await Promise.all([firstResult, secondResult]);
+
+      expect(fetch).toHaveBeenCalledOnce();
+      expect(getCachedLiveLimits("provider-a", "model-x", first)).toEqual({ contextWindow: 128_000 });
+      expect(getCachedLiveLimits("provider-b", "model-x", second)).toEqual({ contextWindow: 128_000 });
     } finally {
       vi.unstubAllGlobals();
       clearLiveModelLimitsCache();

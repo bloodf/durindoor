@@ -101,7 +101,12 @@ export async function resolveLiveOpenAIModels(connection, options = {}) {
     if (cached.models) cacheModelLimits(options.provider, connection, cached.models, cached.expiresAt);
     return cached.models ? { models: cached.models } : null;
   }
-  if (inFlight.has(key)) return inFlight.get(key);
+  if (inFlight.has(key)) {
+    const result = await inFlight.get(key);
+    const expiresAt = catalogCache.get(key)?.expiresAt;
+    if (result?.models && expiresAt) cacheModelLimits(options.provider, connection, result.models, expiresAt);
+    return result;
+  }
 
   const promise = (async () => {
     const controller = new AbortController();

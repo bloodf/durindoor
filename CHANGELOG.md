@@ -1,3 +1,22 @@
+# 3.13.1
+
+Completes the model-catalog audit started in 3.13.0: every served model was checked against its vendor's primary documentation.
+
+## What's fixed
+- **Cloudflare Workers AI windows** — Cloudflare serves smaller windows than the underlying models' trained maximums. Seven models were advertising the model spec rather than what Cloudflare actually serves: `deepseek-r1-distill-qwen-32b` (262,144 to 80,000), `kimi-k2.5` (262,144 to 256,000), `glm-4.7-flash` (200,000 to 131,072), `qwq-32b` (131,072 to 24,000), `llama-3.2-1b` (128,000 to 60,000), `llama-3.2-3b` (128,000 to 80,000), and `llama-3.3-70b-fp8-fast` (128,000 to 24,000).
+- **Local Ollama context** — `llama3.2:1b` advertised 128,000 while the daemon serves 4,096. The catalog now reads the served `context_length` instead of the model's trained maximum, so requests are no longer silently truncated.
+- **Impossible output limits removed** — several models reported `maxOutput` equal to `contextWindow`, which cannot be true since output is a subset of the window. Affected the Kimi K2.x family and two Cloudflare-hosted Moonshot models.
+- **GLM-4.6V output** — corrected to the documented 32,768 maximum.
+- **Router aliases** — `cu/default` and `nr/auto` resolve to varying upstream targets, so their fixed 200,000 window was a guess and is now unset.
+
+## Unpublished limits stay unset
+Where a vendor documents a *default* but no maximum, no ceiling is stored. Cloudflare publishes no max-output ceiling for any model, and Moonshot documents a 32,768 default without an upper bound. Storing a default as a ceiling would reject legitimate longer generations at our own preflight, so those fields are left unset — the same treatment xAI received in 3.13.0.
+
+## Compatibility and verification
+- No stored-data, API-key, or wire-format changes. Some models now report a smaller, correct window.
+- A new regression test enforces `maxOutput < contextWindow` across the served catalog, so this class of error cannot silently return.
+- Full Vitest/no-regression, lint, and commitlint gates green on `main`.
+
 # 3.13.0
 
 Model-catalog accuracy release: adds Grok 4.6, corrects context windows that were wrong in both directions, fixes a Responses-transport translation bug, and ships an oh-my-pi extension that syncs the catalog into omp.

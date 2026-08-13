@@ -25,10 +25,12 @@ describe("context-window sanity", () => {
   );
 
   it.each(["gpt-5.5-medium", "gpt-5.5-high", "gpt-5.5-xhigh"])(
-    "cx/%s inherits the upstream gpt-5.5 window",
+    "cx/%s inherits the tighter ChatGPT subscription window",
     (model) => {
-      expect(getCapabilitiesForModel("cx", model).contextWindow).toBe(1050000);
-      expect(resolveModelLimits("cx", model).contextWindow).toBe(1050000);
+      // Source: chatgpt.com/backend-api/codex/models; this does not change the
+      // direct OpenAI API's separately-tested 1.05M contract.
+      expect(getCapabilitiesForModel("cx", model).contextWindow).toBe(272000);
+      expect(resolveModelLimits("cx", model).contextWindow).toBe(272000);
     },
   );
 

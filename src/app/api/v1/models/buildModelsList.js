@@ -17,7 +17,13 @@ import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
 import { resolveClinepassModels } from "open-sse/services/clinepassModels.js";
-import { resolveLiveOpenAIModels } from "open-sse/services/liveModelLimits.js";
+import {
+  resolveLiveAnthropicModels,
+  resolveLiveCloudflareModels,
+  resolveLiveModelIds,
+  resolveLiveOpenAIModels,
+} from "open-sse/services/liveModelLimits.js";
+import { getCodexModels } from "open-sse/services/usage/codex.js";
 import { aggregateComboCapabilities, capabilitiesFromServiceKind, getCapabilitiesForModel, resolveModelLimits } from "open-sse/providers/capabilities.js";
 import { isPaidModel } from "open-sse/providers/pricing.js";
 import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
@@ -114,8 +120,75 @@ function isOllamaEmbeddingModel(model) {
 // intentionally stay unmapped until upstream publishes a stable canonical ID.
 const KIMI_LIVE_MODEL_PROVIDERS = new Set(["kimi", "kimi-coding", "kimi-coding-apikey"]);
 const KIMI_LIVE_MODEL_ALIASES = { k3: "kimi-k3" };
+const LIVE_MODEL_UNION_PROVIDERS = new Set([
+  "anthropic",
+  "claude",
+  "codex",
+  "minimax",
+  "minimax-cn",
+  "glm",
+  "glm-cn",
+]);
+
+async function liveResolverOptions(conn) {
+  const psd = isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {};
+  return {
+    provider: conn.provider,
+    proxyOptions: await resolveConnectionProxyConfig(psd),
+  };
+}
+
 
 const LIVE_MODEL_RESOLVERS = {
+  anthropic: async (conn, guard) => resolveLiveAnthropicModels(conn, {
+    ...(await liveResolverOptions(conn)),
+    guard,
+  }),
+  claude: async (conn, guard) => resolveLiveAnthropicModels(conn, {
+    ...(await liveResolverOptions(conn)),
+    guard,
+  }),
+  "cloudflare-ai": async (conn, guard) => resolveLiveCloudflareModels(conn, {
+    ...(await liveResolverOptions(conn)),
+    guard,
+  }),
+  minimax: async (conn, guard) => resolveLiveModelIds(conn, "https://api.minimax.io/v1/models", {
+    ...(await liveResolverOptions(conn)),
+    guard,
+  }),
+  "minimax-cn": async (conn, guard) => resolveLiveModelIds(conn, "https://api.minimaxi.com/v1/models", {
+    ...(await liveResolverOptions(conn)),
+    guard,
+  }),
+  glm: async (conn, guard) => resolveLiveModelIds(conn, "https://api.z.ai/api/coding/paas/v4/models", {
+    ...(await liveResolverOptions(conn)),
+    guard,
+  }),
+  "glm-cn": async (conn, guard) => resolveLiveModelIds(conn, "https://open.bigmodel.cn/api/coding/paas/v4/models", {
+    ...(await liveResolverOptions(conn)),
+    guard,
+  }),
+  codex: async (conn) => {
+    const proxyOptions = (await liveResolverOptions(conn)).proxyOptions;
+    const entries = await getCodexModels(
+      conn.accessToken,
+      proxyOptions,
+      isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {},
+      conn.idToken,
+    );
+    const models = entries.flatMap((entry) => {
+      const id = typeof entry?.slug === "string" ? entry.slug.trim() : "";
+      if (!id) return [];
+      const contextWindow = Number(entry.context_window);
+      return [{
+        id,
+        ...(Number.isSafeInteger(contextWindow) && contextWindow > 0
+          ? { capabilities: { contextWindow } }
+          : {}),
+      }];
+    });
+    return models.length ? { models } : null;
+  },
   kiro: async (conn) => {
     const psd = isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {};
     const proxyOptions = await resolveConnectionProxyConfig(psd);
@@ -375,7 +448,9 @@ function comboMatchesKinds(combo, kindFilter) {
 }
 
 /**
- * Build OpenAI-format models list filtered by service kinds.
+ * Build OpenAI-format models filtered by service kind. Built-in catalogs are a
+ * DB-read failure fallback; a healthy empty DB exposes only explicit custom,
+ * combo, and keyless catalogs rather than pretending every provider is saved.
  * @param {string[]} kindFilter - List of service kinds to include (e.g. ["llm"], ["webSearch","webFetch"]).
  * @returns {Promise<object[]>} OpenAI-format model entries.
  */
@@ -398,11 +473,13 @@ async function buildModelsListImpl(kindFilter, guard) {
   const isFreeNoAuthDisabled = (providerId) =>
     isFreeNoAuthProviderDisabled(providerId, settings);
 
+  let dbAvailable = true;
   let connections = [];
   try {
     connections = await connectionsPromise;
     connections = connections.filter((c) => c.isActive !== false);
   } catch (e) {
+    dbAvailable = false;
     console.log("Could not fetch providers, returning all models");
   }
 
@@ -560,36 +637,33 @@ async function buildModelsListImpl(kindFilter, guard) {
     models.push(entry);
   }
 
-  if (connections.length === 0) {
-    // DB unavailable -> return static models, filtered by per-model kind
+  for (const customModel of customModels) {
+    if (!customModel.id || ((customModel.kind || customModel.type) && (customModel.kind || customModel.type) !== "llm")) continue;
+    if (!kindFilter.includes(LLM_KIND)) continue;
+    const providerAlias = customModel.providerAlias;
+    if (!providerAlias) continue;
+
+    const modelId = String(customModel.id).trim();
+    if (!modelId) continue;
+
+    const providerId = providerAlias;
+    const staticCaps = getCapabilitiesForModel(providerId, modelId);
+    const customCaps = isRecord(customModel.capabilities) ? customModel.capabilities : {};
+    const entry = {
+      id: `${providerAlias}/${modelId}`,
+      object: "model",
+      owned_by: providerAlias,
+      capabilities: { ...staticCaps, ...customCaps },
+    };
+    attachModelLimits(entry, providerId, modelId, customCaps);
+    models.push(entry);
+  }
+
+  if (!dbAvailable) {
     for (const alias of Object.keys(PROVIDER_MODELS)) {
       const providerId = aliasToProviderId[alias] ?? alias;
       if (isFreeNoAuthDisabled(providerId)) continue;
       addStaticProviderModels(providerId, alias);
-    }
-
-    for (const customModel of customModels) {
-      if (!customModel.id || ((customModel.kind || customModel.type) && (customModel.kind || customModel.type) !== "llm")) continue;
-      // Custom models without active connection are LLM-only by current schema
-      if (!kindFilter.includes(LLM_KIND)) continue;
-      const providerAlias = customModel.providerAlias;
-      if (!providerAlias) continue;
-
-      const modelId = String(customModel.id).trim();
-      if (!modelId) continue;
-
-      const providerId = providerAlias; // used for static fallback only
-      const staticCaps = getCapabilitiesForModel(providerId, modelId);
-      const customCaps = isRecord(customModel.capabilities) ? customModel.capabilities : {};
-      const mergedCaps = { ...staticCaps, ...customCaps };
-      const entry = {
-        id: `${providerAlias}/${modelId}`,
-        object: "model",
-        owned_by: providerAlias,
-        capabilities: mergedCaps,
-      };
-      attachModelLimits(entry, providerId, modelId, customCaps);
-      models.push(entry);
     }
   } else {
     const providerResults = await Promise.all(
@@ -613,6 +687,7 @@ async function buildModelsListImpl(kindFilter, guard) {
           isOpenAICompatibleProvider(providerId) || isAnthropicCompatibleProvider(providerId);
         const liveModelKindById = new Map();
         const liveCapabilitiesById = new Map();
+        const liveModelIds = new Set();
 
         // Build kind lookup for static models so we can filter even when only IDs are exposed
         const staticModelKindById = new Map(
@@ -666,20 +741,30 @@ async function buildModelsListImpl(kindFilter, guard) {
             }
           : null;
         const liveResolver = providerLiveResolver || compatibleLiveResolver;
-        if (liveResolver && (!hasExplicitEnabledModels || compatibleLiveResolver)) {
+        if (liveResolver && (!hasExplicitEnabledModels || providerLiveResolver || compatibleLiveResolver)) {
           try {
             const live = await liveResolver(conn, guard);
             if (live?.models?.length) {
-              const enrichExistingOnly = Boolean(compatibleLiveResolver) && rawModelIds.length > 0;
+              const enrichExistingOnly = (
+                hasExplicitEnabledModels || Boolean(compatibleLiveResolver) || providerId === "cloudflare-ai"
+              ) && rawModelIds.length > 0;
               const servedIds = new Set(rawModelIds);
               const liveModels = enrichExistingOnly
                 ? live.models.filter((m) => servedIds.has(m.id))
                 : live.models;
-              // Generic live metadata enriches configured/static catalogs; dedicated
-              // provider resolvers retain their account-specific live catalog behavior.
-              if (!hasExplicitEnabledModels && !enrichExistingOnly) rawModelIds = liveModels.map((m) => m.id);
+              // Generic and Cloudflare discovery enrich routed IDs only. Dedicated
+              // union providers preserve static order and append unknown live IDs;
+              // other dedicated or empty-static resolvers expose their live list.
+              if (!hasExplicitEnabledModels) {
+                if (LIVE_MODEL_UNION_PROVIDERS.has(providerId)) {
+                  rawModelIds = Array.from(new Set([...rawModelIds, ...liveModels.map((m) => m.id)]));
+                } else if (!enrichExistingOnly) {
+                  rawModelIds = liveModels.map((m) => m.id);
+                }
+              }
               for (const m of liveModels) {
                 if (!isRecord(m) || typeof m.id !== "string") continue;
+                liveModelIds.add(m.id);
                 if (m.kind || m.type) liveModelKindById.set(m.id, m.kind || m.type);
                 if (isRecord(m.capabilities)) liveCapabilitiesById.set(m.id, m.capabilities);
               }
@@ -798,17 +883,31 @@ async function buildModelsListImpl(kindFilter, guard) {
           };
           const liveCaps = liveCapabilitiesById.get(modelId) || null;
           const explicitCaps = { ...(liveCaps || {}), ...customCaps };
-          const caps = {
-            ...getCapabilitiesForModel(providerId, modelId),
-            ...explicitCaps,
-          };
+          /**
+           * Compatible providers reuse proven static family limits even when
+           * their UUID-scoped registry has no literal model row. Unknown IDs
+           * keep explicit/live metadata only, so generic defaults stay hidden.
+           */
+          const hasStaticModel = staticModelById.has(modelId);
+          // ID-only provider catalogs prove routing, not a model-family limit.
+          // Apply pattern fallback to configured/compatible IDs, but never to a
+          // newly enumerated MiniMax/GLM ID absent from the static registry.
+          const isUncatalogedIdOnlyLiveModel = (
+            providerId === "minimax" || providerId === "minimax-cn"
+            || providerId === "glm" || providerId === "glm-cn"
+          ) && liveModelIds.has(modelId) && !hasStaticModel;
+          const hasStaticLimits = hasStaticModel
+            || (!isUncatalogedIdOnlyLiveModel && resolveModelLimits(providerId, modelId).known);
+          const caps = hasStaticLimits
+            ? { ...getCapabilitiesForModel(providerId, modelId), ...explicitCaps }
+            : explicitCaps;
           const model = {
             id: `${outputAlias}/${modelId}`,
             object: "model",
             owned_by: outputAlias,
             capabilities: caps,
           };
-          if (kind === LLM_KIND || allowAsLlm) {
+          if ((kind === LLM_KIND || allowAsLlm) && (hasStaticLimits || Object.keys(explicitCaps).length)) {
             attachModelLimits(model, providerId, modelId, customCaps, liveCaps);
           }
           perProviderModels.push(model);

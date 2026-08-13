@@ -1,3 +1,36 @@
+# 3.15.0
+
+Provider catalogs are now discovered live where the upstream supports it, 35 missing models were added, and six upstream 9Router fixes landed.
+
+## Dynamic model discovery
+Each provider is now dynamic to exactly the level its API actually permits:
+- **Anthropic** — full: model IDs, `max_input_tokens`/`max_tokens`, plus vision, PDF, and thinking capabilities read straight from `/v1/models`. New Claude releases are picked up without a catalog edit.
+- **Cloudflare** — context windows parsed from the model-search `properties`. Enrich-only: a short or empty catalog page can never remove a model, because Cloudflare's pagination is unreliable.
+- **Codex** — account catalog IDs and context windows via the ChatGPT Codex endpoint.
+- **MiniMax and GLM** — ID enumeration. Their endpoints publish no limits, so newly released models appear automatically while the static catalog supplies capabilities. An unknown ID never receives a fabricated context window.
+
+An exhausted chat quota no longer suppresses list discovery: GLM's `/models` answers 200 even while chat returns 429.
+
+## Catalog
+- **35 models added** with vendor-sourced windows: 6 Anthropic, 4 GLM, 1 Codex, 17 Cloudflare LLMs, and 7 Cloudflare embedding models.
+- **Cloudflare embeddings** work end to end through a dedicated account-scoped adapter, verified by a live vector round-trip rather than a mock.
+- **Codex surface limits are provider-scoped.** The ChatGPT Codex transport serves a 272,000 window where the direct OpenAI API serves 1,050,000. Both are now represented, so a Codex user is not promised a window that transport will not honor and a direct-API user is not understated.
+
+## Upstream ports
+- **#3277** — combo routing now falls back when a provider returns HTTP 200 with an error body, and Responses `output_text.done` no longer closes text early on interleaved tool calls (fixed on both the current translator and the legacy transformer).
+- **#3267** — a healthy database with zero connections no longer advertises the entire built-in catalog.
+- **#3258** — MiniMax text-to-video, with polling pinned to the originating account.
+- **#3273** — live Sessions in the usage dashboard and named CLI URL presets.
+- **#3272** — Oh My Pi added as a CLI target, wired to the shipped `omp-extension`.
+- **#3245** — already covered by the earlier #3204 port; verified rather than duplicated.
+
+`#3255` (latency monitoring) was deliberately declined: despite its title, nothing consumes latency for provider selection, and it would add a schema migration plus a widened synchronous write on every completion for monitoring-only benefit.
+
+## Compatibility and verification
+- No stored-data, API-key, or wire-format changes. Static catalogs remain the fallback, so a provider outage cannot empty or zero the catalog.
+- The capability catalog stays free of server-only imports, keeping Node networking out of the dashboard bundle.
+- Full Vitest/no-regression, lint, build, and commitlint gates green on `main`.
+
 # 3.14.0
 
 Context windows can now come from the provider instead of a hardcoded table, and Kimi's limits were confirmed against the live API.

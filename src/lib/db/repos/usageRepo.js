@@ -1,5 +1,5 @@
 import { EventEmitter } from "events";
-import { createHmac, randomBytes } from "node:crypto";
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { getMetaSync } from "../helpers/metaStore.js";
@@ -56,6 +56,9 @@ const RING_CAP = 50;
 const CONN_CACHE_TTL_MS = 30 * 1000;
 // Window durations in ms for history/reset queries. Calendar-day stats/charts use getUsagePeriodDays/getChartDayBucketCount from usagePeriods.js.
 const PERIOD_MS = { "24h": 86400000 };
+const ACTIVE_SESSION_TTL_MS = 120000;
+const ACTIVE_SESSION_DONE_LINGER_MS = 20000;
+const ACTIVE_SESSION_CAP = 200;
 
 // In-memory state shared across Next.js modules
 if (!global._pendingRequests) global._pendingRequests = { byModel: {}, byAccount: {} };
@@ -69,6 +72,8 @@ if (!global._recentRing) global._recentRing = { items: [], initialized: false };
 if (!global._connectionMapCache) global._connectionMapCache = { map: {}, ts: 0 };
 if (!global._statsEmitTimers) global._statsEmitTimers = { pending: null, update: null, tokenSaver: null };
 global._statsEmitTimers.tokenSaver ??= null;
+if (!global._activeSessions) global._activeSessions = new Map();
+if (!global._activeSessionTimers) global._activeSessionTimers = {};
 
 const pendingRequests = global._pendingRequests;
 const lastErrorProvider = global._lastErrorProvider;
@@ -76,6 +81,8 @@ const pendingTimers = global._pendingTimers;
 const recentRing = global._recentRing;
 const connCache = global._connectionMapCache;
 const statsEmitTimers = global._statsEmitTimers;
+const activeSessions = global._activeSessions;
+const activeSessionTimers = global._activeSessionTimers;
 
 export const statsEmitter = global._statsEmitter;
 
@@ -223,7 +230,74 @@ async function calculateCost(provider, model, tokens) {
   }
 }
 
-export function trackPendingRequest(model, provider, connectionId, started, error = false) {
+function evictActiveSession(requestId) {
+  activeSessions.delete(requestId);
+  clearTimeout(activeSessionTimers[requestId]);
+  delete activeSessionTimers[requestId];
+}
+
+function scheduleActiveSessionEviction(requestId, delayMs) {
+  clearTimeout(activeSessionTimers[requestId]);
+  activeSessionTimers[requestId] = setTimeout(() => {
+    evictActiveSession(requestId);
+    scheduleStatsEvent("pending");
+  }, delayMs);
+  activeSessionTimers[requestId].unref?.();
+}
+
+/** Track one request identity for the live Sessions tab without affecting dispatch. */
+function startActiveSession({ requestId = randomUUID(), clientId, sessionId, model, provider, connectionId }) {
+  if (activeSessions.size >= ACTIVE_SESSION_CAP) evictActiveSession(activeSessions.keys().next().value);
+  activeSessions.set(requestId, {
+    requestId,
+    clientId: clientId || "unknown",
+    sessionId: sessionId || "",
+    model: model || "unknown",
+    provider: (provider || "unknown").toLowerCase(),
+    connectionId: connectionId || null,
+    startedAt: Date.now(),
+    completedAt: null,
+    durationMs: 0,
+    promptTokens: null,
+    completionTokens: null,
+    status: "active",
+  });
+  scheduleActiveSessionEviction(requestId, ACTIVE_SESSION_TTL_MS);
+  return requestId;
+}
+
+/** Finish one dashboard session by request id without mutating aggregate pending counters. */
+export function finishActiveSession({ requestId, promptTokens, completionTokens, status }) {
+  const target = requestId ? activeSessions.get(requestId) : null;
+  if (!target) return;
+  target.promptTokens = promptTokens ?? target.promptTokens;
+  target.completionTokens = completionTokens ?? target.completionTokens;
+  target.completedAt = Date.now();
+  target.durationMs = target.completedAt - target.startedAt;
+  target.status = status || "done";
+  scheduleActiveSessionEviction(target.requestId, ACTIVE_SESSION_DONE_LINGER_MS);
+}
+
+async function getActiveSessions() {
+  const connectionMap = await getConnectionMapCached();
+  return [...activeSessions.values()].map((session) => ({
+    requestId: session.requestId,
+    clientId: session.clientId,
+    sessionId: session.sessionId,
+    model: session.model,
+    provider: session.provider,
+    account: session.connectionId ? connectionMap[session.connectionId] || `Account ${session.connectionId.slice(0, 8)}...` : "Unknown",
+    startedAt: session.startedAt,
+    completedAt: session.completedAt,
+    durationMs: session.status === "active" ? Date.now() - session.startedAt : session.durationMs,
+    promptTokens: session.promptTokens,
+    completionTokens: session.completionTokens,
+    status: session.status,
+  }));
+}
+
+export function trackPendingRequest(model, provider, connectionId, started, error = false, session = null) {
+  let activeSessionRequestId = null;
   const modelKey = provider ? `${model} (${provider})` : model;
   const timerKey = `${connectionId}|${modelKey}`;
 
@@ -243,6 +317,9 @@ export function trackPendingRequest(model, provider, connectionId, started, erro
     }
   }
 
+  if (started && session) {
+    try { activeSessionRequestId = startActiveSession({ ...session, model, provider, connectionId }); } catch { /* telemetry must not block requests */ }
+  }
   if (started) {
     clearTimeout(pendingTimers[timerKey]);
     pendingTimers[timerKey] = setTimeout(() => {
@@ -265,6 +342,7 @@ export function trackPendingRequest(model, provider, connectionId, started, erro
 
   // [PENDING] console line removed; lifecycle is visible via "▶" and "📊 done" lines
   scheduleStatsEvent("pending");
+  return activeSessionRequestId;
 }
 
 export async function getActiveRequests() {
@@ -309,7 +387,7 @@ export async function getActiveRequests() {
     .slice(0, 20);
 
   const errorProvider = (Date.now() - lastErrorProvider.ts < 10000) ? lastErrorProvider.provider : "";
-  return { activeRequests, recentRequests, errorProvider, pending: pendingRequests };
+  return { activeRequests, activeSessions: await getActiveSessions(), recentRequests, errorProvider, pending: pendingRequests };
 }
 
 export async function saveRequestUsage(entry) {
@@ -387,6 +465,7 @@ export async function saveRequestUsage(entry) {
 
     if (inserted) {
       pushToRing(entry);
+      finishActiveSession({ requestId: entry.usageEventId, promptTokens, completionTokens, status: "done" });
       scheduleStatsEvent("update", 250);
     }
   } catch (e) {
@@ -592,6 +671,7 @@ export async function getUsageStats(period = "all", opts = {}) {
     last10Minutes: [],
     pending: pendingRequests,
     activeRequests: [],
+    activeSessions: [],
     recentRequests,
     errorProvider: (Date.now() - lastErrorProvider.ts < 10000) ? lastErrorProvider.provider : "",
   };
@@ -610,6 +690,8 @@ export async function getUsageStats(period = "all", opts = {}) {
       }
     }
   }
+
+  stats.activeSessions = await getActiveSessions();
 
   // last10Minutes — query 10min window
   const currentMinuteStart = new Date(Math.floor(now.getTime() / 60000) * 60000);

@@ -256,7 +256,7 @@ export {
 
 // Usage
 export {
-  statsEmitter, trackPendingRequest, getActiveRequests,
+  statsEmitter, trackPendingRequest, finishActiveSession, getActiveRequests,
   saveRequestUsage, getUsageHistory, getUsageStats, getChartData,
   appendRequestLog, getRecentLogs,
   recordTokenSaverEvent, getTokenSaverStats,

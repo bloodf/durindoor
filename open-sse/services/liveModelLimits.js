@@ -16,7 +16,7 @@ const CONTEXT_KEYS = [
   "contextLength",
   "contextWindow",
 ];
-const OUTPUT_KEYS = ["max_output_tokens", "max_completion_tokens", "maxOutputTokens", "maxOutput"];
+const OUTPUT_KEYS = ["max_output_tokens", "max_completion_tokens", "max_tokens", "maxOutputTokens", "maxOutput"];
 
 
 /** @type {Map<string, { expiresAt: number, models: object[] | null }>} */
@@ -82,7 +82,7 @@ function modelId(model) {
  * upstream never adds a network call to every `/v1/models` request.
  */
 export async function resolveLiveOpenAIModels(connection, options = {}) {
-  const token = connection?.apiKey || connection?.accessToken;
+  const token = options.token || connection?.apiKey || connection?.accessToken;
   const psd = connection?.providerSpecificData;
   const baseUrl = typeof psd?.baseUrl === "string" ? psd.baseUrl.trim().replace(/\/$/, "") : "";
   const derivedEndpoint = options.anthropic
@@ -94,7 +94,7 @@ export async function resolveLiveOpenAIModels(connection, options = {}) {
     ? options.endpoint.trim()
     : derivedEndpoint;
   if (!token || !endpoint) return null;
-  const key = cacheKey(endpoint, `${token}:${options.anthropic === true}:${JSON.stringify(options.modelAliases || {})}`);
+  const key = cacheKey(endpoint, `${token}:${options.cacheVariant || options.anthropic === true}:${JSON.stringify(options.modelAliases || {})}`);
   const now = Date.now();
   const cached = catalogCache.get(key);
   if (cached?.expiresAt > now) {
@@ -124,7 +124,7 @@ export async function resolveLiveOpenAIModels(connection, options = {}) {
         const { proxyAwareFetch } = await import("../utils/proxyFetch.js");
         transport = (url, init) => proxyAwareFetch(url, init, options.proxyOptions);
       }
-      const headers = {
+      const headers = options.headers || {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
         ...(options.anthropic ? {
@@ -140,12 +140,18 @@ export async function resolveLiveOpenAIModels(connection, options = {}) {
       }, options.guard, transport);
       if (!response.ok) return cacheMiss();
       const body = await response.json();
-      const raw = Array.isArray(body) ? body : (body?.data ?? body?.models ?? body?.results);
+      const raw = typeof options.selectModels === "function"
+        ? options.selectModels(body)
+        : (Array.isArray(body) ? body : (body?.data ?? body?.models ?? body?.results));
       if (!Array.isArray(raw)) return cacheMiss();
       const aliases = options.modelAliases && typeof options.modelAliases === "object"
         ? options.modelAliases
         : {};
       const models = raw.flatMap((entry) => {
+        if (typeof options.normalizeModel === "function") {
+          const normalized = options.normalizeModel(entry);
+          return normalized && typeof normalized === "object" ? [normalized] : [];
+        }
         const upstreamId = modelId(entry);
         if (!upstreamId) return [];
         const id = aliases[upstreamId] || upstreamId;
@@ -170,6 +176,110 @@ export async function resolveLiveOpenAIModels(connection, options = {}) {
   } finally {
     if (inFlight.get(key) === promise) inFlight.delete(key);
   }
+}
+
+function anthropicCapabilities(entry) {
+  const published = entry?.capabilities;
+  if (!published || typeof published !== "object" || Array.isArray(published)) return {};
+  const thinking = published.thinking;
+  const types = thinking && typeof thinking === "object" && !Array.isArray(thinking)
+    ? thinking.types
+    : null;
+  const supported = (value) => value === true || (
+    value && typeof value === "object" && !Array.isArray(value) && value.supported === true
+  );
+  const enabled = supported(types?.enabled);
+  const adaptive = supported(types?.adaptive);
+  const reasoning = Boolean(supported(thinking) || thinking?.supported === true || enabled || adaptive);
+  return {
+    ...(published.image_input !== undefined ? { vision: supported(published.image_input) } : {}),
+    ...(published.pdf_input !== undefined ? { pdf: supported(published.pdf_input) } : {}),
+    ...(thinking !== undefined ? {
+      reasoning,
+      thinkingCanDisable: reasoning ? enabled : true,
+      thinkingFormat: reasoning ? (adaptive ? "claude-adaptive" : "claude-budget") : null,
+    } : {}),
+  };
+}
+
+/**
+ * Resolve Anthropic's account catalog without changing registry routing data.
+ * OAuth uses only the stored bearer; API-key connections keep x-api-key auth.
+ */
+export function resolveLiveAnthropicModels(connection, options = {}) {
+  const oauthToken = connection?.accessToken;
+  const apiKey = connection?.apiKey;
+  const token = oauthToken || apiKey;
+  if (!token) return Promise.resolve(null);
+  return resolveLiveOpenAIModels(connection, {
+    ...options,
+    token,
+    endpoint: "https://api.anthropic.com/v1/models?limit=100",
+    cacheVariant: `anthropic:${oauthToken ? "oauth" : "apikey"}`,
+    headers: {
+      "Content-Type": "application/json",
+      "anthropic-version": "2023-06-01",
+      ...(oauthToken
+        ? { Authorization: `Bearer ${oauthToken}` }
+        : { "x-api-key": apiKey }),
+    },
+    normalizeModel: (entry) => {
+      const id = modelId(entry);
+      if (!id) return null;
+      const capabilities = {
+        ...extractLiveModelLimits(entry),
+        ...anthropicCapabilities(entry),
+      };
+      return { id, ...(Object.keys(capabilities).length ? { capabilities } : {}) };
+    },
+  });
+}
+
+/** Enrich only static Cloudflare routes; its search API spans unsupported kinds and paginates inconsistently. */
+export function resolveLiveCloudflareModels(connection, options = {}) {
+  const accountId = connection?.providerSpecificData?.accountId;
+  const token = connection?.apiKey || connection?.accessToken;
+  if (typeof accountId !== "string" || !accountId.trim() || !token) return Promise.resolve(null);
+  return resolveLiveOpenAIModels(connection, {
+    ...options,
+    token,
+    endpoint: `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId.trim())}/ai/models/search?per_page=100`,
+    cacheVariant: "cloudflare-search-v1",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    selectModels: (body) => body?.result,
+    normalizeModel: (entry) => {
+      const id = modelId(entry);
+      if (!id) return null;
+      const property = Array.isArray(entry?.properties)
+        ? entry.properties.find((item) => item?.property_id === "context_window")
+        : null;
+      const capabilities = extractLiveModelLimits({ context_window: property?.value });
+      return { id, ...(capabilities.contextWindow ? { capabilities } : {}) };
+    },
+  });
+}
+
+/** Enumerate provider IDs only; the endpoint publishes no trustworthy limits or capabilities. */
+export function resolveLiveModelIds(connection, endpoint, options = {}) {
+  const token = connection?.apiKey || connection?.accessToken;
+  if (!token || !endpoint) return Promise.resolve(null);
+  return resolveLiveOpenAIModels(connection, {
+    ...options,
+    token,
+    endpoint,
+    cacheVariant: `ids:${endpoint}`,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    normalizeModel: (entry) => {
+      const id = modelId(entry);
+      return id ? { id } : null;
+    },
+  });
 }
 /**
  * Start the cached resolver in the background. This intentionally returns

@@ -29,7 +29,9 @@ function stubConnections(connections) {
 
 describe("buildModelsList — top-level context_length / max_completion_tokens (#3218)", () => {
   it("emits snake_case top-level fields for static models and keeps nested capabilities", async () => {
-    stubConnections([]);
+    // Upstream #3267: static catalogs require an active connection when DB
+    // reads succeed; use the saved Claude route whose fields this test owns.
+    stubConnections([{ id: "conn-claude", provider: "claude", isActive: true, providerSpecificData: { enabledModels: ["claude-opus-4-7"] } }]);
 
     const models = await buildModelsList(["llm"]);
     const claude = models.find((m) => m.id === "cc/claude-opus-4-7");

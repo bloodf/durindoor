@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   recordProviderConnectionFallbackState: vi.fn(),
   validateApiKey: vi.fn(),
   getSettings: vi.fn(),
+  getProviderConnectionById: vi.fn(),
   getApiKeyByKey: vi.fn(),
   getApiKeyById: vi.fn(),
   getApiKeyUsageTotals: vi.fn(),
@@ -26,6 +27,7 @@ vi.mock("@/lib/localDb", () => ({
   getSettings: mocks.getSettings,
   getApiKeyByKey: mocks.getApiKeyByKey,
   getApiKeyById: mocks.getApiKeyById,
+  getProviderConnectionById: mocks.getProviderConnectionById,
   getApiKeyUsageTotals: mocks.getApiKeyUsageTotals,
   incrementApiKeyUsageSync: mocks.incrementApiKeyUsageSync,
   getProxyPools: mocks.getProxyPools,
@@ -60,6 +62,12 @@ describe("xAI video proxy (9router#2593)", () => {
     vi.clearAllMocks();
     mocks.getSettings.mockResolvedValue({ requireApiKey: false });
     mocks.getProviderConnections.mockResolvedValue([{ ...XAI_CONNECTION }]);
+    mocks.getProviderConnectionById.mockImplementation(async (id) => id === "minimax-1" ? {
+      id,
+      provider: "minimax",
+      apiKey: "minimax-secret",
+      testStatus: "active",
+    } : null);
     mocks.getApiKeyByKey.mockResolvedValue(null);
     mocks.getApiKeyUsageTotals.mockResolvedValue({});
     mocks.getProxyPools.mockResolvedValue([]);
@@ -126,6 +134,30 @@ describe("xAI video proxy (9router#2593)", () => {
     expect(init.method).toBe("GET");
     expect(init.headers.Authorization).toBe(`Bearer ${XAI_CONNECTION.apiKey}`);
     expect(res.headers.get("access-control-expose-headers")).toContain("x-9router-connection-id");
+  });
+
+  it("GET polls MiniMax when the creation account header pins a MiniMax connection", async () => {
+    mocks.getProviderConnections.mockResolvedValue([{
+      id: "minimax-1",
+      provider: "minimax",
+      apiKey: "minimax-secret",
+      testStatus: "active",
+    }]);
+    const fetchMock = vi.fn(async (url) => String(url).includes("/v2/query/video_generation/")
+      ? new Response(JSON.stringify({
+        task: { id: "task-mm", status: "succeeded", content: { url: "https://minimax.example/video.mp4" } },
+      }), { status: 200, headers: { "content-type": "application/json" } })
+      : new Response("{}", { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await handleVideoGet(new Request("http://localhost/v1/videos/task-mm", {
+      headers: { "x-connection-id": "minimax-1" },
+    }), "task-mm");
+    const pollCall = fetchMock.mock.calls.find(([url]) => String(url).includes("/v2/query/video_generation/"));
+
+    expect(res.status).toBe(200);
+    expect(pollCall[0]).toBe("https://api.minimax.io/v2/query/video_generation/task-mm");
+    expect(await res.json()).toEqual({ request_id: "task-mm", status: "done", video: { url: "https://minimax.example/video.mp4" } });
   });
 
   it("returns 401 when API key required but missing", async () => {

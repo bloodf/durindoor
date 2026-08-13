@@ -45,11 +45,26 @@ describe("buildModelsList hidePaidModels wiring", () => {
     mocks.getDisabledModels.mockResolvedValue({});
   });
 
+  const connectedCatalogs = [
+    {
+      id: "anthropic-test",
+      provider: "anthropic",
+      apiKey: "test-key",
+      providerSpecificData: { enabledModels: ["claude-sonnet-4-20250514"] },
+    },
+    {
+      id: "gemini-test",
+      provider: "gemini",
+      apiKey: "test-key",
+      providerSpecificData: { enabledModels: ["gemini-2.5-pro", "gemini-2.5-flash"] },
+    },
+  ];
+
   it("toggle off: returns paid + free models and all combos unchanged", async () => {
     mocks.getSettings.mockResolvedValue({ hidePaidModels: false });
-    // Zero connections → static catalog branch. Build a small paid+free mix
-    // using providers whose ids we can assert without DB access.
-    mocks.getProviderConnections.mockResolvedValue([]);
+    // Healthy DB exposes only connected catalogs; explicit enabledModels keeps
+    // this test focused on paid filtering without invoking live discovery.
+    mocks.getProviderConnections.mockResolvedValue(connectedCatalogs);
     mocks.getCombos.mockResolvedValue([
       { name: "mixed-combo", models: ["anthropic/claude-sonnet-4-20250514", "aug/claude-sonnet-4.6"] },
       { name: "all-paid-combo", models: ["anthropic/claude-sonnet-4-20250514"] },
@@ -68,7 +83,7 @@ describe("buildModelsList hidePaidModels wiring", () => {
 
   it("toggle on: drops paid provider rows, keeps curated/explicit free, omits all-paid combos", async () => {
     mocks.getSettings.mockResolvedValue({ hidePaidModels: true });
-    mocks.getProviderConnections.mockResolvedValue([]);
+    mocks.getProviderConnections.mockResolvedValue(connectedCatalogs);
     mocks.getCombos.mockResolvedValue([
       { name: "mixed-combo", models: ["anthropic/claude-sonnet-4-20250514", "aug/claude-sonnet-4.6"] },
       { name: "all-paid-combo", models: ["anthropic/claude-sonnet-4-20250514"] },

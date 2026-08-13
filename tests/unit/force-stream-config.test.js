@@ -118,6 +118,8 @@ vi.mock("../../open-sse/utils/error.js", () => ({
 
 vi.mock("@/lib/usageDb.js", () => ({
   trackPendingRequest: vi.fn(),
+  // Session terminals were split from pending-counter decrements in 96205df5c.
+  finishActiveSession: vi.fn(),
   appendRequestLog: vi.fn(() => Promise.resolve()),
   saveRequestDetail: vi.fn(() => Promise.resolve()),
 }));

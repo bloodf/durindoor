@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   headroom: vi.fn(async () => null),
   pxpipe: vi.fn(async () => null),
   trackPending: vi.fn(),
+  finishSession: vi.fn(),
   appendLog: vi.fn(async () => {}),
   refreshCredentials: vi.fn(),
   refreshWithRetry: vi.fn(),
@@ -91,6 +92,7 @@ vi.mock("../../open-sse/rtk/pxpipe.js", () => ({
 
 vi.mock("@/lib/usageDb.js", () => ({
   trackPendingRequest: mocks.trackPending,
+  finishActiveSession: mocks.finishSession,
   appendRequestLog: mocks.appendLog,
   saveRequestDetail: vi.fn(async () => {}),
 }));
@@ -131,12 +133,18 @@ describe("thinking suffix at the chatCore provider boundary", () => {
     controller.abort();
     await expect(pending).resolves.toMatchObject({ success: false, status: 499 });
     expect(mocks.execute).not.toHaveBeenCalled();
+    // 96205df5c reconciles two lifecycles: pending counters decrement once,
+    // while the request-id session receives its independent error terminal.
     expect(mocks.trackPending).toHaveBeenCalledWith(
       "claude-sonnet-4.5",
       "kiro",
       "connection-gate-abort",
       false,
     );
+    expect(mocks.finishSession).toHaveBeenCalledWith(expect.objectContaining({
+      requestId: expect.any(String),
+      status: "error",
+    }));
     expect(getGateStats().kiro).toEqual({ current: 1, queued: 0 });
     releaseSlot("kiro");
   });
@@ -190,11 +198,14 @@ describe("thinking suffix at the chatCore provider boundary", () => {
       provider: "kiro",
       model: "claude-sonnet-4.5",
     }));
+    // Sessions metadata extends, rather than replaces, clean routing/accounting IDs.
     expect(mocks.trackPending).toHaveBeenCalledWith(
       "claude-sonnet-4.5",
       "kiro",
       "connection-144",
       true,
+      false,
+      expect.objectContaining({ requestId: expect.any(String), sessionId: "chatcore-session-144" }),
     );
     expect(mocks.appendLog).toHaveBeenCalledWith(expect.objectContaining({
       model: "claude-sonnet-4.5",

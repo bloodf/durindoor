@@ -58,6 +58,8 @@ export default {
     { id: "gpt-5.4", name: "GPT 5.4" },
     { id: "gpt-5.4-review", name: "GPT 5.4 Review", upstreamModelId: "gpt-5.4", quotaFamily: "review" },
     { id: "gpt-5.4-mini", name: "GPT 5.4 Mini" },
+    /** Live Codex catalog 2026-08-13 exposes this dedicated automatic-review base model. */
+    { id: "codex-auto-review", name: "Codex Auto Review", quotaFamily: "review" },
     { id: "gpt-5.4-mini-review", name: "GPT 5.4 Mini Review", upstreamModelId: "gpt-5.4-mini", quotaFamily: "review" },
     { id: "gpt-5.3-codex", name: "GPT 5.3 Codex" },
     { id: "gpt-5.3-codex-review", name: "GPT 5.3 Codex Review", upstreamModelId: "gpt-5.3-codex", quotaFamily: "review" },

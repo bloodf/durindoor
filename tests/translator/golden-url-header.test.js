@@ -1,5 +1,5 @@
-// P0 GOLDEN: lock buildUrl + buildHeaders cho mọi provider trên code CŨ.
-// Sinh snapshot lần đầu (baseline) → sau refactor chạy lại phải khớp y hệt.
+// P0 GOLDEN: lock buildUrl + buildHeaders for every provider.
+// Update header snapshots only after reviewing each delta as an intentional wire-contract change.
 // Mock proxyFetch + uuid-heavy executors KHÔNG cần ở đây vì chỉ gọi buildUrl/buildHeaders (pure).
 import { describe, it, expect } from "vitest";
 import { PROVIDERS } from "../../open-sse/config/providers.js";

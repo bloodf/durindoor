@@ -476,6 +476,12 @@ export class DefaultExecutor extends BaseExecutor {
     for (const hook of desc.hooks || []) HEADER_HOOKS[hook]?.(headers, credentials);
     applyAuth(headers, desc, credentials);
 
+    /** Emit only client-provided session identity, never generated fallback affinity. */
+    if (this.provider === "claude" && credentials?._clientSessionId && !credentials._clientSessionIsGenerated) {
+      delete headers["x-claude-code-session-id"];
+      headers["X-Claude-Code-Session-Id"] = credentials._clientSessionId;
+    }
+
     // Strip first-party Claude Code identity headers for non-Anthropic anthropic-compatible upstreams
     if (this.provider?.startsWith?.("anthropic-compatible-")) {
       const baseUrl = credentials?.providerSpecificData?.baseUrl || "";

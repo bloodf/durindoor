@@ -77,6 +77,7 @@ export default {
     { id: "MiniMax-M2", name: "MiniMax M2" },
     { id: "image-01", name: "MiniMax Image-01", params: ["n","size","response_format"], kind: "image" },
     { id: "image-01-live", name: "MiniMax Image-01 Live", params: ["n","size","response_format"], kind: "image" },
+    { id: "MiniMax-H3", name: "MiniMax H3", params: ["duration","resolution","aspect_ratio"], kind: "video" },
     { id: "speech-2.8-hd", name: "Speech 2.8 HD", kind: "tts" },
     { id: "speech-2.8-turbo", name: "Speech 2.8 Turbo", kind: "tts" },
     { id: "speech-2.6-hd", name: "Speech 2.6 HD", kind: "tts" },
@@ -86,8 +87,20 @@ export default {
     { id: "speech-01-hd", name: "Speech 01 HD", kind: "tts" },
     { id: "speech-01-turbo", name: "Speech 01 Turbo", kind: "tts" },
   ],
-  serviceKinds: ["llm","image","imageToText","webSearch","tts"],
+  serviceKinds: ["llm","image","imageToText","webSearch","tts","video"],
   ttsConfig: { baseUrl: "https://api.minimax.io/v1/t2a_v2", authType: "apikey", authHeader: "bearer", format: "minimax-tts" },
+  /** MiniMax v2 async text-to-video task API, normalized by videoProviders/minimax.js. */
+  videoConfig: {
+    format: "minimax-v2",
+    createUrl: "https://api.minimax.io/v2/video_generation",
+    queryUrl: "https://api.minimax.io/v2/query/video_generation",
+    defaultModel: "MiniMax-H3",
+    models: ["MiniMax-H3"],
+    resolutions: ["2K"],
+    duration: { min: 4, max: 15 },
+    textToVideoRatios: ["adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"],
+    maxPromptCharacters: 7000,
+  },
   // OmniRoute #7108: image_generation lives on the dedicated synchronous
   // endpoint (not the OpenAI-compatible /images/generations path).
   imageConfig: {

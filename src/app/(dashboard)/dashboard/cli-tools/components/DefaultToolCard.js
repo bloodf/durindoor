@@ -1,17 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, ModelSelectModal } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import Image from "next/image";
 import ApiKeySelect from "./ApiKeySelect";
+import BaseUrlSelect from "./BaseUrlSelect";
 
-export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, baseUrl, apiKeys, activeProviders = [], cloudEnabled = false, tunnelEnabled = false }) {
+export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, baseUrl, apiKeys, activeProviders = [], cloudEnabled = false, cloudUrl = "", tunnelEnabled = false, tunnelPublicUrl = "", tailscaleEnabled = false, tailscaleUrl = "" }) {
   const [copiedField, setCopiedField] = useState(null);
   const [showModelModal, setShowModelModal] = useState(false);
   const [modelValue, setModelValue] = useState("");
   
   const [selectedApiKey, setSelectedApiKey] = useState("");
+  const [customBaseUrl, setCustomBaseUrl] = useState(baseUrl);
+  useEffect(() => setCustomBaseUrl(baseUrl), [baseUrl]);
 
   const replaceVars = (text) => {
     const keyToUse = (selectedApiKey && selectedApiKey.trim()) 
@@ -19,7 +22,7 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
       : (!cloudEnabled ? "sk_durindoor" : "your-api-key");
     
     // Add /v1 suffix only if not already present (DRY - avoid duplicate)
-    const normalizedBaseUrl = baseUrl || "http://localhost:20128";
+    const normalizedBaseUrl = customBaseUrl || baseUrl || "http://localhost:20128";
     const baseUrlWithV1 = normalizedBaseUrl.endsWith("/v1") 
       ? normalizedBaseUrl 
       : `${normalizedBaseUrl}/v1`;
@@ -158,6 +161,20 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
               <p className="font-medium text-text">{item.title}</p>
               {item.desc && <p className="text-sm text-text-muted mt-0.5">{item.desc}</p>}
               {item.type === "apiKeySelector" && renderApiKeySelector()}
+              {item.type === "baseUrlSelector" && (
+                <div className="mt-2">
+                  <BaseUrlSelect
+                    value={customBaseUrl}
+                    onChange={setCustomBaseUrl}
+                    tunnelEnabled={tunnelEnabled}
+                    tunnelPublicUrl={tunnelPublicUrl}
+                    tailscaleEnabled={tailscaleEnabled}
+                    tailscaleUrl={tailscaleUrl}
+                    cloudEnabled={cloudEnabled}
+                    cloudUrl={cloudUrl}
+                  />
+                </div>
+              )}
               {item.type === "modelSelector" && renderModelSelector()}
               {item.value && (
                 <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-2">

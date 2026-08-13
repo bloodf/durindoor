@@ -263,6 +263,8 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       return connectionId || "";
     }
   })();
+  // Proposed id remains stable even if fail-open dashboard tracking cannot allocate a row.
+  const requestedUsageEventId = globalThis.crypto?.randomUUID?.() || `${requestStartTime}-${Math.random().toString(36).slice(2)}`;
   const reqTag = log?.tagForSession ? log.tagForSession(sessionSeed) : (log?.nextTag ? log.nextTag() : "");
 
   const sourceFormat = sourceFormatOverride || detectFormat(body);
@@ -784,7 +786,10 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     }
   }
 
-  trackPendingRequest(cleanModel, provider, connectionId, true);
+  // Dashboard tracking stays fail-open and reuses the session id already resolved for request logs.
+  const clientHeaders = clientRawRequest?.headers || {};
+  const clientId = clientHeaders["x-9r-real-ip"] || clientHeaders["x-real-ip"] || clientHeaders["x-forwarded-for"] || "unknown";
+  const activeSessionRequestId = trackPendingRequest(cleanModel, provider, connectionId, true, false, { requestId: requestedUsageEventId, clientId, sessionId: sessionSeed }) || requestedUsageEventId;
   appendRequestLog({ model: cleanModel, provider, connectionId, status: "PENDING" }).catch(() => { });
 
   const msgCount = translatedBody.messages?.length || translatedBody.input?.length || translatedBody.contents?.length || translatedBody.request?.contents?.length || 0;
@@ -794,10 +799,15 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   const concurrencyLimit = getConcurrencyLimit(provider, providerConcurrencyLimit);
   let slotAcquired = false;
   let providerRequestFinished = false;
-  const finishProviderRequest = () => {
+  let activeSessionFinished = false;
+  const finishProviderRequest = (sessionStatus = null) => {
+    if (sessionStatus && !activeSessionFinished) {
+      activeSessionFinished = true;
+      trackPendingRequest(cleanModel, provider, connectionId, false, sessionStatus === "error", { requestId: activeSessionRequestId, status: sessionStatus });
+    }
     if (providerRequestFinished) return;
     providerRequestFinished = true;
-    trackPendingRequest(cleanModel, provider, connectionId, false);
+    if (!sessionStatus) trackPendingRequest(cleanModel, provider, connectionId, false);
     if (slotAcquired) {
       releaseSlot(provider);
       slotAcquired = false;
@@ -814,18 +824,18 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   const streamController = createStreamController({
     externalSignal: abortSignal,
     onDisconnect: (reason) => {
-      finishProviderRequest();
+      finishProviderRequest("error");
       settleQuota(false, abortSignal?.aborted ? "abort" : "stream_cancel");
       abandonStreamingDetail?.(typeof reason?.reason === "string" ? reason.reason : "client_disconnected");
       if (onDisconnect) onDisconnect(reason);
     },
     onError: (error) => {
-      finishProviderRequest();
+      finishProviderRequest("error");
       settleQuota(false, classifyQuotaTerminalReason(error));
       abandonStreamingDetail?.(error?.message === "stream stall timeout" ? "stall_timeout" : "stream_error");
     },
     onComplete: () => {
-      finishProviderRequest();
+      finishProviderRequest("error");
       // Coherent terminals settle success first. A plain EOF without one is a
       // malformed terminal and the lifecycle's local idempotency resolves races.
       settleQuota(false, "malformed_terminal");
@@ -900,7 +910,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
         .join("; ");
       const errMsg = `Outbound validation failed for ${finalFormat}: ${summary}`;
       log?.warn?.("VALIDATE", errMsg);
-      trackPendingRequest(cleanModel, provider, connectionId, false, true);
+      finishProviderRequest("error");
       appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${HTTP_STATUS.BAD_REQUEST}` }).catch(() => { });
       saveRequestDetail(buildRequestDetail({
         provider, model: cleanModel, connectionId,
@@ -974,7 +984,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       slotAcquired = true;
       log?.debug?.("CONCURRENCY", `${provider} | slot acquired (${concurrencyLimit} max)`);
     } catch (e) {
-      finishProviderRequest();
+      finishProviderRequest("error");
       if (e instanceof ConcurrencyGateTimeoutError) {
         log?.warn?.("CONCURRENCY", `${provider} | gate timeout after ${e.timeoutMs}ms (${e.limit} max)`);
         return createErrorResult(HTTP_STATUS.SERVICE_UNAVAILABLE, e.message);
@@ -994,11 +1004,10 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     reqLogger.logTargetRequest(providerUrl, providerHeaders, finalBody);
   } catch (error) {
     if (isQuotaDispatchUnavailable(error)) {
-      finishProviderRequest();
+      finishProviderRequest("error");
       return { ...quotaUnavailable(error.reason), attemptStartedAt: latestProviderAttemptStartedAt };
     }
-    trackPendingRequest(cleanModel, provider, connectionId, false, true);
-    finishProviderRequest();
+    finishProviderRequest("error");
     const terminalReason = classifyQuotaTerminalReason(error, { providerSignal, fallback: "transport_error" });
     const wasClientAbort = terminalReason === "abort";
     await settleQuota(false, terminalReason);
@@ -1065,7 +1074,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
           terminalProvenance = retryResult.terminalProvenance || null;
         } catch (error) {
           if (isQuotaDispatchUnavailable(error)) {
-            finishProviderRequest();
+            finishProviderRequest("error");
             return { ...quotaUnavailable(error.reason), attemptStartedAt: latestProviderAttemptStartedAt };
           }
           if (error?.name === "AbortError") throw error;
@@ -1076,7 +1085,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       }
     } catch (error) {
       if (isQuotaDispatchUnavailable(error)) {
-        finishProviderRequest();
+        finishProviderRequest("error");
         return { ...quotaUnavailable(error.reason), attemptStartedAt: latestProviderAttemptStartedAt };
       }
       if (error?.name === "AbortError") {
@@ -1089,14 +1098,13 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
 
   // Provider returned error
   if (!providerResponse.ok) {
-    trackPendingRequest(cleanModel, provider, connectionId, false, true);
     let parsedError;
     try {
       parsedError = await parseUpstreamError(providerResponse, executor, { signal: providerSignal, credentials, proxyOptions });
     } catch (error) {
       if (error?.name === "AbortError") {
         streamController.handleError(error);
-        finishProviderRequest();
+        finishProviderRequest("error");
         return { ...createErrorResult(499, "Request aborted"), attemptStartedAt: latestProviderAttemptStartedAt };
       }
       parsedError = { statusCode: providerResponse.status || 502, message: "Upstream provider error", resetsAtMs: null, rateLimitEvidence: null };
@@ -1132,7 +1140,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
         } catch (error) {
           if (error?.name === "AbortError") {
             streamController.handleError(error);
-            finishProviderRequest();
+            finishProviderRequest("error");
             return { ...createErrorResult(499, "Request aborted"), attemptStartedAt: latestProviderAttemptStartedAt };
           }
           // Retry itself errored non-abort: fall through with the original error.
@@ -1144,7 +1152,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     if (providerResponse.ok) {
       finishProviderRequest();
     } else {
-      finishProviderRequest();
+      finishProviderRequest("error");
       await settleQuota(false, "upstream_error");
       const { statusCode, message, resetsAtMs, rateLimitEvidence } = parsedError;
     appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${statusCode}` }).catch(() => { });
@@ -1222,7 +1230,6 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     );
   }
 
-  const usageEventId = globalThis.crypto?.randomUUID?.() || `${requestStartTime}-${Math.random().toString(36).slice(2)}`;
   const sharedCtx = {
     provider,
     model: cleanModel,
@@ -1236,6 +1243,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     clientRawRequest,
     onRequestSuccess: async (context = {}) => {
       await settleQuota(true, "success");
+      finishProviderRequest("done");
       return onRequestSuccess?.({
         ...context,
         attemptStartedAt: context.attemptStartedAt || latestProviderAttemptStartedAt,
@@ -1245,14 +1253,14 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     pxpipe: pxpipeSummary,
     reqTag,
     log,
-    usageEventId,
+    usageEventId: activeSessionRequestId,
     claudeClassifierCompat,
     terminalProvenance,
   };
   const appendLog = (extra) => appendRequestLog({ model: cleanModel, provider, connectionId, ...extra }).catch(() => { });
   // Release the concurrency slot when the request completes (covers streaming + non-streaming + disconnect)
   const trackDone = () => {
-    finishProviderRequest();
+    finishProviderRequest("done");
   };
   const finalizeBufferedResult = async (result) => {
     if (!result?.success && result?.quotaTerminalReason) {

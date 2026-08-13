@@ -133,35 +133,36 @@ export const MODEL_CAPABILITIES = {
   "claude-sonnet-5-thinking": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   "claude-sonnet-5-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   "claude-sonnet-5-thinking-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  /** Anthropic Models API 2026-08-13 publishes exact per-ID input and output limits. */
+  "claude-opus-4-5-20251101": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-budget", contextWindow: 200000, maxOutput: 64000 },
+  "claude-sonnet-4-5-20250929": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-budget", contextWindow: 1000000, maxOutput: 64000 },
 
   // Gemini image-gen / OpenAI image / xai image variants
   "gpt-image-1":       { imageOutput: true, tools: false },
 
-  /** Z.ai publishes GLM-4.6V's exact 128,000-token window and 32,768-token output limit. */
+  /** Z.ai documents GLM-4.6V's 128K-token context and 32,768-token output limit. */
   "glm-4.6v":          { vision: true, reasoning: true, thinkingFormat: "zai", contextWindow: 128000, maxOutput: 32768 },
   /**
-   * UNVERIFIED context integers for GLM-5.2/5.1/5/4.7 (live probe
-   * 2026-08-13): both GET https://api.z.ai/api/coding/paas/v4/models and GET
-   * https://api.z.ai/api/paas/v4/models returned only
-   * id/object/created/owned_by. Per-model GETs were equally bare, while
-   * deliberate overflow requests all returned 429 `Weekly/Monthly Limit
-   * Exhausted` before validating token count. Leave stored values unchanged
-   * until an upstream response states exact limits.
+   * Z.ai's primary model pages document these limits. The 2026-08-13 Models
+   * APIs confirmed all text IDs below except the separately-routed vision ID.
+   * https://docs.z.ai/guides/llm/glm-5.2
+   * https://docs.z.ai/guides/llm/glm-5.1
+   * https://docs.z.ai/guides/llm/glm-5
+   * https://docs.z.ai/guides/llm/glm-5-turbo
+   * https://docs.z.ai/guides/llm/glm-4.7
+   * https://docs.z.ai/guides/llm/glm-4.6
+   * https://docs.z.ai/guides/llm/glm-4.5
    */
-  // GLM-5.2 has a stored 1M window; GLM-5.1/5/5-turbo have stored 200K windows.
   "glm-5.2":           { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
   "glm-5.1":           { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 },
   "glm-5":             { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 },
   "glm-5-turbo":       { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 },
-  // GLM-4.7 stored context is 200K; live probes above did not expose an exact limit.
   "glm-4.7":           { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 },
-  // GLM-4.7-flashx has 128K context (maxOutput not recorded in source)
   "glm-4.7-flashx":    { reasoning: true, thinkingFormat: "zai", contextWindow: 131072 },
-  // GLM-4.6 has 200K context, 128K max output
   "glm-4.6":           { reasoning: true, thinkingFormat: "zai", contextWindow: 200000, maxOutput: 131072 },
-  // GLM-4.5 and 4-32b-0414-128k have 128K context (maxOutput not recorded in source)
-  "glm-4.5":           { reasoning: true, thinkingFormat: "zai", contextWindow: 131072 },
-  "glm-4.5-air":       { reasoning: true, thinkingFormat: "zai", contextWindow: 131072 },
+  // GLM-4.5 family publishes a 128K context; keep output unset because its 96K label is not an exact integer.
+  "glm-4.5":           { reasoning: true, thinkingFormat: "zai", contextWindow: 131072, maxOutput: undefined },
+  "glm-4.5-air":       { reasoning: true, thinkingFormat: "zai", contextWindow: 131072, maxOutput: undefined },
   "glm-4-32b-0414-128k": { reasoning: true, thinkingFormat: "zai", contextWindow: 131072 },
 
   // Qwen plain coder/text (no vision) — registry "vision-model" / "coder-model" aliases
@@ -212,20 +213,29 @@ const DIRECT_GPT_5_5_6_CAPS = {
   "gpt-5.6-luna":         { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
 };
 
-const CODEX_GPT_5_6_CAPS = {
+/**
+ * ChatGPT Codex catalog reports the currently served context_window but no
+ * output ceiling. Exact IDs prevent the generic GPT-5 patterns from advertising
+ * direct-API limits on the OAuth Codex surface.
+ */
+const CODEX_GPT_CAPS = {
   ...DIRECT_GPT_5_5_6_CAPS,
-  "gpt-5.5-review":       { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
-  /** Effort suffixes are virtual aliases stripped by codex.js before the upstream request. */
-  "gpt-5.5-medium":       { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
-  "gpt-5.5-high":         { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
-  "gpt-5.5-xhigh":        { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
-  // Same upstream model as "gpt-5.4" (registry codex.js sets upstreamModelId),
-  // so it must resolve the same window instead of the generic 400K pattern.
-  "gpt-5.4-review":       { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
-  "gpt-5.6-sol-review":   { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
-  "gpt-5.6-sol-ultra":    { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
-  "gpt-5.6-terra-review": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
-  "gpt-5.6-luna-review":  { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
+  "gpt-5.5":                    { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: undefined },
+  "gpt-5.5-review":             { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: undefined },
+  "gpt-5.5-medium":             { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: undefined },
+  "gpt-5.5-high":               { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: undefined },
+  "gpt-5.5-xhigh":              { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: undefined },
+  "gpt-5.4":                    { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: undefined },
+  "gpt-5.4-review":             { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: undefined },
+  "gpt-5.4-mini":               { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: undefined },
+  "gpt-5.4-mini-review":        { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: undefined },
+  "gpt-5.3-codex-spark":        { reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 128000, maxOutput: undefined },
+  "gpt-5.3-codex-spark-review": { reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 128000, maxOutput: undefined },
+  "codex-auto-review":          { reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: undefined },
+  "gpt-5.6-sol-review":         { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
+  "gpt-5.6-sol-ultra":          { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
+  "gpt-5.6-terra-review":       { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
+  "gpt-5.6-luna-review":        { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
 };
 
 // Native MiniMax hosts (platform.minimax.io / minimaxi.com) serve M3 at the
@@ -251,6 +261,31 @@ const CLOUDFLARE_CAPS = {
   "@cf/meta/llama-3.2-1b-instruct": { contextWindow: 60000, maxOutput: undefined },
   "@cf/meta/llama-3.2-3b-instruct": { contextWindow: 80000, maxOutput: undefined },
   "@cf/meta/llama-3.3-70b-instruct-fp8-fast": { contextWindow: 24000, maxOutput: undefined },
+  "@cf/openai/gpt-oss-120b": { reasoning: true, thinkingFormat: "openai", contextWindow: 128000, maxOutput: undefined },
+  "@cf/openai/gpt-oss-20b": { reasoning: true, thinkingFormat: "openai", contextWindow: 128000, maxOutput: undefined },
+  "@cf/google/gemma-2b-it-lora": { contextWindow: 8192, maxOutput: undefined },
+  "@cf/google/gemma-7b-it-lora": { contextWindow: 3500, maxOutput: undefined },
+  "@cf/google/gemma-4-26b-a4b-it": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 256000, maxOutput: undefined },
+  "@cf/meta/llama-guard-3-8b": { contextWindow: 131072, maxOutput: undefined },
+  "@cf/meta/llama-3.1-8b-instruct-fp8": { contextWindow: 32000, maxOutput: undefined },
+  "@cf/meta/llama-3.2-11b-vision-instruct": { vision: true, contextWindow: 128000, maxOutput: undefined },
+  "@cf/meta/llama-4-scout-17b-16e-instruct": { vision: true, contextWindow: 131000, maxOutput: undefined },
+  "@cf/meta-llama/llama-2-7b-chat-hf-lora": { contextWindow: 8192, maxOutput: undefined },
+  "@cf/mistral/mistral-7b-instruct-v0.2-lora": { contextWindow: 15000, maxOutput: undefined },
+  "@cf/moonshotai/kimi-k2.7-code": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 262144, maxOutput: undefined },
+  "@cf/ibm-granite/granite-4.0-h-micro": { contextWindow: 131000, maxOutput: undefined },
+  "@cf/zai-org/glm-5.2": { reasoning: true, thinkingFormat: "openai", contextWindow: 262144, maxOutput: undefined },
+  "@cf/nvidia/nemotron-3-120b-a12b": { reasoning: true, thinkingFormat: "openai", contextWindow: 256000, maxOutput: undefined },
+  "@cf/aisingapore/gemma-sea-lion-v4-27b-it": { contextWindow: 128000, maxOutput: undefined },
+  "@cf/qwen/qwen3-30b-a3b-fp8": { reasoning: true, thinkingFormat: "openai", contextWindow: 32768, maxOutput: undefined },
+  /** Embedding models have input windows only; null means Cloudflare publishes no usable integer. */
+  "@cf/baai/bge-m3": { tools: false, contextWindow: 60000, maxOutput: null },
+  "@cf/qwen/qwen3-embedding-0.6b": { tools: false, contextWindow: 8192, maxOutput: null },
+  "@cf/pfnet/plamo-embedding-1b": { tools: false, contextWindow: null, maxOutput: null },
+  "@cf/baai/bge-small-en-v1.5": { tools: false, contextWindow: null, maxOutput: null },
+  "@cf/baai/bge-base-en-v1.5": { tools: false, contextWindow: 153600, maxOutput: null },
+  "@cf/google/embeddinggemma-300m": { tools: false, contextWindow: null, maxOutput: null },
+  "@cf/baai/bge-large-en-v1.5": { tools: false, contextWindow: null, maxOutput: null },
 };
 
 /** Auto-routing aliases have no fixed limits; their selected target owns them. */
@@ -260,8 +295,8 @@ export const PROVIDER_CAPABILITIES = {
   // Direct OpenAI GPT-5.5/5.6 family and Codex/CX aliases expose 1.05M context
   // window and 128K max output, overriding the generic *gpt-5* 400K fallback pattern.
   openai: DIRECT_GPT_5_5_6_CAPS,
-  codex: CODEX_GPT_5_6_CAPS,
-  cx: CODEX_GPT_5_6_CAPS,
+  codex: CODEX_GPT_CAPS,
+  cx: CODEX_GPT_CAPS,
   "cloudflare-ai": CLOUDFLARE_CAPS,
   cf: CLOUDFLARE_CAPS,
   // Ollama's trained 131,072-token window is not its served window. The local

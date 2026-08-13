@@ -14,6 +14,8 @@ vi.mock("@/sse/services/tokenRefresh", () => ({
   updateProviderCredentials: vi.fn(),
 }));
 
+import * as localDb from "@/lib/localDb";
+
 import { buildModelsList } from "../../src/app/api/v1/models/buildModelsList.js";
 
 const CLOUDFLARE_EMBEDDINGS = [
@@ -28,12 +30,22 @@ const CLOUDFLARE_EMBEDDINGS = [
 
 describe("Cloudflare embedding catalog", () => {
   it("advertises embedding models through /v1/models/embedding, not the LLM catalog", async () => {
+    // Upstream #3267: healthy empty DBs expose no credentialed built-ins, so
+    // exercise kind filtering through an explicitly saved Cloudflare route.
+    localDb.getProviderConnections.mockResolvedValue([{
+      id: "conn-cloudflare",
+      provider: "cloudflare-ai",
+      isActive: true,
+      providerSpecificData: { enabledModels: CLOUDFLARE_EMBEDDINGS },
+    }]);
     const embeddingIds = (await buildModelsList(["embedding"])).map(({ id }) => id);
     const llmIds = (await buildModelsList(["llm"])).map(({ id }) => id);
 
     for (const id of CLOUDFLARE_EMBEDDINGS) {
-      expect(embeddingIds).toContain(`cloudflare-ai/${id}`);
-      expect(llmIds).not.toContain(`cloudflare-ai/${id}`);
+      // Saved Cloudflare routes expose registry uiAlias `cf`; provider routing
+      // still resolves that alias to the `cloudflare-ai` embedding adapter.
+      expect(embeddingIds).toContain(`cf/${id}`);
+      expect(llmIds).not.toContain(`cf/${id}`);
     }
   });
 });

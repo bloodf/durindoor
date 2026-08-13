@@ -687,6 +687,7 @@ async function buildModelsListImpl(kindFilter, guard) {
           isOpenAICompatibleProvider(providerId) || isAnthropicCompatibleProvider(providerId);
         const liveModelKindById = new Map();
         const liveCapabilitiesById = new Map();
+        const liveModelIds = new Set();
 
         // Build kind lookup for static models so we can filter even when only IDs are exposed
         const staticModelKindById = new Map(
@@ -763,6 +764,7 @@ async function buildModelsListImpl(kindFilter, guard) {
               }
               for (const m of liveModels) {
                 if (!isRecord(m) || typeof m.id !== "string") continue;
+                liveModelIds.add(m.id);
                 if (m.kind || m.type) liveModelKindById.set(m.id, m.kind || m.type);
                 if (isRecord(m.capabilities)) liveCapabilitiesById.set(m.id, m.capabilities);
               }
@@ -881,8 +883,22 @@ async function buildModelsListImpl(kindFilter, guard) {
           };
           const liveCaps = liveCapabilitiesById.get(modelId) || null;
           const explicitCaps = { ...(liveCaps || {}), ...customCaps };
+          /**
+           * Compatible providers reuse proven static family limits even when
+           * their UUID-scoped registry has no literal model row. Unknown IDs
+           * keep explicit/live metadata only, so generic defaults stay hidden.
+           */
           const hasStaticModel = staticModelById.has(modelId);
-          const caps = hasStaticModel
+          // ID-only provider catalogs prove routing, not a model-family limit.
+          // Apply pattern fallback to configured/compatible IDs, but never to a
+          // newly enumerated MiniMax/GLM ID absent from the static registry.
+          const isUncatalogedIdOnlyLiveModel = (
+            providerId === "minimax" || providerId === "minimax-cn"
+            || providerId === "glm" || providerId === "glm-cn"
+          ) && liveModelIds.has(modelId) && !hasStaticModel;
+          const hasStaticLimits = hasStaticModel
+            || (!isUncatalogedIdOnlyLiveModel && resolveModelLimits(providerId, modelId).known);
+          const caps = hasStaticLimits
             ? { ...getCapabilitiesForModel(providerId, modelId), ...explicitCaps }
             : explicitCaps;
           const model = {
@@ -891,7 +907,7 @@ async function buildModelsListImpl(kindFilter, guard) {
             owned_by: outputAlias,
             capabilities: caps,
           };
-          if ((kind === LLM_KIND || allowAsLlm) && (hasStaticModel || Object.keys(explicitCaps).length)) {
+          if ((kind === LLM_KIND || allowAsLlm) && (hasStaticLimits || Object.keys(explicitCaps).length)) {
             attachModelLimits(model, providerId, modelId, customCaps, liveCaps);
           }
           perProviderModels.push(model);

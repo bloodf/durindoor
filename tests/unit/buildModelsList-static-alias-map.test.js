@@ -98,12 +98,11 @@ describe("buildModelsList — static alias-to-provider mapping", () => {
 
     const models = await buildModelsList([LLM_KIND]);
     const combo = models.find((m) => m.id === "static-combo");
-    const staticModel = models.find((m) => m.id === "cbcn/glm-5.2");
     expect(combo).toBeDefined();
     expect(combo.capabilities.contextWindow).toBe(1000000);
     expect(combo.capabilities.maxOutput).toBe(48000);
-    expect(staticModel).toBeDefined();
-    expect(staticModel.capabilities.contextWindow).toBe(1000000);
-    expect(staticModel.capabilities.maxOutput).toBe(48000);
+    // Upstream #3267: a healthy DB with zero connections no longer publishes
+    // built-in rows; combo aggregation still resolves their static metadata.
+    expect(models.find((m) => m.id === "cbcn/glm-5.2")).toBeUndefined();
   });
 });

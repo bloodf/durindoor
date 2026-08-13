@@ -92,13 +92,10 @@ describe("getCapabilitiesForModel", () => {
 
   // Direct OpenAI GPT-5.4 ships the 1.05M context window
   // (developers.openai.com/api/docs/models/gpt-5.4 — >272K input prompts are
-  // repriced for "models with a 1.05M context window"). Without exact rows it
-  // falls to the generic *gpt-5* 400K pattern. Only the ids the registries
-  // actually expose are asserted: openai.js and codex.js list "gpt-5.4", and
-  // codex.js additionally lists "gpt-5.4-review" (upstreamModelId "gpt-5.4").
-  // The mini/nano tiers are NOT 1.05M and must keep the generic pattern.
-  it("reports direct OpenAI GPT-5.4 with the 1.05M context window", () => {
-    const expected = {
+  // repriced for "models with a 1.05M context window"). The ChatGPT Codex
+  // surface independently reports 272K through backend-api/codex/models.
+  it("keeps direct OpenAI GPT-5.4 at 1.05M without leaking the Codex cap", () => {
+    const direct = {
       contextWindow: 1050000,
       maxOutput: 128000,
       thinkingFormat: "openai",
@@ -106,12 +103,19 @@ describe("getCapabilitiesForModel", () => {
       vision: true,
       search: true,
     };
-    for (const provider of ["openai", "codex", "cx"]) {
-      expect(getCapabilitiesForModel(provider, "gpt-5.4"), `${provider}/gpt-5.4`).toMatchObject(expected);
-    }
-    // Codex-only review alias resolves the same upstream model.
+    expect(getCapabilitiesForModel("openai", "gpt-5.4")).toMatchObject(direct);
+
+    // Release-3.15 integration: Codex live discovery intentionally supersedes
+    // the old shared direct-API expectation for cx/codex provider resolution.
     for (const provider of ["codex", "cx"]) {
-      expect(getCapabilitiesForModel(provider, "gpt-5.4-review"), `${provider}/gpt-5.4-review`).toMatchObject(expected);
+      expect(getCapabilitiesForModel(provider, "gpt-5.4"), `${provider}/gpt-5.4`).toMatchObject({
+        contextWindow: 272000,
+        maxOutput: undefined,
+      });
+      expect(getCapabilitiesForModel(provider, "gpt-5.4-review"), `${provider}/gpt-5.4-review`).toMatchObject({
+        contextWindow: 272000,
+        maxOutput: undefined,
+      });
     }
   });
 

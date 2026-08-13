@@ -1,3 +1,25 @@
+# 3.14.0
+
+Context windows can now come from the provider instead of a hardcoded table, and Kimi's limits were confirmed against the live API.
+
+## Dynamic context windows
+- **Live limits drive enforcement, not just display** — where an upstream publishes its real context window, that value is used for request preflight. Previously an upstream advertising a larger window than our static table still had requests rejected at the smaller number, and an upstream with a smaller window let over-budget requests through to fail upstream.
+- **Precedence** is `user/custom override > live upstream > static catalog > default`. The static catalog remains the fallback, so a provider outage can never empty or zero the catalog.
+- **No cost on the hot path** — preflight performs a synchronous cache read; discovery happens on the request/account-selection path or when `/v1/models` is built, never as an import side effect. Results are cached with TTL, negative caching, and in-flight coalescing.
+- **Per-connection cache scoping** — the catalog cache key previously omitted the provider, so two accounts with divergent catalogs could overwrite each other's limits.
+
+Not every upstream benefits. Kimi coding, OpenRouter, and Pollinations publish per-model limits; GLM's endpoints return bare entries with no limit fields. Where an upstream says nothing, the static value stands.
+
+## Kimi windows confirmed
+Moonshot documents labels ("256K", "1M") rather than integers, so the stored values were expansions. Live probing settled them exactly: `kimi-k3` reports `context_length: 1048576` directly, and the K2.x family returns an explicit `exceeded model token limit: 262144` — binary, not 256,000. A broad pattern that matched the genuinely distinct `k3-256k` to the wrong window was also removed.
+
+GLM remains unverified: its catalog endpoints expose no limit fields and every overflow probe was blocked by quota before context validation. Those values are unchanged rather than guessed.
+
+## Compatibility and verification
+- No stored-data, API-key, or wire-format changes.
+- The capability catalog stays free of server-only imports, so no Node networking stack is pulled into the dashboard bundle.
+- Full Vitest/no-regression, lint, build, and commitlint gates green on `main`.
+
 # 3.13.1
 
 Completes the model-catalog audit started in 3.13.0: every served model was checked against its vendor's primary documentation.

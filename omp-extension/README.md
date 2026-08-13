@@ -25,6 +25,15 @@ omp config set durindoor.baseUrl http://127.0.0.1:11434/v1
 omp config set durindoor.apiKey YOUR_DURINDOOR_KEY
 ```
 
+
+## Test
+
+Run the extension's Bun-only suite from the repository root:
+
+```bash
+cd omp-extension && bun test
+```
+
 ## Verify
 
 Start omp, then watch today's log for the `DurinDoor models refreshed` entry:

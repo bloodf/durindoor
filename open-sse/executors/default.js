@@ -14,6 +14,7 @@ import { getOpenAICompatibleType } from "../services/provider.js";
 import { refreshCodebuddyToken } from "../services/tokenRefresh.js";
 import { isOfficialAnthropicBaseUrl } from "../utils/anthropicHost.js";
 import { stripUnsupportedParams, applyParamRenames } from "../translator/concerns/paramSupport.js";
+import { FORMATS } from "../translator/formats.js";
 // Opt-in prompt-cache key injection for openai-compatible providers.
 // OpenAI-style upstreams (Chat Completions + Responses) accept an optional
 // `prompt_cache_key` routing hint that pins a conversation to a cache shard,
@@ -336,6 +337,29 @@ export class DefaultExecutor extends BaseExecutor {
       injectPromptCacheKey(this.provider, transformed, credentials);
       applyParamRenames(this.provider, model, transformed, requestContext?.modelCapabilities);
       stripUnsupportedParams(this.provider, model, transformed, requestContext?.modelCapabilities);
+      /**
+       * Convert the translator's Chat-compatible reasoning field only at the
+       * final Responses wire boundary. Keeping this out of translateRequest
+       * preserves its flat intermediate contract and avoids double nesting.
+       */
+      if (
+        transportFormat === FORMATS.OPENAI_RESPONSES
+        || transportFormat === FORMATS.OPENAI_RESPONSE
+      ) {
+        if (typeof transformed.reasoning_effort === "string") {
+          const priorReasoning = transformed.reasoning
+            && typeof transformed.reasoning === "object"
+            && !Array.isArray(transformed.reasoning)
+              ? transformed.reasoning
+              : null;
+          transformed.reasoning = {
+            summary: "auto",
+            ...priorReasoning,
+            effort: transformed.reasoning_effort,
+          };
+          delete transformed.reasoning_effort;
+        }
+      }
     }
 
     // reasoning_content is an OpenAI-compatibility field. Anthropic Messages
@@ -475,6 +499,12 @@ export class DefaultExecutor extends BaseExecutor {
     // Hooks run BEFORE auth so dynamic overlays (claude cached headers) can't clobber the token.
     for (const hook of desc.hooks || []) HEADER_HOOKS[hook]?.(headers, credentials);
     applyAuth(headers, desc, credentials);
+
+    /** Emit only client-provided session identity, never generated fallback affinity. */
+    if (this.provider === "claude" && credentials?._clientSessionId && !credentials._clientSessionIsGenerated) {
+      delete headers["x-claude-code-session-id"];
+      headers["X-Claude-Code-Session-Id"] = credentials._clientSessionId;
+    }
 
     // Strip first-party Claude Code identity headers for non-Anthropic anthropic-compatible upstreams
     if (this.provider?.startsWith?.("anthropic-compatible-")) {

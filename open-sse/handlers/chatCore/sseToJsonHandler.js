@@ -10,6 +10,7 @@ import { logToolSemantics } from "../../utils/toolSemanticsTrace.js";
 import { extractReasoningText } from "../../translator/concerns/reasoning.js";
 import { normalizeInlineThinkingResponse } from "./inlineThinking.js";
 import { createUpstreamTerminalTracker } from "../../utils/streamTerminal.js";
+import { applyReasoningVisibility } from "../../utils/reasoningVisibility.js";
 
 // Responses-API providers (e.g. codex) may emit SSE without content-type + use Responses output shape
 const isResponsesProvider = (p) => PROVIDERS[p]?.format === FORMATS.OPENAI_RESPONSES;
@@ -294,19 +295,10 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       status: "success"
     }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});
 
-    // Strip reasoning_content only when content is non-empty.
-    // When content is empty (e.g. thinking models that used all tokens for reasoning),
-    // reasoning_content is the only useful output and must be preserved.
-    // Previously this was unconditional, which broke Qwen3.5, Claude extended thinking, etc.
-    // Match ordinary non-streaming cleanup before client-format projection:
-    // text-bearing completions return text only, while reasoning-only output remains useful.
+    // OpenAI reasoning is preserved unless the client or deployment explicitly opts out.
     const claudeCompat = shouldEnableClaudeCompat(claudeClassifierCompat, sourceFormat, body);
-    if (sourceFormat !== FORMATS.CLAUDE && !inlineThinking.configured && parsed?.choices) {
-      for (const choice of parsed.choices) {
-        if (choice?.message?.reasoning_content && choice.message.content) {
-          delete choice.message.reasoning_content;
-        }
-      }
+    if (sourceFormat !== FORMATS.CLAUDE) {
+      applyReasoningVisibility(parsed, clientRawRequest);
     }
 
     // Provider-only metering fields (e.g. Kiro credits) must not reach the

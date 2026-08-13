@@ -1,4 +1,4 @@
-import { getProviderCredentialsWithQuotaPreflight, markAccountUnavailable, clearAccountError, extractApiKey, evaluateApiKeyAuth } from "../services/auth.js";
+import { getProviderCredentialsWithQuotaPreflight, markAccountUnavailable, clearAccountError, resolveClientApiKey } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { handleVideoGenerationCore } from "open-sse/handlers/videoGenerationCore.js";
@@ -14,8 +14,8 @@ import * as log from "../utils/logger.js";
 // deliberately don't parse) land here.
 const DEFAULT_VIDEO_PROVIDER = "xai";
 
-async function enforceVideoPolicy(request, provider, model) {
-  return enforceApiKeyModelPolicy(request, `${provider}/${model}`);
+async function enforceVideoPolicy(request, provider, model, apiKey) {
+  return enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
 }
 
 function shouldMarkAccountUnavailable(status) {
@@ -33,8 +33,9 @@ export async function handleVideoGeneration(request) {
   }
 
   const settings = await getSettings();
-  const apiKey = extractApiKey(request);
-  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true, request });
+  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
+    required: settings.requireApiKey === true,
+  });
   if (!apiKeyAuth.ok) return errorResponse(
     HTTP_STATUS.UNAUTHORIZED,
     apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
@@ -43,7 +44,7 @@ export async function handleVideoGeneration(request) {
   if (!body.model) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   const modelInfo = await getModelInfo(body.model);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
-  const policyError = await enforceVideoPolicy(request, modelInfo.provider, modelInfo.model);
+  const policyError = await enforceVideoPolicy(request, modelInfo.provider, modelInfo.model, apiKey);
   if (policyError) return policyError;
   const credentials = await getProviderCredentialsWithQuotaPreflight(modelInfo.provider, null, modelInfo.model);
   if (credentials?.providerDisabled) {
@@ -132,8 +133,7 @@ function withConnectionHeader(response, connectionId) {
  * loop here: one credential is selected (honoring a preferred `x-connection-id`)
  * and the upstream result is returned. A network error or 5xx is surfaced as-is
  * rather than re-sent, because the job may already exist upstream.
- *
- * Ported from decolua/9router#2593, adapted to fork auth (`evaluateApiKeyAuth`
+ * Ported from decolua/9router#2593, adapted to fork auth (`resolveClientApiKey`
  * + `enforceApiKeyModelPolicy`) and single-credential dispatch.
  */
 export async function handleVideoCreate(request, action) {
@@ -142,8 +142,9 @@ export async function handleVideoCreate(request, action) {
   }
 
   const settings = await getSettings();
-  const apiKey = extractApiKey(request);
-  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true, request });
+  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
+    required: settings.requireApiKey === true,
+  });
   if (!apiKeyAuth.ok) return errorResponse(
     HTTP_STATUS.UNAUTHORIZED,
     apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
@@ -158,7 +159,7 @@ export async function handleVideoCreate(request, action) {
 
   // Policy needs a concrete model; bodies that omit `model` (allowed by the
   // upstream xAI video API) default to the provider's video model.
-  const policyError = await enforceVideoPolicy(request, provider, model || "grok-imagine-video");
+  const policyError = await enforceVideoPolicy(request, provider, model || "grok-imagine-video", apiKey);
   if (policyError) return policyError;
 
   // Strip the provider prefix (e.g. "xai/grok-imagine-video") before forwarding;
@@ -234,8 +235,9 @@ export async function handleVideoCreate(request, action) {
  */
 export async function handleVideoGet(request, requestId) {
   const settings = await getSettings();
-  const apiKey = extractApiKey(request);
-  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true, request });
+  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
+    required: settings.requireApiKey === true,
+  });
   if (!apiKeyAuth.ok) return errorResponse(
     HTTP_STATUS.UNAUTHORIZED,
     apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
@@ -244,7 +246,7 @@ export async function handleVideoGet(request, requestId) {
   if (!requestId) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing video request id");
 
   const provider = DEFAULT_VIDEO_PROVIDER;
-  const policyError = await enforceVideoPolicy(request, provider, "grok-imagine-video");
+  const policyError = await enforceVideoPolicy(request, provider, "grok-imagine-video", apiKey);
   if (policyError) return policyError;
 
   const preferredConnectionId = request.headers.get("x-connection-id") || null;

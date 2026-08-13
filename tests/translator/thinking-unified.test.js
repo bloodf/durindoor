@@ -1,6 +1,8 @@
 // Unit tests for unified thinking normalization (thinkingUnified.js).
 // Covers extract, suffix parse, and per-provider apply per MATRIX (.docs/thinking/plan.md).
-import { describe, it, expect } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
+import { DefaultExecutor } from "../../open-sse/executors/default.js";
+import "./registerAll.js";
 import {
   parseSuffix,
   extractThinking,
@@ -8,7 +10,22 @@ import {
   stripThinkingSuffix,
 } from "../../open-sse/translator/concerns/thinkingUnified.js";
 import { extractReasoningText } from "../../open-sse/translator/concerns/reasoning.js";
+import { FORMATS } from "../../open-sse/translator/formats.js";
+import { translateRequest } from "../../open-sse/translator/index.js";
 import { PROVIDERS } from "../../open-sse/providers/index.js";
+
+const fetchMock = vi.fn();
+vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
+  proxyAwareFetch: (...args) => fetchMock(...args),
+}));
+
+beforeEach(() => {
+  fetchMock.mockReset();
+  fetchMock.mockResolvedValue(new Response(null, {
+    status: 200,
+    headers: { "Content-Type": "text/event-stream" },
+  }));
+});
 
 const apply = (targetFormat, model, body, provider) => {
   const b = JSON.parse(JSON.stringify(body));
@@ -86,6 +103,16 @@ describe("applyThinking per provider format", () => {
     const out = apply("claude", "claude-opus-4.8", { reasoning_effort: "high" }, "claude");
     expect(out.output_config).toEqual({ effort: "high" });
     expect(out.thinking).toEqual({ type: "adaptive", display: "summarized" });
+  });
+  it("claude adaptive maps auto/minimal/xhigh into its accepted effort enum", () => {
+    for (const [requested, expected] of [
+      ["auto", "high"],
+      ["minimal", "low"],
+      ["xhigh", "high"],
+    ]) {
+      const out = apply("claude", "claude-opus-4.8", { reasoning_effort: requested }, "claude");
+      expect(out.output_config.effort, requested).toBe(expected);
+    }
   });
   it("claude haiku → enabled+budget", () => {
     const out = apply("claude", "claude-haiku-4.5", { reasoning_effort: "high" }, "claude");
@@ -224,6 +251,86 @@ describe("applyThinking per provider format", () => {
   it("openai keeps xhigh for reasoning models", () => {
     const out = apply("openai", "gpt-5.3-codex", { reasoning_effort: "xhigh" }, "codex");
     expect(out.reasoning_effort).toBe("xhigh");
+  });
+});
+
+describe("Responses reasoning effort wire shape", () => {
+  it("nests effort only in the body dispatched to a Responses transport", async () => {
+    const translated = translateRequest(
+      FORMATS.OPENAI,
+      FORMATS.OPENAI_RESPONSES,
+      "gpt-5.6-sol",
+      {
+        messages: [{ role: "user", content: "hello" }],
+        reasoning_effort: "high",
+      },
+      true,
+      null,
+      "openai",
+    );
+    expect(translated.reasoning_effort).toBe("high");
+
+    await new DefaultExecutor("openai").execute({
+      model: "gpt-5.6-sol",
+      body: translated,
+      stream: true,
+      credentials: {
+        apiKey: "sk-test",
+        runtimeTransport: {
+          format: FORMATS.OPENAI_RESPONSES,
+          baseUrl: "https://api.openai.com/v1/responses",
+        },
+      },
+    });
+
+    const dispatched = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(dispatched.reasoning).toEqual({ effort: "high", summary: "auto" });
+    expect(dispatched.reasoning_effort).toBeUndefined();
+  });
+
+  it("preserves an explicit Responses reasoning summary while nesting effort", async () => {
+    await new DefaultExecutor("openai").execute({
+      model: "gpt-5.6-sol",
+      body: {
+        input: [{ role: "user", content: "hello" }],
+        reasoning: { summary: "detailed" },
+        reasoning_effort: "high",
+      },
+      stream: true,
+      credentials: {
+        apiKey: "sk-test",
+        runtimeTransport: {
+          format: FORMATS.OPENAI_RESPONSES,
+          baseUrl: "https://api.openai.com/v1/responses",
+        },
+      },
+    });
+
+    const dispatched = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(dispatched.reasoning).toEqual({ effort: "high", summary: "detailed" });
+    expect(dispatched.reasoning_effort).toBeUndefined();
+  });
+
+  it("keeps Chat Completions reasoning effort flat on dispatch", async () => {
+    await new DefaultExecutor("openai").execute({
+      model: "gpt-5.4",
+      body: {
+        messages: [{ role: "user", content: "hello" }],
+        reasoning_effort: "high",
+      },
+      stream: true,
+      credentials: {
+        apiKey: "sk-test",
+        runtimeTransport: {
+          format: FORMATS.OPENAI,
+          baseUrl: "https://api.openai.com/v1/chat/completions",
+        },
+      },
+    });
+
+    const dispatched = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(dispatched.reasoning_effort).toBe("high");
+    expect(dispatched.reasoning).toBeUndefined();
   });
 });
 

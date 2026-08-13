@@ -29,6 +29,12 @@ export const UNSUPPORTED_SCHEMA_CONSTRAINTS = [
   "gap", "padding", "strokeColor", "strokeThickness", "textColor"
 ];
 
+/**
+ * Non-schema keys to remove only from schema nodes, never from user-defined
+ * property name-maps where the same strings are valid property names.
+ */
+const STRAY_SCHEMA_KEYS = new Set(["value"]);
+
 // Resolve $ref pointers in-place before removing unsupported keywords.
 // Supports #/$defs/<name> and #/definitions/<name> (JSON Schema draft-07 / 2020-12).
 // Circular/deeply-nested refs are guarded by a max depth to prevent infinite recursion.
@@ -243,8 +249,10 @@ export function generateProjectId() {
   return `${adj}-${noun}-${crypto.randomUUID().slice(0, 5)}`;
 }
 
-// Helper: Remove unsupported keywords recursively from object/array
-// Also strips all vendor extension fields (x- prefixed) not supported by Gemini
+/**
+ * Removes unsupported keywords from schema nodes while preserving every key
+ * in a `properties` name-map and recursing into that map's values.
+ */
 function removeUnsupportedKeywords(obj, keywords, isPropertiesMap = false) {
   if (!obj || typeof obj !== "object") return;
 
@@ -253,9 +261,10 @@ function removeUnsupportedKeywords(obj, keywords, isPropertiesMap = false) {
     return;
   }
 
+  const isSchemaNode = obj.type !== undefined || obj.properties !== undefined || obj.items !== undefined;
   for (const key of Object.keys(obj)) {
     const value = obj[key];
-    if (!isPropertiesMap && (keywords.includes(key) || key.startsWith("x-"))) {
+    if (!isPropertiesMap && (keywords.includes(key) || key.startsWith("x-") || (isSchemaNode && STRAY_SCHEMA_KEYS.has(key)))) {
       delete obj[key];
       continue;
     }

@@ -11,7 +11,8 @@ export const HTTP_STATUS = {
   SERVER_ERROR: 500,
   BAD_GATEWAY: 502,
   SERVICE_UNAVAILABLE: 503,
-  GATEWAY_TIMEOUT: 504
+  GATEWAY_TIMEOUT: 504,
+  INSUFFICIENT_STORAGE: 507
 };
 
 // Re-export error config (backward compat)
@@ -42,6 +43,9 @@ export const MEMORY_CONFIG = {
   refreshDedupInFlightTtlMs: 2 * 60 * 1000,
   refreshDedupResultTtlMs: 10 * 1000,
 };
+
+// Client opt-out for reasoning_content on non-streaming responses.
+export const REASONING_HEADER = "x-9router-reasoning";
 
 // Parse a positive integer env override, falling back to a default.
 function envMs(name, def) {
@@ -97,6 +101,12 @@ export const PROVIDER_BODY_TIMEOUT_MS = envMs("PROVIDER_BODY_TIMEOUT_MS", 120 * 
 export const RESPONSE_BODY_TIMEOUT_MS = envMs("RESPONSE_BODY_TIMEOUT_MS", 120 * 1000);
 export const MAX_PROVIDER_BODY_BYTES = envMs("MAX_PROVIDER_BODY_BYTES", 8 * 1024 * 1024);
 export const MAX_RESPONSES_OUTPUT_ITEMS = envMs("MAX_RESPONSES_OUTPUT_ITEMS", 1024);
+
+/**
+ * Largest request body sent to Headroom compression. Larger payloads bypass
+ * compression because proxy time grows non-linearly and callers must fail open.
+ */
+export const MAX_COMPRESS_BODY_BYTES = 256 * 1024;
 
 // Codex inspects a short SSE prefix before handing the body to chatCore. Bound
 // the entire peek (not each chunk) so keepalive/preamble bytes cannot outlive a

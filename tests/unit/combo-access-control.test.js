@@ -36,6 +36,10 @@ vi.mock("../../src/sse/services/model.js", async (importOriginal) => ({
 vi.mock("../../src/sse/services/auth.js", () => ({
   extractApiKey: mocks.extractApiKey,
   evaluateApiKeyAuth: mocks.evaluateApiKeyAuth,
+  resolveClientApiKey: async (request, options) => ({
+    apiKey: mocks.extractApiKey(request),
+    auth: await mocks.evaluateApiKeyAuth(mocks.extractApiKey(request), { ...options, request }),
+  }),
   isValidApiKey: vi.fn(async () => true),
   getProviderCredentials: vi.fn(),
   getProviderCredentialsWithQuotaPreflight: vi.fn(),

@@ -2,8 +2,7 @@ import {
   getProviderCredentialsWithQuotaPreflight,
   markAccountUnavailable,
   clearAccountError,
-  extractApiKey,
-  evaluateApiKeyAuth,
+  resolveClientApiKey,
   projectProviderCredentials,
 } from "../services/auth.js";
 import { getSettings, getCombos, getApiKeyByKey, getProviderConnections } from "@/lib/localDb";
@@ -44,16 +43,15 @@ export async function handleFetch(request) {
 
   log.request("POST", `${reqUrl.pathname} | ${providerInput}`);
 
-  // Log API key (masked)
-  const apiKey = extractApiKey(request);
+  const settings = await getSettings();
+  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
+    required: settings.requireApiKey === true,
+  });
   if (apiKey) {
     log.debug("AUTH", `API Key: ${log.maskKey(apiKey)}`);
   } else {
     log.debug("AUTH", "No API key provided (local mode)");
   }
-
-  const settings = await getSettings();
-  const apiKeyAuth = await evaluateApiKeyAuth(apiKey, { required: settings.requireApiKey === true, request });
   if (!apiKeyAuth.ok) {
     if (apiKeyAuth.reason === "missing") {
       log.warn("AUTH", "Missing API key (requireApiKey=true)");
@@ -168,7 +166,7 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
     return errorResponse(HTTP_STATUS.BAD_REQUEST, `Unknown provider: ${providerInput}`);
   }
 
-  const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${providerId}/fetch`);
+  const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${providerId}/fetch`, apiKey);
   if (resolvedPolicyError) return resolvedPolicyError;
 
   const providerConfig = resolvedProvider.fetchConfig;

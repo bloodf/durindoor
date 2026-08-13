@@ -123,6 +123,22 @@ docker run --rm \
   alpine cp -a /data/. /host/
 ```
 
+## Startup integrity check
+
+DurinDoor runs SQLite `PRAGMA quick_check` after schema migration and before
+the database is accepted for use. Startup stops on corruption reported by
+that check; it is a fast structural check, not a substitute for
+`PRAGMA integrity_check` or `PRAGMA foreign_key_check`. DurinDoor does not
+attempt automatic repair or overwrite the database.
+
+If startup reports `SQLite integrity check failed`, stop all writers and
+preserve the database together with its `-wal` and `-shm` sidecars before
+recovery. Restore only a backup whose integrity and required tables you have
+verified. Migration safety backups made with the lightweight backup path omit
+the non-critical, auto-pruned `requestDetails` observability log. Any manual
+`REINDEX`, `VACUUM`, or data salvage must operate on a copy and pass
+`PRAGMA integrity_check` before it replaces the active database.
+
 ## 9router data directory
 
 `~/.9router` (macOS/Linux) and `%APPDATA%\\9router` (Windows) are the default `DATA_DIR` paths when no override is set. They are not separate or legacy backup locations — they are the active runtime default, retained for migration compatibility. Anything under those paths is part of `DATA_DIR` and must be backed up, protected, and deleted according to the same rules as any `DATA_DIR`.

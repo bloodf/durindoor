@@ -115,39 +115,40 @@ function hasViaProxyHeader(request) {
   return Boolean(request.headers.get("x-9r-via-proxy"));
 }
 
-// TCP socket says it was a loopback connection. We require the wrapper's peer token so a
-// remote client can't forge x-9r-real-ip; in development the wrapper is absent, so we fall
-// back to Host + Origin matching, which only works for genuine local browsers.
+// TCP socket says it was a loopback connection. The wrapper proof is required before
+// any local classification; raw IP, Host, and Origin values are attacker-controlled.
 function isLoopbackPeer(request) {
-  if (!hasTrustedPeerHeaders(request)) {
-    if (process.env.NODE_ENV !== "development") return false;
-    if (hasViaProxyHeader(request)) return false;
-    if (!isLoopbackHostname(request.headers.get("host"))) return false;
-    const origin = request.headers.get("origin");
-    if (origin) {
-      try {
-        if (!isLoopbackHostname(new URL(origin).hostname)) return false;
-      } catch { return false; }
-    }
-    return true;
-  }
   if (hasViaProxyHeader(request)) return false;
+  if (!hasTrustedPeerHeaders(request)) return false;
   const realIp = request.headers.get("x-9r-real-ip");
   if (realIp) return isLoopbackHostname(realIp);
   if (!isLoopbackHostname(request.headers.get("host"))) return false;
-  const origin = request.headers.get("origin");
-  if (origin) {
-    try {
-      if (!isLoopbackHostname(new URL(origin).hostname)) return false;
-    } catch { return false; }
-  }
   return true;
 }
 
-// Backwards-compatible entry: was `isLocalRequest`. Now strictly requires the wrapper
-// proof except in development. Local-only routes must call this, not infer from raw IPs.
+// Restored strict origin check: expected origin = URL protocol + raw Host, exact
+// normalized origin compare. Prevents a malicious loopback Origin from sliding past
+// the same-origin guard under a benign Host (e.g. `localhost:20128.evil`).
+function hasExactRequestOrigin(request) {
+  const rawOrigin = request.headers.get("origin");
+  const rawHost = request.headers.get("host");
+  if (!rawOrigin || !rawHost) return false;
+  try {
+    const protocol = new URL(request.url).protocol;
+    const expected = new URL(`${protocol}//${rawHost}`).origin;
+    return new URL(rawOrigin).origin === expected;
+  } catch {
+    return false;
+  }
+}
+
+// Backwards-compatible entry: was `isLocalRequest`. Now strictly requires both the
+// wrapper proof and an exact Origin match. Local-only routes must call this, not
+// infer from raw IPs.
 export function isLocalRequest(request) {
-  return isLoopbackPeer(request);
+  if (!isLoopbackPeer(request)) return false;
+  if (!hasExactRequestOrigin(request)) return false;
+  return true;
 }
 
 function isPublicLlmApi(pathname) {

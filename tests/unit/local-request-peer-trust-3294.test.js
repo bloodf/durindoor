@@ -62,11 +62,51 @@ describe("peer header trust", () => {
     expect(response.body.error).toBe("API key required for remote API access");
   });
 
+  it("rejects forged headers from raw development server", async () => {
+    process.env.NODE_ENV = "development";
+    const response = await proxy(request("/api/v1/models", {
+      host: "localhost:20128",
+      origin: "http://localhost:20128",
+      "x-9r-real-ip": "127.0.0.1",
+      "x-9r-peer-token": "forged-token",
+    }));
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("API key required for remote API access");
+  });
+
+  it.each([
+    ["https://localhost:20128", "http://localhost:20128"],
+    ["http://localhost:20129", "http://localhost:20128"],
+    ["http://localhost:20128", "http://localhost:20128.evil.example"],
+  ])("rejects trusted peer with mismatched origin %s on host %s", async (origin, host) => {
+    const response = await proxy(request("/api/v1/models", {
+      host,
+      origin,
+      "x-9r-real-ip": "127.0.0.1",
+      "x-9r-peer-token": PEER_TOKEN,
+    }));
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("API key required for remote API access");
+  });
+  it("rejects trusted loopback peer without an origin", async () => {
+    const response = await proxy(request("/api/v1/models", {
+      host: "localhost:20128",
+      "x-9r-real-ip": "127.0.0.1",
+      "x-9r-peer-token": PEER_TOKEN,
+    }));
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("API key required for remote API access");
+  });
+
   it.each(["::ffff:127.0.0.1", "::1", "[::1]", "127.0.0.1", "::FFFF:127.0.0.1"])(
-    "accepts trusted loopback peer %s",
+    "accepts trusted loopback peer %s with matching origin",
     async (peerIp) => {
       const response = await proxy(request("/api/v1/models", {
         host: "localhost:20128",
+        origin: "http://localhost:20128",
         "x-9r-real-ip": peerIp,
         "x-9r-peer-token": PEER_TOKEN,
       }));

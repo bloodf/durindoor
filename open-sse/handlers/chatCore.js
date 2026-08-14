@@ -30,6 +30,7 @@ import { handleNonStreamingResponse } from "./chatCore/nonStreamingHandler.js";
 import { handleStreamingResponse, buildOnStreamComplete } from "./chatCore/streamingHandler.js";
 import { resolveStreamFlag } from "./chatCore/streamFlag.js";
 import { createEmptyRetryStream } from "./chatCore/emptyStreamGuard.js";
+import { validateExecutorResult } from "./chatCore/executorResultGuard.js";
 import { isAnthropicThinkingSignatureError, stripHistoricalThinkingForSignatureRecovery } from "./chatCore/thinkingSignatureRecovery.js";
 import { detectClientTool, isNativePassthrough, isCodexOriginatedHeaders } from "../utils/clientDetector.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
@@ -961,6 +962,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
             ? () => quotaReservation.beginDispatch()
             : null,
         });
+      validateExecutorResult(result);
       if (
         Number.isSafeInteger(result?.attemptStartedAt)
         && result.attemptStartedAt > (latestProviderAttemptStartedAt || 0)

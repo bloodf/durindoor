@@ -8,7 +8,7 @@ Scope: `decolua/9router` open PRs #3117, #3081, #3083, #3088, #3078.
 | #3081 `fix(executor): request stream usage when internally streaming` | GAP | `DefaultExecutor.transformRequest` in `open-sse/executors/default.js` never asked OpenAI-compatible upstreams to include usage in the final SSE chunk for internally-streamed requests, so `/v1` streaming responses through generic providers recorded `IN 0 · OUT 0` instead of real token counts. | Ported: inject `stream_options = { include_usage: true }` when `stream === true`, the body has `messages`, and the client did not already send `stream_options`, placed after `stripUnsupportedParams` so the field survives param stripping. |
 | #3083 `fix(usage): account nested cached prompt tokens` | DUPLICATE | `open-sse/utils/usageTracking.js:211` already computes `cached = num(usage.cached_tokens ?? usage.prompt_tokens_details?.cached_tokens)`, equivalent to the upstream fix. | No port. |
 | #3088 `fix(kimi): use API-key OpenAI transport` | PENDING | Not yet ported in this pass. | — |
-| #3078 `fix(security): restrict pxpipe routes to local access` | GAP | `LOCAL_ONLY_PATHS` in `src/dashboardGuard.js` had no `/api/pxpipe` prefix, leaving every pxpipe control endpoint outside the existing loopback/CLI-token guard. | Ported: add exact `/api/pxpipe` prefix; existing `pathname.startsWith(p)` rule covers all pxpipe subroutes. |
+| #3078 `fix(security): restrict pxpipe routes to local access` | SUPERSEDED | Historical finding: `LOCAL_ONLY_PATHS` in `src/dashboardGuard.js` had no `/api/pxpipe` prefix, leaving every pxpipe control endpoint outside the existing loopback/CLI-token guard. | Historical port superseded: blanket local-only routing was replaced by dedicated PXPIPE authorization; see the #3078 implementation record below. |
 
 ## Implemented changes (#3117)
 
@@ -42,10 +42,26 @@ Scope: `decolua/9router` open PRs #3117, #3081, #3083, #3088, #3078.
 
 ## Implemented changes (#3078)
 
-- `src/dashboardGuard.js`: add `/api/pxpipe` to `LOCAL_ONLY_PATHS`.
-- `tests/unit/dashboard-guard.test.js`: assert remote requests to `/api/pxpipe/start` and `/api/pxpipe/status` fail with the local-only 403.
+Historical implementation (superseded):
 
-## Verification (#3078)
+- `src/dashboardGuard.js`: added `/api/pxpipe` to `LOCAL_ONLY_PATHS`.
+- `tests/unit/dashboard-guard.test.js`: asserted remote requests to `/api/pxpipe/start` and `/api/pxpipe/status` failed with the local-only 403.
+
+Current authorization contract:
+
+- PXPIPE management endpoints use dedicated authorization instead of blanket local-only routing.
+- Proxied requests require a dashboard JWT or machine-bound CLI authentication even when `requireLogin` is disabled.
+- Direct loopback requests follow the normal local `requireLogin` policy.
+- API keys are not PXPIPE management credentials.
+
+Source / coverage pointer:
+
+- Implementation: `src/dashboardGuard.js` — `isPxpipePath` matcher and `canAccessPxpipeRoute` authorization helper implement the contract above.
+- Tests: `tests/unit/dashboard-guard.test.js` exercises both helpers (proxied + loopback matrix, JWT / CLI-token / API-key cases, `requireLogin` disabled behavior).
+
+## Historical verification (#3078, superseded)
+
+Historical verification for the superseded blanket-local implementation:
 
 - Focused suite: `unit/dashboard-guard.test.js` — 36/36 passed (GREEN).
 - Revert-proof: before the source edit, both new pxpipe tests failed with `expected 401 to be 403`; restoring the source edit returned 36/36 passing (GREEN).

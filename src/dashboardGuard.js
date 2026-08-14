@@ -87,9 +87,7 @@ const LOCAL_ONLY_PATHS = [
   "/api/headroom/start",
   "/api/headroom/stop",
   "/api/headroom/proxy",
-  "/api/pxpipe",
 ];
-
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
 function isLoopbackHostname(h) {
@@ -240,6 +238,16 @@ async function isAuthenticated(request) {
   return false;
 }
 
+function isPxpipePath(pathname) {
+  return pathname === "/api/pxpipe" || pathname.startsWith("/api/pxpipe/");
+}
+
+async function canAccessPxpipeRoute(request) {
+  if (await hasValidCliToken(request)) return true;
+  if (isLocalRequest(request)) return await isAuthenticated(request);
+  return await hasValidToken(request);
+}
+
 function isPublicApi(pathname) {
   if (isPublicLlmApi(pathname)) return true;
   return PUBLIC_API_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
@@ -270,6 +278,11 @@ export async function proxy(request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+
+  if (isPxpipePath(pathname)) {
+    if (await canAccessPxpipeRoute(request)) return NextResponse.next();
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   // Local-only gate for spawn-capable / host-secret routes.
   // /api/mcp/control is exempt: it is an authenticated management MCP endpoint
   // and must use the same dashboard JWT / CLI auth as the other dashboard APIs.

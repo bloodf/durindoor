@@ -16,6 +16,7 @@ import { chartTooltipContentStyle, chartTooltipLabelStyle, chartTooltipItemStyle
 import Pagination from "@/shared/components/Pagination";
 import { usePagination } from "@/shared/hooks/usePagination";
 import { formatPxpipeEvent, fmtTokens, PXPIPE_REASON_LABELS as REASON_LABELS } from "./formatPxpipeEvent.js";
+import { getPxpipeStatusView, fetchPxpipeStatus, getPxpipeStatusTone } from "./pxpipeStatus.js";
 
 const fmtUptime = (ms) => {
   if (!ms || ms <= 0) return "—";
@@ -59,22 +60,25 @@ export default function PxpipeClient({ embedded = false }) {
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    try {
-      const [statusRes, statsRes, logsRes] = await Promise.all([
-        fetch("/api/pxpipe/status", { headers: { "Cache-Control": "no-store" } }),
-        fetch("/api/pxpipe/stats"),
-        fetch("/api/pxpipe/logs?limit=50"),
-      ]);
-      setStatus(await statusRes.json());
-      setStats(await statsRes.json());
-      setLogs(await logsRes.json());
-      const healthRes = await fetch("/api/pxpipe/health", { method: "POST" });
-      setHealth(await healthRes.json());
-    } catch {
-      /* sections render placeholders */
-    } finally {
-      setLoading(false);
+    const [statusResult, statsResult, logsResult, healthResult] = await Promise.allSettled([
+      fetchPxpipeStatus(),
+      fetch("/api/pxpipe/stats").then((r) => (r.ok ? r.json() : null)).catch(() => null),
+      fetch("/api/pxpipe/logs?limit=50").then((r) => (r.ok ? r.json() : null)).catch(() => null),
+      fetch("/api/pxpipe/health", { method: "POST" }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    ]);
+    if (statusResult.status === "fulfilled" && statusResult.value) {
+      setStatus(statusResult.value);
     }
+    if (statsResult.status === "fulfilled") {
+      setStats(statsResult.value || null);
+    }
+    if (logsResult.status === "fulfilled") {
+      setLogs(logsResult.value || null);
+    }
+    if (healthResult.status === "fulfilled") {
+      setHealth(healthResult.value || null);
+    }
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -111,15 +115,8 @@ export default function PxpipeClient({ embedded = false }) {
   });
 
   const w = stats?.windows?.[windowId];
-  const statusLabel = !status
-    ? "—"
-    : !status.installed
-      ? "Not installed"
-      : health?.healthy
-        ? "Healthy"
-        : status.running
-          ? "Running"
-          : "Stopped";
+  const pxpipeStatusView = getPxpipeStatusView(status || { loading }, health);
+  const statusLabel = pxpipeStatusView.label;
 
   return (
     <div className={`space-y-6 ${embedded ? "" : "p-6"}`}>
@@ -144,8 +141,8 @@ export default function PxpipeClient({ embedded = false }) {
         <SummaryCard
           label="Status"
           value={statusLabel}
-          tone={health?.healthy ? "text-success" : status?.installed ? "text-warning" : "text-text-muted"}
-          sub={status?.enabled ? "Enabled in pipeline" : "Disabled in pipeline"}
+          tone={getPxpipeStatusTone(status, health)}
+          sub={pxpipeStatusView.error || (status?.enabled ? "Enabled in pipeline" : "Disabled in pipeline")}
         />
         <SummaryCard label="Version" value={status?.version ? `v${status.version}` : "—"} sub="pxpipe-proxy" />
         <SummaryCard label="Uptime" value={fmtUptime(status?.uptimeMs)} sub="module loaded" />

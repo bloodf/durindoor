@@ -11,6 +11,7 @@ import {
   CAVEMAN_LEVELS,
   PONYTAIL_LEVELS,
 } from "../endpoint/endpointConstants";
+import { fetchPxpipeStatus, getPxpipeStatusView } from "../pxpipe/pxpipeStatus.js";
 
 export default function TokenSaverClient({ view = "overview" }) {
   const [rtkEnabled, setRtkEnabledState] = useState(true);
@@ -260,20 +261,13 @@ export default function TokenSaverClient({ view = "overview" }) {
   };
 
   const refreshPxpipeStatus = useCallback(async () => {
-    setPxpipeStatus((s) => ({ ...s, loading: true }));
-    try {
-      const res = await fetch("/api/pxpipe/status", {
-        headers: { "Cache-Control": "no-store" },
-      });
-      const data = await res.json();
-      setPxpipeStatus({ ...data, loading: false });
-      if (typeof data.minChars === "number") {
-        const v = String(data.minChars);
-        setPxpipeMinChars(v);
-        setPxpipeInputValue(v);
-      }
-    } catch {
-      setPxpipeStatus({ installed: false, installing: false, running: false, version: null, loading: false });
+    setPxpipeStatus((s) => ({ ...s, loading: true, error: null }));
+    const data = await fetchPxpipeStatus();
+    setPxpipeStatus(data);
+    if (typeof data.minChars === "number") {
+      const v = String(data.minChars);
+      setPxpipeMinChars(v);
+      setPxpipeInputValue(v);
     }
   }, []);
 
@@ -446,17 +440,8 @@ export default function TokenSaverClient({ view = "overview" }) {
   const headroomCanStart = !!headroomStatus.canStart;
   const headroomManaged =
     headroomLocalUrl && !!headroomStatus.managedPid;
-  const pxpipeStatusLabel = pxpipeStatus.loading
-    ? "Checking…"
-    : pxpipeStatus.installing
-      ? "Installing…"
-      : pxpipeHealth?.healthy
-        ? "Healthy"
-        : pxpipeStatus.running
-          ? "Running"
-          : pxpipeStatus.installed
-            ? "Stopped"
-            : "Not installed";
+  const pxpipeStatusView = getPxpipeStatusView(pxpipeStatus, pxpipeHealth);
+  const pxpipeStatusLabel = pxpipeStatusView.label;
 
   return (
     <div className="space-y-6 p-6">
@@ -721,10 +706,10 @@ export default function TokenSaverClient({ view = "overview" }) {
               Renders large text context as dense PNGs for vision-capable models. Fail-open.
             </p>
           </div>
-          <div className="shrink-0" title={pxpipeStatus.installed === false ? "Install PXPIPE first" : undefined}>
+          <div className="shrink-0" title={pxpipeStatusView.dependencyMissing ? "Install PXPIPE first" : undefined}>
             <Toggle
               checked={pxpipeEnabled}
-              disabled={pxpipeStatus.installed === false}
+              disabled={pxpipeStatusView.dependencyMissing}
               onChange={() => handlePxpipeEnabled(!pxpipeEnabled)}
             />
           </div>
@@ -739,7 +724,11 @@ export default function TokenSaverClient({ view = "overview" }) {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              {!pxpipeStatus.installed ? (
+              {pxpipeStatusView.error ? (
+                <p className="text-sm text-warning max-w-64">
+                  PXPIPE status unavailable: {pxpipeStatusView.error}
+                </p>
+              ) : pxpipeStatusView.dependencyMissing ? (
                 <p className="text-sm text-warning max-w-64">
                   PXPIPE dependency missing. Reinstall the application
                   (npm install) to restore it.

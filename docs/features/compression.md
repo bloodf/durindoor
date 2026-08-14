@@ -89,6 +89,8 @@ PXPIPE (image-compression transform) ships as a direct dependency (\"pxpipe-prox
 
 If status reports \"DEPENDENCY_MISSING\", the installation is corrupt. Reinstall the application (\"npm install\" or redeploy the standalone build). \"/api/pxpipe/start\" responds 409 while the dependency is missing, and the Token Saver card shows repair guidance. The PXPIPE dashboard log card lists real transform events from \"src/lib/pxpipe/events.js\".
 
+PXPIPE management endpoints follow a dedicated access rule. A dashboard reached through a reverse proxy must present a valid dashboard session or machine-bound CLI token even when `requireLogin` is disabled; API keys do not grant management access. Direct loopback access keeps the normal local `requireLogin` policy. An authorization or status-probe failure is shown as `Unavailable` and is not evidence that the bundled dependency needs reinstalling.
+
 ## Observability
 
 - `/api/compression/preview` dry-runs the engine catalog against an arbitrary payload and reports per-engine status and savings.

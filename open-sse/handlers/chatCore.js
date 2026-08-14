@@ -2,7 +2,7 @@ import { detectFormat, getTargetFormat, resolveTransport } from "../services/pro
 import { translateRequest } from "../translator/index.js";
 import { applyThinking, applyTransportRequestDefaults, parseSuffix } from "../translator/concerns/thinkingUnified.js";
 import { FORMATS } from "../translator/formats.js";
-import { normalizeClaudePassthrough } from "../translator/formats/claude.js";
+import { normalizeClaudePassthrough, anchorClaudeCache } from "../translator/formats/claude.js";
 import { validateOutboundPayload, stripInternalKeys, normalizeToolSchemaRoots } from "../translator/validate.js";
 import { COLORS } from "../utils/stream.js";
 import { createStreamController } from "../utils/streamHandler.js";
@@ -690,6 +690,9 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // Re-salvage + re-fix after PXPIPE in case compression removed assistant/tool turns.
   salvageOrphanedToolResults(translatedBody);
   fixMissingToolResponses(translatedBody);
+
+  // Pin cache breakpoints to the final Claude body after all request savers.
+  if (passthrough && clientTool === "claude") anchorClaudeCache(translatedBody);
 
   if (xf.length && log?.line) log.line(reqTag, "⚙", xf.join(" · "));
 

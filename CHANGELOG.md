@@ -23,6 +23,12 @@ health failures no longer overwrite a successful PXPIPE status.
 
 No stored-data, dependency, API-key, or wire-format changes are included.
 
+Native Claude passthrough now re-anchors cache breakpoints after token-saving
+transforms: final system block and tool use the one-hour TTL, and final
+cacheable assistant content uses the standard five-minute TTL. Mid-conversation
+system reminders remain adjacent to their turn rather than invalidating the
+top-level system prefix.
+
 # 3.15.1
 
 DurinDoor now refuses to start on a SQLite database whose structural check

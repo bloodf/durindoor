@@ -9,6 +9,63 @@ import { PROVIDERS } from "../../providers/index.js";
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 import { DEFAULT_MAX_TOKENS } from "../../config/runtimeConfig.js";
 
+const CACHE_CONTROL_5M = { type: "ephemeral" };
+const CACHE_CONTROL_1H = { type: "ephemeral", ttl: "1h" };
+
+// Put a 5m breakpoint on the last cache-eligible block of a message.
+// thinking/redacted_thinking blocks do not accept cache_control.
+function markLastCacheableBlock(msg) {
+  if (!Array.isArray(msg?.content)) return false;
+  for (let i = msg.content.length - 1; i >= 0; i--) {
+    const block = msg.content[i];
+    if (typeof block !== "object" || block === null) continue;
+    if (block.type === CLAUDE_BLOCK.THINKING || block.type === CLAUDE_BLOCK.REDACTED_THINKING) continue;
+    block.cache_control = { ...CACHE_CONTROL_5M };
+    return true;
+  }
+  return false;
+}
+
+// Re-anchor cache breakpoints on a Claude passthrough body after transformations.
+export function anchorClaudeCache(body) {
+  if (!body || typeof body !== "object") return body;
+
+  if (Array.isArray(body.system)) {
+    const last = body.system.length - 1;
+    body.system.forEach((block, i) => {
+      if (typeof block !== "object" || block === null) return;
+      if (i === last) block.cache_control = { ...CACHE_CONTROL_1H };
+      else delete block.cache_control;
+    });
+  }
+
+  if (Array.isArray(body.tools)) {
+    const last = body.tools.length - 1;
+    body.tools.forEach((tool, i) => {
+      if (i === last) tool.cache_control = { ...CACHE_CONTROL_1H };
+      else delete tool.cache_control;
+    });
+  }
+
+  if (Array.isArray(body.messages)) {
+    let anchored = null;
+    for (let i = body.messages.length - 1; i >= 0; i--) {
+      const msg = body.messages[i];
+      if (!Array.isArray(msg.content)) continue;
+      for (const block of msg.content) { if (block && typeof block === "object") delete block.cache_control; }
+      if (anchored || msg.role !== ROLE.ASSISTANT) continue;
+      anchored = markLastCacheableBlock(msg);
+    }
+    if (!anchored) {
+      for (let i = body.messages.length - 1; i >= 0 && !anchored; i--) {
+        anchored = markLastCacheableBlock(body.messages[i]);
+      }
+    }
+  }
+
+  return body;
+}
+
 // Check if message has valid non-empty content
 export function hasValidContent(msg) {
   if (typeof msg.content === "string" && msg.content.trim()) return true;
@@ -229,34 +286,36 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
     if (Object.keys(body.output_config).length === 0) delete body.output_config;
   }
 
-  // 2. Hoist mid-conversation system messages into the top-level system field
+  // 2. Fold mid-conversation system messages into the neighbouring turn.
+  // Hoisting them into body.system would insert volatile content ahead of the
+  // conversation and invalidate its prefix cache on every request.
   if (Array.isArray(body.messages)) {
-    const systemBlocks = [];
     const messages = [];
     for (const msg of body.messages) {
-      if (msg.role === ROLE.SYSTEM) {
-        const text = typeof msg.content === "string"
-          ? msg.content
-          : Array.isArray(msg.content)
-            ? msg.content.map(b => (typeof b === "string" ? b : b?.text || "")).join("\n")
-            : "";
-        if (text.trim()) systemBlocks.push({ type: CLAUDE_BLOCK.TEXT, text });
+      if (msg.role !== ROLE.SYSTEM) {
+        messages.push(msg);
         continue;
       }
-      messages.push(msg);
-    }
+      const text = typeof msg.content === "string"
+        ? msg.content
+        : Array.isArray(msg.content)
+          ? msg.content.map(b => (typeof b === "string" ? b : b?.text || "")).join("\n")
+          : "";
+      if (!text.trim()) continue;
 
-    if (systemBlocks.length > 0) {
-      const existing = Array.isArray(body.system)
-        ? body.system
-        : typeof body.system === "string" && body.system.trim()
-          ? [{ type: "text", text: body.system }]
-          : [];
-      body.system = [...existing, ...systemBlocks];
-      body.messages = messages;
+      const block = { type: CLAUDE_BLOCK.TEXT, text };
+      const prev = messages[messages.length - 1];
+      if (prev?.role === ROLE.USER) {
+        const content = typeof prev.content === "string"
+          ? [{ type: CLAUDE_BLOCK.TEXT, text: prev.content }]
+          : Array.isArray(prev.content) ? [...prev.content] : [];
+        messages[messages.length - 1] = { ...prev, content: [...content, block] };
+        continue;
+      }
+      messages.push({ role: ROLE.USER, content: [block] });
     }
+    body.messages = messages;
   }
-
   normalizeClaudeServerToolModels(body.tools);
 
   // 3. Drop thinking blocks whose signature is not Claude's (combo mixes models,

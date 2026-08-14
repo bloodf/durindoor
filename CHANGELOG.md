@@ -1,3 +1,13 @@
+# Unreleased
+
+## Responses API output_index allocation
+A tool call emitted after a reasoning or message item no longer reuses that
+prior item's `output_index`. The legacy Responses transformer now allocates a
+monotonic `output_index` per output item and reuses it for every delta and
+terminal event of that item, matching the pattern the existing OpenAI
+Responses translator already followed. No wire-format, provider, or
+wire-compatibility change.
+
 # 3.15.2
 
 Authenticated dashboards reached through a reverse proxy can manage PXPIPE

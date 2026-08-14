@@ -62,6 +62,7 @@ export function createResponsesApiTransformStream(logger = null) {
     msgTextBuf: {},
     msgItemAdded: {},
     msgContentAdded: {},
+    msgOutputIndexes: {},
     msgItemDone: {},
     reasoningId: "",
     reasoningIndex: -1,
@@ -74,6 +75,8 @@ export function createResponsesApiTransformStream(logger = null) {
     funcCallIds: {},
     funcArgsDone: {},
     funcItemDone: {},
+    funcOutputIndexes: {},
+    nextOutputIndex: 0,
     buffer: "",
     usage: null,
     // Delay completion after finish_reason so a trailing usage-only chunk can enrich it.
@@ -94,12 +97,13 @@ export function createResponsesApiTransformStream(logger = null) {
   // Helper to start reasoning
   const startReasoning = (controller, idx) => {
     if (!state.reasoningId) {
+      const outputIndex = state.nextOutputIndex++;
       state.reasoningId = `rs_${state.responseId}_${idx}`;
-      state.reasoningIndex = idx;
+      state.reasoningIndex = outputIndex;
       
       emit(controller, "response.output_item.added", {
         type: "response.output_item.added",
-        output_index: idx,
+        output_index: outputIndex,
         item: {
           id: state.reasoningId,
           type: "reasoning",
@@ -110,7 +114,7 @@ export function createResponsesApiTransformStream(logger = null) {
       emit(controller, "response.reasoning_summary_part.added", {
         type: "response.reasoning_summary_part.added",
         item_id: state.reasoningId,
-        output_index: idx,
+        output_index: outputIndex,
         summary_index: 0,
         part: { type: "summary_text", text: "" }
       });
@@ -167,11 +171,12 @@ export function createResponsesApiTransformStream(logger = null) {
       state.msgItemDone[idx] = true;
       const fullText = state.msgTextBuf[idx] || "";
       const msgId = `msg_${state.responseId}_${idx}`;
+      const outputIndex = state.msgOutputIndexes[idx];
 
       emit(controller, "response.output_text.done", {
         type: "response.output_text.done",
         item_id: msgId,
-        output_index: parseInt(idx),
+        output_index: outputIndex,
         content_index: 0,
         text: fullText,
         logprobs: []
@@ -180,14 +185,14 @@ export function createResponsesApiTransformStream(logger = null) {
       emit(controller, "response.content_part.done", {
         type: "response.content_part.done",
         item_id: msgId,
-        output_index: parseInt(idx),
+        output_index: outputIndex,
         content_index: 0,
         part: { type: "output_text", annotations: [], logprobs: [], text: fullText }
       });
 
       emit(controller, "response.output_item.done", {
         type: "response.output_item.done",
-        output_index: parseInt(idx),
+        output_index: outputIndex,
         item: {
           id: msgId,
           type: "message",
@@ -202,17 +207,18 @@ export function createResponsesApiTransformStream(logger = null) {
     const callId = state.funcCallIds[idx];
     if (callId && !state.funcItemDone[idx]) {
       const args = state.funcArgsBuf[idx] || "{}";
+      const outputIndex = state.funcOutputIndexes[idx];
       
       emit(controller, "response.function_call_arguments.done", {
         type: "response.function_call_arguments.done",
         item_id: `fc_${callId}`,
-        output_index: parseInt(idx),
+        output_index: outputIndex,
         arguments: args
       });
 
       emit(controller, "response.output_item.done", {
         type: "response.output_item.done",
-        output_index: parseInt(idx),
+        output_index: outputIndex,
         item: {
           id: `fc_${callId}`,
           type: "function_call",
@@ -348,22 +354,23 @@ export function createResponsesApiTransformStream(logger = null) {
           if (content) {
             if (!state.msgItemAdded[idx]) {
               state.msgItemAdded[idx] = true;
+              state.msgOutputIndexes[idx] = state.nextOutputIndex++;
               const msgId = `msg_${state.responseId}_${idx}`;
-              
+
               emit(controller, "response.output_item.added", {
                 type: "response.output_item.added",
-                output_index: idx,
+                output_index: state.msgOutputIndexes[idx],
                 item: { id: msgId, type: "message", content: [], role: "assistant" }
               });
             }
 
             if (!state.msgContentAdded[idx]) {
               state.msgContentAdded[idx] = true;
-              
+
               emit(controller, "response.content_part.added", {
                 type: "response.content_part.added",
                 item_id: `msg_${state.responseId}_${idx}`,
-                output_index: idx,
+                output_index: state.msgOutputIndexes[idx],
                 content_index: 0,
                 part: { type: "output_text", annotations: [], logprobs: [], text: "" }
               });
@@ -372,7 +379,7 @@ export function createResponsesApiTransformStream(logger = null) {
             emit(controller, "response.output_text.delta", {
               type: "response.output_text.delta",
               item_id: `msg_${state.responseId}_${idx}`,
-              output_index: idx,
+              output_index: state.msgOutputIndexes[idx],
               content_index: 0,
               delta: content,
               logprobs: []
@@ -395,10 +402,11 @@ export function createResponsesApiTransformStream(logger = null) {
 
             if (!state.funcCallIds[tcIdx] && newCallId) {
               state.funcCallIds[tcIdx] = newCallId;
-              
+              state.funcOutputIndexes[tcIdx] = state.nextOutputIndex++;
+
               emit(controller, "response.output_item.added", {
                 type: "response.output_item.added",
-                output_index: tcIdx,
+                output_index: state.funcOutputIndexes[tcIdx],
                 item: {
                   id: `fc_${newCallId}`,
                   type: "function_call",
@@ -417,7 +425,7 @@ export function createResponsesApiTransformStream(logger = null) {
                 emit(controller, "response.function_call_arguments.delta", {
                   type: "response.function_call_arguments.delta",
                   item_id: `fc_${refCallId}`,
-                  output_index: tcIdx,
+                  output_index: state.funcOutputIndexes[tcIdx],
                   delta: tc.function.arguments
                 });
               }

@@ -157,10 +157,10 @@ describe("chatCore quota reservation boundary", () => {
 
   it("normalizes a bare executor Response before chatCore consumes it", async () => {
     const completion = {
-      choices: [{
-        message: { role: "assistant", content: "ok" },
-        finish_reason: "stop",
-      }],
+      model: "llama3",
+      message: { role: "assistant", content: "ok" },
+      done: true,
+      done_reason: "stop",
     };
     executeMock.mockResolvedValue(new Response(JSON.stringify(completion), {
       status: 200,

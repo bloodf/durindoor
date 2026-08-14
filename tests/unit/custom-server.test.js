@@ -80,4 +80,39 @@ describe("Next.js Server Process Title", () => {
     expect(handler).toHaveBeenCalledOnce();
     expect(response.end).toHaveBeenCalledWith("Internal Server Error");
   });
+
+  it("marks forwarded loopback clients as proxied while replacing the peer token", async () => {
+    const fakeHttp = {
+      createServer: vi.fn((handler) => ({ handler })),
+    };
+    const handler = vi.fn();
+    const { installRequestWrapper } = require("../../custom-server.js");
+    installRequestWrapper({
+      httpModule: fakeHttp,
+      secret: "a".repeat(64),
+      peerToken: "trusted-peer-token",
+      verifyPeerOwner: vi.fn(async () => false),
+    });
+    const server = fakeHttp.createServer(handler);
+    const request = {
+      method: "GET",
+      url: "/api/v1/models",
+      headers: {
+        "x-forwarded-for": "127.0.0.1",
+        "x-real-ip": "127.0.0.1",
+        "x-9r-peer-token": "forged-token",
+      },
+      socket: { remoteAddress: "127.0.0.1" },
+    };
+    const response = { setHeader: vi.fn() };
+
+    server.handler(request, response);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(handler).toHaveBeenCalledWith(request, response);
+    expect(request.headers["x-9r-real-ip"]).toBe("127.0.0.1");
+    expect(request.headers["x-9r-via-proxy"]).toBe("1");
+    expect(request.headers["x-9r-peer-token"]).toBe("trusted-peer-token");
+    expect(request.headers["x-forwarded-for"]).toBeUndefined();
+  });
 });

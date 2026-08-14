@@ -946,7 +946,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     if (providerSignal?.aborted) throw requestAbortError(providerSignal.reason);
     const initialAttempt = beginProviderAttempt();
     try {
-      const result = await runWithProviderAttemptContext(beginProviderAttempt, () => executor.execute({
+      const rawResult = await runWithProviderAttemptContext(beginProviderAttempt, () => executor.execute({
           model: cleanUpstreamModel,
           body: translatedBody,
           stream,
@@ -962,7 +962,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
             ? () => quotaReservation.beginDispatch()
             : null,
         });
-      validateExecutorResult(result);
+      const result = validateExecutorResult(rawResult);
       if (
         Number.isSafeInteger(result?.attemptStartedAt)
         && result.attemptStartedAt > (latestProviderAttemptStartedAt || 0)

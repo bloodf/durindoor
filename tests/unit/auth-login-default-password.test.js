@@ -28,7 +28,7 @@ vi.mock("@/lib/auth/oidc", () => ({ isOidcConfigured: mocks.isOidcConfigured }))
 vi.mock("@/lib/auth/loginLimiter", () => ({
   checkLock: mocks.checkLock, recordFail: mocks.recordFail, recordSuccess: mocks.recordSuccess, getClientIp: mocks.getClientIp,
 }));
-vi.mock("@/dashboardGuard", () => ({ isLocalRequest: mocks.isLocalRequest }));
+vi.mock("@/lib/auth/passwordChangeProof", () => ({ issuePasswordChangeProof: mocks.issuePasswordChangeProof }));
 
 const { POST } = await import("../../src/app/api/auth/login/route.js");
 

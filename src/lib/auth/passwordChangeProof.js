@@ -11,8 +11,11 @@ export function issuePasswordChangeProof(clientIp) {
 
 export function consumePasswordChangeProof(proof, clientIp) {
   const entry = proofs.get(proof);
+  if (!entry || entry.clientIp !== clientIp || entry.expiresAt < Date.now()) {
+    return false;
+  }
   proofs.delete(proof);
-  return Boolean(entry && entry.clientIp === clientIp && entry.expiresAt >= Date.now());
+  return true;
 }
 
 export function resetPasswordChangeProofs() {

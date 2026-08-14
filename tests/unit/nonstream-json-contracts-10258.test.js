@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import "../translator/registerAll.js";
 import { handleNonStreamingResponse } from "../../open-sse/handlers/chatCore/nonStreamingHandler.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 

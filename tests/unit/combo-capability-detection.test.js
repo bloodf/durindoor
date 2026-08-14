@@ -51,6 +51,100 @@ describe("combo capability detection for attachment payloads", () => {
     expect(required).toEqual(new Set(["audioInput", "pdf"]));
   });
 
+  it("detects video attachments and inline video data URIs", () => {
+    const fromAttachment = detectRequiredCapabilities({
+      messages: [{
+        role: "user",
+        content: "watch this",
+        attachments: [{ contentType: "video/mp4", url: "data:video/mp4;base64,AA==" }],
+      }],
+    });
+    expect(fromAttachment).toEqual(new Set(["videoInput"]));
+
+    const fromInline = detectRequiredCapabilities({
+      messages: [{ role: "user", content: "clip: data:video/mp4;base64,AA==" }],
+    });
+    expect(fromInline).toEqual(new Set(["videoInput"]));
+  });
+
+  it("does not require vision for resolvable non-media MIME types", () => {
+    const required = detectRequiredCapabilities({
+      messages: [{
+        role: "user",
+        content: "here is data",
+        attachments: [
+          { contentType: "text/csv", url: "https://example.test/data.csv" },
+          { mediaType: "application/json", url: "https://example.test/data.json" },
+        ],
+      }],
+    });
+
+    expect(required).toEqual(new Set());
+  });
+
+  it("ignores tool-role messages so their data URIs don't pin routing", () => {
+    const required = detectRequiredCapabilities({
+      messages: [
+        { role: "user", content: "run the tool" },
+        { role: "tool", content: "data:image/png;base64,AA==" },
+      ],
+    });
+
+    expect(required).toEqual(new Set());
+  });
+
+  it("falls back to attachments when experimental_attachments is malformed", () => {
+    const required = detectRequiredCapabilities({
+      messages: [{
+        role: "user",
+        content: "listen to this",
+        experimental_attachments: { not: "an array" },
+        attachments: [{ contentType: "audio/wav", url: "data:audio/wav;base64,AA==" }],
+      }],
+    });
+
+    expect(required).toEqual(new Set(["audioInput"]));
+  });
+
+  it("detects every modality present in mixed string content", () => {
+    const required = detectRequiredCapabilities({
+      messages: [{
+        role: "user",
+        content: "data:image/png;base64,AA== data:audio/wav;base64,BB== data:application/pdf;base64,CC== data:video/mp4;base64,DD==",
+      }],
+    });
+
+    expect(required).toEqual(new Set(["vision", "audioInput", "pdf", "videoInput"]));
+  });
+
+  it("never assigns content when it is not originally a string or array", () => {
+    const nullContentBody = {
+      messages: [{ role: "user", content: null, images: ["base64-image"] }],
+    };
+    stripUnsupportedModalities(nullContentBody, FORMATS.OPENAI, { vision: false, audioInput: true, pdf: true });
+    expect(nullContentBody.messages[0]).not.toHaveProperty("images");
+    expect(nullContentBody.messages[0].content).toBeNull();
+
+    const noContentBody = {
+      messages: [{ role: "user", images: ["base64-image"] }],
+    };
+    stripUnsupportedModalities(noContentBody, FORMATS.OPENAI, { vision: false, audioInput: true, pdf: true });
+    expect(noContentBody.messages[0]).not.toHaveProperty("images");
+    expect(noContentBody.messages[0]).not.toHaveProperty("content");
+  });
+
+  it("bounds the inline data URI MIME match against a hostile long tail", () => {
+    const hostileTail = "A".repeat(200000);
+    const body = {
+      messages: [{ role: "user", content: `data:image/png;base64,${hostileTail}` }],
+    };
+
+    const start = Date.now();
+    stripUnsupportedModalities(body, FORMATS.OPENAI, { vision: false, audioInput: true, pdf: true });
+    expect(Date.now() - start).toBeLessThan(500);
+    expect(body.messages[0].content).toContain("[image omitted: model has no vision support]");
+  });
+
   it("keeps supported attachment modalities while stripping images for non-vision models", () => {
     const body = {
       messages: [{

@@ -10,10 +10,11 @@ async function setupDb() {
   process.env.DATA_DIR = tempDir;
   vi.resetModules();
 
-  const { createCombo } = await import("@/lib/localDb");
+  const { createCombo, getComboForModel } = await import("@/lib/localDb");
   const { getComboModels, getModelInfo } = await import("@/sse/services/model.js");
   return {
     createCombo,
+    getComboForModel,
     getComboModels,
     getModelInfo,
     cleanup() {
@@ -43,6 +44,30 @@ describe("case-insensitive combo model resolution", () => {
       model: "CodeX-High",
     });
     await expect(ctx.getComboModels("CODEX-HIGH")).resolves.toEqual(["openai/GPT-5"]);
+  });
+
+  it("prefers exact casing, then deterministically selects the earliest case-insensitive match", async () => {
+    const ctx = await setupDb();
+    cleanup = ctx.cleanup;
+    const first = await ctx.createCombo({ name: "CodeX", models: ["openai/first"] });
+    await ctx.createCombo({ name: "codex", models: ["openai/second"] });
+
+    await expect(ctx.getComboForModel("CodeX")).resolves.toMatchObject({
+      id: first.id,
+      name: "CodeX",
+    });
+    await expect(ctx.getComboForModel("CODEX")).resolves.toMatchObject({
+      id: first.id,
+      name: "CodeX",
+    });
+  });
+
+  it("does not resolve a provider/model basename through case-insensitive combo lookup", async () => {
+    const ctx = await setupDb();
+    cleanup = ctx.cleanup;
+    await ctx.createCombo({ name: "gpt-5", models: ["openai/other"] });
+
+    await expect(ctx.getComboModels("custom/GPT-5")).resolves.toBeNull();
   });
 
   it("keeps similarly cased non-combo provider model IDs unchanged", async () => {

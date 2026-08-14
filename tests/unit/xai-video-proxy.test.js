@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   getProxyPools: vi.fn(),
   getQuotaReservationPressure: vi.fn(),
   getModelAliases: vi.fn(),
+  getComboForModel: vi.fn(),
   getComboByName: vi.fn(),
   getProviderNodes: vi.fn(),
 }));
@@ -33,6 +34,7 @@ vi.mock("@/lib/localDb", () => ({
   getProxyPools: mocks.getProxyPools,
   getQuotaReservationPressure: mocks.getQuotaReservationPressure,
   getModelAliases: mocks.getModelAliases,
+  getComboForModel: mocks.getComboForModel,
   getComboByName: mocks.getComboByName,
   getProviderNodes: mocks.getProviderNodes,
 }));

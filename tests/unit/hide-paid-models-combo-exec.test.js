@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // single-model handling against the combo NAME.
 
 const mocks = vi.hoisted(() => ({
+  getComboForModel: vi.fn(),
   getComboByName: vi.fn(),
   getModelAliases: vi.fn(),
   getProviderNodes: vi.fn(),
@@ -20,6 +21,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/localDb", () => ({
+  getComboForModel: mocks.getComboForModel,
   getComboByName: mocks.getComboByName,
   getModelAliases: mocks.getModelAliases,
   getProviderNodes: mocks.getProviderNodes,

@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ getCustomModels: vi.fn() }));
+const mocks = vi.hoisted(() => ({ getCustomModels: vi.fn(), getComboForModel: vi.fn() }));
 
 vi.mock("@/lib/localDb", () => ({
   getModelAliases: vi.fn(),
+  getComboForModel: mocks.getComboForModel,
   getComboByName: vi.fn(),
   getProviderNodes: vi.fn(),
   getProviderConnections: vi.fn(),

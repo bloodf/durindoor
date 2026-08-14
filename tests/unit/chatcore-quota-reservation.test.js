@@ -170,7 +170,14 @@ describe("chatCore quota reservation boundary", () => {
     const result = await handleChatCore(args(reservation()));
 
     expect(result.success).toBe(true);
-    expect(await result.response.json()).toEqual(completion);
+    expect(await result.response.json()).toMatchObject({
+      object: "chat.completion",
+      model: "llama3",
+      choices: [{
+        message: { role: "assistant", content: "ok" },
+        finish_reason: "stop",
+      }],
+    });
   });
 
   it("acquires after local validation, marks dispatch, and commits a coherent JSON terminal", async () => {

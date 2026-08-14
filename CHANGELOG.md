@@ -15,7 +15,9 @@ field) are now detected in the first SSE frame and answered with a synthetic
 HTTP 403 before any stream bytes commit, so combo/account fallback treats the
 provider as unavailable instead of surfacing a broken stream to the caller.
 Normal streams are unaffected: the bounded 64 KiB peek is replayed byte-for-
-byte and no response is ever buffered in full.
+byte and no response is ever buffered in full. The peek also uses Qoder's
+configured request timeout, so a response that sends headers but no first frame
+fails for fallback instead of holding the request indefinitely.
 
 # 3.15.2
 

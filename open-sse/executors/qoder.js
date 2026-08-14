@@ -233,14 +233,22 @@ function isBillingBlock(body) {
   return /"code"\s*:\s*"(?:112|10605)"/.test(body) || body.toLowerCase().includes("pricingurl");
 }
 
-async function peekQoderBillingFrame(reader) {
+async function peekQoderBillingFrame(reader, timeoutMs) {
   const decoder = new TextDecoder();
   const chunks = [];
   let text = "";
   let bytes = 0;
 
+  const read = () => new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reader.cancel().catch(() => {});
+      reject(new Error("qoder stream-start timeout"));
+    }, timeoutMs);
+    reader.read().then(resolve, reject).finally(() => clearTimeout(timer));
+  });
+
   while (bytes < QODER_SSE_PEEK_BYTES) {
-    const { done, value } = await reader.read();
+    const { done, value } = await read();
     if (done) return { chunks, done: true };
     chunks.push(value);
     bytes += value.byteLength;
@@ -300,11 +308,12 @@ function replayQoderBody(reader, chunks, alreadyDone) {
  * and re-emit as `data: <inner>\n\n`. Only a raw OpenAI finish plus `[DONE]`
  * is allowed to produce a successful terminal.
  */
-async function wrapQoderSSE(response, model) {
+async function wrapQoderSSE(response, model, options = {}) {
   if (!response.ok || !response.body) return response;
 
+  const peekTimeoutMs = options.timeoutMs ?? FETCH_CONNECT_TIMEOUT_MS;
   const reader = response.body.getReader();
-  const peeked = await peekQoderBillingFrame(reader);
+  const peeked = await peekQoderBillingFrame(reader, peekTimeoutMs);
   if (peeked.billing) {
     await reader.cancel();
     return Response.json({ error: { message: peeked.billing.body, code: 403 } }, { status: 403 });
@@ -636,8 +645,7 @@ export class QoderExecutor extends BaseExecutor {
       // Pass error response through unchanged so chatCore can capture it.
       return { response, url, headers, transformedBody: payload };
     }
-
-    const wrapped = await wrapQoderSSE(response, `qoder/${qoderKey}`);
+    const wrapped = await wrapQoderSSE(response, `qoder/${qoderKey}`, { timeoutMs });
     return {
       response: wrapped,
       url,

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { anchorClaudeCache } from "../../open-sse/translator/formats/claude.js";
+import { anchorClaudeCache, normalizeClaudePassthrough } from "../../open-sse/translator/formats/claude.js";
 
 describe("Claude passthrough cache-control anchoring", () => {
-  it("re-anchors markers after message reshaping", () => {
+  it("re-anchors markers after preparation reshapes messages", () => {
     const body = {
       messages: [
         {
@@ -50,5 +50,30 @@ describe("Claude passthrough cache-control anchoring", () => {
     expect(body.system[1].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
     expect(body.tools[0].cache_control).toBeUndefined();
     expect(body.tools[1].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
+  });
+
+  it("folds mid-conversation system text into the preceding user turn", () => {
+    const body = {
+      system: [{ type: "text", text: "stable" }],
+      messages: [
+        { role: "user", content: "first" },
+        { role: "system", content: "volatile reminder" },
+        { role: "assistant", content: [{ type: "text", text: "answer" }] },
+      ],
+    };
+
+    normalizeClaudePassthrough(body);
+
+    expect(body.system).toEqual([{ type: "text", text: "stable" }]);
+    expect(body.messages).toEqual([
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "first" },
+          { type: "text", text: "volatile reminder" },
+        ],
+      },
+      { role: "assistant", content: [{ type: "text", text: "answer" }] },
+    ]);
   });
 });

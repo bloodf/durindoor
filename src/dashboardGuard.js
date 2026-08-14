@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getSettings, validateApiKey, validateGatewayKey } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
+import { hasTrustedPeerHeaders } from "@/lib/auth/trustedPeer";
+
 import {
   CONTROL_PORT_HEADER,
   CONTROL_PROOF_HEADER,
@@ -95,35 +97,44 @@ const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
 function isLoopbackHostname(h) {
   if (!h) return false;
-  const name = h.split(":")[0].replace(/^\[|\]$/g, "").toLowerCase();
+  let name = String(h).trim().toLowerCase();
+  if (name.startsWith("[")) {
+    const end = name.indexOf("]");
+    if (end === -1) return false;
+    name = name.slice(1, end);
+  } else if (name.indexOf(":") !== -1 && name.indexOf(":") === name.lastIndexOf(":")) {
+    name = name.slice(0, name.indexOf(":"));
+  }
+  if (name.startsWith("::ffff:")) name = name.slice(7);
   return LOOPBACK_HOSTS.has(name);
 }
 
-function hasExactRequestOrigin(request) {
-  const rawOrigin = request.headers.get("origin");
-  const rawHost = request.headers.get("host");
-  if (!rawOrigin || !rawHost) return false;
-  try {
-    const protocol = new URL(request.url).protocol;
-    const expected = new URL(`${protocol}//${rawHost}`).origin;
-    return new URL(rawOrigin).origin === expected;
-  } catch {
-    return false;
-  }
+// Stamped by custom-server.js: the request came through a reverse proxy, so the loopback
+// socket is the proxy hop, not the end-user. Still proves it ran through the wrapper.
+function hasViaProxyHeader(request) {
+  return Boolean(request.headers.get("x-9r-via-proxy"));
 }
 
-export function isLocalRequest(request) {
-  // Stamped by custom-server.js when forwarding headers exist: request came through
-  // a reverse proxy, so the loopback socket is the proxy hop, not the end-user.
-  if (request.headers.get("x-9r-via-proxy")) return false;
-  // Trusted peer IP from TCP socket (custom-server.js); unspoofable. Primary anchor for "local".
-  const realIp = request.headers.get("x-9r-real-ip");
-  if (realIp) {
-    if (!isLoopbackHostname(realIp)) return false;
-  } else if (!isLoopbackHostname(request.headers.get("host"))) {
-    // Fallback for bare server.js (dev) without custom-server: legacy Host-based check.
-    return false;
+// TCP socket says it was a loopback connection. We require the wrapper's peer token so a
+// remote client can't forge x-9r-real-ip; in development the wrapper is absent, so we fall
+// back to Host + Origin matching, which only works for genuine local browsers.
+function isLoopbackPeer(request) {
+  if (!hasTrustedPeerHeaders(request)) {
+    if (process.env.NODE_ENV !== "development") return false;
+    if (hasViaProxyHeader(request)) return false;
+    if (!isLoopbackHostname(request.headers.get("host"))) return false;
+    const origin = request.headers.get("origin");
+    if (origin) {
+      try {
+        if (!isLoopbackHostname(new URL(origin).hostname)) return false;
+      } catch { return false; }
+    }
+    return true;
   }
+  if (hasViaProxyHeader(request)) return false;
+  const realIp = request.headers.get("x-9r-real-ip");
+  if (realIp) return isLoopbackHostname(realIp);
+  if (!isLoopbackHostname(request.headers.get("host"))) return false;
   const origin = request.headers.get("origin");
   if (origin) {
     try {
@@ -131,6 +142,12 @@ export function isLocalRequest(request) {
     } catch { return false; }
   }
   return true;
+}
+
+// Backwards-compatible entry: was `isLocalRequest`. Now strictly requires the wrapper
+// proof except in development. Local-only routes must call this, not infer from raw IPs.
+export function isLocalRequest(request) {
+  return isLoopbackPeer(request);
 }
 
 function isPublicLlmApi(pathname) {

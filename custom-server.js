@@ -66,9 +66,11 @@ function isMitmMutation(req) {
  * socket IP, it stamps mutating MITM requests only after proving that the
  * loopback client socket belongs to the same OS user as the dashboard.
  */
-function installRequestWrapper({ httpModule = http, secret, verifyPeerOwner } = {}) {
+function installRequestWrapper({ httpModule = http, secret, peerToken, verifyPeerOwner } = {}) {
   const controlSecret = secret || crypto.randomBytes(32).toString("hex");
   process.env[CONTROL_SECRET_ENV] = controlSecret;
+  const trustedPeerToken = peerToken || crypto.randomBytes(24).toString("hex");
+  process.env.NINEROUTER_PEER_TOKEN = trustedPeerToken;
   const dashboardPort = Number(process.env.PORT || 20128);
   const verifyOwner = verifyPeerOwner || createPeerOwnerVerifier({ targetPorts: [dashboardPort] });
   const origCreate = httpModule.createServer.bind(httpModule);
@@ -90,8 +92,10 @@ function installRequestWrapper({ httpModule = http, secret, verifyPeerOwner } = 
       delete req.headers["x-9r-via-proxy"];
       delete req.headers[CONTROL_PROOF_HEADER];
       delete req.headers[CONTROL_PORT_HEADER];
+      delete req.headers["x-9r-peer-token"];
       req.headers["x-9r-real-ip"] = ip;
       if (viaProxy) req.headers["x-9r-via-proxy"] = "1";
+      req.headers["x-9r-peer-token"] = trustedPeerToken;
       if (/^[a-f0-9]{48}$/.test(process.env.DURINDOOR_WORKER_NONCE || "")) {
         res.setHeader?.("x-durindoor-worker-nonce", process.env.DURINDOOR_WORKER_NONCE);
       }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { normalizeProviderSpecificData } from "../../src/lib/providerNormalization.js";
+import { sanitizeProviderConnectionForClient } from "../../src/lib/providers/sanitizeProviderConnectionForClient.js";
 import { buildBulkProviderConnectionPayload } from "../../src/shared/utils/providerConnectionPayloads.js";
 
 describe("dashboard provider connection payloads", () => {
@@ -54,5 +55,19 @@ describe("dashboard provider connection payloads", () => {
     expect(normalizeProviderSpecificData("sap", { deploymentUrl: "https://sap.example.com/v2/lm/deployments/id/" })).toEqual({
       baseUrl: "https://sap.example.com/v2/lm/deployments/id",
     });
+  });
+
+  it("keeps only durable valid Codex fingerprint metadata", () => {
+    expect(normalizeProviderSpecificData("codex", {}, {
+      codexFingerprintMode: "full",
+      codexClientIdentity: { sessionId: "request-only" },
+      codexOriginalIdentityHeaders: { "session-id": "request-only" },
+    })).toEqual({ codexFingerprintMode: "full" });
+
+    expect(sanitizeProviderConnectionForClient({
+      id: "codex-1",
+      provider: "codex",
+      providerSpecificData: { codexFingerprintMode: "untrusted" },
+    }).providerSpecificData).toEqual({});
   });
 });

@@ -2,10 +2,10 @@ import { NextResponse } from "next/server";
 import { getRequestDetails } from "@/lib/usageDb";
 
 const SENSITIVE_PAYLOAD_FIELDS = new Set([
-  "requestBody",
-  "providerRequestBody",
-  "providerResponseBody",
-  "responseBody",
+  "request",
+  "providerRequest",
+  "providerResponse",
+  "response",
 ]);
 
 function redactPayloads(result) {

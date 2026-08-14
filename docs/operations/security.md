@@ -155,6 +155,14 @@ Use:
 ENABLE_REQUEST_LOGS=false
 ```
 
+### Default dashboard password
+
+When effective dashboard password is built-in `123456`, remote login returns
+`403` before a session cookie is issued. A loopback login receives a five-minute,
+IP-bound, one-time proof which can only set a replacement password through
+`POST /api/auth/change-password`. That endpoint creates a dashboard session only
+after persisting the new password.
+
 Enable detailed logs only for short debugging windows. If logs must be retained, define retention, access, and deletion policies.
 
 ## Tunnels and Public URLs

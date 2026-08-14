@@ -98,6 +98,29 @@ export function withCompressionHeader(result, headerValue) {
 }
 
 /**
+ * Pick a request-scoped transport without allowing undeclared model metadata to
+ * select a wire-format endpoint. A transport needs credentials because the
+ * default executor otherwise uses the provider's default payload format.
+ */
+export function resolveRequestTransport({ provider, alias, model, sourceFormat, credentials }) {
+  const modelTargetFormat = getModelTargetFormat(alias, model);
+  const supportedFormats = getModelSupportedFormats(alias, model);
+  const apikeyTransportFormat = provider === "kimi" && credentials?.authType === "apikey"
+    ? "openai-apikey"
+    : null;
+  const directFormat = supportedFormats?.includes(sourceFormat) ? sourceFormat : null;
+  const defaultFormat = getTargetFormat(provider, credentials);
+  const preferredFormat = apikeyTransportFormat || directFormat || modelTargetFormat || defaultFormat;
+  const runtimeTransport = credentials ? resolveTransport(provider, preferredFormat) : null;
+  const transportFormat = runtimeTransport?.format?.replace(/-apikey$/, "") || null;
+  const targetFormat = transportFormat === sourceFormat
+    ? sourceFormat
+    : (apikeyTransportFormat ? transportFormat : (credentials ? (modelTargetFormat || transportFormat || defaultFormat) : defaultFormat));
+
+  return { runtimeTransport, targetFormat, apikeyTransportFormat };
+}
+
+/**
  * Select the model string handed to translateRequest on the non-passthrough
  * path. Kiro translators recover the synthetic -thinking/-agentic flags from
  * the model string (resolveKiroModel). The GPT-5.6 family registers an
@@ -307,38 +330,24 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   const cleanModel = parsedModel.cleanModel;
   const modelThinkingIntent = parsedModel.override;
   body = { ...body, model: cleanModel };
-  const modelTargetFormat = getModelTargetFormat(alias, cleanModel);
-  const modelSupportedFormats = getModelSupportedFormats(alias, cleanModel);
-  // Multi-endpoint providers may expose different formats per model. Use a
-  // source-format transport only when that model declares it; otherwise keep
-  // the provider's normal translation path. Required model formats still win.
-  // Kimi API-key connections speak OpenAI Chat Completions against the platform
-  // endpoint (api.moonshot.cn), NOT the Kimi Code subscription endpoint that
-  // OAuth connections use. That API is OpenAI-compatible only, so a
-  // Claude-format client is translated rather than passed through
-  // (decolua/9router#3088, upstream issue #2881).
-  const apikeyTransportFormat = (provider === "kimi" && credentials?.authType === "apikey")
-    ? "openai-apikey"
-    : null;
+  const { runtimeTransport: defaultRuntimeTransport, targetFormat: defaultTargetFormat, apikeyTransportFormat } = resolveRequestTransport({
+    provider,
+    alias,
+    model: cleanModel,
+    sourceFormat,
+    credentials,
+  });
   const oauthTransportFormat = (provider === "xai" && cleanModel === "grok-4.5" && credentials?.authType === "oauth")
     ? "openai-responses-oauth"
     : null;
-  const directTransportFormat = modelSupportedFormats?.includes(sourceFormat) === false
-    ? null
-    : sourceFormat;
-  const runtimeTransport = resolveTransport(provider, oauthTransportFormat || apikeyTransportFormat || modelTargetFormat || directTransportFormat)
-    || resolveTransport(provider, modelTargetFormat || directTransportFormat);
-  // Credential-specific lookup suffixes are not wire formats.
+  const runtimeTransport = oauthTransportFormat
+    ? (resolveTransport(provider, oauthTransportFormat) || defaultRuntimeTransport)
+    : defaultRuntimeTransport;
   const transportFormat = runtimeTransport?.format?.replace(/-(apikey|oauth)$/, "") || null;
-  const skipTranslation = transportFormat === sourceFormat;
-  // Attach the selected transport even when it was chosen by a model format override
-  // (e.g. MiniMax-M3 → OpenAI for a Claude-source client, upstream decolua/9router#2533);
-  // otherwise the executor falls back to the provider default endpoint and the override
-  // would only change the translated body, not the destination.
+  const targetFormat = oauthTransportFormat
+    ? (transportFormat === sourceFormat ? sourceFormat : transportFormat)
+    : defaultTargetFormat;
   if (runtimeTransport && credentials) credentials.runtimeTransport = runtimeTransport;
-  const targetFormat = skipTranslation
-    ? sourceFormat
-    : ((apikeyTransportFormat || oauthTransportFormat) ? transportFormat : (modelTargetFormat || transportFormat || getTargetFormat(provider, credentials)));
   const stripList = getModelStrip(alias, cleanModel);
   const cleanUpstreamModel = getModelUpstreamId(alias, cleanModel); // provider-facing model id
 

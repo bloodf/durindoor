@@ -178,4 +178,15 @@ describe("AGY empty-stream guard wiring in chatCore", () => {
       vi.useRealTimers();
     }
   });
+
+  it("no-auth requests complete without attaching runtime transport", async () => {
+    mocks.execute.mockResolvedValue(providerResult());
+    const options = makeAgyOptions(vi.fn());
+    options.credentials = null;
+
+    const result = await handleChatCore(options);
+
+    expect(result.success).toBe(true);
+    expect(mocks.execute).toHaveBeenCalledWith(expect.objectContaining({ credentials: null }));
+  });
 });

@@ -347,6 +347,8 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   const targetFormat = oauthTransportFormat
     ? (transportFormat === sourceFormat ? sourceFormat : transportFormat)
     : defaultTargetFormat;
+  // Attach selected transport only when executor can use its matching wire
+  // format. Without credentials it must retain provider default endpoint.
   if (runtimeTransport && credentials) credentials.runtimeTransport = runtimeTransport;
   const stripList = getModelStrip(alias, cleanModel);
   const cleanUpstreamModel = getModelUpstreamId(alias, cleanModel); // provider-facing model id

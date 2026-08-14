@@ -114,6 +114,138 @@ export function createSSEStream(options = {}) {
   const state = mode === STREAM_MODE.TRANSLATE
     ? { ...initState(sourceFormat, body || providerBody), provider, toolNameMap, model, signatureNamespace: connectionId, ...(claudeCompat && { claudeCompat: true }) }
     : null;
+  // Keep a compact completion view while chunks flow. Unlike retained request
+  // diagnostics, this sees terminal metadata even when callers cap raw events.
+  const providerSummary = (() => {
+    const format = mode === STREAM_MODE.TRANSLATE ? targetFormat : sourceFormat || targetFormat;
+    const isResponses = format === FORMATS.OPENAI_RESPONSES || format === FORMATS.OPENAI_RESPONSE;
+    const isClaude = format === FORMATS.CLAUDE;
+    const isGemini = format === FORMATS.GEMINI || format === FORMATS.GEMINI_CLI || format === FORMATS.ANTIGRAVITY;
+    let sawAny = false;
+    let summaryModel = model;
+    let summaryUsage = null;
+    let content = "";
+    let reasoning = "";
+    let finishReason = null;
+    const toolCalls = new Map();
+    let response = null;
+    let completedResponse = null;
+    const responseText = [];
+    const claudeBlocks = new Map();
+    let claudeId = "";
+    let claudeRole = "assistant";
+    let claudeStopReason = "end_turn";
+    let claudeStopSequence = null;
+    const geminiParts = [];
+    let geminiRole = "model";
+    let geminiFinishReason = "STOP";
+    const appendGeminiPart = (part) => {
+      const last = geminiParts.at(-1);
+      if (last && typeof last.text === "string" && typeof part.text === "string" && Boolean(last.thought) === Boolean(part.thought)) last.text += part.text;
+      else geminiParts.push(part);
+    };
+    return {
+      ingest(chunk) {
+        if (!chunk || typeof chunk !== "object" || Array.isArray(chunk)) return;
+        if (isResponses) {
+          if (!Object.keys(chunk).length) return;
+          sawAny = true;
+          if (chunk.type === "response.completed" && chunk.response && typeof chunk.response === "object") completedResponse = chunk.response;
+          if (chunk.response && typeof chunk.response === "object") response = chunk.response;
+          else if (chunk.object === "response") response = chunk;
+          if (chunk.type === "response.output_text.delta" && typeof chunk.delta === "string" && chunk.delta) responseText.push(chunk.delta);
+          if (chunk.usage && typeof chunk.usage === "object") summaryUsage = chunk.usage;
+          else if (chunk.response?.usage && typeof chunk.response.usage === "object") summaryUsage = chunk.response.usage;
+          return;
+        }
+        if (isClaude) {
+          if (!Object.keys(chunk).length) return;
+          sawAny = true;
+          if (chunk.type === "message_start") {
+            const message = chunk.message || {};
+            claudeId = message.id || claudeId;
+            summaryModel = message.model || summaryModel;
+            claudeRole = message.role || claudeRole;
+            if (message.usage) summaryUsage = mergeUsage(summaryUsage, message.usage);
+          } else if (chunk.type === "content_block_start") {
+            const block = chunk.content_block || {};
+            claudeBlocks.set(chunk.index ?? claudeBlocks.size, { ...block, inputJson: "" });
+          } else if (chunk.type === "content_block_delta") {
+            const index = chunk.index ?? 0;
+            const delta = chunk.delta || {};
+            const block = claudeBlocks.get(index) || { type: delta.type === "thinking_delta" ? "thinking" : "text", inputJson: "" };
+            if (delta.type === "input_json_delta") block.inputJson += delta.partial_json || "";
+            else if (delta.type === "thinking_delta" || typeof delta.thinking === "string") block.thinking = (block.thinking || "") + (delta.thinking || "");
+            else block.text = (block.text || "") + (delta.text || "");
+            claudeBlocks.set(index, block);
+          } else if (chunk.type === "message_delta") {
+            claudeStopReason = chunk.delta?.stop_reason || claudeStopReason;
+            claudeStopSequence = chunk.delta?.stop_sequence ?? claudeStopSequence;
+            if (chunk.usage) summaryUsage = mergeUsage(summaryUsage, chunk.usage);
+          } else if (chunk.usage) summaryUsage = mergeUsage(summaryUsage, chunk.usage);
+          return;
+        }
+        if (isGemini) {
+          if (!Object.keys(chunk).length) return;
+          sawAny = true;
+          summaryModel = chunk.modelVersion || summaryModel;
+          if (chunk.usageMetadata) summaryUsage = mergeUsage(summaryUsage, chunk.usageMetadata);
+          const candidate = chunk.candidates?.[0] || {};
+          geminiFinishReason = candidate.finishReason || geminiFinishReason;
+          const candidateContent = candidate.content || {};
+          geminiRole = candidateContent.role || geminiRole;
+          for (const part of candidateContent.parts || []) {
+            if (part?.functionCall) geminiParts.push({ functionCall: part.functionCall });
+            else if (typeof part?.text === "string" && part.text) appendGeminiPart({ text: part.text, ...(part.thought === true ? { thought: true } : {}) });
+          }
+          return;
+        }
+        if (!Array.isArray(chunk.choices)) return;
+        sawAny = true;
+        if (chunk.model) summaryModel = chunk.model;
+        if (chunk.usage) summaryUsage = mergeUsage(summaryUsage, chunk.usage);
+        for (const [position, choice] of chunk.choices.entries()) {
+          const delta = choice?.delta;
+          if (typeof delta?.content === "string") content += delta.content;
+          if (typeof delta?.reasoning_content === "string") reasoning += delta.reasoning_content;
+          else if (typeof delta?.reasoning === "string") reasoning += delta.reasoning;
+          if (choice?.finish_reason) finishReason = choice.finish_reason;
+          for (const [toolPosition, toolCall] of (delta?.tool_calls || []).entries()) {
+            const index = toolCall.index ?? toolPosition;
+            const current = toolCalls.get(index) || toolCalls.get(`id:${toolCall.id}`) || { index, id: undefined, type: undefined, function: { name: "", arguments: "" } };
+            if (toolCall.id) current.id = toolCall.id;
+            if (toolCall.type) current.type = toolCall.type;
+            if (toolCall.function?.name) current.function.name += toolCall.function.name;
+            if (typeof toolCall.function?.arguments === "string") current.function.arguments += toolCall.function.arguments;
+            toolCalls.set(index, current);
+            if (current.id) toolCalls.set(`id:${current.id}`, current);
+          }
+        }
+      },
+      finalize(finalUsage) {
+        if (!sawAny) return undefined;
+        if (isResponses) {
+          const picked = completedResponse || response;
+          const output = picked?.output?.length ? picked.output : responseText.length ? [{ type: "message", role: "assistant", content: [{ type: "output_text", text: responseText.join("") }] }] : [];
+          return { providerResponse: { id: picked?.id || `resp_${Date.now()}`, object: "response", model: picked?.model || summaryModel || "unknown", output, usage: picked?.usage ?? summaryUsage ?? null, status: picked?.status || (completedResponse ? "completed" : "in_progress"), created_at: picked?.created_at || Math.floor(Date.now() / 1000), metadata: picked?.metadata || {} } };
+        }
+        if (isClaude) {
+          const contentBlocks = [...claudeBlocks.entries()].sort(([a], [b]) => a - b).flatMap(([, block]) => {
+            if (block.type === "tool_use") { let input = block.input || {}; try { if (block.inputJson.trim()) input = JSON.parse(block.inputJson); } catch { input = block.inputJson; } return [{ type: "tool_use", id: block.id, name: block.name, input }]; }
+            if (block.type === "thinking") return block.thinking ? [{ type: "thinking", thinking: block.thinking, ...(block.signature ? { signature: block.signature } : {}) }] : [];
+            return block.text ? [{ type: "text", text: block.text }] : [];
+          });
+          return { providerResponse: { id: claudeId || `msg_${Date.now()}`, type: "message", role: claudeRole, model: summaryModel || "claude", content: contentBlocks, stop_reason: claudeStopReason, ...(claudeStopSequence ? { stop_sequence: claudeStopSequence } : {}), ...(summaryUsage ? { usage: summaryUsage } : {}) } };
+        }
+        if (isGemini) return { providerResponse: { candidates: [{ index: 0, content: { role: geminiRole, parts: geminiParts }, finishReason: geminiFinishReason }], ...(summaryUsage ? { usageMetadata: summaryUsage } : {}), modelVersion: summaryModel || "gemini" } };
+        const message = {};
+        if (content) message.content = content;
+        if (reasoning.trim()) message.reasoning_content = reasoning.trim();
+        if (toolCalls.size) message.tool_calls = [...new Set(toolCalls.values())];
+        return { providerResponse: { object: "chat.completion", ...(summaryModel ? { model: summaryModel } : {}), ...(summaryUsage || finalUsage ? { usage: summaryUsage || finalUsage } : {}), choices: [{ finish_reason: finishReason, message }] } };
+      },
+    };
+  })();
 
   let totalContentLength = 0;
   let accumulatedContent = "";
@@ -295,6 +427,7 @@ export function createSSEStream(options = {}) {
             try {
               const parsed = JSON.parse(isDataLine ? trimmed.slice(5).trim() : trimmed);
               upstreamTerminal.observe({ chunk: parsed, eventName: upstreamEventForLine });
+              providerSummary.ingest(parsed);
               if (
                 targetFormat === FORMATS.CLAUDE
                 && parsed?.type === "message_stop"
@@ -579,7 +712,7 @@ export function createSSEStream(options = {}) {
                 onStreamComplete({
                   content: accumulatedContent,
                   thinking: accumulatedThinking,
-                }, usage, ttftAt);
+                }, usage, ttftAt, providerSummary.finalize(usage));
               }
               if (toolNameDecloaked && !injectedUsage) {
                 output = isDataLine ? `data: ${JSON.stringify(parsed)}\n` : `${JSON.stringify(parsed)}\n`;
@@ -631,6 +764,7 @@ export function createSSEStream(options = {}) {
           rawDone: parsed?.done === true,
         });
         currentUpstreamEvent = null;
+        providerSummary.ingest(parsed);
 
         if (isOpenAIResponsesStream && isOpenAIResponsesTerminalEvent(openAIResponsesEventName, parsed)) {
           openAIResponsesTerminalSeen = true;
@@ -754,7 +888,7 @@ export function createSSEStream(options = {}) {
           onStreamComplete({
             content: rawContent || accumulatedContent,
             thinking: rawThinking || accumulatedThinking,
-          }, rawUsage, ttftAt);
+          }, rawUsage, ttftAt, providerSummary.finalize(rawUsage));
         } // Keep original usage for logging
 
         // Responses same-format passthrough: re-emit with original event framing
@@ -922,7 +1056,7 @@ export function createSSEStream(options = {}) {
             onStreamComplete({
               content: accumulatedContent,
               thinking: accumulatedThinking
-            }, usage, ttftAt);
+            }, usage, ttftAt, providerSummary.finalize(usage));
           }
           return;
         }
@@ -930,6 +1064,7 @@ export function createSSEStream(options = {}) {
         if (buffer.trim()) {
           const parsed = parseSSELine(buffer.trim());
           currentUpstreamEvent = observeBufferedUpstream(buffer.trim(), currentUpstreamEvent);
+          if (parsed) providerSummary.ingest(parsed);
           if (parsed && (!parsed.done || targetFormat === FORMATS.OLLAMA)) {
             const translated = translateResponse(targetFormat, sourceFormat, parsed, state);
 
@@ -1001,7 +1136,7 @@ export function createSSEStream(options = {}) {
           onStreamComplete({
             content: accumulatedContent,
             thinking: accumulatedThinking
-          }, state?.usage, ttftAt);
+          }, state?.usage, ttftAt, providerSummary.finalize(state?.usage));
         }
       } catch (error) {
         console.log("Error in flush:", error);

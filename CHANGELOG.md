@@ -11,13 +11,12 @@ wire-compatibility change.
 Perplexity Web now extracts answer-variant text from the workflow-block SSE format, including streamed RFC-6902 chunk patches and terminal materialized blocks. Search and thinking workflow items remain excluded; legacy markdown-block responses are unchanged.
 
 Qoder billing blocks (quota exhaustion codes `112`/`10605`, or a `pricingUrl`
-field) are now detected in the first SSE frame and answered with a synthetic
-HTTP 403 before any stream bytes commit, so combo/account fallback treats the
-provider as unavailable instead of surfacing a broken stream to the caller.
-Normal streams are unaffected: the bounded 64 KiB peek is replayed byte-for-
-byte and no response is ever buffered in full. The peek also uses Qoder's
+field) in the first SSE frame now produce a synthetic HTTP 403 before stream
+bytes commit. This supports status-driven combo/account failover; it does not
+change ordinary streaming failures. Normal streams replay the bounded 64 KiB
+peek byte-for-byte without buffering a full response. The peek shares Qoder's
 configured request timeout, so a response that sends headers but no first frame
-fails for fallback instead of holding the request indefinitely.
+also fails promptly for fallback.
 
 # 3.15.2
 

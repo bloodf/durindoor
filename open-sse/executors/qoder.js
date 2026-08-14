@@ -230,51 +230,102 @@ const QODER_SSE_PEEK_BYTES = 64 * 1024;
 
 function isBillingBlock(body) {
   if (typeof body !== "string" || !body) return false;
-  return /"code"\s*:\s*"(?:112|10605)"/.test(body) || body.toLowerCase().includes("pricingurl");
+  try {
+    const parsed = JSON.parse(body);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      && (parsed.code === "112" || parsed.code === "10605" || Object.hasOwn(parsed, "pricingUrl"));
+  } catch {
+    return false;
+  }
+}
+
+function releaseReader(reader) {
+  try { reader.releaseLock(); } catch { /* already released */ }
+}
+
+async function cancelAndReleaseReader(reader, reason) {
+  let timer;
+  try {
+    await Promise.race([
+      Promise.resolve(reader.cancel(reason)).catch(() => {}),
+      new Promise((resolve) => { timer = setTimeout(resolve, 250); }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+    releaseReader(reader);
+  }
+}
+
+function qoderPeekTimeoutError() {
+  const error = new Error("qoder stream-start timeout");
+  error.name = "TimeoutError";
+  return error;
+}
+
+async function readBeforeDeadline(reader, deadlineAt) {
+  const remaining = deadlineAt - Date.now();
+  if (remaining <= 0) throw qoderPeekTimeoutError();
+  let timer;
+  try {
+    return await Promise.race([
+      reader.read(),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(qoderPeekTimeoutError()), remaining); }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function peekQoderBillingFrame(reader, timeoutMs) {
   const decoder = new TextDecoder();
   const chunks = [];
+  const deadlineAt = Date.now() + timeoutMs;
   let text = "";
   let bytes = 0;
 
-  const read = () => new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reader.cancel().catch(() => {});
-      reject(new Error("qoder stream-start timeout"));
-    }, timeoutMs);
-    reader.read().then(resolve, reject).finally(() => clearTimeout(timer));
-  });
-
-  while (bytes < QODER_SSE_PEEK_BYTES) {
-    const { done, value } = await read();
-    if (done) return { chunks, done: true };
-    chunks.push(value);
-    bytes += value.byteLength;
-    text += decoder.decode(value, { stream: true });
-
-    let newline;
-    while ((newline = text.indexOf("\n")) !== -1) {
-      const line = text.slice(0, newline).replace(/\r$/, "").trim();
-      text = text.slice(newline + 1);
-      if (!line.startsWith("data:")) continue;
-      try {
-        const envelope = JSON.parse(line.slice(5).trimStart());
-        const status = typeof envelope.statusCodeValue === "number" ? envelope.statusCodeValue : 200;
-        const body = typeof envelope.body === "string" ? envelope.body : "";
-        if (status !== 200 && isBillingBlock(body)) return { chunks, done: false, billing: { status, body } };
-      } catch {
-        // Malformed frames remain existing stream-transform failures.
+  try {
+    while (bytes < QODER_SSE_PEEK_BYTES) {
+      const { done, value } = await readBeforeDeadline(reader, deadlineAt);
+      if (done) {
+        releaseReader(reader);
+        return { chunks, done: true };
       }
-      return { chunks, done: false };
+      chunks.push(value);
+      const inspectBytes = Math.min(value.byteLength, QODER_SSE_PEEK_BYTES - bytes);
+      bytes += inspectBytes;
+      text += decoder.decode(value.subarray(0, inspectBytes), { stream: true });
+
+      let newline;
+      while ((newline = text.indexOf("\n")) !== -1) {
+        const line = text.slice(0, newline).replace(/\r$/, "").trim();
+        text = text.slice(newline + 1);
+        if (!line.startsWith("data:")) continue;
+        try {
+          const envelope = JSON.parse(line.slice(5).trimStart());
+          const status = typeof envelope.statusCodeValue === "number" ? envelope.statusCodeValue : 200;
+          const body = typeof envelope.body === "string" ? envelope.body : "";
+          if (status !== 200 && isBillingBlock(body)) return { chunks, done: false, billing: { status, body } };
+        } catch {
+          // Malformed frames remain existing stream-transform failures.
+        }
+        return { chunks, done: false };
+      }
     }
+    return { chunks, done: false };
+  } catch (error) {
+    await cancelAndReleaseReader(reader, error);
+    throw error;
   }
-  return { chunks, done: false };
 }
 
 function replayQoderBody(reader, chunks, alreadyDone) {
   let index = 0;
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    releaseReader(reader);
+  };
   return new ReadableStream({
     async pull(controller) {
       if (index < chunks.length) {
@@ -282,19 +333,25 @@ function replayQoderBody(reader, chunks, alreadyDone) {
         return;
       }
       if (alreadyDone) {
+        finish();
         controller.close();
         return;
       }
       try {
         const { done, value } = await reader.read();
-        if (done) controller.close();
-        else controller.enqueue(value);
+        if (done) {
+          finish();
+          controller.close();
+        } else controller.enqueue(value);
       } catch (error) {
+        finish();
         controller.error(error);
       }
     },
     async cancel(reason) {
-      await reader.cancel(reason).catch(() => {});
+      if (finished) return;
+      finished = true;
+      try { await reader.cancel(reason); } finally { releaseReader(reader); }
     },
   });
 }
@@ -315,7 +372,7 @@ async function wrapQoderSSE(response, model, options = {}) {
   const reader = response.body.getReader();
   const peeked = await peekQoderBillingFrame(reader, peekTimeoutMs);
   if (peeked.billing) {
-    await reader.cancel();
+    await cancelAndReleaseReader(reader, "Qoder billing block");
     return Response.json({ error: { message: peeked.billing.body, code: 403 } }, { status: 403 });
   }
   const body = replayQoderBody(reader, peeked.chunks, peeked.done);
@@ -409,7 +466,20 @@ async function wrapQoderSSE(response, model, options = {}) {
     },
   });
 
-  return new Response(body.pipeThrough(transform), {
+  const transformed = body.pipeThrough(transform);
+  const transformedReader = transformed.getReader();
+  const output = new ReadableStream({
+    async pull(controller) {
+      const { done, value } = await transformedReader.read();
+      if (done) controller.close();
+      else controller.enqueue(value);
+    },
+    async cancel(reason) {
+      try { await transformedReader.cancel(reason); }
+      finally { await cancelAndReleaseReader(reader, reason); }
+    },
+  });
+  return new Response(output, {
     status: response.status,
     statusText: response.statusText,
     headers: {

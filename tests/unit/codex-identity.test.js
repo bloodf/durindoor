@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  applyCodexClientIdentityHeaders,
+  applyCodexClientMetadata,
   createCodexClientIdentity,
   getCodexFingerprintMode,
   resolveCodexFingerprintIdentity,
@@ -76,5 +78,46 @@ describe("Codex OAuth fingerprint identity", () => {
 
     expect(requestCredentials.providerSpecificData.codexClientIdentity.sessionId).not.toBe("stale");
     expect(requestCredentials.providerSpecificData.codexOriginalIdentityHeaders).toBeUndefined();
+  });
+
+  it("scrubs persisted transient identity for off and compact requests", () => {
+    const credentials = {
+      accessToken: "token",
+      providerSpecificData: {
+        codexFingerprintMode: "off",
+        codexClientIdentity: { sessionId: "stale" },
+        codexOriginalIdentityHeaders: { "session-id": "stale" },
+      },
+    };
+
+    expect(withCodexFingerprintCredentials(credentials, {}, "/compact").providerSpecificData).toEqual({
+      codexFingerprintMode: "off",
+    });
+    expect(withCodexFingerprintCredentials(credentials, {}).providerSpecificData).toEqual({
+      codexFingerprintMode: "off",
+    });
+  });
+
+  it("replaces session identity carriers while preserving device metadata merge", () => {
+    const identity = createCodexClientIdentity("client", { workspaceId: "workspace" });
+    const headers = {
+      "session-id": "caller",
+      "x-codex-turn-metadata": JSON.stringify({ caller: true }),
+    };
+    applyCodexClientIdentityHeaders(headers, identity);
+    expect(headers["session-id"]).toBe(identity.sessionId);
+    expect(JSON.parse(headers["x-codex-turn-metadata"])).toMatchObject({
+      installation_id: identity.installationId,
+      session_id: identity.sessionId,
+    });
+
+    const device = { ...identity, mode: "device" };
+    const body = { client_metadata: { "x-codex-turn-metadata": JSON.stringify({ caller: true }) } };
+    applyCodexClientMetadata(body, device);
+    expect(JSON.parse(body.client_metadata["x-codex-turn-metadata"])).toEqual({
+      caller: true,
+      installation_id: identity.installationId,
+    });
+    expect(body.client_metadata["x-codex-installation-id"]).toBe(identity.installationId);
   });
 });

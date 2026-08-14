@@ -23,7 +23,7 @@ const SPECIAL_CRED = {
 const SPECIALIZED = new Set([
   "antigravity", "agy", "azure", "gemini-cli", "github", "iflow", "qoder", "kiro",
   "codex", "cursor", "vertex", "vertex-partner", "qwen", "opencode",
-  "opencode-go", "grok-web", "perplexity-web", "ollama-local", "commandcode",
+  "grok-web", "perplexity-web", "ollama-local", "commandcode",
   "xiaomi-tokenplan", "mimo-free", "grok-cli",
   "pollinations", "theoldllm", "gigachat", "zenmux-free",
   ...Object.keys(BLOCKED_OMNIROUTE_PROVIDERS),

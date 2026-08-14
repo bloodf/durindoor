@@ -375,18 +375,21 @@ git commit -m "fix(pxpipe): show remote status errors accurately"
 
 **Files:**
 - Modify: `docs/features/compression.md:86-90`
+- Modify: `docs/campaigns/upstream-d1-pr-ports-ledger.md:11,43-51`
 - Existing design: `docs/superpowers/specs/2026-08-13-pxpipe-remote-dashboard-design.md`
 
 **Interfaces:**
 - Documents the Task 1 authorization contract and Task 2 UI diagnostics.
 
-- [ ] **Step 1: Update operator documentation**
+- [ ] **Step 1: Update operator documentation and the historical port ledger**
 
 Append this paragraph to `## PXPIPE installation model` in `docs/features/compression.md`:
 
 ```markdown
 PXPIPE management endpoints follow a dedicated access rule. A dashboard reached through a reverse proxy must present a valid dashboard session or machine-bound CLI token even when `requireLogin` is disabled; API keys do not grant management access. Direct loopback access keeps the normal local `requireLogin` policy. An authorization or status-probe failure is shown as `Unavailable` and is not evidence that the bundled dependency needs reinstalling.
 ```
+
+In `docs/campaigns/upstream-d1-pr-ports-ledger.md`, preserve the original #3078 verification as historical evidence, but mark its blanket-local implementation as superseded. Record that DurinDoor now uses dedicated PXPIPE authorization: proxied requests require dashboard JWT or machine-bound CLI authentication even when login is disabled, direct loopback follows normal local policy, and API keys are not management credentials. Do not rewrite the original test counts as if the new contract produced them.
 
 - [ ] **Step 2: Run focused tests together**
 
@@ -424,7 +427,7 @@ Expected: dependency installation exits 0, the no-regression test gate has 0 raw
 - [ ] **Step 4: Commit documentation and validate commits**
 
 ```bash
-git add docs/features/compression.md
+git add docs/features/compression.md docs/campaigns/upstream-d1-pr-ports-ledger.md
 git commit -m "docs(pxpipe): explain remote management authentication"
 npx --no-install commitlint --from=origin/main --to=HEAD
 ```

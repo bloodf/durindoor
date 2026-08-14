@@ -242,12 +242,13 @@ export function withCodexFingerprintCredentials(credentials, clientHeaders, requ
 /** Applies a resolved identity onto outbound Codex request headers. */
 export function applyCodexClientIdentityHeaders(headers, identity) {
   if (!identity) return headers;
+  headers["x-codex-installation-id"] = identity.installationId;
   if (identity.mode === "device") {
-    for (const name of CODEX_IDENTITY_HEADER_NAMES) delete headers[name];
-    headers["x-codex-installation-id"] = identity.installationId;
+    if (headers["x-codex-turn-metadata"] !== undefined) {
+      headers["x-codex-turn-metadata"] = mergeTurnMetadata(headers["x-codex-turn-metadata"], identity, false);
+    }
     return headers;
   }
-  headers["x-codex-installation-id"] = identity.installationId;
   headers["session-id"] = identity.sessionId;
   headers["session_id"] = identity.sessionId;
   headers["thread-id"] = identity.threadId || identity.sessionId;

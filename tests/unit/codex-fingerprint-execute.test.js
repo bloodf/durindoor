@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  applyCodexClientIdentityHeaders,
+  applyCodexClientMetadata,
+  createCodexClientIdentity,
+} from "../../open-sse/config/codexIdentity.js";
 import { CodexExecutor } from "../../open-sse/executors/codex.js";
 import { proxyAwareFetch } from "../../open-sse/utils/proxyFetch.js";
 
@@ -92,21 +97,38 @@ describe("Codex executor fingerprint convergence end-to-end", () => {
     expect(body.client_metadata).toBeUndefined();
   });
 
-  it("emits only the installation id for device mode, in headers and body", async () => {
-    const executor = makeExecutor();
-    const { headers, body } = await run(executor, oauthCredentials("device"));
+  it("adds device identity without replacing existing transport identity", () => {
+    const identity = createCodexClientIdentity("client-session", { codexFingerprintMode: "device" });
+    const headers = {
+      session_id: "base-session",
+      "x-codex-turn-metadata": '{"caller":true}',
+    };
+    const body = {
+      client_metadata: {
+        session_id: "base-session",
+        "x-codex-turn-metadata": '{"caller":true}',
+      },
+    };
 
-    expect(headers["x-codex-installation-id"]).toEqual(expect.any(String));
-    expect(headers["session-id"]).toBeUndefined();
-    expect(headers["session_id"]).toBeUndefined();
-    expect(headers["thread-id"]).toBeUndefined();
-    expect(headers["x-client-request-id"]).toBeUndefined();
-    expect(headers["x-codex-window-id"]).toBeUndefined();
-    expect(body.client_metadata).toMatchObject({
-      "x-codex-installation-id": headers["x-codex-installation-id"],
+    applyCodexClientIdentityHeaders(headers, identity);
+    applyCodexClientMetadata(body, identity);
+
+    expect(headers).toMatchObject({
+      session_id: "base-session",
+      "x-codex-installation-id": identity.installationId,
     });
-    expect(body.client_metadata.session_id).toBeUndefined();
-    expect(body.client_metadata.thread_id).toBeUndefined();
+    expect(JSON.parse(headers["x-codex-turn-metadata"])).toMatchObject({
+      caller: true,
+      installation_id: identity.installationId,
+    });
+    expect(body.client_metadata).toMatchObject({
+      session_id: "base-session",
+      "x-codex-installation-id": identity.installationId,
+    });
+    expect(JSON.parse(body.client_metadata["x-codex-turn-metadata"])).toMatchObject({
+      caller: true,
+      installation_id: identity.installationId,
+    });
   });
 
   it("converges session mode onto a stable session and thread id per account", async () => {

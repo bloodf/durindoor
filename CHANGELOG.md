@@ -1,3 +1,18 @@
+# 3.15.2
+
+Authenticated dashboards reached through a reverse proxy can manage PXPIPE
+again. Proxied PXPIPE requests require a dashboard session or machine-bound
+CLI token even when dashboard login is disabled; API keys remain invalid for
+management, while direct loopback requests retain the normal local policy.
+
+The Token Saver settings card and PXPIPE overview now share one tested status
+loader and classifier. HTTP failures, network errors, malformed responses, and
+unknown state render `Unavailable` with a warning diagnostic instead of
+claiming the bundled dependency is missing. Independent statistics, logs, or
+health failures no longer overwrite a successful PXPIPE status.
+
+No stored-data, dependency, API-key, or wire-format changes are included.
+
 # 3.15.1
 
 DurinDoor now refuses to start on a SQLite database whose structural check

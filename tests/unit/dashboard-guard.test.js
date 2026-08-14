@@ -311,12 +311,11 @@ describe("dashboard guard local-only access", () => {
     expect(mocks.verifyDashboardAuthToken).toHaveBeenCalledWith("valid-jwt");
   });
 
-  it("rejects an unauthenticated proxied PXPIPE request when login is disabled", async () => {
+  it("rejects an unauthenticated remote PXPIPE request when login is disabled", async () => {
     mocks.getSettings.mockResolvedValue({ requireLogin: false });
 
     const response = await proxy(request("/api/pxpipe/status", {
-      host: "llm.example.com",
-      "x-9r-via-proxy": "1",
+      host: "router.example.com",
     }));
 
     expect(response.status).toBe(401);
@@ -343,6 +342,22 @@ describe("dashboard guard local-only access", () => {
     }, "POST"));
 
     expect(response).toBe(mocks.nextResponse);
+  });
+
+  it("rejects an API-key-only proxied PXPIPE request with 401", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+    mocks.validateApiKey.mockResolvedValue(true);
+    mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+
+    const response = await proxy(request("/api/pxpipe/start", {
+      host: "llm.example.com",
+      "x-9r-via-proxy": "1",
+      authorization: "Bearer sk-valid",
+    }));
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("Unauthorized");
+    expect(mocks.verifyDashboardAuthToken).toHaveBeenCalled();
   });
 
   it("rejects local-only route on loopback when requireLogin=true and no JWT", async () => {

@@ -237,6 +237,7 @@ async function isAuthenticated(request) {
   if (settings && settings.requireLogin === false) return true;
   return false;
 }
+
 function isPxpipePath(pathname) {
   return pathname === "/api/pxpipe" || pathname.startsWith("/api/pxpipe/");
 }
@@ -246,6 +247,7 @@ async function canAccessPxpipeRoute(request) {
   if (isLocalRequest(request)) return await isAuthenticated(request);
   return await hasValidToken(request);
 }
+
 function isPublicApi(pathname) {
   if (isPublicLlmApi(pathname)) return true;
   return PUBLIC_API_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));

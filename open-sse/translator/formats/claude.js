@@ -332,7 +332,11 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
             : []));
       body.messages = messages.filter((m) => m.role !== ROLE.SYSTEM);
       if (hoisted.length) {
-        const existing = Array.isArray(body.system) ? body.system : [];
+        const existing = Array.isArray(body.system)
+          ? body.system
+          : (typeof body.system === "string" && body.system
+            ? [{ type: CLAUDE_BLOCK.TEXT, text: body.system }]
+            : []);
         body.system = [...existing, ...hoisted];
       }
     } else if (buffered.length && messages[messages.length - 1]?.role === ROLE.USER) {

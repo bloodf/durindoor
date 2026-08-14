@@ -20,6 +20,21 @@ async function answerFor(events) {
   return (await response.json()).choices[0].message.content;
 }
 
+async function streamDeltasFor(events) {
+  global.fetch = vi.fn(async () => mockPplxStream(events));
+  const { response } = await new PerplexityWebExecutor().execute({
+    model: "pplx-auto",
+    body: { messages: [{ role: "user", content: "Where is the Caspian Sea?" }], stream: true },
+    stream: true,
+    credentials: { apiKey: "session" },
+  });
+  return (await response.text())
+    .split("\n")
+    .filter((line) => line.startsWith("data: {"))
+    .map((line) => JSON.parse(line.slice(6)).choices[0].delta.content)
+    .filter((content) => typeof content === "string");
+}
+
 afterEach(() => { global.fetch = originalFetch; });
 
 it("extracts answer chunks from workflow_block diff patches", async () => {
@@ -75,4 +90,126 @@ it("keeps legacy markdown_block answers", async () => {
   }]);
 
   expect(answer).toBe(ANSWER);
+});
+
+it("seeds an answer track unconditionally even with empty chunks/text", async () => {
+  const answer = await answerFor([
+    {
+      status: "PENDING",
+      blocks: [{
+        intended_usage: "workflow_root",
+        diff_block: {
+          field: "workflow_block",
+          patches: [{
+            op: "add", path: "/steps/2/items/0", value: { variant: "answer", payload: { text_payload: { variant: "answer", chunks: [] } } },
+          }],
+        },
+      }],
+    },
+    {
+      status: "COMPLETED",
+      blocks: [{
+        intended_usage: "workflow_root",
+        diff_block: {
+          field: "workflow_block",
+          patches: [{ op: "add", path: "/steps/2/items/0/payload/text_payload/chunks/0", value: "Hello" }],
+        },
+      }],
+    },
+  ]);
+
+  expect(answer).toBe("Hello");
+});
+
+it("selects the single longest answer track instead of concatenating every track", async () => {
+  const answer = await answerFor([{
+    status: "COMPLETED",
+    blocks: [{
+      intended_usage: "workflow_root",
+      workflow_block: {
+        steps: [
+          { items: [{ variant: "answer", payload: { text_payload: { variant: "answer", chunks: ["Short"] } } }] },
+          { items: [{ variant: "answer", payload: { text_payload: { variant: "answer", text: ANSWER } } }] },
+        ],
+      },
+    }],
+  }]);
+
+  expect(answer).toBe(ANSWER);
+  expect(answer).not.toContain("Short");
+});
+
+it("streams monotone prefix-stable deltas, ignoring a hostile chunk index and a shorter sibling track", async () => {
+  const deltas = await streamDeltasFor([
+    {
+      status: "PENDING",
+      blocks: [{
+        intended_usage: "workflow_root",
+        diff_block: {
+          field: "workflow_block",
+          patches: [
+            { op: "add", path: "/steps/3/items/0", value: { variant: "answer", payload: { text_payload: { variant: "answer", chunks: [] } } } },
+            { op: "add", path: "/steps/0/items/0", value: { variant: "answer", payload: { text_payload: { variant: "answer", chunks: ["IGNORE"] } } } },
+          ],
+        },
+      }],
+    },
+    {
+      status: "PENDING",
+      blocks: [{
+        intended_usage: "workflow_root",
+        diff_block: {
+          field: "workflow_block",
+          patches: [
+            { op: "add", path: "/steps/3/items/0/payload/text_payload/chunks/0", value: "The " },
+            { op: "add", path: "/steps/3/items/0/payload/text_payload/chunks/1", value: "final " },
+          ],
+        },
+      }],
+    },
+    {
+      status: "PENDING",
+      blocks: [{
+        intended_usage: "workflow_root",
+        diff_block: {
+          field: "workflow_block",
+          patches: [
+            { op: "add", path: "/steps/3/items/0/payload/text_payload/chunks/9007199254740992", value: "must be ignored" },
+          ],
+        },
+      }],
+    },
+    {
+      status: "COMPLETED",
+      blocks: [{
+        intended_usage: "workflow_root",
+        diff_block: {
+          field: "workflow_block",
+          patches: [{ op: "add", path: "/steps/3/items/0/payload/text_payload/chunks/2", value: "answer." }],
+        },
+      }],
+    },
+  ]);
+
+  expect(deltas.length).toBeGreaterThan(1);
+  const joined = deltas.join("");
+  expect(joined).toBe("The final answer.");
+  expect(joined).not.toContain("No");
+  expect(joined).not.toContain("must be ignored");
+});
+
+it("copies seeded chunks defensively, coercing entries instead of aliasing the parsed payload", async () => {
+  const chunks = [42, " chars"];
+  const answer = await answerFor([{
+    status: "COMPLETED",
+    blocks: [{
+      intended_usage: "workflow_root",
+      workflow_block: {
+        steps: [{ items: [{ variant: "answer", payload: { text_payload: { variant: "answer", chunks } } }] }],
+      },
+    }],
+  }]);
+
+  expect(answer).toBe("42 chars");
+  expect(chunks).toEqual([42, " chars"]);
 });

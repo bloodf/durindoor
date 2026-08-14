@@ -7,6 +7,8 @@ import {
   isUsingDefaultPassword,
 } from "@/lib/auth/dashboardSession";
 
+export const dynamic = "force-dynamic";
+
 /**
  * Login bootstrap contract: reports the session state and whether the literal
  * built-in password is active, so the client never guesses from missing hashes.

@@ -11,12 +11,41 @@ export const DEFAULT_PASSWORD = "123456";
 // Built-in default is "active" whenever the effective password literally
 // resolves to DEFAULT_PASSWORD — a stored hash of it, or an INITIAL_PASSWORD
 // env var set to it, or no password source configured at all.
+// The boolean result is cached for the lifetime of the process; callers MUST
+// invoke `invalidateDefaultPasswordCache()` after persisting a new password
+// hash or clearing the stored one, otherwise the public /api/auth/status
+// endpoint would re-run bcrypt cost-10 on every GET.
+// Cache the in-flight compute so concurrent callers during cold cache do
+// not each kick off cost-10 bcrypt. The `promise` slot is reused until the
+// call resolves; a rejected call clears both slots so a later GET retries
+// instead of getting a stuck "false" answer.
+let defaultPasswordCache = { value: null, populated: false, promise: null };
+
+export function invalidateDefaultPasswordCache() {
+  defaultPasswordCache = { value: null, populated: false, promise: null };
+}
+
 export async function isUsingDefaultPassword(settings) {
-  if (settings?.password) {
-    return bcrypt.compare(DEFAULT_PASSWORD, settings.password);
-  }
-  const initialPassword = process.env.INITIAL_PASSWORD;
-  return !initialPassword || initialPassword === DEFAULT_PASSWORD;
+  if (defaultPasswordCache.populated) return defaultPasswordCache.value;
+  if (defaultPasswordCache.promise) return defaultPasswordCache.promise;
+  const promise = (async () => {
+    try {
+      let result;
+      if (settings?.password) {
+        result = await bcrypt.compare(DEFAULT_PASSWORD, settings.password);
+      } else {
+        const initialPassword = process.env.INITIAL_PASSWORD;
+        result = !initialPassword || initialPassword === DEFAULT_PASSWORD;
+      }
+      defaultPasswordCache = { value: result, populated: true, promise: null };
+      return result;
+    } catch (error) {
+      defaultPasswordCache = { value: null, populated: false, promise: null };
+      throw error;
+    }
+  })();
+  defaultPasswordCache = { value: null, populated: false, promise };
+  return promise;
 }
 
 function loadJwtSecret() {

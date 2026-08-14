@@ -3,9 +3,8 @@ import { FREE_NO_AUTH_PROVIDER_IDS } from "@/shared/constants/freeNoAuthProvider
 import { getSettings, updateSettings } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation, resetComboScoring } from "open-sse/services/combo.js";
+import { invalidateDefaultPasswordCache } from "@/lib/auth/dashboardSession";
 import bcrypt from "bcryptjs";
-
-export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const SETTINGS_RESPONSE_HEADERS = {
@@ -50,12 +49,10 @@ export async function PATCH(request) {
     // Strip protected secrets before any internal handling sets them
     for (const key of PROTECTED_SETTING_KEYS) delete body[key];
 
-    // If updating password, hash it
     if (body.newPassword) {
       const settings = await getSettings();
       const currentHash = settings.password;
 
-      // Verify current password if it exists
       if (currentHash) {
         if (!body.currentPassword) {
           return NextResponse.json({ error: "Current password required" }, { status: 400 });
@@ -64,12 +61,8 @@ export async function PATCH(request) {
         if (!isValid) {
           return NextResponse.json({ error: "Invalid current password" }, { status: 401 });
         }
-      } else {
-        // First time setting password, no current password needed
-        // Allow empty currentPassword or default "123456"
-        if (body.currentPassword && body.currentPassword !== "123456") {
-           return NextResponse.json({ error: "Invalid current password" }, { status: 401 });
-        }
+      } else if (body.currentPassword && body.currentPassword !== "123456") {
+        return NextResponse.json({ error: "Invalid current password" }, { status: 401 });
       }
 
       const salt = await bcrypt.genSalt(10);
@@ -77,6 +70,7 @@ export async function PATCH(request) {
       delete body.newPassword;
       delete body.currentPassword;
     }
+
 
     if (Object.prototype.hasOwnProperty.call(body, "oidcClientSecret")) {
       if (!body.oidcClientSecret || !String(body.oidcClientSecret).trim()) {
@@ -171,7 +165,10 @@ export async function PATCH(request) {
       }
     }
 
+    const willChangePassword = body.password !== undefined;
+
     const settings = await updateSettings(body);
+    if (willChangePassword) invalidateDefaultPasswordCache();
 
     // Apply outbound proxy settings immediately (no restart required)
     if (

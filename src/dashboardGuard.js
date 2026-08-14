@@ -32,6 +32,9 @@ const PUBLIC_API_PATHS = [
   "/api/auth/logout",
   "/api/auth/status",
   "/api/auth/oidc",
+  // One-time password-change proof recipient. Only valid proofs can drive
+  // a write here; the route does not fall through to a session check.
+  "/api/auth/change-password",
   "/api/version",
   "/api/settings/require-login",
 ];

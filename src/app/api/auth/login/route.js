@@ -3,6 +3,7 @@ import { getSettings } from "@/lib/localDb";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 import { isUsingDefaultPassword, setDashboardAuthCookie } from "@/lib/auth/dashboardSession";
+import { issuePasswordChangeProof } from "@/lib/auth/passwordChangeProof";
 import { isOidcConfigured } from "@/lib/auth/oidc";
 import { checkLock, recordFail, recordSuccess, getClientIp } from "@/lib/auth/loginLimiter";
 import { isLocalRequest } from "@/dashboardGuard";
@@ -55,16 +56,25 @@ export async function POST(request) {
     if (isValid) {
       recordSuccess(ip);
 
-      // Default password still in use on a remote client: require a local
-      // password change without issuing a dashboard session.
+      // Default password still in use: never issue a normal dashboard
+      // session on it. Remote clients are rejected outright; local clients
+      // get a short-lived, single-use, IP-bound proof that only the
+      // change-password endpoint accepts.
       const mustChangePassword = await isUsingDefaultPassword(settings);
-      if (mustChangePassword && !isLocalRequest(request)) {
-        return NextResponse.json({ success: true, mustChangePassword: true }, { status: 403, headers: NO_STORE_HEADERS });
+      if (mustChangePassword) {
+        if (!isLocalRequest(request)) {
+          return NextResponse.json({ success: true, mustChangePassword: true }, { status: 403, headers: NO_STORE_HEADERS });
+        }
+        const proof = issuePasswordChangeProof(ip);
+        return NextResponse.json(
+          { success: true, mustChangePassword: true, requiresPasswordChange: true, proof },
+          { status: 403, headers: NO_STORE_HEADERS }
+        );
       }
 
       const cookieStore = await cookies();
       await setDashboardAuthCookie(cookieStore, request);
-      return NextResponse.json({ success: true, mustChangePassword }, { headers: NO_STORE_HEADERS });
+      return NextResponse.json({ success: true, mustChangePassword: false }, { headers: NO_STORE_HEADERS });
     }
 
     const { remainingBeforeLock } = recordFail(ip);

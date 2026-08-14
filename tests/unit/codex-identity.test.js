@@ -4,6 +4,7 @@ import {
   createCodexClientIdentity,
   getCodexFingerprintMode,
   resolveCodexFingerprintIdentity,
+  withCodexFingerprintCredentials,
 } from "../../open-sse/config/codexIdentity.js";
 import { CodexExecutor } from "../../open-sse/executors/codex.js";
 
@@ -55,5 +56,25 @@ describe("Codex OAuth fingerprint identity", () => {
       session_id: identity.sessionId,
       thread_id: identity.threadId,
     });
+  });
+
+  it("removes transient request identity from cloned credentials", () => {
+    const credentials = {
+      accessToken: "token",
+      connectionId: "connection-a",
+      providerSpecificData: {
+        codexFingerprintMode: "session",
+        codexClientIdentity: { sessionId: "stale" },
+        codexOriginalIdentityHeaders: { "session-id": "stale" },
+      },
+    };
+
+    const requestCredentials = withCodexFingerprintCredentials(credentials, {
+      "session-id": "caller-session",
+      "x-codex-installation-id": "caller-installation",
+    });
+
+    expect(requestCredentials.providerSpecificData.codexClientIdentity.sessionId).not.toBe("stale");
+    expect(requestCredentials.providerSpecificData.codexOriginalIdentityHeaders).toBeUndefined();
   });
 });

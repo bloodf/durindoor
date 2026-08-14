@@ -30,7 +30,6 @@ and body; a stalled body cancels the response stream and falls through to
 the same fail-closed 403 path. An exhausted weekly quota, an unreadable
 usage response, or a probe failure also preserve the original terminal 403
 (fail closed).
-
 # 3.15.2
 
 Authenticated dashboards reached through a reverse proxy can manage PXPIPE

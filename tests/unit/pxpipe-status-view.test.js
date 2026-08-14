@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getPxpipeStatusView, fetchPxpipeStatus } from "../../src/app/(dashboard)/dashboard/pxpipe/pxpipeStatus.js";
+import { getPxpipeStatusTone, getPxpipeStatusView, fetchPxpipeStatus } from "../../src/app/(dashboard)/dashboard/pxpipe/pxpipeStatus.js";
 
 describe("PXPIPE status view", () => {
   it("keeps an API failure distinct from a missing dependency", () => {
@@ -32,6 +32,14 @@ describe("PXPIPE status view", () => {
     });
   });
 
+  it("treats a null status as Unavailable without crashing or marking dependency missing", () => {
+    expect(getPxpipeStatusView(null, null)).toEqual({
+      label: "Unavailable",
+      dependencyMissing: false,
+      error: null,
+    });
+  });
+
   it.each([
     [{ loading: true }, null, "Checking…"],
     [{ installing: true }, null, "Installing…"],
@@ -40,6 +48,27 @@ describe("PXPIPE status view", () => {
     [{ installed: true, running: false }, { healthy: false }, "Stopped"],
   ])("classifies the supplied state", (status, health, label) => {
     expect(getPxpipeStatusView(status, health).label).toBe(label);
+  });
+});
+
+describe("getPxpipeStatusTone", () => {
+  it("prioritizes a status error over a healthy health check", () => {
+    expect(getPxpipeStatusTone(
+      { error: "Local only: CLI token required", loading: false },
+      { healthy: true },
+    )).toBe("text-warning");
+  });
+
+  it("returns success when healthy with no error", () => {
+    expect(getPxpipeStatusTone({ installed: true, running: true }, { healthy: true })).toBe("text-success");
+  });
+
+  it("returns muted when neither error nor healthy", () => {
+    expect(getPxpipeStatusTone({}, null)).toBe("text-text-muted");
+  });
+
+  it("returns muted for a null initial status", () => {
+    expect(getPxpipeStatusTone(null, null)).toBe("text-text-muted");
   });
 });
 

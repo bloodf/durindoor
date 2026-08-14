@@ -16,7 +16,7 @@ import { chartTooltipContentStyle, chartTooltipLabelStyle, chartTooltipItemStyle
 import Pagination from "@/shared/components/Pagination";
 import { usePagination } from "@/shared/hooks/usePagination";
 import { formatPxpipeEvent, fmtTokens, PXPIPE_REASON_LABELS as REASON_LABELS } from "./formatPxpipeEvent.js";
-import { getPxpipeStatusView, fetchPxpipeStatus } from "./pxpipeStatus.js";
+import { getPxpipeStatusView, fetchPxpipeStatus, getPxpipeStatusTone } from "./pxpipeStatus.js";
 
 const fmtUptime = (ms) => {
   if (!ms || ms <= 0) return "—";
@@ -141,11 +141,7 @@ export default function PxpipeClient({ embedded = false }) {
         <SummaryCard
           label="Status"
           value={statusLabel}
-          tone={health?.healthy
-            ? "text-success"
-            : pxpipeStatusView.error || status?.installed
-              ? "text-warning"
-              : "text-text-muted"}
+          tone={getPxpipeStatusTone(status, health)}
           sub={pxpipeStatusView.error || (status?.enabled ? "Enabled in pipeline" : "Disabled in pipeline")}
         />
         <SummaryCard label="Version" value={status?.version ? `v${status.version}` : "—"} sub="pxpipe-proxy" />

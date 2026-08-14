@@ -20,6 +20,7 @@ export async function fetchPxpipeStatus(fetchImpl = fetch) {
 }
 
 export function getPxpipeStatusView(status = {}, health = null) {
+  status ??= {};
   const error = typeof status.error === "string" && status.error.trim()
     ? status.error.trim()
     : null;
@@ -31,4 +32,12 @@ export function getPxpipeStatusView(status = {}, health = null) {
   if (status.installed === true) return { label: "Stopped", dependencyMissing: false, error: null };
   if (status.installed === false) return { label: "Not installed", dependencyMissing: true, error: null };
   return { label: "Unavailable", dependencyMissing: false, error: null };
+}
+
+export function getPxpipeStatusTone(status = {}, health = null) {
+  status ??= {};
+  const view = getPxpipeStatusView(status, health);
+  if (view.error) return "text-warning";
+  if (health?.healthy) return "text-success";
+  return status.installed ? "text-warning" : "text-text-muted";
 }

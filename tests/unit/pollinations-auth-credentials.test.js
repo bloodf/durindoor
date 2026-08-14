@@ -58,7 +58,7 @@ describe("getProviderCredentials for no-auth providers with an optional real key
     const credentials = await getProviderCredentials("pollinations");
 
     // Real production no-auth credential shape.
-    expect(credentials).toMatchObject({ id: "noauth", accessToken: "public" });
+    expect(credentials).toMatchObject({ id: "noauth", accessToken: "public", authType: "none" });
     expect(new PollinationsExecutor().buildHeaders(credentials).Authorization).toBeUndefined();
   });
 

@@ -294,13 +294,55 @@ describe("dashboard guard local-only access", () => {
     expect(response.body.error).toBe("Local only: CLI token required");
   });
 
-  it.each(["/api/pxpipe/start", "/api/pxpipe/status"])("rejects %s from a non-loopback host", async (pathname) => {
-    const response = await proxy(request(pathname, {
-      host: "router.example.com",
+  it("allows an authenticated proxied dashboard to manage PXPIPE", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+    const req = request("/api/pxpipe/status", {
+      host: "llm.example.com",
+      "x-9r-via-proxy": "1",
+    });
+    req.cookies.get = vi.fn((name) =>
+      name === "auth_token" ? { value: "valid-jwt" } : undefined,
+    );
+
+    const response = await proxy(req);
+
+    expect(response).toBe(mocks.nextResponse);
+    expect(mocks.verifyDashboardAuthToken).toHaveBeenCalledWith("valid-jwt");
+  });
+
+  it("rejects an unauthenticated proxied PXPIPE request when login is disabled", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+
+    const response = await proxy(request("/api/pxpipe/status", {
+      host: "llm.example.com",
+      "x-9r-via-proxy": "1",
     }));
 
-    expect(response.status).toBe(403);
-    expect(response.body.error).toBe("Local only: CLI token required");
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("Unauthorized");
+  });
+
+  it("preserves local PXPIPE access when login is disabled", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+
+    const response = await proxy(request("/api/pxpipe/status", {
+      host: "localhost:20128",
+      origin: "http://localhost:20128",
+      "x-9r-real-ip": "127.0.0.1",
+    }));
+
+    expect(response).toBe(mocks.nextResponse);
+  });
+
+  it("allows a machine-bound CLI token to manage proxied PXPIPE", async () => {
+    const response = await proxy(request("/api/pxpipe/restart", {
+      host: "llm.example.com",
+      "x-9r-via-proxy": "1",
+      "x-9r-cli-token": "cli-token",
+    }, "POST"));
+
+    expect(response).toBe(mocks.nextResponse);
   });
 
   it("rejects local-only route on loopback when requireLogin=true and no JWT", async () => {

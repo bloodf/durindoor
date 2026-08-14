@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   getClientIp: vi.fn(),
   isLocalRequest: vi.fn(),
   isUsingDefaultPassword: vi.fn(async () => true),
+  issuePasswordChangeProof: vi.fn(() => "password-change-proof"),
 }));
 
 vi.mock("next/server", () => ({ NextResponse: { json: mocks.json } }));
@@ -31,7 +32,7 @@ vi.mock("@/dashboardGuard", () => ({ isLocalRequest: mocks.isLocalRequest }));
 
 const { POST } = await import("../../src/app/api/auth/login/route.js");
 
-function request(password = "123456") {
+function request(password = "wrong") {
   return new Request("http://durindoor.test/api/auth/login", { method: "POST", body: JSON.stringify({ password }) });
 }
 
@@ -54,14 +55,15 @@ describe("POST /api/auth/login default-password safety", () => {
     expect(mocks.setDashboardAuthCookie).not.toHaveBeenCalled();
   });
 
-  it("continues local default-password login with its password-change response", async () => {
+  it("returns a local one-time password-change proof without issuing auth_token", async () => {
     mocks.isLocalRequest.mockReturnValue(true);
 
     const response = await POST(request());
 
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual({ success: true, mustChangePassword: true });
-    expect(mocks.setDashboardAuthCookie).toHaveBeenCalledOnce();
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({ success: true, mustChangePassword: true, requiresPasswordChange: true, proof: "password-change-proof" });
+    expect(mocks.issuePasswordChangeProof).toHaveBeenCalledWith(undefined);
+    expect(mocks.setDashboardAuthCookie).not.toHaveBeenCalled();
   });
 
   it("rejects a remote stored hash of the built-in password before issuing auth_token", async () => {

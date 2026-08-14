@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import bcrypt from "bcryptjs";
-import { isUsingDefaultPassword, DEFAULT_PASSWORD } from "../../src/lib/auth/dashboardSession.js";
+import { invalidateDefaultPasswordCache, isUsingDefaultPassword, DEFAULT_PASSWORD } from "../../src/lib/auth/dashboardSession.js";
 
 const storedHash = bcrypt.hashSync(DEFAULT_PASSWORD, 4);
 const customHash = bcrypt.hashSync("operator-secret", 4);
@@ -8,6 +8,7 @@ const customHash = bcrypt.hashSync("operator-secret", 4);
 describe("isUsingDefaultPassword", () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
+    invalidateDefaultPasswordCache();
   });
 
   it("treats a missing password source as the built-in default", async () => {
@@ -36,5 +37,32 @@ describe("isUsingDefaultPassword", () => {
   it("prefers the stored password over INITIAL_PASSWORD when both are set", async () => {
     vi.stubEnv("INITIAL_PASSWORD", "operator-secret");
     expect(await isUsingDefaultPassword({ password: storedHash })).toBe(true);
+  });
+
+  it("drops the cached decision when a password changes", async () => {
+    expect(await isUsingDefaultPassword({ password: storedHash })).toBe(true);
+    invalidateDefaultPasswordCache();
+    expect(await isUsingDefaultPassword({ password: customHash })).toBe(false);
+  });
+
+  it("only runs bcrypt.compare once when many concurrent callers race a cold cache", async () => {
+    const spy = vi.spyOn(bcrypt, "compare");
+    const results = await Promise.all([
+      isUsingDefaultPassword({ password: storedHash }),
+      isUsingDefaultPassword({ password: storedHash }),
+      isUsingDefaultPassword({ password: storedHash }),
+    ]);
+    expect(results).toEqual([true, true, true]);
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
+  });
+
+  it("recomputes after a rejected compute instead of sticking on a stale answer", async () => {
+    const spy = vi.spyOn(bcrypt, "compare");
+    spy.mockRejectedValueOnce(new Error("compare failed"));
+    await expect(isUsingDefaultPassword({ password: storedHash })).rejects.toThrow("compare failed");
+    spy.mockImplementationOnce(async () => true);
+    await expect(isUsingDefaultPassword({ password: storedHash })).resolves.toBe(true);
+    spy.mockRestore();
   });
 });

@@ -26,10 +26,10 @@ const sensitive = {
   latencyMs: 120,
   usage: { input: 10, output: 20 },
   diagnostics: { streamChunks: 4, finishReason: "stop" },
-  requestBody: { model: "gpt-4o", messages: [{ role: "user", content: "secret prompt" }] },
-  providerRequestBody: { upstream: "secret upstream body" },
-  providerResponseBody: { upstream: "secret upstream response" },
-  responseBody: { model: "gpt-4o", choices: [{ message: { content: "secret reply" } }] },
+  request: { model: "gpt-4o", messages: [{ role: "user", content: "secret prompt" }] },
+  providerRequest: { upstream: "secret upstream body" },
+  providerResponse: { upstream: "secret upstream response" },
+  response: { model: "gpt-4o", choices: [{ message: { content: "secret reply" } }] },
 };
 
 describe("GET /api/usage/request-details payload redaction", () => {
@@ -38,16 +38,16 @@ describe("GET /api/usage/request-details payload redaction", () => {
     mocks.getRequestDetails.mockResolvedValue({ details: [sensitive], pagination: { page: 1, pageSize: 20, totalItems: 1, totalPages: 1, hasNext: false, hasPrev: false } });
   });
 
-  it("never returns requestBody, providerRequestBody, providerResponseBody, or responseBody to dashboard consumers", async () => {
+  it("never returns request, providerRequest, providerResponse, or response to dashboard consumers", async () => {
     const res = await route.GET(request());
     const body = res.body;
     const detail = body.details[0];
 
     expect(res.status).toBe(200);
-    expect(detail.requestBody).toBeUndefined();
-    expect(detail.providerRequestBody).toBeUndefined();
-    expect(detail.providerResponseBody).toBeUndefined();
-    expect(detail.responseBody).toBeUndefined();
+    expect(detail.request).toBeUndefined();
+    expect(detail.providerRequest).toBeUndefined();
+    expect(detail.providerResponse).toBeUndefined();
+    expect(detail.response).toBeUndefined();
     expect(detail.id).toBe("req-1");
     expect(detail.provider).toBe("openai");
     expect(detail.model).toBe("gpt-4o");

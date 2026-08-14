@@ -223,6 +223,8 @@ function buildQuery(parsed, followUpUuid, tools) {
   return json.length > 96000 ? json.slice(-96000) : json;
 }
 
+const MAX_WORKFLOW_CHUNK_INDEX = 1_000_000;
+
 function workflowAnswerKey(stepIndex, itemIndex) {
   return `${stepIndex}:${itemIndex}`;
 }
@@ -233,56 +235,106 @@ function isWorkflowAnswer(item) {
 }
 
 function seedWorkflowAnswer(answers, key, item) {
-  const textPayload = item.payload?.text_payload;
-  if (!textPayload) return;
-  if (Array.isArray(textPayload.chunks) && textPayload.chunks.length) answers.set(key, textPayload.chunks);
-  else if (textPayload.text) answers.set(key, [textPayload.text]);
+  const textPayload = item?.payload?.text_payload;
+  if (!textPayload) {
+    answers.set(key, []);
+    return;
+  }
+  if (Array.isArray(textPayload.chunks) && textPayload.chunks.length) {
+    answers.set(key, textPayload.chunks.map((chunk) => String(chunk)));
+    return;
+  }
+  if (typeof textPayload.text === "string") {
+    answers.set(key, [textPayload.text]);
+    return;
+  }
+  answers.set(key, []);
+}
+
+function selectWorkflowAnswer(answers, preferredKey) {
+  if (preferredKey && answers.has(preferredKey)) {
+    return { key: preferredKey, answer: answers.get(preferredKey).join("") };
+  }
+  let best = { key: null, answer: "" };
+  for (const [key, chunks] of answers) {
+    const joined = (chunks ?? []).join("");
+    if (joined.length > best.answer.length) {
+      best = { key, answer: joined };
+    }
+  }
+  return best;
 }
 
 function applyWorkflowBlock(answers, workflow) {
+  let firstKey;
   for (const [stepIndex, step] of (workflow.steps ?? []).entries()) {
     for (const [itemIndex, item] of (step.items ?? []).entries()) {
-      if (isWorkflowAnswer(item)) seedWorkflowAnswer(answers, workflowAnswerKey(stepIndex, itemIndex), item);
+      if (!isWorkflowAnswer(item)) continue;
+      const key = workflowAnswerKey(stepIndex, itemIndex);
+      seedWorkflowAnswer(answers, key, item);
+      firstKey ??= key;
     }
   }
+  return firstKey;
 }
 
 function applyWorkflowDiff(answers, patches) {
+  let firstKey;
   for (const patch of patches ?? []) {
     const step = /^\/steps\/(\d+)$/.exec(patch.path ?? "");
     if (step) {
       for (const [itemIndex, item] of (patch.value?.items ?? []).entries()) {
-        if (isWorkflowAnswer(item)) seedWorkflowAnswer(answers, workflowAnswerKey(Number(step[1]), itemIndex), item);
+        if (!isWorkflowAnswer(item)) continue;
+        const key = workflowAnswerKey(Number(step[1]), itemIndex);
+        seedWorkflowAnswer(answers, key, item);
+        firstKey ??= key;
       }
       continue;
     }
     const item = /^\/steps\/(\d+)\/items\/(\d+)$/.exec(patch.path ?? "");
     if (item && isWorkflowAnswer(patch.value)) {
-      seedWorkflowAnswer(answers, workflowAnswerKey(Number(item[1]), Number(item[2])), patch.value);
+      const key = workflowAnswerKey(Number(item[1]), Number(item[2]));
+      seedWorkflowAnswer(answers, key, patch.value);
+      firstKey ??= key;
       continue;
     }
     const chunk = /^\/steps\/(\d+)\/items\/(\d+)\/payload\/text_payload\/chunks\/(\d+)$/.exec(patch.path ?? "");
-    if (chunk && typeof patch.value === "string") {
-      const track = answers.get(workflowAnswerKey(Number(chunk[1]), Number(chunk[2])));
-      if (track) track[Number(chunk[3])] = patch.value;
+    if (chunk) {
+      const chunkIndex = Number(chunk[3]);
+      if (
+        !Number.isSafeInteger(chunkIndex) ||
+        chunkIndex < 0 ||
+        chunkIndex > MAX_WORKFLOW_CHUNK_INDEX ||
+        typeof patch.value !== "string"
+      ) {
+        continue;
+      }
+      const key = workflowAnswerKey(Number(chunk[1]), Number(chunk[2]));
+      const track = answers.get(key);
+      if (track) {
+        track[chunkIndex] = patch.value;
+        firstKey ??= key;
+      }
       continue;
     }
     const text = /^\/steps\/(\d+)\/items\/(\d+)\/payload\/text_payload\/text$/.exec(patch.path ?? "");
     if (text && typeof patch.value === "string") {
-      const track = answers.get(workflowAnswerKey(Number(text[1]), Number(text[2])));
-      if (track && !track.join("")) answers.set(workflowAnswerKey(Number(text[1]), Number(text[2])), [patch.value]);
+      const key = workflowAnswerKey(Number(text[1]), Number(text[2]));
+      const track = answers.get(key);
+      if (track && track.length === 0) {
+        answers.set(key, [patch.value]);
+        firstKey ??= key;
+      }
     }
   }
-}
-
-function workflowAnswer(answers) {
-  return [...answers.values()].map((chunks) => chunks.join("")).join("");
+  return firstKey;
 }
 
 async function* extractContent(eventStream, signal) {
   let fullAnswer = "";
   let backendUuid = null;
   let seenLen = 0;
+  let selectedWorkflowAnswerKey;
   const workflowAnswers = new Map();
   const seenThinking = new Set();
 
@@ -330,7 +382,9 @@ async function* extractContent(eventStream, signal) {
 
       if (block.workflow_block) {
         applyWorkflowBlock(workflowAnswers, block.workflow_block);
-        const answer = workflowAnswer(workflowAnswers);
+        const selection = selectWorkflowAnswer(workflowAnswers, selectedWorkflowAnswerKey);
+        selectedWorkflowAnswerKey = selection.key;
+        const answer = selection.answer;
         if (answer.length > seenLen) {
           const delta = answer.slice(seenLen);
           fullAnswer = answer;
@@ -341,8 +395,11 @@ async function* extractContent(eventStream, signal) {
       }
 
       if (block.diff_block?.field === "workflow_block") {
-        applyWorkflowDiff(workflowAnswers, block.diff_block.patches);
-        const answer = workflowAnswer(workflowAnswers);
+        const firstKey = applyWorkflowDiff(workflowAnswers, block.diff_block.patches);
+        selectedWorkflowAnswerKey ??= firstKey;
+        const selection = selectWorkflowAnswer(workflowAnswers, selectedWorkflowAnswerKey);
+        selectedWorkflowAnswerKey = selection.key;
+        const answer = selection.answer;
         if (answer.length > seenLen) {
           const delta = answer.slice(seenLen);
           fullAnswer = answer;

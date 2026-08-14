@@ -407,7 +407,7 @@ describe("wrapQoderSSE", () => {
       `data: ${JSON.stringify({ statusCodeValue: 200, body: "[DONE]" })}`,
       "",
     ].join("\n");
-    const wrapped = wrapQoderSSE(makeResponse([upstream]), "qoder/auto");
+    const wrapped = await wrapQoderSSE(makeResponse([upstream]), "qoder/auto");
     const out = await drain(wrapped);
     expect(out).toContain(`data: ${inner}\n\n`);
     expect(out).toContain("data: [DONE]\n\n");
@@ -422,7 +422,7 @@ describe("wrapQoderSSE", () => {
       `data: ${JSON.stringify({ statusCodeValue: 200, body: inner })}`,
       `data: ${JSON.stringify({ statusCodeValue: 200, body: "[DONE]" })}`,
     ].join("\n");
-    const wrapped = wrapQoderSSE(makeResponse([upstream]), "qoder/auto");
+    const wrapped = await wrapQoderSSE(makeResponse([upstream]), "qoder/auto");
     const out = await drain(wrapped);
     expect(out).toContain(`data: ${inner}\n\n`);
   });
@@ -431,7 +431,7 @@ describe("wrapQoderSSE", () => {
     const errorEnv = JSON.stringify({ statusCodeValue: 500, body: "boom" });
     const validInner = JSON.stringify({ choices: [{ delta: { content: "leak" } }] });
     const validEnv = JSON.stringify({ statusCodeValue: 200, body: validInner });
-    const wrapped = wrapQoderSSE(
+    const wrapped = await wrapQoderSSE(
       makeResponse([`data: ${errorEnv}\n\ndata: ${validEnv}\n\n`]),
       "qoder/auto",
     );
@@ -447,7 +447,7 @@ describe("wrapQoderSSE", () => {
   it("strips embedded newlines from inner body before forwarding", async () => {
     const innerWithNewlines = '{"choices":[{"delta":{"content":"a\nb"}}]}';
     const env = JSON.stringify({ statusCodeValue: 200, body: innerWithNewlines });
-    const wrapped = wrapQoderSSE(makeResponse([`data: ${env}\n\n`]), "qoder/auto");
+    const wrapped = await wrapQoderSSE(makeResponse([`data: ${env}\n\n`]), "qoder/auto");
     const out = await drain(wrapped);
     // The forwarded data: line should be a single event terminated by \n\n
     // and contain no internal \n other than the trailing pair.
@@ -459,7 +459,7 @@ describe("wrapQoderSSE", () => {
 
   it("upstream error envelope produces a fixed error without DONE", async () => {
     const env = JSON.stringify({ statusCodeValue: 503, body: "service unavailable" });
-    const wrapped = wrapQoderSSE(makeResponse([`data: ${env}\n\n`]), "qoder/lite");
+    const wrapped = await wrapQoderSSE(makeResponse([`data: ${env}\n\n`]), "qoder/lite");
     const out = await drain(wrapped);
     expect(out).toContain("Qoder upstream stream failed");
     expect(out).not.toContain("service unavailable");
@@ -469,21 +469,20 @@ describe("wrapQoderSSE", () => {
   it("rejects data after a provisional raw DONE", async () => {
     const finish = JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] });
     const late = JSON.stringify({ statusCodeValue: 503, body: "late failure" });
-    const wrapped = wrapQoderSSE(makeResponse([[
+    const wrapped = await wrapQoderSSE(makeResponse([[
       `data: ${JSON.stringify({ statusCodeValue: 200, body: finish })}`,
       `data: ${JSON.stringify({ statusCodeValue: 200, body: "[DONE]" })}`,
       `data: ${late}`,
-      "",
-    ].join("\n")]), "qoder/auto");
+    ].join("\n\n")]), "qoder/auto");
     const out = await drain(wrapped);
     expect(out).toContain("Qoder upstream stream failed");
     expect(out).not.toContain("late failure");
     expect(out).not.toContain("data: [DONE]");
   });
 
-  it("non-ok responses are returned unchanged (no transform)", () => {
+  it("non-ok responses are returned unchanged (no transform)", async () => {
     const r = new Response("not ok", { status: 500 });
-    const wrapped = wrapQoderSSE(r, "qoder/auto");
+    const wrapped = await wrapQoderSSE(r, "qoder/auto");
     expect(wrapped).toBe(r);
   });
 });

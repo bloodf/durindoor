@@ -31,6 +31,16 @@ describe("Qoder stream-start billing fallback", () => {
     await expect(wrapped.json()).resolves.toEqual({ error: { message: body, code: 403 } });
   });
 
+  it("detects billing frame after same-chunk SSE preamble", async () => {
+    const body = JSON.stringify({ code: "112", message: "quota exhausted" });
+    const wrapped = await wrapQoderSSE(responseFromChunks([
+      `: keepalive\n\n${envelope(403, body)}`,
+    ]), "qoder/auto");
+
+    expect(wrapped.status).toBe(403);
+    await expect(wrapped.json()).resolves.toEqual({ error: { message: body, code: 403 } });
+  });
+
   it("replays complete first chunk before continuing normal stream", async () => {
     const first = JSON.stringify({ choices: [{ delta: { content: "first" } }] });
     const finish = JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] });

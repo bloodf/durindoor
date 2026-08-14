@@ -57,9 +57,20 @@ function filterBlocks(blocks, capOf, caps, removed, isLast) {
   return out;
 }
 
-function isImageAttachment(attachment) {
-  const mime = attachment?.contentType || attachment?.mediaType;
-  return mime?.startsWith("image/") || (typeof attachment?.url === "string" && attachment.url.startsWith("data:image/"));
+function capForAttachment(attachment) {
+  const mime = attachment?.contentType || attachment?.mediaType ||
+    (typeof attachment?.url === "string" && attachment.url.match(/^data:([^;,]+)/)?.[1]);
+  const cap = capForMime(mime);
+  return cap || (attachment?.url || attachment?.data ? "vision" : null);
+}
+
+function replaceUnsupportedDataUris(content, caps, isLast, removed) {
+  return content.replace(/data:([^;,]+)(?:;base64)?,[^\s)]+/gi, (uri, mime) => {
+    const cap = capForMime(mime.toLowerCase());
+    if (!cap || caps[cap] !== false) return uri;
+    removed.add(cap);
+    return ph(cap, isLast);
+  });
 }
 
 // OpenAI / OpenAI-compatible chat messages[].content[] and attachment fields.
@@ -67,19 +78,31 @@ function stripOpenAI(body, caps) {
   if (!Array.isArray(body.messages)) return;
   const last = body.messages.length - 1;
   body.messages.forEach((msg, i) => {
-    if (caps.vision === false) {
-      delete msg.images;
-      delete msg.image;
-      delete msg.image_url;
-      if (Array.isArray(msg.experimental_attachments)) {
-        msg.experimental_attachments = msg.experimental_attachments.filter((attachment) => !isImageAttachment(attachment));
-      }
-      if (Array.isArray(msg.attachments)) {
-        msg.attachments = msg.attachments.filter((attachment) => !isImageAttachment(attachment));
+    const removed = new Set();
+    for (const field of [["images", "vision"], ["image", "vision"], ["image_url", "vision"], ["audio", "audioInput"], ["audio_url", "audioInput"]]) {
+      if (caps[field[1]] === false && msg[field[0]] != null) {
+        delete msg[field[0]];
+        removed.add(field[1]);
       }
     }
-    if (!Array.isArray(msg.content)) return;
-    const removed = new Set();
+    for (const name of ["experimental_attachments", "attachments"]) {
+      if (!Array.isArray(msg[name])) continue;
+      msg[name] = msg[name].filter((attachment) => {
+        const cap = capForAttachment(attachment);
+        if (!cap || caps[cap] !== false) return true;
+        removed.add(cap);
+        return false;
+      });
+    }
+    if (typeof msg.content === "string") {
+      msg.content = replaceUnsupportedDataUris(msg.content, caps, i === last, removed);
+      if (removed.size && !msg.content) msg.content = [...removed].map((cap) => ph(cap, i === last)).join(" ");
+      return;
+    }
+    if (!Array.isArray(msg.content)) {
+      if (removed.size) msg.content = [...removed].map((cap) => ph(cap, i === last)).join(" ");
+      return;
+    }
     msg.content = filterBlocks(msg.content, capForOpenAIBlock, caps, removed, i === last);
   });
 }

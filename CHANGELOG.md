@@ -39,6 +39,10 @@ cacheable assistant content uses the standard five-minute TTL. Mid-conversation
 system reminders remain adjacent to their turn rather than invalidating the
 top-level system prefix.
 
+Combo names now resolve case-insensitively during model routing while retaining
+their stored spelling for downstream selection. Provider and model IDs remain
+case-sensitive.
+
 # 3.15.1
 
 DurinDoor now refuses to start on a SQLite database whose structural check

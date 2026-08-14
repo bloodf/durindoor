@@ -52,6 +52,14 @@ export async function getComboByName(name) {
   return rowToCombo(row);
 }
 
+// Routing accepts user-entered combo names case-insensitively, but management
+// keeps exact-name semantics for duplicate and policy checks.
+export async function getComboForModel(name) {
+  const db = await getAdapter();
+  const row = db.get(`SELECT * FROM combos WHERE name = ? COLLATE NOCASE`, [name]);
+  return rowToCombo(row);
+}
+
 export async function createCombo(data) {
   const db = await getAdapter();
   const now = new Date().toISOString();

@@ -67,7 +67,7 @@ export async function loadCustomCapabilities(provider, model, requestPrefix) {
 import { isFreeNoAuthProviderDisabled } from "@/sse/services/freeProviderGate.js";
 import {
   getModelAliases,
-  getComboByName,
+  getComboForModel,
   getProviderNodes,
   getProviderConnections,
   getCustomModels,
@@ -153,11 +153,10 @@ export async function getModelInfo(modelStr) {
 
   // Check if this is a combo name before resolving as alias
   // This prevents combo names from being incorrectly routed to providers
-  const combo = await getComboByName(parsed.model);
+  const combo = await getComboForModel(parsed.model);
   if (combo) {
-    // Return null provider to signal this should be handled as combo
-    // The caller (handleChat) will detect this and handle it as combo
-    return { provider: null, model: parsed.model };
+    // Return the persisted name so downstream combo routing preserves casing.
+    return { provider: null, model: combo.name };
   }
 
   return getModelInfoCore(modelStr, getModelAliases);
@@ -267,9 +266,9 @@ export async function getComboModels(modelStr, hidePaidModels = false) {
   // instead of forwarding the raw string to the upstream provider. Full-name
   // match wins so a genuine `provider/model` never gets shadowed by a
   // same-named combo.
-  let combo = await getComboByName(modelStr);
+  let combo = await getComboForModel(modelStr);
   if (!combo && modelStr.includes("/") && !isCatalogModelPath(modelStr)) {
-    combo = await getComboByName(modelStr.split("/").pop());
+    combo = await getComboForModel(modelStr.split("/").pop());
   }
   if (combo && combo.models && combo.models.length > 0) {
     return filterPaidModels(combo.models, hidePaidModels === true);

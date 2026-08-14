@@ -194,10 +194,12 @@ describe("normalizeClaudePassthrough foldSystemTurns: true (native chatCore pass
     ]);
   });
 
-  it("preserves non-text blocks (images) when folding, folding only the textual portion", () => {
+  it("folds all blocks (text and non-text) from a mid-conversation system message into the next user turn, never leaving a system role behind", () => {
     // Some clients may include image blocks in a "system" role message.
-    // The fold must NOT drop them; non-text blocks stay in place as a
-    // (now emptied-of-text) system message, and only the text folds forward.
+    // The Anthropic Messages API does not allow role:"system" inside messages,
+    // so the fold must move the image into the next existing user turn
+    // alongside any text. No synthesized user turn is created; if the image
+    // arrives with no following user turn, it is dropped with the text.
     const body = {
       messages: [
         { role: "user", content: [{ type: "text", text: "describe" }] },
@@ -215,19 +217,40 @@ describe("normalizeClaudePassthrough foldSystemTurns: true (native chatCore pass
 
     normalizeClaudePassthrough(body, "", "claude", null, { foldSystemTurns: true });
 
-    expect(body.messages).toHaveLength(4);
+    // No synthesized standalone user turn; the next existing user turn absorbs everything.
+    expect(body.messages).toHaveLength(3);
+    expect(body.messages.every((m) => m.role !== "system")).toBe(true);
+    expect(body.messages[0]).toEqual({ role: "user", content: [{ type: "text", text: "describe" }] });
     expect(body.messages[1]).toEqual({
-      role: "system",
-      content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: "AA" } }],
-    });
-    expect(body.messages[2]).toEqual({
       role: "user",
       content: [
         { type: "text", text: "what do you see?" },
         { type: "text", text: "hint: focus on color" },
+        { type: "image", source: { type: "base64", media_type: "image/png", data: "AA" } },
       ],
     });
-    expect(body.messages[3]).toEqual({ role: "assistant", content: [{ type: "text", text: "red" }] });
+    expect(body.messages[2]).toEqual({ role: "assistant", content: [{ type: "text", text: "red" }] });
+  });
+
+  it("emits zero system-role messages after fold (Anthropic Messages contract)", () => {
+    // A system message followed by no further user turn must not leave a
+    // system role behind. The text+image blocks drop with the system turn
+    // because there is no following user turn to absorb them.
+    const body = {
+      messages: [
+        { role: "user", content: "ask" },
+        { role: "system", content: [{ type: "text", text: "volatile" }] },
+        { role: "assistant", content: [{ type: "text", text: "answer" }] },
+      ],
+    };
+
+    normalizeClaudePassthrough(body, "", "claude", null, { foldSystemTurns: true });
+
+    expect(body.messages.every((m) => m.role !== "system")).toBe(true);
+    expect(body.messages).toEqual([
+      { role: "user", content: "ask" },
+      { role: "assistant", content: [{ type: "text", text: "answer" }] },
+    ]);
   });
 
   it("never folds a system reminder into an assistant tool-use turn", () => {

@@ -305,10 +305,7 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
           messages.push(msg);
           continue;
         }
-        const text = blocks.filter((block) => block?.type === CLAUDE_BLOCK.TEXT);
-        const nonText = blocks.filter((block) => block?.type !== CLAUDE_BLOCK.TEXT);
-        if (text.length) buffered.push(...text);
-        if (nonText.length) messages.push({ ...msg, content: nonText });
+        if (blocks.length) buffered.push(...blocks);
         continue;
       }
       if (foldSystemTurns && buffered.length && msg.role === ROLE.USER) {

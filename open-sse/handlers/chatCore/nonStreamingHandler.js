@@ -22,6 +22,14 @@ import { PROVIDERS } from "../../config/providers.js";
 import { CLAUDE_BLOCK } from "../../translator/schema/blocks.js";
 import { applyReasoningVisibility } from "../../utils/reasoningVisibility.js";
 
+// Upstream #10258: reject parsed JSON that isn't a plain record (primitives,
+// arrays, null) before any envelope unwrap or property access can throw or
+// silently coerce garbage into a "coherent" response.
+function isJsonRecord(value) {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+
 const GEMINI_FAMILY_FORMATS = new Set([
   FORMATS.GEMINI,
   FORMATS.GEMINI_CLI,
@@ -393,20 +401,26 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       console.error(`[ChatCore] Failed to parse JSON from ${provider}: ${err?.name || "Error"}`);
       return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
     }
+    if (!isJsonRecord(responseBody)) {
+      appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
+      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
+    }
   }
 
   // Unwrap ClinePass {success, data} envelope before marking success: a
   // {success:false, error} body must surface as a 502, never as a successful call.
-  // Source: decolua/9router#2332 @ 005d970f49.
   {
     const { body: unwrapped, error: envError } = unwrapClinepassEnvelope(responseBody, provider);
     if (envError) {
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
       return createErrorResult(HTTP_STATUS.BAD_GATEWAY, envError.message);
     }
+    if (!isJsonRecord(unwrapped)) {
+      appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
+      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
+    }
     responseBody = unwrapped;
   }
-
   if (!isCoherentNonStreamingResponse(responseBody, targetFormat)) {
     appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Provider returned an incoherent non-streaming response");

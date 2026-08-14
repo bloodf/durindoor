@@ -29,6 +29,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   });
   const [cloudflareData, setCloudflareData] = useState({ accountId: "" });
   const [googlePseData, setGooglePseData] = useState({ cx: "" });
+  const [codexFingerprintMode, setCodexFingerprintMode] = useState("session");
   const [region, setRegion] = useState("");
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
@@ -62,6 +63,14 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       if (connection.provider === "google-pse") {
         setGooglePseData({ cx: connection.providerSpecificData?.cx || "" });
       }
+      // Always reset when switching connections so a stale mode cannot
+      // leak into a different (or non-OAuth) provider's request headers.
+      setCodexFingerprintMode(
+        connection.provider === "codex" &&
+          ["off", "device", "session", "full"].includes(connection.providerSpecificData?.codexFingerprintMode)
+          ? connection.providerSpecificData.codexFingerprintMode
+          : "session",
+      );
       // Load region for providers that support it (e.g. xiaomi-tokenplan)
       const providerCfg = AI_PROVIDERS?.[connection.provider];
       if (providerCfg?.regions) {
@@ -78,6 +87,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   const requiresAccountId = requiresProviderAccountId(connection?.provider);
   const accountIdProviderLabel = connection?.provider === "snowflake" ? "Snowflake Cortex" : "Cloudflare Workers AI";
   const isGooglePse = isGooglePseProvider(connection?.provider);
+  const isCodexOAuth = connection?.provider === "codex" && isOAuth;
   const isCompatible = connection
     ? (isOpenAICompatibleProvider(connection.provider) || isAnthropicCompatibleProvider(connection.provider))
     : false;
@@ -103,6 +113,9 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
     }
     if (isGooglePse) {
       return buildGooglePseProviderSpecificData(googlePseData.cx, connection?.providerSpecificData);
+    }
+    if (isCodexOAuth) {
+      return { ...connection.providerSpecificData, codexFingerprintMode };
     }
     if (providerRegions) {
       return buildRegionSpecificData();
@@ -303,6 +316,19 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
               />
             </div>
           </div>
+        )}
+        {isCodexOAuth && (
+          <Select
+            label="OAuth fingerprint mode"
+            value={codexFingerprintMode}
+            onChange={(e) => setCodexFingerprintMode(e.target.value)}
+            options={[
+              { value: "off", label: "Off — preserve client identity" },
+              { value: "device", label: "Device — stable installation" },
+              { value: "session", label: "Session — stable account session (recommended)" },
+              { value: "full", label: "Full — stable account thread" },
+            ]}
+          />
         )}
 
         {providerRegions && (

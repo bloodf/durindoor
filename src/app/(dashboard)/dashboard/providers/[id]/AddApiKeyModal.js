@@ -28,6 +28,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const isCloudflareAi = provider === "cloudflare-ai";
   const requiresAccountId = requiresProviderAccountId(provider);
   const accountIdProviderLabel = provider === "snowflake" ? "Snowflake Cortex" : "Cloudflare Workers AI";
+  const isCodexOAuth = provider === "codex" && authType === "oauth";
   const providerRegions = AI_PROVIDERS?.[provider]?.regions || null;
   const defaultRegion = AI_PROVIDERS?.[provider]?.defaultRegion || providerRegions?.[0]?.id || "";
 
@@ -36,6 +37,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const [azureData, setAzureData] = useState(initialState.azureData);
   const [accountIdData, setAccountIdData] = useState(initialState.accountIdData);
   const [region, setRegion] = useState(initialState.region);
+  const [codexFingerprintMode, setCodexFingerprintMode] = useState("session");
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -62,6 +64,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     setAzureData(reset.azureData);
     setAccountIdData(reset.accountIdData);
     setRegion(reset.region);
+    setCodexFingerprintMode("session");
   }, [isOpen, existingConnectionNames, defaultRegion]);
 
   const buildProviderSpecificData = () => {
@@ -78,6 +81,9 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     }
     if (requiresAccountId) {
       return { accountId: accountIdData.accountId.trim() };
+    }
+    if (isCodexOAuth) {
+      return { codexFingerprintMode };
     }
     if (providerRegions && region) {
       return { region };
@@ -323,6 +329,19 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
               </>
             )}
           </p>
+        )}
+        {isCodexOAuth && (
+          <Select
+            label="OAuth fingerprint mode"
+            value={codexFingerprintMode}
+            onChange={(e) => setCodexFingerprintMode(e.target.value)}
+            options={[
+              { value: "off", label: "Off — preserve client identity" },
+              { value: "device", label: "Device — stable installation" },
+              { value: "session", label: "Session — stable account session (recommended)" },
+              { value: "full", label: "Full — stable account thread" },
+            ]}
+          />
         )}
         {providerRegions && (
           <Select

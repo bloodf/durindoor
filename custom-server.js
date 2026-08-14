@@ -85,8 +85,13 @@ function installRequestWrapper({ httpModule = http, secret, peerToken, verifyPee
       const xRealIp = req.headers["x-real-ip"];
       const viaProxy = Boolean(xff || xRealIp);
       const isLoopbackProxy = socketIp === "127.0.0.1" || socketIp === "::1" || socketIp === "::ffff:127.0.0.1";
-      const proxyIp = xRealIp || (xff ? String(xff).split(",")[0].trim() : "");
-      const ip = isLoopbackProxy && proxyIp ? proxyIp : socketIp;
+      // Trust only the nearest proxy hop added by the loopback reverse proxy itself.
+      // x-real-ip / leftmost x-forwarded-for are pass-through headers the client
+      // can forge; the rightmost x-forwarded-for entry is the value the edge proxy
+      // overwrote with the true client IP. Fall back to the socket when the edge
+      // proxy did not stamp XFF.
+      const lastXff = xff ? String(xff).split(",").map((s) => s.trim()).filter(Boolean).pop() : "";
+      const ip = isLoopbackProxy && lastXff ? lastXff : socketIp;
       delete req.headers["x-9r-real-ip"];
       delete req.headers["x-forwarded-for"];
       delete req.headers["x-9r-via-proxy"];

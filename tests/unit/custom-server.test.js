@@ -3,6 +3,7 @@ import { createRequire } from "module";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
+import { getClientIp } from "../../src/lib/auth/loginLimiter.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -114,5 +115,32 @@ describe("Next.js Server Process Title", () => {
     expect(request.headers["x-9r-via-proxy"]).toBe("1");
     expect(request.headers["x-9r-peer-token"]).toBe("trusted-peer-token");
     expect(request.headers["x-forwarded-for"]).toBeUndefined();
+  });
+
+  it("uses the nearest forwarded hop instead of spoofable forwarded values", async () => {
+    const fakeHttp = { createServer: vi.fn((handler) => ({ handler })) };
+    const handler = vi.fn();
+    const { installRequestWrapper } = require("../../custom-server.js");
+    installRequestWrapper({
+      httpModule: fakeHttp,
+      secret: "a".repeat(64),
+      peerToken: "trusted-peer-token",
+      verifyPeerOwner: vi.fn(async () => false),
+    });
+    const server = fakeHttp.createServer(handler);
+    const ipFor = async (xRealIp, xff) => {
+      const req = {
+        method: "GET",
+        url: "/api/auth/login",
+        headers: { "x-real-ip": xRealIp, "x-forwarded-for": xff },
+        socket: { remoteAddress: "127.0.0.1" },
+      };
+      server.handler(req, { setHeader: vi.fn() });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      return getClientIp({ headers: new Headers(req.headers) });
+    };
+
+    expect(await ipFor("198.51.100.1", "198.51.100.1, 203.0.113.9")).toBe("203.0.113.9");
+    expect(await ipFor("198.51.100.2", "198.51.100.2, 203.0.113.9")).toBe("203.0.113.9");
   });
 });

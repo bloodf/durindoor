@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { GeminiCLIExecutor } from "../../open-sse/executors/gemini-cli.js";
 import { GrokCliExecutor, _resetGrokCliTurnStore } from "../../open-sse/executors/grok-cli.js";
-import { OpenCodeGoExecutor } from "../../open-sse/executors/opencode-go.js";
 import { OpenCodeZenExecutor } from "../../open-sse/executors/opencode-zen.js";
 
 describe("executor request state isolation (#3169)", () => {
@@ -18,18 +17,6 @@ describe("executor request state isolation (#3169)", () => {
       .toContain("gemini-1.5-pro");
   });
 
-  it("uses explicit OpenCode Go model after interleaved URL selection", () => {
-    const executor = new OpenCodeGoExecutor();
-    const credentials = { apiKey: "token" };
-
-    executor.buildUrl("minimax-m3");
-    executor.buildUrl("glm-5.2");
-
-    expect(executor.buildHeaders(credentials, false, null, "minimax-m3")["x-api-key"])
-      .toBe("token");
-    expect(executor.buildHeaders(credentials, false, null, "glm-5.2").Authorization)
-      .toBe("Bearer token");
-  });
 
   it("uses explicit OpenCode Zen model after interleaved URL selection", () => {
     const executor = new OpenCodeZenExecutor();

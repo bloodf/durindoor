@@ -475,7 +475,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       });
     }
     // Normalize newer Cowork/CC beta shapes (adaptive thinking, mid-conversation system) the API rejects
-    if (clientTool === "claude") normalizeClaudePassthrough(translatedBody, translatedBody.model, provider, modelCapabilities?.maxOutput ?? null);
+    if (clientTool === "claude") normalizeClaudePassthrough(translatedBody, translatedBody.model, provider, modelCapabilities?.maxOutput ?? null, { foldSystemTurns: true });
   } else {
     const translationModel = resolveKiroTranslationModel(targetFormat, alias, cleanModel, cleanUpstreamModel);
     translatedBody = translateRequest(
@@ -1190,6 +1190,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       const recoveryBody = stripHistoricalThinkingForSignatureRecovery(translatedBody);
       if (recoveryBody !== translatedBody) {
         translatedBody = recoveryBody;
+        if (passthrough && clientTool === "claude") anchorClaudeCache(translatedBody);
         try {
           const retry = await executeProvider();
           providerResponse = retry.response;

@@ -51,6 +51,10 @@ export function anchorClaudeCache(body) {
     let anchored = null;
     for (let i = body.messages.length - 1; i >= 0; i--) {
       const msg = body.messages[i];
+      delete msg.cache_control;
+      if (typeof msg.content === "string") {
+        msg.content = msg.content ? [{ type: CLAUDE_BLOCK.TEXT, text: msg.content }] : [];
+      }
       if (!Array.isArray(msg.content)) continue;
       for (const block of msg.content) { if (block && typeof block === "object") delete block.cache_control; }
       if (anchored || msg.role !== ROLE.ASSISTANT) continue;
@@ -272,7 +276,7 @@ export function reconcileClaudeThinkingBudget(body, provider = "claude", customM
 // 1. thinking.type "adaptive" → unsupported on Haiku
 // 2. output_config.effort → unsupported on Haiku
 // 3. role "system" messages (mid-conversation-system beta) → only top-level system is allowed
-export function normalizeClaudePassthrough(body, model = "", provider = "claude", customMaxOutput = null) {
+export function normalizeClaudePassthrough(body, model = "", provider = "claude", customMaxOutput = null, options = null) {
   if (!body || typeof body !== "object") return body;
 
   // 1. Downgrade adaptive thinking for models that don't support it
@@ -286,35 +290,63 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
     if (Object.keys(body.output_config).length === 0) delete body.output_config;
   }
 
-  // 2. Fold mid-conversation system messages into the neighbouring turn.
-  // Hoisting them into body.system would insert volatile content ahead of the
-  // conversation and invalidate its prefix cache on every request.
   if (Array.isArray(body.messages)) {
     const messages = [];
+    const buffered = [];
+    const foldSystemTurns = options?.foldSystemTurns === true;
     for (const msg of body.messages) {
-      if (msg.role !== ROLE.SYSTEM) {
-        messages.push(msg);
+      if (msg.role === ROLE.SYSTEM) {
+        const blocks = Array.isArray(msg.content)
+          ? msg.content
+          : (typeof msg.content === "string" && msg.content
+            ? [{ type: CLAUDE_BLOCK.TEXT, text: msg.content }]
+            : []);
+        if (!foldSystemTurns) {
+          messages.push(msg);
+          continue;
+        }
+        const text = blocks.filter((block) => block?.type === CLAUDE_BLOCK.TEXT);
+        const nonText = blocks.filter((block) => block?.type !== CLAUDE_BLOCK.TEXT);
+        if (text.length) buffered.push(...text);
+        if (nonText.length) messages.push({ ...msg, content: nonText });
         continue;
       }
-      const text = typeof msg.content === "string"
-        ? msg.content
-        : Array.isArray(msg.content)
-          ? msg.content.map(b => (typeof b === "string" ? b : b?.text || "")).join("\n")
-          : "";
-      if (!text.trim()) continue;
-
-      const block = { type: CLAUDE_BLOCK.TEXT, text };
-      const prev = messages[messages.length - 1];
-      if (prev?.role === ROLE.USER) {
-        const content = typeof prev.content === "string"
-          ? [{ type: CLAUDE_BLOCK.TEXT, text: prev.content }]
-          : Array.isArray(prev.content) ? [...prev.content] : [];
-        messages[messages.length - 1] = { ...prev, content: [...content, block] };
-        continue;
+      if (foldSystemTurns && buffered.length && msg.role === ROLE.USER) {
+        const existing = Array.isArray(msg.content)
+          ? msg.content
+          : (typeof msg.content === "string" && msg.content
+            ? [{ type: CLAUDE_BLOCK.TEXT, text: msg.content }]
+            : []);
+        msg.content = [...existing, ...buffered];
+        buffered.length = 0;
       }
-      messages.push({ role: ROLE.USER, content: [block] });
+      messages.push(msg);
     }
-    body.messages = messages;
+    if (!foldSystemTurns) {
+      const hoisted = messages
+        .filter((m) => m.role === ROLE.SYSTEM)
+        .flatMap((m) => Array.isArray(m.content)
+          ? m.content
+          : (typeof m.content === "string" && m.content
+            ? [{ type: CLAUDE_BLOCK.TEXT, text: m.content }]
+            : []));
+      body.messages = messages.filter((m) => m.role !== ROLE.SYSTEM);
+      if (hoisted.length) {
+        const existing = Array.isArray(body.system) ? body.system : [];
+        body.system = [...existing, ...hoisted];
+      }
+    } else if (buffered.length && messages[messages.length - 1]?.role === ROLE.USER) {
+      const last = messages[messages.length - 1];
+      const existing = Array.isArray(last.content)
+        ? last.content
+        : (typeof last.content === "string" && last.content
+          ? [{ type: CLAUDE_BLOCK.TEXT, text: last.content }]
+          : []);
+      last.content = [...existing, ...buffered];
+      body.messages = messages;
+    } else {
+      body.messages = messages;
+    }
   }
   normalizeClaudeServerToolModels(body.tools);
 

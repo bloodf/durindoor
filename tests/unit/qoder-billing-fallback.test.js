@@ -41,6 +41,14 @@ describe("Qoder stream-start billing fallback", () => {
     await expect(wrapped.json()).resolves.toEqual({ error: { message: body, code: 403 } });
   });
 
+  it("fails a stalled first frame instead of waiting after headers", async () => {
+    const stalled = new Response(new ReadableStream({ start() {} }));
+
+    await expect(wrapQoderSSE(stalled, "qoder/auto", { timeoutMs: 1 })).rejects.toThrow(
+      "qoder stream-start timeout",
+    );
+  });
+
   it("replays complete first chunk before continuing normal stream", async () => {
     const first = JSON.stringify({ choices: [{ delta: { content: "first" } }] });
     const finish = JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] });

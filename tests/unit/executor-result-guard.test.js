@@ -22,20 +22,27 @@ const canonical = (extra = {}) => ({
 });
 
 describe("validateExecutorResult", () => {
-  it("returns the result unchanged when the canonical shape is present", async () => {
-    const { validateExecutorResult } = await load();
-    const input = canonical();
-    const out = validateExecutorResult(input);
-    expect(out).toBe(input);
-  });
-
-  it("preserves DurinDoor-only fields (`attemptStartedAt`, `terminalProvenance`, extras)", async () => {
+  it("normalizes a complete result while preserving DurinDoor metadata", async () => {
     const { validateExecutorResult } = await load();
     const input = canonical({ custom: "kept", trace: { id: 7 } });
     const out = validateExecutorResult(input);
-    expect(out).toBe(input);
+    expect(out).toEqual(input);
+    expect(out).not.toBe(input);
+    expect(out.attemptStartedAt).toBe(1_700_000_000_000);
+    expect(out.terminalProvenance).toBe("upstream");
     expect(out.custom).toBe("kept");
     expect(out.trace).toEqual({ id: 7 });
+  });
+
+  it("wraps a bare Response with canonical executor-result fields", async () => {
+    const { validateExecutorResult } = await load();
+    const response = buildResponse();
+    expect(validateExecutorResult(response)).toEqual({
+      response,
+      url: "",
+      headers: {},
+      transformedBody: null,
+    });
   });
 
   it("throws TypeError with the expected message when response is missing", async () => {

@@ -10,6 +10,13 @@ wire-compatibility change.
 
 Perplexity Web now extracts answer-variant text from the workflow-block SSE format, including streamed RFC-6902 chunk patches and terminal materialized blocks. Search and thinking workflow items remain excluded; legacy markdown-block responses are unchanged.
 
+Qoder billing blocks (quota exhaustion codes `112`/`10605`, or a `pricingUrl`
+field) are now detected in the first SSE frame and answered with a synthetic
+HTTP 403 before any stream bytes commit, so combo/account fallback treats the
+provider as unavailable instead of surfacing a broken stream to the caller.
+Normal streams are unaffected: the bounded 64 KiB peek is replayed byte-for-
+byte and no response is ever buffered in full.
+
 # 3.15.2
 
 Authenticated dashboards reached through a reverse proxy can manage PXPIPE

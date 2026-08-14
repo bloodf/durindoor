@@ -224,6 +224,72 @@ async function buildQoderRequestBody({ model, body, credentials, log, proxyOptio
   };
 }
 
+// Never inspect beyond a small stream prefix. Prefix chunks are replayed
+// byte-for-byte when they are not a billing response.
+const QODER_SSE_PEEK_BYTES = 64 * 1024;
+
+function isBillingBlock(body) {
+  if (typeof body !== "string" || !body) return false;
+  return /"code"\s*:\s*"(?:112|10605)"/.test(body) || body.toLowerCase().includes("pricingurl");
+}
+
+async function peekQoderBillingFrame(reader) {
+  const decoder = new TextDecoder();
+  const chunks = [];
+  let text = "";
+  let bytes = 0;
+
+  while (bytes < QODER_SSE_PEEK_BYTES) {
+    const { done, value } = await reader.read();
+    if (done) return { chunks, done: true };
+    chunks.push(value);
+    bytes += value.byteLength;
+    text += decoder.decode(value, { stream: true });
+
+    let newline;
+    while ((newline = text.indexOf("\n")) !== -1) {
+      const line = text.slice(0, newline).replace(/\r$/, "").trim();
+      text = text.slice(newline + 1);
+      if (!line.startsWith("data:")) continue;
+      try {
+        const envelope = JSON.parse(line.slice(5).trimStart());
+        const status = typeof envelope.statusCodeValue === "number" ? envelope.statusCodeValue : 200;
+        const body = typeof envelope.body === "string" ? envelope.body : "";
+        if (status !== 200 && isBillingBlock(body)) return { chunks, done: false, billing: { status, body } };
+      } catch {
+        // Malformed frames remain existing stream-transform failures.
+      }
+      return { chunks, done: false };
+    }
+  }
+  return { chunks, done: false };
+}
+
+function replayQoderBody(reader, chunks, alreadyDone) {
+  let index = 0;
+  return new ReadableStream({
+    async pull(controller) {
+      if (index < chunks.length) {
+        controller.enqueue(chunks[index++]);
+        return;
+      }
+      if (alreadyDone) {
+        controller.close();
+        return;
+      }
+      try {
+        const { done, value } = await reader.read();
+        if (done) controller.close();
+        else controller.enqueue(value);
+      } catch (error) {
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      await reader.cancel(reason).catch(() => {});
+    },
+  });
+}
 /**
  * Wrap the upstream's `{statusCodeValue, body}` SSE envelope into plain
  * OpenAI SSE chunks the rest of the chatCore pipeline understands.
@@ -234,8 +300,16 @@ async function buildQoderRequestBody({ model, body, credentials, log, proxyOptio
  * and re-emit as `data: <inner>\n\n`. Only a raw OpenAI finish plus `[DONE]`
  * is allowed to produce a successful terminal.
  */
-function wrapQoderSSE(response, model) {
+async function wrapQoderSSE(response, model) {
   if (!response.ok || !response.body) return response;
+
+  const reader = response.body.getReader();
+  const peeked = await peekQoderBillingFrame(reader);
+  if (peeked.billing) {
+    await reader.cancel();
+    return Response.json({ error: { message: peeked.billing.body, code: 403 } }, { status: 403 });
+  }
+  const body = replayQoderBody(reader, peeked.chunks, peeked.done);
 
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
@@ -326,7 +400,7 @@ function wrapQoderSSE(response, model) {
     },
   });
 
-  return new Response(response.body.pipeThrough(transform), {
+  return new Response(body.pipeThrough(transform), {
     status: response.status,
     statusText: response.statusText,
     headers: {
@@ -563,7 +637,7 @@ export class QoderExecutor extends BaseExecutor {
       return { response, url, headers, transformedBody: payload };
     }
 
-    const wrapped = wrapQoderSSE(response, `qoder/${qoderKey}`);
+    const wrapped = await wrapQoderSSE(response, `qoder/${qoderKey}`);
     return {
       response: wrapped,
       url,
@@ -593,6 +667,7 @@ export default QoderExecutor;
 export const __test__ = {
   normalizeMessages,
   wrapQoderSSE,
+  isBillingBlock,
   buildQoderRequestBody,
   isQoderPat,
   resolvePatCredential,

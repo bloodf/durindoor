@@ -1,26 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { PROVIDER_MODELS, getModelSupportedFormats } from "../../open-sse/config/providerModels.js";
+import { PROVIDER_MODELS, getModelSupportedFormats, getModelTargetFormat } from "../../open-sse/config/providerModels.js";
 import { PROVIDERS } from "../../open-sse/config/providers.js";
+import { DefaultExecutor } from "../../open-sse/executors/default.js";
 import { resolveTransport } from "../../open-sse/services/provider.js";
+import { resolveRequestTransport } from "../../open-sse/handlers/chatCore.js";
 
-const CHAT_ONLY = ["glm-5.2", "glm-5.1", "kimi-k2.7-code", "kimi-k2.6", "mimo-v2.5", "mimo-v2.5-pro"];
+const API_KEY = { apiKey: "test-key" };
+const OPENAI_URL = "https://opencode.ai/zen/go/v1/chat/completions";
+const CLAUDE_URL = "https://opencode.ai/zen/go/v1/messages";
+const RESPONSES_URL = "https://opencode.ai/zen/go/v1/responses";
+
+const CHAT_ONLY = ["glm-5.1", "kimi-k2.7-code", "kimi-k2.6", "mimo-v2.5", "mimo-v2.5-pro"];
+const MODEL_WITHOUT_FORMATS = "glm-5.2";
 const CLAUDE_CAPABLE = ["minimax-m3", "minimax-m2.7", "minimax-m2.5", "qwen3.7-max", "qwen3.7-plus", "qwen3.6-plus"];
 const RESPONSES_CAPABLE = ["deepseek-v4-pro", "deepseek-v4-flash"];
-
-function pickTransport(provider, sourceFormat, alias, model) {
-  const supported = getModelSupportedFormats(alias, model);
-  const transport = resolveTransport(provider, sourceFormat);
-  return supported?.includes(sourceFormat) ? transport : null;
-}
 
 describe("OpenCode Go model catalog", () => {
   it("matches documented model IDs", () => {
     const ids = (PROVIDER_MODELS["opencode-go"] || []).map((model) => model.id);
 
     expect(ids).toEqual([
-      ...CHAT_ONLY.slice(0, 4),
+      MODEL_WITHOUT_FORMATS,
+      ...CHAT_ONLY.slice(0, 3),
       ...RESPONSES_CAPABLE,
-      ...CHAT_ONLY.slice(4),
+      ...CHAT_ONLY.slice(3),
       ...CLAUDE_CAPABLE,
     ]);
   });
@@ -33,16 +36,14 @@ describe("OpenCode Go per-model supportedFormats", () => {
     }
   });
 
-  it("declares OpenAI, Claude, and Responses support for DeepSeek models", () => {
-    for (const model of RESPONSES_CAPABLE) {
-      expect(getModelSupportedFormats("opencode-go", model)).toEqual(["openai", "claude", "openai-responses"]);
+  it("declares OpenAI-only support for DeepSeek, Kimi, and MiMo models", () => {
+    for (const model of [...RESPONSES_CAPABLE, ...CHAT_ONLY]) {
+      expect(getModelSupportedFormats("opencode-go", model)).toEqual(["openai"]);
     }
   });
 
-  it("declares OpenAI-only support for GLM, Kimi, and MiMo models", () => {
-    for (const model of CHAT_ONLY) {
-      expect(getModelSupportedFormats("opencode-go", model)).toEqual(["openai"]);
-    }
+  it("uses default OpenAI transport for known models without endpoint metadata", () => {
+    expect(getModelSupportedFormats("opencode-go", MODEL_WITHOUT_FORMATS)).toBeNull();
   });
 });
 
@@ -53,9 +54,9 @@ describe("OpenCode Go multi-endpoint transports", () => {
   });
 
   it("resolves endpoints matching client format", () => {
-    expect(resolveTransport("opencode-go", "openai")?.baseUrl).toBe("https://opencode.ai/zen/go/v1/chat/completions");
-    expect(resolveTransport("opencode-go", "claude")?.baseUrl).toBe("https://opencode.ai/zen/go/v1/messages");
-    expect(resolveTransport("opencode-go", "openai-responses")?.baseUrl).toBe("https://opencode.ai/zen/go/v1/responses");
+    expect(resolveTransport("opencode-go", "openai")?.baseUrl).toBe(OPENAI_URL);
+    expect(resolveTransport("opencode-go", "claude")?.baseUrl).toBe(CLAUDE_URL);
+    expect(resolveTransport("opencode-go", "openai-responses")?.baseUrl).toBe(RESPONSES_URL);
   });
 
   it("uses Anthropic API-key authentication for Claude", () => {
@@ -64,30 +65,116 @@ describe("OpenCode Go multi-endpoint transports", () => {
   });
 });
 
-describe("OpenCode Go per-model transport guard", () => {
-  it("routes MiniMax and Qwen Claude requests to messages", () => {
+describe("OpenCode Go per-model transport selection", () => {
+  it("uses Claude messages endpoint for Claude-source MiniMax and Qwen requests", () => {
     for (const model of CLAUDE_CAPABLE) {
-      expect(pickTransport("opencode-go", "claude", "opencode-go", model)?.baseUrl)
-        .toBe("https://opencode.ai/zen/go/v1/messages");
+      const { runtimeTransport, targetFormat } = resolveRequestTransport({
+        provider: "opencode-go",
+        alias: "opencode-go",
+        model,
+        sourceFormat: "claude",
+        credentials: API_KEY,
+      });
+      expect(runtimeTransport?.format).toBe("claude");
+      expect(runtimeTransport?.baseUrl).toBe(CLAUDE_URL);
+      expect(targetFormat).toBe("claude");
     }
   });
 
-  it("does not route chat-only models to messages", () => {
-    for (const model of CHAT_ONLY) {
-      expect(pickTransport("opencode-go", "claude", "opencode-go", model)).toBeNull();
+  it("falls back to OpenAI transport for chat-only models under Claude source", () => {
+    for (const model of [MODEL_WITHOUT_FORMATS, ...CHAT_ONLY]) {
+      const { runtimeTransport, targetFormat } = resolveRequestTransport({
+        provider: "opencode-go",
+        alias: "opencode-go",
+        model,
+        sourceFormat: "claude",
+        credentials: API_KEY,
+      });
+      expect(runtimeTransport?.format).toBe("openai");
+      expect(runtimeTransport?.baseUrl).toBe(OPENAI_URL);
+      expect(targetFormat).toBe("openai");
     }
   });
 
-  it("routes DeepSeek Responses requests to responses", () => {
+  it("translates Responses-source DeepSeek requests to the default OpenAI endpoint", () => {
     for (const model of RESPONSES_CAPABLE) {
-      expect(pickTransport("opencode-go", "openai-responses", "opencode-go", model)?.baseUrl)
-        .toBe("https://opencode.ai/zen/go/v1/responses");
+      const { runtimeTransport, targetFormat } = resolveRequestTransport({
+        provider: "opencode-go",
+        alias: "opencode-go",
+        model,
+        sourceFormat: "openai-responses",
+        credentials: API_KEY,
+      });
+      expect(runtimeTransport?.format).toBe("openai");
+      expect(runtimeTransport?.baseUrl).toBe(OPENAI_URL);
+      expect(targetFormat).toBe("openai");
     }
   });
 
-  it("does not route MiniMax and Qwen Responses requests to responses", () => {
+  it("uses required Claude transport for MiniMax and Qwen under Responses source", () => {
     for (const model of CLAUDE_CAPABLE) {
-      expect(pickTransport("opencode-go", "openai-responses", "opencode-go", model)).toBeNull();
+      const { runtimeTransport, targetFormat } = resolveRequestTransport({
+        provider: "opencode-go",
+        alias: "opencode-go",
+        model,
+        sourceFormat: "openai-responses",
+        credentials: API_KEY,
+      });
+      expect(runtimeTransport?.format).toBe("claude");
+      expect(runtimeTransport?.baseUrl).toBe(CLAUDE_URL);
+      expect(targetFormat).toBe("claude");
+    }
+  });
+
+  it("falls back to OpenAI transport for unknown model under Claude source", () => {
+    const { runtimeTransport, targetFormat } = resolveRequestTransport({
+      provider: "opencode-go",
+      alias: "opencode-go",
+      model: "mystery-future-model",
+      sourceFormat: "claude",
+      credentials: API_KEY,
+    });
+    expect(runtimeTransport?.format).toBe("openai");
+    expect(runtimeTransport?.baseUrl).toBe(OPENAI_URL);
+    expect(targetFormat).toBe("openai");
+  });
+
+  it("uses default endpoint and format without credentials", () => {
+    const { runtimeTransport, targetFormat } = resolveRequestTransport({
+      provider: "opencode-go",
+      alias: "opencode-go",
+      model: "minimax-m3",
+      sourceFormat: "claude",
+    });
+    expect(runtimeTransport).toBeNull();
+    expect(targetFormat).toBe("openai");
+  });
+
+  it("keeps shared executor URL and authentication behavior for each transport", () => {
+    const executor = new DefaultExecutor("opencode-go");
+    const openaiCredentials = { ...API_KEY, runtimeTransport: resolveTransport("opencode-go", "openai") };
+    const claudeCredentials = { ...API_KEY, runtimeTransport: resolveTransport("opencode-go", "claude") };
+
+    expect(executor.buildUrl("minimax-m3", true, 0, openaiCredentials)).toBe(OPENAI_URL);
+    expect(executor.buildHeaders(openaiCredentials, true)).toMatchObject({ Authorization: "Bearer test-key" });
+    expect(executor.buildUrl("minimax-m3", true, 0, claudeCredentials)).toBe(CLAUDE_URL);
+    expect(executor.buildHeaders(claudeCredentials, true)).toMatchObject({
+      "x-api-key": "test-key",
+      "anthropic-version": expect.any(String),
+    });
+  });
+});
+
+describe("OpenCode Go target format preservation", () => {
+  it("preserves targetFormat: claude for MiniMax and Qwen models", () => {
+    for (const model of CLAUDE_CAPABLE) {
+      expect(getModelTargetFormat("opencode-go", model)).toBe("claude");
+    }
+  });
+
+  it("does not declare Responses for DeepSeek models in this port", () => {
+    for (const model of RESPONSES_CAPABLE) {
+      expect(getModelSupportedFormats("opencode-go", model)).toEqual(["openai"]);
     }
   });
 });

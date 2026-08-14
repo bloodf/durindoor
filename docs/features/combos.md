@@ -51,6 +51,12 @@ Fallback can occur when a model attempt fails because of provider errors, accoun
 
 Fallback should not hide invalid client requests. If the request body is malformed or incompatible with the endpoint itself, fixing the request is better than trying unrelated providers.
 
+## Attachment Capability Routing
+
+With capability-aware routing enabled, DurinDoor chooses a compatible combo member from media on the current user turn. Hermes/Ollama `messages[].images`, Vercel AI SDK `messages[].experimental_attachments` (or `attachments`), direct message image fields, and `data:` image, audio, or PDF URLs are recognized. Attachment MIME comes from `contentType`, `mediaType`, or the data URL.
+
+If the selected model has no vision support, DurinDoor removes image fields and image attachments before translation. Audio, PDF, and non-image attachments remain when their corresponding capabilities are supported.
+
 ## Account Fallback Inside a Combo
 
 A combo member can still use multiple accounts for the same provider.

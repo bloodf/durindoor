@@ -57,11 +57,27 @@ function filterBlocks(blocks, capOf, caps, removed, isLast) {
   return out;
 }
 
-// OpenAI / OpenAI-compatible chat messages[].content[].
+function isImageAttachment(attachment) {
+  const mime = attachment?.contentType || attachment?.mediaType;
+  return mime?.startsWith("image/") || (typeof attachment?.url === "string" && attachment.url.startsWith("data:image/"));
+}
+
+// OpenAI / OpenAI-compatible chat messages[].content[] and attachment fields.
 function stripOpenAI(body, caps) {
   if (!Array.isArray(body.messages)) return;
   const last = body.messages.length - 1;
   body.messages.forEach((msg, i) => {
+    if (caps.vision === false) {
+      delete msg.images;
+      delete msg.image;
+      delete msg.image_url;
+      if (Array.isArray(msg.experimental_attachments)) {
+        msg.experimental_attachments = msg.experimental_attachments.filter((attachment) => !isImageAttachment(attachment));
+      }
+      if (Array.isArray(msg.attachments)) {
+        msg.attachments = msg.attachments.filter((attachment) => !isImageAttachment(attachment));
+      }
+    }
     if (!Array.isArray(msg.content)) return;
     const removed = new Set();
     msg.content = filterBlocks(msg.content, capForOpenAIBlock, caps, removed, i === last);

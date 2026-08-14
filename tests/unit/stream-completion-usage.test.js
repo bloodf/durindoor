@@ -74,6 +74,39 @@ describe("SSE completion accounting", () => {
     expect(onComplete.mock.calls[0][1].estimated).toBeUndefined();
   });
 
+  it("keeps late provider terminal metadata in an incremental OpenAI summary", async () => {
+    const onComplete = vi.fn();
+    const transform = createSSETransformStreamWithLogger(
+      FORMATS.OPENAI, FORMATS.CLAUDE, "openai", null, null, "gpt-test", "connection-1",
+      { messages: [{ role: "user", content: "hello" }] }, onComplete, "sk-test",
+    );
+
+    await pipeText(transform, [
+      `data: ${JSON.stringify({ id: "chatcmpl-1", model: "gpt-test", choices: [{ delta: { reasoning_content: "think " }, finish_reason: null }] })}\n\n`,
+      `data: ${JSON.stringify({ choices: [{ delta: { content: "answer", tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name: "weather", arguments: "{\"city\":" } }] }, finish_reason: null }] })}\n\n`,
+      `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: "\"Paris\"}" } }] }, finish_reason: "tool_calls" }] })}\n\n`,
+      `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 12, completion_tokens: 4, total_tokens: 16 } })}\n\n`,
+      "data: [DONE]\n\n",
+    ]);
+
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(onComplete.mock.calls[0][3]).toMatchObject({
+      providerResponse: {
+        object: "chat.completion",
+        model: "gpt-test",
+        usage: { total_tokens: 16 },
+        choices: [{
+          finish_reason: "tool_calls",
+          message: {
+            content: "answer",
+            reasoning_content: "think",
+            tool_calls: [{ id: "call_1", function: { name: "weather", arguments: "{\"city\":\"Paris\"}" } }],
+          },
+        }],
+      },
+    });
+  });
+
   it("recognizes direct Gemini candidates as an early terminal shape", async () => {
     const onComplete = vi.fn();
     const transform = createPassthroughStreamWithLogger(

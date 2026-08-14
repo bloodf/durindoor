@@ -121,7 +121,12 @@ export function providerAllowsPublicNoAuthFallback(provider) {
     && !NO_AUTH_STORED_DATA_PROVIDERS.has(providerId);
 }
 
-/** Builds public credentials explicitly marked as unauthenticated. */
+/**
+ * Builds a no-auth credential object: the public fallback when `connection`
+ * is omitted, or a stored no-auth-provider connection (e.g. Mimocode) when
+ * one is passed. `authType: "none"` is set on the returned object only —
+ * it is never written back to the connection record or persisted.
+ */
 function buildNoAuthCredential(providerSpecificData = {}, resolvedProxy = {}, connection = null) {
   return {
     id: connection?.id || "noauth",

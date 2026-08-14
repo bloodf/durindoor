@@ -8,6 +8,8 @@ terminal event of that item, matching the pattern the existing OpenAI
 Responses translator already followed. No wire-format, provider, or
 wire-compatibility change.
 
+Perplexity Web now extracts answer-variant text from the workflow-block SSE format, including streamed RFC-6902 chunk patches and terminal materialized blocks. Search and thinking workflow items remain excluded; legacy markdown-block responses are unchanged.
+
 # 3.15.2
 
 Authenticated dashboards reached through a reverse proxy can manage PXPIPE

@@ -223,10 +223,67 @@ function buildQuery(parsed, followUpUuid, tools) {
   return json.length > 96000 ? json.slice(-96000) : json;
 }
 
+function workflowAnswerKey(stepIndex, itemIndex) {
+  return `${stepIndex}:${itemIndex}`;
+}
+
+function isWorkflowAnswer(item) {
+  const textPayload = item?.payload?.text_payload;
+  return (textPayload?.variant ?? item?.variant) === "answer";
+}
+
+function seedWorkflowAnswer(answers, key, item) {
+  const textPayload = item.payload?.text_payload;
+  if (!textPayload) return;
+  if (Array.isArray(textPayload.chunks) && textPayload.chunks.length) answers.set(key, textPayload.chunks);
+  else if (textPayload.text) answers.set(key, [textPayload.text]);
+}
+
+function applyWorkflowBlock(answers, workflow) {
+  for (const [stepIndex, step] of (workflow.steps ?? []).entries()) {
+    for (const [itemIndex, item] of (step.items ?? []).entries()) {
+      if (isWorkflowAnswer(item)) seedWorkflowAnswer(answers, workflowAnswerKey(stepIndex, itemIndex), item);
+    }
+  }
+}
+
+function applyWorkflowDiff(answers, patches) {
+  for (const patch of patches ?? []) {
+    const step = /^\/steps\/(\d+)$/.exec(patch.path ?? "");
+    if (step) {
+      for (const [itemIndex, item] of (patch.value?.items ?? []).entries()) {
+        if (isWorkflowAnswer(item)) seedWorkflowAnswer(answers, workflowAnswerKey(Number(step[1]), itemIndex), item);
+      }
+      continue;
+    }
+    const item = /^\/steps\/(\d+)\/items\/(\d+)$/.exec(patch.path ?? "");
+    if (item && isWorkflowAnswer(patch.value)) {
+      seedWorkflowAnswer(answers, workflowAnswerKey(Number(item[1]), Number(item[2])), patch.value);
+      continue;
+    }
+    const chunk = /^\/steps\/(\d+)\/items\/(\d+)\/payload\/text_payload\/chunks\/(\d+)$/.exec(patch.path ?? "");
+    if (chunk && typeof patch.value === "string") {
+      const track = answers.get(workflowAnswerKey(Number(chunk[1]), Number(chunk[2])));
+      if (track) track[Number(chunk[3])] = patch.value;
+      continue;
+    }
+    const text = /^\/steps\/(\d+)\/items\/(\d+)\/payload\/text_payload\/text$/.exec(patch.path ?? "");
+    if (text && typeof patch.value === "string") {
+      const track = answers.get(workflowAnswerKey(Number(text[1]), Number(text[2])));
+      if (track && !track.join("")) answers.set(workflowAnswerKey(Number(text[1]), Number(text[2])), [patch.value]);
+    }
+  }
+}
+
+function workflowAnswer(answers) {
+  return [...answers.values()].map((chunks) => chunks.join("")).join("");
+}
+
 async function* extractContent(eventStream, signal) {
   let fullAnswer = "";
   let backendUuid = null;
   let seenLen = 0;
+  const workflowAnswers = new Map();
   const seenThinking = new Set();
 
   for await (const event of readPplxSseEvents(eventStream, signal)) {
@@ -269,6 +326,30 @@ async function* extractContent(eventStream, signal) {
             yield { thinking: desc, backendUuid: backendUuid ?? undefined };
           }
         }
+      }
+
+      if (block.workflow_block) {
+        applyWorkflowBlock(workflowAnswers, block.workflow_block);
+        const answer = workflowAnswer(workflowAnswers);
+        if (answer.length > seenLen) {
+          const delta = answer.slice(seenLen);
+          fullAnswer = answer;
+          seenLen = answer.length;
+          yield { delta, answer: fullAnswer, backendUuid: backendUuid ?? undefined };
+        }
+        continue;
+      }
+
+      if (block.diff_block?.field === "workflow_block") {
+        applyWorkflowDiff(workflowAnswers, block.diff_block.patches);
+        const answer = workflowAnswer(workflowAnswers);
+        if (answer.length > seenLen) {
+          const delta = answer.slice(seenLen);
+          fullAnswer = answer;
+          seenLen = answer.length;
+          yield { delta, answer: fullAnswer, backendUuid: backendUuid ?? undefined };
+        }
+        continue;
       }
 
       if (!usage.includes("markdown")) continue;

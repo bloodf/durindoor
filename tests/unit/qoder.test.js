@@ -473,7 +473,8 @@ describe("wrapQoderSSE", () => {
       `data: ${JSON.stringify({ statusCodeValue: 200, body: finish })}`,
       `data: ${JSON.stringify({ statusCodeValue: 200, body: "[DONE]" })}`,
       `data: ${late}`,
-    ].join("\n\n")]), "qoder/auto");
+      "",
+    ].join("\n")]), "qoder/auto");
     const out = await drain(wrapped);
     expect(out).toContain("Qoder upstream stream failed");
     expect(out).not.toContain("late failure");

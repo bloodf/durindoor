@@ -16,6 +16,31 @@ function envelope(statusCodeValue, body) {
   return `data: ${JSON.stringify({ statusCodeValue, body })}\n\n`;
 }
 
+function responseWithReader(chunks, { stall = false } = {}) {
+  const encoder = new TextEncoder();
+  const response = new Response(new ReadableStream({
+    start(controller) {
+      if (!stall) {
+        for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+        controller.close();
+      }
+    },
+  }));
+  return response;
+}
+
+function delayedResponse(chunks, delayMs) {
+  const encoder = new TextEncoder();
+  let index = 0;
+  return new Response(new ReadableStream({
+    async pull(controller) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      if (index < chunks.length) controller.enqueue(encoder.encode(chunks[index++]));
+      else controller.close();
+    },
+  }));
+}
+
 describe("Qoder stream-start billing fallback", () => {
   const { wrapQoderSSE } = qoderExecutorInternals;
 
@@ -49,6 +74,15 @@ describe("Qoder stream-start billing fallback", () => {
     );
   });
 
+  it("uses one absolute deadline when bytes drip before the first frame", async () => {
+    const dripped = delayedResponse(["d", "a", "t", "a", ":"], 10);
+
+    await expect(wrapQoderSSE(dripped, "qoder/auto", { timeoutMs: 25 })).rejects.toThrow(
+      "qoder stream-start timeout",
+    );
+    expect(dripped.body.locked).toBe(false);
+  });
+
   it("replays complete first chunk before continuing normal stream", async () => {
     const first = JSON.stringify({ choices: [{ delta: { content: "first" } }] });
     const finish = JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] });
@@ -60,5 +94,55 @@ describe("Qoder stream-start billing fallback", () => {
 
     expect(wrapped.status).toBe(200);
     await expect(wrapped.text()).resolves.toContain(`data: ${first}\n\n`);
+  });
+});
+
+describe("Qoder billing prefix boundaries", () => {
+  const { wrapQoderSSE, isBillingBlock } = qoderExecutorInternals;
+
+  it("matches only top-level billing fields", () => {
+    expect(isBillingBlock(JSON.stringify({ code: "112" }))).toBe(true);
+    expect(isBillingBlock(JSON.stringify({ pricingUrl: "https://qoder.sh/pricing" }))).toBe(true);
+    expect(isBillingBlock(JSON.stringify({ message: 'ordinary text {"code":"112"}', nested: { pricingUrl: "x" } }))).toBe(false);
+  });
+
+  it("detects a billing envelope split across chunks", async () => {
+    const body = JSON.stringify({ code: "112" });
+    const frame = envelope(403, body);
+    const wrapped = await wrapQoderSSE(responseFromChunks([frame.slice(0, 13), frame.slice(13)]), "qoder/auto");
+    expect(wrapped.status).toBe(403);
+  });
+
+  it("caps inspection but replays bytes past the 64KiB inspect cap", async () => {
+    const inner = JSON.stringify({ choices: [{ delta: { content: "ok" } }] });
+    const marker = JSON.stringify({ choices: [{ delta: { content: "marker-past-cap" } }] });
+    // SSE comment lines (": ...") are valid frames every SSE parser skips.
+    // Padding past 64KiB with these (instead of raw non-SSE bytes) proves the
+    // 64KiB inspect cap doesn't truncate or corrupt what actually gets
+    // replayed downstream, without depending on malformed byte passthrough.
+    const padding = ": pad\n".repeat(Math.ceil((70 * 1024) / 6));
+    const first = `${envelope(200, inner)}${padding}${envelope(200, marker)}`;
+    const wrapped = await wrapQoderSSE(responseFromChunks([first]), "qoder/auto");
+    const output = await wrapped.text();
+    expect(output).toContain(`data: ${inner}\n\n`);
+    expect(output).toContain(`data: ${marker}\n\n`);
+  });
+
+  it("releases upstream reader after a billing cancellation", async () => {
+    const response = responseWithReader([envelope(403, JSON.stringify({ code: "112" }))]);
+    await wrapQoderSSE(response, "qoder/auto");
+    expect(response.body.locked).toBe(false);
+  });
+
+  it("releases upstream reader after normal drain and downstream cancellation", async () => {
+    const normal = responseWithReader([envelope(200, JSON.stringify({ choices: [{ delta: { content: "ok" } }] })), envelope(200, "[DONE]")]);
+    const wrapped = await wrapQoderSSE(normal, "qoder/auto");
+    await wrapped.text();
+    expect(normal.body.locked).toBe(false);
+
+    const cancelled = responseWithReader([envelope(200, JSON.stringify({ choices: [{ delta: { content: "ok" } }] }))]);
+    const cancelledWrapped = await wrapQoderSSE(cancelled, "qoder/auto");
+    await cancelledWrapped.body.cancel("client gone");
+    expect(cancelled.body.locked).toBe(false);
   });
 });

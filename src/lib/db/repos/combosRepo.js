@@ -53,10 +53,17 @@ export async function getComboByName(name) {
 }
 
 // Routing accepts user-entered combo names case-insensitively, but management
-// keeps exact-name semantics for duplicate and policy checks.
+// keeps exact-name semantics for duplicate and policy checks. Exact matches win
+// over case collisions; fallback order is stable across SQLite adapters.
 export async function getComboForModel(name) {
   const db = await getAdapter();
-  const row = db.get(`SELECT * FROM combos WHERE name = ? COLLATE NOCASE`, [name]);
+  let row = db.get(`SELECT * FROM combos WHERE name = ?`, [name]);
+  if (!row) {
+    row = db.get(
+      `SELECT * FROM combos WHERE name = ? COLLATE NOCASE ORDER BY createdAt ASC, id ASC LIMIT 1`,
+      [name],
+    );
+  }
   return rowToCombo(row);
 }
 

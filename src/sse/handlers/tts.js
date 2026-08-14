@@ -3,7 +3,7 @@ import {
   getProviderCredentialsWithQuotaPreflight, markAccountUnavailable,
 } from "../services/auth.js";
 import { getSettings, getApiKeyByKey } from "@/lib/localDb";
-import { getModelInfo, getComboModels } from "../services/model.js";
+import { getModelInfo, getComboModels, getComboCanonicalName } from "../services/model.js";
 import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
 import { handleTtsCore } from "open-sse/handlers/ttsCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
@@ -47,10 +47,10 @@ export async function handleTts(request) {
   if (apiKey && modelStr) {
     const keyData = await getApiKeyByKey(apiKey);
     if (keyData && Array.isArray(keyData.allowedCombos) && keyData.allowedCombos.length > 0) {
-      const comboCheck = await getComboModels(modelStr);
-      if (comboCheck && !keyData.allowedCombos.includes(modelStr)) {
-        log.warn("AUTH", `API key "${keyData.name}" not allowed to access combo "${modelStr}"`);
-        return errorResponse(HTTP_STATUS.FORBIDDEN, `Access denied: combo "${modelStr}" is not allowed for this API key`);
+      const comboName = await getComboCanonicalName(modelStr);
+      if (comboName && !keyData.allowedCombos.includes(comboName)) {
+        log.warn("AUTH", `API key "${keyData.name}" not allowed to access combo "${comboName}"`);
+        return errorResponse(HTTP_STATUS.FORBIDDEN, `Access denied: combo "${comboName}" is not allowed for this API key`);
       }
     }
   }
@@ -64,20 +64,21 @@ export async function handleTts(request) {
   // against the real member list.
   const comboModels = await getComboModels(modelStr, settings.hidePaidModels === true);
   if (comboModels) {
+    const comboName = (await getComboCanonicalName(modelStr)) || modelStr;
     const comboStrategies = settings.comboStrategies || {};
-    const perCombo = comboStrategies[modelStr] || {};
+    const perCombo = comboStrategies[comboName] || {};
     const comboSpecificStrategy = isAutoComboId(modelStr)
       ? (perCombo.strategy ?? perCombo.fallbackStrategy)
       : perCombo.fallbackStrategy;
     const comboStrategy = comboSpecificStrategy || settings.comboStrategy || "fallback";
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
-    log.info("TTS", `Combo "${modelStr}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
+    log.info("TTS", `Combo "${comboName}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
     return handleComboChat({
       body,
       models: comboModels,
       handleSingleModel: (b, m) => handleSingleModelTts(b, m, responseFormat, language, request, apiKey),
       log,
-      comboName: modelStr,
+      comboName,
       comboStrategy,
       comboStickyLimit,
     });

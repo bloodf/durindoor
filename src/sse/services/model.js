@@ -68,6 +68,7 @@ import { isFreeNoAuthProviderDisabled } from "@/sse/services/freeProviderGate.js
 import {
   getModelAliases,
   getComboForModel,
+  getComboByName,
   getProviderNodes,
   getProviderConnections,
   getCustomModels,
@@ -268,10 +269,24 @@ export async function getComboModels(modelStr, hidePaidModels = false) {
   // same-named combo.
   let combo = await getComboForModel(modelStr);
   if (!combo && modelStr.includes("/") && !isCatalogModelPath(modelStr)) {
-    combo = await getComboForModel(modelStr.split("/").pop());
+    combo = await getComboByName(modelStr.split("/").pop());
   }
   if (combo && combo.models && combo.models.length > 0) {
     return filterPaidModels(combo.models, hidePaidModels === true);
   }
   return null;
+}
+
+// Canonical stored combo name for a request string, so ACL checks, per-combo
+// strategy lookups, and rotation/scoring keys use the persisted spelling
+// instead of whatever casing the client sent. Auto-combo ids (#F-2) are
+// virtual — never stored — so they pass through unchanged. Returns null when
+// `modelStr` is not a combo at all.
+export async function getComboCanonicalName(modelStr) {
+  if (isAutoComboId(modelStr)) return modelStr;
+  let combo = await getComboForModel(modelStr);
+  if (!combo && modelStr.includes("/") && !isCatalogModelPath(modelStr)) {
+    combo = await getComboByName(modelStr.split("/").pop());
+  }
+  return combo ? combo.name : null;
 }

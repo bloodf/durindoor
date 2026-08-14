@@ -40,8 +40,9 @@ system reminders remain adjacent to their turn rather than invalidating the
 top-level system prefix.
 
 Combo names now resolve case-insensitively during model routing while retaining
-their stored spelling for downstream selection. Provider and model IDs remain
-case-sensitive.
+their stored spelling for access-control, strategy, and rotation state. Exact
+names win; colliding case variants use a deterministic oldest-record fallback.
+Provider and model IDs remain case-sensitive.
 
 # 3.15.1
 

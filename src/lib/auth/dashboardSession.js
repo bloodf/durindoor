@@ -6,7 +6,18 @@ import crypto from "node:crypto";
 import { DATA_DIR } from "@/lib/dataDir";
 import { getSettings } from "@/lib/localDb";
 
-const DEFAULT_PASSWORD = "123456";
+export const DEFAULT_PASSWORD = "123456";
+
+// Built-in default is "active" whenever the effective password literally
+// resolves to DEFAULT_PASSWORD — a stored hash of it, or an INITIAL_PASSWORD
+// env var set to it, or no password source configured at all.
+export async function isUsingDefaultPassword(settings) {
+  if (settings?.password) {
+    return bcrypt.compare(DEFAULT_PASSWORD, settings.password);
+  }
+  const initialPassword = process.env.INITIAL_PASSWORD;
+  return !initialPassword || initialPassword === DEFAULT_PASSWORD;
+}
 
 function loadJwtSecret() {
   if (process.env.JWT_SECRET) return process.env.JWT_SECRET;

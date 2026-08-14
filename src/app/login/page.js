@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useState, useEffect } from "react";
 import { Card, Button, Input } from "@/shared/components";
 
@@ -10,6 +11,7 @@ export default function LoginPage() {
   const [retryAfter, setRetryAfter] = useState(0);
   const [loading, setLoading] = useState(false);
   const [hasPassword, setHasPassword] = useState(null);
+  const [usingDefaultPassword, setUsingDefaultPassword] = useState(false);
   const [authMode, setAuthMode] = useState("password");
   const [oidcConfigured, setOidcConfigured] = useState(false);
   const [oidcLoginLabel, setOidcLoginLabel] = useState("Sign in with OIDC");
@@ -34,21 +36,20 @@ export default function LoginPage() {
           signal: controller.signal,
         });
         clearTimeout(timeoutId);
+        const data = await res.json();
 
-        if (res.ok) {
-          const data = await res.json();
-          if (data.authenticated === true || data.requireLogin === false) {
-            window.location.assign("/dashboard");
-            return;
-          }
-          setHasPassword(!!data.hasPassword);
-          setAuthMode(data.authMode || "password");
-          setOidcConfigured(data.oidcConfigured === true);
-          setOidcLoginLabel(data.oidcLoginLabel || "Sign in with OIDC");
-        } else {
-          // Safe fallback on non-OK response to avoid infinite loading state.
-          setHasPassword(true);
+        if (data.authenticated === true || data.requireLogin === false) {
+          window.location.assign("/dashboard");
+          return;
         }
+
+        setHasPassword(!!data.hasPassword);
+        setUsingDefaultPassword(
+          data.usingDefaultPassword === true && data.authMode === "password",
+        );
+        setAuthMode(data.authMode || "password");
+        setOidcConfigured(data.oidcConfigured === true);
+        setOidcLoginLabel(data.oidcLoginLabel || "Sign in with OIDC");
       } catch (err) {
         clearTimeout(timeoutId);
         setHasPassword(true);
@@ -139,7 +140,14 @@ export default function LoginPage() {
       <div className="landing-grid absolute inset-0 pointer-events-none" aria-hidden="true" />
       <div className="relative z-10 w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-primary mb-2">DurinDoor</h1>
+          <Image
+            src="/durindoor-wordmark.png"
+            alt="DurinDoor"
+            width={854}
+            height={336}
+            priority
+            className="mx-auto h-auto w-72 max-w-full"
+          />
           <p className="text-text-muted">
             {authMode === "oidc" && oidcConfigured
               ? "Sign in with your OIDC provider to access the dashboard"
@@ -226,9 +234,11 @@ export default function LoginPage() {
                   {retryAfter > 0 ? `Wait ${retryAfter}s` : "Login"}
                 </Button>
 
-                <p className="text-xs text-center text-text-muted mt-2">
-                  Default password is <code className="bg-sidebar px-1 rounded">123456</code>
-                </p>
+                {usingDefaultPassword && (
+                  <p className="text-xs text-center text-text-muted mt-2">
+                    Default password is <code className="bg-sidebar px-1 rounded">123456</code>
+                  </p>
+                )}
                 {hasPassword === false && (
                   <p className="text-xs text-center text-amber-600 dark:text-amber-400">
                     Security risk: no password set. You will be asked to set one when logging in remotely.

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getSettings } from "@/lib/localDb";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
-import { setDashboardAuthCookie } from "@/lib/auth/dashboardSession";
+import { isUsingDefaultPassword, setDashboardAuthCookie } from "@/lib/auth/dashboardSession";
 import { isOidcConfigured } from "@/lib/auth/oidc";
 import { checkLock, recordFail, recordSuccess, getClientIp } from "@/lib/auth/loginLimiter";
 import { isLocalRequest } from "@/dashboardGuard";
@@ -54,14 +54,16 @@ export async function POST(request) {
 
     if (isValid) {
       recordSuccess(ip);
+
+      // Default password still in use on a remote client: require a local
+      // password change without issuing a dashboard session.
+      const mustChangePassword = await isUsingDefaultPassword(settings);
+      if (mustChangePassword && !isLocalRequest(request)) {
+        return NextResponse.json({ success: true, mustChangePassword: true }, { status: 403, headers: NO_STORE_HEADERS });
+      }
+
       const cookieStore = await cookies();
       await setDashboardAuthCookie(cookieStore, request);
-
-      // Default password still in use on a remote client → force a password
-      // change before the dashboard is exposed remotely (keeps local UX intact).
-      const mustChangePassword =
-        !storedHash && !process.env.INITIAL_PASSWORD && !isLocalRequest(request);
-
       return NextResponse.json({ success: true, mustChangePassword }, { headers: NO_STORE_HEADERS });
     }
 

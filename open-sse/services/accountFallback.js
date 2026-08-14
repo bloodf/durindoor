@@ -1,6 +1,7 @@
 import { ERROR_RULES, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS, MAX_RATE_LIMIT_COOLDOWN_MS, REQUEST_REPLAY_BUFFER_ERROR } from "../config/errorConfig.js";
 import { parseRateLimitEvidence } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
+import { getProviderErrorRuleMatch, resolveRuleMatchBody } from "../config/providerErrorRules.js";
 
 /**
  * Identify Envoy retry-buffer overflow responses that are safe to replay on
@@ -35,12 +36,15 @@ export function getQuotaCooldown(backoffLevel = 0) {
  * @param {number} status - HTTP status code
  * @param {string} errorText - Error message text
  * @param {number} backoffLevel - Current backoff level for exponential backoff
+ * @param {string} provider - Optional provider ID for provider-specific rules
+ * @param {Headers|object|null} headers - Optional upstream response headers
+ * @param {unknown} structuredError - Optional parsed upstream error body
  * @returns {{ shouldFallback: boolean, cooldownMs: number, newBackoffLevel?: number, rateLimitEvidence?: object }}
  *   `rateLimitEvidence` is present only on an explicit quota-exhausted 429,
  *   so markAccountUnavailable can persist state:"exhausted" instead of an
  *   ordinary cooldown.
  */
-export function checkFallbackError(status, errorText, backoffLevel = 0) {
+export function checkFallbackError(status, errorText, backoffLevel = 0, provider = null, headers = null, structuredError = null) {
   const normalizedText = errorText
     ? (typeof errorText === "string" ? errorText : JSON.stringify(errorText))
     : "";
@@ -76,6 +80,19 @@ export function checkFallbackError(status, errorText, backoffLevel = 0) {
   // connection or trigger the account-fallback cooldown chain.
   if (lowerError.includes("provider_request_rejected")) {
     return { shouldFallback: false, cooldownMs: 0 };
+  }
+
+  const providerRule = getProviderErrorRuleMatch(
+    provider,
+    status,
+    headers,
+    resolveRuleMatchBody(provider, structuredError, errorText)
+  );
+  if (providerRule?.reason === "quota_exhausted") {
+    return checkFallbackErrorByRules(HTTP_STATUS.TOO_MANY_REQUESTS, lowerError, backoffLevel);
+  }
+  if (providerRule?.cooldownMs) {
+    return { shouldFallback: true, cooldownMs: providerRule.cooldownMs };
   }
 
   // OmniRoute #6731: an apikey-category 429 whose body explicitly reports an
@@ -370,19 +387,28 @@ export function resetAccountState(account) {
     status: "active"
   };
 }
-
 /**
  * Apply error state to account
  * @param {object} account - Account object
  * @param {number} status - HTTP status code
  * @param {string} errorText - Error message
+ * @param {string} provider - Optional provider ID for provider-specific rules
+ * @param {Headers|object|null} headers - Optional upstream response headers
+ * @param {unknown} structuredError - Optional parsed upstream error body
  * @returns {object} Updated account with error state
  */
-export function applyErrorState(account, status, errorText) {
+export function applyErrorState(account, status, errorText, provider = null, headers = null, structuredError = null) {
   if (!account) return account;
 
   const backoffLevel = account.backoffLevel || 0;
-  const { cooldownMs, newBackoffLevel } = checkFallbackError(status, errorText, backoffLevel);
+  const { cooldownMs, newBackoffLevel } = checkFallbackError(
+    status,
+    errorText,
+    backoffLevel,
+    provider,
+    headers,
+    structuredError
+  );
 
   return {
     ...account,

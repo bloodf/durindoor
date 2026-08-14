@@ -12,6 +12,7 @@ import { getModelTargetFormat, getModelStrip, getModelUpstreamId, getCanonicalMo
 import { PROVIDERS } from "../config/providers.js";
 import { createErrorResult, parseUpstreamError, formatProviderError, sanitizeErrorMessage } from "../utils/error.js";
 import { HTTP_STATUS, VALIDATE_OUTBOUND } from "../config/runtimeConfig.js";
+import { applyStatusRestatement } from "../config/upstreamStatusRestatement.js";
 import { handleBypassRequest } from "../utils/bypassHandler.js";
 import { handlePonytailCommands, DEFAULT_PONYTAIL_HELP, resolvePonytailStream } from "../utils/tokenSaverBridge.js";
 import { trackPendingRequest, finishActiveSession, appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
@@ -1051,8 +1052,47 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     return { ...createErrorResult(HTTP_STATUS.BAD_GATEWAY, errMsg), attemptStartedAt: latestProviderAttemptStartedAt };
   }
 
+  const parseAndRestateError = async (response) => {
+    let upstreamError;
+    try {
+      upstreamError = await parseUpstreamError(response, executor, { signal: providerSignal, credentials, proxyOptions });
+    } catch (error) {
+      if (error?.name === "AbortError") throw error;
+      upstreamError = { statusCode: response.status || 502, message: "Upstream provider error", resetsAtMs: null, rateLimitEvidence: null };
+    }
+    const retryAfterMs = Number.isFinite(upstreamError.resetsAtMs)
+      ? Math.max(0, upstreamError.resetsAtMs - Date.now())
+      : null;
+    const restatement = applyStatusRestatement({
+      provider,
+      status: upstreamError.statusCode,
+      message: upstreamError.message,
+      body: upstreamError.errorBody,
+      retryAfterMs,
+    });
+    if (restatement.ruleId) {
+      upstreamError.statusCode = restatement.status;
+      upstreamError.resetsAtMs = Date.now() + restatement.retryAfterMs;
+      log?.info?.("STATUS_RESTATE", `${provider} ${restatement.fromStatus}→${restatement.status} (${restatement.ruleId})`);
+    }
+    return upstreamError;
+  };
+
+  let parsedError = null;
+  if (!providerResponse.ok) {
+    try {
+      parsedError = await parseAndRestateError(providerResponse);
+    } catch (error) {
+      if (error?.name !== "AbortError") throw error;
+      streamController.handleError(error);
+      finishProviderRequest();
+      finishActiveDashboardSession("error");
+      return { ...createErrorResult(499, "Request aborted"), attemptStartedAt: latestProviderAttemptStartedAt };
+    }
+  }
+
   // Handle 401/403 - try token refresh (skip for noAuth providers)
-  if (!executor.noAuth && (providerResponse.status === HTTP_STATUS.UNAUTHORIZED || providerResponse.status === HTTP_STATUS.FORBIDDEN)) {
+  if (!executor.noAuth && (parsedError?.statusCode === HTTP_STATUS.UNAUTHORIZED || parsedError?.statusCode === HTTP_STATUS.FORBIDDEN)) {
     try {
       await settleProviderAttemptDispatch(providerResponse, { success: false, reason: "fallback" });
       // Some custom executors wrap the mapped transport response. Release any
@@ -1084,6 +1124,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
           providerHeaders = retryResult.headers;
           finalBody = retryResult.transformedBody;
           terminalProvenance = retryResult.terminalProvenance || null;
+          if (!providerResponse.ok) parsedError = await parseAndRestateError(providerResponse);
         } catch (error) {
           if (isQuotaDispatchUnavailable(error)) {
             finishProviderRequest();
@@ -1112,19 +1153,6 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
 
   // Provider returned error
   if (!providerResponse.ok) {
-    let parsedError;
-    try {
-      parsedError = await parseUpstreamError(providerResponse, executor, { signal: providerSignal, credentials, proxyOptions });
-    } catch (error) {
-      if (error?.name === "AbortError") {
-        streamController.handleError(error);
-        finishProviderRequest();
-        finishActiveDashboardSession("error");
-        return { ...createErrorResult(499, "Request aborted"), attemptStartedAt: latestProviderAttemptStartedAt };
-      }
-      parsedError = { statusCode: providerResponse.status || 502, message: "Upstream provider error", resetsAtMs: null, rateLimitEvidence: null };
-    }
-
     // One-shot Anthropic thinking-signature recovery (OmniRoute #7906): on the
     // exact `400 Invalid signature in thinking block`, retry ONCE with historical
     // thinking omitted (active tool-use cycle preserved) before any cooldown/
@@ -1146,11 +1174,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
           if (providerResponse.ok) {
             log?.info?.("THINKING_SIGNATURE", `Recovered ${provider}/${cleanModel} after one historical-thinking retry`);
           } else {
-            try {
-              parsedError = await parseUpstreamError(providerResponse, executor, { signal: providerSignal, credentials, proxyOptions });
-            } catch {
-              parsedError = { statusCode: providerResponse.status || 502, message: "Upstream provider error", resetsAtMs: null, rateLimitEvidence: null };
-            }
+            parsedError = await parseAndRestateError(providerResponse);
           }
         } catch (error) {
           if (error?.name === "AbortError") {

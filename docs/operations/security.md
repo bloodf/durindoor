@@ -97,6 +97,8 @@ Native streaming terminals are validated before runtime health can clear. SSE ev
 
 Request abort is checked before model/auth/database work, before selection, before dispatch, before fallback, during retry delays, during successful/error body consumption, and during shared refresh waits. Cloud Code project discovery is subscriber-aware: the last cancelled subscriber aborts its fetch/onboarding work, an aborted entry cannot absorb a new request, and credential invalidation aborts and evicts every pending discovery for that connection so an old token cannot repopulate the cache. Once a provider may have rotated a one-time OAuth token, its shared credential transaction may still finish for account safety, but the abandoned request performs no later provider dispatch or quota/health write.
 
+AgentRouter can report temporary user-quota exhaustion as HTTP 400 or 403 with the provider-specific `额度不足` marker. DurinDoor restates those responses to retryable 429 before fallback classification, preserving an upstream retry deadline when present and otherwise applying a 60-second retry. Model-access denials remain 403 and keep their separate cooldown behavior.
+
 The public provider-health endpoint keeps transport reachability separate from quota eligibility. Its quota decoration is limited to a boolean decision plus fixed reason/freshness values. Quota amounts, exact resource identities, source IDs, account scope, and reset/cooldown timestamps require an authenticated management surface planned for the management batch and are not added to this endpoint.
 
 ### OAuth routing and callback state

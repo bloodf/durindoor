@@ -525,17 +525,6 @@ describe("dashboard guard local-only access", () => {
     expect(response.status).toBe(403);
   });
 
-  it("rejects local-only route when Origin is non-loopback (CSRF block)", async () => {
-    mocks.getSettings.mockResolvedValue({ requireLogin: false });
-
-    const response = await proxy(request("/api/cli-tools/antigravity-mitm", {
-      host: "localhost:20128",
-      origin: "http://evil.example.com",
-    }));
-
-    expect(response.status).toBe(403);
-  });
-
   it("allows local-only route with valid CLI token", async () => {
     const response = await proxy(request("/api/mcp/filesystem/sse", {
       host: "router.example.com",

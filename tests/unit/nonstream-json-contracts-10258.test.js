@@ -38,6 +38,7 @@ function options(providerResponse, provider = "galadriel") {
 
 describe("handleNonStreamingResponse JSON contracts", () => {
   it.each([
+    ["null", "null", "galadriel"],
     ["primitive", "true", "galadriel"],
     ["array", "[]", "galadriel"],
     ["ClinePass envelope array", '{"success":true,"data":[]}', "clinepass"],
@@ -48,6 +49,23 @@ describe("handleNonStreamingResponse JSON contracts", () => {
       success: false,
       status: 502,
       error: `Invalid JSON response from ${provider}`,
+    });
+  });
+
+  it("continues valid JSON records through the production response path", async () => {
+    const result = await handleNonStreamingResponse(options(makeProviderResponse(JSON.stringify({
+      id: "chatcmpl-valid",
+      object: "chat.completion",
+      created: 123,
+      model: "galadriel-latest",
+      choices: [{ index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" }],
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+    }))));
+
+    expect(result.success).toBe(true);
+    await expect(result.response.json()).resolves.toMatchObject({
+      id: "chatcmpl-valid",
+      choices: [{ message: { content: "ok" }, finish_reason: "stop" }],
     });
   });
 });

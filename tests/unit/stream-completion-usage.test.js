@@ -142,4 +142,74 @@ describe("SSE completion accounting", () => {
     expect(text).toBe("data: [DONE]\n\n");
     expect(text.match(/data: \[DONE\]/g)).toHaveLength(1);
   });
+
+  it("builds an OpenAI Responses summary from late response events", async () => {
+    const onComplete = vi.fn();
+    const transform = createSSETransformStreamWithLogger(
+      FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI_RESPONSES, "openai", null, null, "gpt-test", "connection-1",
+      { input: "hello" }, onComplete, "sk-test",
+    );
+
+    await pipeText(transform, [
+      `event: response.output_text.delta\ndata: ${JSON.stringify({ type: "response.output_text.delta", delta: "late answer" })}\n\n`,
+      `event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response: { id: "resp_1", model: "gpt-test", status: "completed", output: [], usage: { input_tokens: 3, output_tokens: 2 } } })}\n\n`,
+      "data: [DONE]\n\n",
+    ]);
+
+    expect(onComplete.mock.calls[0][3]).toMatchObject({
+      providerResponse: {
+        id: "resp_1",
+        object: "response",
+        status: "completed",
+        output: [{ content: [{ type: "output_text", text: "late answer" }] }],
+        usage: { input_tokens: 3, output_tokens: 2 },
+      },
+    });
+  });
+
+  it("builds a Claude summary including delayed tool input and usage", async () => {
+    const onComplete = vi.fn();
+    const transform = createPassthroughStreamWithLogger(
+      "anthropic", null, null, "claude-test", "connection-1", {}, onComplete, null, FORMATS.CLAUDE,
+    );
+
+    await pipeText(transform, [
+      `event: message_start\ndata: ${JSON.stringify({ type: "message_start", message: { id: "msg_1", model: "claude-test", role: "assistant", usage: { input_tokens: 5 } } })}\n\n`,
+      `event: content_block_start\ndata: ${JSON.stringify({ type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "tool_1", name: "weather", input: {} } })}\n\n`,
+      `event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: "{\"city\":\"Paris\"}" } })}\n\n`,
+      `event: message_delta\ndata: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: 4 } })}\n\n`,
+      `event: message_stop\ndata: ${JSON.stringify({ type: "message_stop" })}\n\n`,
+    ]);
+
+    expect(onComplete.mock.calls[0][3]).toMatchObject({
+      providerResponse: {
+        id: "msg_1",
+        type: "message",
+        model: "claude-test",
+        stop_reason: "tool_use",
+        content: [{ type: "tool_use", id: "tool_1", name: "weather", input: { city: "Paris" } }],
+        usage: { input_tokens: 5, output_tokens: 4 },
+      },
+    });
+  });
+
+  it("builds a Gemini summary from late terminal candidates and usage metadata", async () => {
+    const onComplete = vi.fn();
+    const transform = createPassthroughStreamWithLogger(
+      "gemini", null, null, "gemini-test", "connection-1", {}, onComplete, null, FORMATS.GEMINI,
+    );
+
+    await pipeText(transform, [
+      `data: ${JSON.stringify({ modelVersion: "gemini-test", candidates: [{ content: { role: "model", parts: [{ text: "late " }] } }] })}\n\n`,
+      `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: "answer" }] }, finishReason: "STOP" }], usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 2 } })}\n\n`,
+    ]);
+
+    expect(onComplete.mock.calls[0][3]).toMatchObject({
+      providerResponse: {
+        modelVersion: "gemini-test",
+        candidates: [{ finishReason: "STOP", content: { role: "model", parts: [{ text: "late answer" }] } }],
+        usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 2 },
+      },
+    });
+  });
 });

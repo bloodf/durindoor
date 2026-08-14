@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import PropTypes from "prop-types";
-import { Button, Modal } from "@/shared/components";
+import { Button, Modal, Select } from "@/shared/components";
 import { translate } from "@/i18n/runtime";
 
 const PLACEHOLDER = `[
@@ -25,6 +25,7 @@ function normalizeToArray(parsed) {
 
 export default function BulkImportCodexModal({ isOpen, onClose, onSuccess }) {
   const [jsonText, setJsonText] = useState("");
+  const [codexFingerprintMode, setCodexFingerprintMode] = useState("session");
   const [submitting, setSubmitting] = useState(false);
   const [parseError, setParseError] = useState("");
   const [result, setResult] = useState(null);
@@ -32,6 +33,7 @@ export default function BulkImportCodexModal({ isOpen, onClose, onSuccess }) {
   const handleClose = () => {
     if (submitting) return;
     setJsonText("");
+    setCodexFingerprintMode("session");
     setParseError("");
     setResult(null);
     onClose();
@@ -63,7 +65,7 @@ export default function BulkImportCodexModal({ isOpen, onClose, onSuccess }) {
       const res = await fetch("/api/oauth/codex/bulk-import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accounts }),
+        body: JSON.stringify({ accounts, codexFingerprintMode }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -91,6 +93,18 @@ export default function BulkImportCodexModal({ isOpen, onClose, onSuccess }) {
             "Paste an array of codex account JSON objects. Each must include accessToken (and ideally refreshToken, idToken)."
           )}
         </p>
+        <Select
+          label={translate("OAuth fingerprint mode")}
+          value={codexFingerprintMode}
+          onChange={(event) => setCodexFingerprintMode(event.target.value)}
+          options={[
+            { value: "off", label: translate("Off — preserve client identity") },
+            { value: "device", label: translate("Device — stable installation") },
+            { value: "session", label: translate("Session — stable account session (recommended)") },
+            { value: "full", label: translate("Full — stable account thread") },
+          ]}
+          disabled={submitting}
+        />
 
         <textarea
           className="w-full rounded border border-accent/30 bg-sidebar p-2 text-sm font-mono resize-y min-h-[240px] focus:outline-none focus:ring-1 focus:ring-primary"

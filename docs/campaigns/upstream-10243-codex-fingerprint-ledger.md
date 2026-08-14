@@ -11,8 +11,15 @@
 - Kept existing ChatGPT account binding and local responses-lite request handling.
 - Excluded unrelated upstream dependency, `.gitignore`, and quality-baseline changes.
 
+- Persist only the validated `codexFingerprintMode`; strip request-scoped identity snapshots on every provider save path and again when building request-local credentials.
+- For `session` and `full`, replace caller identity carriers in headers and nested `client_metadata` before writing the generated account identity. Preserve upstream `device` metadata merge behavior.
+- Bound the selected mode to OAuth flows, and applied it to generic OAuth, access-token import, and Codex bulk-import creation paths. Removed unreachable Codex API-key UI.
+- Client connection payloads expose only a validated durable mode; transient identity data remains server-only.
+- Added focused unit tests for persisted-transient scrub, durable mode survival, request-boundary carrier replacement, and `device` metadata merge before the production edit.
+
 ## Verification
 
-- Red before production changes: `tests/unit/codex-identity.test.js` committed as `5fb8b6f9c`.
+- Red before production changes: focused failing tests landed ahead of implementation in `702452dcb test(codex): reject persisted transient identity` and `723608756 test(codex): cover durable fingerprint metadata`.
+- Production, UI, routing, normalizer, and sanitizer changes are uncommitted on branch `port/upstream-20260814-a03` awaiting orchestrator validation.
 - Focused command for orchestrator: `tests/node_modules/.bin/vitest run --root . --config tests/vitest.config.js tests/unit/codex-identity.test.js tests/unit/codex-fingerprint-execute.test.js`.
 - This worktree did not run validation by campaign contract.

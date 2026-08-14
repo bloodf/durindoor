@@ -133,6 +133,12 @@ export async function exchangeAndSaveAuthorizationCode(provider, code, state, fl
     upstreamError.code = "OAUTH_UPSTREAM_FAILURE";
     throw upstreamError;
   }
+  if (provider === "codex" && payload.codexFingerprintMode) {
+    tokenData.providerSpecificData = {
+      ...tokenData.providerSpecificData,
+      codexFingerprintMode: payload.codexFingerprintMode,
+    };
+  }
   const connection = await saveOAuthConnection(
     provider,
     tokenData,

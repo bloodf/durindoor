@@ -145,9 +145,22 @@ const CODEX_IDENTITY_HEADER_NAMES = [
   "thread_id",
   "x-client-request-id",
   "x-codex-installation-id",
+  "x-codex-parent-thread-id",
+  "x-codex-turn-state",
   "x-codex-window-id",
   "x-codex-turn-metadata",
 ];
+
+function removeCodexIdentityCarriers(target) {
+  for (const key of Object.keys(target)) {
+    if (CODEX_IDENTITY_HEADER_NAMES.includes(key.toLowerCase())) delete target[key];
+  }
+}
+
+function withoutTransientCodexIdentity(providerSpecificData) {
+  const { codexClientIdentity: _identity, codexOriginalIdentityHeaders: _original, ...rest } = providerSpecificData || {};
+  return rest;
+}
 
 /** Preserves caller-provided Codex identity only when OAuth convergence is disabled. */
 export function resolveCodexOriginalIdentityHeaders({ credentials, clientHeaders } = {}) {
@@ -219,20 +232,23 @@ export function resolveCodexFingerprintIdentity({ credentials, clientHeaders, re
 
 /** Merges resolved or original client identity into request-local credentials. */
 export function withCodexFingerprintCredentials(credentials, clientHeaders, requestEndpointPath) {
-  const requestCredentials = requestEndpointPath
-    ? { ...credentials, requestEndpointPath }
-    : credentials;
+  const providerSpecificData = withoutTransientCodexIdentity(credentials.providerSpecificData);
+  const requestCredentials = {
+    ...credentials,
+    providerSpecificData,
+    ...(requestEndpointPath ? { requestEndpointPath } : {}),
+  };
   const identity = resolveCodexFingerprintIdentity({
     credentials: requestCredentials,
     clientHeaders,
     requestEndpointPath,
   });
   const original = resolveCodexOriginalIdentityHeaders({ credentials: requestCredentials, clientHeaders });
-  if (!identity && !original) return credentials;
+  if (!identity && !original) return requestCredentials;
   return {
-    ...credentials,
+    ...requestCredentials,
     providerSpecificData: {
-      ...(credentials.providerSpecificData || {}),
+      ...providerSpecificData,
       ...(identity ? { codexClientIdentity: identity } : {}),
       ...(original ? { codexOriginalIdentityHeaders: original } : {}),
     },
@@ -242,6 +258,7 @@ export function withCodexFingerprintCredentials(credentials, clientHeaders, requ
 /** Applies a resolved identity onto outbound Codex request headers. */
 export function applyCodexClientIdentityHeaders(headers, identity) {
   if (!identity) return headers;
+  if (identity.mode !== "device") removeCodexIdentityCarriers(headers);
   headers["x-codex-installation-id"] = identity.installationId;
   if (identity.mode === "device") {
     if (headers["x-codex-turn-metadata"] !== undefined) {
@@ -254,7 +271,7 @@ export function applyCodexClientIdentityHeaders(headers, identity) {
   headers["thread-id"] = identity.threadId || identity.sessionId;
   headers["x-client-request-id"] = identity.threadId || identity.sessionId;
   headers["x-codex-window-id"] = identity.windowId;
-  headers["x-codex-turn-metadata"] = mergeTurnMetadata(headers["x-codex-turn-metadata"], identity, true);
+  headers["x-codex-turn-metadata"] = mergeTurnMetadata(undefined, identity, true);
   return headers;
 }
 
@@ -265,19 +282,17 @@ export function applyCodexClientMetadata(body, identity) {
     body.client_metadata && typeof body.client_metadata === "object" && !Array.isArray(body.client_metadata)
       ? { ...body.client_metadata }
       : {};
+  if (identity.mode !== "device") removeCodexIdentityCarriers(existing);
   existing["x-codex-installation-id"] = identity.installationId;
-  if (identity.mode !== "device") {
+  if (identity.mode === "device") {
+    if (existing["x-codex-turn-metadata"] !== undefined) {
+      existing["x-codex-turn-metadata"] = mergeTurnMetadata(existing["x-codex-turn-metadata"], identity, false);
+    }
+  } else {
     existing.session_id = identity.sessionId;
     existing.thread_id = identity.threadId || identity.sessionId;
     existing.turn_id = identity.turnId;
     existing["x-codex-window-id"] = identity.windowId;
-  }
-  if (existing["x-codex-turn-metadata"] !== undefined) {
-    existing["x-codex-turn-metadata"] = mergeTurnMetadata(
-      existing["x-codex-turn-metadata"],
-      identity,
-      identity.mode !== "device",
-    );
   }
   body.client_metadata = existing;
   return body;

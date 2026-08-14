@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
 import { extractCodexAccountInfo } from "@/lib/oauth/providers";
+import { CODEX_FINGERPRINT_MODES } from "open-sse/config/codexIdentity.js";
 
 /**
  * POST /api/oauth/codex/import-token
@@ -11,7 +12,7 @@ import { extractCodexAccountInfo } from "@/lib/oauth/providers";
  */
 export async function POST(request) {
   try {
-    const { accessToken, name } = await request.json();
+    const { accessToken, name, codexFingerprintMode } = await request.json();
 
     if (!accessToken || typeof accessToken !== "string") {
       return NextResponse.json(
@@ -25,6 +26,11 @@ export async function POST(request) {
     // Extract account info from the JWT (email, workspace, plan)
     let email = null;
     let providerSpecificData = { authMethod: "access_token" };
+    if (CODEX_FINGERPRINT_MODES.includes(codexFingerprintMode)) {
+      providerSpecificData.codexFingerprintMode = codexFingerprintMode;
+    } else {
+      providerSpecificData.codexFingerprintMode = "session";
+    }
 
     // Try decoding as JWT to extract email + workspace
     try {

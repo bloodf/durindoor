@@ -27,7 +27,9 @@ export function isResponseLike(value) {
   if (value instanceof Response) return true;
   return (
     typeof value.status === "number" &&
+    typeof value.ok === "boolean" &&
     typeof value.headers?.get === "function" &&
+    typeof value.text === "function" &&
     "body" in value
   );
 }

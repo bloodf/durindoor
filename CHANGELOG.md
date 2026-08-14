@@ -44,6 +44,10 @@ cap bypass the scan and use a raw `length/4` heuristic, so hostile
 multi-MB payloads cannot drive linear CPU work.
 
 `estimateCompressionTokens` is the only token estimator in the fork; non-image data URIs (e.g. `data:audio/mpeg;base64,...`), malformed or truncated image URIs, and plain text are unaffected.
+
+# 3.15.3
+
+Remote dashboard login now refuses to issue a session while the built-in `123456` password is active, and dashboard request-detail responses redact captured request and response bodies. The login screen uses the DurinDoor wordmark and shows the default-password hint only when the effective password is literally that built-in value.
 # 3.15.2
 
 Authenticated dashboards reached through a reverse proxy can manage PXPIPE

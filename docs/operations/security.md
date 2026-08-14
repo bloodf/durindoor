@@ -19,6 +19,8 @@ Before exposing DurinDoor outside localhost:
 
 The dashboard can create API keys, add upstream provider credentials, configure tunnels, and inspect usage. Do not expose it publicly with only the default password.
 
+Remote login with the built-in `123456` password is refused before a dashboard session cookie is issued. Set `INITIAL_PASSWORD` or a stored dashboard password before any remote access. The login screen surfaces the default-password hint only when `settings.password || INITIAL_PASSWORD || 123456` resolves to the literal built-in password, so a stored custom password or OIDC mode hides it.
+
 Recommended controls:
 
 - HTTPS only for remote access.

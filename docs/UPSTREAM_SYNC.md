@@ -1,15 +1,15 @@
 # Upstream Sync Watch
 
-Last reviewed sync window: **2026-08-04 through 2026-08-09**.
+Last reviewed sync window: **2026-08-14**.
 
 | Source | Reviewed head |
 | --- | --- |
-| `decolua/9router` | `15223724c` |
-| `diegosouzapw/OmniRoute` | `918fba5e3` |
+| `decolua/9router` | `699edac3273e13d4744bc46f6082618f08560702` |
+| `diegosouzapw/OmniRoute` | `abd4df63dc25479853d0b7410f59d4c1b5816ccc` |
 
-Use these heads as the lower-bound anchors for the next sync review. Per-commit
-verdicts for this window live in
-[`docs/campaigns/upstream-omniroute-2026-08-09-ledger.md`](campaigns/upstream-omniroute-2026-08-09-ledger.md).
+Use these heads as the lower-bound anchors for the next sync review. Complete
+per-item dispositions for this window live in
+[`docs/campaigns/upstream-omniroute-2026-08-14-audit.md`](campaigns/upstream-omniroute-2026-08-14-audit.md).
 
 ## Open upstream pull requests
 

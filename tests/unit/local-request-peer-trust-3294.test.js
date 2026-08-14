@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   validateApiKey: vi.fn(),
   getConsistentMachineId: vi.fn(),
   verifyDashboardAuthToken: vi.fn(),
+  hasTrustedPeerHeaders: vi.fn(),
 }));
 
 vi.mock("next/server", () => ({
@@ -20,6 +21,12 @@ vi.mock("next/server", () => ({
 vi.mock("@/lib/localDb", () => ({ getSettings: mocks.getSettings, validateApiKey: mocks.validateApiKey }));
 vi.mock("@/shared/utils/machineId", () => ({ getConsistentMachineId: mocks.getConsistentMachineId }));
 vi.mock("@/lib/auth/dashboardSession", () => ({ verifyDashboardAuthToken: mocks.verifyDashboardAuthToken }));
+vi.mock("@/lib/auth/trustedPeer", () => ({ hasTrustedPeerHeaders: mocks.hasTrustedPeerHeaders }));
+vi.mock("@/mitm/controlProof", () => ({
+  CONTROL_PORT_HEADER: "x-9r-owner-port",
+  CONTROL_PROOF_HEADER: "x-9r-owner-proof",
+  verifyControlProof: vi.fn(),
+}));
 
 const { proxy } = await import("../../src/dashboardGuard.js");
 const { getClientIp } = await import("../../src/lib/auth/loginLimiter.js");
@@ -44,6 +51,9 @@ describe("peer header trust", () => {
     mocks.validateApiKey.mockResolvedValue(false);
     mocks.getConsistentMachineId.mockResolvedValue("cli-token");
     mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+    mocks.hasTrustedPeerHeaders.mockImplementation((request) =>
+      request.headers.get("x-9r-peer-token") === PEER_TOKEN,
+    );
   });
 
   afterEach(() => {
@@ -79,7 +89,7 @@ describe("peer header trust", () => {
     ["https://localhost:20128", "http://localhost:20128"],
     ["http://localhost:20129", "http://localhost:20128"],
     ["http://localhost:20128", "http://localhost:20128.evil.example"],
-  ])("rejects trusted peer with mismatched origin %s on host %s", async (origin, host) => {
+  ])("accepts trusted peer regardless of browser origin %s on host %s", async (origin, host) => {
     const response = await proxy(request("/api/v1/models", {
       host,
       origin,
@@ -87,22 +97,20 @@ describe("peer header trust", () => {
       "x-9r-peer-token": PEER_TOKEN,
     }));
 
-    expect(response.status).toBe(401);
-    expect(response.body.error).toBe("API key required for remote API access");
+    expect(response).toBe(mocks.nextResponse);
   });
-  it("rejects trusted loopback peer without an origin", async () => {
+  it("accepts a trusted loopback peer without an origin", async () => {
     const response = await proxy(request("/api/v1/models", {
       host: "localhost:20128",
       "x-9r-real-ip": "127.0.0.1",
       "x-9r-peer-token": PEER_TOKEN,
     }));
 
-    expect(response.status).toBe(401);
-    expect(response.body.error).toBe("API key required for remote API access");
+    expect(response).toBe(mocks.nextResponse);
   });
 
   it.each(["::ffff:127.0.0.1", "::1", "[::1]", "127.0.0.1", "::FFFF:127.0.0.1"])(
-    "accepts trusted loopback peer %s with matching origin",
+    "accepts trusted loopback peer %s",
     async (peerIp) => {
       const response = await proxy(request("/api/v1/models", {
         host: "localhost:20128",

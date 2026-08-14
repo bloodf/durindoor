@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   validateApiKey: vi.fn(),
   getConsistentMachineId: vi.fn(),
   verifyDashboardAuthToken: vi.fn(),
+  hasTrustedPeerHeaders: vi.fn(),
 }));
 
 vi.mock("next/server", () => {
@@ -41,6 +42,10 @@ vi.mock("@/shared/utils/machineId", () => ({
 vi.mock("@/lib/auth/dashboardSession", () => ({
   verifyDashboardAuthToken: mocks.verifyDashboardAuthToken,
 }));
+vi.mock("@/lib/auth/trustedPeer", () => ({
+  hasTrustedPeerHeaders: mocks.hasTrustedPeerHeaders,
+}));
+vi.mock("@/mitm/controlProof", async () => await import("../../src/mitm/controlProof.js"));
 
 const { proxy, __test__ } = await import("../../src/dashboardGuard.js");
 
@@ -62,6 +67,7 @@ describe("dashboard guard public LLM API access", () => {
     mocks.validateApiKey.mockResolvedValue(false);
     mocks.getConsistentMachineId.mockResolvedValue("cli-token");
     mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+    mocks.hasTrustedPeerHeaders.mockReturnValue(true);
   });
 
   it("allows loopback public LLM API without API key", async () => {

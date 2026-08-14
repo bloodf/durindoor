@@ -142,13 +142,10 @@ function hasExactRequestOrigin(request) {
   }
 }
 
-// Backwards-compatible entry: was `isLocalRequest`. Now strictly requires both the
-// wrapper proof and an exact Origin match. Local-only routes must call this, not
-// infer from raw IPs.
+// Wrapper proof plus the wrapper-stamped loopback identity distinguish local peers.
+// Origin is browser metadata; enforce it only for browser MITM mutations below.
 export function isLocalRequest(request) {
-  if (!isLoopbackPeer(request)) return false;
-  if (!hasExactRequestOrigin(request)) return false;
-  return true;
+  return isLoopbackPeer(request);
 }
 
 function isPublicLlmApi(pathname) {

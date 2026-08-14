@@ -112,6 +112,24 @@ describe("normalizeClaudePassthrough default behavior (foldSystemTurns off)", ()
       { role: "assistant", content: [{ type: "text", text: "answer" }] },
     ]);
   });
+
+  it("preserves a string body.system when hoisting mid-conversation system messages", () => {
+    const body = {
+      system: "primary system prompt",
+      messages: [
+        { role: "user", content: "hi" },
+        { role: "system", content: "be brief" },
+      ],
+    };
+
+    normalizeClaudePassthrough(body, "", "claude", null);
+
+    expect(body.system).toEqual([
+      { type: "text", text: "primary system prompt" },
+      { type: "text", text: "be brief" },
+    ]);
+    expect(body.messages).toEqual([{ role: "user", content: "hi" }]);
+  });
 });
 
 describe("normalizeClaudePassthrough foldSystemTurns: true (native chatCore passthrough)", () => {

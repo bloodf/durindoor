@@ -70,14 +70,25 @@ describe("validateExecutorResult", () => {
     expect(() => validateExecutorResult(undefined)).toThrowError(TypeError);
   });
 
-  it("accepts a response-like object that quacks like a Response (status + headers + body)", async () => {
+  it("accepts a complete response-like object from another realm", async () => {
     const { validateExecutorResult } = await load();
     const responseLike = {
       status: 200,
+      ok: true,
       headers: new Headers({ "content-type": "text/plain" }),
       body: null,
+      text: async () => "ok",
+      json: async () => ({ message: "ok" }),
     };
     const out = validateExecutorResult(canonical({ response: responseLike }));
     expect(out.response).toBe(responseLike);
+  });
+
+  it("rejects partial response-like bags chatCore cannot consume", async () => {
+    const { validateExecutorResult } = await load();
+    const partial = { status: 200, headers: new Headers(), body: null };
+    expect(() => validateExecutorResult(canonical({ response: partial }))).toThrowError(
+      "Executor result must contain a Response",
+    );
   });
 });

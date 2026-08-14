@@ -121,6 +121,7 @@ export function providerAllowsPublicNoAuthFallback(provider) {
     && !NO_AUTH_STORED_DATA_PROVIDERS.has(providerId);
 }
 
+/** Builds public credentials explicitly marked as unauthenticated. */
 function buildNoAuthCredential(providerSpecificData = {}, resolvedProxy = {}, connection = null) {
   return {
     id: connection?.id || "noauth",
@@ -138,6 +139,7 @@ function buildNoAuthCredential(providerSpecificData = {}, resolvedProxy = {}, co
       disableEnvProxy: resolvedProxy.disableEnvProxy === true,
     },
     connectionId: connection?.id || "noauth",
+    authType: "none",
     _connection: connection || null,
   };
 }

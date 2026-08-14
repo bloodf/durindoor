@@ -156,7 +156,13 @@ describe("chatCore quota reservation boundary", () => {
   });
 
   it("normalizes a bare executor Response before chatCore consumes it", async () => {
-    executeMock.mockResolvedValue(new Response(JSON.stringify({ message: { content: "ok" } }), {
+    const completion = {
+      choices: [{
+        message: { role: "assistant", content: "ok" },
+        finish_reason: "stop",
+      }],
+    };
+    executeMock.mockResolvedValue(new Response(JSON.stringify(completion), {
       status: 200,
       headers: { "content-type": "application/json" },
     }));
@@ -164,7 +170,7 @@ describe("chatCore quota reservation boundary", () => {
     const result = await handleChatCore(args(reservation()));
 
     expect(result.success).toBe(true);
-    expect(await result.response.json()).toEqual({ message: { content: "ok" } });
+    expect(await result.response.json()).toEqual(completion);
   });
 
   it("acquires after local validation, marks dispatch, and commits a coherent JSON terminal", async () => {

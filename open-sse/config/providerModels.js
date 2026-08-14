@@ -1,7 +1,7 @@
 import REGISTRY from "../providers/registry/index.js";
 // PROVIDER_MODELS now built from providers/registry (transport + models co-located)
 import { PROVIDER_MODELS } from "../providers/index.js";
-import { modelQuotaFamily, modelStrip, modelTargetFormat, normalizeModelId } from "../providers/models/schema.js";
+import { modelQuotaFamily, modelStrip, modelTargetFormat, modelSupportedFormats, normalizeModelId } from "../providers/models/schema.js";
 import { CODEX_REVIEW_SUFFIX } from "../providers/models/helpers.js";
 import { parseSuffix } from "../translator/concerns/thinkingSuffix.js";
 
@@ -70,6 +70,14 @@ export function getModelTargetFormat(aliasOrId, modelId) {
   // their native translators instead of the provider default Chat Completions route.
   if (aliasOrId === "opencode-zen") return getOpenCodeZenPassthroughTargetFormat(modelId);
   return null;
+}
+
+// Declared upstream formats for a model. Null keeps providers with no per-model
+// endpoint restriction on their existing transport-selection path.
+export function getModelSupportedFormats(aliasOrId, modelId) {
+  const models = PROVIDER_MODELS[aliasOrId];
+  if (!models) return null;
+  return modelSupportedFormats(findModel(models, modelId, aliasOrId));
 }
 
 export function getModelType(aliasOrId, modelId) {

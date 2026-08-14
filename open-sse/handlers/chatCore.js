@@ -8,7 +8,7 @@ import { COLORS } from "../utils/stream.js";
 import { createStreamController } from "../utils/streamHandler.js";
 import { classifyQuotaTerminalReason } from "../utils/quotaTerminalReason.js";
 import { createRequestLogger } from "../utils/requestLogger.js";
-import { getModelTargetFormat, getModelStrip, getModelUpstreamId, getCanonicalModelId, getModelType, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
+import { getModelTargetFormat, getModelSupportedFormats, getModelStrip, getModelUpstreamId, getCanonicalModelId, getModelType, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
 import { PROVIDERS } from "../config/providers.js";
 import { createErrorResult, parseUpstreamError, formatProviderError, sanitizeErrorMessage } from "../utils/error.js";
 import { HTTP_STATUS, VALIDATE_OUTBOUND } from "../config/runtimeConfig.js";
@@ -308,9 +308,10 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   const modelThinkingIntent = parsedModel.override;
   body = { ...body, model: cleanModel };
   const modelTargetFormat = getModelTargetFormat(alias, cleanModel);
-  // Multi-endpoint providers: model-required formats override client format.
-  // GPT-5.6 tool calls with reasoning must use OpenAI Responses, even when the
-  // client sends Chat Completions format.
+  const modelSupportedFormats = getModelSupportedFormats(alias, cleanModel);
+  // Multi-endpoint providers may expose different formats per model. Use a
+  // source-format transport only when that model declares it; otherwise keep
+  // the provider's normal translation path. Required model formats still win.
   // Kimi API-key connections speak OpenAI Chat Completions against the platform
   // endpoint (api.moonshot.cn), NOT the Kimi Code subscription endpoint that
   // OAuth connections use. That API is OpenAI-compatible only, so a
@@ -322,8 +323,11 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   const oauthTransportFormat = (provider === "xai" && cleanModel === "grok-4.5" && credentials?.authType === "oauth")
     ? "openai-responses-oauth"
     : null;
-  const runtimeTransport = resolveTransport(provider, oauthTransportFormat || apikeyTransportFormat || modelTargetFormat || sourceFormat)
-    || resolveTransport(provider, modelTargetFormat || sourceFormat);
+  const directTransportFormat = modelSupportedFormats?.includes(sourceFormat) === false
+    ? null
+    : sourceFormat;
+  const runtimeTransport = resolveTransport(provider, oauthTransportFormat || apikeyTransportFormat || modelTargetFormat || directTransportFormat)
+    || resolveTransport(provider, modelTargetFormat || directTransportFormat);
   // Credential-specific lookup suffixes are not wire formats.
   const transportFormat = runtimeTransport?.format?.replace(/-(apikey|oauth)$/, "") || null;
   const skipTranslation = transportFormat === sourceFormat;

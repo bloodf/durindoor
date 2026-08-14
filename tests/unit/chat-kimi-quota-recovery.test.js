@@ -1,4 +1,3 @@
-import "../translator/registerAll.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -6,18 +5,42 @@ const mocks = vi.hoisted(() => ({
   getUsageForProvider: vi.fn(),
 }));
 
-vi.mock("../../open-sse/executors/index.js", () => ({
-  getExecutor: vi.fn(() => ({
-    noAuth: true,
-    execute: mocks.execute,
+vi.mock("../../open-sse/utils/bypassHandler.js", () => ({
+  handleBypassRequest: vi.fn(() => null),
+}));
+
+vi.mock("../../open-sse/utils/streamHandler.js", () => ({
+  createStreamController: vi.fn(() => ({
+    signal: undefined,
+    startTime: Date.now(),
+    isConnected: () => true,
+    handleComplete: vi.fn(),
+    handleError: vi.fn(),
+    handleDisconnect: vi.fn(),
+    abort: vi.fn(),
   })),
+}));
+
+vi.mock("../../open-sse/utils/clientDetector.js", () => ({
+  detectClientTool: vi.fn(() => null),
+  isNativePassthrough: vi.fn(() => false),
+  isCodexOriginatedHeaders: vi.fn(() => false),
 }));
 
 vi.mock("../../open-sse/services/usage.js", () => ({
   getUsageForProvider: mocks.getUsageForProvider,
 }));
 
+vi.mock("../../open-sse/executors/index.js", () => ({
+  getExecutor: vi.fn(() => ({
+    noAuth: true,
+    execute: mocks.execute,
+    refreshCredentials: vi.fn().mockResolvedValue(null),
+  })),
+}));
+
 vi.mock("../../open-sse/utils/requestLogger.js", () => ({
+  maskSensitiveUrl: vi.fn((url) => url),
   createRequestLogger: vi.fn(async () => ({
     logClientRawRequest: vi.fn(),
     logRawRequest: vi.fn(),
@@ -53,7 +76,7 @@ function options(provider = "kimi-coding") {
 
 function quotaExhausted() {
   return {
-    response: new Response(JSON.stringify({ error: { message: "QUOTA_EXHAUSTED: billing cycle" } }), {
+    response: new Response(JSON.stringify({ error: { message: "Request limit reached for current billing cycle" } }), {
       status: 403,
       headers: { "content-type": "application/json" },
     }),

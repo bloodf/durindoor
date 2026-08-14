@@ -23,6 +23,7 @@ import {
 } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { applyResponseModelEcho, resolveResponsesEchoModel } from "../services/responseModelEcho.js";
+import { getUsageForProvider } from "../services/usage.js";
 
 import { getExecutor } from "../executors/index.js";
 import { buildRequestDetail, extractRequestConfig } from "./chatCore/requestDetail.js";
@@ -33,6 +34,7 @@ import { resolveStreamFlag } from "./chatCore/streamFlag.js";
 import { createEmptyRetryStream } from "./chatCore/emptyStreamGuard.js";
 import { validateExecutorResult } from "./chatCore/executorResultGuard.js";
 import { isAnthropicThinkingSignatureError, stripHistoricalThinkingForSignatureRecovery } from "./chatCore/thinkingSignatureRecovery.js";
+import { getKimiTemporaryRateLimitResetAt } from "./chatCore/kimiQuotaRecovery.js";
 import { detectClientTool, isNativePassthrough, isCodexOriginatedHeaders } from "../utils/clientDetector.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
 import { salvageOrphanedToolResults, fixMissingToolResponses, normalizeOpenAIToolNames } from "../translator/concerns/toolCall.js";
@@ -1222,7 +1224,25 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       finishProviderRequest();
       finishActiveDashboardSession("error");
       await settleQuota(false, "upstream_error");
-      const { statusCode, message, resetsAtMs, rateLimitEvidence, errorBody } = parsedError;
+      let { statusCode, message, resetsAtMs, rateLimitEvidence, errorBody } = parsedError;
+      // Kimi returns the same "billing cycle" 403 wording for both a depleted
+      // weekly subscription and its temporary per-model request window. Verify
+      // the official usage response before benching it: only an empty
+      // Ratelimit with remaining Weekly quota gets a precise, model-scoped
+      // recovery deadline. Probe failures preserve the original 403.
+      if (
+        statusCode === HTTP_STATUS.FORBIDDEN
+        && (provider === "kimi-coding" || provider === "kimi-coding-apikey")
+        && /billing cycle/i.test(message)
+      ) {
+        try {
+          const usage = await getUsageForProvider({ ...credentials, provider: "kimi" }, proxyOptions);
+          const resetAt = getKimiTemporaryRateLimitResetAt(usage);
+          if (resetAt) resetsAtMs = new Date(resetAt).getTime();
+        } catch {
+          // Preserve normal forbidden handling when the usage API is unavailable.
+        }
+      }
     appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${statusCode}` }).catch(() => { });
     saveRequestDetail(buildRequestDetail({
       provider, model: cleanModel, connectionId,

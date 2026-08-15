@@ -178,32 +178,3 @@ export function formatModelLifecycleMessage(decision) {
   if (decision.status === "shutdown") {
     return `Model "${modelRef}" was shut down on ${decision.shutdownAt} and cannot be routed automatically.${replacement}`;
   }
-  return `Model "${modelRef}" is deprecated and is scheduled to shut down on ${decision.shutdownAt}.${replacement}`;
-}
-
-/**
- * @template {{ id: string }} T
- * @param {string} provider
- * @param {readonly T[]} models
- * @param {{ asOf?: Date | number | string, includeDeprecated?: boolean, includeShutdown?: boolean }} [options]
- * @returns {T[]}
- */
-export function filterSelectableModels(provider, models, options = {}) {
-  const { asOf = Date.now(), includeDeprecated = false, includeShutdown = false } = options;
-  return models.filter((model) =>
-    isModelSelectable(provider, model.id, { asOf, includeDeprecated, includeShutdown }),
-  );
-}
-
-/**
- * @param {string} provider
- * @param {string} model
- * @param {{ asOf?: Date | number | string, includeDeprecated?: boolean, includeShutdown?: boolean }} [options]
- * @returns {boolean}
- */
-export function isModelSelectable(provider, model, options = {}) {
-  const decision = getModelLifecycleDecision(provider, model, options.asOf);
-  if (decision.status === "deprecated") return Boolean(options.includeDeprecated);
-  if (decision.status === "shutdown") return Boolean(options.includeShutdown);
-  return true;
-}

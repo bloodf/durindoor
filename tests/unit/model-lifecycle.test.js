@@ -1,10 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   MODEL_LIFECYCLE_RECORDS,
-  filterSelectableModels,
   formatModelLifecycleMessage,
   getModelLifecycleDecision,
-  isModelSelectable,
 } from "../../open-sse/services/modelLifecycle.js";
 import { checkModelLifecycle } from "../../open-sse/handlers/chatCore/modelLifecyclePolicy.js";
 
@@ -42,27 +40,6 @@ describe("model lifecycle", () => {
       asOf: CURRENT_DATE,
     })).toBeNull();
     expect(log.warn).toHaveBeenCalledWith("MODEL_LIFECYCLE", expect.stringMatching(/deprecated/));
-  });
-
-  it("hides deprecated and shutdown models from selectable OpenAI catalog entries", () => {
-    const models = [
-      { id: "gpt-5.6-sol" },
-      { id: "gpt-5.2-codex" },
-      { id: "gpt-5.3-chat-latest" },
-    ];
-
-    expect(filterSelectableModels("openai", models, { asOf: CURRENT_DATE }).map(({ id }) => id)).toEqual([
-      "gpt-5.6-sol",
-    ]);
-    expect(filterSelectableModels("opencode-zen", models, { asOf: CURRENT_DATE })).toEqual(models);
-    expect(isModelSelectable("openai", "gpt-5.3-chat-latest", {
-      asOf: CURRENT_DATE,
-      includeDeprecated: true,
-    })).toBe(true);
-    expect(isModelSelectable("openai", "gpt-5.2-codex", {
-      asOf: CURRENT_DATE,
-      includeDeprecated: true,
-    })).toBe(false);
   });
 
   it("does not guess a record for OpenAI's conflicted gpt-4-1106-preview date", () => {

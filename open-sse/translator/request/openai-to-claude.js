@@ -23,7 +23,7 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null, t
   // take precedence over the static catalog ceiling.
   const customCeiling = translationContext?.modelCapabilities?.maxOutput;
   const modelCeiling = (Number.isFinite(customCeiling) && customCeiling > 0 ? customCeiling : undefined)
-    ?? (getCapabilitiesForModel(null, model).maxOutput || undefined);
+    ?? (getCapabilitiesForModel(translationContext?.provider ?? null, model).maxOutput || undefined);
   const result = {
     model: model,
     // Honor OpenAI's newer max_completion_tokens cap when max_tokens is absent —

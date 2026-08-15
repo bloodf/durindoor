@@ -122,6 +122,7 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   const clientSessionId = captureSessionId(result, credentials, connectionId, targetFormat);
   const resolvedTranslationContext = Object.freeze({
     ...(translationContext || {}),
+    provider,
     thinkingIntent,
     clientSessionId,
   });

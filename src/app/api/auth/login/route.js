@@ -71,6 +71,7 @@ export async function POST(request) {
           }
           return NextResponse.json({ success: true, mustChangePassword: true }, { status: 403, headers: NO_STORE_HEADERS });
         }
+        recordSuccess(ip);
         const proof = issuePasswordChangeProof(ip);
         return NextResponse.json(
           { success: true, mustChangePassword: true, requiresPasswordChange: true, proof },

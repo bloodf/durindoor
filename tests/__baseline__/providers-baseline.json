@@ -114,6 +114,14 @@
     },
     "format": "openai"
   },
+  "alitp-intl": {
+    "baseUrl": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+    "headers": {},
+    "quirks": {
+      "preserveCacheControl": true
+    },
+    "format": "openai"
+  },
   "anthropic": {
     "baseUrl": "https://api.anthropic.com/v1/messages",
     "format": "claude",

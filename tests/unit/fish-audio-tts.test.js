@@ -1,11 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { handleTtsCore } from "../../open-sse/handlers/ttsCore.js";
 import REGISTRY from "../../open-sse/providers/registry/index.js";
 import { PROVIDER_MEDIA } from "../../open-sse/providers/index.js";
 import { FORMAT_HANDLERS } from "../../open-sse/handlers/ttsProviders/genericFormats.js";
 import { AI_PROVIDERS } from "../../src/shared/constants/providers.js";
 
 const AUDIO = new Uint8Array(256).fill(7);
+
+const originalFetch = global.fetch;
 
 function okResponse() {
   return {
@@ -105,5 +108,69 @@ describe("Fish Audio TTS request shape", () => {
     await expect(
       handler({ baseUrl: "u", apiKey: "k", text: "t", modelId: "s1", voiceId: "" }),
     ).rejects.toThrow("Insufficient credit");
+  });
+});
+
+describe("Fish Audio TTS core", () => {
+  beforeEach(() => {
+    global.fetch = vi.fn(async () => okResponse());
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it("synthesizes through handleTtsCore", async () => {
+    const result = await handleTtsCore({
+      provider: "fish-audio",
+      model: "s1/voice-abc",
+      input: "xin chào",
+      credentials: { apiKey: "fish-key" },
+      responseFormat: "json",
+    });
+
+    expect(result.success).toBe(true);
+    expect(global.fetch).toHaveBeenCalledWith(
+      "https://api.fish.audio/v1/tts",
+      expect.objectContaining({ headers: expect.objectContaining({ model: "s1" }) }),
+    );
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toEqual({
+      text: "xin chào",
+      format: "mp3",
+      reference_id: "voice-abc",
+    });
+    await expect(result.response.json()).resolves.toMatchObject({ format: "mp3" });
+  });
+
+  it("rejects missing credentials before fetching", async () => {
+    const result = await handleTtsCore({
+      provider: "fish-audio",
+      model: "s1",
+      input: "xin chào",
+      credentials: {},
+    });
+
+    expect(result).toMatchObject({ success: false, status: 502, error: "fish-audio API key required" });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("redacts an API key echoed by Fish Audio", async () => {
+    const apiKey = "fish-secret-sentinel";
+    global.fetch = vi.fn(async () => ({
+      ok: false,
+      status: 402,
+      text: async () => JSON.stringify({ message: `Fish rejected ${apiKey}` }),
+    }));
+
+    const result = await handleTtsCore({
+      provider: "fish-audio",
+      model: "s1",
+      input: "xin chào",
+      credentials: { apiKey },
+    });
+
+    expect(result.error).toContain("Fish rejected [redacted]");
+    expect(result.error).not.toContain(apiKey);
+    await expect(result.response.text()).resolves.not.toContain(apiKey);
   });
 });

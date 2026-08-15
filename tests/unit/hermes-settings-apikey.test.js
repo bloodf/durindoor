@@ -200,7 +200,7 @@ describe("hermes-settings api_key (port of decolua/9router#3235)", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "apiKey must not contain line breaks" });
+    expect(await response.json()).toEqual({ error: "apiKey must not contain control characters" });
     expect(mocks.writeFile).not.toHaveBeenCalled();
   });
 
@@ -230,7 +230,7 @@ describe("hermes-settings api_key (port of decolua/9router#3235)", () => {
     expect(mocks.writeFile).not.toHaveBeenCalled();
   });
 
-  it.each([0, {}, [], "   ", "sk_valid\u0000", "sk_valid\u200b"])("rejects non-string, blank, or Unicode-control API keys", async (apiKey) => {
+  it.each([0, {}, [], "   ", "sk_valid\u0000", "sk_valid\u200b", " sk_valid", "sk_valid ", "sk valid", "sk\u00a0valid"])("rejects non-string, blank, unsafe, or whitespace API keys", async (apiKey) => {
     const response = await postBody({
       baseUrl: "http://localhost:20128",
       apiKey,

@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   json: vi.fn((body, init = {}) => ({ body, status: init.status || 200 })),
-  consumePasswordChangeProof: vi.fn(),
+  reservePasswordChangeProof: vi.fn(),
+  commitPasswordChangeProof: vi.fn(),
+  releasePasswordChangeProof: vi.fn(),
   getClientIp: vi.fn(),
   genSalt: vi.fn(),
   hash: vi.fn(),
@@ -14,7 +16,11 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("next/server", () => ({ NextResponse: { json: mocks.json } }));
-vi.mock("@/lib/auth/passwordChangeProof", () => ({ consumePasswordChangeProof: mocks.consumePasswordChangeProof }));
+vi.mock("@/lib/auth/passwordChangeProof", () => ({
+  reservePasswordChangeProof: mocks.reservePasswordChangeProof,
+  commitPasswordChangeProof: mocks.commitPasswordChangeProof,
+  releasePasswordChangeProof: mocks.releasePasswordChangeProof,
+}));
 vi.mock("@/lib/auth/loginLimiter", () => ({ getClientIp: mocks.getClientIp }));
 vi.mock("bcryptjs", () => ({ default: { genSalt: mocks.genSalt, hash: mocks.hash } }));
 vi.mock("@/lib/localDb", () => ({ updateSettings: mocks.updateSettings }));
@@ -38,9 +44,9 @@ describe("POST /api/auth/change-password", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getClientIp.mockReturnValue("198.51.100.4");
-    mocks.consumePasswordChangeProof.mockReturnValue(true);
     mocks.genSalt.mockResolvedValue("salt");
     mocks.hash.mockResolvedValue("new-hash");
+    mocks.reservePasswordChangeProof.mockReturnValue({ clientIp: "198.51.100.4" });
     mocks.updateSettings.mockResolvedValue({ password: "new-hash" });
     mocks.cookies.mockResolvedValue({ set: vi.fn() });
   });
@@ -50,7 +56,7 @@ describe("POST /api/auth/change-password", () => {
     expect(missing.status).toBe(403);
     expect(mocks.updateSettings).not.toHaveBeenCalled();
 
-    mocks.consumePasswordChangeProof.mockReturnValue(false);
+    mocks.reservePasswordChangeProof.mockReturnValue(null);
     const invalid = await POST(request({ proof: "wrong", newPassword: "long-enough-password" }));
     expect(invalid.status).toBe(403);
     expect(mocks.updateSettings).not.toHaveBeenCalled();
@@ -62,12 +68,23 @@ describe("POST /api/auth/change-password", () => {
     expect(mocks.updateSettings).not.toHaveBeenCalled();
   });
 
-  it("rejects the built-in default before consuming a proof", async () => {
+  it("rejects the built-in default before reserving a proof", async () => {
     const response = await POST(request({ proof: "proof", newPassword: mocks.DEFAULT_PASSWORD }));
 
     expect(response.status).toBe(400);
-    expect(mocks.consumePasswordChangeProof).not.toHaveBeenCalled();
+    expect(mocks.reservePasswordChangeProof).not.toHaveBeenCalled();
     expect(mocks.updateSettings).not.toHaveBeenCalled();
+  });
+
+  it("releases a reserved proof when password persistence fails", async () => {
+    mocks.updateSettings.mockRejectedValueOnce(new Error("database unavailable"));
+
+    const response = await POST(request({ proof: "proof", newPassword: "long-enough-password" }));
+
+    expect(response.status).toBe(500);
+    expect(mocks.reservePasswordChangeProof).toHaveBeenCalledWith("proof", "198.51.100.4");
+    expect(mocks.releasePasswordChangeProof).toHaveBeenCalledWith("proof");
+    expect(mocks.commitPasswordChangeProof).not.toHaveBeenCalled();
   });
 
   it("changes password, clears default state, and creates dashboard session", async () => {

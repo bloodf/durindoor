@@ -34,9 +34,9 @@ beforeEach(async () => { await clearGeminiThoughtSignatures(); });
 describe("Gemini thoughtSignature direct Claude route", () => {
   it("pairs standalone signatures with subsequent function calls without signature text", async () => {
     const state = { signatureNamespace: "connection-a" };
-    const standalone = translateResponse(FORMATS.CLAUDE, FORMATS.GEMINI, { candidates: [{ content: { parts: [{ thoughtSignature: signature }] } }] }, state);
-    const first = translateResponse(FORMATS.CLAUDE, FORMATS.GEMINI, geminiToolCall("toolu_sig_1", "read"), state);
-    translateResponse(FORMATS.CLAUDE, FORMATS.GEMINI, geminiToolCall("toolu_sig_2", "read", `${signature}A`), state);
+    const standalone = translateResponse(FORMATS.GEMINI, FORMATS.CLAUDE, { candidates: [{ content: { parts: [{ thoughtSignature: signature }] } }] }, state);
+    const first = translateResponse(FORMATS.GEMINI, FORMATS.CLAUDE, geminiToolCall("toolu_sig_1", "read"), state);
+    translateResponse(FORMATS.GEMINI, FORMATS.CLAUDE, geminiToolCall("toolu_sig_2", "read", `${signature}A`), state);
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(standalone.map(JSON.stringify).join("\n")).not.toContain(signature);
@@ -58,7 +58,7 @@ describe("Gemini thoughtSignature direct Claude route", () => {
 
     expect(callFor(firstReplay, "toolu_shared").thoughtSignature).toBe(signature);
     expect(callFor(repeatedReplay, "toolu_shared").thoughtSignature).toBe("client-signature");
-    expect(callFor(otherConnection, "toolu_shared")).toBeUndefined();
+    expect(callFor(otherConnection, "toolu_shared")).toEqual({ functionCall: { id: "toolu_shared", name: "Read", args: { query: "toolu_shared" } } });
     await storeGeminiThoughtSignature("connection-a:expired", signature, Date.now() - 1);
     expect(await getGeminiThoughtSignature("connection-a:expired")).toBeNull();
   });
@@ -70,12 +70,12 @@ describe("Gemini thoughtSignature direct Claude route", () => {
 
   it("drains a FIFO queue of standalone signatures to the next function calls and pairs inline signatures only to their own call", async () => {
     const state = { signatureNamespace: "connection-queue" };
-    translateResponse(FORMATS.CLAUDE, FORMATS.GEMINI, { candidates: [{ content: { parts: [{ thoughtSignature: `${signature}A` }] } }] }, state);
-    translateResponse(FORMATS.CLAUDE, FORMATS.GEMINI, { candidates: [{ content: { parts: [{ thoughtSignature: `${signature}B` }] } }] }, state);
-    translateResponse(FORMATS.CLAUDE, FORMATS.GEMINI, { candidates: [{ content: { parts: [{ functionCall: { id: "toolu_inline", name: "read", args: { q: 1 } }, thoughtSignature: `${signature}I` }] } }] }, state);
-    translateResponse(FORMATS.CLAUDE, FORMATS.GEMINI, { candidates: [{ content: { parts: [{ functionCall: { id: "toolu_a", name: "read", args: { q: 2 } } }] } }] }, state);
-    translateResponse(FORMATS.CLAUDE, FORMATS.GEMINI, { candidates: [{ content: { parts: [{ functionCall: { id: "toolu_b", name: "read", args: { q: 3 } } }] } }] }, state);
-    translateResponse(FORMATS.CLAUDE, FORMATS.GEMINI, { candidates: [{ content: { parts: [{ functionCall: { id: "toolu_c", name: "read", args: { q: 4 } } }] } }] }, state);
+    translateResponse(FORMATS.GEMINI, FORMATS.CLAUDE, { candidates: [{ content: { parts: [{ thoughtSignature: `${signature}A` }] } }] }, state);
+    translateResponse(FORMATS.GEMINI, FORMATS.CLAUDE, { candidates: [{ content: { parts: [{ thoughtSignature: `${signature}B` }] } }] }, state);
+    translateResponse(FORMATS.GEMINI, FORMATS.CLAUDE, { candidates: [{ content: { parts: [{ functionCall: { id: "toolu_inline", name: "read", args: { q: 1 } }, thoughtSignature: `${signature}I` }] } }] }, state);
+    translateResponse(FORMATS.GEMINI, FORMATS.CLAUDE, { candidates: [{ content: { parts: [{ functionCall: { id: "toolu_a", name: "read", args: { q: 2 } } }] } }] }, state);
+    translateResponse(FORMATS.GEMINI, FORMATS.CLAUDE, { candidates: [{ content: { parts: [{ functionCall: { id: "toolu_b", name: "read", args: { q: 3 } } }] } }] }, state);
+    translateResponse(FORMATS.GEMINI, FORMATS.CLAUDE, { candidates: [{ content: { parts: [{ functionCall: { id: "toolu_c", name: "read", args: { q: 4 } } }] } }] }, state);
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(await getGeminiThoughtSignature("connection-queue:toolu_inline")).toBe(`${signature}I`);
@@ -86,19 +86,16 @@ describe("Gemini thoughtSignature direct Claude route", () => {
 
   it("keeps parallel inline-signed function calls isolated to their own signatures and never cross-attach", async () => {
     const state = { signatureNamespace: "connection-parallel" };
-    translateResponse(FORMATS.CLAUDE, FORMATS.GEMINI, geminiToolCall("toolu_p1", "read", `${signature}1`), state);
-    translateResponse(FORMATS.CLAUDE, FORMATS.GEMINI, geminiToolCall("toolu_p2", "read", `${signature}2`), state);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
+    translateResponse(FORMATS.GEMINI, FORMATS.CLAUDE, geminiToolCall("toolu_p1", "read", `${signature}1`), state);
+    translateResponse(FORMATS.GEMINI, FORMATS.CLAUDE, geminiToolCall("toolu_p2", "read", `${signature}2`), state);
     expect(await getGeminiThoughtSignature("connection-parallel:toolu_p1")).toBe(`${signature}1`);
     expect(await getGeminiThoughtSignature("connection-parallel:toolu_p2")).toBe(`${signature}2`);
   });
 
   it("queues a signature carried by thought text for the next unsigned function call", async () => {
     const state = { signatureNamespace: "connection-thought" };
-    translateResponse(FORMATS.CLAUDE, FORMATS.GEMINI, geminiThoughtText("thinking", `${signature}T`), state);
-    translateResponse(FORMATS.CLAUDE, FORMATS.GEMINI, geminiToolCall("toolu_thought", "read"), state);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    translateResponse(FORMATS.GEMINI, FORMATS.CLAUDE, geminiThoughtText("thinking", `${signature}T`), state);
+    translateResponse(FORMATS.GEMINI, FORMATS.CLAUDE, geminiToolCall("toolu_thought", "read"), state);
     expect(await getGeminiThoughtSignature("connection-thought:toolu_thought")).toBe(`${signature}T`);
   });
 

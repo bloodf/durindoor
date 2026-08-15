@@ -127,6 +127,21 @@ describe("combo capability detection for attachment payloads", () => {
     expect(body.messages[0].content).toContain("[file omitted: model has no document support]");
   });
 
+  it("appends an attachment placeholder beside text when media is removed", () => {
+    const body = {
+      messages: [{
+        role: "user",
+        content: "Describe this attachment.",
+        attachments: [{ contentType: "image/png", url: "https://example.test/image.png" }],
+      }],
+    };
+
+    stripUnsupportedModalities(body, FORMATS.OPENAI, { vision: false, audioInput: true, videoInput: true, pdf: true });
+
+    expect(body.messages[0].content).toBe("Describe this attachment. [image omitted: model has no vision support]");
+    expect(body.messages[0].attachments).toEqual([]);
+  });
+
   it("preserves attachments with neither MIME nor media payload", () => {
     const body = {
       messages: [{

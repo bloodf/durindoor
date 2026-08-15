@@ -56,11 +56,7 @@ export function applyDeepSeekV4ProAlias({ provider, model, body, transportFormat
       },
     };
     delete nextBody.extra_body;
-    if (alias.reasoningEffort) {
-      nextBody.reasoning_effort = alias.reasoningEffort;
-    } else {
-      delete nextBody.reasoning_effort;
-    }
+    delete nextBody.reasoning_effort;
     return nextBody;
   }
 

@@ -438,9 +438,9 @@ describe("thinking suffix at the chatCore provider boundary", () => {
     });
   }
 
-  for (const [alias, expectedThinking, expectedEffort] of [
-    ["deepseek-v4-pro-max", "enabled", "max"],
-    ["deepseek-v4-pro-none", "disabled", undefined],
+  for (const [alias, expectedThinking] of [
+    ["deepseek-v4-pro-max", "enabled"],
+    ["deepseek-v4-pro-none", "disabled"],
   ]) {
     it(`uses native Claude thinking for ${alias} after chatCore upstream-id rewrite`, async () => {
       const executor = new DefaultExecutor("deepseek");
@@ -470,7 +470,7 @@ describe("thinking suffix at the chatCore provider boundary", () => {
       expect(wireModel).toBe("deepseek-v4-pro");
       expect(wireBody.model).toBe("deepseek-v4-pro");
       expect(wireBody.thinking.type).toBe(expectedThinking);
-      expect(wireBody.reasoning_effort).toBe(expectedEffort);
+      expect(wireBody.reasoning_effort).toBeUndefined();
       expect(wireBody.extra_body).toBeUndefined();
       expect(wireBody.messages[0].reasoning_content).toBeUndefined();
     });

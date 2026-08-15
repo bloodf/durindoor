@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { reconcileClaudeThinkingBudget } from "../../open-sse/translator/formats/claude.js";
+import { translateRequest } from "../../open-sse/translator/index.js";
+import { FORMATS } from "../../open-sse/translator/formats.js";
 import { openaiToClaudeRequest } from "../../open-sse/translator/request/openai-to-claude.js";
 import { DEFAULT_CAPABILITIES, PROVIDER_CAPABILITIES } from "../../open-sse/providers/capabilities.js";
 import { buildCustomCapabilities } from "../../src/app/(dashboard)/dashboard/providers/[id]/customModelCapabilities.js";
@@ -55,24 +57,28 @@ describe("routed provider output ceiling", () => {
   const provider = "test-routed-provider";
   const model = "test-routed-model";
 
-  it("uses the routed provider ceiling before the default catalog ceiling", () => {
-    PROVIDER_CAPABILITIES[provider] = { [model]: { maxOutput: 1024 } };
+  it("preserves a routed provider ceiling above the bare fallback", () => {
+    PROVIDER_CAPABILITIES[provider] = { [model]: { maxOutput: 128000 } };
     try {
-      const out = openaiToClaudeRequest(
+      const out = translateRequest(
+        FORMATS.OPENAI,
+        FORMATS.CLAUDE,
         model,
-        { max_tokens: DEFAULT_CAPABILITIES.maxOutput, messages: [{ role: "user", content: "hi" }] },
+        { max_tokens: 128000, messages: [{ role: "user", content: "hi" }] },
         false,
         null,
-        { provider },
+        provider,
       );
-      expect(out.max_tokens).toBe(1024);
+      expect(out.max_tokens).toBe(128000);
     } finally {
       delete PROVIDER_CAPABILITIES[provider];
     }
   });
 
   it("keeps the bare catalog lookup when routed provider is unset", () => {
-    const out = openaiToClaudeRequest(
+    const out = translateRequest(
+      FORMATS.OPENAI,
+      FORMATS.CLAUDE,
       model,
       { max_tokens: DEFAULT_CAPABILITIES.maxOutput, messages: [{ role: "user", content: "hi" }] },
       false,

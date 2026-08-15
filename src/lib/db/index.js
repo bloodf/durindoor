@@ -170,7 +170,7 @@ function validateQuotaImport(payload, { now }) {
 
 // Settings
 export {
-  getSettings, updateSettings, updateSettingsWithPasswordEpoch, PasswordEpochMismatchError, isCloudEnabled, getCloudUrl, exportSettings,
+  getSettings, getSettingsSync, updateSettings, updateSettingsWithPasswordEpoch, PasswordEpochMismatchError, isCloudEnabled, getCloudUrl, exportSettings,
 } from "./repos/settingsRepo.js";
 
 // Provider connections

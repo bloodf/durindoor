@@ -25,8 +25,7 @@ export function getPublicOrigin(request) {
     try {
       return new URL(configuredBaseUrl).origin;
     } catch {
-      // Invalid configured origin must not silently disable OIDC security;
-      // fall through to request URL.
+      throw new Error("Invalid OIDC public origin configuration");
     }
   }
   return new URL(request.url).origin;

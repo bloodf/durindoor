@@ -48,12 +48,9 @@ export async function POST(request) {
       resetPasswordChangeProofs();
       try {
         const cookieStore = await cookies();
-        await setDashboardAuthCookie(cookieStore, request, { passwordSessionEpoch: newEpoch }, async () => {
-          const after = await getSettings();
-          if (after.passwordSessionEpoch !== newEpoch) throw new Error("CHANGE_EPOCH_RACE");
-        });
+        await setDashboardAuthCookie(cookieStore, request, { passwordSessionEpoch: newEpoch }, newEpoch);
       } catch (error) {
-        if (error?.message === "CHANGE_EPOCH_RACE") {
+        if (error?.message === "AUTH_EPOCH_RACE") {
           return NextResponse.json({ error: "Password change conflict, please retry" }, { status: 409 });
         }
         console.error("[auth] password change cookie failed");

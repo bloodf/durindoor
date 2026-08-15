@@ -171,9 +171,9 @@ describe("POST /api/auth/login default-password safety", () => {
       .mockResolvedValueOnce({ password: "new-hash", passwordSessionEpoch: "epoch-B" });
     mocks.compare.mockResolvedValue(true);
     let resume;
-    mocks.setDashboardAuthCookie.mockImplementation(async (_store, _request, _claims, beforeSet) => {
+    mocks.setDashboardAuthCookie.mockImplementation(async () => {
       await new Promise((resolve) => { resume = resolve; });
-      await beforeSet();
+      throw new Error("AUTH_EPOCH_RACE");
     });
 
     const pending = POST(request("custom-password"));

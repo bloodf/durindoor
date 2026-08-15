@@ -152,9 +152,9 @@ describe("POST /api/auth/change-password", () => {
   it("does not return success when signing races with a newer password epoch", async () => {
     mocks.getSettings.mockResolvedValue({ passwordSessionEpoch: "newer-epoch" });
     let resume;
-    mocks.setDashboardAuthCookie.mockImplementation(async (_store, _request, _claims, beforeSet) => {
+    mocks.setDashboardAuthCookie.mockImplementation(async () => {
       await new Promise((resolve) => { resume = resolve; });
-      await beforeSet();
+      throw new Error("AUTH_EPOCH_RACE");
     });
 
     const pending = POST(request({ proof: "proof", newPassword: "long-enough-password" }));

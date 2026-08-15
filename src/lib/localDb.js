@@ -1,7 +1,7 @@
 // Shim → re-export from new SQLite-based DB layer (src/lib/db/)
 // Kept for backward compatibility with existing imports.
 export {
-  getSettings, updateSettings, updateSettingsWithPasswordEpoch, PasswordEpochMismatchError, isCloudEnabled, getCloudUrl,
+  getSettings, getSettingsSync, updateSettings, updateSettingsWithPasswordEpoch, PasswordEpochMismatchError, isCloudEnabled, getCloudUrl,
   getProviderConnections, getProviderConnectionById,
   createProviderConnection, updateProviderConnection,
   recordProviderConnectionFallbackState, clearProviderConnectionFallbackState,

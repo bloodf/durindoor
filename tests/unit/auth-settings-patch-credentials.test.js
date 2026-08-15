@@ -198,7 +198,7 @@ describe("settings PATCH password credentials", () => {
     await PATCH({ json: async () => ({ currentPassword: "operator-secret", newPassword: "long-enough-new" }) });
 
     expect(mocks.setDashboardAuthCookie).toHaveBeenCalledWith(
-      { set: expect.any(Function) }, expect.anything(), { passwordSessionEpoch: "rotated-epoch" }, expect.any(Function),
+      { set: expect.any(Function) }, expect.anything(), { passwordSessionEpoch: "rotated-epoch" }, "rotated-epoch",
     );
   });
 
@@ -207,9 +207,9 @@ describe("settings PATCH password credentials", () => {
       .mockResolvedValueOnce({ password: "stored-hash", passwordSessionEpoch: "initial" })
       .mockResolvedValueOnce({ passwordSessionEpoch: "newer-epoch" });
     let resume;
-    mocks.setDashboardAuthCookie.mockImplementation(async (_store, _request, _claims, beforeSet) => {
+    mocks.setDashboardAuthCookie.mockImplementation(async () => {
       await new Promise((resolve) => { resume = resolve; });
-      await beforeSet();
+      throw new Error("AUTH_EPOCH_RACE");
     });
 
     const pending = PATCH({ json: async () => ({ currentPassword: "operator-secret", newPassword: "long-enough-new" }) });

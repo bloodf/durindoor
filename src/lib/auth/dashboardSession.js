@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { DATA_DIR } from "@/lib/dataDir";
-import { getSettings } from "@/lib/localDb";
+import { getSettings, getSettingsSync } from "@/lib/localDb";
 
 export const DEFAULT_PASSWORD = "123456";
 
@@ -94,10 +94,16 @@ function loadJwtSecret() {
 const SECRET = new TextEncoder().encode(loadJwtSecret());
 
 export function shouldUseSecureCookie(request) {
-  const forceSecureCookie = process.env.AUTH_COOKIE_SECURE === "true";
-  const forwardedProto = request?.headers?.get?.("x-forwarded-proto");
-  const isHttpsRequest = forwardedProto === "https";
-  return forceSecureCookie || isHttpsRequest;
+  if (process.env.AUTH_COOKIE_SECURE === "true") return true;
+  const configuredBaseUrl = process.env.BASE_URL || process.env.NEXT_PUBLIC_BASE_URL;
+  if (configuredBaseUrl) {
+    try {
+      return new URL(configuredBaseUrl).protocol === "https:";
+    } catch {
+      return false;
+    }
+  }
+  return request?.url ? new URL(request.url).protocol === "https:" : false;
 }
 
 export async function createDashboardAuthToken(claims = {}) {
@@ -139,9 +145,14 @@ export async function getDashboardAuthSession(token) {
   }
 }
 
-export async function setDashboardAuthCookie(cookieStore, request, claims = {}, beforeSet) {
+export async function setDashboardAuthCookie(cookieStore, request, claims = {}, expectedPasswordSessionEpoch) {
   const token = await createDashboardAuthToken(claims);
-  if (beforeSet) await beforeSet();
+  if (expectedPasswordSessionEpoch !== undefined) {
+    const settings = getSettingsSync();
+    if (settings.passwordSessionEpoch !== expectedPasswordSessionEpoch) {
+      throw new Error("AUTH_EPOCH_RACE");
+    }
+  }
   cookieStore.set("auth_token", token, {
     httpOnly: true,
     secure: shouldUseSecureCookie(request),

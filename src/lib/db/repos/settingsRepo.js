@@ -1,4 +1,4 @@
-import { getAdapter } from "../driver.js";
+import { getAdapter, getAdapterSync } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 
 const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
@@ -91,6 +91,16 @@ async function readRaw() {
   const db = await getAdapter();
   const row = db.get(`SELECT data FROM settings WHERE id = 1`);
   return row ? parseJson(row.data, {}) : {};
+}
+
+function readRawSync() {
+  const db = getAdapterSync();
+  const row = db.get(`SELECT data FROM settings WHERE id = 1`);
+  return row ? parseJson(row.data, {}) : {};
+}
+
+export function getSettingsSync() {
+  return mergeWithDefaults(readRawSync());
 }
 
 // Merge raw settings with defaults; backward-compat for missing keys

@@ -99,16 +99,11 @@ export async function POST(request) {
       }
       const cookieStore = await cookies();
       try {
-        await setDashboardAuthCookie(cookieStore, request, { passwordSessionEpoch: settings.passwordSessionEpoch ?? "initial" }, async () => {
-          const after = await getSettings();
-          if ((after.passwordSessionEpoch ?? "initial") !== (settings.passwordSessionEpoch ?? "initial")) {
-            throw new Error("LOGIN_EPOCH_RACE");
-          }
-        });
+        await setDashboardAuthCookie(cookieStore, request, { passwordSessionEpoch: settings.passwordSessionEpoch ?? "initial" }, settings.passwordSessionEpoch ?? "initial");
         recordSuccess(ip);
         return NextResponse.json({ success: true, mustChangePassword: false }, { headers: NO_STORE_HEADERS });
       } catch (error) {
-        if (error && error.message === "LOGIN_EPOCH_RACE") {
+        if (error && error.message === "AUTH_EPOCH_RACE") {
           return NextResponse.json({ error: "Login state changed, please retry" }, { status: 409, headers: NO_STORE_HEADERS });
         }
         throw error;

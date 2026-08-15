@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   updateSettings: vi.fn(),
   invalidateDefaultPasswordCache: vi.fn(),
   resetPasswordChangeProofs: vi.fn(),
+  hasExactRequestOrigin: vi.fn(() => true),
   hasTrustedLocalOrigin: vi.fn(() => true),
   isLocalRequest: vi.fn(() => true),
   consoleError: vi.fn(),
@@ -13,7 +14,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("next/server", () => ({ NextResponse: { json: mocks.json } }));
 vi.mock("@/lib/localDb", () => ({ updateSettings: mocks.updateSettings }));
 vi.mock("@/lib/auth/dashboardSession", () => ({ invalidateDefaultPasswordCache: mocks.invalidateDefaultPasswordCache }));
-vi.mock("@/lib/auth/requestOrigin", () => ({ hasTrustedLocalOrigin: mocks.hasTrustedLocalOrigin }));
+vi.mock("@/lib/auth/requestOrigin", () => ({ hasExactRequestOrigin: mocks.hasExactRequestOrigin, hasTrustedLocalOrigin: mocks.hasTrustedLocalOrigin }));
 vi.mock("@/dashboardGuard", () => ({ isLocalRequest: mocks.isLocalRequest }));
 vi.mock("@/lib/auth/passwordChangeProof", () => ({ resetPasswordChangeProofs: mocks.resetPasswordChangeProofs }));
 
@@ -22,6 +23,7 @@ const { POST } = await import("../../src/app/api/auth/reset-password/route.js");
 describe("POST /api/auth/reset-password", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.hasExactRequestOrigin.mockReturnValue(true);
     mocks.hasTrustedLocalOrigin.mockReturnValue(true);
     mocks.isLocalRequest.mockReturnValue(true);
     vi.spyOn(console, "error").mockImplementation(mocks.consoleError);
@@ -42,6 +44,18 @@ describe("POST /api/auth/reset-password", () => {
     mocks.hasTrustedLocalOrigin.mockReturnValue(false);
 
     const response = await POST(new Request("http://durindoor.test/api/auth/reset-password", { method: "POST" }));
+
+    expect(response.status).toBe(403);
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
+  });
+
+  it("rejects trusted loopback names with mismatched origin port or scheme", async () => {
+    mocks.hasExactRequestOrigin.mockReturnValue(false);
+
+    const response = await POST(new Request("http://localhost:20128/api/auth/reset-password", {
+      method: "POST",
+      headers: { host: "localhost:20128", origin: "https://localhost:20129" },
+    }));
 
     expect(response.status).toBe(403);
     expect(mocks.updateSettings).not.toHaveBeenCalled();

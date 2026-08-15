@@ -11,7 +11,6 @@ import { filterByContextRequirements, sortByContextSize, validateContextRequirem
 import { resolveReasoningBufferedMaxTokens } from "./reasoningTokenBuffer.js";
 import { extractTextContent } from "../translator/formats/gemini.js";
 import { isAutoComboId, familyOfAutoId, resolveAutoCombo } from "./autoComboResolver.js";
-import { isValidModel, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
 
 // Hard capabilities = input modalities; missing one drops request data (e.g. image
 // stripped). Must be prioritized. Soft (e.g. search) only degrades a feature.
@@ -874,12 +873,6 @@ export function resetComboScoring(comboName) {
  * @param {Object} [options] - { catalog, settings } for auto/* resolution
  * @returns {string[]|null} Array of models (empty for empty auto pool), or null if not a combo
  */
-function isCatalogModelPath(modelStr) {
-  const slashIndex = modelStr.indexOf("/");
-  if (slashIndex < 1) return false;
-  const provider = modelStr.slice(0, slashIndex);
-  return isValidModel(PROVIDER_ID_TO_ALIAS[provider] || provider, modelStr.slice(slashIndex + 1));
-}
 
 export function getComboModelsFromData(modelStr, combosData, options = {}) {
   // `auto/<family>` resolves BEFORE the slash guard and the combos-data lookup.
@@ -891,23 +884,15 @@ export function getComboModelsFromData(modelStr, combosData, options = {}) {
     const family = familyOfAutoId(modelStr);
     return resolveAutoCombo(family, options.catalog || {}, options.settings);
   }
-
-  // Resolve combo by full name first, then by basename (part after the last
-  // slash) so client configs like `provider/combo-name` still hit the combo
-  // instead of forwarding the raw string to the upstream provider. Full-name
-  // match wins so a genuine `provider/model` never gets shadowed by a
-  // same-named combo.
   // Handle both array and object formats
   const combos = Array.isArray(combosData) ? combosData : (combosData?.combos || []);
 
-  // A full-name combo is intentionally allowed, but a known catalog model must
-  // retain provider routing precedence over a combo sharing its basename.
-  if (!combos.some(c => c.name === modelStr) && isCatalogModelPath(modelStr)) return null;
-
-  const baseName = modelStr.includes("/") ? modelStr.split("/").pop() : null;
-
-  const combo = combos.find(c => c.name === modelStr) ||
-    (baseName ? combos.find(c => c.name === baseName) : null);
+  // Exact-name match only. Slash-basename lookup was removed because it
+  // shadowed genuine `provider/model` routing whenever a saved combo
+  // happened to share the basename. Saved combos referenced as
+  // `provider/name` must be stored under that full form, and a request
+  // shaped like `provider/model` is then treated as provider routing.
+  const combo = combos.find((c) => c.name === modelStr);
   if (combo && combo.models && combo.models.length > 0) {
     return combo.models;
   }
@@ -917,7 +902,6 @@ export function getComboModelsFromData(modelStr, combosData, options = {}) {
 /**
  * Handle combo chat with fallback
  * @param {Object} options
- * @param {Object} options.body - Request body
  * @param {string[]} options.models - Array of model strings to try
  * @param {Function} options.handleSingleModel - Function to handle single model: (body, modelStr) => Promise<Response>
  * @param {Object} options.log - Logger object

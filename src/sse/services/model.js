@@ -1,7 +1,7 @@
 import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 
 import { parseSuffix } from "open-sse/translator/concerns/thinkingSuffix.js";
-import { isValidModel, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
+import { PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
 
 export function resolveCustomCapabilities(provider, model, requestPrefix, customModels) {
   if (!Array.isArray(customModels) || !model) return null;
@@ -68,7 +68,6 @@ import { isFreeNoAuthProviderDisabled } from "@/sse/services/freeProviderGate.js
 import {
   getModelAliases,
   getComboForModel,
-  getComboByName,
   getProviderNodes,
   getProviderConnections,
   getCustomModels,
@@ -221,12 +220,6 @@ export async function getAutoComboCatalog() {
   return catalog;
 }
 
-function isCatalogModelPath(modelStr) {
-  const slashIndex = modelStr.indexOf("/");
-  if (slashIndex < 1) return false;
-  const provider = modelStr.slice(0, slashIndex);
-  return isValidModel(PROVIDER_ID_TO_ALIAS[provider] || provider, modelStr.slice(slashIndex + 1));
-}
 
 /**
  * Check if model is a combo and get models list.
@@ -261,16 +254,12 @@ export async function getComboModels(modelStr, hidePaidModels = false) {
     // combos so chat/image/TTS routing honors `hidePaidModels` uniformly.
     return filterPaidModels(resolveAutoCombo(family, catalog), hidePaidModels === true);
   }
-
-  // Resolve combo by full name first, then by basename (part after the last
-  // slash) so client configs like `provider/combo-name` still hit the combo
-  // instead of forwarding the raw string to the upstream provider. Full-name
-  // match wins so a genuine `provider/model` never gets shadowed by a
-  // same-named combo.
-  let combo = await getComboForModel(modelStr);
-  if (!combo && modelStr.includes("/") && !isCatalogModelPath(modelStr)) {
-    combo = await getComboByName(modelStr.split("/").pop());
-  }
+  // Resolve a combo by its stored name only. A request containing a slash is
+  // a real provider/model call — slash-basename lookup previously shadowed
+  // genuine `provider/model` routing whenever a saved combo happened to share
+  // the basename. Callers that still want provider-prefixed combo resolution
+  // must save the combo under the full `provider/name` form.
+  const combo = await getComboForModel(modelStr);
   if (combo && combo.models && combo.models.length > 0) {
     return filterPaidModels(combo.models, hidePaidModels === true);
   }
@@ -281,12 +270,10 @@ export async function getComboModels(modelStr, hidePaidModels = false) {
 // strategy lookups, and rotation/scoring keys use the persisted spelling
 // instead of whatever casing the client sent. Auto-combo ids (#F-2) are
 // virtual — never stored — so they pass through unchanged. Returns null when
-// `modelStr` is not a combo at all.
+// `modelStr` is not a combo at all. Mirrors `getComboModels` above: a request
+// with a slash is treated as a provider/model call, never a basename lookup.
 export async function getComboCanonicalName(modelStr) {
   if (isAutoComboId(modelStr)) return modelStr;
-  let combo = await getComboForModel(modelStr);
-  if (!combo && modelStr.includes("/") && !isCatalogModelPath(modelStr)) {
-    combo = await getComboByName(modelStr.split("/").pop());
-  }
+  const combo = await getComboForModel(modelStr);
   return combo ? combo.name : null;
 }

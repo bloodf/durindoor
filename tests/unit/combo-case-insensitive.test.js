@@ -50,6 +50,9 @@ describe("case-insensitive combo model resolution", () => {
     const ctx = await setupDb();
     cleanup = ctx.cleanup;
     const first = await ctx.createCombo({ name: "CodeX", models: ["openai/first"] });
+    // Ensure a distinct createdAt so the deterministic fallback is observable
+    // regardless of UUID v4 ordering.
+    await new Promise((resolve) => setTimeout(resolve, 5));
     await ctx.createCombo({ name: "codex", models: ["openai/second"] });
 
     await expect(ctx.getComboForModel("CodeX")).resolves.toMatchObject({
@@ -62,10 +65,10 @@ describe("case-insensitive combo model resolution", () => {
     });
   });
 
-  it("does not resolve a provider/model basename through case-insensitive combo lookup", async () => {
+  it("does not resolve a provider/model basename to an exactly cased saved combo", async () => {
     const ctx = await setupDb();
     cleanup = ctx.cleanup;
-    await ctx.createCombo({ name: "gpt-5", models: ["openai/other"] });
+    await ctx.createCombo({ name: "GPT-5", models: ["openai/other"] });
 
     await expect(ctx.getComboModels("custom/GPT-5")).resolves.toBeNull();
   });

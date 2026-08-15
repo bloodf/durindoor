@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   getApiKeyUsageLimitStatus: vi.fn(),
   getComboModels: vi.fn(),
   getComboCanonicalName: vi.fn(),
+  extractApiKey: vi.fn(),
   getModelInfo: vi.fn(),
   evaluateApiKeyAuth: vi.fn(),
   enforceApiKeyModelPolicy: vi.fn(),
@@ -157,7 +158,7 @@ describe("per-key combo access control (#2203)", () => {
   it("allows a key whose allowedCombos includes the requested combo and runs the combo engine (200)", async () => {
     mocks.getApiKeyByKey.mockResolvedValue({
       name: "granted-key",
-      allowedCombos: ["combo-privileged"],
+      allowedCombos: ["Combo-Privileged"],
     });
 
     const { handleChat } = await import("../../src/sse/handlers/chat.js");

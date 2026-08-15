@@ -34,11 +34,10 @@ describe("provider-prefixed combo lookup", () => {
     mocks.getProviderConnections.mockResolvedValue([]);
   });
 
-  it("resolves full-name, prefixed, and bare saved combos in both lookup paths", async () => {
+  it("resolves full-name and bare saved combos without basename fallback", async () => {
     const fullMembers = ["openrouter/meta-llama/llama-3.1-8b-instruct:free"];
     const namedCombos = [...combos, { name: "openrouter/lordx.1", models: fullMembers }];
     expect(getComboModelsFromData("openrouter/lordx.1", namedCombos)).toBe(fullMembers);
-    expect(getComboModelsFromData("openrouter/lordx.1", combos)).toBe(members);
     expect(getComboModelsFromData("lordx.1", combos)).toBe(members);
 
     mocks.getComboForModel.mockImplementation(async (name) =>
@@ -46,15 +45,18 @@ describe("provider-prefixed combo lookup", () => {
     );
     const getComboModels = await loadGetComboModels();
     await expect(getComboModels("openrouter/lordx.1")).resolves.toBe(fullMembers);
-
-    mocks.getComboForModel.mockImplementation(async (name) =>
-      combos.find((combo) => combo.name === name) || null,
-    );
-    mocks.getComboByName.mockImplementation(async (name) =>
-      name === "lordx.1" ? combos[0] : null,
-    );
-    await expect(getComboModels("openrouter/lordx.1")).resolves.toBe(members);
     await expect(getComboModels("lordx.1")).resolves.toBe(members);
+  });
+
+  it("does not resolve a provider/model basename to an exactly cased saved combo", async () => {
+    const exactCaseCombo = [{ name: "GPT-5", models: members }];
+    expect(getComboModelsFromData("custom/GPT-5", exactCaseCombo)).toBeNull();
+
+    mocks.getComboForModel.mockResolvedValue(null);
+    mocks.getComboByName.mockResolvedValue(exactCaseCombo[0]);
+    const getComboModels = await loadGetComboModels();
+    await expect(getComboModels("custom/GPT-5")).resolves.toBeNull();
+    expect(mocks.getComboByName).not.toHaveBeenCalled();
   });
 
   it("leaves non-existent provider-prefixed names as non-combos", async () => {

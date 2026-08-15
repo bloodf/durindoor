@@ -136,6 +136,20 @@ describe("grok-cli Grok Build subscription wire protocol (#2590)", () => {
     expect(body.include).toContain("reasoning.encrypted_content");
   });
 
+  it("resolves effort-suffixed models through the Grok catalog alias", async () => {
+    const { PROVIDER_MODELS } = await import("../../open-sse/config/providerModels.js");
+    const catalogModel = PROVIDER_MODELS.gb.find((entry) => entry.id === "grok-4.5");
+    const originalUpstreamModelId = catalogModel.upstreamModelId;
+    catalogModel.upstreamModelId = "grok-4.5-upstream-proof";
+    try {
+      await executeWithModel("grok-4.5-high");
+      expect(parsePostedCall().body.model).toBe("grok-4.5-upstream-proof");
+    } finally {
+      if (originalUpstreamModelId === undefined) delete catalogModel.upstreamModelId;
+      else catalogModel.upstreamModelId = originalUpstreamModelId;
+    }
+  });
+
   it("passes the upstream Responses SSE stream through to the client", async () => {
     const result = await executeWithModel("grok-build");
     parsePostedCall();

@@ -19,6 +19,8 @@ import {
   formatToolsHint,
   PerplexityWebExecutor,
 } from "../../open-sse/executors/perplexity-web.js";
+import { runWithProviderAttemptContext } from "../../open-sse/services/providerAttemptContext.js";
+import { QuotaDispatchUnavailableError } from "../../open-sse/services/quota/dispatch.js";
 
 const originalFetch = global.fetch;
 
@@ -212,16 +214,51 @@ describe("PerplexityWebExecutor reader cleanup", () => {
     global.fetch = vi.fn(async () => ({ ok: true, body: { getReader: () => reader } }));
 
     const exec = new PerplexityWebExecutor();
-    const { response } = await exec.execute({
+    const { response, terminalProvenance } = await exec.execute({
       model: "pplx-auto",
       body: { messages: [{ role: "user", content: "hi" }] },
       stream: false,
       credentials: { apiKey: "c" },
     });
     expect(response.status).toBe(200);
+    expect(terminalProvenance).toBe("validated");
     expect(reader.cancel).toHaveBeenCalledOnce();
     expect(releaseLock).toHaveBeenCalledOnce();
     expect(callOrder).toEqual(["cancel", "release"]);
+  });
+
+  it("fails closed instead of bypassing an unavailable strict proxy", async () => {
+    global.fetch = vi.fn(async () => ({ ok: true, body: new ReadableStream() }));
+    const result = await new PerplexityWebExecutor().execute({
+      model: "pplx-auto",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: { apiKey: "c" },
+      proxyOptions: { strictProxy: true, disableEnvProxy: true },
+    });
+
+    expect(result.response.status).toBe(502);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("propagates quota dispatch rejection instead of converting it to provider evidence", async () => {
+    global.fetch = vi.fn();
+    const execution = runWithProviderAttemptContext(
+      () => Date.now(),
+      () => new PerplexityWebExecutor().execute({
+        model: "pplx-auto",
+        body: { messages: [{ role: "user", content: "hi" }] },
+        stream: false,
+        credentials: { apiKey: "c" },
+      }),
+      { beginQuotaDispatch: () => { throw new QuotaDispatchUnavailableError("capacity_exhausted"); } },
+    );
+
+    await expect(execution).rejects.toMatchObject({
+      code: "QUOTA_DISPATCH_UNAVAILABLE",
+      reason: "capacity_exhausted",
+    });
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });
 

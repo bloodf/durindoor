@@ -146,6 +146,20 @@ describe("Fish Audio TTS core", () => {
     await expect(result.response.json()).resolves.toMatchObject({ format: "mp3" });
   });
 
+  it("treats a catalog model without a slash as the model, not a voice", async () => {
+    const result = await handleTtsCore({
+      provider: "fish-audio",
+      model: "s2.1-pro",
+      input: "xin chào",
+      credentials: { apiKey: "fish-key" },
+    });
+
+    expect(result.success).toBe(true);
+    const [, init] = global.fetch.mock.calls[0];
+    expect(init.headers.model).toBe("s2.1-pro");
+    expect(JSON.parse(init.body)).not.toHaveProperty("reference_id");
+  });
+
   it("fails closed instead of bypassing a strict connection proxy", async () => {
     const result = await handleTtsCore({
       provider: "fish-audio",

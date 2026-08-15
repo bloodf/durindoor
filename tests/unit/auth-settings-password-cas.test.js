@@ -19,7 +19,7 @@ vi.mock("@/lib/auth/passwordChangeProof", () => ({ resetPasswordChangeProofs: mo
 vi.mock("bcryptjs", () => ({ default: { genSalt: mocks.genSalt, hash: mocks.hash } }));
 vi.mock("node:crypto", () => ({ default: { randomBytes: mocks.randomBytes } }));
 
-const { PATCH } = await import("../../src/app/api/settings/route.js");
+const { GET, PATCH } = await import("../../src/app/api/settings/route.js");
 
 describe("settings PATCH password epoch CAS", () => {
   beforeEach(() => {
@@ -38,5 +38,24 @@ describe("settings PATCH password epoch CAS", () => {
     expect(mocks.setDashboardAuthCookie).not.toHaveBeenCalled();
     expect(mocks.invalidateDefaultPasswordCache).not.toHaveBeenCalled();
     expect(mocks.resetPasswordChangeProofs).not.toHaveBeenCalled();
+  });
+
+  it("never accepts or returns the internal password session epoch", async () => {
+    mocks.getSettings.mockResolvedValueOnce({
+      passwordSessionEpoch: "server-owned-epoch",
+      theme: "dark",
+    });
+
+    const getResponse = await GET();
+    expect(getResponse.body).toMatchObject({ theme: "dark" });
+    expect(getResponse.body).not.toHaveProperty("passwordSessionEpoch");
+
+    await PATCH({
+      json: async () => ({
+        passwordSessionEpoch: "attacker-controlled-epoch",
+        theme: "light",
+      }),
+    });
+    expect(mocks.updateSettings).toHaveBeenCalledWith({ theme: "light" });
   });
 });

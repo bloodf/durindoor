@@ -2,6 +2,9 @@ import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { SSE_DONE, SSE_HEADERS_NO_BUFFER } from "../utils/sseConstants.js";
 import { sseChunk } from "../utils/sse.js";
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { runQuotaBearingProviderRequest } from "../services/providerAttemptContext.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 
 const PPLX_SSE_ENDPOINT = PROVIDERS["perplexity-web"].baseUrl;
 const PPLX_API_VERSION = "2.18";
@@ -543,7 +546,7 @@ export class PerplexityWebExecutor extends BaseExecutor {
     super("perplexity-web", PROVIDERS["perplexity-web"]);
   }
 
-  async execute({ model, body, stream, credentials, signal, log }) {
+  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
     const messages = body?.messages;
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       const errResp = new Response(JSON.stringify({
@@ -605,8 +608,11 @@ export class PerplexityWebExecutor extends BaseExecutor {
 
     let response;
     try {
-      response = await fetch(PPLX_SSE_ENDPOINT, fetchOptions);
+      response = await runQuotaBearingProviderRequest(
+        () => proxyAwareFetch(PPLX_SSE_ENDPOINT, fetchOptions, proxyOptions),
+      );
     } catch (err) {
+      if (isQuotaDispatchUnavailable(err)) throw err;
       log?.error?.("PPLX-WEB", `Fetch failed: ${err.message || String(err)}`);
       const errResp = new Response(JSON.stringify({
         error: { message: `Perplexity connection failed: ${err.message || String(err)}`, type: "upstream_error" },
@@ -646,7 +652,7 @@ export class PerplexityWebExecutor extends BaseExecutor {
     } else {
       finalResponse = await buildNonStreamingResponse(response.body, model, cid, created, parsed.history, parsed.currentMsg, signal);
     }
-    return { response: finalResponse, url: PPLX_SSE_ENDPOINT, headers, transformedBody: pplxBody };
+    return { response: finalResponse, url: PPLX_SSE_ENDPOINT, headers, transformedBody: pplxBody, terminalProvenance: "validated" };
   }
 }
 

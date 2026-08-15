@@ -5,7 +5,7 @@ import { updateSettings } from "@/lib/localDb";
 import { invalidateDefaultPasswordCache } from "@/lib/auth/dashboardSession";
 import { resetPasswordChangeProofs } from "@/lib/auth/passwordChangeProof";
 
-import { isLocalRequest } from "@/dashboardGuard";
+import { hasValidCliToken, isLocalRequest } from "@/dashboardGuard";
 
 const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
 
@@ -15,7 +15,7 @@ const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
 // Never returns the default literal.
 export async function POST(request) {
   try {
-    if (!isLocalRequest(request) || !hasExactRequestOrigin(request) || !hasTrustedLocalOrigin(request)) {
+    if (!isLocalRequest(request) || (!await hasValidCliToken(request) && (!hasExactRequestOrigin(request) || !hasTrustedLocalOrigin(request)))) {
       console.error("[auth] password reset denied");
       return NextResponse.json({ error: "Password reset denied" }, { status: 403, headers: NO_STORE_HEADERS });
     }

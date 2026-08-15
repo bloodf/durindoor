@@ -14,13 +14,13 @@ const SETTINGS_RESPONSE_HEADERS = {
 };
 
 // Secrets must never be mass-assigned from request body (CWE-915)
-const PROTECTED_SETTING_KEYS = ["password", "mitmSudoEncrypted"];
+const PROTECTED_SETTING_KEYS = ["password", "passwordSessionEpoch", "mitmSudoEncrypted"];
 const SCOPED_SETTING_KEYS = ["claudeAutoPing", "codexAutoPing"];
 
 export async function GET() {
   try {
     const settings = await getSettings();
-    const { password, oidcClientSecret, mitmSudoEncrypted, ...safeSettings } = settings;
+    const { password, passwordSessionEpoch, oidcClientSecret, mitmSudoEncrypted, ...safeSettings } = settings;
     safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
     
     const enableRequestLogs = process.env.ENABLE_REQUEST_LOGS === "true";

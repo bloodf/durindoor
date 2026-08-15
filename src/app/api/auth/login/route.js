@@ -89,7 +89,8 @@ export async function POST(request) {
       { error: `Invalid password. ${remainingBeforeLock} attempt(s) left before lockout.`, remainingBeforeLock },
       { status: 401 }
     );
-  } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch {
+    console.error("[auth] login failed");
+    return NextResponse.json({ error: "Login failed" }, { status: 500 });
   }
 }

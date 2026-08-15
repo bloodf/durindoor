@@ -1,8 +1,10 @@
 "use client";
 
 import Image from "next/image";
+import { useSearchParams } from "next/navigation";
 import { useState, useEffect } from "react";
 import { Card, Button, Input } from "@/shared/components";
+import { safeNextPath } from "@/lib/auth/safeNextPath";
 
 export default function LoginPage() {
   const [password, setPassword] = useState("");
@@ -18,6 +20,8 @@ export default function LoginPage() {
   const [mustChange, setMustChange] = useState(false);
   const [passwordChangeProof, setPasswordChangeProof] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [wordmarkFailed, setWordmarkFailed] = useState(false);
+  const nextPath = safeNextPath(useSearchParams().get("next"));
 
   // Countdown for rate-limit
   useEffect(() => {
@@ -40,7 +44,7 @@ export default function LoginPage() {
         const data = await res.json();
 
         if (data.authenticated === true || data.requireLogin === false) {
-          window.location.assign("/dashboard");
+          window.location.assign(nextPath);
           return;
         }
 
@@ -88,7 +92,7 @@ export default function LoginPage() {
       }
 
       if (res.ok) {
-        window.location.assign("/dashboard");
+        window.location.assign(nextPath);
         return;
       }
 
@@ -124,7 +128,7 @@ export default function LoginPage() {
         return;
       }
       if (res.ok) {
-        window.location.assign("/dashboard");
+        window.location.assign(nextPath);
         return;
       }
       setError(data.error || "Failed to set password");
@@ -161,14 +165,19 @@ export default function LoginPage() {
       <div className="relative z-10 w-full max-w-md">
         <div className="text-center mb-8">
           <h1>
-            <Image
-              src="/durindoor-wordmark.png"
-              alt="DurinDoor"
-              width={872}
-              height={354}
-              priority
-              className="mx-auto h-auto w-72 max-w-full"
-            />
+            {wordmarkFailed ? (
+              <span>DurinDoor</span>
+            ) : (
+              <Image
+                src="/durindoor-wordmark.png"
+                alt="DurinDoor"
+                width={872}
+                height={354}
+                priority
+                onError={() => setWordmarkFailed(true)}
+                className="mx-auto h-auto w-72 max-w-full"
+              />
+            )}
           </h1>
           <p className="text-text-muted">
             {authMode === "oidc" && oidcConfigured
@@ -184,16 +193,18 @@ export default function LoginPage() {
                 Set a new password before accessing the dashboard remotely.
               </p>
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium">New password</label>
+                <label htmlFor="new-password" className="text-sm font-medium">New password</label>
                 <Input
+                  id="new-password"
                   type="password"
                   placeholder="Enter new password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
+                  aria-describedby={error ? "login-error" : undefined}
                   required
                   autoFocus
                 />
-                {error && <p className="text-xs text-red-500">{error}</p>}
+                {error && <p id="login-error" role="alert" aria-live="assertive" className="text-xs text-red-500">{error}</p>}
               </div>
               <Button type="submit" variant="primary" className="w-full" loading={loading} disabled={!newPassword}>
                 Set password
@@ -230,18 +241,20 @@ export default function LoginPage() {
                 )}
 
                 <div className="flex flex-col gap-2">
-                  <label className="text-sm font-medium">Password</label>
+                  <label htmlFor="dashboard-password" className="text-sm font-medium">Password</label>
                   <Input
+                    id="dashboard-password"
                     type="password"
                     placeholder="Enter password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    aria-describedby={error ? "login-error" : undefined}
                     required
                     autoFocus={!oidcAvailable}
                   />
-                  {error && <p className="text-xs text-red-500">{error}</p>}
+                  {error && <p id="login-error" role="alert" aria-live="assertive" className="text-xs text-red-500">{error}</p>}
                   {retryAfter > 0 && (
-                    <p className="text-xs text-amber-600 dark:text-amber-400">
+                    <p aria-live="polite" className="text-xs text-amber-600 dark:text-amber-400">
                       Locked. Retry in <span className="font-mono">{retryAfter}s</span>.
                     </p>
                   )}
@@ -264,7 +277,7 @@ export default function LoginPage() {
 
                 {usingDefaultPassword && (
                   <p className="text-xs text-center text-text-muted mt-2">
-                    Default password is <code className="bg-sidebar px-1 rounded">123456</code>
+                    The configured default password must be changed before remote access is allowed.
                   </p>
                 )}
                 {hasPassword === false && (

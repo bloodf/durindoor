@@ -50,12 +50,13 @@ export async function POST(request) {
     try {
       const cookieStore = await cookies();
       await setDashboardAuthCookie(cookieStore, request);
-    } catch (error) {
-      console.error("[auth] Failed to issue session cookie after password change:", error);
+    } catch {
+      console.error("[auth] password change cookie failed");
       return NextResponse.json({ success: true, reauthenticate: true });
     }
     return NextResponse.json({ success: true });
-  } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch {
+    console.error("[auth] password change failed");
+    return NextResponse.json({ error: "Password change failed" }, { status: 500 });
   }
 }

@@ -12,7 +12,8 @@ export async function POST() {
     invalidateDefaultPasswordCache();
     resetPasswordChangeProofs();
     return NextResponse.json({ success: true });
-  } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch {
+    console.error("[auth] password reset failed");
+    return NextResponse.json({ error: "Password reset failed" }, { status: 500 });
   }
 }

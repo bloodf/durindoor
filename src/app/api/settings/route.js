@@ -3,9 +3,10 @@ import { FREE_NO_AUTH_PROVIDER_IDS } from "@/shared/constants/freeNoAuthProvider
 import { getSettings, updateSettings } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation, resetComboScoring } from "open-sse/services/combo.js";
-import { DEFAULT_PASSWORD, invalidateDefaultPasswordCache, validateDashboardPassword, verifyDashboardPassword } from "@/lib/auth/dashboardSession";
+import { DEFAULT_PASSWORD, invalidateDefaultPasswordCache, setDashboardAuthCookie, validateDashboardPassword, verifyDashboardPassword } from "@/lib/auth/dashboardSession";
 import { resetPasswordChangeProofs } from "@/lib/auth/passwordChangeProof";
 import bcrypt from "bcryptjs";
+import { cookies } from "next/headers";
 import crypto from "node:crypto";
 
 const SETTINGS_RESPONSE_HEADERS = {
@@ -50,6 +51,7 @@ export async function PATCH(request) {
     // Strip protected secrets before any internal handling sets them
     for (const key of PROTECTED_SETTING_KEYS) delete body[key];
 
+    let passwordSessionEpoch;
     if (Object.prototype.hasOwnProperty.call(body, "newPassword")) {
       if (!body.newPassword) {
         return NextResponse.json({ error: "Password must not be empty" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
@@ -68,9 +70,9 @@ export async function PATCH(request) {
       }
 
       const salt = await bcrypt.genSalt(10);
-      const newEpoch = crypto.randomBytes(16).toString("hex");
+      passwordSessionEpoch = crypto.randomBytes(16).toString("hex");
       body.password = await bcrypt.hash(body.newPassword, salt);
-      body.passwordSessionEpoch = newEpoch;
+      body.passwordSessionEpoch = passwordSessionEpoch;
     }
 
 
@@ -177,6 +179,14 @@ export async function PATCH(request) {
     const settings = await updateSettings(body);
     if (willChangePassword) invalidateDefaultPasswordCache();
     if (willChangePassword) resetPasswordChangeProofs();
+    if (willChangePassword) {
+      try {
+        await setDashboardAuthCookie(await cookies(), request, { passwordSessionEpoch });
+      } catch {
+        console.error("[settings] password session cookie failed");
+        return NextResponse.json({ reauthenticate: true }, { headers: SETTINGS_RESPONSE_HEADERS });
+      }
+    }
 
     // Apply outbound proxy settings immediately (no restart required)
     if (
@@ -200,8 +210,8 @@ export async function PATCH(request) {
     const { password, oidcClientSecret, mitmSudoEncrypted, ...safeSettings } = settings;
     safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
     return NextResponse.json(safeSettings, { headers: SETTINGS_RESPONSE_HEADERS });
-  } catch (error) {
-    console.log("Error updating settings:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch {
+    console.error("[settings] update failed");
+    return NextResponse.json({ error: "Failed to update settings" }, { status: 500, headers: SETTINGS_RESPONSE_HEADERS });
   }
 }

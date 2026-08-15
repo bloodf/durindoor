@@ -344,8 +344,9 @@ export function detectRequiredCapabilities(body) {
   const addByMime = (mime) => {
     if (typeof mime !== "string") return;
     if (mime.startsWith("image/")) required.add("vision");
-    else if (mime.startsWith("audio/")) required.add("audioInput");
-    else if (mime === "application/pdf") required.add("pdf");
+    if (mime.startsWith("audio/")) required.add("audioInput");
+    if (mime.startsWith("video/")) required.add("videoInput");
+    if (mime === "application/pdf") required.add("pdf");
   };
 
   const scanBlock = (b) => {
@@ -363,17 +364,19 @@ export function detectRequiredCapabilities(body) {
 
   // Hermes/Ollama/Vercel AI SDK message shapes (message-level, not content blocks).
   const scanMessage = (m) => {
-    if (!m || typeof m !== "object") return;
+    if (!m || typeof m !== "object" || m.role !== "user") return;
 
     // Ollama / Hermes images array (base64 strings)
     if (Array.isArray(m.images) && m.images.length > 0) required.add("vision");
 
     // Vercel AI SDK / Hermes attachments
-    const attachments = m.experimental_attachments || m.attachments;
-    if (Array.isArray(attachments)) {
+    const attachments = Array.isArray(m.experimental_attachments)
+      ? m.experimental_attachments
+      : Array.isArray(m.attachments) ? m.attachments : null;
+    if (attachments) {
       for (const att of attachments) {
         if (!att) continue;
-        const mime = att.contentType || att.mediaType || (typeof att.url === "string" && att.url.match(/^data:([^;,]+)/)?.[1]);
+        const mime = att.contentType || att.mediaType || (typeof att.url === "string" && att.url.match(/^data:([^;,:]{1,255})/)?.[1]);
         if (mime) addByMime(mime);
         else if (att.url || att.data) required.add("vision");
       }
@@ -388,8 +391,9 @@ export function detectRequiredCapabilities(body) {
     // Inline data URIs embedded in string content
     if (typeof m.content === "string") {
       if (m.content.includes("data:image/")) required.add("vision");
-      else if (m.content.includes("data:audio/")) required.add("audioInput");
-      else if (m.content.includes("data:application/pdf")) required.add("pdf");
+      if (m.content.includes("data:audio/")) required.add("audioInput");
+      if (m.content.includes("data:video/")) required.add("videoInput");
+      if (m.content.includes("data:application/pdf")) required.add("pdf");
     }
   };
 

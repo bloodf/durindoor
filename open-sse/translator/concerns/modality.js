@@ -1,5 +1,5 @@
 // Strip multimodal content blocks a model cannot read, BEFORE translation.
-// Driven by getCapabilitiesForModel: vision/audioInput/pdf. Replaces removed
+// Driven by getCapabilitiesForModel: vision/audioInput/videoInput/pdf. Replaces removed
 // media with a short text placeholder so messages never become empty.
 import { FORMATS } from "../formats.js";
 
@@ -8,12 +8,14 @@ import { FORMATS } from "../formats.js";
 const PLACEHOLDER_CURRENT = {
   vision: "[image omitted: model has no vision support]",
   audioInput: "[audio omitted: model has no audio support]",
+  videoInput: "[video omitted: model has no video support]",
   pdf: "[file omitted: model has no document support]",
 };
 // Earlier turns: neutral (a combo may route to a different model each turn).
 const PLACEHOLDER_PREV = {
   vision: "[Previous image omitted from context.]",
   audioInput: "[Previous audio omitted from context.]",
+  videoInput: "[Previous video omitted from context.]",
   pdf: "[Previous file omitted from context.]",
 };
 const ph = (cap, isLast) => (isLast ? PLACEHOLDER_CURRENT : PLACEHOLDER_PREV)[cap];
@@ -23,6 +25,7 @@ function capForMime(mime) {
   if (typeof mime !== "string") return null;
   if (mime.startsWith("image/")) return "vision";
   if (mime.startsWith("audio/")) return "audioInput";
+  if (mime.startsWith("video/")) return "videoInput";
   if (mime === "application/pdf") return "pdf";
   return null;
 }
@@ -59,13 +62,13 @@ function filterBlocks(blocks, capOf, caps, removed, isLast) {
 
 function capForAttachment(attachment) {
   const mime = attachment?.contentType || attachment?.mediaType ||
-    (typeof attachment?.url === "string" && attachment.url.match(/^data:([^;,]+)/)?.[1]);
+    (typeof attachment?.url === "string" && attachment.url.match(/^data:([^;,:]{1,255})/)?.[1]);
   const cap = capForMime(mime);
-  return cap || (attachment?.url || attachment?.data ? "vision" : null);
+  return cap || (!mime && (attachment?.url || attachment?.data) ? "vision" : null);
 }
 
 function replaceUnsupportedDataUris(content, caps, isLast, removed) {
-  return content.replace(/data:([^;,]+)(?:;base64)?,[^\s)]+/gi, (uri, mime) => {
+  return content.replace(/data:([^;,:]{1,255})(?:;base64)?,[^\s)]+/gi, (uri, mime) => {
     const cap = capForMime(mime.toLowerCase());
     if (!cap || caps[cap] !== false) return uri;
     removed.add(cap);
@@ -99,10 +102,7 @@ function stripOpenAI(body, caps) {
       if (removed.size && !msg.content) msg.content = [...removed].map((cap) => ph(cap, i === last)).join(" ");
       return;
     }
-    if (!Array.isArray(msg.content)) {
-      if (removed.size) msg.content = [...removed].map((cap) => ph(cap, i === last)).join(" ");
-      return;
-    }
+    if (!Array.isArray(msg.content)) return;
     msg.content = filterBlocks(msg.content, capForOpenAIBlock, caps, removed, i === last);
   });
 }
@@ -161,7 +161,7 @@ function stripGeminiParts(contents, caps) {
 export function stripUnsupportedModalities(body, sourceFormat, caps) {
   if (!body || !caps) return false;
   // Fast exit: model supports everything we'd strip.
-  if (caps.vision !== false && caps.audioInput !== false && caps.pdf !== false) return false;
+  if (caps.vision !== false && caps.audioInput !== false && caps.videoInput !== false && caps.pdf !== false) return false;
 
   switch (sourceFormat) {
     case FORMATS.OPENAI:

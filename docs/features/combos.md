@@ -53,9 +53,9 @@ Fallback should not hide invalid client requests. If the request body is malform
 
 ## Attachment Capability Routing
 
-With capability-aware routing enabled, DurinDoor chooses a compatible combo member from media on the current user turn. Hermes/Ollama `messages[].images`, Vercel AI SDK `messages[].experimental_attachments` (or `attachments`), direct message image fields, and `data:` image, audio, or PDF URLs are recognized. Attachment MIME comes from `contentType`, `mediaType`, or the data URL.
+With capability-aware routing enabled, DurinDoor chooses a compatible combo member from media on the current user turn. Hermes/Ollama `messages[].images`, Vercel AI SDK `messages[].experimental_attachments` (or `attachments`), direct message image fields, and `data:` image, audio, video, or PDF URLs are recognized. Attachment MIME comes from `contentType`, `mediaType`, or the data URL; known non-media MIME types do not require vision, while attachments without resolvable MIME retain the vision fallback.
 
-If the selected model has no vision support, DurinDoor removes image fields and image attachments before translation. Audio, PDF, and non-image attachments remain when their corresponding capabilities are supported.
+If the selected model lacks a media capability, DurinDoor removes fields, attachments, and inline data URLs for that capability before translation. Non-media attachments and supported modalities remain.
 
 ## Account Fallback Inside a Combo
 

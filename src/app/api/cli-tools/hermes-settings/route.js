@@ -26,10 +26,9 @@ const escapeYamlString = (value) => String(value)
   .replace(/\n/g, "\\n")
   .replace(/\t/g, "\\t");
 
-const assertNoControlChars = (value, field) => {
-  if (/[\r\n\t]/.test(value)) {
-    return { error: `${field} must not contain line breaks or tabs` };
-  }
+const validateInput = (value, field) => {
+  if (!value.trim()) return { error: `${field} must not be blank` };
+  if (/[\p{Cc}\p{Cf}]/u.test(value)) return { error: `${field} must not contain control characters` };
   return null;
 };
 
@@ -52,7 +51,6 @@ const parseModelBlock = (yaml) => {
     default: get("default"),
     provider: get("provider"),
     base_url: get("base_url"),
-    api_key: get("api_key"),
   };
 };
 
@@ -152,19 +150,17 @@ export async function GET() {
 export async function POST(request) {
   try {
     const { baseUrl, apiKey, model } = await request.json();
-    if (typeof baseUrl !== "string" || typeof model !== "string" || !baseUrl || !model) {
+    if (typeof baseUrl !== "string" || typeof model !== "string") {
       return NextResponse.json({ error: "baseUrl and model are required" }, { status: 400 });
     }
-    if (apiKey != null && (typeof apiKey !== "string" || !apiKey)) {
+    if (apiKey != null && typeof apiKey !== "string") {
       return NextResponse.json({ error: "apiKey must be a non-empty string when provided" }, { status: 400 });
     }
-    const invalidBaseUrl = assertNoControlChars(baseUrl, "baseUrl");
-    const invalidModel = assertNoControlChars(model, "model");
-    if (invalidBaseUrl || invalidModel) {
-      return NextResponse.json(invalidBaseUrl || invalidModel, { status: 400 });
-    }
-    if (apiKey && /[\r\n]/.test(apiKey)) {
-      return NextResponse.json({ error: "apiKey must not contain line breaks" }, { status: 400 });
+    const invalidBaseUrl = validateInput(baseUrl, "baseUrl");
+    const invalidModel = validateInput(model, "model");
+    const invalidApiKey = apiKey == null ? null : validateInput(apiKey, "apiKey");
+    if (invalidBaseUrl || invalidModel || invalidApiKey) {
+      return NextResponse.json(invalidBaseUrl || invalidModel || invalidApiKey, { status: 400 });
     }
 
     const dir = getHermesDir();

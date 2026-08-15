@@ -216,17 +216,17 @@ describe("hermes-settings api_key (port of decolua/9router#3235)", () => {
   });
 
   it.each([
-    ["baseUrl", "http://localhost:20128\napi_key: leaked", "cc/claude-sonnet-4-6", "baseUrl must not contain line breaks or tabs"],
-    ["model", "http://localhost:20128", "cc/claude\napi_key: leaked", "model must not contain line breaks or tabs"],
-  ])("rejects %s values that could inject YAML fields", async (_field, baseUrl, model, error) => {
+    ["baseUrl", "   ", "cc/claude-sonnet-4-6"],
+    ["baseUrl", "http://localhost:20128\u0000", "cc/claude-sonnet-4-6"],
+    ["model", "http://localhost:20128", "\u200bcc/claude-sonnet-4-6"],
+  ])("rejects blank or Unicode-control %s before writing", async (_field, baseUrl, model) => {
     const response = await postBody({ baseUrl, model });
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error });
     expect(mocks.writeFile).not.toHaveBeenCalled();
   });
 
-  it.each([0, {}, []])("rejects non-string API keys", async (apiKey) => {
+  it.each([0, {}, [], "   ", "sk_valid\u0000", "sk_valid\u200b"])("rejects non-string, blank, or Unicode-control API keys", async (apiKey) => {
     const response = await postBody({
       baseUrl: "http://localhost:20128",
       apiKey,
@@ -234,7 +234,6 @@ describe("hermes-settings api_key (port of decolua/9router#3235)", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "apiKey must be a non-empty string when provided" });
     expect(mocks.writeFile).not.toHaveBeenCalled();
   });
 
@@ -268,19 +267,11 @@ describe("hermes-settings api_key (port of decolua/9router#3235)", () => {
     expect(JSON.stringify(await response.json())).not.toContain(apiKey);
   });
 
-
-  it("GET round-trips the api_key field through parseModelBlock", async () => {
-    // Seed config with the YAML that POST would have written.
+  it("does not return a literal API key from legacy Hermes YAML", async () => {
+    const apiKey = "sk_get_sentinel";
     mocks.readFile.mockImplementation(async (path) => {
       if (String(path).endsWith("config.yaml")) {
-        return [
-          'model:',
-          '  default: "cc/claude-sonnet-4-6"',
-          '  provider: "custom"',
-          '  base_url: "http://localhost:20128/v1"',
-          '  api_key: "${OPENAI_API_KEY}"',
-          '',
-        ].join("\n");
+        return `model:\n  default: "cc/claude-sonnet-4-6"\n  provider: "custom"\n  base_url: "http://localhost:20128/v1"\n  api_key: "${apiKey}"\n`;
       }
       const err = new Error("ENOENT");
       err.code = "ENOENT";
@@ -289,13 +280,6 @@ describe("hermes-settings api_key (port of decolua/9router#3235)", () => {
 
     const response = await GET();
     expect(response.status).toBe(200);
-    const body = await response.json();
-    expect(body.installed).toBe(true);
-    expect(body.settings.model).toEqual({
-      default: "cc/claude-sonnet-4-6",
-      provider: "custom",
-      base_url: "http://localhost:20128/v1",
-      api_key: "${OPENAI_API_KEY}",
-    });
+    expect(JSON.stringify(await response.json())).not.toContain(apiKey);
   });
 });

@@ -809,8 +809,9 @@ export default function ProfilePage() {
             {settings.requireLogin === true && (
               <form onSubmit={handlePasswordChange} className="flex flex-col gap-4 pt-4 border-t border-border/50">
                 <div className="flex flex-col gap-2">
-                  <label className="text-xs sm:text-sm font-medium">Current Password</label>
+                  <label className="text-xs sm:text-sm font-medium" htmlFor="profile-current-password">Current Password</label>
                   <Input
+                    id="profile-current-password"
                     type="password"
                     placeholder="Enter current password"
                     value={passwords.current}
@@ -827,8 +828,9 @@ export default function ProfilePage() {
                 )} */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="flex flex-col gap-2">
-                    <label className="text-xs sm:text-sm font-medium">New Password</label>
+                    <label className="text-xs sm:text-sm font-medium" htmlFor="profile-new-password">New Password</label>
                     <Input
+                      id="profile-new-password"
                       type="password"
                       placeholder="Enter new password"
                       value={passwords.new}
@@ -837,8 +839,9 @@ export default function ProfilePage() {
                     />
                   </div>
                   <div className="flex flex-col gap-2">
-                    <label className="text-xs sm:text-sm font-medium">Confirm New Password</label>
+                    <label className="text-xs sm:text-sm font-medium" htmlFor="profile-confirm-password">Confirm New Password</label>
                     <Input
+                      id="profile-confirm-password"
                       type="password"
                       placeholder="Confirm new password"
                       value={passwords.confirm}

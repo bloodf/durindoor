@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 import { isUsingDefaultPassword, setDashboardAuthCookie } from "@/lib/auth/dashboardSession";
 import { issuePasswordChangeProof } from "@/lib/auth/passwordChangeProof";
 import { isOidcConfigured } from "@/lib/auth/oidc";
-import { hasExactRequestOrigin } from "@/lib/auth/requestOrigin";
+import { hasExactRequestOrigin, hasTrustedLocalOrigin } from "@/lib/auth/requestOrigin";
 import { checkLock, recordFail, recordSuccess, getClientIp } from "@/lib/auth/loginLimiter";
 import { isLocalRequest } from "@/dashboardGuard";
 
@@ -65,7 +65,7 @@ export async function POST(request) {
       // change-password endpoint accepts.
       const mustChangePassword = await isUsingDefaultPassword(settings);
       if (mustChangePassword) {
-        if (!isLocalRequest(request)) {
+        if (!isLocalRequest(request) || !hasTrustedLocalOrigin(request) || !hasExactRequestOrigin(request)) {
           recordFail(ip);
           const postLock = checkLock(ip);
           if (postLock.locked) {

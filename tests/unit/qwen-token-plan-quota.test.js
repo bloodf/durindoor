@@ -1,0 +1,216 @@
+import { describe, expect, it, vi } from "vitest";
+import { getProviderQuotaAdapter } from "../../open-sse/services/quota/providers/index.js";
+import {
+  fetchBailianQuota,
+  normalizeQwenTokenPlanQuota,
+} from "../../open-sse/services/quota/providers/codingPlans.js";
+
+const NOW = Date.parse("2026-08-15T00:00:00.000Z");
+const RESET = "2026-08-15T01:00:00.000Z";
+
+function gateway(payload) {
+  return {
+    code: "200",
+    data: { DataV2: { data: { code: "SUCCESS", success: true, data: payload } } },
+  };
+}
+
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+function quotaContext(connection, fetchImpl) {
+  const { config } = getProviderQuotaAdapter("bailian-coding-plan");
+  return {
+    config,
+    connection,
+    fetchImpl,
+    signal: new AbortController().signal,
+    now: () => NOW,
+    timeoutMs: 1_000,
+    maxResponseBytes: 64 * 1024,
+  };
+}
+
+describe("Qwen / Alibaba personal Token Plan quota (port abd4df63dc25)", () => {
+  it("normalizes every present personal-plan window without inventing a total", () => {
+    const rows = normalizeQwenTokenPlanQuota(
+      {
+        usage: {
+          per1WeekPercentage: 0.55,
+          per1WeekResetTime: RESET,
+          per5HourPercentage: 1,
+          per5HourResetTime: RESET,
+        },
+        subscription: { specCode: "pro" },
+        quotaConfig: { pro: { five_hour: 12_000, weekly: 40_000 } },
+        consoleSite: "ALIYUN",
+      },
+      { now: NOW }
+    );
+
+    expect(rows).toHaveLength(2);
+    const session = rows.find((r) => r.dimensionKey.endsWith(":session"));
+    const weekly = rows.find((r) => r.dimensionKey.endsWith(":weekly"));
+    expect(session).toMatchObject({
+      state: "exhausted",
+      amounts: expect.objectContaining({ limit: 12_000, used: 12_000, remaining: 0, unit: "requests" }),
+    });
+    expect(weekly).toMatchObject({
+      state: "available",
+      amounts: expect.objectContaining({ limit: 40_000, used: 22_000, remaining: 18_000, unit: "requests" }),
+    });
+  });
+
+  it("rejects a personal-plan response whose tier quota is absent or malformed", () => {
+    expect(normalizeQwenTokenPlanQuota({ usage: { per1WeekPercentage: 0.5 } }, { now: NOW })).toBeNull();
+    expect(
+      normalizeQwenTokenPlanQuota(
+        { usage: { per1WeekPercentage: 0.5 }, subscription: { specCode: "pro" }, quotaConfig: { pro: { weekly: 0 } } },
+        { now: NOW }
+      )
+    ).toBeNull();
+    expect(
+      normalizeQwenTokenPlanQuota(
+        { usage: { per1WeekPercentage: 1.2 }, subscription: { specCode: "pro" }, quotaConfig: { pro: { weekly: 40_000 } } },
+        { now: NOW }
+      )
+    ).toBeNull();
+  });
+
+  it("surfaces Token Plan quota via the console cookie gateway, not the inference API key", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(json(gateway({ per1WeekPercentage: 0.25, per1WeekResetTime: RESET })))
+      .mockResolvedValueOnce(json(gateway({ pro: { weekly: 40_000 } })))
+      .mockResolvedValueOnce(json(gateway({ specCode: "pro" })));
+    const result = await fetchBailianQuota(quotaContext({ id: "token-plan", provider: "bailian-coding-plan", apiKey: "enterprise-api-key", providerSpecificData: { qwenCloudCookie: "login_aliyunid_ticket=browser-session", qwenCloudSecToken: "sec" } }, fetchImpl));
+    expect(result).toMatchObject({ outcome: "success", sourceId: "bailian-coding-plan:token-plan-quota:v1" });
+    expect(result.rows).toHaveLength(1);
+    expect(fetchImpl.mock.calls).toHaveLength(3);
+    const expectedHeaders = { Cookie: "login_aliyunid_ticket=browser-session", "Content-Type": "application/x-www-form-urlencoded", Origin: "https://modelstudio.console.alibabacloud.com", Referer: "https://modelstudio.console.alibabacloud.com/" };
+    for (const call of fetchImpl.mock.calls) {
+      expect(call[0]).toMatch(/^https:\/\/bailian-singapore-cs\.alibabacloud\.com\/data\/api\.json/);
+      expect(call[1].headers).toMatchObject(expectedHeaders);
+    }
+    expect(fetchImpl.mock.calls[0][1].headers.Authorization).toBeUndefined();
+    expect(new URLSearchParams(fetchImpl.mock.calls[0][1].body).get("params")).toContain("zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/usage");
+  });
+
+  it("returns provider_error for a nested upstream error instead of falsely demanding re-login", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(json({ data: { DataV2: { data: { code: "UPSTREAM_ERROR", success: false } } } }));
+    const result = await fetchBailianQuota(quotaContext({ id: "upstream", providerSpecificData: { qwenCloudCookie: "login_qwencloud_ticket=session" } }, fetchImpl));
+    expect(result).toMatchObject({ outcome: "provider_error", sourceId: "bailian-coding-plan:token-plan-quota:v1" });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns unauthenticated for confirmed console login envelopes and HTTP 401", async () => {
+    const loginFetch = vi.fn().mockResolvedValue(json({ data: { DataV2: { data: { code: "ConsoleNeedLogin", success: false } } } }));
+    const loginResult = await fetchBailianQuota(quotaContext({ id: "login", providerSpecificData: { qwenCloudCookie: "login_qwencloud_ticket=session" } }, loginFetch));
+    expect(loginResult).toMatchObject({ outcome: "unauthenticated", sourceId: "bailian-coding-plan:token-plan-quota:v1" });
+    const unauthorizedFetch = vi.fn().mockResolvedValue(json({ error: "unauthorized" }, 401));
+    const unauthorizedResult = await fetchBailianQuota(quotaContext({ id: "unauthorized", providerSpecificData: { qwenCloudCookie: "login_qwencloud_ticket=session" } }, unauthorizedFetch));
+    expect(unauthorizedResult).toMatchObject({ outcome: "unauthenticated", sourceId: "bailian-coding-plan:token-plan-quota:v1" });
+  });
+
+  it("falls back to retained API-key Coding Plan quota only when personal quota is unavailable", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(json({ code: "ConsoleNeedLogin" }))
+      .mockResolvedValueOnce(
+        json({
+          code: "Success",
+          data: {
+            codingPlanInstanceInfos: [
+              {
+                codingPlanQuotaInfo: {
+                  per5HourUsedQuota: 1,
+                  per5HourTotalQuota: 10,
+                  per5HourQuotaNextRefreshTime: RESET,
+                  perWeekUsedQuota: 2,
+                  perWeekTotalQuota: 20,
+                  perWeekQuotaNextRefreshTime: RESET,
+                  perBillMonthUsedQuota: 3,
+                  perBillMonthTotalQuota: 30,
+                  perBillMonthQuotaNextRefreshTime: RESET,
+                },
+              },
+            ],
+          },
+        })
+      );
+
+    const result = await fetchBailianQuota(
+      quotaContext(
+        {
+          id: "coding-plan",
+          provider: "bailian-coding-plan",
+          apiKey: "enterprise-api-key",
+          providerSpecificData: { qwenCloudCookie: "login_aliyunid_ticket=expired" },
+        },
+        fetchImpl
+      )
+    );
+
+    expect(result).toMatchObject({ outcome: "success", sourceId: "bailian-coding-plan:console-quota:v1" });
+    expect(fetchImpl.mock.calls[1][1].headers.Authorization).toBe("Bearer enterprise-api-key");
+  });
+
+  it("targets the QwenCloud gateway host for the default (domestic) console site", async () => {
+    const fetchImpl = vi.fn(async (url, init) => {
+      const endpoint = new URL(url).searchParams.get("api")?.split("/").at(-1) || "usage";
+      if (endpoint === "usage") return json(gateway({ per5HourPercentage: 0.5, per5HourResetTime: "2026-08-15T01:00:00.000Z" }));
+      if (endpoint === "quota-config") return json(gateway({ pro: { five_hour: 2000, weekly: 8000 } }));
+      return json(gateway({ specCode: "pro" }));
+    });
+    const result = await fetchBailianQuota(
+      quotaContext(
+        {
+          id: "token-plan-domestic",
+          credential: "",
+          providerSpecificData: { qwenCloudCookie: "login_qwencloud_ticket=abc" },
+        },
+        fetchImpl,
+      ),
+    );
+    expect(result).toMatchObject({ outcome: "success", sourceId: "bailian-coding-plan:token-plan-quota:v1" });
+    expect(fetchImpl.mock.calls[0][0]).toMatch(/^https:\/\/cs-data\.qwencloud\.com\//);
+    expect(fetchImpl.mock.calls[0][1].headers).toMatchObject({ Origin: "https://home.qwencloud.com", Referer: "https://home.qwencloud.com/" });
+  });
+
+  it("ignores attacker-supplied per-connection host/console overrides and never leaks the cookie off first-party", async () => {
+    const fetchImpl = vi.fn(async (url) => {
+      const endpoint = new URL(url).searchParams.get("api")?.split("/").at(-1) || "usage";
+      if (endpoint === "usage") return json(gateway({ per5HourPercentage: 0.5, per5HourResetTime: "2026-08-15T01:00:00.000Z" }));
+      if (endpoint === "quota-config") return json(gateway({ pro: { five_hour: 2000, weekly: 8000 } }));
+      return json(gateway({ specCode: "pro" }));
+    });
+    const result = await fetchBailianQuota(
+      quotaContext(
+        {
+          id: "token-plan-hostile",
+          credential: "",
+          providerSpecificData: {
+            qwenCloudCookie: "login_aliyunid_ticket=browser-session",
+            qwenCloudConsoleSite: "DOMESTIC",
+            qwenTokenPlanInternationalHost: "https://attacker.example/relay",
+            qwenTokenPlanDomesticHost: "https://attacker.example/relay",
+            consoleSite: "DOMESTIC",
+          },
+        },
+        fetchImpl,
+    ),
+    );
+    expect(result).toMatchObject({ outcome: "success", sourceId: "bailian-coding-plan:token-plan-quota:v1" });
+    for (const call of fetchImpl.mock.calls) {
+      expect(call[0]).toMatch(/^https:\/\/bailian-singapore-cs\.alibabacloud\.com\//);
+      expect(call[0]).not.toContain("attacker.example");
+      expect(call[1].headers).toMatchObject({ Cookie: "login_aliyunid_ticket=browser-session", Origin: "https://modelstudio.console.alibabacloud.com", Referer: "https://modelstudio.console.alibabacloud.com/" });
+      expect(call[1].headers.Origin).not.toContain("attacker.example");
+      expect(call[1].headers.Referer).not.toContain("attacker.example");
+    }
+  });
+});

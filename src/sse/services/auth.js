@@ -10,6 +10,7 @@ import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/con
 import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, buildModelLockUpdate, getActiveModelLockUntil, isPassthroughConnectionWideError } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS, RESET_COOLDOWN_CAP_MS } from "open-sse/config/errorConfig.js";
 import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
+import { PROVIDERS } from "open-sse/providers/index.js";
 import * as log from "../utils/logger.js";
 import { timingSafeEqual } from "node:crypto";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
@@ -114,13 +115,32 @@ if (affinityCleanup.unref) affinityCleanup.unref();
 
 const NO_AUTH_STORED_DATA_PROVIDERS = new Set(["mimocode"]);
 
+// Canonical roster of providers eligible for the public no-auth fallback when
+// no saved connection row exists. Mimocode stays in the roster so zero-row
+// lookups still surface the ephemeral credential, while stored-but-unavailable
+// Mimocode connections are suppressed by the stored-row branch below.
+const PUBLIC_NO_AUTH_FALLBACK_PROVIDERS = new Set([
+  "auggie",
+  "chipotle",
+  "duckduckgo-web",
+  "mimocode",
+  "opencode",
+  "pollinations",
+  "theoldllm",
+]);
+
 /** Whether auth may replace an unavailable saved key with the public credential. */
 export function providerAllowsPublicNoAuthFallback(provider) {
   const providerId = resolveProviderId(provider);
-  return AI_PROVIDERS[providerId]?.noAuth === true
-    && !NO_AUTH_STORED_DATA_PROVIDERS.has(providerId);
+  return PUBLIC_NO_AUTH_FALLBACK_PROVIDERS.has(providerId)
+    && AI_PROVIDERS[providerId]?.noAuth === true;
 }
-
+/**
+ * Builds a no-auth credential object: the public fallback when `connection`
+ * is omitted, or a stored no-auth-provider connection (e.g. Mimocode) when
+ * one is passed. `authType: "none"` is set on the returned object only —
+ * it is never written back to the connection record or persisted.
+ */
 function buildNoAuthCredential(providerSpecificData = {}, resolvedProxy = {}, connection = null) {
   return {
     id: connection?.id || "noauth",
@@ -138,8 +158,25 @@ function buildNoAuthCredential(providerSpecificData = {}, resolvedProxy = {}, co
       disableEnvProxy: resolvedProxy.disableEnvProxy === true,
     },
     connectionId: connection?.id || "noauth",
+    authType: "none",
     _connection: connection || null,
   };
+}
+
+function buildOptionalNoAuthCredential() {
+  return {
+    id: "noauth",
+    connectionName: "Public",
+    isActive: true,
+    authType: "none",
+    providerSpecificData: {},
+    connectionId: "noauth",
+    _connection: null,
+  };
+}
+
+function providerHasOptionalAuth(providerId) {
+  return PROVIDERS[providerId]?.authType === "optional";
 }
 
 function throwIfAborted(signal) {
@@ -374,11 +411,11 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     throwIfAborted(signal);
 
     const isNoAuthProvider = AI_PROVIDERS[providerId]?.noAuth === true;
-    const publicFallbackAllowed = !excludeSet.has("noauth");
+    const publicFallbackAllowed = providerAllowsPublicNoAuthFallback(providerId) && !excludeSet.has("noauth");
 
     if (isNoAuthProvider) {
-      // Stored-data no-auth providers (e.g., mimocode) use saved connections first
-      // and never fall back to the public no-auth credential.
+      // Stored-data no-auth providers (e.g., mimocode) use saved connections first.
+      // Once rows exist, they never fall back to the public no-auth credential.
       if (NO_AUTH_STORED_DATA_PROVIDERS.has(providerId) && connections.length > 0) {
         const availableStoredConnections = connections.filter(
           (c) => !excludeSet.has(c.id) && !requestedModelLockActive(c, model, boundedModel, selectionNow) && !quotaDecisions.get(c.id)?.skip
@@ -421,6 +458,9 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       }
     }
 
+    if (connections.length === 0 && providerHasOptionalAuth(providerId) && !excludeSet.has("noauth")) {
+      return buildOptionalNoAuthCredential();
+    }
     if (connections.length === 0) {
       log.warn("AUTH", `No credentials for ${provider}`);
       return null;
@@ -450,6 +490,10 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       if (isNoAuthProvider && publicFallbackAllowed) {
         log.warn("AUTH", `${provider} | saved key unavailable, falling back to public no-auth`);
         return buildPublicNoAuthCredential(providerId);
+      }
+      if (providerHasOptionalAuth(providerId) && publicFallbackAllowed) {
+        log.warn("AUTH", `${provider} | saved key unavailable, falling back to optional no-auth`);
+        return buildOptionalNoAuthCredential();
       }
       // Find earliest lock expiry across all connections for retry timing
       const blockedConns = connections.filter(
@@ -809,7 +853,14 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     context?.rateLimitEvidence && typeof context.rateLimitEvidence === "object"
       ? context.rateLimitEvidence
       : null;
-  const fallbackResult = checkFallbackError(status, errorText, backoffLevel);
+  const fallbackResult = checkFallbackError(
+    status,
+    errorText,
+    backoffLevel,
+    provider,
+    context?.headers ?? null,
+    context?.errorBody ?? null,
+  );
   const effectiveEvidence = callerEvidence || fallbackResult.rateLimitEvidence || null;
   const evidenceState = effectiveEvidence?.state === "exhausted" ? "exhausted" : "cooldown";
   // Precedence: (1) caller-supplied normalized evidence is authoritative — its
@@ -870,7 +921,10 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     AI_PROVIDERS[resolveProviderId(provider)]?.passthroughConnectionWideErrors,
     status,
   );
-  const fallbackModel = resolveFallbackModelScope(provider, model, { accountWide: githubResetAtMs || accountWideRuntime || passthroughConnectionError });
+  const providerRuleConnectionWide = fallbackResult.scope === "connection";
+  const fallbackModel = resolveFallbackModelScope(provider, model, {
+    accountWide: githubResetAtMs || accountWideRuntime || passthroughConnectionError || providerRuleConnectionWide,
+  });
   let atomicApplied = false;
   try {
     const db = await import("@/lib/localDb");

@@ -34,9 +34,22 @@ const URL_PATTERNS = {
   cursor: ["/BidiAppend", "/RunSSE", "/RunPoll", "/Run"],
 };
 
+/** Whether request is a chat turn to intercept rather than passthrough. */
+function isChatRequest(tool, req) {
+  const patterns = URL_PATTERNS[tool] || [];
+  if (patterns.some((pattern) => (req.url || "").includes(pattern))) return true;
+  if (tool === "kiro") {
+    return String(req.headers?.["x-amz-target"] || "").includes("GenerateAssistantResponse");
+  }
+  return false;
+}
+
 // Synonym map: rawModel from request → canonical alias key in mitmAlias DB
 const MODEL_SYNONYMS = {
   antigravity: {
+    "gemini-3.7-flash-high": "gemini-3.7-flash-high",
+    "gemini-3.7-flash-medium": "gemini-3.7-flash-medium",
+    "gemini-3.7-flash-low": "gemini-3.7-flash-low",
     "gemini-default": "gemini-3.5-flash-low",
     "gemini-3.5-flash-high": "gemini-3-flash-agent",
     "gemini-3.5-flash-medium": "gemini-3.5-flash-low",
@@ -90,4 +103,4 @@ function getToolForHost(host) {
   return null;
 }
 
-module.exports = { IS_DEV, LSOF_BIN, MITM_ENTRY_ARG, MITM_START_LOCK_PORT, ROOT_CA_LOCK_PORT, MITM_NODE_PORT, TARGET_HOSTS, URL_PATTERNS, MODEL_SYNONYMS, MODEL_PATTERNS, MODEL_NO_MAP, LOG_BLACKLIST_URL_PARTS, getToolForHost };
+module.exports = { IS_DEV, LSOF_BIN, MITM_ENTRY_ARG, MITM_START_LOCK_PORT, ROOT_CA_LOCK_PORT, MITM_NODE_PORT, TARGET_HOSTS, URL_PATTERNS, MODEL_SYNONYMS, MODEL_PATTERNS, MODEL_NO_MAP, LOG_BLACKLIST_URL_PARTS, getToolForHost, isChatRequest };

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import "../translator/registerAll.js";
 import { acquireSlot, getGateStats, releaseSlot, _resetGates } from "../../open-sse/services/concurrencyGate.js";
+import { DefaultExecutor } from "../../open-sse/executors/default.js";
 
 const mocks = vi.hoisted(() => ({
   execute: vi.fn(),
@@ -103,6 +104,7 @@ describe("thinking suffix at the chatCore provider boundary", () => {
   beforeEach(() => {
     _resetGates();
     vi.clearAllMocks();
+    mocks.execute.mockReset();
     mocks.execute.mockRejectedValue(new Error("stop after boundary capture"));
     mocks.detectClientTool.mockReturnValue(null);
     mocks.isNativePassthrough.mockReturnValue(false);
@@ -297,6 +299,181 @@ describe("thinking suffix at the chatCore provider boundary", () => {
     expect(call.body.max_tokens).toBe(9216);
     expect(call.body.thinking.budget_tokens).toBeLessThan(call.body.max_tokens);
   });
+
+  it("folds and anchors only native Claude passthrough bodies", async () => {
+    mocks.detectClientTool.mockReturnValue("claude");
+    mocks.isNativePassthrough.mockReturnValue(true);
+    const body = {
+      model: "claude-haiku-4-5",
+      max_tokens: 1024,
+      stream: true,
+      messages: [
+        { role: "system", content: [{ type: "text", text: "mid-turn instructions" }] },
+        { role: "user", content: [{ type: "text", text: "hello" }] },
+      ],
+    };
+
+    await handleChatCore({
+      body,
+      modelInfo: { provider: "claude", model: "claude-haiku-4-5" },
+      credentials: { accessToken: "claude-token", providerSpecificData: {} },
+      connectionId: "claude-native-fold-anchor",
+      clientRawRequest: { endpoint: "/v1/messages", body, headers: { "anthropic-version": "2023-06-01" } },
+      log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    const dispatched = mocks.execute.mock.calls[0][0].body;
+    expect(dispatched.messages).toEqual([{
+      role: "user",
+      content: [
+        { type: "text", text: "hello" },
+        { type: "text", text: "mid-turn instructions", cache_control: { type: "ephemeral" } },
+      ],
+    }]);
+  });
+
+  it("does not fold or anchor translated non-Claude requests", async () => {
+    const body = {
+      model: "claude-haiku-4-5",
+      stream: true,
+      messages: [
+        { role: "system", content: "instructions" },
+        { role: "user", content: "hello" },
+      ],
+    };
+
+    await handleChatCore({
+      body,
+      modelInfo: { provider: "claude", model: "claude-haiku-4-5" },
+      credentials: { accessToken: "claude-token", providerSpecificData: {} },
+      connectionId: "claude-translated-no-fold-anchor",
+      clientRawRequest: { endpoint: "/v1/chat/completions", body, headers: {} },
+      log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    const dispatched = mocks.execute.mock.calls[0][0].body;
+    expect(dispatched.system).toEqual([
+      { type: "text", text: "You are Claude Code, Anthropic's official CLI for Claude." },
+      { type: "text", text: "instructions", cache_control: { type: "ephemeral", ttl: "1h" } },
+    ]);
+    expect(dispatched.messages).toEqual([{ role: "user", content: [{ type: "text", text: "hello" }] }]);
+  });
+
+  it("re-anchors native Claude recovery bodies before signature retry", async () => {
+    mocks.detectClientTool.mockReturnValue("claude");
+    mocks.isNativePassthrough.mockReturnValue(true);
+    mocks.execute
+      .mockResolvedValueOnce({
+        response: new Response(JSON.stringify({ error: { message: "Invalid signature in thinking block" } }), { status: 400 }),
+        url: "https://claude.test/first",
+        headers: {},
+        transformedBody: null,
+      })
+      .mockResolvedValueOnce({
+        response: new Response("data: [DONE]\n\n", { status: 200, headers: { "content-type": "text/event-stream" } }),
+        url: "https://claude.test/retry",
+        headers: {},
+        transformedBody: null,
+      });
+    const body = {
+      model: "claude-haiku-4-5",
+      anthropic_version: "2023-06-01",
+      max_tokens: 1024,
+      stream: true,
+      messages: [
+        { role: "assistant", content: [{ type: "thinking", thinking: "old", signature: "Eg==" }] },
+        { role: "user", content: [{ type: "text", text: "hello" }] },
+      ],
+    };
+
+    await handleChatCore({
+      body,
+      modelInfo: { provider: "claude", model: "claude-haiku-4-5" },
+      credentials: { accessToken: "claude-token", providerSpecificData: {} },
+      connectionId: "claude-signature-reanchor",
+      clientRawRequest: { endpoint: "/v1/messages", body, headers: { "anthropic-version": "2023-06-01" } },
+      log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    expect(mocks.execute).toHaveBeenCalledTimes(2);
+    const retryBody = mocks.execute.mock.calls[1][0].body;
+    expect(retryBody.messages).toEqual([
+      { role: "assistant", content: [] },
+      { role: "user", content: [{ type: "text", text: "hello", cache_control: { type: "ephemeral" } }] },
+    ]);
+  });
+  for (const [alias, expectedThinking, expectedEffort] of [
+    ["deepseek-v4-pro-max", "enabled", "max"],
+    ["deepseek-v4-pro-none", "disabled", undefined],
+  ]) {
+    it(`preserves ${alias} through upstream-id rewrite to the DeepSeek wire body`, async () => {
+      const executor = new DefaultExecutor("deepseek");
+      let wireModel;
+      let wireBody;
+      mocks.execute.mockImplementationOnce(({ model, body, stream, credentials, requestContext }) => {
+        wireModel = model;
+        wireBody = executor.transformRequest(model, structuredClone(body), stream, credentials, requestContext);
+        throw new Error("stop after wire capture");
+      });
+
+      await handleChatCore({
+        body: { model: alias, stream: true, messages: [{ role: "user", content: "hello" }] },
+        modelInfo: { provider: "deepseek", model: alias },
+        credentials: { accessToken: "deepseek-token", providerSpecificData: {} },
+        connectionId: `alias-${alias}`,
+        clientRawRequest: {
+          endpoint: "/v1/chat/completions",
+          body: {},
+          headers: { accept: "text/event-stream" },
+        },
+        log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      });
+
+      expect(mocks.execute).toHaveBeenCalledOnce();
+      expect(wireModel).toBe("deepseek-v4-pro");
+      expect(wireBody.model).toBe("deepseek-v4-pro");
+      expect(wireBody.extra_body.thinking.type).toBe(expectedThinking);
+      expect(wireBody.reasoning_effort).toBe(expectedEffort);
+    });
+  }
+
+  for (const [alias, expectedThinking] of [
+    ["deepseek-v4-pro-max", "enabled"],
+    ["deepseek-v4-pro-none", "disabled"],
+  ]) {
+    it(`uses native Claude thinking for ${alias} after chatCore upstream-id rewrite`, async () => {
+      const executor = new DefaultExecutor("deepseek");
+      let wireModel;
+      let wireBody;
+      mocks.execute.mockImplementationOnce(({ model, body, stream, credentials, requestContext }) => {
+        wireModel = model;
+        wireBody = executor.transformRequest(model, structuredClone(body), stream, credentials, requestContext);
+        throw new Error("stop after wire capture");
+      });
+
+      await handleChatCore({
+        body: { model: alias, stream: true, max_tokens: 128, messages: [{ role: "user", content: [{ type: "text", text: "hello" }] }] },
+        modelInfo: { provider: "deepseek", model: alias },
+        sourceFormatOverride: "claude",
+        credentials: { accessToken: "deepseek-token", providerSpecificData: {} },
+        connectionId: `claude-alias-${alias}`,
+        clientRawRequest: {
+          endpoint: "/v1/chat/completions",
+          body: {},
+          headers: { accept: "text/event-stream" },
+        },
+        log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      });
+
+      expect(mocks.execute).toHaveBeenCalledOnce();
+      expect(wireModel).toBe("deepseek-v4-pro");
+      expect(wireBody.model).toBe("deepseek-v4-pro");
+      expect(wireBody.thinking.type).toBe(expectedThinking);
+      expect(wireBody.reasoning_effort).toBeUndefined();
+      expect(wireBody.extra_body).toBeUndefined();
+      expect(wireBody.messages[0].reasoning_content).toBeUndefined();
+    });
+  }
 
   function abortOptions(signal, refreshCredentials = undefined) {
     return {

@@ -370,8 +370,8 @@ export class GrokCliExecutor extends BaseExecutor {
     if (modelEffort) {
       resolvedModel = resolvedModel.replace(new RegExp(`-${modelEffort}$`), "");
     }
-    // Catalog is keyed by primary alias `gc` (see open-sse/providers/index.js).
-    resolvedModel = getModelUpstreamId("gc", resolvedModel) || resolvedModel;
+    // Catalog is keyed by primary alias `gb` (`gc` belongs to Gemini CLI).
+    resolvedModel = getModelUpstreamId("gb", resolvedModel) || resolvedModel;
     body.model = resolvedModel;
 
     // Reasoning effort priority: explicit > reasoning_effort > model suffix > default high.

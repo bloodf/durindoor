@@ -17,6 +17,12 @@ import {
 } from "../config/runtimeConfig.js";
 import { dbg } from "../utils/debugLog.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
+import {
+  applyCodexClientIdentityHeaders,
+  applyCodexClientMetadata,
+  applyCodexOriginalIdentityHeaders,
+  withCodexFingerprintCredentials,
+} from "../config/codexIdentity.js";
 import { applyCodexAccountHeader } from "../shared/codexAccountId.js";
 import { settleProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { extractCompleteSseFrames } from "../utils/streamHelpers.js";
@@ -556,12 +562,20 @@ export class CodexExecutor extends BaseExecutor {
     // Responses Lite transport: forward the opt-in header + slim metadata
     // envelope from the immutable request context (never from shared credentials).
     copyResponsesLiteHeaders(headers, requestContext);
-    // Account/workspace binding header — required when multiple Codex accounts
     // are configured. OAuth import stores ChatGPT account ID as chatgptAccountId;
     // older/custom rows may use workspaceId/accountId. Prefer explicit workspaceId
     // but fall back to chatgptAccountId/accountId so requests don't cross-bind to
     // the wrong OpenAI account and surface as token_invalid after adding another account.
     applyCodexAccountHeader(headers, credentials?.providerSpecificData, "ChatGPT-Account-ID", credentials?.idToken);
+    // Converge Codex OAuth requests onto an account-scoped identity so the caller's
+    // own client identity does not leak upstream; respects codexFingerprintMode.
+    const identity = credentials?.providerSpecificData?.codexClientIdentity;
+    if (identity) {
+      applyCodexClientIdentityHeaders(headers, identity);
+    } else {
+      const original = credentials?.providerSpecificData?.codexOriginalIdentityHeaders;
+      if (original) applyCodexOriginalIdentityHeaders(headers, original);
+    }
     return headers;
   }
 
@@ -611,6 +625,11 @@ export class CodexExecutor extends BaseExecutor {
       sessionId: args.requestContext?.sessionId
         || resolveCacheSessionId(requestBody, args.credentials, args.requestContext),
     });
+    const credentials = withCodexFingerprintCredentials(
+      args.credentials,
+      requestContext.clientHeaders,
+      requestContext.compact ? "/compact" : null,
+    );
 
     const imgCount = Array.isArray(requestBody.input) ? requestBody.input.reduce((n, it) => n + (Array.isArray(it.content) ? it.content.filter(c => c.type === "image_url").length : 0), 0) : 0;
     const inputLen = Array.isArray(requestBody.input) ? requestBody.input.length : 0;
@@ -623,7 +642,6 @@ export class CodexExecutor extends BaseExecutor {
       await this.prefetchImages(requestBody);
     }
 
-    // Retry loop for SSE-level overloaded errors (200 OK body contains event: error)
     // Reuses 503 retry config — same semantic: upstream temporarily unavailable.
     // Each attempt receives a fresh body because BaseExecutor transforms in place.
     const retryConfig = { ...DEFAULT_RETRY_CONFIG, ...this.config.retry };
@@ -634,6 +652,7 @@ export class CodexExecutor extends BaseExecutor {
       throwIfAborted(args.signal);
       const result = await super.execute({
         ...args,
+        credentials,
         body: cloneRequestBody(requestBody),
         requestContext,
       });
@@ -810,6 +829,9 @@ export class CodexExecutor extends BaseExecutor {
     normalizeCodexAssistantHistory(body);
     // Remove replay-only call item IDs and stored references that store=false cannot resolve.
     body.input = normalizeStatelessResponseInput(body.input);
+    // Apply Codex OAuth fingerprint identity to body.client_metadata (post-allowlist).
+    const bodyIdentity = credentials?.providerSpecificData?.codexClientIdentity;
+    if (bodyIdentity) applyCodexClientMetadata(body, bodyIdentity);
     // Flatten function tools + drop unsupported types
     normalizeCodexTools(body);
 

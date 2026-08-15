@@ -11,7 +11,6 @@ import { filterByContextRequirements, sortByContextSize, validateContextRequirem
 import { resolveReasoningBufferedMaxTokens } from "./reasoningTokenBuffer.js";
 import { extractTextContent } from "../translator/formats/gemini.js";
 import { isAutoComboId, familyOfAutoId, resolveAutoCombo } from "./autoComboResolver.js";
-import { isValidModel, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
 
 // Hard capabilities = input modalities; missing one drops request data (e.g. image
 // stripped). Must be prioritized. Soft (e.g. search) only degrades a feature.
@@ -334,33 +333,82 @@ function trailingUserItems(arr) {
   return arr.slice(i + 1);
 }
 
-// Detect which capabilities a request needs. Modalities (vision/pdf) are scanned
-// only on the current user turn; "search" is request-wide (lives in tools).
-// Returns a Set of: "vision" | "pdf" | "search".
+// Detect which capabilities a request needs. Modalities (vision/audioInput/pdf) are
+// scanned only on the current user turn; "search" and "reasoning" are request-wide.
+// Returns a Set of: "vision" | "audioInput" | "pdf" | "search" | "reasoning".
 export function detectRequiredCapabilities(body) {
   const required = new Set();
   if (!body || typeof body !== "object") return required;
+
+  const addByMime = (mime) => {
+    if (typeof mime !== "string") return;
+    if (mime.startsWith("image/")) required.add("vision");
+    if (mime.startsWith("audio/")) required.add("audioInput");
+    if (mime.startsWith("video/")) required.add("videoInput");
+    if (mime === "application/pdf") required.add("pdf");
+  };
 
   const scanBlock = (b) => {
     if (!b || typeof b !== "object") return;
     const t = b.type;
     if (t === "image_url" || t === "image" || t === "input_image") required.add("vision");
+    if (t === "input_audio" || t === "audio_url") required.add("audioInput");
+    if (t === "video_url" || t === "video" || t === "input_video") required.add("videoInput");
     if (t === "file" || t === "document" || t === "input_file") required.add("pdf");
     // gemini parts: inlineData/fileData carry a mime
-    const mime = b.inlineData?.mimeType || b.fileData?.mimeType;
-    if (typeof mime === "string" && mime.startsWith("image/")) required.add("vision");
-    if (mime === "application/pdf") required.add("pdf");
+    addByMime(b.inlineData?.mimeType || b.fileData?.mimeType);
   };
 
   const scanContent = (content) => {
     if (Array.isArray(content)) for (const b of content) scanBlock(b);
   };
 
+  // Hermes/Ollama/Vercel AI SDK message shapes (message-level, not content blocks).
+  const scanMessage = (m) => {
+    if (!m || typeof m !== "object") return;
+
+    // Downstream stripping handles structured blocks regardless of role. Message
+    // fields and inline strings remain user-only routing signals.
+    scanContent(m.content);
+    if (m.role !== "user") return;
+
+    // Ollama / Hermes images array (base64 strings)
+    if (Array.isArray(m.images) && m.images.length > 0) required.add("vision");
+
+    // Vercel AI SDK / Hermes attachments
+    const attachments = Array.isArray(m.experimental_attachments)
+      ? m.experimental_attachments
+      : Array.isArray(m.attachments) ? m.attachments : null;
+    if (attachments) {
+      for (const att of attachments) {
+        if (!att) continue;
+        const mime = att.contentType || att.mediaType || (typeof att.url === "string" && att.url.match(/^data:([^;,:]{1,255})/)?.[1]);
+        if (mime) addByMime(mime);
+        else if (att.url || att.data) required.add("vision");
+      }
+    }
+
+    // Direct message-level modality properties
+    if (m.image_url || m.image) required.add("vision");
+    if (m.audio_url || m.audio) required.add("audioInput");
+    if (m.video_url || m.video) required.add("videoInput");
+    if (m.file || m.document) required.add("pdf");
+
+    // Inline data URIs embedded in string content
+    if (typeof m.content === "string") {
+      if (m.content.includes("data:image/")) required.add("vision");
+      if (m.content.includes("data:audio/")) required.add("audioInput");
+      if (m.content.includes("data:video/")) required.add("videoInput");
+      if (m.content.includes("data:application/pdf")) required.add("pdf");
+    }
+  };
+
   // Modalities: current user turn only (trailing user run across each known shape).
-  for (const m of trailingUserItems(body.messages)) scanContent(m.content);      // openai / claude
-  for (const it of trailingUserItems(body.input)) scanContent(it.content);       // responses
-  const contents = body.contents || body.request?.contents;                      // gemini / antigravity
+  for (const m of trailingUserItems(body.messages)) scanMessage(m);            // openai / claude / hermes / ollama
+  for (const it of trailingUserItems(body.input)) scanContent(it.content);     // responses
+  const contents = body.contents || body.request?.contents;                    // gemini / antigravity
   for (const c of trailingUserItems(contents)) scanContent(c.parts);
+
 
   for (const tool of body.tools || []) {
     const type = tool?.type || tool?.function?.name || tool?.name;
@@ -825,12 +873,6 @@ export function resetComboScoring(comboName) {
  * @param {Object} [options] - { catalog, settings } for auto/* resolution
  * @returns {string[]|null} Array of models (empty for empty auto pool), or null if not a combo
  */
-function isCatalogModelPath(modelStr) {
-  const slashIndex = modelStr.indexOf("/");
-  if (slashIndex < 1) return false;
-  const provider = modelStr.slice(0, slashIndex);
-  return isValidModel(PROVIDER_ID_TO_ALIAS[provider] || provider, modelStr.slice(slashIndex + 1));
-}
 
 export function getComboModelsFromData(modelStr, combosData, options = {}) {
   // `auto/<family>` resolves BEFORE the slash guard and the combos-data lookup.
@@ -842,23 +884,15 @@ export function getComboModelsFromData(modelStr, combosData, options = {}) {
     const family = familyOfAutoId(modelStr);
     return resolveAutoCombo(family, options.catalog || {}, options.settings);
   }
-
-  // Resolve combo by full name first, then by basename (part after the last
-  // slash) so client configs like `provider/combo-name` still hit the combo
-  // instead of forwarding the raw string to the upstream provider. Full-name
-  // match wins so a genuine `provider/model` never gets shadowed by a
-  // same-named combo.
   // Handle both array and object formats
   const combos = Array.isArray(combosData) ? combosData : (combosData?.combos || []);
 
-  // A full-name combo is intentionally allowed, but a known catalog model must
-  // retain provider routing precedence over a combo sharing its basename.
-  if (!combos.some(c => c.name === modelStr) && isCatalogModelPath(modelStr)) return null;
-
-  const baseName = modelStr.includes("/") ? modelStr.split("/").pop() : null;
-
-  const combo = combos.find(c => c.name === modelStr) ||
-    (baseName ? combos.find(c => c.name === baseName) : null);
+  // Exact-name match only. Slash-basename lookup was removed because it
+  // shadowed genuine `provider/model` routing whenever a saved combo
+  // happened to share the basename. Saved combos referenced as
+  // `provider/name` must be stored under that full form, and a request
+  // shaped like `provider/model` is then treated as provider routing.
+  const combo = combos.find((c) => c.name === modelStr);
   if (combo && combo.models && combo.models.length > 0) {
     return combo.models;
   }
@@ -868,7 +902,6 @@ export function getComboModelsFromData(modelStr, combosData, options = {}) {
 /**
  * Handle combo chat with fallback
  * @param {Object} options
- * @param {Object} options.body - Request body
  * @param {string[]} options.models - Array of model strings to try
  * @param {Function} options.handleSingleModel - Function to handle single model: (body, modelStr) => Promise<Response>
  * @param {Object} options.log - Logger object
@@ -1150,7 +1183,7 @@ export async function handleComboChat({
       if (result.ok) {
         const upstreamError = await detectUpstreamError(result);
         if (upstreamError) {
-          const { shouldFallback } = checkFallbackError(result.status, upstreamError);
+          const { shouldFallback } = checkFallbackError(result.status, upstreamError, 0, splitModelString(modelStr).provider, result.headers);
           if (!shouldFallback) {
             log.warn("COMBO", `Model ${modelStr} returned 200 with a non-fallback error`);
             return result;
@@ -1191,9 +1224,10 @@ export async function handleComboChat({
 
       // Extract error info from response
       let errorText = result.statusText || "";
+      let errorBody = null;
       let retryAfter = null;
       try {
-        const errorBody = await result.clone().json();
+        errorBody = await result.clone().json();
         errorText = errorBody?.error?.message || errorBody?.error || errorBody?.message || errorText;
         retryAfter = errorBody?.retryAfter || null;
       } catch {
@@ -1221,7 +1255,14 @@ export async function handleComboChat({
       }
 
       // Check if should fallback to next model
-      const { shouldFallback, cooldownMs } = checkFallbackError(result.status, errorText);
+      const { shouldFallback, cooldownMs } = checkFallbackError(
+        result.status,
+        errorText,
+        0,
+        splitModelString(modelStr).provider,
+        result.headers,
+        errorBody,
+      );
 
       if (!shouldFallback) {
         if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, false, result.status);
@@ -1531,20 +1572,27 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
   log.info("FUSION", `Combo "${comboName}" | panel=${panel.length} [${panel.join(", ")}] | judge=${judge} | quorum=${minPanel}`);
 
   // 1. Fan out to the panel in parallel: non-streaming, tools stripped (we want prose).
-  const { tools, tool_choice, ...rest } = body;
-  const panelBody = { ...rest, stream: false };
-
-  // Flatten tool turns to prose so panel models keep context without emitting tool_calls.
-  if (Array.isArray(panelBody.messages)) {
-    panelBody.messages = ensureTrailingUserTurn(flattenToolHistory(panelBody.messages));
-  } else if (Array.isArray(panelBody.input)) {
-    panelBody.input = ensureTrailingUserTurn(flattenToolHistory(panelBody.input));
-  }
+  const { tools, tool_choice, stream_options, ...rest } = body;
+  // Fusion runs panel models non-streaming; drop stream_options too, or providers
+  // like DeepSeek reject it with "stream_options should be set along with stream = true".
+  // See issue #3024.
+  const makePanelBody = () => {
+    // Panel executors may translate or otherwise mutate their request. Each concurrent
+    // call needs its own graph so mutations cannot leak to siblings or the original/judge.
+    const panelBody = { ...structuredClone(rest), stream: false };
+    // Flatten tool turns to prose so panel models keep context without emitting tool_calls.
+    if (Array.isArray(panelBody.messages)) {
+      panelBody.messages = ensureTrailingUserTurn(flattenToolHistory(panelBody.messages));
+    } else if (Array.isArray(panelBody.input)) {
+      panelBody.input = ensureTrailingUserTurn(flattenToolHistory(panelBody.input));
+    }
+    return panelBody;
+  };
 
   const t0 = Date.now();
   const panelControllers = panel.map(() => new AbortController());
   const calls = panel.map((m, index) => Promise.resolve()
-    .then(() => handleSingleModel(panelBody, m, true, panelControllers[index].signal)));
+    .then(() => handleSingleModel(makePanelBody(), m, true, panelControllers[index].signal)));
   const { results: settled, pendingIndexes } = await collectPanel(calls, { ...cfg, minPanel });
   for (const index of pendingIndexes) {
     const controller = panelControllers[index];

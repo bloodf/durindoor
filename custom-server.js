@@ -66,9 +66,11 @@ function isMitmMutation(req) {
  * socket IP, it stamps mutating MITM requests only after proving that the
  * loopback client socket belongs to the same OS user as the dashboard.
  */
-function installRequestWrapper({ httpModule = http, secret, verifyPeerOwner } = {}) {
+function installRequestWrapper({ httpModule = http, secret, peerToken, verifyPeerOwner } = {}) {
   const controlSecret = secret || crypto.randomBytes(32).toString("hex");
   process.env[CONTROL_SECRET_ENV] = controlSecret;
+  const trustedPeerToken = peerToken || crypto.randomBytes(24).toString("hex");
+  process.env.NINEROUTER_PEER_TOKEN = trustedPeerToken;
   const dashboardPort = Number(process.env.PORT || 20128);
   const verifyOwner = verifyPeerOwner || createPeerOwnerVerifier({ targetPorts: [dashboardPort] });
   const origCreate = httpModule.createServer.bind(httpModule);
@@ -83,15 +85,28 @@ function installRequestWrapper({ httpModule = http, secret, verifyPeerOwner } = 
       const xRealIp = req.headers["x-real-ip"];
       const viaProxy = Boolean(xff || xRealIp);
       const isLoopbackProxy = socketIp === "127.0.0.1" || socketIp === "::1" || socketIp === "::ffff:127.0.0.1";
-      const proxyIp = xRealIp || (xff ? String(xff).split(",")[0].trim() : "");
-      const ip = isLoopbackProxy && proxyIp ? proxyIp : socketIp;
+      // Trust only the nearest proxy hop added by the loopback reverse proxy itself.
+      // x-real-ip / leftmost x-forwarded-for are pass-through headers the client
+      // can forge; the rightmost x-forwarded-for entry is the value the edge proxy
+      // overwrote with the true client IP. Fall back to the socket when the edge
+      // proxy did not stamp XFF.
+      const lastXff = xff ? String(xff).split(",").map((s) => s.trim()).filter(Boolean).pop() : "";
+      const ip = isLoopbackProxy && lastXff ? lastXff : socketIp;
       delete req.headers["x-9r-real-ip"];
       delete req.headers["x-forwarded-for"];
       delete req.headers["x-9r-via-proxy"];
       delete req.headers[CONTROL_PROOF_HEADER];
       delete req.headers[CONTROL_PORT_HEADER];
+      delete req.headers["x-9r-peer-token"];
+      // Forwarded origin headers are request-controlled even on loopback: a
+      // local process can send them directly instead of using a proxy. OIDC
+      // reverse-proxy deployments configure BASE_URL, so remove them at the
+      // boundary for every request.
+      delete req.headers["x-forwarded-host"];
+      delete req.headers["x-forwarded-proto"];
       req.headers["x-9r-real-ip"] = ip;
       if (viaProxy) req.headers["x-9r-via-proxy"] = "1";
+      req.headers["x-9r-peer-token"] = trustedPeerToken;
       if (/^[a-f0-9]{48}$/.test(process.env.DURINDOOR_WORKER_NONCE || "")) {
         res.setHeader?.("x-durindoor-worker-nonce", process.env.DURINDOOR_WORKER_NONCE);
       }

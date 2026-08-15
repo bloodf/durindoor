@@ -2,9 +2,17 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getSettings } from "@/lib/localDb";
 import { isOidcConfigured } from "@/lib/auth/oidc";
-import { getDashboardAuthSession } from "@/lib/auth/dashboardSession";
+import {
+  getDashboardAuthSession,
+  isUsingDefaultPassword,
+} from "@/lib/auth/dashboardSession";
 
-/** Explicit `authenticated` boolean lets /login redirect already-signed-in sessions (port(upstream): ae4f76c4). */
+export const dynamic = "force-dynamic";
+
+/**
+ * Login bootstrap contract: reports the session state and whether the literal
+ * built-in password is active, so the client never guesses from missing hashes.
+ */
 export async function GET() {
   try {
     const settings = await getSettings();
@@ -16,6 +24,7 @@ export async function GET() {
     const oidcEmail = String(session?.oidcEmail || "").trim();
     const displayName = oidcName || oidcEmail || (session?.oidc ? "OIDC user" : "Password user");
     const loginMethod = session?.oidc ? "OIDC" : "Password";
+    const usingDefaultPassword = await isUsingDefaultPassword(settings);
 
     return NextResponse.json({
       requireLogin,
@@ -23,6 +32,7 @@ export async function GET() {
       oidcConfigured: isOidcConfigured(settings),
       oidcLoginLabel: (settings.oidcLoginLabel || "Sign in with OIDC").trim() || "Sign in with OIDC",
       hasPassword: !!settings.password,
+      usingDefaultPassword,
       displayName,
       loginMethod,
       authenticated: !!session,
@@ -37,6 +47,7 @@ export async function GET() {
       oidcConfigured: false,
       oidcLoginLabel: "Sign in with OIDC",
       hasPassword: false,
+      usingDefaultPassword: false,
       displayName: "Password user",
       loginMethod: "Password",
       authenticated: false,

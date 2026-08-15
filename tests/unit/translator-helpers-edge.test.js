@@ -14,7 +14,7 @@ describe("normalizeClaudePassthrough — haiku adaptive thinking (docs 11 §1)",
     expect(out.thinking).toEqual({ type: "adaptive" });
   });
 
-  it("hoists mid-conversation system messages into top-level system", () => {
+  it("hoists mid-conversation system messages by default", () => {
     const out = normalizeClaudePassthrough({
       messages: [
         { role: "user", content: "hi" },
@@ -22,7 +22,7 @@ describe("normalizeClaudePassthrough — haiku adaptive thinking (docs 11 §1)",
       ],
     });
     expect(out.system).toEqual([{ type: "text", text: "be brief" }]);
-    expect(out.messages.every((m) => m.role !== "system")).toBe(true);
+    expect(out.messages).toEqual([{ role: "user", content: "hi" }]);
   });
 
   it("reconciles native thinking budgets below max_tokens", () => {

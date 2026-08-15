@@ -72,14 +72,15 @@ vi.mock("../../src/sse/services/apiKeyPolicy.js", () => ({
   enforceApiKeyModelPolicy: vi.fn(async () => null),
 }));
 
+
 const { handleChat, rankComboModelsByQuota } = await import("../../src/sse/handlers/chat.js");
 
-function request(signal = null) {
+function request(model = "codex/gpt-5.4", signal = null) {
   return new Request("http://localhost/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "codex/gpt-5.4",
+      model,
       stream: true,
       messages: [{ role: "user", content: "hello" }],
     }),
@@ -87,10 +88,10 @@ function request(signal = null) {
   });
 }
 
-function selected(id) {
+function selected(id, provider = "codex") {
   const connection = {
     id,
-    provider: "codex",
+    provider,
     authType: "oauth",
     accessToken: `access-${id}`,
     refreshToken: `refresh-${id}`,
@@ -346,6 +347,43 @@ describe("chat quota fallback orchestration", () => {
     mocks.clearAccountError.mockResolvedValue();
   });
 
+  it.each([
+    ["quota exhaustion", 429, { error: { message: "额度不足", type: "quota_exhausted" } }, "connection"],
+    ["model denial", 403, { error: { message: "无权访问模型 claude-opus", type: "auth_error" } }, "model"],
+    ["prompt echo", 400, { error: { message: "Forbidden", type: "invalid_request_error" }, prompt: "额度不足" }, null],
+  ])("forwards structured AgentRouter %s context to fallback", async (_name, status, errorBody, expectedScope) => {
+    const account = selected("agentrouter-conn");
+    mocks.getModelInfo.mockResolvedValue({ provider: "agentrouter", model: "claude-opus" });
+    mocks.getProviderCredentials.mockResolvedValue(account);
+    mocks.markAccountUnavailable.mockResolvedValue({ shouldFallback: false, cooldownMs: 0 });
+    mocks.handleChatCore.mockImplementationOnce(async (options) => ({
+      success: false,
+      status,
+      error: "Forbidden",
+      errorBody,
+      headers: new Headers({ "retry-after": "60" }),
+      response: new Response("error", { status }),
+      attemptStartedAt: options.onProviderAttempt(),
+    }));
+
+    await handleChat(request());
+
+    expect(mocks.markAccountUnavailable).toHaveBeenCalledWith(
+      "agentrouter-conn",
+      status,
+      "Forbidden",
+      "agentrouter",
+      "claude-opus",
+      undefined,
+      expect.objectContaining({
+        errorBody,
+        headers: expect.any(Headers),
+        attemptStartedAt: expect.any(Number),
+      }),
+    );
+    expect(checkFallbackError(status, "Forbidden", 0, "agentrouter", null, errorBody).scope).toBe(expectedScope);
+  });
+
   it("persists the first 429 context, attempts each account once, and returns one winning stream", async () => {
     const first = selected("conn-one");
     const second = selected("conn-two");
@@ -410,6 +448,71 @@ describe("chat quota fallback orchestration", () => {
     );
   });
 
+  it("passes Kimi temporary resets through final fallback with its exact model scope", async () => {
+    const connection = selected("kimi-connection", "kimi-coding");
+    const resetAtMs = Date.now() + 60_000;
+    mocks.getModelInfo.mockResolvedValue({ provider: "kimi-coding", model: "kimi-k2.6" });
+    mocks.getProviderCredentials.mockResolvedValue(connection);
+    mocks.handleChatCore.mockResolvedValue({
+      success: false,
+      status: 403,
+      error: "[403]: Request limit reached for current billing cycle",
+      resetsAtMs: resetAtMs,
+      response: new Response("kimi billing-cycle limit", { status: 403 }),
+    });
+    mocks.markAccountUnavailable.mockResolvedValue({ shouldFallback: false, cooldownMs: 0 });
+
+    const response = await handleChat(request("kimi-coding/kimi-k2.6"));
+
+    expect(response.status).toBe(403);
+    expect(mocks.markAccountUnavailable).toHaveBeenCalledWith(
+      "kimi-connection",
+      403,
+      "[403]: Request limit reached for current billing cycle",
+      "kimi-coding",
+      "kimi-k2.6",
+      resetAtMs,
+      expect.objectContaining({
+        attemptStartedAt: null,
+        rateLimitEvidence: null,
+        headers: null,
+        errorBody: null,
+      }),
+    );
+  });
+
+  it("keeps normal terminal fallback when Kimi body probe supplies no reset deadline", async () => {
+    const connection = selected("kimi-connection", "kimi-coding");
+    mocks.getModelInfo.mockResolvedValue({ provider: "kimi-coding", model: "kimi-k2.6" });
+    mocks.getProviderCredentials.mockResolvedValue(connection);
+    mocks.handleChatCore.mockResolvedValue({
+      success: false,
+      status: 403,
+      error: "[403]: Request limit reached for current billing cycle",
+      resetsAtMs: undefined,
+      response: new Response("kimi probe timed out", { status: 403 }),
+    });
+    mocks.markAccountUnavailable.mockResolvedValue({ shouldFallback: false, cooldownMs: 0 });
+
+    const response = await handleChat(request("kimi-coding/kimi-k2.6"));
+
+    expect(response.status).toBe(403);
+    expect(mocks.markAccountUnavailable).toHaveBeenCalledWith(
+      "kimi-connection",
+      403,
+      "[403]: Request limit reached for current billing cycle",
+      "kimi-coding",
+      "kimi-k2.6",
+      undefined,
+      expect.objectContaining({
+        attemptStartedAt: null,
+        rateLimitEvidence: null,
+        headers: null,
+        errorBody: null,
+      }),
+    );
+  });
+
   it("replays an Envoy request-buffer 507 once on the same account", async () => {
     const first = selected("conn-one");
     const second = selected("conn-two");
@@ -440,7 +543,7 @@ describe("chat quota fallback orchestration", () => {
     expect(mocks.handleChatCore.mock.calls.map(([options]) => options.connectionId)).toEqual(["conn-one", "conn-one"]);
     expect(mocks.markAccountUnavailable).not.toHaveBeenCalled();
     expect(checkFallbackError(507, "[507]: exceeded request buffer limit while retrying upstream"))
-      .toEqual({ shouldFallback: false, cooldownMs: 0 });
+      .toMatchObject({ shouldFallback: false, cooldownMs: 0, scope: null });
   });
 
   it.each([401, 429])("still rotates accounts for HTTP %i", async (status) => {
@@ -529,7 +632,7 @@ describe("chat quota fallback orchestration", () => {
   it("returns before auth, quota, or database work when already aborted", async () => {
     const controller = new AbortController();
     controller.abort();
-    const response = await handleChat(request(controller.signal));
+    const response = await handleChat(request(undefined, controller.signal));
     expect(response.status).toBe(499);
     expect(mocks.getSettings).not.toHaveBeenCalled();
     expect(mocks.getProviderCredentials).not.toHaveBeenCalled();
@@ -542,7 +645,7 @@ describe("chat quota fallback orchestration", () => {
     mocks.getProviderCredentials.mockImplementation((_provider, _excluded, _model, { signal }) => new Promise((_resolve, reject) => {
       signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
     }));
-    const pending = handleChat(request(controller.signal));
+    const pending = handleChat(request(undefined, controller.signal));
     await vi.waitFor(() => expect(mocks.getProviderCredentials).toHaveBeenCalledOnce());
     controller.abort();
     const response = await pending;

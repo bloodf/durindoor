@@ -1,7 +1,8 @@
 // Generic config-driven TTS handlers — dispatched by ttsConfig.format.
-// Each handler accepts { baseUrl, apiKey, text, modelId, voiceId } and returns { base64, format }.
+// Each handler accepts { baseUrl, apiKey, text, modelId, voiceId, proxyOptions } and returns { base64, format }.
 import { responseToBase64, throwUpstreamError } from "./_base.js";
 import minimaxTts from "./minimax.js";
+import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 
 // Hyperbolic: POST { text } → { audio: base64 }
 async function hyperbolic({ baseUrl, apiKey, text }) {
@@ -49,6 +50,25 @@ async function huggingface({ baseUrl, apiKey, text, modelId }) {
   });
   if (!res.ok) await throwUpstreamError(res);
   return responseToBase64(res, "wav");
+}
+
+// Fish Audio: model travels in an HTTP header, the voice is a reference_id, returns binary
+async function fishAudio({ baseUrl, apiKey, text, modelId, voiceId, proxyOptions }) {
+  const res = await proxyAwareFetch(baseUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`,
+      "model": modelId || "s2.1-pro-free",
+    },
+    body: JSON.stringify({
+      text,
+      format: "mp3",
+      ...(voiceId ? { reference_id: voiceId } : {}),
+    }),
+  }, proxyOptions);
+  if (!res.ok) await throwUpstreamError(res);
+  return responseToBase64(res, "mp3");
 }
 
 // Inworld: Basic auth, JSON { audioContent }
@@ -166,4 +186,5 @@ export const FORMAT_HANDLERS = {
   tortoise,
   openai: openaiCompat,
   "minimax-tts": minimaxTts,
+  "fish-audio": fishAudio,
 };

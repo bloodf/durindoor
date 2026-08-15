@@ -59,6 +59,7 @@ vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
 
 vi.mock("../../open-sse/translator/formats/claude.js", () => ({
   normalizeClaudePassthrough: vi.fn(),
+  anchorClaudeCache: vi.fn(),
 }));
 
 vi.mock("../../open-sse/utils/toolDeduper.js", () => ({

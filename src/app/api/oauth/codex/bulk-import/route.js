@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
 import { extractCodexAccountInfo } from "@/lib/oauth/providers";
+import { CODEX_FINGERPRINT_MODES } from "open-sse/config/codexIdentity.js";
 
 /**
  * POST /api/oauth/codex/bulk-import
@@ -46,6 +47,10 @@ export async function POST(request) {
     );
   }
 
+  const globalCodexFingerprintMode = CODEX_FINGERPRINT_MODES.includes(body?.codexFingerprintMode)
+    ? body.codexFingerprintMode
+    : null;
+
   const results = [];
   let success = 0;
   let failed = 0;
@@ -74,7 +79,14 @@ export async function POST(request) {
       }
 
       // Backfill missing identity fields from JWT claims
-      const psd = item.providerSpecificData || {};
+      const psd = item.providerSpecificData && typeof item.providerSpecificData === "object"
+        ? { ...item.providerSpecificData }
+        : {};
+      psd.codexFingerprintMode = CODEX_FINGERPRINT_MODES.includes(psd.codexFingerprintMode)
+        ? psd.codexFingerprintMode
+        : globalCodexFingerprintMode || "session";
+      delete psd.codexClientIdentity;
+      delete psd.codexOriginalIdentityHeaders;
       const needsEmail = !item.email;
       const needsAccountId = !psd.chatgptAccountId;
       const needsPlanType = !psd.chatgptPlanType;

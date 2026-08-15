@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getSettings, validateApiKey, validateGatewayKey } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
+import { hasTrustedPeerHeaders } from "@/lib/auth/trustedPeer";
+
 import {
   CONTROL_PORT_HEADER,
   CONTROL_PROOF_HEADER,
@@ -17,7 +19,7 @@ async function getCliToken() {
   return cachedCliToken;
 }
 
-async function hasValidCliToken(request) {
+export async function hasValidCliToken(request) {
   const token = request.headers.get(CLI_TOKEN_HEADER);
   if (!token) return false;
   return token === await getCliToken();
@@ -34,6 +36,15 @@ const PUBLIC_API_PATHS = [
   "/api/auth/oidc",
   "/api/version",
   "/api/settings/require-login",
+];
+
+// Public API paths matched by exact pathname only — no `/child` fallthrough.
+// A prefix match here would let an attacker reach an unrelated route by
+// nesting it under a trusted public prefix.
+const PUBLIC_API_EXACT_PATHS = [
+  // One-time password-change proof recipient. Only valid proofs can drive
+  // a write here; the route does not fall through to a session check.
+  "/api/auth/change-password",
 ];
 
 // Public top-level prefixes (LLM API endpoints with their own API key auth).
@@ -92,10 +103,38 @@ const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
 function isLoopbackHostname(h) {
   if (!h) return false;
-  const name = h.split(":")[0].replace(/^\[|\]$/g, "").toLowerCase();
+  let name = String(h).trim().toLowerCase();
+  if (name.startsWith("[")) {
+    const end = name.indexOf("]");
+    if (end === -1) return false;
+    name = name.slice(1, end);
+  } else if (name.indexOf(":") !== -1 && name.indexOf(":") === name.lastIndexOf(":")) {
+    name = name.slice(0, name.indexOf(":"));
+  }
+  if (name.startsWith("::ffff:")) name = name.slice(7);
   return LOOPBACK_HOSTS.has(name);
 }
 
+// Stamped by custom-server.js: the request came through a reverse proxy, so the loopback
+// socket is the proxy hop, not the end-user. Still proves it ran through the wrapper.
+function hasViaProxyHeader(request) {
+  return Boolean(request.headers.get("x-9r-via-proxy"));
+}
+
+// TCP socket says it was a loopback connection. The wrapper proof is required before
+// any local classification; raw IP, Host, and Origin values are attacker-controlled.
+function isLoopbackPeer(request) {
+  if (hasViaProxyHeader(request)) return false;
+  if (!hasTrustedPeerHeaders(request)) return false;
+  const realIp = request.headers.get("x-9r-real-ip");
+  if (realIp) return isLoopbackHostname(realIp);
+  if (!isLoopbackHostname(request.headers.get("host"))) return false;
+  return true;
+}
+
+// Restored strict origin check: expected origin = URL protocol + raw Host, exact
+// normalized origin compare. Prevents a malicious loopback Origin from sliding past
+// the same-origin guard under a benign Host (e.g. `localhost:20128.evil`).
 function hasExactRequestOrigin(request) {
   const rawOrigin = request.headers.get("origin");
   const rawHost = request.headers.get("host");
@@ -109,25 +148,10 @@ function hasExactRequestOrigin(request) {
   }
 }
 
+// Wrapper proof plus the wrapper-stamped loopback identity distinguish local peers.
+// Browser-origin checks belong at each mutation boundary, not this transport classifier.
 export function isLocalRequest(request) {
-  // Stamped by custom-server.js when forwarding headers exist: request came through
-  // a reverse proxy, so the loopback socket is the proxy hop, not the end-user.
-  if (request.headers.get("x-9r-via-proxy")) return false;
-  // Trusted peer IP from TCP socket (custom-server.js); unspoofable. Primary anchor for "local".
-  const realIp = request.headers.get("x-9r-real-ip");
-  if (realIp) {
-    if (!isLoopbackHostname(realIp)) return false;
-  } else if (!isLoopbackHostname(request.headers.get("host"))) {
-    // Fallback for bare server.js (dev) without custom-server: legacy Host-based check.
-    return false;
-  }
-  const origin = request.headers.get("origin");
-  if (origin) {
-    try {
-      if (!isLoopbackHostname(new URL(origin).hostname)) return false;
-    } catch { return false; }
-  }
-  return true;
+  return isLoopbackPeer(request);
 }
 
 function isPublicLlmApi(pathname) {
@@ -191,19 +215,19 @@ async function canAccessLocalOnlyRoute(request) {
   if (!isLocalRequest(request)) return false;
 
   const pathname = request.nextUrl.pathname;
+  const method = String(request.method || "GET").toUpperCase();
+  // Loopback identity is not browser authentication. Require the exact request
+  // Origin for every unsafe mutation; machine-bound CLI callers passed above.
+  if (!["GET", "HEAD", "OPTIONS"].includes(method) && !hasExactRequestOrigin(request)) return false;
   const isMitmMutation = (pathname === "/api/cli-tools/antigravity-mitm"
       || pathname.startsWith("/api/cli-tools/antigravity-mitm/"))
-    && String(request.method || "GET").toUpperCase() !== "GET";
+    && method !== "GET";
   if (isMitmMutation) {
     // Loopback and same-OS-user ownership are not authentication: a local
     // reverse proxy could otherwise become a confused deputy. Browser
     // mutations require a dashboard JWT; CLI callers were accepted above with
     // their machine-bound token. The owner proof remains defense in depth.
     if (!(await hasValidToken(request))) return false;
-    // An explicit loopback Origin proves this is a direct same-origin browser
-    // request. Without it, a same-UID local reverse proxy could become a
-    // confused deputy even though the TCP owner proof itself is valid.
-    if (!hasExactRequestOrigin(request)) return false;
     return verifyControlProof({
       method: request.method,
       pathname,
@@ -250,6 +274,7 @@ async function canAccessPxpipeRoute(request) {
 
 function isPublicApi(pathname) {
   if (isPublicLlmApi(pathname)) return true;
+  if (PUBLIC_API_EXACT_PATHS.includes(pathname)) return true;
   return PUBLIC_API_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 

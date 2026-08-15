@@ -105,10 +105,10 @@ describe("grok-cli device-code OAuth (#2502)", () => {
 });
 
 describe("GrokCliExecutor (#2502)", () => {
-  it("resolves grok-4.5 effort variants to the base upstream model", () => {
-    expect(getModelUpstreamId("gc", "grok-4.5-high")).toBe("grok-4.5");
-    expect(getModelUpstreamId("gc", "grok-4.5-medium")).toBe("grok-4.5");
-    expect(getModelUpstreamId("gc", "grok-4.5")).toBe("grok-4.5");
+  it("resolves grok-4.5 effort variants through canonical alias and provider id", () => {
+    expect(getModelUpstreamId("gb", "grok-4.5-high")).toBe("grok-4.5");
+    expect(getModelUpstreamId("grok-cli", "grok-4.5-medium")).toBe("grok-4.5");
+    expect(getModelUpstreamId("grok-cli", "grok-4.5")).toBe("grok-4.5");
   });
 
   it("counts user turns and the per-session idx never decreases", () => {

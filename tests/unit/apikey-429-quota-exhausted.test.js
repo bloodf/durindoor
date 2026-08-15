@@ -160,3 +160,57 @@ describe("#6731 markAccountUnavailable propagation", () => {
     );
   });
 });
+
+const loadAgentRouterAuth = async () => (await import("../../src/sse/services/auth.js")).markAccountUnavailable;
+
+describe("AgentRouter auth fallback classification", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_800_000_000_000);
+    vi.clearAllMocks();
+    mocks.getProviderConnections.mockResolvedValue([
+      { id: "agentrouter-1", provider: "agentrouter", backoffLevel: 0 },
+    ]);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("locks AgentRouter model denial to its requested model", async () => {
+    const mark = await loadAgentRouterAuth();
+    const result = await mark(
+      "agentrouter-1",
+      403,
+      "无权访问模型 claude-opus-4-6",
+      "agentrouter",
+      "claude-opus-4-6",
+      null,
+      { errorBody: { error: { message: "无权访问模型 claude-opus-4-6", type: "auth_error" } } },
+    );
+
+    expect(result).toMatchObject({
+      shouldFallback: true,
+      cooldownMs: 6 * 60 * 60 * 1_000,
+    });
+    expect(mocks.updateProviderConnection).toHaveBeenCalledWith(
+      "agentrouter-1",
+      expect.objectContaining({ "modelLock_claude-opus-4-6": expect.any(String) }),
+    );
+  });
+
+  it("locks AgentRouter quota exhaustion account-wide", async () => {
+    const mark = await loadAgentRouterAuth();
+    await mark(
+      "agentrouter-1",
+      403,
+      "额度不足",
+      "agentrouter",
+      "claude-opus-4-6",
+      null,
+      { errorBody: { error: { message: "额度不足", type: "quota_exhausted" } } },
+    );
+
+    expect(mocks.updateProviderConnection).toHaveBeenCalledWith(
+      "agentrouter-1",
+      expect.objectContaining({ modelLock___all: expect.any(String) }),
+    );
+  });
+});

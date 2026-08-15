@@ -24,7 +24,9 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `copilot-web` | CopilotWebExecutor | `./copilot-web.js` |
 | `cu` | CursorExecutor | `./cursor.js` |
 | `cursor` | CursorExecutor | `./cursor.js` |
+| `ddgw` | DuckDuckGoWebExecutor | `./duckduckgo-web.js` |
 | `devin-cli` | DevinCliExecutor | `./devin-cli.js` |
+| `duckduckgo-web` | DuckDuckGoWebExecutor | `./duckduckgo-web.js` |
 | `gemini-cli` | GeminiCLIExecutor | `./gemini-cli.js` |
 | `github` | GithubExecutor | `./github.js` |
 | `gitlab-duo` | GitlabExecutor | `./gitlab.js` |
@@ -43,7 +45,6 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `mmf` | MimoFreeExecutor | `./mimo-free.js` |
 | `ollama-local` | OllamaLocalExecutor | `./ollama-local.js` |
 | `opencode` | OpenCodeExecutor | `./opencode.js` |
-| `opencode-go` | OpenCodeGoExecutor | `./opencode-go.js` |
 | `opencode-zen` | OpenCodeZenExecutor | `./opencode-zen.js` |
 | `perplexity-web` | PerplexityWebExecutor | `./perplexity-web.js` |
 | `pol` | PollinationsExecutor | `./pollinations.js` |
@@ -78,6 +79,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `alibaba-cn` |  | apikey | `https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions` |
 | `alicode` |  | apikey | `https://coding.dashscope.aliyuncs.com/v1/chat/completions` |
 | `alicode-intl` |  | apikey | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions` |
+| `alitp-intl` |  | apikey | `https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions` |
 | `anthropic` | claude | apikey | `https://api.anthropic.com/v1/messages` |
 | `antigravity` | antigravity | oauth | `` |
 | `api-airforce` |  | apikey | `https://api.airforce/v1/chat/completions` |
@@ -154,6 +156,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `firecrawl` |  | apikey | `` |
 | `firecrawl_custom` |  | apikey | `` |
 | `fireworks` |  | apikey | `https://api.fireworks.ai/inference/v1/chat/completions` |
+| `fish-audio` |  | apikey | `` |
 | `freeaiapikey` |  | apikey | `https://api.freeaiapikey.com/v1/chat/completions` |
 | `freemodel-dev` |  | apikey | `https://api.freemodel.dev/v1/chat/completions` |
 | `friendliai` |  | apikey | `https://api.friendli.ai/serverless/v1/chat/completions` |

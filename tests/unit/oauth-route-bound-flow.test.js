@@ -149,6 +149,7 @@ describe("server-bound OAuth route", () => {
     expect(mocks.createProviderConnection.mock.calls[0][0]).toEqual(expect.objectContaining({
       providerSpecificData: {
         accountId: "account-1",
+        codexFingerprintMode: "session",
         proxyPoolId: null,
         oauthProxy: { mode: "direct", poolId: null },
       },

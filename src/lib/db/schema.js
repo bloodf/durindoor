@@ -112,7 +112,10 @@ export const TABLES = {
       createdAt: "TEXT NOT NULL",
       updatedAt: "TEXT NOT NULL",
     },
-    indexes: ["CREATE INDEX IF NOT EXISTS idx_combo_name ON combos(name)"],
+    indexes: [
+      "CREATE INDEX IF NOT EXISTS idx_combo_name ON combos(name)",
+      "CREATE INDEX IF NOT EXISTS idx_combo_name_nocase ON combos(name COLLATE NOCASE)",
+    ],
   },
   mcpInstances: {
     columns: {

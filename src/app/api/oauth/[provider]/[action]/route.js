@@ -77,6 +77,14 @@ const OAUTH_ERROR_STATUS = Object.freeze({
   OAUTH_UPSTREAM_FAILURE: 502,
 });
 
+const CODEX_FINGERPRINT_MODES = new Set(["off", "device", "session", "full"]);
+
+function codexFingerprintMode(input) {
+  return CODEX_FINGERPRINT_MODES.has(input?.codexFingerprintMode)
+    ? input.codexFingerprintMode
+    : "session";
+}
+
 class OAuthRouteError extends Error {
   constructor(code, message, cause = null) {
     super(message, cause ? { cause } : undefined);
@@ -277,6 +285,7 @@ async function beginAuthorization(provider, input) {
       redirectUri,
       meta,
       proxySelection: resolvedProxy.selection,
+      ...(provider === "codex" ? { codexFingerprintMode: codexFingerprintMode(input) } : {}),
       ...(reconnectConnectionId ? { connectionId: reconnectConnectionId } : {}),
     },
     intent,
@@ -335,6 +344,7 @@ async function beginDeviceCode(provider, input) {
       codeVerifier: deviceData?.codeVerifier || authData.codeVerifier,
       extraData: internalDeviceData(deviceData),
       proxySelection: resolvedProxy.selection,
+      ...(provider === "codex" ? { codexFingerprintMode: codexFingerprintMode(input) } : {}),
     },
     intent,
   });
@@ -355,6 +365,7 @@ async function completeAccessToken(provider, code, resolvedProxy, flowClaim) {
   const providerSpecificData = withOAuthProxyMetadata(
     {
       authMethod: "access_token",
+      ...(provider === "codex" ? { codexFingerprintMode: flowClaim?.payload?.codexFingerprintMode || "session" } : {}),
       ...(info.chatgptAccountId || directPayload.account_id
         ? { chatgptAccountId: info.chatgptAccountId || directPayload.account_id }
         : {}),

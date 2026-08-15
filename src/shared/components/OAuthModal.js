@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
-import { Modal, Button, Input } from "@/shared/components";
+import { Modal, Button, Input, Select } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import {
   createOAuthFlowLifecycle,
@@ -59,6 +59,7 @@ export default function OAuthModal({
   const [deviceData, setDeviceData] = useState(null);
   const [polling, setPolling] = useState(false);
   const [selectedProxyPoolId, setSelectedProxyPoolId] = useState("");
+  const [codexFingerprintMode, setCodexFingerprintMode] = useState("session");
   const { copied, copy } = useCopyToClipboard();
 
   const lifecycleRef = useRef(null);
@@ -78,8 +79,9 @@ export default function OAuthModal({
       provider,
       proxyPoolsReady,
       connectionId,
+      codexFingerprintMode,
     };
-  }, [idcConfig, isOpen, oauthMeta, onClose, onSuccess, provider, proxyPoolsReady, connectionId]);
+  }, [codexFingerprintMode, idcConfig, isOpen, oauthMeta, onClose, onSuccess, provider, proxyPoolsReady, connectionId]);
 
   const resetView = useCallback(() => {
     setAuthData(null);
@@ -289,6 +291,7 @@ export default function OAuthModal({
           ownerId: flow.ownerId,
           ...selection,
           ...(options.oauthMeta ? { meta: options.oauthMeta } : {}),
+          ...(flow.provider === "codex" ? { codexFingerprintMode: options.codexFingerprintMode } : {}),
           ...(options.connectionId ? { connectionId: options.connectionId } : {}),
         }),
         signal: flow.controller.signal,
@@ -466,6 +469,13 @@ export default function OAuthModal({
     void restartFlow(proxyPoolId);
   };
 
+  const handleCodexFingerprintModeChange = (event) => {
+    const mode = event.target.value;
+    setCodexFingerprintMode(mode);
+    if (latestRef.current) latestRef.current.codexFingerprintMode = mode;
+    void restartFlow(selectedProxyPoolIdRef.current);
+  };
+
   const handleManualSubmit = async () => {
     const lifecycle = lifecycleRef.current;
     const flow = lifecycle.current();
@@ -572,6 +582,20 @@ export default function OAuthModal({
               ))}
             </select>
           </div>
+        )}
+
+        {provider === "codex" && proxyPoolsReady && (step === "waiting" || step === "input") && (
+          <Select
+            label="OAuth fingerprint mode"
+            value={codexFingerprintMode}
+            onChange={handleCodexFingerprintModeChange}
+            options={[
+              { value: "off", label: "Off — preserve client identity" },
+              { value: "device", label: "Device — stable installation" },
+              { value: "session", label: "Session — stable account session (recommended)" },
+              { value: "full", label: "Full — stable account thread" },
+            ]}
+          />
         )}
 
         {proxyPoolsReady && (step === "waiting" || step === "input") && !isDeviceCode && (

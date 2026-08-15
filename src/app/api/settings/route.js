@@ -1,25 +1,26 @@
 import { NextResponse } from "next/server";
 import { FREE_NO_AUTH_PROVIDER_IDS } from "@/shared/constants/freeNoAuthProviders";
-import { getSettings, updateSettings } from "@/lib/localDb";
+import { getSettings, updateSettings, updateSettingsWithPasswordEpoch, PasswordEpochMismatchError } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation, resetComboScoring } from "open-sse/services/combo.js";
+import { DEFAULT_PASSWORD, invalidateDefaultPasswordCache, setDashboardAuthCookie, validateDashboardPassword, verifyDashboardPassword } from "@/lib/auth/dashboardSession";
+import { resetPasswordChangeProofs } from "@/lib/auth/passwordChangeProof";
 import bcrypt from "bcryptjs";
-
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+import { cookies } from "next/headers";
+import crypto from "node:crypto";
 
 const SETTINGS_RESPONSE_HEADERS = {
   "Cache-Control": "no-store"
 };
 
 // Secrets must never be mass-assigned from request body (CWE-915)
-const PROTECTED_SETTING_KEYS = ["password", "mitmSudoEncrypted"];
+const PROTECTED_SETTING_KEYS = ["password", "passwordSessionEpoch", "mitmSudoEncrypted"];
 const SCOPED_SETTING_KEYS = ["claudeAutoPing", "codexAutoPing"];
 
 export async function GET() {
   try {
     const settings = await getSettings();
-    const { password, oidcClientSecret, mitmSudoEncrypted, ...safeSettings } = settings;
+    const { password, passwordSessionEpoch, oidcClientSecret, mitmSudoEncrypted, ...safeSettings } = settings;
     safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
     
     const enableRequestLogs = process.env.ENABLE_REQUEST_LOGS === "true";
@@ -31,9 +32,9 @@ export async function GET() {
       enableTranslator,
       hasPassword: !!password
     }, { headers: SETTINGS_RESPONSE_HEADERS });
-  } catch (error) {
-    console.log("Error getting settings:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch {
+    console.error("[settings] read failed");
+    return NextResponse.json({ error: "Failed to get settings" }, { status: 500, headers: SETTINGS_RESPONSE_HEADERS });
   }
 }
 
@@ -50,33 +51,37 @@ export async function PATCH(request) {
     // Strip protected secrets before any internal handling sets them
     for (const key of PROTECTED_SETTING_KEYS) delete body[key];
 
-    // If updating password, hash it
-    if (body.newPassword) {
+    let passwordSessionEpoch;
+    let expectedPasswordSessionEpoch = "initial";
+    if (Object.prototype.hasOwnProperty.call(body, "newPassword")) {
+      if (!body.newPassword) {
+        return NextResponse.json({ error: "Password must not be empty" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
       const settings = await getSettings();
-      const currentHash = settings.password;
-
-      // Verify current password if it exists
-      if (currentHash) {
-        if (!body.currentPassword) {
-          return NextResponse.json({ error: "Current password required" }, { status: 400 });
-        }
-        const isValid = await bcrypt.compare(body.currentPassword, currentHash);
-        if (!isValid) {
-          return NextResponse.json({ error: "Invalid current password" }, { status: 401 });
-        }
-      } else {
-        // First time setting password, no current password needed
-        // Allow empty currentPassword or default "123456"
-        if (body.currentPassword && body.currentPassword !== "123456") {
-           return NextResponse.json({ error: "Invalid current password" }, { status: 401 });
-        }
+      expectedPasswordSessionEpoch = settings.passwordSessionEpoch ?? "initial";
+      const initialPassword = process.env.INITIAL_PASSWORD || DEFAULT_PASSWORD;
+      const rejection = validateDashboardPassword(body.newPassword);
+      if (rejection || body.newPassword === initialPassword) {
+        return NextResponse.json({ error: rejection || "Password must not match the configured initial password" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
+      if (!body.currentPassword) {
+        return NextResponse.json({ error: "Current password required" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
+      if (!(await verifyDashboardPassword(body.currentPassword))) {
+        return NextResponse.json({ error: "Invalid current password" }, { status: 401, headers: SETTINGS_RESPONSE_HEADERS });
       }
 
       const salt = await bcrypt.genSalt(10);
+      passwordSessionEpoch = crypto.randomBytes(16).toString("hex");
       body.password = await bcrypt.hash(body.newPassword, salt);
-      delete body.newPassword;
-      delete body.currentPassword;
+      body.passwordSessionEpoch = passwordSessionEpoch;
     }
+
+
+    delete body.currentPassword;
+    delete body.newPassword;
+
+
 
     if (Object.prototype.hasOwnProperty.call(body, "oidcClientSecret")) {
       if (!body.oidcClientSecret || !String(body.oidcClientSecret).trim()) {
@@ -171,7 +176,32 @@ export async function PATCH(request) {
       }
     }
 
-    const settings = await updateSettings(body);
+    const willChangePassword = body.password !== undefined;
+    let settings;
+    try {
+      settings = willChangePassword
+        ? await updateSettingsWithPasswordEpoch(body, expectedPasswordSessionEpoch)
+        : await updateSettings(body);
+    } catch (error) {
+      if (error instanceof PasswordEpochMismatchError) {
+        return NextResponse.json({ error: "Password change conflict, please retry" }, { status: 409, headers: SETTINGS_RESPONSE_HEADERS });
+      }
+      throw error;
+    }
+    if (willChangePassword) invalidateDefaultPasswordCache();
+    if (willChangePassword) resetPasswordChangeProofs();
+    if (willChangePassword) {
+      try {
+        await setDashboardAuthCookie(await cookies(), request, { passwordSessionEpoch }, passwordSessionEpoch);
+      } catch (error) {
+        if (error?.message === "AUTH_EPOCH_RACE") {
+          return NextResponse.json({ error: "Password change conflict, please retry" }, { status: 409, headers: SETTINGS_RESPONSE_HEADERS });
+        }
+        console.error("[settings] password session cookie failed");
+        return NextResponse.json({ reauthenticate: true }, { headers: SETTINGS_RESPONSE_HEADERS });
+      }
+    }
+
 
     // Apply outbound proxy settings immediately (no restart required)
     if (
@@ -195,8 +225,8 @@ export async function PATCH(request) {
     const { password, oidcClientSecret, mitmSudoEncrypted, ...safeSettings } = settings;
     safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
     return NextResponse.json(safeSettings, { headers: SETTINGS_RESPONSE_HEADERS });
-  } catch (error) {
-    console.log("Error updating settings:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch {
+    console.error("[settings] update failed");
+    return NextResponse.json({ error: "Failed to update settings" }, { status: 500, headers: SETTINGS_RESPONSE_HEADERS });
   }
 }

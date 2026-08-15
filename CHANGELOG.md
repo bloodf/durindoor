@@ -1,3 +1,53 @@
+# Unreleased
+
+## Responses API output_index allocation
+A tool call emitted after a reasoning or message item no longer reuses that
+prior item's `output_index`. The legacy Responses transformer now allocates a
+monotonic `output_index` per output item and reuses it for every delta and
+terminal event of that item, matching the pattern the existing OpenAI
+Responses translator already followed. No wire-format, provider, or
+wire-compatibility change.
+
+Perplexity Web now extracts answer-variant text from the workflow-block SSE format, including streamed RFC-6902 chunk patches and terminal materialized blocks. Search and thinking workflow items remain excluded; legacy markdown-block responses are unchanged.
+
+Qoder billing blocks (quota exhaustion codes `112`/`10605`, or a `pricingUrl`
+field) in the first SSE frame now produce a synthetic HTTP 403 before stream
+bytes commit. This supports status-driven combo/account failover; it does not
+change ordinary streaming failures. Normal streams replay the bounded 64 KiB
+peek byte-for-byte without buffering a full response. The peek shares Qoder's
+configured request timeout, so a response that sends headers but no first frame
+also fails promptly for fallback.
+
+K2.6's 403 "billing cycle" wording covers two different conditions: a
+depleted weekly subscription and a short per-model request window. A
+temporary K2.6 window no longer blocks the account — chatCore probes Kimi
+usage on that 403, and when the weekly quota still has capacity and the
+rate-limit window carries a future reset, the account cooldown expires at
+that reset instead of staying account-terminal. Other Kimi models retain
+their original terminal handling without a usage probe. Usage probes against
+Kimi are bounded by a single absolute deadline (10s) covering both headers
+and body; a stalled body cancels the response stream and falls through to
+the same fail-closed 403 path. An exhausted weekly quota, an unreadable
+usage response, or a probe failure also preserve the original terminal 403
+(fail closed).
+Compatible-provider icons now accept bounded raster `data:image/...;base64,...`
+URLs as well as bounded HTTP(S) URLs. Invalid schemes, malformed or oversized
+payloads, and unsanitized SVG data are rejected before persistence; create and
+edit dialogs show the server error instead of silently failing.
+
+Compression token estimation now strips embedded base64 image data URI
+payloads (`data:image/...;base64,...`) before measuring length, so
+attachments with inline images report accurate token savings instead of
+inflated originals. The strip scan is bounded by a 50_000-char cap
+(matching upstream `MAX_EXACT_TOKEN_COUNT_CHARS`); inputs above the
+cap bypass the scan and use a raw `length/4` heuristic, so hostile
+multi-MB payloads cannot drive linear CPU work.
+
+`estimateCompressionTokens` is the only token estimator in the fork; non-image data URIs (e.g. `data:audio/mpeg;base64,...`), malformed or truncated image URIs, and plain text are unaffected.
+
+# 3.15.3
+
+Remote dashboard login now refuses to issue a session while the built-in `123456` password is active, and dashboard request-detail responses redact captured request and response bodies. The login screen uses the DurinDoor wordmark and shows the default-password hint only when the effective password is literally that built-in value.
 # 3.15.2
 
 Authenticated dashboards reached through a reverse proxy can manage PXPIPE
@@ -12,6 +62,18 @@ claiming the bundled dependency is missing. Independent statistics, logs, or
 health failures no longer overwrite a successful PXPIPE status.
 
 No stored-data, dependency, API-key, or wire-format changes are included.
+
+Native Claude passthrough now re-anchors cache breakpoints after token-saving
+transforms: final system block and tool use the one-hour TTL, and final
+cacheable assistant content uses the standard five-minute TTL. Mid-conversation
+system reminders remain adjacent to their turn rather than invalidating the
+top-level system prefix.
+
+Combo names now resolve case-insensitively during model routing while retaining
+their stored spelling for access-control, strategy, and rotation state. Exact
+names win; colliding case variants use a deterministic oldest-record fallback.
+Provider and model IDs remain case-sensitive.
+Gemini 3.7 Flash now has direct Gemini catalog visibility plus Antigravity high, medium, and low tier routes, aliases, and quota rows, ported from upstream commit `86694ed8d048` (#3286, #3281).
 
 # 3.15.1
 

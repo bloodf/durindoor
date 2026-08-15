@@ -35,16 +35,6 @@ export const BLOCKED_OMNIROUTE_PROVIDERS = {
     ],
     reason: "requires the ChatGPT web TLS client, proof-of-work helpers, image cache route, and cookie normalization",
   },
-  "duckduckgo-web": {
-    aliases: ["ddgw"],
-    source: [
-      "open-sse/executors/duckduckgo-web.ts",
-      "open-sse/executors/duckduckgo-web/challenge.ts",
-      "open-sse/services/browserBackedChat.ts",
-      "open-sse/services/sessionPool/*",
-    ],
-    reason: "requires the DuckDuckGo anti-abuse challenge solver and optional browser-backed session pool",
-  },
   huggingchat: {
     aliases: [],
     source: [

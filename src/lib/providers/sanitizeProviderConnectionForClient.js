@@ -1,3 +1,5 @@
+import { CODEX_FINGERPRINT_MODES } from "../../../open-sse/config/codexIdentity.js";
+
 const SAFE_FIELDS = [
   "id", "provider", "authType", "name", "email", "displayName",
   "priority", "globalPriority", "isActive", "defaultModel",
@@ -12,7 +14,7 @@ const SAFE_PSD_FIELDS = [
   "connectionProxyEnabled", "connectionProxyUrl", "connectionNoProxy",
   "githubLogin", "githubName", "githubEmail", "githubUserId",
   "username", "firstName", "lastName", "authMethod", "authKind",
-  "profileArn",
+  "profileArn", "codexFingerprintMode",
 ];
 
 function maskName(name) {
@@ -21,6 +23,10 @@ function maskName(name) {
   return name;
 }
 
+
+function supportsOpenAIStore(provider) {
+  return provider === "openai" || provider?.startsWith("openai-compatible-responses-");
+}
 export function sanitizeProviderConnectionForClient(c) {
   const safe = {};
   for (const f of SAFE_FIELDS) if (c[f] !== undefined) safe[f] = c[f];
@@ -36,7 +42,18 @@ export function sanitizeProviderConnectionForClient(c) {
     const psd = {};
     for (const f of SAFE_PSD_FIELDS) {
       if (c.provider === "codex" && f === "accountId") continue;
-      if (c.providerSpecificData[f] !== undefined) psd[f] = c.providerSpecificData[f];
+      if (c.providerSpecificData[f] === undefined) continue;
+      if (f === "codexFingerprintMode") {
+        if (CODEX_FINGERPRINT_MODES.includes(c.providerSpecificData[f])) psd[f] = c.providerSpecificData[f];
+        continue;
+      }
+      psd[f] = c.providerSpecificData[f];
+    }
+    if (supportsOpenAIStore(c.provider) && c.providerSpecificData.openaiStoreEnabled !== undefined) {
+      psd.openaiStoreEnabled = c.providerSpecificData.openaiStoreEnabled;
+    }
+    if (supportsOpenAIStore(c.provider) && c.providerSpecificData.openaiStoreEnabled !== undefined) {
+      psd.openaiStoreEnabled = c.providerSpecificData.openaiStoreEnabled;
     }
     safe.providerSpecificData = psd;
   }

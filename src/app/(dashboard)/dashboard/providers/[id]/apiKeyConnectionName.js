@@ -24,6 +24,7 @@ export function createAddApiKeyModalInitialState(existingConnectionNames = [], d
     formData: {
       name: defaultApiKeyConnectionName(existingConnectionNames),
       apiKey: "",
+      qwenCloudCookie: "",
       defaultModel: "",
       priority: 1,
       proxyPoolId: "__none__",

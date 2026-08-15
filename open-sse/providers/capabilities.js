@@ -145,6 +145,7 @@ export const MODEL_CAPABILITIES = {
   /**
    * Z.ai's primary model pages document these limits. The 2026-08-13 Models
    * APIs confirmed all text IDs below except the separately-routed vision ID.
+   * https://docs.z.ai/guides/llm/glm-5.3
    * https://docs.z.ai/guides/llm/glm-5.2
    * https://docs.z.ai/guides/llm/glm-5.1
    * https://docs.z.ai/guides/llm/glm-5
@@ -153,6 +154,7 @@ export const MODEL_CAPABILITIES = {
    * https://docs.z.ai/guides/llm/glm-4.6
    * https://docs.z.ai/guides/llm/glm-4.5
    */
+  "glm-5.3":           { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
   "glm-5.2":           { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
   "glm-5.1":           { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 },
   "glm-5":             { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 },
@@ -832,10 +834,14 @@ export function getCapabilitiesForModel(provider, model) {
   if (!model) return finalize({ ...DEFAULT_CAPABILITIES });
 
   const baseModel = model.includes("/") ? model.split("/").pop() : model;
+
+  // Z.ai's Claude Code catalog spells GLM-5.3's 1M variant `glm-5.3[1m]`.
+  // Preserve its wire ID; normalize only static capability lookup.
+  const capabilityBaseModel = /^glm-5\.3\[1m\]$/i.test(baseModel) ? "glm-5.3" : baseModel;
   if (provider) {
     const providerCaps = PROVIDER_CAPABILITIES[provider];
     if (providerCaps?.[model]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[model] });
-    if (providerCaps?.[baseModel]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[baseModel] });
+    if (providerCaps?.[capabilityBaseModel]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[capabilityBaseModel] });
     if (provider === "kiro" || provider === "kr") {
       const normalized = normalizeModelId(model);
       const normalizedBase = normalizeModelId(baseModel);
@@ -844,7 +850,7 @@ export function getCapabilitiesForModel(provider, model) {
     }
   }
 
-  const exactId = MODEL_CAPABILITIES[baseModel] ? baseModel : model;
+  const exactId = MODEL_CAPABILITIES[capabilityBaseModel] ? capabilityBaseModel : model;
   const exactCaps = MODEL_CAPABILITIES[exactId];
   if (exactCaps) {
     const merged = { ...DEFAULT_CAPABILITIES, ...exactCaps };
@@ -853,7 +859,7 @@ export function getCapabilitiesForModel(provider, model) {
   }
 
   for (const { pattern, caps } of PATTERN_CAPABILITIES) {
-    if (matchPattern(pattern, baseModel) || matchPattern(pattern, model)) {
+    if (matchPattern(pattern, capabilityBaseModel) || matchPattern(pattern, model)) {
       const merged = { ...DEFAULT_CAPABILITIES, ...caps };
       if (hasUnpublishedOutput(provider, baseModel)) merged.maxOutput = undefined;
       return finalize(merged);
@@ -879,6 +885,9 @@ export function getCapabilitiesForModel(provider, model) {
  */
 export function resolveModelLimits(provider, model, customCaps = null, connection = null, liveLimits = null) {
   const baseModel = typeof model === "string" && model.includes("/") ? model.split("/").pop() : model;
+
+  // Keep Z.ai's documented Claude Code suffix on wire; use bare catalog ID for limits.
+  const capabilityBaseModel = /^glm-5\.3\[1m\]$/i.test(baseModel) ? "glm-5.3" : baseModel;
   const positive = (value) => Number.isFinite(value) && value > 0;
   const asLimits = (caps, source, unpublishedOutput = false) => {
     if (!positive(caps?.contextWindow)) return null;
@@ -914,21 +923,21 @@ export function resolveModelLimits(provider, model, customCaps = null, connectio
   if (provider) {
     const providerCaps = PROVIDER_CAPABILITIES[provider];
     const ids = provider === "kiro" || provider === "kr"
-      ? [model, baseModel, normalizeModelId(model), normalizeModelId(baseModel)]
-      : [model, baseModel];
+      ? [model, baseModel, capabilityBaseModel, normalizeModelId(model), normalizeModelId(baseModel)]
+      : [model, baseModel, capabilityBaseModel];
     for (const id of ids) {
       const hit = providerCaps?.[id] && asLimits(providerCaps[id], "provider", hasUnpublishedOutput(provider, id));
       if (hit) return applyPreferred(hit);
     }
   }
 
-  for (const id of [baseModel, model]) {
+  for (const id of [capabilityBaseModel, baseModel, model]) {
     const hit = MODEL_CAPABILITIES[id] && asLimits(MODEL_CAPABILITIES[id], "exact", hasUnpublishedOutput(provider, id));
     if (hit) return applyPreferred(hit);
   }
 
   const registry = REGISTRY.find((entry) => entry.id === provider || entry.alias === provider || entry.uiAlias === provider);
-  const registryModel = registry?.models?.find((entry) => entry.id === model || entry.id === baseModel);
+  const registryModel = registry?.models?.find((entry) => entry.id === model || entry.id === baseModel || entry.id === capabilityBaseModel);
   if (registryModel) {
     const hit = asLimits({
       contextWindow: registryModel.contextLength ?? registry.transport?.defaultContextLength,
@@ -938,7 +947,7 @@ export function resolveModelLimits(provider, model, customCaps = null, connectio
   }
 
   for (const { pattern, caps } of PATTERN_CAPABILITIES) {
-    if (!matchPattern(pattern, baseModel) && !matchPattern(pattern, model)) continue;
+    if (!matchPattern(pattern, capabilityBaseModel) && !matchPattern(pattern, baseModel) && !matchPattern(pattern, model)) continue;
     const hit = asLimits(caps, "pattern", hasUnpublishedOutput(provider, baseModel));
     if (hit) return applyPreferred(hit);
     if (caps?.contextWindow === null) break;

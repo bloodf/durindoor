@@ -82,6 +82,17 @@ describe("injectReasoningContent — DeepSeek thinking round-trip", () => {
     expect(out.extra_body.thinking.type).toBe("disabled");
     expect(out.reasoning_effort).toBeUndefined();
   });
+
+  it("maps deepseek-v4-pro-max alias to enabled thinking and forced max effort", () => {
+    const out = injectReasoningContent({
+      provider: "deepseek",
+      model: "deepseek-v4-pro-max",
+      body: bodyWith([{ role: "user", content: "hi" }]),
+    });
+    expect(out.model).toBe("deepseek-v4-pro");
+    expect(out.extra_body.thinking.type).toBe("enabled");
+    expect(out.reasoning_effort).toBe("max");
+  });
 });
 
 describe("injectReasoningContent — MiniMax thinking round-trip", () => {

@@ -20,24 +20,15 @@ function normalizeScopes(value) {
 }
 
 export function getPublicOrigin(request) {
-  const configuredBaseUrl =
-    process.env.BASE_URL ||
-    process.env.NEXT_PUBLIC_BASE_URL ||
-    "";
-
+  const configuredBaseUrl = process.env.BASE_URL || process.env.NEXT_PUBLIC_BASE_URL || "";
   if (configuredBaseUrl) {
-    return trimTrailingSlashes(configuredBaseUrl);
+    try {
+      return new URL(configuredBaseUrl).origin;
+    } catch {
+      throw new Error("Invalid OIDC public origin configuration");
+    }
   }
-
-  const forwardedProto = request?.headers?.get?.("x-forwarded-proto") || "";
-  const forwardedHost = request?.headers?.get?.("x-forwarded-host") || "";
-  const host = forwardedHost || request?.headers?.get?.("host") || "";
-  if (host) {
-    const protocol = (forwardedProto || new URL(request.url).protocol || "http:").replace(/:$/, "");
-    return `${protocol}://${host}`.replace(/\/+$/, "");
-  }
-
-  return trimTrailingSlashes(new URL(request.url).origin);
+  return new URL(request.url).origin;
 }
 
 export function isOidcConfigured(settings) {

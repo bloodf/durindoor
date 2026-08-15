@@ -96,6 +96,12 @@ describe("resolveModelLimits", () => {
   it("resolves a vendor-prefixed id against its bare model id", () => {
     expect(resolveModelLimits("openai", "openai/gpt-5.4").contextWindow).toBe(1_050_000);
   });
+
+  it("resolves GLM-5.3's documented [1m] alias to its exact limits", () => {
+    expect(resolveModelLimits("glm", "GLM-5.3[1M]")).toEqual(
+      resolveModelLimits("glm", "glm-5.3"),
+    );
+  });
 });
 
 describe("effective output reservation", () => {

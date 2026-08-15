@@ -42,9 +42,23 @@ function applyRule(body, rule) {
   return { ...body, messages };
 }
 
-function applyDeepSeekV4ProAlias({ provider, model, body }) {
+export function applyDeepSeekV4ProAlias({ provider, model, body, transportFormat = null }) {
   const alias = DEEPSEEK_V4_PRO_ALIASES[model];
   if (provider !== "deepseek" || !alias || !body) return body;
+
+  if (transportFormat === "claude") {
+    const nextBody = {
+      ...body,
+      model: DEEPSEEK_V4_PRO,
+      thinking: {
+        ...(body.thinking && typeof body.thinking === "object" ? body.thinking : {}),
+        type: alias.thinkingType,
+      },
+    };
+    delete nextBody.extra_body;
+    delete nextBody.reasoning_effort;
+    return nextBody;
+  }
 
   const nextBody = {
     ...body,
@@ -53,9 +67,9 @@ function applyDeepSeekV4ProAlias({ provider, model, body }) {
       ...(body.extra_body || {}),
       thinking: {
         ...(body.extra_body?.thinking || {}),
-        type: alias.thinkingType
-      }
-    }
+        type: alias.thinkingType,
+      },
+    },
   };
 
   if (alias.reasoningEffort) {

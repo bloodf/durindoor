@@ -162,7 +162,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
     }
   };
 
-  const onStreamComplete = (contentObj, usage, ttftAt) => {
+  const onStreamComplete = (contentObj, usage, ttftAt, summary) => {
     if (completed) return;
     completed = true;
     const latency = {
@@ -178,7 +178,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
       tokens: usage || { prompt_tokens: 0, completion_tokens: 0 },
       request: extractRequestConfig(body, stream),
       providerRequest: finalBody || translatedBody || null,
-      providerResponse: safeContent,
+      providerResponse: summary?.providerResponse ?? safeContent,
       response: { content: safeContent, thinking: safeThinking, type: "streaming" },
       pxpipe,
       status: "success"

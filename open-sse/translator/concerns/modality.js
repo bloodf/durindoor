@@ -1,5 +1,5 @@
 // Strip multimodal content blocks a model cannot read, BEFORE translation.
-// Driven by getCapabilitiesForModel: vision/audioInput/pdf. Replaces removed
+// Driven by getCapabilitiesForModel: vision/audioInput/videoInput/pdf. Replaces removed
 // media with a short text placeholder so messages never become empty.
 import { FORMATS } from "../formats.js";
 
@@ -8,12 +8,14 @@ import { FORMATS } from "../formats.js";
 const PLACEHOLDER_CURRENT = {
   vision: "[image omitted: model has no vision support]",
   audioInput: "[audio omitted: model has no audio support]",
+  videoInput: "[video omitted: model has no video support]",
   pdf: "[file omitted: model has no document support]",
 };
 // Earlier turns: neutral (a combo may route to a different model each turn).
 const PLACEHOLDER_PREV = {
   vision: "[Previous image omitted from context.]",
   audioInput: "[Previous audio omitted from context.]",
+  videoInput: "[Previous video omitted from context.]",
   pdf: "[Previous file omitted from context.]",
 };
 const ph = (cap, isLast) => (isLast ? PLACEHOLDER_CURRENT : PLACEHOLDER_PREV)[cap];
@@ -23,6 +25,7 @@ function capForMime(mime) {
   if (typeof mime !== "string") return null;
   if (mime.startsWith("image/")) return "vision";
   if (mime.startsWith("audio/")) return "audioInput";
+  if (mime.startsWith("video/")) return "videoInput";
   if (mime === "application/pdf") return "pdf";
   return null;
 }
@@ -30,9 +33,10 @@ function capForMime(mime) {
 // OpenAI chat content block -> required capability (null = plain text/other, keep).
 function capForOpenAIBlock(block) {
   const t = block?.type;
-  if (t === "image_url" || t === "image") return "vision";
+  if (t === "image_url" || t === "image" || t === "input_image") return "vision";
   if (t === "input_audio" || t === "audio_url") return "audioInput";
-  if (t === "file") return "pdf";
+  if (t === "video" || t === "video_url" || t === "input_video") return "videoInput";
+  if (t === "file" || t === "document" || t === "input_file") return "pdf";
   return null;
 }
 
@@ -57,13 +61,60 @@ function filterBlocks(blocks, capOf, caps, removed, isLast) {
   return out;
 }
 
-// OpenAI / OpenAI-compatible chat messages[].content[].
+function capForAttachment(attachment) {
+  const mime = attachment?.contentType || attachment?.mediaType ||
+    (typeof attachment?.url === "string" && attachment.url.match(/^data:([^;,:]{1,255})/)?.[1]);
+  const cap = capForMime(mime);
+  return cap || (!mime && (attachment?.url || attachment?.data) ? "vision" : null);
+}
+
+function replaceUnsupportedDataUris(content, caps, isLast, removed, inlineRemoved) {
+  return content.replace(/data:([^;,:]{1,255})(?:;base64)?,[^\s)]+/gi, (uri, mime) => {
+    const cap = capForMime(mime.toLowerCase());
+    if (!cap || caps[cap] !== false) return uri;
+    removed.add(cap);
+    inlineRemoved.add(cap);
+    return ph(cap, isLast);
+  });
+}
+
+// OpenAI / OpenAI-compatible chat messages[].content[] and attachment fields.
 function stripOpenAI(body, caps) {
   if (!Array.isArray(body.messages)) return;
   const last = body.messages.length - 1;
   body.messages.forEach((msg, i) => {
-    if (!Array.isArray(msg.content)) return;
     const removed = new Set();
+    for (const field of [
+      ["images", "vision"], ["image", "vision"], ["image_url", "vision"],
+      ["audio", "audioInput"], ["audio_url", "audioInput"],
+      ["video", "videoInput"], ["video_url", "videoInput"],
+      ["file", "pdf"], ["document", "pdf"],
+    ]) {
+      if (caps[field[1]] === false && msg[field[0]] != null) {
+        delete msg[field[0]];
+        removed.add(field[1]);
+      }
+    }
+    for (const name of ["experimental_attachments", "attachments"]) {
+      if (!Array.isArray(msg[name])) continue;
+      msg[name] = msg[name].filter((attachment) => {
+        const cap = capForAttachment(attachment);
+        if (!cap || caps[cap] !== false) return true;
+        removed.add(cap);
+        return false;
+      });
+    }
+    if (typeof msg.content === "string") {
+      const inlineRemoved = new Set();
+      msg.content = replaceUnsupportedDataUris(msg.content, caps, i === last, removed, inlineRemoved);
+      const placeholders = [...removed]
+        .filter((cap) => !inlineRemoved.has(cap))
+        .map((cap) => ph(cap, i === last)).join(" ");
+      if (placeholders) msg.content = msg.content ? `${msg.content} ${placeholders}` : placeholders;
+      if (removed.size && !msg.content) msg.content = [...removed].map((cap) => ph(cap, i === last)).join(" ");
+      return;
+    }
+    if (!Array.isArray(msg.content)) return;
     msg.content = filterBlocks(msg.content, capForOpenAIBlock, caps, removed, i === last);
   });
 }
@@ -122,7 +173,7 @@ function stripGeminiParts(contents, caps) {
 export function stripUnsupportedModalities(body, sourceFormat, caps) {
   if (!body || !caps) return false;
   // Fast exit: model supports everything we'd strip.
-  if (caps.vision !== false && caps.audioInput !== false && caps.pdf !== false) return false;
+  if (caps.vision !== false && caps.audioInput !== false && caps.videoInput !== false && caps.pdf !== false) return false;
 
   switch (sourceFormat) {
     case FORMATS.OPENAI:

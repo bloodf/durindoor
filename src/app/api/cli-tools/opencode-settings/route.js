@@ -4,16 +4,20 @@ import { NextResponse } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";
 import fs from "fs/promises";
-import path from "path";
 import os from "os";
 import { redactSecrets } from "@/shared/utils/secretRedaction";
+import {
+  modifyOpenCodeConfig,
+  parseOpenCodeConfig,
+  resolveOpenCodeConfigDir,
+  resolveOpenCodeConfigPath,
+} from "@/shared/services/opencodeConfig";
 
 const execAsync = promisify(exec);
 
-const getConfigDir = () => path.join(os.homedir(), ".config", "opencode");
-const getConfigPath = () => path.join(getConfigDir(), "opencode.json");
+const getConfigDir = () => resolveOpenCodeConfigDir();
+const getConfigPath = () => resolveOpenCodeConfigPath();
 
-// Check if opencode CLI is installed (via which/where or config file exists)
 const checkOpenCodeInstalled = async () => {
   try {
     const isWindows = os.platform() === "win32";
@@ -35,17 +39,10 @@ const checkOpenCodeInstalled = async () => {
 
 const readConfig = async () => {
   try {
-    const content = await fs.readFile(getConfigPath(), "utf-8");
-    // opencode config files may use JSONC format (trailing commas, comments).
-    // Strip trailing commas before parsing to avoid SyntaxError on valid JSONC.
-    const stripped = content.replace(/,(\s*[}\]])/g, "$1");
-    return JSON.parse(stripped);
+    return parseOpenCodeConfig(await fs.readFile(getConfigPath(), "utf-8"));
   } catch (error) {
     if (error.code === "ENOENT") return null;
-    // If the config file exists but is unparseable (corrupted, exotic JSONC),
-    // treat it as "no config" rather than throwing a 500 that the UI
-    // misinterprets as "opencode not installed".
-    return null;
+    throw error;
   }
 };
 
@@ -88,12 +85,20 @@ export async function GET() {
   }
 }
 
+const readSource = async (configPath) => {
+  try {
+    return await fs.readFile(configPath, "utf-8");
+  } catch (error) {
+    if (error.code === "ENOENT") return "";
+    throw error;
+  }
+};
+
 // POST - Apply DurinDoor as openai-compatible provider (multi-model support)
 export async function POST(request) {
   try {
     const { baseUrl, apiKey, model, models, activeModel, subagentModel } = await request.json();
 
-    // Accept either `model` (string, legacy) or `models` (array of strings)
     const modelsArray = Array.isArray(models) ? models.slice() : (typeof model === "string" ? [model] : []);
 
     if (!baseUrl || modelsArray.length === 0) {
@@ -105,62 +110,38 @@ export async function POST(request) {
 
     await fs.mkdir(configDir, { recursive: true });
 
-    // Read existing config or start fresh
-    let config = {};
-    try {
-      const existing = await fs.readFile(configPath, "utf-8");
-      config = JSON.parse(existing);
-    } catch { /* No existing config */ }
+    const source = await readSource(configPath);
+    const config = source ? parseOpenCodeConfig(source) : {};
 
     const normalizedBaseUrl = baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
     const effectiveSubagentModel = subagentModel || modelsArray[0];
-
-    // Ensure provider object
-    if (!config.provider) config.provider = {};
-
-    // Preserve any existing 9router provider entry and its models
-    const existingProvider = config.provider["9router"] || { npm: "@ai-sdk/openai-compatible", options: {}, models: {} };
+    const existingProvider = config.provider?.["9router"] || {};
     const keyToUse = apiKey || existingProvider.options?.apiKey || "sk_durindoor";
 
-    // Merge options (overwrite baseURL/apiKey)
-    existingProvider.options = {
-      ...existingProvider.options,
-      baseURL: normalizedBaseUrl,
-      apiKey: keyToUse,
-    };
-
-    // Ensure models map exists
-    existingProvider.models = existingProvider.models || {};
-
-    // Add or update entries for all requested models
+    let next = source || "{}";
+    next = modifyOpenCodeConfig(next, ["provider", "9router", "npm"], existingProvider.npm || "@ai-sdk/openai-compatible");
+    next = modifyOpenCodeConfig(next, ["provider", "9router", "options", "baseURL"], normalizedBaseUrl);
+    next = modifyOpenCodeConfig(next, ["provider", "9router", "options", "apiKey"], keyToUse);
     for (const m of modelsArray) {
       if (!m || typeof m !== "string") continue;
-      existingProvider.models[m] = { name: m, modalities: { input: ["text", "image"], output: ["text"] } };
+      next = modifyOpenCodeConfig(next, ["provider", "9router", "models", m], {
+        name: m,
+        modalities: { input: ["text", "image"], output: ["text"] },
+      });
     }
-
-    // Save merged provider back
-    config.provider["9router"] = existingProvider;
-
-    // Set the active model: prefer explicit activeModel, else first of modelsArray
-    // If activeModel is explicitly empty string, clear the model
     if (activeModel === "") {
-      config.model = "";
+      next = modifyOpenCodeConfig(next, ["model"], "");
     } else {
       const finalActive = activeModel || modelsArray[0];
-      if (finalActive) {
-        config.model = `9router/${finalActive}`;
-      }
+      if (finalActive) next = modifyOpenCodeConfig(next, ["model"], `9router/${finalActive}`);
     }
-
-    // Add subagent configuration
-    if (!config.agent) config.agent = {};
-    config.agent.explorer = {
+    next = modifyOpenCodeConfig(next, ["agent", "explorer"], {
       description: "Fast explorer subagent for codebase exploration",
       mode: "subagent",
       model: `9router/${effectiveSubagentModel}`,
-    };
+    });
 
-    await fs.writeFile(configPath, JSON.stringify(config, null, 2));
+    await fs.writeFile(configPath, next);
 
     return NextResponse.json({
       success: true,
@@ -169,7 +150,10 @@ export async function POST(request) {
     });
   } catch (error) {
     console.log("Error applying opencode settings:", error);
-    return NextResponse.json({ error: "Failed to apply settings" }, { status: 500 });
+    const message = error instanceof Error && error.message.includes("invalid JSONC")
+      ? error.message
+      : "Failed to apply settings";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -178,31 +162,18 @@ export async function PATCH(request) {
   try {
     const { clearActiveModel } = await request.json();
     const configPath = getConfigPath();
-
-    let config = {};
-    try {
-      const existing = await fs.readFile(configPath, "utf-8");
-      config = JSON.parse(existing);
-    } catch (error) {
-      if (error.code === "ENOENT") {
-        return NextResponse.json({ success: true, message: "No config file found" });
-      }
-      throw error;
-    }
+    const source = await readSource(configPath);
+    if (!source) return NextResponse.json({ success: true, message: "No config file found" });
 
     if (clearActiveModel === true) {
-      // Clear active model but keep models in the list
+      const config = parseOpenCodeConfig(source);
       if (config.model?.startsWith("9router/")) {
-        config.model = "";
+        const next = modifyOpenCodeConfig(source, ["model"], "");
+        await fs.writeFile(configPath, next);
       }
     }
 
-    await fs.writeFile(configPath, JSON.stringify(config, null, 2));
-
-    return NextResponse.json({
-      success: true,
-      message: "Settings updated",
-    });
+    return NextResponse.json({ success: true, message: "Settings updated" });
   } catch (error) {
     console.log("Error patching opencode settings:", error);
     return NextResponse.json({ error: "Failed to patch settings" }, { status: 500 });
@@ -215,45 +186,44 @@ export async function DELETE(request) {
     const { searchParams } = new URL(request.url);
     const modelToRemove = searchParams.get("model");
     const configPath = getConfigPath();
+    const source = await readSource(configPath);
+    if (!source) return NextResponse.json({ success: true, message: "No config file to reset" });
 
-    let config = {};
-    try {
-      const existing = await fs.readFile(configPath, "utf-8");
-      config = JSON.parse(existing);
-    } catch (error) {
-      if (error.code === "ENOENT") {
-        return NextResponse.json({ success: true, message: "No config file to reset" });
-      }
-      throw error;
-    }
+    const config = parseOpenCodeConfig(source);
 
-    // If specific model provided, remove just that model
-    if (modelToRemove && config.provider?.["9router"]?.models) {
-      delete config.provider["9router"].models[modelToRemove];
-      
-      // If no models left, remove the provider
-      if (Object.keys(config.provider["9router"].models).length === 0) {
-        delete config.provider["9router"];
-        if (config.model?.startsWith("9router/")) delete config.model;
-      } else if (config.model === `9router/${modelToRemove}`) {
-        // If removed model was active, switch to first remaining model
-        const remainingModels = Object.keys(config.provider["9router"].models);
-        config.model = `9router/${remainingModels[0]}`;
+    let next = source;
+    let mutated = false;
+    const provider = config.provider?.["9router"];
+    if (modelToRemove) {
+      if (provider?.models?.[modelToRemove]) {
+        const remaining = Object.keys(provider.models).filter((model) => model !== modelToRemove);
+        if (remaining.length === 0) {
+          next = modifyOpenCodeConfig(next, ["provider", "9router"], undefined);
+          if (config.model?.startsWith("9router/")) next = modifyOpenCodeConfig(next, ["model"], undefined);
+          mutated = true;
+        } else {
+          next = modifyOpenCodeConfig(next, ["provider", "9router", "models", modelToRemove], undefined);
+          if (config.model === `9router/${modelToRemove}`) {
+            next = modifyOpenCodeConfig(next, ["model"], `9router/${remaining[0]}`);
+          }
+          mutated = true;
+        }
       }
     } else {
-      // No specific model - remove entire 9router provider
-      if (config.provider) delete config.provider["9router"];
-      if (config.model?.startsWith("9router/")) delete config.model;
+      next = modifyOpenCodeConfig(next, ["provider", "9router"], undefined);
+      if (config.model?.startsWith("9router/")) next = modifyOpenCodeConfig(next, ["model"], undefined);
+      if (config.agent?.explorer?.model?.startsWith("9router/")) {
+        next = modifyOpenCodeConfig(next, ["agent", "explorer"], undefined);
+        if (Object.keys(config.agent).length === 1) next = modifyOpenCodeConfig(next, ["agent"], undefined);
+      }
+      mutated = true;
     }
 
-    // Remove subagent configuration
-    if (config.agent?.explorer?.model?.startsWith("9router/")) {
-      delete config.agent.explorer;
-      // Clean up empty agent object
-      if (Object.keys(config.agent).length === 0) delete config.agent;
+    if (!mutated) {
+      return NextResponse.json({ success: true, message: "Nothing to remove" });
     }
 
-    await fs.writeFile(configPath, JSON.stringify(config, null, 2));
+    await fs.writeFile(configPath, next);
 
     return NextResponse.json({
       success: true,

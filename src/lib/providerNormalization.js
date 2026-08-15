@@ -37,6 +37,14 @@ export function normalizeProviderSpecificData(provider, body = {}, providerSpeci
     ? { ...providerSpecificData }
     : {};
 
+  if (provider === "codex") {
+    delete next.codexClientIdentity;
+    delete next.codexOriginalIdentityHeaders;
+    if (!["off", "device", "session", "full"].includes(next.codexFingerprintMode)) {
+      delete next.codexFingerprintMode;
+    }
+  }
+
   if (provider === "ollama-local") {
     const baseUrl = (
       next.baseUrl ||

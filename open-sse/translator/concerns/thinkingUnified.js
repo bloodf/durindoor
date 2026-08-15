@@ -3,7 +3,7 @@
 // never hardcoded per-model here. See .docs/thinking/plan.md MATRIX VI-A.
 
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
-import { getThinkingLevels, getThinkingLevelsFromCapabilities } from "../../providers/thinkingLevels.js";
+import { getThinkingLevels, getThinkingLevelsFromCapabilities, isNativeDeepSeekV4 } from "../../providers/thinkingLevels.js";
 import { PROVIDERS } from "../../providers/index.js";
 import { FORMATS } from "../formats.js";
 import { LEVEL_TO_BUDGET, budgetToLevel, effortToBudget, effortToThinkingLevel } from "./thinking.js";
@@ -275,6 +275,12 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null) {
       if (level) body.reasoning_effort = resolveOpenAiEffort(level, provider, model);
       break;
     }
+    case "ollama": {
+      if (none && canDisable) { body.reasoning_effort = "none"; break; }
+      const level = toLevel(eff);
+      if (level) body.reasoning_effort = level === "xhigh" ? "max" : level;
+      break;
+    }
     case "commandcode": {
       const level = toLevel(eff);
       const levels = getThinkingLevels(provider, model);
@@ -332,9 +338,11 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null) {
     case "deepseek": {
       if (none && canDisable) { body.thinking = { type: "disabled" }; break; }
       body.thinking = { type: "enabled" };
-      // DeepSeek: low/medium→high, xhigh/max→max.
+      // Native DeepSeek V4 accepts reasoning_effort "max"; legacy V3.2 models
+      // (deepseek-chat/deepseek-reasoner) only accept low/high on the wire.
       const level = toLevel(eff);
-      body.reasoning_effort = level === "xhigh" || level === "max" ? "max" : "high";
+      const wantsMax = level === "xhigh" || level === "max";
+      body.reasoning_effort = wantsMax && isNativeDeepSeekV4(provider, model) ? "max" : "high";
       break;
     }
     case "kimi": {

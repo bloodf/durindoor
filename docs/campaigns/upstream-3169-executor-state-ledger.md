@@ -24,7 +24,6 @@ without relying on instance fields that survive past the call.
   as the fork's request-context slot (not upstream's URL index).
 - `open-sse/executors/gemini-cli.js` — uses the explicit `model` argument for
   `geminiCLIUserAgent(model)`; no instance cache.
-- `open-sse/executors/opencode-go.js` — same explicit-model pattern; no `_lastModel`.
 - `open-sse/executors/opencode-zen.js` — removed `_lastModel`; `buildHeaders` now requires
   the explicit `model` argument to pick the auth scheme.
 - `open-sse/executors/grok-cli.js` — `transformRequest` resolves `grokCliSessionId`,
@@ -36,8 +35,9 @@ without relying on instance fields that survive past the call.
   `open-sse/handlers/rerankCore.js` — direct `buildHeaders` callers now pass the resolved
   `model` (and a `null` request context) so they share the same explicit-model contract.
 - `tests/unit/executor-request-state-isolation.test.js` — interleaved assertions for Gemini,
-  OpenCode Go, OpenCode Zen (both auth schemes) and Grok IDs.
-- `tests/unit/opencode-go-models.test.js` — existing auth-scheme assertions unchanged.
+  OpenCode Zen (both auth schemes) and Grok IDs.
+- `tests/unit/opencode-go-models.test.js` — model transport capability assertions cover the
+  shared `DefaultExecutor` routing path.
 
 ## Intentionally retained
 

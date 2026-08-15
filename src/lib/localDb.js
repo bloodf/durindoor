@@ -1,7 +1,7 @@
 // Shim → re-export from new SQLite-based DB layer (src/lib/db/)
 // Kept for backward compatibility with existing imports.
 export {
-  getSettings, updateSettings, isCloudEnabled, getCloudUrl,
+  getSettings, getSettingsSync, updateSettings, updateSettingsWithPasswordEpoch, PasswordEpochMismatchError, isCloudEnabled, getCloudUrl,
   getProviderConnections, getProviderConnectionById,
   createProviderConnection, updateProviderConnection,
   recordProviderConnectionFallbackState, clearProviderConnectionFallbackState,
@@ -21,7 +21,7 @@ export {
   hasActiveDispatchedQuotaReservations, hashQuotaRoute,
   assertNoActiveQuotaReservationsSync,
   QuotaReservationError, QuotaCapacityUnavailableError,
-  getCombos, getComboById, getComboByName,
+  getCombos, getComboById, getComboByName, getComboForModel,
   createCombo, updateCombo, deleteCombo,
   // MCP gateway
   getInstances, getInstanceById, getInstanceBySlug, getEnabledInstancesByIds,

@@ -1,6 +1,7 @@
 import { ERROR_RULES, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS, MAX_RATE_LIMIT_COOLDOWN_MS, REQUEST_REPLAY_BUFFER_ERROR } from "../config/errorConfig.js";
 import { parseRateLimitEvidence } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
+import { getProviderErrorRuleMatch, resolveRuleMatchBody } from "../config/providerErrorRules.js";
 
 /**
  * Identify Envoy retry-buffer overflow responses that are safe to replay on
@@ -35,31 +36,34 @@ export function getQuotaCooldown(backoffLevel = 0) {
  * @param {number} status - HTTP status code
  * @param {string} errorText - Error message text
  * @param {number} backoffLevel - Current backoff level for exponential backoff
+ * @param {string} provider - Optional provider ID for provider-specific rules
+ * @param {Headers|object|null} headers - Optional upstream response headers
+ * @param {unknown} structuredError - Optional parsed upstream error body
  * @returns {{ shouldFallback: boolean, cooldownMs: number, newBackoffLevel?: number, rateLimitEvidence?: object }}
  *   `rateLimitEvidence` is present only on an explicit quota-exhausted 429,
  *   so markAccountUnavailable can persist state:"exhausted" instead of an
  *   ordinary cooldown.
  */
-export function checkFallbackError(status, errorText, backoffLevel = 0) {
+export function checkFallbackError(status, errorText, backoffLevel = 0, provider = null, headers = null, structuredError = null) {
   const normalizedText = errorText
     ? (typeof errorText === "string" ? errorText : JSON.stringify(errorText))
     : "";
   const lowerError = normalizedText.toLowerCase();
 
   if (isRequestReplayBufferError(status, errorText)) {
-    return { shouldFallback: false, cooldownMs: 0 };
+    return { shouldFallback: false, cooldownMs: 0, scope: null };
   }
 
   // Port-pending guards are explicit feature-not-implemented errors; they should not
   // lock the user's connection or trigger the account fallback cooldown chain.
   if (lowerError.includes("provider_port_pending")) {
-    return { shouldFallback: false, cooldownMs: 0 };
+    return { shouldFallback: false, cooldownMs: 0, scope: null };
   }
 
   // Anthropic 400 invalid_request_error is a client-side request schema failure;
   // switching accounts will not fix it, so do not fall back.
   if (Number(status) === 400 && lowerError.includes("invalid_request_error")) {
-    return { shouldFallback: false, cooldownMs: 0 };
+    return { shouldFallback: false, cooldownMs: 0, scope: null };
   }
 
   // Codex invalid_encrypted_content is a stale-reasoning request issue recovered
@@ -68,14 +72,33 @@ export function checkFallbackError(status, errorText, backoffLevel = 0) {
     (lowerError.includes("encrypted content") &&
       (lowerError.includes("could not be verified") || lowerError.includes("could not be decrypted or parsed")));
   if (Number(status) === 400 && invalidEncryptedContent) {
-    return { shouldFallback: false, cooldownMs: 0 };
+    return { shouldFallback: false, cooldownMs: 0, scope: null };
   }
 
   // A per-request content rejection (e.g. provider content filter blocking a
   // single prompt) is not an account/auth/quota failure; it must never lock the
   // connection or trigger the account-fallback cooldown chain.
   if (lowerError.includes("provider_request_rejected")) {
-    return { shouldFallback: false, cooldownMs: 0 };
+    return { shouldFallback: false, cooldownMs: 0, scope: null };
+  }
+
+  const providerRule = getProviderErrorRuleMatch(
+    provider,
+    status,
+    headers,
+    resolveRuleMatchBody(provider, structuredError, errorText)
+  );
+  if (providerRule?.reason === "quota_exhausted") {
+    const ruleResult = checkFallbackErrorByRules(HTTP_STATUS.RATE_LIMITED, lowerError, backoffLevel);
+    return { ...ruleResult, scope: providerRule.scope ?? null };
+  }
+  if (providerRule?.cooldownMs) {
+    return {
+      shouldFallback: true,
+      cooldownMs: providerRule.cooldownMs,
+      newBackoffLevel: 0,
+      scope: providerRule.scope ?? null,
+    };
   }
 
   // OmniRoute #6731: an apikey-category 429 whose body explicitly reports an
@@ -98,14 +121,21 @@ export function checkFallbackError(status, errorText, backoffLevel = 0) {
         // monthly "reset in 14 days" still benches for the cap rather than
         // being discarded as resetless exhaustion.
         const clampedReset = Math.min(evidence.resetAtMs, now + MAX_RATE_LIMIT_COOLDOWN_MS);
-        return { shouldFallback: true, cooldownMs: Math.max(0, clampedReset - now), newBackoffLevel: 0, rateLimitEvidence: evidence };
+        return {
+          shouldFallback: true,
+          cooldownMs: Math.max(0, clampedReset - now),
+          newBackoffLevel: 0,
+          rateLimitEvidence: evidence,
+          scope: null,
+        };
       }
       const fallback = checkFallbackErrorByRules(status, lowerError, backoffLevel);
-      return { ...fallback, rateLimitEvidence: evidence };
+      return { ...fallback, rateLimitEvidence: evidence, scope: null };
     }
   }
 
-  return checkFallbackErrorByRules(status, lowerError, backoffLevel);
+  const generic = checkFallbackErrorByRules(status, lowerError, backoffLevel);
+  return { ...generic, scope: null };
 }
 
 function checkFallbackErrorByRules(status, lowerError, backoffLevel) {
@@ -376,19 +406,32 @@ export function resetAccountState(account) {
  * @param {object} account - Account object
  * @param {number} status - HTTP status code
  * @param {string} errorText - Error message
- * @returns {object} Updated account with error state
+ * @param {string} provider - Optional provider ID for provider-specific rules
+ * @param {Headers|object|null} headers - Optional upstream response headers
+ * @param {unknown} structuredError - Optional parsed upstream error body
+ * @returns {object} Updated account with error state. `providerErrorScope`
+ *   is set when a provider rule returned a `scope` (e.g. AgentRouter quota
+ *   `connection`) so the lock layer can pick account-wide persistence.
  */
-export function applyErrorState(account, status, errorText) {
+export function applyErrorState(account, status, errorText, provider = null, headers = null, structuredError = null) {
   if (!account) return account;
 
   const backoffLevel = account.backoffLevel || 0;
-  const { cooldownMs, newBackoffLevel } = checkFallbackError(status, errorText, backoffLevel);
+  const { cooldownMs, newBackoffLevel, scope } = checkFallbackError(
+    status,
+    errorText,
+    backoffLevel,
+    provider,
+    headers,
+    structuredError
+  );
 
   return {
     ...account,
     rateLimitedUntil: cooldownMs > 0 ? getUnavailableUntil(cooldownMs) : null,
     backoffLevel: newBackoffLevel ?? backoffLevel,
     lastError: { status, message: errorText, timestamp: new Date().toISOString() },
-    status: "error"
+    status: "error",
+    ...(scope ? { providerErrorScope: scope } : {}),
   };
 }

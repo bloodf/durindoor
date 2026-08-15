@@ -1,7 +1,7 @@
 import REGISTRY from "../providers/registry/index.js";
 // PROVIDER_MODELS now built from providers/registry (transport + models co-located)
 import { PROVIDER_MODELS } from "../providers/index.js";
-import { modelQuotaFamily, modelStrip, modelTargetFormat, normalizeModelId } from "../providers/models/schema.js";
+import { modelQuotaFamily, modelStrip, modelTargetFormat, modelSupportedFormats, normalizeModelId } from "../providers/models/schema.js";
 import { CODEX_REVIEW_SUFFIX } from "../providers/models/helpers.js";
 import { parseSuffix } from "../translator/concerns/thinkingSuffix.js";
 
@@ -72,6 +72,14 @@ export function getModelTargetFormat(aliasOrId, modelId) {
   return null;
 }
 
+// Declared upstream formats for a model. Null keeps providers with no per-model
+// endpoint restriction on their existing transport-selection path.
+export function getModelSupportedFormats(aliasOrId, modelId) {
+  const models = PROVIDER_MODELS[aliasOrId];
+  if (!models) return null;
+  return modelSupportedFormats(findModel(models, modelId, aliasOrId));
+}
+
 export function getModelType(aliasOrId, modelId) {
   const models = PROVIDER_MODELS[aliasOrId];
   if (!models) return null;
@@ -87,7 +95,7 @@ export function getModelUpstreamId(aliasOrId, modelId) {
   // while thinking intent travels in request-scoped translation context.
   const parsed = parseSuffix(modelId);
   const baseId = parsed.cleanModel;
-  const models = PROVIDER_MODELS[aliasOrId];
+  const models = PROVIDER_MODELS[aliasOrId] || PROVIDER_MODELS[PROVIDER_ID_TO_ALIAS[aliasOrId]];
   const found = findModel(models, baseId, aliasOrId);
   if (found?.upstreamModelId) return found.upstreamModelId;
   if (found?.id) return found.id;

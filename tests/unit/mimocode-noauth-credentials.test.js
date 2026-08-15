@@ -118,6 +118,7 @@ describe("Mimocode no-auth credentials", () => {
     const credentials = await getProviderCredentials("mimocode");
 
     expect(credentials.connectionId).toBe("noauth");
+    expect(credentials.authType).toBe("none");
     expect(credentials.connectionName).toBe("Public");
     expect(credentials.providerSpecificData).toMatchObject({
       connectionProxyEnabled: true,

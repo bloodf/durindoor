@@ -7,7 +7,7 @@ const crypto = require("crypto");
 const forge = require("node-forge");
 const { promisify } = require("util");
 const { log, err, dumpRequest, createResponseDumper, clearDumpDir } = require("./logger");
-const { IS_DEV, MITM_ENTRY_ARG, MITM_NODE_PORT, TARGET_HOSTS, URL_PATTERNS, MODEL_SYNONYMS, MODEL_PATTERNS, MODEL_NO_MAP, getToolForHost } = require("./config");
+const { IS_DEV, MITM_ENTRY_ARG, MITM_NODE_PORT, TARGET_HOSTS, MODEL_SYNONYMS, MODEL_PATTERNS, MODEL_NO_MAP, getToolForHost, isChatRequest } = require("./config");
 const { getCertForDomain } = require("./cert/generate");
 const { loadRootCATls } = require("./serverBootstrap");
 const { getMitmAlias } = require("./dbReader");
@@ -101,18 +101,21 @@ function collectBodyRaw(req) {
 // Extract model from URL path (Gemini), body (OpenAI/Anthropic), or Kiro conversationState
 function extractModel(url, body) {
   const urlMatch = url.match(/\/models\/([^/:]+)/);
-  if (urlMatch) return urlMatch[1];
-  
+  const model = urlMatch?.[1];
+
   // Skip parsing if body is binary (AWS EventStream, Protocol Buffers, etc.)
-  if (isBinaryData(body)) return null;
-  
+  if (isBinaryData(body)) return model || null;
+
   try {
     const parsed = JSON.parse(body.toString());
-    if (parsed.conversationState) {
-      return parsed.conversationState.currentMessage?.userInputMessage?.modelId || null;
+    if (model === "gemini-3.6-flash-tiered" || model === "gemini-3.7-flash-tiered") {
+      const level = String(parsed.request?.generationConfig?.thinkingConfig?.thinkingLevel || parsed.generationConfig?.thinkingConfig?.thinkingLevel || "medium").toLowerCase();
+      return `gemini-${model.includes("3.7") ? "3.7" : "3.6"}-flash-${["high", "medium", "low"].includes(level) ? level : "medium"}`;
     }
+    if (model) return model;
+    if (parsed.conversationState) return parsed.conversationState.currentMessage?.userInputMessage?.modelId || null;
     return parsed.model || null;
-  } catch { return null; }
+  } catch { return model || null; }
 }
 
 // Detect binary data vs JSON text
@@ -341,6 +344,9 @@ async function passthroughHttps(req, res, bodyBuffer, headers, targetHost, onRes
 
 async function handleRequest(req, res, {
   verifyPeerOwner = createPeerOwnerVerifier({ targetPorts: [...new Set([443, LOCAL_PORT])] }),
+  passthroughRequest = passthrough,
+  requestHandlers = handlers,
+  mappedOverrideFor = getMappedOverride,
 } = {}) {
   try {
     if (!(await verifyPeerOwner(req.socket))) {
@@ -372,41 +378,31 @@ async function handleRequest(req, res, {
 
     // Anti-loop: skip requests from 9Router
     if (req.headers[INTERNAL_REQUEST_HEADER.name] === INTERNAL_REQUEST_HEADER.value) {
-      return passthrough(req, res, bodyBuffer);
+      return passthroughRequest(req, res, bodyBuffer);
     }
 
     const tool = getToolForHost(req.headers.host);
-    if (!tool) return passthrough(req, res, bodyBuffer);
+    if (!tool) return passthroughRequest(req, res, bodyBuffer);
+    if (!isChatRequest(tool, req)) return passthroughRequest(req, res, bodyBuffer);
 
-    const patterns = URL_PATTERNS[tool] || [];
-    const isChat = patterns.some(p => req.url.includes(p));
-    if (!isChat) return passthrough(req, res, bodyBuffer);
-
-    // Cursor uses binary proto — model extraction not possible at this layer.
-    // Delegate directly to handler which decodes proto internally.
+    // Cursor uses binary proto — model extraction is handler-owned.
     if (tool === "cursor") {
-      return handlers[tool].intercept(req, res, bodyBuffer, null, passthrough);
+      return requestHandlers[tool].intercept(req, res, bodyBuffer, null, passthroughRequest);
     }
 
     const model = extractModel(req.url, bodyBuffer);
-
-    // Intentional passthrough: some models must never be re-routed (e.g. Antigravity
-    // tab-autocomplete) so latency-critical inline completion stays native. Silent — this
-    // is by design, not a leak, and fires per keystroke. See MODEL_NO_MAP in config.js.
     if (model && (MODEL_NO_MAP[tool] || []).some((re) => re.test(model))) {
-      return passthrough(req, res, bodyBuffer);
+      return passthroughRequest(req, res, bodyBuffer);
     }
 
-    const mappedOverride = getMappedOverride(tool, model);
-    if (!mappedOverride) {
-      return passthrough(req, res, bodyBuffer);
-    }
+    const mappedOverride = mappedOverrideFor(tool, model);
+    if (!mappedOverride) return passthroughRequest(req, res, bodyBuffer);
 
     if (tool === "antigravity") {
-      return handlers[tool].intercept(req, res, bodyBuffer, mappedOverride, passthrough);
+      return requestHandlers[tool].intercept(req, res, bodyBuffer, mappedOverride, passthroughRequest);
     }
-    if (!mappedOverride.model) return passthrough(req, res, bodyBuffer);
-    return handlers[tool].intercept(req, res, bodyBuffer, mappedOverride.model, passthrough);
+    if (!mappedOverride.model) return passthroughRequest(req, res, bodyBuffer);
+    return requestHandlers[tool].intercept(req, res, bodyBuffer, mappedOverride.model, passthroughRequest);
   } catch (e) {
     err(`Unhandled error: ${e.message}`);
     if (!res.headersSent) res.writeHead(500, { "Content-Type": "application/json" });
@@ -492,6 +488,7 @@ if (require.main === module || process.argv.includes(MITM_ENTRY_ARG)) void runMa
 
 module.exports = {
   createMitmServer,
+  extractModel,
   getMappedOverride,
   handleRequest,
   registerShutdownHandlers,

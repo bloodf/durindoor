@@ -365,7 +365,7 @@ export function extractUsage(chunk) {
   // OpenAI format (also covers DeepSeek which uses prompt_cache_hit_tokens).
   // Kiro can attach credit-only metering without token counts.
   if (chunk.usage && typeof chunk.usage === "object" &&
-      (chunk.usage.prompt_tokens !== undefined || chunk.usage.kiro_credits !== undefined)) {
+      (chunk.usage.prompt_tokens !== undefined || chunk.usage.total_tokens !== undefined || chunk.usage.kiro_credits !== undefined)) {
     const hasPromptTokens = chunk.usage.prompt_tokens !== undefined;
     return normalizeUsage({
       prompt_tokens: chunk.usage.prompt_tokens,

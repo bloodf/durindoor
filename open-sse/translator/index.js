@@ -122,12 +122,16 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   const clientSessionId = captureSessionId(result, credentials, connectionId, targetFormat);
   const resolvedTranslationContext = Object.freeze({
     ...(translationContext || {}),
+    provider,
     thinkingIntent,
     clientSessionId,
   });
   let finalizeTranslatedRequest;
   // Expose to downstream translators (gemini-cli/antigravity envelopes) that run after envelope is stripped
-  if (credentials) credentials._clientSessionId = clientSessionId;
+  if (credentials) {
+    credentials._clientSessionId = clientSessionId;
+    if (connectionId) credentials._signatureNamespace = connectionId;
+  }
 
   // If same format, skip translation steps
   if (sourceFormat !== targetFormat) {
@@ -324,6 +328,8 @@ export function initState(sourceFormat, requestBody) {
   // guessing from the tool name (e.g. apply_patch).
   const toolTypes = {};
   const toolNamespaces = {};
+  const flatToolNamespaces = new Map();
+  const plainToolNames = new Set();
   if (Array.isArray(requestBody?.tools)) {
     for (const tool of requestBody.tools) {
       const type = typeof tool?.type === "string" ? tool.type : "";
@@ -334,10 +340,23 @@ export function initState(sourceFormat, requestBody) {
       if (type === "namespace" && name && Array.isArray(tool.tools)) {
         for (const subtool of tool.tools) {
           if (typeof subtool?.name === "string" && subtool.name) {
+            // Only the dotted form is mapped. A bare subtool name (e.g. "click")
+            // can collide with an unrelated plain function tool of the same name;
+            // namespace restoration must rely on the provider-translated dotted
+            // tool name to disambiguate.
             toolNamespaces[`${name}.${subtool.name}`] = name;
-            toolNamespaces[subtool.name] = name;
+            const namespaces = flatToolNamespaces.get(subtool.name) || new Set();
+            namespaces.add(name);
+            flatToolNamespaces.set(subtool.name, namespaces);
           }
         }
+      } else if (name) {
+        plainToolNames.add(name);
+      }
+    }
+    for (const [name, namespaces] of flatToolNamespaces) {
+      if (namespaces.size === 1 && !plainToolNames.has(name)) {
+        toolNamespaces[name] = namespaces.values().next().value;
       }
     }
   }
@@ -415,6 +434,7 @@ import "./request/openai-to-cursor.js";
 import "./request/openai-to-ollama.js";
 import "./request/openai-to-commandcode.js";
 import "./request/claude-to-kiro.js";
+import "./request/claude-to-gemini.js";
 import "./response/claude-to-openai.js";
 import "./response/openai-to-claude.js";
 import "./response/gemini-to-openai.js";
@@ -426,3 +446,4 @@ import "./response/cursor-to-openai.js";
 import "./response/ollama-to-openai.js";
 import "./response/commandcode-to-openai.js";
 import "./response/kiro-to-claude.js";
+import "./response/gemini-to-claude.js";

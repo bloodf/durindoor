@@ -91,7 +91,7 @@ describe("Claude usage", () => {
     await getClaudeUsage("oauth-token-2", null, "oauth");
 
     proxyAwareFetch.mockResolvedValueOnce(jsonResponse({ error: "rate_limited" }, 429));
-    const usage = await getClaudeUsage("oauth-token-2", null, "oauth");
+    const usage = await getClaudeUsage("oauth-token-2", null, "oauth", { force: true });
 
     expect(usage.quotas["session (5h)"]).toMatchObject({ used: 15, total: 100 });
     expect(usage.stale).toBe(true);
@@ -101,14 +101,26 @@ describe("Claude usage", () => {
   });
 
   it("returns exact rate-limit error and suppresses polls during cooldown without cached quotas", async () => {
-    proxyAwareFetch.mockResolvedValueOnce(jsonResponse({ error: "rate_limited" }, 429));
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-15T00:00:00Z"));
+    try {
+      proxyAwareFetch.mockResolvedValueOnce(jsonResponse({ error: "rate_limited" }, 429));
 
-    const first = await getClaudeUsage("oauth-token-3", null, "oauth");
-    const second = await getClaudeUsage("oauth-token-3", null, "oauth");
+      const first = await getClaudeUsage("oauth-token-3", null, "oauth");
+      const second = await getClaudeUsage("oauth-token-3", null, "oauth");
 
-    expect(first).toEqual({ message: "Rate limited, try again later." });
-    expect(second).toEqual({ message: "Rate limited, try again later." });
-    expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
+      expect(first).toEqual({ message: "Rate limited, try again later." });
+      expect(second).toEqual({ message: "Rate limited, try again later." });
+      expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(180 * 1000 + 1);
+      proxyAwareFetch.mockResolvedValueOnce(jsonResponse(oauthSuccessBody()));
+      const afterCooldown = await getClaudeUsage("oauth-token-3", null, "oauth");
+      expect(proxyAwareFetch).toHaveBeenCalledTimes(2);
+      expect(afterCooldown.quotas["session (5h)"]).toMatchObject({ used: 15, total: 100 });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("returns cached quotas with stale markers on 5xx", async () => {
@@ -116,7 +128,7 @@ describe("Claude usage", () => {
     await getClaudeUsage("oauth-token-4", null, "oauth");
 
     proxyAwareFetch.mockResolvedValueOnce(jsonResponse({ error: "internal_error" }, 503));
-    const usage = await getClaudeUsage("oauth-token-4", null, "oauth");
+    const usage = await getClaudeUsage("oauth-token-4", null, "oauth", { force: true });
 
     expect(usage.quotas["session (5h)"]).toMatchObject({ used: 15, total: 100 });
     expect(usage.stale).toBe(true);
@@ -217,7 +229,7 @@ describe("Claude usage", () => {
     await getClaudeUsage("oauth-token-8", null, "oauth");
 
     proxyAwareFetch.mockResolvedValueOnce(jsonResponse({ error: "rate_limited" }, 429));
-    const usage = await getClaudeUsage("oauth-token-8", null, "oauth");
+    const usage = await getClaudeUsage("oauth-token-8", null, "oauth", { force: true });
 
     const parsed = parseQuotaData("claude", usage);
 

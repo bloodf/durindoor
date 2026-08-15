@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import { transformWithOxc } from "vite";
 import { resolve } from "path";
 import { fileURLToPath } from "url";
 import { existsSync } from "fs";
@@ -11,6 +12,12 @@ const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const hasCloud = existsSync(resolve(__dirname, "../cloud"));
 
 export default defineConfig({
+  oxc: {
+    include: /(?:src\/app\/\(dashboard\)\/dashboard\/providers\/\[id\]\/EditCompatibleNodeModal\.js|\.jsx)$/,
+    exclude: [],
+    lang: "jsx",
+    jsx: { runtime: "automatic" },
+  },
   test: {
     environment: "node",
     globals: true,
@@ -36,11 +43,20 @@ export default defineConfig({
     // Suppress noisy console output from handlers under test
     silent: false,
   },
+  plugins: [{
+    name: "dashboard-jsx",
+    enforce: "pre",
+    transform(code, id) {
+      if (!/\/src\/.*\.js$/.test(id)) return null;
+      return transformWithOxc(code, id, { lang: "jsx", jsx: { runtime: "automatic" } });
+    },
+  }],
   resolve: {
     // Use array form so subpath aliases (e.g. "@/lib/db/index.js") resolve correctly.
     alias: [
       { find: /^open-sse\//, replacement: resolve(__dirname, "../open-sse") + "/" },
       { find: "open-sse", replacement: resolve(__dirname, "../open-sse") },
+      { find: "jsonc-parser", replacement: resolve(__dirname, "node_modules/jsonc-parser/lib/umd/main.js") },
       { find: /^@\//, replacement: resolve(__dirname, "../src") + "/" },
     ],
   },

@@ -2,16 +2,17 @@ import { detectFormat, getTargetFormat, resolveTransport } from "../services/pro
 import { translateRequest } from "../translator/index.js";
 import { applyThinking, applyTransportRequestDefaults, parseSuffix } from "../translator/concerns/thinkingUnified.js";
 import { FORMATS } from "../translator/formats.js";
-import { normalizeClaudePassthrough } from "../translator/formats/claude.js";
+import { normalizeClaudePassthrough, anchorClaudeCache } from "../translator/formats/claude.js";
 import { validateOutboundPayload, stripInternalKeys, normalizeToolSchemaRoots } from "../translator/validate.js";
 import { COLORS } from "../utils/stream.js";
 import { createStreamController } from "../utils/streamHandler.js";
 import { classifyQuotaTerminalReason } from "../utils/quotaTerminalReason.js";
 import { createRequestLogger } from "../utils/requestLogger.js";
-import { getModelTargetFormat, getModelStrip, getModelUpstreamId, getCanonicalModelId, getModelType, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
+import { getModelTargetFormat, getModelSupportedFormats, getModelStrip, getModelUpstreamId, getCanonicalModelId, getModelType, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
 import { PROVIDERS } from "../config/providers.js";
 import { createErrorResult, parseUpstreamError, formatProviderError, sanitizeErrorMessage } from "../utils/error.js";
 import { HTTP_STATUS, VALIDATE_OUTBOUND } from "../config/runtimeConfig.js";
+import { applyStatusRestatement, parseRestatedRateLimitEvidence } from "../config/upstreamStatusRestatement.js";
 import { handleBypassRequest } from "../utils/bypassHandler.js";
 import { handlePonytailCommands, DEFAULT_PONYTAIL_HELP, resolvePonytailStream } from "../utils/tokenSaverBridge.js";
 import { trackPendingRequest, finishActiveSession, appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
@@ -22,6 +23,7 @@ import {
 } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { applyResponseModelEcho, resolveResponsesEchoModel } from "../services/responseModelEcho.js";
+import { getUsageForProvider } from "../services/usage.js";
 
 import { getExecutor } from "../executors/index.js";
 import { buildRequestDetail, extractRequestConfig } from "./chatCore/requestDetail.js";
@@ -30,8 +32,11 @@ import { handleNonStreamingResponse } from "./chatCore/nonStreamingHandler.js";
 import { handleStreamingResponse, buildOnStreamComplete } from "./chatCore/streamingHandler.js";
 import { resolveStreamFlag } from "./chatCore/streamFlag.js";
 import { createEmptyRetryStream } from "./chatCore/emptyStreamGuard.js";
+import { validateExecutorResult } from "./chatCore/executorResultGuard.js";
 import { isAnthropicThinkingSignatureError, stripHistoricalThinkingForSignatureRecovery } from "./chatCore/thinkingSignatureRecovery.js";
+import { getKimiTemporaryRateLimitResetAt } from "./chatCore/kimiQuotaRecovery.js";
 import { detectClientTool, isNativePassthrough, isCodexOriginatedHeaders } from "../utils/clientDetector.js";
+import { checkModelLifecycle } from "./chatCore/modelLifecyclePolicy.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
 import { salvageOrphanedToolResults, fixMissingToolResponses, normalizeOpenAIToolNames } from "../translator/concerns/toolCall.js";
 import { injectCaveman } from "../rtk/caveman.js";
@@ -96,6 +101,29 @@ export function withCompressionHeader(result, headerValue) {
 }
 
 /**
+ * Pick a request-scoped transport without allowing undeclared model metadata to
+ * select a wire-format endpoint. A transport needs credentials because the
+ * default executor otherwise uses the provider's default payload format.
+ */
+export function resolveRequestTransport({ provider, alias, model, sourceFormat, credentials }) {
+  const modelTargetFormat = getModelTargetFormat(alias, model);
+  const supportedFormats = getModelSupportedFormats(alias, model);
+  const apikeyTransportFormat = provider === "kimi" && credentials?.authType === "apikey"
+    ? "openai-apikey"
+    : null;
+  const directFormat = supportedFormats?.includes(sourceFormat) ? sourceFormat : null;
+  const defaultFormat = getTargetFormat(provider, credentials);
+  const preferredFormat = apikeyTransportFormat || directFormat || modelTargetFormat || defaultFormat;
+  const runtimeTransport = credentials ? resolveTransport(provider, preferredFormat) : null;
+  const transportFormat = runtimeTransport?.format?.replace(/-apikey$/, "") || null;
+  const targetFormat = transportFormat === sourceFormat
+    ? sourceFormat
+    : (apikeyTransportFormat ? transportFormat : (credentials ? (modelTargetFormat || transportFormat || defaultFormat) : defaultFormat));
+
+  return { runtimeTransport, targetFormat, apikeyTransportFormat };
+}
+
+/**
  * Select the model string handed to translateRequest on the non-passthrough
  * path. Kiro translators recover the synthetic -thinking/-agentic flags from
  * the model string (resolveKiroModel). The GPT-5.6 family registers an
@@ -131,12 +159,12 @@ function isCompactResponsesEndpoint(endpoint) {
  * legacy body marker remains accepted for compatibility, but is removed from
  * both working and diagnostic copies before either can leave the process.
  */
-function captureRequestContext(body, clientRawRequest, modelCapabilities) {
+function captureRequestContext(body, clientRawRequest, modelCapabilities, sessionId) {
   const compact = isCompactResponsesEndpoint(clientRawRequest?.endpoint)
     || body?._compact === true
     || clientRawRequest?.body?._compact === true;
   const clientHeaders = Object.freeze({ ...(clientRawRequest?.headers || {}) });
-  return Object.freeze({ compact, clientHeaders, modelCapabilities });
+  return Object.freeze({ compact, clientHeaders, modelCapabilities, sessionId });
 }
 
 function stripLegacyCompactMarker(body, clientRawRequest) {
@@ -252,10 +280,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     quotaCapacityUnavailable: true,
     quotaReason: reason || "capacity_exhausted",
   });
-  const requestContext = captureRequestContext(body, clientRawRequest, modelCapabilities);
-  ({ body, clientRawRequest } = stripLegacyCompactMarker(body, clientRawRequest));
 
-  // Stable per-session color so all lines of one CLI conversation share a tag
   const sessionSeed = (() => {
     try {
       return resolveSessionId({ headers: clientRawRequest?.headers, body, connectionId, scope: provider });
@@ -263,6 +288,8 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       return connectionId || "";
     }
   })();
+  let requestContext = captureRequestContext(body, clientRawRequest, modelCapabilities, sessionSeed);
+  ({ body, clientRawRequest } = stripLegacyCompactMarker(body, clientRawRequest));
   // Proposed id remains stable even if fail-open dashboard tracking cannot allocate a row.
   const requestedUsageEventId = globalThis.crypto?.randomUUID?.() || `${requestStartTime}-${Math.random().toString(36).slice(2)}`;
   const reqTag = log?.tagForSession ? log.tagForSession(sessionSeed) : (log?.nextTag ? log.nextTag() : "");
@@ -305,35 +332,40 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   const cleanModel = parsedModel.cleanModel;
   const modelThinkingIntent = parsedModel.override;
   body = { ...body, model: cleanModel };
-  const modelTargetFormat = getModelTargetFormat(alias, cleanModel);
-  // Multi-endpoint providers: model-required formats override client format.
-  // GPT-5.6 tool calls with reasoning must use OpenAI Responses, even when the
-  // client sends Chat Completions format.
-  // Kimi API-key connections speak OpenAI Chat Completions against the platform
-  // endpoint (api.moonshot.cn), NOT the Kimi Code subscription endpoint that
-  // OAuth connections use. That API is OpenAI-compatible only, so a
-  // Claude-format client is translated rather than passed through
-  // (decolua/9router#3088, upstream issue #2881).
-  const apikeyTransportFormat = (provider === "kimi" && credentials?.authType === "apikey")
-    ? "openai-apikey"
+  const { runtimeTransport: defaultRuntimeTransport, targetFormat: defaultTargetFormat, apikeyTransportFormat } = resolveRequestTransport({
+    provider,
+    alias,
+    model: cleanModel,
+    sourceFormat,
+    credentials,
+  });
+  const oauthTransportFormat = (provider === "xai" && cleanModel === "grok-4.5" && credentials?.authType === "oauth")
+    ? "openai-responses-oauth"
     : null;
-  const runtimeTransport = resolveTransport(provider, apikeyTransportFormat || modelTargetFormat || sourceFormat)
-    || resolveTransport(provider, modelTargetFormat || sourceFormat);
-  // The apikey transports carry lookup tags like "openai-apikey" that are not
-  // real wire formats — strip the suffix before it can reach a translator.
-  const transportFormat = runtimeTransport?.format?.replace(/-apikey$/, "") || null;
-  const skipTranslation = transportFormat === sourceFormat;
-  // Attach the selected transport even when it was chosen by a model format override
-  // (e.g. MiniMax-M3 → OpenAI for a Claude-source client, upstream decolua/9router#2533);
-  // otherwise the executor falls back to the provider default endpoint and the override
-  // would only change the translated body, not the destination.
+  const runtimeTransport = oauthTransportFormat
+    ? (resolveTransport(provider, oauthTransportFormat) || defaultRuntimeTransport)
+    : defaultRuntimeTransport;
+  const transportFormat = runtimeTransport?.format?.replace(/-(apikey|oauth)$/, "") || null;
+  const targetFormat = oauthTransportFormat
+    ? (transportFormat === sourceFormat ? sourceFormat : transportFormat)
+    : defaultTargetFormat;
+  // Attach selected transport only when executor can use its matching wire
+  // format. Without credentials it must retain provider default endpoint.
   if (runtimeTransport && credentials) credentials.runtimeTransport = runtimeTransport;
-  const targetFormat = skipTranslation
-    ? sourceFormat
-    : (apikeyTransportFormat ? transportFormat : (modelTargetFormat || transportFormat || getTargetFormat(provider, credentials)));
   const stripList = getModelStrip(alias, cleanModel);
   const cleanUpstreamModel = getModelUpstreamId(alias, cleanModel); // provider-facing model id
-
+  // Model lifecycle gate (OmniRoute #8627 port): reject with HTTP 410 when the
+  // requested canonical model or its resolved upstream id maps to a shutdown
+  // record. Deprecated models pass through with a warning. No silent rewrite;
+  // aliases targeting a retired id surface the same shutdown error.
+  const lifecycleError = checkModelLifecycle({
+    provider,
+    canonicalModel: cleanModel,
+    upstreamModel: cleanUpstreamModel,
+    log,
+  });
+  if (lifecycleError) return lifecycleError;
+  requestContext = Object.freeze({ ...requestContext, catalogModel: cleanModel });
   // Inject provider-level thinking config override (only if client hasn't set)
   // on/off → extended type (body.thinking), none/low/medium/high → effort type (body.reasoning_effort)
   if (providerThinking?.mode && providerThinking.mode !== "auto") {
@@ -456,7 +488,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       });
     }
     // Normalize newer Cowork/CC beta shapes (adaptive thinking, mid-conversation system) the API rejects
-    if (clientTool === "claude") normalizeClaudePassthrough(translatedBody, translatedBody.model, provider, modelCapabilities?.maxOutput ?? null);
+    if (clientTool === "claude") normalizeClaudePassthrough(translatedBody, translatedBody.model, provider, modelCapabilities?.maxOutput ?? null, { foldSystemTurns: true });
   } else {
     const translationModel = resolveKiroTranslationModel(targetFormat, alias, cleanModel, cleanUpstreamModel);
     translatedBody = translateRequest(
@@ -671,6 +703,9 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // Re-salvage + re-fix after PXPIPE in case compression removed assistant/tool turns.
   salvageOrphanedToolResults(translatedBody);
   fixMissingToolResponses(translatedBody);
+
+  // Pin cache breakpoints to the final Claude body after all request savers.
+  if (passthrough && clientTool === "claude") anchorClaudeCache(translatedBody);
 
   if (xf.length && log?.line) log.line(reqTag, "⚙", xf.join(" · "));
 
@@ -900,7 +935,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // `type: "object"` BEFORE the gate, unconditionally — passthrough (source ===
   // target) requests skip translation and would otherwise carry a Codex-emitted
   // `type: null` root straight to an OpenAI-compatible upstream that 400s it.
-  normalizeToolSchemaRoots(translatedBody);
+  normalizeToolSchemaRoots(translatedBody, { provider, transportFormat });
 
   // Outbound validation gate. Run format-specific shape checks (which also
   // catch leftover internal keys) FIRST so the gate can return 400 with a
@@ -945,7 +980,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     if (providerSignal?.aborted) throw requestAbortError(providerSignal.reason);
     const initialAttempt = beginProviderAttempt();
     try {
-      const result = await runWithProviderAttemptContext(beginProviderAttempt, () => executor.execute({
+      const rawResult = await runWithProviderAttemptContext(beginProviderAttempt, () => executor.execute({
           model: cleanUpstreamModel,
           body: translatedBody,
           stream,
@@ -961,6 +996,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
             ? () => quotaReservation.beginDispatch()
             : null,
         });
+      const result = validateExecutorResult(rawResult);
       if (
         Number.isSafeInteger(result?.attemptStartedAt)
         && result.attemptStartedAt > (latestProviderAttemptStartedAt || 0)
@@ -1047,8 +1083,55 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     return { ...createErrorResult(HTTP_STATUS.BAD_GATEWAY, errMsg), attemptStartedAt: latestProviderAttemptStartedAt };
   }
 
+  const parseAndRestateError = async (response) => {
+    let upstreamError;
+    try {
+      upstreamError = await parseUpstreamError(response, executor, { signal: providerSignal, credentials, proxyOptions });
+    } catch (error) {
+      if (error?.name === "AbortError") throw error;
+      upstreamError = { statusCode: response.status || 502, message: "Upstream provider error", resetsAtMs: null, rateLimitEvidence: null };
+    }
+    const retryAfterMs = Number.isFinite(upstreamError.resetsAtMs)
+      ? Math.max(0, upstreamError.resetsAtMs - Date.now())
+      : null;
+    const restatement = applyStatusRestatement({
+      provider,
+      status: upstreamError.statusCode,
+      message: upstreamError.message,
+      body: upstreamError.errorBody,
+      retryAfterMs,
+    });
+    if (restatement.ruleId) {
+      const now = Date.now();
+      const rateLimitEvidence = parseRestatedRateLimitEvidence({
+        status: restatement.status,
+        headers: response.headers,
+        body: upstreamError.errorBody ?? upstreamError.message,
+        now,
+      });
+      upstreamError.statusCode = restatement.status;
+      upstreamError.resetsAtMs = rateLimitEvidence?.resetAtMs ?? now + restatement.retryAfterMs;
+      upstreamError.rateLimitEvidence = rateLimitEvidence;
+      log?.info?.("STATUS_RESTATE", `${provider} ${restatement.fromStatus}→${restatement.status} (${restatement.ruleId})`);
+    }
+    return upstreamError;
+  };
+
+  let parsedError = null;
+  if (!providerResponse.ok) {
+    try {
+      parsedError = await parseAndRestateError(providerResponse);
+    } catch (error) {
+      if (error?.name !== "AbortError") throw error;
+      streamController.handleError(error);
+      finishProviderRequest();
+      finishActiveDashboardSession("error");
+      return { ...createErrorResult(499, "Request aborted"), attemptStartedAt: latestProviderAttemptStartedAt };
+    }
+  }
+
   // Handle 401/403 - try token refresh (skip for noAuth providers)
-  if (!executor.noAuth && (providerResponse.status === HTTP_STATUS.UNAUTHORIZED || providerResponse.status === HTTP_STATUS.FORBIDDEN)) {
+  if (!executor.noAuth && (parsedError?.statusCode === HTTP_STATUS.UNAUTHORIZED || parsedError?.statusCode === HTTP_STATUS.FORBIDDEN)) {
     try {
       await settleProviderAttemptDispatch(providerResponse, { success: false, reason: "fallback" });
       // Some custom executors wrap the mapped transport response. Release any
@@ -1080,6 +1163,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
           providerHeaders = retryResult.headers;
           finalBody = retryResult.transformedBody;
           terminalProvenance = retryResult.terminalProvenance || null;
+          if (!providerResponse.ok) parsedError = await parseAndRestateError(providerResponse);
         } catch (error) {
           if (isQuotaDispatchUnavailable(error)) {
             finishProviderRequest();
@@ -1108,19 +1192,6 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
 
   // Provider returned error
   if (!providerResponse.ok) {
-    let parsedError;
-    try {
-      parsedError = await parseUpstreamError(providerResponse, executor, { signal: providerSignal, credentials, proxyOptions });
-    } catch (error) {
-      if (error?.name === "AbortError") {
-        streamController.handleError(error);
-        finishProviderRequest();
-        finishActiveDashboardSession("error");
-        return { ...createErrorResult(499, "Request aborted"), attemptStartedAt: latestProviderAttemptStartedAt };
-      }
-      parsedError = { statusCode: providerResponse.status || 502, message: "Upstream provider error", resetsAtMs: null, rateLimitEvidence: null };
-    }
-
     // One-shot Anthropic thinking-signature recovery (OmniRoute #7906): on the
     // exact `400 Invalid signature in thinking block`, retry ONCE with historical
     // thinking omitted (active tool-use cycle preserved) before any cooldown/
@@ -1132,6 +1203,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       const recoveryBody = stripHistoricalThinkingForSignatureRecovery(translatedBody);
       if (recoveryBody !== translatedBody) {
         translatedBody = recoveryBody;
+        if (passthrough && clientTool === "claude") anchorClaudeCache(translatedBody);
         try {
           const retry = await executeProvider();
           providerResponse = retry.response;
@@ -1142,11 +1214,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
           if (providerResponse.ok) {
             log?.info?.("THINKING_SIGNATURE", `Recovered ${provider}/${cleanModel} after one historical-thinking retry`);
           } else {
-            try {
-              parsedError = await parseUpstreamError(providerResponse, executor, { signal: providerSignal, credentials, proxyOptions });
-            } catch {
-              parsedError = { statusCode: providerResponse.status || 502, message: "Upstream provider error", resetsAtMs: null, rateLimitEvidence: null };
-            }
+            parsedError = await parseAndRestateError(providerResponse);
           }
         } catch (error) {
           if (error?.name === "AbortError") {
@@ -1167,7 +1235,34 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       finishProviderRequest();
       finishActiveDashboardSession("error");
       await settleQuota(false, "upstream_error");
-      const { statusCode, message, resetsAtMs, rateLimitEvidence } = parsedError;
+      let { statusCode, message, resetsAtMs, rateLimitEvidence, errorBody } = parsedError;
+      // Fork-specific divergence from upstream: upstream (#10058) treats any
+      // Kimi 403 as a candidate for recovery; this fork narrows the trigger to
+      // K2.6's literal /billing cycle/i wording observed at port time. K2.6
+      // can report either a depleted weekly subscription or a temporary
+      // per-model request window. Verify the official usage response before
+      // benching it: only an empty Ratelimit with remaining Weekly quota gets
+      // a precise, model-scoped recovery deadline. Other Kimi models retain
+      // terminal 403 handling without a usage probe. Probe failures preserve
+      // the original 403. If K2.6 changes this wording upstream, this regex
+      // silently stops firing (false negative, safe) — it never widens to
+      // unrelated 403s (no false-positive risk from text drift), but re-verify
+      // the phrase and canonical model against Kimi's API on any future Kimi
+      // 403-handling port.
+      if (
+        statusCode === HTTP_STATUS.FORBIDDEN
+        && (provider === "kimi-coding" || provider === "kimi-coding-apikey")
+        && cleanModel === "kimi-k2.6"
+        && /billing cycle/i.test(message)
+      ) {
+        try {
+          const usage = await getUsageForProvider({ ...credentials, provider: "kimi" }, proxyOptions);
+          const resetAt = getKimiTemporaryRateLimitResetAt(usage);
+          if (resetAt) resetsAtMs = new Date(resetAt).getTime();
+        } catch {
+          // Preserve normal forbidden handling when the usage API is unavailable.
+        }
+      }
     appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${statusCode}` }).catch(() => { });
     saveRequestDetail(buildRequestDetail({
       provider, model: cleanModel, connectionId,
@@ -1190,8 +1285,11 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       const urlStr = providerUrl ? `\n    URL: ${maskSensitiveUrl(providerUrl)}` : "";
       log.errorLine(reqTag, "✗", `ERROR ${statusCode} · ${provider}/${cleanModel} · ${Date.now() - requestStartTime}ms${urlStr}\n    ${errMsg}`);
     }
-    reqLogger.logError(new Error(message), finalBody || translatedBody);
-    return { ...createErrorResult(statusCode, errMsg, resetsAtMs, undefined, rateLimitEvidence), attemptStartedAt: latestProviderAttemptStartedAt };
+    return {
+      ...createErrorResult(statusCode, errMsg, resetsAtMs, errorBody, rateLimitEvidence, credentials),
+      attemptStartedAt: latestProviderAttemptStartedAt,
+      headers: providerResponse.headers,
+    };
     }
   }
 

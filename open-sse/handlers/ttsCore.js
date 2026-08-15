@@ -1,7 +1,8 @@
 import { Buffer } from "node:buffer";
-import { createErrorResult } from "../utils/error.js";
+import { createErrorResult, sanitizeErrorMessageWithSecrets } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { getTtsAdapter, synthesizeViaConfig } from "./ttsProviders/index.js";
+import { resolveCredentialProxyOptions } from "../services/oauthCredentialManager.js";
 
 // Re-export voice fetchers + voices APIs for backward compat with existing routes
 export {
@@ -63,12 +64,17 @@ export async function handleTtsCore({ provider, model, input, credentials, respo
       return createTtsResponse(result.base64, result.format, responseFormat);
     }
 
-    // Generic config-driven (hyperbolic, deepgram, nvidia, huggingface, inworld, cartesia, playht, coqui, tortoise, qwen, ...)
-    const result = await synthesizeViaConfig(provider, input.trim(), model, credentials);
+    // Generic provider requests inherit the connection's immutable egress policy.
+    const proxyOptions = resolveCredentialProxyOptions(credentials);
+    const result = await synthesizeViaConfig(provider, input.trim(), model, credentials, proxyOptions);
     if (result) return createTtsResponse(result.base64, result.format, responseFormat);
 
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not support TTS via this route.`);
   } catch (err) {
-    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, err.message || "TTS synthesis failed");
+    const secrets = [credentials?.apiKey, credentials?.accessToken, credentials?.refreshToken];
+    return createErrorResult(
+      HTTP_STATUS.BAD_GATEWAY,
+      sanitizeErrorMessageWithSecrets(err?.message || "TTS synthesis failed", secrets),
+    );
   }
 }

@@ -12,7 +12,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // single-model handling against the combo NAME.
 
 const mocks = vi.hoisted(() => ({
-  getComboByName: vi.fn(),
+  getComboForModel: vi.fn(),
   getModelAliases: vi.fn(),
   getProviderNodes: vi.fn(),
   getProviderConnections: vi.fn(),
@@ -20,7 +20,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/localDb", () => ({
-  getComboByName: mocks.getComboByName,
+  getComboForModel: mocks.getComboForModel,
   getModelAliases: mocks.getModelAliases,
   getProviderNodes: mocks.getProviderNodes,
   getProviderConnections: mocks.getProviderConnections,
@@ -45,21 +45,21 @@ describe("getComboModels hidePaidModels wiring", () => {
   });
 
   it("returns null for a provider/model input regardless of toggle", async () => {
-    mocks.getComboByName.mockResolvedValue(null);
+    mocks.getComboForModel.mockResolvedValue(null);
     const getComboModels = await loadGetComboModels();
     expect(await getComboModels("anthropic/claude-sonnet-5", true)).toBe(null);
-    expect(mocks.getComboByName).toHaveBeenCalledExactlyOnceWith("anthropic/claude-sonnet-5");
+    expect(mocks.getComboForModel).toHaveBeenCalledExactlyOnceWith("anthropic/claude-sonnet-5");
   });
 
   it("returns null when the name is not a combo", async () => {
-    mocks.getComboByName.mockResolvedValue(null);
+    mocks.getComboForModel.mockResolvedValue(null);
     const getComboModels = await loadGetComboModels();
     expect(await getComboModels("nope", true)).toBe(null);
   });
 
   it("toggle off: returns the ORIGINAL member array (identity preserved)", async () => {
     const members = [PAID, FREE];
-    mocks.getComboByName.mockResolvedValue({ name: "c", models: members });
+    mocks.getComboForModel.mockResolvedValue({ name: "c", models: members });
     const getComboModels = await loadGetComboModels();
     const result = await getComboModels("c", false);
     expect(result).toBe(members); // same reference — passthrough contract
@@ -68,21 +68,21 @@ describe("getComboModels hidePaidModels wiring", () => {
 
   it("toggle off (default arg) is a passthrough and triggers no settings read", async () => {
     const members = [PAID, FREE];
-    mocks.getComboByName.mockResolvedValue({ name: "c", models: members });
+    mocks.getComboForModel.mockResolvedValue({ name: "c", models: members });
     const getComboModels = await loadGetComboModels();
     const result = await getComboModels("c"); // hidePaidModels omitted
     expect(result).toBe(members);
   });
 
   it("toggle on: mixed pool → paid + unknown dropped, free kept, order preserved", async () => {
-    mocks.getComboByName.mockResolvedValue({ name: "mixed", models: [PAID, FREE, UNKNOWN] });
+    mocks.getComboForModel.mockResolvedValue({ name: "mixed", models: [PAID, FREE, UNKNOWN] });
     const getComboModels = await loadGetComboModels();
     const result = await getComboModels("mixed", true);
     expect(result).toEqual([FREE]);
   });
 
   it("toggle on: all-paid pool → empty array (truthy), not null", async () => {
-    mocks.getComboByName.mockResolvedValue({ name: "all-paid", models: [PAID] });
+    mocks.getComboForModel.mockResolvedValue({ name: "all-paid", models: [PAID] });
     const getComboModels = await loadGetComboModels();
     const result = await getComboModels("all-paid", true);
     expect(Array.isArray(result)).toBe(true);
@@ -94,7 +94,7 @@ describe("getComboModels hidePaidModels wiring", () => {
   it("toggle on: never mutates the persisted combo object", async () => {
     const members = [PAID, FREE];
     const combo = { name: "c", models: members };
-    mocks.getComboByName.mockResolvedValue(combo);
+    mocks.getComboForModel.mockResolvedValue(combo);
     const getComboModels = await loadGetComboModels();
     await getComboModels("c", true);
     expect(combo.models).toEqual([PAID, FREE]); // original intact

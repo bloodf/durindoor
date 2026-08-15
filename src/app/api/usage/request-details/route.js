@@ -1,6 +1,22 @@
 import { NextResponse } from "next/server";
 import { getRequestDetails } from "@/lib/usageDb";
 
+const SENSITIVE_PAYLOAD_FIELDS = new Set([
+  "request",
+  "providerRequest",
+  "providerResponse",
+  "response",
+]);
+
+function redactPayloads(result) {
+  return {
+    ...result,
+    details: result.details.map((detail) => Object.fromEntries(
+      Object.entries(detail).filter(([key]) => !SENSITIVE_PAYLOAD_FIELDS.has(key))
+    )),
+  };
+}
+
 /**
  * GET /api/usage/request-details
  * Query parameters: page, pageSize (1-100), provider, model, connectionId, status, startDate, endDate
@@ -47,8 +63,7 @@ export async function GET(request) {
     if (endDate) filter.endDate = endDate;
     
     const result = await getRequestDetails(filter);
-    
-    return NextResponse.json(result);
+    return NextResponse.json(redactPayloads(result));
   } catch (error) {
     console.error("[API] Failed to get request details:", error);
     return NextResponse.json(

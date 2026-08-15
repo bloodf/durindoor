@@ -114,6 +114,27 @@ describe("Antigravity capacity fallback", () => {
     expect(persistedReset - now).toBeLessThan(60_000);
   });
 
+  it("caps Kimi model locks at the generic seven-day reset maximum", async () => {
+    const now = Date.now();
+    const result = await markAccountUnavailable(
+      "ag-1",
+      403,
+      "Request limit reached for current billing cycle",
+      "kimi-coding",
+      "kimi-k2.6",
+      now + 365 * 24 * 60 * 60 * 1000,
+    );
+
+    expect(result.shouldFallback).toBe(true);
+    // Allow a small tolerance for Date.now() drift between the test and
+    // markAccountUnavailable's own cap computation.
+    expect(result.cooldownMs).toBeLessThanOrEqual(MAX_RATE_LIMIT_COOLDOWN_MS + 5000);
+    const persistedReset = new Date(
+      mocks.updateProviderConnection.mock.calls.at(-1)[1]["modelLock_kimi-k2.6"],
+    ).getTime();
+    expect(persistedReset - now).toBeLessThanOrEqual(MAX_RATE_LIMIT_COOLDOWN_MS + 5000);
+  });
+
   it("falls back without cooldown for recoverable Antigravity project 403", async () => {
     const result = await markAccountUnavailable(
       "ag-1",

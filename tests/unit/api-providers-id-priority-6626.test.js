@@ -30,7 +30,7 @@ vi.mock("@/shared/services/quotaAutoPing", () => ({
   notifyQuotaAutoPingSettingChanged: vi.fn(),
 }));
 
-import { PUT } from "../../src/app/api/providers/[id]/route.js";
+import { GET, PUT } from "../../src/app/api/providers/[id]/route.js";
 
 function makeConnection(overrides = {}) {
   return {
@@ -99,5 +99,93 @@ describe("PUT /api/providers/[id] priority ceiling (#6562 / port 6626)", () => {
     expect(body.error.details[0].field).toBe("priority");
     expect(getProviderConnectionById).not.toHaveBeenCalled();
     expect(updateProviderConnection).not.toHaveBeenCalled();
+  });
+
+  it("strips transient Codex identity from provider metadata updates", async () => {
+    const connection = makeConnection({
+      providerSpecificData: { workspaceId: "workspace-abc", codexFingerprintMode: "session" },
+    });
+    getProviderConnectionById.mockResolvedValue(connection);
+    updateProviderConnection.mockImplementation(async (id, data) => ({ ...connection, ...data }));
+
+    await PUT(
+      putRequest({
+        providerSpecificData: {
+          codexFingerprintMode: "full",
+          codexClientIdentity: { sessionId: "caller-session" },
+          codexOriginalIdentityHeaders: { "session-id": "caller-session" },
+        },
+      }),
+      { params: params() },
+    );
+
+    expect(updateProviderConnection.mock.calls[0][1].providerSpecificData).toEqual({
+      workspaceId: "workspace-abc",
+      codexFingerprintMode: "full",
+    });
+  });
+});
+
+describe("PUT /api/providers/[id] OpenAI Responses store", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it.each([[true], [false], [undefined]])("persists eligible setting %s", async (openaiStoreEnabled) => {
+    const connection = makeConnection({ provider: "openai-compatible-responses-test", providerSpecificData: { baseUrl: "https://example.test" } });
+    getProviderConnectionById.mockResolvedValue(connection);
+    updateProviderConnection.mockImplementation(async (_id, data) => ({ ...connection, ...data }));
+    const providerSpecificData = openaiStoreEnabled === undefined ? {} : { openaiStoreEnabled };
+
+    const response = await PUT(putRequest({ providerSpecificData }), { params: params() });
+
+    expect(updateProviderConnection.mock.calls[0][1].providerSpecificData.openaiStoreEnabled).toBe(openaiStoreEnabled);
+    expect((await response.json()).connection.providerSpecificData).toEqual({
+      baseUrl: "https://example.test",
+      ...(openaiStoreEnabled === undefined ? {} : { openaiStoreEnabled }),
+    });
+  });
+
+  it("drops the setting from Codex save and load", async () => {
+    const connection = makeConnection({ providerSpecificData: { workspaceId: "workspace-abc", openaiStoreEnabled: true } });
+    getProviderConnectionById.mockResolvedValue(connection);
+    updateProviderConnection.mockImplementation(async (_id, data) => ({ ...connection, ...data }));
+
+    const putResponse = await PUT(putRequest({ providerSpecificData: { openaiStoreEnabled: true } }), { params: params() });
+    const getResponse = await GET(new Request("http://localhost/api/providers/conn-1"), { params: params() });
+
+    expect(updateProviderConnection.mock.calls[0][1].providerSpecificData).toEqual({ workspaceId: "workspace-abc" });
+    expect((await putResponse.json()).connection.providerSpecificData).toEqual({ workspaceId: "workspace-abc" });
+    expect((await getResponse.json()).connection.providerSpecificData).toEqual({ workspaceId: "workspace-abc" });
+  });
+});
+
+describe("PUT /api/providers/[id] OpenAI Responses store", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it.each([[true], [false], [undefined]])("persists eligible setting %s", async (openaiStoreEnabled) => {
+    const connection = makeConnection({ provider: "openai-compatible-responses-test", providerSpecificData: { baseUrl: "https://example.test" } });
+    getProviderConnectionById.mockResolvedValue(connection);
+    updateProviderConnection.mockImplementation(async (_id, data) => ({ ...connection, ...data }));
+    const providerSpecificData = openaiStoreEnabled === undefined ? {} : { openaiStoreEnabled };
+
+    const response = await PUT(putRequest({ providerSpecificData }), { params: params() });
+
+    expect(updateProviderConnection.mock.calls[0][1].providerSpecificData.openaiStoreEnabled).toBe(openaiStoreEnabled);
+    expect((await response.json()).connection.providerSpecificData).toEqual({
+      baseUrl: "https://example.test",
+      ...(openaiStoreEnabled === undefined ? {} : { openaiStoreEnabled }),
+    });
+  });
+
+  it("drops the setting from Codex save and load", async () => {
+    const connection = makeConnection({ providerSpecificData: { workspaceId: "workspace-abc", openaiStoreEnabled: true } });
+    getProviderConnectionById.mockResolvedValue(connection);
+    updateProviderConnection.mockImplementation(async (_id, data) => ({ ...connection, ...data }));
+
+    const putResponse = await PUT(putRequest({ providerSpecificData: { openaiStoreEnabled: true } }), { params: params() });
+    const getResponse = await GET(new Request("http://localhost/api/providers/conn-1"), { params: params() });
+
+    expect(updateProviderConnection.mock.calls[0][1].providerSpecificData).toEqual({ workspaceId: "workspace-abc" });
+    expect((await putResponse.json()).connection.providerSpecificData).toEqual({ workspaceId: "workspace-abc" });
+    expect((await getResponse.json()).connection.providerSpecificData).toEqual({ workspaceId: "workspace-abc" });
   });
 });

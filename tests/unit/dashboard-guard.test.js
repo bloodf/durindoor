@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   validateApiKey: vi.fn(),
   getConsistentMachineId: vi.fn(),
   verifyDashboardAuthToken: vi.fn(),
+  hasTrustedPeerHeaders: vi.fn(),
 }));
 
 vi.mock("next/server", () => {
@@ -41,6 +42,10 @@ vi.mock("@/shared/utils/machineId", () => ({
 vi.mock("@/lib/auth/dashboardSession", () => ({
   verifyDashboardAuthToken: mocks.verifyDashboardAuthToken,
 }));
+vi.mock("@/lib/auth/trustedPeer", () => ({
+  hasTrustedPeerHeaders: mocks.hasTrustedPeerHeaders,
+}));
+vi.mock("@/mitm/controlProof", async () => await import("../../src/mitm/controlProof.js"));
 
 const { proxy, __test__ } = await import("../../src/dashboardGuard.js");
 
@@ -62,6 +67,7 @@ describe("dashboard guard public LLM API access", () => {
     mocks.validateApiKey.mockResolvedValue(false);
     mocks.getConsistentMachineId.mockResolvedValue("cli-token");
     mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+    mocks.hasTrustedPeerHeaders.mockReturnValue(true);
   });
 
   it("allows loopback public LLM API without API key", async () => {
@@ -334,6 +340,19 @@ describe("dashboard guard local-only access", () => {
     expect(response).toBe(mocks.nextResponse);
   });
 
+  it("rejects cross-origin local-only mutations when login is disabled", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+
+    const response = await proxy(request("/api/tunnel/enable", {
+      host: "localhost:20128",
+      origin: "https://evil.example",
+      "x-9r-real-ip": "127.0.0.1",
+    }, "POST"));
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe("Local only: CLI token required");
+  });
+
   it("allows a machine-bound CLI token to manage proxied PXPIPE", async () => {
     const response = await proxy(request("/api/pxpipe/restart", {
       host: "llm.example.com",
@@ -514,17 +533,6 @@ describe("dashboard guard local-only access", () => {
 
     const response = await proxy(request("/api/cli-tools/antigravity-mitm", {
       host: "router.example.com",
-    }));
-
-    expect(response.status).toBe(403);
-  });
-
-  it("rejects local-only route when Origin is non-loopback (CSRF block)", async () => {
-    mocks.getSettings.mockResolvedValue({ requireLogin: false });
-
-    const response = await proxy(request("/api/cli-tools/antigravity-mitm", {
-      host: "localhost:20128",
-      origin: "http://evil.example.com",
     }));
 
     expect(response.status).toBe(403);

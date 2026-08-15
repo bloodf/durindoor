@@ -1,71 +1,180 @@
 import { describe, expect, it } from "vitest";
-import { PROVIDER_MODELS, getModelTargetFormat } from "../../open-sse/config/providerModels.js";
-import { OpenCodeGoExecutor } from "../../open-sse/executors/opencode-go.js";
+import { PROVIDER_MODELS, getModelSupportedFormats, getModelTargetFormat } from "../../open-sse/config/providerModels.js";
+import { PROVIDERS } from "../../open-sse/config/providers.js";
+import { DefaultExecutor } from "../../open-sse/executors/default.js";
+import { resolveTransport } from "../../open-sse/services/provider.js";
+import { resolveRequestTransport } from "../../open-sse/handlers/chatCore.js";
 
-const CHAT_MODELS = [
-  "glm-5.2",
-  "glm-5.1",
-  // OpenCode Go docs' endpoint table currently says kimi-k2.7, but its
-  // config example and the live API use kimi-k2.7-code.
-  "kimi-k2.7-code",
-  "kimi-k2.6",
-  "deepseek-v4-pro",
-  "deepseek-v4-flash",
-  "mimo-v2.5",
-  "mimo-v2.5-pro",
-];
+const API_KEY = { apiKey: "test-key" };
+const OPENAI_URL = "https://opencode.ai/zen/go/v1/chat/completions";
+const CLAUDE_URL = "https://opencode.ai/zen/go/v1/messages";
+const RESPONSES_URL = "https://opencode.ai/zen/go/v1/responses";
 
-const MESSAGES_MODELS = [
-  "minimax-m3",
-  "minimax-m2.7",
-  "minimax-m2.5",
-  "qwen3.7-max",
-  "qwen3.7-plus",
-  "qwen3.6-plus",
-];
+const CHAT_ONLY = ["glm-5.1", "kimi-k2.7-code", "kimi-k2.6", "mimo-v2.5", "mimo-v2.5-pro"];
+const MODEL_WITHOUT_FORMATS = "glm-5.2";
+const CLAUDE_CAPABLE = ["minimax-m3", "minimax-m2.7", "minimax-m2.5", "qwen3.7-max", "qwen3.7-plus", "qwen3.6-plus"];
+const RESPONSES_CAPABLE = ["deepseek-v4-pro", "deepseek-v4-flash"];
 
-describe("OpenCode Go official model catalog", () => {
-  it("matches the documented OpenCode Go model IDs", () => {
+describe("OpenCode Go model catalog", () => {
+  it("matches documented model IDs", () => {
     const ids = (PROVIDER_MODELS["opencode-go"] || []).map((model) => model.id);
 
-    expect(ids).toEqual([...CHAT_MODELS, ...MESSAGES_MODELS]);
+    expect(ids).toEqual([
+      MODEL_WITHOUT_FORMATS,
+      ...CHAT_ONLY.slice(0, 3),
+      ...RESPONSES_CAPABLE,
+      ...CHAT_ONLY.slice(3),
+      ...CLAUDE_CAPABLE,
+    ]);
+  });
+});
+
+describe("OpenCode Go per-model supportedFormats", () => {
+  it("declares OpenAI and Claude support for MiniMax and Qwen models", () => {
+    for (const model of CLAUDE_CAPABLE) {
+      expect(getModelSupportedFormats("opencode-go", model)).toEqual(["openai", "claude"]);
+    }
   });
 
-  it("marks documented Qwen and MiniMax models as Anthropic messages format", () => {
-    for (const model of MESSAGES_MODELS) {
+  it("declares OpenAI-only support for DeepSeek, Kimi, and MiMo models", () => {
+    for (const model of [...RESPONSES_CAPABLE, ...CHAT_ONLY]) {
+      expect(getModelSupportedFormats("opencode-go", model)).toEqual(["openai"]);
+    }
+  });
+
+  it("uses default OpenAI transport for known models without endpoint metadata", () => {
+    expect(getModelSupportedFormats("opencode-go", MODEL_WITHOUT_FORMATS)).toBeNull();
+  });
+});
+
+describe("OpenCode Go multi-endpoint transports", () => {
+  it("declares OpenAI, Claude, and Responses transports", () => {
+    expect(PROVIDERS["opencode-go"].transports.map((transport) => transport.format))
+      .toEqual(["openai", "claude", "openai-responses"]);
+  });
+
+  it("resolves endpoints matching client format", () => {
+    expect(resolveTransport("opencode-go", "openai")?.baseUrl).toBe(OPENAI_URL);
+    expect(resolveTransport("opencode-go", "claude")?.baseUrl).toBe(CLAUDE_URL);
+    expect(resolveTransport("opencode-go", "openai-responses")?.baseUrl).toBe(RESPONSES_URL);
+  });
+
+  it("uses Anthropic API-key authentication for Claude", () => {
+    const transport = resolveTransport("opencode-go", "claude");
+    expect(transport?.auth).toMatchObject({ header: "x-api-key", anthropicVersion: true });
+  });
+});
+
+describe("OpenCode Go per-model transport selection", () => {
+  it("uses Claude messages endpoint for Claude-source MiniMax and Qwen requests", () => {
+    for (const model of CLAUDE_CAPABLE) {
+      const { runtimeTransport, targetFormat } = resolveRequestTransport({
+        provider: "opencode-go",
+        alias: "opencode-go",
+        model,
+        sourceFormat: "claude",
+        credentials: API_KEY,
+      });
+      expect(runtimeTransport?.format).toBe("claude");
+      expect(runtimeTransport?.baseUrl).toBe(CLAUDE_URL);
+      expect(targetFormat).toBe("claude");
+    }
+  });
+
+  it("falls back to OpenAI transport for chat-only models under Claude source", () => {
+    for (const model of [MODEL_WITHOUT_FORMATS, ...CHAT_ONLY]) {
+      const { runtimeTransport, targetFormat } = resolveRequestTransport({
+        provider: "opencode-go",
+        alias: "opencode-go",
+        model,
+        sourceFormat: "claude",
+        credentials: API_KEY,
+      });
+      expect(runtimeTransport?.format).toBe("openai");
+      expect(runtimeTransport?.baseUrl).toBe(OPENAI_URL);
+      expect(targetFormat).toBe("openai");
+    }
+  });
+
+  it("translates Responses-source DeepSeek requests to the default OpenAI endpoint", () => {
+    for (const model of RESPONSES_CAPABLE) {
+      const { runtimeTransport, targetFormat } = resolveRequestTransport({
+        provider: "opencode-go",
+        alias: "opencode-go",
+        model,
+        sourceFormat: "openai-responses",
+        credentials: API_KEY,
+      });
+      expect(runtimeTransport?.format).toBe("openai");
+      expect(runtimeTransport?.baseUrl).toBe(OPENAI_URL);
+      expect(targetFormat).toBe("openai");
+    }
+  });
+
+  it("uses required Claude transport for MiniMax and Qwen under Responses source", () => {
+    for (const model of CLAUDE_CAPABLE) {
+      const { runtimeTransport, targetFormat } = resolveRequestTransport({
+        provider: "opencode-go",
+        alias: "opencode-go",
+        model,
+        sourceFormat: "openai-responses",
+        credentials: API_KEY,
+      });
+      expect(runtimeTransport?.format).toBe("claude");
+      expect(runtimeTransport?.baseUrl).toBe(CLAUDE_URL);
+      expect(targetFormat).toBe("claude");
+    }
+  });
+
+  it("falls back to OpenAI transport for unknown model under Claude source", () => {
+    const { runtimeTransport, targetFormat } = resolveRequestTransport({
+      provider: "opencode-go",
+      alias: "opencode-go",
+      model: "mystery-future-model",
+      sourceFormat: "claude",
+      credentials: API_KEY,
+    });
+    expect(runtimeTransport?.format).toBe("openai");
+    expect(runtimeTransport?.baseUrl).toBe(OPENAI_URL);
+    expect(targetFormat).toBe("openai");
+  });
+
+  it("uses default endpoint and format without credentials", () => {
+    const { runtimeTransport, targetFormat } = resolveRequestTransport({
+      provider: "opencode-go",
+      alias: "opencode-go",
+      model: "minimax-m3",
+      sourceFormat: "claude",
+    });
+    expect(runtimeTransport).toBeNull();
+    expect(targetFormat).toBe("openai");
+  });
+
+  it("keeps shared executor URL and authentication behavior for each transport", () => {
+    const executor = new DefaultExecutor("opencode-go");
+    const openaiCredentials = { ...API_KEY, runtimeTransport: resolveTransport("opencode-go", "openai") };
+    const claudeCredentials = { ...API_KEY, runtimeTransport: resolveTransport("opencode-go", "claude") };
+
+    expect(executor.buildUrl("minimax-m3", true, 0, openaiCredentials)).toBe(OPENAI_URL);
+    expect(executor.buildHeaders(openaiCredentials, true)).toMatchObject({ Authorization: "Bearer test-key" });
+    expect(executor.buildUrl("minimax-m3", true, 0, claudeCredentials)).toBe(CLAUDE_URL);
+    expect(executor.buildHeaders(claudeCredentials, true)).toMatchObject({
+      "x-api-key": "test-key",
+      "anthropic-version": expect.any(String),
+    });
+  });
+});
+
+describe("OpenCode Go target format preservation", () => {
+  it("preserves targetFormat: claude for MiniMax and Qwen models", () => {
+    for (const model of CLAUDE_CAPABLE) {
       expect(getModelTargetFormat("opencode-go", model)).toBe("claude");
     }
   });
 
-  it("keeps GLM, Kimi, DeepSeek, and MiMo on OpenAI-compatible chat format", () => {
-    for (const model of CHAT_MODELS) {
-      expect(getModelTargetFormat("opencode-go", model)).toBeNull();
-    }
-  });
-});
-
-describe("OpenCode Go endpoint routing", () => {
-  it("routes Qwen and MiniMax models to the messages endpoint with x-api-key auth", () => {
-    const executor = new OpenCodeGoExecutor();
-
-    for (const model of MESSAGES_MODELS) {
-      expect(executor.buildUrl(model)).toBe("https://opencode.ai/zen/go/v1/messages");
-      const headers = executor.buildHeaders({ apiKey: "sk-test" }, false, null, model);
-      expect(headers["x-api-key"]).toBe("sk-test");
-      expect(headers["anthropic-version"]).toBeDefined();
-      expect(headers.Authorization).toBeUndefined();
-    }
-  });
-
-  it("routes GLM, Kimi, DeepSeek, and MiMo models to chat/completions with bearer auth", () => {
-    const executor = new OpenCodeGoExecutor();
-
-    for (const model of CHAT_MODELS) {
-      expect(executor.buildUrl(model)).toBe("https://opencode.ai/zen/go/v1/chat/completions");
-      const headers = executor.buildHeaders({ apiKey: "sk-test" }, false, null, model);
-      expect(headers.Authorization).toBe("Bearer sk-test");
-      expect(headers["x-api-key"]).toBeUndefined();
-      expect(headers["anthropic-version"]).toBeUndefined();
+  it("does not declare Responses for DeepSeek models in this port", () => {
+    for (const model of RESPONSES_CAPABLE) {
+      expect(getModelSupportedFormats("opencode-go", model)).toEqual(["openai"]);
     }
   });
 });

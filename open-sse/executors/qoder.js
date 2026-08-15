@@ -224,6 +224,137 @@ async function buildQoderRequestBody({ model, body, credentials, log, proxyOptio
   };
 }
 
+// Never inspect beyond a small stream prefix. Prefix chunks are replayed
+// byte-for-byte when they are not a billing response.
+const QODER_SSE_PEEK_BYTES = 64 * 1024;
+
+function isBillingBlock(body) {
+  if (typeof body !== "string" || !body) return false;
+  try {
+    const parsed = JSON.parse(body);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      && (parsed.code === "112" || parsed.code === "10605" || Object.hasOwn(parsed, "pricingUrl"));
+  } catch {
+    return false;
+  }
+}
+
+function releaseReader(reader) {
+  try { reader.releaseLock(); } catch { /* already released */ }
+}
+
+async function cancelAndReleaseReader(reader, reason) {
+  let timer;
+  try {
+    await Promise.race([
+      Promise.resolve(reader.cancel(reason)).catch(() => {}),
+      new Promise((resolve) => { timer = setTimeout(resolve, 250); }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+    releaseReader(reader);
+  }
+}
+
+function qoderPeekTimeoutError() {
+  const error = new Error("qoder stream-start timeout");
+  error.name = "TimeoutError";
+  return error;
+}
+
+async function readBeforeDeadline(reader, deadlineAt) {
+  const remaining = deadlineAt - Date.now();
+  if (remaining <= 0) throw qoderPeekTimeoutError();
+  let timer;
+  try {
+    return await Promise.race([
+      reader.read(),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(qoderPeekTimeoutError()), remaining); }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function peekQoderBillingFrame(reader, timeoutMs) {
+  const decoder = new TextDecoder();
+  const chunks = [];
+  const deadlineAt = Date.now() + timeoutMs;
+  let text = "";
+  let bytes = 0;
+
+  try {
+    while (bytes < QODER_SSE_PEEK_BYTES) {
+      const { done, value } = await readBeforeDeadline(reader, deadlineAt);
+      if (done) {
+        releaseReader(reader);
+        return { chunks, done: true };
+      }
+      chunks.push(value);
+      const inspectBytes = Math.min(value.byteLength, QODER_SSE_PEEK_BYTES - bytes);
+      bytes += inspectBytes;
+      text += decoder.decode(value.subarray(0, inspectBytes), { stream: true });
+
+      let newline;
+      while ((newline = text.indexOf("\n")) !== -1) {
+        const line = text.slice(0, newline).replace(/\r$/, "").trim();
+        text = text.slice(newline + 1);
+        if (!line.startsWith("data:")) continue;
+        try {
+          const envelope = JSON.parse(line.slice(5).trimStart());
+          const status = typeof envelope.statusCodeValue === "number" ? envelope.statusCodeValue : 200;
+          const body = typeof envelope.body === "string" ? envelope.body : "";
+          if (status !== 200 && isBillingBlock(body)) return { chunks, done: false, billing: { status, body } };
+        } catch {
+          // Malformed frames remain existing stream-transform failures.
+        }
+        return { chunks, done: false };
+      }
+    }
+    return { chunks, done: false };
+  } catch (error) {
+    await cancelAndReleaseReader(reader, error);
+    throw error;
+  }
+}
+
+function replayQoderBody(reader, chunks, alreadyDone) {
+  let index = 0;
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    releaseReader(reader);
+  };
+  return new ReadableStream({
+    async pull(controller) {
+      if (index < chunks.length) {
+        controller.enqueue(chunks[index++]);
+        return;
+      }
+      if (alreadyDone) {
+        finish();
+        controller.close();
+        return;
+      }
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          finish();
+          controller.close();
+        } else controller.enqueue(value);
+      } catch (error) {
+        finish();
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      if (finished) return;
+      finished = true;
+      try { await reader.cancel(reason); } finally { releaseReader(reader); }
+    },
+  });
+}
 /**
  * Wrap the upstream's `{statusCodeValue, body}` SSE envelope into plain
  * OpenAI SSE chunks the rest of the chatCore pipeline understands.
@@ -234,8 +365,17 @@ async function buildQoderRequestBody({ model, body, credentials, log, proxyOptio
  * and re-emit as `data: <inner>\n\n`. Only a raw OpenAI finish plus `[DONE]`
  * is allowed to produce a successful terminal.
  */
-function wrapQoderSSE(response, model) {
+async function wrapQoderSSE(response, model, options = {}) {
   if (!response.ok || !response.body) return response;
+
+  const peekTimeoutMs = options.timeoutMs ?? FETCH_CONNECT_TIMEOUT_MS;
+  const reader = response.body.getReader();
+  const peeked = await peekQoderBillingFrame(reader, peekTimeoutMs);
+  if (peeked.billing) {
+    await cancelAndReleaseReader(reader, "Qoder billing block");
+    return Response.json({ error: { message: peeked.billing.body, code: 403 } }, { status: 403 });
+  }
+  const body = replayQoderBody(reader, peeked.chunks, peeked.done);
 
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
@@ -326,7 +466,20 @@ function wrapQoderSSE(response, model) {
     },
   });
 
-  return new Response(response.body.pipeThrough(transform), {
+  const transformed = body.pipeThrough(transform);
+  const transformedReader = transformed.getReader();
+  const output = new ReadableStream({
+    async pull(controller) {
+      const { done, value } = await transformedReader.read();
+      if (done) controller.close();
+      else controller.enqueue(value);
+    },
+    async cancel(reason) {
+      try { await transformedReader.cancel(reason); }
+      finally { await cancelAndReleaseReader(reader, reason); }
+    },
+  });
+  return new Response(output, {
     status: response.status,
     statusText: response.statusText,
     headers: {
@@ -562,8 +715,7 @@ export class QoderExecutor extends BaseExecutor {
       // Pass error response through unchanged so chatCore can capture it.
       return { response, url, headers, transformedBody: payload };
     }
-
-    const wrapped = wrapQoderSSE(response, `qoder/${qoderKey}`);
+    const wrapped = await wrapQoderSSE(response, `qoder/${qoderKey}`, { timeoutMs });
     return {
       response: wrapped,
       url,
@@ -593,6 +745,7 @@ export default QoderExecutor;
 export const __test__ = {
   normalizeMessages,
   wrapQoderSSE,
+  isBillingBlock,
   buildQoderRequestBody,
   isQoderPat,
   resolvePatCredential,

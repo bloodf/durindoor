@@ -96,7 +96,7 @@ const expectedShape = {
   },
   "kilo-gateway": {
     alias: "kg",
-    authType: "apikey",
+    authType: "optional",
     baseUrl: "https://api.kilo.ai/api/gateway/chat/completions",
     authHeader: "bearer",
     modelsFetcher: "https://api.kilo.ai/api/gateway/models",

@@ -10,7 +10,7 @@ export default {
     website: "https://kilo.ai",
   },
   category: "apikey",
-  authType: "apikey",
+  authType: "optional",
   transport: {
     baseUrl: "https://api.kilo.ai/api/gateway/chat/completions",
     validateUrl: "https://api.kilo.ai/api/gateway/models",

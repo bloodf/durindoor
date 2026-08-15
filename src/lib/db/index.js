@@ -170,7 +170,7 @@ function validateQuotaImport(payload, { now }) {
 
 // Settings
 export {
-  getSettings, updateSettings, isCloudEnabled, getCloudUrl, exportSettings,
+  getSettings, getSettingsSync, updateSettings, updateSettingsWithPasswordEpoch, PasswordEpochMismatchError, isCloudEnabled, getCloudUrl, exportSettings,
 } from "./repos/settingsRepo.js";
 
 // Provider connections
@@ -223,7 +223,7 @@ export {
 
 // Combos
 export {
-  getCombos, getComboById, getComboByName,
+  getCombos, getComboById, getComboByName, getComboForModel,
   createCombo, updateCombo, deleteCombo,
 } from "./repos/combosRepo.js";
 

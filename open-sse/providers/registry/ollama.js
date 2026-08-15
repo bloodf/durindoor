@@ -27,6 +27,7 @@ export default {
     dropClaudeCacheControl: true,
     claudeImagesRequireBase64: true,
   },
+  thinkingFormat: "ollama",
   transport: {
     baseUrl: "https://ollama.com/api/chat",
     validateUrl: "https://ollama.com/api/tags",

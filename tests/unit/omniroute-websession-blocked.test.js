@@ -23,7 +23,7 @@ const ownedProviders = [
   "yuanbao-web",
 ];
 
-const portedProviders = ["copilot-web", "copilot-m365-web", "veoaifree-web"];
+const portedProviders = ["copilot-web", "copilot-m365-web", "duckduckgo-web", "veoaifree-web"];
 const blockedProviders = ownedProviders.filter((provider) => !portedProviders.includes(provider));
 
 describe("OmniRoute PR #51 web-session provider port artifacts", () => {
@@ -43,7 +43,7 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
   });
 
   it("ports completed web-session providers to real executors", async () => {
-    for (const provider of ["copilot-web", "copilot-m365-web"]) {
+    for (const provider of ["copilot-web", "copilot-m365-web", "duckduckgo-web"]) {
       expect(BLOCKED_OMNIROUTE_PROVIDERS[provider], `${provider} blocker`).toBeUndefined();
       expect(hasSpecializedExecutor(provider), `${provider} specialized executor`).toBe(true);
       const result = await getExecutor(provider).execute({});
@@ -53,6 +53,7 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
     }
     expect(hasSpecializedExecutor("copilot")).toBe(true);
     expect(hasSpecializedExecutor("m365copilot")).toBe(true);
+    expect(hasSpecializedExecutor("ddgw")).toBe(true);
     expect(BLOCKED_OMNIROUTE_PROVIDERS["veoaifree-web"]).toBeUndefined();
     expect(hasSpecializedExecutor("veoaifree-web")).toBe(true);
     expect(hasSpecializedExecutor("veo-free")).toBe(true);
@@ -108,6 +109,7 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
     expect(checkFallbackError(501, '{"error":{"type":"provider_port_pending"}}')).toEqual({
       shouldFallback: false,
       cooldownMs: 0,
+      scope: null,
     });
   });
 
@@ -115,6 +117,7 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
     expect(checkFallbackError(400, '{"error":{"type":"invalid_request_error","message":"messages.0...}}}')).toEqual({
       shouldFallback: false,
       cooldownMs: 0,
+      scope: null,
     });
   });
 

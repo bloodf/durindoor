@@ -17,7 +17,7 @@ import {
 import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
 import { appendHeadroomEvent } from "@/lib/headroom/events.js";
 import { appendPxpipeEvent } from "@/lib/pxpipe/events.js";
-import { getModelInfo, getComboModels, loadCustomCapabilities, parseModel } from "../services/model.js";
+import { getModelInfo, getComboModels, getComboCanonicalName, loadCustomCapabilities, parseModel } from "../services/model.js";
 import { recordTokenSaverEvent } from "@/lib/usageDb";
 import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
 import { applyVisionBridgeReroute } from "open-sse/services/model.js";
@@ -372,10 +372,10 @@ export async function handleChat(request, clientRawRequest = null) {
   if (apiKey && modelStr) {
     authenticatedKeyRecord = await getApiKeyByKey(apiKey);
     if (authenticatedKeyRecord && Array.isArray(authenticatedKeyRecord.allowedCombos) && authenticatedKeyRecord.allowedCombos.length > 0) {
-      const comboCheck = await getComboModels(modelStr);
-      if (comboCheck && !authenticatedKeyRecord.allowedCombos.includes(modelStr)) {
-        log.warn("AUTH", `API key "${authenticatedKeyRecord.name}" not allowed to access combo "${modelStr}"`);
-        return errorResponse(HTTP_STATUS.FORBIDDEN, `Access denied: combo "${modelStr}" is not allowed for this API key`);
+      const comboName = await getComboCanonicalName(modelStr);
+      if (comboName && !authenticatedKeyRecord.allowedCombos.includes(comboName)) {
+        log.warn("AUTH", `API key "${authenticatedKeyRecord.name}" not allowed to access combo "${comboName}"`);
+        return errorResponse(HTTP_STATUS.FORBIDDEN, `Access denied: combo "${comboName}" is not allowed for this API key`);
       }
     }
   }
@@ -469,8 +469,9 @@ export async function handleChat(request, clientRawRequest = null) {
     // through to `.fallbackStrategy` when `.strategy` is absent so partial config
     // still works. A stray `.strategy` on a named-combo config never changes
     // legacy behavior.
+    const comboName = (await getComboCanonicalName(modelStr)) || modelStr;
     const comboStrategies = settings.comboStrategies || {};
-    const perCombo = comboStrategies[modelStr] || {};
+    const perCombo = comboStrategies[comboName] || {};
     const comboSpecificStrategy = isAutoComboId(modelStr)
       ? (perCombo.strategy ?? perCombo.fallbackStrategy)
       : perCombo.fallbackStrategy;
@@ -480,7 +481,7 @@ export async function handleChat(request, clientRawRequest = null) {
     // is enforced against each concrete underlying model during expansion. Combo-level
     // combo access control above remains the gate for combo names.
     if (comboStrategy === "fusion") {
-      log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: fusion)`);
+      log.info("CHAT", `Combo "${comboName}" with ${comboModels.length} models (strategy: fusion)`);
       const capabilitiesMap = await resolveComboCapabilitiesMap(comboModels);
       return handleFusionChat({
         body,
@@ -503,9 +504,9 @@ export async function handleChat(request, clientRawRequest = null) {
           );
         },
         log,
-        comboName: modelStr,
-        judgeModel: comboStrategies[modelStr]?.judgeModel,
-        tuning: comboStrategies[modelStr]?.fusionTuning,
+        comboName,
+        judgeModel: perCombo.judgeModel,
+        tuning: perCombo.fusionTuning,
         contextRequirements: perCombo.contextRequirements,
         capabilitiesMap,
       });
@@ -514,7 +515,7 @@ export async function handleChat(request, clientRawRequest = null) {
     const capabilitiesMap = await resolveComboCapabilitiesMap(comboModels);
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
     const comboTimeoutMs = perCombo?.timeoutMs || COMBO_MODEL_TIMEOUT_MS || 0;
-    log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit}, timeout: ${comboTimeoutMs || "off"})`);
+    log.info("CHAT", `Combo "${comboName}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit}, timeout: ${comboTimeoutMs || "off"})`);
     // #2562: combo fallback must persist ONE token-saver row for the whole
     // logical request, not one per fallback attempt. Collect the latest event
     // across attempts and persist after handleComboChat returns.
@@ -539,7 +540,7 @@ export async function handleChat(request, clientRawRequest = null) {
         );
       },
       log,
-      comboName: modelStr,
+      comboName,
       comboStrategy,
       comboStickyLimit,
       contextRequirements: perCombo.contextRequirements,
@@ -549,7 +550,7 @@ export async function handleChat(request, clientRawRequest = null) {
         ordered,
         settings,
         Date.now(),
-        modelStr,
+        comboName,
         comboStrategy,
       ),
       signal: request?.signal || null,
@@ -622,17 +623,21 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     // #6495 / F-4: filter paid members when the toggle is on.
     const comboModels = await getComboModels(modelStr, chatSettings.hidePaidModels === true);
     if (comboModels) {
+      // Resolve the canonical persisted name once so ACL, per-combo strategy
+      // lookups, and rotation/scoring keys are stable regardless of the
+      // casing the client sent (#10177). Auto-combo ids pass through as-is.
+      const comboName = (await getComboCanonicalName(modelStr)) || modelStr;
       // Check for combo-specific strategy first, fallback to global. Auto-combo
       // ids honor the F-2 `.strategy` shape; named combos keep `.fallbackStrategy`.
       const comboStrategies = chatSettings.comboStrategies || {};
-      const perCombo = comboStrategies[modelStr] || {};
+      const perCombo = comboStrategies[comboName] || {};
       const comboSpecificStrategy = isAutoComboId(modelStr)
         ? (perCombo.strategy ?? perCombo.fallbackStrategy)
         : perCombo.fallbackStrategy;
       const comboStrategy = comboSpecificStrategy || chatSettings.comboStrategy || "fallback";
 
       if (comboStrategy === "fusion") {
-        log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: fusion)`);
+        log.info("CHAT", `Combo "${comboName}" with ${comboModels.length} models (strategy: fusion)`);
         return handleFusionChat({
           body,
           models: comboModels,
@@ -654,9 +659,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             );
           },
           log,
-          comboName: modelStr,
-          judgeModel: comboStrategies[modelStr]?.judgeModel,
-          tuning: comboStrategies[modelStr]?.fusionTuning,
+          comboName,
+          judgeModel: perCombo.judgeModel,
+          tuning: perCombo.fusionTuning,
           contextRequirements: perCombo.contextRequirements,
           capabilitiesMap: await resolveComboCapabilitiesMap(comboModels),
         });
@@ -664,7 +669,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
       const comboStickyLimit = chatSettings.comboStickyRoundRobinLimit;
       const comboTimeoutMs = perCombo?.timeoutMs || COMBO_MODEL_TIMEOUT_MS || 0;
-      log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit}, timeout: ${comboTimeoutMs || "off"})`);
+      log.info("CHAT", `Combo "${comboName}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit}, timeout: ${comboTimeoutMs || "off"})`);
       // Nested combos inherit the parent's collector if present; otherwise own
       // it so nested fallback attempts do not double-count rows.
       const ownsCollector = !tokenSaverCollector;
@@ -689,7 +694,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           );
         },
         log,
-        comboName: modelStr,
+        comboName,
         comboStrategy,
         comboStickyLimit,
         contextRequirements: perCombo.contextRequirements,
@@ -699,7 +704,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           ordered,
           chatSettings,
           Date.now(),
-          modelStr,
+          comboName,
           comboStrategy,
         ),
         signal: requestSignal,
@@ -1116,15 +1121,26 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       continue;
     }
 
-    // Mark account unavailable (auto-calculates cooldown with exponential backoff, or precise resetsAtMs)
     const resultAttemptStartedAt = Number.isSafeInteger(result.attemptStartedAt) && result.attemptStartedAt > 0
       ? result.attemptStartedAt
       : latestAttemptStartedAt;
-    const fallbackState = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, result.resetsAtMs, {
-      attemptStartedAt: resultAttemptStartedAt,
-      rateLimitEvidence: result.rateLimitEvidence || null,
-      signal: requestSignal,
-    });
+    const resultErrorBody = result.errorBody && typeof result.errorBody === "object" ? result.errorBody : null;
+    const resultHeaders = result.headers ?? null;
+    const fallbackState = await markAccountUnavailable(
+      credentials.connectionId,
+      result.status,
+      result.error,
+      provider,
+      model,
+      result.resetsAtMs,
+      {
+        attemptStartedAt: resultAttemptStartedAt,
+        rateLimitEvidence: result.rateLimitEvidence || null,
+        headers: resultHeaders,
+        errorBody: resultErrorBody,
+        signal: requestSignal,
+      },
+    );
     const { shouldFallback } = fallbackState;
 
     if (shouldFallback) {

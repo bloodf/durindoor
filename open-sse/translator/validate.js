@@ -93,22 +93,44 @@ function coerceRootObjectType(schema) {
 }
 
 /**
+ * Kimi/Moonshot OpenAI-compatible endpoints reject a root tool-schema
+ * `anyOf` (diegosouzapw/OmniRoute 99d19f8f3, #10079) even though nested
+ * combinators are fine. Strip only the tool's OWN root `anyOf` — never
+ * nested `properties.*.anyOf`/`oneOf`/`allOf` roots — and only for the
+ * exact source-verified Kimi-family provider ids on the OpenAI wire
+ * transport. Mutates schema in place.
+ */
+const KIMI_ANYOF_PROVIDERS = new Set(["kimi", "kimi-coding"]);
+
+function stripRootAnyOf(schema) {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return;
+  if (!Object.prototype.hasOwnProperty.call(schema, "anyOf")) return;
+  delete schema.anyOf;
+}
+
+/**
  * Normalize root `type: null`/missing on tool function parameters before
  * dispatch, covering both OpenAI Chat Completions (`tools[].function.parameters`)
  * and OpenAI Responses flattened (`tools[].parameters`) shapes. Runs regardless
  * of the VALIDATE_OUTBOUND gate so the fix holds for passthrough
  * (source === target) requests too — the reported Codex/OpenAI-compatible case.
- * Mutates `body` in place and returns it. 9router#6359 / OmniRoute#6375.
+ * `context.provider`/`context.transportFormat` additionally gate the Kimi
+ * root-`anyOf` strip (#10079) to the exact Kimi-family OpenAI transports;
+ * omitted context leaves that behavior a no-op. Mutates `body` in place and
+ * returns it. 9router#6359 / OmniRoute#6375.
  */
-export function normalizeToolSchemaRoots(body) {
+export function normalizeToolSchemaRoots(body, context = {}) {
   if (!body || typeof body !== "object" || !Array.isArray(body.tools)) return body;
+  const stripAnyOf = context.transportFormat === "openai" && KIMI_ANYOF_PROVIDERS.has(context.provider);
   for (const tool of body.tools) {
     if (!tool || typeof tool !== "object") continue;
     // Chat Completions shape: { type: "function", function: { parameters } }
     if (tool.function && typeof tool.function === "object") {
+      if (stripAnyOf) stripRootAnyOf(tool.function.parameters);
       coerceRootObjectType(tool.function.parameters);
     }
     // Responses flattened shape: { type: "function", parameters }
+    if (stripAnyOf) stripRootAnyOf(tool.parameters);
     coerceRootObjectType(tool.parameters);
   }
   return body;

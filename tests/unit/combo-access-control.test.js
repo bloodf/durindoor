@@ -12,8 +12,9 @@ const mocks = vi.hoisted(() => ({
   getApiKeyByKey: vi.fn(),
   getApiKeyUsageLimitStatus: vi.fn(),
   getComboModels: vi.fn(),
-  getModelInfo: vi.fn(),
+  getComboCanonicalName: vi.fn(),
   extractApiKey: vi.fn(),
+  getModelInfo: vi.fn(),
   evaluateApiKeyAuth: vi.fn(),
   enforceApiKeyModelPolicy: vi.fn(),
   handleComboChat: vi.fn(),
@@ -29,6 +30,7 @@ vi.mock("@/lib/localDb", () => ({
 vi.mock("../../src/sse/services/model.js", async (importOriginal) => ({
   ...(await importOriginal()),
   getComboModels: mocks.getComboModels,
+  getComboCanonicalName: mocks.getComboCanonicalName,
   getModelInfo: mocks.getModelInfo,
   loadCustomCapabilities: async () => null,
 }));
@@ -97,11 +99,44 @@ describe("per-key combo access control (#2203)", () => {
     mocks.getApiKeyUsageLimitStatus.mockResolvedValue({ exceeded: false, usedTokens: 0, limitTokens: 0 });
     mocks.enforceApiKeyModelPolicy.mockResolvedValue(null);
     mocks.getComboModels.mockImplementation(async (model) =>
-      model === "combo-privileged" ? ["prov/model-a", "prov/model-b"] : null
+      model.toLowerCase() === "combo-privileged" ? ["prov/model-a", "prov/model-b"] : null
+    );
+    mocks.getComboCanonicalName.mockImplementation(async (model) =>
+      model.toLowerCase() === "combo-privileged" ? "Combo-Privileged" : null
     );
     mocks.getModelInfo.mockImplementation(async (modelStr) => ({ provider: "prov", model: modelStr }));
     mocks.handleComboChat.mockResolvedValue(new Response("ok", { status: 200 }));
     mocks.handleFusionChat.mockResolvedValue(new Response("ok", { status: 200 }));
+  });
+
+  it("denies a differently cased request when the canonical combo is not granted", async () => {
+    mocks.getApiKeyByKey.mockResolvedValue({
+      name: "limited-key",
+      allowedCombos: ["combo-other"],
+    });
+
+    const { handleChat } = await import("../../src/sse/handlers/chat.js");
+    const res = await handleChat(makeRequest("COMBO-PRIVILEGED"));
+
+    expect(res.status).toBe(403);
+    expect(mocks.handleComboChat).not.toHaveBeenCalled();
+  });
+
+  it("uses the canonical combo name for strategy and rotation", async () => {
+    mocks.getSettings.mockResolvedValue({
+      requireApiKey: false,
+      comboStrategies: { "Combo-Privileged": { fallbackStrategy: "round-robin" } },
+    });
+    mocks.getApiKeyByKey.mockResolvedValue({ name: "granted-key", allowedCombos: ["Combo-Privileged"] });
+
+    const { handleChat } = await import("../../src/sse/handlers/chat.js");
+    const res = await handleChat(makeRequest("COMBO-PRIVILEGED"));
+
+    expect(res.status).toBe(200);
+    expect(mocks.handleComboChat).toHaveBeenCalledWith(expect.objectContaining({
+      comboName: "Combo-Privileged",
+      comboStrategy: "round-robin",
+    }));
   });
 
   it("denies (403) a key whose allowedCombos does not include the requested combo, and never runs the combo engine", async () => {
@@ -123,7 +158,7 @@ describe("per-key combo access control (#2203)", () => {
   it("allows a key whose allowedCombos includes the requested combo and runs the combo engine (200)", async () => {
     mocks.getApiKeyByKey.mockResolvedValue({
       name: "granted-key",
-      allowedCombos: ["combo-privileged"],
+      allowedCombos: ["Combo-Privileged"],
     });
 
     const { handleChat } = await import("../../src/sse/handlers/chat.js");

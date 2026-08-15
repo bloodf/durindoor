@@ -52,3 +52,27 @@ describe("combo round-robin fallback pointer", () => {
     expect(second).toBe("provider/b");
   });
 });
+
+describe("AgentRouter combo fallback classification", () => {
+  it("falls through after an AgentRouter quota-shaped 400", async () => {
+    const attempts = [];
+    const result = await handleComboChat({
+      body: { messages: [{ role: "user", content: "hi" }] },
+      models: ["agentrouter/first", "openai/second"],
+      comboName: "agentrouter-quota-400",
+      comboStrategy: "fallback",
+      autoSwitch: false,
+      log,
+      handleSingleModel: async (_body, model) => {
+        attempts.push(model);
+        if (model === "agentrouter/first") {
+          return new Response(JSON.stringify({ error: { message: "用户额度不足" } }), { status: 400 });
+        }
+        return Response.json({ choices: [{ message: { content: "ok" } }] });
+      },
+    });
+
+    expect(attempts).toEqual(["agentrouter/first", "openai/second"]);
+    expect(result.ok).toBe(true);
+  });
+});

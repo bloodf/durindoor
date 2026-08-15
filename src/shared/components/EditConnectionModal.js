@@ -7,6 +7,7 @@ import Input from "@/shared/components/Input";
 import Button from "@/shared/components/Button";
 import Badge from "@/shared/components/Badge";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
+import Toggle from "@/shared/components/Toggle";
 import Select from "@/shared/components/Select";
 import { requiresProviderAccountId } from "@/lib/providerAccountIds";
 import {
@@ -29,6 +30,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   });
   const [cloudflareData, setCloudflareData] = useState({ accountId: "" });
   const [googlePseData, setGooglePseData] = useState({ cx: "" });
+  const [codexFingerprintMode, setCodexFingerprintMode] = useState("session");
   const [region, setRegion] = useState("");
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
@@ -42,6 +44,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         name: connection.name || "",
         priority: connection.priority || 1,
         apiKey: "",
+        openaiStoreEnabled: connection.providerSpecificData?.openaiStoreEnabled === true,
       });
       // Load Azure-specific data if present
       if (connection.provider === "azure" && connection.providerSpecificData) {
@@ -62,6 +65,14 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       if (connection.provider === "google-pse") {
         setGooglePseData({ cx: connection.providerSpecificData?.cx || "" });
       }
+      // Always reset when switching connections so a stale mode cannot
+      // leak into a different (or non-OAuth) provider's request headers.
+      setCodexFingerprintMode(
+        connection.provider === "codex" &&
+          ["off", "device", "session", "full"].includes(connection.providerSpecificData?.codexFingerprintMode)
+          ? connection.providerSpecificData.codexFingerprintMode
+          : "session",
+      );
       // Load region for providers that support it (e.g. xiaomi-tokenplan)
       const providerCfg = AI_PROVIDERS?.[connection.provider];
       if (providerCfg?.regions) {
@@ -78,11 +89,14 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   const requiresAccountId = requiresProviderAccountId(connection?.provider);
   const accountIdProviderLabel = connection?.provider === "snowflake" ? "Snowflake Cortex" : "Cloudflare Workers AI";
   const isGooglePse = isGooglePseProvider(connection?.provider);
+  const isCodexOAuth = connection?.provider === "codex" && isOAuth;
   const isCompatible = connection
     ? (isOpenAICompatibleProvider(connection.provider) || isAnthropicCompatibleProvider(connection.provider))
     : false;
-  const providerRegions = connection ? (AI_PROVIDERS?.[connection.provider]?.regions || null) : null;
+  const isResponsesConnection = connection?.provider === "openai"
+    || connection?.provider?.startsWith("openai-compatible-responses-");
 
+  const providerRegions = connection ? (AI_PROVIDERS?.[connection.provider]?.regions || null) : null;
   // Build providerSpecificData for region-aware providers
   const buildRegionSpecificData = () => {
     if (providerRegions && region) return { ...((connection?.providerSpecificData) || {}), region };
@@ -104,12 +118,20 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
     if (isGooglePse) {
       return buildGooglePseProviderSpecificData(googlePseData.cx, connection?.providerSpecificData);
     }
+    if (isCodexOAuth) {
+      return { ...connection.providerSpecificData, codexFingerprintMode };
+    }
     if (providerRegions) {
       return buildRegionSpecificData();
     }
+    if (isResponsesConnection) {
+      return {
+        ...(connection?.providerSpecificData || {}),
+        openaiStoreEnabled: formData.openaiStoreEnabled === true,
+      };
+    }
     return undefined;
   };
-
   const hasRequiredGooglePseCx = !isGooglePse || !!normalizeGooglePseCx(googlePseData.cx);
 
   const handleTest = async () => {
@@ -304,6 +326,19 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
             </div>
           </div>
         )}
+        {isCodexOAuth && (
+          <Select
+            label="OAuth fingerprint mode"
+            value={codexFingerprintMode}
+            onChange={(e) => setCodexFingerprintMode(e.target.value)}
+            options={[
+              { value: "off", label: "Off — preserve client identity" },
+              { value: "device", label: "Device — stable installation" },
+              { value: "session", label: "Session — stable account session (recommended)" },
+              { value: "full", label: "Full — stable account thread" },
+            ]}
+          />
+        )}
 
         {providerRegions && (
           <Select
@@ -311,6 +346,15 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
             value={region}
             onChange={(e) => setRegion(e.target.value)}
             options={providerRegions.map((r) => ({ value: r.id, label: r.label }))}
+          />
+        )}
+
+        {isResponsesConnection && (
+          <Toggle
+            checked={formData.openaiStoreEnabled === true}
+            onChange={(openaiStoreEnabled) => setFormData({ ...formData, openaiStoreEnabled })}
+            label="OpenAI Responses store"
+            description="Allow this connection to retain Responses API state for continuation."
           />
         )}
 

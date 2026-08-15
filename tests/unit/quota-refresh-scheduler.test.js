@@ -4,6 +4,7 @@ import {
   getConnectionLabel,
   getRefreshConnections,
   getRefreshCountdown,
+  refreshProviderQuotas,
 } from "@/app/(dashboard)/dashboard/usage/components/ProviderLimits/utils.js";
 
 describe("quota auto-refresh scheduler", () => {
@@ -32,6 +33,27 @@ describe("quota auto-refresh scheduler", () => {
     expect(getRefreshConnections(visibleConnections, false, 1, 3)).toEqual([
       visibleConnections[0],
     ]);
+  });
+
+  it("passes force to every manual Refresh All quota fetch, including Claude", async () => {
+    const fetchQuota = vi.fn().mockResolvedValue(undefined);
+    const connections = [
+      { id: "openai-1", provider: "openai" },
+      { id: "claude-1", provider: "claude" },
+    ];
+
+    await refreshProviderQuotas(connections, true, fetchQuota);
+
+    expect(fetchQuota).toHaveBeenNthCalledWith(1, "openai-1", "openai", { force: true });
+    expect(fetchQuota).toHaveBeenNthCalledWith(2, "claude-1", "claude", { force: true });
+  });
+
+  it("keeps automatic quota fetches non-forced", async () => {
+    const fetchQuota = vi.fn().mockResolvedValue(undefined);
+
+    await refreshProviderQuotas([{ id: "claude-1", provider: "claude" }], false, fetchQuota);
+
+    expect(fetchQuota).toHaveBeenCalledWith("claude-1", "claude", { force: false });
   });
 
   it("prefers canonical provider names over stale stored labels", () => {

@@ -6,10 +6,12 @@ describe("account fallback request-error classification", () => {
     expect(checkFallbackError(400, "Improperly formed request")).toEqual({
       shouldFallback: false,
       cooldownMs: 0,
+      scope: null,
     });
     expect(checkFallbackError(422, "Failed to deserialize request")).toEqual({
       shouldFallback: false,
       cooldownMs: 0,
+      scope: null,
     });
   });
 

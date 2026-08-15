@@ -19,6 +19,8 @@ Before exposing DurinDoor outside localhost:
 
 The dashboard can create API keys, add upstream provider credentials, configure tunnels, and inspect usage. Do not expose it publicly with only the default password.
 
+Remote login with the built-in `123456` password is refused before a dashboard session cookie is issued. Set `INITIAL_PASSWORD` or a stored dashboard password before any remote access. The login screen surfaces the default-password hint only when `settings.password || INITIAL_PASSWORD || 123456` resolves to the literal built-in password, so a stored custom password or OIDC mode hides it.
+
 Recommended controls:
 
 - HTTPS only for remote access.
@@ -97,6 +99,8 @@ Native streaming terminals are validated before runtime health can clear. SSE ev
 
 Request abort is checked before model/auth/database work, before selection, before dispatch, before fallback, during retry delays, during successful/error body consumption, and during shared refresh waits. Cloud Code project discovery is subscriber-aware: the last cancelled subscriber aborts its fetch/onboarding work, an aborted entry cannot absorb a new request, and credential invalidation aborts and evicts every pending discovery for that connection so an old token cannot repopulate the cache. Once a provider may have rotated a one-time OAuth token, its shared credential transaction may still finish for account safety, but the abandoned request performs no later provider dispatch or quota/health write.
 
+AgentRouter can report temporary user-quota exhaustion as HTTP 400 or 403 with the provider-specific `额度不足` marker. DurinDoor restates those responses to retryable 429 before fallback classification, preserving an upstream retry deadline when present and otherwise applying a 60-second retry. After restatement the new 429 is re-parsed through the same bounded `parseRateLimitEvidence` path so any `Retry-After`/reset header or body deadline carried in the original response is honored over the synthetic default. `src/sse/services/auth.js` forwards the provider id and `open-sse/services/combo.js` forwards provider id, response headers, and structured body into `checkFallbackError`, so provider-specific rules (AgentRouter 6h model-denial cooldown, quota-shaped 400/403 fallback) take effect instead of being collapsed to generic status-code classification. Model-access denials remain 403 and keep their separate cooldown behavior.
+
 The public provider-health endpoint keeps transport reachability separate from quota eligibility. Its quota decoration is limited to a boolean decision plus fixed reason/freshness values. Quota amounts, exact resource identities, source IDs, account scope, and reset/cooldown timestamps require an authenticated management surface planned for the management batch and are not added to this endpoint.
 
 ### OAuth routing and callback state
@@ -150,6 +154,14 @@ Use:
 ```bash
 ENABLE_REQUEST_LOGS=false
 ```
+
+### Default dashboard password
+
+When effective dashboard password is built-in `123456`, remote login returns
+`403` before a session cookie is issued. A loopback login receives a five-minute,
+IP-bound, one-time proof which can only set a replacement password through
+`POST /api/auth/change-password`. That endpoint creates a dashboard session only
+after persisting the new password.
 
 Enable detailed logs only for short debugging windows. If logs must be retained, define retention, access, and deletion policies.
 

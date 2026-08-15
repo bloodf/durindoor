@@ -272,6 +272,44 @@ describe("getUsageForProvider(kimi) auth selection", () => {
     expect(usage.message).toMatch(/token|key|credential/i);
     expect(proxyAwareFetch).not.toHaveBeenCalled();
   });
+
+  it("bounds a stalled usage probe to ten seconds", async () => {
+    vi.useFakeTimers();
+    proxyAwareFetch.mockImplementationOnce((_url, { signal }) => {
+      if (!signal) return Promise.reject(new Error("missing timeout signal"));
+      return new Promise((_, reject) => {
+        signal.addEventListener("abort", () => reject(new Error("usage probe aborted")));
+      });
+    });
+
+    const usagePromise = getUsageForProvider({ provider: "kimi", accessToken: "tok" });
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await expect(usagePromise).resolves.toMatchObject({
+      message: expect.stringMatching(/aborted|failed|error/i),
+    });
+    vi.useRealTimers();
+  });
+
+  it("bounds a usage probe whose headers resolve but body stalls", async () => {
+    vi.useFakeTimers();
+    const cancel = vi.fn();
+    proxyAwareFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: () => new Promise(() => {}),
+      body: { cancel },
+    });
+
+    const usagePromise = getUsageForProvider({ provider: "kimi", accessToken: "tok" });
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await expect(usagePromise).resolves.toMatchObject({
+      message: expect.stringMatching(/aborted|failed|error/i),
+    });
+    expect(cancel).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+  });
 });
 
 describe("parseQuotaData(kimi)", () => {

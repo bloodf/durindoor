@@ -8,7 +8,7 @@ import { buildClineHeaders } from "../shared/clineAuth.js";
 import { getCachedClaudeHeaders } from "../utils/claudeHeaderCache.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
-import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
+import { applyDeepSeekV4ProAlias, injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { getOpenAICompatibleType } from "../services/provider.js";
 import { refreshCodebuddyToken } from "../services/tokenRefresh.js";
@@ -50,6 +50,14 @@ export function injectPromptCacheKey(provider, body, credentials) {
   return body;
 }
 
+export function injectOpenAIStore(body, provider, credentials, transportFormat) {
+  if (!body || typeof body !== "object") return body;
+  if (provider !== "openai" && !provider?.startsWith("openai-compatible-responses-")) return body;
+  if (credentials?.providerSpecificData?.openaiStoreEnabled !== true) return body;
+  if (transportFormat !== FORMATS.OPENAI_RESPONSES && transportFormat !== FORMATS.OPENAI_RESPONSE) return body;
+  body.store = true;
+  return body;
+}
 
 export const OPENAI_TOOL_CALL_ID_MAX_LENGTH = 64;
 export const OPENAI_TOOL_CALL_ID_PREFIX_LENGTH = 20;
@@ -286,8 +294,15 @@ export class DefaultExecutor extends BaseExecutor {
     // max_tokens / max_completion_tokens above its 65536 ceiling).
     this.config?.clampRequestBody?.(body);
     applyGlmtModelAlias(this.provider, model, body);
-    const transformed = this.applyJsonSchemaFallback(body);
+    let transformed = this.applyJsonSchemaFallback(body);
+
     const transportFormat = credentials?.runtimeTransport?.format?.replace(/-apikey$/, "") || this.config.format;
+    transformed = applyDeepSeekV4ProAlias({
+      provider: this.provider,
+      model: requestContext?.catalogModel || model,
+      body: transformed,
+      transportFormat,
+    });
 
 
     if (transformed && typeof transformed === "object") {
@@ -335,6 +350,7 @@ export class DefaultExecutor extends BaseExecutor {
         delete transformed.stream_options;
       }
       injectPromptCacheKey(this.provider, transformed, credentials);
+      injectOpenAIStore(transformed, this.provider, credentials, transportFormat);
       applyParamRenames(this.provider, model, transformed, requestContext?.modelCapabilities);
       stripUnsupportedParams(this.provider, model, transformed, requestContext?.modelCapabilities);
       /**

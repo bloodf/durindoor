@@ -2,6 +2,9 @@ import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { SSE_DONE, SSE_HEADERS_NO_BUFFER } from "../utils/sseConstants.js";
 import { sseChunk } from "../utils/sse.js";
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { runQuotaBearingProviderRequest } from "../services/providerAttemptContext.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 
 const PPLX_SSE_ENDPOINT = PROVIDERS["perplexity-web"].baseUrl;
 const PPLX_API_VERSION = "2.18";
@@ -223,10 +226,118 @@ function buildQuery(parsed, followUpUuid, tools) {
   return json.length > 96000 ? json.slice(-96000) : json;
 }
 
+const MAX_WORKFLOW_CHUNK_INDEX = 1_000_000;
+const MAX_WORKFLOW_ANSWERS = 128;
+
+function workflowAnswerKey(stepIndex, itemIndex) {
+  return `${stepIndex}:${itemIndex}`;
+}
+
+function isWorkflowAnswer(item) {
+  const textPayload = item?.payload?.text_payload;
+  return (textPayload?.variant ?? item?.variant) === "answer";
+}
+
+function seedWorkflowAnswer(answers, key, item) {
+  if (!answers.has(key) && answers.size >= MAX_WORKFLOW_ANSWERS) return false;
+  const textPayload = item?.payload?.text_payload;
+  if (Array.isArray(textPayload?.chunks)) {
+    answers.set(key, textPayload.chunks.map((chunk) => String(chunk)));
+    return true;
+  }
+  if (typeof textPayload?.text === "string") {
+    answers.set(key, [textPayload.text]);
+    return true;
+  }
+  answers.set(key, []);
+  return true;
+}
+
+function denseChunks(chunks) {
+  let end = 0;
+  while (end < chunks.length && typeof chunks[end] === "string") end++;
+  return chunks.slice(0, end).join("");
+}
+
+function selectWorkflowAnswer(answers, preferredKey) {
+  if (preferredKey && answers.has(preferredKey)) {
+    return { key: preferredKey, answer: denseChunks(answers.get(preferredKey)) };
+  }
+  let best = { key: null, answer: "" };
+  for (const [key, chunks] of answers) {
+    const answer = denseChunks(chunks ?? []);
+    if (answer.length > best.answer.length) best = { key, answer };
+  }
+  return best;
+}
+
+function applyWorkflowBlock(answers, workflow) {
+  let firstKey;
+  for (const [stepIndex, step] of (workflow.steps ?? []).entries()) {
+    for (const [itemIndex, item] of (step.items ?? []).entries()) {
+      if (!isWorkflowAnswer(item)) continue;
+      const key = workflowAnswerKey(stepIndex, itemIndex);
+      if (seedWorkflowAnswer(answers, key, item)) firstKey ??= key;
+    }
+  }
+  return firstKey;
+}
+
+function applyWorkflowDiff(answers, patches) {
+  let firstKey;
+  for (const patch of patches ?? []) {
+    const step = /^\/steps\/(\d+)$/.exec(patch.path ?? "");
+    if (step) {
+      for (const [itemIndex, item] of (patch.value?.items ?? []).entries()) {
+        if (!isWorkflowAnswer(item)) continue;
+        const key = workflowAnswerKey(Number(step[1]), itemIndex);
+        if (seedWorkflowAnswer(answers, key, item)) firstKey ??= key;
+      }
+      continue;
+    }
+    const item = /^\/steps\/(\d+)\/items\/(\d+)$/.exec(patch.path ?? "");
+    if (item && isWorkflowAnswer(patch.value)) {
+      const key = workflowAnswerKey(Number(item[1]), Number(item[2]));
+      if (seedWorkflowAnswer(answers, key, patch.value)) firstKey ??= key;
+      continue;
+    }
+    const chunk = /^\/steps\/(\d+)\/items\/(\d+)\/payload\/text_payload\/chunks\/(\d+)$/.exec(patch.path ?? "");
+    if (chunk) {
+      const chunkIndex = Number(chunk[3]);
+      if (
+        !Number.isSafeInteger(chunkIndex) ||
+        chunkIndex < 0 ||
+        chunkIndex > MAX_WORKFLOW_CHUNK_INDEX ||
+        typeof patch.value !== "string"
+      ) {
+        continue;
+      }
+      const key = workflowAnswerKey(Number(chunk[1]), Number(chunk[2]));
+      const track = answers.get(key);
+      if (track && chunkIndex <= track.length) {
+        track[chunkIndex] = patch.value;
+        firstKey ??= key;
+      }
+      continue;
+    }
+    const text = /^\/steps\/(\d+)\/items\/(\d+)\/payload\/text_payload\/text$/.exec(patch.path ?? "");
+    if (text && typeof patch.value === "string") {
+      const key = workflowAnswerKey(Number(text[1]), Number(text[2]));
+      const track = answers.get(key);
+      if (track && track.length === 0) {
+        answers.set(key, [patch.value]);
+        firstKey ??= key;
+      }
+    }
+  }
+  return firstKey;
+}
+
 async function* extractContent(eventStream, signal) {
-  let fullAnswer = "";
+  let emitted = "";
   let backendUuid = null;
-  let seenLen = 0;
+  let selectedWorkflowAnswerKey;
+  const workflowAnswers = new Map();
   const seenThinking = new Set();
 
   for await (const event of readPplxSseEvents(eventStream, signal)) {
@@ -271,6 +382,32 @@ async function* extractContent(eventStream, signal) {
         }
       }
 
+      if (block.workflow_block) {
+        applyWorkflowBlock(workflowAnswers, block.workflow_block);
+        const selection = selectWorkflowAnswer(workflowAnswers, selectedWorkflowAnswerKey);
+        selectedWorkflowAnswerKey = selection.key;
+        const answer = selection.answer;
+        if (answer.startsWith(emitted) && answer.length > emitted.length) {
+          const delta = answer.slice(emitted.length);
+          emitted = answer;
+          yield { delta, answer, backendUuid: backendUuid ?? undefined };
+        }
+        continue;
+      }
+
+      if (block.diff_block?.field === "workflow_block") {
+        const firstKey = applyWorkflowDiff(workflowAnswers, block.diff_block.patches);
+        selectedWorkflowAnswerKey ??= firstKey;
+        const selection = selectWorkflowAnswer(workflowAnswers, selectedWorkflowAnswerKey);
+        const answer = selection.answer;
+        if (answer.startsWith(emitted) && answer.length > emitted.length) {
+          const delta = answer.slice(emitted.length);
+          emitted = answer;
+          yield { delta, answer, backendUuid: backendUuid ?? undefined };
+        }
+        continue;
+      }
+
       if (!usage.includes("markdown")) continue;
       const mb = block.markdown_block;
       if (!mb) continue;
@@ -278,32 +415,33 @@ async function* extractContent(eventStream, signal) {
       if (chunks.length === 0) continue;
 
       if (mb.progress === "DONE") {
-        fullAnswer = chunks.join("");
+        const finalAnswer = denseChunks(chunks);
+        if (finalAnswer.startsWith(emitted) && finalAnswer.length > emitted.length) {
+          const delta = finalAnswer.slice(emitted.length);
+          emitted = finalAnswer;
+          yield { delta, answer: finalAnswer, backendUuid: backendUuid ?? undefined };
+        }
       } else {
-        const chunkText = chunks.join("");
-        const cumulative = fullAnswer + chunkText;
-        if (cumulative.length > seenLen) {
-          const delta = cumulative.slice(seenLen);
-          fullAnswer = cumulative;
-          seenLen = cumulative.length;
-          yield { delta, answer: fullAnswer, backendUuid: backendUuid ?? undefined };
+        const cumulative = emitted + denseChunks(chunks);
+        if (cumulative.startsWith(emitted) && cumulative.length > emitted.length) {
+          const delta = cumulative.slice(emitted.length);
+          emitted = cumulative;
+          yield { delta, answer: cumulative, backendUuid: backendUuid ?? undefined };
         }
       }
     }
-
     if (blocks.length === 0 && event.text) {
       const t = event.text.trim();
-      if (t.length > seenLen) {
-        const delta = t.slice(seenLen);
-        fullAnswer = t;
-        seenLen = t.length;
-        yield { delta, answer: fullAnswer, backendUuid: backendUuid ?? undefined };
+      if (t.startsWith(emitted) && t.length > emitted.length) {
+        const delta = t.slice(emitted.length);
+        emitted = t;
+        yield { delta, answer: t, backendUuid: backendUuid ?? undefined };
       }
     }
 
     if (event.final || event.status === "COMPLETED") break;
   }
-  yield { delta: "", answer: fullAnswer, backendUuid: backendUuid ?? undefined, done: true };
+  yield { delta: "", answer: emitted, backendUuid: backendUuid ?? undefined, done: true };
 }
 
 function buildStreamingResponse(eventStream, model, cid, created, history, currentMsg, signal) {
@@ -408,7 +546,7 @@ export class PerplexityWebExecutor extends BaseExecutor {
     super("perplexity-web", PROVIDERS["perplexity-web"]);
   }
 
-  async execute({ model, body, stream, credentials, signal, log }) {
+  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
     const messages = body?.messages;
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       const errResp = new Response(JSON.stringify({
@@ -470,8 +608,11 @@ export class PerplexityWebExecutor extends BaseExecutor {
 
     let response;
     try {
-      response = await fetch(PPLX_SSE_ENDPOINT, fetchOptions);
+      response = await runQuotaBearingProviderRequest(
+        () => proxyAwareFetch(PPLX_SSE_ENDPOINT, fetchOptions, proxyOptions),
+      );
     } catch (err) {
+      if (isQuotaDispatchUnavailable(err)) throw err;
       log?.error?.("PPLX-WEB", `Fetch failed: ${err.message || String(err)}`);
       const errResp = new Response(JSON.stringify({
         error: { message: `Perplexity connection failed: ${err.message || String(err)}`, type: "upstream_error" },
@@ -511,10 +652,10 @@ export class PerplexityWebExecutor extends BaseExecutor {
     } else {
       finalResponse = await buildNonStreamingResponse(response.body, model, cid, created, parsed.history, parsed.currentMsg, signal);
     }
-    return { response: finalResponse, url: PPLX_SSE_ENDPOINT, headers, transformedBody: pplxBody };
+    return { response: finalResponse, url: PPLX_SSE_ENDPOINT, headers, transformedBody: pplxBody, terminalProvenance: "validated" };
   }
 }
 
-export { parseOpenAIMessages, buildQuery, buildPplxRequestBody, formatToolsHint, sessionKey };
+export { MAX_WORKFLOW_ANSWERS, parseOpenAIMessages, buildQuery, buildPplxRequestBody, formatToolsHint, seedWorkflowAnswer, sessionKey };
 
 export default PerplexityWebExecutor;

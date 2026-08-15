@@ -35,7 +35,6 @@ export class OpenCodeExecutor extends BaseExecutor {
   buildHeaders() {
     return {
       "Content-Type": "application/json",
-      "Authorization": "Bearer public",
       "x-opencode-client": "desktop",
       "Accept": "text/event-stream"
     };

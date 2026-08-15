@@ -34,11 +34,17 @@ const PUBLIC_API_PATHS = [
   "/api/auth/logout",
   "/api/auth/status",
   "/api/auth/oidc",
+  "/api/version",
+  "/api/settings/require-login",
+];
+
+// Public API paths matched by exact pathname only — no `/child` fallthrough.
+// A prefix match here would let an attacker reach an unrelated route by
+// nesting it under a trusted public prefix.
+const PUBLIC_API_EXACT_PATHS = [
   // One-time password-change proof recipient. Only valid proofs can drive
   // a write here; the route does not fall through to a session check.
   "/api/auth/change-password",
-  "/api/version",
-  "/api/settings/require-login",
 ];
 
 // Public top-level prefixes (LLM API endpoints with their own API key auth).
@@ -268,6 +274,7 @@ async function canAccessPxpipeRoute(request) {
 
 function isPublicApi(pathname) {
   if (isPublicLlmApi(pathname)) return true;
+  if (PUBLIC_API_EXACT_PATHS.includes(pathname)) return true;
   return PUBLIC_API_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 

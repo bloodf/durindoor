@@ -282,6 +282,34 @@ describe("dashboard guard public LLM API access", () => {
   });
 });
 
+describe("dashboard guard exact-match public API paths", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getSettings.mockResolvedValue({ requireLogin: true });
+    mocks.validateApiKey.mockResolvedValue(false);
+    mocks.getConsistentMachineId.mockResolvedValue("cli-token");
+    mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+    mocks.hasTrustedPeerHeaders.mockReturnValue(true);
+  });
+
+  it("allows the exact public change-password path without a session", async () => {
+    const response = await proxy(request("/api/auth/change-password", {
+      host: "router.example.com",
+    }));
+
+    expect(response).toBe(mocks.nextResponse);
+  });
+
+  it("rejects a nested path under the exact-match change-password route", async () => {
+    const response = await proxy(request("/api/auth/change-password/../settings", {
+      host: "router.example.com",
+    }));
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("Unauthorized");
+  });
+});
+
 describe("dashboard guard local-only access", () => {
   beforeEach(() => {
     vi.clearAllMocks();

@@ -79,6 +79,22 @@ describe("pingModelByKind reasoning models (#3010)", () => {
     expect(result.error).toMatch(/empty completion content/);
   });
 
+  it("rejects non-empty reasoning with blank content when finish_reason is 'stop' (length is required for soft-pass)", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({
+        choices: [
+          {
+            finish_reason: "stop",
+            message: { content: "", reasoning: "chained thought but never emitted content" },
+          },
+        ],
+      })
+    );
+    const result = await pingModelByKind("some/model", "llm", "http://127.0.0.1:20127");
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/empty completion content/);
+  });
+
   it("passes a normal answer with the larger budget", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ choices: [{ message: { content: "Hello!" } }] }));
     const result = await pingModelByKind("openai/gpt-4o", "llm", "http://127.0.0.1:20127");

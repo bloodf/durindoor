@@ -10,7 +10,7 @@ describe("estimateCompressionTokens", () => {
     expect(estimateCompressionTokens(url)).toBe(Math.ceil(url.length / 4));
   });
 
-  it("strips base64 image data URI payloads before estimating (within scan window)", () => {
+  it("strips base64 image data URI payloads before estimating within the scan window", () => {
     const payload = "aGVsbG8=".repeat(100);
     const withImage = `before data:image/png;base64,${payload} after`;
     expect(estimateCompressionTokens(withImage)).toBe(Math.ceil("before  after".length / 4));
@@ -24,7 +24,7 @@ describe("estimateCompressionTokens", () => {
     expect(estimateCompressionTokens(audio)).toBe(Math.ceil(audio.length / 4));
   });
 
-  it("preserves a malformed/truncated image data URI unchanged", () => {
+  it("preserves malformed/truncated image data URIs unchanged", () => {
     const truncated = "before data:image/png;base64, after";
     expect(estimateCompressionTokens(truncated)).toBe(Math.ceil(truncated.length / 4));
 
@@ -46,13 +46,13 @@ describe("estimateCompressionTokens", () => {
     expect(estimateCompressionTokens(text)).toBe(Math.ceil("before  after".length / 4));
   });
 
-  it("skips scanning one char past the cap: raw length/4 fallback, base64 counted as text (documented tradeoff)", () => {
+  it("skips scanning one char past the cap and uses raw length/4 fallback", () => {
     const text = buildUriText(50_001);
     expect(text.length).toBe(50_001);
     expect(estimateCompressionTokens(text)).toBe(Math.ceil(50_001 / 4));
   });
 
-  it("never scans past the 50k cap for hostile huge base64 payloads (bounded CPU, not O(n))", () => {
+  it("does no per-character scan work for hostile huge base64 payloads", () => {
     const original = String.prototype.charCodeAt;
     let calls = 0;
     String.prototype.charCodeAt = function (...args) {
@@ -61,19 +61,17 @@ describe("estimateCompressionTokens", () => {
     };
     try {
       const oneMb = `data:image/png;base64,${"A".repeat(1_000_000)}`;
-      estimateCompressionTokens(oneMb);
-      expect(calls).toBe(0);
+      expect(estimateCompressionTokens(oneMb)).toBe(Math.ceil(oneMb.length / 4));
 
-      calls = 0;
       const hundredMb = `data:image/png;base64,${"A".repeat(100_000_000)}`;
-      estimateCompressionTokens(hundredMb);
+      expect(estimateCompressionTokens(hundredMb)).toBe(Math.ceil(hundredMb.length / 4));
       expect(calls).toBe(0);
     } finally {
       String.prototype.charCodeAt = original;
     }
   });
 
-  it("bounds scan iterations to the input size for text at/under the cap", () => {
+  it("bounds scan iterations to 50k chars at the cap", () => {
     const original = String.prototype.charCodeAt;
     let calls = 0;
     String.prototype.charCodeAt = function (...args) {
@@ -81,8 +79,7 @@ describe("estimateCompressionTokens", () => {
       return original.apply(this, args);
     };
     try {
-      const atCap = buildUriText(50_000);
-      estimateCompressionTokens(atCap);
+      estimateCompressionTokens(buildUriText(50_000));
       expect(calls).toBeLessThanOrEqual(50_000);
     } finally {
       String.prototype.charCodeAt = original;

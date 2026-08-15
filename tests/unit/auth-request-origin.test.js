@@ -15,3 +15,17 @@ describe("hasExactRequestOrigin", () => {
     expect(hasExactRequestOrigin(request({ origin: "https://evil.test", "x-forwarded-host": "evil.test", "x-forwarded-proto": "https" }))).toBe(false);
   });
 });
+
+describe("hasTrustedLocalOrigin", () => {
+  it("accepts loopback hostnames with IPv4, IPv6, and ports", async () => {
+    const { hasTrustedLocalOrigin } = await import("../../src/lib/auth/requestOrigin.js");
+    expect(hasTrustedLocalOrigin(request({ host: "localhost:20128", origin: "http://localhost:20128" }))).toBe(true);
+    expect(hasTrustedLocalOrigin(request({ host: "127.0.0.1:20128", origin: "http://127.0.0.1:20128" }))).toBe(true);
+    expect(hasTrustedLocalOrigin(request({ host: "[::1]:20128", origin: "http://[::1]:20128" }))).toBe(true);
+  });
+
+  it("rejects matching attacker host and Origin after DNS rebinding", async () => {
+    const { hasTrustedLocalOrigin } = await import("../../src/lib/auth/requestOrigin.js");
+    expect(hasTrustedLocalOrigin(request({ host: "evil.example:20128", origin: "http://evil.example:20128" }))).toBe(false);
+  });
+});

@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   issuePasswordChangeProof: vi.fn(() => "password-change-proof"),
   consoleError: vi.fn(),
   hasExactRequestOrigin: vi.fn(() => true),
+  hasTrustedLocalOrigin: vi.fn(() => true),
 }));
 
 vi.mock("next/server", () => ({ NextResponse: { json: mocks.json } }));
@@ -27,7 +28,7 @@ vi.mock("@/lib/auth/dashboardSession", () => ({
   setDashboardAuthCookie: mocks.setDashboardAuthCookie,
 }));
 vi.mock("@/lib/auth/oidc", () => ({ isOidcConfigured: mocks.isOidcConfigured }));
-vi.mock("@/lib/auth/requestOrigin", () => ({ hasExactRequestOrigin: mocks.hasExactRequestOrigin }));
+vi.mock("@/lib/auth/requestOrigin", () => ({ hasExactRequestOrigin: mocks.hasExactRequestOrigin, hasTrustedLocalOrigin: mocks.hasTrustedLocalOrigin }));
 vi.mock("@/lib/auth/loginLimiter", () => ({
   checkLock: mocks.checkLock, recordFail: mocks.recordFail, recordSuccess: mocks.recordSuccess, getClientIp: mocks.getClientIp,
 }));
@@ -54,6 +55,7 @@ describe("POST /api/auth/login default-password safety", () => {
     mocks.isLocalRequest.mockReturnValue(false);
     vi.spyOn(console, "error").mockImplementation(mocks.consoleError);
     mocks.hasExactRequestOrigin.mockReturnValue(true);
+    mocks.hasTrustedLocalOrigin.mockReturnValue(true);
   });
 
   it("logs a redacted error event and returns a stable code on unexpected failure", async () => {
@@ -159,5 +161,39 @@ describe("POST /api/auth/login default-password safety", () => {
     expect(response.body).toEqual({ error: "Login state changed, please retry" });
     expect(mocks.setDashboardAuthCookie).not.toHaveBeenCalled();
     expect(mocks.recordSuccess).not.toHaveBeenCalled();
+  });
+
+  it("treats a loopback peer with an attacker Host and Origin as remote", async () => {
+    mocks.isLocalRequest.mockReturnValue(true);
+    mocks.hasTrustedLocalOrigin.mockReturnValue(false);
+
+    const response = await POST(request("123456", { host: "evil.example:20128", origin: "http://evil.example:20128" }));
+
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({ success: true, mustChangePassword: true });
+    expect(mocks.issuePasswordChangeProof).not.toHaveBeenCalled();
+  });
+
+  it("falls through to the remote branch when only Host is loopback but Origin is rebinding target", async () => {
+    mocks.isLocalRequest.mockReturnValue(true);
+    mocks.hasTrustedLocalOrigin.mockReturnValue(false);
+
+    const response = await POST(request("123456", { host: "localhost:20128", origin: "http://evil.example" }));
+
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({ success: true, mustChangePassword: true });
+    expect(mocks.issuePasswordChangeProof).not.toHaveBeenCalled();
+  });
+
+  it("requires an Origin when only Host is provided to issue a proof", async () => {
+    mocks.isLocalRequest.mockReturnValue(true);
+    mocks.hasTrustedLocalOrigin.mockReturnValue(false);
+    mocks.hasExactRequestOrigin.mockReturnValue(true);
+
+    const response = await POST(request("123456", { host: "evil.example" }));
+
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({ success: true, mustChangePassword: true });
+    expect(mocks.issuePasswordChangeProof).not.toHaveBeenCalled();
   });
 });

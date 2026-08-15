@@ -31,9 +31,7 @@ function remember(key, value, now = Date.now()) {
   pruneMemory(now);
 }
 
-export function prunePersisted(db, now = Date.now(), cap = MAX_SIGNATURES) {
-  if (++writesSincePrune < 100) return;
-  writesSincePrune = 0;
+export function prunePersistedNow(db, now = Date.now(), cap = MAX_SIGNATURES) {
   try {
     const rows = db.all("SELECT key, value FROM kv WHERE scope = ?", [NAMESPACE]);
     const live = [];
@@ -46,7 +44,12 @@ export function prunePersisted(db, now = Date.now(), cap = MAX_SIGNATURES) {
     if (live.length > cap) for (const row of live.slice(0, live.length - cap)) db.run("DELETE FROM kv WHERE scope = ? AND key = ?", [NAMESPACE, row.key]);
   } catch { /* persistence is best-effort */ }
 }
-export function _pruneForTests(cap) { const db = dbOrNull(); if (db) prunePersisted(db, Date.now(), cap); }
+export function prunePersisted(db, now = Date.now(), cap = MAX_SIGNATURES) {
+  if (++writesSincePrune < 100) return;
+  writesSincePrune = 0;
+  prunePersistedNow(db, now, cap);
+}
+export function _pruneForTests(cap) { const db = dbOrNull(); if (db) prunePersistedNow(db, Date.now(), cap); }
 
 export function buildGeminiThoughtSignatureKey(namespace, toolCallId) {
   return typeof namespace === "string" && namespace && typeof toolCallId === "string" && toolCallId ? `${namespace}:${toolCallId}` : null;

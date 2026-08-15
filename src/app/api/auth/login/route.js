@@ -93,16 +93,28 @@ export async function POST(request) {
           { status: 403, headers: NO_STORE_HEADERS }
         );
       }
-
       const currentSettings = await getSettings();
       if ((currentSettings.passwordSessionEpoch ?? "initial") !== (settings.passwordSessionEpoch ?? "initial")) {
         return NextResponse.json({ error: "Login state changed, please retry" }, { status: 409, headers: NO_STORE_HEADERS });
       }
-      recordSuccess(ip);
       const cookieStore = await cookies();
-      await setDashboardAuthCookie(cookieStore, request, { passwordSessionEpoch: settings.passwordSessionEpoch ?? "initial" });
-      return NextResponse.json({ success: true, mustChangePassword: false }, { headers: NO_STORE_HEADERS });
+      try {
+        await setDashboardAuthCookie(cookieStore, request, { passwordSessionEpoch: settings.passwordSessionEpoch ?? "initial" }, async () => {
+          const after = await getSettings();
+          if ((after.passwordSessionEpoch ?? "initial") !== (settings.passwordSessionEpoch ?? "initial")) {
+            throw new Error("LOGIN_EPOCH_RACE");
+          }
+        });
+        recordSuccess(ip);
+        return NextResponse.json({ success: true, mustChangePassword: false }, { headers: NO_STORE_HEADERS });
+      } catch (error) {
+        if (error && error.message === "LOGIN_EPOCH_RACE") {
+          return NextResponse.json({ error: "Login state changed, please retry" }, { status: 409, headers: NO_STORE_HEADERS });
+        }
+        throw error;
+      }
     }
+
 
     const { remainingBeforeLock } = recordFail(ip);
     const postLock = checkLock(ip);

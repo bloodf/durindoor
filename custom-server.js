@@ -98,6 +98,12 @@ function installRequestWrapper({ httpModule = http, secret, peerToken, verifyPee
       delete req.headers[CONTROL_PROOF_HEADER];
       delete req.headers[CONTROL_PORT_HEADER];
       delete req.headers["x-9r-peer-token"];
+      // Forwarded origin headers are request-controlled even on loopback: a
+      // local process can send them directly instead of using a proxy. OIDC
+      // reverse-proxy deployments configure BASE_URL, so remove them at the
+      // boundary for every request.
+      delete req.headers["x-forwarded-host"];
+      delete req.headers["x-forwarded-proto"];
       req.headers["x-9r-real-ip"] = ip;
       if (viaProxy) req.headers["x-9r-via-proxy"] = "1";
       req.headers["x-9r-peer-token"] = trustedPeerToken;

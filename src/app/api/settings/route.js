@@ -192,8 +192,14 @@ export async function PATCH(request) {
     if (willChangePassword) resetPasswordChangeProofs();
     if (willChangePassword) {
       try {
-        await setDashboardAuthCookie(await cookies(), request, { passwordSessionEpoch });
-      } catch {
+        await setDashboardAuthCookie(await cookies(), request, { passwordSessionEpoch }, async () => {
+          const after = await getSettings();
+          if (after.passwordSessionEpoch !== passwordSessionEpoch) throw new Error("SETTINGS_EPOCH_RACE");
+        });
+      } catch (error) {
+        if (error?.message === "SETTINGS_EPOCH_RACE") {
+          return NextResponse.json({ error: "Password change conflict, please retry" }, { status: 409, headers: SETTINGS_RESPONSE_HEADERS });
+        }
         console.error("[settings] password session cookie failed");
         return NextResponse.json({ reauthenticate: true }, { headers: SETTINGS_RESPONSE_HEADERS });
       }

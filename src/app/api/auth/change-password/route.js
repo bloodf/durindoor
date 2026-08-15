@@ -21,19 +21,13 @@ export const dynamic = "force-dynamic";
 export async function POST(request) {
   try {
     const { proof, newPassword } = await request.json().catch(() => ({}));
-    if (typeof proof !== "string" || !proof) {
-      return NextResponse.json({ error: "Missing password-change proof" }, { status: 403 });
-    }
+    if (typeof proof !== "string" || !proof) return NextResponse.json({ error: "Missing password-change proof" }, { status: 403 });
     const validation = validateDashboardPassword(newPassword);
-    if (validation) {
-      return NextResponse.json({ error: validation }, { status: 400 });
-    }
+    if (validation) return NextResponse.json({ error: validation }, { status: 400 });
 
     const ip = getClientIp(request);
     const reservation = reservePasswordChangeProof(proof, ip);
-    if (!reservation) {
-      return NextResponse.json({ error: "Invalid or expired password-change proof" }, { status: 403 });
-    }
+    if (!reservation) return NextResponse.json({ error: "Invalid or expired password-change proof" }, { status: 403 });
 
     try {
       const salt = await bcrypt.genSalt(10);
@@ -54,8 +48,14 @@ export async function POST(request) {
       resetPasswordChangeProofs();
       try {
         const cookieStore = await cookies();
-        await setDashboardAuthCookie(cookieStore, request, { passwordSessionEpoch: newEpoch });
-      } catch {
+        await setDashboardAuthCookie(cookieStore, request, { passwordSessionEpoch: newEpoch }, async () => {
+          const after = await getSettings();
+          if (after.passwordSessionEpoch !== newEpoch) throw new Error("CHANGE_EPOCH_RACE");
+        });
+      } catch (error) {
+        if (error?.message === "CHANGE_EPOCH_RACE") {
+          return NextResponse.json({ error: "Password change conflict, please retry" }, { status: 409 });
+        }
         console.error("[auth] password change cookie failed");
         return NextResponse.json({ success: true, reauthenticate: true });
       }

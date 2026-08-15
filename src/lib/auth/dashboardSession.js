@@ -19,15 +19,34 @@ export const DEFAULT_PASSWORD = "123456";
 // not each kick off cost-10 bcrypt. The `promise` slot is reused until the
 // call resolves; a rejected call clears both slots so a later GET retries
 // instead of getting a stuck "false" answer.
-let defaultPasswordCache = { value: null, populated: false, promise: null };
+//
+// Keyed by the effective password source (stored hash, or INITIAL_PASSWORD
+// value) rather than just "populated": if the source changes between calls
+// without an explicit invalidate, the cache still recomputes instead of
+// serving a stale answer for a different password. `generation` guards a
+// slow in-flight compute from clobbering the slot after an explicit
+// invalidate fires mid-flight — the stale result is still returned to its
+// own caller, it just never gets published.
+let cacheGeneration = 0;
+let defaultPasswordCache = { key: null, value: null, populated: false, promise: null };
+
+function effectivePasswordKey(settings) {
+  if (settings?.password) return `hash:${settings.password}`;
+  return `env:${process.env.INITIAL_PASSWORD ?? ""}`;
+}
 
 export function invalidateDefaultPasswordCache() {
-  defaultPasswordCache = { value: null, populated: false, promise: null };
+  cacheGeneration += 1;
+  defaultPasswordCache = { key: null, value: null, populated: false, promise: null };
 }
 
 export async function isUsingDefaultPassword(settings) {
-  if (defaultPasswordCache.populated) return defaultPasswordCache.value;
-  if (defaultPasswordCache.promise) return defaultPasswordCache.promise;
+  const key = effectivePasswordKey(settings);
+  if (defaultPasswordCache.key === key) {
+    if (defaultPasswordCache.populated) return defaultPasswordCache.value;
+    if (defaultPasswordCache.promise) return defaultPasswordCache.promise;
+  }
+  const generation = cacheGeneration;
   const promise = (async () => {
     try {
       let result;
@@ -37,14 +56,18 @@ export async function isUsingDefaultPassword(settings) {
         const initialPassword = process.env.INITIAL_PASSWORD;
         result = !initialPassword || initialPassword === DEFAULT_PASSWORD;
       }
-      defaultPasswordCache = { value: result, populated: true, promise: null };
+      if (cacheGeneration === generation) {
+        defaultPasswordCache = { key, value: result, populated: true, promise: null };
+      }
       return result;
     } catch (error) {
-      defaultPasswordCache = { value: null, populated: false, promise: null };
+      if (cacheGeneration === generation) {
+        defaultPasswordCache = { key: null, value: null, populated: false, promise: null };
+      }
       throw error;
     }
   })();
-  defaultPasswordCache = { value: null, populated: false, promise };
+  defaultPasswordCache = { key, value: null, populated: false, promise };
   return promise;
 }
 

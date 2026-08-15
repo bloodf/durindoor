@@ -19,8 +19,13 @@ const getHermesEnvPath = () => path.join(getHermesDir(), ".env");
 // Match top-level "model:" block (until next non-indented, non-empty line)
 const MODEL_BLOCK_RE = /^model:[ \t]*\r?\n((?:[ \t]+.*\r?\n?|[ \t]*\r?\n)*)/m;
 
-const buildModelBlock = (model, baseUrl) =>
-  `model:\n  default: "${model}"\n  provider: "custom"\n  base_url: "${baseUrl}"\n  api_key: \${OPENAI_API_KEY}\n`;
+const escapeYamlString = (value) => String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+
+const buildModelBlock = (model, baseUrl) => {
+  const safeModel = escapeYamlString(model);
+  const safeBaseUrl = escapeYamlString(baseUrl);
+  return `model:\n  default: "${safeModel}"\n  provider: "custom"\n  base_url: "${safeBaseUrl}"\n  api_key: \${OPENAI_API_KEY}\n`;
+};
 
 // Parse current model block back to fields (best-effort, simple key:value)
 const parseModelBlock = (yaml) => {
@@ -124,6 +129,9 @@ export async function POST(request) {
     const { baseUrl, apiKey, model } = await request.json();
     if (!baseUrl || !model) {
       return NextResponse.json({ error: "baseUrl and model are required" }, { status: 400 });
+    }
+    if (apiKey && /[\r\n]/.test(apiKey)) {
+      return NextResponse.json({ error: "apiKey must not contain line breaks" }, { status: 400 });
     }
 
     const dir = getHermesDir();

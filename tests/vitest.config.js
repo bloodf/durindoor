@@ -11,6 +11,12 @@ const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const hasCloud = existsSync(resolve(__dirname, "../cloud"));
 
 export default defineConfig({
+  oxc: {
+    include: /src\/app\/\(dashboard\)\/dashboard\/providers\/\[id\]\/.*\.js$/,
+    exclude: [],
+    lang: "jsx",
+    jsx: { runtime: "automatic" },
+  },
   test: {
     environment: "node",
     globals: true,

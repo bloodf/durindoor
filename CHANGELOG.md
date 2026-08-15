@@ -34,10 +34,16 @@ Compatible-provider icons now accept bounded raster `data:image/...;base64,...`
 URLs as well as bounded HTTP(S) URLs. Invalid schemes, malformed or oversized
 payloads, and unsanitized SVG data are rejected before persistence; create and
 edit dialogs show the server error instead of silently failing.
-Compression token estimation no longer counts embedded base64 image data URI
-payloads as text. `estimateCompressionTokens` strips `data:image/...;base64,...`
-segments before measuring length, so attachments with inline images report
-accurate token savings instead of inflated originals.
+
+Compression token estimation now strips embedded base64 image data URI
+payloads (`data:image/...;base64,...`) before measuring length, so
+attachments with inline images report accurate token savings instead of
+inflated originals. The strip scan is bounded by a 50_000-char cap
+(matching upstream `MAX_EXACT_TOKEN_COUNT_CHARS`); inputs above the
+cap bypass the scan and use a raw `length/4` heuristic, so hostile
+multi-MB payloads cannot drive linear CPU work.
+
+`estimateCompressionTokens` is the only token estimator in the fork; non-image data URIs (e.g. `data:audio/mpeg;base64,...`), malformed or truncated image URIs, and plain text are unaffected.
 # 3.15.2
 
 Authenticated dashboards reached through a reverse proxy can manage PXPIPE

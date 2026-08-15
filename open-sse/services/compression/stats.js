@@ -7,6 +7,11 @@ import {
 
 const CHARS_PER_TOKEN = 4;
 const BASE64_IMAGE_DATA_URI_PREFIX = "data:image/";
+// Above this length, skip the base64-stripping scan and use the raw
+// length/4 heuristic. Mirrors upstream tiktokenCounter.ts's
+// MAX_EXACT_TOKEN_COUNT_CHARS: bounds scan cost regardless of input size
+// (hostile multi-MB base64 payloads must not drive linear scan work).
+const MAX_EXACT_TOKEN_COUNT_CHARS = 50_000;
 
 function isBase64Char(charCode) {
   return (
@@ -49,6 +54,9 @@ export function estimateCompressionTokens(text) {
   if (!text) return 0;
   const str = typeof text === "string" ? text : JSON.stringify(text);
   if (!str) return 0;
+  if (str.length > MAX_EXACT_TOKEN_COUNT_CHARS) {
+    return Math.ceil(str.length / 4);
+  }
   return Math.ceil(countTextChars(str) / CHARS_PER_TOKEN);
 }
 

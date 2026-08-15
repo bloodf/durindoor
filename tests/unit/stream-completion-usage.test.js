@@ -304,4 +304,19 @@ describe("SSE completion accounting", () => {
     expect(summary.choices[0].message.content.length).toBeLessThanOrEqual(64 * 1024);
     expect(summary.choices[0].message.tool_calls).toHaveLength(64);
   });
+
+  it("rejects oversized Gemini function arguments without inventing fields", async () => {
+    const onComplete = vi.fn();
+    const transform = createPassthroughStreamWithLogger(
+      "gemini", null, null, "gemini-test", "connection-1", {}, onComplete, null, FORMATS.GEMINI,
+    );
+
+    await pipeText(transform, [
+      `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ functionCall: { name: "weather", args: { city: "x".repeat(16 * 1024) } } }] } }] })}\n\n`,
+    ]);
+
+    expect(onComplete.mock.calls[0][3]).toMatchObject({
+      providerResponse: { candidates: [{ content: { parts: [{ functionCall: { name: "weather", args: {} } }] } }] },
+    });
+  });
 });

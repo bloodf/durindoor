@@ -16,6 +16,14 @@ vi.mock("../../open-sse/executors/index.js", () => ({
 vi.mock("../../open-sse/utils/requestLogger.js", () => ({
   createRequestLogger: mocks.createRequestLogger,
 }));
+vi.mock("open-sse/providers/shared.js", () => ({
+  ANTIGRAVITY_OAUTH_CLIENT: {},
+  GOOGLE_OAUTH_CLIENT: {},
+}));
+vi.mock("open-sse/providers/index.js", () => ({
+  PROVIDER_OAUTH: {},
+  PROVIDERS: {},
+}));
 vi.mock("../../open-sse/utils/bypassHandler.js", () => ({ handleBypassRequest: vi.fn(() => null) }));
 vi.mock("../../open-sse/utils/clientDetector.js", () => ({
   detectClientTool: vi.fn(() => null), isNativePassthrough: vi.fn(() => false),
@@ -26,7 +34,12 @@ vi.mock("../../open-sse/utils/streamHandler.js", () => ({
 }));
 vi.mock("../../open-sse/handlers/chatCore/streamingHandler.js", () => ({ buildOnStreamComplete: vi.fn(() => vi.fn()), handleStreamingResponse: vi.fn() }));
 vi.mock("../../open-sse/handlers/chatCore/nonStreamingHandler.js", () => ({ handleNonStreamingResponse: mocks.handleNonStreamingResponse }));
-vi.mock("@/lib/usageDb.js", () => ({ trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(), appendRequestLog: vi.fn(), saveRequestDetail: vi.fn() }));
+vi.mock("@/lib/usageDb.js", () => ({
+  trackPendingRequest: vi.fn(),
+  finishActiveSession: vi.fn(),
+  appendRequestLog: vi.fn(() => Promise.resolve()),
+  saveRequestDetail: vi.fn(),
+}));
 
 const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
 

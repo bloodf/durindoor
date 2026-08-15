@@ -213,19 +213,51 @@ describe("SSE completion accounting", () => {
     });
   });
 
-  it("ingests an unterminated final passthrough JSON event", async () => {
+  it("ingests unterminated passthrough usage and tool metadata into the provider summary", async () => {
     const onComplete = vi.fn();
     const transform = createPassthroughStreamWithLogger(
       "openai", null, null, "gpt-test", "connection-1", {}, onComplete,
     );
 
     await pipeText(transform, [
-      `data: ${JSON.stringify({ choices: [{ delta: { content: "tail" }, finish_reason: "stop" }], usage: { total_tokens: 3 } })}`,
+      `data: ${JSON.stringify({ choices: [{ delta: { content: "tail", tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name: "weather", arguments: "{\"city\":\"Paris\"}" } }] }, finish_reason: "tool_calls" }], usage: { total_tokens: 3 } })}`,
     ]);
 
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(onComplete.mock.calls[0][0]).toMatchObject({ content: "tail" });
+    expect(onComplete.mock.calls[0][1]).toMatchObject({ total_tokens: 3 });
     expect(onComplete.mock.calls[0][3]).toMatchObject({
-      providerResponse: { usage: { total_tokens: 3 }, choices: [{ message: { content: "tail" }, finish_reason: "stop" }] },
+      providerResponse: {
+        usage: { total_tokens: 3 },
+        choices: [{
+          finish_reason: "tool_calls",
+          message: {
+            content: "tail",
+            tool_calls: [{ id: "call_1", function: { name: "weather", arguments: "{\"city\":\"Paris\"}" } }],
+          },
+        }],
+      },
     });
+  });
+
+  it("caps the number of scalar usage fields in the provider summary", async () => {
+    const onComplete = vi.fn();
+    const transform = createPassthroughStreamWithLogger(
+      "openai", null, null, "gpt-test", "connection-1", {}, onComplete,
+    );
+
+    const hugeUsage = {};
+    for (let i = 0; i < 200; i++) hugeUsage[`k_${i}`] = i;
+
+    await pipeText(transform, [
+      `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }], usage: hugeUsage })}\n\n`,
+      "data: [DONE]\n\n",
+    ]);
+
+    const providerResponse = onComplete.mock.calls[0][3].providerResponse;
+    expect(Object.keys(providerResponse.usage)).toHaveLength(64);
+    expect(providerResponse.usage.k_0).toBe(0);
+    expect(providerResponse.usage.k_63).toBe(63);
   });
 
   it("composes Responses function calls from incremental tool events", async () => {

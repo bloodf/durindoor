@@ -73,11 +73,11 @@ export function getClaudeUsage(accessToken, proxyOptions = null, authType = "oau
   }
 
   const cacheKey = getOAuthCacheKey(accessToken);
-  const pending = oauthQuotaInFlight.get(cacheKey);
-  if (pending) return pending;
-
   const cached = getOAuthCacheEntry(cacheKey);
   if (!options.force && cached) return Promise.resolve(cached.data);
+
+  const pending = oauthQuotaInFlight.get(cacheKey);
+  if (pending) return pending;
 
   let request;
   request = pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey).finally(() => {

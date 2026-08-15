@@ -9,7 +9,7 @@ const quotaResponse = (utilization = 10) => ({
   ok: true,
   status: 200,
   json: async () => ({ five_hour: { utilization, resets_at: "2026-08-15T12:00:00Z" } }),
-  text: async () => "{}", 
+  text: async () => "{}",
 });
 
 const load = () => import("../../open-sse/services/usage/claude.js");

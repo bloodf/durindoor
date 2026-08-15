@@ -11,12 +11,12 @@ import {
 } from "../../open-sse/services/geminiThoughtSignatureStore.js";
 
 const signature = "EhAKDmNhY2hlZC1zaWduYXR1cmU=";
-
 function geminiToolCall(id, name, thoughtSignature = undefined) {
-  return { candidates: [{ content: { parts: [
-    ...(thoughtSignature ? [{ thoughtSignature }] : []),
-    { functionCall: { id, name, args: { query: id } } },
-  ] } }] };
+  return { candidates: [{ content: { parts: [{ functionCall: { id, name, args: { query: id } }, ...(thoughtSignature ? { thoughtSignature } : {}) }] } }] };
+}
+
+function geminiThoughtText(text, thoughtSignature) {
+  return { candidates: [{ content: { parts: [{ thought: true, text, thoughtSignature }] } }] };
 }
 
 function claudeFollowUp(ids, signatures = {}) {
@@ -87,6 +87,14 @@ describe("Gemini thoughtSignature direct Claude route", () => {
 
     expect(await getGeminiThoughtSignature("connection-parallel:toolu_p1")).toBe(`${signature}1`);
     expect(await getGeminiThoughtSignature("connection-parallel:toolu_p2")).toBe(`${signature}2`);
+  });
+
+  it("queues a signature carried by thought text for the next unsigned function call", async () => {
+    const state = { signatureNamespace: "connection-thought" };
+    translateResponse(FORMATS.CLAUDE, FORMATS.GEMINI, geminiThoughtText("thinking", `${signature}T`), state);
+    translateResponse(FORMATS.CLAUDE, FORMATS.GEMINI, geminiToolCall("toolu_thought", "read"), state);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(await getGeminiThoughtSignature("connection-thought:toolu_thought")).toBe(`${signature}T`);
   });
 
   it("evicts the oldest persisted signatures when the cap is exceeded, not the newest", async () => {

@@ -4,14 +4,16 @@ const { executeMock } = vi.hoisted(() => ({
   executeMock: vi.fn(),
 }));
 
-vi.mock("../../open-sse/executors/index.js", () => ({
+vi.mock("../../open-sse/executors/index.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   getExecutor: vi.fn(() => ({
     execute: executeMock,
     refreshCredentials: vi.fn().mockResolvedValue(null),
   })),
 }));
 
-vi.mock("../../open-sse/utils/requestLogger.js", () => ({
+vi.mock("../../open-sse/utils/requestLogger.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   createRequestLogger: vi.fn(async () => ({
     logClientRawRequest: vi.fn(),
     logRawRequest: vi.fn(),
@@ -22,17 +24,20 @@ vi.mock("../../open-sse/utils/requestLogger.js", () => ({
   })),
 }));
 
-vi.mock("../../open-sse/utils/clientDetector.js", () => ({
+vi.mock("../../open-sse/utils/clientDetector.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   detectClientTool: vi.fn(() => null),
   isNativePassthrough: vi.fn(() => false),
   isCodexOriginatedHeaders: vi.fn(() => false),
 }));
 
-vi.mock("../../open-sse/utils/bypassHandler.js", () => ({
+vi.mock("../../open-sse/utils/bypassHandler.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   handleBypassRequest: vi.fn(() => null),
 }));
 
-vi.mock("../../open-sse/utils/streamHandler.js", () => ({
+vi.mock("../../open-sse/utils/streamHandler.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   createStreamController: vi.fn(() => ({
     signal: undefined,
     startTime: Date.now(),
@@ -47,60 +52,78 @@ vi.mock("../../open-sse/utils/streamHandler.js", () => ({
   })),
 }));
 
-vi.mock("../../open-sse/services/tokenRefresh.js", () => ({
+vi.mock("../../open-sse/services/tokenRefresh.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   refreshWithRetry: vi.fn(),
 }));
 
-vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
+vi.mock("../../open-sse/utils/proxyFetch.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   default: vi.fn(),
   proxyAwareFetch: vi.fn(),
 }));
 
-vi.mock("../../open-sse/translator/formats/claude.js", () => ({
+vi.mock("../../open-sse/translator/formats/claude.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   normalizeClaudePassthrough: vi.fn(),
 }));
 
-vi.mock("../../open-sse/utils/toolDeduper.js", () => ({
+vi.mock("../../open-sse/utils/toolDeduper.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   dedupeTools: vi.fn((tools) => ({ tools, stripped: [] })),
 }));
 
-vi.mock("../../open-sse/rtk/caveman.js", () => ({ injectCaveman: vi.fn() }));
-vi.mock("../../open-sse/rtk/ponytail.js", () => ({ injectPonytail: vi.fn() }));
-vi.mock("../../open-sse/rtk/index.js", () => ({
+vi.mock("../../open-sse/rtk/caveman.js", async (importOriginal) => ({
+  ...(await importOriginal()),
+  injectCaveman: vi.fn(),
+}));
+vi.mock("../../open-sse/rtk/ponytail.js", async (importOriginal) => ({
+  ...(await importOriginal()),
+  injectPonytail: vi.fn(),
+}));
+vi.mock("../../open-sse/rtk/index.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   compressMessages: vi.fn(() => null),
   formatRtkLog: vi.fn(() => ""),
   resolveTokenSaverEnabled: vi.fn(() => true),
 }));
-vi.mock("../../open-sse/rtk/headroom.js", () => ({
+vi.mock("../../open-sse/rtk/headroom.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   compressWithHeadroom: vi.fn(async () => null),
   formatHeadroomLog: vi.fn(() => ""),
   formatHeadroomSizeLog: vi.fn(() => ""),
   isHeadroomPhantomSavings: vi.fn(() => false),
 }));
-vi.mock("../../open-sse/providers/capabilities.js", () => ({
+vi.mock("../../open-sse/providers/capabilities.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   getCapabilitiesForModel: vi.fn(() => ({})),
   resolveModelLimits: vi.fn(() => ({ contextWindow: 0, maxOutput: 0, known: false, source: "default" })),
 }));
-vi.mock("../../open-sse/translator/concerns/modality.js", () => ({
+vi.mock("../../open-sse/translator/concerns/modality.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   stripUnsupportedModalities: vi.fn(() => false),
 }));
-vi.mock("../../open-sse/translator/concerns/prefetch.js", () => ({
+vi.mock("../../open-sse/translator/concerns/prefetch.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   prefetchRemoteImages: vi.fn(async () => 0),
 }));
-vi.mock("../../open-sse/handlers/chatCore/requestDetail.js", () => ({
+vi.mock("../../open-sse/handlers/chatCore/requestDetail.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   buildRequestDetail: vi.fn((detail) => detail),
   extractRequestConfig: vi.fn((body, stream) => ({ body, stream })),
   extractUsageFromResponse: vi.fn((body) => body?.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }),
   saveUsageStats: vi.fn(),
 }));
-vi.mock("../../open-sse/utils/error.js", () => ({
+vi.mock("../../open-sse/utils/error.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   createErrorResult: vi.fn((status, message) => ({ success: false, status, error: message })),
   formatProviderError: vi.fn((error) => error.message),
   parseUpstreamError: vi.fn(),
   sanitizeErrorMessage: vi.fn((message) => String(message || "")),
   readBoundedResponseText: vi.fn((response) => response.text()),
 }));
-vi.mock("@/lib/usageDb.js", () => ({
+vi.mock("@/lib/usageDb.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   trackPendingRequest: vi.fn(),
   finishActiveSession: vi.fn(),
   appendRequestLog: vi.fn(() => Promise.resolve()),

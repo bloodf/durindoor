@@ -25,10 +25,11 @@ function buildOAuthUsageHeaders(accessToken) {
   };
 }
 
-// Bounded, token-keyed cache for successful OAuth quota responses. Expired
-// entries never mask provider failures.
+// Bounded, token-keyed cache for last-successful OAuth quota responses. On
+// transient failure, cached data keeps existing quota metadata available.
 const OAUTH_QUOTA_CACHE_MAX = 100;
 const OAUTH_QUOTA_CACHE_TTL_MS = 5 * 60 * 1000;
+const OAUTH_RATE_LIMIT_COOLDOWN_MS = 180 * 1000;
 
 const oauthQuotaCache = new Map();
 const oauthQuotaInFlight = new Map();
@@ -40,7 +41,18 @@ function getOAuthCacheKey(accessToken) {
 function getOAuthCacheEntry(key) {
   const entry = oauthQuotaCache.get(key);
   if (!entry) return null;
-  if (Date.now() - entry.cachedAt >= OAUTH_QUOTA_CACHE_TTL_MS) {
+  if (
+    Date.now() - entry.cachedAt >= OAUTH_QUOTA_CACHE_TTL_MS &&
+    Date.now() >= entry.rateLimitedUntil
+  ) {
+    oauthQuotaCache.delete(key);
+    return null;
+  }
+  if (
+    !isOAuthRateLimited(entry) &&
+    !entry.data?.quotas &&
+    entry.rateLimitedUntil
+  ) {
     oauthQuotaCache.delete(key);
     return null;
   }
@@ -52,7 +64,20 @@ function setOAuthCacheEntry(key, data) {
     const oldest = oauthQuotaCache.keys().next().value;
     oauthQuotaCache.delete(oldest);
   }
-  oauthQuotaCache.set(key, { data, cachedAt: Date.now() });
+  oauthQuotaCache.set(key, { data, cachedAt: Date.now(), rateLimitedUntil: 0 });
+}
+
+function setOAuthRateLimited(key, data) {
+  if (!oauthQuotaCache.has(key)) setOAuthCacheEntry(key, data);
+  oauthQuotaCache.get(key).rateLimitedUntil = Date.now() + OAUTH_RATE_LIMIT_COOLDOWN_MS;
+}
+
+function isOAuthRateLimited(entry) {
+  return Date.now() < entry.rateLimitedUntil;
+}
+
+function makeStaleResponse(entry, staleReason) {
+  return { ...entry.data, stale: true, rateLimited: true, staleReason };
 }
 
 async function parseErrorBody(response) {
@@ -74,20 +99,25 @@ export function getClaudeUsage(accessToken, proxyOptions = null, authType = "oau
 
   const cacheKey = getOAuthCacheKey(accessToken);
   const cached = getOAuthCacheEntry(cacheKey);
+  if (cached && isOAuthRateLimited(cached)) {
+    return Promise.resolve(cached.data?.quotas
+      ? makeStaleResponse(cached, "Rate limited; showing cached quota.")
+      : cached.data);
+  }
   if (!options.force && cached) return Promise.resolve(cached.data);
 
   const pending = oauthQuotaInFlight.get(cacheKey);
   if (pending) return pending;
 
   let request;
-  request = pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey).finally(() => {
+  request = pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey, cached).finally(() => {
     if (oauthQuotaInFlight.get(cacheKey) === request) oauthQuotaInFlight.delete(cacheKey);
   });
   oauthQuotaInFlight.set(cacheKey, request);
   return request;
 }
 
-async function pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey) {
+async function pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey, cached) {
   try {
     const oauthResponse = await proxyAwareFetch(CLAUDE_CONFIG.oauthUsageUrl, {
       method: "GET",
@@ -143,7 +173,18 @@ async function pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey) {
     const status = oauthResponse.status;
     const body = await parseErrorBody(oauthResponse);
 
-    if (status === 429 || (status >= 500 && status < 600)) {
+    if (status === 429) {
+      const result = cached?.data || { message: "Rate limited, try again later." };
+      setOAuthRateLimited(cacheKey, result);
+      return cached
+        ? makeStaleResponse(cached, "Rate limited; showing cached quota.")
+        : result;
+    }
+
+    if (status >= 500 && status < 600) {
+      if (cached) {
+        return { ...cached.data, stale: true, staleReason: "Claude usage temporarily unavailable; showing cached quota." };
+      }
       return { message: "Claude usage temporarily unavailable. Try again later." };
     }
 

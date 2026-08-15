@@ -56,6 +56,7 @@ export default defineConfig({
     alias: [
       { find: /^open-sse\//, replacement: resolve(__dirname, "../open-sse") + "/" },
       { find: "open-sse", replacement: resolve(__dirname, "../open-sse") },
+      { find: "jsonc-parser", replacement: resolve(__dirname, "node_modules/jsonc-parser/lib/umd/main.js") },
       { find: /^@\//, replacement: resolve(__dirname, "../src") + "/" },
     ],
   },

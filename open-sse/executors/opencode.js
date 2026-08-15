@@ -49,6 +49,7 @@ export class OpenCodeExecutor extends BaseExecutor {
     this._currentSessionId = opaqueSessionId(
       trustedSessionKey(credentials, requestContext, this._privateSessionKey),
     );
+    delete body.client_metadata;
     return injectReasoningContent({ provider: this.provider, model, body });
   }
 
@@ -63,15 +64,16 @@ export class OpenCodeExecutor extends BaseExecutor {
     const clientHeaders = new Headers(requestContext?.clientHeaders ?? credentials?.rawHeaders ?? {});
     const clientUa = clientHeaders.get("user-agent");
     const credentialToken = credentials?.apiKey || credentials?.accessToken || credentials?.authorization;
-    const hasPaidIdentity = Boolean(credentialToken);
+    const isNoAuthFallback = credentials?.id === "noauth" || credentials?.connectionId === "noauth";
+    const hasPaidIdentity = !isNoAuthFallback && Boolean(credentialToken);
     const baseHeaders = {
       "Content-Type": "application/json",
-      "Authorization": credentialToken
-        ? (credentialToken.startsWith?.("Bearer ") ? credentialToken : `Bearer ${credentialToken}`)
-        : "Bearer public",
       "x-opencode-client": clientHeaders.get("x-opencode-client") || "desktop",
       "Accept": stream ? "text/event-stream" : "*/*",
     };
+    if (hasPaidIdentity) {
+      baseHeaders.Authorization = credentialToken.startsWith?.("Bearer ") ? credentialToken : `Bearer ${credentialToken}`;
+    }
 
     if (hasPaidIdentity || isEnabled("OPENCODE_DISABLE_FREE_TIER_HEADERS")) {
       if (clientUa) baseHeaders["User-Agent"] = clientUa;

@@ -16,13 +16,15 @@ vi.mock("../../open-sse/executors/index.js", () => ({
 vi.mock("../../open-sse/utils/requestLogger.js", () => ({
   createRequestLogger: mocks.createRequestLogger,
 }));
-vi.mock("open-sse/providers/shared.js", () => ({
+vi.mock("open-sse/providers/shared.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   ANTIGRAVITY_OAUTH_CLIENT: {},
   GOOGLE_OAUTH_CLIENT: {},
+  CLAUDE_CLI_SPOOF_HEADERS: {},
 }));
-vi.mock("open-sse/providers/index.js", () => ({
+vi.mock("open-sse/providers/index.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   PROVIDER_OAUTH: {},
-  PROVIDERS: {},
 }));
 vi.mock("../../open-sse/utils/bypassHandler.js", () => ({ handleBypassRequest: vi.fn(() => null) }));
 vi.mock("../../open-sse/utils/clientDetector.js", () => ({

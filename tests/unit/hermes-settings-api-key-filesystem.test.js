@@ -7,7 +7,7 @@ const originalHome = process.env.HOME;
 
 const loadRoute = async (home) => {
   process.env.HOME = home;
-  return import(`@/app/api/cli-tools/hermes-settings/route.js?home=${encodeURIComponent(home)}`);
+  return import("@/app/api/cli-tools/hermes-settings/route.js");
 };
 
 afterEach(async () => {

@@ -760,13 +760,26 @@ export function createSSEStream(options = {}) {
                 injectedUsage = true;
               }
 
-              // Only Gemini-family terminal markers are safe for early
-              // completion. OpenAI sends finish_reason before an optional
-              // trailing usage-only chunk, so its callback must wait for
-              // stream flush to preserve authoritative usage.
-              // Gemini completion is deferred to flush() so trailing
-              // usageMetadata / functionCall parts survive (providerSummary
-              // sees them before finalize() runs).
+              // OpenAI finish_reason can precede a usage-only chunk, so its
+              // callback waits for flush. Wrapped Antigravity terminal chunks
+              // do not. A direct Gemini shape without a declared wire format
+              // is the legacy helper contract and completes immediately;
+              // explicit Gemini streams defer so trailing usage/tool parts win.
+              const immediateGeminiTerminal =
+                parsed.response?.candidates?.some?.((candidate) => candidate?.finishReason)
+                || (targetFormat == null && parsed.candidates?.some?.((candidate) => candidate?.finishReason));
+              if (immediateGeminiTerminal && onStreamComplete && !onStreamCompleteFired) {
+                if (!hasValidUsage(usage) && totalContentLength > 0) {
+                  usage = mergeUsage(usage, estimateUsage(body, totalContentLength, FORMATS.GEMINI));
+                }
+                onStreamCompleteFired = true;
+                onStreamComplete(
+                  { content: accumulatedContent, thinking: accumulatedThinking },
+                  usage,
+                  ttftAt,
+                  providerSummary.finalize(usage),
+                );
+              }
               if (toolNameDecloaked && !injectedUsage) {
                 output = isDataLine ? `data: ${JSON.stringify(parsed)}\n` : `${JSON.stringify(parsed)}\n`;
                 injectedUsage = true;
@@ -910,6 +923,13 @@ export function createSSEStream(options = {}) {
         }
 
         currentOpenAIResponsesEvent = null;
+
+        // Antigravity terminal chunks carry final content and usageMetadata.
+        if ((provider === "antigravity" || provider === "agy") && parsed.response?.candidates?.some?.((candidate) => candidate?.finishReason) && onStreamComplete && !onStreamCompleteFired) {
+          if (!hasValidUsage(state.usage) && totalContentLength > 0) state.usage = mergeUsage(state.usage, estimateUsage(body, totalContentLength, FORMATS.GEMINI));
+          onStreamCompleteFired = true;
+          onStreamComplete({ content: accumulatedContent, thinking: accumulatedThinking }, state.usage, ttftAt, providerSummary.finalize(state.usage));
+        }
 
         // Provider-specific normalization must also run in TRANSLATE mode:
         // SenseNova maps delta.reasoning -> delta.reasoning_content so

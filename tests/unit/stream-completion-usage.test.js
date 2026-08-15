@@ -26,6 +26,17 @@ async function pipeText(transform, chunks) {
   return new Response(source.pipeThrough(transform)).text();
 }
 
+async function readFrame(reader) {
+  const decoder = new TextDecoder();
+  let text = "";
+  while (!text.endsWith("\n\n")) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    text += decoder.decode(value, { stream: true });
+  }
+  return text;
+}
+
 describe("SSE completion accounting", () => {
   it("waits for trailing OpenAI usage after finish_reason in passthrough mode", async () => {
     const onComplete = vi.fn();
@@ -289,14 +300,15 @@ describe("SSE completion accounting", () => {
     const writer = transform.writable.getWriter();
     const reader = transform.readable.getReader();
     const firstWrite = writer.write(encoder.encode(`data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: "answer" }] }, finishReason: "STOP" }] })}\n\n`));
-    await reader.read();
+    await readFrame(reader);
     await firstWrite;
     expect(onComplete).not.toHaveBeenCalled();
     const secondWrite = writer.write(encoder.encode(`data: ${JSON.stringify({ candidates: [{ content: { parts: [{ functionCall: { name: "weather", args: { city: "Paris" } } }] } }], usageMetadata: { promptTokenCount: 3 } })}\n\n`));
-    await reader.read();
+    await readFrame(reader);
     await secondWrite;
-    await writer.close();
+    const close = writer.close();
     await reader.read();
+    await close;
 
     expect(onComplete.mock.calls[0][3]).toMatchObject({
       providerResponse: { usageMetadata: { promptTokenCount: 3 }, candidates: [{ content: { parts: [{ text: "answer" }, { functionCall: { name: "weather" } }] } }] },

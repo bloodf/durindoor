@@ -288,7 +288,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       return connectionId || "";
     }
   })();
-  const requestContext = captureRequestContext(body, clientRawRequest, modelCapabilities, sessionSeed);
+  let requestContext = captureRequestContext(body, clientRawRequest, modelCapabilities, sessionSeed);
   ({ body, clientRawRequest } = stripLegacyCompactMarker(body, clientRawRequest));
   // Proposed id remains stable even if fail-open dashboard tracking cannot allocate a row.
   const requestedUsageEventId = globalThis.crypto?.randomUUID?.() || `${requestStartTime}-${Math.random().toString(36).slice(2)}`;

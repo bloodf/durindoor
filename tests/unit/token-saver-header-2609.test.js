@@ -5,14 +5,16 @@ const { executeMock, runCompressionSeamMock } = vi.hoisted(() => ({
   runCompressionSeamMock: vi.fn(async (body) => ({ body, headerValue: null })),
 }));
 
-vi.mock("../../open-sse/executors/index.js", () => ({
+vi.mock("../../open-sse/executors/index.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   getExecutor: () => ({
     noAuth: true,
     execute: executeMock,
   }),
 }));
 
-vi.mock("../../open-sse/utils/requestLogger.js", () => ({
+vi.mock("../../open-sse/utils/requestLogger.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   createRequestLogger: async () => ({
     logClientRawRequest: vi.fn(),
     logRawRequest: vi.fn(),
@@ -23,18 +25,21 @@ vi.mock("../../open-sse/utils/requestLogger.js", () => ({
   }),
 }));
 
-vi.mock("../../open-sse/utils/stream.js", () => ({
+vi.mock("../../open-sse/utils/stream.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   COLORS: { red: "", reset: "" },
   createPassthroughStreamWithLogger: vi.fn(() => new TransformStream()),
 }));
 
-vi.mock("@/lib/usageDb.js", () => ({
+vi.mock("@/lib/usageDb.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   trackPendingRequest: vi.fn(),
   appendRequestLog: vi.fn(async () => {}),
   saveRequestDetail: vi.fn(async () => {}),
 }));
 
-vi.mock("../../open-sse/handlers/chatCore/compressionHook.js", () => ({
+vi.mock("../../open-sse/handlers/chatCore/compressionHook.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   runCompressionSeam: runCompressionSeamMock,
 }));
 

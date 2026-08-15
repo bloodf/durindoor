@@ -121,7 +121,7 @@ describe("stream success lifecycle", () => {
 
     const detail = saveRequestDetail.mock.calls.at(-1)[0];
     expect(detail.response.content).toBe("tail");
-    expect(detail.tokens).toMatchObject({ k_0: 0, k_63: 63 });
+    expect(detail.tokens).toMatchObject({ estimated: true });
     expect(Object.keys(detail.providerResponse.usage)).toHaveLength(64);
     expect(detail.providerResponse.choices[0]).toMatchObject({ finish_reason: "tool_calls" });
   });

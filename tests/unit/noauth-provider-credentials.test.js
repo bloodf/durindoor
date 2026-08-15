@@ -72,6 +72,26 @@ describe("no-auth provider credential selection", () => {
     expectNoPublicAuthorization(getExecutor(provider).buildHeaders(credentials));
   });
 
+  it("keeps OpenCode no-auth headers anonymous and saved credentials authenticated", async () => {
+    const executor = getExecutor("opencode");
+    const noAuthHeaders = executor.buildHeaders({
+      id: "noauth",
+      connectionId: "noauth",
+      accessToken: "public",
+      authType: "none",
+    });
+    const savedHeaders = executor.buildHeaders({
+      id: "opencode-saved",
+      connectionId: "opencode-saved",
+      apiKey: "sk-real-key",
+    });
+
+    expectNoPublicAuthorization(noAuthHeaders);
+    expect(noAuthHeaders["User-Agent"]).toBe("opencode");
+    expect(noAuthHeaders["x-opencode-session"]).toMatch(/^ses_[a-f0-9]{32}$/);
+    expect(savedHeaders.Authorization).toBe("Bearer sk-real-key");
+  });
+
   it("does not send authorization or public placeholders in either DuckDuckGo request", async () => {
     mocks.getProviderConnections.mockResolvedValue([]);
     const outboundFetch = vi.fn()

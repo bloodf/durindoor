@@ -5,8 +5,15 @@ const originalFetch = global.fetch;
 const ANSWER = "The Caspian Sea is the world's largest inland body of water.";
 
 function mockPplxStream(events) {
-  const sse = events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("") + "data: [DONE]\n\n";
-  return new Response(new Blob([sse]).stream(), { status: 200, headers: { "Content-Type": "text/event-stream" } });
+  const encoder = new TextEncoder();
+  const frames = [...events.map((event) => `data: ${JSON.stringify(event)}\n\n`), "data: [DONE]\n\n"];
+  let index = 0;
+  return new Response(new ReadableStream({
+    pull(controller) {
+      if (index === frames.length) controller.close();
+      else controller.enqueue(encoder.encode(frames[index++]));
+    },
+  }), { status: 200, headers: { "Content-Type": "text/event-stream" } });
 }
 
 async function answerFor(events) {
@@ -161,8 +168,8 @@ it("streams monotone prefix-stable deltas, ignoring a hostile chunk index and a 
         diff_block: {
           field: "workflow_block",
           patches: [
-            { op: "add", path: "/steps/3/items/0/payload/text_payload/chunks/0", value: "The " },
-            { op: "add", path: "/steps/3/items/0/payload/text_payload/chunks/1", value: "final " },
+            { op: "add", path: "/steps/3/items/0/payload/text_payload/chunks/1", value: "must be ignored" },
+            { op: "add", path: "/steps/3/items/0/payload/text_payload/chunks/9007199254740992", value: "must be ignored" },
           ],
         },
       }],
@@ -173,9 +180,7 @@ it("streams monotone prefix-stable deltas, ignoring a hostile chunk index and a 
         intended_usage: "workflow_root",
         diff_block: {
           field: "workflow_block",
-          patches: [
-            { op: "add", path: "/steps/3/items/0/payload/text_payload/chunks/9007199254740992", value: "must be ignored" },
-          ],
+          patches: [{ op: "add", path: "/steps/3/items/0/payload/text_payload/chunks/0", value: "The " }],
         },
       }],
     },
@@ -185,7 +190,7 @@ it("streams monotone prefix-stable deltas, ignoring a hostile chunk index and a 
         intended_usage: "workflow_root",
         diff_block: {
           field: "workflow_block",
-          patches: [{ op: "add", path: "/steps/3/items/0/payload/text_payload/chunks/2", value: "answer." }],
+          patches: [{ op: "add", path: "/steps/3/items/0/payload/text_payload/chunks/1", value: "final answer." }],
         },
       }],
     },
@@ -198,7 +203,7 @@ it("streams monotone prefix-stable deltas, ignoring a hostile chunk index and a 
   expect(joined).not.toContain("must be ignored");
 });
 
-it("copies seeded chunks defensively, coercing entries instead of aliasing the parsed payload", async () => {
+it("copies seeded chunks defensively before applying a same-track patch", async () => {
   const chunks = [42, " chars"];
   const answer = await answerFor([{
     status: "COMPLETED",
@@ -207,9 +212,41 @@ it("copies seeded chunks defensively, coercing entries instead of aliasing the p
       workflow_block: {
         steps: [{ items: [{ variant: "answer", payload: { text_payload: { variant: "answer", chunks } } }] }],
       },
+      diff_block: {
+        field: "workflow_block",
+        patches: [{ op: "replace", path: "/steps/0/items/0/payload/text_payload/chunks/1", value: " patched" }],
+      },
     }],
   }]);
 
-  expect(answer).toBe("42 chars");
+  expect(answer).toBe("42 patched");
   expect(chunks).toEqual([42, " chars"]);
+});
+
+it("uses chunks over text and never emits tails from divergent workflow snapshots", async () => {
+  const events = [
+    {
+      status: "PENDING",
+      blocks: [{ intended_usage: "workflow_root", workflow_block: { steps: [{ items: [{ variant: "answer", payload: { text_payload: { variant: "answer", chunks: [], text: "fallback" } } }] }] } }],
+    },
+    {
+      status: "PENDING",
+      blocks: [{ intended_usage: "workflow_root", diff_block: { field: "workflow_block", patches: [{ op: "add", path: "/steps/0/items/0/payload/text_payload/chunks/0", value: "The cat" }] } }],
+    },
+    {
+      status: "PENDING",
+      blocks: [{ intended_usage: "workflow_root", workflow_block: { steps: [{ items: [{ variant: "answer", payload: { text_payload: { variant: "answer", chunks: ["The cats"] } } }] }] } }],
+    },
+    {
+      status: "PENDING",
+      blocks: [{ intended_usage: "workflow_root", workflow_block: { steps: [{ items: [{ variant: "answer", payload: { text_payload: { variant: "answer", chunks: ["A dog"] } } }] }] } }],
+    },
+    {
+      status: "COMPLETED",
+      blocks: [{ intended_usage: "workflow_root", workflow_block: { steps: [{ items: [{ variant: "answer", payload: { text_payload: { variant: "answer", chunks: ["A"] } } }] }] } }],
+    },
+  ];
+
+  expect(await streamDeltasFor(events)).toEqual(["The cat", "s"]);
+  expect(await answerFor(events)).toBe("A");
 });

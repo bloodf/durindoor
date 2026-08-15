@@ -198,8 +198,27 @@ describe("settings PATCH password credentials", () => {
     await PATCH({ json: async () => ({ currentPassword: "operator-secret", newPassword: "long-enough-new" }) });
 
     expect(mocks.setDashboardAuthCookie).toHaveBeenCalledWith(
-      expect.anything(), expect.anything(), { passwordSessionEpoch: "rotated-epoch" },
+      { set: expect.any(Function) }, expect.anything(), { passwordSessionEpoch: "rotated-epoch" }, expect.any(Function),
     );
+  });
+
+  it("does not return success when signing races with a newer password epoch", async () => {
+    mocks.getSettings
+      .mockResolvedValueOnce({ password: "stored-hash", passwordSessionEpoch: "initial" })
+      .mockResolvedValueOnce({ passwordSessionEpoch: "newer-epoch" });
+    let resume;
+    mocks.setDashboardAuthCookie.mockImplementation(async (_store, _request, _claims, beforeSet) => {
+      await new Promise((resolve) => { resume = resolve; });
+      await beforeSet();
+    });
+
+    const pending = PATCH({ json: async () => ({ currentPassword: "operator-secret", newPassword: "long-enough-new" }) });
+    await vi.waitFor(() => expect(mocks.setDashboardAuthCookie).toHaveBeenCalledOnce());
+    resume();
+    const response = await pending;
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ error: "Password change conflict, please retry" });
   });
 
   it("returns a stable error without logging a settings exception", async () => {

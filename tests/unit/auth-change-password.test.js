@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   hash: vi.fn(),
   updateSettings: vi.fn(),
   updateSettingsWithPasswordEpoch: vi.fn(),
+  getSettings: vi.fn(),
   PasswordEpochMismatchError: class PasswordEpochMismatchError extends Error {},
   DEFAULT_PASSWORD: "123456",
   invalidateDefaultPasswordCache: vi.fn(),
@@ -32,7 +33,7 @@ vi.mock("@/lib/auth/passwordChangeProof", () => ({
 }));
 vi.mock("@/lib/auth/loginLimiter", () => ({ getClientIp: mocks.getClientIp }));
 vi.mock("bcryptjs", () => ({ default: { genSalt: mocks.genSalt, hash: mocks.hash } }));
-vi.mock("@/lib/localDb", () => ({ updateSettingsWithPasswordEpoch: mocks.updateSettingsWithPasswordEpoch, PasswordEpochMismatchError: mocks.PasswordEpochMismatchError }));
+vi.mock("@/lib/localDb", () => ({ getSettings: mocks.getSettings, updateSettingsWithPasswordEpoch: mocks.updateSettingsWithPasswordEpoch, PasswordEpochMismatchError: mocks.PasswordEpochMismatchError }));
 vi.mock("@/lib/auth/dashboardSession", () => ({
   DEFAULT_PASSWORD: mocks.DEFAULT_PASSWORD,
   invalidateDefaultPasswordCache: mocks.invalidateDefaultPasswordCache,
@@ -58,6 +59,7 @@ describe("POST /api/auth/change-password", () => {
     mocks.hash.mockResolvedValue("new-hash");
     mocks.reservePasswordChangeProof.mockReturnValue({ clientIp: "198.51.100.4", passwordSessionEpoch: "initial" });
     mocks.updateSettingsWithPasswordEpoch.mockResolvedValue({ password: "new-hash" });
+    mocks.getSettings.mockResolvedValue({ passwordSessionEpoch: "new-epoch" });
     mocks.cookies.mockResolvedValue({ set: vi.fn() });
     vi.spyOn(console, "error").mockImplementation(mocks.consoleError);
   });
@@ -145,5 +147,22 @@ describe("POST /api/auth/change-password", () => {
     expect(mocks.invalidateDefaultPasswordCache).not.toHaveBeenCalled();
     expect(mocks.commitPasswordChangeProof).not.toHaveBeenCalled();
     expect(mocks.resetPasswordChangeProofs).toHaveBeenCalledOnce();
+  });
+
+  it("does not return success when signing races with a newer password epoch", async () => {
+    mocks.getSettings.mockResolvedValue({ passwordSessionEpoch: "newer-epoch" });
+    let resume;
+    mocks.setDashboardAuthCookie.mockImplementation(async (_store, _request, _claims, beforeSet) => {
+      await new Promise((resolve) => { resume = resolve; });
+      await beforeSet();
+    });
+
+    const pending = POST(request({ proof: "proof", newPassword: "long-enough-password" }));
+    await vi.waitFor(() => expect(mocks.setDashboardAuthCookie).toHaveBeenCalledOnce());
+    resume();
+    const response = await pending;
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ error: "Password change conflict, please retry" });
   });
 });

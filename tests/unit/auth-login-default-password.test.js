@@ -163,6 +163,28 @@ describe("POST /api/auth/login default-password safety", () => {
     expect(mocks.recordSuccess).not.toHaveBeenCalled();
   });
 
+  it("does not issue a cookie when signing races with a password epoch update", async () => {
+    mocks.isUsingDefaultPassword.mockResolvedValue(false);
+    mocks.getSettings
+      .mockResolvedValueOnce({ password: "custom-hash", passwordSessionEpoch: "epoch-A" })
+      .mockResolvedValueOnce({ password: "custom-hash", passwordSessionEpoch: "epoch-A" })
+      .mockResolvedValueOnce({ password: "new-hash", passwordSessionEpoch: "epoch-B" });
+    mocks.compare.mockResolvedValue(true);
+    let resume;
+    mocks.setDashboardAuthCookie.mockImplementation(async (_store, _request, _claims, beforeSet) => {
+      await new Promise((resolve) => { resume = resolve; });
+      await beforeSet();
+    });
+
+    const pending = POST(request("custom-password"));
+    await vi.waitFor(() => expect(mocks.setDashboardAuthCookie).toHaveBeenCalledOnce());
+    resume();
+    const response = await pending;
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ error: "Login state changed, please retry" });
+    expect(mocks.recordSuccess).not.toHaveBeenCalled();
+  });
+
   it("treats a loopback peer with an attacker Host and Origin as remote", async () => {
     mocks.isLocalRequest.mockReturnValue(true);
     mocks.hasTrustedLocalOrigin.mockReturnValue(false);

@@ -65,4 +65,17 @@ describe("OpenCode JSONC settings", () => {
     expect(body.error).toMatch(/invalid JSONC|refusing to overwrite/i);
     expect(await fs.readFile(jsoncPath(), "utf8")).toBe(invalid);
   });
+  it("keeps the provider when deleting an absent model", async () => {
+    const original = `{
+  // provider comment
+  "provider": { "9router": { "models": { "kept": {} } } }
+}\n`;
+    await fs.mkdir(path.dirname(jsoncPath()), { recursive: true });
+    await fs.writeFile(jsoncPath(), original);
+    const { DELETE } = await import("@/app/api/cli-tools/opencode-settings/route.js");
+
+    const { status } = await responseJson(await DELETE({ url: "http://localhost/?model=absent" }));
+    expect(status).toBe(200);
+    expect(await fs.readFile(jsoncPath(), "utf8")).toBe(original);
+  });
 });

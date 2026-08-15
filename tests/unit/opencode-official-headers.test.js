@@ -38,7 +38,7 @@ describe("OpenCodeExecutor official free-tier headers (D13)", () => {
     expect(headers["x-9r-real-ip"]).toBeUndefined();
   });
 
-  it("router Authorization: Bearer ... does not bypass D13 free-tier identity", async () => {
+  it("router Authorization: Bearer ... does not bypass free-tier identity generation", async () => {
     const fetchMock = stubFetch();
     await new OpenCodeExecutor().execute({
       model: "deepseek-v3.2",
@@ -59,7 +59,7 @@ describe("OpenCodeExecutor official free-tier headers (D13)", () => {
     expect(headers["x-opencode-session"]).toMatch(/^ses_[a-f0-9]+$/);
   });
 
-  it("preserves official downstream request identity through real dispatch", async () => {
+  it("official UA: client identity headers are NOT preserved on free tier", async () => {
     const fetchMock = stubFetch();
     await new OpenCodeExecutor().execute({
       model: "deepseek-v3.2",
@@ -75,13 +75,47 @@ describe("OpenCodeExecutor official free-tier headers (D13)", () => {
         },
       },
     });
-    expect(fetchMock.mock.calls[0][1].headers).toMatchObject({
-      "User-Agent": "OpenCode/1.2.3",
-      "x-opencode-project": "mine",
-      "x-opencode-session": "ses_existing",
-      "x-opencode-request": "msg_existing",
+    const headers = fetchMock.mock.calls[0][1].headers;
+    expect(headers).toMatchObject({
+      "User-Agent": "opencode",
+      "x-opencode-client": "desktop",
+      "x-opencode-project": "global",
       "Accept": "*/*",
     });
+    expect(headers["x-opencode-session"]).toMatch(/^ses_[a-f0-9]+$/);
+    expect(headers["x-opencode-request"]).toMatch(/^msg_[a-f0-9]{32}$/);
+    expect(headers["x-opencode-session"]).not.toBe("ses_existing");
+    expect(headers["x-opencode-request"]).not.toBe("msg_existing");
+  });
+
+
+  it("spoofed OpenCode UA: client identity headers are NOT preserved", async () => {
+    const fetchMock = stubFetch();
+    await new OpenCodeExecutor().execute({
+      model: "deepseek-v3.2",
+      body: { messages: [] },
+      stream: true,
+      credentials: {},
+      requestContext: {
+        clientHeaders: {
+          "user-agent": "OpenCode/1.2.3",
+          "x-opencode-client": "attacker",
+          "x-opencode-project": "attacker",
+          "x-opencode-session": "ses_attacker",
+          "x-opencode-request": "msg_attacker",
+        },
+      },
+    });
+    const headers = fetchMock.mock.calls[0][1].headers;
+    expect(headers).toMatchObject({
+      "User-Agent": "opencode",
+      "x-opencode-client": "desktop",
+      "x-opencode-project": "global",
+    });
+    expect(headers["x-opencode-session"]).toMatch(/^ses_[a-f0-9]+$/);
+    expect(headers["x-opencode-request"]).toMatch(/^msg_[a-f0-9]{32}$/);
+    expect(headers["x-opencode-session"]).not.toBe("ses_attacker");
+    expect(headers["x-opencode-request"]).not.toBe("msg_attacker");
   });
 
   it("does not synthesize free-tier headers for paid credentials", () => {

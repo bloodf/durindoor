@@ -13,7 +13,7 @@ describe("OpenCodeExecutor CLI identity synthesis", () => {
       clientHeaders: { "user-agent": "curl/8.5.0", "x-opencode-project": "client-project" },
     });
     expect(headers["User-Agent"]).toBe("opencode-cli/1.0.0");
-    expect(headers["x-opencode-project"]).toBe("client-project");
+    expect(headers["x-opencode-project"]).toBe("global");
   });
 
   it("preserves versioned CLI UA when synthesis is enabled", () => {

@@ -72,18 +72,18 @@ export class OpenCodeExecutor extends BaseExecutor {
       return baseHeaders;
     }
 
-    const isOpencodeDownstream = clientUa?.toLowerCase().includes("opencode");
     const clientUaIsCli = /^opencode-cli\//i.test(clientUa?.trim() ?? "");
     const synthesizeCli = isEnabled("OPENCODE_SYNTHESIZE_CLI_HEADERS");
     const headers = {
       ...baseHeaders,
-      "x-opencode-client": clientHeaders.get("x-opencode-client") || "desktop",
-      "x-opencode-session": clientHeaders.get("x-opencode-session") || this._currentSessionId || generateSessionId(),
-      "x-opencode-request": clientHeaders.get("x-opencode-request") || generateRequestId(),
-      "x-opencode-project": clientHeaders.get("x-opencode-project") || "global",
+      "x-opencode-client": "desktop",
+      "x-opencode-session": this._currentSessionId || generateSessionId(),
+      "x-opencode-request": generateRequestId(),
+      "x-opencode-project": "global",
     };
     if (synthesizeCli && !clientUaIsCli) headers["User-Agent"] = "opencode-cli/1.0.0";
-    else headers["User-Agent"] = isOpencodeDownstream ? clientUa : OPENCODE_UA;
+    else if (clientUaIsCli) headers["User-Agent"] = clientUa;
+    else headers["User-Agent"] = OPENCODE_UA;
     return headers;
   }
 }

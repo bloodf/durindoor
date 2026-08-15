@@ -476,7 +476,7 @@ describe("chat quota fallback orchestration", () => {
     );
   });
 
-  it("preserves the original terminal 403 when Kimi body probe times out (no recovery scope lock)", async () => {
+  it("keeps normal terminal fallback when Kimi body probe supplies no reset deadline", async () => {
     const connection = selected("kimi-connection", "kimi-coding");
     mocks.getModelInfo.mockResolvedValue({ provider: "kimi-coding", model: "kimi-k2.6" });
     mocks.getProviderCredentials.mockResolvedValue(connection);

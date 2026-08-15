@@ -12,6 +12,15 @@ import { DEFAULT_MAX_TOKENS } from "../../config/runtimeConfig.js";
 const CACHE_CONTROL_5M = { type: "ephemeral" };
 const CACHE_CONTROL_1H = { type: "ephemeral", ttl: "1h" };
 
+const HOISTABLE_SYSTEM_BLOCKS = new Set([CLAUDE_BLOCK.TEXT]);
+const USER_SYSTEM_FOLDABLE_BLOCKS = new Set([
+  CLAUDE_BLOCK.TEXT,
+  CLAUDE_BLOCK.IMAGE,
+  CLAUDE_BLOCK.DOCUMENT,
+  CLAUDE_BLOCK.TOOL_RESULT,
+  CLAUDE_BLOCK.SEARCH_RESULT,
+]);
+
 // Put a 5m breakpoint on the last cache-eligible block of a message.
 // thinking/redacted_thinking blocks do not accept cache_control.
 function markLastCacheableBlock(msg) {
@@ -305,7 +314,7 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
           messages.push(msg);
           continue;
         }
-        if (blocks.length) buffered.push(...blocks);
+        buffered.push(...blocks.filter((block) => USER_SYSTEM_FOLDABLE_BLOCKS.has(block?.type)));
         continue;
       }
       if (foldSystemTurns && buffered.length && msg.role === ROLE.USER) {
@@ -326,7 +335,8 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
           ? m.content
           : (typeof m.content === "string" && m.content
             ? [{ type: CLAUDE_BLOCK.TEXT, text: m.content }]
-            : []));
+            : []))
+        .filter((block) => HOISTABLE_SYSTEM_BLOCKS.has(block?.type));
       body.messages = messages.filter((m) => m.role !== ROLE.SYSTEM);
       if (hoisted.length) {
         const existing = Array.isArray(body.system)
@@ -336,16 +346,8 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
             : []);
         body.system = [...existing, ...hoisted];
       }
-    } else if (buffered.length && messages[messages.length - 1]?.role === ROLE.USER) {
-      const last = messages[messages.length - 1];
-      const existing = Array.isArray(last.content)
-        ? last.content
-        : (typeof last.content === "string" && last.content
-          ? [{ type: CLAUDE_BLOCK.TEXT, text: last.content }]
-          : []);
-      last.content = [...existing, ...buffered];
-      body.messages = messages;
     } else {
+      // Never fold trailing system content backward into a completed user turn.
       body.messages = messages;
     }
   }

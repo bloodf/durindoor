@@ -130,6 +130,27 @@ describe("normalizeClaudePassthrough default behavior (foldSystemTurns off)", ()
     ]);
     expect(body.messages).toEqual([{ role: "user", content: "hi" }]);
   });
+
+  it("drops non-text blocks while hoisting mid-conversation system messages", () => {
+    const body = {
+      messages: [
+        { role: "user", content: "ask" },
+        { role: "system", content: [
+          { type: "text", text: "instruction" },
+          { type: "image", source: { type: "base64", media_type: "image/png", data: "AA" } },
+        ] },
+        { role: "user", content: "answer" },
+      ],
+    };
+
+    normalizeClaudePassthrough(body);
+
+    expect(body.system).toEqual([{ type: "text", text: "instruction" }]);
+    expect(body.messages).toEqual([
+      { role: "user", content: "ask" },
+      { role: "user", content: "answer" },
+    ]);
+  });
 });
 
 describe("normalizeClaudePassthrough foldSystemTurns: true (native chatCore passthrough)", () => {
@@ -253,6 +274,33 @@ describe("normalizeClaudePassthrough foldSystemTurns: true (native chatCore pass
     ]);
   });
 
+  it("drops assistant-only blocks while folding system content into a user turn", () => {
+    const body = {
+      messages: [
+        { role: "user", content: "ask" },
+        { role: "system", content: [
+          { type: "text", text: "instruction" },
+          { type: "thinking", thinking: "secret", signature: "sig" },
+          { type: "redacted_thinking", data: "secret" },
+          { type: "tool_use", id: "u1", name: "read", input: {} },
+          { type: "image", source: { type: "base64", media_type: "image/png", data: "AA" } },
+        ] },
+        { role: "user", content: "answer" },
+      ],
+    };
+
+    normalizeClaudePassthrough(body, "", "claude", null, { foldSystemTurns: true });
+
+    expect(body.messages[1]).toEqual({
+      role: "user",
+      content: [
+        { type: "text", text: "answer" },
+        { type: "text", text: "instruction" },
+        { type: "image", source: { type: "base64", media_type: "image/png", data: "AA" } },
+      ],
+    });
+  });
+
   it("never folds a system reminder into an assistant tool-use turn", () => {
     const toolUse = { type: "tool_use", id: "tu_1", name: "read", input: {} };
     const toolResult = { type: "tool_result", tool_use_id: "tu_1", content: "ok" };
@@ -300,7 +348,9 @@ describe("normalizeClaudePassthrough foldSystemTurns: true (native chatCore pass
     ]);
   });
 
-  it("appends a trailing system message to the last turn when it is already a user turn", () => {
+  it("drops trailing system blocks even when the preceding retained turn is a user", () => {
+    // Folding backward alters an already-complete user turn. With no later user
+    // turn available, the complete system message must instead be discarded.
     const body = {
       messages: [
         { role: "user", content: "ask" },
@@ -315,13 +365,7 @@ describe("normalizeClaudePassthrough foldSystemTurns: true (native chatCore pass
     expect(body.messages).toEqual([
       { role: "user", content: "ask" },
       { role: "assistant", content: [{ type: "text", text: "answer" }] },
-      {
-        role: "user",
-        content: [
-          { type: "text", text: "followup" },
-          { type: "text", text: "be brief" },
-        ],
-      },
+      { role: "user", content: "followup" },
     ]);
   });
 });

@@ -45,6 +45,7 @@ const mocks = vi.hoisted(() => ({
   unlink: vi.fn(),
   mkdtemp: vi.fn(),
   rm: vi.fn(),
+  lstat: vi.fn(),
 }));
 
 vi.mock("fs/promises", () => ({
@@ -58,6 +59,7 @@ vi.mock("fs/promises", () => ({
     unlink: mocks.unlink,
     mkdtemp: mocks.mkdtemp,
     rm: mocks.rm,
+    lstat: mocks.lstat,
   },
   access: mocks.access,
   readFile: mocks.readFile,
@@ -68,6 +70,7 @@ vi.mock("fs/promises", () => ({
   unlink: mocks.unlink,
   mkdtemp: mocks.mkdtemp,
   rm: mocks.rm,
+  lstat: mocks.lstat,
 }));
 
 vi.mock("os", () => ({
@@ -117,6 +120,7 @@ describe("hermes-settings api_key (port of decolua/9router#3235)", () => {
     mocks.unlink.mockResolvedValue();
     mocks.mkdtemp.mockResolvedValue("/home/test/.hermes/.env.tmp-unique");
     mocks.rm.mockResolvedValue();
+    mocks.lstat.mockRejectedValue({ code: "ENOENT" });
   });
 
   async function postBody(body) {

@@ -114,6 +114,7 @@ describe("Hermes API key filesystem safety", () => {
     await withTempHome(async (home) => {
       const hermesDir = path.join(home, ".hermes");
       await fs.mkdir(hermesDir, { recursive: true, mode: 0o700 });
+      const envPath = path.join(hermesDir, ".env");
       const realFs = await import("node:fs");
       const originalRename = realFs.promises.rename;
       const originalWrite = realFs.promises.writeFile;
@@ -156,8 +157,6 @@ describe("Hermes API key filesystem safety", () => {
         realFs.promises.rename = originalRename;
         realFs.promises.writeFile = originalWrite;
       }
-
-      const envPath = path.join(hermesDir, ".env");
     });
   });
 });

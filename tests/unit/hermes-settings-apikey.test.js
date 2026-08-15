@@ -4,6 +4,33 @@
 // reads that api_key back so the YAML round-trips.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+
+const cardSource = (() => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  return readFileSync(
+    resolve(here, "../../src/app/(dashboard)/dashboard/cli-tools/components/HermesToolCard.js"),
+    "utf-8",
+  );
+})();
+
+describe("HermesToolCard manual config builder", () => {
+  it("references the Hermes OPENAI_API_KEY environment variable in the manual YAML", () => {
+    expect(cardSource).toMatch(/api_key:[ \t]*\\\$\{OPENAI_API_KEY\}/);
+  });
+
+  it("never embeds the secret key value inside the manual YAML", () => {
+    const yamlSnippet = cardSource.match(/yamlContent\s*=\s*`([\s\S]*?)`/);
+    expect(yamlSnippet).not.toBeNull();
+    expect(yamlSnippet[1]).not.toMatch(/keyToUse/);
+  });
+
+  it("does not use the misleading ${apiKey} placeholder", () => {
+    expect(cardSource).not.toMatch(/api_key:[ \t]*"\\\$\{apiKey\}"/);
+  });
+});
 
 const mocks = vi.hoisted(() => ({
   homedir: vi.fn(),
@@ -80,6 +107,20 @@ describe("hermes-settings api_key (port of decolua/9router#3235)", () => {
     return POST(request);
   }
 
+  it.each([undefined, null])("POST treats API key %s as absent and writes only the Hermes config", async (apiKey) => {
+    const response = await postBody({
+      baseUrl: "http://localhost:20128",
+      apiKey,
+      model: "cc/claude-sonnet-4-6",
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.writeFile).toHaveBeenCalledTimes(1);
+    const yaml = mocks.writeFile.mock.calls[0][1];
+    expect(yaml).toMatch(/^model:[ \t]*\r?\n/m);
+    expect(yaml).toMatch(/api_key:[ \t]*"?\$\{OPENAI_API_KEY\}"?/m);
+  });
+
   it("POST writes only an environment reference to config.yaml and stores a supplied key in Hermes .env", async () => {
     const apiKey = "sk_live_unsafe-looking-but-valid";
     const response = await postBody({
@@ -139,6 +180,30 @@ describe("hermes-settings api_key (port of decolua/9router#3235)", () => {
     expect(yaml).toContain('base_url: "http://localhost:20128/\\\\\\"quoted/v1"');
     expect(yaml).not.toContain(apiKey);
   });
+
+  it.each([
+    ["baseUrl", "http://localhost:20128\napi_key: leaked", "cc/claude-sonnet-4-6", "baseUrl must not contain line breaks or tabs"],
+    ["model", "http://localhost:20128", "cc/claude\napi_key: leaked", "model must not contain line breaks or tabs"],
+  ])("rejects %s values that could inject YAML fields", async (_field, baseUrl, model, error) => {
+    const response = await postBody({ baseUrl, model });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error });
+    expect(mocks.writeFile).not.toHaveBeenCalled();
+  });
+
+  it.each([0, {}, []])("rejects non-string API keys", async (apiKey) => {
+    const response = await postBody({
+      baseUrl: "http://localhost:20128",
+      apiKey,
+      model: "cc/claude-sonnet-4-6",
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "apiKey must be a non-empty string when provided" });
+    expect(mocks.writeFile).not.toHaveBeenCalled();
+  });
+
 
   it("GET round-trips the api_key field through parseModelBlock", async () => {
     // Seed config with the YAML that POST would have written.

@@ -275,5 +275,5 @@ it("uses chunks over text and never emits tails from divergent workflow snapshot
   ];
 
   expect(await streamDeltasFor(events)).toEqual(["The cat", "s"]);
-  expect(await answerFor(events)).toBe("A");
+  expect(await answerFor(events)).toBe("The cats");
 });

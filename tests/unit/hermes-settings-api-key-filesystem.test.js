@@ -109,6 +109,59 @@ describe("Hermes API key filesystem safety", () => {
     });
   });
 
+  it("does not return a literal API key from a real Hermes config.yaml", async () => {
+    await withTempHome(async (home) => {
+      const hermesDir = path.join(home, ".hermes");
+      const apiKey = "sk_real_get_sentinel";
+      await fs.mkdir(hermesDir, { recursive: true, mode: 0o700 });
+      await fs.writeFile(path.join(hermesDir, "config.yaml"), `model:\n  default: "cc/claude-sonnet-4-6"\n  provider: "custom"\n  base_url: "http://localhost:20128/v1"\n  api_key: "${apiKey}"\n`);
+
+      const { GET } = await loadRoute(home);
+      const response = await GET();
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.settings.model).toEqual({
+        default: "cc/claude-sonnet-4-6",
+        provider: "custom",
+        base_url: "http://localhost:20128/v1",
+      });
+      expect(JSON.stringify(body)).not.toContain(apiKey);
+    });
+  });
+
+  it("cleans up the private temporary directory after a forced write failure", async () => {
+    await withTempHome(async (home) => {
+      const hermesDir = path.join(home, ".hermes");
+      await fs.mkdir(hermesDir, { recursive: true, mode: 0o700 });
+      const realFs = await import("node:fs");
+      const originalWrite = realFs.promises.writeFile;
+      let failed = false;
+      realFs.promises.writeFile = async (target, contents, options) => {
+        if (String(target).includes("/.env.tmp-") && String(target).endsWith("/.env")) {
+          failed = true;
+          throw new Error("forced private temp write failure");
+        }
+        return originalWrite(target, contents, options);
+      };
+
+      try {
+        const { POST } = await loadRoute(home);
+        const response = await POST(new Request("http://localhost/api/cli-tools/hermes-settings", {
+          method: "POST",
+          body: JSON.stringify({ baseUrl: "http://localhost:20128", apiKey: "sk_write_failure", model: "cc/claude-sonnet-4-6" }),
+        }));
+
+        expect(failed).toBe(true);
+        expect(response.status).toBe(500);
+        expect(await fs.stat(path.join(hermesDir, ".env")).then(() => true, (err) => err.code === "ENOENT")).toBe(true);
+        expect((await fs.readdir(hermesDir)).filter((name) => name.startsWith(".env.tmp-"))).toEqual([]);
+      } finally {
+        realFs.promises.writeFile = originalWrite;
+      }
+    });
+  });
+
   it("cleans up the private temp directory and leaves no final .env on forced write/rename failure", async () => {
     if (process.platform === "win32") return;
     await withTempHome(async (home) => {

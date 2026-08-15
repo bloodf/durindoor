@@ -114,13 +114,26 @@ if (affinityCleanup.unref) affinityCleanup.unref();
 
 const NO_AUTH_STORED_DATA_PROVIDERS = new Set(["mimocode"]);
 
+// Canonical roster of providers eligible for the public no-auth fallback when
+// no saved connection row exists. Mimocode stays in the roster so zero-row
+// lookups still surface the ephemeral credential, while stored-but-unavailable
+// Mimocode connections are suppressed by the stored-row branch below.
+const PUBLIC_NO_AUTH_FALLBACK_PROVIDERS = new Set([
+  "auggie",
+  "chipotle",
+  "duckduckgo-web",
+  "mimocode",
+  "opencode",
+  "pollinations",
+  "theoldllm",
+]);
+
 /** Whether auth may replace an unavailable saved key with the public credential. */
 export function providerAllowsPublicNoAuthFallback(provider) {
   const providerId = resolveProviderId(provider);
-  return AI_PROVIDERS[providerId]?.noAuth === true
-    && !NO_AUTH_STORED_DATA_PROVIDERS.has(providerId);
+  return PUBLIC_NO_AUTH_FALLBACK_PROVIDERS.has(providerId)
+    && AI_PROVIDERS[providerId]?.noAuth === true;
 }
-
 /**
  * Builds a no-auth credential object: the public fallback when `connection`
  * is omitted, or a stored no-auth-provider connection (e.g. Mimocode) when
@@ -381,11 +394,11 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     throwIfAborted(signal);
 
     const isNoAuthProvider = AI_PROVIDERS[providerId]?.noAuth === true;
-    const publicFallbackAllowed = !excludeSet.has("noauth");
+    const publicFallbackAllowed = providerAllowsPublicNoAuthFallback(providerId) && !excludeSet.has("noauth");
 
     if (isNoAuthProvider) {
-      // Stored-data no-auth providers (e.g., mimocode) use saved connections first
-      // and never fall back to the public no-auth credential.
+      // Stored-data no-auth providers (e.g., mimocode) use saved connections first.
+      // Once rows exist, they never fall back to the public no-auth credential.
       if (NO_AUTH_STORED_DATA_PROVIDERS.has(providerId) && connections.length > 0) {
         const availableStoredConnections = connections.filter(
           (c) => !excludeSet.has(c.id) && !requestedModelLockActive(c, model, boundedModel, selectionNow) && !quotaDecisions.get(c.id)?.skip

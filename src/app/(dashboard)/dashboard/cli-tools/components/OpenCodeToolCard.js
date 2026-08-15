@@ -190,7 +190,7 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
     });
 
     return [{
-      filename: "~/.config/opencode/opencode.json",
+      filename: "$XDG_CONFIG_HOME/opencode/opencode.jsonc (or ~/.config/opencode/opencode.jsonc)",
       content: JSON.stringify({
         provider: {
           "9router": {

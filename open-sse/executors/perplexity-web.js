@@ -331,9 +331,8 @@ function applyWorkflowDiff(answers, patches) {
 }
 
 async function* extractContent(eventStream, signal) {
-  let fullAnswer = "";
+  let emitted = "";
   let backendUuid = null;
-  let seenLen = 0;
   let selectedWorkflowAnswerKey;
   const workflowAnswers = new Map();
   const seenThinking = new Set();
@@ -385,12 +384,11 @@ async function* extractContent(eventStream, signal) {
         const selection = selectWorkflowAnswer(workflowAnswers, selectedWorkflowAnswerKey);
         selectedWorkflowAnswerKey = selection.key;
         const answer = selection.answer;
-        if (answer.startsWith(fullAnswer) && answer.length > fullAnswer.length) {
-          const delta = answer.slice(fullAnswer.length);
+        if (answer.startsWith(emitted) && answer.length > emitted.length) {
+          const delta = answer.slice(emitted.length);
+          emitted = answer;
           yield { delta, answer, backendUuid: backendUuid ?? undefined };
         }
-        fullAnswer = answer;
-        seenLen = answer.length;
         continue;
       }
 
@@ -399,12 +397,11 @@ async function* extractContent(eventStream, signal) {
         selectedWorkflowAnswerKey ??= firstKey;
         const selection = selectWorkflowAnswer(workflowAnswers, selectedWorkflowAnswerKey);
         const answer = selection.answer;
-        if (answer.startsWith(fullAnswer) && answer.length > fullAnswer.length) {
-          const delta = answer.slice(fullAnswer.length);
+        if (answer.startsWith(emitted) && answer.length > emitted.length) {
+          const delta = answer.slice(emitted.length);
+          emitted = answer;
           yield { delta, answer, backendUuid: backendUuid ?? undefined };
         }
-        fullAnswer = answer;
-        seenLen = answer.length;
         continue;
       }
 
@@ -415,31 +412,33 @@ async function* extractContent(eventStream, signal) {
       if (chunks.length === 0) continue;
 
       if (mb.progress === "DONE") {
-        fullAnswer = denseChunks(chunks);
-        seenLen = fullAnswer.length;
+        const finalAnswer = denseChunks(chunks);
+        if (finalAnswer.startsWith(emitted) && finalAnswer.length > emitted.length) {
+          const delta = finalAnswer.slice(emitted.length);
+          emitted = finalAnswer;
+          yield { delta, answer: finalAnswer, backendUuid: backendUuid ?? undefined };
+        }
       } else {
-        const cumulative = fullAnswer + denseChunks(chunks);
-        if (cumulative.startsWith(fullAnswer) && cumulative.length > fullAnswer.length) {
-          const delta = cumulative.slice(fullAnswer.length);
+        const cumulative = emitted + denseChunks(chunks);
+        if (cumulative.startsWith(emitted) && cumulative.length > emitted.length) {
+          const delta = cumulative.slice(emitted.length);
+          emitted = cumulative;
           yield { delta, answer: cumulative, backendUuid: backendUuid ?? undefined };
         }
-        fullAnswer = cumulative;
-        seenLen = cumulative.length;
       }
     }
     if (blocks.length === 0 && event.text) {
       const t = event.text.trim();
-      if (t.startsWith(fullAnswer) && t.length > fullAnswer.length) {
-        const delta = t.slice(fullAnswer.length);
+      if (t.startsWith(emitted) && t.length > emitted.length) {
+        const delta = t.slice(emitted.length);
+        emitted = t;
         yield { delta, answer: t, backendUuid: backendUuid ?? undefined };
       }
-      fullAnswer = t;
-      seenLen = t.length;
     }
 
     if (event.final || event.status === "COMPLETED") break;
   }
-  yield { delta: "", answer: fullAnswer, backendUuid: backendUuid ?? undefined, done: true };
+  yield { delta: "", answer: emitted, backendUuid: backendUuid ?? undefined, done: true };
 }
 
 function buildStreamingResponse(eventStream, model, cid, created, history, currentMsg, signal) {

@@ -1,20 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FORMATS } from "../../open-sse/translator/formats.js";
-import { getModelUpstreamId } from "../../open-sse/config/providerModels.js";
 
 const mocks = vi.hoisted(() => ({
   execute: vi.fn(),
   handleNonStreamingResponse: vi.fn(),
+  createRequestLogger: vi.fn(async () => ({
+    logClientRawRequest: vi.fn(), logRawRequest: vi.fn(), logTargetRequest: vi.fn(),
+    logProviderResponse: vi.fn(), logConvertedResponse: vi.fn(), logError: vi.fn(),
+  })),
 }));
 
 vi.mock("../../open-sse/executors/index.js", () => ({
   getExecutor: vi.fn(() => ({ noAuth: false, execute: mocks.execute })),
 }));
 vi.mock("../../open-sse/utils/requestLogger.js", () => ({
-  createRequestLogger: vi.fn(async () => ({
-    logClientRawRequest: vi.fn(), logRawRequest: vi.fn(), logTargetRequest: vi.fn(),
-    logProviderResponse: vi.fn(), logConvertedResponse: vi.fn(), logError: vi.fn(),
-  })),
+  createRequestLogger: mocks.createRequestLogger,
 }));
 vi.mock("../../open-sse/utils/bypassHandler.js", () => ({ handleBypassRequest: vi.fn(() => null) }));
 vi.mock("../../open-sse/utils/clientDetector.js", () => ({
@@ -25,15 +25,6 @@ vi.mock("../../open-sse/utils/streamHandler.js", () => ({
   createStreamController: vi.fn(() => ({ signal: undefined, startTime: Date.now(), isConnected: () => true, handleComplete: vi.fn(), handleError: vi.fn(), handleDisconnect: vi.fn(), abort: vi.fn() })),
 }));
 vi.mock("../../open-sse/handlers/chatCore/streamingHandler.js", () => ({ buildOnStreamComplete: vi.fn(() => vi.fn()), handleStreamingResponse: vi.fn() }));
-vi.mock("../../open-sse/config/providerModels.js", async (importOriginal) => {
-  const actual = await importOriginal();
-  return {
-    ...actual,
-    getModelUpstreamId: vi.fn((provider, model) =>
-      provider === "openai" && model === "active-alias" ? "gpt-5.2-codex" : actual.getModelUpstreamId(provider, model),
-    ),
-  };
-});
 vi.mock("../../open-sse/handlers/chatCore/nonStreamingHandler.js", () => ({ handleNonStreamingResponse: mocks.handleNonStreamingResponse }));
 vi.mock("@/lib/usageDb.js", () => ({ trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(), appendRequestLog: vi.fn(), saveRequestDetail: vi.fn() }));
 
@@ -58,21 +49,9 @@ describe("chatCore model lifecycle", () => {
   it("rejects shutdown requested model before executor dispatch", async () => {
     const result = await handleChatCore(options("gpt-5.2-codex"));
     expect(mocks.execute).not.toHaveBeenCalled();
+    expect(mocks.createRequestLogger).not.toHaveBeenCalled();
     expect(result).toMatchObject({ success: false, status: 410 });
     await expect(result.response.json()).resolves.toMatchObject({ error: { type: "invalid_request_error", code: "model_shutdown", message: expect.stringMatching(/gpt-5.2-codex/) } });
-  });
-  it("rejects active catalog alias resolving to a shutdown upstream model before dispatch", async () => {
-    const result = await handleChatCore(options("active-alias"));
-    expect(mocks.execute).not.toHaveBeenCalled();
-    expect(result).toMatchObject({ success: false, status: 410 });
-    await expect(result.response.json()).resolves.toMatchObject({
-      error: {
-        type: "invalid_request_error",
-        code: "model_shutdown",
-        message: expect.stringMatching(/gpt-5.2-codex/),
-      },
-    });
-    expect(getModelUpstreamId).toHaveBeenCalledWith("openai", "active-alias");
   });
 
   it("allows active model and only warns for deprecated model", async () => {

@@ -65,4 +65,3 @@ export function geminiToClaudeResponse(chunk, state) {
 }
 
 register(FORMATS.GEMINI, FORMATS.CLAUDE, null, geminiToClaudeResponse);
-register(FORMATS.ANTIGRAVITY, FORMATS.CLAUDE, null, geminiToClaudeResponse);

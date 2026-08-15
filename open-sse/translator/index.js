@@ -328,6 +328,8 @@ export function initState(sourceFormat, requestBody) {
   // guessing from the tool name (e.g. apply_patch).
   const toolTypes = {};
   const toolNamespaces = {};
+  const flatToolNamespaces = new Map();
+  const plainToolNames = new Set();
   if (Array.isArray(requestBody?.tools)) {
     for (const tool of requestBody.tools) {
       const type = typeof tool?.type === "string" ? tool.type : "";
@@ -338,13 +340,19 @@ export function initState(sourceFormat, requestBody) {
       if (type === "namespace" && name && Array.isArray(tool.tools)) {
         for (const subtool of tool.tools) {
           if (typeof subtool?.name === "string" && subtool.name) {
-            // Only the dotted form is mapped. A bare subtool name (e.g. "click")
-            // can collide with an unrelated plain function tool of the same name;
-            // namespace restoration must rely on the provider-translated dotted
-            // tool name to disambiguate.
             toolNamespaces[`${name}.${subtool.name}`] = name;
+            const namespaces = flatToolNamespaces.get(subtool.name) || new Set();
+            namespaces.add(name);
+            flatToolNamespaces.set(subtool.name, namespaces);
           }
         }
+      } else if (name) {
+        plainToolNames.add(name);
+      }
+    }
+    for (const [name, namespaces] of flatToolNamespaces) {
+      if (namespaces.size === 1 && !plainToolNames.has(name)) {
+        toolNamespaces[name] = namespaces.values().next().value;
       }
     }
   }

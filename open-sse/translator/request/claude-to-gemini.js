@@ -3,7 +3,6 @@ import { FORMATS } from "../formats.js";
 import { DEFAULT_SAFETY_SETTINGS, tryParseJSON } from "../formats/gemini.js";
 import { ROLE, GEMINI_ROLE, CLAUDE_BLOCK, DEFAULT_IMAGE_MIME } from "../schema/index.js";
 import { buildGeminiThoughtSignatureKey, resolveGeminiThoughtSignature } from "../../services/geminiThoughtSignatureStore.js";
-import { capMaxOutputTokens, capThinkingBudget } from "../../../src/lib/modelCapabilities.js";
 
 function sanitizeGeminiToolName(name, toolNameMap) {
   let sanitized = String(name || "_unknown").replace(/[^a-zA-Z0-9_.:-]/g, "_");
@@ -33,10 +32,7 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
   for (const [source, target] of [["temperature", "temperature"], ["top_p", "topP"], ["top_k", "topK"]]) {
     if (body[source] !== undefined) result.generationConfig[target] = body[source];
   }
-  if (body.max_tokens !== undefined) {
-    const capped = capMaxOutputTokens(model, body.max_tokens);
-    if (capped !== null) result.generationConfig.maxOutputTokens = capped;
-  }
+  if (body.max_tokens !== undefined) result.generationConfig.maxOutputTokens = body.max_tokens;
   if (body.system) {
     const text = Array.isArray(body.system) ? body.system.map((entry) => entry.text || "").join("\n") : String(body.system);
     if (text) result.systemInstruction = { role: GEMINI_ROLE.USER, parts: [{ text }] };
@@ -86,13 +82,6 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
   const declarations = (body.tools || []).flatMap((tool) => tool?.name && tool.input_schema ? [{ name: sanitize(tool.name), description: tool.description || "", parameters: tool.input_schema }] : []);
   if (declarations.length) result.tools = [{ functionDeclarations: declarations }];
 
-  if (!model.startsWith("gemma-4") && body.thinking?.type === "enabled" && typeof body.thinking.budget_tokens === "number") {
-    result.generationConfig.thinkingConfig = { thinkingBudget: capThinkingBudget(model, body.thinking.budget_tokens), includeThoughts: true };
-  } else if (typeof body.output_config?.effort === "string") {
-    const budgets = { none: 0, low: 1024, medium: 10240, high: 32768, max: 131072, xhigh: 131072 };
-    const budget = budgets[body.output_config.effort.toLowerCase()];
-    if (budget) result.generationConfig.thinkingConfig = { thinkingBudget: capThinkingBudget(model, budget), includeThoughts: true };
-  }
   result._toolNameMap = new Map([...toolNameMap].map(([sanitized, original]) => [sanitized.toLowerCase(), original]));
   return result;
 }

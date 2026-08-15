@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getComboModels: vi.fn(),
   getModelInfo: vi.fn(),
+  getComboForModel: vi.fn(),
   getSettings: vi.fn(),
   handleChatCore: vi.fn(),
   recordTokenSaverEvent: vi.fn(),
@@ -57,6 +58,7 @@ vi.mock("../../open-sse/services/projectId.js", () => ({
 
 vi.mock("@/lib/localDb", () => ({
   getSettings: mocks.getSettings,
+  getComboForModel: mocks.getComboForModel,
   getProxyPools: vi.fn(() => []),
   updateProviderConnection: vi.fn(),
 }));
@@ -96,6 +98,10 @@ describe("combo token-saver telemetry", () => {
       headroomEnabled: false,
       cavemanEnabled: false,
       ponytailEnabled: false,
+    });
+    mocks.getComboForModel.mockImplementation(async (model) => {
+      const models = await mocks.getComboModels(model);
+      return models ? { name: model, models } : null;
     });
     mocks.getComboModels.mockImplementation(async (model) => {
       if (model === "combo-fallback") return ["first/bad", "second/ok"];

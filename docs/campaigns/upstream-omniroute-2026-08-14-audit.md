@@ -280,8 +280,10 @@ Complete compact disposition ledger for `DUPLICATE`, `N-A`, and `DEFER` items.
 The reviewed slices were merged into one integration tree and exercised together under the pinned Node 20 runtime. That combined gate exposed four cross-slice contract gaps which were corrected before release:
 
 - quota fallback tests now assert the structured `{ resetAtMs, errorBody }` contract returned by `markAccountUnavailable`;
-- the `grok-cli` registry keeps `gc` as its canonical lookup alias while retaining upstream names as secondary aliases;
+- the `grok-cli` registry keeps the non-colliding `gb` canonical alias (`gc` remains Gemini CLI), while provider-id model lookups resolve through that alias;
 - API-key credential sanitization remains a production invariant for both saved and transient provider payloads;
 - DeepSeek V4 models explicitly advertise OpenAI and Claude transports, so Claude callers preserve native top-level `thinking` while OpenCode Go unknown/chat-only models continue to fall back to OpenAI.
 
 The DuckDuckGo web-session port is now a real no-auth executor for both `duckduckgo-web` and `ddgw`; it is no longer listed in the fail-closed pending-provider map. Generated URL/header snapshots cover its endpoint and no-auth headers. The final focused campaign matrix covered 89 changed test files and passed 1,133 tests.
+
+The curated full-repository gate then exposed stale combined-tree test doubles and two translator routing collisions. The fixes keep namespace mappings request-local, route Antigravity-to-Claude streams through the OpenAI finalizer, remove obsolete Claude-to-Gemini helper calls, update mocks for canonical combo lookup, and teach Vitest to transform imported `.jsx` modules. The final curated run collected 2,208 suites and 7,320 tests: 7,260 passed, 60 were skipped or pending, and no tests failed or required a baseline addition.

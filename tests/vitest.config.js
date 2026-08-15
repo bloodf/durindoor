@@ -12,7 +12,7 @@ const hasCloud = existsSync(resolve(__dirname, "../cloud"));
 
 export default defineConfig({
   oxc: {
-    include: /src\/app\/\(dashboard\)\/dashboard\/providers\/\[id\]\/EditCompatibleNodeModal\.js$/,
+    include: /(?:src\/app\/\(dashboard\)\/dashboard\/providers\/\[id\]\/EditCompatibleNodeModal\.js|\.jsx)$/,
     exclude: [],
     lang: "jsx",
     jsx: { runtime: "automatic" },

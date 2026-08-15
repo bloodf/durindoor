@@ -95,7 +95,7 @@ export function getModelUpstreamId(aliasOrId, modelId) {
   // while thinking intent travels in request-scoped translation context.
   const parsed = parseSuffix(modelId);
   const baseId = parsed.cleanModel;
-  const models = PROVIDER_MODELS[aliasOrId];
+  const models = PROVIDER_MODELS[aliasOrId] || PROVIDER_MODELS[PROVIDER_ID_TO_ALIAS[aliasOrId]];
   const found = findModel(models, baseId, aliasOrId);
   if (found?.upstreamModelId) return found.upstreamModelId;
   if (found?.id) return found.id;

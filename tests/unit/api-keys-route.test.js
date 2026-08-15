@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   getAllApiKeyUsageTotals: vi.fn(),
   getComboByName: vi.fn(),
   getModelAliases: vi.fn(),
+  getComboForModel: vi.fn(),
   getProviderNodes: vi.fn(),
   getApiKeys: vi.fn(),
   getConsistentMachineId: vi.fn(),
@@ -34,6 +35,7 @@ vi.mock("@/lib/localDb", () => ({
   getAllApiKeyUsageTotals: mocks.getAllApiKeyUsageTotals,
   getComboByName: mocks.getComboByName,
   getModelAliases: mocks.getModelAliases,
+  getComboForModel: mocks.getComboForModel,
   getProviderNodes: mocks.getProviderNodes,
   getApiKeys: mocks.getApiKeys,
   updateApiKey: mocks.updateApiKey,
@@ -92,6 +94,7 @@ describe("API keys routes", () => {
     mocks.getApiKeyById.mockResolvedValue({ ...storedKey });
     mocks.getComboByName.mockResolvedValue(null);
     mocks.getModelAliases.mockResolvedValue({});
+    mocks.getComboForModel.mockResolvedValue(null);
     mocks.getProviderNodes.mockResolvedValue([]);
     mocks.getApiKeyUsageTotals.mockResolvedValue({ apiKeyId: storedKey.id, totalTokens: 25, totalCost: 1.5, totalRequests: 2, updatedAt: null });
     mocks.getAllApiKeyUsageTotals.mockResolvedValue([{ apiKeyId: storedKey.id, totalTokens: 25, totalCost: 1.5, totalRequests: 2, updatedAt: null }]);

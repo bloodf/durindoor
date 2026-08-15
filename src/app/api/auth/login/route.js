@@ -54,8 +54,6 @@ export async function POST(request) {
     }
 
     if (isValid) {
-      recordSuccess(ip);
-
       // Default password still in use: never issue a normal dashboard
       // session on it. Remote clients are rejected outright; local clients
       // get a short-lived, single-use, IP-bound proof that only the
@@ -63,6 +61,14 @@ export async function POST(request) {
       const mustChangePassword = await isUsingDefaultPassword(settings);
       if (mustChangePassword) {
         if (!isLocalRequest(request)) {
+          recordFail(ip);
+          const postLock = checkLock(ip);
+          if (postLock.locked) {
+            return NextResponse.json(
+              { error: `Too many failed attempts. Try again in ${postLock.retryAfter}s. ${RESET_HINT}`, retryAfter: postLock.retryAfter, resetHint: RESET_HINT },
+              { status: 429, headers: { "Retry-After": String(postLock.retryAfter) } }
+            );
+          }
           return NextResponse.json({ success: true, mustChangePassword: true }, { status: 403, headers: NO_STORE_HEADERS });
         }
         const proof = issuePasswordChangeProof(ip);
@@ -72,6 +78,7 @@ export async function POST(request) {
         );
       }
 
+      recordSuccess(ip);
       const cookieStore = await cookies();
       await setDashboardAuthCookie(cookieStore, request);
       return NextResponse.json({ success: true, mustChangePassword: false }, { headers: NO_STORE_HEADERS });

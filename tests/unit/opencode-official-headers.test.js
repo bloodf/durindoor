@@ -59,40 +59,43 @@ describe("OpenCodeExecutor official free-tier headers (D13)", () => {
     expect(headers["x-opencode-session"]).toMatch(/^ses_[a-f0-9]+$/);
   });
 
-  it("hostile x-session-id never reaches outbound headers (free tier)", async () => {
+  it("uses trusted connection identity, not hostile client session input", async () => {
     const fetchMock = stubFetch();
     const executor = new OpenCodeExecutor();
-    const request = {
+    const request = (connectionId, sessionId) => ({
       model: "deepseek-v3.2",
       body: { messages: [{ role: "user", content: "hi" }] },
       stream: true,
-      credentials: { rawHeaders: { "x-session-id": "victim@example.com" } },
+      credentials: { connectionId, rawHeaders: { "x-session-id": sessionId } },
       requestContext: { clientHeaders: { "user-agent": "curl/8.5.0" } },
-    };
-    await executor.execute(request);
-    await executor.execute(request);
-    const [first, second] = fetchMock.mock.calls.map((call) => call[1].headers);
+    });
+    await executor.execute(request("account-a", "victim@example.com"));
+    await executor.execute(request("account-a", "different-attacker-value"));
+    await executor.execute(request("account-b", "victim@example.com"));
+    const [first, second, third] = fetchMock.mock.calls.map((call) => call[1].headers);
     expect(first["x-opencode-session"]).toMatch(/^ses_[a-f0-9]{32}$/);
-    expect(first["x-opencode-session"]).not.toContain("victim@example.com");
     expect(first["x-opencode-session"]).not.toContain("victim");
     expect(second["x-opencode-session"]).toBe(first["x-opencode-session"]);
     expect(second["x-opencode-request"]).not.toBe(first["x-opencode-request"]);
+    expect(third["x-opencode-session"]).not.toBe(first["x-opencode-session"]);
   });
-  it("distinct conversation sources produce distinct opaque sessions", async () => {
+
+  it("uses executor-private session identity without trusted connection", async () => {
     const fetchMock = stubFetch();
-    const executor = new OpenCodeExecutor();
-    const base = {
+    const request = (sessionId) => ({
       model: "deepseek-v3.2",
       body: { messages: [] },
       stream: true,
-      credentials: { rawHeaders: {} },
+      credentials: { rawHeaders: { "x-session-id": sessionId } },
       requestContext: { clientHeaders: { "user-agent": "curl/8.5.0" } },
-    };
-    await executor.execute({ ...base, credentials: { rawHeaders: { "x-session-id": "A" } } });
-    await executor.execute({ ...base, credentials: { rawHeaders: { "x-session-id": "B" } } });
-    const [first, second] = fetchMock.mock.calls.map((call) => call[1].headers);
-    expect(first["x-opencode-session"]).toMatch(/^ses_[a-f0-9]{32}$/);
-    expect(first["x-opencode-session"]).not.toBe(second["x-opencode-session"]);
+    });
+    const firstExecutor = new OpenCodeExecutor();
+    await firstExecutor.execute(request("attacker-a"));
+    await firstExecutor.execute(request("attacker-b"));
+    await new OpenCodeExecutor().execute(request("attacker-a"));
+    const [first, second, third] = fetchMock.mock.calls.map((call) => call[1].headers);
+    expect(second["x-opencode-session"]).toBe(first["x-opencode-session"]);
+    expect(third["x-opencode-session"]).not.toBe(first["x-opencode-session"]);
   });
 
   it("official UA: client identity headers are NOT preserved on free tier", async () => {

@@ -22,6 +22,7 @@ import ConnectionRow from "./ConnectionRow";
 import AddApiKeyModal from "./AddApiKeyModal";
 import { apiKeyConnectionNames } from "./apiKeyConnectionName";
 import EditCompatibleNodeModal from "./EditCompatibleNodeModal";
+import { updateCompatibleProviderNode } from "./updateCompatibleProviderNode";
 import AddCustomModelModal from "./AddCustomModelModal";
 import BulkImportCodexModal from "./BulkImportCodexModal";
 import { getProviderThinkingLevels } from "./providerThinkingLevels";
@@ -455,25 +456,15 @@ export default function ProviderDetailPage() {
   }, [providerId, isCompatible, autoPingQueue]);
 
   const handleUpdateNode = async (formData) => {
-    try {
-      const res = await fetch(`/api/provider-nodes/${providerId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setProviderNode(data.node);
+    await updateCompatibleProviderNode({
+      providerId,
+      formData,
+      onSuccess: async (node) => {
+        setProviderNode(node);
         await fetchConnections();
         setShowEditNodeModal(false);
-        return;
-      }
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.error || "Failed to update provider node");
-    } catch (error) {
-      // Rethrow so EditCompatibleNodeModal keeps the modal open and shows it.
-      throw error instanceof Error ? error : new Error("Failed to update provider node");
-    }
+      },
+    });
   };
 
   const saveProviderStrategy = async (strategy, stickyLimit) => {

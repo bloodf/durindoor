@@ -7,6 +7,26 @@ const model = vi.hoisted(() => ({
   updateProviderConnection: vi.fn(), deleteProviderConnectionsByProvider: vi.fn(),
 }));
 
+const view = vi.hoisted(() => {
+  const state = [];
+  let index = 0;
+  return {
+    react: {
+      useState(initial) {
+        const slot = index++;
+        if (state[slot] === undefined) state[slot] = initial;
+        return [state[slot], (value) => { state[slot] = typeof value === "function" ? value(state[slot]) : value; }];
+      },
+      useEffect(effect) { effect(); },
+    },
+    reset() { index = 0; },
+  };
+});
+
+vi.mock("react", () => view.react);
+vi.mock("prop-types", () => ({ default: { bool: { isRequired: null }, func: { isRequired: null }, string: { isRequired: null }, shape: () => ({ isRequired: null }) } }));
+vi.mock("@/shared/components", () => ({ Button: "Button", Badge: "Badge", Input: "Input", Modal: "Modal", Select: "Select" }));
+
 vi.mock("next/server", () => ({
   NextResponse: { json: (body, init = {}) => new Response(JSON.stringify(body), { status: init.status || 200 }) },
 }));
@@ -15,6 +35,8 @@ vi.mock("@/shared/utils", () => ({ generateId: () => "test" }));
 
 const { POST } = await import("../../src/app/api/provider-nodes/route.js");
 const { PUT } = await import("../../src/app/api/provider-nodes/[id]/route.js");
+const { default: EditCompatibleNodeModal } = await import("../../src/app/(dashboard)/dashboard/providers/[id]/EditCompatibleNodeModal.js");
+const { updateCompatibleProviderNode } = await import("../../src/app/(dashboard)/dashboard/providers/[id]/updateCompatibleProviderNode.js");
 
 const png = "data:image/png;base64,iVBORw0KGgo=";
 const oversizedPng = `data:image/png;base64,${Buffer.alloc(MAX_PROVIDER_ICON_DATA_BYTES + 1).toString("base64")}`;
@@ -31,6 +53,23 @@ function node(iconUrl) {
     name: "Node", prefix: "node/", apiType: "chat", baseUrl: "https://api.example/v1",
     type: "openai-compatible", ...(iconUrl === undefined ? {} : { iconUrl }),
   };
+}
+
+function walk(tree, predicate, found = []) {
+  if (tree == null || typeof tree !== "object") return found;
+  if (predicate(tree)) found.push(tree);
+  const children = tree.props?.children;
+  for (const child of Array.isArray(children) ? children : [children]) walk(child, predicate, found);
+  return found;
+}
+
+function renderEdit(props) {
+  view.reset();
+  return EditCompatibleNodeModal(props);
+}
+
+function button(tree, text) {
+  return walk(tree, (element) => element.type === "Button" && element.props.children === text)[0];
 }
 
 describe("isValidProviderIconUrl", () => {
@@ -105,5 +144,32 @@ describe("provider-node icon persistence boundary", () => {
     const response = await PUT(request(node(), "PUT"), { params: Promise.resolve({ id: nodeId }) });
     expect(response.status).toBe(200);
     expect(model.updateProviderNode.mock.calls[0][1]).not.toHaveProperty("iconUrl");
+  });
+});
+
+describe("EditCompatibleNodeModal rejected save", () => {
+  it("keeps modal open and renders production PUT error without mutating provider state", async () => {
+    const onClose = vi.fn();
+    const onSuccess = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: "Invalid icon URL" }), { status: 400 }));
+    const originalFetch = global.fetch;
+    global.fetch = fetchMock;
+    const onSave = (formData) => updateCompatibleProviderNode({ providerId: nodeId, formData, onSuccess });
+    const props = { isOpen: true, node: { ...node("javascript:alert(1)"), id: nodeId }, onSave, onClose, isAnthropic: false };
+
+    try {
+      renderEdit(props);
+      await button(renderEdit(props), "Save").props.onClick();
+      const tree = renderEdit(props);
+      const [url, init] = fetchMock.mock.lastCall ?? fetchMock.mock.calls.at(-1);
+      expect(url).toBe(`/api/provider-nodes/${nodeId}`);
+      expect(JSON.parse(init.body)).toEqual(expect.objectContaining({ iconUrl: "javascript:alert(1)" }));
+      expect(walk(tree, (element) => element.props?.role === "alert")[0].props.children[1].props.children).toBe("Invalid icon URL");
+      expect(tree.props.isOpen).toBe(true);
+      expect(onClose).not.toHaveBeenCalled();
+      expect(onSuccess).not.toHaveBeenCalled();
+    } finally {
+      global.fetch = originalFetch;
+    }
   });
 });

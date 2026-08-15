@@ -49,20 +49,18 @@ describe("model lifecycle", () => {
     expect(MODEL_LIFECYCLE_RECORDS.some(({ model }) => model === "gpt-4-1106-preview")).toBe(false);
   });
 
-  it("rejects a shutdown canonical or upstream model with OpenAI-compatible 410", () => {
-    for (const model of ["gpt-5.2-codex", "gpt-5.3-chat-latest"]) {
-      const result = checkModelLifecycle({
-        provider: "openai",
-        canonicalModel: model === "gpt-5.2-codex" ? model : "active-alias",
-        upstreamModel: model,
-        asOf: new Date("2026-08-11T00:00:00.000Z"),
-      });
-      expect(result).toMatchObject({
-        success: false,
-        status: 410,
-        error: expect.stringMatching(/cannot be routed automatically/),
-      });
-    }
+  it("rejects a shutdown canonical model with OpenAI-compatible 410", () => {
+    const result = checkModelLifecycle({
+      provider: "openai",
+      canonicalModel: "gpt-5.3-chat-latest",
+      upstreamModel: "gpt-5.3-chat-latest",
+      asOf: new Date("2026-08-11T00:00:00.000Z"),
+    });
+    expect(result).toMatchObject({
+      success: false,
+      status: 410,
+      error: expect.stringMatching(/cannot be routed automatically/),
+    });
   });
 
   it("rejects a shutdown resolved upstream model when canonical model remains active", () => {

@@ -115,6 +115,14 @@ export default function LoginPage() {
         body: JSON.stringify({ proof: passwordChangeProof, newPassword }),
       });
       const data = await res.json().catch(() => ({}));
+      if (data.reauthenticate) {
+        setPassword("");
+        setNewPassword("");
+        setPasswordChangeProof("");
+        setMustChange(false);
+        setError("Password updated. Please sign in with your new password.");
+        return;
+      }
       if (res.ok) {
         window.location.assign("/dashboard");
         return;

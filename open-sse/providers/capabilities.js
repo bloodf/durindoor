@@ -885,6 +885,9 @@ export function getCapabilitiesForModel(provider, model) {
  */
 export function resolveModelLimits(provider, model, customCaps = null, connection = null, liveLimits = null) {
   const baseModel = typeof model === "string" && model.includes("/") ? model.split("/").pop() : model;
+
+  // Keep Z.ai's documented Claude Code suffix on wire; use bare catalog ID for limits.
+  const capabilityBaseModel = /^glm-5\.3\[1m\]$/i.test(baseModel) ? "glm-5.3" : baseModel;
   const positive = (value) => Number.isFinite(value) && value > 0;
   const asLimits = (caps, source, unpublishedOutput = false) => {
     if (!positive(caps?.contextWindow)) return null;
@@ -920,21 +923,21 @@ export function resolveModelLimits(provider, model, customCaps = null, connectio
   if (provider) {
     const providerCaps = PROVIDER_CAPABILITIES[provider];
     const ids = provider === "kiro" || provider === "kr"
-      ? [model, baseModel, normalizeModelId(model), normalizeModelId(baseModel)]
-      : [model, baseModel];
+      ? [model, baseModel, capabilityBaseModel, normalizeModelId(model), normalizeModelId(baseModel)]
+      : [model, baseModel, capabilityBaseModel];
     for (const id of ids) {
       const hit = providerCaps?.[id] && asLimits(providerCaps[id], "provider", hasUnpublishedOutput(provider, id));
       if (hit) return applyPreferred(hit);
     }
   }
 
-  for (const id of [baseModel, model]) {
+  for (const id of [capabilityBaseModel, baseModel, model]) {
     const hit = MODEL_CAPABILITIES[id] && asLimits(MODEL_CAPABILITIES[id], "exact", hasUnpublishedOutput(provider, id));
     if (hit) return applyPreferred(hit);
   }
 
   const registry = REGISTRY.find((entry) => entry.id === provider || entry.alias === provider || entry.uiAlias === provider);
-  const registryModel = registry?.models?.find((entry) => entry.id === model || entry.id === baseModel);
+  const registryModel = registry?.models?.find((entry) => entry.id === model || entry.id === baseModel || entry.id === capabilityBaseModel);
   if (registryModel) {
     const hit = asLimits({
       contextWindow: registryModel.contextLength ?? registry.transport?.defaultContextLength,
@@ -944,7 +947,7 @@ export function resolveModelLimits(provider, model, customCaps = null, connectio
   }
 
   for (const { pattern, caps } of PATTERN_CAPABILITIES) {
-    if (!matchPattern(pattern, baseModel) && !matchPattern(pattern, model)) continue;
+    if (!matchPattern(pattern, capabilityBaseModel) && !matchPattern(pattern, baseModel) && !matchPattern(pattern, model)) continue;
     const hit = asLimits(caps, "pattern", hasUnpublishedOutput(provider, baseModel));
     if (hit) return applyPreferred(hit);
     if (caps?.contextWindow === null) break;

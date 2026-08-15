@@ -24,11 +24,18 @@ describe("Kiro MITM model slots", () => {
     expect(sonnet5.alias).toBe("claude-sonnet-5");
   });
 
+  it("offers a mappable slot for the agent default model id 'auto'", () => {
+    const auto = kiro.defaultModels.find((m) => m.id === "auto");
+    expect(auto).toBeTruthy();
+    expect(auto.alias).toBe("auto");
+  });
+
   it("offers a mappable slot for the background sub-task model id 'simple-task'", () => {
     const simpleTask = kiro.defaultModels.find((m) => m.id === "simple-task");
     expect(simpleTask).toBeTruthy();
     expect(simpleTask.alias).toBe("simple-task");
   });
+
 
   // decolua/9router#2596 — static MITM picker slots for the GPT-5.6 family.
   // These mirror KIRO_GPT_5_6_FAMILY in providers/models/kiroVariants.js

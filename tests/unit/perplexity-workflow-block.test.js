@@ -277,3 +277,32 @@ it("uses chunks over text and never emits tails from divergent workflow snapshot
   expect(await streamDeltasFor(events)).toEqual(["The cat", "s"]);
   expect(await answerFor(events)).toBe("The cats");
 });
+
+it("caps hostile workflow answer tracks but updates an existing selected track", async () => {
+  const answerItem = (chunks = []) => ({ variant: "answer", payload: { text_payload: { variant: "answer", chunks } } });
+  const steps = Array.from({ length: 129 }, () => ({ items: [answerItem()] }));
+  steps.reverse();
+
+  const events = [
+    {
+      status: "PENDING",
+      blocks: [{ intended_usage: "workflow_root", workflow_block: { steps } }],
+    },
+    {
+      status: "PENDING",
+      blocks: [{
+        intended_usage: "workflow_root",
+        diff_block: {
+          field: "workflow_block",
+          patches: [
+            { op: "add", path: "/steps/1000/items/0", value: answerItem(["ignored"]) },
+            { op: "add", path: "/steps/1001", value: { items: [answerItem(["ignored"]) ] } },
+            { op: "add", path: "/steps/0/items/0/payload/text_payload/chunks/0", value: "kept" },
+          ],
+        },
+      }],
+    },
+  ];
+
+  expect(await answerFor(events)).toBe("kept");
+});

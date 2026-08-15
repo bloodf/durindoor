@@ -41,6 +41,8 @@ const mocks = vi.hoisted(() => ({
   exec: vi.fn(),
   platform: vi.fn(),
   chmod: vi.fn(),
+  rename: vi.fn(),
+  unlink: vi.fn(),
 }));
 
 vi.mock("fs/promises", () => ({
@@ -50,12 +52,16 @@ vi.mock("fs/promises", () => ({
     writeFile: mocks.writeFile,
     mkdir: mocks.mkdir,
     chmod: mocks.chmod,
+    rename: mocks.rename,
+    unlink: mocks.unlink,
   },
   access: mocks.access,
   readFile: mocks.readFile,
   writeFile: mocks.writeFile,
   mkdir: mocks.mkdir,
   chmod: mocks.chmod,
+  rename: mocks.rename,
+  unlink: mocks.unlink,
 }));
 
 vi.mock("os", () => ({
@@ -101,6 +107,8 @@ describe("hermes-settings api_key (port of decolua/9router#3235)", () => {
     mocks.writeFile.mockResolvedValue();
     mocks.mkdir.mockResolvedValue();
     mocks.chmod.mockResolvedValue();
+    mocks.rename.mockResolvedValue();
+    mocks.unlink.mockResolvedValue();
   });
 
   async function postBody(body) {
@@ -226,6 +234,24 @@ describe("hermes-settings api_key (port of decolua/9router#3235)", () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: "apiKey must be a non-empty string when provided" });
     expect(mocks.writeFile).not.toHaveBeenCalled();
+  });
+
+  it("redacts malformed request secrets from console output", async () => {
+    const apiKey = "sk_console_sentinel";
+    const error = new Error(apiKey);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    mocks.mkdir.mockRejectedValue(error);
+
+    const response = await postBody({
+      baseUrl: "http://localhost:20128",
+      apiKey,
+      model: "cc/claude-sonnet-4-6",
+    });
+
+    expect(response.status).toBe(500);
+    expect(JSON.stringify(await response.json())).not.toContain(apiKey);
+    expect(log.mock.calls.flat().join(" ")).not.toContain(apiKey);
+    log.mockRestore();
   });
 
   it("does not expose a rejected API key in its response", async () => {

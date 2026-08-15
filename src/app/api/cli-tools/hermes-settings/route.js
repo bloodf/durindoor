@@ -112,7 +112,15 @@ const readEnvFile = async () => {
 
 const writeHermesEnvFile = async (envText) => {
   const envPath = getHermesEnvPath();
-  await fs.writeFile(envPath, envText, { mode: 0o600 });
+  const dir = path.dirname(envPath);
+  const tempPath = path.join(dir, `.env.${process.pid}.${Date.now()}.tmp`);
+  await fs.writeFile(tempPath, envText, { mode: 0o600 });
+  try {
+    await fs.rename(tempPath, envPath);
+  } catch (renameError) {
+    await fs.unlink(tempPath).catch(() => {});
+    throw renameError;
+  }
   if (os.platform() !== "win32") {
     await fs.chmod(envPath, 0o600);
   }
@@ -138,7 +146,7 @@ export async function GET() {
       has9Router: has9RouterConfig(model),
       configPath: getHermesConfigPath(),
     });
-  } catch (error) {
+    console.log("Hermes settings read failed");
     console.log("Error checking hermes settings:", error);
     return NextResponse.json({ error: "Failed to check hermes settings" }, { status: 500 });
   }
@@ -185,7 +193,7 @@ export async function POST(request) {
       configPath: getHermesConfigPath(),
     });
   } catch (error) {
-    console.log("Error updating hermes settings:", error);
+    console.log("Hermes settings update failed");
     return NextResponse.json({ error: "Failed to update hermes settings" }, { status: 500 });
   }
 }
@@ -207,6 +215,6 @@ export async function DELETE() {
     return NextResponse.json({ success: true, message: `${PROVIDER_NAME} model block removed` });
   } catch (error) {
     console.log("Error resetting hermes settings:", error);
-    return NextResponse.json({ error: "Failed to reset hermes settings" }, { status: 500 });
+    console.log("Hermes settings reset failed");
   }
 }

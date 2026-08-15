@@ -25,6 +25,10 @@ export default {
     // thinking fields to the Messages endpoint.
     thinkingFormat: "claude",
   },
+  features: {
+    usage: true,
+    usageApikey: true,
+  },
   models: [
     { id: "qwen3.7-plus", name: "Qwen3.7 Plus(vision)", contextLength: 1000000 },
     { id: "qwen3-coder-plus", name: "Qwen3 Coder Plus", contextLength: 1000000 },

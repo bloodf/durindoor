@@ -14,6 +14,7 @@ import { getCodeBuddyCnUsage } from "./usage/codebuddy-cn.js";
 import { getCursorUsage } from "./usage/cursor.js";
 import { getKimiUsage } from "./usage/kimi.js";
 import { getDeepseekUsage } from "./usage/deepseek.js";
+import { getBailianCodingPlanUsage } from "./usage/bailian.js";
 import {
   getQwenUsage,
   getIflowUsage,
@@ -42,6 +43,7 @@ const USAGE_HANDLERS = {
   kiro: (c) => getKiroUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
   qoder: (c) => getQoderUsage(c.accessToken, c.proxyOptions),
   qwen: (c) => getQwenUsage(c.accessToken, c.providerSpecificData),
+  "bailian-coding-plan": (c) => getBailianCodingPlanUsage(c.connection, c.proxyOptions),
   iflow: (c) => getIflowUsage(c.accessToken),
   ollama: (c) => getOllamaUsage(c.apiKey, c.providerSpecificData, c.proxyOptions),
   glm: (c) => getGlmUsage(c.apiKey, c.provider, c.proxyOptions),
@@ -67,5 +69,5 @@ export async function getUsageForProvider(connection, proxyOptions = null, optio
 
   const handler = USAGE_HANDLERS[provider];
   if (!handler) return { message: `Usage API not implemented for ${provider}` };
-  return await handler({ provider, accessToken, apiKey, authType, providerSpecificData, providerDataWithProjectId, proxyOptions, connectionId, idToken, force: options.force === true });
+  return await handler({ connection, provider, accessToken, apiKey, authType, providerSpecificData, providerDataWithProjectId, proxyOptions, connectionId, idToken, force: options.force === true });
 }

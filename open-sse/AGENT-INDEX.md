@@ -24,7 +24,9 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `copilot-web` | CopilotWebExecutor | `./copilot-web.js` |
 | `cu` | CursorExecutor | `./cursor.js` |
 | `cursor` | CursorExecutor | `./cursor.js` |
+| `ddgw` | DuckDuckGoWebExecutor | `./duckduckgo-web.js` |
 | `devin-cli` | DevinCliExecutor | `./devin-cli.js` |
+| `duckduckgo-web` | DuckDuckGoWebExecutor | `./duckduckgo-web.js` |
 | `gemini-cli` | GeminiCLIExecutor | `./gemini-cli.js` |
 | `github` | GithubExecutor | `./github.js` |
 | `gitlab-duo` | GitlabExecutor | `./gitlab.js` |

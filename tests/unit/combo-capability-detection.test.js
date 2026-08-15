@@ -93,6 +93,54 @@ describe("combo capability detection for attachment payloads", () => {
     expect(required).toEqual(new Set());
   });
 
+  it("detects structured media blocks from role-less and tool messages", () => {
+    const required = detectRequiredCapabilities({
+      messages: [
+        { content: [{ type: "image_url", image_url: "data:image/png;base64,AA==" }] },
+        { role: "tool", content: [{ type: "input_file", file_data: "data:application/pdf;base64,AA==" }] },
+      ],
+    });
+
+    expect(required).toEqual(new Set(["vision", "pdf"]));
+  });
+
+  it("appends placeholders for unsupported message-level media beside text", () => {
+    const body = {
+      messages: [{
+        role: "user",
+        content: "Describe these files.",
+        images: ["base64-image"],
+        audio_url: "data:audio/wav;base64,AA==",
+        video_url: "data:video/mp4;base64,AA==",
+        document: "data:application/pdf;base64,AA==",
+      }],
+    };
+
+    stripUnsupportedModalities(body, FORMATS.OPENAI, {
+      vision: false, audioInput: false, videoInput: false, pdf: false,
+    });
+
+    expect(body.messages[0].content).toContain("Describe these files.");
+    expect(body.messages[0].content).toContain("[image omitted: model has no vision support]");
+    expect(body.messages[0].content).toContain("[audio omitted: model has no audio support]");
+    expect(body.messages[0].content).toContain("[video omitted: model has no video support]");
+    expect(body.messages[0].content).toContain("[file omitted: model has no document support]");
+  });
+
+  it("preserves attachments with neither MIME nor media payload", () => {
+    const body = {
+      messages: [{
+        role: "user",
+        content: "metadata",
+        attachments: [{ name: "metadata-only" }],
+      }],
+    };
+
+    stripUnsupportedModalities(body, FORMATS.OPENAI, { vision: false, audioInput: true, videoInput: true, pdf: true });
+
+    expect(body.messages[0].attachments).toEqual([{ name: "metadata-only" }]);
+  });
+
   it("falls back to attachments when experimental_attachments is malformed", () => {
     const required = detectRequiredCapabilities({
       messages: [{

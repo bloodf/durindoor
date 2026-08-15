@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import { transformWithOxc } from "vite";
 import { resolve } from "path";
 import { fileURLToPath } from "url";
 import { existsSync } from "fs";
@@ -42,6 +43,14 @@ export default defineConfig({
     // Suppress noisy console output from handlers under test
     silent: false,
   },
+  plugins: [{
+    name: "dashboard-jsx",
+    enforce: "pre",
+    transform(code, id) {
+      if (!/\/src\/.*\.js$/.test(id)) return null;
+      return transformWithOxc(code, id, { lang: "jsx", jsx: { runtime: "automatic" } });
+    },
+  }],
   resolve: {
     // Use array form so subpath aliases (e.g. "@/lib/db/index.js") resolve correctly.
     alias: [

@@ -25,14 +25,10 @@ function buildOAuthUsageHeaders(accessToken) {
   };
 }
 
-// Bounded, token-keyed cache for last-successful OAuth quota responses.
-// On 429/transient 5xx from the OAuth usage endpoint we return stale cached
-// data instead of falling back to the legacy org-admin API, which consumer
-// OAuth tokens cannot access (that fallback produces the misleading
-// "Usage API requires admin permissions" message).
+// Bounded, token-keyed cache for successful OAuth quota responses. Expired
+// entries never mask provider failures.
 const OAUTH_QUOTA_CACHE_MAX = 100;
 const OAUTH_QUOTA_CACHE_TTL_MS = 5 * 60 * 1000;
-const OAUTH_RATE_LIMIT_COOLDOWN_MS = 180 * 1000;
 
 const oauthQuotaCache = new Map();
 const oauthQuotaInFlight = new Map();
@@ -44,10 +40,7 @@ function getOAuthCacheKey(accessToken) {
 function getOAuthCacheEntry(key) {
   const entry = oauthQuotaCache.get(key);
   if (!entry) return null;
-  if (
-    Date.now() - entry.cachedAt > OAUTH_QUOTA_CACHE_TTL_MS &&
-    Date.now() >= entry.rateLimitedUntil
-  ) {
+  if (Date.now() - entry.cachedAt >= OAUTH_QUOTA_CACHE_TTL_MS) {
     oauthQuotaCache.delete(key);
     return null;
   }
@@ -59,23 +52,7 @@ function setOAuthCacheEntry(key, data) {
     const oldest = oauthQuotaCache.keys().next().value;
     oauthQuotaCache.delete(oldest);
   }
-  oauthQuotaCache.set(key, { data, cachedAt: Date.now(), rateLimitedUntil: 0 });
-}
-
-function setOAuthRateLimited(key, data) {
-  if (!oauthQuotaCache.has(key)) {
-    setOAuthCacheEntry(key, data);
-  }
-  oauthQuotaCache.get(key).rateLimitedUntil = Date.now() + OAUTH_RATE_LIMIT_COOLDOWN_MS;
-}
-
-function isOAuthRateLimited(key) {
-  const entry = oauthQuotaCache.get(key);
-  return entry && Date.now() < entry.rateLimitedUntil;
-}
-
-function makeStaleResponse(entry, staleReason) {
-  return { ...entry.data, stale: true, rateLimited: true, staleReason };
+  oauthQuotaCache.set(key, { data, cachedAt: Date.now() });
 }
 
 async function parseErrorBody(response) {
@@ -89,37 +66,28 @@ async function parseErrorBody(response) {
 function shouldFallbackToLegacy(status) {
   return status === 404 || status === 405;
 }
-/**
- * Polls Claude OAuth quota once per credential at a time, reusing cached quota
- * state for cooldowns so concurrent callers and recent 429s cannot hammer Anthropic.
- */
-export function getClaudeUsage(accessToken, proxyOptions = null, authType = "oauth") {
+/** Polls Claude OAuth quota once per credential at a time. */
+export function getClaudeUsage(accessToken, proxyOptions = null, authType = "oauth", options = {}) {
   if (authType !== "oauth") {
     return getClaudeUsageLegacy(accessToken, proxyOptions);
   }
 
   const cacheKey = getOAuthCacheKey(accessToken);
   const cached = getOAuthCacheEntry(cacheKey);
-  if (cached && isOAuthRateLimited(cacheKey)) {
-    return Promise.resolve(
-      cached.data?.quotas
-        ? makeStaleResponse(cached, "Rate limited; showing cached quota.")
-        : cached.data
-    );
-  }
+  if (!options.force && cached) return Promise.resolve(cached.data);
 
   const pending = oauthQuotaInFlight.get(cacheKey);
   if (pending) return pending;
 
   let request;
-  request = pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey, cached).finally(() => {
+  request = pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey).finally(() => {
     if (oauthQuotaInFlight.get(cacheKey) === request) oauthQuotaInFlight.delete(cacheKey);
   });
   oauthQuotaInFlight.set(cacheKey, request);
   return request;
 }
 
-async function pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey, cached) {
+async function pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey) {
   try {
     const oauthResponse = await proxyAwareFetch(CLAUDE_CONFIG.oauthUsageUrl, {
       method: "GET",
@@ -176,16 +144,6 @@ async function pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey, cached)
     const body = await parseErrorBody(oauthResponse);
 
     if (status === 429 || (status >= 500 && status < 600)) {
-      if (status === 429) {
-        const result = cached?.data || { message: "Rate limited, try again later." };
-        setOAuthRateLimited(cacheKey, result);
-        return cached
-          ? makeStaleResponse(cached, "Rate limited; showing cached quota.")
-          : result;
-      }
-      if (cached) {
-        return { ...cached.data, stale: true, staleReason: "Claude usage temporarily unavailable; showing cached quota." };
-      }
       return { message: "Claude usage temporarily unavailable. Try again later." };
     }
 

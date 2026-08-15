@@ -186,6 +186,11 @@ export const PROVIDER_QUOTA_CONFIG = deepFreeze({
   "bailian-coding-plan": {
     adapter: "bailian",
     sourceId: "bailian-coding-plan:console-quota:v1",
+    tokenPlanSourceId: "bailian-coding-plan:token-plan-quota:v1",
+    tokenPlanHosts: {
+      international: "https://bailian-singapore-cs.alibabacloud.com",
+      domestic: "https://cs-data.qwencloud.com",
+    },
     urls: [
       "https://modelstudio.console.alibabacloud.com/data/api.json?action=zeldaEasy.broadscope-bailian.codingPlan.queryCodingPlanInstanceInfoV2&product=broadscope-bailian&api=queryCodingPlanInstanceInfoV2",
       "https://bailian.console.aliyun.com/data/api.json?action=zeldaEasy.broadscope-bailian.codingPlan.queryCodingPlanInstanceInfoV2&product=broadscope-bailian&api=queryCodingPlanInstanceInfoV2",

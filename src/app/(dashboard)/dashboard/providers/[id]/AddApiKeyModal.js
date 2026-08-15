@@ -306,6 +306,17 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
             </div>
           </div>
         )}
+        {provider === "bailian-coding-plan" && (
+          <Input
+            label="Qwen/Alibaba Console Cookie"
+            type="password"
+            value={formData.qwenCloudCookie}
+            onChange={(e) => setFormData({ ...formData, qwenCloudCookie: e.target.value })}
+            placeholder="login_qwencloud_ticket=... or login_aliyunid_ticket=..."
+            autoComplete="off"
+            data-testid="bailian-qwen-cookie"
+          />
+        )}
         {isXaiApiKey && (
           <p className="text-xs text-text-muted">
             Use a direct xAI API key from console.x.ai. This is separate from Grok Build OAuth.

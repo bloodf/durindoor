@@ -5,7 +5,7 @@ import { AI_PROVIDERS } from "@/shared/constants/providers";
 export const QUOTA_CACHE_KEY = "quotaCacheData";
 export const REFRESH_INTERVAL_MS = 60000;
 // Claude usage/quota endpoint rate-limits; poll it less often than other providers
-export const CLAUDE_REFRESH_INTERVAL_MS = 180000;
+export const CLAUDE_REFRESH_INTERVAL_MS = 600000;
 export const DEPLETED_QUOTA_THRESHOLD = 5;
 export const AUTO_REFRESH_STORAGE_KEY = "quotaAutoRefresh";
 export const CONNECTIONS_PAGE_SIZE = 20;
@@ -192,6 +192,13 @@ export function sortVisibleConnections(
 export function getRefreshConnections(connections, force, tick, claudeEvery) {
   return connections.filter((connection) =>
     force || connection.provider !== "claude" || tick % claudeEvery === 0
+  );
+}
+
+/** Dispatches the selected Refresh All connections with its force intent intact. */
+export function refreshProviderQuotas(connections, force, fetchQuota) {
+  return Promise.all(
+    connections.map((connection) => fetchQuota(connection.id, connection.provider, { force })),
   );
 }
 

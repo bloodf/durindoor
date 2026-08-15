@@ -43,6 +43,7 @@ import {
   ACCOUNT_FILTER_OPTIONS,
   QUOTA_SORT_OPTIONS,
   createAutoRefreshScheduler,
+  refreshProviderQuotas,
 } from "./utils";
 import { getCodexPlan } from "@/shared/utils/codexPlanLabel";
 import Card from "@/shared/components/Card";
@@ -747,17 +748,16 @@ export default function ProviderLimits() {
     [accountFilter, page, pageSize, providerFilter],
   );
 
-  // Fetch quota for a specific connection
-  const fetchQuota = useCallback(async (connectionId, provider) => {
+  const fetchQuota = useCallback(async (connectionId, provider, { force = false } = {}) => {
     setLoading((prev) => ({ ...prev, [connectionId]: true }));
     setErrors((prev) => ({ ...prev, [connectionId]: null }));
 
     try {
       console.log(
-        `[ProviderLimits] Fetching quota for ${provider} (${connectionId})`,
+        `[ProviderLimits] Fetching quota for ${provider} (${connectionId})${force ? " (force)" : ""}`,
       );
-      const response = await fetch(`/api/usage/${connectionId}`);
-
+      const url = `/api/usage/${connectionId}${force ? "?force=1" : ""}`;
+      const response = await fetch(url);
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         const errorMsg = errorData.error || response.statusText;
@@ -824,10 +824,10 @@ export default function ProviderLimits() {
     }
   }, []);
 
-  // Refresh quota for a specific provider
+  // Manual refresh bypasses the provider's valid in-process quota cache.
   const refreshProvider = useCallback(
     async (connectionId, provider) => {
-      await fetchQuota(connectionId, provider);
+      await fetchQuota(connectionId, provider, { force: true });
       setLastUpdated(new Date());
     },
     [fetchQuota],
@@ -1031,9 +1031,7 @@ export default function ProviderLimits() {
         filterQuotaStateByConnections(prev, visibleConnections),
       );
 
-      await Promise.all(
-        refreshConnections.map((conn) => fetchQuota(conn.id, conn.provider)),
-      );
+      await refreshProviderQuotas(refreshConnections, force, fetchQuota);
 
       setLastUpdated(new Date());
     } catch (error) {

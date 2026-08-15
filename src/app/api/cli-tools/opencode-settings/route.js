@@ -150,7 +150,10 @@ export async function POST(request) {
     });
   } catch (error) {
     console.log("Error applying opencode settings:", error);
-    return NextResponse.json({ error: "Failed to apply settings" }, { status: 500 });
+    const message = error instanceof Error && error.message.includes("invalid JSONC")
+      ? error.message
+      : "Failed to apply settings";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 

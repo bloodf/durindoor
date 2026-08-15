@@ -178,3 +178,5 @@ export function formatModelLifecycleMessage(decision) {
   if (decision.status === "shutdown") {
     return `Model "${modelRef}" was shut down on ${decision.shutdownAt} and cannot be routed automatically.${replacement}`;
   }
+  return `Model "${modelRef}" is deprecated and is scheduled to shut down on ${decision.shutdownAt}.${replacement}`;
+}

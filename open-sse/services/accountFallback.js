@@ -51,19 +51,19 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
   const lowerError = normalizedText.toLowerCase();
 
   if (isRequestReplayBufferError(status, errorText)) {
-    return { shouldFallback: false, cooldownMs: 0 };
+    return { shouldFallback: false, cooldownMs: 0, scope: null };
   }
 
   // Port-pending guards are explicit feature-not-implemented errors; they should not
   // lock the user's connection or trigger the account fallback cooldown chain.
   if (lowerError.includes("provider_port_pending")) {
-    return { shouldFallback: false, cooldownMs: 0 };
+    return { shouldFallback: false, cooldownMs: 0, scope: null };
   }
 
   // Anthropic 400 invalid_request_error is a client-side request schema failure;
   // switching accounts will not fix it, so do not fall back.
   if (Number(status) === 400 && lowerError.includes("invalid_request_error")) {
-    return { shouldFallback: false, cooldownMs: 0 };
+    return { shouldFallback: false, cooldownMs: 0, scope: null };
   }
 
   // Codex invalid_encrypted_content is a stale-reasoning request issue recovered
@@ -72,14 +72,14 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
     (lowerError.includes("encrypted content") &&
       (lowerError.includes("could not be verified") || lowerError.includes("could not be decrypted or parsed")));
   if (Number(status) === 400 && invalidEncryptedContent) {
-    return { shouldFallback: false, cooldownMs: 0 };
+    return { shouldFallback: false, cooldownMs: 0, scope: null };
   }
 
   // A per-request content rejection (e.g. provider content filter blocking a
   // single prompt) is not an account/auth/quota failure; it must never lock the
   // connection or trigger the account-fallback cooldown chain.
   if (lowerError.includes("provider_request_rejected")) {
-    return { shouldFallback: false, cooldownMs: 0 };
+    return { shouldFallback: false, cooldownMs: 0, scope: null };
   }
 
   const providerRule = getProviderErrorRuleMatch(
@@ -89,10 +89,16 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
     resolveRuleMatchBody(provider, structuredError, errorText)
   );
   if (providerRule?.reason === "quota_exhausted") {
-    return checkFallbackErrorByRules(HTTP_STATUS.TOO_MANY_REQUESTS, lowerError, backoffLevel);
+    const ruleResult = checkFallbackErrorByRules(HTTP_STATUS.TOO_MANY_REQUESTS, lowerError, backoffLevel);
+    return { ...ruleResult, scope: providerRule.scope ?? null };
   }
   if (providerRule?.cooldownMs) {
-    return { shouldFallback: true, cooldownMs: providerRule.cooldownMs };
+    return {
+      shouldFallback: true,
+      cooldownMs: providerRule.cooldownMs,
+      newBackoffLevel: 0,
+      scope: providerRule.scope ?? null,
+    };
   }
 
   // OmniRoute #6731: an apikey-category 429 whose body explicitly reports an
@@ -115,14 +121,21 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
         // monthly "reset in 14 days" still benches for the cap rather than
         // being discarded as resetless exhaustion.
         const clampedReset = Math.min(evidence.resetAtMs, now + MAX_RATE_LIMIT_COOLDOWN_MS);
-        return { shouldFallback: true, cooldownMs: Math.max(0, clampedReset - now), newBackoffLevel: 0, rateLimitEvidence: evidence };
+        return {
+          shouldFallback: true,
+          cooldownMs: Math.max(0, clampedReset - now),
+          newBackoffLevel: 0,
+          rateLimitEvidence: evidence,
+          scope: null,
+        };
       }
       const fallback = checkFallbackErrorByRules(status, lowerError, backoffLevel);
-      return { ...fallback, rateLimitEvidence: evidence };
+      return { ...fallback, rateLimitEvidence: evidence, scope: null };
     }
   }
 
-  return checkFallbackErrorByRules(status, lowerError, backoffLevel);
+  const generic = checkFallbackErrorByRules(status, lowerError, backoffLevel);
+  return { ...generic, scope: null };
 }
 
 function checkFallbackErrorByRules(status, lowerError, backoffLevel) {
@@ -387,6 +400,7 @@ export function resetAccountState(account) {
     status: "active"
   };
 }
+
 /**
  * Apply error state to account
  * @param {object} account - Account object
@@ -395,13 +409,15 @@ export function resetAccountState(account) {
  * @param {string} provider - Optional provider ID for provider-specific rules
  * @param {Headers|object|null} headers - Optional upstream response headers
  * @param {unknown} structuredError - Optional parsed upstream error body
- * @returns {object} Updated account with error state
+ * @returns {object} Updated account with error state. `providerErrorScope`
+ *   is set when a provider rule returned a `scope` (e.g. AgentRouter quota
+ *   `connection`) so the lock layer can pick account-wide persistence.
  */
 export function applyErrorState(account, status, errorText, provider = null, headers = null, structuredError = null) {
   if (!account) return account;
 
   const backoffLevel = account.backoffLevel || 0;
-  const { cooldownMs, newBackoffLevel } = checkFallbackError(
+  const { cooldownMs, newBackoffLevel, scope } = checkFallbackError(
     status,
     errorText,
     backoffLevel,
@@ -415,6 +431,7 @@ export function applyErrorState(account, status, errorText, provider = null, hea
     rateLimitedUntil: cooldownMs > 0 ? getUnavailableUntil(cooldownMs) : null,
     backoffLevel: newBackoffLevel ?? backoffLevel,
     lastError: { status, message: errorText, timestamp: new Date().toISOString() },
-    status: "error"
+    status: "error",
+    ...(scope ? { providerErrorScope: scope } : {}),
   };
 }

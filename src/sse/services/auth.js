@@ -809,7 +809,14 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     context?.rateLimitEvidence && typeof context.rateLimitEvidence === "object"
       ? context.rateLimitEvidence
       : null;
-  const fallbackResult = checkFallbackError(status, errorText, backoffLevel, provider);
+  const fallbackResult = checkFallbackError(
+    status,
+    errorText,
+    backoffLevel,
+    provider,
+    context?.headers ?? null,
+    context?.errorBody ?? null,
+  );
   const effectiveEvidence = callerEvidence || fallbackResult.rateLimitEvidence || null;
   const evidenceState = effectiveEvidence?.state === "exhausted" ? "exhausted" : "cooldown";
   // Precedence: (1) caller-supplied normalized evidence is authoritative — its
@@ -870,7 +877,10 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     AI_PROVIDERS[resolveProviderId(provider)]?.passthroughConnectionWideErrors,
     status,
   );
-  const fallbackModel = resolveFallbackModelScope(provider, model, { accountWide: githubResetAtMs || accountWideRuntime || passthroughConnectionError });
+  const providerRuleConnectionWide = fallbackResult.scope === "connection";
+  const fallbackModel = resolveFallbackModelScope(provider, model, {
+    accountWide: githubResetAtMs || accountWideRuntime || passthroughConnectionError || providerRuleConnectionWide,
+  });
   let atomicApplied = false;
   try {
     const db = await import("@/lib/localDb");

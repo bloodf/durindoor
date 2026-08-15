@@ -172,15 +172,43 @@ describe("AgentRouter auth fallback classification", () => {
   });
   afterEach(() => vi.useRealTimers());
 
-  it("applies AgentRouter model-denial cooldown through markAccountUnavailable", async () => {
+  it("locks AgentRouter model denial to its requested model", async () => {
     const mark = await load();
     const result = await mark(
-      "agentrouter-1", 403, "无权访问模型 claude-opus", "agentrouter", "claude-opus",
+      "agentrouter-1",
+      403,
+      "无权访问模型 claude-opus",
+      "agentrouter",
+      "claude-opus",
+      null,
+      { errorBody: { error: { message: "无权访问模型 claude-opus", type: "auth_error" } } },
     );
 
     expect(result).toMatchObject({
       shouldFallback: true,
       cooldownMs: 6 * 60 * 60 * 1_000,
     });
+    expect(mocks.updateProviderConnection).toHaveBeenCalledWith(
+      "agentrouter-1",
+      expect.objectContaining({ "modelLock_claude-opus": expect.any(String) }),
+    );
+  });
+
+  it("locks AgentRouter quota exhaustion account-wide", async () => {
+    const mark = await load();
+    await mark(
+      "agentrouter-1",
+      403,
+      "额度不足",
+      "agentrouter",
+      "claude-opus",
+      null,
+      { errorBody: { error: { message: "额度不足", type: "quota_exhausted" } } },
+    );
+
+    expect(mocks.updateProviderConnection).toHaveBeenCalledWith(
+      "agentrouter-1",
+      expect.objectContaining({ modelLock___all: expect.any(String) }),
+    );
   });
 });

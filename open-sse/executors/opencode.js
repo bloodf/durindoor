@@ -3,7 +3,6 @@ import crypto from "crypto";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
-import { resolveSessionId } from "../utils/sessionManager.js";
 
 const OPENCODE_UA = "opencode";
 const MESSAGES_MODELS = new Set();
@@ -14,20 +13,6 @@ function generateRequestId() {
 
 function generateSessionId() {
   return `ses_${crypto.randomUUID().replace(/-/g, "")}`;
-}
-
-function toOpencodeSession(id) {
-  const stripped = String(id || "").replace(/^ses_/, "").replace(/-/g, "");
-  return stripped ? `ses_${stripped}` : null;
-}
-
-function resolveOpencodeSession(body, credentials) {
-  return toOpencodeSession(resolveSessionId({
-    headers: credentials?.rawHeaders,
-    body,
-    connectionId: credentials?.connectionId,
-    scope: "opencode",
-  }));
 }
 
 function isEnabled(name) {
@@ -41,7 +26,7 @@ export class OpenCodeExecutor extends BaseExecutor {
   }
 
   transformRequest(model, body, stream, credentials) {
-    this._currentSessionId = resolveOpencodeSession(body, credentials);
+    this._currentSessionId = generateSessionId();
     return injectReasoningContent({ provider: this.provider, model, body });
   }
 
@@ -77,7 +62,7 @@ export class OpenCodeExecutor extends BaseExecutor {
     const headers = {
       ...baseHeaders,
       "x-opencode-client": "desktop",
-      "x-opencode-session": this._currentSessionId || generateSessionId(),
+      "x-opencode-session": this._currentSessionId ?? generateSessionId(),
       "x-opencode-request": generateRequestId(),
       "x-opencode-project": "global",
     };

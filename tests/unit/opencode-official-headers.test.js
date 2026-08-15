@@ -59,6 +59,27 @@ describe("OpenCodeExecutor official free-tier headers (D13)", () => {
     expect(headers["x-opencode-session"]).toMatch(/^ses_[a-f0-9]+$/);
   });
 
+  it("hostile x-session-id never reaches outbound headers (free tier)", async () => {
+    const fetchMock = stubFetch();
+    const executor = new OpenCodeExecutor();
+    const request = {
+      model: "deepseek-v3.2",
+      body: { messages: [] },
+      stream: true,
+      credentials: { rawHeaders: { "x-session-id": "victim@example.com" } },
+      requestContext: { clientHeaders: { "user-agent": "curl/8.5.0" } },
+    };
+    await executor.execute(request);
+    await executor.execute(request);
+    const [first, second] = fetchMock.mock.calls.map((call) => call[1].headers);
+    expect(first["x-opencode-session"]).toMatch(/^ses_[a-f0-9]+$/);
+    expect(first["x-opencode-session"]).not.toContain("victim@example.com");
+    expect(first["x-opencode-session"]).not.toContain("victim");
+    expect(second["x-opencode-session"]).toMatch(/^ses_[a-f0-9]+$/);
+    expect(second["x-opencode-session"]).not.toBe(first["x-opencode-session"]);
+    expect(second["x-opencode-request"]).not.toBe(first["x-opencode-request"]);
+  });
+
   it("official UA: client identity headers are NOT preserved on free tier", async () => {
     const fetchMock = stubFetch();
     await new OpenCodeExecutor().execute({

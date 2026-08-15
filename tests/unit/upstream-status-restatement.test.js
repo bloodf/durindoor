@@ -1,10 +1,8 @@
-import { describe, expect, it } from "vitest";
-
-const { applyStatusRestatement, statusRestatementRegistry } = await import(
-  "../../open-sse/config/upstreamStatusRestatement.js"
-);
-
-const { parseRateLimitEvidence } = await import("../../open-sse/utils/error.js");
+const {
+  applyStatusRestatement,
+  parseRestatedRateLimitEvidence,
+  statusRestatementRegistry,
+} = await import("../../open-sse/config/upstreamStatusRestatement.js");
 
 describe("upstream status restatement", () => {
   it("restates AgentRouter quota-shaped 403 responses as retryable 429", () => {
@@ -54,13 +52,14 @@ describe("upstream status restatement", () => {
       status: 403,
       message: "用户额度不足",
     });
-    const evidence = parseRateLimitEvidence({
+    const evidence = parseRestatedRateLimitEvidence({
       status: restatement.status,
       headers: new Headers({ "retry-after": "120" }),
-      bodyText: '{"error":{"message":"用户额度不足"}}',
+      body: { error: { message: "用户额度不足" } },
       now,
     });
 
+    expect(restatement.status).toBe(429);
     expect(evidence.resetAtMs).toBe(now + 120_000);
   });
 

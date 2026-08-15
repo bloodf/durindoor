@@ -1,4 +1,5 @@
 import { HTTP_STATUS } from "./runtimeConfig.js";
+import { parseRateLimitEvidence } from "../utils/error.js";
 
 /**
  * Upstream status restatement — registry of gateways that misstate temporary
@@ -60,6 +61,15 @@ function stringifyBody(body) {
   } catch {
     return "";
   }
+}
+
+/** Parse bounded rate-limit timing after a status rule changes a response to 429. */
+export function parseRestatedRateLimitEvidence({ status, headers, body, now = Date.now() }) {
+  let bodyText = typeof body === "string" ? body : "";
+  if (!bodyText && body !== null && body !== undefined) {
+    try { bodyText = JSON.stringify(body); } catch { /* keep empty bounded input */ }
+  }
+  return parseRateLimitEvidence({ status, headers, bodyText, now });
 }
 
 /**

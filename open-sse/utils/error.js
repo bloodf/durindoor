@@ -464,7 +464,7 @@ export async function parseUpstreamError(response, executor = null, options = {}
     statusCode: response.status,
     message: response.status === 429 ? DEFAULT_ERROR_MESSAGES[429] : sanitizeErrorMessage(finalMessage),
     resetsAtMs: rateLimitEvidence?.resetAtMs,
-    errorBody,
+    errorBody: response.status === 429 ? undefined : errorBody,
     rateLimitEvidence,
   };
 }

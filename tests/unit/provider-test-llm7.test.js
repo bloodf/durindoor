@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getProviderConnectionById: vi.fn(),
@@ -18,8 +18,6 @@ vi.mock("@/lib/network/proxyTest", () => ({
   testProxyUrl: mocks.testProxyUrl,
 }));
 
-const originalFetch = global.fetch;
-
 function connection(provider = "llm7") {
   return {
     id: `connection-${provider}`,
@@ -30,11 +28,19 @@ function connection(provider = "llm7") {
   };
 }
 
-async function testConnection(provider, fetchImpl) {
+async function runTest(provider, fetchImpl) {
   mocks.getProviderConnectionById.mockResolvedValue(connection(provider));
-  const fetchSpy = vi.spyOn(global, "fetch").mockImplementation(fetchImpl);
-  const { testSingleConnection } = await import("../../src/app/api/providers/[id]/test/testUtils.js");
-  return { result: await testSingleConnection(`connection-${provider}`), fetchSpy };
+  const { __setProviderTestFetchForTesting, testSingleConnection } = await import(
+    "../../src/app/api/providers/[id]/test/testUtils.js"
+  );
+  const proxyFetch = vi.fn(fetchImpl);
+  const restoreFetch = __setProviderTestFetchForTesting(proxyFetch);
+  try {
+    const result = await testSingleConnection(`connection-${provider}`);
+    return { result, proxyFetch };
+  } finally {
+    restoreFetch();
+  }
 }
 
 describe("LLM7 provider connection test", () => {
@@ -49,12 +55,8 @@ describe("LLM7 provider connection test", () => {
     mocks.testProxyUrl.mockResolvedValue({ ok: true });
   });
 
-  afterEach(() => {
-    global.fetch = originalFetch;
-  });
-
   it("probes registry validateUrl with Bearer authentication", async () => {
-    const { result, fetchSpy } = await testConnection("llm7", async (url, options) => {
+    const { result, proxyFetch } = await runTest("llm7", async (url, options) => {
       expect(String(url)).toBe("https://api.llm7.io/v1/models");
       expect(options.headers.Authorization).toBe("Bearer llm7-key");
       expect(options.signal).toBeInstanceOf(AbortSignal);
@@ -64,19 +66,21 @@ describe("LLM7 provider connection test", () => {
 
     expect(result.valid).toBe(true);
     expect(result.error).toBeNull();
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(proxyFetch).toHaveBeenCalledTimes(1);
   });
 
   it("rejects LLM7 authentication failures without a fallback request", async () => {
-    const { result, fetchSpy } = await testConnection("llm7", async () => new Response("", { status: 401 }));
+    const { result, proxyFetch } = await runTest("llm7", async () =>
+      new Response("", { status: 401 }),
+    );
 
     expect(result.valid).toBe(false);
     expect(result.error).toBe("Invalid API key");
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(proxyFetch).toHaveBeenCalledTimes(1);
   });
 
   it("uses bounded registry fallback after LLM7 validation endpoint errors", async () => {
-    const { result, fetchSpy } = await testConnection("llm7", async (url, options) => {
+    const { result, proxyFetch } = await runTest("llm7", async (url, options) => {
       if (String(url).endsWith("/models")) {
         expect(options.signal).toBeInstanceOf(AbortSignal);
         return new Response("", { status: 500 });
@@ -89,28 +93,28 @@ describe("LLM7 provider connection test", () => {
     });
 
     expect(result.valid).toBe(true);
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(proxyFetch).toHaveBeenCalledTimes(2);
   });
 
   it("surfaces a timed-out fallback request as an error", async () => {
     const timeout = new DOMException("The operation was aborted", "TimeoutError");
-    const { result, fetchSpy } = await testConnection("llm7", async () => {
+    const { result, proxyFetch } = await runTest("llm7", async () => {
       throw timeout;
     });
 
     expect(result.valid).toBe(false);
     expect(result.error).toBe(timeout.message);
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(proxyFetch).toHaveBeenCalledTimes(2);
   });
 
   it("does not change another registry provider's request", async () => {
-    const { result, fetchSpy } = await testConnection("ai21", async (url, options) => {
+    const { result, proxyFetch } = await runTest("ai21", async (url, options) => {
       expect(String(url)).toBe("https://api.ai21.com/studio/v1/models");
       expect(options.headers.Authorization).toBe("Bearer llm7-key");
       return new Response("{}", { status: 200 });
     });
 
     expect(result.valid).toBe(true);
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(proxyFetch).toHaveBeenCalledTimes(1);
   });
 });

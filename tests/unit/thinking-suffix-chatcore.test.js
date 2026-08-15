@@ -438,20 +438,43 @@ describe("thinking suffix at the chatCore provider boundary", () => {
     });
   }
 
-  it("normalizes a DeepSeek alias before the Claude transport bypasses reasoning injection", () => {
-    const executor = new DefaultExecutor("deepseek");
-    const wireBody = executor.transformRequest(
-      "deepseek-v4-pro",
-      { model: "deepseek-v4-pro", messages: [{ role: "assistant", content: "hello" }] },
-      true,
-      { runtimeTransport: { format: "claude" } },
-      { catalogModel: "deepseek-v4-pro-none" },
-    );
+  for (const [alias, expectedThinking, expectedEffort] of [
+    ["deepseek-v4-pro-max", "enabled", "max"],
+    ["deepseek-v4-pro-none", "disabled", undefined],
+  ]) {
+    it(`uses native Claude thinking for ${alias} after chatCore upstream-id rewrite`, async () => {
+      const executor = new DefaultExecutor("deepseek");
+      let wireModel;
+      let wireBody;
+      mocks.execute.mockImplementationOnce(({ model, body, stream, credentials, requestContext }) => {
+        wireModel = model;
+        wireBody = executor.transformRequest(model, structuredClone(body), stream, credentials, requestContext);
+        throw new Error("stop after wire capture");
+      });
 
-    expect(wireBody.extra_body.thinking.type).toBe("disabled");
-    expect(wireBody.reasoning_effort).toBeUndefined();
-    expect(wireBody.messages[0].reasoning_content).toBeUndefined();
-  });
+      await handleChatCore({
+        body: { model: alias, stream: true, max_tokens: 128, messages: [{ role: "user", content: [{ type: "text", text: "hello" }] }] },
+        modelInfo: { provider: "deepseek", model: alias },
+        sourceFormatOverride: "claude",
+        credentials: { accessToken: "deepseek-token", providerSpecificData: {} },
+        connectionId: `claude-alias-${alias}`,
+        clientRawRequest: {
+          endpoint: "/v1/chat/completions",
+          body: {},
+          headers: { accept: "text/event-stream" },
+        },
+        log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      });
+
+      expect(mocks.execute).toHaveBeenCalledOnce();
+      expect(wireModel).toBe("deepseek-v4-pro");
+      expect(wireBody.model).toBe("deepseek-v4-pro");
+      expect(wireBody.thinking.type).toBe(expectedThinking);
+      expect(wireBody.reasoning_effort).toBe(expectedEffort);
+      expect(wireBody.extra_body).toBeUndefined();
+      expect(wireBody.messages[0].reasoning_content).toBeUndefined();
+    });
+  }
 
   function abortOptions(signal, refreshCredentials = undefined) {
     return {

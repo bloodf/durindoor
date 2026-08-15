@@ -211,7 +211,8 @@ describe("Responses trailing usage", () => {
 
     const done = events.find(({ event }) => event === "response.output_item.done");
     expect(done.data.item.name).toBe("apply_patch");
-    expect(done.data.item.arguments).toBe('{"input":"PATCH_BODY"}');
+    expect(done.data.item.type).toBe("custom_tool_call");
+    expect(done.data.item.input).toBe("PATCH_BODY");
     expect(events.filter(({ event }) => event === "response.completed")).toHaveLength(1);
   });
 

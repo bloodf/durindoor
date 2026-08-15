@@ -1,28 +1,58 @@
+import crypto from "crypto";
+
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
+import { resolveSessionId } from "../utils/sessionManager.js";
+import { hasTrustedPeerHeaders } from "../../src/lib/auth/trustedPeer.js";
 
-// Models that use /zen/v1/messages (claude format)
+const OPENCODE_UA = "opencode";
 const MESSAGES_MODELS = new Set();
+
+function generateRequestId() {
+  return `msg_${crypto.randomUUID().replace(/-/g, "")}`;
+}
+
+function generateSessionId() {
+  return `ses_${crypto.randomUUID().replace(/-/g, "")}`;
+}
+
+function toOpencodeSession(id) {
+  const stripped = String(id || "").replace(/^ses_/, "").replace(/-/g, "");
+  return stripped ? `ses_${stripped}` : null;
+}
+
+function resolveOpencodeSession(body, credentials) {
+  return toOpencodeSession(resolveSessionId({
+    headers: credentials?.rawHeaders,
+    body,
+    connectionId: credentials?.connectionId,
+    scope: "opencode",
+  }));
+}
+
+function isEnabled(name) {
+  return /^(1|true|yes|on)$/i.test(process.env[name]?.trim() ?? "");
+}
+
+function resolveClientIp(requestContext) {
+  const headers = requestContext?.clientHeaders;
+  if (!headers) return undefined;
+  const get = (name) => (typeof headers.get === "function" ? headers.get(name) : headers[name] ?? null);
+  const realIp = get("x-9r-real-ip");
+  if (!realIp) return undefined;
+  return hasTrustedPeerHeaders({ headers: { get } }) ? realIp : undefined;
+}
 
 export class OpenCodeExecutor extends BaseExecutor {
   constructor() {
     super("opencode", PROVIDERS.opencode);
+    this._currentSessionId = null;
   }
 
-  transformRequest(model, body) {
-    const transformed = injectReasoningContent({ provider: this.provider, model, body });
-    if (
-      transformed &&
-      typeof transformed === "object" &&
-      !Array.isArray(transformed) &&
-      Object.prototype.hasOwnProperty.call(transformed, "client_metadata")
-    ) {
-      const cleaned = { ...transformed };
-      delete cleaned.client_metadata;
-      return cleaned;
-    }
-    return transformed;
+  transformRequest(model, body, stream, credentials) {
+    this._currentSessionId = resolveOpencodeSession(body, credentials);
+    return injectReasoningContent({ provider: this.provider, model, body });
   }
 
   buildUrl(model) {
@@ -32,22 +62,40 @@ export class OpenCodeExecutor extends BaseExecutor {
       : `${base}/zen/v1/chat/completions`;
   }
 
-  buildHeaders(credentials, stream = true, requestContext = null) {
+  buildHeaders(credentials, stream = true, requestContext = null, model = "") {
     const clientHeaders = new Headers(requestContext?.clientHeaders ?? credentials?.rawHeaders ?? {});
     const clientUa = clientHeaders.get("user-agent");
-    const synthesizeCli = /^(1|true|yes|on)$/i.test(process.env.OPENCODE_SYNTHESIZE_CLI_HEADERS?.trim() ?? "");
-    const clientUaIsCli = /^opencode-cli\//i.test(clientUa?.trim() ?? "");
-    const headers = {
+    const credentialToken = credentials?.apiKey || credentials?.accessToken || credentials?.authorization;
+    const hasPaidIdentity = Boolean(credentialToken || clientHeaders.get("authorization") || clientHeaders.get("x-api-key"));
+    const baseHeaders = {
       "Content-Type": "application/json",
+      "Authorization": credentialToken
+        ? (credentialToken.startsWith?.("Bearer ") ? credentialToken : `Bearer ${credentialToken}`)
+        : "Bearer public",
       "x-opencode-client": clientHeaders.get("x-opencode-client") || "desktop",
       "Accept": stream ? "text/event-stream" : "*/*",
     };
-    if (clientUa) headers["User-Agent"] = synthesizeCli && !clientUaIsCli ? "opencode-cli/1.0.0" : clientUa;
-    else if (synthesizeCli) headers["User-Agent"] = "opencode-cli/1.0.0";
-    for (const name of ["x-opencode-project", "x-opencode-request", "x-opencode-session"]) {
-      const value = clientHeaders.get(name);
-      if (value) headers[name] = value;
+    const trustedClientIp = resolveClientIp(requestContext);
+    if (trustedClientIp) baseHeaders["x-opencode-client-ip"] = trustedClientIp;
+
+    if (hasPaidIdentity || isEnabled("OPENCODE_DISABLE_FREE_TIER_HEADERS")) {
+      if (clientUa) baseHeaders["User-Agent"] = clientUa;
+      if (!hasPaidIdentity) baseHeaders["x-opencode-client"] = "desktop";
+      return baseHeaders;
     }
+
+    const isOpencodeDownstream = clientUa?.toLowerCase().includes("opencode");
+    const clientUaIsCli = /^opencode-cli\//i.test(clientUa?.trim() ?? "");
+    const synthesizeCli = isEnabled("OPENCODE_SYNTHESIZE_CLI_HEADERS");
+    const headers = {
+      ...baseHeaders,
+      "x-opencode-client": clientHeaders.get("x-opencode-client") || "desktop",
+      "x-opencode-session": clientHeaders.get("x-opencode-session") || this._currentSessionId || generateSessionId(),
+      "x-opencode-request": clientHeaders.get("x-opencode-request") || generateRequestId(),
+      "x-opencode-project": clientHeaders.get("x-opencode-project") || "global",
+    };
+    if (synthesizeCli && !clientUaIsCli) headers["User-Agent"] = "opencode-cli/1.0.0";
+    else headers["User-Agent"] = isOpencodeDownstream ? clientUa : OPENCODE_UA;
     return headers;
   }
 }

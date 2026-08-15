@@ -24,10 +24,10 @@ describe("OpenCodeExecutor CLI identity synthesis", () => {
     expect(headers["User-Agent"]).toBe("opencode-cli/2.5.0");
   });
 
-  it("preserves generic UA when synthesis is disabled", () => {
+  it("preserves official OpenCode UA when synthesis is disabled (free-tier)", () => {
     const headers = new OpenCodeExecutor().buildHeaders({}, true, {
       clientHeaders: { "user-agent": "curl/8.5.0" },
     });
-    expect(headers["User-Agent"]).toBe("curl/8.5.0");
+    expect(headers["User-Agent"]).toBe("opencode");
   });
 });

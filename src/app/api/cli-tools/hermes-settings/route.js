@@ -19,7 +19,19 @@ const getHermesEnvPath = () => path.join(getHermesDir(), ".env");
 // Match top-level "model:" block (until next non-indented, non-empty line)
 const MODEL_BLOCK_RE = /^model:[ \t]*\r?\n((?:[ \t]+.*\r?\n?|[ \t]*\r?\n)*)/m;
 
-const escapeYamlString = (value) => String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+const escapeYamlString = (value) => String(value)
+  .replace(/\\/g, "\\\\")
+  .replace(/"/g, '\\"')
+  .replace(/\r/g, "\\r")
+  .replace(/\n/g, "\\n")
+  .replace(/\t/g, "\\t");
+
+const assertNoControlChars = (value, field) => {
+  if (/[\r\n\t]/.test(value)) {
+    return { error: `${field} must not contain line breaks or tabs` };
+  }
+  return null;
+};
 
 const buildModelBlock = (model, baseUrl) => {
   const safeModel = escapeYamlString(model);
@@ -127,8 +139,16 @@ export async function GET() {
 export async function POST(request) {
   try {
     const { baseUrl, apiKey, model } = await request.json();
-    if (!baseUrl || !model) {
+    if (typeof baseUrl !== "string" || typeof model !== "string" || !baseUrl || !model) {
       return NextResponse.json({ error: "baseUrl and model are required" }, { status: 400 });
+    }
+    if (apiKey != null && (typeof apiKey !== "string" || !apiKey)) {
+      return NextResponse.json({ error: "apiKey must be a non-empty string when provided" }, { status: 400 });
+    }
+    const invalidBaseUrl = assertNoControlChars(baseUrl, "baseUrl");
+    const invalidModel = assertNoControlChars(model, "model");
+    if (invalidBaseUrl || invalidModel) {
+      return NextResponse.json(invalidBaseUrl || invalidModel, { status: 400 });
     }
     if (apiKey && /[\r\n]/.test(apiKey)) {
       return NextResponse.json({ error: "apiKey must not contain line breaks" }, { status: 400 });

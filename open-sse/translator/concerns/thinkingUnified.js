@@ -275,6 +275,12 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null) {
       if (level) body.reasoning_effort = resolveOpenAiEffort(level, provider, model);
       break;
     }
+    case "ollama": {
+      if (none && canDisable) { body.reasoning_effort = "none"; break; }
+      const level = toLevel(eff);
+      if (level) body.reasoning_effort = level === "xhigh" ? "max" : level;
+      break;
+    }
     case "commandcode": {
       const level = toLevel(eff);
       const levels = getThinkingLevels(provider, model);

@@ -17,6 +17,7 @@ const L = {
 // thinkingFormat → valid selectable levels (source of truth for UI options).
 const FORMAT_LEVELS = {
   openai: L.openai,
+  ollama: L.levelMax,
   commandcode: ["low", "medium", "high", "xhigh", "max"],
   "claude-adaptive": L.levelMax,
   "claude-budget": L.budgetX,

@@ -4,6 +4,8 @@ const { applyStatusRestatement, statusRestatementRegistry } = await import(
   "../../open-sse/config/upstreamStatusRestatement.js"
 );
 
+const { parseRateLimitEvidence } = await import("../../open-sse/utils/error.js");
+
 describe("upstream status restatement", () => {
   it("restates AgentRouter quota-shaped 403 responses as retryable 429", () => {
     expect(applyStatusRestatement({
@@ -43,6 +45,23 @@ describe("upstream status restatement", () => {
       message: "用户额度不足",
       retryAfterMs: 5_000,
     })).toMatchObject({ status: 429, retryAfterMs: 5_000 });
+  });
+
+  it("accepts bounded Retry-After evidence after the status becomes 429", () => {
+    const now = 1_800_000_000_000;
+    const restatement = applyStatusRestatement({
+      provider: "agentrouter",
+      status: 403,
+      message: "用户额度不足",
+    });
+    const evidence = parseRateLimitEvidence({
+      status: restatement.status,
+      headers: new Headers({ "retry-after": "120" }),
+      bodyText: '{"error":{"message":"用户额度不足"}}',
+      now,
+    });
+
+    expect(evidence.resetAtMs).toBe(now + 120_000);
   });
 
   it("handles AgentRouter's 400 variant but leaves unrelated statuses/providers unchanged", () => {

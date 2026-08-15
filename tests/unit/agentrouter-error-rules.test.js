@@ -15,7 +15,7 @@ describe("AgentRouter provider error rules", () => {
     for (const status of [400, 403]) {
       expect(checkFallbackError(status, "用户额度不足", 0, "agentrouter")).toMatchObject({
         shouldFallback: true,
-        cooldownMs: 1_000,
+        cooldownMs: 2_000,
         newBackoffLevel: 1,
       });
     }

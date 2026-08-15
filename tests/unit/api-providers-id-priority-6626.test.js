@@ -100,4 +100,28 @@ describe("PUT /api/providers/[id] priority ceiling (#6562 / port 6626)", () => {
     expect(getProviderConnectionById).not.toHaveBeenCalled();
     expect(updateProviderConnection).not.toHaveBeenCalled();
   });
+
+  it("strips transient Codex identity from provider metadata updates", async () => {
+    const connection = makeConnection({
+      providerSpecificData: { workspaceId: "workspace-abc", codexFingerprintMode: "session" },
+    });
+    getProviderConnectionById.mockResolvedValue(connection);
+    updateProviderConnection.mockImplementation(async (id, data) => ({ ...connection, ...data }));
+
+    await PUT(
+      putRequest({
+        providerSpecificData: {
+          codexFingerprintMode: "full",
+          codexClientIdentity: { sessionId: "caller-session" },
+          codexOriginalIdentityHeaders: { "session-id": "caller-session" },
+        },
+      }),
+      { params: params() },
+    );
+
+    expect(updateProviderConnection.mock.calls[0][1].providerSpecificData).toEqual({
+      workspaceId: "workspace-abc",
+      codexFingerprintMode: "full",
+    });
+  });
 });

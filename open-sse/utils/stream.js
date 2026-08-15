@@ -117,12 +117,40 @@ export function createSSEStream(options = {}) {
   // Keep a compact completion view while chunks flow. Unlike retained request
   // diagnostics, this sees terminal metadata even when callers cap raw events.
   const providerSummary = (() => {
+    const MAX_MODEL = 256;
+    const MAX_ID = 256;
+    const MAX_TEXT = 64 * 1024;
+    const MAX_REASONING = 32 * 1024;
+    const MAX_FIELD = 16 * 1024;
+    const MAX_TOOLS = 64;
+    const MAX_PARTS = 256;
     const format = mode === STREAM_MODE.TRANSLATE ? targetFormat : sourceFormat || targetFormat;
     const isResponses = format === FORMATS.OPENAI_RESPONSES || format === FORMATS.OPENAI_RESPONSE;
     const isClaude = format === FORMATS.CLAUDE;
     const isGemini = format === FORMATS.GEMINI || format === FORMATS.GEMINI_CLI || format === FORMATS.ANTIGRAVITY;
+    const bounded = (value, limit = MAX_FIELD) => typeof value === "string" ? value.slice(0, limit) : "";
+    const append = (current, value, limit) => current.length >= limit ? current : current + bounded(value, limit - current.length);
+    const scalarUsage = (value) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+      const result = {};
+      for (const [key, item] of Object.entries(value)) {
+        if (typeof item === "number" || typeof item === "boolean") result[bounded(key, 64)] = item;
+        else if (typeof item === "string") result[bounded(key, 64)] = bounded(item);
+      }
+      return result;
+    };
+    const projectResponse = (value) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+      return {
+        id: bounded(value.id, MAX_ID),
+        model: bounded(value.model, MAX_MODEL),
+        status: bounded(value.status, 64),
+        created_at: typeof value.created_at === "number" ? value.created_at : undefined,
+        usage: scalarUsage(value.usage),
+      };
+    };
     let sawAny = false;
-    let summaryModel = model;
+    let summaryModel = bounded(model, MAX_MODEL);
     let summaryUsage = null;
     let content = "";
     let reasoning = "";
@@ -130,7 +158,8 @@ export function createSSEStream(options = {}) {
     const toolCalls = new Map();
     let response = null;
     let completedResponse = null;
-    const responseText = [];
+    let responseText = "";
+    const responseTools = new Map();
     const claudeBlocks = new Map();
     let claudeId = "";
     let claudeRole = "assistant";
@@ -139,99 +168,125 @@ export function createSSEStream(options = {}) {
     const geminiParts = [];
     let geminiRole = "model";
     let geminiFinishReason = "STOP";
+    const boundedObject = (value) => {
+      if (typeof value === "string") {
+        try { return JSON.parse(bounded(value)); } catch { return {}; }
+      }
+      if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+      const text = JSON.stringify(value);
+      if (text === undefined || text.length > MAX_FIELD) return {};
+      try { return JSON.parse(text); } catch { return {}; }
+    };
     const appendGeminiPart = (part) => {
       const last = geminiParts.at(-1);
-      if (last && typeof last.text === "string" && typeof part.text === "string" && Boolean(last.thought) === Boolean(part.thought)) last.text += part.text;
-      else geminiParts.push(part);
+      if (last?.text && part.text && Boolean(last.thought) === Boolean(part.thought)) last.text = append(last.text, part.text, MAX_FIELD);
+      else if (geminiParts.length < MAX_PARTS) geminiParts.push(part.text ? { text: bounded(part.text), ...(part.thought === true ? { thought: true } : {}) } : { functionCall: { name: bounded(part.functionCall?.name, 256), args: boundedObject(part.functionCall?.args) } });
     };
     return {
-      ingest(chunk) {
-        if (!chunk || typeof chunk !== "object" || Array.isArray(chunk)) return;
+      ingest(rawChunk) {
+        if (!rawChunk || typeof rawChunk !== "object" || Array.isArray(rawChunk)) return;
+        const chunk = isGemini && rawChunk.response && typeof rawChunk.response === "object" && !Array.isArray(rawChunk.response) ? rawChunk.response : rawChunk;
+        if (!Object.keys(chunk).length) return;
         if (isResponses) {
-          if (!Object.keys(chunk).length) return;
           sawAny = true;
-          if (chunk.type === "response.completed" && chunk.response && typeof chunk.response === "object") completedResponse = chunk.response;
-          if (chunk.response && typeof chunk.response === "object") response = chunk.response;
-          else if (chunk.object === "response") response = chunk;
-          if (chunk.type === "response.output_text.delta" && typeof chunk.delta === "string" && chunk.delta) responseText.push(chunk.delta);
-          if (chunk.usage && typeof chunk.usage === "object") summaryUsage = chunk.usage;
-          else if (chunk.response?.usage && typeof chunk.response.usage === "object") summaryUsage = chunk.response.usage;
+          if (chunk.type === "response.completed") completedResponse = projectResponse(chunk.response);
+          if (chunk.response) response = projectResponse(chunk.response);
+          else if (chunk.object === "response") response = projectResponse(chunk);
+          if (chunk.type === "response.output_text.delta") responseText = append(responseText, chunk.delta, MAX_TEXT);
+          if (chunk.usage) summaryUsage = scalarUsage(chunk.usage);
+          else if (chunk.response?.usage) summaryUsage = scalarUsage(chunk.response.usage);
+          const item = chunk.item;
+          const outputIndex = Number.isSafeInteger(chunk.output_index) ? chunk.output_index : null;
+          if (chunk.type === "response.output_item.added" && item?.type === "function_call" && responseTools.size < MAX_TOOLS) {
+            const key = outputIndex ?? bounded(item.id, MAX_ID);
+            responseTools.set(key, { id: bounded(item.id, MAX_ID), type: "function_call", call_id: bounded(item.call_id, MAX_ID), name: bounded(item.name, 256), arguments: bounded(item.arguments) });
+          } else if (chunk.type === "response.function_call_arguments.delta" || chunk.type === "response.function_call_arguments.done") {
+            const key = outputIndex ?? bounded(chunk.item_id, MAX_ID);
+            const tool = responseTools.get(key);
+            if (tool) tool.arguments = chunk.type.endsWith(".done") ? bounded(chunk.arguments) : append(tool.arguments, chunk.delta, MAX_FIELD);
+          } else if (chunk.type === "response.output_item.done" && item?.type === "function_call") {
+            const key = outputIndex ?? bounded(item.id, MAX_ID);
+            const tool = responseTools.get(key);
+            if (tool) Object.assign(tool, { id: bounded(item.id, MAX_ID), call_id: bounded(item.call_id, MAX_ID), name: bounded(item.name, 256), arguments: bounded(item.arguments) || tool.arguments });
+          }
           return;
         }
         if (isClaude) {
-          if (!Object.keys(chunk).length) return;
           sawAny = true;
           if (chunk.type === "message_start") {
             const message = chunk.message || {};
-            claudeId = message.id || claudeId;
-            summaryModel = message.model || summaryModel;
-            claudeRole = message.role || claudeRole;
-            if (message.usage) summaryUsage = mergeUsage(summaryUsage, message.usage);
+            claudeId = bounded(message.id, MAX_ID) || claudeId;
+            summaryModel = bounded(message.model, MAX_MODEL) || summaryModel;
+            claudeRole = bounded(message.role, 32) || claudeRole;
+            if (message.usage) summaryUsage = mergeUsage(summaryUsage, scalarUsage(message.usage));
           } else if (chunk.type === "content_block_start") {
-            const block = chunk.content_block || {};
-            claudeBlocks.set(chunk.index ?? claudeBlocks.size, { ...block, inputJson: "" });
+            const key = Number.isSafeInteger(chunk.index) ? chunk.index : claudeBlocks.size;
+            if (claudeBlocks.size < MAX_PARTS || claudeBlocks.has(key)) {
+              const block = chunk.content_block || {};
+              claudeBlocks.set(key, { type: bounded(block.type, 32), id: bounded(block.id, MAX_ID), name: bounded(block.name, 256), text: bounded(block.text), thinking: bounded(block.thinking), signature: bounded(block.signature, MAX_ID), inputJson: "" });
+            }
           } else if (chunk.type === "content_block_delta") {
-            const index = chunk.index ?? 0;
+            const key = Number.isSafeInteger(chunk.index) ? chunk.index : 0;
             const delta = chunk.delta || {};
-            const block = claudeBlocks.get(index) || { type: delta.type === "thinking_delta" ? "thinking" : "text", inputJson: "" };
-            if (delta.type === "input_json_delta") block.inputJson += delta.partial_json || "";
-            else if (delta.type === "thinking_delta" || typeof delta.thinking === "string") block.thinking = (block.thinking || "") + (delta.thinking || "");
-            else block.text = (block.text || "") + (delta.text || "");
-            claudeBlocks.set(index, block);
+            const block = claudeBlocks.get(key);
+            if (block) {
+              if (delta.type === "input_json_delta") block.inputJson = append(block.inputJson, delta.partial_json, MAX_FIELD);
+              else if (delta.type === "thinking_delta" || typeof delta.thinking === "string") block.thinking = append(block.thinking, delta.thinking, MAX_FIELD);
+              else block.text = append(block.text, delta.text, MAX_FIELD);
+            }
           } else if (chunk.type === "message_delta") {
-            claudeStopReason = chunk.delta?.stop_reason || claudeStopReason;
-            claudeStopSequence = chunk.delta?.stop_sequence ?? claudeStopSequence;
-            if (chunk.usage) summaryUsage = mergeUsage(summaryUsage, chunk.usage);
-          } else if (chunk.usage) summaryUsage = mergeUsage(summaryUsage, chunk.usage);
+            claudeStopReason = bounded(chunk.delta?.stop_reason, 64) || claudeStopReason;
+            claudeStopSequence = bounded(chunk.delta?.stop_sequence, MAX_FIELD) || claudeStopSequence;
+            if (chunk.usage) summaryUsage = mergeUsage(summaryUsage, scalarUsage(chunk.usage));
+          } else if (chunk.usage) summaryUsage = mergeUsage(summaryUsage, scalarUsage(chunk.usage));
           return;
         }
         if (isGemini) {
-          if (!Object.keys(chunk).length) return;
           sawAny = true;
-          summaryModel = chunk.modelVersion || summaryModel;
-          if (chunk.usageMetadata) summaryUsage = mergeUsage(summaryUsage, chunk.usageMetadata);
+          summaryModel = bounded(chunk.modelVersion, MAX_MODEL) || summaryModel;
+          if (chunk.usageMetadata) summaryUsage = mergeUsage(summaryUsage, scalarUsage(chunk.usageMetadata));
           const candidate = chunk.candidates?.[0] || {};
-          geminiFinishReason = candidate.finishReason || geminiFinishReason;
+          geminiFinishReason = bounded(candidate.finishReason, 64) || geminiFinishReason;
           const candidateContent = candidate.content || {};
-          geminiRole = candidateContent.role || geminiRole;
+          geminiRole = bounded(candidateContent.role, 32) || geminiRole;
           for (const part of candidateContent.parts || []) {
-            if (part?.functionCall) geminiParts.push({ functionCall: part.functionCall });
-            else if (typeof part?.text === "string" && part.text) appendGeminiPart({ text: part.text, ...(part.thought === true ? { thought: true } : {}) });
+            if (part?.functionCall || typeof part?.text === "string") appendGeminiPart(part);
           }
           return;
         }
         if (!Array.isArray(chunk.choices)) return;
         sawAny = true;
-        if (chunk.model) summaryModel = chunk.model;
-        if (chunk.usage) summaryUsage = mergeUsage(summaryUsage, chunk.usage);
+        summaryModel = bounded(chunk.model, MAX_MODEL) || summaryModel;
+        if (chunk.usage) summaryUsage = mergeUsage(summaryUsage, scalarUsage(chunk.usage));
         for (const [position, choice] of chunk.choices.entries()) {
           const delta = choice?.delta;
-          if (typeof delta?.content === "string") content += delta.content;
-          if (typeof delta?.reasoning_content === "string") reasoning += delta.reasoning_content;
-          else if (typeof delta?.reasoning === "string") reasoning += delta.reasoning;
-          if (choice?.finish_reason) finishReason = choice.finish_reason;
+          content = append(content, delta?.content, MAX_TEXT);
+          reasoning = append(reasoning, delta?.reasoning_content ?? delta?.reasoning, MAX_REASONING);
+          finishReason = bounded(choice?.finish_reason, 64) || finishReason;
           for (const [toolPosition, toolCall] of (delta?.tool_calls || []).entries()) {
-            const index = toolCall.index ?? toolPosition;
-            const current = toolCalls.get(index) || toolCalls.get(`id:${toolCall.id}`) || { index, id: undefined, type: undefined, function: { name: "", arguments: "" } };
-            if (toolCall.id) current.id = toolCall.id;
-            if (toolCall.type) current.type = toolCall.type;
-            if (toolCall.function?.name) current.function.name += toolCall.function.name;
-            if (typeof toolCall.function?.arguments === "string") current.function.arguments += toolCall.function.arguments;
-            toolCalls.set(index, current);
-            if (current.id) toolCalls.set(`id:${current.id}`, current);
+            const index = Number.isSafeInteger(toolCall.index) ? toolCall.index : toolPosition;
+            const current = toolCalls.get(index) || toolCalls.get(`id:${toolCall.id}`);
+            if (!current && new Set(toolCalls.values()).size >= MAX_TOOLS) continue;
+            const tool = current || { index, id: "", type: "", function: { name: "", arguments: "" } };
+            tool.id = bounded(toolCall.id, MAX_ID) || tool.id;
+            tool.type = bounded(toolCall.type, 32) || tool.type;
+            tool.function.name = append(tool.function.name, toolCall.function?.name, 256);
+            tool.function.arguments = append(tool.function.arguments, toolCall.function?.arguments, MAX_FIELD);
+            toolCalls.set(index, tool);
+            if (tool.id) toolCalls.set(`id:${tool.id}`, tool);
           }
         }
       },
       finalize(finalUsage) {
         if (!sawAny) return undefined;
         if (isResponses) {
-          const picked = completedResponse || response;
-          const output = picked?.output?.length ? picked.output : responseText.length ? [{ type: "message", role: "assistant", content: [{ type: "output_text", text: responseText.join("") }] }] : [];
-          return { providerResponse: { id: picked?.id || `resp_${Date.now()}`, object: "response", model: picked?.model || summaryModel || "unknown", output, usage: picked?.usage ?? summaryUsage ?? null, status: picked?.status || (completedResponse ? "completed" : "in_progress"), created_at: picked?.created_at || Math.floor(Date.now() / 1000), metadata: picked?.metadata || {} } };
+          const picked = completedResponse || response || {};
+          const output = responseTools.size ? [...responseTools.values()] : responseText ? [{ type: "message", role: "assistant", content: [{ type: "output_text", text: responseText }] }] : [];
+          return { providerResponse: { id: picked.id || `resp_${Date.now()}`, object: "response", model: picked.model || summaryModel || "unknown", output, usage: picked.usage ?? summaryUsage ?? null, status: picked.status || (completedResponse ? "completed" : "in_progress"), created_at: picked.created_at || Math.floor(Date.now() / 1000), metadata: {} } };
         }
         if (isClaude) {
           const contentBlocks = [...claudeBlocks.entries()].sort(([a], [b]) => a - b).flatMap(([, block]) => {
-            if (block.type === "tool_use") { let input = block.input || {}; try { if (block.inputJson.trim()) input = JSON.parse(block.inputJson); } catch { input = block.inputJson; } return [{ type: "tool_use", id: block.id, name: block.name, input }]; }
+            if (block.type === "tool_use") { let input = {}; try { if (block.inputJson) input = JSON.parse(block.inputJson); } catch { input = block.inputJson; } return [{ type: "tool_use", id: block.id, name: block.name, input }]; }
             if (block.type === "thinking") return block.thinking ? [{ type: "thinking", thinking: block.thinking, ...(block.signature ? { signature: block.signature } : {}) }] : [];
             return block.text ? [{ type: "text", text: block.text }] : [];
           });
@@ -701,19 +756,9 @@ export function createSSEStream(options = {}) {
               // completion. OpenAI sends finish_reason before an optional
               // trailing usage-only chunk, so its callback must wait for
               // stream flush to preserve authoritative usage.
-              const passthroughGeminiTerminal =
-                parsed.candidates?.some?.((candidate) => candidate?.finishReason) ||
-                parsed.response?.candidates?.some?.((candidate) => candidate?.finishReason);
-              if (passthroughGeminiTerminal && onStreamComplete && !onStreamCompleteFired) {
-                if (!hasValidUsage(usage) && totalContentLength > 0) {
-                  usage = mergeUsage(usage, estimateUsage(body, totalContentLength, FORMATS.GEMINI));
-                }
-                onStreamCompleteFired = true;
-                onStreamComplete({
-                  content: accumulatedContent,
-                  thinking: accumulatedThinking,
-                }, usage, ttftAt, providerSummary.finalize(usage));
-              }
+              // Gemini completion is deferred to flush() so trailing
+              // usageMetadata / functionCall parts survive (providerSummary
+              // sees them before finalize() runs).
               if (toolNameDecloaked && !injectedUsage) {
                 output = isDataLine ? `data: ${JSON.stringify(parsed)}\n` : `${JSON.stringify(parsed)}\n`;
                 injectedUsage = true;
@@ -995,6 +1040,10 @@ export function createSSEStream(options = {}) {
           if (buffer) {
             const trimmedBuffer = buffer.trim();
             currentUpstreamEvent = observeBufferedUpstream(trimmedBuffer, currentUpstreamEvent);
+            if (!/^data:\s*\[DONE\]$/.test(trimmedBuffer)) {
+              const parsed = parseSSELine(trimmedBuffer, targetFormat);
+              if (parsed && !parsed.done) providerSummary.ingest(parsed);
+            }
             let output;
             if (/^data:\s*\[DONE\]$/.test(trimmedBuffer)) {
               output = "data: [DONE]\n\n";
@@ -1062,9 +1111,10 @@ export function createSSEStream(options = {}) {
         }
 
         if (buffer.trim()) {
-          const parsed = parseSSELine(buffer.trim());
-          currentUpstreamEvent = observeBufferedUpstream(buffer.trim(), currentUpstreamEvent);
-          if (parsed) providerSummary.ingest(parsed);
+          const trimmedBuffer = buffer.trim();
+          currentUpstreamEvent = observeBufferedUpstream(trimmedBuffer, currentUpstreamEvent);
+          const parsed = parseSSELine(trimmedBuffer, targetFormat);
+          if (parsed && !parsed.done) providerSummary.ingest(parsed);
           if (parsed && (!parsed.done || targetFormat === FORMATS.OLLAMA)) {
             const translated = translateResponse(targetFormat, sourceFormat, parsed, state);
 

@@ -1227,19 +1227,21 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       let { statusCode, message, resetsAtMs, rateLimitEvidence, errorBody } = parsedError;
       // Fork-specific divergence from upstream: upstream (#10058) treats any
       // Kimi 403 as a candidate for recovery; this fork narrows the trigger to
-      // the literal /billing cycle/i wording Kimi's API used at port time,
-      // because the same phrase covers both a depleted weekly subscription
-      // and a temporary per-model request window. Verify the official usage
-      // response before benching it: only an empty Ratelimit with remaining
-      // Weekly quota gets a precise, model-scoped recovery deadline. Probe
-      // failures preserve the original 403. If Kimi changes this wording
-      // upstream, this regex silently stops firing (false negative, safe) —
-      // it never widens to unrelated 403s (no false-positive risk from text
-      // drift), but re-verify the phrase against Kimi's API on any future
-      // Kimi 403-handling port.
+      // K2.6's literal /billing cycle/i wording observed at port time. K2.6
+      // can report either a depleted weekly subscription or a temporary
+      // per-model request window. Verify the official usage response before
+      // benching it: only an empty Ratelimit with remaining Weekly quota gets
+      // a precise, model-scoped recovery deadline. Other Kimi models retain
+      // terminal 403 handling without a usage probe. Probe failures preserve
+      // the original 403. If K2.6 changes this wording upstream, this regex
+      // silently stops firing (false negative, safe) — it never widens to
+      // unrelated 403s (no false-positive risk from text drift), but re-verify
+      // the phrase and canonical model against Kimi's API on any future Kimi
+      // 403-handling port.
       if (
         statusCode === HTTP_STATUS.FORBIDDEN
         && (provider === "kimi-coding" || provider === "kimi-coding-apikey")
+        && cleanModel === "kimi-k2.6"
         && /billing cycle/i.test(message)
       ) {
         try {

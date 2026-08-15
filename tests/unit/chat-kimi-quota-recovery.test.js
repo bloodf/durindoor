@@ -64,11 +64,11 @@ const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
 
 const RESET_AT = "2030-01-01T01:00:00.000Z";
 
-function options(provider = "kimi-coding") {
-  const body = { model: "kimi-k2.6", stream: false, messages: [{ role: "user", content: "hi" }] };
+function options(provider = "kimi-coding", model = "kimi-k2.6") {
+  const body = { model, stream: false, messages: [{ role: "user", content: "hi" }] };
   return {
     body,
-    modelInfo: { provider, model: "kimi-k2.6" },
+    modelInfo: { provider, model },
     credentials: { accessToken: "token", providerSpecificData: {} },
     connectionId: "kimi-connection",
     clientRawRequest: { endpoint: "/v1/chat/completions", body, headers: { accept: "application/json" } },
@@ -113,6 +113,20 @@ describe("Kimi temporary quota recovery in chatCore", () => {
       expect.objectContaining({ provider: "kimi", accessToken: "token" }),
       expect.anything(),
     );
+  });
+
+  it("leaves other registered Kimi models terminal without probing usage", async () => {
+    mocks.getUsageForProvider.mockResolvedValue({
+      quotas: {
+        Ratelimit: { remainingPercentage: 0, resetAt: RESET_AT },
+        Weekly: { remainingPercentage: 50 },
+      },
+    });
+
+    const result = await handleChatCore(options("kimi-coding", "kimi-k3"));
+
+    expect(result).toMatchObject({ success: false, status: 403, resetsAtMs: undefined });
+    expect(mocks.getUsageForProvider).not.toHaveBeenCalled();
   });
 
   it("leaves an exhausted weekly quota terminal", async () => {

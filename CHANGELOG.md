@@ -18,14 +18,15 @@ peek byte-for-byte without buffering a full response. The peek shares Qoder's
 configured request timeout, so a response that sends headers but no first frame
 also fails promptly for fallback.
 
-Kimi's 403 "billing cycle" wording covers two different conditions: a
+K2.6's 403 "billing cycle" wording covers two different conditions: a
 depleted weekly subscription and a short per-model request window. A
-temporary window no longer blocks the account — chatCore probes the Kimi
-usage endpoint on that 403, and when the weekly quota still has capacity and
-the rate-limit window carries a future reset, the account cooldown expires at
-that reset instead of staying account-terminal. An exhausted weekly quota,
-an unreadable usage response, or a probe failure all preserve the original
-terminal 403 (fail closed).
+temporary K2.6 window no longer blocks the account — chatCore probes Kimi
+usage on that 403, and when the weekly quota still has capacity and the
+rate-limit window carries a future reset, the account cooldown expires at
+that reset instead of staying account-terminal. Other Kimi models retain
+their original terminal handling without a usage probe. An exhausted weekly
+quota, an unreadable usage response, or a probe failure also preserve the
+original terminal 403 (fail closed).
 
 # 3.15.2
 

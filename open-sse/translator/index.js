@@ -127,7 +127,10 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   });
   let finalizeTranslatedRequest;
   // Expose to downstream translators (gemini-cli/antigravity envelopes) that run after envelope is stripped
-  if (credentials) credentials._clientSessionId = clientSessionId;
+  if (credentials) {
+    credentials._clientSessionId = clientSessionId;
+    if (connectionId) credentials._signatureNamespace = connectionId;
+  }
 
   // If same format, skip translation steps
   if (sourceFormat !== targetFormat) {
@@ -415,6 +418,7 @@ import "./request/openai-to-cursor.js";
 import "./request/openai-to-ollama.js";
 import "./request/openai-to-commandcode.js";
 import "./request/claude-to-kiro.js";
+import "./request/claude-to-gemini.js";
 import "./response/claude-to-openai.js";
 import "./response/openai-to-claude.js";
 import "./response/gemini-to-openai.js";
@@ -426,3 +430,4 @@ import "./response/cursor-to-openai.js";
 import "./response/ollama-to-openai.js";
 import "./response/commandcode-to-openai.js";
 import "./response/kiro-to-claude.js";
+import "./response/gemini-to-claude.js";

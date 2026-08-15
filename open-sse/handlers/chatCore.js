@@ -1225,11 +1225,18 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       finishActiveDashboardSession("error");
       await settleQuota(false, "upstream_error");
       let { statusCode, message, resetsAtMs, rateLimitEvidence, errorBody } = parsedError;
-      // Kimi returns the same "billing cycle" 403 wording for both a depleted
-      // weekly subscription and its temporary per-model request window. Verify
-      // the official usage response before benching it: only an empty
-      // Ratelimit with remaining Weekly quota gets a precise, model-scoped
-      // recovery deadline. Probe failures preserve the original 403.
+      // Fork-specific divergence from upstream: upstream (#10058) treats any
+      // Kimi 403 as a candidate for recovery; this fork narrows the trigger to
+      // the literal /billing cycle/i wording Kimi's API used at port time,
+      // because the same phrase covers both a depleted weekly subscription
+      // and a temporary per-model request window. Verify the official usage
+      // response before benching it: only an empty Ratelimit with remaining
+      // Weekly quota gets a precise, model-scoped recovery deadline. Probe
+      // failures preserve the original 403. If Kimi changes this wording
+      // upstream, this regex silently stops firing (false negative, safe) —
+      // it never widens to unrelated 403s (no false-positive risk from text
+      // drift), but re-verify the phrase against Kimi's API on any future
+      // Kimi 403-handling port.
       if (
         statusCode === HTTP_STATUS.FORBIDDEN
         && (provider === "kimi-coding" || provider === "kimi-coding-apikey")

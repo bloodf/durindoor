@@ -43,6 +43,7 @@ import {
   ACCOUNT_FILTER_OPTIONS,
   QUOTA_SORT_OPTIONS,
   createAutoRefreshScheduler,
+  refreshProviderQuotas,
 } from "./utils";
 import { getCodexPlan } from "@/shared/utils/codexPlanLabel";
 import Card from "@/shared/components/Card";
@@ -1030,9 +1031,7 @@ export default function ProviderLimits() {
         filterQuotaStateByConnections(prev, visibleConnections),
       );
 
-      await Promise.all(
-        refreshConnections.map((conn) => fetchQuota(conn.id, conn.provider, { force })),
-      );
+      await refreshProviderQuotas(refreshConnections, force, fetchQuota);
 
       setLastUpdated(new Date());
     } catch (error) {

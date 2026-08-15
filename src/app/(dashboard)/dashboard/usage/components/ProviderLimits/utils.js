@@ -195,6 +195,13 @@ export function getRefreshConnections(connections, force, tick, claudeEvery) {
   );
 }
 
+/** Dispatches the selected Refresh All connections with its force intent intact. */
+export function refreshProviderQuotas(connections, force, fetchQuota) {
+  return Promise.all(
+    connections.map((connection) => fetchQuota(connection.id, connection.provider, { force })),
+  );
+}
+
 export function buildLoadingState(connections) {
   const nextLoadingState = {};
   connections.forEach((connection) => {

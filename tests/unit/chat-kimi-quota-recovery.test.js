@@ -1,3 +1,5 @@
+import { resolveFallbackModelScope } from "../../open-sse/services/fallbackScope.js";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -63,10 +65,10 @@ const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
 const RESET_AT = "2030-01-01T01:00:00.000Z";
 
 function options(provider = "kimi-coding") {
-  const body = { model: "kimi-k2", stream: false, messages: [{ role: "user", content: "hi" }] };
+  const body = { model: "kimi-k2.6", stream: false, messages: [{ role: "user", content: "hi" }] };
   return {
     body,
-    modelInfo: { provider, model: "kimi-k2" },
+    modelInfo: { provider, model: "kimi-k2.6" },
     credentials: { accessToken: "token", providerSpecificData: {} },
     connectionId: "kimi-connection",
     clientRawRequest: { endpoint: "/v1/chat/completions", body, headers: { accept: "application/json" } },
@@ -90,6 +92,10 @@ describe("Kimi temporary quota recovery in chatCore", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.execute.mockResolvedValue(quotaExhausted());
+  });
+
+  it("uses the exact registered model as fallback scope", () => {
+    expect(resolveFallbackModelScope("kimi-coding", "kimi-k2.6")).toBe("kimi-k2.6");
   });
 
   it("returns the usage reset deadline for a temporary Kimi request limit", async () => {

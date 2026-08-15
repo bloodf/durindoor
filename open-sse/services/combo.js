@@ -1150,7 +1150,7 @@ export async function handleComboChat({
       if (result.ok) {
         const upstreamError = await detectUpstreamError(result);
         if (upstreamError) {
-          const { shouldFallback } = checkFallbackError(result.status, upstreamError);
+          const { shouldFallback } = checkFallbackError(result.status, upstreamError, 0, splitModelString(modelStr).provider, result.headers);
           if (!shouldFallback) {
             log.warn("COMBO", `Model ${modelStr} returned 200 with a non-fallback error`);
             return result;
@@ -1191,9 +1191,10 @@ export async function handleComboChat({
 
       // Extract error info from response
       let errorText = result.statusText || "";
+      let errorBody = null;
       let retryAfter = null;
       try {
-        const errorBody = await result.clone().json();
+        errorBody = await result.clone().json();
         errorText = errorBody?.error?.message || errorBody?.error || errorBody?.message || errorText;
         retryAfter = errorBody?.retryAfter || null;
       } catch {
@@ -1221,7 +1222,14 @@ export async function handleComboChat({
       }
 
       // Check if should fallback to next model
-      const { shouldFallback, cooldownMs } = checkFallbackError(result.status, errorText);
+      const { shouldFallback, cooldownMs } = checkFallbackError(
+        result.status,
+        errorText,
+        0,
+        splitModelString(modelStr).provider,
+        result.headers,
+        errorBody,
+      );
 
       if (!shouldFallback) {
         if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, false, result.status);

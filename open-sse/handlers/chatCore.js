@@ -10,7 +10,7 @@ import { classifyQuotaTerminalReason } from "../utils/quotaTerminalReason.js";
 import { createRequestLogger } from "../utils/requestLogger.js";
 import { getModelTargetFormat, getModelStrip, getModelUpstreamId, getCanonicalModelId, getModelType, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
 import { PROVIDERS } from "../config/providers.js";
-import { createErrorResult, parseUpstreamError, formatProviderError, sanitizeErrorMessage } from "../utils/error.js";
+import { createErrorResult, parseRateLimitEvidence, parseUpstreamError, formatProviderError, sanitizeErrorMessage } from "../utils/error.js";
 import { HTTP_STATUS, VALIDATE_OUTBOUND } from "../config/runtimeConfig.js";
 import { applyStatusRestatement } from "../config/upstreamStatusRestatement.js";
 import { handleBypassRequest } from "../utils/bypassHandler.js";
@@ -1071,8 +1071,16 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       retryAfterMs,
     });
     if (restatement.ruleId) {
+      const now = Date.now();
+      const rateLimitEvidence = parseRateLimitEvidence({
+        status: restatement.status,
+        headers: response.headers,
+        bodyText: upstreamError.message,
+        now,
+      });
       upstreamError.statusCode = restatement.status;
-      upstreamError.resetsAtMs = Date.now() + restatement.retryAfterMs;
+      upstreamError.resetsAtMs = rateLimitEvidence?.resetAtMs ?? now + restatement.retryAfterMs;
+      upstreamError.rateLimitEvidence = rateLimitEvidence;
       log?.info?.("STATUS_RESTATE", `${provider} ${restatement.fromStatus}→${restatement.status} (${restatement.ruleId})`);
     }
     return upstreamError;

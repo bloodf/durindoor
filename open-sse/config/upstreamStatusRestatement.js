@@ -1,3 +1,5 @@
+import { HTTP_STATUS } from "./runtimeConfig.js";
+
 /**
  * Upstream status restatement — registry of gateways that misstate temporary
  * quota exhaustion as a non-retryable HTTP status.
@@ -38,7 +40,7 @@ const AGENTROUTER_RULES = [
   {
     id: "agentrouter-quota-misstatus",
     fromStatuses: new Set([403, 400]),
-    toStatus: 429,
+    toStatus: HTTP_STATUS.RATE_LIMITED,
     textMarkers: ["额度不足"],
     excludeMarkers: ["无权访问"],
     defaultRetryAfterMs: 60_000,

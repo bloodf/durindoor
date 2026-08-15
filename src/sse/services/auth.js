@@ -809,7 +809,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     context?.rateLimitEvidence && typeof context.rateLimitEvidence === "object"
       ? context.rateLimitEvidence
       : null;
-  const fallbackResult = checkFallbackError(status, errorText, backoffLevel);
+  const fallbackResult = checkFallbackError(status, errorText, backoffLevel, provider);
   const effectiveEvidence = callerEvidence || fallbackResult.rateLimitEvidence || null;
   const evidenceState = effectiveEvidence?.state === "exhausted" ? "exhausted" : "cooldown";
   // Precedence: (1) caller-supplied normalized evidence is authoritative — its

@@ -93,7 +93,14 @@ export function shouldUseSecureCookie(request) {
 }
 
 export async function createDashboardAuthToken(claims = {}) {
-  return new SignJWT({ authenticated: true, ...claims })
+  const passwordSessionEpoch = claims.oidc
+    ? undefined
+    : (claims.passwordSessionEpoch ?? (await getSettings()).passwordSessionEpoch);
+  return new SignJWT({
+    authenticated: true,
+    ...claims,
+    ...(passwordSessionEpoch === undefined ? {} : { passwordSessionEpoch }),
+  })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("24h")
@@ -103,8 +110,10 @@ export async function createDashboardAuthToken(claims = {}) {
 export async function verifyDashboardAuthToken(token) {
   if (!token) return false;
   try {
-    await jwtVerify(token, SECRET);
-    return true;
+    const { payload } = await jwtVerify(token, SECRET);
+    if (payload.oidc) return true;
+    const settings = await getSettings();
+    return payload.passwordSessionEpoch === settings.passwordSessionEpoch;
   } catch {
     return false;
   }
@@ -114,7 +123,9 @@ export async function getDashboardAuthSession(token) {
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, SECRET);
-    return payload;
+    if (payload.oidc) return payload;
+    const settings = await getSettings();
+    return payload.passwordSessionEpoch === settings.passwordSessionEpoch ? payload : null;
   } catch {
     return null;
   }

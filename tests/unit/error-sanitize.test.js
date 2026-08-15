@@ -216,13 +216,15 @@ describe("createErrorResult structured errorBody (bypasses buildErrorBody)", () 
         metadata: { api_key: "sk-provider-secret", diagnostic: "opaque-provider-credential" },
       },
     };
-    const result = createErrorResult(502, "fallback msg with /home/omni/secret/config.ts:1", null, errorBody, null, {
+    const result = createErrorResult(502, "fallback opaque-provider-credential at /home/omni/secret/config.ts:1", null, errorBody, null, {
       providerSpecificData: { sessionToken: "opaque-provider-credential" },
     });
 
     // Caller object untouched.
     expect(errorBody.error.message).toContain("/home/omni/secret");
     expect(result.errorBody.error.message).not.toContain("/home/omni/secret");
+    expect(result.error).toContain("[redacted]");
+    expect(result.error).not.toContain("opaque-provider-credential");
     // Emitted response sanitized, shape + provider fields preserved.
     expect(result.response.status).toBe(502);
     const body = await result.response.json();

@@ -511,11 +511,12 @@ export function createErrorResult(statusCode, message, resetsAtMs, errorBody, ra
   // value. Both sensitive field names and the selected connection's opaque
   // credential values are redacted without mutating the caller-owned object.
   const credentialSecrets = collectCredentialSecrets(credentialSource);
+  const safeMessage = sanitizeErrorMessageWithSecrets(message, credentialSecrets);
   const safeBody = errorBody ? sanitizeStructuredErrorBody(errorBody, credentialSecrets) : null;
   return {
     success: false,
     status: statusCode,
-    error: message,
+    error: safeMessage,
     resetsAtMs,
     ...(rateLimitEvidence ? { rateLimitEvidence } : {}),
     ...(safeBody ? { errorBody: safeBody } : {}),
@@ -527,7 +528,7 @@ export function createErrorResult(statusCode, message, resetsAtMs, errorBody, ra
             "Access-Control-Allow-Origin": "*",
           },
         })
-      : errorResponse(statusCode, message),
+      : errorResponse(statusCode, safeMessage),
   };
 }
 

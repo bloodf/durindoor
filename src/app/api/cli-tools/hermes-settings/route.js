@@ -121,9 +121,6 @@ const writeHermesEnvFile = async (envText) => {
     await fs.unlink(tempPath).catch(() => {});
     throw renameError;
   }
-  if (os.platform() !== "win32") {
-    await fs.chmod(envPath, 0o600);
-  }
 };
 
 // Detect 9router by base_url containing localhost/127.0.0.1 or matching tunnel URL
@@ -146,8 +143,8 @@ export async function GET() {
       has9Router: has9RouterConfig(model),
       configPath: getHermesConfigPath(),
     });
+  } catch {
     console.log("Hermes settings read failed");
-    console.log("Error checking hermes settings:", error);
     return NextResponse.json({ error: "Failed to check hermes settings" }, { status: 500 });
   }
 }
@@ -213,8 +210,8 @@ export async function DELETE() {
     const newYaml = removeModelBlock(yaml);
     await fs.writeFile(configPath, newYaml);
     return NextResponse.json({ success: true, message: `${PROVIDER_NAME} model block removed` });
-  } catch (error) {
-    console.log("Error resetting hermes settings:", error);
+  } catch {
     console.log("Hermes settings reset failed");
+    return NextResponse.json({ error: "Failed to reset hermes settings" }, { status: 500 });
   }
 }

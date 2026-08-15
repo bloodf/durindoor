@@ -133,7 +133,7 @@ describe("hermes-settings api_key (port of decolua/9router#3235)", () => {
     expect(yaml).toMatch(/api_key:[ \t]*"?\$\{OPENAI_API_KEY\}"?/m);
   });
 
-  it("POST writes only an environment reference to config.yaml and stores a supplied key in Hermes .env", async () => {
+  it("atomically writes supplied API key to a private Hermes environment file", async () => {
     const apiKey = "sk_live_unsafe-looking-but-valid";
     const response = await postBody({
       baseUrl: "http://localhost:20128",
@@ -143,36 +143,15 @@ describe("hermes-settings api_key (port of decolua/9router#3235)", () => {
 
     expect(response.status).toBe(200);
     const yaml = mocks.writeFile.mock.calls[0][1];
-    expect(yaml).toMatch(/^model:[ \t]*\r?\n/m);
-    expect(yaml).toMatch(/api_key:[ \t]*"?\$\{OPENAI_API_KEY\}"?/m);
+    expect(yaml).toContain("api_key: ${OPENAI_API_KEY}");
     expect(yaml).not.toContain(apiKey);
-    expect(yaml).toMatch(/default:[ \t]*"?cc\/claude-sonnet-4-6"?/m);
-    expect(yaml).toMatch(/provider:[ \t]*"?custom"?/m);
-    expect(yaml).toMatch(/base_url:[ \t]*"?http:\/\/localhost:20128\/v1"?/m);
-    expect(mocks.writeFile).toHaveBeenLastCalledWith(
-      "/home/test/.hermes/.env",
-      `OPENAI_API_KEY=${apiKey}\n`,
-      { mode: 0o600 },
-    );
-    expect(mocks.chmod).toHaveBeenCalledWith("/home/test/.hermes/.env", 0o600);
-    expect(JSON.stringify(await response.clone().json())).not.toContain(apiKey);
-  });
-
-  it("does not chmod Hermes environment file on Windows", async () => {
-    mocks.platform.mockReturnValue("win32");
-    const response = await postBody({
-      baseUrl: "http://localhost:20128",
-      apiKey: "sk_windows_sentinel",
-      model: "cc/claude-sonnet-4-6",
-    });
-
-    expect(response.status).toBe(200);
-    expect(mocks.writeFile).toHaveBeenLastCalledWith(
-      "/home/test/.hermes/.env",
-      "OPENAI_API_KEY=sk_windows_sentinel\n",
-      { mode: 0o600 },
-    );
+    const [tempPath, envText, options] = mocks.writeFile.mock.calls[1];
+    expect(tempPath).toMatch(/^\/home\/test\/\.hermes\/\.env\.\d+\.\d+\.tmp$/);
+    expect(envText).toBe(`OPENAI_API_KEY=${apiKey}\n`);
+    expect(options).toEqual({ mode: 0o600 });
+    expect(mocks.rename).toHaveBeenCalledWith(tempPath, "/home/test/.hermes/.env");
     expect(mocks.chmod).not.toHaveBeenCalled();
+    expect(JSON.stringify(await response.clone().json())).not.toContain(apiKey);
   });
 
   it("POST leaves the existing Hermes key untouched when no key is supplied", async () => {

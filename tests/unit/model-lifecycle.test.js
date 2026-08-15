@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   MODEL_LIFECYCLE_RECORDS,
   filterSelectableModels,
@@ -33,6 +33,15 @@ describe("model lifecycle", () => {
       status: "untracked",
       action: "allow",
     });
+    const log = { warn: vi.fn() };
+    expect(checkModelLifecycle({
+      provider: "openai",
+      canonicalModel: "gpt-5.3-chat-latest",
+      upstreamModel: "gpt-5.3-chat-latest",
+      log,
+      asOf: CURRENT_DATE,
+    })).toBeNull();
+    expect(log.warn).toHaveBeenCalledWith("MODEL_LIFECYCLE", expect.stringMatching(/deprecated/));
   });
 
   it("hides deprecated and shutdown models from selectable OpenAI catalog entries", () => {

@@ -36,6 +36,7 @@ import { validateExecutorResult } from "./chatCore/executorResultGuard.js";
 import { isAnthropicThinkingSignatureError, stripHistoricalThinkingForSignatureRecovery } from "./chatCore/thinkingSignatureRecovery.js";
 import { getKimiTemporaryRateLimitResetAt } from "./chatCore/kimiQuotaRecovery.js";
 import { detectClientTool, isNativePassthrough, isCodexOriginatedHeaders } from "../utils/clientDetector.js";
+import { checkModelLifecycle } from "./chatCore/modelLifecyclePolicy.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
 import { salvageOrphanedToolResults, fixMissingToolResponses, normalizeOpenAIToolNames } from "../translator/concerns/toolCall.js";
 import { injectCaveman } from "../rtk/caveman.js";
@@ -354,8 +355,18 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   if (runtimeTransport && credentials) credentials.runtimeTransport = runtimeTransport;
   const stripList = getModelStrip(alias, cleanModel);
   const cleanUpstreamModel = getModelUpstreamId(alias, cleanModel); // provider-facing model id
+  // Model lifecycle gate (OmniRoute #8627 port): reject with HTTP 410 when the
+  // requested canonical model or its resolved upstream id maps to a shutdown
+  // record. Deprecated models pass through with a warning. No silent rewrite;
+  // aliases targeting a retired id surface the same shutdown error.
+  const lifecycleError = checkModelLifecycle({
+    provider,
+    canonicalModel: cleanModel,
+    upstreamModel: cleanUpstreamModel,
+    log,
+  });
+  if (lifecycleError) return lifecycleError;
   requestContext = Object.freeze({ ...requestContext, catalogModel: cleanModel });
-
   // Inject provider-level thinking config override (only if client hasn't set)
   // on/off → extended type (body.thinking), none/low/medium/high → effort type (body.reasoning_effort)
   if (providerThinking?.mode && providerThinking.mode !== "auto") {

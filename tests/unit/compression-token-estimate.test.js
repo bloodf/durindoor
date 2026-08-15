@@ -32,6 +32,20 @@ describe("estimateCompressionTokens", () => {
     expect(estimateCompressionTokens(noPayload)).toBe(Math.ceil(noPayload.length / 4));
   });
 
+  it("does not bind malformed image prefixes to later non-image base64 delimiters", () => {
+    const malformedThenAudio = "data:image/not valid data:audio/mpeg;base64,QUJD";
+    expect(estimateCompressionTokens(malformedThenAudio)).toBe(
+      Math.ceil(malformedThenAudio.length / 4),
+    );
+  });
+
+  it("strips uppercase valid image data URIs", () => {
+    const uri = "DATA:IMAGE/PNG;BASE64,QUJD";
+    expect(estimateCompressionTokens(`before ${uri} after`)).toBe(
+      Math.ceil("before  after".length / 4),
+    );
+  });
+
   function buildUriText(totalLen) {
     const prefix = "before ";
     const uriPrefix = "data:image/png;base64,";

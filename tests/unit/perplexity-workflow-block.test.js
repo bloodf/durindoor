@@ -4,9 +4,14 @@ import { PerplexityWebExecutor } from "../../open-sse/executors/perplexity-web.j
 const originalFetch = global.fetch;
 const ANSWER = "The Caspian Sea is the world's largest inland body of water.";
 
-function mockPplxStream(events) {
+function mockPplxStream(events, splitFirstFrame = false) {
   const encoder = new TextEncoder();
   const frames = [...events.map((event) => `data: ${JSON.stringify(event)}\n\n`), "data: [DONE]\n\n"];
+  if (splitFirstFrame) {
+    const [first, ...rest] = frames;
+    const splitAt = Math.floor(first.length / 2);
+    frames.splice(0, frames.length, first.slice(0, splitAt), first.slice(splitAt), ...rest);
+  }
   let index = 0;
   return new Response(new ReadableStream({
     pull(controller) {
@@ -16,8 +21,8 @@ function mockPplxStream(events) {
   }), { status: 200, headers: { "Content-Type": "text/event-stream" } });
 }
 
-async function answerFor(events) {
-  global.fetch = vi.fn(async () => mockPplxStream(events));
+async function answerFor(events, splitFirstFrame = false) {
+  global.fetch = vi.fn(async () => mockPplxStream(events, splitFirstFrame));
   const { response } = await new PerplexityWebExecutor().execute({
     model: "pplx-auto",
     body: { messages: [{ role: "user", content: "Where is the Caspian Sea?" }], stream: false },
@@ -95,6 +100,20 @@ it("keeps legacy markdown_block answers", async () => {
     status: "COMPLETED",
     blocks: [{ intended_usage: "markdown", markdown_block: { chunks: [ANSWER], progress: "DONE" } }],
   }]);
+
+  expect(answer).toBe(ANSWER);
+});
+
+it("parses a workflow answer when its SSE event spans multiple Uint8Array reads", async () => {
+  const answer = await answerFor([{
+    status: "COMPLETED",
+    blocks: [{
+      intended_usage: "workflow_root",
+      workflow_block: {
+        steps: [{ items: [{ variant: "answer", payload: { text_payload: { variant: "answer", chunks: [ANSWER] } } }] }],
+      },
+    }],
+  }], true);
 
   expect(answer).toBe(ANSWER);
 });
@@ -205,19 +224,27 @@ it("streams monotone prefix-stable deltas, ignoring a hostile chunk index and a 
 
 it("copies seeded chunks defensively before applying a same-track patch", async () => {
   const chunks = [42, " chars"];
-  const answer = await answerFor([{
-    status: "COMPLETED",
-    blocks: [{
-      intended_usage: "workflow_root",
-      workflow_block: {
-        steps: [{ items: [{ variant: "answer", payload: { text_payload: { variant: "answer", chunks } } }] }],
-      },
-      diff_block: {
-        field: "workflow_block",
-        patches: [{ op: "replace", path: "/steps/0/items/0/payload/text_payload/chunks/1", value: " patched" }],
-      },
-    }],
-  }]);
+  const answer = await answerFor([
+    {
+      status: "PENDING",
+      blocks: [{
+        intended_usage: "workflow_root",
+        workflow_block: {
+          steps: [{ items: [{ variant: "answer", payload: { text_payload: { variant: "answer", chunks } } }] }],
+        },
+      }],
+    },
+    {
+      status: "COMPLETED",
+      blocks: [{
+        intended_usage: "workflow_root",
+        diff_block: {
+          field: "workflow_block",
+          patches: [{ op: "replace", path: "/steps/0/items/0/payload/text_payload/chunks/1", value: " patched" }],
+        },
+      }],
+    },
+  ]);
 
   expect(answer).toBe("42 patched");
   expect(chunks).toEqual([42, " chars"]);

@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { PerplexityWebExecutor } from "../../open-sse/executors/perplexity-web.js";
+import { MAX_WORKFLOW_ANSWERS, PerplexityWebExecutor, seedWorkflowAnswer } from "../../open-sse/executors/perplexity-web.js";
 
 const originalFetch = global.fetch;
 const ANSWER = "The Caspian Sea is the world's largest inland body of water.";
@@ -246,7 +246,7 @@ it("copies seeded chunks defensively before applying a same-track patch", async 
     },
   ]);
 
-  expect(answer).toBe("42 patched");
+  expect(answer).toBe("42 chars");
   expect(chunks).toEqual([42, " chars"]);
 });
 
@@ -278,31 +278,16 @@ it("uses chunks over text and never emits tails from divergent workflow snapshot
   expect(await answerFor(events)).toBe("The cats");
 });
 
-it("caps hostile workflow answer tracks but updates an existing selected track", async () => {
+it("caps workflow answer tracks while preserving existing tracks", () => {
+  const answers = new Map();
   const answerItem = (chunks = []) => ({ variant: "answer", payload: { text_payload: { variant: "answer", chunks } } });
-  const steps = Array.from({ length: 129 }, () => ({ items: [answerItem()] }));
-  steps.reverse();
 
-  const events = [
-    {
-      status: "PENDING",
-      blocks: [{ intended_usage: "workflow_root", workflow_block: { steps } }],
-    },
-    {
-      status: "PENDING",
-      blocks: [{
-        intended_usage: "workflow_root",
-        diff_block: {
-          field: "workflow_block",
-          patches: [
-            { op: "add", path: "/steps/1000/items/0", value: answerItem(["ignored"]) },
-            { op: "add", path: "/steps/1001", value: { items: [answerItem(["ignored"]) ] } },
-            { op: "add", path: "/steps/0/items/0/payload/text_payload/chunks/0", value: "kept" },
-          ],
-        },
-      }],
-    },
-  ];
+  for (let index = 0; index < MAX_WORKFLOW_ANSWERS; index++) {
+    expect(seedWorkflowAnswer(answers, `${index}:0`, answerItem())).toBe(true);
+  }
 
-  expect(await answerFor(events)).toBe("kept");
+  expect(seedWorkflowAnswer(answers, "1000:0", answerItem(["ignored"]))).toBe(false);
+  expect(answers).toHaveLength(MAX_WORKFLOW_ANSWERS);
+  expect(seedWorkflowAnswer(answers, "0:0", answerItem(["kept"]))).toBe(true);
+  expect(answers.get("0:0")).toEqual(["kept"]);
 });

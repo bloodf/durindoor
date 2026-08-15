@@ -8,11 +8,16 @@ function restoreToolName(name, toolNameMap) {
   return toolNameMap.get(name) || toolNameMap.get(String(name).toLowerCase()) || name;
 }
 
+function readInlineSignature(part) {
+  return typeof part.thoughtSignature === "string" && part.thoughtSignature || typeof part.thought_signature === "string" && part.thought_signature || null;
+}
+
 export function geminiToClaudeResponse(chunk, state) {
   if (!chunk) return null;
   const response = chunk.response || chunk;
   const candidate = response?.candidates?.[0];
   if (!candidate) return null;
+  if (!Array.isArray(state.standaloneSignatureQueue)) state.standaloneSignatureQueue = [];
   const results = [];
   if (!state.messageId) {
     state.messageId = response.responseId || `msg_${Date.now()}`;
@@ -22,29 +27,25 @@ export function geminiToClaudeResponse(chunk, state) {
     results.push({ type: "message_start", message: { id: state.messageId, type: "message", role: "assistant", model: state.model, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } });
   }
   for (const part of candidate.content?.parts || []) {
-    const signature = typeof part.thoughtSignature === "string" && part.thoughtSignature || typeof part.thought_signature === "string" && part.thought_signature;
-    if (signature) state.pendingThoughtSignature = signature;
+    const inlineSignature = readInlineSignature(part);
     if (part.thought === true && part.text) {
       if (state.openTextBlockIdx !== null) { results.push({ type: "content_block_stop", index: state.openTextBlockIdx }); state.openTextBlockIdx = null; }
       const index = state.contentBlockIndex++;
       results.push({ type: "content_block_start", index, content_block: { type: "thinking", thinking: "" } }, { type: "content_block_delta", index, delta: { type: "thinking_delta", thinking: part.text } }, { type: "content_block_stop", index });
       continue;
     }
-    if (signature && (part.text === undefined || part.text === "") && !part.functionCall) continue;
     if (part.functionCall) {
       if (state.openTextBlockIdx !== null) { results.push({ type: "content_block_stop", index: state.openTextBlockIdx }); state.openTextBlockIdx = null; }
       const index = state.contentBlockIndex++;
       const call = part.functionCall;
       const id = call.id || `toolu_${Date.now()}_${index}`;
-      const callSignature = signature || state.pendingThoughtSignature;
-      if (callSignature) {
-        storeGeminiThoughtSignature(buildGeminiThoughtSignatureKey(state.signatureNamespace, id), callSignature);
-        state.pendingThoughtSignature = null;
-      }
+      const callSignature = inlineSignature || (state.standaloneSignatureQueue.length ? state.standaloneSignatureQueue.shift() : null);
+      if (callSignature) storeGeminiThoughtSignature(buildGeminiThoughtSignatureKey(state.signatureNamespace, id), callSignature);
       results.push({ type: "content_block_start", index, content_block: { type: "tool_use", id, name: restoreToolName(call.name, state.toolNameMap), input: {} } }, { type: "content_block_delta", index, delta: { type: "input_json_delta", partial_json: JSON.stringify(call.args || {}) } }, { type: "content_block_stop", index });
       state.hasToolUse = true;
       continue;
     }
+    if (inlineSignature) state.standaloneSignatureQueue.push(inlineSignature);
     if (part.text) {
       if (state.openTextBlockIdx === null) { state.openTextBlockIdx = state.contentBlockIndex++; results.push({ type: "content_block_start", index: state.openTextBlockIdx, content_block: { type: "text", text: "" } }); }
       results.push({ type: "content_block_delta", index: state.openTextBlockIdx, delta: { type: "text_delta", text: part.text } });

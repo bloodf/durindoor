@@ -3,6 +3,5 @@
 // cannot guess. Without the proof the header is just attacker-supplied input.
 export function hasTrustedPeerHeaders(request) {
   const token = process.env.NINEROUTER_PEER_TOKEN;
-  if (!token || !request?.headers || typeof request.headers.get !== "function") return false;
-  return request.headers.get("x-9r-peer-token") === token;
+  return Boolean(token) && request.headers.get("x-9r-peer-token") === token;
 }

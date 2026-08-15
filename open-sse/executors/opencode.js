@@ -4,7 +4,6 @@ import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
-import { hasTrustedPeerHeaders } from "../../src/lib/auth/trustedPeer.js";
 
 const OPENCODE_UA = "opencode";
 const MESSAGES_MODELS = new Set();
@@ -35,15 +34,6 @@ function isEnabled(name) {
   return /^(1|true|yes|on)$/i.test(process.env[name]?.trim() ?? "");
 }
 
-function resolveClientIp(requestContext) {
-  const headers = requestContext?.clientHeaders;
-  if (!headers) return undefined;
-  const get = (name) => (typeof headers.get === "function" ? headers.get(name) : headers[name] ?? null);
-  const realIp = get("x-9r-real-ip");
-  if (!realIp) return undefined;
-  return hasTrustedPeerHeaders({ headers: { get } }) ? realIp : undefined;
-}
-
 export class OpenCodeExecutor extends BaseExecutor {
   constructor() {
     super("opencode", PROVIDERS.opencode);
@@ -62,7 +52,7 @@ export class OpenCodeExecutor extends BaseExecutor {
       : `${base}/zen/v1/chat/completions`;
   }
 
-  buildHeaders(credentials, stream = true, requestContext = null, model = "") {
+  buildHeaders(credentials, stream = true, requestContext = null) {
     const clientHeaders = new Headers(requestContext?.clientHeaders ?? credentials?.rawHeaders ?? {});
     const clientUa = clientHeaders.get("user-agent");
     const credentialToken = credentials?.apiKey || credentials?.accessToken || credentials?.authorization;
@@ -75,8 +65,6 @@ export class OpenCodeExecutor extends BaseExecutor {
       "x-opencode-client": clientHeaders.get("x-opencode-client") || "desktop",
       "Accept": stream ? "text/event-stream" : "*/*",
     };
-    const trustedClientIp = resolveClientIp(requestContext);
-    if (trustedClientIp) baseHeaders["x-opencode-client-ip"] = trustedClientIp;
 
     if (hasPaidIdentity || isEnabled("OPENCODE_DISABLE_FREE_TIER_HEADERS")) {
       if (clientUa) baseHeaders["User-Agent"] = clientUa;

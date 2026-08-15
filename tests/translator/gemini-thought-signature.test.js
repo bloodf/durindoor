@@ -32,7 +32,7 @@ const callFor = (body, id) => partsFor(body).find((part) => part.functionCall?.i
 beforeEach(async () => { await clearGeminiThoughtSignatures(); });
 
 describe("Gemini thoughtSignature direct Claude route", () => {
-  it("pairs standalone signatures with next parallel function call without signature text", async () => {
+  it("pairs standalone signatures with subsequent function calls without signature text", async () => {
     const state = { signatureNamespace: "connection-a" };
     const standalone = translateResponse(FORMATS.CLAUDE, FORMATS.GEMINI, { candidates: [{ content: { parts: [{ thoughtSignature: signature }] } }] }, state);
     const first = translateResponse(FORMATS.CLAUDE, FORMATS.GEMINI, geminiToolCall("toolu_sig_1", "read"), state);
@@ -61,6 +61,11 @@ describe("Gemini thoughtSignature direct Claude route", () => {
     expect(callFor(otherConnection, "toolu_shared")).toBeUndefined();
     await storeGeminiThoughtSignature("connection-a:expired", signature, Date.now() - 1);
     expect(await getGeminiThoughtSignature("connection-a:expired")).toBeNull();
+  });
+
+  it("preserves unsigned tool calls when no signature exists for the connection", () => {
+    const translated = translateRequest(FORMATS.CLAUDE, FORMATS.GEMINI, "gemini-2.5-pro", claudeFollowUp(["toolu_missing"]), true, { _signatureNamespace: "other-connection" }, "gemini");
+    expect(callFor(translated, "toolu_missing")).toEqual({ functionCall: { id: "toolu_missing", name: "Read", args: { query: "toolu_missing" } } });
   });
 
   it("drains a FIFO queue of standalone signatures to the next function calls and pairs inline signatures only to their own call", async () => {

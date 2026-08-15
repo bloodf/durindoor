@@ -212,4 +212,96 @@ describe("SSE completion accounting", () => {
       },
     });
   });
+
+  it("ingests an unterminated final passthrough JSON event", async () => {
+    const onComplete = vi.fn();
+    const transform = createPassthroughStreamWithLogger(
+      "openai", null, null, "gpt-test", "connection-1", {}, onComplete,
+    );
+
+    await pipeText(transform, [
+      `data: ${JSON.stringify({ choices: [{ delta: { content: "tail" }, finish_reason: "stop" }], usage: { total_tokens: 3 } })}`,
+    ]);
+
+    expect(onComplete.mock.calls[0][3]).toMatchObject({
+      providerResponse: { usage: { total_tokens: 3 }, choices: [{ message: { content: "tail" }, finish_reason: "stop" }] },
+    });
+  });
+
+  it("composes Responses function calls from incremental tool events", async () => {
+    const onComplete = vi.fn();
+    const transform = createSSETransformStreamWithLogger(
+      FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI_RESPONSES, "openai", null, null, "gpt-test", "connection-1",
+      { input: "hello" }, onComplete, "sk-test",
+    );
+
+    await pipeText(transform, [
+      `event: response.output_item.added\ndata: ${JSON.stringify({ type: "response.output_item.added", output_index: 0, item: { id: "fc_1", type: "function_call", call_id: "call_1", name: "weather", arguments: "" } })}\n\n`,
+      `event: response.function_call_arguments.delta\ndata: ${JSON.stringify({ type: "response.function_call_arguments.delta", item_id: "fc_1", output_index: 0, delta: "{\"city\":" })}\n\n`,
+      `event: response.function_call_arguments.done\ndata: ${JSON.stringify({ type: "response.function_call_arguments.done", item_id: "fc_1", output_index: 0, arguments: "{\"city\":\"Paris\"}" })}\n\n`,
+      "data: [DONE]\n\n",
+    ]);
+
+    expect(onComplete.mock.calls[0][3]).toMatchObject({
+      providerResponse: {
+        output: [{ id: "fc_1", type: "function_call", call_id: "call_1", name: "weather", arguments: "{\"city\":\"Paris\"}" }],
+      },
+    });
+  });
+
+  it("defers Gemini completion until trailing usage and tool parts arrive", async () => {
+    const onComplete = vi.fn();
+    const transform = createPassthroughStreamWithLogger(
+      "gemini", null, null, "gemini-test", "connection-1", {}, onComplete, null, FORMATS.GEMINI,
+    );
+    const writer = transform.writable.getWriter();
+    const reader = transform.readable.getReader();
+    const firstWrite = writer.write(encoder.encode(`data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: "answer" }] }, finishReason: "STOP" }] })}\n\n`));
+    await reader.read();
+    await firstWrite;
+    expect(onComplete).not.toHaveBeenCalled();
+    const secondWrite = writer.write(encoder.encode(`data: ${JSON.stringify({ candidates: [{ content: { parts: [{ functionCall: { name: "weather", args: { city: "Paris" } } }] } }], usageMetadata: { promptTokenCount: 3 } })}\n\n`));
+    await reader.read();
+    await secondWrite;
+    await writer.close();
+    await reader.read();
+
+    expect(onComplete.mock.calls[0][3]).toMatchObject({
+      providerResponse: { usageMetadata: { promptTokenCount: 3 }, candidates: [{ content: { parts: [{ text: "answer" }, { functionCall: { name: "weather" } }] } }] },
+    });
+  });
+
+  it("unwraps Antigravity Gemini responses for provider diagnostics", async () => {
+    const onComplete = vi.fn();
+    const transform = createPassthroughStreamWithLogger(
+      "antigravity", null, null, "gemini-test", "connection-1", {}, onComplete, null, FORMATS.ANTIGRAVITY,
+    );
+
+    await pipeText(transform, [
+      `data: ${JSON.stringify({ response: { modelVersion: "gemini-test", candidates: [{ content: { parts: [{ text: "wrapped" }] }, finishReason: "STOP" }], usageMetadata: { promptTokenCount: 2 } } })}\n\n`,
+    ]);
+
+    expect(onComplete.mock.calls[0][3]).toMatchObject({
+      providerResponse: { modelVersion: "gemini-test", usageMetadata: { promptTokenCount: 2 }, candidates: [{ content: { parts: [{ text: "wrapped" }] } }] },
+    });
+  });
+
+  it("bounds retained provider summary fields during long streams", async () => {
+    const onComplete = vi.fn();
+    const transform = createPassthroughStreamWithLogger(
+      "openai", null, null, "gpt-test", "connection-1", {}, onComplete,
+    );
+    const oversized = "x".repeat(70 * 1024);
+    const toolCalls = Array.from({ length: 65 }, (_, index) => ({ index, id: `call_${index}`, type: "function", function: { name: "tool", arguments: "{}" } }));
+
+    await pipeText(transform, [
+      `data: ${JSON.stringify({ model: "m".repeat(1024), choices: [{ delta: { content: oversized, tool_calls: toolCalls }, finish_reason: "tool_calls" }], usage: { total_tokens: 1 } })}\n\n`,
+      "data: [DONE]\n\n",
+    ]);
+
+    const summary = onComplete.mock.calls[0][3].providerResponse;
+    expect(summary.model.length).toBeLessThanOrEqual(256);
+    expect(summary.choices[0].message.content.length).toBeLessThanOrEqual(64 * 1024);
+    expect(summary.choices[0].message.tool_calls).toHaveLength(64);
+  });
 });

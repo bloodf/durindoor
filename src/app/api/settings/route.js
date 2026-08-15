@@ -3,9 +3,9 @@ import { FREE_NO_AUTH_PROVIDER_IDS } from "@/shared/constants/freeNoAuthProvider
 import { getSettings, updateSettings } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation, resetComboScoring } from "open-sse/services/combo.js";
-import { invalidateDefaultPasswordCache } from "@/lib/auth/dashboardSession";
+import { DEFAULT_PASSWORD, invalidateDefaultPasswordCache, validateDashboardPassword } from "@/lib/auth/dashboardSession";
 import bcrypt from "bcryptjs";
-export const revalidate = 0;
+import crypto from "node:crypto";
 
 const SETTINGS_RESPONSE_HEADERS = {
   "Cache-Control": "no-store"
@@ -52,24 +52,38 @@ export async function PATCH(request) {
     if (body.newPassword) {
       const settings = await getSettings();
       const currentHash = settings.password;
+      const initialPassword = process.env.INITIAL_PASSWORD || DEFAULT_PASSWORD;
+
+      const rejection = validateDashboardPassword(body.newPassword);
+      if (
+        rejection
+        || body.newPassword === initialPassword
+        || (currentHash && body.newPassword !== initialPassword && (await bcrypt.compare(body.newPassword, currentHash)))
+      ) {
+        return NextResponse.json({ error: rejection || "Password must not match the current password" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
 
       if (currentHash) {
         if (!body.currentPassword) {
-          return NextResponse.json({ error: "Current password required" }, { status: 400 });
+          return NextResponse.json({ error: "Current password required" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
         }
         const isValid = await bcrypt.compare(body.currentPassword, currentHash);
         if (!isValid) {
-          return NextResponse.json({ error: "Invalid current password" }, { status: 401 });
+          return NextResponse.json({ error: "Invalid current password" }, { status: 401, headers: SETTINGS_RESPONSE_HEADERS });
         }
-      } else if (body.currentPassword && body.currentPassword !== "123456") {
-        return NextResponse.json({ error: "Invalid current password" }, { status: 401 });
+      } else if (body.currentPassword && body.currentPassword !== initialPassword) {
+        return NextResponse.json({ error: "Invalid current password" }, { status: 401, headers: SETTINGS_RESPONSE_HEADERS });
       }
 
       const salt = await bcrypt.genSalt(10);
+      const newEpoch = crypto.randomBytes(16).toString("hex");
       body.password = await bcrypt.hash(body.newPassword, salt);
-      delete body.newPassword;
-      delete body.currentPassword;
+      body.passwordSessionEpoch = newEpoch;
     }
+
+    delete body.currentPassword;
+    delete body.newPassword;
+
 
 
     if (Object.prototype.hasOwnProperty.call(body, "oidcClientSecret")) {

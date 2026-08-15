@@ -8,6 +8,14 @@ import { getSettings } from "@/lib/localDb";
 
 export const DEFAULT_PASSWORD = "123456";
 
+export function validateDashboardPassword(password) {
+  if (typeof password !== "string" || password.length < 6) {
+    return "Password must be at least 6 characters";
+  }
+  if (password === DEFAULT_PASSWORD) return "Password must not use the built-in default";
+  return null;
+}
+
 // Built-in default is "active" whenever the effective password literally
 // resolves to DEFAULT_PASSWORD — a stored hash of it, or an INITIAL_PASSWORD
 // env var set to it, or no password source configured at all.

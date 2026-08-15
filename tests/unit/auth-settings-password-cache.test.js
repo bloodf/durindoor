@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   genSalt: vi.fn(),
   hash: vi.fn(),
   invalidateDefaultPasswordCache: vi.fn(),
+  DEFAULT_PASSWORD: "123456",
+  validateDashboardPassword: vi.fn(() => null),
 }));
 
 vi.mock("next/server", () => ({ NextResponse: { json: mocks.json } }));
@@ -21,7 +23,9 @@ vi.mock("open-sse/services/combo.js", () => ({
   resetComboScoring: vi.fn(),
 }));
 vi.mock("@/lib/auth/dashboardSession", () => ({
+  DEFAULT_PASSWORD: mocks.DEFAULT_PASSWORD,
   invalidateDefaultPasswordCache: mocks.invalidateDefaultPasswordCache,
+  validateDashboardPassword: mocks.validateDashboardPassword,
 }));
 vi.mock("bcryptjs", () => ({ default: { genSalt: mocks.genSalt, hash: mocks.hash } }));
 
@@ -42,7 +46,7 @@ describe("settings password update", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(mocks.updateSettings).toHaveBeenCalledWith({ password: "new-hash" });
+    expect(mocks.updateSettings).toHaveBeenCalledWith(expect.objectContaining({ password: "new-hash" }));
     expect(mocks.invalidateDefaultPasswordCache).toHaveBeenCalledOnce();
   });
 

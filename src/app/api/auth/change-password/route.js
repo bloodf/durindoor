@@ -4,9 +4,9 @@ import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import { getClientIp } from "@/lib/auth/loginLimiter";
 import {
-  DEFAULT_PASSWORD,
   invalidateDefaultPasswordCache,
   setDashboardAuthCookie,
+  validateDashboardPassword,
 } from "@/lib/auth/dashboardSession";
 import {
   commitPasswordChangeProof,
@@ -23,13 +23,10 @@ export async function POST(request) {
     if (typeof proof !== "string" || !proof) {
       return NextResponse.json({ error: "Missing password-change proof" }, { status: 403 });
     }
-    if (typeof newPassword !== "string" || newPassword.length < 6) {
-      return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400 });
+    const validation = validateDashboardPassword(newPassword);
+    if (validation) {
+      return NextResponse.json({ error: validation }, { status: 400 });
     }
-    if (newPassword === DEFAULT_PASSWORD) {
-      return NextResponse.json({ error: "Password must not use the built-in default" }, { status: 400 });
-    }
-
 
     const ip = getClientIp(request);
     if (!reservePasswordChangeProof(proof, ip)) {

@@ -13,6 +13,10 @@ const mocks = vi.hoisted(() => ({
   invalidateDefaultPasswordCache: vi.fn(),
   cookies: vi.fn(),
   setDashboardAuthCookie: vi.fn(),
+  validateDashboardPassword: vi.fn((password) => {
+    if (typeof password !== "string" || password.length < 6) return "Password must be at least 6 characters";
+    return password === "123456" ? "Password must not use the built-in default" : null;
+  }),
 }));
 
 vi.mock("next/server", () => ({ NextResponse: { json: mocks.json } }));
@@ -28,6 +32,7 @@ vi.mock("@/lib/auth/dashboardSession", () => ({
   DEFAULT_PASSWORD: mocks.DEFAULT_PASSWORD,
   invalidateDefaultPasswordCache: mocks.invalidateDefaultPasswordCache,
   setDashboardAuthCookie: mocks.setDashboardAuthCookie,
+  validateDashboardPassword: mocks.validateDashboardPassword,
 }));
 vi.mock("next/headers", () => ({ cookies: mocks.cookies }));
 

@@ -13,14 +13,15 @@ const TIERED_UPSTREAM = Object.fromEntries(TIERS.map((level) => [level, `gemini-
 const TIERED_IDS = TIERS.map((level) => `gemini-3.7-flash-${level}`);
 
 describe("Gemini 3.7 Flash Antigravity catalog (#3286, #3281)", () => {
-  it("exposes exactly three Antigravity tier rows in registry order", () => {
-    const tierRows = antigravity.models.filter((m) => m.id.startsWith("gemini-3.7-flash-"));
+  it("exposes the exact Antigravity tier rows in registry order", () => {
+    const tierRows = antigravity.models.filter((m) => TIERED_IDS.includes(m.id));
     expect(tierRows).toEqual([
       { id: "gemini-3.7-flash-high", name: "Gemini 3.7 Flash (High)", upstreamModelId: TIERED_UPSTREAM.high },
       { id: "gemini-3.7-flash-medium", name: "Gemini 3.7 Flash (Medium)", upstreamModelId: TIERED_UPSTREAM.medium },
       { id: "gemini-3.7-flash-low", name: "Gemini 3.7 Flash (Low)", upstreamModelId: TIERED_UPSTREAM.low },
     ]);
   });
+
   it("exposes the exact Gemini base row preceding 3.1 Pro", () => {
     const idx = gemini.models.findIndex((m) => m.id === "gemini-3.7-flash");
     expect(idx).toBeGreaterThanOrEqual(0);

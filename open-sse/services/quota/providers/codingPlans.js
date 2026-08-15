@@ -540,13 +540,111 @@ export function normalizeBailianQuota(payload, { now = Date.now() } = {}) {
   return rows;
 }
 
+const QWEN_TOKEN_PLAN_PRODUCT = "sfm_bailian";
+const QWEN_TOKEN_PLAN_ACTION = "IntlBroadScopeAspnGateway";
+const QWEN_TOKEN_PLAN_COMMODITY = "sfm_tokenplansolo_public_intl";
+
+function qwenTokenPlanCookie(data) {
+  for (const key of ["qwenCloudCookie", "alibabaConsoleCookie", "cookie"]) {
+    if (typeof data[key] === "string" && data[key].trim()) return data[key].trim();
+  }
+  return typeof process.env.QWEN_CLOUD_COOKIE === "string" && process.env.QWEN_CLOUD_COOKIE.trim()
+    ? process.env.QWEN_CLOUD_COOKIE.trim()
+    : null;
+}
+
+function qwenTokenPlanPayload(endpoint, data) {
+  const api = `zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/${endpoint}`;
+  return JSON.stringify({
+    product: QWEN_TOKEN_PLAN_PRODUCT,
+    action: QWEN_TOKEN_PLAN_ACTION,
+    sec_token: data.qwenCloudSecToken || data.alibabaConsoleSecToken || data.secToken || "",
+    region: data.qwenCloudRegion || data.region || "",
+    params: { Api: api, V: "1.0", Data: { commodityCode: QWEN_TOKEN_PLAN_COMMODITY, cornerstoneParam: {} } },
+  });
+}
+
+function unwrapQwenTokenPlanPayload(payload) {
+  const root = asRecord(payload);
+  const data = root?.data?.DataV2?.data;
+  if (!data || data.code !== "SUCCESS" || data.success !== true) return null;
+  return asRecord(data.data);
+}
+
+function qwenTokenPlanLimit(quotaConfig, plan, field) {
+  const tier = asRecord(quotaConfig?.[plan]);
+  const value = finiteQuotaNumber(tier?.[field]);
+  return value && value > 0 ? value : null;
+}
+
+export function normalizeQwenTokenPlanQuota(payload, { now = Date.now() } = {}) {
+  const root = asRecord(payload);
+  const usage = asRecord(root?.usage);
+  const subscription = asRecord(root?.subscription);
+  const quotaConfig = asRecord(root?.quotaConfig);
+  const plan = safePlan(subscription?.specCode);
+  if (!usage || !quotaConfig || !plan) return null;
+  const rows = [];
+  for (const [name, percentageField, resetField, quotaField, seconds] of [
+    ["session", "per5HourPercentage", "per5HourResetTime", "five_hour", 5 * 60 * 60],
+    ["weekly", "per1WeekPercentage", "per1WeekResetTime", "weekly", 7 * 24 * 60 * 60],
+  ]) {
+    if (!Object.hasOwn(usage, percentageField)) continue;
+    const usedRatio = finiteQuotaNumber(usage[percentageField], { min: 0, max: 1 });
+    const limit = qwenTokenPlanLimit(quotaConfig, plan, quotaField);
+    if (usedRatio === null || limit === null) return null;
+    const row = boundedQuotaRow({
+      dimensionKey: quotaScopedKey("requests", name),
+      limit,
+      used: limit * usedRatio,
+      unit: "requests",
+      resetAt: futureResetAt(parseQuotaTimestamp(usage[resetField]), now),
+      metadata: quotaMetadata({ plan, windowSeconds: seconds }),
+    });
+    if (!row) return null;
+    rows.push(row);
+  }
+  return rows.length ? rows : null;
+}
+
+async function fetchQwenTokenPlanQuota(context, data) {
+  const { config } = context;
+  const cookie = qwenTokenPlanCookie(data);
+  if (!cookie) return null;
+  const request = createProviderRequest(context);
+  const host = data.qwenCloudConsoleSite === "INTL" || data.consoleSite === "INTL"
+    ? config.tokenPlanHosts.international
+    : config.tokenPlanHosts.domestic;
+  const url = `${host}/data/api.json?product=${QWEN_TOKEN_PLAN_PRODUCT}&action=${QWEN_TOKEN_PLAN_ACTION}&api=zeldaHttp.apikeyMgr.%2Ftokenplan%2Fpersonal%2Fapi%2Fv2%2Fusage`;
+  const headers = { Accept: "application/json", "Content-Type": "application/json", Cookie: cookie };
+  const results = [];
+  let attemptedAt = null;
+  for (const endpoint of ["usage", "quota-config", "subscription"]) {
+    const result = await request(endpoint === "usage" ? url : url.replace(/usage$/, endpoint), {
+      method: "POST", headers, body: qwenTokenPlanPayload(endpoint, data),
+    });
+    attemptedAt = result.attemptedAt;
+    if (!result.ok) return { failure: result };
+    const payload = unwrapQwenTokenPlanPayload(result.data);
+    if (!payload) return { failure: { outcome: "forbidden", attemptedAt } };
+    results.push(payload);
+  }
+  const rows = normalizeQwenTokenPlanQuota({ usage: results[0], quotaConfig: results[1], subscription: results[2] }, { now: new Date(attemptedAt).getTime() });
+  if (rows === null) return { failure: { outcome: "malformed", attemptedAt } };
+  return { rows, attemptedAt };
+}
+ 
 export async function fetchBailianQuota(context) {
   const { config, connection } = context;
   const data = connectionData(connection);
+  const personal = await fetchQwenTokenPlanQuota(context, data);
+  if (personal?.rows) {
+    return { outcome: "success", sourceId: config.tokenPlanSourceId, rows: personal.rows, attemptedAt: personal.attemptedAt };
+  }
   const key = typeof data.consoleApiKey === "string" && data.consoleApiKey.trim()
     ? data.consoleApiKey.trim()
     : connectionCredential(connection, "apiKey");
-  if (!key) return missingCredential(config);
+  if (!key) return personal?.failure ? { ...personal.failure, sourceId: config.tokenPlanSourceId } : missingCredential(config);
   const request = createProviderRequest(context);
   const headers = {
     Authorization: `Bearer ${key}`,
@@ -574,7 +672,7 @@ export async function fetchBailianQuota(context) {
     }
     return providerSuccess(config, rows, result.attemptedAt);
   }
-  return providerFailure(config, lastFailure);
+  return providerFailure(config, lastFailure || personal?.failure);
 }
 
 // ─── Qoder ──────────────────────────────────────────────────────────────────

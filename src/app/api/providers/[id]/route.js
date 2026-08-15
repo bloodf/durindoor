@@ -10,6 +10,7 @@ import { mergeProviderSpecificData } from "@/lib/db/helpers/mergeProviderMetadat
 import { buildOAuthProxyMetadataPatch } from "@/lib/oauth/proxySelection.js";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { notifyQuotaAutoPingSettingChanged } from "@/shared/services/quotaAutoPing";
+import { normalizeProviderSpecificData } from "@/lib/providerNormalization";
 
 const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set(["clientSecret"]);
 
@@ -237,9 +238,14 @@ export async function PUT(request, { params }) {
         proxyPoolResult.hasProxyPoolField
       )
     ) {
-      updateData.providerSpecificData = mergeProviderSpecificData(
+      const merged = mergeProviderSpecificData(
         existing.providerSpecificData,
         providerSpecificData,
+      );
+      updateData.providerSpecificData = normalizeProviderSpecificData(
+        existing.provider,
+        body,
+        merged,
       );
 
       if (proxyConfig.hasAnyProxyField) {

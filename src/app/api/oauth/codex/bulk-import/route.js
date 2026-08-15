@@ -79,10 +79,14 @@ export async function POST(request) {
       }
 
       // Backfill missing identity fields from JWT claims
-      const psd = item.providerSpecificData || {};
+      const psd = item.providerSpecificData && typeof item.providerSpecificData === "object"
+        ? { ...item.providerSpecificData }
+        : {};
       psd.codexFingerprintMode = CODEX_FINGERPRINT_MODES.includes(psd.codexFingerprintMode)
         ? psd.codexFingerprintMode
         : globalCodexFingerprintMode || "session";
+      delete psd.codexClientIdentity;
+      delete psd.codexOriginalIdentityHeaders;
       const needsEmail = !item.email;
       const needsAccountId = !psd.chatgptAccountId;
       const needsPlanType = !psd.chatgptPlanType;

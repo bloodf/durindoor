@@ -92,7 +92,10 @@ describe("POST /api/auth/change-password", () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ success: true });
-    expect(mocks.updateSettings).toHaveBeenCalledWith({ password: "new-hash" });
+    expect(mocks.updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+      password: "new-hash",
+      passwordSessionEpoch: expect.any(String),
+    }));
     expect(mocks.invalidateDefaultPasswordCache).toHaveBeenCalledOnce();
     expect(mocks.setDashboardAuthCookie).toHaveBeenCalledOnce();
   });

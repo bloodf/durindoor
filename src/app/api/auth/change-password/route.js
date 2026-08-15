@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import { getClientIp } from "@/lib/auth/loginLimiter";
 import {
@@ -38,7 +39,8 @@ export async function POST(request) {
     try {
       const salt = await bcrypt.genSalt(10);
       const password = await bcrypt.hash(newPassword, salt);
-      await updateSettings({ password });
+      const newEpoch = crypto.randomBytes(16).toString("hex");
+      await updateSettings({ password, passwordSessionEpoch: newEpoch });
       invalidateDefaultPasswordCache();
       commitPasswordChangeProof(proof);
 

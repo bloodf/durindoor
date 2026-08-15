@@ -20,6 +20,6 @@
 ## Verification
 
 - Red before production changes: focused failing tests landed ahead of implementation in `702452dcb test(codex): reject persisted transient identity` and `723608756 test(codex): cover durable fingerprint metadata`.
-- Production, UI, routing, normalizer, and sanitizer changes are uncommitted on branch `port/upstream-20260814-a03` awaiting orchestrator validation.
-- Focused command for orchestrator: `tests/node_modules/.bin/vitest run --root . --config tests/vitest.config.js tests/unit/codex-identity.test.js tests/unit/codex-fingerprint-execute.test.js`.
-- This worktree did not run validation by campaign contract.
+- Production, UI, routing, normalizer, and sanitizer changes are committed on `port/upstream-20260814-a03`; latest write-boundary fix: `48cfa930ca4bc95f30375d08015241432b264c30 fix(codex): normalize provider metadata write boundaries`.
+- Focused write-boundary validation passed at that commit: `tests/unit/api-providers-id-priority-6626.test.js` and `tests/unit/codex-bulk-import-identity.test.js` — 2 files, 4 tests.
+- Broader fingerprint command remains: `tests/node_modules/.bin/vitest run --root . --config tests/vitest.config.js tests/unit/codex-identity.test.js tests/unit/codex-fingerprint-execute.test.js`.

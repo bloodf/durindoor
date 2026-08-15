@@ -149,7 +149,7 @@ function hasExactRequestOrigin(request) {
 }
 
 // Wrapper proof plus the wrapper-stamped loopback identity distinguish local peers.
-// Origin is browser metadata; enforce it only for browser MITM mutations below.
+// Browser-origin checks belong at each mutation boundary, not this transport classifier.
 export function isLocalRequest(request) {
   return isLoopbackPeer(request);
 }
@@ -215,19 +215,19 @@ async function canAccessLocalOnlyRoute(request) {
   if (!isLocalRequest(request)) return false;
 
   const pathname = request.nextUrl.pathname;
+  const method = String(request.method || "GET").toUpperCase();
+  // Loopback identity is not browser authentication. Require the exact request
+  // Origin for every unsafe mutation; machine-bound CLI callers passed above.
+  if (!["GET", "HEAD", "OPTIONS"].includes(method) && !hasExactRequestOrigin(request)) return false;
   const isMitmMutation = (pathname === "/api/cli-tools/antigravity-mitm"
       || pathname.startsWith("/api/cli-tools/antigravity-mitm/"))
-    && String(request.method || "GET").toUpperCase() !== "GET";
+    && method !== "GET";
   if (isMitmMutation) {
     // Loopback and same-OS-user ownership are not authentication: a local
     // reverse proxy could otherwise become a confused deputy. Browser
     // mutations require a dashboard JWT; CLI callers were accepted above with
     // their machine-bound token. The owner proof remains defense in depth.
     if (!(await hasValidToken(request))) return false;
-    // An explicit loopback Origin proves this is a direct same-origin browser
-    // request. Without it, a same-UID local reverse proxy could become a
-    // confused deputy even though the TCP owner proof itself is valid.
-    if (!hasExactRequestOrigin(request)) return false;
     return verifyControlProof({
       method: request.method,
       pathname,

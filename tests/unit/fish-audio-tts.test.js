@@ -146,6 +146,27 @@ describe("Fish Audio TTS core", () => {
     await expect(result.response.json()).resolves.toMatchObject({ format: "mp3" });
   });
 
+  it("fails closed instead of bypassing a strict connection proxy", async () => {
+    const result = await handleTtsCore({
+      provider: "fish-audio",
+      model: "s1",
+      input: "xin chào",
+      credentials: {
+        apiKey: "fish-key",
+        providerSpecificData: {
+          oauthProxy: { mode: "strict-pool", poolId: "fish-pool" },
+        },
+      },
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      status: 502,
+      error: expect.stringContaining("Proxy required but unavailable"),
+    });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   it("rejects missing credentials before fetching", async () => {
     const result = await handleTtsCore({
       provider: "fish-audio",

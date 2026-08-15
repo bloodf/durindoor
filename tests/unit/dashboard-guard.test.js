@@ -340,6 +340,19 @@ describe("dashboard guard local-only access", () => {
     expect(response).toBe(mocks.nextResponse);
   });
 
+  it("rejects cross-origin local-only mutations when login is disabled", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+
+    const response = await proxy(request("/api/tunnel/enable", {
+      host: "localhost:20128",
+      origin: "https://evil.example",
+      "x-9r-real-ip": "127.0.0.1",
+    }, "POST"));
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe("Local only: CLI token required");
+  });
+
   it("allows a machine-bound CLI token to manage proxied PXPIPE", async () => {
     const response = await proxy(request("/api/pxpipe/restart", {
       host: "llm.example.com",

@@ -1,7 +1,8 @@
 // Generic config-driven TTS handlers — dispatched by ttsConfig.format.
-// Each handler accepts { baseUrl, apiKey, text, modelId, voiceId } and returns { base64, format }.
+// Each handler accepts { baseUrl, apiKey, text, modelId, voiceId, proxyOptions } and returns { base64, format }.
 import { responseToBase64, throwUpstreamError } from "./_base.js";
 import minimaxTts from "./minimax.js";
+import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 
 // Hyperbolic: POST { text } → { audio: base64 }
 async function hyperbolic({ baseUrl, apiKey, text }) {
@@ -52,8 +53,8 @@ async function huggingface({ baseUrl, apiKey, text, modelId }) {
 }
 
 // Fish Audio: model travels in an HTTP header, the voice is a reference_id, returns binary
-async function fishAudio({ baseUrl, apiKey, text, modelId, voiceId }) {
-  const res = await fetch(baseUrl, {
+async function fishAudio({ baseUrl, apiKey, text, modelId, voiceId, proxyOptions }) {
+  const res = await proxyAwareFetch(baseUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -65,7 +66,7 @@ async function fishAudio({ baseUrl, apiKey, text, modelId, voiceId }) {
       format: "mp3",
       ...(voiceId ? { reference_id: voiceId } : {}),
     }),
-  });
+  }, proxyOptions);
   if (!res.ok) await throwUpstreamError(res);
   return responseToBase64(res, "mp3");
 }

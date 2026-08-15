@@ -210,7 +210,11 @@ describe("createErrorResult structured errorBody (bypasses buildErrorBody)", () 
         type: "provider_error",
         code: "PROVIDER blew",
       },
-      upstream_details: { note: "kept verbatim" },
+      upstream_details: {
+        note: "kept verbatim",
+        authorization: "Bearer provider-secret",
+        metadata: { api_key: "sk-provider-secret", diagnostic: "safe" },
+      },
     };
     const result = createErrorResult(502, "fallback msg with /home/omni/secret/config.ts:1", null, errorBody);
 
@@ -224,7 +228,11 @@ describe("createErrorResult structured errorBody (bypasses buildErrorBody)", () 
     expect(body.error.message).toContain("<path>");
     expect(body.error.type).toBe("provider_error");
     expect(body.error.code).toBe("PROVIDER blew");
-    expect(body.upstream_details).toEqual({ note: "kept verbatim" });
+    expect(body.upstream_details).toEqual({
+      note: "kept verbatim",
+      authorization: "[redacted]",
+      metadata: { api_key: "[redacted]", diagnostic: "safe" },
+    });
   });
 });
 

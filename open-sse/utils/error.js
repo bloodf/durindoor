@@ -469,6 +469,19 @@ export async function parseUpstreamError(response, executor = null, options = {}
   };
 }
 
+const SENSITIVE_ERROR_BODY_KEY = /^(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|authorization[-_]?code|oauth[-_]?code|code[-_]?verifier|oauth[-_]?state|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)$/i;
+
+function sanitizeStructuredErrorBody(value) {
+  if (typeof value === "string") return sanitizeErrorMessage(value);
+  if (Array.isArray(value)) return value.map(sanitizeStructuredErrorBody);
+  if (!value || typeof value !== "object") return value;
+
+  return Object.fromEntries(Object.entries(value).map(([key, nested]) => [
+    key,
+    SENSITIVE_ERROR_BODY_KEY.test(key) ? "[redacted]" : sanitizeStructuredErrorBody(nested),
+  ]));
+}
+
 /**
  * Create error result for chatCore handler
  * @param {number} statusCode - HTTP status code
@@ -477,15 +490,11 @@ export async function parseUpstreamError(response, executor = null, options = {}
  * @returns {{ success: false, status: number, error: string, response: Response, resetsAtMs?: number }}
  */
 export function createErrorResult(statusCode, message, resetsAtMs, errorBody, rateLimitEvidence = null) {
-  // A caller-supplied structured errorBody bypasses buildErrorBody (its
-  // provider-shaped type/code/details must be preserved, not rebuilt), so
-  // sanitize its message field on a shallow clone instead — the caller's
-  // object is never mutated (OmniRoute #6886).
-  const safeBody = errorBody
-    ? (typeof errorBody.error?.message === "string"
-        ? { ...errorBody, error: { ...errorBody.error, message: sanitizeErrorMessage(errorBody.error.message) } }
-        : errorBody)
-    : null;
+  // Preserve provider error type/code/details while rebuilding every nested
+  // value. Upstream gateways may echo server-owned credentials outside
+  // `error.message`; sensitive keys and embedded secret strings never cross
+  // that boundary, and the caller-owned object remains untouched.
+  const safeBody = errorBody ? sanitizeStructuredErrorBody(errorBody) : null;
   return {
     success: false,
     status: statusCode,

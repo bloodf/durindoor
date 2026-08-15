@@ -17,6 +17,9 @@ export class XaiExecutor extends BaseExecutor {
    * the same tag, so URL and translated body stay in lockstep.
    */
   buildUrl(model, stream, urlIndex = 0, credentials = null) {
+    if (credentials?.runtimeTransport?.baseUrl) {
+      return credentials.runtimeTransport.baseUrl;
+    }
     if (getModelTargetFormat("xai", model) === "openai-responses" && this.config.responsesUrl) {
       return this.config.responsesUrl;
     }

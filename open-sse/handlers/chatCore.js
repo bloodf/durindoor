@@ -318,11 +318,13 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   const apikeyTransportFormat = (provider === "kimi" && credentials?.authType === "apikey")
     ? "openai-apikey"
     : null;
-  const runtimeTransport = resolveTransport(provider, apikeyTransportFormat || modelTargetFormat || sourceFormat)
+  const oauthTransportFormat = (provider === "xai" && cleanModel === "grok-4.5" && credentials?.authType === "oauth")
+    ? "openai-responses-oauth"
+    : null;
+  const runtimeTransport = resolveTransport(provider, oauthTransportFormat || apikeyTransportFormat || modelTargetFormat || sourceFormat)
     || resolveTransport(provider, modelTargetFormat || sourceFormat);
-  // The apikey transports carry lookup tags like "openai-apikey" that are not
-  // real wire formats — strip the suffix before it can reach a translator.
-  const transportFormat = runtimeTransport?.format?.replace(/-apikey$/, "") || null;
+  // Credential-specific lookup suffixes are not wire formats.
+  const transportFormat = runtimeTransport?.format?.replace(/-(apikey|oauth)$/, "") || null;
   const skipTranslation = transportFormat === sourceFormat;
   // Attach the selected transport even when it was chosen by a model format override
   // (e.g. MiniMax-M3 → OpenAI for a Claude-source client, upstream decolua/9router#2533);
@@ -331,7 +333,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   if (runtimeTransport && credentials) credentials.runtimeTransport = runtimeTransport;
   const targetFormat = skipTranslation
     ? sourceFormat
-    : (apikeyTransportFormat ? transportFormat : (modelTargetFormat || transportFormat || getTargetFormat(provider, credentials)));
+    : ((apikeyTransportFormat || oauthTransportFormat) ? transportFormat : (modelTargetFormat || transportFormat || getTargetFormat(provider, credentials)));
   const stripList = getModelStrip(alias, cleanModel);
   const cleanUpstreamModel = getModelUpstreamId(alias, cleanModel); // provider-facing model id
 

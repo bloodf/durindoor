@@ -26,6 +26,9 @@ export default {
     tokenUrl: "https://auth.x.ai/oauth2/token",
     refreshUrl: "https://auth.x.ai/oauth2/token",
   },
+  transports: [
+    { format: "openai-responses-oauth", baseUrl: "https://api.x.ai/v1/responses" },
+  ],
   models: [
     { id: "grok-4.6", name: "Grok 4.6" },
     { id: "grok-4.5", name: "Grok 4.5" },

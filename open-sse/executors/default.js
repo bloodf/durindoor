@@ -50,6 +50,14 @@ export function injectPromptCacheKey(provider, body, credentials) {
   return body;
 }
 
+export function injectOpenAIStore(body, provider, credentials, transportFormat) {
+  if (!body || typeof body !== "object") return body;
+  if (provider !== "openai" && !provider?.startsWith("openai-compatible-responses-")) return body;
+  if (credentials?.providerSpecificData?.openaiStoreEnabled !== true) return body;
+  if (transportFormat !== FORMATS.OPENAI_RESPONSES && transportFormat !== FORMATS.OPENAI_RESPONSE) return body;
+  body.store = true;
+  return body;
+}
 
 export const OPENAI_TOOL_CALL_ID_MAX_LENGTH = 64;
 export const OPENAI_TOOL_CALL_ID_PREFIX_LENGTH = 20;
@@ -341,6 +349,7 @@ export class DefaultExecutor extends BaseExecutor {
         delete transformed.stream_options;
       }
       injectPromptCacheKey(this.provider, transformed, credentials);
+      injectOpenAIStore(transformed, this.provider, credentials, transportFormat);
       applyParamRenames(this.provider, model, transformed, requestContext?.modelCapabilities);
       stripUnsupportedParams(this.provider, model, transformed, requestContext?.modelCapabilities);
       /**

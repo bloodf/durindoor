@@ -14,6 +14,21 @@ describe("sanitizeProviderConnectionForClient", () => {
     expect(out).toEqual(c);
   });
 
+  it.each([
+    ["openai", { openaiStoreEnabled: true }],
+    ["openai-compatible-responses-test", { openaiStoreEnabled: false }],
+    ["codex", {}],
+    ["openai-compatible-chat-test", {}],
+  ])("projects OpenAI store setting only for eligible %s connections", (provider, providerSpecificData) => {
+    const out = sanitizeProviderConnectionForClient({
+      id: "c1",
+      provider,
+      providerSpecificData: { openaiStoreEnabled: true },
+    });
+
+    expect(out.providerSpecificData).toEqual(providerSpecificData);
+  });
+
   it("drops credential fields", () => {
     const c = {
       id: "c1",

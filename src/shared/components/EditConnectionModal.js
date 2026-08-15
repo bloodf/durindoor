@@ -7,6 +7,7 @@ import Input from "@/shared/components/Input";
 import Button from "@/shared/components/Button";
 import Badge from "@/shared/components/Badge";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
+import Toggle from "@/shared/components/Toggle";
 import Select from "@/shared/components/Select";
 import { requiresProviderAccountId } from "@/lib/providerAccountIds";
 import {
@@ -43,6 +44,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         name: connection.name || "",
         priority: connection.priority || 1,
         apiKey: "",
+        openaiStoreEnabled: connection.providerSpecificData?.openaiStoreEnabled === true,
       });
       // Load Azure-specific data if present
       if (connection.provider === "azure" && connection.providerSpecificData) {
@@ -91,8 +93,10 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   const isCompatible = connection
     ? (isOpenAICompatibleProvider(connection.provider) || isAnthropicCompatibleProvider(connection.provider))
     : false;
-  const providerRegions = connection ? (AI_PROVIDERS?.[connection.provider]?.regions || null) : null;
+  const isResponsesConnection = connection?.provider === "openai"
+    || connection?.provider?.startsWith("openai-compatible-responses-");
 
+  const providerRegions = connection ? (AI_PROVIDERS?.[connection.provider]?.regions || null) : null;
   // Build providerSpecificData for region-aware providers
   const buildRegionSpecificData = () => {
     if (providerRegions && region) return { ...((connection?.providerSpecificData) || {}), region };
@@ -120,9 +124,14 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
     if (providerRegions) {
       return buildRegionSpecificData();
     }
+    if (isResponsesConnection) {
+      return {
+        ...(connection?.providerSpecificData || {}),
+        openaiStoreEnabled: formData.openaiStoreEnabled === true,
+      };
+    }
     return undefined;
   };
-
   const hasRequiredGooglePseCx = !isGooglePse || !!normalizeGooglePseCx(googlePseData.cx);
 
   const handleTest = async () => {
@@ -337,6 +346,15 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
             value={region}
             onChange={(e) => setRegion(e.target.value)}
             options={providerRegions.map((r) => ({ value: r.id, label: r.label }))}
+          />
+        )}
+
+        {isResponsesConnection && (
+          <Toggle
+            checked={formData.openaiStoreEnabled === true}
+            onChange={(openaiStoreEnabled) => setFormData({ ...formData, openaiStoreEnabled })}
+            label="OpenAI Responses store"
+            description="Allow this connection to retain Responses API state for continuation."
           />
         )}
 

@@ -23,6 +23,10 @@ function maskName(name) {
   return name;
 }
 
+
+function supportsOpenAIStore(provider) {
+  return provider === "openai" || provider?.startsWith("openai-compatible-responses-");
+}
 export function sanitizeProviderConnectionForClient(c) {
   const safe = {};
   for (const f of SAFE_FIELDS) if (c[f] !== undefined) safe[f] = c[f];
@@ -44,6 +48,9 @@ export function sanitizeProviderConnectionForClient(c) {
         continue;
       }
       psd[f] = c.providerSpecificData[f];
+    }
+    if (supportsOpenAIStore(c.provider) && c.providerSpecificData.openaiStoreEnabled !== undefined) {
+      psd.openaiStoreEnabled = c.providerSpecificData.openaiStoreEnabled;
     }
     safe.providerSpecificData = psd;
   }

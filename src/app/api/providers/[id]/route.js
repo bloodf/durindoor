@@ -48,7 +48,7 @@ function invalidRequest(field) {
 function sanitizeProviderConnection(connection) {
   const providerSpecificData = connection.providerSpecificData
     ? Object.fromEntries(
-        Object.entries(connection.providerSpecificData)
+        Object.entries(normalizeOpenAIStoreSetting(connection.provider, connection.providerSpecificData))
           .filter(([key]) => !SENSITIVE_PROVIDER_SPECIFIC_FIELDS.has(key))
       )
     : connection.providerSpecificData;
@@ -116,6 +116,14 @@ async function normalizeProxyPoolUpdate(proxyPoolIdInput) {
 
 function shouldMergeProviderSpecificData(existing, incoming, hasLegacyProxy, hasProxyPoolField) {
   return existing !== undefined || incoming !== undefined || hasLegacyProxy || hasProxyPoolField;
+}
+
+function normalizeOpenAIStoreSetting(provider, providerSpecificData) {
+  if (!providerSpecificData || (provider === "openai" || provider?.startsWith("openai-compatible-responses-"))) {
+    return providerSpecificData;
+  }
+  const { openaiStoreEnabled: _ignored, ...remaining } = providerSpecificData;
+  return remaining;
 }
 
 function hasDurableOAuthProxyPolicy(connection) {
@@ -207,6 +215,9 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
     }
 
+    const normalizedProviderSpecificData = normalizeOpenAIStoreSetting(existing.provider, providerSpecificData);
+    const normalizedExistingProviderSpecificData = normalizeOpenAIStoreSetting(existing.provider, existing.providerSpecificData);
+
     const proxyConfig = normalizeProxyConfig(body);
     if (proxyConfig.error) {
       return NextResponse.json({ error: proxyConfig.error }, { status: 400 });
@@ -232,15 +243,15 @@ export async function PUT(request, { params }) {
 
     if (
       shouldMergeProviderSpecificData(
-        existing.providerSpecificData,
-        providerSpecificData,
+        normalizedExistingProviderSpecificData,
+        normalizedProviderSpecificData,
         proxyConfig.hasAnyProxyField,
         proxyPoolResult.hasProxyPoolField
       )
     ) {
       const merged = mergeProviderSpecificData(
-        existing.providerSpecificData,
-        providerSpecificData,
+        normalizedExistingProviderSpecificData,
+        normalizedProviderSpecificData,
       );
       updateData.providerSpecificData = normalizeProviderSpecificData(
         existing.provider,

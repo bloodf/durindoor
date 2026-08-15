@@ -29,3 +29,12 @@ test("does not emit store without explicit opt-in", () => {
 
   assert.equal(output.store, undefined);
 });
+
+test("does not emit store for Codex", () => {
+  const output = new DefaultExecutor("codex").transformRequest("model-a", request(), true, {
+    providerSpecificData: { openaiStoreEnabled: true },
+    runtimeTransport: { format: "openai-responses" },
+  });
+
+  assert.equal(output.store, undefined);
+});

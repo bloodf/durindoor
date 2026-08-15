@@ -32,9 +32,9 @@ export async function GET() {
       enableTranslator,
       hasPassword: !!password
     }, { headers: SETTINGS_RESPONSE_HEADERS });
-  } catch (error) {
-    console.log("Error getting settings:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch {
+    console.error("[settings] read failed");
+    return NextResponse.json({ error: "Failed to get settings" }, { status: 500, headers: SETTINGS_RESPONSE_HEADERS });
   }
 }
 

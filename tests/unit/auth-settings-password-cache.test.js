@@ -7,8 +7,10 @@ const mocks = vi.hoisted(() => ({
   genSalt: vi.fn(),
   hash: vi.fn(),
   invalidateDefaultPasswordCache: vi.fn(),
+  verifyDashboardPassword: vi.fn(() => Promise.resolve(true)),
   DEFAULT_PASSWORD: "123456",
   validateDashboardPassword: vi.fn(() => null),
+  resetPasswordChangeProofs: vi.fn(),
 }));
 
 vi.mock("next/server", () => ({ NextResponse: { json: mocks.json } }));
@@ -25,8 +27,10 @@ vi.mock("open-sse/services/combo.js", () => ({
 vi.mock("@/lib/auth/dashboardSession", () => ({
   DEFAULT_PASSWORD: mocks.DEFAULT_PASSWORD,
   invalidateDefaultPasswordCache: mocks.invalidateDefaultPasswordCache,
+  verifyDashboardPassword: mocks.verifyDashboardPassword,
   validateDashboardPassword: mocks.validateDashboardPassword,
 }));
+vi.mock("@/lib/auth/passwordChangeProof", () => ({ resetPasswordChangeProofs: mocks.resetPasswordChangeProofs }));
 vi.mock("bcryptjs", () => ({ default: { genSalt: mocks.genSalt, hash: mocks.hash } }));
 
 const { PATCH } = await import("../../src/app/api/settings/route.js");
@@ -37,12 +41,12 @@ describe("settings password update", () => {
     mocks.getSettings.mockResolvedValue({});
     mocks.genSalt.mockResolvedValue("salt");
     mocks.hash.mockResolvedValue("new-hash");
-    mocks.updateSettings.mockResolvedValue({ password: "new-hash" });
+    mocks.updateSettings.mockImplementation(async (updates) => updates);
   });
 
   it("invalidates default-password state only after storing a replacement password", async () => {
     const response = await PATCH({
-      json: async () => ({ newPassword: "long-enough-password" }),
+      json: async () => ({ currentPassword: "anything", newPassword: "long-enough-password" }),
     });
 
     expect(response.status).toBe(200);
@@ -54,7 +58,7 @@ describe("settings password update", () => {
     mocks.updateSettings.mockRejectedValue(new Error("database unavailable"));
 
     const response = await PATCH({
-      json: async () => ({ newPassword: "long-enough-password" }),
+      json: async () => ({ currentPassword: "anything", newPassword: "long-enough-password" }),
     });
 
     expect(response.status).toBe(500);

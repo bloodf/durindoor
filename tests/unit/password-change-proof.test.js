@@ -66,4 +66,16 @@ describe("password-change proof", () => {
     expect(reservePasswordChangeProof("unknown", "198.51.100.4")).toBeNull();
     expect(consumePasswordChangeProof(proof, "198.51.100.4")).toBe(true);
   });
+
+  it("resetPasswordChangeProofs invalidates outstanding proofs for every IP", () => {
+    const ipv4 = issuePasswordChangeProof("198.51.100.4");
+    const ipv6 = issuePasswordChangeProof("2001:db8::1");
+    const other = issuePasswordChangeProof("203.0.113.10");
+
+    resetPasswordChangeProofs();
+
+    expect(reservePasswordChangeProof(ipv4, "198.51.100.4")).toBeNull();
+    expect(reservePasswordChangeProof(ipv6, "2001:db8::1")).toBeNull();
+    expect(reservePasswordChangeProof(other, "203.0.113.10")).toBeNull();
+  });
 });

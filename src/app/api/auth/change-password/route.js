@@ -12,6 +12,7 @@ import {
   commitPasswordChangeProof,
   releasePasswordChangeProof,
   reservePasswordChangeProof,
+  resetPasswordChangeProofs,
 } from "@/lib/auth/passwordChangeProof";
 import { updateSettings } from "@/lib/localDb";
 
@@ -39,16 +40,21 @@ export async function POST(request) {
       const newEpoch = crypto.randomBytes(16).toString("hex");
       await updateSettings({ password, passwordSessionEpoch: newEpoch });
       invalidateDefaultPasswordCache();
+      resetPasswordChangeProofs();
       commitPasswordChangeProof(proof);
-
-      const cookieStore = await cookies();
-      await setDashboardAuthCookie(cookieStore, request);
-
-      return NextResponse.json({ success: true });
     } catch (error) {
       releasePasswordChangeProof(proof);
       throw error;
     }
+
+    try {
+      const cookieStore = await cookies();
+      await setDashboardAuthCookie(cookieStore, request);
+    } catch (error) {
+      console.error("[auth] Failed to issue session cookie after password change:", error);
+      return NextResponse.json({ success: true, reauthenticate: true });
+    }
+    return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

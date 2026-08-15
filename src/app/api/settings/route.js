@@ -3,7 +3,8 @@ import { FREE_NO_AUTH_PROVIDER_IDS } from "@/shared/constants/freeNoAuthProvider
 import { getSettings, updateSettings } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation, resetComboScoring } from "open-sse/services/combo.js";
-import { DEFAULT_PASSWORD, invalidateDefaultPasswordCache, validateDashboardPassword } from "@/lib/auth/dashboardSession";
+import { DEFAULT_PASSWORD, invalidateDefaultPasswordCache, validateDashboardPassword, verifyDashboardPassword } from "@/lib/auth/dashboardSession";
+import { resetPasswordChangeProofs } from "@/lib/auth/passwordChangeProof";
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 
@@ -49,25 +50,20 @@ export async function PATCH(request) {
     // Strip protected secrets before any internal handling sets them
     for (const key of PROTECTED_SETTING_KEYS) delete body[key];
 
-    if (body.newPassword) {
+    if (Object.prototype.hasOwnProperty.call(body, "newPassword")) {
+      if (!body.newPassword) {
+        return NextResponse.json({ error: "Password must not be empty" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
       const settings = await getSettings();
-      const currentHash = settings.password;
       const initialPassword = process.env.INITIAL_PASSWORD || DEFAULT_PASSWORD;
-
       const rejection = validateDashboardPassword(body.newPassword);
       if (rejection || body.newPassword === initialPassword) {
         return NextResponse.json({ error: rejection || "Password must not match the configured initial password" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
       }
-
-      if (currentHash) {
-        if (!body.currentPassword) {
-          return NextResponse.json({ error: "Current password required" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
-        }
-        const isValid = await bcrypt.compare(body.currentPassword, currentHash);
-        if (!isValid) {
-          return NextResponse.json({ error: "Invalid current password" }, { status: 401, headers: SETTINGS_RESPONSE_HEADERS });
-        }
-      } else if (body.currentPassword && body.currentPassword !== initialPassword) {
+      if (!body.currentPassword) {
+        return NextResponse.json({ error: "Current password required" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
+      if (!(await verifyDashboardPassword(body.currentPassword))) {
         return NextResponse.json({ error: "Invalid current password" }, { status: 401, headers: SETTINGS_RESPONSE_HEADERS });
       }
 
@@ -76,6 +72,7 @@ export async function PATCH(request) {
       body.password = await bcrypt.hash(body.newPassword, salt);
       body.passwordSessionEpoch = newEpoch;
     }
+
 
     delete body.currentPassword;
     delete body.newPassword;
@@ -179,6 +176,7 @@ export async function PATCH(request) {
 
     const settings = await updateSettings(body);
     if (willChangePassword) invalidateDefaultPasswordCache();
+    if (willChangePassword) resetPasswordChangeProofs();
 
     // Apply outbound proxy settings immediately (no restart required)
     if (

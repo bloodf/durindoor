@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   hash: vi.fn(),
   compare: vi.fn(),
   invalidateDefaultPasswordCache: vi.fn(),
+  verifyDashboardPassword: vi.fn(),
+  resetPasswordChangeProofs: vi.fn(),
   applyOutboundProxyEnv: vi.fn(),
   resetComboRotation: vi.fn(),
   resetComboScoring: vi.fn(),
@@ -27,11 +29,14 @@ vi.mock("open-sse/services/combo.js", () => ({
 vi.mock("@/lib/auth/dashboardSession", () => ({
   DEFAULT_PASSWORD: "123456",
   invalidateDefaultPasswordCache: mocks.invalidateDefaultPasswordCache,
+  verifyDashboardPassword: mocks.verifyDashboardPassword,
   validateDashboardPassword: (password) => {
     if (typeof password !== "string" || password.length < 6) return "Password must be at least 6 characters";
-    return password === "123456" ? "Password must not use the built-in default" : null;
+    if (password === "123456") return "Password must not use the built-in default";
+    return null;
   },
 }));
+vi.mock("@/lib/auth/passwordChangeProof", () => ({ resetPasswordChangeProofs: mocks.resetPasswordChangeProofs }));
 vi.mock("bcryptjs", () => ({
   default: {
     genSalt: mocks.genSalt,
@@ -50,6 +55,7 @@ describe("settings PATCH password credentials", () => {
     mocks.hash.mockResolvedValue("new-hash");
     mocks.updateSettings.mockImplementation(async (updates) => updates);
     mocks.compare.mockResolvedValue(false);
+    mocks.verifyDashboardPassword.mockResolvedValue(true);
   });
 
   it("rejects newPassword equal to the built-in default", async () => {
@@ -121,16 +127,36 @@ describe("settings PATCH password credentials", () => {
   it("uses INITIAL_PASSWORD for the no-hash current-password check", async () => {
     vi.stubEnv("INITIAL_PASSWORD", "operator-secret");
     mocks.getSettings.mockResolvedValue({});
+    mocks.verifyDashboardPassword.mockResolvedValue(false);
 
-    const response = await PATCH({
-      json: async () => ({
-        currentPassword: "wrong",
-        newPassword: "long-enough-new",
-      }),
-    });
+    const response = await PATCH({ json: async () => ({ currentPassword: "wrong", newPassword: "long-enough-new" }) });
 
     expect(response.status).toBe(401);
     expect(mocks.updateSettings).not.toHaveBeenCalled();
+  });
+
+  it("requires currentPassword when no stored hash is configured", async () => {
+    mocks.getSettings.mockResolvedValue({});
+
+    const response = await PATCH({ json: async () => ({ newPassword: "long-enough-new" }) });
+
+    expect(response.status).toBe(400);
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
+  });
+
+  it("rejects an explicit empty replacement password", async () => {
+    const response = await PATCH({ json: async () => ({ currentPassword: "operator-secret", newPassword: "" }) });
+
+    expect(response.status).toBe(400);
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
+  });
+
+  it("clears outstanding password-change proofs after password persistence", async () => {
+    mocks.getSettings.mockResolvedValue({ password: "stored-hash" });
+
+    await PATCH({ json: async () => ({ currentPassword: "operator-secret", newPassword: "long-enough-new" }) });
+
+    expect(mocks.resetPasswordChangeProofs).toHaveBeenCalledOnce();
   });
 
   it("accepts INITIAL_PASSWORD as the current password when no hash is stored", async () => {

@@ -154,7 +154,7 @@ describe("Hermes API key filesystem safety", () => {
 
         expect(failed).toBe(true);
         expect(response.status).toBe(500);
-        expect(await fs.stat(path.join(hermesDir, ".env")).then(() => true, (err) => err.code === "ENOENT")).toBe(true);
+        await expect(fs.stat(path.join(hermesDir, ".env"))).rejects.toMatchObject({ code: "ENOENT" });
         expect((await fs.readdir(hermesDir)).filter((name) => name.startsWith(".env.tmp-"))).toEqual([]);
       } finally {
         realFs.promises.writeFile = originalWrite;
@@ -202,7 +202,7 @@ describe("Hermes API key filesystem safety", () => {
 
         expect(renamed).toBe(true);
         expect(response.status).toBe(500);
-        expect(await fs.stat(envPath).then(() => true, (err) => err.code === "ENOENT")).toBe(true);
+        await expect(fs.stat(envPath)).rejects.toMatchObject({ code: "ENOENT" });
         const remaining = await fs.readdir(hermesDir);
         const leftover = remaining.filter((name) => name.startsWith(".env.tmp-"));
         expect(leftover).toEqual([]);

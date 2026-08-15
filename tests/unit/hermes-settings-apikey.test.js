@@ -43,6 +43,8 @@ const mocks = vi.hoisted(() => ({
   chmod: vi.fn(),
   rename: vi.fn(),
   unlink: vi.fn(),
+  mkdtemp: vi.fn(),
+  rm: vi.fn(),
 }));
 
 vi.mock("fs/promises", () => ({
@@ -62,6 +64,8 @@ vi.mock("fs/promises", () => ({
   chmod: mocks.chmod,
   rename: mocks.rename,
   unlink: mocks.unlink,
+  mkdtemp: mocks.mkdtemp,
+  rm: mocks.rm,
 }));
 
 vi.mock("os", () => ({
@@ -109,6 +113,8 @@ describe("hermes-settings api_key (port of decolua/9router#3235)", () => {
     mocks.chmod.mockResolvedValue();
     mocks.rename.mockResolvedValue();
     mocks.unlink.mockResolvedValue();
+    mocks.mkdtemp.mockResolvedValue("/home/test/.hermes/.env.tmp-unique");
+    mocks.rm.mockResolvedValue();
   });
 
   async function postBody(body) {
@@ -145,13 +151,28 @@ describe("hermes-settings api_key (port of decolua/9router#3235)", () => {
     const yaml = mocks.writeFile.mock.calls[0][1];
     expect(yaml).toContain("api_key: ${OPENAI_API_KEY}");
     expect(yaml).not.toContain(apiKey);
-    const [tempPath, envText, options] = mocks.writeFile.mock.calls[1];
-    expect(tempPath).toMatch(/^\/home\/test\/\.hermes\/\.env\.\d+\.\d+\.tmp$/);
-    expect(envText).toBe(`OPENAI_API_KEY=${apiKey}\n`);
-    expect(options).toEqual({ mode: 0o600 });
-    expect(mocks.rename).toHaveBeenCalledWith(tempPath, "/home/test/.hermes/.env");
+    expect(mocks.writeFile).toHaveBeenLastCalledWith(
+      "/home/test/.hermes/.env.tmp-unique/.env",
+      `OPENAI_API_KEY=${apiKey}\n`,
+      { mode: 0o600, flag: "wx" },
+    );
+    expect(mocks.rename).toHaveBeenCalledWith("/home/test/.hermes/.env.tmp-unique/.env", "/home/test/.hermes/.env");
+    expect(mocks.rm).toHaveBeenCalledWith("/home/test/.hermes/.env.tmp-unique", { recursive: true, force: true });
     expect(mocks.chmod).not.toHaveBeenCalled();
     expect(JSON.stringify(await response.clone().json())).not.toContain(apiKey);
+  });
+  it("removes the private temporary directory when its write fails", async () => {
+    const failure = new Error("sk_console_sentinel");
+    mocks.writeFile.mockImplementationOnce(() => Promise.resolve()).mockRejectedValueOnce(failure);
+    const response = await postBody({
+      baseUrl: "http://localhost:20128",
+      apiKey: "sk_console_sentinel",
+      model: "cc/claude-sonnet-4-6",
+    });
+
+    expect(response.status).toBe(500);
+    expect(mocks.rename).not.toHaveBeenCalled();
+    expect(mocks.rm).toHaveBeenCalledWith("/home/test/.hermes/.env.tmp-unique", { recursive: true, force: true });
   });
 
   it("POST leaves the existing Hermes key untouched when no key is supplied", async () => {

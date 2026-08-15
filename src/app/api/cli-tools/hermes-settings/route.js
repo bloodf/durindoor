@@ -113,13 +113,13 @@ const readEnvFile = async () => {
 const writeHermesEnvFile = async (envText) => {
   const envPath = getHermesEnvPath();
   const dir = path.dirname(envPath);
-  const tempPath = path.join(dir, `.env.${process.pid}.${Date.now()}.tmp`);
-  await fs.writeFile(tempPath, envText, { mode: 0o600 });
+  const tempDir = await fs.mkdtemp(path.join(dir, ".env.tmp-"));
+  const tempPath = path.join(tempDir, ".env");
   try {
+    await fs.writeFile(tempPath, envText, { mode: 0o600, flag: "wx" });
     await fs.rename(tempPath, envPath);
-  } catch (renameError) {
-    await fs.unlink(tempPath).catch(() => {});
-    throw renameError;
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
   }
 };
 

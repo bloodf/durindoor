@@ -1576,19 +1576,23 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
   // Fusion runs panel models non-streaming; drop stream_options too, or providers
   // like DeepSeek reject it with "stream_options should be set along with stream = true".
   // See issue #3024.
-  const panelBody = { ...rest, stream: false };
-
-  // Flatten tool turns to prose so panel models keep context without emitting tool_calls.
-  if (Array.isArray(panelBody.messages)) {
-    panelBody.messages = ensureTrailingUserTurn(flattenToolHistory(panelBody.messages));
-  } else if (Array.isArray(panelBody.input)) {
-    panelBody.input = ensureTrailingUserTurn(flattenToolHistory(panelBody.input));
-  }
+  const makePanelBody = () => {
+    // Panel executors may translate or otherwise mutate their request. Each concurrent
+    // call needs its own graph so mutations cannot leak to siblings or the original/judge.
+    const panelBody = { ...structuredClone(rest), stream: false };
+    // Flatten tool turns to prose so panel models keep context without emitting tool_calls.
+    if (Array.isArray(panelBody.messages)) {
+      panelBody.messages = ensureTrailingUserTurn(flattenToolHistory(panelBody.messages));
+    } else if (Array.isArray(panelBody.input)) {
+      panelBody.input = ensureTrailingUserTurn(flattenToolHistory(panelBody.input));
+    }
+    return panelBody;
+  };
 
   const t0 = Date.now();
   const panelControllers = panel.map(() => new AbortController());
   const calls = panel.map((m, index) => Promise.resolve()
-    .then(() => handleSingleModel(panelBody, m, true, panelControllers[index].signal)));
+    .then(() => handleSingleModel(makePanelBody(), m, true, panelControllers[index].signal)));
   const { results: settled, pendingIndexes } = await collectPanel(calls, { ...cfg, minPanel });
   for (const index of pendingIndexes) {
     const controller = panelControllers[index];

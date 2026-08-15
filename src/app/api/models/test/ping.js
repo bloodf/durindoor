@@ -185,12 +185,14 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
     && providerStatus !== null
     && String(providerStatus) !== "200"
     && String(providerStatus) !== "0";
-  if (hasProviderErrorStatus && providerMsg) {
+  if (hasProviderErrorStatus) {
     return {
       ok: false,
       latencyMs,
       status: res.status,
-      error: `Provider status ${providerStatus}: ${String(providerMsg).slice(0, 240)}`,
+      error: providerMsg
+        ? `Provider status ${providerStatus}: ${String(providerMsg).slice(0, 240)}`
+        : `Provider status ${providerStatus}`,
     };
   }
 
@@ -205,27 +207,38 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
   }
 
   const hasChoices = Array.isArray(parsed?.choices) && parsed.choices.length > 0;
-
-  // Soft-pass (issue #3010): a reasoning model may burn its whole budget on
-  // chain-of-thought and return finish_reason:"length" with empty content but
-  // non-empty reasoning/thinking. That's a successful connection, not a failure.
-  const firstChoice = parsed?.choices?.[0] || {};
-  const hasReasoning =
-    firstChoice.message?.reasoning ||
-    firstChoice.message?.reasoning_content ||
-    firstChoice.message?.thinking ||
-    firstChoice.message?.thinking_content;
-  const contentEmpty = !String(firstChoice.message?.content || "").trim();
-  if (hasChoices && firstChoice.finish_reason === "length" && contentEmpty && hasReasoning) {
-    return { ok: true, latencyMs, error: null, status: res.status, note: "reasoning-only response (length-limited)" };
-  }
-
   if (!hasChoices) {
     return {
       ok: false,
       latencyMs,
       status: res.status,
       error: "Provider returned no completion choices for this model",
+    };
+  }
+
+  // Soft-pass (issue #3010): a reasoning model may burn its whole budget on
+  // chain-of-thought and return finish_reason:"length" with empty content but
+  // non-empty reasoning/thinking. That's a successful connection, not a failure.
+  // It is the sole exception to the nonblank-content requirement below.
+  const firstChoice = parsed.choices[0] || {};
+  const hasReasoning = Boolean(
+    firstChoice.message?.reasoning ||
+    firstChoice.message?.reasoning_content ||
+    firstChoice.message?.thinking ||
+    firstChoice.message?.thinking_content
+  );
+  const contentEmpty = !String(firstChoice.message?.content || "").trim();
+  const isReasoningOnlySoftPass = firstChoice.finish_reason === "length" && contentEmpty && hasReasoning;
+  if (isReasoningOnlySoftPass) {
+    return { ok: true, latencyMs, error: null, status: res.status, note: "reasoning-only response (length-limited)" };
+  }
+
+  if (contentEmpty) {
+    return {
+      ok: false,
+      latencyMs,
+      status: res.status,
+      error: "Provider returned empty completion content for this model",
     };
   }
 

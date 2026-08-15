@@ -7,7 +7,7 @@ const crypto = require("crypto");
 const forge = require("node-forge");
 const { promisify } = require("util");
 const { log, err, dumpRequest, createResponseDumper, clearDumpDir } = require("./logger");
-const { IS_DEV, MITM_ENTRY_ARG, MITM_NODE_PORT, TARGET_HOSTS, URL_PATTERNS, MODEL_SYNONYMS, MODEL_PATTERNS, MODEL_NO_MAP, getToolForHost } = require("./config");
+const { IS_DEV, MITM_ENTRY_ARG, MITM_NODE_PORT, TARGET_HOSTS, MODEL_SYNONYMS, MODEL_PATTERNS, MODEL_NO_MAP, getToolForHost, isChatRequest } = require("./config");
 const { getCertForDomain } = require("./cert/generate");
 const { loadRootCATls } = require("./serverBootstrap");
 const { getMitmAlias } = require("./dbReader");
@@ -381,9 +381,7 @@ async function handleRequest(req, res, {
     const tool = getToolForHost(req.headers.host);
     if (!tool) return passthrough(req, res, bodyBuffer);
 
-    const patterns = URL_PATTERNS[tool] || [];
-    const isChat = patterns.some(p => req.url.includes(p));
-    if (!isChat) return passthrough(req, res, bodyBuffer);
+    if (!isChatRequest(tool, req)) return passthrough(req, res, bodyBuffer);
 
     // Cursor uses binary proto — model extraction not possible at this layer.
     // Delegate directly to handler which decodes proto internally.

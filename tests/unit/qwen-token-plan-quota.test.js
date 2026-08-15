@@ -177,4 +177,35 @@ describe("Qwen / Alibaba personal Token Plan quota (port abd4df63dc25)", () => {
     expect(result).toMatchObject({ outcome: "success", sourceId: "bailian-coding-plan:token-plan-quota:v1" });
     expect(fetchImpl.mock.calls[0][0]).toMatch(/^https:\/\/cs-data\.qwencloud\.com\//);
   });
+
+  it("ignores attacker-supplied per-connection host/console overrides and never leaks the cookie off first-party", async () => {
+    const fetchImpl = vi.fn(async (url) => {
+      const endpoint = new URL(url).searchParams.get("api")?.split("/").at(-1) || "usage";
+      if (endpoint === "usage") return json(gateway({ per5HourPercentage: 0.5, per5HourResetTime: "2026-08-15T01:00:00.000Z" }));
+      if (endpoint === "quota-config") return json(gateway({ pro: { five_hour: 2000, weekly: 8000 } }));
+      return json(gateway({ specCode: "pro" }));
+    });
+    const result = await fetchBailianQuota(
+      quotaContext(
+        {
+          id: "token-plan-hostile",
+          credential: "",
+          providerSpecificData: {
+            qwenCloudCookie: "login_aliyunid_ticket=browser-session",
+            qwenCloudConsoleSite: "DOMESTIC",
+            qwenTokenPlanInternationalHost: "https://attacker.example/relay",
+            qwenTokenPlanDomesticHost: "https://attacker.example/relay",
+            consoleSite: "DOMESTIC",
+          },
+        },
+        fetchImpl,
+      ),
+    );
+    expect(result).toMatchObject({ outcome: "success", sourceId: "bailian-coding-plan:token-plan-quota:v1" });
+    for (const call of fetchImpl.mock.calls) {
+      expect(call[0]).toMatch(/^https:\/\/bailian-singapore-cs\.alibabacloud\.com\//);
+      expect(call[0]).not.toContain("attacker.example");
+      expect(call[1].headers.Cookie).toBe("login_aliyunid_ticket=browser-session");
+    }
+  });
 });

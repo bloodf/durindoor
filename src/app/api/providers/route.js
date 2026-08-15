@@ -14,7 +14,13 @@ import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 
 export const dynamic = "force-dynamic";
 
-const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set(["clientSecret"]);
+const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
+  "clientSecret",
+  "qwenCloudCookie",
+  "alibabaConsoleCookie",
+  "cookie",
+  "QWEN_CLOUD_COOKIE",
+]);
 
 function sanitizeProviderConnection(connection) {
   const providerSpecificData = connection.providerSpecificData

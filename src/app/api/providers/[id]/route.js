@@ -12,7 +12,13 @@ import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { notifyQuotaAutoPingSettingChanged } from "@/shared/services/quotaAutoPing";
 import { normalizeProviderSpecificData } from "@/lib/providerNormalization";
 
-const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set(["clientSecret"]);
+const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
+  "clientSecret",
+  "qwenCloudCookie",
+  "alibabaConsoleCookie",
+  "cookie",
+  "QWEN_CLOUD_COOKIE",
+]);
 
 // Port of OmniRoute #6562/#6626: `priority` auto-increments unbounded on
 // connection creation (`MAX(priority)+1` per provider in connectionsRepo),

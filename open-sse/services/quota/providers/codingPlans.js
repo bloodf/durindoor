@@ -548,16 +548,14 @@ function qwenTokenPlanCookie(data) {
   for (const key of ["qwenCloudCookie", "alibabaConsoleCookie", "cookie"]) {
     if (typeof data[key] === "string" && data[key].trim()) return data[key].trim();
   }
-  return typeof process.env.QWEN_CLOUD_COOKIE === "string" && process.env.QWEN_CLOUD_COOKIE.trim()
-    ? process.env.QWEN_CLOUD_COOKIE.trim()
-    : null;
+  return null;
 }
 
-function qwenTokenPlanSite(cookie, data) {
-  if (/login_aliyunid_ticket=/.test(cookie) || data.qwenCloudConsoleSite === "INTL" || data.consoleSite === "INTL") {
-    return { consoleSite: "ALIYUN", domain: "modelstudio.console.alibabacloud.com", host: data.qwenTokenPlanInternationalHost };
+function qwenTokenPlanSite(cookie, config) {
+  if (config?.tokenPlanHosts?.international && /login_aliyunid_ticket=/.test(cookie)) {
+    return { consoleSite: "ALIYUN", domain: "modelstudio.console.alibabacloud.com", host: config.tokenPlanHosts.international };
   }
-  return { consoleSite: "QWENCLOUD", domain: "home.qwencloud.com", host: data.qwenTokenPlanDomesticHost };
+  return { consoleSite: "QWENCLOUD", domain: "home.qwencloud.com", host: config.tokenPlanHosts?.domestic };
 }
 
 function qwenTokenPlanPayload(endpoint, data, site) {
@@ -619,9 +617,8 @@ async function fetchQwenTokenPlanQuota(context, data) {
   const cookie = qwenTokenPlanCookie(data);
   if (!cookie) return null;
   const request = createProviderRequest(context);
-  const site = qwenTokenPlanSite(cookie, data);
-  const host = site.host || (site.consoleSite === "ALIYUN" ? config.tokenPlanHosts.international : config.tokenPlanHosts.domestic);
-  const url = `${host}/data/api.json?product=${QWEN_TOKEN_PLAN_PRODUCT}&action=${QWEN_TOKEN_PLAN_ACTION}&api=zeldaHttp.apikeyMgr.%2Ftokenplan%2Fpersonal%2Fapi%2Fv2%2Fusage`;
+  const site = qwenTokenPlanSite(cookie, config);
+  const url = `${site.host}/data/api.json?product=${QWEN_TOKEN_PLAN_PRODUCT}&action=${QWEN_TOKEN_PLAN_ACTION}&api=zeldaHttp.apikeyMgr.%2Ftokenplan%2Fpersonal%2Fapi%2Fv2%2Fusage`;
   const headers = { Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded", Cookie: cookie };
   const results = [];
   let attemptedAt = null;

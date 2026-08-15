@@ -402,7 +402,6 @@ describe("thinking suffix at the chatCore provider boundary", () => {
       { role: "user", content: [{ type: "text", text: "hello", cache_control: { type: "ephemeral" } }] },
     ]);
   });
-
   for (const [alias, expectedThinking, expectedEffort] of [
     ["deepseek-v4-pro-max", "enabled", "max"],
     ["deepseek-v4-pro-none", "disabled", undefined],

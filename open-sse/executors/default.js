@@ -295,6 +295,7 @@ export class DefaultExecutor extends BaseExecutor {
     this.config?.clampRequestBody?.(body);
     applyGlmtModelAlias(this.provider, model, body);
     let transformed = this.applyJsonSchemaFallback(body);
+
     const transportFormat = credentials?.runtimeTransport?.format?.replace(/-apikey$/, "") || this.config.format;
     transformed = applyDeepSeekV4ProAlias({
       provider: this.provider,

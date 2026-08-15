@@ -924,7 +924,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // `type: "object"` BEFORE the gate, unconditionally — passthrough (source ===
   // target) requests skip translation and would otherwise carry a Codex-emitted
   // `type: null` root straight to an OpenAI-compatible upstream that 400s it.
-  normalizeToolSchemaRoots(translatedBody);
+  normalizeToolSchemaRoots(translatedBody, { provider, transportFormat });
 
   // Outbound validation gate. Run format-specific shape checks (which also
   // catch leftover internal keys) FIRST so the gate can return 400 with a

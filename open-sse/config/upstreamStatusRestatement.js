@@ -1,4 +1,5 @@
 import { HTTP_STATUS } from "./runtimeConfig.js";
+import { inspectProviderErrorEnvelope } from "./providerErrorRules.js";
 import { parseRateLimitEvidence } from "../utils/error.js";
 
 /**
@@ -28,13 +29,6 @@ import { parseRateLimitEvidence } from "../utils/error.js";
  * flip the connection into a terminal `credits_exhausted` state — never use
  * them as markers here.
  *
- * Accepted trade-off: matching on response body text means a legitimate 400
- * whose body ECHOES user-supplied content containing a marker (e.g. a prompt
- * that itself contains "额度不足") would be restated to 429 and lose the
- * combo's 400 stop-guard. This is treated as an acceptable risk because
- * these markers are rare outside a genuine upstream error; keeping markers
- * short, provider-specific, and non-generic minimizes false-positive
- * restatement.
  */
 
 const AGENTROUTER_RULES = [
@@ -53,14 +47,12 @@ export const statusRestatementRegistry = new Map([
   ["agentrouter", AGENTROUTER_RULES],
 ]);
 
-function stringifyBody(body) {
-  if (body === null || body === undefined) return "";
-  if (typeof body === "string") return body;
-  try {
-    return JSON.stringify(body);
-  } catch {
-    return "";
-  }
+function matchesAgentrouterQuotaEnvelope(body) {
+  const { message, type, code } = inspectProviderErrorEnvelope(body);
+  if (message.includes("无权访问")) return false;
+  if (!message.includes("额度不足")) return false;
+  const quotaTypes = new Set(["quota_exhausted", "insufficient_user_quota"]);
+  return (!type || quotaTypes.has(type)) && (!code || quotaTypes.has(code));
 }
 
 /** Parse bounded rate-limit timing after a status rule changes a response to 429. */
@@ -97,13 +89,9 @@ export function applyStatusRestatement(input) {
   const rules = statusRestatementRegistry.get(input.provider.toLowerCase());
   if (!rules) return passthrough;
 
-  const haystack = `${input.message ?? ""} ${stringifyBody(input.body)}`.toLowerCase();
-  if (!haystack.trim()) return passthrough;
-
   for (const rule of rules) {
     if (!rule.fromStatuses.has(input.status)) continue;
-    if (!rule.textMarkers.some((marker) => haystack.includes(marker))) continue;
-    if (rule.excludeMarkers?.some((marker) => haystack.includes(marker))) continue;
+    if (!matchesAgentrouterQuotaEnvelope(input.body)) continue;
     const upstreamRetryAfterMs =
       typeof input.retryAfterMs === "number" && input.retryAfterMs > 0 ? input.retryAfterMs : null;
     return {

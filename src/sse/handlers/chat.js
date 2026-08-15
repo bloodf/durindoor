@@ -1116,15 +1116,26 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       continue;
     }
 
-    // Mark account unavailable (auto-calculates cooldown with exponential backoff, or precise resetsAtMs)
     const resultAttemptStartedAt = Number.isSafeInteger(result.attemptStartedAt) && result.attemptStartedAt > 0
       ? result.attemptStartedAt
       : latestAttemptStartedAt;
-    const fallbackState = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, result.resetsAtMs, {
-      attemptStartedAt: resultAttemptStartedAt,
-      rateLimitEvidence: result.rateLimitEvidence || null,
-      signal: requestSignal,
-    });
+    const resultErrorBody = result.errorBody && typeof result.errorBody === "object" ? result.errorBody : null;
+    const resultHeaders = result.headers ?? null;
+    const fallbackState = await markAccountUnavailable(
+      credentials.connectionId,
+      result.status,
+      result.error,
+      provider,
+      model,
+      result.resetsAtMs,
+      {
+        attemptStartedAt: resultAttemptStartedAt,
+        rateLimitEvidence: result.rateLimitEvidence || null,
+        headers: resultHeaders,
+        errorBody: resultErrorBody,
+        signal: requestSignal,
+      },
+    );
     const { shouldFallback } = fallbackState;
 
     if (shouldFallback) {

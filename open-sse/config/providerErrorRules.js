@@ -11,12 +11,12 @@
  * body, and any user prompt are NEVER concatenated here — that would
  * let a provider echo a malicious prompt bypass the markers.
  */
-const MAX_INSPECT_DEPTH = 4;
+const MAX_ERROR_ENVELOPE_BYTES = 8_192;
 
 function readErrorEnvelope(body) {
   if (body == null) return null;
   if (typeof body === "string") {
-    const trimmed = body.slice(0, 8192);
+    const trimmed = body.slice(0, MAX_ERROR_ENVELOPE_BYTES);
     try { return readErrorEnvelope(JSON.parse(trimmed)); } catch { return null; }
   }
   if (typeof body !== "object") return null;
@@ -87,12 +87,11 @@ export const providerRuleRegistry = new Map([
   ["agentrouter", buildAgentrouterRules()],
 ]);
 
-const FULL_TEXT_RULE_PROVIDERS = new Set(["agentrouter"]);
-
-export function resolveRuleMatchBody(provider, structuredError, errorText) {
-  if (provider && FULL_TEXT_RULE_PROVIDERS.has(provider.toLowerCase()) && errorText) return errorText;
+/** Provider rules inspect parsed error envelopes only, never raw response text. */
+export function resolveRuleMatchBody(_provider, structuredError) {
   return structuredError ?? null;
 }
+
 
 export function getProviderErrorRuleMatch(provider, status, headers, body) {
   if (!provider) return null;

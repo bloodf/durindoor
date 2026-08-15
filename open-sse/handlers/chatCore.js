@@ -1203,7 +1203,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       finishProviderRequest();
       finishActiveDashboardSession("error");
       await settleQuota(false, "upstream_error");
-      const { statusCode, message, resetsAtMs, rateLimitEvidence } = parsedError;
+      const { statusCode, message, resetsAtMs, rateLimitEvidence, errorBody } = parsedError;
     appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${statusCode}` }).catch(() => { });
     saveRequestDetail(buildRequestDetail({
       provider, model: cleanModel, connectionId,
@@ -1226,8 +1226,11 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       const urlStr = providerUrl ? `\n    URL: ${maskSensitiveUrl(providerUrl)}` : "";
       log.errorLine(reqTag, "✗", `ERROR ${statusCode} · ${provider}/${cleanModel} · ${Date.now() - requestStartTime}ms${urlStr}\n    ${errMsg}`);
     }
-    reqLogger.logError(new Error(message), finalBody || translatedBody);
-    return { ...createErrorResult(statusCode, errMsg, resetsAtMs, undefined, rateLimitEvidence), attemptStartedAt: latestProviderAttemptStartedAt };
+    return {
+      ...createErrorResult(statusCode, errMsg, resetsAtMs, errorBody, rateLimitEvidence),
+      attemptStartedAt: latestProviderAttemptStartedAt,
+      headers: providerResponse.headers,
+    };
     }
   }
 

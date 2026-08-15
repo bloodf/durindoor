@@ -481,16 +481,18 @@ export function createErrorResult(statusCode, message, resetsAtMs, errorBody, ra
   // provider-shaped type/code/details must be preserved, not rebuilt), so
   // sanitize its message field on a shallow clone instead — the caller's
   // object is never mutated (OmniRoute #6886).
-  const safeBody =
-    errorBody && typeof errorBody.error?.message === "string"
-      ? { ...errorBody, error: { ...errorBody.error, message: sanitizeErrorMessage(errorBody.error.message) } }
-      : errorBody;
+  const safeBody = errorBody
+    ? (typeof errorBody.error?.message === "string"
+        ? { ...errorBody, error: { ...errorBody.error, message: sanitizeErrorMessage(errorBody.error.message) } }
+        : errorBody)
+    : null;
   return {
     success: false,
     status: statusCode,
     error: message,
     resetsAtMs,
     ...(rateLimitEvidence ? { rateLimitEvidence } : {}),
+    ...(safeBody ? { errorBody: safeBody } : {}),
     response: safeBody
       ? new Response(JSON.stringify(safeBody), {
           status: statusCode,

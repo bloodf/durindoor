@@ -135,6 +135,38 @@ export async function updateSettings(updates) {
   });
   return mergeWithDefaults(next);
 }
+export class PasswordEpochMismatchError extends Error {
+  constructor() {
+    super("password session epoch changed");
+    this.code = "PASSWORD_EPOCH_MISMATCH";
+  }
+}
+
+// Atomic CAS write for password mutations. Re-reads the row inside the
+// same transaction; if the row's passwordSessionEpoch no longer matches
+// `expectedEpoch`, the merge is aborted and the caller must retry instead
+// of clobbering a concurrent rotation.
+export async function updateSettingsWithPasswordEpoch(updates, expectedEpoch) {
+  const db = await getAdapter();
+  let next;
+  let matched = false;
+  db.transaction(() => {
+    const row = db.get(`SELECT data FROM settings WHERE id = 1`);
+    const current = row ? parseJson(row.data, {}) : {};
+    if ((current.passwordSessionEpoch ?? "initial") !== expectedEpoch) {
+      matched = false;
+      return;
+    }
+    matched = true;
+    next = { ...current, ...updates };
+    db.run(
+      `INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`,
+      [stringifyJson(next)]
+    );
+  });
+  if (!matched) throw new PasswordEpochMismatchError();
+  return mergeWithDefaults(next);
+}
 
 export async function isCloudEnabled() {
   const settings = await getSettings();

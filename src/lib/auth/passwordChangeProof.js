@@ -7,10 +7,11 @@ const MAX_PROOFS = 500;
 const proofs = new Map();
 // clientIp -> active proof (one live proof per IP; a new issue invalidates the prior)
 const activeByIp = new Map();
+let reservedProof = null;
 
 function sweep(now) {
   for (const [proof, entry] of proofs) {
-    if (entry.expiresAt < now) {
+    if (!entry.reserved && entry.expiresAt < now) {
       proofs.delete(proof);
       if (activeByIp.get(entry.clientIp) === proof) {
         activeByIp.delete(entry.clientIp);
@@ -20,27 +21,34 @@ function sweep(now) {
 }
 
 function evictOldest() {
-  const oldest = proofs.keys().next().value;
-  if (oldest === undefined) return;
-  const entry = proofs.get(oldest);
-  proofs.delete(oldest);
-  if (entry && activeByIp.get(entry.clientIp) === oldest) {
-    activeByIp.delete(entry.clientIp);
+  for (const [proof, entry] of proofs) {
+    if (entry.reserved) continue;
+    proofs.delete(proof);
+    if (activeByIp.get(entry.clientIp) === proof) {
+      activeByIp.delete(entry.clientIp);
+    }
+    return true;
   }
+  return false;
 }
 
-export function issuePasswordChangeProof(clientIp) {
+export function issuePasswordChangeProof(clientIp, passwordSessionEpoch = "initial") {
   const now = Date.now();
   sweep(now);
 
-  // Only one active proof per IP: replacing invalidates the prior.
+  // A reserved proof belongs to an in-flight password write. Replacing it
+  // would allow a second proof to race that write.
   const prior = activeByIp.get(clientIp);
-  if (prior) proofs.delete(prior);
-
-  while (proofs.size >= MAX_PROOFS) evictOldest();
+  if (prior) {
+    const entry = proofs.get(prior);
+    if (entry?.reserved) return null;
+    proofs.delete(prior);
+  }
+  while (proofs.size >= MAX_PROOFS && evictOldest()) {}
+  if (proofs.size >= MAX_PROOFS) return null;
 
   const proof = crypto.randomBytes(32).toString("base64url");
-  proofs.set(proof, { clientIp, expiresAt: now + PROOF_TTL_MS, reserved: false });
+  proofs.set(proof, { clientIp, expiresAt: now + PROOF_TTL_MS, passwordSessionEpoch, reserved: false });
   activeByIp.set(clientIp, proof);
   return proof;
 }
@@ -61,36 +69,36 @@ export function consumePasswordChangeProof(proof, clientIp) {
   if (activeByIp.get(clientIp) === proof) activeByIp.delete(clientIp);
   return true;
 }
-
-// Atomically reserves a valid proof so it can't be raced by a sibling
-// request while the caller performs a fallible write (e.g. hashing +
-// persisting a new password). Returns the entry, or null if the proof
-// is missing, mismatched, expired, or already reserved.
 export function reservePasswordChangeProof(proof, clientIp) {
-  const now = Date.now();
-  const entry = findValid(proof, clientIp, now);
+  if (reservedProof && reservedProof !== proof) return null;
+  const entry = findValid(proof, clientIp, Date.now());
   if (!entry) return null;
   entry.reserved = true;
+  reservedProof = proof;
   return entry;
 }
 
-// Commits a reservation: permanently consumes the proof after a
-// successful write.
 export function commitPasswordChangeProof(proof) {
+  if (reservedProof !== proof) return false;
   const entry = proofs.get(proof);
-  if (!entry) return;
+  if (!entry?.reserved) return false;
   proofs.delete(proof);
   if (activeByIp.get(entry.clientIp) === proof) activeByIp.delete(entry.clientIp);
+  reservedProof = null;
+  return true;
 }
 
-// Releases a reservation after a failed write so the proof remains
-// usable for a retry instead of being silently destroyed.
 export function releasePasswordChangeProof(proof) {
+  if (reservedProof !== proof) return false;
   const entry = proofs.get(proof);
-  if (entry) entry.reserved = false;
+  if (!entry?.reserved) return false;
+  entry.reserved = false;
+  reservedProof = null;
+  return true;
 }
 
 export function resetPasswordChangeProofs() {
   proofs.clear();
   activeByIp.clear();
+  reservedProof = null;
 }

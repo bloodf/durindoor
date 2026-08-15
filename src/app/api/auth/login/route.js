@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { isUsingDefaultPassword, setDashboardAuthCookie } from "@/lib/auth/dashboardSession";
 import { issuePasswordChangeProof } from "@/lib/auth/passwordChangeProof";
 import { isOidcConfigured } from "@/lib/auth/oidc";
+import { hasExactRequestOrigin } from "@/lib/auth/requestOrigin";
 import { checkLock, recordFail, recordSuccess, getClientIp } from "@/lib/auth/loginLimiter";
 import { isLocalRequest } from "@/dashboardGuard";
 
@@ -18,6 +19,7 @@ function isTunnelRequest(request, settings) {
   return (tunnelHost && host === tunnelHost) || (tailscaleHost && host === tailscaleHost);
 }
 
+
 export async function POST(request) {
   try {
     const ip = getClientIp(request);
@@ -27,6 +29,9 @@ export async function POST(request) {
         { error: `Too many failed attempts. Try again in ${lock.retryAfter}s. ${RESET_HINT}`, retryAfter: lock.retryAfter, resetHint: RESET_HINT },
         { status: 429, headers: { "Retry-After": String(lock.retryAfter) } }
       );
+    }
+    if (!hasExactRequestOrigin(request)) {
+      return NextResponse.json({ error: "Cross-origin login is not allowed" }, { status: 403, headers: NO_STORE_HEADERS });
     }
 
     const { password } = await request.json();
@@ -71,17 +76,31 @@ export async function POST(request) {
           }
           return NextResponse.json({ success: true, mustChangePassword: true }, { status: 403, headers: NO_STORE_HEADERS });
         }
-        recordSuccess(ip);
-        const proof = issuePasswordChangeProof(ip);
+        recordFail(ip);
+        const postLock = checkLock(ip);
+        if (postLock.locked) {
+          return NextResponse.json(
+            { error: `Too many failed attempts. Try again in ${postLock.retryAfter}s. ${RESET_HINT}`, retryAfter: postLock.retryAfter, resetHint: RESET_HINT },
+            { status: 429, headers: { "Retry-After": String(postLock.retryAfter) } }
+          );
+        }
+        const proof = issuePasswordChangeProof(ip, settings.passwordSessionEpoch ?? "initial");
+        if (!proof) {
+          return NextResponse.json({ error: "Password change already in progress" }, { status: 409, headers: NO_STORE_HEADERS });
+        }
         return NextResponse.json(
           { success: true, mustChangePassword: true, requiresPasswordChange: true, proof },
           { status: 403, headers: NO_STORE_HEADERS }
         );
       }
 
+      const currentSettings = await getSettings();
+      if ((currentSettings.passwordSessionEpoch ?? "initial") !== (settings.passwordSessionEpoch ?? "initial")) {
+        return NextResponse.json({ error: "Login state changed, please retry" }, { status: 409, headers: NO_STORE_HEADERS });
+      }
       recordSuccess(ip);
       const cookieStore = await cookies();
-      await setDashboardAuthCookie(cookieStore, request);
+      await setDashboardAuthCookie(cookieStore, request, { passwordSessionEpoch: settings.passwordSessionEpoch ?? "initial" });
       return NextResponse.json({ success: true, mustChangePassword: false }, { headers: NO_STORE_HEADERS });
     }
 

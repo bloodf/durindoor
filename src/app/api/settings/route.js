@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { FREE_NO_AUTH_PROVIDER_IDS } from "@/shared/constants/freeNoAuthProviders";
-import { getSettings, updateSettings } from "@/lib/localDb";
+import { getSettings, updateSettings, updateSettingsWithPasswordEpoch, PasswordEpochMismatchError } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation, resetComboScoring } from "open-sse/services/combo.js";
 import { DEFAULT_PASSWORD, invalidateDefaultPasswordCache, setDashboardAuthCookie, validateDashboardPassword, verifyDashboardPassword } from "@/lib/auth/dashboardSession";
@@ -52,11 +52,13 @@ export async function PATCH(request) {
     for (const key of PROTECTED_SETTING_KEYS) delete body[key];
 
     let passwordSessionEpoch;
+    let expectedPasswordSessionEpoch = "initial";
     if (Object.prototype.hasOwnProperty.call(body, "newPassword")) {
       if (!body.newPassword) {
         return NextResponse.json({ error: "Password must not be empty" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
       }
       const settings = await getSettings();
+      expectedPasswordSessionEpoch = settings.passwordSessionEpoch ?? "initial";
       const initialPassword = process.env.INITIAL_PASSWORD || DEFAULT_PASSWORD;
       const rejection = validateDashboardPassword(body.newPassword);
       if (rejection || body.newPassword === initialPassword) {
@@ -175,8 +177,17 @@ export async function PATCH(request) {
     }
 
     const willChangePassword = body.password !== undefined;
-
-    const settings = await updateSettings(body);
+    let settings;
+    try {
+      settings = willChangePassword
+        ? await updateSettingsWithPasswordEpoch(body, expectedPasswordSessionEpoch)
+        : await updateSettings(body);
+    } catch (error) {
+      if (error instanceof PasswordEpochMismatchError) {
+        return NextResponse.json({ error: "Password change conflict, please retry" }, { status: 409, headers: SETTINGS_RESPONSE_HEADERS });
+      }
+      throw error;
+    }
     if (willChangePassword) invalidateDefaultPasswordCache();
     if (willChangePassword) resetPasswordChangeProofs();
     if (willChangePassword) {

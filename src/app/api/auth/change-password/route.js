@@ -14,7 +14,7 @@ import {
   reservePasswordChangeProof,
   resetPasswordChangeProofs,
 } from "@/lib/auth/passwordChangeProof";
-import { updateSettings } from "@/lib/localDb";
+import { PasswordEpochMismatchError, getSettings, updateSettingsWithPasswordEpoch } from "@/lib/localDb";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +30,8 @@ export async function POST(request) {
     }
 
     const ip = getClientIp(request);
-    if (!reservePasswordChangeProof(proof, ip)) {
+    const reservation = reservePasswordChangeProof(proof, ip);
+    if (!reservation) {
       return NextResponse.json({ error: "Invalid or expired password-change proof" }, { status: 403 });
     }
 
@@ -38,23 +39,31 @@ export async function POST(request) {
       const salt = await bcrypt.genSalt(10);
       const password = await bcrypt.hash(newPassword, salt);
       const newEpoch = crypto.randomBytes(16).toString("hex");
-      await updateSettings({ password, passwordSessionEpoch: newEpoch });
+      const expectedEpoch = reservation.passwordSessionEpoch;
+      try {
+        await updateSettingsWithPasswordEpoch({ password, passwordSessionEpoch: newEpoch }, expectedEpoch);
+      } catch (error) {
+        if (error instanceof PasswordEpochMismatchError) {
+          resetPasswordChangeProofs();
+          return NextResponse.json({ error: "Password change conflict, please retry" }, { status: 409 });
+        }
+        throw error;
+      }
       invalidateDefaultPasswordCache();
-      resetPasswordChangeProofs();
       commitPasswordChangeProof(proof);
+      resetPasswordChangeProofs();
+      try {
+        const cookieStore = await cookies();
+        await setDashboardAuthCookie(cookieStore, request, { passwordSessionEpoch: newEpoch });
+      } catch {
+        console.error("[auth] password change cookie failed");
+        return NextResponse.json({ success: true, reauthenticate: true });
+      }
+      return NextResponse.json({ success: true });
     } catch (error) {
       releasePasswordChangeProof(proof);
       throw error;
     }
-
-    try {
-      const cookieStore = await cookies();
-      await setDashboardAuthCookie(cookieStore, request);
-    } catch {
-      console.error("[auth] password change cookie failed");
-      return NextResponse.json({ success: true, reauthenticate: true });
-    }
-    return NextResponse.json({ success: true });
   } catch {
     console.error("[auth] password change failed");
     return NextResponse.json({ error: "Password change failed" }, { status: 500 });

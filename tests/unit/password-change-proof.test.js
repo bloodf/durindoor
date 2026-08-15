@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => {
   return { randomBytes: vi.fn(() => Buffer.from(`proof-token-${(n += 1)}`)) };
 });
 vi.mock("node:crypto", () => ({ default: { randomBytes: mocks.randomBytes } }));
-const { consumePasswordChangeProof, issuePasswordChangeProof, resetPasswordChangeProofs, reservePasswordChangeProof, releasePasswordChangeProof } = await import("../../src/lib/auth/passwordChangeProof.js");
+const { commitPasswordChangeProof, consumePasswordChangeProof, issuePasswordChangeProof, resetPasswordChangeProofs, reservePasswordChangeProof, releasePasswordChangeProof } = await import("../../src/lib/auth/passwordChangeProof.js");
 
 describe("password-change proof", () => {
   beforeEach(() => {
@@ -58,6 +58,22 @@ describe("password-change proof", () => {
 
     releasePasswordChangeProof(proof, reserved);
     expect(consumePasswordChangeProof(proof, "198.51.100.4")).toBe(true);
+  });
+
+  it("does not replace a proof while its password update is reserved", () => {
+    const proof = issuePasswordChangeProof("198.51.100.4");
+    expect(reservePasswordChangeProof(proof, "198.51.100.4")).toMatchObject({ reserved: true });
+
+    expect(issuePasswordChangeProof("198.51.100.4")).toBeNull();
+    commitPasswordChangeProof(proof);
+    expect(issuePasswordChangeProof("198.51.100.4")).toBeTruthy();
+  });
+
+  it("permits only one reserved password mutation across IPs", () => {
+    const first = issuePasswordChangeProof("198.51.100.4");
+    const second = issuePasswordChangeProof("2001:db8::1");
+    expect(reservePasswordChangeProof(first, "198.51.100.4")).toBeTruthy();
+    expect(reservePasswordChangeProof(second, "2001:db8::1")).toBeNull();
   });
 
   it("reserve on a wrong IP or unknown proof returns null without mutating state", () => {

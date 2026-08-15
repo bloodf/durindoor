@@ -26,15 +26,18 @@ export function isValidProviderIconUrl(value) {
   if (typeof value !== "string") return false;
   const trimmed = value.trim();
 
+  if (trimmed === "") return true;
+
   if (/^data:/i.test(trimmed)) {
     if (trimmed.length > MAX_PROVIDER_ICON_DATA_URL_LENGTH) return false;
     const match = DATA_IMAGE_RE.exec(trimmed);
     if (!match) return false;
     const payload = match[2];
     if (!BASE64_RE.test(payload) || payload.length % 4 !== 0) return false;
-    const padding = payload.endsWith("==") ? 2 : payload.endsWith("=") ? 1 : 0;
-    const decodedBytes = (payload.length / 4) * 3 - padding;
-    return decodedBytes > 0 && decodedBytes <= MAX_PROVIDER_ICON_DATA_BYTES;
+    const decoded = Buffer.from(payload, "base64");
+    return decoded.length > 0
+      && decoded.length <= MAX_PROVIDER_ICON_DATA_BYTES
+      && decoded.toString("base64") === payload;
   }
 
   if (trimmed.length > MAX_PROVIDER_ICON_URL_LENGTH) return false;

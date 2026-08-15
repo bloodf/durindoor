@@ -81,7 +81,7 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
           ...(config.hasApiType ? { apiType: formData.apiType } : {}),
           baseUrl: formData.baseUrl,
           type: config.type,
-          ...(formData.iconUrl.trim() ? { iconUrl: formData.iconUrl } : {}),
+          iconUrl: formData.iconUrl,
         }),
       });
       const data = await res.json().catch(() => ({}));

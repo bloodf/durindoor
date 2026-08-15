@@ -57,7 +57,7 @@ export async function PUT(request, { params }) {
       name: name.trim(),
       prefix: prefix.trim(),
       baseUrl: sanitizedBaseUrl,
-      iconUrl: iconUrl?.trim() || undefined,
+      ...(iconUrl !== undefined ? { iconUrl: iconUrl.trim() } : {}),
     };
 
     if (node.type === "openai-compatible") {

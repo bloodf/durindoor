@@ -46,7 +46,7 @@ export default function EditCompatibleNodeModal({ isOpen, node, onSave, onClose,
         name: formData.name,
         prefix: formData.prefix,
         baseUrl: formData.baseUrl,
-        ...(formData.iconUrl.trim() ? { iconUrl: formData.iconUrl } : {}),
+        iconUrl: formData.iconUrl,
       };
       if (!isAnthropic) {
         payload.apiType = formData.apiType;

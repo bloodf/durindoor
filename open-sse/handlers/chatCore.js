@@ -158,12 +158,12 @@ function isCompactResponsesEndpoint(endpoint) {
  * legacy body marker remains accepted for compatibility, but is removed from
  * both working and diagnostic copies before either can leave the process.
  */
-function captureRequestContext(body, clientRawRequest, modelCapabilities) {
+function captureRequestContext(body, clientRawRequest, modelCapabilities, sessionId) {
   const compact = isCompactResponsesEndpoint(clientRawRequest?.endpoint)
     || body?._compact === true
     || clientRawRequest?.body?._compact === true;
   const clientHeaders = Object.freeze({ ...(clientRawRequest?.headers || {}) });
-  return Object.freeze({ compact, clientHeaders, modelCapabilities });
+  return Object.freeze({ compact, clientHeaders, modelCapabilities, sessionId });
 }
 
 function stripLegacyCompactMarker(body, clientRawRequest) {
@@ -279,10 +279,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     quotaCapacityUnavailable: true,
     quotaReason: reason || "capacity_exhausted",
   });
-  let requestContext = captureRequestContext(body, clientRawRequest, modelCapabilities);
-  ({ body, clientRawRequest } = stripLegacyCompactMarker(body, clientRawRequest));
 
-  // Stable per-session color so all lines of one CLI conversation share a tag
   const sessionSeed = (() => {
     try {
       return resolveSessionId({ headers: clientRawRequest?.headers, body, connectionId, scope: provider });
@@ -290,6 +287,8 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       return connectionId || "";
     }
   })();
+  const requestContext = captureRequestContext(body, clientRawRequest, modelCapabilities, sessionSeed);
+  ({ body, clientRawRequest } = stripLegacyCompactMarker(body, clientRawRequest));
   // Proposed id remains stable even if fail-open dashboard tracking cannot allocate a row.
   const requestedUsageEventId = globalThis.crypto?.randomUUID?.() || `${requestStartTime}-${Math.random().toString(36).slice(2)}`;
   const reqTag = log?.tagForSession ? log.tagForSession(sessionSeed) : (log?.nextTag ? log.nextTag() : "");

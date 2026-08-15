@@ -29,3 +29,13 @@ describe("hasTrustedLocalOrigin", () => {
     expect(hasTrustedLocalOrigin(request({ host: "evil.example:20128", origin: "http://evil.example:20128" }))).toBe(false);
   });
 });
+
+describe("hasExactRequestOrigin port and scheme strictness", () => {
+  it("rejects an Origin whose port does not match the Host port", () => {
+    expect(hasExactRequestOrigin(request({ host: "durindoor.test:20128", origin: "http://durindoor.test:20129" }))).toBe(false);
+  });
+
+  it("rejects an Origin whose scheme does not match the request scheme", () => {
+    expect(hasExactRequestOrigin(request({ host: "durindoor.test", origin: "https://durindoor.test" }))).toBe(false);
+  });
+});

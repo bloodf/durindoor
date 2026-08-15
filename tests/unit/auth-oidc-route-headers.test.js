@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   buildOidcAuthorizationUrl: vi.fn(() => new URL("https://provider.example/authorize")),
@@ -38,6 +38,20 @@ const callbackModule = await import("../../src/app/api/auth/oidc/callback/route.
 function request(url) {
   return new Request(url, { headers: { host: new URL(url).host, "x-forwarded-host": "evil.test", "x-forwarded-proto": "https" } });
 }
+
+const originalBaseUrl = process.env.BASE_URL;
+const originalPublicBaseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+
+beforeEach(() => {
+  delete process.env.BASE_URL;
+  delete process.env.NEXT_PUBLIC_BASE_URL;
+});
+afterEach(() => {
+  if (originalBaseUrl === undefined) delete process.env.BASE_URL;
+  else process.env.BASE_URL = originalBaseUrl;
+  if (originalPublicBaseUrl === undefined) delete process.env.NEXT_PUBLIC_BASE_URL;
+  else process.env.NEXT_PUBLIC_BASE_URL = originalPublicBaseUrl;
+});
 
 describe("OIDC routes reject hostile forwarded origin headers", () => {
   it("keeps the redirect_uri on the request origin even with hostile XFH/XFP", async () => {

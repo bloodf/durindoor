@@ -711,3 +711,12 @@ export function sanitizeErrorMessage(message) {
   }
   return out.slice(0, 4096) || "Upstream provider error";
 }
+
+/** Redact known credential values before applying generic error sanitization. */
+export function sanitizeErrorMessageWithSecrets(message, secrets = []) {
+  let out = String(message || "Upstream provider error");
+  for (const secret of secrets) {
+    if (typeof secret === "string" && secret) out = out.split(secret).join("[redacted]");
+  }
+  return sanitizeErrorMessage(out);
+}

@@ -13,9 +13,15 @@ const mocks = vi.hoisted(() => ({
   applyOutboundProxyEnv: vi.fn(),
   resetComboRotation: vi.fn(),
   resetComboScoring: vi.fn(),
+  cookies: vi.fn(),
+  setDashboardAuthCookie: vi.fn(),
+  consoleError: vi.fn(),
+  consoleLog: vi.fn(),
+  randomBytes: vi.fn(() => ({ toString: () => "rotated-epoch" })),
 }));
 
 vi.mock("next/server", () => ({ NextResponse: { json: mocks.json } }));
+vi.mock("next/headers", () => ({ cookies: mocks.cookies }));
 vi.mock("@/shared/constants/freeNoAuthProviders", () => ({ FREE_NO_AUTH_PROVIDER_IDS: [] }));
 vi.mock("@/lib/localDb", () => ({
   getSettings: mocks.getSettings,
@@ -30,6 +36,7 @@ vi.mock("@/lib/auth/dashboardSession", () => ({
   DEFAULT_PASSWORD: "123456",
   invalidateDefaultPasswordCache: mocks.invalidateDefaultPasswordCache,
   verifyDashboardPassword: mocks.verifyDashboardPassword,
+  setDashboardAuthCookie: mocks.setDashboardAuthCookie,
   validateDashboardPassword: (password) => {
     if (typeof password !== "string" || password.length < 6) return "Password must be at least 6 characters";
     if (password === "123456") return "Password must not use the built-in default";
@@ -44,6 +51,7 @@ vi.mock("bcryptjs", () => ({
     compare: mocks.compare,
   },
 }));
+vi.mock("node:crypto", () => ({ default: { randomBytes: mocks.randomBytes } }));
 
 const { PATCH } = await import("../../src/app/api/settings/route.js");
 
@@ -56,6 +64,9 @@ describe("settings PATCH password credentials", () => {
     mocks.updateSettings.mockImplementation(async (updates) => updates);
     mocks.compare.mockResolvedValue(false);
     mocks.verifyDashboardPassword.mockResolvedValue(true);
+    mocks.cookies.mockResolvedValue({ set: vi.fn() });
+    vi.spyOn(console, "error").mockImplementation(mocks.consoleError);
+    vi.spyOn(console, "log").mockImplementation(mocks.consoleLog);
   });
 
   it("rejects newPassword equal to the built-in default", async () => {
@@ -174,5 +185,25 @@ describe("settings PATCH password credentials", () => {
     expect(mocks.updateSettings).toHaveBeenCalledWith(expect.objectContaining({
       password: "new-hash",
     }));
+  });
+
+  it("rotates the current password session cookie after persisting a password", async () => {
+    mocks.getSettings.mockResolvedValue({ password: "stored-hash" });
+
+    await PATCH({ json: async () => ({ currentPassword: "operator-secret", newPassword: "long-enough-new" }) });
+
+    expect(mocks.setDashboardAuthCookie).toHaveBeenCalledWith(
+      expect.anything(), expect.anything(), { passwordSessionEpoch: "rotated-epoch" },
+    );
+  });
+
+  it("returns a stable error without logging a settings exception", async () => {
+    mocks.updateSettings.mockRejectedValue(new Error("SENTINEL_SETTINGS_ERROR"));
+
+    const response = await PATCH({ json: async () => ({ tunnelDashboardAccess: true }) });
+
+    expect(response.body).toEqual({ error: "Failed to update settings" });
+    expect(mocks.consoleError).toHaveBeenCalledWith("[settings] update failed");
+    expect(mocks.consoleError).not.toHaveBeenCalledWith(expect.stringContaining("SENTINEL_SETTINGS_ERROR"));
   });
 });

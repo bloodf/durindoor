@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
     if (typeof password !== "string" || password.length < 6) return "Password must be at least 6 characters";
     return password === "123456" ? "Password must not use the built-in default" : null;
   }),
+  consoleError: vi.fn(),
 }));
 
 vi.mock("next/server", () => ({ NextResponse: { json: mocks.json } }));
@@ -56,6 +57,7 @@ describe("POST /api/auth/change-password", () => {
     mocks.reservePasswordChangeProof.mockReturnValue({ clientIp: "198.51.100.4" });
     mocks.updateSettings.mockResolvedValue({ password: "new-hash" });
     mocks.cookies.mockResolvedValue({ set: vi.fn() });
+    vi.spyOn(console, "error").mockImplementation(mocks.consoleError);
   });
 
   it("rejects a missing or invalid flow proof before changing password", async () => {
@@ -83,12 +85,15 @@ describe("POST /api/auth/change-password", () => {
     expect(mocks.updateSettings).not.toHaveBeenCalled();
   });
 
-  it("releases a reserved proof when password persistence fails", async () => {
-    mocks.updateSettings.mockRejectedValueOnce(new Error("database unavailable"));
+  it("redacts unexpected persistence failures", async () => {
+    mocks.updateSettings.mockRejectedValueOnce(new Error("SENTINEL_CHANGE_ERROR"));
 
     const response = await POST(request({ proof: "proof", newPassword: "long-enough-password" }));
 
     expect(response.status).toBe(500);
+    expect(response.body).toEqual({ error: "Password change failed" });
+    expect(mocks.consoleError).toHaveBeenCalledWith("[auth] password change failed");
+    expect(mocks.consoleError).not.toHaveBeenCalledWith(expect.stringContaining("SENTINEL_CHANGE_ERROR"));
     expect(mocks.reservePasswordChangeProof).toHaveBeenCalledWith("proof", "198.51.100.4");
     expect(mocks.releasePasswordChangeProof).toHaveBeenCalledWith("proof");
     expect(mocks.commitPasswordChangeProof).not.toHaveBeenCalled();
@@ -100,13 +105,15 @@ describe("POST /api/auth/change-password", () => {
     expect(mocks.resetPasswordChangeProofs).toHaveBeenCalledOnce();
   });
 
-  it("does not report a failed password change when cookie issuance fails", async () => {
-    mocks.setDashboardAuthCookie.mockRejectedValueOnce(new Error("cookie unavailable"));
+  it("redacts cookie issuance failure when durable change succeeded", async () => {
+    mocks.setDashboardAuthCookie.mockRejectedValueOnce(new Error("SENTINEL_COOKIE_ERROR"));
 
     const response = await POST(request({ proof: "proof", newPassword: "long-enough-password" }));
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ success: true, reauthenticate: true });
+    expect(mocks.consoleError).toHaveBeenCalledWith("[auth] password change cookie failed");
+    expect(mocks.consoleError).not.toHaveBeenCalledWith(expect.stringContaining("SENTINEL_COOKIE_ERROR"));
     expect(mocks.releasePasswordChangeProof).not.toHaveBeenCalled();
   });
 

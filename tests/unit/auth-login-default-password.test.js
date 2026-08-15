@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   isLocalRequest: vi.fn(),
   isUsingDefaultPassword: vi.fn(async () => true),
   issuePasswordChangeProof: vi.fn(() => "password-change-proof"),
+  consoleError: vi.fn(),
 }));
 
 vi.mock("next/server", () => ({ NextResponse: { json: mocks.json } }));
@@ -46,6 +47,18 @@ describe("POST /api/auth/login default-password safety", () => {
     mocks.isOidcConfigured.mockReturnValue(false);
     mocks.cookies.mockResolvedValue({ set: vi.fn() });
     mocks.isLocalRequest.mockReturnValue(false);
+    vi.spyOn(console, "error").mockImplementation(mocks.consoleError);
+  });
+
+  it("logs a redacted error event and returns a stable code on unexpected failure", async () => {
+    mocks.getSettings.mockRejectedValue(new Error("SENTINEL_LOGIN_ERROR"));
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({ error: "Login failed" });
+    expect(mocks.consoleError).toHaveBeenCalledWith("[auth] login failed");
+    expect(mocks.consoleError).not.toHaveBeenCalledWith(expect.stringContaining("SENTINEL_LOGIN_ERROR"));
   });
 
   it("rejects a remote default-password session before issuing auth_token", async () => {

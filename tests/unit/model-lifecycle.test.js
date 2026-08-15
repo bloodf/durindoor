@@ -9,6 +9,9 @@ import { checkModelLifecycle } from "../../open-sse/handlers/chatCore/modelLifec
 const CURRENT_DATE = new Date("2026-07-26T00:00:00.000Z");
 
 describe("model lifecycle", () => {
+  it("keeps all 24 source-verified lifecycle records", () => {
+    expect(MODEL_LIFECYCLE_RECORDS).toHaveLength(24);
+  });
   it("rejects shutdown OpenAI models with replacement guidance without rewriting", () => {
     const decision = getModelLifecycleDecision("openai", "gpt-5.2-codex", CURRENT_DATE);
 

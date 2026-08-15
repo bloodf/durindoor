@@ -6,11 +6,50 @@ import {
 } from "./types.js";
 
 const CHARS_PER_TOKEN = 4;
+const BASE64_IMAGE_DATA_URI_PREFIX = "data:image/";
+
+function isBase64Char(charCode) {
+  return (
+    (charCode >= 48 && charCode <= 57) ||
+    (charCode >= 65 && charCode <= 90) ||
+    (charCode >= 97 && charCode <= 122) ||
+    charCode === 43 ||
+    charCode === 47 ||
+    charCode === 61
+  );
+}
+
+// Base64 image data URIs are payload, not text — counting them inflates the
+// estimate and (for huge attachments) makes it expensive. Strips them in one
+// linear forward pass (no regex backtracking, no intermediate string copies).
+// Text without a "data:image/" marker takes the O(1) length fast path.
+function countTextChars(text) {
+  const firstUri = text.indexOf(BASE64_IMAGE_DATA_URI_PREFIX);
+  if (firstUri === -1) return text.length;
+
+  let textChars = 0;
+  let cursor = 0;
+  let uriStart = firstUri;
+  while (uriStart !== -1) {
+    textChars += uriStart - cursor;
+    const payloadStart = text.indexOf(";base64,", uriStart + BASE64_IMAGE_DATA_URI_PREFIX.length);
+    if (payloadStart === -1) return textChars + (text.length - uriStart);
+
+    let payloadEnd = payloadStart + 8;
+    while (payloadEnd < text.length && isBase64Char(text.charCodeAt(payloadEnd))) payloadEnd++;
+    if (payloadEnd === payloadStart + 8) return textChars + (text.length - uriStart);
+
+    cursor = payloadEnd;
+    uriStart = text.indexOf(BASE64_IMAGE_DATA_URI_PREFIX, cursor);
+  }
+  return textChars + (text.length - cursor);
+}
 
 export function estimateCompressionTokens(text) {
   if (!text) return 0;
   const str = typeof text === "string" ? text : JSON.stringify(text);
-  return Math.ceil(str.length / CHARS_PER_TOKEN);
+  if (!str) return 0;
+  return Math.ceil(countTextChars(str) / CHARS_PER_TOKEN);
 }
 
 export function createCompressionStats(

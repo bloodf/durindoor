@@ -18,7 +18,11 @@ function rowsToQuotas(rows) {
     quotas[dimension] = {
       total: row.amounts.limit,
       used: row.amounts.used,
-      remaining: row.amounts.remaining,
+      remainingPercentage: row.amounts.remainingRatio !== null
+        ? Math.max(0, Math.round(row.amounts.remainingRatio * 100))
+        : row.amounts.limit
+          ? Math.max(0, Math.round(((row.amounts.limit - row.amounts.used) / row.amounts.limit) * 100))
+          : 0,
       resetAt: row.resetAt,
       unlimited: false,
     };

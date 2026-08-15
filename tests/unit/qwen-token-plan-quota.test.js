@@ -159,7 +159,7 @@ describe("Qwen / Alibaba personal Token Plan quota (port abd4df63dc25)", () => {
 
   it("targets the QwenCloud gateway host for the default (domestic) console site", async () => {
     const fetchImpl = vi.fn(async (url, init) => {
-      const endpoint = /%2F([^%2F]+)$/.exec(new URL(url).searchParams.get("api") || "")?.[1] || "usage";
+      const endpoint = new URL(url).searchParams.get("api")?.split("/").at(-1) || "usage";
       if (endpoint === "usage") return json(gateway({ per5HourPercentage: 0.5, per5HourResetTime: "2026-08-15T01:00:00.000Z" }));
       if (endpoint === "quota-config") return json(gateway({ pro: { five_hour: 2000, weekly: 8000 } }));
       return json(gateway({ specCode: "pro" }));

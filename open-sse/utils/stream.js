@@ -124,6 +124,7 @@ export function createSSEStream(options = {}) {
     const MAX_FIELD = 16 * 1024;
     const MAX_TOOLS = 64;
     const MAX_PARTS = 256;
+    const MAX_USAGE_FIELDS = 64;
     const format = mode === STREAM_MODE.TRANSLATE ? targetFormat : sourceFormat || targetFormat;
     const isResponses = format === FORMATS.OPENAI_RESPONSES || format === FORMATS.OPENAI_RESPONSE;
     const isClaude = format === FORMATS.CLAUDE;
@@ -133,9 +134,13 @@ export function createSSEStream(options = {}) {
     const scalarUsage = (value) => {
       if (!value || typeof value !== "object" || Array.isArray(value)) return null;
       const result = {};
-      for (const [key, item] of Object.entries(value)) {
-        if (typeof item === "number" || typeof item === "boolean") result[bounded(key, 64)] = item;
-        else if (typeof item === "string") result[bounded(key, 64)] = bounded(item);
+      let accepted = 0;
+      for (const key in value) {
+        if (!Object.hasOwn(value, key)) continue;
+        const item = value[key];
+        if (typeof item !== "number" && typeof item !== "boolean" && typeof item !== "string") continue;
+        if (accepted++ >= MAX_USAGE_FIELDS) break;
+        result[bounded(key, 64)] = typeof item === "string" ? bounded(item) : item;
       }
       return result;
     };
@@ -310,6 +315,34 @@ export function createSSEStream(options = {}) {
   let sseEmittedCount = 0;
   const eventTypeCounts = {};
   let onStreamCompleteFired = false;  // guard so terminal-chunk completion + flush() both fire onStreamComplete only once
+  const recordCompletionData = (parsed, { summary = true, trackUsage = true, content = false } = {}) => {
+    if (summary) providerSummary.ingest(parsed);
+    const extracted = extractUsage(parsed);
+    if (trackUsage && extracted) usage = mergeUsage(usage, extracted);
+    if (!content) return extracted;
+
+    if (!minimaxThinkingState) {
+      for (const choice of (parsed.choices || [])) {
+        const delta = choice?.delta;
+        if (typeof delta?.content === "string" && delta.content) {
+          totalContentLength += delta.content.length;
+          accumulatedContent += delta.content;
+        }
+        if (typeof delta?.reasoning_content === "string" && delta.reasoning_content) {
+          totalContentLength += delta.reasoning_content.length;
+          accumulatedThinking += delta.reasoning_content;
+        }
+      }
+    }
+    const geminiParts = parsed.candidates?.[0]?.content?.parts || parsed.response?.candidates?.[0]?.content?.parts || [];
+    for (const part of geminiParts) {
+      if (typeof part?.text !== "string" || !part.text) continue;
+      totalContentLength += part.text.length;
+      if (part.thought === true) accumulatedThinking += part.text;
+      else accumulatedContent += part.text;
+    }
+    return extracted;
+  };
 
   // Track Responses API event framing for same-format passthrough (codex)
   let currentOpenAIResponsesEvent = null;
@@ -482,7 +515,7 @@ export function createSSEStream(options = {}) {
             try {
               const parsed = JSON.parse(isDataLine ? trimmed.slice(5).trim() : trimmed);
               upstreamTerminal.observe({ chunk: parsed, eventName: upstreamEventForLine });
-              providerSummary.ingest(parsed);
+              recordCompletionData(parsed, { trackUsage: false });
               if (
                 targetFormat === FORMATS.CLAUDE
                 && parsed?.type === "message_stop"
@@ -581,10 +614,7 @@ export function createSSEStream(options = {}) {
               if (extracted) {
                 usage = mergeUsage(usage, extracted);
               }
-              if (!hasValuableContent(parsed, targetFormat || FORMATS.OPENAI) && !extracted) {
-                continue;
-              }
-
+              if (!hasValuableContent(parsed, targetFormat || FORMATS.OPENAI) && !extracted) continue;
               if (minimaxThinkingState) {
                 const delta = parsed.choices?.[0]?.delta;
                 const content = delta?.content;
@@ -708,29 +738,7 @@ export function createSSEStream(options = {}) {
                 pendingInlineThinkingOutput += `data: ${JSON.stringify(recoveryChunk)}\n\n`;
               }
 
-              for (const choice of (parsed.choices || [])) {
-                const content = choice?.delta?.content;
-                const reasoning = choice?.delta?.reasoning_content;
-                if (content && typeof content === "string") {
-                  totalContentLength += content.length;
-                  accumulatedContent += content;
-                }
-                if (reasoning && typeof reasoning === "string") {
-                  totalContentLength += reasoning.length;
-                  accumulatedThinking += reasoning;
-                }
-              }
-
-              // Gemini-family passthrough accumulation (e.g. Antigravity Responses streaming).
-              const geminiPartsPassthrough =
-                parsed.candidates?.[0]?.content?.parts || parsed.response?.candidates?.[0]?.content?.parts || [];
-              for (const part of geminiPartsPassthrough) {
-                if (part.text && typeof part.text === "string") {
-                  totalContentLength += part.text.length;
-                  if (part.thought === true) accumulatedThinking += part.text;
-                  else accumulatedContent += part.text;
-                }
-              }
+              recordCompletionData(parsed, { summary: false, trackUsage: false, content: true });
 
               // Detect terminal chunk in both OpenAI (choices[0].finish_reason) and
               // Gemini-family (response.candidates[0].finishReason) passthrough shapes.
@@ -995,10 +1003,8 @@ export function createSSEStream(options = {}) {
           if (buffer) {
             const trimmedBuffer = buffer.trim();
             currentUpstreamEvent = observeBufferedUpstream(trimmedBuffer, currentUpstreamEvent);
-            if (!/^data:\s*\[DONE\]$/.test(trimmedBuffer)) {
-              const parsed = parseSSELine(trimmedBuffer, targetFormat);
-              if (parsed && !parsed.done) providerSummary.ingest(parsed);
-            }
+            const parsed = parseSSELine(trimmedBuffer, targetFormat);
+            if (parsed && !parsed.done) recordCompletionData(parsed, { content: true });
             let output;
             if (/^data:\s*\[DONE\]$/.test(trimmedBuffer)) {
               output = "data: [DONE]\n\n";

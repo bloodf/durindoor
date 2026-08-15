@@ -890,51 +890,6 @@ export function createSSEStream(options = {}) {
         const extracted = extractUsage(parsed);
         if (extracted) state.usage = mergeUsage(state.usage, extracted);
 
-        // Fire onStreamComplete early on terminal chunk (raw parsed shape) for providers
-        // that never reach the flush() path. The translated item may not be terminal-detectable;
-        // detect the terminal marker on the raw parsed object instead.
-        // Restrict raw early completion to wrapped Gemini/Antigravity only.
-        // OpenAI include_usage streams send finish_reason BEFORE a trailing
-        // usage-only chunk; firing on finish_reason would lose the real usage.
-        const rawGeminiTerminal =
-          parsed.candidates?.some?.((candidate) => candidate?.finishReason) ||
-          parsed.response?.candidates?.some?.((candidate) => candidate?.finishReason);
-        if (rawGeminiTerminal && onStreamComplete && !onStreamCompleteFired) {
-          onStreamCompleteFired = true;
-          // Fallback to estimated usage when no real usage was extracted (e.g. wrapped Gemini
-          // Responses without usageMetadata). Use state.format if available, else infer from parse shape.
-          const rawFormat = state?.format || FORMATS.GEMINI;
-          let rawUsage = state.usage;
-          if (!hasValidUsage(rawUsage) && totalContentLength > 0) {
-            rawUsage = mergeUsage(rawUsage, estimateUsage(body, totalContentLength, rawFormat));
-            state.usage = rawUsage;
-          }
-          // Raw content fallback: read text directly from parsed.response.candidates when
-          // accumulatedContent is empty (the Gemini accumulation may not be hit by the test's
-          // parse shape). Mirror the normal content/thinking split: thought parts go to thinking,
-          // non-thought parts go to content.
-          // Raw content fallback: only used when the normal accumulator did not capture
-          // the text. Reading parsed.response.candidates directly appends to whatever the
-          // translate path already accumulated, so guard with emptiness check.
-          let rawContent = '';
-          let rawThinking = '';
-          const rawCandidates = parsed.candidates || parsed.response?.candidates || [];
-          if (!accumulatedContent && rawCandidates.length > 0) {
-            for (const cand of rawCandidates) {
-              const parts = cand.content?.parts || [];
-              for (const part of parts) {
-                if (part.text && typeof part.text === 'string') {
-                  if (part.thought === true) rawThinking += part.text;
-                  else rawContent += part.text;
-                }
-              }
-            }
-          }
-          onStreamComplete({
-            content: rawContent || accumulatedContent,
-            thinking: rawThinking || accumulatedThinking,
-          }, rawUsage, ttftAt, providerSummary.finalize(rawUsage));
-        } // Keep original usage for logging
 
         // Responses same-format passthrough: re-emit with original event framing
         if (keepsOpenAIResponsesFormat && openAIResponsesEventName) {

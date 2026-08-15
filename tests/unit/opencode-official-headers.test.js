@@ -98,6 +98,7 @@ describe("OpenCodeExecutor official free-tier headers (D13)", () => {
     expect(third["x-opencode-session"]).not.toBe(first["x-opencode-session"]);
   });
 
+
   it("official UA: client identity headers are NOT preserved on free tier", async () => {
     const fetchMock = stubFetch();
     await new OpenCodeExecutor().execute({

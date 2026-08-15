@@ -103,3 +103,48 @@ describe("XaiExecutor Responses routing (OmniRoute #6709)", () => {
     expect(sent.input).toBeUndefined();
   });
 });
+
+// xAI OAuth for grok-4.5 is Responses-only, while its API-key endpoint remains
+// Chat Completions. chatCore marks only the OAuth dispatch with this transport.
+describe("XaiExecutor OAuth Responses routing", () => {
+  const exec = new XaiExecutor();
+
+  beforeEach(() => {
+    proxyAwareFetch.mockReset();
+    proxyAwareFetch.mockResolvedValue(
+      new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }),
+    );
+  });
+
+  test("uses the OAuth-selected Responses endpoint for grok-4.5", async () => {
+    await exec.execute({
+      model: "grok-4.5",
+      body: { model: "grok-4.5", input: [], stream: true },
+      stream: true,
+      credentials: {
+        accessToken: "oauth-token",
+        authType: "oauth",
+        runtimeTransport: { format: "openai-responses-oauth", baseUrl: "https://api.x.ai/v1/responses" },
+      },
+    });
+
+    const [url, init] = proxyAwareFetch.mock.calls[0];
+    expect(url).toBe("https://api.x.ai/v1/responses");
+    expect(JSON.parse(init.body)).toMatchObject({ model: "grok-4.5", input: [], stream: true });
+    expect(init.headers.Authorization).toBe("Bearer oauth-token");
+  });
+
+  test("keeps API-key grok-4.5 on Chat Completions", async () => {
+    await exec.execute({
+      model: "grok-4.5",
+      body: { model: "grok-4.5", messages: [{ role: "user", content: "hi" }], stream: false },
+      stream: false,
+      credentials: { apiKey: "api-key" },
+    });
+
+    const [url, init] = proxyAwareFetch.mock.calls[0];
+    expect(url).toBe("https://api.x.ai/v1/chat/completions");
+    expect(JSON.parse(init.body)).toMatchObject({ model: "grok-4.5", messages: [{ role: "user", content: "hi" }], stream: false });
+    expect(init.headers.Authorization).toBe("Bearer api-key");
+  });
+});

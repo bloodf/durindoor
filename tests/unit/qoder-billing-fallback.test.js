@@ -128,6 +128,25 @@ describe("Qoder billing prefix boundaries", () => {
     expect(output).toContain(`data: ${marker}\n\n`);
   });
 
+  it("does not inspect a billing frame that starts at byte 65536", async () => {
+    const billing = JSON.stringify({ code: "112", message: "must remain beyond peek" });
+    // Exactly 64KiB of valid non-data SSE comments; billing starts at byte 65536,
+    // past the inspection cap, so the wrapper must not special-case it as billing.
+    const padding = ": x\n".repeat(16 * 1024);
+    const wrapped = await wrapQoderSSE(responseFromChunks([
+      `${padding}${envelope(403, billing)}`,
+    ]), "qoder/auto");
+
+    // Billing detection never fired: no synthetic 403 at the HTTP level.
+    expect(wrapped.status).toBe(200);
+    // The uninspected 403 envelope still fails through the normal
+    // non-200-envelope path (generic stream error), not a raw passthrough
+    // of the billing body.
+    const output = await wrapped.text();
+    expect(output).not.toContain(billing);
+    expect(output).toContain("Qoder upstream stream failed");
+  });
+
   it("releases upstream reader after a billing cancellation", async () => {
     const response = responseWithReader([envelope(403, JSON.stringify({ code: "112" }))]);
     await wrapQoderSSE(response, "qoder/auto");

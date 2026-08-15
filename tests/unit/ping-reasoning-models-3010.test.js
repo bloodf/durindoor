@@ -65,6 +65,20 @@ describe("pingModelByKind reasoning models (#3010)", () => {
     expect(result.error).toMatch(/no completion choices/);
   });
 
+  it("rejects provider error statuses without a message", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ status: 401, choices: [{ message: { content: "Hello!" } }] }));
+    const result = await pingModelByKind("some/model", "llm", "http://127.0.0.1:20127");
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/Provider status 401/);
+  });
+
+  it("rejects blank completion content unless it is the reasoning-only exception", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ choices: [{ finish_reason: "length", message: { content: "" } }] }));
+    const result = await pingModelByKind("some/model", "llm", "http://127.0.0.1:20127");
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/empty completion content/);
+  });
+
   it("passes a normal answer with the larger budget", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ choices: [{ message: { content: "Hello!" } }] }));
     const result = await pingModelByKind("openai/gpt-4o", "llm", "http://127.0.0.1:20127");

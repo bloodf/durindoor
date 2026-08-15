@@ -131,6 +131,42 @@ describe("fusion combo", () => {
     }
   });
 
+  it("isolates mutable panel request graphs from siblings, source body, and judge", async () => {
+    const sourceBody = {
+      messages: [{ role: "user", content: "Q", metadata: { source: "client" } }],
+      stream: true,
+      stream_options: { include_usage: true },
+    };
+    const panelBodies = [];
+    let judgeBody;
+    const handleSingleModel = vi.fn(async (requestBody, model, isPanel) => {
+      if (isPanel) {
+        panelBodies.push(requestBody);
+        requestBody.messages[0].metadata.source = model;
+        requestBody.messages.push({ role: "user", content: `mutated-${model}` });
+        return okResponse(`ans-${model}`);
+      }
+      judgeBody = requestBody;
+      return okResponse("FINAL");
+    });
+
+    await handleFusionChat({
+      body: sourceBody,
+      models: ["p/a", "p/b"],
+      handleSingleModel,
+      log,
+      judgeModel: "p/judge",
+    });
+
+    expect(panelBodies).toHaveLength(2);
+    expect(panelBodies[0]).not.toBe(panelBodies[1]);
+    expect(panelBodies[0].messages).not.toBe(panelBodies[1].messages);
+    expect(panelBodies[0].messages[0].metadata).not.toBe(panelBodies[1].messages[0].metadata);
+    expect(sourceBody.messages).toEqual([{ role: "user", content: "Q", metadata: { source: "client" } }]);
+    expect(judgeBody.messages[0]).toEqual({ role: "user", content: "Q", metadata: { source: "client" } });
+    expect(judgeBody.stream_options).toEqual({ include_usage: true });
+  });
+
   it("defaults the judge to the first panel model when none is set", async () => {
     const seen = [];
     const handleSingleModel = vi.fn(async (_body, model) => { seen.push(model); return okResponse(`ans-${model}`); });

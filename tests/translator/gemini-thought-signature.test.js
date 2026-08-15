@@ -7,6 +7,7 @@ import {
   clearGeminiThoughtSignatureMemoryForTests,
   getGeminiThoughtSignature,
   storeGeminiThoughtSignature,
+  _pruneForTests,
 } from "../../open-sse/services/geminiThoughtSignatureStore.js";
 
 const signature = "EhAKDmNhY2hlZC1zaWduYXR1cmU=";
@@ -86,5 +87,16 @@ describe("Gemini thoughtSignature direct Claude route", () => {
 
     expect(await getGeminiThoughtSignature("connection-parallel:toolu_p1")).toBe(`${signature}1`);
     expect(await getGeminiThoughtSignature("connection-parallel:toolu_p2")).toBe(`${signature}2`);
+  });
+
+  it("evicts the oldest persisted signatures when the cap is exceeded, not the newest", async () => {
+    const base = Date.now();
+    for (let i = 0; i < 5; i += 1) await storeGeminiThoughtSignature(`cap:k${i}`, `sig${i}`, base + (i + 1) * 1000);
+    _pruneForTests(3);
+    expect(await getGeminiThoughtSignature("cap:k0")).toBeNull();
+    expect(await getGeminiThoughtSignature("cap:k1")).toBeNull();
+    expect(await getGeminiThoughtSignature("cap:k2")).toBe(`sig2`);
+    expect(await getGeminiThoughtSignature("cap:k3")).toBe(`sig3`);
+    expect(await getGeminiThoughtSignature("cap:k4")).toBe(`sig4`);
   });
 });

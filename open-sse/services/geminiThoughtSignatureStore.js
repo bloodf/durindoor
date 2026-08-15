@@ -31,7 +31,7 @@ function remember(key, value, now = Date.now()) {
   pruneMemory(now);
 }
 
-function prunePersisted(db, now = Date.now()) {
+export function prunePersisted(db, now = Date.now(), cap = MAX_SIGNATURES) {
   if (++writesSincePrune < 100) return;
   writesSincePrune = 0;
   try {
@@ -43,9 +43,10 @@ function prunePersisted(db, now = Date.now()) {
       else live.push({ key: row.key, expiresAt: value.expiresAt });
     }
     live.sort((a, b) => a.expiresAt - b.expiresAt);
-    for (const row of live.slice(MAX_SIGNATURES)) db.run("DELETE FROM kv WHERE scope = ? AND key = ?", [NAMESPACE, row.key]);
+    if (live.length > cap) for (const row of live.slice(0, live.length - cap)) db.run("DELETE FROM kv WHERE scope = ? AND key = ?", [NAMESPACE, row.key]);
   } catch { /* persistence is best-effort */ }
 }
+export function _pruneForTests(cap) { const db = dbOrNull(); if (db) prunePersisted(db, Date.now(), cap); }
 
 export function buildGeminiThoughtSignatureKey(namespace, toolCallId) {
   return typeof namespace === "string" && namespace && typeof toolCallId === "string" && toolCallId ? `${namespace}:${toolCallId}` : null;

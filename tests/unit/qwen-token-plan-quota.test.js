@@ -107,7 +107,12 @@ describe("Qwen / Alibaba personal Token Plan quota (port abd4df63dc25)", () => {
     expect(result).toMatchObject({ outcome: "success", sourceId: "bailian-coding-plan:token-plan-quota:v1" });
     expect(result.rows).toHaveLength(1);
     expect(fetchImpl.mock.calls[0][0]).toContain("bailian-singapore-cs.alibabacloud.com/data/api.json");
-    expect(fetchImpl.mock.calls[0][1].headers).toMatchObject({ Cookie: "login_aliyunid_ticket=browser-session", "Content-Type": "application/x-www-form-urlencoded" });
+    expect(fetchImpl.mock.calls).toHaveLength(3);
+    const expectedHeaders = { Cookie: "login_aliyunid_ticket=browser-session", "Content-Type": "application/x-www-form-urlencoded", Origin: "https://modelstudio.console.alibabacloud.com", Referer: "https://modelstudio.console.alibabacloud.com/" };
+    for (const call of fetchImpl.mock.calls) {
+      expect(call[0]).toMatch(/^https:\/\/bailian-singapore-cs\.alibabacloud\.com\/data\/api\.json/);
+      expect(call[1].headers).toMatchObject(expectedHeaders);
+    }
     expect(fetchImpl.mock.calls[0][1].headers.Authorization).toBeUndefined();
     expect(new URLSearchParams(fetchImpl.mock.calls[0][1].body).get("params")).toContain(
       "zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/usage",
@@ -176,6 +181,7 @@ describe("Qwen / Alibaba personal Token Plan quota (port abd4df63dc25)", () => {
     );
     expect(result).toMatchObject({ outcome: "success", sourceId: "bailian-coding-plan:token-plan-quota:v1" });
     expect(fetchImpl.mock.calls[0][0]).toMatch(/^https:\/\/cs-data\.qwencloud\.com\//);
+    expect(fetchImpl.mock.calls[0][1].headers).toMatchObject({ Origin: "https://home.qwencloud.com", Referer: "https://home.qwencloud.com/" });
   });
 
   it("ignores attacker-supplied per-connection host/console overrides and never leaks the cookie off first-party", async () => {
@@ -199,13 +205,15 @@ describe("Qwen / Alibaba personal Token Plan quota (port abd4df63dc25)", () => {
           },
         },
         fetchImpl,
-      ),
+    ),
     );
     expect(result).toMatchObject({ outcome: "success", sourceId: "bailian-coding-plan:token-plan-quota:v1" });
     for (const call of fetchImpl.mock.calls) {
       expect(call[0]).toMatch(/^https:\/\/bailian-singapore-cs\.alibabacloud\.com\//);
       expect(call[0]).not.toContain("attacker.example");
-      expect(call[1].headers.Cookie).toBe("login_aliyunid_ticket=browser-session");
+      expect(call[1].headers).toMatchObject({ Cookie: "login_aliyunid_ticket=browser-session", Origin: "https://modelstudio.console.alibabacloud.com", Referer: "https://modelstudio.console.alibabacloud.com/" });
+      expect(call[1].headers.Origin).not.toContain("attacker.example");
+      expect(call[1].headers.Referer).not.toContain("attacker.example");
     }
   });
 });

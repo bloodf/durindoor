@@ -619,7 +619,7 @@ async function fetchQwenTokenPlanQuota(context, data) {
   const request = createProviderRequest(context);
   const site = qwenTokenPlanSite(cookie, config);
   const url = `${site.host}/data/api.json?product=${QWEN_TOKEN_PLAN_PRODUCT}&action=${QWEN_TOKEN_PLAN_ACTION}&api=zeldaHttp.apikeyMgr.%2Ftokenplan%2Fpersonal%2Fapi%2Fv2%2Fusage`;
-  const headers = { Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded", Cookie: cookie };
+  const headers = { Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded", Cookie: cookie, Origin: `https://${site.domain}`, Referer: `https://${site.domain}/` };
   const results = [];
   let attemptedAt = null;
   for (const endpoint of ["usage", "quota-config", "subscription"]) {

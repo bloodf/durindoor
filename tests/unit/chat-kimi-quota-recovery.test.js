@@ -127,4 +127,18 @@ describe("Kimi temporary quota recovery in chatCore", () => {
 
     expect(result).toMatchObject({ success: false, status: 403, resetsAtMs: undefined });
   });
+
+  it.each([
+    ["has no usable reset", { quotas: { Ratelimit: { remainingPercentage: 0, resetAt: "not-a-date" }, Weekly: { remainingPercentage: 50 } } }],
+    ["cannot read usage", new Error("usage probe failed")],
+  ])("leaves a request limit terminal when it %s", async (_case, usage) => {
+    mocks.getUsageForProvider.mockImplementation(() => {
+      if (usage instanceof Error) throw usage;
+      return usage;
+    });
+
+    const result = await handleChatCore(options());
+
+    expect(result).toMatchObject({ success: false, status: 403, resetsAtMs: undefined });
+  });
 });

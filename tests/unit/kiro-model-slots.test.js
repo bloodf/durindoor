@@ -16,6 +16,7 @@ describe("Kiro MITM model slots", () => {
     expect(kiro).toBeTruthy();
     expect(kiro.configType).toBe("mitm");
     expect(Array.isArray(kiro.defaultModels)).toBe(true);
+    expect(kiro.mitmDomain).toBe("runtime.us-east-1.kiro.dev");
   });
 
   it("offers a mappable slot for Claude Sonnet 5", () => {

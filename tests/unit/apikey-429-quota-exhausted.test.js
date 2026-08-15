@@ -160,3 +160,27 @@ describe("#6731 markAccountUnavailable propagation", () => {
     );
   });
 });
+
+describe("AgentRouter auth fallback classification", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_800_000_000_000);
+    vi.clearAllMocks();
+    mocks.getProviderConnections.mockResolvedValue([
+      { id: "agentrouter-1", provider: "agentrouter", backoffLevel: 0 },
+    ]);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("applies AgentRouter model-denial cooldown through markAccountUnavailable", async () => {
+    const mark = await load();
+    const result = await mark(
+      "agentrouter-1", 403, "无权访问模型 claude-opus", "agentrouter", "claude-opus",
+    );
+
+    expect(result).toMatchObject({
+      shouldFallback: true,
+      cooldownMs: 6 * 60 * 60 * 1_000,
+    });
+  });
+});

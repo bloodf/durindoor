@@ -55,12 +55,8 @@ export async function PATCH(request) {
       const initialPassword = process.env.INITIAL_PASSWORD || DEFAULT_PASSWORD;
 
       const rejection = validateDashboardPassword(body.newPassword);
-      if (
-        rejection
-        || body.newPassword === initialPassword
-        || (currentHash && body.newPassword !== initialPassword && (await bcrypt.compare(body.newPassword, currentHash)))
-      ) {
-        return NextResponse.json({ error: rejection || "Password must not match the current password" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      if (rejection || body.newPassword === initialPassword) {
+        return NextResponse.json({ error: rejection || "Password must not match the configured initial password" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
       }
 
       if (currentHash) {

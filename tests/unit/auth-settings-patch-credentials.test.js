@@ -99,7 +99,6 @@ describe("settings PATCH password credentials", () => {
     mocks.getSettings.mockResolvedValue({ password: "stored-hash" });
     mocks.compare.mockResolvedValue(true);
     mocks.updateSettings.mockResolvedValue({ password: "new-hash" });
-    mocks.compare.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
 
     const response = await PATCH({
       json: async () => ({

@@ -52,6 +52,9 @@ export function sanitizeProviderConnectionForClient(c) {
     if (supportsOpenAIStore(c.provider) && c.providerSpecificData.openaiStoreEnabled !== undefined) {
       psd.openaiStoreEnabled = c.providerSpecificData.openaiStoreEnabled;
     }
+    if (supportsOpenAIStore(c.provider) && c.providerSpecificData.openaiStoreEnabled !== undefined) {
+      psd.openaiStoreEnabled = c.providerSpecificData.openaiStoreEnabled;
+    }
     safe.providerSpecificData = psd;
   }
   return safe;

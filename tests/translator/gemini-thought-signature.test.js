@@ -90,9 +90,10 @@ describe("Gemini thoughtSignature direct Claude route", () => {
   });
 
   it("evicts the oldest persisted signatures when the cap is exceeded, not the newest", async () => {
-    const base = Date.now();
+    const base = Date.now() + 60_000;
     for (let i = 0; i < 5; i += 1) await storeGeminiThoughtSignature(`cap:k${i}`, `sig${i}`, base + (i + 1) * 1000);
     _pruneForTests(3);
+    clearGeminiThoughtSignatureMemoryForTests();
     expect(await getGeminiThoughtSignature("cap:k0")).toBeNull();
     expect(await getGeminiThoughtSignature("cap:k1")).toBeNull();
     expect(await getGeminiThoughtSignature("cap:k2")).toBe(`sig2`);

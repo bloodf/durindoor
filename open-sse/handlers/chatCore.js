@@ -279,7 +279,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     quotaCapacityUnavailable: true,
     quotaReason: reason || "capacity_exhausted",
   });
-  const requestContext = captureRequestContext(body, clientRawRequest, modelCapabilities);
+  let requestContext = captureRequestContext(body, clientRawRequest, modelCapabilities);
   ({ body, clientRawRequest } = stripLegacyCompactMarker(body, clientRawRequest));
 
   // Stable per-session color so all lines of one CLI conversation share a tag
@@ -354,6 +354,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   if (runtimeTransport && credentials) credentials.runtimeTransport = runtimeTransport;
   const stripList = getModelStrip(alias, cleanModel);
   const cleanUpstreamModel = getModelUpstreamId(alias, cleanModel); // provider-facing model id
+  requestContext = Object.freeze({ ...requestContext, catalogModel: cleanModel });
 
   // Inject provider-level thinking config override (only if client hasn't set)
   // on/off → extended type (body.thinking), none/low/medium/high → effort type (body.reasoning_effort)

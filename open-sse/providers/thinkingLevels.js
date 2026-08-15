@@ -11,7 +11,8 @@ const L = {
   levelMax: ["none", "low", "medium", "high", "max"],               // claude-adaptive, kimi
   budgetX: ["none", "low", "medium", "high", "xhigh", "max"],       // claude-budget
   gemini: ["minimal", "low", "medium", "high"],                     // gemini-3 thinkingLevel (no disable)
-  hiMax: ["none", "high", "max"],                                   // deepseek (low/med→high, xhigh→max)
+  hi: ["none", "high"],                                          // DeepSeek legacy models
+  hiMax: ["none", "high", "max"],                                 // native DeepSeek V4
 };
 
 // thinkingFormat → valid selectable levels (source of truth for UI options).
@@ -26,7 +27,7 @@ const FORMAT_LEVELS = {
   zai: L.onOff,
   qwen: L.base,
   kimi: L.levelMax,
-  deepseek: L.hiMax,
+  deepseek: L.hi,
   minimax: L.onOff,
   hunyuan: L.base,
   step: L.base,
@@ -45,6 +46,17 @@ const PATTERN_THINKING = [
   { pattern: "*codex*", levels: ["low", "medium", "high", "xhigh"] }, // codex cannot disable thinking
 ];
 
+const NATIVE_DEEPSEEK_V4_MODELS = new Set([
+  "deepseek-v4-pro",
+  "deepseek-v4-pro-max",
+  "deepseek-v4-pro-none",
+  "deepseek-v4-flash",
+]);
+
+export function isNativeDeepSeekV4(provider, model) {
+  return (provider === "deepseek" || provider === "ds") && NATIVE_DEEPSEEK_V4_MODELS.has(model);
+}
+
 // Returns valid thinking levels for a model, or null when the model has no reasoning.
 export function getThinkingLevels(provider, model) {
   const caps = getCapabilitiesForModel(provider, model);
@@ -61,7 +73,9 @@ export function getThinkingLevelsFromCapabilities(caps, provider = null, model =
   if (!caps || !caps.reasoning) return null;
   const modelId = model || "";
   const hit = PATTERN_THINKING.find((p) => matchPattern(p.pattern, modelId));
-  let levels = hit?.levels || FORMAT_LEVELS[caps.thinkingFormat] || L.base;
+  let levels = hit?.levels || (caps.thinkingFormat === "deepseek" && isNativeDeepSeekV4(provider, modelId)
+    ? L.hiMax
+    : FORMAT_LEVELS[caps.thinkingFormat] || L.base);
   if (caps.thinkingCanDisable === false) levels = levels.filter((l) => l !== "none");
   if (provider === "kiro" || provider === "kr") levels = levels.filter((l) => l !== "ultra" && l !== "max");
   return levels;

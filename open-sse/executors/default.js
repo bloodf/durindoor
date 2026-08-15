@@ -8,7 +8,7 @@ import { buildClineHeaders } from "../shared/clineAuth.js";
 import { getCachedClaudeHeaders } from "../utils/claudeHeaderCache.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
-import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
+import { applyDeepSeekV4ProAlias, injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { getOpenAICompatibleType } from "../services/provider.js";
 import { refreshCodebuddyToken } from "../services/tokenRefresh.js";
@@ -286,7 +286,12 @@ export class DefaultExecutor extends BaseExecutor {
     // max_tokens / max_completion_tokens above its 65536 ceiling).
     this.config?.clampRequestBody?.(body);
     applyGlmtModelAlias(this.provider, model, body);
-    const transformed = this.applyJsonSchemaFallback(body);
+    let transformed = this.applyJsonSchemaFallback(body);
+    transformed = applyDeepSeekV4ProAlias({
+      provider: this.provider,
+      model: requestContext?.catalogModel || model,
+      body: transformed,
+    });
     const transportFormat = credentials?.runtimeTransport?.format?.replace(/-apikey$/, "") || this.config.format;
 
 

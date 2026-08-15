@@ -42,7 +42,7 @@ function applyRule(body, rule) {
   return { ...body, messages };
 }
 
-function applyDeepSeekV4ProAlias({ provider, model, body }) {
+export function applyDeepSeekV4ProAlias({ provider, model, body }) {
   const alias = DEEPSEEK_V4_PRO_ALIASES[model];
   if (provider !== "deepseek" || !alias || !body) return body;
 

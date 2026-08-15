@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import "../translator/registerAll.js";
 import { acquireSlot, getGateStats, releaseSlot, _resetGates } from "../../open-sse/services/concurrencyGate.js";
+import { DefaultExecutor } from "../../open-sse/executors/default.js";
 
 const mocks = vi.hoisted(() => ({
   execute: vi.fn(),
@@ -369,7 +370,7 @@ describe("thinking suffix at the chatCore provider boundary", () => {
         transformedBody: null,
       })
       .mockResolvedValueOnce({
-        response: new Response("data: [DONE]\\n\\n", { status: 200, headers: { "content-type": "text/event-stream" } }),
+        response: new Response("data: [DONE]\n\n", { status: 200, headers: { "content-type": "text/event-stream" } }),
         url: "https://claude.test/retry",
         headers: {},
         transformedBody: null,
@@ -400,6 +401,53 @@ describe("thinking suffix at the chatCore provider boundary", () => {
       { role: "assistant", content: [] },
       { role: "user", content: [{ type: "text", text: "hello", cache_control: { type: "ephemeral" } }] },
     ]);
+  });
+
+  for (const [alias, expectedThinking, expectedEffort] of [
+    ["deepseek-v4-pro-max", "enabled", "max"],
+    ["deepseek-v4-pro-none", "disabled", undefined],
+  ]) {
+    it(`preserves ${alias} through upstream-id rewrite to the DeepSeek wire body`, async () => {
+      const executor = new DefaultExecutor("deepseek");
+      mocks.execute.mockImplementationOnce(({ model, body, stream, credentials, requestContext }) => {
+        const wireBody = executor.transformRequest(model, structuredClone(body), stream, credentials, requestContext);
+        expect(model).toBe("deepseek-v4-pro");
+        expect(wireBody.model).toBe("deepseek-v4-pro");
+        expect(wireBody.extra_body.thinking.type).toBe(expectedThinking);
+        expect(wireBody.reasoning_effort).toBe(expectedEffort);
+        throw new Error("stop after wire capture");
+      });
+
+      await handleChatCore({
+        body: { model: alias, stream: true, messages: [{ role: "user", content: "hello" }] },
+        modelInfo: { provider: "deepseek", model: alias },
+        credentials: { accessToken: "deepseek-token", providerSpecificData: {} },
+        connectionId: `alias-${alias}`,
+        clientRawRequest: {
+          endpoint: "/v1/chat/completions",
+          body: {},
+          headers: { accept: "text/event-stream" },
+        },
+        log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      });
+
+      expect(mocks.execute).toHaveBeenCalledOnce();
+    });
+  }
+
+  it("normalizes a DeepSeek alias before the Claude transport bypasses reasoning injection", () => {
+    const executor = new DefaultExecutor("deepseek");
+    const wireBody = executor.transformRequest(
+      "deepseek-v4-pro",
+      { model: "deepseek-v4-pro", messages: [{ role: "assistant", content: "hello" }] },
+      true,
+      { runtimeTransport: { format: "claude" } },
+      { catalogModel: "deepseek-v4-pro-none" },
+    );
+
+    expect(wireBody.extra_body.thinking.type).toBe("disabled");
+    expect(wireBody.reasoning_effort).toBeUndefined();
+    expect(wireBody.messages[0].reasoning_content).toBeUndefined();
   });
 
   function abortOptions(signal, refreshCredentials = undefined) {

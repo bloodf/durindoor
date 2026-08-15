@@ -650,6 +650,6 @@ export class PerplexityWebExecutor extends BaseExecutor {
   }
 }
 
-export { parseOpenAIMessages, buildQuery, buildPplxRequestBody, formatToolsHint, sessionKey };
+export { MAX_WORKFLOW_ANSWERS, parseOpenAIMessages, buildQuery, buildPplxRequestBody, formatToolsHint, seedWorkflowAnswer, sessionKey };
 
 export default PerplexityWebExecutor;

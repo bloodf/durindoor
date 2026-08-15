@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import antigravity from "../../open-sse/providers/registry/antigravity.js";
 import gemini from "../../open-sse/providers/registry/gemini.js";
 import { MITM_TOOLS } from "../../src/shared/constants/cliTools.js";
+import { ANTIGRAVITY_QUOTA_MODELS } from "../../open-sse/services/usage/google.js";
 
 const { extractModel, getMappedOverride } = require("../../src/mitm/server.js");
 const { MODEL_SYNONYMS } = require("../../src/mitm/config.js");
@@ -12,15 +13,14 @@ const TIERED_UPSTREAM = Object.fromEntries(TIERS.map((level) => [level, `gemini-
 const TIERED_IDS = TIERS.map((level) => `gemini-3.7-flash-${level}`);
 
 describe("Gemini 3.7 Flash Antigravity catalog (#3286, #3281)", () => {
-  it("exposes the exact Antigravity tier rows in registry order", () => {
-    const tierRows = antigravity.models.filter((m) => TIERED_IDS.includes(m.id));
+  it("exposes exactly three Antigravity tier rows in registry order", () => {
+    const tierRows = antigravity.models.filter((m) => m.id.startsWith("gemini-3.7-flash-"));
     expect(tierRows).toEqual([
       { id: "gemini-3.7-flash-high", name: "Gemini 3.7 Flash (High)", upstreamModelId: TIERED_UPSTREAM.high },
       { id: "gemini-3.7-flash-medium", name: "Gemini 3.7 Flash (Medium)", upstreamModelId: TIERED_UPSTREAM.medium },
       { id: "gemini-3.7-flash-low", name: "Gemini 3.7 Flash (Low)", upstreamModelId: TIERED_UPSTREAM.low },
     ]);
   });
-
   it("exposes the exact Gemini base row preceding 3.1 Pro", () => {
     const idx = gemini.models.findIndex((m) => m.id === "gemini-3.7-flash");
     expect(idx).toBeGreaterThanOrEqual(0);
@@ -35,19 +35,16 @@ describe("Gemini 3.7 Flash Antigravity catalog (#3286, #3281)", () => {
     }
   });
 
-  it("publishes exact tier set in CLI/MITM/registry", () => {
-    expect(MODEL_SYNONYMS.antigravity).toMatchObject({
-      "gemini-3.7-flash-high": "gemini-3.7-flash-high",
-      "gemini-3.7-flash-medium": "gemini-3.7-flash-medium",
-      "gemini-3.7-flash-low": "gemini-3.7-flash-low",
-    });
-    expect(MITM_TOOLS.antigravity.modelAliases.slice(0, 3)).toEqual(TIERED_IDS);
-    expect(__test__.PROVIDER_MODELS.ag.slice(0, 3)).toEqual(TIERED_IDS.map((id) => ({ id })));
-    expect(MITM_TOOLS.antigravity.defaultModels.filter((m) => TIERED_IDS.includes(m.id))).toEqual([
+  it("publishes exactly three tiers in every configured consumer", () => {
+    expect(Object.keys(MODEL_SYNONYMS.antigravity).filter((id) => id.startsWith("gemini-3.7-flash-"))).toEqual(TIERED_IDS);
+    expect(MITM_TOOLS.antigravity.modelAliases.filter((id) => id.startsWith("gemini-3.7-flash-"))).toEqual(TIERED_IDS);
+    expect(__test__.PROVIDER_MODELS.ag.filter(({ id }) => id.startsWith("gemini-3.7-flash-"))).toEqual(TIERED_IDS.map((id) => ({ id })));
+    expect(MITM_TOOLS.antigravity.defaultModels.filter(({ id }) => id.startsWith("gemini-3.7-flash-"))).toEqual([
       { id: "gemini-3.7-flash-high", name: "Gemini 3.7 Flash (High)", alias: "gemini-3.7-flash-high" },
       { id: "gemini-3.7-flash-medium", name: "Gemini 3.7 Flash (Medium)", alias: "gemini-3.7-flash-medium" },
       { id: "gemini-3.7-flash-low", name: "Gemini 3.7 Flash (Low)", alias: "gemini-3.7-flash-low" },
     ]);
+    expect(ANTIGRAVITY_QUOTA_MODELS.filter((id) => id.startsWith("gemini-3.7-flash-"))).toEqual(TIERED_IDS);
   });
 
   it("getMappedOverride resolves exact 3.7 tier IDs even with a conflicting generic flash alias", () => {

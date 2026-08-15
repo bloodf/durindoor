@@ -9,6 +9,7 @@ function providerModelIds(providerId) {
   return REGISTRY.find((provider) => provider.id === providerId)?.models.map(({ id }) => id) ?? [];
 }
 
+
 describe("GLM 5.3 catalog", () => {
   it("exposes the Coding Plan model through both native registries and the CLI", () => {
     expect(providerModelIds("glm")).toContain("glm-5.3");
@@ -28,4 +29,11 @@ describe("GLM 5.3 catalog", () => {
     });
     expect(caps.maxOutput).toBeLessThan(caps.contextWindow);
   });
+
+  it("uses the bare GLM-5.3 capability contract for the documented [1m] alias", () => {
+    expect(getCapabilitiesForModel("glm", "GLM-5.3[1M]")).toEqual(
+      getCapabilitiesForModel("glm", "glm-5.3"),
+    );
+  });
 });
+

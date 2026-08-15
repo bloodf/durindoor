@@ -834,10 +834,14 @@ export function getCapabilitiesForModel(provider, model) {
   if (!model) return finalize({ ...DEFAULT_CAPABILITIES });
 
   const baseModel = model.includes("/") ? model.split("/").pop() : model;
+
+  // Z.ai's Claude Code catalog spells GLM-5.3's 1M variant `glm-5.3[1m]`.
+  // Preserve its wire ID; normalize only static capability lookup.
+  const capabilityBaseModel = /^glm-5\.3\[1m\]$/i.test(baseModel) ? "glm-5.3" : baseModel;
   if (provider) {
     const providerCaps = PROVIDER_CAPABILITIES[provider];
     if (providerCaps?.[model]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[model] });
-    if (providerCaps?.[baseModel]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[baseModel] });
+    if (providerCaps?.[capabilityBaseModel]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[capabilityBaseModel] });
     if (provider === "kiro" || provider === "kr") {
       const normalized = normalizeModelId(model);
       const normalizedBase = normalizeModelId(baseModel);
@@ -846,7 +850,7 @@ export function getCapabilitiesForModel(provider, model) {
     }
   }
 
-  const exactId = MODEL_CAPABILITIES[baseModel] ? baseModel : model;
+  const exactId = MODEL_CAPABILITIES[capabilityBaseModel] ? capabilityBaseModel : model;
   const exactCaps = MODEL_CAPABILITIES[exactId];
   if (exactCaps) {
     const merged = { ...DEFAULT_CAPABILITIES, ...exactCaps };
@@ -855,7 +859,7 @@ export function getCapabilitiesForModel(provider, model) {
   }
 
   for (const { pattern, caps } of PATTERN_CAPABILITIES) {
-    if (matchPattern(pattern, baseModel) || matchPattern(pattern, model)) {
+    if (matchPattern(pattern, capabilityBaseModel) || matchPattern(pattern, model)) {
       const merged = { ...DEFAULT_CAPABILITIES, ...caps };
       if (hasUnpublishedOutput(provider, baseModel)) merged.maxOutput = undefined;
       return finalize(merged);

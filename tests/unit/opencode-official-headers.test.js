@@ -79,6 +79,21 @@ describe("OpenCodeExecutor official free-tier headers (D13)", () => {
     expect(second["x-opencode-request"]).not.toBe(first["x-opencode-request"]);
     expect(third["x-opencode-session"]).not.toBe(first["x-opencode-session"]);
   });
+  it("binds request context session seeds to their connection", async () => {
+    const fetchMock = stubFetch();
+    const executor = new OpenCodeExecutor();
+    const request = (connectionId) => ({
+      model: "deepseek-v3.2", body: { messages: [] }, stream: true,
+      credentials: { connectionId },
+      requestContext: { sessionId: "hostile-shared-session", clientHeaders: { "user-agent": "curl/8.5.0" } },
+    });
+    await executor.execute(request("account-a"));
+    await executor.execute(request("account-a"));
+    await executor.execute(request("account-b"));
+    const [first, second, third] = fetchMock.mock.calls.map((call) => call[1].headers);
+    expect(second["x-opencode-session"]).toBe(first["x-opencode-session"]);
+    expect(third["x-opencode-session"]).not.toBe(first["x-opencode-session"]);
+  });
 
   it("uses executor-private session identity without trusted connection", async () => {
     const fetchMock = stubFetch();

@@ -16,10 +16,13 @@ function generateSessionId() {
 }
 
 function trustedSessionKey(credentials, requestContext, fallback) {
-  const candidate = requestContext?.sessionId ?? credentials?.connectionId;
-  return typeof candidate === "string" && candidate.trim() && candidate !== "default"
-    ? candidate.trim()
+  const connectionId = typeof credentials?.connectionId === "string" && credentials.connectionId.trim()
+    ? credentials.connectionId.trim()
     : fallback;
+  const sessionId = typeof requestContext?.sessionId === "string" && requestContext.sessionId.trim()
+    ? requestContext.sessionId.trim()
+    : null;
+  return JSON.stringify([connectionId, sessionId]);
 }
 
 function opaqueSessionId(source) {

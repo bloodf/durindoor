@@ -1286,7 +1286,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       log.errorLine(reqTag, "✗", `ERROR ${statusCode} · ${provider}/${cleanModel} · ${Date.now() - requestStartTime}ms${urlStr}\n    ${errMsg}`);
     }
     return {
-      ...createErrorResult(statusCode, errMsg, resetsAtMs, errorBody, rateLimitEvidence),
+      ...createErrorResult(statusCode, errMsg, resetsAtMs, errorBody, rateLimitEvidence, credentials),
       attemptStartedAt: latestProviderAttemptStartedAt,
       headers: providerResponse.headers,
     };

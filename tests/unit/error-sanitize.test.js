@@ -213,10 +213,12 @@ describe("createErrorResult structured errorBody (bypasses buildErrorBody)", () 
       upstream_details: {
         note: "kept verbatim",
         authorization: "Bearer provider-secret",
-        metadata: { api_key: "sk-provider-secret", diagnostic: "safe" },
+        metadata: { api_key: "sk-provider-secret", diagnostic: "opaque-provider-credential" },
       },
     };
-    const result = createErrorResult(502, "fallback msg with /home/omni/secret/config.ts:1", null, errorBody);
+    const result = createErrorResult(502, "fallback msg with /home/omni/secret/config.ts:1", null, errorBody, null, {
+      providerSpecificData: { sessionToken: "opaque-provider-credential" },
+    });
 
     // Caller object untouched.
     expect(errorBody.error.message).toContain("/home/omni/secret");
@@ -231,7 +233,7 @@ describe("createErrorResult structured errorBody (bypasses buildErrorBody)", () 
     expect(body.upstream_details).toEqual({
       note: "kept verbatim",
       authorization: "[redacted]",
-      metadata: { api_key: "[redacted]", diagnostic: "safe" },
+      metadata: { api_key: "[redacted]", diagnostic: "[redacted]" },
     });
   });
 });

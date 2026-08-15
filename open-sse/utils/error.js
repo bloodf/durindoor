@@ -471,14 +471,28 @@ export async function parseUpstreamError(response, executor = null, options = {}
 
 const SENSITIVE_ERROR_BODY_KEY = /^(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|authorization[-_]?code|oauth[-_]?code|code[-_]?verifier|oauth[-_]?state|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)$/i;
 
-function sanitizeStructuredErrorBody(value) {
-  if (typeof value === "string") return sanitizeErrorMessage(value);
-  if (Array.isArray(value)) return value.map(sanitizeStructuredErrorBody);
+function collectCredentialSecrets(value, key = "", inheritedSensitive = false, secrets = [], seen = new WeakSet()) {
+  const sensitive = inheritedSensitive || SENSITIVE_ERROR_BODY_KEY.test(key);
+  if (typeof value === "string") {
+    if (sensitive && value) secrets.push(value);
+    return secrets;
+  }
+  if (!value || typeof value !== "object" || seen.has(value)) return secrets;
+  seen.add(value);
+  for (const [nestedKey, nestedValue] of Object.entries(value)) {
+    collectCredentialSecrets(nestedValue, nestedKey, sensitive, secrets, seen);
+  }
+  return secrets;
+}
+
+function sanitizeStructuredErrorBody(value, secrets = []) {
+  if (typeof value === "string") return sanitizeErrorMessageWithSecrets(value, secrets);
+  if (Array.isArray(value)) return value.map((nested) => sanitizeStructuredErrorBody(nested, secrets));
   if (!value || typeof value !== "object") return value;
 
   return Object.fromEntries(Object.entries(value).map(([key, nested]) => [
     key,
-    SENSITIVE_ERROR_BODY_KEY.test(key) ? "[redacted]" : sanitizeStructuredErrorBody(nested),
+    SENSITIVE_ERROR_BODY_KEY.test(key) ? "[redacted]" : sanitizeStructuredErrorBody(nested, secrets),
   ]));
 }
 
@@ -487,14 +501,17 @@ function sanitizeStructuredErrorBody(value) {
  * @param {number} statusCode - HTTP status code
  * @param {string} message - Error message
  * @param {number} [resetsAtMs] - Optional precise cooldown expiry (ms epoch) for provider-specific quota errors
+ * @param {object} [errorBody] - Structured upstream error response
+ * @param {object} [rateLimitEvidence] - Normalized quota evidence
+ * @param {object} [credentialSource] - Selected credentials whose values must never be echoed
  * @returns {{ success: false, status: number, error: string, response: Response, resetsAtMs?: number }}
  */
-export function createErrorResult(statusCode, message, resetsAtMs, errorBody, rateLimitEvidence = null) {
+export function createErrorResult(statusCode, message, resetsAtMs, errorBody, rateLimitEvidence = null, credentialSource = null) {
   // Preserve provider error type/code/details while rebuilding every nested
-  // value. Upstream gateways may echo server-owned credentials outside
-  // `error.message`; sensitive keys and embedded secret strings never cross
-  // that boundary, and the caller-owned object remains untouched.
-  const safeBody = errorBody ? sanitizeStructuredErrorBody(errorBody) : null;
+  // value. Both sensitive field names and the selected connection's opaque
+  // credential values are redacted without mutating the caller-owned object.
+  const credentialSecrets = collectCredentialSecrets(credentialSource);
+  const safeBody = errorBody ? sanitizeStructuredErrorBody(errorBody, credentialSecrets) : null;
   return {
     success: false,
     status: statusCode,

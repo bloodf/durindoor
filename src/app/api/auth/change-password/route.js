@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import bcrypt from "bcryptjs";
 import { getClientIp } from "@/lib/auth/loginLimiter";
 import {
+  DEFAULT_PASSWORD,
   invalidateDefaultPasswordCache,
   setDashboardAuthCookie,
 } from "@/lib/auth/dashboardSession";
@@ -20,6 +21,10 @@ export async function POST(request) {
     if (typeof newPassword !== "string" || newPassword.length < 6) {
       return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400 });
     }
+    if (newPassword === DEFAULT_PASSWORD) {
+      return NextResponse.json({ error: "Password must not use the built-in default" }, { status: 400 });
+    }
+
 
     const ip = getClientIp(request);
     if (!consumePasswordChangeProof(proof, ip)) {

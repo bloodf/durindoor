@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   genSalt: vi.fn(),
   hash: vi.fn(),
   updateSettings: vi.fn(),
+  DEFAULT_PASSWORD: "123456",
   invalidateDefaultPasswordCache: vi.fn(),
   cookies: vi.fn(),
   setDashboardAuthCookie: vi.fn(),
@@ -18,6 +19,7 @@ vi.mock("@/lib/auth/loginLimiter", () => ({ getClientIp: mocks.getClientIp }));
 vi.mock("bcryptjs", () => ({ default: { genSalt: mocks.genSalt, hash: mocks.hash } }));
 vi.mock("@/lib/localDb", () => ({ updateSettings: mocks.updateSettings }));
 vi.mock("@/lib/auth/dashboardSession", () => ({
+  DEFAULT_PASSWORD: mocks.DEFAULT_PASSWORD,
   invalidateDefaultPasswordCache: mocks.invalidateDefaultPasswordCache,
   setDashboardAuthCookie: mocks.setDashboardAuthCookie,
 }));
@@ -57,6 +59,14 @@ describe("POST /api/auth/change-password", () => {
   it("rejects an empty replacement password", async () => {
     const response = await POST(request({ proof: "proof", newPassword: "" }));
     expect(response.status).toBe(400);
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
+  });
+
+  it("rejects the built-in default before consuming a proof", async () => {
+    const response = await POST(request({ proof: "proof", newPassword: mocks.DEFAULT_PASSWORD }));
+
+    expect(response.status).toBe(400);
+    expect(mocks.consumePasswordChangeProof).not.toHaveBeenCalled();
     expect(mocks.updateSettings).not.toHaveBeenCalled();
   });
 

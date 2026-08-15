@@ -100,8 +100,12 @@ const readConfigYaml = async () => {
 };
 
 const readEnvFile = async () => {
+  const envPath = getHermesEnvPath();
   try {
-    return await fs.readFile(getHermesEnvPath(), "utf-8");
+    if ((await fs.lstat(envPath)).isSymbolicLink()) {
+      throw new Error("Hermes environment file must not be a symlink");
+    }
+    return await fs.readFile(envPath, "utf-8");
   } catch (error) {
     if (error.code === "ENOENT") return "";
     throw error;

@@ -134,9 +134,14 @@ describe("combo capability detection for attachment payloads", () => {
   });
 
   it("bounds the inline data URI MIME match against a hostile long tail", () => {
-    const hostileTail = "A".repeat(200000);
+    // Repeated "data:" prefixes with no comma/semicolon anywhere: each regex
+    // attempt must scan the unterminated MIME segment before failing. An
+    // unbounded `[^;,:]+` capture rescans the full remaining tail per
+    // attempt (O(n^2)); the bounded `{1,255}` capture gives up after 255
+    // chars per attempt, staying near-linear.
+    const hostileTail = "data:".repeat(20000);
     const body = {
-      messages: [{ role: "user", content: `data:image/png;base64,${hostileTail}` }],
+      messages: [{ role: "user", content: `data:image/png;base64,ok\n${hostileTail}` }],
     };
 
     const start = Date.now();

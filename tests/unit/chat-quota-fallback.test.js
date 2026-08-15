@@ -72,14 +72,15 @@ vi.mock("../../src/sse/services/apiKeyPolicy.js", () => ({
   enforceApiKeyModelPolicy: vi.fn(async () => null),
 }));
 
+
 const { handleChat, rankComboModelsByQuota } = await import("../../src/sse/handlers/chat.js");
 
-function request(signal = null) {
+function request(model = "codex/gpt-5.4", signal = null) {
   return new Request("http://localhost/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "codex/gpt-5.4",
+      model,
       stream: true,
       messages: [{ role: "user", content: "hello" }],
     }),
@@ -87,10 +88,10 @@ function request(signal = null) {
   });
 }
 
-function selected(id) {
+function selected(id, provider = "codex") {
   const connection = {
     id,
-    provider: "codex",
+    provider,
     authType: "oauth",
     accessToken: `access-${id}`,
     refreshToken: `refresh-${id}`,
@@ -447,6 +448,34 @@ describe("chat quota fallback orchestration", () => {
     );
   });
 
+  it("passes Kimi temporary resets through final fallback with its exact model scope", async () => {
+    const connection = selected("kimi-connection", "kimi-coding");
+    const resetAtMs = Date.now() + 60_000;
+    mocks.getModelInfo.mockResolvedValue({ provider: "kimi-coding", model: "kimi-k2.6" });
+    mocks.getProviderCredentials.mockResolvedValue(connection);
+    mocks.handleChatCore.mockResolvedValue({
+      success: false,
+      status: 403,
+      error: "[403]: Request limit reached for current billing cycle",
+      resetsAtMs: resetAtMs,
+      response: new Response("kimi billing-cycle limit", { status: 403 }),
+    });
+    mocks.markAccountUnavailable.mockResolvedValue({ shouldFallback: false, cooldownMs: 0 });
+
+    const response = await handleChat(request("kimi-coding/kimi-k2.6"));
+
+    expect(response.status).toBe(403);
+    expect(mocks.markAccountUnavailable).toHaveBeenCalledWith(
+      "kimi-connection",
+      403,
+      "[403]: Request limit reached for current billing cycle",
+      "kimi-coding",
+      "kimi-k2.6",
+      resetAtMs,
+      { attemptStartedAt: null, rateLimitEvidence: null, signal: expect.any(AbortSignal) },
+    );
+  });
+
   it("replays an Envoy request-buffer 507 once on the same account", async () => {
     const first = selected("conn-one");
     const second = selected("conn-two");
@@ -566,7 +595,7 @@ describe("chat quota fallback orchestration", () => {
   it("returns before auth, quota, or database work when already aborted", async () => {
     const controller = new AbortController();
     controller.abort();
-    const response = await handleChat(request(controller.signal));
+    const response = await handleChat(request(undefined, controller.signal));
     expect(response.status).toBe(499);
     expect(mocks.getSettings).not.toHaveBeenCalled();
     expect(mocks.getProviderCredentials).not.toHaveBeenCalled();
@@ -579,7 +608,7 @@ describe("chat quota fallback orchestration", () => {
     mocks.getProviderCredentials.mockImplementation((_provider, _excluded, _model, { signal }) => new Promise((_resolve, reject) => {
       signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
     }));
-    const pending = handleChat(request(controller.signal));
+    const pending = handleChat(request(undefined, controller.signal));
     await vi.waitFor(() => expect(mocks.getProviderCredentials).toHaveBeenCalledOnce());
     controller.abort();
     const response = await pending;

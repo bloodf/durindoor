@@ -80,6 +80,7 @@ describe("POST /api/auth/login default-password safety", () => {
     expect(response.status).toBe(403);
     expect(response.body).toEqual({ success: true, mustChangePassword: true, requiresPasswordChange: true, proof: "password-change-proof" });
     expect(mocks.issuePasswordChangeProof).toHaveBeenCalledWith(undefined);
+    expect(mocks.recordSuccess).toHaveBeenCalledWith(undefined);
     expect(mocks.setDashboardAuthCookie).not.toHaveBeenCalled();
   });
 

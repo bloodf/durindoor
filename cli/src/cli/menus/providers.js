@@ -107,6 +107,7 @@ const PROVIDER_MODELS = {
     { id: "auto" },
   ],
   glm: [
+    { id: "glm-5.3" },
     { id: "glm-4.7" },
     { id: "glm-4.6v" },
   ],

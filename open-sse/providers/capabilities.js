@@ -145,6 +145,7 @@ export const MODEL_CAPABILITIES = {
   /**
    * Z.ai's primary model pages document these limits. The 2026-08-13 Models
    * APIs confirmed all text IDs below except the separately-routed vision ID.
+   * https://docs.z.ai/guides/llm/glm-5.3
    * https://docs.z.ai/guides/llm/glm-5.2
    * https://docs.z.ai/guides/llm/glm-5.1
    * https://docs.z.ai/guides/llm/glm-5
@@ -153,6 +154,7 @@ export const MODEL_CAPABILITIES = {
    * https://docs.z.ai/guides/llm/glm-4.6
    * https://docs.z.ai/guides/llm/glm-4.5
    */
+  "glm-5.3":           { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
   "glm-5.2":           { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
   "glm-5.1":           { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 },
   "glm-5":             { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 },

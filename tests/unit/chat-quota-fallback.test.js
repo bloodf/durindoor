@@ -346,6 +346,43 @@ describe("chat quota fallback orchestration", () => {
     mocks.clearAccountError.mockResolvedValue();
   });
 
+  it.each([
+    ["quota exhaustion", 429, { error: { message: "额度不足", type: "quota_exhausted" } }, "connection"],
+    ["model denial", 403, { error: { message: "无权访问模型 claude-opus", type: "auth_error" } }, "model"],
+    ["prompt echo", 400, { error: { message: "Forbidden", type: "invalid_request_error" }, prompt: "额度不足" }, null],
+  ])("forwards structured AgentRouter %s context to fallback", async (_name, status, errorBody, expectedScope) => {
+    const account = selected("agentrouter-conn");
+    mocks.getModelInfo.mockResolvedValue({ provider: "agentrouter", model: "claude-opus" });
+    mocks.getProviderCredentials.mockResolvedValue(account);
+    mocks.markAccountUnavailable.mockResolvedValue({ shouldFallback: false, cooldownMs: 0 });
+    mocks.handleChatCore.mockImplementationOnce(async (options) => ({
+      success: false,
+      status,
+      error: "Forbidden",
+      errorBody,
+      headers: new Headers({ "retry-after": "60" }),
+      response: new Response("error", { status }),
+      attemptStartedAt: options.onProviderAttempt(),
+    }));
+
+    await handleChat(request());
+
+    expect(mocks.markAccountUnavailable).toHaveBeenCalledWith(
+      "agentrouter-conn",
+      status,
+      "Forbidden",
+      "agentrouter",
+      "claude-opus",
+      undefined,
+      expect.objectContaining({
+        errorBody,
+        headers: expect.any(Headers),
+        attemptStartedAt: expect.any(Number),
+      }),
+    );
+    expect(checkFallbackError(status, "Forbidden", 0, "agentrouter", null, errorBody).scope).toBe(expectedScope);
+  });
+
   it("persists the first 429 context, attempts each account once, and returns one winning stream", async () => {
     const first = selected("conn-one");
     const second = selected("conn-two");

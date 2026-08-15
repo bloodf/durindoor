@@ -61,4 +61,30 @@ describe("Gemini thoughtSignature direct Claude route", () => {
     await storeGeminiThoughtSignature("connection-a:expired", signature, Date.now() - 1);
     expect(await getGeminiThoughtSignature("connection-a:expired")).toBeNull();
   });
+
+  it("drains a FIFO queue of standalone signatures to the next function calls and pairs inline signatures only to their own call", async () => {
+    const state = { signatureNamespace: "connection-queue" };
+    translateResponse(FORMATS.CLAUDE, FORMATS.GEMINI, { candidates: [{ content: { parts: [{ thoughtSignature: `${signature}A` }] } }] }, state);
+    translateResponse(FORMATS.CLAUDE, FORMATS.GEMINI, { candidates: [{ content: { parts: [{ thoughtSignature: `${signature}B` }] } }] }, state);
+    translateResponse(FORMATS.CLAUDE, FORMATS.GEMINI, { candidates: [{ content: { parts: [{ functionCall: { id: "toolu_inline", name: "read", args: { q: 1 } }, thoughtSignature: `${signature}I` }] } }] }, state);
+    translateResponse(FORMATS.CLAUDE, FORMATS.GEMINI, { candidates: [{ content: { parts: [{ functionCall: { id: "toolu_a", name: "read", args: { q: 2 } } }] } }] }, state);
+    translateResponse(FORMATS.CLAUDE, FORMATS.GEMINI, { candidates: [{ content: { parts: [{ functionCall: { id: "toolu_b", name: "read", args: { q: 3 } } }] } }] }, state);
+    translateResponse(FORMATS.CLAUDE, FORMATS.GEMINI, { candidates: [{ content: { parts: [{ functionCall: { id: "toolu_c", name: "read", args: { q: 4 } } }] } }] }, state);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(await getGeminiThoughtSignature("connection-queue:toolu_inline")).toBe(`${signature}I`);
+    expect(await getGeminiThoughtSignature("connection-queue:toolu_a")).toBe(`${signature}A`);
+    expect(await getGeminiThoughtSignature("connection-queue:toolu_b")).toBe(`${signature}B`);
+    expect(await getGeminiThoughtSignature("connection-queue:toolu_c")).toBeNull();
+  });
+
+  it("keeps parallel inline-signed function calls isolated to their own signatures and never cross-attach", async () => {
+    const state = { signatureNamespace: "connection-parallel" };
+    translateResponse(FORMATS.CLAUDE, FORMATS.GEMINI, geminiToolCall("toolu_p1", "read", `${signature}1`), state);
+    translateResponse(FORMATS.CLAUDE, FORMATS.GEMINI, geminiToolCall("toolu_p2", "read", `${signature}2`), state);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(await getGeminiThoughtSignature("connection-parallel:toolu_p1")).toBe(`${signature}1`);
+    expect(await getGeminiThoughtSignature("connection-parallel:toolu_p2")).toBe(`${signature}2`);
+  });
 });

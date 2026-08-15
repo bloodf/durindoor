@@ -216,6 +216,7 @@ describe("createErrorResult structured errorBody (bypasses buildErrorBody)", () 
 
     // Caller object untouched.
     expect(errorBody.error.message).toContain("/home/omni/secret");
+    expect(result.errorBody.error.message).not.toContain("/home/omni/secret");
     // Emitted response sanitized, shape + provider fields preserved.
     expect(result.response.status).toBe(502);
     const body = await result.response.json();

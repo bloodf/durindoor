@@ -472,7 +472,12 @@ describe("chat quota fallback orchestration", () => {
       "kimi-coding",
       "kimi-k2.6",
       resetAtMs,
-      { attemptStartedAt: null, rateLimitEvidence: null, signal: expect.any(AbortSignal) },
+      expect.objectContaining({
+        attemptStartedAt: null,
+        rateLimitEvidence: null,
+        headers: null,
+        errorBody: null,
+      }),
     );
   });
 
@@ -499,7 +504,12 @@ describe("chat quota fallback orchestration", () => {
       "kimi-coding",
       "kimi-k2.6",
       undefined,
-      { attemptStartedAt: null, rateLimitEvidence: null, signal: expect.any(AbortSignal) },
+      expect.objectContaining({
+        attemptStartedAt: null,
+        rateLimitEvidence: null,
+        headers: null,
+        errorBody: null,
+      }),
     );
   });
 

@@ -15,15 +15,19 @@ describe("sanitizeProviderConnectionForClient", () => {
   });
 
   it.each([
-    ["openai", { openaiStoreEnabled: true }],
-    ["openai-compatible-responses-test", { openaiStoreEnabled: false }],
-    ["codex", {}],
-    ["openai-compatible-chat-test", {}],
-  ])("projects OpenAI store setting only for eligible %s connections", (provider, providerSpecificData) => {
+    ["openai", true, { openaiStoreEnabled: true }],
+    ["openai", false, { openaiStoreEnabled: false }],
+    ["openai-compatible-responses-test", true, { openaiStoreEnabled: true }],
+    ["openai-compatible-responses-test", false, { openaiStoreEnabled: false }],
+    ["codex", true, {}],
+    ["codex", false, {}],
+    ["openai-compatible-chat-test", true, {}],
+    ["openai-compatible-chat-test", false, {}],
+  ])("projects OpenAI store setting only for eligible %s connections", (provider, openaiStoreEnabled, providerSpecificData) => {
     const out = sanitizeProviderConnectionForClient({
       id: "c1",
       provider,
-      providerSpecificData: { openaiStoreEnabled: true },
+      providerSpecificData: { openaiStoreEnabled },
     });
 
     expect(out.providerSpecificData).toEqual(providerSpecificData);

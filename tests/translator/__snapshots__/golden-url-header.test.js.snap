@@ -213,6 +213,25 @@ exports[`GOLDEN buildHeaders (default executor providers) > alicode-intl → hea
 }
 `;
 
+exports[`GOLDEN buildHeaders (default executor providers) > alitp-intl → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
 exports[`GOLDEN buildHeaders (default executor providers) > anthropic → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -1271,6 +1290,22 @@ exports[`GOLDEN buildHeaders (default executor providers) > doubao → headers (
   "oauth": {
     "Accept": "text/event-stream",
     "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
+exports[`GOLDEN buildHeaders (default executor providers) > duckduckgo-web → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
     "Content-Type": "application/json",
   },
 }
@@ -3608,6 +3643,13 @@ exports[`GOLDEN buildUrl (default executor providers) > alicode-intl → url (st
 }
 `;
 
+exports[`GOLDEN buildUrl (default executor providers) > alitp-intl → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+  "stream": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+}
+`;
+
 exports[`GOLDEN buildUrl (default executor providers) > anthropic → url (stream + non-stream) 1`] = `
 {
   "nonStream": "https://api.anthropic.com/v1/messages",
@@ -3948,6 +3990,13 @@ exports[`GOLDEN buildUrl (default executor providers) > doubao → url (stream +
 {
   "nonStream": "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
   "stream": "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > duckduckgo-web → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://duckduckgo.com/duckchat/v1/chat",
+  "stream": "https://duckduckgo.com/duckchat/v1/chat",
 }
 `;
 

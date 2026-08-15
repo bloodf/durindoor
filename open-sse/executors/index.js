@@ -9,6 +9,7 @@ import { GithubExecutor } from "./github.js";
 import { IFlowExecutor } from "./iflow.js";
 import { InnerAiExecutor } from "./inner-ai.js";
 import { QoderExecutor } from "./qoder.js";
+import { DuckDuckGoWebExecutor } from "./duckduckgo-web.js";
 import { KiroExecutor } from "./kiro.js";
 import { KimchiExecutor } from "./kimchi.js";
 import { KimiWebExecutor } from "./kimi-web.js";
@@ -61,6 +62,8 @@ const executors = {
   "inner-ai": new InnerAiExecutor(),
   "in-ai": new InnerAiExecutor(), // Alias for inner-ai
   qoder: new QoderExecutor(),
+  "duckduckgo-web": new DuckDuckGoWebExecutor(),
+  ddgw: new DuckDuckGoWebExecutor(),
   kiro: new KiroExecutor(),
   kimchi: new KimchiExecutor(),
   "kimi-web": new KimiWebExecutor(),

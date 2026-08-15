@@ -15,12 +15,12 @@ import xai from "./xai.js";
 export default {
   id: "grok-cli",
   priority: 42,
-  // `gc` is the established primary alias (model catalog is keyed by primary
-  // alias, see open-sse/providers/index.js). Keep it; expose the upstream
-  // aliases as secondary so lookups like `gcli`/`gb` still resolve.
-  alias: "gc",
-  aliases: ["gcli", "gb", "grok-build"],
-  uiAlias: "gc",
+  // `gb` is the established primary alias (model catalog is keyed by primary
+  // alias, see open-sse/providers/index.js). Keep the upstream aliases as
+  // secondary lookups while leaving `gc` reserved for Gemini CLI.
+  alias: "gb",
+  aliases: ["gcli", "grok-build"],
+  uiAlias: "gb",
   display: {
     name: "Grok CLI (Grok Build)",
     icon: "terminal",

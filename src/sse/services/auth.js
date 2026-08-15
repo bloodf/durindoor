@@ -458,7 +458,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       }
     }
 
-    if (connections.length === 0 && providerHasOptionalAuth(providerId) && publicFallbackAllowed) {
+    if (connections.length === 0 && providerHasOptionalAuth(providerId) && !excludeSet.has("noauth")) {
       return buildOptionalNoAuthCredential();
     }
     if (connections.length === 0) {

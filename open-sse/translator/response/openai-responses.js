@@ -324,10 +324,10 @@ function emitToolCall(state, emit, tc) {
 
   if (funcName) state.funcNames[tcIdx] = funcName;
 
-  // Custom-tool framing requires request metadata; a function named apply_patch
-  // remains a normal function unless the client declared it as custom.
-  const declaredType = state.toolTypes?.[state.funcNames[tcIdx] || funcName || ""] || "";
-  const isCustomTool = declaredType === "custom";
+  // apply_patch defaults to custom framing (legacy Codex compatibility), but
+  // an explicit function declaration in the request always wins over the name
+  // fallback. See OmniRoute #10041.
+  const isCustomTool = isCustomToolByState(state, tcIdx, funcName || "");
 
   // Save id on first sight; if name hasn't arrived yet, emit nothing yet.
   if (newCallId && !state.funcCallIds[tcIdx]) {
@@ -397,10 +397,10 @@ function emitToolCall(state, emit, tc) {
     }
   }
 }
-
 function isCustomToolByState(state, tcIdx, funcName) {
-  const declaredType = state.toolTypes?.[state.funcNames[tcIdx] || funcName || ""] || "";
-  return declaredType === "custom";
+  const name = state.funcNames[tcIdx] || funcName || "";
+  const declaredType = state.toolTypes?.[name] || "";
+  return declaredType === "custom" || (name === "apply_patch" && !Object.hasOwn(state.toolTypes || {}, name));
 }
 
 function closeToolCall(state, emit, idx) {

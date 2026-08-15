@@ -45,6 +45,18 @@ describe("isUsingDefaultPassword", () => {
     expect(await isUsingDefaultPassword({ password: customHash })).toBe(false);
   });
 
+  it("recomputes when the stored password hash changes without cache invalidation", async () => {
+    expect(await isUsingDefaultPassword({ password: storedHash })).toBe(true);
+    expect(await isUsingDefaultPassword({ password: customHash })).toBe(false);
+  });
+
+  it("recomputes when INITIAL_PASSWORD changes without cache invalidation", async () => {
+    vi.stubEnv("INITIAL_PASSWORD", DEFAULT_PASSWORD);
+    expect(await isUsingDefaultPassword({})).toBe(true);
+    vi.stubEnv("INITIAL_PASSWORD", "operator-secret");
+    expect(await isUsingDefaultPassword({})).toBe(false);
+  });
+
   it("only runs bcrypt.compare once when many concurrent callers race a cold cache", async () => {
     const spy = vi.spyOn(bcrypt, "compare");
     const results = await Promise.all([

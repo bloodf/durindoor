@@ -287,3 +287,5 @@ The reviewed slices were merged into one integration tree and exercised together
 The DuckDuckGo web-session port is now a real no-auth executor for both `duckduckgo-web` and `ddgw`; it is no longer listed in the fail-closed pending-provider map. Generated URL/header snapshots cover its endpoint and no-auth headers. The final focused campaign matrix covered 89 changed test files and passed 1,133 tests.
 
 The curated full-repository gate then exposed stale combined-tree test doubles and two translator routing collisions. The fixes keep namespace mappings request-local, route Antigravity-to-Claude streams through the OpenAI finalizer, remove obsolete Claude-to-Gemini helper calls, update mocks for canonical combo lookup, and teach Vitest to transform imported `.jsx` modules. The final curated run collected 2,208 suites and 7,320 tests: 7,260 passed, 60 were skipped or pending, and no tests failed or required a baseline addition.
+
+The production build also caught a missing `updateCustomModel` re-export from `src/models/index.js`. The export is restored and a module-surface regression test now protects the complete custom-model CRUD contract.

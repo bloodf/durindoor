@@ -40,6 +40,7 @@ const mocks = vi.hoisted(() => ({
   access: vi.fn(),
   exec: vi.fn(),
   platform: vi.fn(),
+  chmod: vi.fn(),
 }));
 
 vi.mock("fs/promises", () => ({
@@ -48,11 +49,13 @@ vi.mock("fs/promises", () => ({
     readFile: mocks.readFile,
     writeFile: mocks.writeFile,
     mkdir: mocks.mkdir,
+    chmod: mocks.chmod,
   },
   access: mocks.access,
   readFile: mocks.readFile,
   writeFile: mocks.writeFile,
   mkdir: mocks.mkdir,
+  chmod: mocks.chmod,
 }));
 
 vi.mock("os", () => ({
@@ -97,6 +100,7 @@ describe("hermes-settings api_key (port of decolua/9router#3235)", () => {
     mocks.readFile.mockRejectedValue({ code: "ENOENT" });
     mocks.writeFile.mockResolvedValue();
     mocks.mkdir.mockResolvedValue();
+    mocks.chmod.mockResolvedValue();
   });
 
   async function postBody(body) {
@@ -140,7 +144,10 @@ describe("hermes-settings api_key (port of decolua/9router#3235)", () => {
     expect(mocks.writeFile).toHaveBeenLastCalledWith(
       "/home/test/.hermes/.env",
       `OPENAI_API_KEY=${apiKey}\n`,
+      { mode: 0o600 },
     );
+    expect(mocks.chmod).toHaveBeenCalledWith("/home/test/.hermes/.env", 0o600);
+    expect(JSON.stringify(await response.clone().json())).not.toContain(apiKey);
   });
 
   it("POST leaves the existing Hermes key untouched when no key is supplied", async () => {
@@ -202,6 +209,18 @@ describe("hermes-settings api_key (port of decolua/9router#3235)", () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: "apiKey must be a non-empty string when provided" });
     expect(mocks.writeFile).not.toHaveBeenCalled();
+  });
+
+  it("does not expose a rejected API key in its response", async () => {
+    const apiKey = "sk_rejected_sentinel\nOTHER_SECRET=leaked";
+    const response = await postBody({
+      baseUrl: "http://localhost:20128",
+      apiKey,
+      model: "cc/claude-sonnet-4-6",
+    });
+
+    expect(response.status).toBe(400);
+    expect(JSON.stringify(await response.json())).not.toContain(apiKey);
   });
 
 

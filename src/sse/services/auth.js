@@ -458,7 +458,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       }
     }
 
-    if (connections.length === 0 && providerHasOptionalAuth(providerId)) {
+    if (connections.length === 0 && providerHasOptionalAuth(providerId) && publicFallbackAllowed) {
       return buildOptionalNoAuthCredential();
     }
     if (connections.length === 0) {
@@ -491,7 +491,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         log.warn("AUTH", `${provider} | saved key unavailable, falling back to public no-auth`);
         return buildPublicNoAuthCredential(providerId);
       }
-      if (providerHasOptionalAuth(providerId)) {
+      if (providerHasOptionalAuth(providerId) && publicFallbackAllowed) {
         log.warn("AUTH", `${provider} | saved key unavailable, falling back to optional no-auth`);
         return buildOptionalNoAuthCredential();
       }

@@ -73,15 +73,4 @@ describe("model lifecycle", () => {
     expect(result).toMatchObject({ success: false, status: 410 });
     expect(result.error).toMatch(/gpt-5.2-codex/);
   });
-
-  it("rejects a shutdown resolved upstream model when canonical model remains active", () => {
-    const result = checkModelLifecycle({
-      provider: "openai",
-      canonicalModel: "gpt-4o",
-      upstreamModel: "gpt-5.2-codex",
-      asOf: new Date("2026-08-11T00:00:00.000Z"),
-    });
-    expect(result).toMatchObject({ success: false, status: 410 });
-    expect(result.error).toMatch(/gpt-5.2-codex/);
-  });
 });

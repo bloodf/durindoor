@@ -271,6 +271,26 @@ describe("SSE completion accounting", () => {
     });
   });
 
+  it("finalizes translated Gemini summaries after trailing usage and tool parts", async () => {
+    const onComplete = vi.fn();
+    const transform = createSSETransformStreamWithLogger(
+      FORMATS.GEMINI, FORMATS.OPENAI, "gemini", null, null, "gemini-test", "connection-1", {}, onComplete, null,
+    );
+
+    await pipeText(transform, [
+      `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: "answer" }] }, finishReason: "STOP" }] })}\n\n`,
+      `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ functionCall: { name: "weather", args: { city: "Paris" } } }] } }], usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 2 } })}\n\n`,
+    ]);
+
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(onComplete.mock.calls[0][3]).toMatchObject({
+      providerResponse: {
+        usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 2 },
+        candidates: [{ content: { parts: [{ text: "answer" }, { functionCall: { name: "weather", args: { city: "Paris" } } }] } }],
+      },
+    });
+  });
+
   it("unwraps Antigravity Gemini responses for provider diagnostics", async () => {
     const onComplete = vi.fn();
     const transform = createPassthroughStreamWithLogger(

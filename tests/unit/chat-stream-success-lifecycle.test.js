@@ -6,6 +6,7 @@ import {
   handleStreamingResponse,
 } from "../../open-sse/handlers/chatCore/streamingHandler.js";
 import { createStreamController } from "../../open-sse/utils/streamHandler.js";
+import { saveRequestDetail } from "@/lib/usageDb.js";
 
 vi.mock("@/lib/usageDb.js", () => ({
   appendRequestLog: vi.fn(() => Promise.resolve()),
@@ -105,5 +106,23 @@ describe("stream success lifecycle", () => {
     await result.response.text();
     await Promise.resolve();
     expect(success).not.toHaveBeenCalled();
+  });
+
+  it("persists capped provider summary after an unterminated stream event", async () => {
+    const hugeUsage = {};
+    for (let i = 0; i < 200; i++) hugeUsage[`k_${i}`] = i;
+    const event = `data: ${JSON.stringify({ choices: [{ delta: { content: "tail", tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name: "weather", arguments: "{}" } }] }, finish_reason: "tool_calls" }], usage: hugeUsage })}`;
+    const result = await handleStreamingResponse({
+      ...context(vi.fn()),
+      providerResponse: new Response(event, { status: 200, headers: { "content-type": "text/event-stream" } }),
+    });
+    await result.response.text();
+    await Promise.resolve();
+
+    const detail = saveRequestDetail.mock.calls.at(-1)[0];
+    expect(detail.response.content).toBe("tail");
+    expect(detail.tokens).toMatchObject({ k_0: 0, k_63: 63 });
+    expect(Object.keys(detail.providerResponse.usage)).toHaveLength(64);
+    expect(detail.providerResponse.choices[0]).toMatchObject({ finish_reason: "tool_calls" });
   });
 });

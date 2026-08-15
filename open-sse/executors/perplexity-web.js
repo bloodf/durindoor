@@ -236,31 +236,31 @@ function isWorkflowAnswer(item) {
 
 function seedWorkflowAnswer(answers, key, item) {
   const textPayload = item?.payload?.text_payload;
-  if (!textPayload) {
-    answers.set(key, []);
-    return;
-  }
-  if (Array.isArray(textPayload.chunks) && textPayload.chunks.length) {
+  if (Array.isArray(textPayload?.chunks)) {
     answers.set(key, textPayload.chunks.map((chunk) => String(chunk)));
     return;
   }
-  if (typeof textPayload.text === "string") {
+  if (typeof textPayload?.text === "string") {
     answers.set(key, [textPayload.text]);
     return;
   }
   answers.set(key, []);
 }
 
+function denseChunks(chunks) {
+  let end = 0;
+  while (end < chunks.length && typeof chunks[end] === "string") end++;
+  return chunks.slice(0, end).join("");
+}
+
 function selectWorkflowAnswer(answers, preferredKey) {
   if (preferredKey && answers.has(preferredKey)) {
-    return { key: preferredKey, answer: answers.get(preferredKey).join("") };
+    return { key: preferredKey, answer: denseChunks(answers.get(preferredKey)) };
   }
   let best = { key: null, answer: "" };
   for (const [key, chunks] of answers) {
-    const joined = (chunks ?? []).join("");
-    if (joined.length > best.answer.length) {
-      best = { key, answer: joined };
-    }
+    const answer = denseChunks(chunks ?? []);
+    if (answer.length > best.answer.length) best = { key, answer };
   }
   return best;
 }
@@ -311,7 +311,7 @@ function applyWorkflowDiff(answers, patches) {
       }
       const key = workflowAnswerKey(Number(chunk[1]), Number(chunk[2]));
       const track = answers.get(key);
-      if (track) {
+      if (track && chunkIndex <= track.length) {
         track[chunkIndex] = patch.value;
         firstKey ??= key;
       }
@@ -385,12 +385,12 @@ async function* extractContent(eventStream, signal) {
         const selection = selectWorkflowAnswer(workflowAnswers, selectedWorkflowAnswerKey);
         selectedWorkflowAnswerKey = selection.key;
         const answer = selection.answer;
-        if (answer.length > seenLen) {
-          const delta = answer.slice(seenLen);
-          fullAnswer = answer;
-          seenLen = answer.length;
-          yield { delta, answer: fullAnswer, backendUuid: backendUuid ?? undefined };
+        if (answer.startsWith(fullAnswer) && answer.length > fullAnswer.length) {
+          const delta = answer.slice(fullAnswer.length);
+          yield { delta, answer, backendUuid: backendUuid ?? undefined };
         }
+        fullAnswer = answer;
+        seenLen = answer.length;
         continue;
       }
 
@@ -398,14 +398,13 @@ async function* extractContent(eventStream, signal) {
         const firstKey = applyWorkflowDiff(workflowAnswers, block.diff_block.patches);
         selectedWorkflowAnswerKey ??= firstKey;
         const selection = selectWorkflowAnswer(workflowAnswers, selectedWorkflowAnswerKey);
-        selectedWorkflowAnswerKey = selection.key;
         const answer = selection.answer;
-        if (answer.length > seenLen) {
-          const delta = answer.slice(seenLen);
-          fullAnswer = answer;
-          seenLen = answer.length;
-          yield { delta, answer: fullAnswer, backendUuid: backendUuid ?? undefined };
+        if (answer.startsWith(fullAnswer) && answer.length > fullAnswer.length) {
+          const delta = answer.slice(fullAnswer.length);
+          yield { delta, answer, backendUuid: backendUuid ?? undefined };
         }
+        fullAnswer = answer;
+        seenLen = answer.length;
         continue;
       }
 
@@ -416,27 +415,26 @@ async function* extractContent(eventStream, signal) {
       if (chunks.length === 0) continue;
 
       if (mb.progress === "DONE") {
-        fullAnswer = chunks.join("");
+        fullAnswer = denseChunks(chunks);
+        seenLen = fullAnswer.length;
       } else {
-        const chunkText = chunks.join("");
-        const cumulative = fullAnswer + chunkText;
-        if (cumulative.length > seenLen) {
-          const delta = cumulative.slice(seenLen);
-          fullAnswer = cumulative;
-          seenLen = cumulative.length;
-          yield { delta, answer: fullAnswer, backendUuid: backendUuid ?? undefined };
+        const cumulative = fullAnswer + denseChunks(chunks);
+        if (cumulative.startsWith(fullAnswer) && cumulative.length > fullAnswer.length) {
+          const delta = cumulative.slice(fullAnswer.length);
+          yield { delta, answer: cumulative, backendUuid: backendUuid ?? undefined };
         }
+        fullAnswer = cumulative;
+        seenLen = cumulative.length;
       }
     }
-
     if (blocks.length === 0 && event.text) {
       const t = event.text.trim();
-      if (t.length > seenLen) {
-        const delta = t.slice(seenLen);
-        fullAnswer = t;
-        seenLen = t.length;
-        yield { delta, answer: fullAnswer, backendUuid: backendUuid ?? undefined };
+      if (t.startsWith(fullAnswer) && t.length > fullAnswer.length) {
+        const delta = t.slice(fullAnswer.length);
+        yield { delta, answer: t, backendUuid: backendUuid ?? undefined };
       }
+      fullAnswer = t;
+      seenLen = t.length;
     }
 
     if (event.final || event.status === "COMPLETED") break;

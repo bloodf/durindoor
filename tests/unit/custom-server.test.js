@@ -117,6 +117,26 @@ describe("Next.js Server Process Title", () => {
     expect(request.headers["x-forwarded-for"]).toBeUndefined();
   });
 
+  it("removes forwarded origin headers before dispatching every request", async () => {
+    const fakeHttp = { createServer: vi.fn((handler) => ({ handler })) };
+    const handler = vi.fn();
+    const { installRequestWrapper } = require("../../custom-server.js");
+    installRequestWrapper({ httpModule: fakeHttp, secret: "a".repeat(64), peerToken: "trusted-peer-token", verifyPeerOwner: vi.fn(async () => false) });
+    const server = fakeHttp.createServer(handler);
+    const request = {
+      method: "GET",
+      url: "/api/auth/oidc/start",
+      headers: { "x-forwarded-host": "evil.test", "x-forwarded-proto": "https" },
+      socket: { remoteAddress: "127.0.0.1" },
+    };
+
+    server.handler(request, { setHeader: vi.fn() });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(request.headers["x-forwarded-host"]).toBeUndefined();
+    expect(request.headers["x-forwarded-proto"]).toBeUndefined();
+  });
+
   it("uses the nearest forwarded hop instead of spoofable forwarded values", async () => {
     const fakeHttp = { createServer: vi.fn((handler) => ({ handler })) };
     const handler = vi.fn();

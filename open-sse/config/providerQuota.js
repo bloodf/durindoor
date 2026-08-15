@@ -239,8 +239,9 @@ export const PROVIDER_QUOTA_CONFIG = deepFreeze({
 });
 
 export const PROVIDER_QUOTA_UNSUPPORTED = deepFreeze({
+  gemini: "api-key-has-no-account-quota-api",
   qwen: "local-or-message-only",
-  iflow: "local-or-message-only", 
+  iflow: "local-or-message-only",
   xai: "local-history-only",
   "xiaomi-mimo": "no-stable-quota-api",
   "grok-web": "no-stable-quota-api",

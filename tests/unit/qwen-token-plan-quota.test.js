@@ -107,11 +107,11 @@ describe("Qwen / Alibaba personal Token Plan quota (port abd4df63dc25)", () => {
     expect(result).toMatchObject({ outcome: "success", sourceId: "bailian-coding-plan:token-plan-quota:v1" });
     expect(result.rows).toHaveLength(1);
     expect(fetchImpl.mock.calls[0][0]).toContain("bailian-singapore-cs.alibabacloud.com/data/api.json");
-    expect(fetchImpl.mock.calls[0][1].headers).toMatchObject({ Cookie: "login_aliyunid_ticket=browser-session" });
+    expect(fetchImpl.mock.calls[0][1].headers).toMatchObject({ Cookie: "login_aliyunid_ticket=browser-session", "Content-Type": "application/x-www-form-urlencoded" });
     expect(fetchImpl.mock.calls[0][1].headers.Authorization).toBeUndefined();
-    expect(JSON.parse(fetchImpl.mock.calls[0][1].body).params).toMatchObject({
-      Api: "zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/usage",
-    });
+    expect(new URLSearchParams(fetchImpl.mock.calls[0][1].body).get("params")).toContain(
+      "zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/usage",
+    );
   });
 
   it("falls back to retained API-key Coding Plan quota only when personal quota is unavailable", async () => {
@@ -155,5 +155,26 @@ describe("Qwen / Alibaba personal Token Plan quota (port abd4df63dc25)", () => {
 
     expect(result).toMatchObject({ outcome: "success", sourceId: "bailian-coding-plan:console-quota:v1" });
     expect(fetchImpl.mock.calls[1][1].headers.Authorization).toBe("Bearer enterprise-api-key");
+  });
+
+  it("targets the QwenCloud gateway host for the default (domestic) console site", async () => {
+    const fetchImpl = vi.fn(async (url, init) => {
+      const endpoint = /%2F([^%2F]+)$/.exec(new URL(url).searchParams.get("api") || "")?.[1] || "usage";
+      if (endpoint === "usage") return json(gateway({ per5HourPercentage: 0.5, per5HourResetTime: "2026-08-15T01:00:00.000Z" }));
+      if (endpoint === "quota-config") return json(gateway({ pro: { five_hour: 2000, weekly: 8000 } }));
+      return json(gateway({ specCode: "pro" }));
+    });
+    const result = await fetchBailianQuota(
+      quotaContext(
+        {
+          id: "token-plan-domestic",
+          credential: "",
+          providerSpecificData: { qwenCloudCookie: "login_qwencloud_ticket=abc" },
+        },
+        fetchImpl,
+      ),
+    );
+    expect(result).toMatchObject({ outcome: "success", sourceId: "bailian-coding-plan:token-plan-quota:v1" });
+    expect(fetchImpl.mock.calls[0][0]).toMatch(/^https:\/\/cs-data\.qwencloud\.com\//);
   });
 });

@@ -553,15 +553,22 @@ function qwenTokenPlanCookie(data) {
     : null;
 }
 
-function qwenTokenPlanPayload(endpoint, data) {
+function qwenTokenPlanSite(cookie, data) {
+  if (/login_aliyunid_ticket=/.test(cookie) || data.qwenCloudConsoleSite === "INTL" || data.consoleSite === "INTL") {
+    return { consoleSite: "ALIYUN", domain: "modelstudio.console.alibabacloud.com", host: data.qwenTokenPlanInternationalHost };
+  }
+  return { consoleSite: "QWENCLOUD", domain: "home.qwencloud.com", host: data.qwenTokenPlanDomesticHost };
+}
+
+function qwenTokenPlanPayload(endpoint, data, site) {
   const api = `zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/${endpoint}`;
-  return JSON.stringify({
+  return new URLSearchParams({
     product: QWEN_TOKEN_PLAN_PRODUCT,
     action: QWEN_TOKEN_PLAN_ACTION,
     sec_token: data.qwenCloudSecToken || data.alibabaConsoleSecToken || data.secToken || "",
-    region: data.qwenCloudRegion || data.region || "",
-    params: { Api: api, V: "1.0", Data: { commodityCode: QWEN_TOKEN_PLAN_COMMODITY, cornerstoneParam: {} } },
-  });
+    region: data.qwenCloudRegion || data.region || "ap-southeast-1",
+    params: JSON.stringify({ Api: api, V: "1.0", Data: { commodityCode: QWEN_TOKEN_PLAN_COMMODITY, cornerstoneParam: { console: "ONE_CONSOLE", consoleSite: site.consoleSite, domain: site.domain, productCode: "p_efm", protocol: "V2", xsp_lang: "en-US" } } }),
+  }).toString();
 }
 
 function unwrapQwenTokenPlanPayload(payload) {
@@ -612,16 +619,15 @@ async function fetchQwenTokenPlanQuota(context, data) {
   const cookie = qwenTokenPlanCookie(data);
   if (!cookie) return null;
   const request = createProviderRequest(context);
-  const host = data.qwenCloudConsoleSite === "INTL" || data.consoleSite === "INTL"
-    ? config.tokenPlanHosts.international
-    : config.tokenPlanHosts.domestic;
+  const site = qwenTokenPlanSite(cookie, data);
+  const host = site.host || (site.consoleSite === "ALIYUN" ? config.tokenPlanHosts.international : config.tokenPlanHosts.domestic);
   const url = `${host}/data/api.json?product=${QWEN_TOKEN_PLAN_PRODUCT}&action=${QWEN_TOKEN_PLAN_ACTION}&api=zeldaHttp.apikeyMgr.%2Ftokenplan%2Fpersonal%2Fapi%2Fv2%2Fusage`;
-  const headers = { Accept: "application/json", "Content-Type": "application/json", Cookie: cookie };
+  const headers = { Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded", Cookie: cookie };
   const results = [];
   let attemptedAt = null;
   for (const endpoint of ["usage", "quota-config", "subscription"]) {
     const result = await request(endpoint === "usage" ? url : url.replace(/usage$/, endpoint), {
-      method: "POST", headers, body: qwenTokenPlanPayload(endpoint, data),
+      method: "POST", headers, body: qwenTokenPlanPayload(endpoint, data, site),
     });
     attemptedAt = result.attemptedAt;
     if (!result.ok) return { failure: result };

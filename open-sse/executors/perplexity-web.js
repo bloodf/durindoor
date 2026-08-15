@@ -224,6 +224,7 @@ function buildQuery(parsed, followUpUuid, tools) {
 }
 
 const MAX_WORKFLOW_CHUNK_INDEX = 1_000_000;
+const MAX_WORKFLOW_ANSWERS = 128;
 
 function workflowAnswerKey(stepIndex, itemIndex) {
   return `${stepIndex}:${itemIndex}`;
@@ -235,16 +236,18 @@ function isWorkflowAnswer(item) {
 }
 
 function seedWorkflowAnswer(answers, key, item) {
+  if (!answers.has(key) && answers.size >= MAX_WORKFLOW_ANSWERS) return false;
   const textPayload = item?.payload?.text_payload;
   if (Array.isArray(textPayload?.chunks)) {
     answers.set(key, textPayload.chunks.map((chunk) => String(chunk)));
-    return;
+    return true;
   }
   if (typeof textPayload?.text === "string") {
     answers.set(key, [textPayload.text]);
-    return;
+    return true;
   }
   answers.set(key, []);
+  return true;
 }
 
 function denseChunks(chunks) {
@@ -271,8 +274,7 @@ function applyWorkflowBlock(answers, workflow) {
     for (const [itemIndex, item] of (step.items ?? []).entries()) {
       if (!isWorkflowAnswer(item)) continue;
       const key = workflowAnswerKey(stepIndex, itemIndex);
-      seedWorkflowAnswer(answers, key, item);
-      firstKey ??= key;
+      if (seedWorkflowAnswer(answers, key, item)) firstKey ??= key;
     }
   }
   return firstKey;
@@ -286,16 +288,14 @@ function applyWorkflowDiff(answers, patches) {
       for (const [itemIndex, item] of (patch.value?.items ?? []).entries()) {
         if (!isWorkflowAnswer(item)) continue;
         const key = workflowAnswerKey(Number(step[1]), itemIndex);
-        seedWorkflowAnswer(answers, key, item);
-        firstKey ??= key;
+        if (seedWorkflowAnswer(answers, key, item)) firstKey ??= key;
       }
       continue;
     }
     const item = /^\/steps\/(\d+)\/items\/(\d+)$/.exec(patch.path ?? "");
     if (item && isWorkflowAnswer(patch.value)) {
       const key = workflowAnswerKey(Number(item[1]), Number(item[2]));
-      seedWorkflowAnswer(answers, key, patch.value);
-      firstKey ??= key;
+      if (seedWorkflowAnswer(answers, key, patch.value)) firstKey ??= key;
       continue;
     }
     const chunk = /^\/steps\/(\d+)\/items\/(\d+)\/payload\/text_payload\/chunks\/(\d+)$/.exec(patch.path ?? "");

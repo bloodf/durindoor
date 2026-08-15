@@ -18,7 +18,8 @@ function generateSessionId() {
 function trustedSessionKey(credentials, requestContext, fallback) {
   const connectionId = typeof credentials?.connectionId === "string" && credentials.connectionId.trim()
     ? credentials.connectionId.trim()
-    : fallback;
+    : null;
+  if (!connectionId) return fallback;
   const sessionId = typeof requestContext?.sessionId === "string" && requestContext.sessionId.trim()
     ? requestContext.sessionId.trim()
     : null;

@@ -101,18 +101,21 @@ function collectBodyRaw(req) {
 // Extract model from URL path (Gemini), body (OpenAI/Anthropic), or Kiro conversationState
 function extractModel(url, body) {
   const urlMatch = url.match(/\/models\/([^/:]+)/);
-  if (urlMatch) return urlMatch[1];
-  
+  const model = urlMatch?.[1];
+
   // Skip parsing if body is binary (AWS EventStream, Protocol Buffers, etc.)
-  if (isBinaryData(body)) return null;
-  
+  if (isBinaryData(body)) return model || null;
+
   try {
     const parsed = JSON.parse(body.toString());
-    if (parsed.conversationState) {
-      return parsed.conversationState.currentMessage?.userInputMessage?.modelId || null;
+    if (model === "gemini-3.6-flash-tiered" || model === "gemini-3.7-flash-tiered") {
+      const level = String(parsed.request?.generationConfig?.thinkingConfig?.thinkingLevel || parsed.generationConfig?.thinkingConfig?.thinkingLevel || "medium").toLowerCase();
+      return `gemini-${model.includes("3.7") ? "3.7" : "3.6"}-flash-${["high", "medium", "low"].includes(level) ? level : "medium"}`;
     }
+    if (model) return model;
+    if (parsed.conversationState) return parsed.conversationState.currentMessage?.userInputMessage?.modelId || null;
     return parsed.model || null;
-  } catch { return null; }
+  } catch { return model || null; }
 }
 
 // Detect binary data vs JSON text
@@ -492,6 +495,7 @@ if (require.main === module || process.argv.includes(MITM_ENTRY_ARG)) void runMa
 
 module.exports = {
   createMitmServer,
+  extractModel,
   getMappedOverride,
   handleRequest,
   registerShutdownHandlers,

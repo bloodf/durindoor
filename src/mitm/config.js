@@ -37,6 +37,9 @@ const URL_PATTERNS = {
 // Synonym map: rawModel from request → canonical alias key in mitmAlias DB
 const MODEL_SYNONYMS = {
   antigravity: {
+    "gemini-3.7-flash-high": "gemini-3.7-flash-high",
+    "gemini-3.7-flash-medium": "gemini-3.7-flash-medium",
+    "gemini-3.7-flash-low": "gemini-3.7-flash-low",
     "gemini-default": "gemini-3.5-flash-low",
     "gemini-3.5-flash-high": "gemini-3-flash-agent",
     "gemini-3.5-flash-medium": "gemini-3.5-flash-low",

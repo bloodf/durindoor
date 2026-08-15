@@ -56,6 +56,8 @@ their stored spelling for access-control, strategy, and rotation state. Exact
 names win; colliding case variants use a deterministic oldest-record fallback.
 Provider and model IDs remain case-sensitive.
 
+Gemini 3.7 Flash now has direct Gemini catalog visibility plus Antigravity high, medium, and low tier routes, aliases, and quota rows, ported from upstream commit `86694ed8d048` (#3286, #3281).
+
 # 3.15.1
 
 DurinDoor now refuses to start on a SQLite database whose structural check

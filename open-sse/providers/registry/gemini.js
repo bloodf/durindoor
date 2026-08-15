@@ -34,6 +34,7 @@ export default {
     },
   },
   models: [
+    { id: "gemini-3.7-flash", name: "Gemini 3.7 Flash" },
     { id: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro Preview" },
     { id: "gemini-3.1-flash-lite-preview", name: "Gemini 3.1 Flash Lite Preview" },
     { id: "gemini-3-flash-preview", name: "Gemini 3 Flash Preview" },

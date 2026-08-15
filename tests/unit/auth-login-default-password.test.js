@@ -42,6 +42,9 @@ describe("POST /api/auth/login default-password safety", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.unstubAllEnvs();
+    mocks.checkLock.mockReset().mockReturnValue({ locked: false });
+    mocks.recordFail.mockReset().mockReturnValue({ remainingBeforeLock: 4 });
+    mocks.recordSuccess.mockReset();
     mocks.getSettings.mockResolvedValue({});
     mocks.isUsingDefaultPassword.mockResolvedValue(true);
     mocks.isOidcConfigured.mockReturnValue(false);
@@ -90,6 +93,20 @@ describe("POST /api/auth/login default-password safety", () => {
     expect(response.status).toBe(403);
     expect(response.body).toEqual({ success: true, mustChangePassword: true });
     expect(mocks.setDashboardAuthCookie).not.toHaveBeenCalled();
+  });
+
+  it("rate limits repeated remote logins using a stored default hash", async () => {
+    mocks.getSettings.mockResolvedValue({ password: "default-hash" });
+    mocks.compare.mockResolvedValue(true);
+    let failures = 0;
+    mocks.recordFail.mockImplementation(() => ({ remainingBeforeLock: Math.max(0, 4 - ++failures) }));
+    mocks.checkLock.mockImplementation(() => failures >= 5 ? { locked: true, retryAfter: 30 } : { locked: false });
+
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      expect((await POST(request())).status).toBe(403);
+    }
+    expect((await POST(request())).status).toBe(429);
+    expect(mocks.recordSuccess).not.toHaveBeenCalled();
   });
 
   it("rejects a remote INITIAL_PASSWORD set to the built-in password", async () => {

@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   genSalt: vi.fn(),
   hash: vi.fn(),
   updateSettings: vi.fn(),
+  updateSettingsWithPasswordEpoch: vi.fn(),
+  PasswordEpochMismatchError: class PasswordEpochMismatchError extends Error {},
   DEFAULT_PASSWORD: "123456",
   invalidateDefaultPasswordCache: vi.fn(),
   cookies: vi.fn(),
@@ -30,7 +32,7 @@ vi.mock("@/lib/auth/passwordChangeProof", () => ({
 }));
 vi.mock("@/lib/auth/loginLimiter", () => ({ getClientIp: mocks.getClientIp }));
 vi.mock("bcryptjs", () => ({ default: { genSalt: mocks.genSalt, hash: mocks.hash } }));
-vi.mock("@/lib/localDb", () => ({ updateSettings: mocks.updateSettings }));
+vi.mock("@/lib/localDb", () => ({ updateSettingsWithPasswordEpoch: mocks.updateSettingsWithPasswordEpoch, PasswordEpochMismatchError: mocks.PasswordEpochMismatchError }));
 vi.mock("@/lib/auth/dashboardSession", () => ({
   DEFAULT_PASSWORD: mocks.DEFAULT_PASSWORD,
   invalidateDefaultPasswordCache: mocks.invalidateDefaultPasswordCache,
@@ -54,8 +56,8 @@ describe("POST /api/auth/change-password", () => {
     mocks.getClientIp.mockReturnValue("198.51.100.4");
     mocks.genSalt.mockResolvedValue("salt");
     mocks.hash.mockResolvedValue("new-hash");
-    mocks.reservePasswordChangeProof.mockReturnValue({ clientIp: "198.51.100.4" });
-    mocks.updateSettings.mockResolvedValue({ password: "new-hash" });
+    mocks.reservePasswordChangeProof.mockReturnValue({ clientIp: "198.51.100.4", passwordSessionEpoch: "initial" });
+    mocks.updateSettingsWithPasswordEpoch.mockResolvedValue({ password: "new-hash" });
     mocks.cookies.mockResolvedValue({ set: vi.fn() });
     vi.spyOn(console, "error").mockImplementation(mocks.consoleError);
   });
@@ -63,7 +65,7 @@ describe("POST /api/auth/change-password", () => {
   it("rejects a missing or invalid flow proof before changing password", async () => {
     const missing = await POST(request({ newPassword: "long-enough-password" }));
     expect(missing.status).toBe(403);
-    expect(mocks.updateSettings).not.toHaveBeenCalled();
+    expect(mocks.updateSettingsWithPasswordEpoch).not.toHaveBeenCalled();
 
     mocks.reservePasswordChangeProof.mockReturnValue(null);
     const invalid = await POST(request({ proof: "wrong", newPassword: "long-enough-password" }));
@@ -86,7 +88,7 @@ describe("POST /api/auth/change-password", () => {
   });
 
   it("redacts unexpected persistence failures", async () => {
-    mocks.updateSettings.mockRejectedValueOnce(new Error("SENTINEL_CHANGE_ERROR"));
+    mocks.updateSettingsWithPasswordEpoch.mockRejectedValueOnce(new Error("SENTINEL_CHANGE_ERROR"));
 
     const response = await POST(request({ proof: "proof", newPassword: "long-enough-password" }));
 
@@ -122,11 +124,26 @@ describe("POST /api/auth/change-password", () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ success: true });
-    expect(mocks.updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mocks.updateSettingsWithPasswordEpoch).toHaveBeenCalledWith(expect.objectContaining({
       password: "new-hash",
       passwordSessionEpoch: expect.any(String),
-    }));
+    }), "initial");
     expect(mocks.invalidateDefaultPasswordCache).toHaveBeenCalledOnce();
     expect(mocks.setDashboardAuthCookie).toHaveBeenCalledOnce();
+  });
+
+  it("returns 409 without cookie, cache reset, or proof commit when the bound epoch mismatches", async () => {
+    mocks.reservePasswordChangeProof.mockReturnValue({ clientIp: "198.51.100.4", passwordSessionEpoch: "epoch-A" });
+    mocks.updateSettingsWithPasswordEpoch.mockRejectedValueOnce(new mocks.PasswordEpochMismatchError());
+
+    const response = await POST(request({ proof: "proof", newPassword: "long-enough-password" }));
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ error: "Password change conflict, please retry" });
+    expect(mocks.updateSettingsWithPasswordEpoch).toHaveBeenCalledWith(expect.objectContaining({ password: "new-hash" }), "epoch-A");
+    expect(mocks.setDashboardAuthCookie).not.toHaveBeenCalled();
+    expect(mocks.invalidateDefaultPasswordCache).not.toHaveBeenCalled();
+    expect(mocks.commitPasswordChangeProof).not.toHaveBeenCalled();
+    expect(mocks.resetPasswordChangeProofs).toHaveBeenCalledOnce();
   });
 });

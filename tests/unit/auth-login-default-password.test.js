@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   isUsingDefaultPassword: vi.fn(async () => true),
   issuePasswordChangeProof: vi.fn(() => "password-change-proof"),
   consoleError: vi.fn(),
+  hasExactRequestOrigin: vi.fn(() => true),
 }));
 
 vi.mock("next/server", () => ({ NextResponse: { json: mocks.json } }));
@@ -26,6 +27,7 @@ vi.mock("@/lib/auth/dashboardSession", () => ({
   setDashboardAuthCookie: mocks.setDashboardAuthCookie,
 }));
 vi.mock("@/lib/auth/oidc", () => ({ isOidcConfigured: mocks.isOidcConfigured }));
+vi.mock("@/lib/auth/requestOrigin", () => ({ hasExactRequestOrigin: mocks.hasExactRequestOrigin }));
 vi.mock("@/lib/auth/loginLimiter", () => ({
   checkLock: mocks.checkLock, recordFail: mocks.recordFail, recordSuccess: mocks.recordSuccess, getClientIp: mocks.getClientIp,
 }));
@@ -34,8 +36,8 @@ vi.mock("@/lib/auth/passwordChangeProof", () => ({ issuePasswordChangeProof: moc
 
 const { POST } = await import("../../src/app/api/auth/login/route.js");
 
-function request(password = "123456") {
-  return new Request("http://durindoor.test/api/auth/login", { method: "POST", body: JSON.stringify({ password }) });
+function request(password = "123456", headers = {}) {
+  return new Request("http://durindoor.test/api/auth/login", { method: "POST", headers, body: JSON.stringify({ password }) });
 }
 
 describe("POST /api/auth/login default-password safety", () => {
@@ -51,6 +53,7 @@ describe("POST /api/auth/login default-password safety", () => {
     mocks.cookies.mockResolvedValue({ set: vi.fn() });
     mocks.isLocalRequest.mockReturnValue(false);
     vi.spyOn(console, "error").mockImplementation(mocks.consoleError);
+    mocks.hasExactRequestOrigin.mockReturnValue(true);
   });
 
   it("logs a redacted error event and returns a stable code on unexpected failure", async () => {
@@ -79,9 +82,19 @@ describe("POST /api/auth/login default-password safety", () => {
 
     expect(response.status).toBe(403);
     expect(response.body).toEqual({ success: true, mustChangePassword: true, requiresPasswordChange: true, proof: "password-change-proof" });
-    expect(mocks.issuePasswordChangeProof).toHaveBeenCalledWith(undefined);
-    expect(mocks.recordSuccess).toHaveBeenCalledWith(undefined);
+    expect(mocks.issuePasswordChangeProof).toHaveBeenCalledWith(undefined, "initial");
+    expect(mocks.recordFail).toHaveBeenCalledWith(undefined);
     expect(mocks.setDashboardAuthCookie).not.toHaveBeenCalled();
+  });
+
+  it("rejects hostile Origins before bcrypt even with matching forwarded headers", async () => {
+    mocks.getSettings.mockResolvedValue({ password: "default-hash" });
+    mocks.hasExactRequestOrigin.mockReturnValue(false);
+
+    const response = await POST(request("123456", { origin: "https://evil.test", "x-forwarded-host": "evil.test", "x-forwarded-proto": "https" }));
+
+    expect(response.status).toBe(403);
+    expect(mocks.compare).not.toHaveBeenCalled();
   });
 
   it("rejects a remote stored hash of the built-in password before issuing auth_token", async () => {
@@ -131,5 +144,20 @@ describe("POST /api/auth/login default-password safety", () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ success: true, mustChangePassword: false });
     expect(mocks.setDashboardAuthCookie).toHaveBeenCalledOnce();
+  });
+
+  it("does not issue a cookie when the password epoch changes after validation", async () => {
+    mocks.isUsingDefaultPassword.mockResolvedValue(false);
+    mocks.getSettings
+      .mockResolvedValueOnce({ password: "custom-hash", passwordSessionEpoch: "epoch-A" })
+      .mockResolvedValueOnce({ password: "new-hash", passwordSessionEpoch: "epoch-B" });
+    mocks.compare.mockResolvedValue(true);
+
+    const response = await POST(request("custom-password"));
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ error: "Login state changed, please retry" });
+    expect(mocks.setDashboardAuthCookie).not.toHaveBeenCalled();
+    expect(mocks.recordSuccess).not.toHaveBeenCalled();
   });
 });

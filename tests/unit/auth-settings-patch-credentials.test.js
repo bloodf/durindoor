@@ -4,6 +4,8 @@ const mocks = vi.hoisted(() => ({
   json: vi.fn((body, init = {}) => ({ body, status: init.status || 200 })),
   getSettings: vi.fn(),
   updateSettings: vi.fn(),
+  updateSettingsWithPasswordEpoch: vi.fn(),
+  PasswordEpochMismatchError: class PasswordEpochMismatchError extends Error {},
   genSalt: vi.fn(),
   hash: vi.fn(),
   compare: vi.fn(),
@@ -26,6 +28,8 @@ vi.mock("@/shared/constants/freeNoAuthProviders", () => ({ FREE_NO_AUTH_PROVIDER
 vi.mock("@/lib/localDb", () => ({
   getSettings: mocks.getSettings,
   updateSettings: mocks.updateSettings,
+  updateSettingsWithPasswordEpoch: mocks.updateSettingsWithPasswordEpoch,
+  PasswordEpochMismatchError: mocks.PasswordEpochMismatchError,
 }));
 vi.mock("@/lib/network/outboundProxy", () => ({ applyOutboundProxyEnv: mocks.applyOutboundProxyEnv }));
 vi.mock("open-sse/services/combo.js", () => ({
@@ -62,6 +66,7 @@ describe("settings PATCH password credentials", () => {
     mocks.genSalt.mockResolvedValue("salt");
     mocks.hash.mockResolvedValue("new-hash");
     mocks.updateSettings.mockImplementation(async (updates) => updates);
+    mocks.updateSettingsWithPasswordEpoch.mockImplementation(async (updates) => updates);
     mocks.compare.mockResolvedValue(false);
     mocks.verifyDashboardPassword.mockResolvedValue(true);
     mocks.cookies.mockResolvedValue({ set: vi.fn() });
@@ -126,11 +131,11 @@ describe("settings PATCH password credentials", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(mocks.updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mocks.updateSettingsWithPasswordEpoch).toHaveBeenCalledWith(expect.objectContaining({
       password: "new-hash",
       tunnelDashboardAccess: false,
-    }));
-    const persisted = mocks.updateSettings.mock.calls[0][0];
+    }), "initial");
+    const persisted = mocks.updateSettingsWithPasswordEpoch.mock.calls[0][0];
     expect(persisted).not.toHaveProperty("currentPassword");
     expect(persisted).not.toHaveProperty("newPassword");
   });
@@ -182,9 +187,9 @@ describe("settings PATCH password credentials", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(mocks.updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mocks.updateSettingsWithPasswordEpoch).toHaveBeenCalledWith(expect.objectContaining({
       password: "new-hash",
-    }));
+    }), "initial");
   });
 
   it("rotates the current password session cookie after persisting a password", async () => {

@@ -57,6 +57,10 @@ describe("Fish Audio TTS request shape", () => {
     global.fetch = fetchMock;
   });
 
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
   const callArgs = () => {
     const [url, init] = fetchMock.mock.calls.at(-1);
     return { url, init, body: JSON.parse(init.body) };

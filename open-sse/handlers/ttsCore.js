@@ -69,7 +69,7 @@ export async function handleTtsCore({ provider, model, input, credentials, respo
 
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not support TTS via this route.`);
   } catch (err) {
-    const secrets = credentials && typeof credentials === "object" ? Object.values(credentials) : [];
+    const secrets = [credentials?.apiKey, credentials?.accessToken, credentials?.refreshToken];
     return createErrorResult(
       HTTP_STATUS.BAD_GATEWAY,
       sanitizeErrorMessageWithSecrets(err?.message || "TTS synthesis failed", secrets),

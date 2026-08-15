@@ -56,6 +56,8 @@ vi.mock("fs/promises", () => ({
     chmod: mocks.chmod,
     rename: mocks.rename,
     unlink: mocks.unlink,
+    mkdtemp: mocks.mkdtemp,
+    rm: mocks.rm,
   },
   access: mocks.access,
   readFile: mocks.readFile,

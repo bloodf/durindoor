@@ -30,6 +30,10 @@ and body; a stalled body cancels the response stream and falls through to
 the same fail-closed 403 path. An exhausted weekly quota, an unreadable
 usage response, or a probe failure also preserve the original terminal 403
 (fail closed).
+Compatible-provider icons now accept bounded raster `data:image/...;base64,...`
+URLs as well as bounded HTTP(S) URLs. Invalid schemes, malformed or oversized
+payloads, and unsanitized SVG data are rejected before persistence; create and
+edit dialogs show the server error instead of silently failing.
 # 3.15.2
 
 Authenticated dashboards reached through a reverse proxy can manage PXPIPE

@@ -13,6 +13,7 @@ export default function EditCompatibleNodeModal({ isOpen, node, onSave, onClose,
     iconUrl: "",
   });
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [checkKey, setCheckKey] = useState("");
   const [checkModelId, setCheckModelId] = useState("");
   const [validating, setValidating] = useState(false);
@@ -27,6 +28,7 @@ export default function EditCompatibleNodeModal({ isOpen, node, onSave, onClose,
         baseUrl: node.baseUrl || (isAnthropic ? "https://api.anthropic.com/v1" : "https://api.openai.com/v1"),
         iconUrl: node.iconUrl || "",
       });
+      setSaveError("");
     }
   }, [node, isAnthropic]);
 
@@ -38,6 +40,7 @@ export default function EditCompatibleNodeModal({ isOpen, node, onSave, onClose,
   const handleSubmit = async () => {
     if (!formData.name.trim() || !formData.prefix.trim() || !formData.baseUrl.trim()) return;
     setSaving(true);
+    setSaveError("");
     try {
       const payload = {
         name: formData.name,
@@ -49,6 +52,8 @@ export default function EditCompatibleNodeModal({ isOpen, node, onSave, onClose,
         payload.apiType = formData.apiType;
       }
       await onSave(payload);
+    } catch (err) {
+      setSaveError(err?.message || "Failed to update provider node");
     } finally {
       setSaving(false);
     }
@@ -142,6 +147,12 @@ export default function EditCompatibleNodeModal({ isOpen, node, onSave, onClose,
           <Badge variant={validationResult === "success" ? "success" : "error"}>
             {validationResult === "success" ? "Valid" : "Invalid"}
           </Badge>
+        )}
+        {saveError && (
+          <div className="flex items-center gap-1.5 text-sm text-red-500" role="alert">
+            <span className="material-symbols-outlined text-base shrink-0">cancel</span>
+            <span>{saveError}</span>
+          </div>
         )}
         <div className="flex gap-2">
           <Button onClick={handleSubmit} fullWidth disabled={!formData.name.trim() || !formData.prefix.trim() || !formData.baseUrl.trim() || saving}>

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { deleteProviderConnectionsByProvider, deleteProviderNode, getProviderConnections, getProviderNodeById, updateProviderConnection, updateProviderNode } from "@/models";
+import { isValidProviderIconUrl } from "@/shared/utils/providerIcon";
 
 // PUT /api/provider-nodes/[id] - Update provider node
 export async function PUT(request, { params }) {
@@ -19,6 +20,10 @@ export async function PUT(request, { params }) {
 
     if (!prefix?.trim()) {
       return NextResponse.json({ error: "Prefix is required" }, { status: 400 });
+    }
+
+    if (iconUrl !== undefined && !isValidProviderIconUrl(iconUrl)) {
+      return NextResponse.json({ error: "Invalid icon URL" }, { status: 400 });
     }
 
     // Only validate apiType for OpenAI Compatible nodes

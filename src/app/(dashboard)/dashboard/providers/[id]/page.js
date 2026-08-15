@@ -461,14 +461,18 @@ export default function ProviderDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       });
-      const data = await res.json();
       if (res.ok) {
+        const data = await res.json();
         setProviderNode(data.node);
         await fetchConnections();
         setShowEditNodeModal(false);
+        return;
       }
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || "Failed to update provider node");
     } catch (error) {
-      console.log("Error updating provider node:", error);
+      // Rethrow so EditCompatibleNodeModal keeps the modal open and shows it.
+      throw error instanceof Error ? error : new Error("Failed to update provider node");
     }
   };
 

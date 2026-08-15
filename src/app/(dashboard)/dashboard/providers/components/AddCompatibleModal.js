@@ -46,6 +46,7 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
 
   const [formData, setFormData] = useState(initialFormData);
   const [submitting, setSubmitting] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [checkKey, setCheckKey] = useState("");
   const [checkModelId, setCheckModelId] = useState("");
   const [validating, setValidating] = useState(false);
@@ -62,9 +63,14 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
     }
   }, [config.hasApiType ? formData.apiType : isOpen]);
 
+  useEffect(() => {
+    if (isOpen) setSaveError("");
+  }, [isOpen]);
+
   const handleSubmit = async () => {
     if (!formData.name.trim() || !formData.prefix.trim() || !formData.baseUrl.trim()) return;
     setSubmitting(true);
+    setSaveError("");
     try {
       const res = await fetch("/api/provider-nodes", {
         method: "POST",
@@ -78,15 +84,17 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
           ...(formData.iconUrl.trim() ? { iconUrl: formData.iconUrl } : {}),
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         onCreated(data.node);
         setFormData(initialFormData());
         setCheckKey("");
         setValidationResult(null);
+      } else {
+        setSaveError(data.error || `Failed to create ${config.errorLabel} node`);
       }
     } catch (error) {
-      console.log(`Error creating ${config.errorLabel} node:`, error);
+      setSaveError(error?.message || `Failed to create ${config.errorLabel} node`);
     } finally {
       setSubmitting(false);
     }
@@ -198,6 +206,12 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
           </Button>
           {renderValidationResult()}
         </div>
+        {saveError && (
+          <div className="flex items-center gap-1.5 text-sm text-red-500" role="alert">
+            <span className="material-symbols-outlined text-base shrink-0">cancel</span>
+            <span>{saveError}</span>
+          </div>
+        )}
         <div className="flex flex-col gap-2 sm:flex-row">
           <Button
             onClick={handleSubmit}

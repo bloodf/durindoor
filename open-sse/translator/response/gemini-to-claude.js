@@ -28,8 +28,8 @@ export function geminiToClaudeResponse(chunk, state) {
   }
   for (const part of candidate.content?.parts || []) {
     const inlineSignature = readInlineSignature(part);
+    if (!part.functionCall && inlineSignature) state.standaloneSignatureQueue.push(inlineSignature);
     if (part.thought === true && part.text) {
-      if (state.openTextBlockIdx !== null) { results.push({ type: "content_block_stop", index: state.openTextBlockIdx }); state.openTextBlockIdx = null; }
       const index = state.contentBlockIndex++;
       results.push({ type: "content_block_start", index, content_block: { type: "thinking", thinking: "" } }, { type: "content_block_delta", index, delta: { type: "thinking_delta", thinking: part.text } }, { type: "content_block_stop", index });
       continue;
@@ -45,7 +45,6 @@ export function geminiToClaudeResponse(chunk, state) {
       state.hasToolUse = true;
       continue;
     }
-    if (inlineSignature) state.standaloneSignatureQueue.push(inlineSignature);
     if (part.text) {
       if (state.openTextBlockIdx === null) { state.openTextBlockIdx = state.contentBlockIndex++; results.push({ type: "content_block_start", index: state.openTextBlockIdx, content_block: { type: "text", text: "" } }); }
       results.push({ type: "content_block_delta", index: state.openTextBlockIdx, delta: { type: "text_delta", text: part.text } });

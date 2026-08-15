@@ -33,9 +33,10 @@ function capForMime(mime) {
 // OpenAI chat content block -> required capability (null = plain text/other, keep).
 function capForOpenAIBlock(block) {
   const t = block?.type;
-  if (t === "image_url" || t === "image") return "vision";
+  if (t === "image_url" || t === "image" || t === "input_image") return "vision";
   if (t === "input_audio" || t === "audio_url") return "audioInput";
-  if (t === "file") return "pdf";
+  if (t === "video" || t === "video_url" || t === "input_video") return "videoInput";
+  if (t === "file" || t === "document" || t === "input_file") return "pdf";
   return null;
 }
 
@@ -67,11 +68,12 @@ function capForAttachment(attachment) {
   return cap || (!mime && (attachment?.url || attachment?.data) ? "vision" : null);
 }
 
-function replaceUnsupportedDataUris(content, caps, isLast, removed) {
+function replaceUnsupportedDataUris(content, caps, isLast, removed, inlineRemoved) {
   return content.replace(/data:([^;,:]{1,255})(?:;base64)?,[^\s)]+/gi, (uri, mime) => {
     const cap = capForMime(mime.toLowerCase());
     if (!cap || caps[cap] !== false) return uri;
     removed.add(cap);
+    inlineRemoved.add(cap);
     return ph(cap, isLast);
   });
 }
@@ -82,7 +84,12 @@ function stripOpenAI(body, caps) {
   const last = body.messages.length - 1;
   body.messages.forEach((msg, i) => {
     const removed = new Set();
-    for (const field of [["images", "vision"], ["image", "vision"], ["image_url", "vision"], ["audio", "audioInput"], ["audio_url", "audioInput"]]) {
+    for (const field of [
+      ["images", "vision"], ["image", "vision"], ["image_url", "vision"],
+      ["audio", "audioInput"], ["audio_url", "audioInput"],
+      ["video", "videoInput"], ["video_url", "videoInput"],
+      ["file", "pdf"], ["document", "pdf"],
+    ]) {
       if (caps[field[1]] === false && msg[field[0]] != null) {
         delete msg[field[0]];
         removed.add(field[1]);
@@ -98,7 +105,12 @@ function stripOpenAI(body, caps) {
       });
     }
     if (typeof msg.content === "string") {
-      msg.content = replaceUnsupportedDataUris(msg.content, caps, i === last, removed);
+      const inlineRemoved = new Set();
+      msg.content = replaceUnsupportedDataUris(msg.content, caps, i === last, removed, inlineRemoved);
+      const placeholders = [...removed]
+        .filter((cap) => !inlineRemoved.has(cap))
+        .map((cap) => ph(cap, i === last)).join(" ");
+      if (placeholders) msg.content = msg.content ? `${msg.content} ${placeholders}` : placeholders;
       if (removed.size && !msg.content) msg.content = [...removed].map((cap) => ph(cap, i === last)).join(" ");
       return;
     }

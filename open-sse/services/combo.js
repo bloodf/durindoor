@@ -353,6 +353,8 @@ export function detectRequiredCapabilities(body) {
     if (!b || typeof b !== "object") return;
     const t = b.type;
     if (t === "image_url" || t === "image" || t === "input_image") required.add("vision");
+    if (t === "input_audio" || t === "audio_url") required.add("audioInput");
+    if (t === "video_url" || t === "video" || t === "input_video") required.add("videoInput");
     if (t === "file" || t === "document" || t === "input_file") required.add("pdf");
     // gemini parts: inlineData/fileData carry a mime
     addByMime(b.inlineData?.mimeType || b.fileData?.mimeType);
@@ -364,7 +366,12 @@ export function detectRequiredCapabilities(body) {
 
   // Hermes/Ollama/Vercel AI SDK message shapes (message-level, not content blocks).
   const scanMessage = (m) => {
-    if (!m || typeof m !== "object" || m.role !== "user") return;
+    if (!m || typeof m !== "object") return;
+
+    // Downstream stripping handles structured blocks regardless of role. Message
+    // fields and inline strings remain user-only routing signals.
+    scanContent(m.content);
+    if (m.role !== "user") return;
 
     // Ollama / Hermes images array (base64 strings)
     if (Array.isArray(m.images) && m.images.length > 0) required.add("vision");
@@ -385,8 +392,8 @@ export function detectRequiredCapabilities(body) {
     // Direct message-level modality properties
     if (m.image_url || m.image) required.add("vision");
     if (m.audio_url || m.audio) required.add("audioInput");
-
-    scanContent(m.content);
+    if (m.video_url || m.video) required.add("videoInput");
+    if (m.file || m.document) required.add("pdf");
 
     // Inline data URIs embedded in string content
     if (typeof m.content === "string") {

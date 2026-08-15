@@ -1,5 +1,7 @@
 # Unreleased
 
+# 3.16.0
+
 ## Responses API output_index allocation
 A tool call emitted after a reasoning or message item no longer reuses that
 prior item's `output_index`. The legacy Responses transformer now allocates a
@@ -45,9 +47,8 @@ multi-MB payloads cannot drive linear CPU work.
 
 `estimateCompressionTokens` is the only token estimator in the fork; non-image data URIs (e.g. `data:audio/mpeg;base64,...`), malformed or truncated image URIs, and plain text are unaffected.
 
-# 3.15.3
-
 Remote dashboard login now refuses to issue a session while the built-in `123456` password is active, and dashboard request-detail responses redact captured request and response bodies. The login screen uses the DurinDoor wordmark and shows the default-password hint only when the effective password is literally that built-in value.
+
 # 3.15.2
 
 Authenticated dashboards reached through a reverse proxy can manage PXPIPE

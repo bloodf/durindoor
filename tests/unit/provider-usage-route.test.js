@@ -52,8 +52,8 @@ describe("provider usage route credential service integration", () => {
     expect(await response.json()).toMatchObject({ plan: "Business" });
     expect(mocks.refreshAndUpdateCredentials).toHaveBeenNthCalledWith(1, connection, false, expect.any(Object));
     expect(mocks.refreshAndUpdateCredentials).toHaveBeenNthCalledWith(2, refreshed, true, expect.any(Object));
-    expect(mocks.getUsageForProvider).toHaveBeenNthCalledWith(1, refreshed, expect.any(Object));
-    expect(mocks.getUsageForProvider).toHaveBeenNthCalledWith(2, forced, expect.any(Object));
+    expect(mocks.getUsageForProvider).toHaveBeenNthCalledWith(1, refreshed, expect.any(Object), { force: false });
+    expect(mocks.getUsageForProvider).toHaveBeenNthCalledWith(2, forced, expect.any(Object), { force: false });
   });
 
   it("never invokes OAuth refresh for an eligible API-key provider", async () => {
@@ -68,7 +68,24 @@ describe("provider usage route credential service integration", () => {
 
     expect(response.status).toBe(200);
     expect(mocks.refreshAndUpdateCredentials).not.toHaveBeenCalled();
-    expect(mocks.getUsageForProvider).toHaveBeenCalledWith(connection, expect.any(Object));
+    expect(mocks.getUsageForProvider).toHaveBeenCalledWith(connection, expect.any(Object), { force: false });
+  });
+
+  it("forwards force=1 to both initial and OAuth-retry usage calls", async () => {
+    const connection = {
+      id: "conn-1", provider: "github", authType: "oauth", accessToken: "old", refreshToken: "refresh", providerSpecificData: {},
+    };
+    const refreshed = { ...connection, accessToken: "new" };
+    const forced = { ...connection, accessToken: "forced" };
+    mocks.getProviderConnectionById.mockResolvedValue(connection);
+    mocks.refreshAndUpdateCredentials.mockResolvedValueOnce({ connection: refreshed }).mockResolvedValueOnce({ connection: forced });
+    mocks.getUsageForProvider.mockResolvedValueOnce({ message: "Unauthorized 401" }).mockResolvedValueOnce({ quotas: {} });
+    const { GET } = await import("../../src/app/api/usage/[connectionId]/route.js");
+
+    await GET(new Request("http://localhost/api/usage/conn-1?force=1"), { params: Promise.resolve({ connectionId: "conn-1" }) });
+
+    expect(mocks.getUsageForProvider).toHaveBeenNthCalledWith(1, refreshed, expect.any(Object), { force: true });
+    expect(mocks.getUsageForProvider).toHaveBeenNthCalledWith(2, forced, expect.any(Object), { force: true });
   });
 
   it("redacts refresh failures in both the response and log", async () => {

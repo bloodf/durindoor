@@ -9,7 +9,7 @@
  * 403 permission_denied is NOT auth-expired — account lacks usage feature / sub.
  */
 
-import { parseResetTime, toFiniteNumber, fetchWithTimeout } from "./shared.js";
+import { parseResetTime, toFiniteNumber, fetchTextWithTimeout } from "./shared.js";
 import { buildKimiHeaders } from "../../config/appConstants.js";
 
 const USAGE_URL = "https://api.kimi.com/coding/v1/usages";
@@ -120,7 +120,7 @@ export async function getKimiUsage(
       };
 
   try {
-    const response = await fetchWithTimeout(
+    const { response, text: responseText } = await fetchTextWithTimeout(
       USAGE_URL,
       {
         method: "GET",
@@ -133,8 +133,6 @@ export async function getKimiUsage(
       10000,
       proxyOptions,
     );
-
-    const responseText = await response.text().catch(() => "");
 
     if (!response.ok) {
       return {

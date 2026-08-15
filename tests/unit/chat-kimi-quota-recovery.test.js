@@ -129,6 +129,16 @@ describe("Kimi temporary quota recovery in chatCore", () => {
     expect(mocks.getUsageForProvider).not.toHaveBeenCalled();
   });
 
+  it("keeps the original terminal 403 when the usage body times out", async () => {
+    mocks.getUsageForProvider.mockResolvedValue({
+      message: "Kimi Coding connected. Unable to fetch usage: Request aborted",
+    });
+
+    const result = await handleChatCore(options());
+
+    expect(result).toMatchObject({ success: false, status: 403, resetsAtMs: undefined });
+  });
+
   it("leaves an exhausted weekly quota terminal", async () => {
     mocks.getUsageForProvider.mockResolvedValue({
       quotas: {

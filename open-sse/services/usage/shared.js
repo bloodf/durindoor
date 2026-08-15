@@ -68,3 +68,33 @@ export async function fetchWithTimeout(url, opts, ms = 10000, proxyOptions = nul
     clearTimeout(timeoutId);
   }
 }
+
+function waitWithAbort(promise, signal, onAbort) {
+  if (signal.aborted) return Promise.reject(signal.reason || new DOMException("Request aborted", "AbortError"));
+  return new Promise((resolve, reject) => {
+    const aborted = () => {
+      try { onAbort?.(); } catch { /* best effort */ }
+      reject(signal.reason || new DOMException("Request aborted", "AbortError"));
+    };
+    signal.addEventListener("abort", aborted, { once: true });
+    promise.then(
+      (value) => { signal.removeEventListener("abort", aborted); resolve(value); },
+      (error) => { signal.removeEventListener("abort", aborted); reject(error); },
+    );
+  });
+}
+
+/** Fetch headers and body under one absolute deadline. */
+export async function fetchTextWithTimeout(url, opts, ms = 10000, proxyOptions = null) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), ms);
+  try {
+    const response = await proxyAwareFetch(url, { ...opts, signal: controller.signal }, proxyOptions);
+    const text = await waitWithAbort(Promise.resolve().then(() => response.text()), controller.signal, () => {
+      Promise.resolve(response.body?.cancel?.()).catch(() => {});
+    });
+    return { response, text };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}

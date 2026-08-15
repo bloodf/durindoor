@@ -476,6 +476,33 @@ describe("chat quota fallback orchestration", () => {
     );
   });
 
+  it("preserves the original terminal 403 when Kimi body probe times out (no recovery scope lock)", async () => {
+    const connection = selected("kimi-connection", "kimi-coding");
+    mocks.getModelInfo.mockResolvedValue({ provider: "kimi-coding", model: "kimi-k2.6" });
+    mocks.getProviderCredentials.mockResolvedValue(connection);
+    mocks.handleChatCore.mockResolvedValue({
+      success: false,
+      status: 403,
+      error: "[403]: Request limit reached for current billing cycle",
+      resetsAtMs: undefined,
+      response: new Response("kimi probe timed out", { status: 403 }),
+    });
+    mocks.markAccountUnavailable.mockResolvedValue({ shouldFallback: false, cooldownMs: 0 });
+
+    const response = await handleChat(request("kimi-coding/kimi-k2.6"));
+
+    expect(response.status).toBe(403);
+    expect(mocks.markAccountUnavailable).toHaveBeenCalledWith(
+      "kimi-connection",
+      403,
+      "[403]: Request limit reached for current billing cycle",
+      "kimi-coding",
+      "kimi-k2.6",
+      undefined,
+      { attemptStartedAt: null, rateLimitEvidence: null, signal: expect.any(AbortSignal) },
+    );
+  });
+
   it("replays an Envoy request-buffer 507 once on the same account", async () => {
     const first = selected("conn-one");
     const second = selected("conn-two");

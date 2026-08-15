@@ -290,6 +290,26 @@ describe("getUsageForProvider(kimi) auth selection", () => {
     });
     vi.useRealTimers();
   });
+
+  it("bounds a usage probe whose headers resolve but body stalls", async () => {
+    vi.useFakeTimers();
+    const cancel = vi.fn();
+    proxyAwareFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: () => new Promise(() => {}),
+      body: { cancel },
+    });
+
+    const usagePromise = getUsageForProvider({ provider: "kimi", accessToken: "tok" });
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await expect(usagePromise).resolves.toMatchObject({
+      message: expect.stringMatching(/aborted|failed|error/i),
+    });
+    expect(cancel).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+  });
 });
 
 describe("parseQuotaData(kimi)", () => {

@@ -56,7 +56,7 @@ export class OpenCodeExecutor extends BaseExecutor {
     const clientHeaders = new Headers(requestContext?.clientHeaders ?? credentials?.rawHeaders ?? {});
     const clientUa = clientHeaders.get("user-agent");
     const credentialToken = credentials?.apiKey || credentials?.accessToken || credentials?.authorization;
-    const hasPaidIdentity = Boolean(credentialToken || clientHeaders.get("authorization") || clientHeaders.get("x-api-key"));
+    const hasPaidIdentity = Boolean(credentialToken);
     const baseHeaders = {
       "Content-Type": "application/json",
       "Authorization": credentialToken

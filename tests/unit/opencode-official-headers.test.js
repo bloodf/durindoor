@@ -38,6 +38,27 @@ describe("OpenCodeExecutor official free-tier headers (D13)", () => {
     expect(headers["x-9r-real-ip"]).toBeUndefined();
   });
 
+  it("router Authorization: Bearer ... does not bypass D13 free-tier identity", async () => {
+    const fetchMock = stubFetch();
+    await new OpenCodeExecutor().execute({
+      model: "deepseek-v3.2",
+      body: { messages: [] },
+      stream: true,
+      credentials: {},
+      requestContext: {
+        clientHeaders: { "user-agent": "curl/8.5.0", authorization: "Bearer router-token" },
+      },
+    });
+    const headers = fetchMock.mock.calls[0][1].headers;
+    expect(headers).toMatchObject({
+      "User-Agent": "opencode",
+      "x-opencode-client": "desktop",
+      "x-opencode-project": "global",
+    });
+    expect(headers["x-opencode-request"]).toMatch(/^msg_[a-f0-9]{32}$/);
+    expect(headers["x-opencode-session"]).toMatch(/^ses_[a-f0-9]+$/);
+  });
+
   it("preserves official downstream request identity through real dispatch", async () => {
     const fetchMock = stubFetch();
     await new OpenCodeExecutor().execute({

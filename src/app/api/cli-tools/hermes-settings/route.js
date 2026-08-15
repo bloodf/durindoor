@@ -157,6 +157,9 @@ export async function POST(request) {
     if (typeof baseUrl !== "string" || typeof model !== "string") {
       return NextResponse.json({ error: "baseUrl and model are required" }, { status: 400 });
     }
+    if (apiKey != null && typeof apiKey !== "string") {
+      return NextResponse.json({ error: "apiKey must be a non-empty string when provided" }, { status: 400 });
+    }
     const invalidBaseUrl = validateInput(baseUrl, "baseUrl");
     const invalidModel = validateInput(model, "model");
     const invalidApiKey = apiKey == null ? null : (validateInput(apiKey, "apiKey") || (/\s/u.test(apiKey) ? { error: "apiKey must not contain whitespace" } : null));

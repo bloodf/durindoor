@@ -66,6 +66,12 @@ describe("Kilo Gateway optional authentication", () => {
     expectTokenless(await getProviderCredentials("kilo-gateway"));
   });
 
+  it("does not select tokenless credentials after noauth is excluded", async () => {
+    mocks.getProviderConnections.mockResolvedValue([]);
+    const { getProviderCredentials } = await import("../../src/sse/services/auth.js");
+    await expect(getProviderCredentials("kilo-gateway", new Set(["noauth"]))).resolves.toBeNull();
+  });
+
   it("prefers a saved Kilo key and sends it as Bearer authentication", async () => {
     const { getProviderCredentials } = await import("../../src/sse/services/auth.js");
     const credentials = await getProviderCredentials("kilo-gateway");

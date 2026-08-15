@@ -23,9 +23,9 @@ const sensitive = {
   model: "gpt-4o",
   connectionId: "conn-1",
   status: "success",
-  latencyMs: 120,
-  usage: { input: 10, output: 20 },
-  diagnostics: { streamChunks: 4, finishReason: "stop" },
+  latency: { totalMs: 120 },
+  tokens: { input: 10, output: 20 },
+  pxpipe: { applied: true },
   request: { model: "gpt-4o", messages: [{ role: "user", content: "secret prompt" }] },
   providerRequest: { upstream: "secret upstream body" },
   providerResponse: { upstream: "secret upstream response" },
@@ -53,9 +53,9 @@ describe("GET /api/usage/request-details payload redaction", () => {
     expect(detail.model).toBe("gpt-4o");
     expect(detail.connectionId).toBe("conn-1");
     expect(detail.status).toBe("success");
-    expect(detail.latencyMs).toBe(120);
-    expect(detail.usage).toEqual({ input: 10, output: 20 });
+    expect(detail.latency).toEqual({ totalMs: 120 });
+    expect(detail.tokens).toEqual({ input: 10, output: 20 });
+    expect(detail.pxpipe).toEqual({ applied: true });
     expect(detail.timestamp).toBe("2026-08-14T00:00:00.000Z");
-    expect(detail.diagnostics).toEqual({ streamChunks: 4, finishReason: "stop" });
   });
 });

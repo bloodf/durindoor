@@ -112,7 +112,7 @@ export function createSSEStream(options = {}) {
   const omitStreamReasoning = sanitizeMinimaxThinking && shouldOmitStreamReasoning(provider);
 
   const state = mode === STREAM_MODE.TRANSLATE
-    ? { ...initState(sourceFormat, providerBody || body), provider, toolNameMap, model, signatureNamespace: connectionId, ...(claudeCompat && { claudeCompat: true }) }
+    ? { ...initState(sourceFormat, body || providerBody), provider, toolNameMap, model, signatureNamespace: connectionId, ...(claudeCompat && { claudeCompat: true }) }
     : null;
 
   let totalContentLength = 0;

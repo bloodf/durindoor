@@ -89,7 +89,7 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
     resolveRuleMatchBody(provider, structuredError, errorText)
   );
   if (providerRule?.reason === "quota_exhausted") {
-    const ruleResult = checkFallbackErrorByRules(HTTP_STATUS.TOO_MANY_REQUESTS, lowerError, backoffLevel);
+    const ruleResult = checkFallbackErrorByRules(HTTP_STATUS.RATE_LIMITED, lowerError, backoffLevel);
     return { ...ruleResult, scope: providerRule.scope ?? null };
   }
   if (providerRule?.cooldownMs) {

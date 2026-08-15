@@ -1,3 +1,4 @@
+import { BACKOFF_CONFIG } from "../../open-sse/config/errorConfig.js";
 import { describe, expect, it } from "vitest";
 import {
   getProviderErrorRuleMatch,
@@ -16,7 +17,7 @@ describe("AgentRouter provider error rules", () => {
     for (const status of [400, 403]) {
       expect(checkFallbackError(status, "Forbidden", 0, "agentrouter", null, body)).toMatchObject({
         shouldFallback: true,
-        cooldownMs: 2_000,
+        cooldownMs: BACKOFF_CONFIG.base,
         newBackoffLevel: 1,
         scope: "connection",
       });

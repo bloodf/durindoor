@@ -477,7 +477,7 @@ describe("chat quota fallback orchestration", () => {
     expect(mocks.handleChatCore.mock.calls.map(([options]) => options.connectionId)).toEqual(["conn-one", "conn-one"]);
     expect(mocks.markAccountUnavailable).not.toHaveBeenCalled();
     expect(checkFallbackError(507, "[507]: exceeded request buffer limit while retrying upstream"))
-      .toEqual({ shouldFallback: false, cooldownMs: 0 });
+      .toMatchObject({ shouldFallback: false, cooldownMs: 0, scope: null });
   });
 
   it.each([401, 429])("still rotates accounts for HTTP %i", async (status) => {

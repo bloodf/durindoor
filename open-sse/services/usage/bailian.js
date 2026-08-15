@@ -14,7 +14,7 @@ import { getProviderQuotaAdapter } from "../quota/providers/index.js";
 function rowsToQuotas(rows) {
   const quotas = {};
   for (const row of rows) {
-    const [, , dimension] = row.dimensionKey.split(":");
+    const dimension = row.dimensionKey.split(":").at(-1);
     quotas[dimension] = {
       total: row.amounts.limit,
       used: row.amounts.used,

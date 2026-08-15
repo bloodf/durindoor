@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const proxyAwareFetch = vi.fn();
+proxyAwareFetch.mockImplementation(async () => ({ ok: true, status: 200, text: async () => "{}", json: async () => ({}) }));
+vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch }));
+
 const mocks = vi.hoisted(() => ({
   getProviderConnectionById: vi.fn(),
   updateProviderConnection: vi.fn(),
@@ -30,22 +34,18 @@ function connection(provider = "llm7") {
 
 async function runTest(provider, fetchImpl) {
   mocks.getProviderConnectionById.mockResolvedValue(connection(provider));
-  const { __setProviderTestFetchForTesting, testSingleConnection } = await import(
+  proxyAwareFetch.mockImplementation(fetchImpl);
+  const { testSingleConnection } = await import(
     "../../src/app/api/providers/[id]/test/testUtils.js"
   );
-  const proxyFetch = vi.fn(fetchImpl);
-  const restoreFetch = __setProviderTestFetchForTesting(proxyFetch);
-  try {
-    const result = await testSingleConnection(`connection-${provider}`);
-    return { result, proxyFetch };
-  } finally {
-    restoreFetch();
-  }
+  const result = await testSingleConnection(`connection-${provider}`);
+  return { result, proxyAwareFetch };
 }
 
 describe("LLM7 provider connection test", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    proxyAwareFetch.mockImplementation(async () => ({ ok: true, status: 200, text: async () => "{}", json: async () => ({}) }));
     mocks.updateProviderConnection.mockResolvedValue(undefined);
     mocks.resolveConnectionProxyConfig.mockResolvedValue({
       connectionProxyEnabled: false,
@@ -56,7 +56,7 @@ describe("LLM7 provider connection test", () => {
   });
 
   it("probes registry validateUrl with Bearer authentication", async () => {
-    const { result, proxyFetch } = await runTest("llm7", async (url, options) => {
+    const { result, proxyAwareFetch: fetchSpy } = await runTest("llm7", async (url, options) => {
       expect(String(url)).toBe("https://api.llm7.io/v1/models");
       expect(options.headers.Authorization).toBe("Bearer llm7-key");
       expect(options.signal).toBeInstanceOf(AbortSignal);
@@ -66,21 +66,21 @@ describe("LLM7 provider connection test", () => {
 
     expect(result.valid).toBe(true);
     expect(result.error).toBeNull();
-    expect(proxyFetch).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
   it("rejects LLM7 authentication failures without a fallback request", async () => {
-    const { result, proxyFetch } = await runTest("llm7", async () =>
+    const { result, proxyAwareFetch: fetchSpy } = await runTest("llm7", async () =>
       new Response("", { status: 401 }),
     );
 
     expect(result.valid).toBe(false);
     expect(result.error).toBe("Invalid API key");
-    expect(proxyFetch).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
   it("uses bounded registry fallback after LLM7 validation endpoint errors", async () => {
-    const { result, proxyFetch } = await runTest("llm7", async (url, options) => {
+    const { result, proxyAwareFetch: fetchSpy } = await runTest("llm7", async (url, options) => {
       if (String(url).endsWith("/models")) {
         expect(options.signal).toBeInstanceOf(AbortSignal);
         return new Response("", { status: 500 });
@@ -93,28 +93,41 @@ describe("LLM7 provider connection test", () => {
     });
 
     expect(result.valid).toBe(true);
-    expect(proxyFetch).toHaveBeenCalledTimes(2);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
   it("surfaces a timed-out fallback request as an error", async () => {
     const timeout = new DOMException("The operation was aborted", "TimeoutError");
-    const { result, proxyFetch } = await runTest("llm7", async () => {
+    const { result, proxyAwareFetch: fetchSpy } = await runTest("llm7", async () => {
       throw timeout;
     });
 
     expect(result.valid).toBe(false);
     expect(result.error).toBe(timeout.message);
-    expect(proxyFetch).toHaveBeenCalledTimes(2);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("treats a malformed non-auth fallback body as a reachable provider", async () => {
+    const { result, proxyAwareFetch: fetchSpy } = await runTest("llm7", async (url) => {
+      if (String(url).endsWith("/models")) {
+        return new Response("502 Bad Gateway", { status: 502 });
+      }
+      return new Response("<html>oops</html>", { status: 400, headers: { "content-type": "text/html" } });
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.error).toBeNull();
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
   it("does not change another registry provider's request", async () => {
-    const { result, proxyFetch } = await runTest("ai21", async (url, options) => {
+    const { result, proxyAwareFetch: fetchSpy } = await runTest("ai21", async (url, options) => {
       expect(String(url)).toBe("https://api.ai21.com/studio/v1/models");
       expect(options.headers.Authorization).toBe("Bearer llm7-key");
       return new Response("{}", { status: 200 });
     });
 
     expect(result.valid).toBe(true);
-    expect(proxyFetch).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });

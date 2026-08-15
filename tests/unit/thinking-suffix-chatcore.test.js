@@ -103,6 +103,7 @@ describe("thinking suffix at the chatCore provider boundary", () => {
   beforeEach(() => {
     _resetGates();
     vi.clearAllMocks();
+    mocks.execute.mockReset();
     mocks.execute.mockRejectedValue(new Error("stop after boundary capture"));
     mocks.detectClientTool.mockReturnValue(null);
     mocks.isNativePassthrough.mockReturnValue(false);
@@ -296,6 +297,109 @@ describe("thinking suffix at the chatCore provider boundary", () => {
     expect(call.body.thinking).toEqual({ type: "enabled", budget_tokens: 8192 });
     expect(call.body.max_tokens).toBe(9216);
     expect(call.body.thinking.budget_tokens).toBeLessThan(call.body.max_tokens);
+  });
+
+  it("folds and anchors only native Claude passthrough bodies", async () => {
+    mocks.detectClientTool.mockReturnValue("claude");
+    mocks.isNativePassthrough.mockReturnValue(true);
+    const body = {
+      model: "claude-haiku-4-5",
+      max_tokens: 1024,
+      stream: true,
+      messages: [
+        { role: "system", content: [{ type: "text", text: "mid-turn instructions" }] },
+        { role: "user", content: [{ type: "text", text: "hello" }] },
+      ],
+    };
+
+    await handleChatCore({
+      body,
+      modelInfo: { provider: "claude", model: "claude-haiku-4-5" },
+      credentials: { accessToken: "claude-token", providerSpecificData: {} },
+      connectionId: "claude-native-fold-anchor",
+      clientRawRequest: { endpoint: "/v1/messages", body, headers: { "anthropic-version": "2023-06-01" } },
+      log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    const dispatched = mocks.execute.mock.calls[0][0].body;
+    expect(dispatched.messages).toEqual([{
+      role: "user",
+      content: [
+        { type: "text", text: "hello" },
+        { type: "text", text: "mid-turn instructions", cache_control: { type: "ephemeral" } },
+      ],
+    }]);
+  });
+
+  it("does not fold or anchor translated non-Claude requests", async () => {
+    const body = {
+      model: "claude-haiku-4-5",
+      stream: true,
+      messages: [
+        { role: "system", content: "instructions" },
+        { role: "user", content: "hello" },
+      ],
+    };
+
+    await handleChatCore({
+      body,
+      modelInfo: { provider: "claude", model: "claude-haiku-4-5" },
+      credentials: { accessToken: "claude-token", providerSpecificData: {} },
+      connectionId: "claude-translated-no-fold-anchor",
+      clientRawRequest: { endpoint: "/v1/chat/completions", body, headers: {} },
+      log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    const dispatched = mocks.execute.mock.calls[0][0].body;
+    expect(dispatched.system).toEqual([
+      { type: "text", text: "You are Claude Code, Anthropic's official CLI for Claude." },
+      { type: "text", text: "instructions", cache_control: { type: "ephemeral", ttl: "1h" } },
+    ]);
+    expect(dispatched.messages).toEqual([{ role: "user", content: [{ type: "text", text: "hello" }] }]);
+  });
+
+  it("re-anchors native Claude recovery bodies before signature retry", async () => {
+    mocks.detectClientTool.mockReturnValue("claude");
+    mocks.isNativePassthrough.mockReturnValue(true);
+    mocks.execute
+      .mockResolvedValueOnce({
+        response: new Response(JSON.stringify({ error: { message: "Invalid signature in thinking block" } }), { status: 400 }),
+        url: "https://claude.test/first",
+        headers: {},
+        transformedBody: null,
+      })
+      .mockResolvedValueOnce({
+        response: new Response("data: [DONE]\\n\\n", { status: 200, headers: { "content-type": "text/event-stream" } }),
+        url: "https://claude.test/retry",
+        headers: {},
+        transformedBody: null,
+      });
+    const body = {
+      model: "claude-haiku-4-5",
+      anthropic_version: "2023-06-01",
+      max_tokens: 1024,
+      stream: true,
+      messages: [
+        { role: "assistant", content: [{ type: "thinking", thinking: "old", signature: "Eg==" }] },
+        { role: "user", content: [{ type: "text", text: "hello" }] },
+      ],
+    };
+
+    await handleChatCore({
+      body,
+      modelInfo: { provider: "claude", model: "claude-haiku-4-5" },
+      credentials: { accessToken: "claude-token", providerSpecificData: {} },
+      connectionId: "claude-signature-reanchor",
+      clientRawRequest: { endpoint: "/v1/messages", body, headers: { "anthropic-version": "2023-06-01" } },
+      log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    expect(mocks.execute).toHaveBeenCalledTimes(2);
+    const retryBody = mocks.execute.mock.calls[1][0].body;
+    expect(retryBody.messages).toEqual([
+      { role: "assistant", content: [] },
+      { role: "user", content: [{ type: "text", text: "hello", cache_control: { type: "ephemeral" } }] },
+    ]);
   });
 
   function abortOptions(signal, refreshCredentials = undefined) {

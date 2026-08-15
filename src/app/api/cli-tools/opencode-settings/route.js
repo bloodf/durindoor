@@ -192,6 +192,7 @@ export async function DELETE(request) {
     const config = parseOpenCodeConfig(source);
 
     let next = source;
+    let mutated = false;
     const provider = config.provider?.["9router"];
     if (modelToRemove) {
       if (provider?.models?.[modelToRemove]) {
@@ -199,21 +200,27 @@ export async function DELETE(request) {
         if (remaining.length === 0) {
           next = modifyOpenCodeConfig(next, ["provider", "9router"], undefined);
           if (config.model?.startsWith("9router/")) next = modifyOpenCodeConfig(next, ["model"], undefined);
+          mutated = true;
         } else {
           next = modifyOpenCodeConfig(next, ["provider", "9router", "models", modelToRemove], undefined);
           if (config.model === `9router/${modelToRemove}`) {
             next = modifyOpenCodeConfig(next, ["model"], `9router/${remaining[0]}`);
           }
+          mutated = true;
         }
       }
     } else {
       next = modifyOpenCodeConfig(next, ["provider", "9router"], undefined);
       if (config.model?.startsWith("9router/")) next = modifyOpenCodeConfig(next, ["model"], undefined);
+      if (config.agent?.explorer?.model?.startsWith("9router/")) {
+        next = modifyOpenCodeConfig(next, ["agent", "explorer"], undefined);
+        if (Object.keys(config.agent).length === 1) next = modifyOpenCodeConfig(next, ["agent"], undefined);
+      }
+      mutated = true;
     }
 
-    if (config.agent?.explorer?.model?.startsWith("9router/")) {
-      next = modifyOpenCodeConfig(next, ["agent", "explorer"], undefined);
-      if (Object.keys(config.agent).length === 1) next = modifyOpenCodeConfig(next, ["agent"], undefined);
+    if (!mutated) {
+      return NextResponse.json({ success: true, message: "Nothing to remove" });
     }
 
     await fs.writeFile(configPath, next);

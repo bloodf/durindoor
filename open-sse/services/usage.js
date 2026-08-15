@@ -37,7 +37,7 @@ const USAGE_HANDLERS = {
   "gemini-cli": (c) => getGeminiUsage(c.accessToken, c.providerDataWithProjectId, c.proxyOptions),
   antigravity: (c) => getAntigravityUsage(c.accessToken, c.providerDataWithProjectId, c.proxyOptions),
   agy: (c) => getAntigravityUsage(c.accessToken, c.providerDataWithProjectId, c.proxyOptions),
-  claude: (c) => getClaudeUsage(c.accessToken ?? c.apiKey, c.proxyOptions, c.authType),
+  claude: (c) => getClaudeUsage(c.accessToken ?? c.apiKey, c.proxyOptions, c.authType, { force: c.force }),
   codex: (c) => getCodexUsage(c.accessToken, c.providerSpecificData, c.proxyOptions, c.idToken),
   kiro: (c) => getKiroUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
   qoder: (c) => getQoderUsage(c.accessToken, c.proxyOptions),
@@ -58,8 +58,8 @@ const USAGE_HANDLERS = {
   deepseek: (c) => getDeepseekUsage(c.apiKey, c.proxyOptions),
 };
 
-export async function getUsageForProvider(connection, proxyOptions = null) {
-  const { provider, accessToken, apiKey, authType, providerSpecificData, projectId, idToken, id: connectionId } = connection;
+export async function getUsageForProvider(connection, proxyOptions = null, options = {}) {
+  const { provider, accessToken, apiKey, authType = "oauth", providerSpecificData, projectId, idToken, id: connectionId } = connection;
   const providerDataWithProjectId = {
     ...(providerSpecificData || {}),
     ...(projectId ? { projectId } : {}),
@@ -67,5 +67,5 @@ export async function getUsageForProvider(connection, proxyOptions = null) {
 
   const handler = USAGE_HANDLERS[provider];
   if (!handler) return { message: `Usage API not implemented for ${provider}` };
-  return await handler({ provider, accessToken, apiKey, authType, providerSpecificData, providerDataWithProjectId, proxyOptions, connectionId, idToken });
+  return await handler({ provider, accessToken, apiKey, authType, providerSpecificData, providerDataWithProjectId, proxyOptions, connectionId, idToken, force: options.force === true });
 }

@@ -65,8 +65,7 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
         else if (block.type === CLAUDE_BLOCK.IMAGE && block.source?.type === "base64") parts.push({ inlineData: { mimeType: block.source.media_type || DEFAULT_IMAGE_MIME, data: block.source.data } });
         else if (block.type === CLAUDE_BLOCK.TOOL_USE) {
           const signature = signatures.get(block.id);
-          if (!signature) continue;
-          parts.push({ thoughtSignature: signature, functionCall: { ...(stripFunctionCallId ? {} : { id: block.id }), name: sanitize(block.name), args: block.input || {} } });
+          parts.push({ ...(signature ? { thoughtSignature: signature } : {}), functionCall: { ...(stripFunctionCallId ? {} : { id: block.id }), name: sanitize(block.name), args: block.input || {} } });
         } else if (block.type === CLAUDE_BLOCK.TOOL_RESULT) {
           let content = block.content;
           if (Array.isArray(content)) content = content.map((entry) => entry.type === CLAUDE_BLOCK.TEXT ? entry.text : JSON.stringify(entry)).join("\n");

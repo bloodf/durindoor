@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import { useSearchParams } from "next/navigation";
 import { useState, useEffect } from "react";
 import { Card, Button, Input } from "@/shared/components";
 import { safeNextPath } from "@/lib/auth/safeNextPath";
@@ -21,7 +20,7 @@ export default function LoginPage() {
   const [passwordChangeProof, setPasswordChangeProof] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [wordmarkFailed, setWordmarkFailed] = useState(false);
-  const nextPath = safeNextPath(useSearchParams().get("next"));
+  const [nextPath, setNextPath] = useState("/dashboard");
 
   // Countdown for rate-limit
   useEffect(() => {
@@ -29,12 +28,16 @@ export default function LoginPage() {
     const id = setInterval(() => setRetryAfter((s) => (s > 0 ? s - 1 : 0)), 1000);
     return () => clearInterval(id);
   }, [retryAfter]);
+  useEffect(() => {
+    setNextPath(safeNextPath(new URLSearchParams(window.location.search).get("next")));
+  }, []);
 
   useEffect(() => {
     async function checkAuth() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
       const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
+      const redirectPath = safeNextPath(new URLSearchParams(window.location.search).get("next"));
 
       try {
         const res = await fetch(`${baseUrl}/api/auth/status`, {
@@ -44,7 +47,7 @@ export default function LoginPage() {
         const data = await res.json();
 
         if (data.authenticated === true || data.requireLogin === false) {
-          window.location.assign(nextPath);
+          window.location.assign(redirectPath);
           return;
         }
 

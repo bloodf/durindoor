@@ -10,6 +10,7 @@ import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/con
 import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, buildModelLockUpdate, getActiveModelLockUntil, isPassthroughConnectionWideError } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS, RESET_COOLDOWN_CAP_MS } from "open-sse/config/errorConfig.js";
 import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
+import { PROVIDERS } from "open-sse/providers/index.js";
 import * as log from "../utils/logger.js";
 import { timingSafeEqual } from "node:crypto";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
@@ -160,6 +161,22 @@ function buildNoAuthCredential(providerSpecificData = {}, resolvedProxy = {}, co
     authType: "none",
     _connection: connection || null,
   };
+}
+
+function buildOptionalNoAuthCredential() {
+  return {
+    id: "noauth",
+    connectionName: "Public",
+    isActive: true,
+    authType: "none",
+    providerSpecificData: {},
+    connectionId: "noauth",
+    _connection: null,
+  };
+}
+
+function providerHasOptionalAuth(providerId) {
+  return PROVIDERS[providerId]?.authType === "optional";
 }
 
 function throwIfAborted(signal) {
@@ -441,6 +458,9 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       }
     }
 
+    if (connections.length === 0 && providerHasOptionalAuth(providerId)) {
+      return buildOptionalNoAuthCredential();
+    }
     if (connections.length === 0) {
       log.warn("AUTH", `No credentials for ${provider}`);
       return null;
@@ -470,6 +490,10 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       if (isNoAuthProvider && publicFallbackAllowed) {
         log.warn("AUTH", `${provider} | saved key unavailable, falling back to public no-auth`);
         return buildPublicNoAuthCredential(providerId);
+      }
+      if (providerHasOptionalAuth(providerId)) {
+        log.warn("AUTH", `${provider} | saved key unavailable, falling back to optional no-auth`);
+        return buildOptionalNoAuthCredential();
       }
       // Find earliest lock expiry across all connections for retry timing
       const blockedConns = connections.filter(

@@ -15,6 +15,7 @@ function buildTransport(entry, oauth) {
   const t = { ...transport };
   if (!t.format) t.format = PROVIDER_DEFAULTS.format;
   if (entry.thinkingFormat !== undefined) t.thinkingFormat = entry.thinkingFormat;
+  if (entry.authType !== undefined) t.authType = entry.authType;
   if (oauth) {
     for (const f of OAUTH_INJECT_FIELDS) {
       if (t[f] === undefined && oauth[f] !== undefined) t[f] = oauth[f];

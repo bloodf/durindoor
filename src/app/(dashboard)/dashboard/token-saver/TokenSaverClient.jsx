@@ -520,6 +520,7 @@ export default function TokenSaverClient({ view = "overview" }) {
             </p>
           </div>
           <Toggle
+            ariaLabel="Enable Headroom"
             checked={headroomEnabled}
             onChange={() => handleHeadroomEnabled(!headroomEnabled)}
           />

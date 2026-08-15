@@ -441,8 +441,10 @@ export async function parseUpstreamError(response, executor = null, options = {}
   }
 
   let message = "";
+  let errorBody;
   try {
     const json = JSON.parse(bodyText);
+    errorBody = json;
     // ClinePass wraps failures as {success:false, error}; surface the inner
     // message instead of the wrapper. Source: decolua/9router#2332 @ 005d970f49.
     const { error: envError } = unwrapClinepassEnvelope(json, executor?.getProvider?.() || executor?.provider);
@@ -462,6 +464,7 @@ export async function parseUpstreamError(response, executor = null, options = {}
     statusCode: response.status,
     message: response.status === 429 ? DEFAULT_ERROR_MESSAGES[429] : sanitizeErrorMessage(finalMessage),
     resetsAtMs: rateLimitEvidence?.resetAtMs,
+    errorBody,
     rateLimitEvidence,
   };
 }

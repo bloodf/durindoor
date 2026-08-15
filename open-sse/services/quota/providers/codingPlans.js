@@ -569,11 +569,21 @@ function qwenTokenPlanPayload(endpoint, data, site) {
   }).toString();
 }
 
+function qwenTokenPlanEnvelope(payload) {
+  return asRecord(asRecord(asRecord(payload)?.data)?.DataV2)?.data;
+}
+
+function qwenTokenPlanEnvelopeOutcome(payload) {
+  const envelope = qwenTokenPlanEnvelope(payload);
+  if (!envelope) return "malformed";
+  if (envelope.code === "SUCCESS" && envelope.success === true && asRecord(envelope.data)) return null;
+  if (["ConsoleNeedLogin", "ConsoleSessionExpired", "LoginRequired"].includes(envelope.code)) return "unauthenticated";
+  return typeof envelope.code === "string" && envelope.code ? "provider_error" : "malformed";
+}
+
 function unwrapQwenTokenPlanPayload(payload) {
-  const root = asRecord(payload);
-  const data = root?.data?.DataV2?.data;
-  if (!data || data.code !== "SUCCESS" || data.success !== true) return null;
-  return asRecord(data.data);
+  const data = qwenTokenPlanEnvelope(payload);
+  return data?.code === "SUCCESS" && data.success === true ? asRecord(data.data) : null;
 }
 
 function qwenTokenPlanLimit(quotaConfig, plan, field) {
@@ -629,14 +639,14 @@ async function fetchQwenTokenPlanQuota(context, data) {
     attemptedAt = result.attemptedAt;
     if (!result.ok) return { failure: result };
     const payload = unwrapQwenTokenPlanPayload(result.data);
-    if (!payload) return { failure: { outcome: "forbidden", attemptedAt } };
+    if (!payload) return { failure: { outcome: qwenTokenPlanEnvelopeOutcome(result.data), attemptedAt, retryAt: null } };
     results.push(payload);
   }
   const rows = normalizeQwenTokenPlanQuota({ usage: results[0], quotaConfig: results[1], subscription: results[2] }, { now: new Date(attemptedAt).getTime() });
   if (rows === null) return { failure: { outcome: "malformed", attemptedAt } };
   return { rows, attemptedAt };
 }
- 
+
 export async function fetchBailianQuota(context) {
   const { config, connection } = context;
   const data = connectionData(connection);

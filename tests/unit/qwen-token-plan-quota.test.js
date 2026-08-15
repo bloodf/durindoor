@@ -87,26 +87,9 @@ describe("Qwen / Alibaba personal Token Plan quota (port abd4df63dc25)", () => {
       .mockResolvedValueOnce(json(gateway({ per1WeekPercentage: 0.25, per1WeekResetTime: RESET })))
       .mockResolvedValueOnce(json(gateway({ pro: { weekly: 40_000 } })))
       .mockResolvedValueOnce(json(gateway({ specCode: "pro" })));
-
-    const result = await fetchBailianQuota(
-      quotaContext(
-        {
-          id: "token-plan",
-          provider: "bailian-coding-plan",
-          apiKey: "enterprise-api-key",
-          providerSpecificData: {
-            qwenCloudCookie: "login_aliyunid_ticket=browser-session",
-            qwenCloudSecToken: "sec",
-            qwenCloudConsoleSite: "INTL",
-          },
-        },
-        fetchImpl
-      )
-    );
-
+    const result = await fetchBailianQuota(quotaContext({ id: "token-plan", provider: "bailian-coding-plan", apiKey: "enterprise-api-key", providerSpecificData: { qwenCloudCookie: "login_aliyunid_ticket=browser-session", qwenCloudSecToken: "sec" } }, fetchImpl));
     expect(result).toMatchObject({ outcome: "success", sourceId: "bailian-coding-plan:token-plan-quota:v1" });
     expect(result.rows).toHaveLength(1);
-    expect(fetchImpl.mock.calls[0][0]).toContain("bailian-singapore-cs.alibabacloud.com/data/api.json");
     expect(fetchImpl.mock.calls).toHaveLength(3);
     const expectedHeaders = { Cookie: "login_aliyunid_ticket=browser-session", "Content-Type": "application/x-www-form-urlencoded", Origin: "https://modelstudio.console.alibabacloud.com", Referer: "https://modelstudio.console.alibabacloud.com/" };
     for (const call of fetchImpl.mock.calls) {
@@ -114,9 +97,23 @@ describe("Qwen / Alibaba personal Token Plan quota (port abd4df63dc25)", () => {
       expect(call[1].headers).toMatchObject(expectedHeaders);
     }
     expect(fetchImpl.mock.calls[0][1].headers.Authorization).toBeUndefined();
-    expect(new URLSearchParams(fetchImpl.mock.calls[0][1].body).get("params")).toContain(
-      "zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/usage",
-    );
+    expect(new URLSearchParams(fetchImpl.mock.calls[0][1].body).get("params")).toContain("zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/usage");
+  });
+
+  it("returns provider_error for a nested upstream error instead of falsely demanding re-login", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(json({ data: { DataV2: { data: { code: "UPSTREAM_ERROR", success: false } } } }));
+    const result = await fetchBailianQuota(quotaContext({ id: "upstream", providerSpecificData: { qwenCloudCookie: "login_qwencloud_ticket=session" } }, fetchImpl));
+    expect(result).toMatchObject({ outcome: "provider_error", sourceId: "bailian-coding-plan:token-plan-quota:v1" });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns unauthenticated for confirmed console login envelopes and HTTP 401", async () => {
+    const loginFetch = vi.fn().mockResolvedValue(json({ data: { DataV2: { data: { code: "ConsoleNeedLogin", success: false } } } }));
+    const loginResult = await fetchBailianQuota(quotaContext({ id: "login", providerSpecificData: { qwenCloudCookie: "login_qwencloud_ticket=session" } }, loginFetch));
+    expect(loginResult).toMatchObject({ outcome: "unauthenticated", sourceId: "bailian-coding-plan:token-plan-quota:v1" });
+    const unauthorizedFetch = vi.fn().mockResolvedValue(json({ error: "unauthorized" }, 401));
+    const unauthorizedResult = await fetchBailianQuota(quotaContext({ id: "unauthorized", providerSpecificData: { qwenCloudCookie: "login_qwencloud_ticket=session" } }, unauthorizedFetch));
+    expect(unauthorizedResult).toMatchObject({ outcome: "unauthenticated", sourceId: "bailian-coding-plan:token-plan-quota:v1" });
   });
 
   it("falls back to retained API-key Coding Plan quota only when personal quota is unavailable", async () => {

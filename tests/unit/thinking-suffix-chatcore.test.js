@@ -409,12 +409,11 @@ describe("thinking suffix at the chatCore provider boundary", () => {
   ]) {
     it(`preserves ${alias} through upstream-id rewrite to the DeepSeek wire body`, async () => {
       const executor = new DefaultExecutor("deepseek");
+      let wireModel;
+      let wireBody;
       mocks.execute.mockImplementationOnce(({ model, body, stream, credentials, requestContext }) => {
-        const wireBody = executor.transformRequest(model, structuredClone(body), stream, credentials, requestContext);
-        expect(model).toBe("deepseek-v4-pro");
-        expect(wireBody.model).toBe("deepseek-v4-pro");
-        expect(wireBody.extra_body.thinking.type).toBe(expectedThinking);
-        expect(wireBody.reasoning_effort).toBe(expectedEffort);
+        wireModel = model;
+        wireBody = executor.transformRequest(model, structuredClone(body), stream, credentials, requestContext);
         throw new Error("stop after wire capture");
       });
 
@@ -432,6 +431,10 @@ describe("thinking suffix at the chatCore provider boundary", () => {
       });
 
       expect(mocks.execute).toHaveBeenCalledOnce();
+      expect(wireModel).toBe("deepseek-v4-pro");
+      expect(wireBody.model).toBe("deepseek-v4-pro");
+      expect(wireBody.extra_body.thinking.type).toBe(expectedThinking);
+      expect(wireBody.reasoning_effort).toBe(expectedEffort);
     });
   }
 

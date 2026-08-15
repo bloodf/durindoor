@@ -150,6 +150,23 @@ describe("hermes-settings api_key (port of decolua/9router#3235)", () => {
     expect(JSON.stringify(await response.clone().json())).not.toContain(apiKey);
   });
 
+  it("does not chmod Hermes environment file on Windows", async () => {
+    mocks.platform.mockReturnValue("win32");
+    const response = await postBody({
+      baseUrl: "http://localhost:20128",
+      apiKey: "sk_windows_sentinel",
+      model: "cc/claude-sonnet-4-6",
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.writeFile).toHaveBeenLastCalledWith(
+      "/home/test/.hermes/.env",
+      "OPENAI_API_KEY=sk_windows_sentinel\n",
+      { mode: 0o600 },
+    );
+    expect(mocks.chmod).not.toHaveBeenCalled();
+  });
+
   it("POST leaves the existing Hermes key untouched when no key is supplied", async () => {
     const response = await postBody({
       baseUrl: "http://localhost:20128",

@@ -110,6 +110,14 @@ const readEnvFile = async () => {
   }
 };
 
+const writeHermesEnvFile = async (envText) => {
+  const envPath = getHermesEnvPath();
+  await fs.writeFile(envPath, envText, { mode: 0o600 });
+  if (os.platform() !== "win32") {
+    await fs.chmod(envPath, 0o600);
+  }
+};
+
 // Detect 9router by base_url containing localhost/127.0.0.1 or matching tunnel URL
 const has9RouterConfig = (modelCfg) => {
   if (!modelCfg?.base_url) return false;
@@ -168,7 +176,7 @@ export async function POST(request) {
     if (apiKey) {
       const existingEnv = await readEnvFile();
       const newEnv = upsertEnvVar(existingEnv, API_KEY_ENV, apiKey);
-      await fs.writeFile(getHermesEnvPath(), newEnv);
+      await writeHermesEnvFile(newEnv);
     }
 
     return NextResponse.json({

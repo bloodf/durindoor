@@ -1,5 +1,16 @@
 # Unreleased
 
+Dashboard login behind a TLS-terminating tunnel or reverse proxy (Cloudflare
+Tunnel, Tailscale) now succeeds when the deployment's public address is set via
+`BASE_URL` / `NEXT_PUBLIC_BASE_URL`. The 3.16.1 attempt read `x-forwarded-proto`,
+but `custom-server.js` strips client-forgeable `x-forwarded-*` headers at the
+boundary, so that scheme was never visible to the guard. The same-origin login
+guard now accepts a browser `Origin` that matches a configured public base URL —
+the operator-set, non-forgeable source of the deployment's canonical origin — and
+otherwise keeps the exact Host-derived comparison. Operators exposing the
+dashboard through a tunnel must set `BASE_URL` to that public origin (e.g.
+`https://llm.amoena.ai`).
+
 # 3.16.1
 
 Dashboard login behind a TLS-terminating proxy or tunnel (Cloudflare Tunnel,

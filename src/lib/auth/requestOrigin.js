@@ -18,21 +18,43 @@ function originHost(url) {
   }
 }
 
+// Origins the operator has declared as this deployment's public address.
+// custom-server.js strips client-forgeable x-forwarded-* at the boundary, so a
+// TLS-terminating tunnel/proxy (Cloudflare, Tailscale) cannot be recognized from
+// request headers — the public origin must come from operator-set config. These
+// env values are trusted (not request-controlled).
+function configuredPublicOrigins() {
+  const origins = new Set();
+  for (const raw of [process.env.BASE_URL, process.env.NEXT_PUBLIC_BASE_URL]) {
+    if (!raw) continue;
+    try {
+      origins.add(new URL(raw).origin);
+    } catch {
+      // ignore malformed config
+    }
+  }
+  return origins;
+}
+
 export function hasExactRequestOrigin(request) {
   const origin = request.headers.get("origin");
   if (!origin) return true;
 
+  let normalizedOrigin;
+  try {
+    normalizedOrigin = new URL(origin).origin;
+  } catch {
+    return false;
+  }
+
+  // A browser Origin matching the configured public base URL is trusted even
+  // when the upstream socket is plain HTTP behind a TLS-terminating tunnel.
+  if (configuredPublicOrigins().has(normalizedOrigin)) return true;
+
   const host = request.headers.get("host");
   if (!host) return false;
   try {
-    // Behind a TLS-terminating proxy/tunnel (Cloudflare, Tailscale Serve) the
-    // socket is plain HTTP, so request.url is `http://` while the browser Origin
-    // is `https://`. Trust the forwarded scheme when present, matching
-    // shouldUseSecureCookie's convention, so a same-host HTTPS login is not
-    // rejected as cross-origin.
-    const forwardedProto = request.headers.get("x-forwarded-proto");
-    const scheme = (forwardedProto ? forwardedProto.split(",")[0].trim() : "") || new URL(request.url).protocol.replace(/:$/, "");
-    return new URL(origin).origin === new URL(`${scheme}://${host}`).origin;
+    return normalizedOrigin === new URL(`${new URL(request.url).protocol}//${host}`).origin;
   } catch {
     return false;
   }

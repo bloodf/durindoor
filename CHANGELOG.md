@@ -1,5 +1,18 @@
 # Unreleased
 
+Dashboard login now works over every remote path — Tailscale (Serve/HTTPS and raw
+IP), a Cloudflare/other tunnel, and direct LAN IP — not just the single origin
+configured in `BASE_URL`. The same-origin login guard compares the browser
+`Origin` against the `Host` header by hostname and port, independent of scheme: a
+TLS-terminating proxy makes the upstream socket plain HTTP while the browser
+`Origin` is HTTPS, but the request is still same-origin. The `Host` header is set
+by the proxy, not by an attacker's cross-site page, so host+port equality is the
+CSRF-relevant invariant; cross-host Origins and port mismatches are still
+rejected. `BASE_URL` / `NEXT_PUBLIC_BASE_URL` remain an accepted allowlist for
+proxies that rewrite `Host` to an internal name, but are no longer required for a
+Host-preserving proxy. This supersedes the 3.16.2 BASE_URL-only allowlist, which
+rejected any remote host other than the one configured value.
+
 # 3.16.2
 
 Dashboard login behind a TLS-terminating tunnel or reverse proxy (Cloudflare

@@ -30,18 +30,32 @@ describe("hasTrustedLocalOrigin", () => {
   });
 });
 
-describe("hasExactRequestOrigin port and scheme strictness", () => {
+describe("hasExactRequestOrigin port and proxy termination", () => {
   it("rejects an Origin whose port does not match the Host port", () => {
     expect(hasExactRequestOrigin(request({ host: "durindoor.test:20128", origin: "http://durindoor.test:20129" }))).toBe(false);
   });
 
-  it("rejects an Origin whose scheme does not match the request scheme", () => {
-    expect(hasExactRequestOrigin(request({ host: "durindoor.test", origin: "https://durindoor.test" }))).toBe(false);
+  it("accepts a same-host HTTPS Origin when a proxy terminates TLS (scheme-independent)", () => {
+    // Tailscale Serve / reverse proxy: browser Origin is https, upstream socket is
+    // http, but the Host header is preserved -> same host:port -> same-origin.
+    expect(hasExactRequestOrigin(request({ host: "durindoor.test", origin: "https://durindoor.test" }))).toBe(true);
   });
 
-  it("allows a browser Origin matching the configured public BASE_URL through a tunnel", () => {
-    // custom-server strips x-forwarded-* at the boundary; the public origin comes
-    // from operator config. Socket is http (request.url), Origin is https tunnel host.
+  it("accepts a Tailscale Serve HTTPS Origin on a non-default port with matching Host", () => {
+    expect(hasExactRequestOrigin(request({ host: "cortexos.tailfd052e.ts.net:11434", origin: "https://cortexos.tailfd052e.ts.net:11434" }))).toBe(true);
+  });
+
+  it("accepts direct IP access over http (Tailscale/LAN address, same host:port)", () => {
+    expect(hasExactRequestOrigin(request({ host: "100.109.20.9:11434", origin: "http://100.109.20.9:11434" }))).toBe(true);
+  });
+
+  it("rejects an HTTPS Origin whose host differs from the Host header", () => {
+    // Implicit :443 origin vs :11434 Host -> different port -> not same-origin.
+    expect(hasExactRequestOrigin(request({ host: "cortexos.tailfd052e.ts.net:11434", origin: "https://evil.ts.net" }))).toBe(false);
+  });
+
+  it("allows a browser Origin matching the configured public BASE_URL when a proxy rewrites Host", () => {
+    // Fallback path for proxies that rewrite Host to an internal name.
     process.env.BASE_URL = "https://llm.amoena.ai";
     expect(hasExactRequestOrigin(request({ host: "127.0.0.1:11434", origin: "https://llm.amoena.ai" }))).toBe(true);
   });

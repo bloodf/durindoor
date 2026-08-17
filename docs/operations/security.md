@@ -176,7 +176,7 @@ When using tunnels:
 - Prefer dedicated API keys for tunnel-connected tools.
 - Watch request logs after enabling a tunnel.
 - Disable the tunnel when not needed.
-- Set `BASE_URL` (and `NEXT_PUBLIC_BASE_URL`) to the public tunnel origin, e.g. `https://gateway.example.com`. The dashboard strips client-forgeable `x-forwarded-*` headers at the boundary, so a remote login's browser `Origin` is validated against this configured public origin; without it, login through the tunnel is rejected as cross-origin.
+- Remote dashboard login is allowed when the browser `Origin` and the `Host` header the gateway receives share the same hostname and port (scheme is ignored, since a tunnel terminates TLS upstream). Tailscale Serve, Cloudflare Tunnel, and most reverse proxies preserve `Host`, so login works with no extra configuration. If your proxy rewrites `Host` to an internal name (e.g. `127.0.0.1`), set `BASE_URL` (and `NEXT_PUBLIC_BASE_URL`) to the public origin, e.g. `https://gateway.example.com`, so that Origin is accepted. Cross-host Origins and port mismatches are always rejected.
 
 ## MITM Mode
 

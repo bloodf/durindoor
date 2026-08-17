@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { hasExactRequestOrigin } from "../../src/lib/auth/requestOrigin.js";
 
 function request(headers = {}) {
@@ -39,12 +39,25 @@ describe("hasExactRequestOrigin port and scheme strictness", () => {
     expect(hasExactRequestOrigin(request({ host: "durindoor.test", origin: "https://durindoor.test" }))).toBe(false);
   });
 
-  it("allows a same-host HTTPS Origin when a TLS-terminating proxy sets x-forwarded-proto", () => {
-    // Cloudflare tunnel / Tailscale Serve: socket is http, browser Origin is https.
-    expect(hasExactRequestOrigin(request({ host: "llm.amoena.ai", origin: "https://llm.amoena.ai", "x-forwarded-proto": "https" }))).toBe(true);
+  it("allows a browser Origin matching the configured public BASE_URL through a tunnel", () => {
+    // custom-server strips x-forwarded-* at the boundary; the public origin comes
+    // from operator config. Socket is http (request.url), Origin is https tunnel host.
+    process.env.BASE_URL = "https://llm.amoena.ai";
+    expect(hasExactRequestOrigin(request({ host: "127.0.0.1:11434", origin: "https://llm.amoena.ai" }))).toBe(true);
   });
 
-  it("uses the first hop when x-forwarded-proto lists multiple schemes", () => {
-    expect(hasExactRequestOrigin(request({ host: "llm.amoena.ai", origin: "https://llm.amoena.ai", "x-forwarded-proto": "https, http" }))).toBe(true);
+  it("honors NEXT_PUBLIC_BASE_URL when BASE_URL is unset", () => {
+    process.env.NEXT_PUBLIC_BASE_URL = "https://llm.amoena.ai";
+    expect(hasExactRequestOrigin(request({ host: "127.0.0.1:11434", origin: "https://llm.amoena.ai" }))).toBe(true);
   });
+
+  it("still rejects an Origin that matches neither the Host nor the configured base URL", () => {
+    process.env.BASE_URL = "https://llm.amoena.ai";
+    expect(hasExactRequestOrigin(request({ host: "127.0.0.1:11434", origin: "https://attacker.test" }))).toBe(false);
+  });
+});
+
+afterEach(() => {
+  delete process.env.BASE_URL;
+  delete process.env.NEXT_PUBLIC_BASE_URL;
 });

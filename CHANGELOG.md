@@ -1,5 +1,13 @@
 # Unreleased
 
+Dashboard login behind a TLS-terminating proxy or tunnel (Cloudflare Tunnel,
+Tailscale Serve) no longer fails with `Cross-origin login is not allowed`. The
+same-origin login guard now trusts the `x-forwarded-proto` scheme when present —
+matching the cookie-security convention — so an `https` browser Origin reaching a
+plain-HTTP upstream on the same host is accepted. Attacker-controlled Origins are
+still rejected on host mismatch, and requests without a forwarded scheme keep the
+original request-URL scheme comparison.
+
 # 3.16.0
 
 ## Responses API output_index allocation

@@ -25,7 +25,14 @@ export function hasExactRequestOrigin(request) {
   const host = request.headers.get("host");
   if (!host) return false;
   try {
-    return new URL(origin).origin === new URL(`${new URL(request.url).protocol}//${host}`).origin;
+    // Behind a TLS-terminating proxy/tunnel (Cloudflare, Tailscale Serve) the
+    // socket is plain HTTP, so request.url is `http://` while the browser Origin
+    // is `https://`. Trust the forwarded scheme when present, matching
+    // shouldUseSecureCookie's convention, so a same-host HTTPS login is not
+    // rejected as cross-origin.
+    const forwardedProto = request.headers.get("x-forwarded-proto");
+    const scheme = (forwardedProto ? forwardedProto.split(",")[0].trim() : "") || new URL(request.url).protocol.replace(/:$/, "");
+    return new URL(origin).origin === new URL(`${scheme}://${host}`).origin;
   } catch {
     return false;
   }

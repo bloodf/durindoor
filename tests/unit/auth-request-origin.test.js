@@ -38,4 +38,13 @@ describe("hasExactRequestOrigin port and scheme strictness", () => {
   it("rejects an Origin whose scheme does not match the request scheme", () => {
     expect(hasExactRequestOrigin(request({ host: "durindoor.test", origin: "https://durindoor.test" }))).toBe(false);
   });
+
+  it("allows a same-host HTTPS Origin when a TLS-terminating proxy sets x-forwarded-proto", () => {
+    // Cloudflare tunnel / Tailscale Serve: socket is http, browser Origin is https.
+    expect(hasExactRequestOrigin(request({ host: "llm.amoena.ai", origin: "https://llm.amoena.ai", "x-forwarded-proto": "https" }))).toBe(true);
+  });
+
+  it("uses the first hop when x-forwarded-proto lists multiple schemes", () => {
+    expect(hasExactRequestOrigin(request({ host: "llm.amoena.ai", origin: "https://llm.amoena.ai", "x-forwarded-proto": "https, http" }))).toBe(true);
+  });
 });

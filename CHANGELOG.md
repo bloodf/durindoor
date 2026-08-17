@@ -1,5 +1,7 @@
 # Unreleased
 
+# 3.16.2
+
 Dashboard login behind a TLS-terminating tunnel or reverse proxy (Cloudflare
 Tunnel, Tailscale) now succeeds when the deployment's public address is set via
 `BASE_URL` / `NEXT_PUBLIC_BASE_URL`. The 3.16.1 attempt read `x-forwarded-proto`,

@@ -1,5 +1,7 @@
 # Unreleased
 
+# 3.16.3
+
 Dashboard login now works over every remote path — Tailscale (Serve/HTTPS and raw
 IP), a Cloudflare/other tunnel, and direct LAN IP — not just the single origin
 configured in `BASE_URL`. The same-origin login guard compares the browser

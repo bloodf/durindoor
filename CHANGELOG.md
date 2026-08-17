@@ -1,5 +1,7 @@
 # Unreleased
 
+# 3.16.1
+
 Dashboard login behind a TLS-terminating proxy or tunnel (Cloudflare Tunnel,
 Tailscale Serve) no longer fails with `Cross-origin login is not allowed`. The
 same-origin login guard now trusts the `x-forwarded-proto` scheme when present —

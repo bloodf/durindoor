@@ -709,11 +709,28 @@ async function buildModelsListImpl(kindFilter, guard) {
             )
           : providerModels.map((model) => model.id);
 
-        const hasConfiguredCustomModels = customModels.some((model) => {
-          const alias = model?.providerAlias;
-          return alias === staticAlias || alias === outputAlias || alias === providerId;
-        });
-
+        const customModelKindById = new Map();
+        const customCapabilitiesById = new Map();
+        const customModelIds = customModels
+          .filter((m) => {
+            if (!m.id) return false;
+            const kind = customModelKind(m);
+            // imageToText custom models are vision-capable chat models: expose them
+            // both in the default LLM list and in /v1/models/image-to-text.
+            if (!kindFilter.includes(kind) && !(kind === "imageToText" && kindFilter.includes(LLM_KIND))) return false;
+            const alias = m.providerAlias;
+            return alias === staticAlias || alias === outputAlias || alias === providerId;
+          })
+          .map((m) => {
+            const modelId = String(m.id).trim();
+            const kind = customModelKind(m);
+            if (modelId) {
+              customModelKindById.set(modelId, kind);
+              if (isRecord(m.capabilities)) customCapabilitiesById.set(modelId, m.capabilities);
+            }
+            return modelId;
+          })
+          .filter((modelId) => modelId !== "");
 
         // Live metadata precedence is user override > live upstream > static
         // catalog > default. `explicitCaps` below applies custom/user metadata
@@ -726,7 +743,7 @@ async function buildModelsListImpl(kindFilter, guard) {
           ? registryFetcher
           : null;
         const isKimiLiveProvider = KIMI_LIVE_MODEL_PROVIDERS.has(providerId);
-        const compatibleLiveResolver = (isCompatibleProvider || genericFetcher || isKimiLiveProvider) && !hasConfiguredCustomModels
+        const compatibleLiveResolver = (isCompatibleProvider || genericFetcher || isKimiLiveProvider) && customModelIds.length === 0
           ? async (connection, liveGuard) => {
               const psd = isRecord(connection.providerSpecificData) ? connection.providerSpecificData : {};
               const proxyOptions = await resolveConnectionProxyConfig(psd);
@@ -818,29 +835,6 @@ async function buildModelsListImpl(kindFilter, guard) {
             return modelId;
           })
           .filter((modelId) => typeof modelId === "string" && modelId.trim() !== "");
-
-        const customModelKindById = new Map();
-        const customCapabilitiesById = new Map();
-        const customModelIds = customModels
-          .filter((m) => {
-            if (!m.id) return false;
-            const kind = customModelKind(m);
-            // imageToText custom models are vision-capable chat models: expose them
-            // both in the default LLM list and in /v1/models/image-to-text.
-            if (!kindFilter.includes(kind) && !(kind === "imageToText" && kindFilter.includes(LLM_KIND))) return false;
-            const alias = m.providerAlias;
-            return alias === staticAlias || alias === outputAlias || alias === providerId;
-          })
-          .map((m) => {
-            const modelId = String(m.id).trim();
-            const kind = customModelKind(m);
-            if (modelId) {
-              customModelKindById.set(modelId, kind);
-              if (isRecord(m.capabilities)) customCapabilitiesById.set(modelId, m.capabilities);
-            }
-            return modelId;
-          })
-          .filter((modelId) => modelId !== "");
 
         const aliasModelIds = Object.values(modelAliases)
           .filter((fullModel) => typeof fullModel === "string" && fullModel.includes("/"))

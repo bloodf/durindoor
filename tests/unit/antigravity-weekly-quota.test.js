@@ -164,7 +164,7 @@ describe("getAntigravityUsage weekly merge", () => {
     // The summary RPC carries the same official IDE headers as the other calls.
     const summaryCall = proxyAwareFetch.mock.calls.find(([url]) => url.includes("retrieveUserQuotaSummary"));
     expect(summaryCall).toBeDefined();
-    expect(summaryCall[1].headers["User-Agent"]).toBe("antigravity/ide/2.1.1 darwin/arm64");
+    expect(summaryCall[1].headers["User-Agent"]).toBe("antigravity/ide/2.5.5 darwin/arm64");
     expect(summaryCall[1].headers).not.toHaveProperty("x-request-source");
   });
 

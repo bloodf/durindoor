@@ -2,14 +2,19 @@ import crypto from "node:crypto";
 import os from "node:os";
 import { fetch as undiciFetch, ProxyAgent } from "undici";
 import { BaseExecutor } from "./base.js";
+import {
+  pickAccount as pickRotatableAccount,
+  markCooldown as markAccountCooldown,
+  markSuccess as markAccountSuccess,
+  maskAccountId,
+  isNetworkErrorRotatable,
+} from "./accountRotation.js";
 
 const BASE_URL = "https://api.xiaomimimo.com";
 const BOOTSTRAP_PATH = "/api/free-ai/bootstrap";
 const CHAT_PATH = "/api/free-ai/openai/chat";
 const JWT_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 const BOOTSTRAP_TIMEOUT_MS = 15_000;
-const COOLDOWN_BASE_MS = 5_000;
-const COOLDOWN_MAX_MS = 60_000;
 const MIMO_SOURCE = "mimocode-cli-free";
 
 export const MIMO_SYSTEM_MARKER =
@@ -196,27 +201,17 @@ export class MimocodeExecutor extends BaseExecutor {
   }
 
   pickAccount() {
-    for (let i = 0; i < this.accounts.length; i++) {
-      const idx = (this.nextAccountIdx + i) % this.accounts.length;
-      const account = this.accounts[idx];
-      if (isAccountReady(account)) {
-        this.nextAccountIdx = (idx + 1) % this.accounts.length;
-        return account;
-      }
-    }
-    const fallbackIdx = this.nextAccountIdx % this.accounts.length;
-    this.nextAccountIdx = (this.nextAccountIdx + 1) % this.accounts.length;
-    return this.accounts[fallbackIdx];
+    return pickRotatableAccount(this.accounts, this, (account) =>
+      isAccountReady(account),
+    );
   }
 
   markCooldown(account) {
-    account.consecutiveFails += 1;
-    const backoff = Math.min(COOLDOWN_BASE_MS * 2 ** (account.consecutiveFails - 1), COOLDOWN_MAX_MS);
-    account.cooldownUntil = Date.now() + backoff + Math.random() * 1000;
+    markAccountCooldown(account);
   }
 
   markSuccess(account) {
-    account.consecutiveFails = 0;
+    markAccountSuccess(account);
   }
 
   buildUrl() {
@@ -318,7 +313,21 @@ export class MimocodeExecutor extends BaseExecutor {
         this.markSuccess(account);
         return { response, url, headers, transformedBody };
       } catch (error) {
+        if (!isNetworkErrorRotatable(account)) {
+          const message = error instanceof Error ? error.message : String(error);
+          log?.error?.("MIMOCODE", `Executor error: ${message}`);
+          return {
+            response: new Response(JSON.stringify({ error: { message, type: "upstream_error", code: "EXECUTOR_ERROR" } }), {
+              status: 502,
+              headers: { "Content-Type": "application/json" },
+            }),
+            url,
+            headers: this.buildHeaders(credentials, stream),
+            transformedBody,
+          };
+        }
         this.markCooldown(account);
+        log?.warn?.("MIMOCODE", `Network error on account ${account.fingerprint.slice(0, 8)}, trying next`);
         if (attempt === this.accounts.length - 1) {
           const message = error instanceof Error ? error.message : String(error);
           log?.error?.("MIMOCODE", `Executor error: ${message}`);

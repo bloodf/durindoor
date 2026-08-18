@@ -149,87 +149,88 @@ import p146 from "./morph.js";
 import p147 from "./muse-spark-web.js";
 import p148 from "./nanobanana.js";
 import p149 from "./nebius.js";
-import p150 from "./nube.js";
-import p151 from "./nvidia.js";
-import p152 from "./ollama-local.js";
-import p153 from "./ollama.js";
-import p154 from "./omniroute-api-cloud.js";
-import p155 from "./oobabooga.js";
-import p156 from "./openai.js";
-import p157 from "./opencode-go.js";
-import p158 from "./opencode-zen.js";
-import p159 from "./opencode.js";
-import p160 from "./openrouter.js";
-import p161 from "./perplexity-agent.js";
-import p162 from "./perplexity-web.js";
-import p163 from "./perplexity.js";
-import p164 from "./playht.js";
-import p165 from "./pollinations.js";
-import p166 from "./poolside.js";
-import p167 from "./puter.js";
-import p168 from "./qianfan.js";
-import p169 from "./qiniu.js";
-import p170 from "./qoder-cn.js";
-import p171 from "./qoder.js";
-import p172 from "./qwen.js";
-import p173 from "./recraft.js";
-import p174 from "./reka.js";
-import p175 from "./requesty.js";
-import p176 from "./runwayml.js";
-import p177 from "./sambanova.js";
-import p178 from "./scaleway.js";
-import p179 from "./sdwebui.js";
-import p180 from "./searchapi.js";
-import p181 from "./searxng.js";
-import p182 from "./sensenova.js";
-import p183 from "./serper.js";
-import p184 from "./siliconflow.js";
-import p185 from "./snowflake.js";
-import p186 from "./sparkdesk.js";
-import p187 from "./stability-ai.js";
-import p188 from "./stepfun.js";
-import p189 from "./sumopod.js";
-import p190 from "./suno.js";
-import p191 from "./synthetic.js";
-import p192 from "./t3-web.js";
-import p193 from "./tavily.js";
-import p194 from "./tencent.js";
-import p195 from "./theoldllm.js";
-import p196 from "./tinyfish.js";
-import p197 from "./together.js";
-import p198 from "./tokenrouter.js";
-import p199 from "./topaz.js";
-import p200 from "./tortoise.js";
-import p201 from "./trae.js";
-import p202 from "./triton.js";
-import p203 from "./udio.js";
-import p204 from "./uncloseai.js";
-import p205 from "./upstage.js";
-import p206 from "./v0-vercel.js";
-import p207 from "./venice.js";
-import p208 from "./veoaifree-web.js";
-import p209 from "./vercel-ai-gateway.js";
-import p210 from "./vertex-partner.js";
-import p211 from "./vertex.js";
-import p212 from "./vllm.js";
-import p213 from "./volcengine-ark.js";
-import p214 from "./volcengine.js";
-import p215 from "./voyage-ai.js";
-import p216 from "./wafer.js";
-import p217 from "./wandb.js";
-import p218 from "./windsurf.js";
-import p219 from "./x5lab.js";
-import p220 from "./xai.js";
-import p221 from "./xiaomi-mimo.js";
-import p222 from "./xiaomi-tokenplan.js";
-import p223 from "./xinference.js";
-import p224 from "./yi.js";
-import p225 from "./youcom.js";
-import p226 from "./yuanbao-web.js";
-import p227 from "./zai.js";
-import p228 from "./zed.js";
-import p229 from "./zenmux-free.js";
-import p230 from "./zenmux.js";
+import p150 from "./novita.js";
+import p151 from "./nube.js";
+import p152 from "./nvidia.js";
+import p153 from "./ollama-local.js";
+import p154 from "./ollama.js";
+import p155 from "./omniroute-api-cloud.js";
+import p156 from "./oobabooga.js";
+import p157 from "./openai.js";
+import p158 from "./opencode-go.js";
+import p159 from "./opencode-zen.js";
+import p160 from "./opencode.js";
+import p161 from "./openrouter.js";
+import p162 from "./perplexity-agent.js";
+import p163 from "./perplexity-web.js";
+import p164 from "./perplexity.js";
+import p165 from "./playht.js";
+import p166 from "./pollinations.js";
+import p167 from "./poolside.js";
+import p168 from "./puter.js";
+import p169 from "./qianfan.js";
+import p170 from "./qiniu.js";
+import p171 from "./qoder-cn.js";
+import p172 from "./qoder.js";
+import p173 from "./qwen.js";
+import p174 from "./recraft.js";
+import p175 from "./reka.js";
+import p176 from "./requesty.js";
+import p177 from "./runwayml.js";
+import p178 from "./sambanova.js";
+import p179 from "./scaleway.js";
+import p180 from "./sdwebui.js";
+import p181 from "./searchapi.js";
+import p182 from "./searxng.js";
+import p183 from "./sensenova.js";
+import p184 from "./serper.js";
+import p185 from "./siliconflow.js";
+import p186 from "./snowflake.js";
+import p187 from "./sparkdesk.js";
+import p188 from "./stability-ai.js";
+import p189 from "./stepfun.js";
+import p190 from "./sumopod.js";
+import p191 from "./suno.js";
+import p192 from "./synthetic.js";
+import p193 from "./t3-web.js";
+import p194 from "./tavily.js";
+import p195 from "./tencent.js";
+import p196 from "./theoldllm.js";
+import p197 from "./tinyfish.js";
+import p198 from "./together.js";
+import p199 from "./tokenrouter.js";
+import p200 from "./topaz.js";
+import p201 from "./tortoise.js";
+import p202 from "./trae.js";
+import p203 from "./triton.js";
+import p204 from "./udio.js";
+import p205 from "./uncloseai.js";
+import p206 from "./upstage.js";
+import p207 from "./v0-vercel.js";
+import p208 from "./venice.js";
+import p209 from "./veoaifree-web.js";
+import p210 from "./vercel-ai-gateway.js";
+import p211 from "./vertex-partner.js";
+import p212 from "./vertex.js";
+import p213 from "./vllm.js";
+import p214 from "./volcengine-ark.js";
+import p215 from "./volcengine.js";
+import p216 from "./voyage-ai.js";
+import p217 from "./wafer.js";
+import p218 from "./wandb.js";
+import p219 from "./windsurf.js";
+import p220 from "./x5lab.js";
+import p221 from "./xai.js";
+import p222 from "./xiaomi-mimo.js";
+import p223 from "./xiaomi-tokenplan.js";
+import p224 from "./xinference.js";
+import p225 from "./yi.js";
+import p226 from "./youcom.js";
+import p227 from "./yuanbao-web.js";
+import p228 from "./zai.js";
+import p229 from "./zed.js";
+import p230 from "./zenmux-free.js";
+import p231 from "./zenmux.js";
 
 export default [
   p0,
@@ -386,8 +387,8 @@ export default [
   p151,
   p152,
   p153,
-  ...p154,
-  p155,
+  p154,
+  ...p155,
   p156,
   p157,
   p158,
@@ -463,4 +464,5 @@ export default [
   p228,
   p229,
   p230,
+  p231,
 ];

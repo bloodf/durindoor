@@ -269,6 +269,7 @@ export const PROVIDER_MODELS_CONFIG = {
   cerebras: createOpenAIModelsConfig("https://api.cerebras.ai/v1/models"),
   cohere: createOpenAIModelsConfig("https://api.cohere.ai/v1/models"),
   nebius: createOpenAIModelsConfig("https://api.studio.nebius.ai/v1/models"),
+  novita: createOpenAIModelsConfig("https://api.novita.ai/openai/v1/models"),
   siliconflow: createOpenAIModelsConfig("https://api.siliconflow.com/v1/models"),
   hyperbolic: createOpenAIModelsConfig("https://api.hyperbolic.xyz/v1/models"),
   bai: createOpenAIModelsConfig("https://api.b.ai/v1/models"),

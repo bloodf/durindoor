@@ -1,4 +1,4 @@
-# Unreleased
+# 3.17.0
 
 The Headroom dashboard now renders correctly through the gateway proxy. Static
 assets, the settings request, and dashboard sub-pages such as `/dashboard/settings`

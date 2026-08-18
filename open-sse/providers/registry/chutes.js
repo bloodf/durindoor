@@ -16,7 +16,7 @@ export default {
       apiKeyUrl: "https://chutes.ai/app/api",
     },
   },
-  category: "apikey",
+  serviceKinds: ["llm", "imageToText"],
   transport: {
     baseUrl: "https://llm.chutes.ai/v1/chat/completions",
     validateUrl: "https://llm.chutes.ai/v1/models",

@@ -46,6 +46,7 @@ import {
   BLOCKED_OMNIROUTE_PROVIDERS,
   BLOCKED_OMNIROUTE_PROVIDER_ALIASES,
 } from "./unsupported-websession.js";
+import REGISTRY from "../providers/registry/index.js";
 
 const executors = {
   antigravity: new AntigravityExecutor(),
@@ -120,8 +121,33 @@ const executors = {
 
 const defaultCache = new Map();
 
+// #10394 — providers that exist ONLY as /v1/search endpoint entries (searchConfig but no
+// transport in open-sse/providers/registry/) and have no chat-completions REGISTRY entry
+// anywhere in open-sse/. Without this guard, getExecutor() silently falls through to
+// DefaultExecutor's `PROVIDERS[provider] || PROVIDERS.openai` fallback, sending the user's
+// real search API key (e.g. a Tavily `tvly-...` key) to OpenAI's endpoint. Search providers
+// must be routed through /v1/search, never the chat-completions path. The set is derived
+// from the registry so a new search-only provider is picked up automatically.
+const CHAT_UNSUPPORTED_SEARCH_PROVIDERS = new Set(
+  REGISTRY
+    .filter((entry) => entry.searchConfig && !entry.transport)
+    .flatMap((entry) => [
+      entry.id,
+      entry.alias,
+      ...(Array.isArray(entry.aliases) ? entry.aliases : []),
+    ])
+    .filter(Boolean),
+);
+
 export function getExecutor(provider) {
   if (executors[provider]) return executors[provider];
+  if (CHAT_UNSUPPORTED_SEARCH_PROVIDERS.has(provider)) {
+    const err = new Error(
+      `Provider "${provider}" is a search provider and does not support chat completions; use the /v1/search endpoint instead.`,
+    );
+    err.status = 400;
+    throw err;
+  }
   if (!defaultCache.has(provider)) defaultCache.set(provider, new DefaultExecutor(provider));
   return defaultCache.get(provider);
 }

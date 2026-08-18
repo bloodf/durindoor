@@ -286,6 +286,20 @@ function toPascalCaseToolName(name) {
     .join("");
 }
 
+// Normalize an incoming Claude-style tool name: prefer a per-request
+// toolNameMap override (third-party aliases), then fall back to the
+// built-in lowercase→PascalCase case map, then the response-side
+// REVERSE_MAP (cloaked alias → original), else pass through unchanged.
+export function normalizeClaudeToolName(name, toolNameMap) {
+  if (!name || typeof name !== "string") return name;
+  if (toolNameMap instanceof Map) {
+    const mapped = toolNameMap.get(name) ?? toolNameMap.get(name.toLowerCase());
+    if (mapped) return mapped;
+  }
+  const lower = name.toLowerCase();
+  return TOOL_RENAME_MAP[lower] ?? REVERSE_MAP[name] ?? name;
+}
+
 export function needsThirdPartyCloak(name) {
   if (!name) return false;
   if (CLAUDE_BUILTIN_TOOL_NAMES.has(name)) return false;

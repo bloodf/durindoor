@@ -529,6 +529,14 @@ function removeInvalidEncryptedReasoning(body) {
   return removed;
 }
 
+// Report the *effective* service tier — the transformed body may have been
+// normalized (fast→priority) or stripped entirely for long contexts, so the
+// tier the client requested is not necessarily what upstream received (#3316).
+export function formatCodexTierLog(model, transformedBody) {
+  const effectiveTier = transformedBody?.service_tier || "default";
+  return `CODEX | ${model} | TIER:${effectiveTier}`;
+}
+
 function codexSseErrorResponse(status, message) {
   return new Response(JSON.stringify({
     error: {
@@ -645,9 +653,9 @@ export class CodexExecutor extends BaseExecutor {
     // Reuses 503 retry config — same semantic: upstream temporarily unavailable.
     // Each attempt receives a fresh body because BaseExecutor transforms in place.
     const retryConfig = { ...DEFAULT_RETRY_CONFIG, ...this.config.retry };
-    const { attempts, delayMs } = resolveRetryEntry(retryConfig[503]);
     let attempt = 0;
     let encryptedRecoveryAttempted = false;
+    let tierLogged = false;
     while (true) {
       throwIfAborted(args.signal);
       const result = await super.execute({
@@ -656,6 +664,11 @@ export class CodexExecutor extends BaseExecutor {
         body: cloneRequestBody(requestBody),
         requestContext,
       });
+      // Surface the effective tier once per request (#3316).
+      if (!tierLogged) {
+        args.log?.info?.("TIER", formatCodexTierLog(args.model, result.transformedBody));
+        tierLogged = true;
+      }
       // One-shot recovery: on a 400 invalid_encrypted_content, strip the
       // unverifiable encrypted reasoning and retry the SAME account once (#2667).
       if (!encryptedRecoveryAttempted && await isInvalidEncryptedContentResponse(result.response)) {

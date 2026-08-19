@@ -111,7 +111,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `chatgpt-web` | openai | webCookie | `https://chatgpt.com/backend-api/conversation` |
 | `chenzk` | openai | apikey | `https://chenzk.top/v1/chat/completions` |
 | `chipotle` | openai | free | `https://amelia.chipotle.com` |
-| `chutes` |  | apikey | `https://llm.chutes.ai/v1/chat/completions` |
+| `chutes` |  |  | `https://llm.chutes.ai/v1/chat/completions` |
 | `clarifai` |  | apikey | `https://api.clarifai.com/v2/ext/openai/v1/chat/completions` |
 | `claude` | claude | oauth | `https://api.anthropic.com/v1/messages` |
 | `cline` |  | oauth | `https://api.cline.bot/api/v1/chat/completions` |
@@ -231,6 +231,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `nanobanana` |  | apikey | `https://api.nanobananaapi.ai/v1/chat/completions` |
 | `nebius` |  | apikey | `https://api.studio.nebius.ai/v1/chat/completions` |
 | `nomic` |  | hidden | `https://api-atlas.nomic.ai/v1/embedding/text` |
+| `novita` |  | apikey | `https://api.novita.ai/openai/v1/chat/completions` |
 | `nube` |  | apikey | `https://ai.nube.sh/api/v1/chat/completions` |
 | `nvidia` |  | freeTier | `https://integrate.api.nvidia.com/v1/chat/completions` |
 | `oci` |  | apikey | `https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/openai/v1/chat/completions` |

@@ -1,3 +1,18 @@
+# 3.17.4
+
+Headroom proxy recovery now works on a fresh install. 3.17.3 revived the proxy
+through an `ExecStartPost`, which only exists on hosts whose service unit was
+wired by hand — this project ships no unit file and the container image does not
+copy `scripts/`, so a new deployment still lost its proxy on the first restart
+and compression failed open from then on. Recovery moved into the Next
+instrumentation boot hook, which runs once per server start in every deployment
+shape (systemd, Docker, `npm start`), so no host-specific wiring is needed.
+
+The hook stays narrow: it never installs Headroom and never enables it, so
+opting in remains an explicit Auto-configure action. It only revives a loopback
+proxy already turned on, no-ops when one is alive, leaves remote proxies alone,
+and never blocks the gateway from starting.
+
 # 3.17.3
 
 The Headroom compression proxy now survives a gateway restart. It is spawned by

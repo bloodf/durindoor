@@ -1,3 +1,14 @@
+# 3.17.2
+
+The xAI (Grok) usage card now shows the real SuperGrok weekly quota instead of
+local-history-only rows. Previously an xAI OAuth connection rendered 30-day spend
+and token totals against an infinite denominator, so every row read "100%" and
+disagreed with the weekly limit shown on grok.com. The xAI OAuth token can in
+fact read grok.com's `GetGrokCreditsConfig`, so the card now surfaces a
+`Weekly SuperGrok` row with the true percentage used and reset date, keeping the
+local 30-day totals as supplementary rows. The lookup is fail-open: any network,
+auth, or parse failure leaves the previous local-history card untouched.
+
 # 3.17.1
 
 Security patch release. Resolves all 46 open Dependabot alerts (14 high, 28

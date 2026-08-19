@@ -3,6 +3,7 @@
 // native-passthrough flows. Used by caveman.js and ponytail.js.
 
 import { FORMATS } from "../translator/formats.js";
+import { OPENAI_BLOCK, RESPONSES_ITEM, ROLE } from "../translator/schema/index.js";
 
 const SEP = "\n\n";
 
@@ -71,31 +72,37 @@ function injectMessagesSystem(body, prompt, format) {
     return;
   }
 
-  const arr = Array.isArray(body.messages) ? body.messages
+  const isChatMessages = Array.isArray(body.messages);
+  const arr = isChatMessages ? body.messages
     : Array.isArray(body.input) ? body.input
     : null;
-  if (!arr) return;
+  if (!arr) {
+    // Responses also accepts a bare string input with no top-level instructions yet.
+    if (typeof body.input === "string") body.instructions = prompt;
+    return;
+  }
 
   const isResponses = arr === body.input;
+  const partType = isChatMessages ? OPENAI_BLOCK.TEXT : RESPONSES_ITEM.INPUT_TEXT;
   const idx = arr.findIndex(m =>
-    m && (!m.type || m.type === "message") && (m.role === "system" || m.role === "developer")
+    m && (!m.type || m.type === "message") && (m.role === ROLE.SYSTEM || m.role === ROLE.DEVELOPER)
   );
   if (idx >= 0) {
     // Check if already injected before appending
     const existing = extractTextFromOpenAIMessage(arr[idx]);
     if (isPromptAlreadyInjected(existing, prompt)) return;
-    appendToOpenAIMessage(arr[idx], prompt, isResponses);
+    appendToOpenAIMessage(arr[idx], prompt, partType);
   } else if (isResponses) {
     // Responses Lite puts an `additional_tools` envelope first; system prompt
     // must land in a developer message AFTER it, never inside the envelope.
     const insertAt = arr.findIndex(m => m?.type !== "additional_tools");
     arr.splice(insertAt < 0 ? arr.length : insertAt, 0, {
-      type: "message",
-      role: "developer",
-      content: [{ type: "input_text", text: prompt }],
+      type: RESPONSES_ITEM.MESSAGE,
+      role: ROLE.DEVELOPER,
+      content: [{ type: partType, text: prompt }],
     });
   } else {
-    arr.unshift({ role: "system", content: prompt });
+    arr.unshift({ role: ROLE.SYSTEM, content: prompt });
   }
 }
 
@@ -109,16 +116,17 @@ function extractTextFromOpenAIMessage(msg) {
 }
 
 /**
- * @param {boolean} isResponses true when the target is a Responses `input[]`
- *   array. Chat `messages[]` parts must be `{type:"text"}`: strict providers
- *   (StepFun) reject the Responses-only `input_text` with
- *   `400 Unrecognized chat message`. Upstream decolua/9router#3204, issue #3202.
+ * @param {string} partType content-part `type` for array-content messages —
+ *   `{type:"text"}` for chat `messages[]`, `{type:"input_text"}` for Responses
+ *   `input[]`. Strict providers (StepFun) reject the Responses-only
+ *   `input_text` on chat with `400 Unrecognized chat message`. Upstream
+ *   decolua/9router#3204/#3245, issue #3202.
  */
-function appendToOpenAIMessage(msg, prompt, isResponses = false) {
+function appendToOpenAIMessage(msg, prompt, partType) {
   if (typeof msg.content === "string") {
-    msg.content = `${msg.content}${SEP}${prompt}`;
+    msg.content = msg.content ? `${msg.content}${SEP}${prompt}` : prompt;
   } else if (Array.isArray(msg.content)) {
-    msg.content.push({ type: isResponses ? "input_text" : "text", text: prompt });
+    msg.content.push({ type: partType, text: prompt });
   } else {
     msg.content = prompt;
   }

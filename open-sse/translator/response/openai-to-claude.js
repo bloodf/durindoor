@@ -4,6 +4,7 @@ import { ROLE, CLAUDE_BLOCK, MODEL_FALLBACK, OPENAI_FINISH } from "../schema/ind
 import { fromOpenAIFinish } from "../concerns/finishReason.js";
 import { extractReasoningText } from "../concerns/reasoning.js";
 import { isInternalReasoningPlaceholder } from "../../utils/reasoningPlaceholder.js";
+import { normalizeClaudeToolName } from "../../services/claudeCodeToolRemapper.js";
 
 // Legacy "proxy_" prefix used by older request translators. Response strips it
 // defensively so tool names from such turns resolve back (e.g. proxy_Read → Read
@@ -270,10 +271,12 @@ export function openaiToClaudeResponse(chunk, state) {
     for (const tc of delta.tool_calls) {
       const idx = tc.index ?? 0;
 
-      // Strip the legacy proxy_ prefix from an incoming tool name (if any).
+      // Strip the legacy proxy_ prefix from an incoming tool name (if any),
+      // then normalize lowercase Anthropic built-ins (bash→Bash, read→Read, etc.).
       const incomingName = (() => {
         const n = tc.function?.name || "";
-        return n.startsWith(CLAUDE_OAUTH_TOOL_PREFIX) ? n.slice(CLAUDE_OAUTH_TOOL_PREFIX.length) : n;
+        const stripped = n.startsWith(CLAUDE_OAUTH_TOOL_PREFIX) ? n.slice(CLAUDE_OAUTH_TOOL_PREFIX.length) : n;
+        return normalizeClaudeToolName(stripped, state.toolNameMap);
       })();
 
       // A tool call is identified by its id. Some OpenAI-compatible upstreams

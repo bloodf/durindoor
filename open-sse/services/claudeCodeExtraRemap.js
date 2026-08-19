@@ -16,4 +16,5 @@
 export const EXTRA_TOOL_RENAME_MAP = {
   subagents: "SubDispatch",
   session_status: "CheckStatus",
+  agent: "Agent",
 };

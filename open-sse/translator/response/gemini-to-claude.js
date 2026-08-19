@@ -2,10 +2,10 @@ import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { GEMINI_ERROR_FINISH_REASONS } from "../schema/finishReasons.js";
 import { buildGeminiThoughtSignatureKey, storeGeminiThoughtSignature } from "../../services/geminiThoughtSignatureStore.js";
+import { normalizeClaudeToolName } from "../../services/claudeCodeToolRemapper.js";
 
 function restoreToolName(name, toolNameMap) {
-  if (!(toolNameMap instanceof Map)) return name;
-  return toolNameMap.get(name) || toolNameMap.get(String(name).toLowerCase()) || name;
+  return normalizeClaudeToolName(name, toolNameMap);
 }
 
 function readInlineSignature(part) {

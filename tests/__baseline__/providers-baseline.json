@@ -1430,6 +1430,11 @@
     "validateUrl": "https://api.studio.nebius.ai/v1/models",
     "format": "openai"
   },
+  "novita": {
+    "baseUrl": "https://api.novita.ai/openai/v1/chat/completions",
+    "validateUrl": "https://api.novita.ai/openai/v1/models",
+    "format": "openai"
+  },
   "nube": {
     "baseUrl": "https://ai.nube.sh/api/v1/chat/completions",
     "validateUrl": "https://ai.nube.sh/api/v1/models",

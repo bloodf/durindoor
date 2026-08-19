@@ -25,7 +25,7 @@ describe("Antigravity usage headers", () => {
     // + retrieveUserQuotaSummary (weekly, best-effort) — all use IDE headers.
     expect(proxyAwareFetch).toHaveBeenCalledTimes(3);
     for (const [, options] of proxyAwareFetch.mock.calls) {
-      expect(options.headers["User-Agent"]).toBe("antigravity/ide/2.1.1 darwin/arm64");
+      expect(options.headers["User-Agent"]).toBe("antigravity/ide/2.5.5 darwin/arm64");
       expect(options.headers).not.toHaveProperty("x-request-source");
     }
   });

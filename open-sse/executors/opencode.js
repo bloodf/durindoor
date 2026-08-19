@@ -38,6 +38,22 @@ function isEnabled(name) {
   return /^(1|true|yes|on)$/i.test(process.env[name]?.trim() ?? "");
 }
 
+// PR #3321: OpenCode Zen's free-tier IP rate limiter buckets anonymous
+// clients by x-real-ip; without it every free-tier user shares one bucket
+// and hits FreeUsageLimitError/429. Forward the real client IP so each user
+// gets their own bucket. Never forward loopback/private IPs (would put every
+// local DurinDoor user into one shared bucket) — custom-server.js stamps
+// x-9r-real-ip from the unspoofable TCP peer, which is 127.0.0.1 for local
+// clients.
+function isPrivateIp(ip) {
+  if (!ip) return true;
+  if (ip === "127.0.0.1" || ip === "::1" || ip.startsWith("::ffff:127.")) return true;
+  if (ip.startsWith("10.") || ip.startsWith("192.168.")) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return true;
+  if (ip.startsWith("fc00:") || ip.startsWith("fe80:")) return true;
+  return false;
+}
+
 export class OpenCodeExecutor extends BaseExecutor {
   constructor() {
     super("opencode", PROVIDERS.opencode);
@@ -90,6 +106,8 @@ export class OpenCodeExecutor extends BaseExecutor {
       "x-opencode-request": generateRequestId(),
       "x-opencode-project": "global",
     };
+    const rawIp = (clientHeaders.get("x-9r-real-ip") || clientHeaders.get("x-real-ip") || "").trim();
+    if (rawIp && !isPrivateIp(rawIp)) headers["x-real-ip"] = rawIp;
     if (synthesizeCli && !clientUaIsCli) headers["User-Agent"] = "opencode-cli/1.0.0";
     else if (clientUaIsCli) headers["User-Agent"] = clientUa;
     else headers["User-Agent"] = OPENCODE_UA;

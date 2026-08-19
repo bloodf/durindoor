@@ -31,6 +31,7 @@ import { getProviderConnections } from "@/lib/db/repos/connectionsRepo";
 import { probeConnectionHealth, sanitizeErrorMessage, AUTH_FAILURE_STATUSES } from "@/lib/providerHealthProbe";
 import { inspectProviderQuota } from "@/shared/services/providerQuotaPreflight";
 import { getRecentlyActiveConnectionIds } from "@/lib/db/repos/usageRepo";
+import { resolveProviderAlias } from "open-sse/services/model.js";
 
 // A connection that served a successful request within this window is treated
 // as reachable even when its independent probe says otherwise (real traffic is
@@ -167,9 +168,10 @@ async function buildPayload(opts) {
   const quotaDecisions = new Map();
   const byProvider = new Map();
   for (const connection of connections) {
-    const group = byProvider.get(connection.provider) || [];
+    const canonicalProvider = resolveProviderAlias(connection.provider) || connection.provider;
+    const group = byProvider.get(canonicalProvider) || [];
     group.push(connection);
-    byProvider.set(connection.provider, group);
+    byProvider.set(canonicalProvider, group);
   }
   const quotaInspector = opts.quotaInspector ?? inspectProviderQuota;
   await Promise.all([...byProvider.entries()].map(async ([provider, group]) => {

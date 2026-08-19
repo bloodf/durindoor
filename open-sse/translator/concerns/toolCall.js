@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { normalizeClaudeToolName } from "../../services/claudeCodeToolRemapper.js";
 
 // Tool call helper functions for translator
 
@@ -71,16 +72,23 @@ export function normalizeOpenAIToolNames(body, maxLength = 64) {
 /**
  * Restore original tool names from the aliases {@link normalizeOpenAIToolNames}
  * produced, so the client never sees the upstream-safe rewrite.
+ *
+ * For Claude Messages tool_use blocks (`content_block_start` events) the
+ * upstream may emit lowercase tool names (`read`, `bash`, ...); Claude Code
+ * expects PascalCase (`Read`, `Bash`, ...). When `aliases` is not a Map (or
+ * is empty) we still apply the built-in case normalization so the client
+ * always receives the canonical casing. When `aliases` is a Map it takes
+ * priority: the alias lookup handles decloaking, and any leftover lowercase
+ * names without a known alias get bumped through `normalizeClaudeToolName`
+ * for consistency with the response translators.
  */
 export function restoreOpenAIToolNames(body, aliases) {
-  if (!aliases || typeof aliases.size !== "number" || !aliases.size) return false;
-
   let changed = false;
   const restoreCalls = (calls) => {
     if (!Array.isArray(calls)) return;
     for (const call of calls) {
       const name = call?.function?.name;
-      if (name && aliases.has(name)) {
+      if (name && aliases instanceof Map && aliases.size && aliases.has(name)) {
         call.function.name = aliases.get(name);
         changed = true;
       }
@@ -91,6 +99,18 @@ export function restoreOpenAIToolNames(body, aliases) {
     for (const choice of body.choices) {
       restoreCalls(choice?.delta?.tool_calls);
       restoreCalls(choice?.message?.tool_calls);
+    }
+  }
+
+  // Normalize Claude tool_use block names emitted as lowercase. Covers the
+  // passthrough path where the upstream Anthropic-compatible provider sends
+  // `read` / `bash` / etc. instead of `Read` / `Bash`.
+  const block = body?.content_block;
+  if (block && typeof block === "object" && block.type === "tool_use" && typeof block.name === "string") {
+    const normalized = normalizeClaudeToolName(block.name, aliases instanceof Map ? aliases : null);
+    if (normalized !== block.name) {
+      body.content_block = { ...block, name: normalized };
+      changed = true;
     }
   }
 

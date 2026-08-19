@@ -23,8 +23,17 @@ const CODEX_SOURCE_TO_TARGET = {
 
 /**
  * Determine which SSE transform stream to use based on provider/format.
+ *
+ * Returns the emitted format alongside the stream. Anything inspecting the
+ * CLIENT-facing frames must key off that, not off `targetFormat`: the three
+ * branches below emit three different formats, and translation runs
+ * targetFormat → sourceFormat, so the provider's format is the wrong one in two
+ * of them. Returning it here keeps the two in lockstep instead of asking callers
+ * to re-derive the branch condition.
+ *
+ * @returns {{stream: TransformStream, emittedFormat: string}}
  */
-function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, model, connectionId, body, providerBody, onStreamComplete, onCoherentTerminal, apiKey, claudeClassifierCompat }) {
+export function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, model, connectionId, body, providerBody, onStreamComplete, onCoherentTerminal, apiKey, claudeClassifierCompat }) {
   const isDroidCLI = userAgent?.toLowerCase().includes("droid") || userAgent?.toLowerCase().includes("codex-cli");
   // Responses-API providers (e.g. codex) emit Responses SSE → translate into client format
   const isResponsesProvider = PROVIDERS[provider]?.format === FORMATS.OPENAI_RESPONSES;
@@ -32,14 +41,24 @@ function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent,
 
   if (needsCodexTranslation) {
     const codexTarget = CODEX_SOURCE_TO_TARGET[sourceFormat] || FORMATS.OPENAI;
-    return createSSETransformStreamWithLogger(FORMATS.OPENAI_RESPONSES, codexTarget, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, claudeClassifierCompat, onCoherentTerminal, providerBody);
+    return {
+      stream: createSSETransformStreamWithLogger(FORMATS.OPENAI_RESPONSES, codexTarget, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, claudeClassifierCompat, onCoherentTerminal, providerBody),
+      emittedFormat: codexTarget,
+    };
   }
 
   if (needsTranslation(targetFormat, sourceFormat)) {
-    return createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, claudeClassifierCompat, onCoherentTerminal, providerBody);
+    return {
+      stream: createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, claudeClassifierCompat, onCoherentTerminal, providerBody),
+      emittedFormat: sourceFormat,
+    };
   }
 
-  return createPassthroughStreamWithLogger(provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, targetFormat, onCoherentTerminal, providerBody);
+  // Passthrough: the provider's own frames reach the client unchanged.
+  return {
+    stream: createPassthroughStreamWithLogger(provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, targetFormat, onCoherentTerminal, providerBody),
+    emittedFormat: targetFormat,
+  };
 }
 
 /**
@@ -95,13 +114,19 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
     return createErrorResult(status, `[${status}]: ${shortMsg}`);
   }
 
-  const transformStream = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, model, connectionId, body, providerBody: finalBody || translatedBody, onStreamComplete, onCoherentTerminal, apiKey, claudeClassifierCompat });
+  // buildTransformStream returns the FORMAT THE CLIENT ACTUALLY RECEIVES, not
+  // the provider's `targetFormat`. The terminal tracker and any later code
+  // inspecting the client-facing bytes must key off `emittedFormat`; using
+  // `targetFormat` here silently breaks the codex-translation and needsTranslation
+  // branches (the provider's format is not what reaches the client in those
+  // cases). See upstream PR #3222.
+  const { stream: transformStream, emittedFormat } = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, model, connectionId, body, providerBody: finalBody || translatedBody, onStreamComplete, onCoherentTerminal, apiKey, claudeClassifierCompat });
 
   // Responses passthrough: synthesize response.failed + [DONE] if the stream aborts/stalls before a terminal event
   const isResponsesPassthrough = sourceFormat === FORMATS.OPENAI_RESPONSES && targetFormat === FORMATS.OPENAI_RESPONSES;
   const onAbortTerminal = isResponsesPassthrough ? buildAbortedResponsesTerminalBytes : null;
   const stallTimeoutMs = PROVIDERS[provider]?.stallTimeoutMs || STREAM_STALL_TIMEOUT_MS;
-  const terminalTracker = createTerminalTracker(targetFormat);
+  const terminalTracker = createTerminalTracker(emittedFormat);
   const transformedBody = pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal, stallTimeoutMs, terminalTracker);
 
   saveRequestDetail(buildRequestDetail({

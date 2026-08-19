@@ -85,6 +85,9 @@ const DEFAULT_SETTINGS = {
   // Default: free no-auth providers remain enabled unless the user explicitly
   // disables them via Settings > Providers.
   disabledFreeProviders: [],
+  // #10372: opt-in only — fresh installs (or rows missing the persisted
+  // key) must not run in debug mode; a persisted `true` is preserved.
+  debugMode: false,
 };
 
 async function readRaw() {

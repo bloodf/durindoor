@@ -2499,6 +2499,25 @@ exports[`GOLDEN buildHeaders (default executor providers) > nomic → headers (a
 }
 `;
 
+exports[`GOLDEN buildHeaders (default executor providers) > novita → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
 exports[`GOLDEN buildHeaders (default executor providers) > nube → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -4410,6 +4429,13 @@ exports[`GOLDEN buildUrl (default executor providers) > nomic → url (stream + 
 {
   "nonStream": "https://api-atlas.nomic.ai/v1/embedding/text",
   "stream": "https://api-atlas.nomic.ai/v1/embedding/text",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > novita → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://api.novita.ai/openai/v1/chat/completions",
+  "stream": "https://api.novita.ai/openai/v1/chat/completions",
 }
 `;
 

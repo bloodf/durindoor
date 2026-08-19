@@ -3,6 +3,7 @@ import { shouldRefreshCredentials } from "../services/oauthCredentialManager.js"
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { boundRelayStreamLifetime, fetchConnectTimeoutError, isRelaySseResponse } from "../utils/relayStreamLifecycle.js";
 import { dbg } from "../utils/debugLog.js";
+
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE } from "../providers/shared.js";
 import { getOpenAICompatibleType } from "../services/provider.js";
 import { findOffendingField } from "../config/providerFieldStrips.js";
@@ -15,6 +16,13 @@ import {
 } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 
+
+// Format byte count to human-readable string for debug logs
+function fmtBytes(n) {
+  if (n < 1024) return `${n}B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`;
+  return `${(n / (1024 * 1024)).toFixed(2)}MB`;
+}
 function removeBetaFlag(headers, flag) {
   for (const key of ["anthropic-beta", "Anthropic-Beta"]) {
     if (!headers[key]) continue;
@@ -377,7 +385,7 @@ export class BaseExecutor {
         let requestBody = transformedBody;
         let bodyStr = JSON.stringify(requestBody);
         const fetchT0 = Date.now();
-        dbg("FETCH", `${this.provider.toUpperCase()} → ${url} | body=${bodyStr.length}B | connectTimeout=${headerTimeoutMs}ms`);
+        dbg("FETCH", `${this.provider.toUpperCase()} → ${url} | model=${model} | body=${fmtBytes(bodyStr.length)} | connectTimeout=${headerTimeoutMs}ms`);
         beginDispatch();
         let response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, {
           method: "POST",

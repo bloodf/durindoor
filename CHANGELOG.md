@@ -1,4 +1,37 @@
-# Unreleased
+# 3.17.0
+
+The Headroom dashboard now renders correctly through the gateway proxy. Static
+assets, the settings request, and dashboard sub-pages such as `/dashboard/settings`
+are rewritten through the proxy prefix instead of escaping it.
+
+Search-only providers can no longer reach the chat-completions path. A request
+naming one now fails with a 400 pointing at `/v1/search` instead of falling back
+to the OpenAI executor, which sent the user's search API key to OpenAI.
+
+A curated custom-provider model list no longer suppresses live catalog discovery
+when the curated rows are of a different kind than the request.
+
+Codex overload notices returned as ordinary HTTP 200 output streams are now
+detected and retried instead of surfacing as a broken success, and the logged
+service tier reflects the tier actually sent upstream.
+
+Providers emitting lowercase tool call names (`read`, `bash`) are normalized to
+the PascalCase names Claude Code expects, on the translated and passthrough paths
+alike.
+
+`mimocode` rotates to the next account on a network throw, not only on 429, when
+the account has a dedicated proxy; 4xx request errors still do not rotate.
+
+OpenCode Zen free-tier requests forward the real client IP, so users no longer
+share one rate-limit bucket. Loopback and private addresses are never forwarded.
+
+Added the Novita AI provider. Antigravity now reports IDE fingerprint 2.5.5.
+The RTK system-prompt injector emits the content-part type the target API expects.
+ollama-local gained debug diagnostics and connect-timeout tuning. The CLI no
+longer triggers a native SQLite build at startup. Fresh settings default
+`debugMode` to false, the provider connection route accepts PATCH so CLI
+credential rotation no longer 405s, health grouping canonicalizes provider
+aliases, and chutes declares its `imageToText` service kind.
 
 # 3.16.3
 

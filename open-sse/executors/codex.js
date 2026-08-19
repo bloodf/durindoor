@@ -60,6 +60,8 @@ const CODEX_SSE_USER_OUTPUT_EVENTS = new Set([
 ]);
 const CODEX_SSE_PEEK_BYTES = 256 * 1024;
 const CODEX_MODEL_CAPACITY_MESSAGE = "Selected model is at capacity. Please try a different model.";
+// Codex sometimes disguises an overload as a successful output_text stream (#3232).
+const CODEX_OVERLOADED_OUTPUT_MESSAGE = "Our servers are currently overloaded. Please try again later.";
 const CODEX_PRIORITY_SHORT_CONTEXT_LIMIT = 272_000;
 const CODEX_PRIORITY_ESTIMATED_INPUT_LIMIT = 256_000;
 const CODEX_TOKEN_PART_PATTERN = /[A-Za-z0-9_]+|\s+|[^\sA-Za-z0-9_]/g;
@@ -234,7 +236,13 @@ function classifyCodexSseFrame(frame) {
   const userOutput = CODEX_SSE_USER_OUTPUT_EVENTS.has(eventName)
     || CODEX_SSE_USER_OUTPUT_EVENTS.has(payloadType)
     || CODEX_SSE_USER_OUTPUT_EVENTS.has(payloadEvent);
-  if (userOutput) return { userOutput: true, kind: null, matched: null, message: null };
+  if (userOutput) {
+    const isOutputTextDelta = eventName === "response.output_text.delta"
+      || payloadType === "response.output_text.delta"
+      || payloadEvent === "response.output_text.delta";
+    const delta = isOutputTextDelta && typeof payload?.delta === "string" ? payload.delta : null;
+    return { userOutput: true, kind: null, matched: null, message: null, delta };
+  }
 
   const errorObjects = [payload?.error, payload?.response?.error]
     .filter((value) => value && typeof value === "object" && !Array.isArray(value));
@@ -529,6 +537,14 @@ function removeInvalidEncryptedReasoning(body) {
   return removed;
 }
 
+// Report the *effective* service tier — the transformed body may have been
+// normalized (fast→priority) or stripped entirely for long contexts, so the
+// tier the client requested is not necessarily what upstream received (#3316).
+export function formatCodexTierLog(model, transformedBody) {
+  const effectiveTier = transformedBody?.service_tier || "default";
+  return `CODEX | ${model} | TIER:${effectiveTier}`;
+}
+
 function codexSseErrorResponse(status, message) {
   return new Response(JSON.stringify({
     error: {
@@ -645,9 +661,10 @@ export class CodexExecutor extends BaseExecutor {
     // Reuses 503 retry config — same semantic: upstream temporarily unavailable.
     // Each attempt receives a fresh body because BaseExecutor transforms in place.
     const retryConfig = { ...DEFAULT_RETRY_CONFIG, ...this.config.retry };
-    const { attempts, delayMs } = resolveRetryEntry(retryConfig[503]);
+    const { attempts, delayMs } = resolveRetryEntry(retryConfig[HTTP_STATUS.SERVICE_UNAVAILABLE]);
     let attempt = 0;
     let encryptedRecoveryAttempted = false;
+    let tierLogged = false;
     while (true) {
       throwIfAborted(args.signal);
       const result = await super.execute({
@@ -656,6 +673,11 @@ export class CodexExecutor extends BaseExecutor {
         body: cloneRequestBody(requestBody),
         requestContext,
       });
+      // Surface the effective tier once per request (#3316).
+      if (!tierLogged) {
+        args.log?.info?.("TIER", formatCodexTierLog(args.model, result.transformedBody));
+        tierLogged = true;
+      }
       // One-shot recovery: on a 400 invalid_encrypted_content, strip the
       // unverifiable encrypted reasoning and retry the SAME account once (#2667).
       if (!encryptedRecoveryAttempted && await isInvalidEncryptedContentResponse(result.response)) {
@@ -721,6 +743,8 @@ export class CodexExecutor extends BaseExecutor {
     let inspectedBytes = 0;
     let classification = null;
     let terminalError = null;
+    // Codex sometimes disguises an overload as a successful output_text stream (#3232).
+    let outputDeltaAccumulator = "";
 
     while (inspectedBytes < CODEX_SSE_PEEK_BYTES) {
       let read;
@@ -751,14 +775,37 @@ export class CodexExecutor extends BaseExecutor {
       let sawOutputInBatch = false;
       for (const frame of batch.frames) {
         const frameResult = classifyCodexSseFrame(frame);
-        if (frameResult.userOutput) sawOutputInBatch = true;
+        if (frameResult.userOutput) {
+          if (typeof frameResult.delta === "string") outputDeltaAccumulator += frameResult.delta;
+          else sawOutputInBatch = true;
+        }
         if (frameResult.kind === "account") classification = frameResult;
         else if (frameResult.kind === "retry" && classification?.kind !== "account") classification = frameResult;
       }
 
       if (classification) break;
       if (sawOutputInBatch) break;
+      if (outputDeltaAccumulator) {
+        const normalizedOutput = outputDeltaAccumulator.toLowerCase();
+        const normalizedOverload = CODEX_OVERLOADED_OUTPUT_MESSAGE.toLowerCase();
+        // Keep peeking only while accumulated output is still an exact prefix of the
+        // known overload message; an answer that quotes and continues past it must
+        // not be misclassified as an outage.
+        if (!normalizedOverload.startsWith(normalizedOutput)) break;
+      }
       if (inspectedBytes >= CODEX_SSE_PEEK_BYTES) break;
+    }
+
+    // #3232: full-match overload detection after the loop terminates.
+    if (outputDeltaAccumulator
+        && outputDeltaAccumulator.toLowerCase() === CODEX_OVERLOADED_OUTPUT_MESSAGE.toLowerCase()) {
+      await cancelAndReleaseReader(reader, "codex-sse-retry");
+      return {
+        matched: "codex_overloaded_output",
+        message: CODEX_OVERLOADED_OUTPUT_MESSAGE,
+        accountFallback: false,
+        replacementBody: null,
+      };
     }
 
     if (classification) {

@@ -10,7 +10,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { Card, Button, Input, Toggle } from "@/shared/components";
+import { Card, Button, Toggle } from "@/shared/components";
 import { chartTooltipContentStyle, chartTooltipLabelStyle, chartTooltipItemStyle } from "@/shared/components/chartTooltip";
 import Pagination from "@/shared/components/Pagination";
 import { usePagination } from "@/shared/hooks/usePagination";
@@ -75,7 +75,6 @@ function SummaryCard({ label, value, sub, tone }) {
 export default function HeadroomClient() {
   const [settings, setSettings] = useState({
     headroomEnabled: false,
-    headroomUrl: "http://localhost:8787",
     headroomCompressUserMessages: false,
   });
   const persistedSettings = useRef(settings);
@@ -118,7 +117,6 @@ export default function HeadroomClient() {
         if (cancelled) return;
         const next = {
           headroomEnabled: !!settingsData.headroomEnabled,
-          headroomUrl: settingsData.headroomUrl || "http://localhost:8787",
           headroomCompressUserMessages: !!settingsData.headroomCompressUserMessages,
         };
         setSettings(next);
@@ -159,13 +157,6 @@ export default function HeadroomClient() {
     const ok = await patch({ headroomEnabled: value });
     if (!ok) setSettings((s) => ({ ...s, headroomEnabled: persistedSettings.current.headroomEnabled }));
     else refreshStats();
-  };
-
-  const handleUrlBlur = async () => {
-    const next = settings.headroomUrl.trim() || "http://localhost:8787";
-    setSettings((s) => ({ ...s, headroomUrl: next }));
-    const ok = await patch({ headroomUrl: next });
-    if (!ok) setSettings((s) => ({ ...s, headroomUrl: persistedSettings.current.headroomUrl }));
   };
 
   const handleToggleCompressUserMessages = async (value) => {
@@ -219,25 +210,13 @@ export default function HeadroomClient() {
             <p className="text-xs text-text-muted">
               {status?.running
                 ? "Compress outgoing chat messages via the Headroom proxy."
-                : "Headroom proxy is unavailable; confirm the proxy URL before enabling."}
+                : "Headroom proxy is not running; it starts automatically with DurinDoor."}
             </p>
           </div>
           <Toggle
             checked={settings.headroomEnabled}
             onChange={handleToggleEnabled}
             disabled={saving || !status?.running}
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-text-muted uppercase tracking-wide">Proxy URL</label>
-          <Input
-            value={settings.headroomUrl}
-            onChange={(e) => {
-              setSettings((s) => ({ ...s, headroomUrl: e.target.value }));
-            }}
-            onBlur={handleUrlBlur}
-            placeholder="http://localhost:8787"
-            disabled={saving}
           />
         </div>
         <div className="flex items-center justify-between">

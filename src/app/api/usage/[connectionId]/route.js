@@ -4,6 +4,7 @@ import "open-sse/index.js";
 import { getProviderConnectionById } from "@/lib/localDb";
 import { getUsageHistory } from "@/lib/db/repos/usageRepo.js";
 import { getUsageForProvider } from "open-sse/services/usage.js";
+import { fetchGrokCliCreditsConfig } from "open-sse/services/usage/grok-cli.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { USAGE_APIKEY_PROVIDERS } from "@/shared/constants/providers";
 import { backfillCursorConnectionIdentity } from "@/lib/oauth/services/cursorLocalStore.js";
@@ -77,9 +78,34 @@ export async function GET(request, { params }) {
       }
     }
 
-    // Providers without a public quota API — aggregate from local usageHistory
+    // xAI: the SuperGrok weekly pool is readable via grok.com's gRPC-web
+    // GetGrokCreditsConfig with the OAuth token (same endpoint the grok-cli
+    // provider uses). When it resolves, surface the real weekly % + reset as
+    // the primary row; otherwise fall back to local-history aggregation.
     if (connection.provider === 'xai') {
-      return Response.json(await aggregateLocalUsage(connection, 'xAI / Grok Build'));
+      const local = await aggregateLocalUsage(connection, 'xAI / Grok Build');
+      if (isOAuth && connection.accessToken) {
+        try {
+          const credits = await fetchGrokCliCreditsConfig(connection.accessToken, proxyOptions);
+          if (credits && Number.isFinite(credits.percentUsed)) {
+            const used = Math.round(Math.max(0, Math.min(100, credits.percentUsed)));
+            local.quotas = {
+              'Weekly SuperGrok': {
+                used,
+                total: 100,
+                remainingPercentage: Math.max(0, 100 - used),
+                resetAt: credits.resetAt || null,
+                unlimited: false,
+              },
+              ...local.quotas,
+            };
+            local.displayMessage = `xAI / Grok Build — SuperGrok weekly pool ${used}% used.`;
+          }
+        } catch {
+          /* fail-open: keep local-history-only card */
+        }
+      }
+      return Response.json(local);
     }
     if (connection.provider === 'opencode-go') {
       return Response.json(await aggregateLocalUsage(connection, 'OpenCode Go'));

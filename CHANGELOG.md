@@ -1,3 +1,19 @@
+# 3.17.3
+
+The Headroom compression proxy now survives a gateway restart. It is spawned by
+DurinDoor itself, but `KillMode=control-group` reaps the whole service cgroup —
+which a detached child does not escape — so every restart killed the proxy and
+nothing brought it back. The dashboard then read "Stopped" while compression
+silently failed open. DurinDoor now recreates its own proxy on every start via
+`scripts/start-headroom.mjs`; the script is idempotent, skips remote proxy URLs,
+honours the enabled setting, and is fail-open so a proxy failure can never block
+the gateway from booting.
+
+The Headroom dashboard no longer shows the proxy URL. It is server-side config
+the browser never calls, so displaying `http://localhost:8787` read as a broken
+connection when viewing the dashboard remotely. It remains editable in Token
+Saver settings, which the page already links to.
+
 # 3.17.2
 
 The xAI (Grok) usage card now shows the real SuperGrok weekly quota instead of

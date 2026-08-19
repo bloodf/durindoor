@@ -1,3 +1,13 @@
+# 3.17.1
+
+Security patch release. Resolves all 46 open Dependabot alerts (14 high, 28
+moderate, 4 low) across 9 dependencies with no breaking major version bumps:
+`next` 16.2.10 → 16.2.11, `undici` → 7.29.0, and `postcss` → 8.5.23 directly,
+plus `dompurify`, `sharp`, `nanoid`, `js-yaml`, `ip-address`, and
+`brace-expansion` pinned to patched versions via scoped `overrides` (bounded to
+the vulnerable ranges so untouched majors are preserved). `npm audit` reports no
+remaining vulnerabilities. No API, wire-format, or behavioral changes.
+
 # 3.17.0
 
 The Headroom dashboard now renders correctly through the gateway proxy. Static

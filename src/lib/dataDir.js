@@ -24,7 +24,8 @@ export function getDataDir() {
 
   const resolved = path.resolve(configured);
   try {
-    fs.mkdirSync(resolved, { recursive: true });
+    /** Upstream PR #3381: newly configured credential directories start owner-only. */
+    fs.mkdirSync(resolved, { recursive: true, mode: 0o700 });
     return resolved;
   } catch (e) {
     if (e?.code === "EACCES" || e?.code === "EPERM") {

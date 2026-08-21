@@ -206,6 +206,11 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   // explicit `name` field and cannot be represented as Chat Completions function declarations.
   // Filter them out to avoid sending nameless functionDeclarations to downstream providers
   // such as Gemini, which strictly validates function names.
+  /**
+   * Preserve custom-tool identity across Chat Completions lowering so buffered
+   * response routes can restore Responses semantics (upstream PR #3373).
+   */
+  const customToolNames = new Set();
   if (body.tools && Array.isArray(body.tools)) {
     result.tools = body.tools
       .flatMap(tool => {
@@ -232,6 +237,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
         // tool whose single parameter is the raw `input` string. The response
         // translator re-emits it as a custom_tool_call by name (OmniRoute #7905).
         if (tool.type === "custom" && typeof tool.name === "string" && tool.name.trim() !== "") {
+          customToolNames.add(tool.name);
           return {
             type: OPENAI_BLOCK.FUNCTION,
             function: {
@@ -263,6 +269,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       })
       .filter(Boolean);
   }
+  if (customToolNames.size > 0) result._customToolNames = [...customToolNames];
 
   // Cleanup Responses API specific fields
   // Map Responses-only max_output_tokens to Chat max_tokens (avoid leaking unknown field upstream)

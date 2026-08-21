@@ -34,18 +34,46 @@ export const DEFAULT_ERROR_MESSAGES = {
   504: "Gateway timeout"
 };
 
-// Exponential backoff config for rate limits
-export const BACKOFF_CONFIG = {
+/**
+ * Hard cap for provider-reported and configured rate-limit cooldowns.
+ * Keeps generated account lock deadlines representable as ISO timestamps.
+ */
+export const MAX_RATE_LIMIT_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Resolves the rate-limit backoff schedule from environment variables (#3352).
+ * Invalid knobs retain their historical defaults; the configured maximum is
+ * clamped to a deadline-safe cap; contradictory schedules fall back completely.
+ */
+const DEFAULT_BACKOFF_CONFIG = Object.freeze({
   base: 2000,
   max: 5 * 60 * 1000,
   maxLevel: 15
-};
+});
+
+function parsePositiveInteger(value) {
+  if (typeof value !== "string" || !/^\d+$/.test(value.trim())) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function resolveBackoffConfig(env = process.env) {
+  const config = {
+    base: parsePositiveInteger(env.BACKOFF_BASE_MS) ?? DEFAULT_BACKOFF_CONFIG.base,
+    max: Math.min(
+      parsePositiveInteger(env.BACKOFF_MAX_MS) ?? DEFAULT_BACKOFF_CONFIG.max,
+      MAX_RATE_LIMIT_COOLDOWN_MS
+    ),
+    maxLevel: parsePositiveInteger(env.BACKOFF_MAX_LEVEL) ?? DEFAULT_BACKOFF_CONFIG.maxLevel
+  };
+
+  return config.max < config.base ? DEFAULT_BACKOFF_CONFIG : Object.freeze(config);
+}
+
+export const BACKOFF_CONFIG = resolveBackoffConfig();
 
 // Default cooldown for transient/unknown errors
 export const TRANSIENT_COOLDOWN_MS = 30 * 1000;
-
-// Hard cap for provider-reported rate limit cooldown (e.g. codex resets_at 5-6h, antigravity quota ~160h)
-export const MAX_RATE_LIMIT_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
 
 // Envoy emits this transport-level marker when its retry buffer overflows.
 export const REQUEST_REPLAY_BUFFER_ERROR = "exceeded request buffer limit while retrying upstream";

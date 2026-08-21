@@ -22,6 +22,7 @@ The native default remains `~/.9router` on macOS/Linux and `%APPDATA%\9router` o
 | `PORT` | `20128` | HTTP port for the production gateway and dashboard. |
 | `HOSTNAME` | runtime dependent | Bind address. Use `0.0.0.0` only in containers or deliberately exposed deployments. |
 | `NODE_ENV` | development unless set | Use `production` for production starts. |
+| `NINEROUTER_MAX_OLD_SPACE_SIZE` | `6144` MB for CLI starts | CLI child heap cap in MB. Use a positive decimal integer to override it, or `0` to let Node size the heap. An existing heap setting in `NODE_OPTIONS` suppresses the default when this variable is unset. |
 | `BASE_URL` | local URL | Server-side origin for callbacks and selected routes. |
 | `NEXT_PUBLIC_BASE_URL` | local URL | Browser-visible origin. Use the public HTTPS origin for remote deployments. |
 | `TRUST_PROXY` | `false` | Trust forwarded IP headers only behind a trusted reverse proxy. |
@@ -29,6 +30,9 @@ The native default remains `~/.9router` on macOS/Linux and `%APPDATA%\9router` o
 | `NEXT_PUBLIC_CLOUD_URL` | unset | Browser-visible remote endpoint used by selected CLI-tool helpers when cloud mode is configured. |
 | `AUTH_COOKIE_SECURE` | `false` | Force secure dashboard cookies when using HTTPS. |
 | `SHUTDOWN_SECRET` | unset | Secret for the shutdown API when configured. |
+| `BACKOFF_BASE_MS` | `2000` | Initial account/model lock delay in milliseconds after rate-limit fallback. Must be a positive decimal integer. |
+| `BACKOFF_MAX_MS` | `300000` | Maximum exponential lock delay in milliseconds. Positive decimal values are capped at 7 days; a resolved maximum below the base resets the full schedule to defaults. |
+| `BACKOFF_MAX_LEVEL` | `15` | Maximum exponential backoff level. Must be a positive decimal integer. |
 
 ## API Access and Identity
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { getStatusVariant as getConnectionStatusVariant } from "@/shared/utils/connectionStatus";
+import { getConnectionErrorDisplay, getStatusVariant as getConnectionStatusVariant } from "@/shared/utils/connectionStatus";
 import { getCodexPlanLabel } from "@/shared/utils/codexPlanLabel";
 import PropTypes from "prop-types";
 import { Badge, Toggle, Tooltip } from "@/shared/components";
@@ -127,6 +127,7 @@ export default function ConnectionRow({ connection, plan = null, proxyPools, isO
     : connection.testStatus;
 
   const getStatusVariant = () => getConnectionStatusVariant(connection.isActive, effectiveStatus);
+  const errorDisplay = getConnectionErrorDisplay(connection);
   // Only OAuth rows can be reconnected, and only when the durable reauth_required
   // state is pinned. The action re-runs the same OAuth flow, replacing this row.
   const isReauthRequired = isOAuthConnection && effectiveStatus === "reauth_required";
@@ -194,9 +195,9 @@ export default function ConnectionRow({ connection, plan = null, proxyPools, isO
               </Badge>
             )}
             {isCooldown && connection.isActive !== false && <CooldownTimer until={modelLockUntil} />}
-            {connection.lastError && connection.isActive !== false && (
-              <span className="max-w-full truncate text-xs text-red-500 sm:max-w-[300px]" title={connection.lastError}>
-                {connection.lastError}
+            {errorDisplay && (
+              <span className="max-w-full truncate text-xs text-red-500 sm:max-w-[300px]" title={`${errorDisplay.reason}${errorDisplay.time ? ` · ${errorDisplay.time}` : ""}`}>
+                {errorDisplay.reason}{errorDisplay.time ? ` · ${errorDisplay.time}` : ""}
               </span>
             )}
             <span className="text-xs text-text-muted">#{connection.priority}</span>
@@ -315,6 +316,8 @@ ConnectionRow.propTypes = {
     testStatus: PropTypes.string,
     isActive: PropTypes.bool,
     lastError: PropTypes.string,
+    autoDisabledReason: PropTypes.string,
+    autoDisabledAt: PropTypes.string,
     priority: PropTypes.number,
     globalPriority: PropTypes.number,
   }).isRequired,

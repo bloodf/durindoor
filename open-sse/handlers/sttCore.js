@@ -2,12 +2,13 @@ import { Buffer } from "node:buffer";
 import { createErrorResult } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 
-// Build auth headers from sttConfig + token
+/** Builds configured STT auth, including raw Authorization required by AssemblyAI (upstream #3058). */
 function buildAuthHeaders(cfg, token) {
   if (!token) return {};
   switch (cfg.authHeader) {
     case "bearer":     return { "Authorization": `Bearer ${token}` };
     case "token":      return { "Authorization": `Token ${token}` };
+    case "authorization": return { "Authorization": token };
     case "x-api-key":  return { "x-api-key": token };
     case "key":        return { "Authorization": `Key ${token}` };
     default:           return { "Authorization": `Bearer ${token}` };
@@ -54,8 +55,8 @@ async function transcribeDeepgram(cfg, file, model, token, formData) {
   return jsonResponse({ text });
 }
 
-// AssemblyAI: upload → submit → poll (max 120s)
-async function transcribeAssemblyAI(cfg, file, model, token) {
+/** Sends AssemblyAI language_code when supplied, otherwise enabling detection (upstream #3058). */
+async function transcribeAssemblyAI(cfg, file, model, token, formData) {
   const auth = buildAuthHeaders(cfg, token);
   const buf = await file.arrayBuffer();
   const up = await fetch("https://api.assemblyai.com/v2/upload", {
@@ -63,11 +64,15 @@ async function transcribeAssemblyAI(cfg, file, model, token) {
   });
   if (!up.ok) return upstreamError(up);
   const { upload_url } = await up.json();
+  const payload = { audio_url: upload_url, speech_models: [model] };
+  const lang = formData.get("language");
+  if (typeof lang === "string" && lang.trim()) payload.language_code = lang.trim();
+  else payload.language_detection = true;
 
   const sub = await fetch(cfg.baseUrl, {
     method: "POST",
     headers: { ...auth, "Content-Type": "application/json" },
-    body: JSON.stringify({ audio_url: upload_url, speech_models: [model], language_detection: true }),
+    body: JSON.stringify(payload),
   });
   if (!sub.ok) return upstreamError(sub);
   const { id } = await sub.json();
@@ -182,7 +187,7 @@ export async function handleSttCore({ provider, model, formData, credentials, st
   try {
     switch (cfg.format) {
       case "deepgram":        return await transcribeDeepgram(cfg, file, model, token, formData);
-      case "assemblyai":      return await transcribeAssemblyAI(cfg, file, model, token);
+      case "assemblyai":      return await transcribeAssemblyAI(cfg, file, model, token, formData);
       case "nvidia-asr":      return await transcribeNvidia(cfg, file, model, token);
       case "huggingface-asr": return await transcribeHuggingFace(cfg, file, model, token);
       case "gemini-stt":      return await transcribeGemini(cfg, file, model, token, formData);

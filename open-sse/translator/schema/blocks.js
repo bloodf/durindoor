@@ -9,6 +9,7 @@ export const OPENAI_BLOCK = {
   AUDIO_URL: "audio_url",
   FILE: "file",
   FUNCTION: "function",
+  TOOL_CALL: "tool_call",
 };
 
 // Claude content blocks.

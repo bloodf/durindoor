@@ -1,6 +1,7 @@
 /**
- * Strip built-in/duplicate tools when equivalent MCP tools are present.
- * Goal: reduce tool definitions token bloat for Claude clients.
+ * Normalize outbound tools for upstream PR #3333.
+ * Claude clients lose configured built-ins shadowed by MCP tools; DeepSeek
+ * models retain only the first exact-name definition because duplicates 400.
  */
 
 const DEDUP_RULES = [
@@ -30,20 +31,49 @@ function matches(name, pattern) {
   return pattern instanceof RegExp ? pattern.test(name) : false;
 }
 
-function dedupeTools(tools) {
+/** Match DeepSeek by the case-insensitive final catalog-id segment. */
+function isDeepSeekModel(model) {
+  if (typeof model !== "string") return false;
+  return /^deepseek-/i.test(model.slice(model.lastIndexOf("/") + 1));
+}
+
+/**
+ * Apply client- and model-specific tool deduplication from upstream PR #3333.
+ *
+ * @param {Array} tools Translated outbound tools.
+ * @param {{ clientTool?: string | null, model?: string | null }} [options]
+ * @returns {{ tools: Array, stripped: string[] }}
+ */
+function dedupeTools(tools, { clientTool, model } = {}) {
   if (!Array.isArray(tools) || tools.length === 0) return { tools, stripped: [] };
   const names = tools.map(getToolName);
   const toStrip = new Set();
-  for (const rule of DEDUP_RULES) {
-    const hasTrigger = names.some((n) => rule.triggers.some((p) => matches(n, p)));
-    if (!hasTrigger) continue;
-    for (const n of names) {
-      if (rule.strip.some((p) => matches(n, p))) toStrip.add(n);
+  const toDrop = new Set();
+
+  if (clientTool === "claude") {
+    for (const rule of DEDUP_RULES) {
+      const hasTrigger = names.some((n) => rule.triggers.some((p) => matches(n, p)));
+      if (!hasTrigger) continue;
+      for (const n of names) {
+        if (rule.strip.some((p) => matches(n, p))) toStrip.add(n);
+      }
     }
   }
-  if (toStrip.size === 0) return { tools, stripped: [] };
-  const out = tools.filter((t) => !toStrip.has(getToolName(t)));
-  return { tools: out, stripped: Array.from(toStrip) };
+
+  if (isDeepSeekModel(model)) {
+    const seen = new Set();
+    for (let i = 0; i < names.length; i += 1) {
+      if (!names[i]) continue;
+      if (seen.has(names[i])) toDrop.add(i);
+      else seen.add(names[i]);
+    }
+  }
+
+  if (toStrip.size === 0 && toDrop.size === 0) return { tools, stripped: [] };
+  return {
+    tools: tools.filter((tool, index) => !toDrop.has(index) && !toStrip.has(getToolName(tool))),
+    stripped: [...toDrop].map((index) => names[index]).concat([...toStrip]),
+  };
 }
 
 export { dedupeTools };

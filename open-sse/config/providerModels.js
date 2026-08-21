@@ -23,15 +23,22 @@ export function getDefaultModel(aliasOrId) {
 // digit-hyphen-digit to digit-dot-digit before lookup. Other providers are left untouched.
 const DOT_VERSION_PROVIDERS = new Set(["kr", "kiro"]);
 
-// Find a registry entry by id. For Kiro models, tolerates dash/dot version separators
-// ("claude-sonnet-4-5" ~= "claude-sonnet-4.5"). Other providers use exact match only.
+/**
+ * Find a registry entry by id. For Kiro models, tolerates dash/dot version
+ * separators ("claude-sonnet-4-5" ~= "claude-sonnet-4.5"); other providers use
+ * exact match only.
+ *
+ * Match catalog metadata after removing only recognized request-only thinking controls.
+ * Unknown parenthesized values remain part of opaque model IDs (decolua/9router#3332).
+ */
 function findModel(models, modelId, aliasOrId) {
   if (!models) return undefined;
-  const found = models.find(m => m.id === modelId);
+  const { cleanModel } = parseSuffix(modelId);
+  const found = models.find(m => m.id === cleanModel);
   if (found) return found;
   if (!DOT_VERSION_PROVIDERS.has(aliasOrId)) return undefined;
-  const normalized = normalizeModelId(modelId);
-  if (normalized === modelId) return undefined;
+  const normalized = normalizeModelId(cleanModel);
+  if (normalized === cleanModel) return undefined;
   return models.find(m => m.id === normalized);
 }
 
@@ -96,7 +103,7 @@ export function getModelUpstreamId(aliasOrId, modelId) {
   const parsed = parseSuffix(modelId);
   const baseId = parsed.cleanModel;
   const models = PROVIDER_MODELS[aliasOrId] || PROVIDER_MODELS[PROVIDER_ID_TO_ALIAS[aliasOrId]];
-  const found = findModel(models, baseId, aliasOrId);
+  const found = findModel(models, modelId, aliasOrId);
   if (found?.upstreamModelId) return found.upstreamModelId;
   if (found?.id) return found.id;
   if (aliasOrId === "cx" && typeof baseId === "string" && baseId.endsWith(CODEX_REVIEW_SUFFIX)) {
@@ -107,15 +114,13 @@ export function getModelUpstreamId(aliasOrId, modelId) {
 
 /** Return the configured catalog id for a request model, or null for passthrough input. */
 export function getCanonicalModelId(aliasOrId, modelId) {
-  const { cleanModel } = parseSuffix(modelId);
   const models = PROVIDER_MODELS[aliasOrId];
-  return findModel(models, cleanModel, aliasOrId)?.id || null;
+  return findModel(models, modelId, aliasOrId)?.id || null;
 }
 
 export function getModelQuotaFamily(aliasOrId, modelId) {
-  const { cleanModel } = parseSuffix(modelId);
   const models = PROVIDER_MODELS[aliasOrId];
-  return modelQuotaFamily(findModel(models, cleanModel, aliasOrId));
+  return modelQuotaFamily(findModel(models, modelId, aliasOrId));
 }
 
 // Short aliases are derived from the full registry, including transportless media

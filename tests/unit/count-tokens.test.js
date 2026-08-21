@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
+import { POST, OPTIONS } from "../../src/app/api/v1/messages/count_tokens/route.js";
 import { estimateTokens } from "../../open-sse/handlers/countTokensCore.js";
 
+/** Pins count_tokens route edge contracts added upstream in decolua/9router#2959. */
 describe("Anthropic count_tokens estimator", () => {
   it("preserves the existing plain text estimate", () => {
     const result = estimateTokens({
@@ -69,5 +71,35 @@ describe("Anthropic count_tokens estimator", () => {
     });
 
     expect(result).toBeGreaterThan(0);
+  });
+
+  it("handles OPTIONS CORS preflight requests", async () => {
+    const response = await OPTIONS();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    expect(response.headers.get("Access-Control-Allow-Methods")).toBe("POST, OPTIONS");
+  });
+
+  it("returns the current error envelope for malformed JSON", async () => {
+    const response = await POST(new Request("https://durindoor.test/v1/messages/count_tokens", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{ invalid json ...",
+    }));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: {
+        message: "Invalid JSON body",
+        type: "invalid_request_error",
+        code: "bad_request",
+      },
+    });
+  });
+
+  it("uses the minimum estimate for empty or null payloads", () => {
+    expect(estimateTokens({})).toBe(1);
+    expect(estimateTokens(null)).toBe(1);
   });
 });

@@ -203,6 +203,14 @@ export async function installHeadroomExtras(extras) {
     const installLog = path.join(HEADROOM_DIR, "install.log");
 
     ensureDir();
+    assertInstallDiskSpace(requested, python);
+    // pip unpacks wheels through TMPDIR, which on many hosts is a small tmpfs
+    // (4 GB here) while the venv lives on a large disk. The `ml` extra pulls
+    // torch plus a CUDA stack of roughly 5 GB, so leaving TMPDIR alone fails
+    // with ENOSPC after downloading gigabytes. Keep the scratch space on the
+    // same filesystem as the venv.
+    const scratchDir = path.join(HEADROOM_DIR, "pip-tmp");
+    fs.mkdirSync(scratchDir, { recursive: true, mode: 0o700 });
     const outFd = fs.openSync(installLog, "a");
     const manualCommand = [python, ...args].map(quoteShellArg).join(" ");
     // Classify on the RAW log and redact only what is handed out: the markers
@@ -214,7 +222,7 @@ export async function installHeadroomExtras(extras) {
       const child = spawn(python, args, {
         stdio: ["ignore", outFd, outFd],
         windowsHide: true,
-        env: { ...process.env },
+        env: { ...process.env, TMPDIR: scratchDir, PIP_CACHE_DIR: path.join(scratchDir, "cache") },
       });
 
       let settled = false;
@@ -272,11 +280,73 @@ function getLogTail(file, maxLines) {
   }
 }
 
+// The `ml` extra is torch plus an NVIDIA CUDA wheel stack: the resulting venv
+// measures about 5.4 GB, and pip needs room for the download and the unpack on
+// top of that. Checking first turns a multi-gigabyte download that dies with
+// ENOSPC into an instant, actionable refusal.
+const ML_REQUIRED_BYTES = 12 * 1024 * 1024 * 1024;
+const BASE_REQUIRED_BYTES = 1024 * 1024 * 1024;
+
+function availableBytes(target) {
+  try {
+    const stat = fs.statfsSync(target);
+    return stat.bavail * stat.bsize;
+  } catch {
+    return null;
+  }
+}
+
+function formatGiB(bytes) {
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GiB`;
+}
+
+/**
+ * Refuse an install that cannot fit before pip downloads anything.
+ *
+ * @param {string[]} requested Extras being installed.
+ * @param {string} python Managed venv interpreter path.
+ * @throws {SetupError} INSTALL_DISK_FULL when the venv filesystem is too small.
+ */
+function assertInstallDiskSpace(requested, python) {
+  const needed = requested.includes("ml") ? ML_REQUIRED_BYTES : BASE_REQUIRED_BYTES;
+  const free = availableBytes(HEADROOM_DIR);
+  if (free === null || free >= needed) return;
+  throw new SetupError(createDiagnostic({
+    code: "INSTALL_DISK_FULL",
+    summary: `Not enough free space to install the ${requested.join(" and ")} extras`,
+    detail: `${HEADROOM_DIR} has ${formatGiB(free)} available; ${requested.includes("ml") ? "the ml extra (torch plus the CUDA wheel stack) needs about" : "the install needs about"} ${formatGiB(needed)} including pip's unpack space.`,
+    fixes: [
+      { label: "Check free space on the data directory's filesystem", command: `df -h ${quoteShellArg(HEADROOM_DIR)}` },
+      { label: "Install without the large ml extra", command: `${quoteShellArg(python)} -m pip install --upgrade ${quoteShellArg("headroom-ai[proxy,code]")}` },
+      { label: "Or point DATA_DIR at a larger filesystem and restart DurinDoor" },
+    ],
+  }));
+}
+
 export { quoteShellArg } from "@/shared/utils/setupDiagnostics.js";
 
 function createInstallError({ python, requested, manualCommand, reason, rawLog }) {
   // Match on rawLog; only the redacted copy ever leaves the process.
   const logTail = redactSensitive(rawLog);
+
+  // Observed for real: the ml extra died with ENOSPC after downloading several
+  // gigabytes because pip unpacked through a 4 GB /tmp tmpfs while the venv sat
+  // on a 148 GB disk. "Installation did not complete" told the operator nothing.
+  if (/No space left on device|Errno 28/i.test(rawLog)) {
+    const dir = path.dirname(path.dirname(python));
+    return new SetupError(createDiagnostic({
+      code: "INSTALL_DISK_FULL",
+      summary: "Pip ran out of disk space while installing Headroom",
+      detail: `The install wrote to ${dir} and unpacked through the scratch directory beside it. The ml extra needs roughly 12 GiB across download, unpack and the final venv.`,
+      fixes: [
+        { label: "Check free space on the data directory's filesystem", command: `df -h ${quoteShellArg(dir)}` },
+        { label: "Install without the large ml extra", command: `${quoteShellArg(python)} -m pip install --upgrade ${quoteShellArg("headroom-ai[proxy,code]")}` },
+        { label: "Or point DATA_DIR at a larger filesystem and restart DurinDoor" },
+      ],
+      logTail,
+    }));
+  }
+
   if (/externally-managed-environment/i.test(rawLog)) {
     return new SetupError(createDiagnostic({
       code: "PEP668",

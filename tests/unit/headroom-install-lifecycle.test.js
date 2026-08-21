@@ -162,4 +162,44 @@ describe("Headroom install lifecycle", () => {
     expect(tail).toContain("[redacted]");
   });
 
+
+  it("refuses an ml install that cannot fit before pip downloads anything", async () => {
+    // Observed on the real host: /tmp is a 4 GiB tmpfs, the ml extra needs about
+    // 5.4 GiB in the venv alone, and the old code discovered this only after
+    // downloading gigabytes and then reported "installation did not complete".
+    mocks.fs.statfsSync = vi.fn(() => ({ bavail: 512, bsize: 1024 * 1024 })); // 512 MiB free
+    mocks.ensureManagedVenv.mockResolvedValue({ python: VENV_PYTHON, binDir: `${HEADROOM_DIR}/venv/bin`, created: false });
+
+    const error = await installHeadroomExtras(["ml"]).then(() => null, (e) => e);
+
+    expect(error?.code).toBe("INSTALL_DISK_FULL");
+    expect(error.diagnostic.detail).toContain("0.5 GiB");
+    expect(error.diagnostic.fixes.some((fix) => fix.command?.includes("headroom-ai[proxy,code]"))).toBe(true);
+    expect(mocks.spawn).not.toHaveBeenCalled();
+  });
+
+  it("classifies an ENOSPC pip failure as INSTALL_DISK_FULL rather than a generic failure", async () => {
+    mocks.fs.statfsSync = vi.fn(() => ({ bavail: 64 * 1024, bsize: 1024 * 1024 })); // plenty
+    mocks.ensureManagedVenv.mockResolvedValue({ python: VENV_PYTHON, binDir: `${HEADROOM_DIR}/venv/bin`, created: false });
+    mocks.fs.readFileSync.mockReturnValue("Using cached nvidia_cublas.whl (423.1 MB)\nERROR: Could not install packages due to an OSError: [Errno 28] No space left on device\n");
+    mocks.spawn.mockImplementation(spawnThatExits(1));
+
+    const error = await installHeadroomExtras(["code", "ml"]).then(() => null, (e) => e);
+
+    expect(error?.code).toBe("INSTALL_DISK_FULL");
+    expect(error.diagnostic.logTail).toContain("No space left on device");
+    expect(error.diagnostic.fixes[0].command).toContain("df -h");
+  });
+
+  it("keeps pip's scratch space on the venv filesystem, not the system tmpfs", async () => {
+    mocks.fs.statfsSync = vi.fn(() => ({ bavail: 64 * 1024, bsize: 1024 * 1024 }));
+    mocks.ensureManagedVenv.mockResolvedValue({ python: VENV_PYTHON, binDir: `${HEADROOM_DIR}/venv/bin`, created: false });
+    mocks.spawn.mockImplementation(spawnThatExits(0));
+
+    await installHeadroomExtras(["code"]);
+
+    const [, , options] = mocks.spawn.mock.calls[0];
+    expect(options.env.TMPDIR).toBe(`${HEADROOM_DIR}/pip-tmp`);
+    expect(options.env.PIP_CACHE_DIR).toContain(`${HEADROOM_DIR}/pip-tmp`);
+  });
 });

@@ -9,7 +9,7 @@ import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
 import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, buildModelLockUpdate, getActiveModelLockUntil, isPassthroughConnectionWideError } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS, RESET_COOLDOWN_CAP_MS } from "open-sse/config/errorConfig.js";
-import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
+import { AI_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
 import { PROVIDERS } from "open-sse/providers/index.js";
 import * as log from "../utils/logger.js";
 import { timingSafeEqual } from "node:crypto";
@@ -65,6 +65,38 @@ function isQoderQuotaExhausted(status, errorText, provider, errorBody = null) {
   }
   const candidate = String(errorText || "").trim().replace(/^\[\d+\]:\s*/, "");
   return candidate.startsWith("{") && isQoderQuotaExhaustedBody(candidate);
+}
+const FREE_TIER_STATIC_COOLDOWN_CAP_MS = 60 * 1000;
+const SHORT_COOLDOWN_PROVIDERS = new Set([
+  ...Object.keys(FREE_PROVIDERS),
+  ...Object.keys(FREE_TIER_PROVIDERS),
+]);
+/**
+ * Resolves decolua/9router#2895 static fallback policy after provider-reset
+ * normalization. Configured delays win; free and free-tier providers cap only
+ * the Auto/default fallback. Authoritative reset deadlines bypass this helper.
+ * @param {string|null} provider
+ * @param {number} defaultCooldownMs
+ * @returns {Promise<{cooldownMs: number, configured: boolean}>}
+ */
+async function resolveStaticRetryCooldown(provider, defaultCooldownMs) {
+  const providerKey = resolveProviderId(provider);
+  let cooldownMs = defaultCooldownMs;
+  let configured = false;
+  try {
+    const selectedSeconds = (await getSettings())?.retryDelayByProvider?.[providerKey];
+    const seconds = Number(selectedSeconds);
+    if (selectedSeconds != null && selectedSeconds !== "" && selectedSeconds !== "auto" && Number.isFinite(seconds) && seconds > 0) {
+      cooldownMs = Math.min(seconds * 1000, MAX_RATE_LIMIT_COOLDOWN_MS);
+      configured = true;
+    }
+  } catch {
+    // Settings failure keeps the validated BACKOFF_CONFIG schedule.
+  }
+  if (!configured && SHORT_COOLDOWN_PROVIDERS.has(providerKey)) {
+    cooldownMs = Math.min(cooldownMs, FREE_TIER_STATIC_COOLDOWN_CAP_MS);
+  }
+  return { cooldownMs, configured };
 }
 
 export async function hasValidCliToken(request) {
@@ -922,6 +954,11 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     newBackoffLevel = 0;
   } else {
     ({ shouldFallback, cooldownMs, newBackoffLevel } = fallbackResult);
+    if (shouldFallback) {
+      const staticRetry = await resolveStaticRetryCooldown(provider, cooldownMs);
+      cooldownMs = staticRetry.cooldownMs;
+      if (staticRetry.configured) newBackoffLevel = 0;
+    }
   }
   if (!shouldFallback) return { shouldFallback: false, cooldownMs: 0 };
 

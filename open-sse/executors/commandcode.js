@@ -3,6 +3,28 @@ import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { commandCodeToOpenAIResponse } from "../translator/response/commandcode-to-openai.js";
 import { SSE_DONE } from "../utils/sseConstants.js";
+import { ERROR_TYPES } from "../config/errorConfig.js";
+import { HTTP_STATUS } from "../config/runtimeConfig.js";
+import {
+  COMMANDCODE_OVERLOAD_PATTERNS,
+  COMMANDCODE_PREFLIGHT_MAX_BYTES,
+  COMMANDCODE_PREFLIGHT_MAX_FRAMES,
+  COMMANDCODE_RATE_LIMIT_PATTERNS,
+} from "../config/commandcode.js";
+import { COMMANDCODE_EVENT } from "../translator/schema/index.js";
+import { cancelAndReleaseReader, releaseReader } from "../utils/streamReader.js";
+
+const COMMANDCODE_PREFLIGHT_PREAMBLE_EVENTS = new Set([
+  COMMANDCODE_EVENT.START,
+  COMMANDCODE_EVENT.START_STEP,
+  COMMANDCODE_EVENT.REASONING_START,
+  COMMANDCODE_EVENT.REASONING_END,
+  COMMANDCODE_EVENT.TEXT_START,
+  COMMANDCODE_EVENT.TEXT_END,
+  COMMANDCODE_EVENT.TOOL_INPUT_END,
+  COMMANDCODE_EVENT.PROVIDER_METADATA,
+  COMMANDCODE_EVENT.MESSAGE_METADATA,
+]);
 
 /**
  * CommandCodeExecutor — talks to https://api.commandcode.ai/alpha/generate
@@ -46,10 +68,193 @@ export class CommandCodeExecutor extends BaseExecutor {
   async execute(opts) {
     const result = await super.execute(opts);
     if (!result?.response?.ok || !result.response.body) return result;
-    result.response = wrapNdjsonAsOpenAISse(result.response, opts.model);
-    result.terminalProvenance = "validated";
+    result.response = await inspectAndWrapCommandCodeResponse(result.response, opts.model);
+    if (result.response.ok) result.terminalProvenance = "validated";
     return result;
   }
+
+  /** Normalize PR #3405 preflight failures for the shared fallback parser. */
+  parseError(response, bodyText) {
+    try {
+      const parsed = JSON.parse(bodyText || "{}");
+      return {
+        status: response.status,
+        message: parsed?.error?.message || parsed?.message || bodyText || response.statusText,
+        errorBody: parsed,
+      };
+    } catch {
+      return super.parseError(response, bodyText);
+    }
+  }
+}
+
+export {
+  COMMANDCODE_PREFLIGHT_MAX_BYTES,
+  COMMANDCODE_PREFLIGHT_MAX_FRAMES,
+};
+
+function explicitErrorStatus(event) {
+  const error = event?.error;
+  for (const value of [event?.statusCode, event?.status, error?.statusCode, error?.status, error?.code]) {
+    const status = Number(value);
+    if (Number.isInteger(status) && status >= 400 && status <= 599) return status;
+  }
+  return null;
+}
+
+function errorMessage(event) {
+  const value = event?.error ?? event?.message;
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object") {
+    if (typeof value.message === "string") return value.message;
+    if (typeof value.error === "string") return value.error;
+    return JSON.stringify(value);
+  }
+  return "CommandCode upstream error";
+}
+
+function errorType(statusCode) {
+  return ERROR_TYPES[statusCode]?.type
+    || (statusCode >= HTTP_STATUS.SERVER_ERROR ? "server_error" : "invalid_request_error");
+}
+
+/** Normalize an embedded CommandCode error event for HTTP fallback (upstream PR #3405). */
+export function parseCommandCodeError(event) {
+  const message = errorMessage(event);
+  const lower = message.toLowerCase();
+  let statusCode = explicitErrorStatus(event);
+  if (!statusCode && COMMANDCODE_RATE_LIMIT_PATTERNS.some((pattern) => lower.includes(pattern))) {
+    statusCode = HTTP_STATUS.RATE_LIMITED;
+  } else if (!statusCode && COMMANDCODE_OVERLOAD_PATTERNS.some((pattern) => lower.includes(pattern))) {
+    statusCode = HTTP_STATUS.SERVICE_UNAVAILABLE;
+  }
+  statusCode ||= HTTP_STATUS.SERVICE_UNAVAILABLE;
+  return { statusCode, message, type: errorType(statusCode) };
+}
+
+function parseCommandCodeFrame(line) {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+  const json = trimmed.startsWith("data:") ? trimmed.slice(5).trim() : trimmed;
+  if (!json || json === "[DONE]") return null;
+  try { return JSON.parse(json); } catch { return null; }
+}
+
+function isPreambleEvent(event) {
+  return COMMANDCODE_PREFLIGHT_PREAMBLE_EVENTS.has(event?.type);
+}
+
+function replayCommandCodeBody(reader, chunks, alreadyDone) {
+  let index = 0;
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    releaseReader(reader);
+  };
+  return new ReadableStream({
+    async pull(controller) {
+      if (index < chunks.length) {
+        controller.enqueue(chunks[index++]);
+        return;
+      }
+      if (alreadyDone) {
+        controller.close();
+        return;
+      }
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          finish();
+          controller.close();
+        } else controller.enqueue(value);
+      } catch (error) {
+        finish();
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      if (finished) return;
+      finished = true;
+      await cancelAndReleaseReader(reader, reason);
+    },
+  });
+}
+
+function replayResponse(originalResponse, reader, chunks, done) {
+  return new Response(replayCommandCodeBody(reader, chunks, done), {
+    status: originalResponse.status,
+    statusText: originalResponse.statusText,
+    headers: originalResponse.headers,
+  });
+}
+
+function commandCodeErrorResponse(event) {
+  const { statusCode, message, type } = parseCommandCodeError(event);
+  return Response.json({ error: { message, type, code: statusCode } }, { status: statusCode });
+}
+
+/**
+ * Inspect only a bounded, complete-frame prefix before releasing output.
+ * Buffered chunks replay byte-for-byte; after a normal event, PR #3405 never
+ * reclassifies later stream errors as HTTP failures.
+ */
+export async function preflightCommandCodeResponse(originalResponse) {
+  if (!originalResponse?.ok || !originalResponse.body) return originalResponse;
+  const reader = originalResponse.body.getReader();
+  const decoder = new TextDecoder();
+  const chunks = [];
+  let text = "";
+  let bytes = 0;
+  let frames = 0;
+
+  try {
+    while (bytes < COMMANDCODE_PREFLIGHT_MAX_BYTES && frames < COMMANDCODE_PREFLIGHT_MAX_FRAMES) {
+      const { done, value } = await reader.read();
+      if (done) {
+        const event = parseCommandCodeFrame(text);
+        if (event?.type === COMMANDCODE_EVENT.ERROR) {
+          await cancelAndReleaseReader(reader, "CommandCode preflight error");
+          return commandCodeErrorResponse(event);
+        }
+        releaseReader(reader);
+        return replayResponse(originalResponse, reader, chunks, true);
+      }
+
+      chunks.push(value);
+      const inspectBytes = Math.min(value.byteLength, COMMANDCODE_PREFLIGHT_MAX_BYTES - bytes);
+      bytes += inspectBytes;
+      text += decoder.decode(value.subarray(0, inspectBytes), { stream: true });
+
+      let newline;
+      while ((newline = text.indexOf("\n")) !== -1) {
+        const line = text.slice(0, newline).replace(/\r$/, "");
+        text = text.slice(newline + 1);
+        if (!line.trim()) continue;
+        frames += 1;
+        const event = parseCommandCodeFrame(line);
+        if (event?.type === COMMANDCODE_EVENT.ERROR) {
+          await cancelAndReleaseReader(reader, "CommandCode preflight error");
+          return commandCodeErrorResponse(event);
+        }
+        if (!event || !isPreambleEvent(event) || frames >= COMMANDCODE_PREFLIGHT_MAX_FRAMES) {
+          return replayResponse(originalResponse, reader, chunks, false);
+        }
+      }
+    }
+    return replayResponse(originalResponse, reader, chunks, false);
+  } catch (error) {
+    await cancelAndReleaseReader(reader, error);
+    throw error;
+  }
+}
+
+/** Apply bounded PR #3405 error preflight before the existing NDJSON translator. */
+export async function inspectAndWrapCommandCodeResponse(originalResponse, model) {
+  const preflighted = await preflightCommandCodeResponse(originalResponse);
+  return preflighted.ok && preflighted.body
+    ? wrapNdjsonAsOpenAISse(preflighted, model)
+    : preflighted;
 }
 
 export function wrapNdjsonAsOpenAISse(originalResponse, model) {
@@ -88,11 +293,11 @@ export function wrapNdjsonAsOpenAISse(originalResponse, model) {
       emitFailure(controller, "CommandCode returned malformed stream data");
       return;
     }
-    if (event?.type === "error") {
+    if (event?.type === COMMANDCODE_EVENT.ERROR) {
       emitFailure(controller, "CommandCode upstream stream failed");
       return;
     }
-    if (event?.type === "finish") state.rawTerminalSeen = true;
+    if (event?.type === COMMANDCODE_EVENT.FINISH) state.rawTerminalSeen = true;
     emitChunks(commandCodeToOpenAIResponse(event, state), controller);
   };
 

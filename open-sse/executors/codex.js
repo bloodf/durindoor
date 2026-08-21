@@ -26,6 +26,7 @@ import {
 import { applyCodexAccountHeader } from "../shared/codexAccountId.js";
 import { settleProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { extractCompleteSseFrames } from "../utils/streamHelpers.js";
+import { cancelAndReleaseReader, releaseReader } from "../utils/streamReader.js";
 
 // Recognized Codex effort suffixes, lowest-to-highest. Single source of truth for
 // routing normalization: transformRequest strips the suffix from the wire id.
@@ -413,24 +414,6 @@ function waitForRetry(delayMs, signal) {
   });
 }
 
-function releaseReader(reader) {
-  try { reader.releaseLock(); } catch { /* already released */ }
-}
-
-async function cancelAndReleaseReader(reader, reason) {
-  let timer = null;
-  try {
-    const cancellation = Promise.resolve(reader.cancel(reason)).catch(() => {});
-    await Promise.race([
-      cancellation,
-      new Promise((resolve) => { timer = setTimeout(resolve, 250); }),
-    ]);
-  } catch { /* cancellation is best-effort */ }
-  finally {
-    if (timer) clearTimeout(timer);
-    releaseReader(reader);
-  }
-}
 
 function peekTimeoutError() {
   const error = new Error("Codex SSE prefix timeout");

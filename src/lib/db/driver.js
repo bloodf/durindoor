@@ -1,4 +1,4 @@
-import { ensureDirs, currentDataFile } from "./paths.js";
+import { ensureDirs, hardenPermissions, currentDataFile } from "./paths.js";
 
 // Use global to survive Next.js dev hot-reload (module state resets on reload)
 if (!global._dbAdapter) global._dbAdapter = { instance: null, initPromise: null, logged: false, file: null };
@@ -69,6 +69,8 @@ async function initAdapter() {
 
   const dataFile = liveDataFile();
   state.file = dataFile;
+  /** Upstream PR #3381: repair DB/WAL/SHM modes only after SQLite creates them. */
+  hardenPermissions();
   if (!state.logged) {
     console.log(`[DB] Driver: ${adapter.driver} | file: ${dataFile}`);
     state.logged = true;

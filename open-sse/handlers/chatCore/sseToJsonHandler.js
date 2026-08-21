@@ -172,16 +172,21 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel, {
  * Handle case: provider forced streaming but client wants JSON.
  * Supports both Codex/Responses API SSE and standard Chat Completions SSE.
  */
-export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, trackDone, appendLog, toolNameMap, reqTag, log, usageEventId, claudeClassifierCompat, terminalProvenance = null, signal = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS }) {
+export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, trackDone, appendLog, toolNameMap, customToolNames, reqTag, log, usageEventId, claudeClassifierCompat, terminalProvenance = null, signal = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS }) {
   const contentType = providerResponse.headers.get("content-type") || "";
   const isSSE = contentType.includes("text/event-stream") || (contentType === "" && isResponsesProvider(provider));
   if (!isSSE) return null; // not handled here
+  /** Upstream PR #3373: request translators emit arrays; projection uses Set membership. */
+  const customToolNameSet = customToolNames instanceof Set
+    ? customToolNames
+    : new Set(customToolNames || []);
 
   const ctx = {
     provider, model, connectionId,
     request: extractRequestConfig(body, stream),
     providerRequest: finalBody || translatedBody || null
   };
+  const sessionId = (finalBody || translatedBody)?.conversationState?.conversationId;
   const markSuccess = async () => {
     if (!onRequestSuccess || !["upstream", "validated"].includes(terminalProvenance)) return;
     try { await onRequestSuccess(); }
@@ -205,7 +210,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       const usage = jsonResponse.usage || {};
       appendLog({ tokens: usage, status: "200 OK" });
       saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, silent: true });
-      if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime } }));
+      if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime }, provider, model, sessionId }));
 
       // Cache-inclusive prompt total for the recorded detail — same logic the
       // client-facing response uses below, so the DB and the client can't disagree.
@@ -233,7 +238,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
 
       const openAICompletion = responsesApiToOpenAICompletion(jsonResponse, model);
       const claudeCompat = shouldEnableClaudeCompat(claudeClassifierCompat, sourceFormat, body);
-      const finalResp = projectCompletionToClientFormat(openAICompletion, sourceFormat, { claudeCompat, model });
+      const finalResp = projectCompletionToClientFormat(openAICompletion, sourceFormat, { claudeCompat, model, customToolNames: customToolNameSet });
       logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "sse-json-responses", requestBody: body, translatedBody, providerBody: jsonResponse, clientBody: finalResp });
 
       const totalLatency = Date.now() - requestStartTime;
@@ -280,7 +285,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
     const usage = parsed.usage || {};
     appendLog({ tokens: usage, status: "200 OK" });
     saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, silent: true });
-    if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime } }));
+    if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime }, provider, model, sessionId }));
 
     const totalLatency = Date.now() - requestStartTime;
     saveRequestDetail(buildRequestDetail({
@@ -313,7 +318,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       clientUsage = rest;
     }
     const clientParsed = clientUsage ? { ...parsed, usage: clientUsage } : parsed;
-    const finalResp = projectCompletionToClientFormat(clientParsed, sourceFormat, { claudeCompat, model });
+    const finalResp = projectCompletionToClientFormat(clientParsed, sourceFormat, { claudeCompat, model, customToolNames: customToolNameSet });
     logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "sse-json-chat", requestBody: body, translatedBody, providerBody: parsed, clientBody: finalResp });
 
     await markSuccess();

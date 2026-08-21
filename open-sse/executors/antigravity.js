@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { BaseExecutor } from "./base.js";
-import { readBoundedResponseText } from "../utils/error.js";
+import { errorResponse, readBoundedResponseText } from "../utils/error.js";
 import { PROVIDERS } from "../config/providers.js";
 import { OAUTH_ENDPOINTS, ANTIGRAVITY_HEADERS, AG_DEFAULT_TOOLS, AG_TOOL_SUFFIX } from "../config/appConstants.js";
 import { dbg } from "../utils/debugLog.js";
@@ -105,6 +105,28 @@ function compressToolSchema(schema, depth) {
   return schema;
 }
 
+/**
+ * Repair only adjacency created by Antigravity's thought filter (#3366).
+ * Translator normalization owns broader conversation policy; native passthrough must not fabricate turns.
+ */
+function normalizeFilteredContents(contents) {
+  const normalized = [];
+  for (const content of contents || []) {
+    if (!content?.role || !Array.isArray(content.parts) || content.parts.length === 0) continue;
+    const previous = normalized.at(-1);
+    if (previous?.role === content.role) previous.parts.push(...content.parts);
+    else normalized.push({ ...content, parts: [...content.parts] });
+  }
+  return normalized;
+}
+
+function filterThoughtParts(parts) {
+  return parts?.filter(part => {
+    if (part.thought && !part.functionCall) return false;
+    if (part.thoughtSignature && !part.functionCall && !part.text) return false;
+    return true;
+  });
+}
 // Image generation model name patterns
 const IMAGE_MODEL_PATTERNS = [
   /image/i,
@@ -164,7 +186,21 @@ export class AntigravityExecutor extends BaseExecutor {
   constructor(provider = "antigravity") {
     super(provider, PROVIDERS[provider] || PROVIDERS.antigravity);
   }
-
+  async execute(options) {
+    const filteredContents = options.body?.request?.contents?.map(content => ({
+      ...content,
+      parts: filterThoughtParts(content?.parts),
+    }));
+    if (!isImageModel(options.model) && normalizeFilteredContents(filteredContents).length === 0) {
+      return {
+        response: errorResponse(HTTP_STATUS.BAD_REQUEST, "Antigravity request has no contents after thought filtering"),
+        url: "",
+        headers: {},
+        transformedBody: null,
+      };
+    }
+    return super.execute(options);
+  }
   buildUrl(model, stream, urlIndex = 0) {
     const baseUrls = this.getBaseUrls();
     const baseUrl = baseUrls[urlIndex] || baseUrls[0];
@@ -240,18 +276,18 @@ export class AntigravityExecutor extends BaseExecutor {
 
     // ─── Standard (non-image) request ───
     // Fix contents for Claude models via Antigravity
-    const contents = body.request?.contents?.map(c => {
+    /**
+     * Normalize only turns emptied by thought filtering; Antigravity rejects empty parts and adjacent roles.
+     * Ported from upstream decolua/9router#3366 without importing translator continuation policy.
+     */
+    const contents = normalizeFilteredContents(body.request?.contents?.map(c => {
       let role = c.role;
       // functionResponse must be role "user" for Claude models
       if (c.parts?.some(p => p.functionResponse)) {
         role = "user";
       }
       // Strip thought-only parts, keep thoughtSignature on functionCall parts (Gemini 3+ requires it)
-      const parts = c.parts?.filter(p => {
-        if (p.thought && !p.functionCall) return false;
-        if (p.thoughtSignature && !p.functionCall && !p.text) return false;
-        return true;
-      });
+      const parts = filterThoughtParts(c.parts);
       // Gemini 3+ rejects functionCall parts without thoughtSignature. Clients (Claude Code, IDE)
       // don't persist thoughtSignature in their history, so backfill the default signature on any
       // functionCall part that arrives without one.
@@ -267,7 +303,7 @@ export class AntigravityExecutor extends BaseExecutor {
         };
       }
       return c;
-    });
+    }));
 
     // Sanitize tool schemas and function names before sending to Antigravity.
     let tools = body.request?.tools;
@@ -326,8 +362,8 @@ export class AntigravityExecutor extends BaseExecutor {
       tools = allDeclarations.length > 0 ? [{ functionDeclarations: allDeclarations }] : [];
     }
 
-    // Strip tools/toolConfig (handled separately) and blacklisted fields that Google rejects
-    const { tools: _originalTools, toolConfig: _originalToolConfig, ...requestWithoutTools } = body.request || {};
+    // Strip contents/tools/toolConfig (handled separately) and blacklisted fields that Google rejects
+    const { contents: _originalContents, tools: _originalTools, toolConfig: _originalToolConfig, ...requestWithoutTools } = body.request || {};
     stripBlacklisted(requestWithoutTools);
 
     // Rewrite competitive system prompts (e.g. Zed IDE's Claude SDK marker) to prevent
@@ -350,7 +386,7 @@ export class AntigravityExecutor extends BaseExecutor {
     const transformedRequest = {
       ...requestWithoutTools,
       generationConfig,
-      ...(contents && { contents }),
+      ...(contents.length > 0 && { contents }),
       ...(tools && { tools }),
       sessionId: body.request?.sessionId || resolveSessionId({ headers: credentials?.rawHeaders, body, connectionId: credentials?.email || credentials?.connectionId, scope: "antigravity" }),
       safetySettings: undefined,

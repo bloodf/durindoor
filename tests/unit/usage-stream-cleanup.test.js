@@ -24,15 +24,28 @@ vi.mock("@/lib/usageDb", () => ({
 }));
 
 import { GET } from "@/app/api/usage/stream/route.js";
+const request = (period, controller = new AbortController()) => ({
+  signal: controller.signal,
+  url: `http://localhost/api/usage/stream${period ? `?period=${period}` : ""}`,
+});
 
 describe("usage SSE cleanup", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.listeners.update.clear();
     mocks.listeners.pending.clear();
-    mocks.getUsageStats.mockResolvedValue({ totalRequests: 0 });
+    mocks.getUsageStats.mockResolvedValue({
+      totalRequests: 4,
+      byProvider: { openai: { requests: 4 } },
+      activeRequests: [{ model: "live", provider: "openai", account: "Current", count: 1 }],
+      activeSessions: [{ id: "live-session" }],
+      recentRequests: [{ model: "live" }],
+      errorProvider: "openai",
+      pending: { byModel: { live: 1 }, byAccount: {} },
+    });
     mocks.getActiveRequests.mockResolvedValue({
-      activeRequests: [],
+      activeRequests: [{ model: "activity-only", provider: "openai", account: "Old", count: 1 }],
+      activeSessions: [{ id: "activity-only-session" }],
       recentRequests: [],
       errorProvider: "",
       pending: { byModel: {}, byAccount: {} },
@@ -41,7 +54,7 @@ describe("usage SSE cleanup", () => {
 
   it("removes emitter listeners when request aborts", async () => {
     const controller = new AbortController();
-    const response = await GET({ signal: controller.signal });
+    const response = await GET(request(null, controller));
     const reader = response.body.getReader();
 
     await reader.read();
@@ -60,7 +73,7 @@ describe("usage SSE cleanup", () => {
     const controller = new AbortController();
     controller.abort();
 
-    const response = await GET({ signal: controller.signal });
+    const response = await GET(request(null, controller));
     const reader = response.body.getReader();
     const result = await reader.read();
 
@@ -71,14 +84,14 @@ describe("usage SSE cleanup", () => {
 
   it("removes listeners when request aborts during initial activity load", async () => {
     let resolveStats;
-    mocks.getActiveRequests.mockReturnValue(new Promise((resolve) => {
+    mocks.getUsageStats.mockReturnValue(new Promise((resolve) => {
       resolveStats = resolve;
     }));
     const controller = new AbortController();
 
-    await GET({ signal: controller.signal });
+    await GET(request(null, controller));
     controller.abort();
-    resolveStats({ activeRequests: [], recentRequests: [], errorProvider: "", pending: {} });
+    resolveStats({ totalRequests: 0, activeRequests: [], activeSessions: [], recentRequests: [], errorProvider: "", pending: {} });
     await Promise.resolve();
     await Promise.resolve();
 
@@ -86,43 +99,56 @@ describe("usage SSE cleanup", () => {
     expect(mocks.listeners.pending.size).toBe(0);
   });
 
-  it("sends only lightweight activity snapshots", async () => {
-    const response = await GET({ signal: new AbortController().signal });
+  it("emits a period-filtered full snapshot with the live activity overlay", async () => {
+    const response = await GET(request("7d"));
     const reader = response.body.getReader();
     const { value } = await reader.read();
     const payload = JSON.parse(new TextDecoder().decode(value).slice(6));
 
-    expect(payload).toEqual({
-      activeRequests: [],
-      recentRequests: [],
-      errorProvider: "",
-      pending: { byModel: {}, byAccount: {} },
+    expect(mocks.getUsageStats).toHaveBeenCalledWith("7d");
+    expect(payload).toMatchObject({
+      totalRequests: 4,
+      byProvider: { openai: { requests: 4 } },
+      activeRequests: [{ model: "live", provider: "openai", account: "Current", count: 1 }],
+      activeSessions: [{ id: "live-session" }],
+      recentRequests: [{ model: "live" }],
+      pending: { byModel: { live: 1 }, byAccount: {} },
     });
-    expect(mocks.getUsageStats).not.toHaveBeenCalled();
     await reader.cancel();
+  });
+
+  it("rejects an invalid period before opening the stream", async () => {
+    const response = await GET(request("bogus"));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "Invalid period" });
+    expect(mocks.getUsageStats).not.toHaveBeenCalled();
+    expect(mocks.getActiveRequests).not.toHaveBeenCalled();
+    expect(mocks.listeners.update.size).toBe(0);
+    expect(mocks.listeners.pending.size).toBe(0);
   });
 
   it("coalesces updates while an activity snapshot is in flight", async () => {
     let resolveFirst;
-    mocks.getActiveRequests
+    mocks.getUsageStats
       .mockReturnValueOnce(new Promise((resolve) => {
         resolveFirst = resolve;
       }))
-      .mockResolvedValue({ activeRequests: [], recentRequests: [], errorProvider: "", pending: {} });
+      .mockResolvedValue({ totalRequests: 1, activeRequests: [], activeSessions: [], recentRequests: [], errorProvider: "", pending: {} });
 
-    const response = await GET({ signal: new AbortController().signal });
+    const response = await GET(request(null));
     const reader = response.body.getReader();
     await Promise.resolve();
 
     for (const listener of mocks.listeners.update) listener();
     for (const listener of mocks.listeners.pending) listener();
-    expect(mocks.getActiveRequests).toHaveBeenCalledTimes(1);
+    expect(mocks.getUsageStats).toHaveBeenCalledTimes(1);
 
-    resolveFirst({ activeRequests: [], recentRequests: [], errorProvider: "", pending: {} });
+    resolveFirst({ totalRequests: 0, activeRequests: [], activeSessions: [], recentRequests: [], errorProvider: "", pending: {} });
     await reader.read();
     await reader.read();
 
-    expect(mocks.getActiveRequests).toHaveBeenCalledTimes(2);
+    expect(mocks.getUsageStats).toHaveBeenCalledTimes(2);
     await reader.cancel();
   });
 });

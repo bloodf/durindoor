@@ -1,8 +1,19 @@
-import { statsEmitter, getActiveRequests } from "@/lib/usageDb";
+import { statsEmitter, getUsageStats } from "@/lib/usageDb";
+import { VALID_USAGE_STATS_PERIODS } from "@/lib/usagePeriods.js";
 
 export const dynamic = "force-dynamic";
+/**
+ * Streams full stats for the requested dashboard period (upstream #3388).
+ * Invalid periods are rejected consistently with the REST stats endpoint.
+ */
 
 export async function GET(request) {
+  const { searchParams } = new URL(request.url);
+  const period = searchParams.get("period") || "today";
+  if (!VALID_USAGE_STATS_PERIODS.has(period)) {
+    return Response.json({ error: "Invalid period" }, { status: 400 });
+  }
+
   const encoder = new TextEncoder();
   const state = { closed: false, keepalive: null, send: null, sending: false, queued: false };
 
@@ -30,7 +41,8 @@ export async function GET(request) {
         try {
           do {
             state.queued = false;
-            const stats = await getActiveRequests();
+            // Full aggregation stays debounce-bounded by statsEmitter scheduling and this send/queue coalescer.
+            const stats = await getUsageStats(period);
             if (state.closed) return;
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(stats)}\n\n`));
           } while (!state.closed && state.queued);

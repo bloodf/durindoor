@@ -24,7 +24,8 @@ const fmtTokens = (n) => {
 
 const fmtCost = (n) => `$${(n || 0).toFixed(4)}`;
 
-export default function UsageChart({ period = "7d" }) {
+/** Upstream #3388: refetch persisted chart data when the stable request count changes. */
+export default function UsageChart({ period = "7d", refreshKey = 0 }) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState("tokens");
@@ -44,7 +45,7 @@ export default function UsageChart({ period = "7d" }) {
     } finally {
       if (!signal.aborted) setLoading(false);
     }
-  }, [period]);
+  }, [period, refreshKey]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -145,4 +146,5 @@ export default function UsageChart({ period = "7d" }) {
 
 UsageChart.propTypes = {
   period: PropTypes.string,
+  refreshKey: PropTypes.number,
 };

@@ -1,6 +1,6 @@
 import { FORMATS } from "../formats.js";
 import { fromOpenAIFinish } from "../concerns/finishReason.js";
-import { CLAUDE_BLOCK, CLAUDE_STOP, GEMINI_FINISH, MODEL_FALLBACK, OPENAI_FINISH, ROLE } from "../schema/index.js";
+import { CLAUDE_BLOCK, CLAUDE_STOP, GEMINI_FINISH, MODEL_FALLBACK, OPENAI_FINISH, RESPONSES_ITEM, ROLE } from "../schema/index.js";
 
 function parseArgs(value) {
   if (!value) return {};
@@ -206,7 +206,14 @@ export function responsesApiToOpenAICompletion(responseBody, fallbackModel) {
   };
 }
 
-function openAICompletionToResponsesOutput(completion) {
+/**
+ * Restore declared Responses custom-tool calls after OpenAI completion lowering.
+ * Consumers normalize request metadata to a Set before this projection (#3373).
+ */
+function openAICompletionToResponsesOutput(completion, { customToolNames = new Set() } = {}) {
+  const customToolNameSet = customToolNames instanceof Set
+    ? customToolNames
+    : new Set(customToolNames || []);
   if (!completion?.choices?.[0]) return completion;
   const message = getMessage(completion);
   const usage = completion.usage || {};
@@ -238,13 +245,29 @@ function openAICompletionToResponsesOutput(completion) {
   if (toolCalls.length > 0) {
     for (const toolCall of toolCalls) {
       const fn = toolCall.function || {};
-      const callId = toolCall.id || `call_${fn.name || "tool"}_${idx}`;
-      output.push({
-        type: "function_call",
+      const name = fn.name || toolCall.name || "";
+      const callId = toolCall.id || `call_${name || "tool"}_${idx}`;
+      const argumentsText = typeof fn.arguments === "string" ? fn.arguments : JSON.stringify(fn.arguments || {});
+      const custom = customToolNameSet.has(name);
+      let input = argumentsText;
+      if (custom) {
+        try {
+          const parsed = JSON.parse(argumentsText);
+          if (typeof parsed?.input === "string") input = parsed.input;
+        } catch { /* custom input is already raw */ }
+      }
+      output.push(custom ? {
+        type: RESPONSES_ITEM.CUSTOM_TOOL_CALL,
+        id: `ctc_${callId}`,
+        call_id: callId,
+        name,
+        input,
+      } : {
+        type: RESPONSES_ITEM.FUNCTION_CALL,
         id: `fc_${callId}`,
         call_id: callId,
-        name: fn.name || toolCall.name || "",
-        arguments: typeof fn.arguments === "string" ? fn.arguments : JSON.stringify(fn.arguments || {}),
+        name,
+        arguments: argumentsText,
       });
       idx++;
     }
@@ -286,7 +309,7 @@ export function projectCompletionToClientFormat(completion, sourceFormat, option
       return openAICompletionToOllama(completion);
     case FORMATS.OPENAI_RESPONSES:
     case FORMATS.OPENAI_RESPONSE:
-      return openAICompletionToResponsesOutput(completion);
+      return openAICompletionToResponsesOutput(completion, options);
     default:
       return completion;
   }

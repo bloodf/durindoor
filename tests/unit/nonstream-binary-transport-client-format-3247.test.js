@@ -95,7 +95,7 @@ describe("#3247 non-streaming binary-transport replies", () => {
       usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 },
     });
     expect(projectCompletionToClientFormat).toHaveBeenCalledOnce();
-    expect(projectCompletionToClientFormat).toHaveBeenCalledWith(response, FORMATS.OPENAI, {});
+    expect(projectCompletionToClientFormat).toHaveBeenCalledWith(response, FORMATS.OPENAI, { customToolNames: new Set() });
     expect(projected.content).toBeUndefined();
   });
 

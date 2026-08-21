@@ -1,4 +1,4 @@
-# Unreleased
+# 3.17.5
 
 The pure-JS SQLite fallback can now actually start. `src/lib/db/driver.js` tries
 better-sqlite3, then `node:sqlite` (Node 22.5+), then sql.js, so sql.js is the

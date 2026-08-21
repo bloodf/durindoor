@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { detectFormat, getTargetFormat, resolveTransport } from "open-sse/services/provider.js";
 import { translateRequest } from "open-sse/translator/index.js";
+import { stripInternalKeys } from "open-sse/translator/validate.js";
 import { FORMATS } from "open-sse/translator/formats.js";
 import { parseSuffix } from "open-sse/translator/concerns/thinkingUnified.js";
 import {
@@ -122,6 +123,7 @@ export async function POST(request) {
           },
         );
         delete translated._toolNameMap;
+        stripInternalKeys(translated);
         if (targetFormat !== FORMATS.KIRO) {
           translated.model = resolvedModel.upstreamModel;
         }

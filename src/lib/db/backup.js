@@ -13,7 +13,13 @@
 // - Only the newest KEEP_BACKUPS are kept; older ones are pruned automatically.
 import fs from "node:fs";
 import path from "node:path";
-import { currentBackupsDir, ensureDirs } from "./paths.js";
+import {
+  chmodQuiet,
+  currentBackupsDir,
+  ensureDirs,
+  SECRET_DIR_MODE,
+  SECRET_FILE_MODE,
+} from "./paths.js";
 import { timestampSlug, getAppVersion } from "./version.js";
 
 const KEEP_BACKUPS = 3;
@@ -31,7 +37,8 @@ export function makeBackupDir(label) {
   for (let n = 0; ; n += 1) {
     const dir = n === 0 ? path.join(base, slug) : path.join(base, `${slug}-${n}`);
     try {
-      fs.mkdirSync(dir); // non-recursive: fails with EEXIST if taken, atomic under concurrency
+      /** Upstream PR #3381: each credential backup directory starts owner-only. */
+      fs.mkdirSync(dir, { mode: SECRET_DIR_MODE }); // non-recursive: atomic EEXIST detection
       return dir;
     } catch (e) {
       if (e?.code === "EEXIST") continue;
@@ -45,6 +52,8 @@ export function backupFile(srcPath, destDir, destName = null) {
   const name = destName || path.basename(srcPath);
   const dest = path.join(destDir, name);
   fs.copyFileSync(srcPath, dest);
+  /** Upstream PR #3381: copied credential backups must not inherit a broad mode. */
+  chmodQuiet(dest, SECRET_FILE_MODE);
   return dest;
 }
 
@@ -91,6 +100,8 @@ export function backupDbLite(adapter, destDir, destName = "data.sqlite") {
     return null;
   }
   try { adapter.exec("DETACH DATABASE bak"); } catch {}
+  /** Upstream PR #3381: SQLite creates ATTACH targets using the process umask. */
+  chmodQuiet(dest, SECRET_FILE_MODE);
   return dest;
 }
 

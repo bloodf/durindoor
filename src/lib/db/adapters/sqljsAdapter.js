@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import initSqlJs from "sql.js";
 import { PRAGMA_SQL } from "../schema.js";
+import { SECRET_FILE_MODE } from "../paths.js";
 
 let SQL = null;
 
@@ -23,7 +24,8 @@ export async function createSqlJsAdapter(filePath) {
 
   function persist() {
     const data = db.export();
-    fs.writeFileSync(filePath, Buffer.from(data));
+    /** Upstream PR #3381: sql.js creates its credential database only on first persist. */
+    fs.writeFileSync(filePath, Buffer.from(data), { mode: SECRET_FILE_MODE });
     dirty = false;
   }
 

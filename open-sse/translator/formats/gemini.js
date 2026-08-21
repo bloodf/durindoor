@@ -225,6 +225,44 @@ export function extractTextContent(content, separator = "") {
   return "";
 }
 
+/**
+ * Gemini documents a maximum function schema nesting depth of 32. Stop there
+ * so attacker-adjacent tool results cannot exhaust the translator stack; any
+ * deeper JSON remains byte-equivalent but is not rewritten.
+ */
+const MAX_FUNCTION_RESPONSE_SANITIZE_DEPTH = 32;
+
+/**
+ * Recursively rewrites keys Gemini interprets as schema references in parsed
+ * function-response JSON while preserving array shape and scalar values.
+ * Existing legal sibling keys win collisions; rewritten keys receive stable
+ * `_2`, `_3`, ... suffixes in source-key order. Upstream PR #3411. Keep this
+ * separate from general JSON parsing so tool-call arguments retain their keys.
+ *
+ * @param {unknown} value Parsed JSON value; live Date/class instances are unsupported.
+ * @param {number} [depth=0] Current traversal depth.
+ * @returns {unknown} Sanitized JSON value.
+ */
+export function sanitizeFunctionResponseResult(value, depth = 0) {
+  if (!value || typeof value !== "object" || depth >= MAX_FUNCTION_RESPONSE_SANITIZE_DEPTH) return value;
+  if (Array.isArray(value)) return value.map((nestedValue) => sanitizeFunctionResponseResult(nestedValue, depth + 1));
+
+  const entries = Object.entries(value);
+  const sanitized = Object.create(null);
+  const rewrite = ([key]) => key === "definitions" || /[$#/]/.test(key);
+
+  for (const [key, nestedValue] of entries.filter((entry) => !rewrite(entry))) {
+    sanitized[key] = sanitizeFunctionResponseResult(nestedValue, depth + 1);
+  }
+  for (const [key, nestedValue] of entries.filter(rewrite).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) {
+    const baseKey = key === "definitions" ? "_definitions" : key.replace(/[$#/]/g, "_");
+    let sanitizedKey = baseKey;
+    for (let suffix = 2; Object.hasOwn(sanitized, sanitizedKey); suffix++) sanitizedKey = `${baseKey}_${suffix}`;
+    sanitized[sanitizedKey] = sanitizeFunctionResponseResult(nestedValue, depth + 1);
+  }
+  return sanitized;
+}
+
 // Try parse JSON safely (null fallback on parse error; re-export keeps legacy API)
 export function tryParseJSON(str) {
   return safeParseJSON(str, null);

@@ -30,6 +30,7 @@ import { getCustomModelCapabilities } from "./customModelCapabilities";
 import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 import { getThinkingLevelsFromCapabilities } from "open-sse/providers/thinkingLevels.js";
 import { sortConnectionsByAvailability, persistConnectionOrder } from "@/shared/utils/connectionReorder";
+import { replaceUpdatedConnections } from "@/shared/utils/connectionStatus";
 
 const ONE_BY_ONE_DELAY_MS = 1000;
 
@@ -971,7 +972,8 @@ export default function ProviderDetailPage() {
         body: JSON.stringify({ isActive }),
       });
       if (res.ok) {
-        setConnections(prev => prev.map(c => c.id === id ? { ...c, isActive } : c));
+        const { connection } = await res.json();
+        if (connection) setConnections((prev) => replaceUpdatedConnections(prev, [connection]));
       }
     } catch (error) {
       console.log("Error updating connection status:", error);
@@ -992,7 +994,9 @@ export default function ProviderDetailPage() {
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ isActive }),
             });
-            return { id, ok: res.ok };
+            if (!res.ok) return { id, ok: false };
+            const { connection } = await res.json();
+            return { id, ok: true, connection };
           } catch (error) {
             console.log("Error updating connection status:", error);
             return { id, ok: false };
@@ -1000,16 +1004,14 @@ export default function ProviderDetailPage() {
         })
       );
 
+      const successfulConnections = results
+        .filter((result) => result.ok && result.connection)
+        .map((result) => result.connection);
       const successfulIds = results.filter((result) => result.ok).map((result) => result.id);
       const failed = results.length - successfulIds.length;
 
-      if (successfulIds.length > 0) {
-        const successfulIdSet = new Set(successfulIds);
-        setConnections((prev) => prev.map((connection) => (
-          successfulIdSet.has(connection.id)
-            ? { ...connection, isActive }
-            : connection
-        )));
+      if (successfulConnections.length > 0) {
+        setConnections((prev) => replaceUpdatedConnections(prev, successfulConnections));
       }
 
       if (failed > 0) {

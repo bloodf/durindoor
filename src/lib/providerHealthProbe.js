@@ -43,31 +43,27 @@ const REGISTRY_BY_ID = new Map(REGISTRY.map((e) => [e.id, e]));
 const isRegistryNoAuth = (providerId) => REGISTRY_BY_ID.get(providerId)?.noAuth === true;
 
 /**
- * Fetch honoring the connection's saved proxy / proxy pool. Falls back to plain
- * `fetch` when no proxy is configured. `fetcher` is injectable for tests.
- *
- * Always forces `redirect: "manual"` so a 3xx cannot bounce the probe past the
- * initial-URL SSRF check to cloud-metadata/RFC1918. `assertOutboundUrlAllowed`
- * is called by each probe before this runs; the relay/proxy URL is trusted by
- * operator config, but the TARGET stays checked.
+ * Fetch through the DNS-pinned guard on every route. Saved proxies and relays
+ * fail closed because their remote DNS cannot compose with this dispatcher;
+ * direct probes retain injected fetchers and the existing option contract.
  */
 async function proxyAware(url, options, effectiveProxy, fetcher) {
-  const baseFetcher = fetcher ?? fetch;
   const opts = { ...options, redirect: "manual" };
+  let routedFetcher = fetcher ?? fetch;
   if (effectiveProxy?.vercelRelayUrl) {
     const { proxyAwareFetch } = await import("open-sse/utils/proxyFetch.js");
-    return proxyAwareFetch(url, opts, { vercelRelayUrl: effectiveProxy.vercelRelayUrl });
-  }
-  if (effectiveProxy?.connectionProxyEnabled && effectiveProxy?.connectionProxyUrl) {
+    routedFetcher = (target, init) => proxyAwareFetch(target, init, {
+      vercelRelayUrl: effectiveProxy.vercelRelayUrl,
+    });
+  } else if (effectiveProxy?.connectionProxyEnabled && effectiveProxy?.connectionProxyUrl) {
     const { proxyAwareFetch } = await import("open-sse/utils/proxyFetch.js");
-    return proxyAwareFetch(url, opts, {
+    routedFetcher = (target, init) => proxyAwareFetch(target, init, {
       connectionProxyEnabled: true,
       connectionProxyUrl: effectiveProxy.connectionProxyUrl,
       connectionNoProxy: effectiveProxy.connectionNoProxy || "",
     });
   }
-  // No proxy: still go through the SSRF guard.
-  return guardedProbeFetch(url, opts, getProviderValidationGuard(), baseFetcher);
+  return guardedProbeFetch(url, opts, getProviderValidationGuard(), routedFetcher);
 }
 
 function withTimeout(options) {

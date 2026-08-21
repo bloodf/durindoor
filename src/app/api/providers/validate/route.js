@@ -216,10 +216,16 @@ export async function POST(request) {
           if (err instanceof OutboundUrlGuardError) return guardBlockedResponse(err);
           throw err;
         }
-        const modelsRes = await fetch(modelsUrl, {
-          headers: { "Authorization": `Bearer ${apiKey}` },
-          redirect: "manual",
-        });
+        let modelsRes;
+        try {
+          modelsRes = await guardedProbeFetch(modelsUrl, {
+            headers: { "Authorization": `Bearer ${apiKey}` },
+            redirect: "manual",
+          });
+        } catch (err) {
+          if (err instanceof OutboundUrlGuardError) return guardBlockedResponse(err);
+          throw err;
+        }
         if (modelsRes.ok) {
           return NextResponse.json({ valid: true });
         }
@@ -228,12 +234,18 @@ export async function POST(request) {
           return NextResponse.json({ valid: false, error: "Invalid API key" });
         }
         // Fallback: probe /embeddings with a common test model — many providers lack /models
-        const embedRes = await fetch(embedUrl, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ model: "test", input: "ping" }),
-          redirect: "manual",
-        });
+        let embedRes;
+        try {
+          embedRes = await guardedProbeFetch(embedUrl, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ model: "test", input: "ping" }),
+            redirect: "manual",
+          });
+        } catch (err) {
+          if (err instanceof OutboundUrlGuardError) return guardBlockedResponse(err);
+          throw err;
+        }
         // 401/403 = bad key; anything else (including 400 "model not found") means key works
         isValid = embedRes.status !== 401 && embedRes.status !== 403;
         return NextResponse.json({

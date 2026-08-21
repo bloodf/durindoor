@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { getStatusVariant as getConnectionStatusVariant } from "@/shared/utils/connectionStatus";
+import { getConnectionErrorDisplay, getStatusVariant as getConnectionStatusVariant, replaceUpdatedConnections } from "@/shared/utils/connectionStatus";
 import { sortConnectionsByAvailability, persistConnectionOrder } from "@/shared/utils/connectionReorder";
 import { isGooglePseProvider, isGooglePseReadyForSave, buildGooglePseProviderSpecificData, buildGooglePseValidationPayload } from "@/shared/utils/googlePseProviderSpecificData.js";
 import PropTypes from "prop-types";
@@ -90,6 +90,7 @@ function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMov
   const effectiveStatus = connection.testStatus === "unavailable" && !isCooldown ? "active" : connection.testStatus;
 
   const getStatusVariant = () => getConnectionStatusVariant(connection.isActive, effectiveStatus);
+  const errorDisplay = getConnectionErrorDisplay(connection);
 
   const displayName = isOAuth
     ? connection.name || connection.email || connection.displayName || "OAuth Account"
@@ -121,8 +122,10 @@ function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMov
             </Badge>
             {hasAnyProxy && <Badge variant={proxyBadgeVariant} size="sm">Proxy</Badge>}
             {isCooldown && connection.isActive !== false && <CooldownTimer until={modelLockUntil} />}
-            {connection.lastError && connection.isActive !== false && (
-              <span className="text-xs text-red-500 truncate max-w-[300px]" title={connection.lastError}>{connection.lastError}</span>
+            {errorDisplay && (
+              <span className="text-xs text-red-500 truncate max-w-[300px]" title={`${errorDisplay.reason}${errorDisplay.time ? ` · ${errorDisplay.time}` : ""}`}>
+                {errorDisplay.reason}{errorDisplay.time ? ` · ${errorDisplay.time}` : ""}
+              </span>
             )}
             <span className="text-xs text-text-muted">#{connection.priority}</span>
           </div>
@@ -181,6 +184,8 @@ ConnectionRow.propTypes = {
     testStatus: PropTypes.string,
     isActive: PropTypes.bool,
     lastError: PropTypes.string,
+    autoDisabledReason: PropTypes.string,
+    autoDisabledAt: PropTypes.string,
     priority: PropTypes.number,
   }).isRequired,
   proxyPools: PropTypes.array,
@@ -393,7 +398,10 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
   const handleToggleActive = async (id, isActive) => {
     try {
       const res = await fetch(`/api/providers/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ isActive }) });
-      if (res.ok) setConnections((prev) => prev.map((c) => c.id === id ? { ...c, isActive } : c));
+      if (res.ok) {
+        const { connection } = await res.json();
+        if (connection) setConnections((prev) => replaceUpdatedConnections(prev, [connection]));
+      }
     } catch (e) { console.log("toggle error:", e); }
   };
 

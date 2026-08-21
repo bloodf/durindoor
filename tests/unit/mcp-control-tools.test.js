@@ -54,6 +54,7 @@ vi.mock("@/shared/constants/providers", () => ({
 }));
 
 const { listTools, callTool } = await import("../../src/lib/mcp/control/tools");
+const { mergeProviderConnection } = await import("../../src/lib/db/helpers/mergeProviderMetadata.js");
 
 describe("mcp-control tools", () => {
   beforeEach(() => {
@@ -135,6 +136,35 @@ describe("mcp-control tools", () => {
     expect(mocks.notifyQuotaAutoPingSettingChanged).toHaveBeenCalledWith("openai", "c1", false);
   });
 
+  it("toggle_connection_active clears a persisted automatic-disable event on re-enable", async () => {
+    const existing = {
+      id: "c1",
+      provider: "openai",
+      isActive: false,
+      testStatus: "unavailable",
+      lastError: "Qoder quota exhausted (code 112)",
+      errorCode: 403,
+      lastErrorAt: "2026-08-21T12:00:00.000Z",
+      autoDisabledReason: "Qoder quota exhausted (code 112)",
+      autoDisabledAt: "2026-08-21T12:00:00.000Z",
+    };
+    mocks.getProviderConnectionById.mockResolvedValue(existing);
+    mocks.updateProviderConnection.mockImplementation(async (_id, patch) => mergeProviderConnection(existing, patch));
+    mocks.sanitizeProviderConnectionForClient.mockImplementation((connection) => connection);
+
+    const result = await callTool("toggle_connection_active", { connectionId: "c1", isActive: true });
+
+    expect(result.connection).toMatchObject({
+      isActive: true,
+      testStatus: null,
+      lastError: null,
+      errorCode: null,
+      lastErrorAt: null,
+      autoDisabledReason: null,
+      autoDisabledAt: null,
+    });
+  });
+
   it("toggle_connection_active rejects missing connection", async () => {
     mocks.getProviderConnectionById.mockResolvedValue(null);
 
@@ -164,6 +194,36 @@ describe("mcp-control tools", () => {
     expect(mocks.updateProviderConnection).toHaveBeenCalledTimes(2);
     expect(mocks.notifyQuotaAutoPingSettingChanged).toHaveBeenCalledTimes(2);
     expect(result.connections).toHaveLength(2);
+  });
+
+  it("toggle_provider_active clears automatic-disable events for every re-enabled connection", async () => {
+    const connections = ["c1", "c2"].map((id) => ({
+      id,
+      provider: "openai",
+      isActive: false,
+      lastError: "Qoder quota exhausted (code 112)",
+      lastErrorAt: "2026-08-21T12:00:00.000Z",
+      autoDisabledReason: "Qoder quota exhausted (code 112)",
+      autoDisabledAt: "2026-08-21T12:00:00.000Z",
+    }));
+    mocks.getProviderConnections.mockResolvedValue(connections);
+    mocks.updateProviderConnection.mockImplementation(async (id, patch) => (
+      mergeProviderConnection(connections.find((connection) => connection.id === id), patch)
+    ));
+    mocks.sanitizeProviderConnectionForClient.mockImplementation((connection) => connection);
+
+    const result = await callTool("toggle_provider_active", { providerId: "openai", isActive: true });
+
+    expect(result.connections).toHaveLength(2);
+    for (const connection of result.connections) {
+      expect(connection).toMatchObject({
+        isActive: true,
+        lastError: null,
+        lastErrorAt: null,
+        autoDisabledReason: null,
+        autoDisabledAt: null,
+      });
+    }
   });
 
   it("toggle_provider_active accepts a custom OpenAI-compatible provider", async () => {

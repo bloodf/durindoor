@@ -55,6 +55,18 @@ Named volume example:
 
 See [Data Management](docs/operations/data-management.md) for backup, restore, and volume guidance.
 
+## Configure 429 account backoff
+
+Rate-limit fallback temporarily locks affected account/model with exponential backoff. Defaults remain 2 seconds, doubling to 5-minute cap, for at most 15 levels. Override schedule in `docker run` or Compose:
+
+```bash
+-e BACKOFF_BASE_MS=2000 \
+-e BACKOFF_MAX_MS=300000 \
+-e BACKOFF_MAX_LEVEL=15
+```
+
+Each optional value must be positive integer. Invalid values retain that key's default, and maximum delay is capped at 7 days. If resolved maximum is below resolved base, whole schedule uses defaults. Settings affect fallback locks, not provider retry-delay or RPM logic.
+
 ## Update
 
 ```bash

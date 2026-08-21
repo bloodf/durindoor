@@ -22,7 +22,7 @@ Verification per item: the item's own test file must pass. Verification for the 
 
 | Gate | Result |
 | --- | --- |
-| `npm run test:ci` | **0 raw failures**, 0 known-failures still failing, 0 stale baseline entries |
+| `cd tests && npm run test:ci` | **0 raw failures**, 0 known-failures still failing, 0 stale baseline entries |
 | `npm run lint` | **0 errors** (188 warnings; 190 pre-existing at `origin/main` — net −2) |
 | `npx commitlint --from=origin/main --to=HEAD` | exit **0** across all 21 commits |
 | `npm run check:registry-index` | `registry/index.js is up to date.` |

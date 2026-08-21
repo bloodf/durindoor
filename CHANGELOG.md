@@ -1,3 +1,18 @@
+# Unreleased
+
+The pure-JS SQLite fallback can now actually start. `src/lib/db/driver.js` tries
+better-sqlite3, then `node:sqlite` (Node 22.5+), then sql.js, so sql.js is the
+only driver left on a host whose native binding failed to build and whose Node
+predates 22.5. sql.js loads `dist/sql-wasm.wasm` at runtime via emscripten's
+default `locateFile`, and because no import statement names that file, Next's
+tracer copied the JS entry into the standalone bundle and dropped the wasm — the
+terminal driver could only ever fail with `[DB] sql.js unavailable`, leaving
+those hosts with no database at all. Both packaging surfaces now copy the asset
+explicitly: `scripts/build-app.mjs` for `npm run build` and systemd standalone
+deploys, and the Dockerfile runtime stage for the container image.
+
+Ports upstream 9router `27f3710c8`.
+
 # 3.17.4
 
 Headroom proxy recovery now works on a fresh install. 3.17.3 revived the proxy

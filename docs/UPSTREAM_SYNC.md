@@ -1,6 +1,6 @@
 # Upstream Sync Watch
 
-Last reviewed sync window: **2026-08-14**.
+Last reviewed sync window: **2026-08-05 through 2026-08-20**.
 
 | Source | Reviewed head |
 | --- | --- |
@@ -20,6 +20,11 @@ Unmerged changes stay on the watch list; do not port them until their final merg
 | [#3012](https://github.com/decolua/9router/pull/3012) | `fix(cooldown): honour provider-reported quota reset times instead of re-probing spent accounts` | Overlaps DurinDoor quota cooldown policy. | After merge, compare with `open-sse/services/quota/` normalization and cooldown scheduling. |
 | [#2997](https://github.com/decolua/9router/pull/2997) | `fix(proxyFetch): add undici connection pooling to prevent connection exhaustion` | Potential throughput and connection-pressure improvement for `proxyFetch`. | After merge, require a load test before adoption. |
 | [#10358](https://github.com/diegosouzapw/OmniRoute/pull/10358) | `feat(sse): add GLM-5.3 models and effort tiers` | GLM-5.3 catalog addition was independently verified against Z.ai Coding Plan documentation and ported from merged commit `8ed9da7165340`; upstream effort tiers remain unmerged. | Re-evaluate effort tiers only after this PR merges and its final diff is available. |
+
+Full 2026-08-20 open-PR + commit-gap verdicts live in
+[`docs/campaigns/upstream-9router-2026-08-20-ledger.md`](campaigns/upstream-9router-2026-08-20-ledger.md);
+the ported 2026-08-18 shortlist and its batch gates live in
+[`docs/campaigns/upstream-open-pr-shortlist-2026-08-18.md`](campaigns/upstream-open-pr-shortlist-2026-08-18.md).
 
 Full open-PR inventories for the 2026-08-11 review are recorded in
 [`docs/campaigns/upstream-9router-open-pr-audit-2026-08-11.md`](campaigns/upstream-9router-open-pr-audit-2026-08-11.md)

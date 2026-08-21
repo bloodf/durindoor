@@ -40,6 +40,9 @@ COPY --from=builder /app/src/mitm ./src/mitm
 COPY --from=builder /app/node_modules/node-forge ./node_modules/node-forge
 # Ensure `next` is available at runtime in case tracing did not include it.
 COPY --from=builder /app/node_modules/next ./node_modules/next
+# sql.js ships `dist/sql-wasm.wasm` as a runtime-loaded sibling that Next's tracer
+# omits, so the pure-JS DB fallback cannot start without it (upstream 27f3710c8).
+COPY --from=builder /app/node_modules/sql.js ./node_modules/sql.js
 
 RUN mkdir -p /app/data && chown -R node:node /app && \
   mkdir -p /app/data-home && chown node:node /app/data-home && \

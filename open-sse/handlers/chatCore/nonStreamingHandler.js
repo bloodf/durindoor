@@ -169,21 +169,33 @@ function openAICompletionToClientSSE(responseBody, fallbackModel, sourceFormat) 
 /**
  * Translate non-streaming response body from upstream format → client format.
  *
- * `targetFormat` is what the **client** asked for (i.e. the source format the
- * client sent). `sourceFormat` is the format the upstream returned in. When
- * they differ, we convert.
+ * `sourceFormat` is what the client asked for. `targetFormat` is the selected
+ * upstream transport. When they differ, the provider response must be projected
+ * back into `sourceFormat` before returning it to the client.
  *
- * Most branches translate into OpenAI chat.completion shape (the legacy
- * default). The OPENAI_RESPONSES branch is an exception: it returns whichever
- * shape the client actually requested — Claude body when the client sent
- * Claude, OpenAI chat when the client sent OpenAI — so the caller receives a
- * body matching their original request, including a usage object (some
- * clients validate `usage.input_tokens`).
+ * Most branches translate an upstream response into OpenAI chat.completion
+ * shape first. Responses clients are an exception: chat-completion upstreams
+ * must be projected back into a Responses object before generic OpenAI
+ * passthrough can return the raw provider body.
  *
  * Streaming responses go through translateResponse() — this function only
  * handles non-streaming JSON bodies.
  */
 export function translateNonStreamingResponse(responseBody, targetFormat, sourceFormat, options = {}) {
+  /** Upstream PR #3373: request translators emit arrays; projection uses Set membership. */
+  const customToolNames = options.customToolNames instanceof Set
+    ? options.customToolNames
+    : new Set(options.customToolNames || []);
+  /**
+   * Project Responses-client calls before generic OpenAI upstream passthrough.
+   */
+  if (
+    (sourceFormat === FORMATS.OPENAI_RESPONSES || sourceFormat === FORMATS.OPENAI_RESPONSE)
+    && targetFormat === FORMATS.OPENAI
+    && Array.isArray(responseBody?.choices)
+  ) {
+    return projectCompletionToClientFormat(responseBody, sourceFormat, { ...options, customToolNames });
+  }
   /** Normalize NVIDIA/vLLM's OpenAI reasoning alias on same-format passthrough. */
   if (targetFormat === sourceFormat) {
     if (targetFormat === FORMATS.OPENAI) {
@@ -337,7 +349,7 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
    * this handler runs; project that completion back into the client's dialect.
    */
   if (Array.isArray(responseBody?.choices)) {
-    return projectCompletionToClientFormat(responseBody, sourceFormat, options);
+    return projectCompletionToClientFormat(responseBody, sourceFormat, { ...options, customToolNames });
   }
 
   return responseBody;
@@ -346,7 +358,7 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
 /**
  * Handle non-streaming response from provider.
  */
-export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, streamToClient, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, trackDone, appendLog, pxpipe, reqTag, log, usageEventId, claudeClassifierCompat, signal = null, terminalProvenance = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS }) {
+export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, streamToClient, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, customToolNames, trackDone, appendLog, pxpipe, reqTag, log, usageEventId, claudeClassifierCompat, signal = null, terminalProvenance = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS }) {
   try {
     const markSuccess = async () => {
       if (!onRequestSuccess || !["upstream", "validated"].includes(terminalProvenance)) return;
@@ -457,7 +469,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     responseBody,
     targetFormat,
     sourceFormat,
-    { claudeCompat, model },
+    { claudeCompat, model, customToolNames },
   );
 
   /**

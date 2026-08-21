@@ -470,6 +470,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
 
   let translatedBody;
   let toolNameMap;
+  let customToolNames;
   if (passthrough) {
     log?.debug?.("PASSTHROUGH", `${clientTool} → ${provider} | native lossless`);
     translatedBody = { ...structuredClone(body), model: cleanUpstreamModel };
@@ -510,6 +511,9 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Failed to translate request for ${sourceFormat} → ${targetFormat}`);
     }
     toolNameMap = translatedBody._toolNameMap;
+    /** Carry Responses custom-tool identity to buffered response routes (upstream PR #3373). */
+    customToolNames = translatedBody._customToolNames;
+    delete translatedBody._customToolNames;
     delete translatedBody._toolNameMap;
     // Kiro carries the provider model inside every native userInputMessage.
     // Adding a stray OpenAI-style top-level model obscures boundary validation.
@@ -1351,6 +1355,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     stream,
     translatedBody,
     finalBody,
+    customToolNames,
     requestStartTime,
     connectionId,
     apiKey,

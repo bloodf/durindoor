@@ -1,10 +1,13 @@
 // Guards forceStream moved from chatCore hardcode → PROVIDERS schema (#5).
+import "../translator/registerAll.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { executeMock, dedupeToolsMock, detectClientToolMock } = vi.hoisted(() => ({
+const { executeMock, dedupeToolsMock, detectClientToolMock, isNativePassthroughMock, translateRequestMock } = vi.hoisted(() => ({
   executeMock: vi.fn(),
   dedupeToolsMock: vi.fn((tools) => ({ tools, stripped: [] })),
   detectClientToolMock: vi.fn(() => null),
+  isNativePassthroughMock: vi.fn(() => false),
+  translateRequestMock: vi.fn(),
 }));
 
 vi.mock("../../open-sse/executors/index.js", () => ({
@@ -27,9 +30,14 @@ vi.mock("../../open-sse/utils/requestLogger.js", () => ({
 
 vi.mock("../../open-sse/utils/clientDetector.js", () => ({
   detectClientTool: detectClientToolMock,
-  isNativePassthrough: vi.fn(() => false),
+  isNativePassthrough: isNativePassthroughMock,
   isCodexOriginatedHeaders: vi.fn(() => false),
 }));
+vi.mock("../../open-sse/translator/index.js", async (importOriginal) => {
+  const actual = await importOriginal();
+  translateRequestMock.mockImplementation(actual.translateRequest);
+  return { ...actual, translateRequest: translateRequestMock };
+});
 
 vi.mock("../../open-sse/utils/bypassHandler.js", () => ({
   handleBypassRequest: vi.fn(() => null),
@@ -150,6 +158,96 @@ function makeOptions(bodyStream) {
   };
 }
 
+function makeCrossFormatOptions(provider, model) {
+  const body = {
+    model,
+    messages: [{ role: "user", content: "hello" }],
+    stream: true,
+  };
+
+  return {
+    body,
+    modelInfo: { provider, model },
+    credentials: {
+      apiKey: "sk-test",
+      accessToken: "token-test",
+      providerSpecificData: { region: "us-east-1" },
+    },
+    clientRawRequest: {
+      endpoint: "/v1/chat/completions",
+      body,
+      headers: { accept: "text/event-stream" },
+    },
+    connectionId: `test-${provider}-connection`,
+    log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  };
+}
+
+function makeNativeClaudeOptions() {
+  const body = {
+    model: "claude-sonnet-4.5",
+    system: "You are concise.",
+    max_tokens: 1024,
+    messages: [{ role: "user", content: [{ type: "text", text: "hello" }] }],
+  };
+
+  return {
+    body,
+    modelInfo: { provider: "claude", model: "claude-sonnet-4.5" },
+    credentials: { accessToken: "token-test", providerSpecificData: {} },
+    clientRawRequest: {
+      endpoint: "/v1/messages",
+      body,
+      headers: { accept: "application/json", "user-agent": "claude-cli/2.1.0" },
+    },
+    connectionId: "test-claude-connection",
+    log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  };
+}
+
+function makeGeminiOptions(provider, sourceFormatOverride) {
+  const body = {
+    model: "gemini-2.5-flash",
+    contents: [{ role: "user", parts: [{ text: "hello" }] }],
+    generationConfig: {},
+  };
+
+  return {
+    body,
+    modelInfo: { provider, model: "gemini-2.5-flash" },
+    credentials: { accessToken: "token-test", providerSpecificData: {} },
+    clientRawRequest: {
+      endpoint: "/v1beta/models/gemini-2.5-flash:streamGenerateContent",
+      body,
+      headers: { accept: "text/event-stream", "user-agent": "gemini-cli/0.34.0" },
+    },
+    connectionId: `test-${provider}-connection`,
+    sourceFormatOverride,
+    log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  };
+}
+
+function makeNativeCodexOptions() {
+  const body = {
+    model: "gpt-5.4",
+    input: [{ role: "user", content: [{ type: "input_text", text: "hello" }] }],
+    stream: false,
+  };
+
+  return {
+    body,
+    modelInfo: { provider: "codex", model: "gpt-5.4" },
+    credentials: { accessToken: "token-test", providerSpecificData: {} },
+    clientRawRequest: {
+      endpoint: "/v1/responses",
+      body,
+      headers: { accept: "application/json", "user-agent": "codex-cli/0.144.1" },
+    },
+    connectionId: "test-codex-connection",
+    log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  };
+}
+
 function makeAgyImageOptions() {
   const body = {
     model: "gemini-3-flash-image",
@@ -199,6 +297,9 @@ describe("forceStream provider config", () => {
     dedupeToolsMock.mockClear();
     detectClientToolMock.mockReset();
     detectClientToolMock.mockReturnValue(null);
+    isNativePassthroughMock.mockReset();
+    isNativePassthroughMock.mockReturnValue(false);
+    translateRequestMock.mockClear();
   });
 
   it("only openai/codex/commandcode force streaming", async () => {
@@ -212,12 +313,106 @@ describe("forceStream provider config", () => {
     }
   });
 
-  it.each([undefined, false])( "keeps forced-stream providers streaming for JSON clients when body.stream is %s", async (bodyStream) => {
-    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+  it.each([undefined, false])(
+    "keeps forced-stream providers streaming for JSON clients when body.stream is %s",
+    async (bodyStream) => {
+      const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
 
-    await handleChatCore(makeOptions(bodyStream));
+      await handleChatCore(makeOptions(bodyStream));
+
+      expect(executeMock).toHaveBeenCalledTimes(1);
+      expect(executeMock.mock.calls[0][0].stream).toBe(true);
+      expect(executeMock.mock.calls[0][0].body.stream).toBe(true);
+    },
+  );
+
+  it("syncs negotiated streaming into native Codex passthrough bodies", async () => {
+    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+    isNativePassthroughMock.mockReturnValue(true);
+
+    await handleChatCore(makeNativeCodexOptions());
 
     expect(executeMock).toHaveBeenCalledTimes(1);
+    expect(executeMock.mock.calls[0][0].body.stream).toBe(true);
+    expect(executeMock.mock.calls[0][0].stream).toBe(true);
+  });
+
+  it("syncs negotiated streaming into native Claude passthrough bodies", async () => {
+    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+    isNativePassthroughMock.mockReturnValue(true);
+
+    await handleChatCore(makeNativeClaudeOptions());
+
+    expect(executeMock).toHaveBeenCalledTimes(1);
+    expect(Object.hasOwn(executeMock.mock.calls[0][0].body, "stream")).toBe(true);
+    expect(executeMock.mock.calls[0][0].body.stream).toBe(false);
+    expect(executeMock.mock.calls[0][0].stream).toBe(false);
+  });
+
+  it("does not inject stream into native Gemini CLI passthrough bodies", async () => {
+    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+    isNativePassthroughMock.mockReturnValue(true);
+
+    await handleChatCore(makeGeminiOptions("gemini-cli", "gemini-cli"));
+
+    expect(executeMock).toHaveBeenCalledTimes(1);
+    expect(executeMock.mock.calls[0][0].body).toHaveProperty("contents");
+    expect(Object.hasOwn(executeMock.mock.calls[0][0].body, "stream")).toBe(false);
+  });
+
+  it("does not inject stream into same-format Gemini bodies", async () => {
+    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+
+    await handleChatCore(makeGeminiOptions("gemini", "gemini"));
+
+    expect(executeMock).toHaveBeenCalledTimes(1);
+    expect(executeMock.mock.calls[0][0].body).toHaveProperty("contents");
+    expect(Object.hasOwn(executeMock.mock.calls[0][0].body, "stream")).toBe(false);
+  });
+
+  it("syncs negotiated streaming into same-format OpenAI bodies", async () => {
+    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+
+    await handleChatCore(makeOptions(false));
+
+    expect(isNativePassthroughMock).toHaveReturnedWith(false);
+    expect(translateRequestMock.mock.calls[0][4]).toBe(true);
+    expect(executeMock.mock.calls[0][0].body.stream).toBe(true);
+    expect(executeMock.mock.calls[0][0].stream).toBe(true);
+  });
+
+  it.each([
+    ["Gemini", "gemini", "gemini-2.5-flash", "contents"],
+    ["Kiro", "kiro", "claude-sonnet-4.5", "conversationState"],
+  ])("does not inject stream into cross-format %s bodies", async (_name, provider, model, shapeKey) => {
+    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+
+    await handleChatCore(makeCrossFormatOptions(provider, model));
+
+    expect(executeMock).toHaveBeenCalledTimes(1);
+    expect(executeMock.mock.calls[0][0].body).toHaveProperty(shapeKey);
+    expect(Object.hasOwn(executeMock.mock.calls[0][0].body, "stream")).toBe(false);
+  });
+
+  it("does not write stream when same-format body already matches negotiation", async () => {
+    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+    let writes = 0;
+    translateRequestMock.mockImplementationOnce((_source, _target, _model, body, stream) => {
+      const translated = { ...body };
+      let current = stream;
+      Object.defineProperty(translated, "stream", {
+        get: () => current,
+        set: (value) => { writes += 1; current = value; },
+        enumerable: true,
+        configurable: true,
+      });
+      return translated;
+    });
+
+    await handleChatCore(makeOptions(true));
+
+    expect(writes).toBe(0);
+    expect(executeMock.mock.calls[0][0].body.stream).toBe(true);
     expect(executeMock.mock.calls[0][0].stream).toBe(true);
   });
 

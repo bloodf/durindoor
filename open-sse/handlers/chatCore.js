@@ -68,6 +68,22 @@ const COMPRESSION_ADAPTIVE_CONFIG = Object.freeze({
   absoluteBudget: 0,
 });
 
+const TOP_LEVEL_STREAM_FORMATS = new Set([
+  FORMATS.OPENAI,
+  FORMATS.OPENAI_RESPONSES,
+  FORMATS.OPENAI_RESPONSE,
+  FORMATS.CLAUDE,
+  FORMATS.CODEX,
+  FORMATS.CURSOR,
+  FORMATS.OLLAMA,
+  FORMATS.COMMANDCODE,
+]);
+
+const NATIVE_TOP_LEVEL_STREAM_FORMATS = new Set([
+  FORMATS.OPENAI_RESPONSES,
+  FORMATS.CLAUDE,
+]);
+
 const COMPRESSION_HEADER = "X-DurinDoor-Compression";
 
 /**
@@ -490,6 +506,14 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     }
     // Normalize newer Cowork/CC beta shapes (adaptive thinking, mid-conversation system) the API rejects
     if (clientTool === "claude") normalizeClaudePassthrough(translatedBody, translatedBody.model, provider, modelCapabilities?.maxOutput ?? null, { foldSystemTurns: true });
+    /**
+     * Native OpenAI Responses and Claude Messages bodies carry top-level
+     * `stream`; Gemini-family native bodies do not and reject an injected key.
+     * Keep only those wire shapes aligned with negotiated dispatch. (#3420)
+     */
+    if (NATIVE_TOP_LEVEL_STREAM_FORMATS.has(targetFormat) && translatedBody.stream !== stream) {
+      translatedBody.stream = stream;
+    }
   } else {
     const translationModel = resolveKiroTranslationModel(targetFormat, alias, cleanModel, cleanUpstreamModel);
     translatedBody = translateRequest(
@@ -518,6 +542,16 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     // Kiro carries the provider model inside every native userInputMessage.
     // Adding a stray OpenAI-style top-level model obscures boundary validation.
     if (targetFormat !== FORMATS.KIRO) translatedBody.model = cleanUpstreamModel;
+    /**
+     * Same-format translation is a no-op, so synchronize its surviving client
+     * stream flag with negotiated dispatch only for wire formats that define
+     * top-level `stream`. Gemini-family formats reject that unknown key. (#3420)
+     */
+    if (
+      sourceFormat === targetFormat
+      && TOP_LEVEL_STREAM_FORMATS.has(targetFormat)
+      && translatedBody.stream !== stream
+    ) translatedBody.stream = stream;
   }
 
   // opencode-go backed providers (opencode-go, opencode, opencode-zen) use a Go

@@ -55,6 +55,7 @@ For operators running DurinDoor in production or on a team server.
 - [MCP Gateway](features/mcp-gateway.md)
 - [Realtime Behavior](features/realtime.md)
 - [Compression](features/compression.md)
+- [Headroom Setup and Diagnostics](HEADROOM.md)
 - [Troubleshooting](troubleshooting.md)
 - [FAQ](faq.md)
 

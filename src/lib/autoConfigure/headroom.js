@@ -1,5 +1,6 @@
-import { execFileSync, execSync } from "node:child_process";
 import path from "node:path";
+import { createDiagnostic, quoteShellArg, SetupError } from "@/shared/utils/setupDiagnostics.js";
+import { DATA_DIR } from "@/lib/dataDir.js";
 import {
   DEFAULT_HEADROOM_URL,
   findHeadroomBinary,
@@ -7,38 +8,19 @@ import {
   getHeadroomStatus,
   isLoopbackHeadroomUrl,
 } from "../headroom/detect.js";
-import { startHeadroomProxy, stopHeadroomProxy } from "../headroom/process.js";
+import { describeExternalInstall } from "../headroom/pythonEnv.js";
+import { installHeadroomExtras, startHeadroomProxy, stopHeadroomProxy } from "../headroom/process.js";
 
-const IS_WIN = process.platform === "win32";
-const WHICH_CMD = IS_WIN ? "where" : "which";
-const EXTRA_BINS = IS_WIN
-  ? [
-      `${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python313\\Scripts`,
-      `${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python312\\Scripts`,
-      `${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python311\\Scripts`,
-      `${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python310\\Scripts`,
-      `${process.env.APPDATA || ""}\\Python\\Python313\\Scripts`,
-    ]
-  : [
-      "/usr/local/bin",
-      "/opt/homebrew/bin",
-      "/Library/Frameworks/Python.framework/Versions/3.13/bin",
-      "/Library/Frameworks/Python.framework/Versions/3.12/bin",
-      "/Library/Frameworks/Python.framework/Versions/3.11/bin",
-      "/Library/Frameworks/Python.framework/Versions/3.10/bin",
-      `${process.env.HOME || ""}/.local/bin`,
-      "/usr/bin",
-      "/bin",
-    ];
-
-const EXTENDED_PATH = [...EXTRA_BINS, process.env.PATH || ""].filter(Boolean).join(path.delimiter);
-const PIP_TIMEOUT_MS = 60000;
-const PYTHON_CANDIDATES = ["python3.13", "python3.12", "python3.11", "python3.10", "python3", "python"];
-const MIN_VERSION = [3, 10];
+// Default compression extras requested by Auto-configure. `proxy` alone is
+// never a complete install for this fork — `code` and `ml` must be
+// requested too, or the reported headline bug (extras never installed)
+// reproduces.
+export const DEFAULT_HEADROOM_EXTRAS = ["proxy", "code", "ml"];
 
 function logAction(report, dryRun, action) {
   report.actions.push(dryRun ? `would ${action}` : action);
 }
+
 
 const HEADROOM_HEALTH_ATTEMPTS = 5;
 const HEADROOM_HEALTH_INTERVAL_MS = 500;
@@ -55,53 +37,30 @@ async function waitForHeadroomHealth(url, attempts, wait) {
   return false;
 }
 
-function findUv() {
-  try {
-    const out = execSync(`${WHICH_CMD} uv`, {
-      stdio: ["ignore", "pipe", "ignore"],
-      windowsHide: true,
-      env: { ...process.env, PATH: EXTENDED_PATH },
-    }).toString().trim();
-    return out ? out.split(/\r?\n/)[0].trim() : null;
-  } catch {
-    return null;
-  }
-}
-
-function findPipModule(python) {
-  try {
-    execFileSync(python, ["-m", "pip", "--version"], {
-      stdio: ["ignore", "pipe", "ignore"],
-      windowsHide: true,
-      env: { ...process.env, PATH: EXTENDED_PATH },
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
+// Nullable, CHEAP interpreter check — legacy callers depend on a
+// `string | null` contract and must never see a thrown SetupError.
+//
+// This runs on every Auto-configure pass, including when Headroom is already
+// installed and healthy, so it must not pay for real `python -m venv`
+// capability probes; `findPython310()` answers from the managed venv or a
+// version-only scan. The expensive probe belongs to `ensureManagedVenv()`,
+// which runs only when a venv is actually being created. It also no longer
+// requires the interpreter to have a pip module, which used to reject every
+// valid root-visible interpreter on a fresh host.
 function findPython310ForInstall() {
-  for (const candidate of PYTHON_CANDIDATES) {
-    try {
-      const ver = execSync(`${candidate} --version`, {
-        stdio: ["ignore", "pipe", "ignore"],
-        windowsHide: true,
-        env: { ...process.env, PATH: EXTENDED_PATH },
-      }).toString().trim();
-      const match = ver.match(/(\d+)\.(\d+)/);
-      if (!match) continue;
-      const [major, minor] = [parseInt(match[1], 10), parseInt(match[2], 10)];
-      if (!(major > MIN_VERSION[0] || (major === MIN_VERSION[0] && minor >= MIN_VERSION[1]))) continue;
-      if (!findPipModule(candidate)) continue;
-      return candidate;
-    } catch {
-      // candidate not present, try next
-    }
-  }
-  return null;
+  return findPython310();
 }
 
+/**
+ * Detect Headroom for Auto-configure.
+ *
+ * `extras` and `source` are part of the projection on purpose: "is it
+ * installed" is NOT sufficient to decide whether to install. A PATH-only
+ * `[proxy]` install reports installed while `code` and `ml` are absent, which
+ * is precisely the state the reported bug lived in.
+ *
+ * @param {{url?: string}} [options]
+ */
 export async function detectHeadroom({ url = DEFAULT_HEADROOM_URL } = {}) {
   const status = await getHeadroomStatus(url);
   return {
@@ -111,41 +70,79 @@ export async function detectHeadroom({ url = DEFAULT_HEADROOM_URL } = {}) {
     path: status.path,
     url,
     localUrl: status.localUrl,
+    extras: status.extras,
+    source: status.source,
   };
 }
 
-export async function installHeadroom({ python, uv } = {}) {
-  const uvBin = uv || findUv();
-  if (uvBin) {
-    try {
-      execFileSync(uvBin, ["tool", "install", "headroom-ai[proxy]", "--force"], {
-        stdio: "inherit",
-        windowsHide: true,
-        timeout: PIP_TIMEOUT_MS,
-        env: { ...process.env, PATH: EXTENDED_PATH },
-      });
-      return { installed: Boolean(findHeadroomBinary()), method: "uv" };
-    } catch (e) {
-      return { installed: false, method: "uv", error: e.message || String(e) };
-    }
+/**
+ * Decide whether the managed install must run.
+ *
+ * Presence alone is not enough: a user-scoped `[proxy]`-only install on PATH
+ * satisfies `installed` but leaves every compression extra missing, and its
+ * pip-less venv can never be repaired in place. Any missing extra, or an
+ * install that is not the managed venv, means install.
+ *
+ * @param {{installed: boolean, extras?: Record<string, boolean>, source?: string|null}} detected
+ * @param {string[]} wanted Extras requested, including the `proxy` base.
+ * @returns {{needed: boolean, reason: string}}
+ */
+export function resolveInstallNeed(detected, wanted = DEFAULT_HEADROOM_EXTRAS) {
+  if (!detected?.installed) return { needed: true, reason: "headroom is not installed" };
+  const compression = wanted.filter((extra) => extra !== "proxy");
+  const missing = compression.filter((extra) => !detected.extras?.[extra]);
+  if (missing.length) {
+    return { needed: true, reason: `installed but missing the ${missing.join(" and ")} extra${missing.length > 1 ? "s" : ""}` };
   }
-  const py = python || findPython310ForInstall();
-  if (!py) {
-    return { installed: false, method: "pip", error: "No Python >= 3.10 with pip found" };
+  if (detected.source && detected.source !== "managed") {
+    return { needed: true, reason: `installed outside the managed venv (${detected.source}), which cannot be repaired in place` };
   }
+  return { needed: false, reason: "managed install already has every requested extra" };
+}
+
+/**
+ * Install Headroom into DurinDoor's managed virtual environment with the
+ * requested compression extras. Replaces prior user-scoped installation,
+ * which used a pip-less venv the root service could neither see nor repair
+ * and which only ever requested `[proxy]`.
+ *
+ * @param {{python?: string, extras?: string[]}} [options] Installation options.
+ *   `python` is accepted for backward compatibility but unused — the
+ *   managed venv always supplies its own interpreter.
+ * @returns {Promise<{installed: boolean, method?: string, diagnostic?: import("@/shared/utils/setupDiagnostics.js").SetupDiagnostic}>}
+ */
+export async function installHeadroom({ python, extras } = {}) {
+  void python;
   try {
-    execFileSync(py, ["-m", "pip", "install", "--upgrade", "headroom-ai[proxy]"], {
-      stdio: "inherit",
-      windowsHide: true,
-      timeout: PIP_TIMEOUT_MS,
-      env: { ...process.env, PATH: EXTENDED_PATH },
-    });
-    return { installed: Boolean(findHeadroomBinary()), method: "pip" };
-  } catch (e) {
-    return { installed: false, method: "pip", error: e.message || String(e) };
+    // installHeadroomExtras() creates the managed venv itself; calling
+    // ensureManagedVenv() here as well only duplicated the work.
+    await installHeadroomExtras(extras ?? DEFAULT_HEADROOM_EXTRAS);
+    return { installed: Boolean(findHeadroomBinary()), method: "managed venv" };
+  } catch (error) {
+    const diagnostic = error instanceof SetupError
+      ? error.diagnostic
+      : createDiagnostic({
+        code: "INSTALL_FAILED",
+        summary: "Headroom installation failed.",
+        detail: error.message || String(error),
+        fixes: [{
+          label: "Review the Headroom install log",
+          command: `tail -n 40 ${quoteShellArg(path.join(DATA_DIR, "headroom", "install.log"))}`,
+        }],
+      });
+    return { installed: false, diagnostic };
   }
 }
 
+/**
+ * Detect, install, start, and persist settings for Headroom during
+ * Auto-configure. Installation always goes through the managed venv
+ * (`installHeadroom`); a detected user-scoped uv/pipx install is reported
+ * read-only and never mutated.
+ *
+ * @param {object} settings Current persisted settings.
+ * @param {object} [options] Auto-configuration options.
+ */
 export async function configureHeadroom(settings, {
   dryRun = false,
   url,
@@ -159,9 +156,16 @@ export async function configureHeadroom(settings, {
   // A reachable external endpoint is usable even without a local CLI.
   let effectiveUrl = url || settings.headroomUrl || DEFAULT_HEADROOM_URL;
   let detected = await detectHeadroom({ url: effectiveUrl });
-  const uv = findUv();
   const installPython = findPython310ForInstall();
-  const canInstall = Boolean(uv || installPython);
+  const canInstall = Boolean(installPython);
+
+  const externalInstall = describeExternalInstall();
+  if (externalInstall?.userScoped) {
+    const removal = externalInstall.uninstallCommand
+      ? `remove with: ${externalInstall.uninstallCommand}`
+      : "remove it with whichever tool manager installed it";
+    report.actions.push(`detected user-scoped Headroom install at ${externalInstall.path}; not used by the service, ${removal}`);
+  }
 
   let installed = detected.installed;
   let running = detected.running;
@@ -185,15 +189,30 @@ export async function configureHeadroom(settings, {
     running = detected.running;
   }
 
-  if (running) {
+  const installNeed = resolveInstallNeed(detected, DEFAULT_HEADROOM_EXTRAS);
+  // A reachable proxy does NOT imply a complete install: the compression extras
+  // live in the local package, not in whatever is answering on the port.
+  if (running && !installNeed.needed) {
     report.actions.push(`headroom reachable at ${effectiveUrl}`);
-  } else if (!installed && !dryRun) {
-    const installResult = await install({ python: detected.python || installPython, uv });
+  } else if (installNeed.needed && !dryRun) {
+    report.actions.push(`installing headroom compression extras: ${installNeed.reason}`);
+    const installResult = await install({ extras: DEFAULT_HEADROOM_EXTRAS });
     if (installResult.installed) {
       installed = true;
-      report.actions.push(`installed headroom-ai[proxy] via ${installResult.method}`);
+      report.actions.push(`installed headroom-ai[${DEFAULT_HEADROOM_EXTRAS.join(",")}] via ${installResult.method}`);
     } else {
-      report.actions.push(`install skipped: ${installResult.error}`);
+      const diagnostic = installResult.diagnostic || createDiagnostic({
+        code: "INSTALL_FAILED",
+        summary: "Headroom installation failed.",
+        detail: installResult.error || "The managed Headroom installation did not complete.",
+        fixes: [{
+          label: "Review the Headroom install log",
+          command: `tail -n 40 ${quoteShellArg(path.join(DATA_DIR, "headroom", "install.log"))}`,
+        }],
+      });
+      report.actions.push(diagnostic.summary);
+      const command = diagnostic.fixes[0]?.command;
+      if (command) report.actions.push(command);
     }
   }
 
@@ -242,8 +261,10 @@ export async function configureHeadroom(settings, {
     }
 
     if (!running && !wouldStart) {
-      const wouldInstall = dryRun && !installed && canInstall;
-      report.actions.push(wouldInstall ? "headroom not reachable; would install then enable" : "headroom not reachable and no install path found; skipping");
+      // Mirror the real decision: a dry run must predict an install whenever a
+      // compression extra is missing, not only when nothing is installed.
+      const wouldInstall = dryRun && installNeed.needed && canInstall;
+      report.actions.push(wouldInstall ? `headroom not reachable; would install then enable (${installNeed.reason})` : "headroom not reachable and no install path found; skipping");
       return {
         changed: false,
         wouldChange: wouldInstall || false,
@@ -297,4 +318,4 @@ export async function configureHeadroom(settings, {
   };
 }
 
-export { findUv, findPipModule, findHeadroomBinary, findPython310 };
+export { findHeadroomBinary, findPython310, findPython310ForInstall };

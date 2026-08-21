@@ -1,14 +1,22 @@
 import fs from "fs";
 import path from "path";
-import { spawn } from "child_process";
+import { execFileSync, spawn } from "child_process";
 import { DATA_DIR } from "@/lib/dataDir.js";
-import { findHeadroomBinary, findPython310, HEADROOM_COMPRESSION_EXTRAS, getInstalledHeadroomExtras } from "./detect.js";
+import { findHeadroomBinary, HEADROOM_COMPRESSION_EXTRAS, getInstalledHeadroomExtras } from "./detect.js";
+import { ensureManagedVenv, managedVenvBinary } from "./pythonEnv.js";
+import { createDiagnostic, quoteShellArg, redactSensitive, SetupError } from "@/shared/utils/setupDiagnostics.js";
 
 const HEADROOM_DIR = path.join(DATA_DIR, "headroom");
 const PID_FILE = path.join(HEADROOM_DIR, "proxy.pid");
 const LOG_FILE = path.join(HEADROOM_DIR, "proxy.log");
 const DEFAULT_PORT = 8787;
 const STARTUP_TIMEOUT_MS = 8000;
+// The `ml` extra downloads torch, so a legitimate install is minutes long; the
+// bound exists only so a wedged pip cannot hang the request forever.
+const INSTALL_TIMEOUT_MS = 20 * 60 * 1000;
+const INSTALL_KILL_GRACE_MS = 5000;
+
+let installInFlight = null;
 
 function ensureDir() {
   if (!fs.existsSync(HEADROOM_DIR)) fs.mkdirSync(HEADROOM_DIR, { recursive: true });
@@ -49,15 +57,20 @@ export function getManagedPid() {
  */
 export async function startHeadroomProxy({ port = DEFAULT_PORT, kompress = false } = {}) {
   const safePort = Number(port) > 0 && Number(port) < 65536 ? Number(port) : DEFAULT_PORT;
-  const binary = findHeadroomBinary();
+  const managedBinary = managedVenvBinary("headroom");
+  const binary = managedBinary || findHeadroomBinary();
+  const source = managedBinary ? "managed" : binary ? "path" : null;
   if (!binary) {
-    const err = new Error("Headroom CLI not installed");
-    err.code = "NOT_INSTALLED";
-    throw err;
+    throw new SetupError(createDiagnostic({
+      code: "NOT_INSTALLED",
+      summary: "No usable Headroom CLI was found",
+      detail: "The managed Headroom virtualenv has no headroom binary and no Headroom CLI was found on PATH.",
+      fixes: [{ label: "Install Headroom with the required compression extras from the dashboard" }],
+    }));
   }
 
   const existing = getManagedPid();
-  if (existing) return { pid: existing, alreadyRunning: true };
+  if (existing) return { pid: existing, alreadyRunning: true, source };
 
   ensureDir();
   // spawn stdio requires fd numbers, not WriteStream objects.
@@ -82,25 +95,47 @@ export async function startHeadroomProxy({ port = DEFAULT_PORT, kompress = false
 
   // Wait until the process either stays alive briefly (success) or exits fast (failure).
   await new Promise((resolve, reject) => {
-    const startupTimer = setTimeout(() => {
-      if (isPidAlive(child.pid)) resolve();
-      else reject(new Error("headroom proxy exited during startup — see proxy.log"));
-    }, STARTUP_TIMEOUT_MS);
-
-    child.once("exit", (code) => {
+    let closed = false;
+    const closeOnce = () => {
+      if (closed) return;
+      closed = true;
+      try { fs.closeSync(outFd); } catch { /* already closed */ }
+    };
+    const onExit = (code) => {
       clearTimeout(startupTimer);
       clearPid();
-      fs.closeSync(outFd);
-      const e = new Error(`headroom proxy exited early (code=${code}) — see proxy.log`);
-      e.code = "EARLY_EXIT";
-      reject(e);
-    });
+      closeOnce();
+      reject(new SetupError(createDiagnostic({
+        code: "EARLY_EXIT",
+        summary: "Headroom proxy exited during startup",
+        detail: `The proxy process exited with code ${code}.`,
+        fixes: [{ label: "Inspect the Headroom proxy log", command: `tail -n 40 ${quoteShellArg(LOG_FILE)}` }],
+        logTail: redactSensitive(getHeadroomLogTail(40)),
+      })));
+    };
+    const startupTimer = setTimeout(() => {
+      child.removeListener("exit", onExit);
+      if (isPidAlive(child.pid)) {
+        closeOnce();
+        resolve();
+        return;
+      }
+      clearPid();
+      closeOnce();
+      reject(new SetupError(createDiagnostic({
+        code: "EARLY_EXIT",
+        summary: "Headroom proxy exited during startup",
+        detail: `The proxy process ${child.pid} was no longer running after ${STARTUP_TIMEOUT_MS}ms.`,
+        fixes: [{ label: "Inspect the Headroom proxy log", command: `tail -n 40 ${quoteShellArg(LOG_FILE)}` }],
+        logTail: redactSensitive(getHeadroomLogTail(40)),
+      })));
+    }, STARTUP_TIMEOUT_MS);
+    child.once("exit", onExit);
   });
 
-  // Close parent's copy of the fd; child retains its own after unref.
-  fs.closeSync(outFd);
+  // Parent fd was closed after startup resolution.
 
-  return { pid: child.pid, alreadyRunning: false };
+  return { pid: child.pid, alreadyRunning: false, source };
 }
 
 export function stopHeadroomProxy() {
@@ -108,13 +143,15 @@ export function stopHeadroomProxy() {
   if (!pid) return { stopped: false, reason: "not_running" };
   try {
     process.kill(pid, "SIGTERM");
-    // Give it a moment, then force if still alive.
-    setTimeout(() => {
+    // Keep the pid until the process is confirmed dead; otherwise a delayed
+    // SIGKILL can target a reused pid after a fresh proxy start.
+    const escalationTimer = setTimeout(() => {
       if (isPidAlive(pid)) {
         try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ }
       }
+      if (!isPidAlive(pid)) clearPid();
     }, 2000);
-    clearPid();
+    escalationTimer.unref?.();
     return { stopped: true, pid };
   } catch (e) {
     clearPid();
@@ -133,51 +170,223 @@ export function getHeadroomLogTail(maxLines = 200) {
   } catch { return ""; }
 }
 
-// Install (or upgrade) headroom-ai with the requested compression extras.
-// `extras` is a whitelist from HEADROOM_COMPRESSION_EXTRAS — anything else
-// is rejected to keep the install surface predictable. Always installs the
-// `proxy` base + whatever extras the user picked, regardless of what is
-// already present.
-export async function installHeadroomExtras(extras = []) {
-  const requested = Array.isArray(extras) ? extras.filter((e) => HEADROOM_COMPRESSION_EXTRAS.includes(e)) : [];
-  const py = findPython310();
-  if (!py) {
-    const err = new Error("Python >= 3.10 not found");
-    err.code = "NO_PYTHON";
-    throw err;
-  }
-  if (!findHeadroomBinary()) {
-    const err = new Error("headroom-ai not installed (run `pip install headroom-ai[proxy]` first)");
-    err.code = "NOT_INSTALLED";
-    throw err;
-  }
-  // pip install string is built from a closed set (HEADROOM_COMPRESSION_EXTRAS),
-  // so it cannot be poisoned by caller input — the comma-list is a fixed
-  // ['proxy', ...requested]. No shell interpolation.
-  const extrasList = ["proxy", ...requested].join(",");
-  const spec = `headroom-ai[${extrasList}]`;
-  const args = ["-m", "pip", "install", "--upgrade", spec];
+/**
+ * Install Headroom and selected compression extras in DurinDoor's managed venv.
+ *
+ * Passing no extras installs the FULL default set, not just `proxy`: a
+ * proxy-only install is what left `code` and `ml` permanently missing, and a
+ * caller that asks for "extras" and receives none is the bug, not a feature.
+ * Pass an explicit subset to narrow it.
+ *
+ * @param {string[]} [extras] Compression extras; defaults to every supported extra.
+ * @returns {Promise<object>} The re-probed managed-install status.
+ * @throws {SetupError} PEP668 | EXTRA_WHEEL_UNAVAILABLE | INSTALL_TIMEOUT | INSTALL_FAILED
+ */
+export async function installHeadroomExtras(extras) {
+  if (installInFlight) return installInFlight;
 
-  ensureDir();
-  const outFd = fs.openSync(path.join(HEADROOM_DIR, "install.log"), "a");
-  const child = spawn(py, args, {
-    stdio: ["ignore", outFd, outFd],
-    windowsHide: true,
-    env: { ...process.env },
-  });
+  const install = (async () => {
+    const candidates = Array.isArray(extras) && extras.length > 0 ? extras : HEADROOM_COMPRESSION_EXTRAS;
+    const unknowns = candidates.filter((extra) => !HEADROOM_COMPRESSION_EXTRAS.includes(extra));
+    if (unknowns.length) {
+      throw new SetupError(createDiagnostic({
+        code: "UNKNOWN_EXTRA",
+        summary: `Unknown Headroom extra name(s): ${unknowns.join(", ")}`,
+        detail: `Valid extras are: ${HEADROOM_COMPRESSION_EXTRAS.join(", ")}. An empty array installs every extra; any non-empty array must list only known names.`,
+        fixes: [{ label: "Retry with only supported Headroom extras" }],
+      }));
+    }
+    const requested = candidates;
+    const { python } = await ensureManagedVenv();
+    const spec = `headroom-ai[${["proxy", ...requested].join(",")}]`;
+    const args = ["-m", "pip", "install", "--upgrade", spec];
+    const installLog = path.join(HEADROOM_DIR, "install.log");
 
-  return new Promise((resolve, reject) => {
-    child.once("error", (e) => { fs.closeSync(outFd); reject(e); });
-    child.once("exit", (code) => {
-      fs.closeSync(outFd);
-      if (code === 0) {
-        const status = getInstalledHeadroomExtras(py);
-        resolve({ success: true, code, spec, extras: requested, ...status });
-      } else {
-        const err = new Error(`pip install exited with code=${code} — see headroom/install.log`);
-        err.code = "INSTALL_FAILED";
-        reject(err);
-      }
+    ensureDir();
+    assertInstallDiskSpace(requested, python);
+    // pip unpacks wheels through TMPDIR, which on many hosts is a small tmpfs
+    // (4 GB here) while the venv lives on a large disk. The `ml` extra pulls
+    // torch plus a CUDA stack of roughly 5 GB, so leaving TMPDIR alone fails
+    // with ENOSPC after downloading gigabytes. Keep the scratch space on the
+    // same filesystem as the venv.
+    const scratchDir = path.join(HEADROOM_DIR, "pip-tmp");
+    fs.mkdirSync(scratchDir, { recursive: true, mode: 0o700 });
+    const outFd = fs.openSync(installLog, "a");
+    const manualCommand = [python, ...args].map(quoteShellArg).join(" ");
+    // Classify on the RAW log and redact only what is handed out: the markers
+    // classification looks for ("externally-managed-environment") are exactly
+    // the kind of long hyphenated runs a redactor can eat.
+    const failInstall = (reason) => createInstallError({ python, requested, manualCommand, reason, rawLog: getLogTail(installLog, 40) });
+
+    return new Promise((resolve, reject) => {
+      const child = spawn(python, args, {
+        stdio: ["ignore", outFd, outFd],
+        windowsHide: true,
+        env: { ...process.env, TMPDIR: scratchDir, PIP_CACHE_DIR: path.join(scratchDir, "cache") },
+      });
+
+      let settled = false;
+      let timeoutTimer = null;
+      const finish = (fn, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutTimer);
+        try { fs.closeSync(outFd); } catch { /* already closed */ }
+        fn(value);
+      };
+
+      timeoutTimer = setTimeout(() => {
+        try { child.kill("SIGTERM"); } catch { /* already gone */ }
+        const killTimer = setTimeout(() => {
+          try { child.kill("SIGKILL"); } catch { /* already gone */ }
+        }, INSTALL_KILL_GRACE_MS);
+        killTimer.unref?.();
+        finish(reject, new SetupError(createDiagnostic({
+          code: "INSTALL_TIMEOUT",
+          summary: `Headroom install exceeded ${Math.round(INSTALL_TIMEOUT_MS / 60000)} minutes and was stopped`,
+          detail: `${manualCommand} did not finish within ${INSTALL_TIMEOUT_MS} ms. A slow or blocked package index is the usual cause; the ml extra downloads torch.`,
+          fixes: [
+            { label: "Run the install manually and watch its output", command: manualCommand },
+            { label: "Or install without the heavy ml extra", command: [python, "-m", "pip", "install", "--upgrade", "headroom-ai[proxy,code]"].map(quoteShellArg).join(" ") },
+          ],
+          logTail: redactSensitive(getLogTail(installLog, 40)),
+        })));
+      }, INSTALL_TIMEOUT_MS);
+
+      child.once("error", (error) => finish(reject, failInstall(`Pip could not start: ${error.message}`)));
+      child.once("exit", (code) => {
+        if (code === 0) {
+          const status = getInstalledHeadroomExtras(python);
+          finish(resolve, { success: true, code, spec, source: "managed", ...status, requestedExtras: requested });
+          return;
+        }
+        finish(reject, failInstall(`Pip install exited with code ${code}.`));
+      });
     });
-  });
+  })();
+  installInFlight = install;
+  try {
+    return await install;
+  } finally {
+    if (installInFlight === install) installInFlight = null;
+  }
+}
+
+function getLogTail(file, maxLines) {
+  try {
+    return fs.readFileSync(file, "utf8").split(/\r?\n/).filter(Boolean).slice(-maxLines).join("\n");
+  } catch {
+    return "";
+  }
+}
+
+// The `ml` extra is torch plus an NVIDIA CUDA wheel stack: the resulting venv
+// measures about 5.4 GB, and pip needs room for the download and the unpack on
+// top of that. Checking first turns a multi-gigabyte download that dies with
+// ENOSPC into an instant, actionable refusal.
+const ML_REQUIRED_BYTES = 12 * 1024 * 1024 * 1024;
+const BASE_REQUIRED_BYTES = 1024 * 1024 * 1024;
+
+function availableBytes(target) {
+  try {
+    const stat = fs.statfsSync(target);
+    return stat.bavail * stat.bsize;
+  } catch {
+    return null;
+  }
+}
+
+function formatGiB(bytes) {
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GiB`;
+}
+
+/**
+ * Refuse an install that cannot fit before pip downloads anything.
+ *
+ * @param {string[]} requested Extras being installed.
+ * @param {string} python Managed venv interpreter path.
+ * @throws {SetupError} INSTALL_DISK_FULL when the venv filesystem is too small.
+ */
+function assertInstallDiskSpace(requested, python) {
+  const needed = requested.includes("ml") ? ML_REQUIRED_BYTES : BASE_REQUIRED_BYTES;
+  const free = availableBytes(HEADROOM_DIR);
+  if (free === null || free >= needed) return;
+  throw new SetupError(createDiagnostic({
+    code: "INSTALL_DISK_FULL",
+    summary: `Not enough free space to install the ${requested.join(" and ")} extras`,
+    detail: `${HEADROOM_DIR} has ${formatGiB(free)} available; ${requested.includes("ml") ? "the ml extra (torch plus the CUDA wheel stack) needs about" : "the install needs about"} ${formatGiB(needed)} including pip's unpack space.`,
+    fixes: [
+      { label: "Check free space on the data directory's filesystem", command: `df -h ${quoteShellArg(HEADROOM_DIR)}` },
+      { label: "Install without the large ml extra", command: `${quoteShellArg(python)} -m pip install --upgrade ${quoteShellArg("headroom-ai[proxy,code]")}` },
+      { label: "Or point DATA_DIR at a larger filesystem and restart DurinDoor" },
+    ],
+  }));
+}
+
+export { quoteShellArg } from "@/shared/utils/setupDiagnostics.js";
+
+function createInstallError({ python, requested, manualCommand, reason, rawLog }) {
+  // Match on rawLog; only the redacted copy ever leaves the process.
+  const logTail = redactSensitive(rawLog);
+
+  // Observed for real: the ml extra died with ENOSPC after downloading several
+  // gigabytes because pip unpacked through a 4 GB /tmp tmpfs while the venv sat
+  // on a 148 GB disk. "Installation did not complete" told the operator nothing.
+  if (/No space left on device|Errno 28/i.test(rawLog)) {
+    const dir = path.dirname(path.dirname(python));
+    return new SetupError(createDiagnostic({
+      code: "INSTALL_DISK_FULL",
+      summary: "Pip ran out of disk space while installing Headroom",
+      detail: `The install wrote to ${dir} and unpacked through the scratch directory beside it. The ml extra needs roughly 12 GiB across download, unpack and the final venv.`,
+      fixes: [
+        { label: "Check free space on the data directory's filesystem", command: `df -h ${quoteShellArg(dir)}` },
+        { label: "Install without the large ml extra", command: `${quoteShellArg(python)} -m pip install --upgrade ${quoteShellArg("headroom-ai[proxy,code]")}` },
+        { label: "Or point DATA_DIR at a larger filesystem and restart DurinDoor" },
+      ],
+      logTail,
+    }));
+  }
+
+  if (/externally-managed-environment/i.test(rawLog)) {
+    return new SetupError(createDiagnostic({
+      code: "PEP668",
+      summary: "Pip reported an externally managed Python environment",
+      detail: `The managed virtualenv at ${path.dirname(path.dirname(python))} exists precisely to avoid PEP 668. This output means managed venv creation was skipped.`,
+      fixes: [{ label: "Recreate the managed Headroom virtualenv, then retry the install", command: `rm -rf ${quoteShellArg(path.dirname(path.dirname(python)))}` }],
+      logTail,
+    }));
+  }
+
+  if (/No matching distribution|Could not find a version/i.test(rawLog)) {
+    const version = getPythonVersion(python);
+    return new SetupError(createDiagnostic({
+      code: "EXTRA_WHEEL_UNAVAILABLE",
+      summary: "A requested Headroom extra has no compatible package wheel",
+      detail: `Pip using ${version} could not resolve one of the requested extras: ${requested.join(", ") || "none"}.`,
+      fixes: [
+        { label: "Install a different Python minor version with venv support", command: "sudo apt install -y python3.13 python3.13-venv" },
+        { label: "Install Headroom without compression extras", command: `${quoteShellArg(python)} -m pip install --upgrade ${quoteShellArg("headroom-ai[proxy]")}` },
+      ],
+      logTail,
+    }));
+  }
+
+  return new SetupError(createDiagnostic({
+    code: "INSTALL_FAILED",
+    summary: "Headroom installation did not complete",
+    detail: reason,
+    fixes: [{ label: "Run the failed install command manually", command: manualCommand }],
+    logTail,
+  }));
+}
+
+function getPythonVersion(python) {
+  try {
+    return `Python ${execFileSync(python, ["-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"], {
+      stdio: ["ignore", "pipe", "ignore"],
+      windowsHide: true,
+    }).toString().trim()}`;
+  } catch {
+    return python;
+  }
 }

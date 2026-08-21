@@ -21,6 +21,11 @@ Unmerged changes stay on the watch list; do not port them until their final merg
 | [#2997](https://github.com/decolua/9router/pull/2997) | `fix(proxyFetch): add undici connection pooling to prevent connection exhaustion` | Potential throughput and connection-pressure improvement for `proxyFetch`. | After merge, require a load test before adoption. |
 | [#10358](https://github.com/diegosouzapw/OmniRoute/pull/10358) | `feat(sse): add GLM-5.3 models and effort tiers` | GLM-5.3 catalog addition was independently verified against Z.ai Coding Plan documentation and ported from merged commit `8ed9da7165340`; upstream effort tiers remain unmerged. | Re-evaluate effort tiers only after this PR merges and its final diff is available. |
 
+The 43 correctness and security rows from that audit were **re-verified against
+`origin/main` `1c74403cb` on 2026-08-21**, which overturned 10 of them; use those
+verdicts, not the audit-date ones:
+[`docs/campaigns/upstream-9router-2026-08-21-reverification.md`](campaigns/upstream-9router-2026-08-21-reverification.md).
+
 Full 2026-08-20 open-PR + commit-gap verdicts live in
 [`docs/campaigns/upstream-9router-2026-08-20-ledger.md`](campaigns/upstream-9router-2026-08-20-ledger.md);
 the ported 2026-08-18 shortlist and its batch gates live in

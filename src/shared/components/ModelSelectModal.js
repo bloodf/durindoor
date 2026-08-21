@@ -7,7 +7,7 @@ import ProviderIcon from "./ProviderIcon";
 import CapacityBadges from "./CapacityBadges";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
-import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, AI_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, getProviderAlias } from "@/shared/constants/providers";
+import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, AI_PROVIDERS, isHiddenProvider, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, getProviderAlias } from "@/shared/constants/providers";
 
 // Provider order: OAuth first, then Free Tier, then API Key (matches dashboard/providers)
 const PROVIDER_ORDER = [
@@ -17,8 +17,15 @@ const PROVIDER_ORDER = [
   ...Object.keys(APIKEY_PROVIDERS),
 ];
 
-// Providers that need no auth — always show in model selector
-const NO_AUTH_PROVIDER_IDS = Object.keys(FREE_PROVIDERS).filter(id => FREE_PROVIDERS[id].noAuth);
+/**
+ * No-auth, non-hidden providers from both free categories, deduplicated for combo pickers.
+ * Includes runtime-configured entries such as SearXNG without claiming reachability.
+ * Reuses the registry-backed generic-selection predicate; ported from upstream PR #3280.
+ */
+export const NO_AUTH_PROVIDER_IDS = [...new Set([
+  ...Object.keys(FREE_PROVIDERS).filter((id) => FREE_PROVIDERS[id].noAuth && !isHiddenProvider(id)),
+  ...Object.keys(FREE_TIER_PROVIDERS).filter((id) => FREE_TIER_PROVIDERS[id].noAuth && !isHiddenProvider(id)),
+])];
 
 // kindFilter (UI service kind) → /api/v1/models slug. webSearch/webFetch share
 // the `web` slug server-side. null/absent → root LLM list.

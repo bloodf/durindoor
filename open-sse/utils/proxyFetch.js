@@ -3,6 +3,11 @@ import { Agent, ProxyAgent, setGlobalDispatcher } from "undici";
 import { MEMORY_CONFIG, PROXY_FETCH_POOL_CONFIG } from "../config/runtimeConfig.js";
 import { dbg } from "./debugLog.js";
 import { sanitizeErrorMessage } from "./error.js";
+import {
+  assertGuardedProbeDispatcherAddressAllowed,
+  isGuardedProbeDispatcher,
+  OutboundUrlGuardError,
+} from "./outboundUrlGuard.js";
 import { digestMemoryKey } from "./memoryKey.js";
 import {
   isQuotaBearingProviderRequest,
@@ -17,6 +22,7 @@ const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 const proxyDispatchers = new Map();
 let directDispatcher = null;
 let bypassTransportForTesting = null;
+let realIpResolverForTesting = null;
 
 export function __setOriginalFetchForTesting(fn) {
   const prev = originalFetch;
@@ -28,6 +34,12 @@ export function __setBypassTransportForTesting(transport) {
   const previous = bypassTransportForTesting;
   bypassTransportForTesting = transport;
   return () => { bypassTransportForTesting = previous; };
+}
+
+export function __setRealIpResolverForTesting(resolver) {
+  const previous = realIpResolverForTesting;
+  realIpResolverForTesting = resolver;
+  return () => { realIpResolverForTesting = previous; };
 }
 
 export function __setProxyDispatcherForTesting(proxyUrl, dispatcher) {
@@ -197,12 +209,11 @@ function raceWithSignal(promise, signal) {
   });
 }
 
-/**
- * Resolve real IP using Google DNS (bypass system DNS)
- */
-async function resolveRealIP(hostname) {
+/** Resolve every IPv4 answer through Google DNS (bypass system DNS). */
+async function resolveRealIPs(hostname) {
+  if (realIpResolverForTesting) return realIpResolverForTesting(hostname);
   const cached = DNS_CACHE.get(hostname);
-  if (cached && Date.now() < cached.expiry) return cached.ip;
+  if (cached && Date.now() < cached.expiry) return cached.ips;
 
   try {
     const dns = await import("dns");
@@ -211,11 +222,11 @@ async function resolveRealIP(hostname) {
     resolver.setServers(GOOGLE_DNS_SERVERS);
     const resolve4 = promisify(resolver.resolve4.bind(resolver));
     const addresses = await resolve4(hostname);
-    DNS_CACHE.set(hostname, { ip: addresses[0], expiry: Date.now() + MEMORY_CONFIG.dnsCacheTtlMs });
-    return addresses[0];
+    DNS_CACHE.set(hostname, { ips: addresses, expiry: Date.now() + MEMORY_CONFIG.dnsCacheTtlMs });
+    return addresses;
   } catch (error) {
     console.warn(`[ProxyFetch] DNS resolve failed for ${hostname}:`, safeTransportError(error));
-    return null;
+    return [];
   }
 }
 
@@ -677,6 +688,11 @@ export async function serializeBypassRequestBody(body) {
   return JSON.stringify(body);
 }
 
+/**
+ * Route fetch through configured proxy transport. A DNS-guarded provider probe
+ * is refused when proxy routing is selected because ProxyAgent replaces its
+ * validating dispatcher and resolves the CONNECT target beyond that boundary.
+ */
 export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
   // Native fetch can hide method-preserving 307/308 redirects inside one call,
   // which would send a second quota-bearing request under the first dispatch
@@ -685,8 +701,26 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
   if (isQuotaBearingProviderRequest()) options = { ...options, redirect: "error" };
   const targetUrl = typeof url === "string" ? url : url.toString();
 
-  // Vercel relay: forward request via relay headers
   const vercelRelayUrl = normalizeString(proxyOptions?.vercelRelayUrl);
+  const connectionProxyUrl = resolveConnectionProxyUrl(targetUrl, proxyOptions);
+  const envProxyUrl = connectionProxyUrl || proxyOptions?.disableEnvProxy === true
+    ? null
+    : normalizeProxyUrl(getEnvProxyUrl(targetUrl));
+  const proxyUrl = connectionProxyUrl || envProxyUrl;
+
+  // ProxyAgent resolves the CONNECT target outside our connector, so replacing
+  // a guarded probe dispatcher would silently remove DNS-address validation.
+  // Undici exposes no supported connector composition for ProxyAgent; refuse
+  // only when proxy routing remains selected after NO_PROXY evaluation.
+  if (isGuardedProbeDispatcher(options?.dispatcher) && (vercelRelayUrl || proxyUrl)) {
+    throw new OutboundUrlGuardError("Guarded provider probe cannot use an outbound proxy", {
+      code: "OUTBOUND_URL_GUARD_BLOCKED",
+      url: targetUrl,
+      hostname: new URL(targetUrl).hostname,
+    });
+  }
+
+  // Vercel relay: forward request via relay headers
   if (vercelRelayUrl) {
     const parsed = new URL(targetUrl);
     // new Headers() copies plain objects AND Headers instances; object spread
@@ -696,12 +730,6 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
     relayHeaders.set("x-relay-path", `${parsed.pathname}${parsed.search}`);
     return runProviderAttemptDispatch(() => originalFetch(vercelRelayUrl, { ...options, headers: relayHeaders }));
   }
-
-  const connectionProxyUrl = resolveConnectionProxyUrl(targetUrl, proxyOptions);
-  const envProxyUrl = connectionProxyUrl || proxyOptions?.disableEnvProxy === true
-    ? null
-    : normalizeProxyUrl(getEnvProxyUrl(targetUrl));
-  const proxyUrl = connectionProxyUrl || envProxyUrl;
 
   // A strict OAuth pool is an egress boundary, not a preference. If the
   // selected route cannot be used (including a NO_PROXY match), never allow
@@ -726,19 +754,27 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
         console.warn(`[ProxyFetch] Proxy failed, falling back to direct bypass: ${safeTransportError(proxyError)}`);
       }
     }
-    // No proxy — manually resolve real IP to bypass DNS spoof
+    // No proxy — manually resolve real IP to bypass DNS spoof. A guarded probe
+    // validates the full answer set before selecting one, preserving its
+    // connection-time security boundary instead of downgrading to first-answer.
     try {
       const parsedUrl = new URL(targetUrl);
-      const realIP = await raceWithSignal(resolveRealIP(parsedUrl.hostname), options.signal);
-      if (realIP) {
+      const realIPs = await raceWithSignal(resolveRealIPs(parsedUrl.hostname), options.signal);
+      if (isGuardedProbeDispatcher(options?.dispatcher)) {
+        for (const address of realIPs) {
+          assertGuardedProbeDispatcherAddressAllowed(options.dispatcher, address);
+        }
+      }
+      if (realIPs.length) {
         if (options.signal?.aborted) {
           throw options.signal.reason instanceof Error
             ? options.signal.reason
             : new DOMException("Provider request aborted", "AbortError");
         }
-        return await runProviderAttemptDispatch(() => createBypassRequest(parsedUrl, realIP, options));
+        return await runProviderAttemptDispatch(() => createBypassRequest(parsedUrl, realIPs[0], options));
       }
     } catch (error) {
+      if (error instanceof OutboundUrlGuardError) throw error;
       if (isQuotaDispatchUnavailable(error)) throw error;
       rethrowTransportAbort(error, options.signal);
       console.warn(`[ProxyFetch] MITM bypass failed: ${safeTransportError(error)}`);

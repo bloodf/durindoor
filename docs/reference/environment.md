@@ -22,6 +22,7 @@ The native default remains `~/.9router` on macOS/Linux and `%APPDATA%\9router` o
 | `PORT` | `20128` | HTTP port for the production gateway and dashboard. |
 | `HOSTNAME` | runtime dependent | Bind address. Use `0.0.0.0` only in containers or deliberately exposed deployments. |
 | `NODE_ENV` | development unless set | Use `production` for production starts. |
+| `NINEROUTER_MAX_OLD_SPACE_SIZE` | `6144` MB for CLI starts | CLI child heap cap in MB. Use a positive decimal integer to override it, or `0` to let Node size the heap. An existing heap setting in `NODE_OPTIONS` suppresses the default when this variable is unset. |
 | `BASE_URL` | local URL | Server-side origin for callbacks and selected routes. |
 | `NEXT_PUBLIC_BASE_URL` | local URL | Browser-visible origin. Use the public HTTPS origin for remote deployments. |
 | `TRUST_PROXY` | `false` | Trust forwarded IP headers only behind a trusted reverse proxy. |

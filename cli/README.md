@@ -44,6 +44,19 @@ Use `npx durindoor` for a one-time run without a global install.
 
 Run `durindoor --help` for the installed version's authoritative option list.
 
+## Memory limit
+
+The server starts with a 6 GB V8 heap cap. Set `NINEROUTER_MAX_OLD_SPACE_SIZE`
+to a positive integer in MB to override it, or `0` to let Node size the heap:
+
+```bash
+NINEROUTER_MAX_OLD_SPACE_SIZE=8192 durindoor
+NINEROUTER_MAX_OLD_SPACE_SIZE=0 durindoor
+```
+
+An existing `--max-old-space-size` setting in `NODE_OPTIONS` also suppresses
+the default CLI heap flag.
+
 ## Data
 
 Native installations use these defaults when `DATA_DIR` is not set:

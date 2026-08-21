@@ -30,9 +30,9 @@ export function getQuotaCooldown(backoffLevel = 0) {
 
 /**
  * Check if error should trigger account fallback (switch to next account)
- * Config-driven: matches ERROR_RULES top-to-bottom (text rules first, then status)
- * Known account/quota text rules take precedence; otherwise deterministic
- * 400/422 client request failures do not rotate or cool down healthy accounts.
+ * Config-driven: terminal status rules win before text rules, then remaining
+ * ERROR_RULES match top-to-bottom. Known account/quota text rules take
+ * precedence otherwise; deterministic 400/422 client failures do not rotate.
  * @param {number} status - HTTP status code
  * @param {string} errorText - Error message text
  * @param {number} backoffLevel - Current backoff level for exponential backoff
@@ -52,6 +52,12 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
 
   if (isRequestReplayBufferError(status, errorText)) {
     return { shouldFallback: false, cooldownMs: 0, scope: null };
+  }
+
+  /** #3386: terminal client errors win before message-based transient rules. */
+  const terminalRule = ERROR_RULES.find((rule) => rule.status === status && rule.fallback === false);
+  if (terminalRule) {
+    return { shouldFallback: false, cooldownMs: 0, newBackoffLevel: backoffLevel, scope: null };
   }
 
   // Port-pending guards are explicit feature-not-implemented errors; they should not

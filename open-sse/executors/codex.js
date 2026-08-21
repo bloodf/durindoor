@@ -52,6 +52,12 @@ function splitCodexEffortSuffix(modelId) {
 
 // SSE error patterns inside 200-OK bodies. Some retry same account first; capacity rotates accounts.
 const CODEX_SSE_RETRY_PATTERNS = ["server_is_overloaded", "service_unavailable_error"];
+const CODEX_SSE_CONTEXT_OVERFLOW_PATTERNS = [
+  "exceeds the context window",
+  "maximum context length",
+  "context_length_exceeded",
+];
+const CODEX_SSE_FAILURE_EVENTS = new Set(["error", "failed", "response.failed"]);
 
 const CODEX_SSE_ACCOUNT_FALLBACK_PATTERNS = ["selected model is at capacity", "model_at_capacity"];
 const CODEX_SSE_USER_OUTPUT_EVENTS = new Set([
@@ -211,7 +217,11 @@ function firstPattern(values, patterns) {
   return patterns.find((pattern) => lowered.some((value) => value.includes(pattern))) || null;
 }
 
-/** Parse and classify one complete SSE frame; incomplete data is never inspected. */
+/**
+ * Parse and classify one complete SSE frame, including terminal Codex context
+ * overflow failures from decolua/9router#3386. Incomplete data never reaches
+ * this seam; {@link extractCompleteSseFrames} retains it as a remainder.
+ */
 function classifyCodexSseFrame(frame) {
   let eventName = "";
   const dataLines = [];
@@ -246,7 +256,12 @@ function classifyCodexSseFrame(frame) {
 
   const errorObjects = [payload?.error, payload?.response?.error]
     .filter((value) => value && typeof value === "object" && !Array.isArray(value));
-  const explicitError = eventName === "error"
+  const responseStatus = normalizeEventName(payload?.response?.status);
+  const failureEvent = CODEX_SSE_FAILURE_EVENTS.has(eventName)
+    || CODEX_SSE_FAILURE_EVENTS.has(payloadType)
+    || CODEX_SSE_FAILURE_EVENTS.has(payloadEvent)
+    || CODEX_SSE_FAILURE_EVENTS.has(responseStatus);
+  const explicitError = failureEvent
     || isExplicitErrorEvent(payloadType)
     || isExplicitErrorEvent(payloadEvent)
     || errorObjects.length > 0;
@@ -262,10 +277,14 @@ function classifyCodexSseFrame(frame) {
     values.push(data);
   }
 
-  const accountMatch = firstPattern(values, CODEX_SSE_ACCOUNT_FALLBACK_PATTERNS);
   const message = errorObjects.find((error) => typeof error.message === "string")?.message
     || (typeof payload?.message === "string" ? payload.message : null)
     || (eventName === "error" && data ? data : null);
+  const contextMatch = (failureEvent || errorObjects.length > 0)
+    && firstPattern(values, CODEX_SSE_CONTEXT_OVERFLOW_PATTERNS);
+  if (contextMatch) return { userOutput: false, kind: "context", matched: contextMatch, message };
+
+  const accountMatch = firstPattern(values, CODEX_SSE_ACCOUNT_FALLBACK_PATTERNS);
   if (accountMatch) return { userOutput: false, kind: "account", matched: accountMatch, message };
 
   const retryMatch = firstPattern(values, CODEX_SSE_RETRY_PATTERNS);
@@ -550,7 +569,9 @@ function codexSseErrorResponse(status, message) {
     error: {
       message,
       type: status >= 500 ? "server_error" : "invalid_request_error",
-      code: status === HTTP_STATUS.SERVICE_UNAVAILABLE ? "service_unavailable" : "upstream_error",
+      code: status === HTTP_STATUS.PAYLOAD_TOO_LARGE
+        ? "context_length_exceeded"
+        : status === HTTP_STATUS.SERVICE_UNAVAILABLE ? "service_unavailable" : "upstream_error",
     }
   }), {
     status,
@@ -709,6 +730,15 @@ export class CodexExecutor extends BaseExecutor {
         }
         return result;
       }
+      if (peek.contextOverflow) {
+        args.log?.warn?.("CODEX", `SSE context overflow "${peek.message}"`);
+        await settleProviderAttemptDispatch(result.response, { success: false, reason: "upstream_error" });
+        result.response = codexSseErrorResponse(
+          HTTP_STATUS.PAYLOAD_TOO_LARGE,
+          peek.message || peek.matched,
+        );
+        return result;
+      }
       if (peek.accountFallback) {
         args.log?.warn?.("RETRY", `CODEX | SSE account fallback "${peek.message}"`);
         await settleProviderAttemptDispatch(result.response, { success: false, reason: "upstream_error" });
@@ -730,11 +760,12 @@ export class CodexExecutor extends BaseExecutor {
   }
 
   /**
-   * Inspect complete SSE frames within a bounded byte prefix. Non-matches are
-   * replayed byte-for-byte through a stream that retains the original reader.
+   * Inspect complete SSE frames within a bounded byte prefix. Context overflow
+   * failures are terminal (#3386); non-matches replay byte-for-byte through a
+   * stream retaining the original reader.
    */
   async _peekSseTransientError(response, signal = null) {
-    if (!response || !response.ok || !response.body) return { matched: null, message: null, accountFallback: false, replacementBody: null };
+    if (!response || !response.ok || !response.body) return { matched: null, message: null, accountFallback: false, contextOverflow: false, replacementBody: null };
     const reader = response.body.getReader();
     const deadlineAt = Date.now() + CODEX_SSE_PEEK_TIMEOUT_MS;
     const decoder = new TextDecoder();
@@ -779,8 +810,9 @@ export class CodexExecutor extends BaseExecutor {
           if (typeof frameResult.delta === "string") outputDeltaAccumulator += frameResult.delta;
           else sawOutputInBatch = true;
         }
-        if (frameResult.kind === "account") classification = frameResult;
-        else if (frameResult.kind === "retry" && classification?.kind !== "account") classification = frameResult;
+        if (frameResult.kind === "context") classification = frameResult;
+        else if (frameResult.kind === "account" && classification?.kind !== "context") classification = frameResult;
+        else if (frameResult.kind === "retry" && !["context", "account"].includes(classification?.kind)) classification = frameResult;
       }
 
       if (classification) break;
@@ -797,13 +829,15 @@ export class CodexExecutor extends BaseExecutor {
     }
 
     // #3232: full-match overload detection after the loop terminates.
-    if (outputDeltaAccumulator
+    if (classification?.kind !== "context"
+        && outputDeltaAccumulator
         && outputDeltaAccumulator.toLowerCase() === CODEX_OVERLOADED_OUTPUT_MESSAGE.toLowerCase()) {
       await cancelAndReleaseReader(reader, "codex-sse-retry");
       return {
         matched: "codex_overloaded_output",
         message: CODEX_OVERLOADED_OUTPUT_MESSAGE,
         accountFallback: false,
+        contextOverflow: false,
         replacementBody: null,
       };
     }
@@ -814,6 +848,7 @@ export class CodexExecutor extends BaseExecutor {
         matched: classification.matched,
         message: classification.message || classification.matched,
         accountFallback: classification.kind === "account",
+        contextOverflow: classification.kind === "context",
         replacementBody: null,
       };
     }
@@ -822,6 +857,7 @@ export class CodexExecutor extends BaseExecutor {
       matched: null,
       message: null,
       accountFallback: false,
+      contextOverflow: false,
       replacementBody: createReplayBody(reader, chunks, terminalError),
     };
   }

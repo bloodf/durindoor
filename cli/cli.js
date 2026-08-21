@@ -864,7 +864,8 @@ function startServer(updatePromise) {
           // Windows/Linux: spawn detached bgProcess (systray works fine in child)
           console.log(`\n⏳ Starting background process... (tray icon will appear in ~3s)`);
 
-          const bgProcess = spawn(process.execPath, [__filename, "--tray", "--skip-update", "-p", port.toString()], {
+          /** Keep the detached tray CLI on IPv4-first DNS ordering (upstream #2699). */
+          const bgProcess = spawn(process.execPath, ["--dns-result-order=ipv4first", __filename, "--tray", "--skip-update", "-p", port.toString()], {
             detached: true,
             stdio: "ignore",
             windowsHide: true,

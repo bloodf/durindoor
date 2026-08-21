@@ -153,8 +153,8 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
   const [periodLocal, setPeriodLocal] = useState("today");
   const [statsRequestGuard] = useState(createLatestRequestGuard);
   const isInitialLoad = useRef(true);
-  const hasLoadedStats = useRef(false);
   const liveOverlayRef = useRef({});
+  const statsFetchAbortRef = useRef(null);
   const period = periodProp ?? periodLocal;
   const setPeriod = setPeriodProp ?? setPeriodLocal;
 
@@ -182,6 +182,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
   // Fetch filtered stats via REST when period changes
   useEffect(() => {
     const controller = new AbortController();
+    statsFetchAbortRef.current = controller;
     const requestToken = statsRequestGuard.begin();
     // First load: show full spinner; subsequent: show subtle fetching indicator
     if (isInitialLoad.current) {
@@ -198,7 +199,6 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
         if (data && !controller.signal.aborted && requestToken.isCurrent()) {
-          hasLoadedStats.current = true;
           setStats((prev) => mergeUsageResponse(prev, data, liveOverlayRef.current));
         }
       })
@@ -206,6 +206,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
         if (error?.name !== "AbortError") console.error("Failed to fetch usage stats:", error);
       })
       .finally(() => {
+        if (statsFetchAbortRef.current === controller) statsFetchAbortRef.current = null;
         if (!controller.signal.aborted) {
           setLoading(false);
           setFetching(false);
@@ -213,13 +214,17 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
       });
     return () => {
       controller.abort();
+      if (statsFetchAbortRef.current === controller) statsFetchAbortRef.current = null;
       requestToken.cancel();
     };
   }, [period, customRange?.startDate, customRange?.endDate, statsRequestGuard, resetNonce]);
 
-  // SSE connection - real-time updates for activeRequests, activeSessions, and recentRequests
+  /**
+   * Upstream #3388: period-keyed SSE owns preset snapshots, while custom-range
+   * REST totals stay authoritative because the stream cannot express dates.
+   */
   useEffect(() => {
-    const es = new EventSource("/api/usage/stream");
+    const es = new EventSource(`/api/usage/stream?period=${encodeURIComponent(period)}`);
 
     es.onmessage = (e) => {
       try {
@@ -231,15 +236,18 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
           errorProvider: data.errorProvider,
           pending: data.pending,
         };
-        // Always merge only real-time fields, never overwrite full stats from REST
-        setStats((prev) => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            ...liveOverlayRef.current,
-          };
-        });
-        if (hasLoadedStats.current) setLoading(false);
+        if (!isCustomRange) {
+          const staleRest = statsFetchAbortRef.current;
+          staleRest?.abort();
+          if (statsFetchAbortRef.current === staleRest) statsFetchAbortRef.current = null;
+        }
+        setStats((prev) => isCustomRange
+          ? mergeUsageResponse(prev, prev, liveOverlayRef.current)
+          : data);
+        if (!isCustomRange) {
+          setLoading(false);
+          setFetching(false);
+        }
       } catch (err) {
         console.error("[SSE CLIENT] parse error:", err);
       }
@@ -248,7 +256,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
     es.onerror = () => setLoading(false);
 
     return () => es.close();
-  }, []);
+  }, [period, isCustomRange]);
 
   const toggleSort = useCallback((tableType, field) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -450,12 +458,14 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
 
       {/* Token / Cost chart — preset ranges only. On a custom calendar range the
           chart endpoint has no matching window, so show an honest note instead
-          of a graph that disagrees with the cards/table above. */}
+          of a graph that disagrees with the cards/table above. Request count is
+          stable but can miss a 24h refresh when one request enters as another
+          ages out. */}
       {loading ? spinner : isCustomRange ? (
         <div className="flex h-40 items-center justify-center rounded-lg border border-border bg-surface text-sm text-text-muted">
           Chart shows preset ranges only — pick a preset to view the graph.
         </div>
-      ) : <UsageChart period={period} />}
+      ) : <UsageChart period={period} refreshKey={stats.totalRequests} />}
 
       {/* Table with dropdown selector */}
       <div className="flex flex-col gap-3">

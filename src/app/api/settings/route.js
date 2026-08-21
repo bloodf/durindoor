@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { FREE_NO_AUTH_PROVIDER_IDS } from "@/shared/constants/freeNoAuthProviders";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
+import { MAX_PROVIDER_RPM } from "@/shared/constants/providers";
 import { getSettings, updateSettings, updateSettingsWithPasswordEpoch, PasswordEpochMismatchError } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation, resetComboScoring } from "open-sse/services/combo.js";
@@ -159,6 +160,18 @@ export async function PATCH(request) {
         return NextResponse.json({ error: `Unknown free provider(s): ${unknown.join(", ")}` }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
       }
       body.disabledFreeProviders = Array.from(new Set(ids));
+    }
+    /** Validate decolua/9router#3203 per-provider RPM overrides at the settings boundary. */
+    if (Object.prototype.hasOwnProperty.call(body, "rpmByProvider")) {
+      const overrides = body.rpmByProvider;
+      if (!overrides || typeof overrides !== "object" || Array.isArray(overrides)) {
+        return NextResponse.json({ error: "Invalid rpmByProvider" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
+      for (const [providerId, rpm] of Object.entries(overrides)) {
+        if (!providerId || !Number.isSafeInteger(rpm) || rpm < 0 || rpm > MAX_PROVIDER_RPM) {
+          return NextResponse.json({ error: "Invalid rpmByProvider" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+        }
+      }
     }
     //   minContextWindow: integer 0..10_000_000 (optional)
     //   preferLargeContext: boolean (optional)

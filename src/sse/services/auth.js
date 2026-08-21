@@ -9,7 +9,7 @@ import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
 import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, buildModelLockUpdate, getActiveModelLockUntil, isPassthroughConnectionWideError } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS, RESET_COOLDOWN_CAP_MS } from "open-sse/config/errorConfig.js";
-import { AI_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
+import { AI_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, resolveProviderId, resolveProviderRpm } from "@/shared/constants/providers.js";
 import { PROVIDERS } from "open-sse/providers/index.js";
 import * as log from "../utils/logger.js";
 import { timingSafeEqual } from "node:crypto";
@@ -30,6 +30,7 @@ import { getModelQuotaFamily, PROVIDER_ID_TO_ALIAS } from "open-sse/config/provi
 import { rankQuotaConnections } from "@/shared/services/quotaSelection";
 import { quotaDecisionDiagnostic } from "open-sse/services/quota/scoring.js";
 import { isQoderQuotaExhaustedBody } from "open-sse/executors/qoder.js";
+import { isOverLimit, recordRequest, retryAfterMs } from "./rpmLimiter.js";
 
 const CLI_AUTH_SALT = "9r-cli-auth";
 const GITHUB_MONTHLY_USAGE_LIMIT = "you've reached your additional usage limit for your plan";
@@ -370,6 +371,24 @@ function summarizeBlockedConnections(connections, decisions, rawModel, boundedMo
   };
 }
 
+/** Build existing allRateLimited contract when every otherwise-eligible account hits #3203 RPM cap. */
+function summarizeRpmLimitedConnections(connections, rpmLimit, now) {
+  if (connections.length === 0 || !connections.every(
+    (connection) => isOverLimit(connection.id, rpmLimit, now),
+  )) return null;
+  const retryAtMs = Math.min(...connections.map(
+    (connection) => retryAfterMs(connection.id, rpmLimit, now),
+  ));
+  const retryAfter = new Date(retryAtMs).toISOString();
+  return {
+    allRateLimited: true,
+    retryAfter,
+    retryAfterHuman: formatRetryAfter(retryAfter, now),
+    lastError: "Rate limited",
+    lastErrorCode: 429,
+  };
+}
+
 async function buildPublicNoAuthCredential(providerId) {
   const settings = await getSettings();
   const override = (settings.providerStrategies || {})[providerId] || {};
@@ -407,6 +426,8 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
   if (isFreeNoAuthProviderDisabled(providerId, settings)) {
     return { providerDisabled: true };
   }
+  /** decolua/9router#3203: blank settings default NVIDIA to 40 RPM; other providers stay unlimited. */
+  const rpmLimit = resolveProviderRpm(settings, providerId);
   // Normalize to Set for consistent handling
   const excludeSet = excludeConnectionIds instanceof Set
     ? excludeConnectionIds
@@ -462,19 +483,29 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       // Stored-data no-auth providers (e.g., mimocode) use saved connections first.
       // Once rows exist, they never fall back to the public no-auth credential.
       if (NO_AUTH_STORED_DATA_PROVIDERS.has(providerId) && connections.length > 0) {
-        const availableStoredConnections = connections.filter(
-          (c) => !excludeSet.has(c.id) && !requestedModelLockActive(c, model, boundedModel, selectionNow) && !quotaDecisions.get(c.id)?.skip
+        const storedEligibleBeforeRpm = connections.filter(
+          (c) => !excludeSet.has(c.id)
+            && !requestedModelLockActive(c, model, boundedModel, selectionNow)
+            && !quotaDecisions.get(c.id)?.skip
+        );
+        const availableStoredConnections = storedEligibleBeforeRpm.filter(
+          (connection) => !isOverLimit(connection.id, rpmLimit, selectionNow),
         );
         const connection = preferredConnectionId
           ? availableStoredConnections.find((c) => c.id === preferredConnectionId)
           : availableStoredConnections[0];
         if (connection) {
           const resolvedProxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
-          return {
+          const credentials = {
             ...buildNoAuthCredential(connection.providerSpecificData || {}, resolvedProxy, connection),
             _quotaPreflight: quotaDecisions.get(connection.id) || null,
           };
+          recordRequest(connection.id, rpmLimit, selectionNow);
+          return credentials;
         }
+        const rpmCandidates = connections.filter((connection) => !excludeSet.has(connection.id));
+        const rpmSummary = summarizeRpmLimitedConnections(rpmCandidates, rpmLimit, selectionNow);
+        if (rpmSummary) return rpmSummary;
         // If all stored connections are model-locked, surface the earliest retry time so callers can back off.
         const blockedConnections = connections.filter(
           (c) => !excludeSet.has(c.id) && (requestedModelLockActive(c, model, boundedModel, selectionNow) || quotaDecisions.get(c.id)?.skip)
@@ -510,21 +541,25 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       log.warn("AUTH", `No credentials for ${provider}`);
       return null;
     }
-    // Filter out model-locked and excluded connections
-    let availableConnections = connections.filter(c => {
+    // decolua/9router#3203: evaluate RPM without spending budget; record only final selection.
+    const eligibleBeforeRpm = connections.filter(c => {
       if (excludeSet.has(c.id)) return false;
       if (requestedModelLockActive(c, model, boundedModel, selectionNow)) return false;
       if (quotaDecisions.get(c.id)?.skip) return false;
       return true;
     });
+    let availableConnections = eligibleBeforeRpm.filter(
+      (connection) => !isOverLimit(connection.id, rpmLimit, selectionNow),
+    );
 
     log.debug("AUTH", `${provider} | available: ${availableConnections.length}/${connections.length}`);
     connections.forEach(c => {
       const excluded = excludeSet.has(c.id);
       const locked = requestedModelLockActive(c, model, boundedModel, selectionNow);
       const quotaBlocked = quotaDecisions.get(c.id)?.skip === true;
-      if (excluded || locked || quotaBlocked) {
-        log.debug("AUTH", `  → ${c.id?.slice(0, 8)} | ${excluded ? "excluded" : ""} ${locked ? "legacy_lock" : ""} ${quotaBlocked ? `quota_${quotaDecisions.get(c.id).reason}` : ""}`);
+      const rpmBlocked = isOverLimit(c.id, rpmLimit, selectionNow);
+      if (excluded || locked || quotaBlocked || rpmBlocked) {
+        log.debug("AUTH", `  → ${c.id?.slice(0, 8)} | ${excluded ? "excluded" : ""} ${locked ? "legacy_lock" : ""} ${quotaBlocked ? `quota_${quotaDecisions.get(c.id).reason}` : ""} ${rpmBlocked ? `rpm_${rpmLimit}` : ""}`);
       }
     });
 
@@ -539,6 +574,12 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       if (providerHasOptionalAuth(providerId) && publicFallbackAllowed) {
         log.warn("AUTH", `${provider} | saved key unavailable, falling back to optional no-auth`);
         return buildOptionalNoAuthCredential();
+      }
+      const rpmCandidates = connections.filter((connection) => !excludeSet.has(connection.id));
+      const rpmSummary = summarizeRpmLimitedConnections(rpmCandidates, rpmLimit, selectionNow);
+      if (rpmSummary) {
+        log.warn("AUTH", `${provider} | all ${rpmCandidates.length} accounts at ${rpmLimit} RPM cap`);
+        return rpmSummary;
       }
       // Find earliest lock expiry across all connections for retry timing
       const blockedConns = connections.filter(
@@ -559,11 +600,10 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       return null;
     }
 
-
-    const settings = await getSettings();
-    // Per-provider strategy overrides global setting
-    const providerOverride = (settings.providerStrategies || {})[providerId] || {};
-    const strategy = providerOverride.fallbackStrategy || settings.fallbackStrategy || "fill-first";
+    const selectionSettings = await getSettings();
+    // Per-provider strategy overrides global setting.
+    const providerOverride = (selectionSettings.providerStrategies || {})[providerId] || {};
+    const strategy = providerOverride.fallbackStrategy || selectionSettings.fallbackStrategy || "fill-first";
     let quotaRanked = false;
     if (availableConnections.some((candidate) => quotaDecisions.get(candidate.id)?.quotaProfile?.tracked)) {
       try {
@@ -575,7 +615,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         const ranked = rankQuotaConnections(availableConnections, quotaDecisions, pressure, {
           now: selectionNow,
           provider: providerId,
-          config: settings.quotaSelection || {},
+          config: selectionSettings.quotaSelection || {},
         });
         for (const candidate of ranked) {
           log.debug("QUOTA", `${provider} account candidate`, quotaDecisionDiagnostic(candidate.quotaDecision));
@@ -636,7 +676,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       // for quota-comparable accounts. Atomic acquire remains the final arbiter.
       connection = availableConnections[0];
     } else if (strategy === "round-robin") {
-      const stickyLimit = providerOverride.stickyRoundRobinLimit || settings.stickyRoundRobinLimit || 3;
+      const stickyLimit = providerOverride.stickyRoundRobinLimit || selectionSettings.stickyRoundRobinLimit || 3;
 
       const pickOldest = () => {
         const sortedByOldest = [...availableConnections].sort((a, b) => {
@@ -694,7 +734,9 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     }
 
     throwIfAborted(signal);
-    return projectProviderCredentials(connection, quotaDecisions.get(connection.id) || null);
+    const credentials = await projectProviderCredentials(connection, quotaDecisions.get(connection.id) || null);
+    recordRequest(connection.id, rpmLimit, selectionNow);
+    return credentials;
   } finally {
     if (!releaseAfterPredecessor && resolveMutex) resolveMutex();
   }

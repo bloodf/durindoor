@@ -67,6 +67,8 @@ Rate-limit fallback temporarily locks affected account/model with exponential ba
 
 Each optional value must be positive integer. Invalid values retain that key's default, and maximum delay is capped at 7 days. If resolved maximum is below resolved base, whole schedule uses defaults. Settings affect fallback locks, not provider retry-delay or RPM logic.
 
+Per-account RPM admission (`Providers → [provider] → RPM / account`) is persisted in `settings.rpmByProvider`; it is not an environment variable. Blank uses the provider default (NVIDIA: 40 RPM; others: unlimited), while `0` explicitly disables the cap. Counters are process-local, so each Docker replica enforces its own budget (decolua/9router#3203).
+
 ## Update
 
 ```bash

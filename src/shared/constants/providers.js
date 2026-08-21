@@ -145,6 +145,22 @@ export function resolveProviderId(aliasOrId) {
   return provider?.id || aliasOrId;
 }
 
+/**
+ * Per-account requests-per-minute defaults from decolua/9router#3203.
+ * Unlisted providers are unlimited; persisted settings may override either case.
+ */
+export const DEFAULT_PROVIDER_RPM = Object.freeze({ nvidia: 40 });
+export const MAX_PROVIDER_RPM = 10_000;
+
+/** Resolve a persisted provider override, where blank uses defaults and zero is unlimited. */
+export function resolveProviderRpm(settings, providerId) {
+  const configured = settings?.rpmByProvider?.[providerId];
+  if (configured === 0 || configured === "0") return 0;
+  const rpm = Number(configured);
+  if (Number.isSafeInteger(rpm) && rpm > 0) return Math.min(rpm, MAX_PROVIDER_RPM);
+  return DEFAULT_PROVIDER_RPM[providerId] || 0;
+}
+
 // Helper: Get alias from provider ID
 export function getProviderAlias(providerId) {
   const provider = AI_PROVIDERS[providerId];

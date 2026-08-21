@@ -415,11 +415,14 @@ export const PROVIDER_CAPABILITIES = {
   // NVIDIA NIM is OpenAI-compatible → rejects MiniMax/GLM native `thinking` field.
   // Force openai reasoning_effort format for its reasoning models. #issue
   "nvidia": {
-    "minimaxai/minimax-m2.7": { reasoning: false, contextWindow: 200000, maxOutput: 131072 }, // #2323: NIM rejects thinking for this model
-    "minimaxai/minimax-m3": { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 512000, maxOutput: 131072 },
-    "z-ai/glm-5.2": { reasoning: true, thinkingFormat: "openai", contextWindow: 200000, maxOutput: 128000 },
+    /** Retired saved IDs stay OpenAI-shaped until the lifecycle gate returns 410. */
+    "minimaxai/minimax-m2.7": { reasoning: false, contextWindow: 200000, maxOutput: 131072 },
     "deepseek-ai/deepseek-v4-pro": { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 65536 },
     "deepseek-ai/deepseek-v4-flash": { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 65536 },
+    "minimaxai/minimax-m3": { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 512000, maxOutput: 131072 },
+    "z-ai/glm-5.2": { reasoning: true, thinkingFormat: "openai", contextWindow: 200000, maxOutput: 128000 },
+    /** Upstream #3397: retain Flash limits under NVIDIA's replacement live ID. */
+    "deepseek-ai/deepseek-v4-flash-0731": { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 65536 },
     // Moonshot publishes a 32,768 default, not a ceiling; do not clamp NVIDIA's route to an invented maximum.
     "moonshotai/kimi-k2.6": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 262144, maxOutput: undefined },
     "meta/llama-3.2-11b-vision-instruct": { vision: true },

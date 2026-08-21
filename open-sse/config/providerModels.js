@@ -94,6 +94,11 @@ export function getModelType(aliasOrId, modelId) {
   return found?.kind || found?.type || null;
 }
 
+
+/** Resolve a saved-config alias without adding it to the advertised model list. */
+function findModelAlias(models, modelId) {
+  return models?.find((model) => model.aliases?.includes(modelId));
+}
 export function getModelUpstreamId(aliasOrId, modelId) {
   // Only recognized request-only thinking controls participate in catalog
   // lookup. Unknown parentheses may be part of a real passthrough/custom model
@@ -103,7 +108,7 @@ export function getModelUpstreamId(aliasOrId, modelId) {
   const parsed = parseSuffix(modelId);
   const baseId = parsed.cleanModel;
   const models = PROVIDER_MODELS[aliasOrId] || PROVIDER_MODELS[PROVIDER_ID_TO_ALIAS[aliasOrId]];
-  const found = findModel(models, modelId, aliasOrId);
+  const found = findModel(models, modelId, aliasOrId) || findModelAlias(models, baseId);
   if (found?.upstreamModelId) return found.upstreamModelId;
   if (found?.id) return found.id;
   if (aliasOrId === "cx" && typeof baseId === "string" && baseId.endsWith(CODEX_REVIEW_SUFFIX)) {

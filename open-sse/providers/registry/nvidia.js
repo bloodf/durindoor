@@ -45,11 +45,10 @@ export default {
     { id: "meta/llama-3.2-90b-vision-instruct", name: "Llama 3.2 90B Vision Instruct" },
     { id: "meta/llama-4-maverick-17b-128e-instruct", name: "Llama 4 Maverick 17B 128E Instruct" },
     { id: "meta/llama-guard-4-12b", name: "Llama Guard 4 12B" },
-    { id: "minimaxai/minimax-m2.7", name: "MiniMax M2.7" },
     { id: "minimaxai/minimax-m3", name: "MiniMax M3" },
     { id: "z-ai/glm-5.2", name: "GLM 5.2" },
-    { id: "deepseek-ai/deepseek-v4-pro", name: "DeepSeek V4 Pro" },
-    { id: "deepseek-ai/deepseek-v4-flash", name: "DeepSeek V4 Flash" },
+    /** Upstream #3397: advertise live Flash; saved configs resolve its retired alias at dispatch. */
+    { id: "deepseek-ai/deepseek-v4-flash-0731", name: "DeepSeek V4 Flash", aliases: ["deepseek-ai/deepseek-v4-flash"] },
     { id: "moonshotai/kimi-k2.6", name: "Kimi K2.6" },
     { id: "mistralai/ministral-14b-instruct-2512", name: "Ministral 14B Instruct 2512" },
     { id: "mistralai/mistral-large-3-675b-instruct-2512", name: "Mistral Large 3 675B Instruct 2512" },

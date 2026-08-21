@@ -17,6 +17,10 @@ export const MODEL_DEFAULTS = {
   targetFormat: null
 };
 
+/**
+ * Model entries may declare request-only `aliases` for saved-config migration.
+ * Aliases resolve to `id` at dispatch and never become advertised catalog rows.
+ */
 // Normalize a registry model entry: accept terse "id" string, fill name via regex when omitted.
 // Override always wins (raw spread last); name falls back to regex → id.
 export function normalizeModel(raw) {

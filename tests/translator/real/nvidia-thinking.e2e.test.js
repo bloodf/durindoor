@@ -1,5 +1,5 @@
-// E2E: hit live local proxy → verify nvidia MiniMax M2.7 doesn't 400 on
-// unsupported "thinking" param (nvidia NIM is OpenAI-compatible).
+// E2E: hit live local proxy → verify NVIDIA reasoning models don't 400 on
+// unsupported "thinking" param (NVIDIA NIM is OpenAI-compatible).
 // Requires dev server running on NV_E2E_PORT + an active router API key in DB.
 // RUN_E2E=1 npx vitest run --config tests/vitest.config.js tests/translator/real/nvidia-thinking.e2e.test.js
 import { describe, it, expect, beforeAll } from "vitest";
@@ -8,11 +8,9 @@ import { getApiKeys } from "../../../src/lib/db/repos/apiKeysRepo.js";
 const PORT = process.env.NV_E2E_PORT || "20127";
 const BASE = `http://localhost:${PORT}`;
 const MODELS = [
-  "nvidia/minimaxai/minimax-m2.7",
   "nvidia/minimaxai/minimax-m3",
   "nvidia/z-ai/glm-5.2",
-  "nvidia/deepseek-ai/deepseek-v4-pro",
-  "nvidia/deepseek-ai/deepseek-v4-flash",
+  "nvidia/deepseek-ai/deepseek-v4-flash-0731",
   "nvidia/moonshotai/kimi-k2.6",
   "nvidia/nvidia/nemotron-3-ultra-550b-a55b",
 ];

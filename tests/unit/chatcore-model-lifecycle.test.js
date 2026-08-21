@@ -45,10 +45,10 @@ vi.mock("@/lib/usageDb.js", () => ({
 
 const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
 
-function options(model) {
+function options(model, provider = "openai") {
   const body = { model, messages: [{ role: "user", content: "hi" }], stream: false };
   return {
-    body, modelInfo: { provider: "openai", model }, credentials: { apiKey: "test" },
+    body, modelInfo: { provider, model }, credentials: { apiKey: "test" },
     clientRawRequest: { endpoint: "/v1/chat/completions", body, headers: { accept: "application/json" } },
     sourceFormatOverride: FORMATS.OPENAI, log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   };
@@ -67,6 +67,18 @@ describe("chatCore model lifecycle", () => {
     expect(mocks.createRequestLogger).not.toHaveBeenCalled();
     expect(result).toMatchObject({ success: false, status: 410 });
     await expect(result.response.json()).resolves.toMatchObject({ error: { type: "invalid_request_error", code: "model_shutdown", message: expect.stringMatching(/gpt-5.2-codex/) } });
+  });
+
+  it("rejects retired NVIDIA passthrough models before executor dispatch", async () => {
+    for (const model of ["deepseek-ai/deepseek-v4-pro", "minimaxai/minimax-m2.7"]) {
+      const result = await handleChatCore(options(model, "nvidia"));
+      expect(result).toMatchObject({ success: false, status: 410 });
+      await expect(result.response.json()).resolves.toMatchObject({
+        error: { code: "model_shutdown", message: expect.stringContaining(model) },
+      });
+    }
+    expect(mocks.execute).not.toHaveBeenCalled();
+    expect(mocks.createRequestLogger).not.toHaveBeenCalled();
   });
 
   it("allows active model and only warns for deprecated model", async () => {

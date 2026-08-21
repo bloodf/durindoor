@@ -3,7 +3,7 @@ import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 // Strip request params a given provider/model rejects upstream (e.g. HTTP 400).
 // Config-driven: add a rule instead of scattering `delete body.x` across executors.
 
-// Each rule: optional provider, regex match on model, list of params to drop.
+// Each rule: optional provider string/regex, regex match on model, list of params to drop.
 // A param is removed only when it is present (!== undefined).
 const STRIP_RULES = [
   /** All Claude models reject the deprecated temperature parameter upstream with HTTP 400. */
@@ -35,17 +35,32 @@ function matches(rule, model) {
   return typeof rule.match === "function" ? rule.match(model) : rule.match.test(model);
 }
 
+/**
+ * Match an exact string or RegExp provider selector (`decolua/9router#3186`).
+ * DurinDoor deliberately ports only matcher plumbing: fork #2800 forces
+ * `reasoning_effort` for `openai-compatible-*`, so no upstream stripping policy applies.
+ */
+function matchesProvider(selector, provider) {
+  return selector instanceof RegExp ? selector.test(provider) : selector === provider;
+}
+
 function clampNumber(body, key, ceiling) {
   if (typeof body[key] === "number" && Number.isFinite(body[key]) && body[key] > ceiling) {
     body[key] = ceiling;
   }
 }
 
-// Remove unsupported params from body in place; returns body.
-export function stripUnsupportedParams(provider, model, body, caps = null) {
+/**
+ * Remove unsupported request parameters in place.
+ * `rules` is injectable without exposing mutable global state so
+ * `decolua/9router#3186` RegExp selector integration stays load-bearing in tests.
+ * DurinDoor adds no compatible-provider reasoning rule because fork #2800 forces
+ * `reasoning_effort` for `openai-compatible-*`.
+ */
+export function stripUnsupportedParams(provider, model, body, caps = null, rules = STRIP_RULES) {
   if (!model || !body || typeof body !== "object") return body;
-  for (const rule of STRIP_RULES) {
-    if (rule.provider && rule.provider !== provider) continue;
+  for (const rule of rules) {
+    if (rule.provider && !matchesProvider(rule.provider, provider)) continue;
     if (!matches(rule, model)) continue;
     // Drop top-level params (guard: a rule may omit `drop`, e.g. message-only rules).
     for (const key of rule.drop || []) {

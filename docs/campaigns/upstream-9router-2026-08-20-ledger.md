@@ -11,6 +11,11 @@ every overturn and every security row was confirmed by a direct read of the name
 **Policy**: per [`docs/UPSTREAM_SYNC.md`](../UPSTREAM_SYNC.md), unmerged open PRs stay on the WATCH
 list — port only once their merged diff exists. The Tier 1 rows are merged commits on `master` and
 are the PORT-NOW candidates.
+**Fork baseline**: the verdict tables record fork state as audited against checkout HEAD
+`4e81d7045`, which was 32 commits behind `origin/main` `f9753bdc7` (releases 3.12.0 -> 3.17.4). For
+the merged PORT-NOW candidates re-verified against `f9753bdc7`, read the
+**Appendix — current `origin/main` reconciliation** at the end of this file: net zero merged code
+gaps remain.
 
 ---
 
@@ -402,3 +407,44 @@ the fork file; `1-pass` = single heuristic pass (treat as provisional). Size/Ris
 - **Uncertain (1 row)** — #3064 antigravity MITM host rewrite: fork `providerQuota` already uses the
   sandbox host; the MITM-proxy rewrite portion is env-dependent and unverified. Confirm the fork's
   MITM proxy host list before porting.
+
+### Appendix — current `origin/main` reconciliation (merged candidates only)
+
+The verdict tables above record fork state **as audited on 2026-08-20**, against the checkout HEAD
+`4e81d7045`. `origin/main` was 32 commits ahead of that baseline (releases 3.12.0 -> 3.17.4,
+including `7d8d1dde8 port(upstream): integrate 2026-08-14 audited campaign` and
+`68545e64d port: 2026-08-18 upstream campaign`). Re-verifying the **merged** PORT-NOW candidates —
+Tier 1 plus the Tier 0 security commit — against `origin/main` `f9753bdc7` by direct file read gives
+the table below. Audit-date rows are deliberately left unchanged; this appendix is the current-state
+answer.
+
+| Ref | Current status on `f9753bdc7` | Evidence (read this pass) |
+|---|---|---|
+| 8a527fec9 | PRESENT (all three halves) | `open-sse/handlers/search/callers.js:78` `assertOutboundUrlAllowed(override, "public-only")` (renamed, stronger guard); default-password rejection `src/lib/auth/dashboardSession.js:15`; `redactPayloads` `src/app/api/usage/request-details/route.js:11,66` |
+| e1115e283 | PRESENT | `getModelSupportedFormats` in `open-sse/config/providerModels.js`, guard in `open-sse/handlers/chatCore.js`; `tests/unit/opencode-go-models.test.js` |
+| 27f3710c8 | N-A | Fork's `sqljsAdapter.js` statically imports `sql.js`, so the Next standalone trace already ships it (`.next/standalone/node_modules/sql.js/dist/sql-wasm.js` present in the built runtime); no explicit Dockerfile COPY needed. Matches the prior verdict at `upstream-omniroute-2026-08-14-audit.md:174` |
+| 7e5f5a881 | PRESENT | `anchorClaudeCache`, `CACHE_CONTROL_1H`, `CACHE_CONTROL_5M` in `open-sse/translator/formats/claude.js`; `tests/unit/claude-cache-control.test.js` |
+| 345cdcf6a | PRESENT | `experimental_attachments` handled in `open-sse/services/combo.js` and `open-sse/translator/concerns/modality.js`; `tests/unit/combo-capability-detection.test.js` |
+| 67271d859 | PRESENT | `x-opencode-session` / `x-opencode-request` in `open-sse/executors/opencode.js`; `tests/unit/opencode-official-headers.test.js` |
+| 6d30ce6de | PRESENT | `stream_options, ...rest` strip in `open-sse/services/combo.js`; `src/app/api/models/test/ping.js:165` `max_tokens: 1024` with reasoning-only soft-pass at `:219-233` |
+| 5b417f9bf | PRESENT | `src/mitm/config.js:42` intercepts chat via `x-amz-target` `GenerateAssistantResponse`; initial-response frame in `src/mitm/handlers/kiro.js`; `tests/unit/kiro-mitm-chat-contract.test.js` |
+| 80afb5990 | PRESENT | `isBillingBlock` first-frame peek in `open-sse/executors/qoder.js`; `tests/unit/qoder-billing-fallback.test.js` |
+| 456f2a263 | PRESENT | `fetchQuota(connectionId, provider, { force: true })` in `ProviderLimits/index.js`; `{ force }` threaded in `src/app/api/usage/[connectionId]/route.js` |
+| cd4003bc8 | PRESENT | `open-sse/services/usage/claude.js`: `OAUTH_QUOTA_CACHE_TTL_MS` cache, `oauthQuotaInFlight` single-flight dedup, `makeStaleResponse` stale-on-failure, `options.force` bypass |
+| 86694ed8d | PRESENT | `gemini-3.7-flash-tiered` / `-medium` in `open-sse/providers/registry/antigravity.js` and `open-sse/services/usage/google.js`; `tests/unit/antigravity-model-catalog.test.js` |
+| b04c03c6b | PRESENT | `open-sse/providers/registry/alitp-intl.js`, registered in `open-sse/providers/registry/index.js` |
+| 8af5e752d | PRESENT | `open-sse/providers/registry/fish-audio.js` plus `reference_id` handling in `open-sse/handlers/ttsProviders/genericFormats.js`; `tests/unit/fish-audio-tts.test.js` |
+| 8ed9da716 | PRESENT | `glm-5.3` entries in `open-sse/providers/registry/glm.js`, `glm-cn.js`, `open-sse/providers/capabilities.js`; `tests/unit/glm-model-catalog.test.js` |
+
+**Net: zero merged code gaps remain.** Every merged PORT-NOW candidate is either already in
+`origin/main` or N-A for this fork's build layout. The Tier 0 rows #3313 and #3381 are still
+**unmerged upstream PRs** and stay on the WATCH list under the `docs/UPSTREAM_SYNC.md` rule, as do
+all Tier 2-5 rows.
+
+Non-exhaustive side observation from the same pass: probing the audit's GAP rows against
+`f9753bdc7` also produced hits for the open-PR rows #3197, #3258, #3267, #3273, #3295, #3314,
+#3315 and #3382 (e.g. `dbAvailable` at `src/app/api/v1/models/buildModelsList.js:476`,
+`tests/unit/port-3295-ollama-local-diagnostics.test.js`,
+`tests/unit/port-3314-cli-no-native-sqlite.test.js`, `CODEX_OVERLOADED_OUTPUT_MESSAGE` at
+`open-sse/executors/codex.js:64`). Those rows were not re-audited row-by-row and their audit-date
+verdicts above stand; treat this only as a hint to re-verify before any future port.

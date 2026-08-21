@@ -1,8 +1,10 @@
 // Guards forceStream moved from chatCore hardcode → PROVIDERS schema (#5).
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { executeMock } = vi.hoisted(() => ({
+const { executeMock, dedupeToolsMock, detectClientToolMock } = vi.hoisted(() => ({
   executeMock: vi.fn(),
+  dedupeToolsMock: vi.fn((tools) => ({ tools, stripped: [] })),
+  detectClientToolMock: vi.fn(() => null),
 }));
 
 vi.mock("../../open-sse/executors/index.js", () => ({
@@ -24,7 +26,7 @@ vi.mock("../../open-sse/utils/requestLogger.js", () => ({
 }));
 
 vi.mock("../../open-sse/utils/clientDetector.js", () => ({
-  detectClientTool: vi.fn(() => null),
+  detectClientTool: detectClientToolMock,
   isNativePassthrough: vi.fn(() => false),
   isCodexOriginatedHeaders: vi.fn(() => false),
 }));
@@ -63,7 +65,7 @@ vi.mock("../../open-sse/translator/formats/claude.js", () => ({
 }));
 
 vi.mock("../../open-sse/utils/toolDeduper.js", () => ({
-  dedupeTools: vi.fn((tools) => ({ tools, stripped: [] })),
+  dedupeTools: dedupeToolsMock,
 }));
 
 vi.mock("../../open-sse/rtk/caveman.js", () => ({
@@ -194,6 +196,9 @@ describe("forceStream provider config", () => {
   beforeEach(() => {
     executeMock.mockReset();
     executeMock.mockRejectedValue(new Error("boom"));
+    dedupeToolsMock.mockClear();
+    detectClientToolMock.mockReset();
+    detectClientToolMock.mockReturnValue(null);
   });
 
   it("only openai/codex/commandcode force streaming", async () => {
@@ -214,6 +219,25 @@ describe("forceStream provider config", () => {
 
     expect(executeMock).toHaveBeenCalledTimes(1);
     expect(executeMock.mock.calls[0][0].stream).toBe(true);
+  });
+
+  it("forwards the detected client and catalog model to tool deduplication", async () => {
+    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+    const options = makeOptions(false);
+    options.body.model = "gpt-4.1(max)";
+    options.modelInfo.model = "gpt-4.1(max)";
+    options.clientRawRequest.body.model = "gpt-4.1(max)";
+    options.body.tools = [
+      { type: "function", function: { name: "lookup", parameters: { type: "object", properties: {} } } },
+    ];
+    detectClientToolMock.mockReturnValue("claude");
+
+    await handleChatCore(options);
+
+    expect(dedupeToolsMock).toHaveBeenCalledWith(expect.any(Array), {
+      clientTool: "claude",
+      model: "gpt-4.1",
+    });
   });
 
   it("synthesizes SSE for streaming clients when Galadriel is forced non-streaming upstream", async () => {

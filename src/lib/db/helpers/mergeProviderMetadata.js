@@ -20,7 +20,11 @@ export function mergeProviderSpecificData(existing = {}, incoming = {}) {
   return result;
 }
 
-/** Applies a connection patch without erasing token fields on absent/null values. */
+/**
+ * Applies a connection patch without erasing token fields on absent/null values.
+ * An inactive-to-active transition starts a new lifecycle: when a durable
+ * automatic-disable discriminator is present, its event metadata is cleared.
+ */
 export function mergeProviderConnection(existing, patch) {
   const result = { ...existing };
   for (const [key, value] of Object.entries(patch || {})) {
@@ -29,6 +33,21 @@ export function mergeProviderConnection(existing, patch) {
     result[key] = key === "providerSpecificData"
       ? mergeProviderSpecificData(existing?.providerSpecificData, value)
       : value;
+  }
+  if (
+    existing?.isActive === false
+    && patch?.isActive === true
+    && existing.autoDisabledReason
+    && existing.autoDisabledAt
+  ) {
+    Object.assign(result, {
+      testStatus: null,
+      lastError: null,
+      errorCode: null,
+      lastErrorAt: null,
+      autoDisabledReason: null,
+      autoDisabledAt: null,
+    });
   }
   return result;
 }

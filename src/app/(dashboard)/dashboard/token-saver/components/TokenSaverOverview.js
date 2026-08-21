@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Card } from "@/shared/components";
+import SetupDiagnosticCard from "@/shared/components/SetupDiagnosticCard";
 import { USAGE_PERIOD_OPTIONS } from "@/lib/usagePeriods.js";
 import { chartTooltipContentStyle, chartTooltipLabelStyle, chartTooltipItemStyle } from "@/shared/components/chartTooltip";
 
@@ -33,6 +34,7 @@ export default function TokenSaverOverview() {
   const [period, setPeriod] = useState("30d");
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [headroomDiagnostic, setHeadroomDiagnostic] = useState(null);
 
   useEffect(() => {
     setLoading(true);
@@ -46,6 +48,18 @@ export default function TokenSaverOverview() {
     };
     return () => stream.close();
   }, [period]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/headroom/status", { headers: { "Cache-Control": "no-store" } })
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        setHeadroomDiagnostic(data && data.ok === false && data.diagnostic ? data.diagnostic : null);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   const rtk = stats?.rtk || {};
   const headroom = stats?.headroom || {};
@@ -76,6 +90,8 @@ export default function TokenSaverOverview() {
           ))}
         </div>
       </div>
+
+      {headroomDiagnostic && <SetupDiagnosticCard diagnostic={headroomDiagnostic} />}
 
       {loading ? (
         <Card className="p-8 text-center text-sm text-text-muted">Loading Token Saver metrics…</Card>

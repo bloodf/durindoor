@@ -80,11 +80,14 @@ observed condition and provides the appropriate repair.
 | `VENV_TOOLS_MISSING` | A supported interpreter could not create a virtual environment because its venv tools, including `ensurepip`, are missing. | Install the matching `python3.<minor>-venv` package, then retry setup. |
 | `VENV_CREATE_FAILED` | DurinDoor found a supported interpreter but creating its managed virtual environment failed for another reason. | Review the reported creation error, repair the host condition, then retry setup. |
 | `INSTALL_FAILED` | Installing `headroom-ai[proxy,code,ml]` in the managed environment failed. | Run the dashboard's exact managed-venv install command and use the supplied log tail to correct the failure. |
+| `INSTALL_TIMEOUT` | Installing Headroom in the managed environment did not finish before the safety timeout. | Use the dashboard's install command to inspect the slow or blocked dependency download, then retry setup. |
 | `PEP668` | Installation tried to use a distribution-managed Python, which PEP 668 protects. | Recreate or use `${DATA_DIR}/headroom/venv`; do not install Headroom into the system interpreter. |
 | `EXTRA_WHEEL_UNAVAILABLE` | Pip could not find a compatible package wheel for one requested extra on the selected Python. | Install a different supported Python minor version, then retry the managed-venv install. |
 | `NOT_INSTALLED` | No usable Headroom executable was found. | Install Headroom through the managed virtual environment with all default extras. |
 | `EARLY_EXIT` | The Headroom proxy started and exited before becoming ready. | Review the supplied log tail, correct the reported proxy failure, then start it again. |
 | `EXTERNAL_PROXY` | The requested proxy URL points at an externally-configured Headroom instance the route does not manage. | Point Token Saver at the managed proxy, or confirm and allow the external URL through the intended setting. |
+| `STOP_FAILED` | DurinDoor could not stop its managed Headroom process. | Review the supplied process error, correct the host condition, then retry the stop action. |
+| `INTERNAL_ERROR` | An unexpected setup error prevented DurinDoor from completing the requested action. | Review the diagnostic detail and log output, correct the host condition, then retry. |
 
 ## Troubleshooting: extras never install and Python appears missing
 

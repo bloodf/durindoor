@@ -21,6 +21,7 @@ import {
 // Detection of these fails validation; stripping always removes them.
 export const INTERNAL_KEYS = Object.freeze([
   "_toolNameMap",
+  "_customToolNames",
   "_clientSessionId",
   "_kiroUpstreamModel",
 ]);

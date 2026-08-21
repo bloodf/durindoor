@@ -1,8 +1,14 @@
 import { describe, it, expect } from "vitest";
 
-import { applyParamRenames, stripUnsupportedParams } from "../../open-sse/translator/concerns/paramSupport.js";
+import {
+  applyParamRenames,
+  stripUnsupportedParams,
+} from "../../open-sse/translator/concerns/paramSupport.js";
+import { applyThinking } from "../../open-sse/translator/concerns/thinkingUnified.js";
+import { DefaultExecutor } from "../../open-sse/executors/default.js";
 import { GithubExecutor } from "../../open-sse/executors/github.js";
 import { AzureExecutor } from "../../open-sse/executors/azure.js";
+import { FORMATS } from "../../open-sse/translator/formats.js";
 
 describe("stripUnsupportedParams", () => {
   it("flattens Cloudflare AI OpenAI text content-part arrays", () => {
@@ -70,6 +76,81 @@ describe("stripUnsupportedParams", () => {
     stripUnsupportedParams("github", "gpt-5.4", body);
 
     expect(body).toEqual({ top_p: 1 });
+  });
+
+  it("applies a RegExp provider selector through stripUnsupportedParams", () => {
+    const body = { fixture_only: true, preserved: true };
+    const rules = [{ provider: /^fixture-compatible-/, drop: ["fixture_only"] }];
+
+    stripUnsupportedParams("fixture-compatible-local", "fixture-model", body, null, rules);
+
+    expect(body).toEqual({ preserved: true });
+  });
+
+  it("keeps reasoning fields through the openai-compatible chat pipeline (#2800)", () => {
+    const provider = "openai-compatible-chat-local";
+    const body = { messages: [{ role: "user", content: "hi" }] };
+    applyThinking(
+      FORMATS.OPENAI,
+      "qwen3.5-plus",
+      body,
+      provider,
+      { mode: "level", level: "high" },
+    );
+    body.reasoning = { summary: "detailed" };
+
+    const out = new DefaultExecutor(provider).transformRequest("qwen3.5-plus", body);
+
+    expect(out.reasoning_effort).toBe("high");
+    expect(out.reasoning).toEqual({ summary: "detailed" });
+    expect(out.enable_thinking).toBeUndefined();
+    expect(out.thinking_budget).toBeUndefined();
+  });
+
+  it("converts compatible Responses reasoning at the final wire boundary", () => {
+    const provider = "openai-compatible-responses-local";
+    const body = { input: "hi" };
+    applyThinking(
+      FORMATS.OPENAI_RESPONSES,
+      "qwen3.5-plus",
+      body,
+      provider,
+      { mode: "level", level: "high" },
+    );
+
+    const out = new DefaultExecutor(provider).transformRequest(
+      "qwen3.5-plus",
+      body,
+      false,
+      { runtimeTransport: { format: FORMATS.OPENAI_RESPONSES } },
+    );
+
+    expect(out.reasoning_effort).toBeUndefined();
+    expect(out.reasoning).toEqual({ summary: "auto", effort: "high" });
+  });
+
+  it("keeps OpenAI reasoning fields for a native reasoning provider", () => {
+    const body = { reasoning_effort: "high", reasoning: { effort: "high" } };
+
+    stripUnsupportedParams("openai", "gpt-5.6-sol", body);
+
+    expect(body).toEqual({ reasoning_effort: "high", reasoning: { effort: "high" } });
+  });
+
+  it("emits native Qwen thinking fields for native Qwen", () => {
+    const body = { messages: [{ role: "user", content: "hi" }] };
+
+    applyThinking(
+      FORMATS.OPENAI,
+      "qwen3.5-plus",
+      body,
+      "qwen",
+      { mode: "budget", budget: 4096 },
+    );
+
+    expect(body.enable_thinking).toBe(true);
+    expect(body.thinking_budget).toBe(4096);
+    expect(body.reasoning_effort).toBeUndefined();
   });
 
   it("clamps VolcEngine Ark GLM max token fields to the model output ceiling", () => {

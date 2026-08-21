@@ -29,6 +29,7 @@ import { getProviderQuotaConfig } from "open-sse/config/providerQuota.js";
 import { getModelQuotaFamily, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
 import { rankQuotaConnections } from "@/shared/services/quotaSelection";
 import { quotaDecisionDiagnostic } from "open-sse/services/quota/scoring.js";
+import { isQoderQuotaExhaustedBody } from "open-sse/executors/qoder.js";
 
 const CLI_AUTH_SALT = "9r-cli-auth";
 const GITHUB_MONTHLY_USAGE_LIMIT = "you've reached your additional usage limit for your plan";
@@ -53,6 +54,18 @@ function githubMonthlyResetMs(status, errorText, provider) {
   return Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1);
 }
 
+/**
+ * Detect Qoder's permanent account quota signal from structured executor data.
+ * Rendered messages are untrusted text and must not widen this trigger (#3331).
+ */
+function isQoderQuotaExhausted(status, errorText, provider, errorBody = null) {
+  if (resolveProviderId(provider) !== "qoder" || Number(status) !== 403) return false;
+  if (errorBody && typeof errorBody === "object") {
+    return isQoderQuotaExhaustedBody(errorBody?.error?.message);
+  }
+  const candidate = String(errorText || "").trim().replace(/^\[\d+\]:\s*/, "");
+  return candidate.startsWith("{") && isQoderQuotaExhaustedBody(candidate);
+}
 
 export async function hasValidCliToken(request) {
   const supplied = request?.headers?.get?.("x-9r-cli-token");
@@ -836,6 +849,27 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
       lastErrorAt: new Date(observedAt).toISOString(),
       backoffLevel: 0,
     });
+    return { shouldFallback: true, cooldownMs: 0 };
+  }
+  // Qoder code 112 cannot recover through a timed model cooldown. Persist a
+  // dedicated discriminator so renderers never mistake stale generic errors
+  // for this automatic account-wide disable (#3331).
+  if (isQoderQuotaExhausted(status, errorText, provider, context?.errorBody)) {
+    const reason = typeof errorText === "string"
+      ? errorText.slice(0, 200)
+      : "Qoder quota exhausted (code 112)";
+    const disabledAt = new Date(observedAt).toISOString();
+    await updateProviderConnection(connectionId, {
+      isActive: false,
+      testStatus: "unavailable",
+      lastError: reason,
+      errorCode: 403,
+      lastErrorAt: disabledAt,
+      autoDisabledReason: reason,
+      autoDisabledAt: disabledAt,
+      backoffLevel: 0,
+    });
+    log.warn("AUTH", `${connectionId.slice(0, 8)} disabled: Qoder quota exhausted [403/code 112]`);
     return { shouldFallback: true, cooldownMs: 0 };
   }
 

@@ -11,6 +11,7 @@ import { resolveConnectionParams } from "open-sse/executors/copilot-m365-connect
 import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
 import { guardedProbeFetch, assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
 import { validateVertexSaKey } from "open-sse/services/tokenRefresh.js";
+import { OPENCODE_GO_USAGE_URL, classifyOpenCodeGoValidation } from "open-sse/services/usage/opencode-go.js";
 
 const CLIENT_VALIDATION_ERROR = "URL validation failed";
 
@@ -215,10 +216,16 @@ export async function POST(request) {
           if (err instanceof OutboundUrlGuardError) return guardBlockedResponse(err);
           throw err;
         }
-        const modelsRes = await fetch(modelsUrl, {
-          headers: { "Authorization": `Bearer ${apiKey}` },
-          redirect: "manual",
-        });
+        let modelsRes;
+        try {
+          modelsRes = await guardedProbeFetch(modelsUrl, {
+            headers: { "Authorization": `Bearer ${apiKey}` },
+            redirect: "manual",
+          });
+        } catch (err) {
+          if (err instanceof OutboundUrlGuardError) return guardBlockedResponse(err);
+          throw err;
+        }
         if (modelsRes.ok) {
           return NextResponse.json({ valid: true });
         }
@@ -227,12 +234,18 @@ export async function POST(request) {
           return NextResponse.json({ valid: false, error: "Invalid API key" });
         }
         // Fallback: probe /embeddings with a common test model — many providers lack /models
-        const embedRes = await fetch(embedUrl, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ model: "test", input: "ping" }),
-          redirect: "manual",
-        });
+        let embedRes;
+        try {
+          embedRes = await guardedProbeFetch(embedUrl, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ model: "test", input: "ping" }),
+            redirect: "manual",
+          });
+        } catch (err) {
+          if (err instanceof OutboundUrlGuardError) return guardBlockedResponse(err);
+          throw err;
+        }
         // 401/403 = bad key; anything else (including 400 "model not found") means key works
         isValid = embedRes.status !== 401 && embedRes.status !== 403;
         return NextResponse.json({
@@ -553,17 +566,14 @@ export async function POST(request) {
         }
 
         case "opencode-go": {
-          const res = await fetch("https://opencode.ai/zen/go/v1/chat/completions", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-            body: JSON.stringify({
-              model: getDefaultModel("opencode-go"),
-              messages: [{ role: "user", content: "ping" }],
-              max_tokens: 1,
-              stream: false,
-            }),
+          /** Guard the authenticated usage probe and keep transient failures distinct from invalid keys. */
+          const res = await guardedProbeFetch(OPENCODE_GO_USAGE_URL, {
+            headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+            signal: AbortSignal.timeout(8000),
           });
-          isValid = res.status !== 401 && res.status !== 403;
+          const result = classifyOpenCodeGoValidation(res, await res.text().catch(() => ""));
+          isValid = result.valid;
+          error = result.error;
           break;
         }
 

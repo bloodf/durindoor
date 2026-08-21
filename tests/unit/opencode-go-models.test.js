@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PROVIDER_MODELS, getModelSupportedFormats, getModelTargetFormat } from "../../open-sse/config/providerModels.js";
+import { PROVIDER_MODELS, getModelSupportedFormats, getModelTargetFormat, getModelUpstreamId } from "../../open-sse/config/providerModels.js";
 import { PROVIDERS } from "../../open-sse/config/providers.js";
 import { DefaultExecutor } from "../../open-sse/executors/default.js";
 import { resolveTransport } from "../../open-sse/services/provider.js";
@@ -45,6 +45,16 @@ describe("OpenCode Go per-model supportedFormats", () => {
   it("uses default OpenAI transport for known models without endpoint metadata", () => {
     expect(getModelSupportedFormats("opencode-go", MODEL_WITHOUT_FORMATS)).toBeNull();
   });
+
+  it("resolves recognized thinking suffixes without rewriting opaque model IDs", () => {
+    expect(getModelSupportedFormats("opencode-go", "deepseek-v4-flash(max)")).toEqual(["openai"]);
+    expect(getModelSupportedFormats("opencode-go", "minimax-m3(max)")).toEqual(["openai", "claude"]);
+    expect(getModelSupportedFormats("opencode-go", "minimax-m3(custom)")).toBeNull();
+  });
+
+  it("strips at most one recognized thinking suffix per lookup", () => {
+    expect(getModelUpstreamId("opencode-go", "minimax-m3(max)(max)")).toBe("minimax-m3(max)");
+  });
 });
 
 describe("OpenCode Go multi-endpoint transports", () => {
@@ -78,6 +88,34 @@ describe("OpenCode Go per-model transport selection", () => {
       expect(runtimeTransport?.format).toBe("claude");
       expect(runtimeTransport?.baseUrl).toBe(CLAUDE_URL);
       expect(targetFormat).toBe("claude");
+    }
+  });
+
+  it("routes a suffixed Claude-capable model to the Claude endpoint", () => {
+    const { runtimeTransport, targetFormat } = resolveRequestTransport({
+      provider: "opencode-go",
+      alias: "opencode-go",
+      model: "minimax-m3(max)",
+      sourceFormat: "claude",
+      credentials: API_KEY,
+    });
+    expect(runtimeTransport?.format).toBe("claude");
+    expect(runtimeTransport?.baseUrl).toBe(CLAUDE_URL);
+    expect(targetFormat).toBe("claude");
+  });
+
+  it("keeps a suffixed DeepSeek model on the OpenAI endpoint", () => {
+    for (const sourceFormat of ["claude", "openai-responses"]) {
+      const { runtimeTransport, targetFormat } = resolveRequestTransport({
+        provider: "opencode-go",
+        alias: "opencode-go",
+        model: "deepseek-v4-flash(max)",
+        sourceFormat,
+        credentials: API_KEY,
+      });
+      expect(runtimeTransport?.format).toBe("openai");
+      expect(runtimeTransport?.baseUrl).toBe(OPENAI_URL);
+      expect(targetFormat).toBe("openai");
     }
   });
 

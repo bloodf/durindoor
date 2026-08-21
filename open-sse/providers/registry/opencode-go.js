@@ -22,6 +22,10 @@ export default {
     baseUrl: "https://opencode.ai/zen/go/v1/chat/completions",
     headers: {},
   },
+  /** Upstream #3250: Go subscriptions expose authenticated quota windows here. */
+  usage: {
+    url: "https://opencode.ai/zen/go/v1/usage",
+  },
   // Multi-endpoint: pick the transport matching the client sourceFormat to skip
   // translation. Guarded per-model by `supportedFormats` (see chatCore) because
   // opencode-go models differ in endpoint support.

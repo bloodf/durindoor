@@ -94,6 +94,7 @@ if (hasFlag("--version", "-v")) {
 }
 
 const { ensureSqliteRuntime, buildEnvWithRuntime } = require("./hooks/sqliteRuntime");
+const { buildNodeArgs } = require("./hooks/nodeFlags");
 const { ensureTrayRuntime } = require("./hooks/trayRuntime");
 const { killByPidFile } = require("./hooks/killByPidFile");
 
@@ -520,7 +521,7 @@ async function recoverStaleMitmOwnershipBeforeStartup() {
   if (stopMitmViaManagerSync(port, { preserveDesiredState: true })) return;
 
   const nonce = crypto.randomBytes(24).toString("hex");
-  const child = spawn(RUNTIME, ["--max-old-space-size=6144", serverPath], {
+  const child = spawn(RUNTIME, buildNodeArgs(serverPath, process.env), {
     cwd: standaloneDir,
     // A recovery worker may intentionally outlive this CLI after a failed
     // cleanup. Ignore inherited output so no referenced/fillable pipe can keep
@@ -639,7 +640,7 @@ function startServer(updatePromise) {
   function spawnServer(extraEnv = {}) {
     serverStartTime = Date.now();
     crashLog = [];
-    const child = spawn(RUNTIME, ["--max-old-space-size=6144", serverPath], {
+    const child = spawn(RUNTIME, buildNodeArgs(serverPath, process.env), {
       cwd: standaloneDir,
       stdio: showLog ? "inherit" : ["ignore", "ignore", "pipe"],
       detached: true,

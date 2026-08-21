@@ -82,15 +82,20 @@ export function buildRequestDetail(base, overrides = {}) {
 /**
  * Build the unified "done" summary line: total latency, optional TTFT, input
  * tokens (with cache read/creation breakdown when present), and output tokens.
+ * Upstream PR #3111 appends optional route, finite Kiro-credit, and session
+ * telemetry after the legacy text without changing that text when absent.
  * Accepted usage fields: `prompt_tokens`/`input_tokens`, `completion_tokens`/
  * `output_tokens`, `cache_read_input_tokens`/`cached_tokens` /
  * `prompt_tokens_details.cached_tokens`, and `cache_creation_input_tokens`.
  * @param {object} params
  * @param {object} [params.usage] - Usage object using the field names above.
  * @param {{ttft?: number, total?: number}} [params.latency] - Latency in ms.
- * @returns {string} `DONE <total>ms[ · TTFT <ms>] · IN <n>[(CACHE …)] · OUT <n>`.
+ * @param {string} [params.provider] - Resolved provider id.
+ * @param {string} [params.model] - Resolved model id.
+ * @param {string} [params.sessionId] - Resolved provider conversation id; known scope removed and printable prefix logged.
+ * @returns {string} `DONE <total>ms[ · TTFT <ms>] · IN <n>[(CACHE …)] · OUT <n>` plus optional telemetry.
  */
-export function formatDoneLine({ usage, latency }) {
+export function formatDoneLine({ usage, latency, provider, model, sessionId }) {
   const u = usage || {};
   const inTok = u.prompt_tokens ?? u.input_tokens ?? 0;
   const outTok = u.completion_tokens ?? u.output_tokens ?? 0;
@@ -104,7 +109,11 @@ export function formatDoneLine({ usage, latency }) {
     inStr += ` (CACHE ${parts.join(" ")})`;
   }
   const ttftStr = latency?.ttft ? ` · TTFT ${latency.ttft}ms` : "";
-  return `DONE ${latency?.total ?? 0}ms${ttftStr} · ${inStr} · OUT ${outTok}`;
+  let line = `DONE ${latency?.total ?? 0}ms${ttftStr} · ${inStr} · OUT ${outTok}`;
+  if (model) line += ` · ${provider ? `${provider}/${model}` : model}`;
+  if (Number.isFinite(u.kiro_credits) && u.kiro_credits >= 0) line += ` · ${Number(u.kiro_credits.toFixed(4))}cr`;
+  if (sessionId) line += ` · sid:${String(sessionId).replace(/[^\x20-\x7e]/g, "").replace(/^(?:claude|antigravity):/, "").slice(0, 8)}`;
+  return line;
 }
 
 export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, usageEventId, label = "USAGE", silent = false }) {

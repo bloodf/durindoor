@@ -457,7 +457,12 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   const usage = extractUsageFromResponse(responseBody);
   appendLog({ tokens: usage, status: "200 OK" });
   saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, silent: true });
-  if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime } }));
+  /**
+   * Upstream PR #3111 logs resolved route/session identity from the provider
+   * request body without altering client-facing response usage.
+   */
+  const sessionId = (finalBody || translatedBody)?.conversationState?.conversationId;
+  if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime }, provider, model, sessionId }));
 
   const claudeCompat = shouldEnableClaudeCompat(claudeClassifierCompat, sourceFormat, body);
   let translatedResponse = translateNonStreamingResponse(

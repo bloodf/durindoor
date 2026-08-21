@@ -2,7 +2,7 @@ import { getDefaultModel, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerM
 import { PROVIDERS } from "open-sse/config/providers.js";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
-import { assertOutboundUrlAllowed, getProviderValidationGuard, guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
+import { assertOutboundUrlAllowed, getProviderValidationGuard, guardedProbeFetch, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
 import { extractKimiJwt, KIMI_WEB_DISCOVERY_HEADERS } from "@/lib/providers/webCookieAuth.js";
 
 const AUTH_FAILURE_STATUSES = new Set([401, 403]);
@@ -23,8 +23,9 @@ const SPECIALTY_VALIDATORS = {
  * Devin cloud-agent (Cognition) — list one session with Bearer auth; a 2xx
  * proves the service-user token is accepted, 401/403 rejects it. Uses the
  * SSRF-guarded fetch helper with `redirect: "manual"` so a 3xx cannot bypass the
- * guard (#6542). The optional `fetcher` override lets callers (health monitor,
- * connection tests) inject a proxy-aware transport.
+ * guard (#6542), preserving `blocked: true` for guard rejections while ordinary
+ * network errors remain unavailable. The optional `fetcher` override lets callers
+ * (health monitor, connection tests) inject a proxy-aware transport.
  */
 export async function validateDevinCloudAgentProvider({ apiKey, fetcher = fetch }) {
   const url = "https://api.devin.ai/v1/sessions?limit=1";
@@ -36,7 +37,10 @@ export async function validateDevinCloudAgentProvider({ apiKey, fetcher = fetch 
       getProviderValidationGuard(),
       fetcher,
     );
-  } catch {
+  } catch (err) {
+    if (err instanceof OutboundUrlGuardError) {
+      return { valid: false, status: null, blocked: true, error: err.message };
+    }
     return { valid: false, status: null, error: "Provider unavailable - network request failed" };
   }
   if (AUTH_FAILURE_STATUSES.has(response.status)) {
@@ -246,10 +250,17 @@ export async function probeRegistryProvider(provider, apiKey, fetcher = fetch, p
   probe.options = { ...probe.options, ...noRedirect };
   if (probe.fallback?.options) probe.fallback.options = { ...probe.fallback.options, ...noRedirect };
 
+  const blockedResult = (err) => ({
+    valid: false,
+    status: null,
+    error: err?.message || "Provider URL blocked by SSRF guard",
+    blocked: true,
+  });
   let res;
   try {
-    res = await fetcher(probe.url, probe.options);
+    res = await guardedProbeFetch(probe.url, probe.options, guard, fetcher);
   } catch (err) {
+    if (err instanceof OutboundUrlGuardError) return blockedResult(err);
     if (probe.accepts === "chat-auth") {
       return {
         valid: false,
@@ -271,6 +282,11 @@ export async function probeRegistryProvider(provider, apiKey, fetcher = fetch, p
     return { valid: res.ok, status: res.status };
   }
 
-  const fallbackRes = await fetcher(probe.fallback.url, probe.fallback.options);
-  return { valid: !AUTH_FAILURE_STATUSES.has(fallbackRes.status), status: fallbackRes.status };
+  try {
+    const fallbackRes = await guardedProbeFetch(probe.fallback.url, probe.fallback.options, guard, fetcher);
+    return { valid: !AUTH_FAILURE_STATUSES.has(fallbackRes.status), status: fallbackRes.status };
+  } catch (err) {
+    if (err instanceof OutboundUrlGuardError) return blockedResult(err);
+    throw err;
+  }
 }

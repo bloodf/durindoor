@@ -1,6 +1,6 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
-import { resolveKiroModel } from "../config/kiroConstants.js";
+import { KIRO_MAX_TOOL_CALL_WRAPPER_BYTES, resolveKiroModel } from "../config/kiroConstants.js";
 import { v4 as uuidv4 } from "uuid";
 import { refreshKiroToken } from "../services/tokenRefresh.js";
 import { enrichKiroCredentialsFromSsoCache } from "../services/kiroModels.js";
@@ -17,6 +17,7 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { resolveContinuationId, extractClientSessionId } from "../utils/sessionManager.js";
 import { getKiroUsage } from "../services/usage/kiro.js";
 import { KIRO_CREDIT_EXHAUSTION_PROBE_MS } from "../config/errorConfig.js";
+import { OPENAI_BLOCK } from "../translator/schema/index.js";
 
 // Confirmed monthly-credit exhaustion signal from CodeWhisperer's 402
 // (AWS ServiceQuotaExceededException / MONTHLY_REQUEST_COUNT). Some surfaces
@@ -27,6 +28,107 @@ const KIRO_QUOTA_EXCEEDED_REASON = "MONTHLY_REQUEST_COUNT";
 const KIRO_RESET_LOOKUP_TIMEOUT_MS = 8000;
 
 const KIRO_TRUNCATION_STOP_REASONS = new Set(["model_context_window_exceeded", "max_tokens"]);
+
+const KIRO_TOOL_CALL_WRAPPER = OPENAI_BLOCK.TOOL_CALL;
+
+function utf8ByteLengthOver(value, limit) {
+  let bytes = 0;
+  for (let index = 0; index < value.length; index++) {
+    const code = value.charCodeAt(index);
+    const paired = code >= 0xd800 && code <= 0xdbff
+      && index + 1 < value.length
+      && value.charCodeAt(index + 1) >= 0xdc00
+      && value.charCodeAt(index + 1) <= 0xdfff;
+    bytes += paired ? 4 : code < 0x80 ? 1 : code < 0x800 ? 2 : 3;
+    if (paired) index++;
+    if (bytes > limit) return bytes;
+  }
+  return bytes;
+}
+
+function validateKiroToolCallWrapperInput(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw new Error("Invalid Kiro tool_call payload: input must be an object with name and arguments");
+  }
+  if (typeof input.name !== "string" || !input.name.trim()) {
+    throw new Error("Invalid Kiro tool_call payload: missing nested MCP tool name at input.name");
+  }
+  if (!Object.hasOwn(input, "arguments")) {
+    throw new Error("Invalid Kiro tool_call payload: missing nested MCP tool arguments at input.arguments");
+  }
+}
+
+function appendKiroToolCallWrapperInput(pending, input) {
+  if (input === undefined) return;
+  if (typeof input === "string") {
+    if (pending.inputKind && pending.inputKind !== "string") {
+      throw new Error("Invalid Kiro tool_call payload: mixed input fragment types");
+    }
+    const bytes = utf8ByteLengthOver(input, KIRO_MAX_TOOL_CALL_WRAPPER_BYTES - pending.inputBytes);
+    if (pending.inputBytes + bytes > KIRO_MAX_TOOL_CALL_WRAPPER_BYTES) {
+      throw new Error(`Invalid Kiro tool_call payload: wrapper exceeds ${KIRO_MAX_TOOL_CALL_WRAPPER_BYTES} bytes`);
+    }
+    pending.inputKind = "string";
+    pending.inputBytes += bytes;
+    pending.inputText += input;
+    return;
+  }
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw new Error("Invalid Kiro tool_call payload: input must be an object or JSON string");
+  }
+  if (pending.inputKind && pending.inputKind !== "object") {
+    throw new Error("Invalid Kiro tool_call payload: mixed input fragment types");
+  }
+  const serialized = JSON.stringify(input);
+  if (utf8ByteLengthOver(serialized, KIRO_MAX_TOOL_CALL_WRAPPER_BYTES) > KIRO_MAX_TOOL_CALL_WRAPPER_BYTES) {
+    throw new Error(`Invalid Kiro tool_call payload: wrapper exceeds ${KIRO_MAX_TOOL_CALL_WRAPPER_BYTES} bytes`);
+  }
+  pending.inputKind = "object";
+  pending.inputObject = input;
+  pending.inputText = serialized;
+}
+
+/**
+ * Validate a complete nested Kiro `tool_call` wrapper (upstream PR #2681).
+ * JSON fragments remain pending until parseable; terminal validation turns a
+ * truncated wrapper into a structured stream error instead of a fake call.
+ */
+function completeKiroToolCallWrapper(pending, terminal = false) {
+  if (!pending.inputKind) {
+    if (!terminal) return null;
+    throw new Error("Invalid Kiro tool_call payload: missing input");
+  }
+  let input = pending.inputObject;
+  if (pending.inputKind === "string") {
+    try {
+      input = JSON.parse(pending.inputText);
+    } catch (error) {
+      if (!terminal) return null;
+      throw new Error(`Invalid Kiro tool_call payload: input must be valid JSON (${error.message})`);
+    }
+  }
+  validateKiroToolCallWrapperInput(input);
+  return pending.inputText;
+}
+
+function releaseReader(reader) {
+  try { reader.releaseLock(); } catch { /* already released */ }
+}
+
+async function cancelAndReleaseReader(reader, reason) {
+  let timer = null;
+  try {
+    const cancellation = Promise.resolve(reader.cancel(reason)).catch(() => {});
+    await Promise.race([
+      cancellation,
+      new Promise((resolve) => { timer = setTimeout(resolve, 250); }),
+    ]);
+  } catch { /* cancellation is best-effort */ }
+  finally {
+    if (timer) clearTimeout(timer);
+    releaseReader(reader);
+  }
+}
 
 function isConfirmedKiroCreditExhaustion(bodyText) {
   if (!bodyText) return false;
@@ -438,11 +540,13 @@ export class KiroExecutor extends BaseExecutor {
       finishEmitted: false,
       rawTerminalSeen: false,
       failureSeen: false,
+      invalidToolCall: false,
       hasToolCalls: false,
       hasReasoningContent: false,
       reasoningChunkCount: 0,
       toolCallIndex: 0,
       seenToolIds: new Map(),
+      pendingWrapperToolCalls: new Map(),
       inThinking: false,
       stopReason: null
     };
@@ -453,6 +557,73 @@ export class KiroExecutor extends BaseExecutor {
       controller.enqueue(new TextEncoder().encode(
         `data: ${JSON.stringify({ error: { message: "Kiro returned an invalid EventStream frame", type: "stream_error" } })}\n\n`,
       ));
+    };
+    const rejectToolCall = (controller, message) => {
+      if (state.failureSeen) return;
+      state.failureSeen = true;
+      state.invalidToolCall = true;
+      buffer = new Uint8Array(0);
+      controller.enqueue(new TextEncoder().encode(
+        `data: ${JSON.stringify({ error: { message, type: "invalid_tool_call", code: "invalid_kiro_tool_call" } })}\n\n`,
+      ));
+    };
+    const emitPendingWrapper = (controller, toolCallId, pending, argumentsStr) => {
+      const toolIndex = state.toolCallIndex++;
+      const startChunk = {
+        id: responseId,
+        object: "chat.completion.chunk",
+        created,
+        model,
+        choices: [{
+          index: 0,
+          delta: {
+            ...(chunkIndex === 0 ? { role: "assistant" } : {}),
+            tool_calls: [{
+              index: toolIndex,
+              id: toolCallId,
+              type: "function",
+              function: { name: KIRO_TOOL_CALL_WRAPPER, arguments: "" },
+            }],
+          },
+          finish_reason: null,
+        }],
+      };
+      const argsChunk = {
+        id: responseId,
+        object: "chat.completion.chunk",
+        created,
+        model,
+        choices: [{
+          index: 0,
+          delta: {
+            tool_calls: [{
+              index: toolIndex,
+              function: { arguments: argumentsStr },
+            }],
+          },
+          finish_reason: null,
+        }],
+      };
+      state.hasToolCalls = true;
+      state.totalContentLength += KIRO_TOOL_CALL_WRAPPER.length + argumentsStr.length;
+      chunkIndex += 2;
+      controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(startChunk)}\n\n`));
+      controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(argsChunk)}\n\n`));
+      state.seenToolIds.set(toolCallId, toolIndex);
+    };
+    const flushPendingWrappers = (controller) => {
+      for (const [toolCallId, pending] of state.pendingWrapperToolCalls) {
+        let argumentsStr;
+        try {
+          argumentsStr = completeKiroToolCallWrapper(pending, true);
+        } catch (error) {
+          rejectToolCall(controller, error.message);
+          return false;
+        }
+        emitPendingWrapper(controller, toolCallId, pending, argumentsStr);
+      }
+      state.pendingWrapperToolCalls.clear();
+      return true;
     };
 
     const transformStream = new TransformStream({
@@ -634,20 +805,50 @@ export class KiroExecutor extends BaseExecutor {
               const toolCallId = singleToolUse.toolUseId || `call_${Date.now()}`;
               const toolName = typeof singleToolUse.name === "string" ? singleToolUse.name : "";
               const toolInput = singleToolUse.input;
-
               let argumentsStr;
-              if (toolInput !== undefined) {
-                if (typeof toolInput === 'string') {
-                  argumentsStr = toolInput;
-                } else if (typeof toolInput === 'object') {
-                  try {
-                    argumentsStr = JSON.stringify(toolInput);
-                  } catch (error) {
-                    console.error(`[Kiro] dropping malformed tool input: ${error.message}`);
+
+              if (toolName === KIRO_TOOL_CALL_WRAPPER) {
+                let pendingWrapper = state.pendingWrapperToolCalls.get(toolCallId);
+                if (!pendingWrapper) {
+                  if (state.seenToolIds.has(toolCallId)) {
+                    rejectToolCall(controller, "Invalid Kiro tool_call payload: duplicate toolUseId reused by wrapper");
+                    return;
+                  }
+                  pendingWrapper = {
+                    inputBytes: 0,
+                    inputText: "",
+                  };
+                  state.pendingWrapperToolCalls.set(toolCallId, pendingWrapper);
+                }
+                try {
+                  appendKiroToolCallWrapperInput(pendingWrapper, toolInput);
+                  argumentsStr = completeKiroToolCallWrapper(pendingWrapper);
+                } catch (error) {
+                  rejectToolCall(controller, error.message);
+                  return;
+                }
+                if (argumentsStr === null) continue;
+                state.pendingWrapperToolCalls.delete(toolCallId);
+                emitPendingWrapper(controller, toolCallId, pendingWrapper, argumentsStr);
+                continue;
+              } else {
+                if (state.pendingWrapperToolCalls.has(toolCallId)) {
+                  rejectToolCall(controller, "Invalid Kiro tool_call payload: mixed wrapper and direct tool fragments");
+                  return;
+                }
+                if (toolInput !== undefined) {
+                  if (typeof toolInput === "string") {
+                    argumentsStr = toolInput;
+                  } else if (typeof toolInput === "object") {
+                    try {
+                      argumentsStr = JSON.stringify(toolInput);
+                    } catch (error) {
+                      console.error(`[Kiro] dropping malformed tool input: ${error.message}`);
+                      continue;
+                    }
+                  } else {
                     continue;
                   }
-                } else {
-                  continue;
                 }
               }
 
@@ -717,8 +918,9 @@ export class KiroExecutor extends BaseExecutor {
             }
           }
 
-          // Handle messageStopEvent
+          // A terminal event is the completion boundary for nested wrapper fragments.
           if (eventType === "messageStopEvent") {
+            if (!flushPendingWrappers(controller)) return;
             state.rawTerminalSeen = true;
             state.stopReason = event.payload?.stopReason || event.payload?.stop_reason || null;
           }
@@ -838,6 +1040,7 @@ export class KiroExecutor extends BaseExecutor {
       },
 
       flush(controller) {
+        if (!state.failureSeen && !flushPendingWrappers(controller)) return;
         if (buffer.length > 0) {
           state.failureSeen = true;
           controller.enqueue(new TextEncoder().encode(
@@ -889,14 +1092,41 @@ export class KiroExecutor extends BaseExecutor {
       }
     });
 
-    // Pipe response body through transform stream
     if (!response.body) {
       return new Response(JSON.stringify({ error: { message: "Kiro upstream returned no response body" } }), {
         status: 502,
         headers: { "Content-Type": "application/json" },
       });
     }
-    const transformedStream = response.body.pipeThrough(transformStream);
+    const transformedBody = response.body.pipeThrough(transformStream);
+    let transformedReader;
+    const transformedStream = new ReadableStream({
+      async start(controller) {
+        transformedReader = transformedBody.getReader();
+        try {
+          for (;;) {
+            const { done, value } = await transformedReader.read();
+            if (done) {
+              releaseReader(transformedReader);
+              controller.close();
+              return;
+            }
+            controller.enqueue(value);
+            if (state.invalidToolCall) {
+              controller.close();
+              await cancelAndReleaseReader(transformedReader, "invalid_kiro_tool_call");
+              return;
+            }
+          }
+        } catch (error) {
+          releaseReader(transformedReader);
+          controller.error(error);
+        }
+      },
+      cancel(reason) {
+        return transformedReader ? cancelAndReleaseReader(transformedReader, reason) : undefined;
+      },
+    });
 
     return new Response(transformedStream, {
       status: response.status,

@@ -25,6 +25,9 @@ import {
   normalizeKiroRegion,
 } from "./kiroRegions.js";
 
+// Maximum buffered nested `tool_call` wrapper payload (upstream PR #2681).
+export const KIRO_MAX_TOOL_CALL_WRAPPER_BYTES = 256 * 1024;
+
 // Backwards-compat shim: legacy callers (and tests) pass the region as
 // a string. The current `resolveKiroRegion(credentials)` in kiroRegions.js
 // expects a credentials object. This wrapper accepts a string (passed

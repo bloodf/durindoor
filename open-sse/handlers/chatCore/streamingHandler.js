@@ -211,9 +211,13 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
       console.error("[RequestDetail] Failed to update streaming content:", err.message);
     });
 
-    // Persist stream usage to DB (no console line; the "📊 done" line below is authoritative)
+    /**
+     * Upstream PR #3111 logs resolved route/session identity from the provider
+     * request body without altering client-facing response usage.
+     */
+    const sessionId = (finalBody || translatedBody)?.conversationState?.conversationId;
     saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, label: "STREAM USAGE", silent: true });
-    if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency }));
+    if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency, provider, model, sessionId }));
   };
 
   // Finalize the placeholder row when the stream ends without onStreamComplete

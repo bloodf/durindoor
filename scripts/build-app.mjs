@@ -117,6 +117,19 @@ try {
       const gptTokenizerRoot = path.dirname(require.resolve("gpt-tokenizer/package.json"));
       fs.cpSync(gptTokenizerRoot, standaloneGptTokenizer, { recursive: true });
     }
+    // sql.js is the last-resort pure-JS SQLite driver (src/lib/db/driver.js falls
+    // back to it when better-sqlite3 and node:sqlite are both unavailable). NFT
+    // traces the JS entry but NOT its sibling `sql-wasm.wasm`, which emscripten
+    // loads at runtime relative to the script directory. Without the wasm the
+    // fallback dies with "[DB] sql.js unavailable" and the app has no database
+    // at all (upstream 27f3710c8).
+    // `sql.js` exports only "." and "./dist/*", so each asset is resolved through
+    // its own subpath export rather than via package.json (not exported).
+    const sqlJsDistDest = path.join(standaloneDir, "node_modules", "sql.js", "dist");
+    fs.mkdirSync(sqlJsDistDest, { recursive: true });
+    for (const asset of ["sql-wasm.js", "sql-wasm.wasm"]) {
+      fs.copyFileSync(require.resolve(`sql.js/dist/${asset}`), path.join(sqlJsDistDest, asset));
+    }
     const sharedConstantsDir = path.join(standaloneDir, "src", "shared", "constants");
     fs.mkdirSync(sharedConstantsDir, { recursive: true });
     fs.copyFileSync(

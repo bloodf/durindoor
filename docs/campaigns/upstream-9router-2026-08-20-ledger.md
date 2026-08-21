@@ -14,8 +14,8 @@ are the PORT-NOW candidates.
 **Fork baseline**: the verdict tables record fork state as audited against checkout HEAD
 `4e81d7045`, which was 32 commits behind `origin/main` `f9753bdc7` (releases 3.12.0 -> 3.17.4). For
 the merged PORT-NOW candidates re-verified against `f9753bdc7`, read the
-**Appendix — current `origin/main` reconciliation** at the end of this file: net zero merged code
-gaps remain.
+**Appendix — current `origin/main` reconciliation** at the end of this file: 14 of 15 had already
+landed, and the one real remaining gap (`27f3710c8`) is ported in this change.
 
 ---
 
@@ -420,9 +420,9 @@ answer.
 
 | Ref | Current status on `f9753bdc7` | Evidence (read this pass) |
 |---|---|---|
-| 8a527fec9 | PRESENT (all three halves) | `open-sse/handlers/search/callers.js:78` `assertOutboundUrlAllowed(override, "public-only")` (renamed, stronger guard); default-password rejection `src/lib/auth/dashboardSession.js:15`; `redactPayloads` `src/app/api/usage/request-details/route.js:11,66` |
+| 8a527fec9 | PRESENT (all three halves) | `open-sse/handlers/search/callers.js:78` `assertOutboundUrlAllowed(override, "public-only")` (renamed, stronger guard than upstream's `assertPublicUrl`); default-password login rejection `src/app/api/auth/login/route.js:63-93` over the `DEFAULT_PASSWORD` helper at `src/lib/auth/dashboardSession.js:9,15`; `redactPayloads` `src/app/api/usage/request-details/route.js:11,66` |
 | e1115e283 | PRESENT | `getModelSupportedFormats` in `open-sse/config/providerModels.js`, guard in `open-sse/handlers/chatCore.js`; `tests/unit/opencode-go-models.test.js` |
-| 27f3710c8 | N-A | Fork's `sqljsAdapter.js` statically imports `sql.js`, so the Next standalone trace already ships it (`.next/standalone/node_modules/sql.js/dist/sql-wasm.js` present in the built runtime); no explicit Dockerfile COPY needed. Matches the prior verdict at `upstream-omniroute-2026-08-14-audit.md:174` |
+| 27f3710c8 | GAP — **ported this pass** | The audit-date row is correct and the earlier N-A at `upstream-omniroute-2026-08-14-audit.md:174` is wrong. A clean `npm run build` of `f9753bdc7` produced `.next/standalone/node_modules/sql.js/dist/sql-wasm.js` but **no `sql-wasm.wasm`**: NFT traces the JS entry and drops the runtime-loaded wasm sibling, so `trySqlJs` — the terminal driver in `src/lib/db/driver.js` — dies with "[DB] sql.js unavailable" wherever better-sqlite3 and node:sqlite are both absent. `/opt/cortexos/durindoor-fork/.next/standalone` had the same hole. Fixed by copying both dist assets in `scripts/build-app.mjs` and adding the `sql.js` COPY to the Dockerfile runtime stage; after the fix the same clean build emits `sql-wasm.wasm` (658,410 bytes) beside `sql-wasm.js`. Guarded by `tests/unit/port-27f3710c8-sqljs-runtime.test.js` |
 | 7e5f5a881 | PRESENT | `anchorClaudeCache`, `CACHE_CONTROL_1H`, `CACHE_CONTROL_5M` in `open-sse/translator/formats/claude.js`; `tests/unit/claude-cache-control.test.js` |
 | 345cdcf6a | PRESENT | `experimental_attachments` handled in `open-sse/services/combo.js` and `open-sse/translator/concerns/modality.js`; `tests/unit/combo-capability-detection.test.js` |
 | 67271d859 | PRESENT | `x-opencode-session` / `x-opencode-request` in `open-sse/executors/opencode.js`; `tests/unit/opencode-official-headers.test.js` |
@@ -436,10 +436,10 @@ answer.
 | 8af5e752d | PRESENT | `open-sse/providers/registry/fish-audio.js` plus `reference_id` handling in `open-sse/handlers/ttsProviders/genericFormats.js`; `tests/unit/fish-audio-tts.test.js` |
 | 8ed9da716 | PRESENT | `glm-5.3` entries in `open-sse/providers/registry/glm.js`, `glm-cn.js`, `open-sse/providers/capabilities.js`; `tests/unit/glm-model-catalog.test.js` |
 
-**Net: zero merged code gaps remain.** Every merged PORT-NOW candidate is either already in
-`origin/main` or N-A for this fork's build layout. The Tier 0 rows #3313 and #3381 are still
-**unmerged upstream PRs** and stay on the WATCH list under the `docs/UPSTREAM_SYNC.md` rule, as do
-all Tier 2-5 rows.
+**Net: one merged code gap, now ported.** 14 of the 15 merged candidates were already in
+`origin/main`; `27f3710c8` was a real gap and is fixed in this change. The Tier 0 rows #3313 and
+#3381 are still **unmerged upstream PRs** and stay on the WATCH list under the
+`docs/UPSTREAM_SYNC.md` rule, as do all Tier 2-5 rows.
 
 Non-exhaustive side observation from the same pass: probing the audit's GAP rows against
 `f9753bdc7` also produced hits for the open-PR rows #3197, #3258, #3267, #3273, #3295, #3314,

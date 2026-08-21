@@ -35,14 +35,50 @@ function sanitizeGeminiFunctionName(name) {
   return sanitized.substring(0, 64);
 }
 
+/**
+ * Keep Gemini history legal by isolating function responses and ensuring a
+ * terminal user turn. Ported from decolua/9router#3055.
+ */
 function normalizeGeminiContents(contents) {
   const out = [];
   for (const c of contents || []) {
     if (!c?.role || !Array.isArray(c.parts) || c.parts.length === 0) continue;
     const last = out.at(-1);
-    if (last?.role === c.role) last.parts.push(...c.parts);
-    else out.push({ ...c, parts: [...c.parts] });
+    if (last?.role === c.role) {
+      const lastHasFunctionResponse = last.parts.some(part => part?.functionResponse);
+      const currentHasFunctionResponse = c.parts.some(part => part?.functionResponse);
+      const lastHasText = last.parts.some(part => part?.text);
+      const currentHasText = c.parts.some(part => part?.text);
+
+      if (
+        c.role === GEMINI_ROLE.USER
+        && ((lastHasFunctionResponse && currentHasText) || (lastHasText && currentHasFunctionResponse))
+      ) {
+        out.push({ ...c, parts: [...c.parts] });
+      } else {
+        last.parts.push(...c.parts);
+      }
+    } else {
+      out.push({ ...c, parts: [...c.parts] });
+    }
   }
+
+  if (out.at(-1)?.role === GEMINI_ROLE.MODEL) {
+    const functionCalls = out.at(-1).parts.filter(part => part?.functionCall);
+    out.push({
+      role: GEMINI_ROLE.USER,
+      parts: functionCalls.length > 0
+        ? functionCalls.map(({ functionCall }) => ({
+          functionResponse: {
+            ...(functionCall.id ? { id: functionCall.id } : {}),
+            name: functionCall.name,
+            response: { result: "No response provided" }
+          }
+        }))
+        : [{ text: "Continue" }]
+    });
+  }
+
   return out;
 }
 
@@ -54,6 +90,8 @@ function normalizeGeminiContents(contents) {
  * so for `gemma-4*` models we drop `reasoning_content` replay and omit the
  * synthetic thought signature from tool-call history. Other Gemini models keep
  * both for Antigravity/Gemini replay.
+ * decolua/9router#3055 also treats an explicitly empty tool result as present;
+ * Gemini must receive its functionResponse instead of dropping it as falsy.
  *
  * @param {string} model - Target Gemini model id.
  * @param {object} body - OpenAI-shaped request body.
@@ -174,12 +212,12 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
           }
 
           // Check if there are actual tool responses in the next messages
-          const hasActualResponses = toolCallIds.some(fid => toolResponses[fid]);
+          const hasActualResponses = toolCallIds.some(fid => toolResponses[fid] !== undefined);
 
           if (hasActualResponses) {
             const toolParts = [];
             for (const fid of toolCallIds) {
-              if (!toolResponses[fid]) continue;
+              if (toolResponses[fid] === undefined) continue;
 
               let name = tcID2Name[fid];
               if (!name) {

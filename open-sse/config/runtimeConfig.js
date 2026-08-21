@@ -8,6 +8,8 @@ export const HTTP_STATUS = {
   NOT_ACCEPTABLE: 406,
   GONE: 410,
   REQUEST_TIMEOUT: 408,
+  /** #3386: structured Codex context overflow surfaced from HTTP-200 SSE. */
+  PAYLOAD_TOO_LARGE: 413,
   RATE_LIMITED: 429,
   SERVER_ERROR: 500,
   BAD_GATEWAY: 502,

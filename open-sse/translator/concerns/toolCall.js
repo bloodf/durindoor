@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { normalizeClaudeToolName } from "../../services/claudeCodeToolRemapper.js";
+import { CLAUDE_BLOCK, ROLE } from "../schema/index.js";
 
 // Tool call helper functions for translator
 
@@ -233,10 +234,17 @@ export function hasToolResults(msg, toolCallIds) {
   return false;
 }
 
-// Fix missing tool responses - insert empty tool_result if assistant has tool_use but next message has no tool_result
+/**
+ * Insert a matching synthetic result after unanswered tool calls, preserving
+ * the source history's OpenAI or Claude shape. Ported from decolua/9router#3055.
+ */
 export function fixMissingToolResponses(body) {
   if (!body.messages || !Array.isArray(body.messages)) return body;
 
+  const isClaudeFormat = Boolean(body.system) || body.messages.some(message =>
+    Array.isArray(message?.content)
+    && message.content.some(block => block?.type === CLAUDE_BLOCK.TOOL_USE || block?.type === CLAUDE_BLOCK.TOOL_RESULT)
+  );
   const newMessages = [];
 
   for (let i = 0; i < body.messages.length; i++) {
@@ -245,21 +253,24 @@ export function fixMissingToolResponses(body) {
 
     newMessages.push(msg);
 
-    // Check if this is assistant with tool_calls/tool_use
     const toolCallIds = getToolCallIds(msg);
-    if (toolCallIds.length === 0) continue;
+    if (toolCallIds.length === 0 || (nextMsg && hasToolResults(nextMsg, toolCallIds))) continue;
 
-    // Check if next message has tool_result
-    if (nextMsg && !hasToolResults(nextMsg, toolCallIds)) {
-      // Insert tool responses for each tool_call
-      for (const id of toolCallIds) {
-        // OpenAI format: role = "tool"
-        newMessages.push({
-          role: "tool",
+    for (const id of toolCallIds) {
+      newMessages.push(isClaudeFormat
+        ? {
+          role: ROLE.USER,
+          content: [{
+            type: CLAUDE_BLOCK.TOOL_RESULT,
+            tool_use_id: id,
+            content: "[No response received]"
+          }]
+        }
+        : {
+          role: ROLE.TOOL,
           tool_call_id: id,
-          content: ""
+          content: "[No response received]"
         });
-      }
     }
   }
 

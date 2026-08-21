@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { BaseExecutor } from "../../open-sse/executors/base.js";
 import { CodexExecutor } from "../../open-sse/executors/codex.js";
+import { checkFallbackError } from "../../open-sse/services/accountFallback.js";
+import { handleComboChat } from "../../open-sse/services/combo.js";
+import { buildErrorBody } from "../../open-sse/utils/error.js";
 
 function streamFromText(text) {
   const encoder = new TextEncoder();
@@ -11,7 +15,21 @@ function streamFromText(text) {
   });
 }
 
+function streamFromChunks(chunks) {
+  const encoder = new TextEncoder();
+  return new ReadableStream({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+      controller.close();
+    },
+  });
+}
+
 describe("Codex fast tier and capacity handling", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("maps Codex fast tier to priority and unsupported max reasoning to xhigh", () => {
     const executor = new CodexExecutor();
     const body = executor.transformRequest("gpt-5.5", {
@@ -118,6 +136,120 @@ describe("Codex fast tier and capacity handling", () => {
     const peek = await executor._peekSseTransientError(response);
     expect(peek.accountFallback).toBe(true);
     expect(peek.message).toBe("Selected model is at capacity. Please try a different model.");
+  });
+
+  it("maps a complete response.failed context code to HTTP 413", async () => {
+    const upstream = new Response(streamFromText([
+      "event: response.failed",
+      'data: {"type":"response.failed","response":{"status":"failed","error":{"code":"context_length_exceeded","message":"Prompt is too long"}}}',
+      "",
+      "",
+    ].join("\n")), {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream" },
+    });
+    const baseExecute = vi.spyOn(BaseExecutor.prototype, "execute").mockResolvedValue({ response: upstream });
+
+    const result = await new CodexExecutor().execute({
+      body: {},
+      credentials: { providerSpecificData: {} },
+      log: {},
+    });
+
+    expect(baseExecute).toHaveBeenCalledTimes(1);
+    expect(result.response.status).toBe(413);
+    await expect(result.response.json()).resolves.toEqual({
+      error: {
+        message: "Prompt is too long",
+        type: "invalid_request_error",
+        code: "context_length_exceeded",
+      },
+    });
+  });
+
+  it("classifies a complete context-window message without an explicit code", async () => {
+    const response = new Response(streamFromText([
+      "event: response.failed",
+      'data: {"type":"response.failed","response":{"error":{"message":"Your input exceeds the context window of this model."}}}',
+      "",
+      "",
+    ].join("\n")), { status: 200 });
+
+    await expect(new CodexExecutor()._peekSseTransientError(response)).resolves.toMatchObject({
+      matched: "exceeds the context window",
+      message: "Your input exceeds the context window of this model.",
+      contextOverflow: true,
+      accountFallback: false,
+    });
+  });
+
+  it("does not classify a partial context-overflow frame", async () => {
+    const partial = [
+      "event: response.failed",
+      'data: {"type":"response.failed","response":{"error":{"code":"context_length_exceeded"}}}',
+    ].join("\n");
+    const response = new Response(streamFromChunks([partial]), { status: 200 });
+
+    const peek = await new CodexExecutor()._peekSseTransientError(response);
+
+    expect(peek.contextOverflow).toBe(false);
+    expect(peek.matched).toBeNull();
+    await expect(new Response(peek.replacementBody).text()).resolves.toBe(partial);
+  });
+
+  it("keeps capacity, retry-overload, and fake-overload classifications unchanged", async () => {
+    const capacity = new Response(streamFromText(
+      'event: error\ndata: {"error":{"message":"Selected model is at capacity. Please try a different model."}}\n\n',
+    ), { status: 200 });
+    const retry = new Response(streamFromText(
+      'event: error\ndata: {"error":{"code":"server_is_overloaded","message":"retry"}}\n\n',
+    ), { status: 200 });
+    const fakeOverload = new Response(streamFromText(
+      'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"Our servers are currently overloaded. Please try again later."}\n\n',
+    ), { status: 200 });
+
+    await expect(new CodexExecutor()._peekSseTransientError(capacity)).resolves.toMatchObject({
+      matched: "selected model is at capacity",
+      accountFallback: true,
+      contextOverflow: false,
+    });
+    await expect(new CodexExecutor()._peekSseTransientError(retry)).resolves.toMatchObject({
+      matched: "server_is_overloaded",
+      accountFallback: false,
+      contextOverflow: false,
+    });
+    await expect(new CodexExecutor()._peekSseTransientError(fakeOverload)).resolves.toMatchObject({
+      matched: "codex_overloaded_output",
+      accountFallback: false,
+      contextOverflow: false,
+    });
+  });
+
+  it("treats 413 as terminal for account fallback, model fallback, and cooldown", async () => {
+    const terminal = checkFallbackError(413, "maximum context length exceeded", 4, "codex");
+    expect(terminal.shouldFallback).toBe(false); // no account fallback
+    expect(terminal.cooldownMs).toBe(0); // no cooldown
+
+    const attemptedModels = [];
+    const response = await handleComboChat({
+      body: { messages: [{ role: "user", content: "hi" }] },
+      models: ["codex/first", "codex/second"],
+      comboName: "codex-context-overflow-3386",
+      handleSingleModel: async (_body, model) => {
+        attemptedModels.push(model);
+        return new Response(JSON.stringify(buildErrorBody(413, "maximum context length exceeded")), {
+          status: 413,
+          headers: { "Content-Type": "application/json" },
+        });
+      },
+      log: { info() {}, warn() {}, debug() {}, error() {} },
+    });
+
+    expect(attemptedModels).toHaveLength(1); // no model fallback
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { type: "invalid_request_error", code: "context_length_exceeded" },
+    });
   });
 
   it("reassembles normal SSE after peeking", async () => {

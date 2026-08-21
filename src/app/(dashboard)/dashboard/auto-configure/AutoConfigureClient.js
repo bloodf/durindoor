@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Badge } from "@/shared/components";
+import { Badge, Button } from "@/shared/components";
+import SetupDiagnosticCard from "@/shared/components/SetupDiagnosticCard";
+import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { serviceStatus } from "./autoConfigureStatus.js";
 
 // Derive a status badge + tone for a single service report.
@@ -15,6 +17,36 @@ const SERVICE_META = {
   firecrawl: { label: "Firecrawl", icon: "travel_explore" },
   toggles: { label: "Toggles", icon: "toggle_on" },
 };
+
+function isCommandAction(action) {
+  return /^(?:\$\s+|(?:npm|pip|uv|python|node|headroomUrl|export|set)\b|[A-Za-z_][A-Za-z0-9_]*=|.*(?:^|\s)(?:\.?\.?\/|\/)[^\s]+)/.test(action);
+}
+
+function ActionEntry({ action }) {
+  const { copy, copied } = useCopyToClipboard();
+  const diagnostic = action?.diagnostic || (action?.summary && action?.fixes ? action : null);
+
+  if (diagnostic) {
+    return <SetupDiagnosticCard diagnostic={diagnostic} />;
+  }
+
+  if (typeof action !== "string") return null;
+
+  if (!isCommandAction(action)) {
+    return <span className="whitespace-pre-wrap break-words text-xs text-text-muted">{action}</span>;
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <code className="max-w-full overflow-x-auto rounded bg-surface px-2 py-1 text-xs text-text">{action}</code>
+      <Button variant="secondary" size="sm" onClick={() => copy(action, action)}>
+        {copied === action ? "Copied" : "Copy"}
+      </Button>
+    </div>
+  );
+}
+
+
 
 // Render a service summary + its action log. `dryRun` decides wouldChange vs changed tone.
 function ServiceRow({ name, svc, dryRun }) {
@@ -33,8 +65,8 @@ function ServiceRow({ name, svc, dryRun }) {
       {actions.length > 0 && (
         <ul className="mt-1 space-y-0.5">
           {actions.map((action, i) => (
-            <li key={i} className="whitespace-pre-wrap break-words text-xs text-text-muted">
-              {action}
+            <li key={i}>
+              <ActionEntry action={action} />
             </li>
           ))}
         </ul>
@@ -72,8 +104,8 @@ function ResultSummary({ title, services, actions, dryRun, changed }) {
           </summary>
           <ul className="mt-2 space-y-0.5">
             {actions.map((action, i) => (
-              <li key={i} className="whitespace-pre-wrap break-words text-xs text-text-muted">
-                {action}
+              <li key={i}>
+                <ActionEntry action={action} />
               </li>
             ))}
           </ul>

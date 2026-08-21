@@ -5,6 +5,15 @@ import { Card, Button, Input, Modal, Toggle } from "@/shared/components";
 import TokenSaverOverview from "./components/TokenSaverOverview";
 import PxpipeClient from "../pxpipe/PxpipeClient";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import SetupDiagnosticCard from "@/shared/components/SetupDiagnosticCard";
+import {
+  externalInstallNote,
+  formatExtrasSummary,
+  installActionLabel,
+  reportFetchOutcome,
+  shouldShowExternalInstallNote,
+  sourceLabel,
+} from "@/shared/utils/setupDiagnosticView";
 import { getCurrentLocale, onLocaleChange } from "@/i18n/runtime";
 import {
   WENYAN_LOCALES,
@@ -47,15 +56,16 @@ export default function TokenSaverClient({ view = "overview" }) {
     useState(false);
   const [headroomActionLoading, setHeadroomActionLoading] = useState(false);
   const [headroomActionError, setHeadroomActionError] = useState("");
+  const [headroomDiagnostic, setHeadroomDiagnostic] = useState(null);
   const [headroomExtras, setHeadroomExtras] = useState({
     version: null,
     extras: { code: false, ml: false },
     available: ["code", "ml"],
     loading: false,
   });
-  const [pendingExtras, setPendingExtras] = useState([]);
   const [extrasActionLoading, setExtrasActionLoading] = useState(false);
   const [extrasActionError, setExtrasActionError] = useState("");
+  const [extrasDiagnostic, setExtrasDiagnostic] = useState(null);
   const [cavemanEnabled, setCavemanEnabled] = useState(false);
   const [cavemanLevel, setCavemanLevel] = useState("full");
   const [ponytailEnabled, setPonytailEnabled] = useState(false);
@@ -137,113 +147,109 @@ export default function TokenSaverClient({ view = "overview" }) {
       const res = await fetch("/api/headroom/status", {
         headers: { "Cache-Control": "no-store" },
       });
-      const data = await res.json();
-      setHeadroomStatus({ ...data, loading: false });
-      if (!data?.installed) {
-        setHeadroomExtras({
-          version: null,
-          extras: { code: false, ml: false },
-          available: ["code", "ml"],
-          loading: false,
-        });
-        setPendingExtras([]);
+      const data = await res.json().catch(() => ({}));
+      // GET /status is a REPORT, not an action: a 200 carrying a diagnostic
+      // (NOT_INSTALLED being the common one) still has a valid payload. Zeroing
+      // the state here made an installed-and-running proxy read as "not
+      // installed" and hid the very panel that offers the repair. The rule lives
+      // in reportFetchOutcome so it is unit-tested rather than implied.
+      const outcome = reportFetchOutcome(res.ok, data);
+      setHeadroomDiagnostic(outcome.diagnostic);
+      if (outcome.resetState) {
+        setHeadroomStatus({ installed: false, running: false, python: null, loading: false });
         return;
       }
-      try {
-        const er = await fetch("/api/headroom/extras", {
-          headers: { "Cache-Control": "no-store" },
-        });
-        if (!er.ok) throw new Error("extras status failed");
-        const ed = await er.json();
-        setHeadroomExtras((s) => ({
-          ...s,
-          version: ed.version ?? null,
-          extras: ed.extras || { code: false, ml: false },
-          available: ed.available || ["code", "ml"],
-          loading: false,
-        }));
-        setPendingExtras([]);
-      } catch {
-        setHeadroomExtras({
-          version: null,
-          extras: { code: false, ml: false },
-          available: ["code", "ml"],
-          loading: false,
-        });
-        setPendingExtras([]);
+      setHeadroomStatus({ ...data, loading: false });
+      // Load extras even when nothing is installed: that payload carries the
+      // provenance and the external-install note, and it is what the install
+      // action renders from. Returning early left a dead end on a fresh host.
+      const extrasResponse = await fetch("/api/headroom/extras", { headers: { "Cache-Control": "no-store" } });
+      const extras = await extrasResponse.json().catch(() => ({}));
+      if (!extrasResponse.ok) {
+        setExtrasDiagnostic(extras.diagnostic || null);
+        setHeadroomExtras((current) => ({ ...current, loading: false }));
+        return;
       }
-    } catch {
-      setHeadroomStatus({
-        installed: false,
-        running: false,
-        python: null,
+      setExtrasDiagnostic(extras.diagnostic || null);
+      setHeadroomExtras((current) => ({
+        ...current,
+        installed: extras.installed ?? false,
+        version: extras.version ?? null,
+        extras: extras.extras || { code: false, ml: false },
+        available: extras.available || ["code", "ml"],
+        source: extras.source,
+        externalInstall: extras.externalInstall,
         loading: false,
-      });
-      setHeadroomExtras({
-        version: null,
-        extras: { code: false, ml: false },
-        available: ["code", "ml"],
-        loading: false,
-      });
-      setPendingExtras([]);
+      }));
+    } catch (error) {
+      setHeadroomActionError(error.message || "Unable to reach the Headroom service");
+      setHeadroomStatus({ installed: false, running: false, python: null, loading: false });
     }
   }, []);
 
   const handleHeadroomStart = useCallback(async () => {
     setHeadroomActionError("");
+    setHeadroomDiagnostic(null);
     setHeadroomActionLoading(true);
     try {
       const res = await fetch("/api/headroom/start", { method: "POST" });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Failed to start proxy");
+      if (!res.ok || data?.diagnostic) {
+        setHeadroomDiagnostic(data.diagnostic || null);
+        if (!data.diagnostic) setHeadroomActionError(data.error || "Failed to start proxy");
+        return;
+      }
       await refreshHeadroomStatus();
-    } catch (e) {
-      setHeadroomActionError(e.message);
+    } catch (error) {
+      setHeadroomActionError(error.message);
     } finally {
       setHeadroomActionLoading(false);
     }
   }, [refreshHeadroomStatus]);
 
   const handleHeadroomStop = useCallback(async () => {
+    setHeadroomActionError("");
+    setHeadroomDiagnostic(null);
     setHeadroomActionLoading(true);
     try {
-      await fetch("/api/headroom/stop", { method: "POST" });
+      const res = await fetch("/api/headroom/stop", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.diagnostic) {
+        setHeadroomDiagnostic(data.diagnostic || null);
+        if (!data.diagnostic) setHeadroomActionError(data.error || "Failed to stop proxy");
+        return;
+      }
       await refreshHeadroomStatus();
+    } catch (error) {
+      setHeadroomActionError(error.message);
     } finally {
       setHeadroomActionLoading(false);
     }
   }, [refreshHeadroomStatus]);
 
-  const togglePendingExtra = (extra) => {
-    setPendingExtras((cur) =>
-      cur.includes(extra) ? cur.filter((e) => e !== extra) : [...cur, extra]
-    );
-  };
-
   const handleInstallExtras = useCallback(async () => {
-    if (pendingExtras.length === 0) return;
     setExtrasActionLoading(true);
     setExtrasActionError("");
+    setExtrasDiagnostic(null);
     try {
       const res = await fetch("/api/headroom/extras", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ extras: pendingExtras }),
+        body: JSON.stringify({ extras: ["code", "ml"] }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Install failed");
-      setHeadroomExtras((s) => ({
-        ...s,
-        version: data.version ?? s.version,
-        extras: data.extras || s.extras,
-      }));
-      setPendingExtras([]);
-    } catch (e) {
-      setExtrasActionError(e.message);
+      if (!res.ok || data?.diagnostic) {
+        setExtrasDiagnostic(data.diagnostic || null);
+        if (!data.diagnostic) setExtrasActionError(data.error || "Install failed");
+        return;
+      }
+      await refreshHeadroomStatus();
+    } catch (error) {
+      setExtrasActionError(error.message);
     } finally {
       setExtrasActionLoading(false);
     }
-  }, [pendingExtras]);
+  }, [refreshHeadroomStatus]);
 
   const handleCavemanLevel = (level) => {
     setCavemanLevel(level);
@@ -525,68 +531,68 @@ export default function TokenSaverClient({ view = "overview" }) {
             onChange={() => handleHeadroomEnabled(!headroomEnabled)}
           />
         </div>
+        {headroomDiagnostic && (
+          <SetupDiagnosticCard
+            diagnostic={headroomDiagnostic}
+            onRetry={refreshHeadroomStatus}
+            className="mt-3"
+          />
+        )}
         {headroomStatus.installed && (
-          <div className="mt-3 ml-1 pl-3 border-l-2 border-border">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-text-muted">
-                Compression extras
-                {headroomExtras.version ? ` · v${headroomExtras.version}` : ""}:
-              </span>
-              {headroomExtras.available.map((extra) => {
-                const installed = !!headroomExtras.extras[extra];
-                const pending = pendingExtras.includes(extra);
-                return (
-                  <label
-                    key={extra}
-                    className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded border cursor-pointer transition-colors ${
-                      installed
-                        ? "border-success/40 bg-success/5 text-text"
-                        : pending
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border text-text-muted hover:bg-surface-2"
-                    }`}
-                    title={
-                      extra === "code"
-                        ? "tree-sitter AST compression for code responses"
-                        : "Kompress-v2 HF model for prose/agentic traces (~+1GB)"
-                    }
-                  >
-                    <input
-                      type="checkbox"
-                      className="w-3 h-3"
-                      checked={installed || pending}
-                      disabled={installed}
-                      onChange={() => togglePendingExtra(extra)}
-                    />
-                    <span className="font-medium">[{extra}]</span>
-                    <span className="opacity-70">
-                      {installed ? "installed" : "not installed"}
-                    </span>
-                  </label>
-                );
-              })}
-              {pendingExtras.length > 0 && (
-                <button
-                  onClick={handleInstallExtras}
-                  disabled={extrasActionLoading}
-                  className="text-xs px-2.5 py-1 rounded bg-primary text-white hover:opacity-90 disabled:opacity-50"
-                >
-                  {extrasActionLoading
-                    ? "Installing…"
-                    : `Install [proxy,${pendingExtras.join(",")}]`}
-                </button>
-              )}
-            </div>
-            {extrasActionError && (
-              <p className="text-xs text-error mt-1">{extrasActionError}</p>
-            )}
-            <p className="text-xs text-text-muted mt-1">
-              Default install is <code>[proxy]</code> only (SmartCrusher for
-              JSON). Adding <code>[code]</code> enables AST compression
-              (Python/JS/TS/Go/Rust/Java/C/C++/Perl). Adding <code>[ml]</code>{" "}
-              enables the Kompress-v2 HF model for prose/agentic traces but
-              adds ~1 GB (torch + huggingface-hub).
+          <div className="mt-3 ml-1 pl-3 border-l-2 border-border space-y-2">
+            <p className="text-xs text-text-muted">
+              Source: {sourceLabel(headroomStatus.source || headroomExtras.source || null)}
+              {headroomExtras.version ? ` · v${headroomExtras.version}` : ""}
             </p>
+            <p className="text-xs text-text-muted">
+              {formatExtrasSummary(headroomExtras.extras)}
+            </p>
+            {shouldShowExternalInstallNote(headroomExtras) && (
+              <p className="text-xs text-text-muted">
+                {externalInstallNote(headroomExtras.externalInstall)}
+                {headroomExtras.externalInstall?.uninstallCommand ? (
+                  <>
+                    <code className="ml-1 break-all rounded bg-surface px-1 py-0.5">
+                      {headroomExtras.externalInstall.uninstallCommand}
+                    </code>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="ml-2"
+                      onClick={() => copy(headroomExtras.externalInstall.uninstallCommand, "external-install-uninstall")}
+                    >
+                      {copied === "external-install-uninstall" ? "Copied" : "Copy"}
+                    </Button>
+                  </>
+                ) : (
+                  <span className="ml-1">Remove it with whichever tool manager installed it.</span>
+                )}
+              </p>
+            )}
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                onClick={handleInstallExtras}
+                disabled={extrasActionLoading}
+                size="sm"
+              >
+                {extrasActionLoading
+                  ? "Installing…"
+                  : installActionLabel({ installed: headroomStatus.installed, extras: headroomExtras.extras })}
+              </Button>
+              <span className="text-xs text-text-muted">
+                ml downloads torch and can take several minutes.
+              </span>
+            </div>
+            {extrasDiagnostic ? (
+              <SetupDiagnosticCard
+                diagnostic={extrasDiagnostic}
+                onRetry={refreshHeadroomStatus}
+              />
+            ) : (
+              extrasActionError && (
+                <p className="text-xs text-error mt-1">{extrasActionError}</p>
+              )
+            )}
           </div>
         )}
         <div className="flex items-center justify-between pt-4 gap-4 flex-wrap">
@@ -903,6 +909,12 @@ export default function TokenSaverClient({ view = "overview" }) {
               Open Headroom Dashboard
             </a>
           )}
+          {headroomDiagnostic && (
+            <SetupDiagnosticCard
+              diagnostic={headroomDiagnostic}
+              onRetry={refreshHeadroomStatus}
+            />
+          )}
           <div className="flex flex-col gap-1">
             <p className="text-sm font-medium">Proxy URL</p>
             <Input
@@ -948,26 +960,14 @@ export default function TokenSaverClient({ view = "overview" }) {
               first, or use an external proxy URL.
             </p>
           ) : (
-            <div className="flex flex-col gap-1">
-              <p className="text-sm font-medium">Install then click Start:</p>
-              <div className="flex items-center gap-2">
-                <pre className="flex-1 rounded bg-black/5 dark:bg-white/5 p-2 text-xs font-mono overflow-x-auto">
-                  {`pip install "headroom-ai[proxy]"`}
-                </pre>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() =>
-                    copy(`pip install "headroom-ai[proxy]"`)
-                  }
-                >
-                  {copied ? "Copied" : "Copy"}
-                </Button>
-              </div>
-            </div>
+            <p className="text-sm text-text-muted">
+              Start Headroom to create and use DurinDoor&apos;s managed environment.
+            </p>
           )}
-          {headroomActionError && (
-            <p className="text-sm text-warning">{headroomActionError}</p>
+          {headroomDiagnostic ? null : (
+            headroomActionError && (
+              <p className="text-sm text-warning">{headroomActionError}</p>
+            )
           )}
           <div className="flex gap-2">
             <Button

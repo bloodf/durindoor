@@ -11,10 +11,10 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { Card, Button, Toggle } from "@/shared/components";
+import SetupDiagnosticCard from "@/shared/components/SetupDiagnosticCard";
 import { chartTooltipContentStyle, chartTooltipLabelStyle, chartTooltipItemStyle } from "@/shared/components/chartTooltip";
 import Pagination from "@/shared/components/Pagination";
 import { usePagination } from "@/shared/hooks/usePagination";
-
 const fmtTokens = (n) => {
   if (n >= 1000000) return `${(n / 1000000).toFixed(2)}M`;
   if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
@@ -81,6 +81,7 @@ export default function HeadroomClient() {
   const [stats, setStats] = useState(null);
   const [status, setStatus] = useState({ installed: false, running: false, loading: true });
   const [windowId, setWindowId] = useState("last7d");
+  const [diagnostic, setDiagnostic] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -91,7 +92,14 @@ export default function HeadroomClient() {
         fetch("/api/headroom/status", { headers: { "Cache-Control": "no-store" } }),
         fetch("/api/headroom/stats"),
       ]);
-      setStatus(await statusRes.json());
+      const statusData = await statusRes.json();
+      if (statusData && statusData.ok === false && statusData.diagnostic) {
+        setDiagnostic(statusData.diagnostic);
+        setStatus({ installed: false, running: false, loading: false });
+      } else {
+        setDiagnostic(null);
+        setStatus(statusData);
+      }
       setStats(await statsRes.json());
     } catch {
       /* sections render placeholders */
@@ -121,7 +129,13 @@ export default function HeadroomClient() {
         };
         setSettings(next);
         persistedSettings.current = next;
-        setStatus(statusData);
+        if (statusData && statusData.ok === false && statusData.diagnostic) {
+          setDiagnostic(statusData.diagnostic);
+          setStatus({ installed: false, running: false, loading: false });
+        } else {
+          setDiagnostic(null);
+          setStatus(statusData);
+        }
         setStats(statsData);
       } catch {
         /* keep defaults */
@@ -202,6 +216,10 @@ export default function HeadroomClient() {
           </Button>
         </div>
       </div>
+
+      {diagnostic && (
+        <SetupDiagnosticCard diagnostic={diagnostic} onRetry={refreshStats} />
+      )}
 
       <Card className="p-4 space-y-4">
         <div className="flex items-center justify-between">

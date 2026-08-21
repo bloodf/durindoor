@@ -51,6 +51,16 @@ function findPython310ForInstall() {
   return findPython310();
 }
 
+/**
+ * Detect Headroom for Auto-configure.
+ *
+ * `extras` and `source` are part of the projection on purpose: "is it
+ * installed" is NOT sufficient to decide whether to install. A PATH-only
+ * `[proxy]` install reports installed while `code` and `ml` are absent, which
+ * is precisely the state the reported bug lived in.
+ *
+ * @param {{url?: string}} [options]
+ */
 export async function detectHeadroom({ url = DEFAULT_HEADROOM_URL } = {}) {
   const status = await getHeadroomStatus(url);
   return {
@@ -60,7 +70,34 @@ export async function detectHeadroom({ url = DEFAULT_HEADROOM_URL } = {}) {
     path: status.path,
     url,
     localUrl: status.localUrl,
+    extras: status.extras,
+    source: status.source,
   };
+}
+
+/**
+ * Decide whether the managed install must run.
+ *
+ * Presence alone is not enough: a user-scoped `[proxy]`-only install on PATH
+ * satisfies `installed` but leaves every compression extra missing, and its
+ * pip-less venv can never be repaired in place. Any missing extra, or an
+ * install that is not the managed venv, means install.
+ *
+ * @param {{installed: boolean, extras?: Record<string, boolean>, source?: string|null}} detected
+ * @param {string[]} wanted Extras requested, including the `proxy` base.
+ * @returns {{needed: boolean, reason: string}}
+ */
+export function resolveInstallNeed(detected, wanted = DEFAULT_HEADROOM_EXTRAS) {
+  if (!detected?.installed) return { needed: true, reason: "headroom is not installed" };
+  const compression = wanted.filter((extra) => extra !== "proxy");
+  const missing = compression.filter((extra) => !detected.extras?.[extra]);
+  if (missing.length) {
+    return { needed: true, reason: `installed but missing the ${missing.join(" and ")} extra${missing.length > 1 ? "s" : ""}` };
+  }
+  if (detected.source && detected.source !== "managed") {
+    return { needed: true, reason: `installed outside the managed venv (${detected.source}), which cannot be repaired in place` };
+  }
+  return { needed: false, reason: "managed install already has every requested extra" };
 }
 
 /**
@@ -124,7 +161,10 @@ export async function configureHeadroom(settings, {
 
   const externalInstall = describeExternalInstall();
   if (externalInstall?.userScoped) {
-    report.actions.push(`detected user-scoped Headroom install at ${externalInstall.path}; not used by the service, remove with: uv tool uninstall headroom-ai`);
+    const removal = externalInstall.uninstallCommand
+      ? `remove with: ${externalInstall.uninstallCommand}`
+      : "remove it with whichever tool manager installed it";
+    report.actions.push(`detected user-scoped Headroom install at ${externalInstall.path}; not used by the service, ${removal}`);
   }
 
   let installed = detected.installed;
@@ -149,9 +189,13 @@ export async function configureHeadroom(settings, {
     running = detected.running;
   }
 
-  if (running) {
+  const installNeed = resolveInstallNeed(detected, DEFAULT_HEADROOM_EXTRAS);
+  // A reachable proxy does NOT imply a complete install: the compression extras
+  // live in the local package, not in whatever is answering on the port.
+  if (running && !installNeed.needed) {
     report.actions.push(`headroom reachable at ${effectiveUrl}`);
-  } else if (!installed && !dryRun) {
+  } else if (installNeed.needed && !dryRun) {
+    report.actions.push(`installing headroom compression extras: ${installNeed.reason}`);
     const installResult = await install({ extras: DEFAULT_HEADROOM_EXTRAS });
     if (installResult.installed) {
       installed = true;
@@ -217,8 +261,10 @@ export async function configureHeadroom(settings, {
     }
 
     if (!running && !wouldStart) {
-      const wouldInstall = dryRun && !installed && canInstall;
-      report.actions.push(wouldInstall ? "headroom not reachable; would install then enable" : "headroom not reachable and no install path found; skipping");
+      // Mirror the real decision: a dry run must predict an install whenever a
+      // compression extra is missing, not only when nothing is installed.
+      const wouldInstall = dryRun && installNeed.needed && canInstall;
+      report.actions.push(wouldInstall ? `headroom not reachable; would install then enable (${installNeed.reason})` : "headroom not reachable and no install path found; skipping");
       return {
         changed: false,
         wouldChange: wouldInstall || false,

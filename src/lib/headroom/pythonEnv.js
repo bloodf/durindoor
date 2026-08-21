@@ -504,10 +504,27 @@ export function describeExternalInstall() {
   const binDir = path.dirname(resolvedPath);
   const hasPip = ["pip", "pip3"].some((name) => fs.existsSync(path.join(binDir, name)));
 
+  // Name the manager from the interpreter path rather than assuming uv: telling
+  // a pipx user to run `uv tool uninstall` is worse than saying nothing, because
+  // it fails and teaches them the guidance is unreliable.
+  const probe = `${interpreter || ""} ${resolvedPath}`;
+  const manager = /[/\\]uv[/\\]tools[/\\]/.test(probe)
+    ? "uv"
+    : /[/\\]pipx[/\\]/.test(probe)
+      ? "pipx"
+      : "unknown";
+  const uninstallCommand = manager === "uv"
+    ? "uv tool uninstall headroom-ai"
+    : manager === "pipx"
+      ? "pipx uninstall headroom-ai"
+      : null;
+
   return {
     path: resolvedPath,
     interpreter,
     hasPip,
     userScoped: isUserScopedPath(resolvedPath),
+    manager,
+    uninstallCommand,
   };
 }

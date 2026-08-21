@@ -182,6 +182,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
     request: extractRequestConfig(body, stream),
     providerRequest: finalBody || translatedBody || null
   };
+  const sessionId = (finalBody || translatedBody)?.conversationState?.conversationId;
   const markSuccess = async () => {
     if (!onRequestSuccess || !["upstream", "validated"].includes(terminalProvenance)) return;
     try { await onRequestSuccess(); }
@@ -205,7 +206,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       const usage = jsonResponse.usage || {};
       appendLog({ tokens: usage, status: "200 OK" });
       saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, silent: true });
-      if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime } }));
+      if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime }, provider, model, sessionId }));
 
       // Cache-inclusive prompt total for the recorded detail — same logic the
       // client-facing response uses below, so the DB and the client can't disagree.
@@ -280,7 +281,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
     const usage = parsed.usage || {};
     appendLog({ tokens: usage, status: "200 OK" });
     saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, silent: true });
-    if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime } }));
+    if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime }, provider, model, sessionId }));
 
     const totalLatency = Date.now() - requestStartTime;
     saveRequestDetail(buildRequestDetail({

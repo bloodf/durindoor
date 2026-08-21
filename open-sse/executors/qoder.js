@@ -228,12 +228,31 @@ async function buildQoderRequestBody({ model, body, credentials, log, proxyOptio
 // byte-for-byte when they are not a billing response.
 const QODER_SSE_PEEK_BYTES = 64 * 1024;
 
+/**
+ * Match only Qoder's top-level permanent-quota code. Auth persistence reuses
+ * this predicate so provider-controlled message text cannot widen the trigger.
+ */
+export function isQoderQuotaExhaustedBody(body) {
+  let parsed = body;
+  if (typeof body === "string") {
+    if (!body) return false;
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      return false;
+    }
+  }
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    && parsed.code === "112";
+}
+
 function isBillingBlock(body) {
   if (typeof body !== "string" || !body) return false;
   try {
     const parsed = JSON.parse(body);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      && (parsed.code === "112" || parsed.code === "10605" || Object.hasOwn(parsed, "pricingUrl"));
+    return isQoderQuotaExhaustedBody(parsed)
+      || (parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        && (parsed.code === "10605" || Object.hasOwn(parsed, "pricingUrl")));
   } catch {
     return false;
   }

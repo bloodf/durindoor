@@ -1,4 +1,6 @@
-import { createDiagnostic, SetupError } from "@/shared/utils/setupDiagnostics.js";
+import path from "node:path";
+import { createDiagnostic, quoteShellArg, SetupError } from "@/shared/utils/setupDiagnostics.js";
+import { DATA_DIR } from "@/lib/dataDir.js";
 import {
   DEFAULT_HEADROOM_URL,
   findHeadroomBinary,
@@ -88,7 +90,7 @@ export async function installHeadroom({ python, extras } = {}) {
         detail: error.message || String(error),
         fixes: [{
           label: "Review the Headroom install log",
-          command: "tail -n 40 /opt/cortexos/.durindoor/headroom/install.log",
+          command: `tail -n 40 ${quoteShellArg(path.join(DATA_DIR, "headroom", "install.log"))}`,
         }],
       });
     return { installed: false, diagnostic };
@@ -161,7 +163,7 @@ export async function configureHeadroom(settings, {
         detail: installResult.error || "The managed Headroom installation did not complete.",
         fixes: [{
           label: "Review the Headroom install log",
-          command: "tail -n 40 /opt/cortexos/.durindoor/headroom/install.log",
+          command: `tail -n 40 ${quoteShellArg(path.join(DATA_DIR, "headroom", "install.log"))}`,
         }],
       });
       report.actions.push(diagnostic.summary);

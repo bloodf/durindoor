@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DATA_DIR } from "@/lib/dataDir.js";
-import { createDiagnostic, SetupError } from "@/shared/utils/setupDiagnostics.js";
+import { createDiagnostic, quoteShellArg, redactSensitive, SetupError } from "@/shared/utils/setupDiagnostics.js";
 
 // headroom-ai declares `requires_python = ">=3.10"` with no upper bound.
 export const MIN_PYTHON = [3, 10];
@@ -64,6 +64,7 @@ function resolveOnPath(command) {
     const out = execFileSync(WHICH_CMD, [command], {
       stdio: ["ignore", "pipe", "ignore"],
       windowsHide: true,
+      timeout: PROBE_TIMEOUT_MS,
       env: { ...process.env, PATH: EXTENDED_PATH },
     }).toString().trim();
     return out ? out.split(/\r?\n/)[0].trim() : null;
@@ -99,9 +100,9 @@ function probeInterpreter(resolvedPath) {
       env: { ...process.env, PATH: EXTENDED_PATH },
     }).toString();
     const parsed = JSON.parse(out);
-    return { major: parsed.major, minor: parsed.minor, externallyManaged: Boolean(parsed.em) };
+    return { probe: { major: parsed.major, minor: parsed.minor, externallyManaged: Boolean(parsed.em) }, failed: false };
   } catch {
-    return null;
+    return { probe: null, failed: true };
   }
 }
 
@@ -149,6 +150,7 @@ function probeInterpretersDetailed({ probeVenv = false } = {}) {
   }
   const seen = new Set();
   const entries = [];
+  let hadProbeError = false;
   for (const command of candidateCommands()) {
     const rawPath = resolveOnPath(command);
     if (!rawPath) continue;
@@ -162,7 +164,9 @@ function probeInterpretersDetailed({ probeVenv = false } = {}) {
     seen.add(resolvedPath);
 
     const userScoped = isUserScopedPath(resolvedPath);
-    const probe = probeInterpreter(resolvedPath);
+    const result = probeInterpreter(resolvedPath);
+    const probe = result.probe;
+    hadProbeError ||= result.failed;
     if (!probe) {
       entries.push({
         command,
@@ -171,15 +175,13 @@ function probeInterpretersDetailed({ probeVenv = false } = {}) {
         supported: false,
         userScoped,
         externallyManaged: false,
-        // null = not probed, false = probed and cannot create a venv.
         venvProbe: { ok: false, probed: false, ensurepipMissing: false, stderr: "" },
       });
       continue;
     }
     const supported = versionAtLeast([probe.major, probe.minor], MIN_PYTHON);
-    // `ok: null` means "not probed", never "capable": claiming capability we
-    // did not measure is what made the old detector lie to operators.
-    const venvProbe = supported && probeVenv
+    const canUseForVenv = supported && !(isRootProcess() && userScoped);
+    const venvProbe = canUseForVenv && probeVenv
       ? { ...probeCanCreateVenv(resolvedPath), probed: true }
       : { ok: null, probed: false, ensurepipMissing: false, stderr: "" };
     entries.push({
@@ -192,7 +194,7 @@ function probeInterpretersDetailed({ probeVenv = false } = {}) {
       venvProbe,
     });
   }
-  interpreterCache = { at: Date.now(), withVenvProbe: probeVenv, entries };
+  if (!hadProbeError) interpreterCache = { at: Date.now(), withVenvProbe: probeVenv, entries };
   return entries;
 }
 
@@ -349,7 +351,7 @@ export function pickVenvBasePython() {
       throw new SetupError(createDiagnostic({
         code: "VENV_TOOLS_MISSING",
         summary: `${candidate.resolvedPath} cannot create a venv because ensurepip is unavailable`,
-        detail: `python -m venv failed for ${candidate.resolvedPath} (Python ${candidate.version}): ${candidate.venvProbe.stderr}`,
+        detail: redactSensitive(`python -m venv failed for ${candidate.resolvedPath} (Python ${candidate.version}): ${candidate.venvProbe.stderr}`),
         fixes: [
           { label: `Install the venv/ensurepip package for Python ${candidate.version}`, command: `sudo apt install -y python3.${minor}-venv` },
         ],
@@ -358,9 +360,9 @@ export function pickVenvBasePython() {
     throw new SetupError(createDiagnostic({
       code: "VENV_CREATE_FAILED",
       summary: `${candidate.resolvedPath} failed to create a virtual environment`,
-      detail: `python -m venv failed for ${candidate.resolvedPath} (Python ${candidate.version}): ${candidate.venvProbe.stderr}`,
+      detail: redactSensitive(`python -m venv failed for ${candidate.resolvedPath} (Python ${candidate.version}): ${candidate.venvProbe.stderr}`),
       fixes: [
-        { label: "Retry venv creation manually and inspect the error", command: `${candidate.resolvedPath} -m venv /tmp/durindoor-venv-check` },
+        { label: "Retry venv creation manually and inspect the error", command: `${quoteShellArg(candidate.resolvedPath)} -m venv ${quoteShellArg("/tmp/durindoor-venv-check")}` },
       ],
     }));
   }
@@ -382,14 +384,35 @@ export function pickVenvBasePython() {
  * @throws {SetupError}
  */
 export function ensureManagedVenv() {
+  const dir = managedVenvDir();
   const existingPython = managedVenvPython();
   if (existingPython) {
+    let stat;
+    let symlink = false;
+    try {
+      stat = fs.lstatSync(dir);
+      symlink = stat.isSymbolicLink();
+    } catch { /* fail closed below */ }
+    const expectedUid = typeof process.getuid === "function" ? process.getuid() : null;
+    const untrusted = !stat || symlink || (expectedUid !== null && stat.uid !== expectedUid) || (stat.mode & 0o022) !== 0;
+    if (untrusted) {
+      const observed = stat ? `symlink=${symlink}, uid=${stat.uid}, mode=${(stat.mode & 0o777).toString(8)}` : "directory metadata unavailable";
+      throw new SetupError(createDiagnostic({
+        code: "VENV_UNTRUSTED",
+        summary: "Existing managed venv is owned by another user or is world-writable; refusing to run as root",
+        detail: `Managed venv directory ${dir}: ${observed}. Expected uid ${expectedUid ?? "current user"} and no group/world write permissions.`,
+        fixes: [
+          { label: "Remove the untrusted venv and let DurinDoor recreate it", command: `rm -rf ${quoteShellArg(dir)}` },
+          { label: "Or fix ownership manually", command: `chown -R $(id -u):$(id -g) ${quoteShellArg(dir)} && chmod 700 ${quoteShellArg(dir)}` },
+        ],
+      }));
+    }
     return { python: existingPython, binDir: path.dirname(existingPython), created: false };
   }
 
   const { command } = pickVenvBasePython();
-  const dir = managedVenvDir();
-  fs.mkdirSync(path.dirname(dir), { recursive: true });
+  fs.mkdirSync(path.dirname(dir), { recursive: true, mode: 0o700 });
+  const existedBefore = fs.existsSync(dir);
 
   try {
     execFileSync(command, ["-m", "venv", dir], {
@@ -399,15 +422,17 @@ export function ensureManagedVenv() {
       env: { ...process.env, PATH: EXTENDED_PATH },
     });
   } catch (error) {
-    try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* best-effort cleanup */ }
-    const detail = describeExecError(error);
+    if (!existedBefore) {
+      try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* best-effort cleanup */ }
+    }
+    const detail = redactSensitive(describeExecError(error));
     throw new SetupError(createDiagnostic({
       code: "VENV_CREATE_FAILED",
       summary: `Failed to create the managed virtual environment at ${dir}`,
       detail: `python -m venv ${dir} using ${command} failed: ${detail}`,
       fixes: [
-        { label: "Retry venv creation manually and inspect the error", command: `${command} -m venv ${dir}` },
-        { label: "Check permissions and free space for the data directory", command: `ls -ld ${path.dirname(dir)} && df -h ${path.dirname(dir)}` },
+        { label: "Retry venv creation manually and inspect the error", command: `${quoteShellArg(command)} -m venv ${quoteShellArg(dir)}` },
+        { label: "Check permissions and free space for the data directory", command: `ls -ld ${quoteShellArg(path.dirname(dir))} && df -h ${quoteShellArg(path.dirname(dir))}` },
       ],
       logTail: detail,
     }));
@@ -420,22 +445,28 @@ export function ensureManagedVenv() {
       summary: `Virtual environment created at ${dir} but no python binary was found inside it`,
       detail: `Expected ${IS_WIN ? "Scripts\\python.exe" : "bin/python"} under ${dir}`,
       fixes: [
-        { label: "Remove the incomplete venv and retry", command: `rm -rf ${dir}` },
+        { label: "Remove the incomplete venv and retry", command: `rm -rf ${quoteShellArg(dir)}` },
       ],
     }));
   }
+  invalidateInterpreterCache();
   return { python, binDir: path.dirname(python), created: true };
 }
 
 function readShebangInterpreter(scriptPath) {
   let fd;
   try {
+    if (!fs.statSync(scriptPath).isFile()) return null;
     fd = fs.openSync(scriptPath, "r");
-    const buf = Buffer.alloc(256);
-    const bytesRead = fs.readSync(fd, buf, 0, 256, 0);
-    const firstLine = buf.subarray(0, bytesRead).toString("utf8").split("\n")[0];
+    const limit = 4096;
+    const buf = Buffer.alloc(limit);
+    const bytesRead = fs.readSync(fd, buf, 0, limit, 0);
+    const newline = buf.subarray(0, bytesRead).indexOf(0x0a);
+    if (newline < 0 && bytesRead === limit) return null;
+    const firstLine = buf.subarray(0, newline < 0 ? bytesRead : newline).toString("utf8");
     if (!firstLine.startsWith("#!")) return null;
-    return firstLine.slice(2).trim().split(/\s+/)[0] || null;
+    const interpreter = firstLine.slice(2).trim().split(/\s+/)[0] || null;
+    return interpreter && interpreter.length <= 1024 ? interpreter : null;
   } catch {
     return null;
   } finally {

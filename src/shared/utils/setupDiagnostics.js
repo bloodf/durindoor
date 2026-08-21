@@ -26,7 +26,57 @@ const USER_FIXABLE_CODES = new Set([
   "NOT_INSTALLED",
   "EARLY_EXIT",
   "EXTERNAL_PROXY",
+  "VENV_UNTRUSTED",
+  "UNKNOWN_EXTRA",
+  "INSTALL_IN_PROGRESS",
 ]);
+
+/**
+ * Quote a value for safe interpolation into a copy-pasteable shell command
+ * shown in a diagnostic fix. POSIX: single-quote wrap, escaping embedded
+ * single quotes as `'\''`. Windows: double-quote wrap, escaping embedded
+ * double quotes as `\"`.
+ *
+ * Failure modes: none; non-string input is coerced with `String()`.
+ *
+ * @param {string} value
+ * @returns {string}
+ */
+export function quoteShellArg(value) {
+  const text = String(value);
+  if (process.platform === "win32") {
+    return `"${text.replace(/"/g, '\\"')}"`;
+  }
+  return `'${text.replace(/'/g, "'\\''")}'`;
+}
+
+const URL_CREDENTIALS_RE = /(\w+:\/\/)[^\s@/]+:[^\s@/]+@/g;
+// Token-shaped runs only. A long hyphenated phrase such as
+// "externally-managed-environment" or a package name like
+// "tree-sitter-language-pack" MUST survive: redacting those destroys both the
+// operator's log and the classification that reads it. Require the mixed
+// letter+digit shape that real secrets have.
+const TOKEN_RUN_RE = /\b(?=[A-Za-z0-9_-]{20,}\b)(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]+\b/g;
+const PIP_INDEX_URL_ENV_RE = /(PIP_INDEX_URL\s*=\s*)\S+/g;
+const EXTRA_INDEX_URL_FLAG_RE = /(--extra-index-url[= ])\S+/g;
+
+/**
+ * Redact credentials and token-shaped substrings from captured subprocess
+ * output before it is stored in a diagnostic's `logTail` or `detail`.
+ *
+ * Failure modes: none; non-string input returns an empty string.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+export function redactSensitive(text) {
+  if (typeof text !== "string") return "";
+  return text
+    .replace(PIP_INDEX_URL_ENV_RE, "$1[redacted]")
+    .replace(EXTRA_INDEX_URL_FLAG_RE, "$1[redacted]")
+    .replace(URL_CREDENTIALS_RE, "$1[redacted]@")
+    .replace(TOKEN_RUN_RE, "[redacted]");
+}
 
 /**
  * Create an immutable, operator-facing setup diagnostic.
@@ -74,10 +124,10 @@ export class SetupError extends Error {
  * Failure modes: none.
  *
  * @param {SetupDiagnostic} diagnostic
- * @returns {{ok: false, diagnostic: SetupDiagnostic}}
+ * @returns {{ok: false, diagnostic: SetupDiagnostic, error: string}}
  */
 export function toDiagnosticResponse(diagnostic) {
-  return { ok: false, diagnostic };
+  return { ok: false, diagnostic, error: diagnostic.summary };
 }
 
 /**

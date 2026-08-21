@@ -4,7 +4,7 @@ import { execFileSync, spawn } from "child_process";
 import { DATA_DIR } from "@/lib/dataDir.js";
 import { findHeadroomBinary, HEADROOM_COMPRESSION_EXTRAS, getInstalledHeadroomExtras } from "./detect.js";
 import { ensureManagedVenv, managedVenvBinary } from "./pythonEnv.js";
-import { createDiagnostic, SetupError } from "@/shared/utils/setupDiagnostics.js";
+import { createDiagnostic, quoteShellArg, redactSensitive, SetupError } from "@/shared/utils/setupDiagnostics.js";
 
 const HEADROOM_DIR = path.join(DATA_DIR, "headroom");
 const PID_FILE = path.join(HEADROOM_DIR, "proxy.pid");
@@ -15,6 +15,8 @@ const STARTUP_TIMEOUT_MS = 8000;
 // bound exists only so a wedged pip cannot hang the request forever.
 const INSTALL_TIMEOUT_MS = 20 * 60 * 1000;
 const INSTALL_KILL_GRACE_MS = 5000;
+
+let installInFlight = null;
 
 function ensureDir() {
   if (!fs.existsSync(HEADROOM_DIR)) fs.mkdirSync(HEADROOM_DIR, { recursive: true });
@@ -93,33 +95,45 @@ export async function startHeadroomProxy({ port = DEFAULT_PORT, kompress = false
 
   // Wait until the process either stays alive briefly (success) or exits fast (failure).
   await new Promise((resolve, reject) => {
-    const startupTimer = setTimeout(() => {
-      if (isPidAlive(child.pid)) resolve();
-      else reject(new SetupError(createDiagnostic({
-        code: "EARLY_EXIT",
-        summary: "Headroom proxy exited during startup",
-        detail: `The proxy process ${child.pid} was no longer running after ${STARTUP_TIMEOUT_MS}ms.`,
-        fixes: [{ label: "Inspect the Headroom proxy log", command: `tail -n 40 ${LOG_FILE}` }],
-        logTail: getHeadroomLogTail(40),
-      })));
-    }, STARTUP_TIMEOUT_MS);
-
-    child.once("exit", (code) => {
+    let closed = false;
+    const closeOnce = () => {
+      if (closed) return;
+      closed = true;
+      try { fs.closeSync(outFd); } catch { /* already closed */ }
+    };
+    const onExit = (code) => {
       clearTimeout(startupTimer);
       clearPid();
-      fs.closeSync(outFd);
+      closeOnce();
       reject(new SetupError(createDiagnostic({
         code: "EARLY_EXIT",
         summary: "Headroom proxy exited during startup",
         detail: `The proxy process exited with code ${code}.`,
-        fixes: [{ label: "Inspect the Headroom proxy log", command: `tail -n 40 ${LOG_FILE}` }],
-        logTail: getHeadroomLogTail(40),
+        fixes: [{ label: "Inspect the Headroom proxy log", command: `tail -n 40 ${quoteShellArg(LOG_FILE)}` }],
+        logTail: redactSensitive(getHeadroomLogTail(40)),
       })));
-    });
+    };
+    const startupTimer = setTimeout(() => {
+      child.removeListener("exit", onExit);
+      if (isPidAlive(child.pid)) {
+        closeOnce();
+        resolve();
+        return;
+      }
+      clearPid();
+      closeOnce();
+      reject(new SetupError(createDiagnostic({
+        code: "EARLY_EXIT",
+        summary: "Headroom proxy exited during startup",
+        detail: `The proxy process ${child.pid} was no longer running after ${STARTUP_TIMEOUT_MS}ms.`,
+        fixes: [{ label: "Inspect the Headroom proxy log", command: `tail -n 40 ${quoteShellArg(LOG_FILE)}` }],
+        logTail: redactSensitive(getHeadroomLogTail(40)),
+      })));
+    }, STARTUP_TIMEOUT_MS);
+    child.once("exit", onExit);
   });
 
-  // Close parent's copy of the fd; child retains its own after unref.
-  fs.closeSync(outFd);
+  // Parent fd was closed after startup resolution.
 
   return { pid: child.pid, alreadyRunning: false, source };
 }
@@ -129,13 +143,15 @@ export function stopHeadroomProxy() {
   if (!pid) return { stopped: false, reason: "not_running" };
   try {
     process.kill(pid, "SIGTERM");
-    // Give it a moment, then force if still alive.
-    setTimeout(() => {
+    // Keep the pid until the process is confirmed dead; otherwise a delayed
+    // SIGKILL can target a reused pid after a fresh proxy start.
+    const escalationTimer = setTimeout(() => {
       if (isPidAlive(pid)) {
         try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ }
       }
+      if (!isPidAlive(pid)) clearPid();
     }, 2000);
-    clearPid();
+    escalationTimer.unref?.();
     return { stopped: true, pid };
   } catch (e) {
     clearPid();
@@ -167,72 +183,85 @@ export function getHeadroomLogTail(maxLines = 200) {
  * @throws {SetupError} PEP668 | EXTRA_WHEEL_UNAVAILABLE | INSTALL_TIMEOUT | INSTALL_FAILED
  */
 export async function installHeadroomExtras(extras) {
-  const candidates = Array.isArray(extras) && extras.length > 0 ? extras : HEADROOM_COMPRESSION_EXTRAS;
-  const requested = candidates.filter((extra) => HEADROOM_COMPRESSION_EXTRAS.includes(extra));
-  const { python } = await ensureManagedVenv();
-  // pip install string is built from a closed set (HEADROOM_COMPRESSION_EXTRAS),
-  // so it cannot be poisoned by caller input — the comma-list is a fixed
-  // ['proxy', ...requested]. No shell interpolation.
-  const spec = `headroom-ai[${["proxy", ...requested].join(",")}]`;
-  const args = ["-m", "pip", "install", "--upgrade", spec];
-  const installLog = path.join(HEADROOM_DIR, "install.log");
+  if (installInFlight) return installInFlight;
 
-  ensureDir();
-  const outFd = fs.openSync(installLog, "a");
-  const manualCommand = [python, ...args].map(quoteShellArg).join(" ");
-  const failInstall = (reason) => createInstallError({ python, requested, manualCommand, reason, logTail: getLogTail(installLog, 40) });
+  const install = (async () => {
+    const candidates = Array.isArray(extras) && extras.length > 0 ? extras : HEADROOM_COMPRESSION_EXTRAS;
+    const unknowns = candidates.filter((extra) => !HEADROOM_COMPRESSION_EXTRAS.includes(extra));
+    if (unknowns.length) {
+      throw new SetupError(createDiagnostic({
+        code: "UNKNOWN_EXTRA",
+        summary: `Unknown Headroom extra name(s): ${unknowns.join(", ")}`,
+        detail: `Valid extras are: ${HEADROOM_COMPRESSION_EXTRAS.join(", ")}. An empty array installs every extra; any non-empty array must list only known names.`,
+        fixes: [{ label: "Retry with only supported Headroom extras" }],
+      }));
+    }
+    const requested = candidates;
+    const { python } = await ensureManagedVenv();
+    const spec = `headroom-ai[${["proxy", ...requested].join(",")}]`;
+    const args = ["-m", "pip", "install", "--upgrade", spec];
+    const installLog = path.join(HEADROOM_DIR, "install.log");
 
-  return new Promise((resolve, reject) => {
-    const child = spawn(python, args, {
-      stdio: ["ignore", outFd, outFd],
-      windowsHide: true,
-      env: { ...process.env },
+    ensureDir();
+    const outFd = fs.openSync(installLog, "a");
+    const manualCommand = [python, ...args].map(quoteShellArg).join(" ");
+    // Classify on the RAW log and redact only what is handed out: the markers
+    // classification looks for ("externally-managed-environment") are exactly
+    // the kind of long hyphenated runs a redactor can eat.
+    const failInstall = (reason) => createInstallError({ python, requested, manualCommand, reason, rawLog: getLogTail(installLog, 40) });
+
+    return new Promise((resolve, reject) => {
+      const child = spawn(python, args, {
+        stdio: ["ignore", outFd, outFd],
+        windowsHide: true,
+        env: { ...process.env },
+      });
+
+      let settled = false;
+      let timeoutTimer = null;
+      const finish = (fn, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutTimer);
+        try { fs.closeSync(outFd); } catch { /* already closed */ }
+        fn(value);
+      };
+
+      timeoutTimer = setTimeout(() => {
+        try { child.kill("SIGTERM"); } catch { /* already gone */ }
+        const killTimer = setTimeout(() => {
+          try { child.kill("SIGKILL"); } catch { /* already gone */ }
+        }, INSTALL_KILL_GRACE_MS);
+        killTimer.unref?.();
+        finish(reject, new SetupError(createDiagnostic({
+          code: "INSTALL_TIMEOUT",
+          summary: `Headroom install exceeded ${Math.round(INSTALL_TIMEOUT_MS / 60000)} minutes and was stopped`,
+          detail: `${manualCommand} did not finish within ${INSTALL_TIMEOUT_MS} ms. A slow or blocked package index is the usual cause; the ml extra downloads torch.`,
+          fixes: [
+            { label: "Run the install manually and watch its output", command: manualCommand },
+            { label: "Or install without the heavy ml extra", command: [python, "-m", "pip", "install", "--upgrade", "headroom-ai[proxy,code]"].map(quoteShellArg).join(" ") },
+          ],
+          logTail: redactSensitive(getLogTail(installLog, 40)),
+        })));
+      }, INSTALL_TIMEOUT_MS);
+
+      child.once("error", (error) => finish(reject, failInstall(`Pip could not start: ${error.message}`)));
+      child.once("exit", (code) => {
+        if (code === 0) {
+          const status = getInstalledHeadroomExtras(python);
+          finish(resolve, { success: true, code, spec, source: "managed", ...status, requestedExtras: requested });
+          return;
+        }
+        finish(reject, failInstall(`Pip install exited with code ${code}.`));
+      });
     });
-
-    // Single-settle guard: the timer, "error" and "exit" can all fire, and the
-    // fd must be closed exactly once.
-    let settled = false;
-    let timeoutTimer = null;
-    const finish = (fn, value) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeoutTimer);
-      try { fs.closeSync(outFd); } catch { /* already closed */ }
-      fn(value);
-    };
-
-    // The `ml` extra pulls torch, so this is minutes, not seconds — but it must
-    // still be bounded, or a wedged pip hangs the request forever.
-    timeoutTimer = setTimeout(() => {
-      try { child.kill("SIGTERM"); } catch { /* already gone */ }
-      // Escalation deliberately outlives finish(): the request rejects now, but
-      // a pip that ignores SIGTERM must still be killed.
-      const killTimer = setTimeout(() => {
-        try { child.kill("SIGKILL"); } catch { /* already gone */ }
-      }, INSTALL_KILL_GRACE_MS);
-      killTimer.unref?.();
-      finish(reject, new SetupError(createDiagnostic({
-        code: "INSTALL_TIMEOUT",
-        summary: `Headroom install exceeded ${Math.round(INSTALL_TIMEOUT_MS / 60000)} minutes and was stopped`,
-        detail: `${manualCommand} did not finish within ${INSTALL_TIMEOUT_MS} ms. A slow or blocked package index is the usual cause; the ml extra downloads torch.`,
-        fixes: [
-          { label: "Run the install manually and watch its output", command: manualCommand },
-          { label: "Or install without the heavy ml extra", command: [python, "-m", "pip", "install", "--upgrade", "headroom-ai[proxy,code]"].map(quoteShellArg).join(" ") },
-        ],
-        logTail: getLogTail(installLog, 40),
-      })));
-    }, INSTALL_TIMEOUT_MS);
-
-    child.once("error", (error) => finish(reject, failInstall(`Pip could not start: ${error.message}`)));
-    child.once("exit", (code) => {
-      if (code === 0) {
-        const status = getInstalledHeadroomExtras(python);
-        finish(resolve, { success: true, code, spec, extras: requested, source: "managed", ...status });
-        return;
-      }
-      finish(reject, failInstall(`Pip install exited with code ${code}.`));
-    });
-  });
+  })();
+  installInFlight = install;
+  try {
+    return await install;
+  } finally {
+    if (installInFlight === install) installInFlight = null;
+  }
 }
 
 function getLogTail(file, maxLines) {
@@ -243,22 +272,22 @@ function getLogTail(file, maxLines) {
   }
 }
 
-function quoteShellArg(value) {
-  return `'${String(value).replace(/'/g, "'\\''")}'`;
-}
+export { quoteShellArg } from "@/shared/utils/setupDiagnostics.js";
 
-function createInstallError({ python, requested, manualCommand, reason, logTail }) {
-  if (/externally-managed-environment/i.test(logTail)) {
+function createInstallError({ python, requested, manualCommand, reason, rawLog }) {
+  // Match on rawLog; only the redacted copy ever leaves the process.
+  const logTail = redactSensitive(rawLog);
+  if (/externally-managed-environment/i.test(rawLog)) {
     return new SetupError(createDiagnostic({
       code: "PEP668",
       summary: "Pip reported an externally managed Python environment",
       detail: `The managed virtualenv at ${path.dirname(path.dirname(python))} exists precisely to avoid PEP 668. This output means managed venv creation was skipped.`,
-      fixes: [{ label: "Recreate the managed Headroom virtualenv, then retry the install", command: `rm -rf ${path.dirname(path.dirname(python))}` }],
+      fixes: [{ label: "Recreate the managed Headroom virtualenv, then retry the install", command: `rm -rf ${quoteShellArg(path.dirname(path.dirname(python)))}` }],
       logTail,
     }));
   }
 
-  if (/No matching distribution|Could not find a version/i.test(logTail)) {
+  if (/No matching distribution|Could not find a version/i.test(rawLog)) {
     const version = getPythonVersion(python);
     return new SetupError(createDiagnostic({
       code: "EXTRA_WHEEL_UNAVAILABLE",

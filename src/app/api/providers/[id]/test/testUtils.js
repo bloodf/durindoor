@@ -26,6 +26,8 @@ import { buildClineHeaders } from "@/shared/utils/clineAuth";
 import { applyCodexAccountHeader } from "open-sse/shared/codexAccountId.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { rotationGroupFor } from "open-sse/services/refreshSerializer.js";
+import { OPENCODE_GO_USAGE_URL, classifyOpenCodeGoValidation } from "open-sse/services/usage/opencode-go.js";
+import { guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
 
 // OAuth provider test endpoints
 export const OAUTH_TEST_CONFIG = {
@@ -966,13 +968,14 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         return { valid, error: valid ? null : "Invalid ZenMux cookie - re-paste cookies from zenmux.ai" };
       }
       case "opencode-go": {
-        const res = await fetchWithConnectionProxy("https://opencode.ai/zen/go/v1/chat/completions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${connection.apiKey}` },
-          body: JSON.stringify({ model: getDefaultModel("opencode-go"), messages: [{ role: "user", content: "ping" }], max_tokens: 1, stream: false }),
-        }, effectiveProxy);
-        const valid = res.status !== 401 && res.status !== 403;
-        return { valid, error: valid ? null : "Invalid API key" };
+        /** Guard the authenticated usage probe and retain the resolved connection route. */
+        const res = await guardedProbeFetch(
+          OPENCODE_GO_USAGE_URL,
+          { headers: { Authorization: `Bearer ${connection.apiKey}`, Accept: "application/json" } },
+          undefined,
+          (url, options) => fetchWithConnectionProxy(url, options, effectiveProxy),
+        );
+        return classifyOpenCodeGoValidation(res, await res.text().catch(() => ""));
       }
       case "opencode-zen": {
         const res = await fetchWithConnectionProxy("https://opencode.ai/zen/v1/chat/completions", {

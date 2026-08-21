@@ -11,11 +11,16 @@
  *
  * Default mode = "block-metadata" (local-first): cloud-metadata + IPv4
  * link-local blocked; LAN/loopback allowed. "public-only" blocks every
- * private/LAN host. "none" (explicit opt-in) skips hostname checks entirely
- * (metadata intentionally allowed). Documented ceilings (DNS rebinding, IPv6
- * link-local under block-metadata) match the OmniRoute source we ported.
+ * private/LAN host. "none" (explicit opt-in) skips hostname and resolved-IP
+ * checks entirely. DNS rebinding is enforced by guardedProbeFetch's dispatcher;
+ * assertOutboundUrlAllowed remains the pre-connect hostname-text check.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+import { fetch as undiciFetch } from "undici";
+
+const dnsLookup = vi.hoisted(() => vi.fn());
+vi.mock("node:dns", () => ({ lookup: (...args) => dnsLookup(...args) }));
 
 const PRIVATE_ENV = "OMNIROUTE_ALLOW_PRIVATE_PROVIDER_URLS";
 const LOCAL_ENV = "OMNIROUTE_ALLOW_LOCAL_PROVIDER_URLS";
@@ -25,6 +30,8 @@ const METADATA_URL = "http://169.254.169.254/latest/meta-data/";
 const GCP_METADATA_URL = "http://metadata.google.internal/computeMetadata/v1/";
 const PUBLIC_URL = "https://api.example.com/v1/models";
 
+const REBIND_URL = "http://rebind.example.test/v1/chat/completions";
+const originalFetch = globalThis.fetch;
 let savedEnv;
 
 function setGuardEnv(mode) {
@@ -42,6 +49,7 @@ beforeEach(() => {
     [LEGACY_ENV]: process.env[LEGACY_ENV],
   };
   vi.resetModules();
+  dnsLookup.mockReset();
 });
 
 afterEach(() => {
@@ -49,6 +57,7 @@ afterEach(() => {
     if (v === undefined) delete process.env[k];
     else process.env[k] = v;
   }
+  globalThis.fetch = originalFetch;
   vi.restoreAllMocks();
   vi.doUnmock("open-sse/config/providers.js");
   vi.doUnmock("open-sse/utils/outboundUrlGuard.js");
@@ -113,8 +122,8 @@ describe("outboundUrlGuard — mode contract", () => {
   });
 });
 
-describe("documented ceilings (parity with OmniRoute source — not fixed)", () => {
-  it("DNS rebinding: public hostname string is not blocked (guard is host-string only)", async () => {
+describe("pre-connect hostname checks", () => {
+  it("leaves a public hostname for guardedProbeFetch's DNS dispatcher to resolve", async () => {
     setGuardEnv("public-only");
     const { assertOutboundUrlAllowed } = await import("open-sse/utils/outboundUrlGuard.js");
     expect(() => assertOutboundUrlAllowed("http://rebind.attacker.example/v1")).not.toThrow();
@@ -127,10 +136,10 @@ describe("documented ceilings (parity with OmniRoute source — not fixed)", () 
     expect(() => assertOutboundUrlAllowed("http://[febf::1]/v1")).not.toThrow();
   });
 
-  it("IPv4-mapped IPv6 (::ffff:) treated as private (conservative — pins public ::ffff:8.8.8.8 too)", async () => {
+  it("IPv4-mapped IPv6 applies the embedded IPv4 policy", async () => {
     setGuardEnv("public-only");
     const { assertOutboundUrlAllowed } = await import("open-sse/utils/outboundUrlGuard.js");
-    expect(() => assertOutboundUrlAllowed("http://[::ffff:8.8.8.8]/v1")).toThrow();
+    expect(() => assertOutboundUrlAllowed("http://[::ffff:8.8.8.8]/v1")).not.toThrow();
     expect(() => assertOutboundUrlAllowed("http://[::ffff:127.0.0.1]/v1")).toThrow();
   });
 });
@@ -206,6 +215,121 @@ describe("wiring — probeRegistryProvider (real production function, mocked PRO
     for (const call of fetcher.mock.calls) {
       expect(call[1]).toMatchObject({ redirect: "manual" });
     }
+  });
+});
+
+describe("#3313 DNS guard wiring for provider probe sinks", () => {
+  function resolveToMetadata() {
+    dnsLookup.mockImplementation((_hostname, _options, callback) => callback(null, [
+      { address: "169.254.169.254", family: 4 },
+    ]));
+  }
+
+  function mockCustomEmbeddingRoute(baseUrl) {
+    const provider = "embedding-custom-rebind";
+    vi.doMock("@/models", () => ({
+      getProviderNodeById: vi.fn(async () => ({ baseUrl })),
+    }));
+    vi.doMock("@/shared/constants/providers", () => ({
+      isOpenAICompatibleProvider: () => false,
+      isAnthropicCompatibleProvider: () => false,
+      isCustomEmbeddingProvider: (id) => id === provider,
+      AI_PROVIDERS: { [provider]: {} },
+    }));
+    return provider;
+  }
+
+  it("refuses the registry primary probe when DNS resolves its hostname to metadata", async () => {
+    setGuardEnv("default");
+    resolveToMetadata();
+    vi.doMock("open-sse/config/providers.js", () => ({
+      PROVIDERS: {
+        ssrfprobe: {
+          format: "openai",
+          baseUrl: REBIND_URL,
+          probeUsesBaseUrl: true,
+          auth: { header: "Authorization", scheme: "bearer" },
+        },
+      },
+      PROVIDER_OAUTH: {},
+    }));
+
+    const { probeRegistryProvider } = await import("@/app/api/providers/providerProbe.js");
+    const result = await probeRegistryProvider("ssrfprobe", "key", undiciFetch);
+
+    expect(result).toMatchObject({ valid: false, status: null, blocked: true });
+    expect(dnsLookup).toHaveBeenCalledWith(
+      "rebind.example.test",
+      expect.objectContaining({ all: true, verbatim: true }),
+      expect.any(Function),
+    );
+  });
+
+  it("refuses the registry fallback probe when DNS resolves its hostname to metadata", async () => {
+    setGuardEnv("default");
+    resolveToMetadata();
+    vi.doMock("open-sse/config/providers.js", () => ({
+      PROVIDERS: {
+        ssrfprobe: {
+          format: "openai",
+          validateUrl: PUBLIC_URL,
+          baseUrl: REBIND_URL,
+          auth: { header: "Authorization", scheme: "bearer" },
+        },
+      },
+      PROVIDER_OAUTH: {},
+    }));
+    const fetcher = vi.fn((url, init) => String(url) === PUBLIC_URL
+      ? Promise.resolve({ ok: false, status: 500 })
+      : undiciFetch(url, init));
+
+    const { probeRegistryProvider } = await import("@/app/api/providers/providerProbe.js");
+    const result = await probeRegistryProvider("ssrfprobe", "key", fetcher);
+
+    expect(result).toMatchObject({ valid: false, status: null, blocked: true });
+    expect(dnsLookup).toHaveBeenCalledWith(
+      "rebind.example.test",
+      expect.objectContaining({ all: true, verbatim: true }),
+      expect.any(Function),
+    );
+  });
+
+  it("refuses the custom-embedding models probe when DNS resolves its hostname to metadata", async () => {
+    setGuardEnv("default");
+    resolveToMetadata();
+    const provider = mockCustomEmbeddingRoute("http://rebind.example.test/v1");
+    globalThis.fetch = undiciFetch;
+
+    const { POST } = await import("@/app/api/providers/validate/route.js");
+    const res = await POST({ json: async () => ({ provider, apiKey: "key" }) });
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ valid: false, blocked: true });
+    expect(dnsLookup).toHaveBeenCalledWith(
+      "rebind.example.test",
+      expect.objectContaining({ all: true, verbatim: true }),
+      expect.any(Function),
+    );
+  });
+
+  it("refuses the custom-embedding fallback probe when DNS resolves its hostname to metadata", async () => {
+    setGuardEnv("default");
+    resolveToMetadata();
+    const provider = mockCustomEmbeddingRoute("http://rebind.example.test/v1");
+    globalThis.fetch = vi.fn((url, init) => String(url).endsWith("/models")
+      ? Promise.resolve({ ok: false, status: 500 })
+      : undiciFetch(url, init));
+
+    const { POST } = await import("@/app/api/providers/validate/route.js");
+    const res = await POST({ json: async () => ({ provider, apiKey: "key" }) });
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ valid: false, blocked: true });
+    expect(dnsLookup).toHaveBeenCalledWith(
+      "rebind.example.test",
+      expect.objectContaining({ all: true, verbatim: true }),
+      expect.any(Function),
+    );
   });
 });
 

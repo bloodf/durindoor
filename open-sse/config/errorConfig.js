@@ -7,6 +7,8 @@ export const ERROR_TYPES = {
   404: { type: "invalid_request_error", code: "model_not_found" },
   406: { type: "invalid_request_error", code: "model_not_supported" },
   410: { type: "invalid_request_error", code: "model_shutdown" },
+  /** #3386: context overflow is a terminal client error. */
+  413: { type: "invalid_request_error", code: "context_length_exceeded" },
   429: { type: "rate_limit_error", code: "rate_limit_exceeded" },
   500: { type: "server_error", code: "internal_server_error" },
   502: { type: "server_error", code: "bad_gateway" },
@@ -23,6 +25,8 @@ export const DEFAULT_ERROR_MESSAGES = {
   404: "Model not found",
   406: "Model not supported",
   410: "Model shut down",
+  /** #3386: default message for terminal context overflow. */
+  413: "Context length exceeded",
   429: "Rate limit exceeded",
   500: "Internal server error",
   502: "Bad gateway - upstream provider error",
@@ -67,12 +71,17 @@ const COOLDOWN = {
 
 /**
  * Unified error classification rules.
- * Checked top-to-bottom: text rules first (by order), then status rules.
- * Each rule: { text?, status?, cooldownMs?, backoff? }
+ * Terminal status rules are resolved before text rules so a client error can
+ * never rotate accounts merely because its message resembles a transient error.
+ *
+ * Each rule: { text?, status?, cooldownMs?, backoff?, fallback? }
  *   - text: substring match (case-insensitive) on error message
  *   - status: HTTP status code match
  *   - cooldownMs: fixed cooldown duration
  *   - backoff: true = use exponential backoff (rate limit)
+ *   - fallback: false = return without account/model fallback or cooldown
+ *
+ * Upstream provenance: decolua/9router#3386.
  */
 export const ERROR_RULES = [
   // --- Text-based rules (checked first, order = priority) ---
@@ -91,6 +100,7 @@ export const ERROR_RULES = [
   { status: 402, cooldownMs: COOLDOWN.long },
   { status: 403, cooldownMs: COOLDOWN.long },
   { status: 404, cooldownMs: COOLDOWN.long },
+  { status: 413, fallback: false },
   { status: 429, backoff: true },
 ];
 

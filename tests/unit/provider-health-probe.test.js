@@ -1,8 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
+import { fetch as undiciFetch } from "undici";
+
+const dnsLookup = vi.hoisted(() => vi.fn());
+vi.mock("node:dns", () => ({ lookup: (...args) => dnsLookup(...args) }));
+
 import { probeConnectionHealth } from "../../src/lib/providerHealthProbe.js";
 
 const okFetch = (status = 200) => async () => ({ ok: status >= 200 && status < 300, status });
 
+
+function rebindToMetadata() {
+  dnsLookup.mockImplementation((_hostname, _options, callback) => callback(null, [
+    { address: "169.254.169.254", family: 4 },
+  ]));
+}
 describe("probeConnectionHealth", () => {
   it("blocks a private OpenAI-compatible base URL via the SSRF guard", async () => {
     const conn = {
@@ -91,6 +102,68 @@ describe("probeConnectionHealth", () => {
     const result = await probeConnectionHealth(conn, { fetcher, proxyConfig: null });
     expect(result.blocked).toBe(true);
     expect(result.valid).toBe(false);
+  });
+
+  it.each([
+    ["OpenAI-compatible", {
+      id: "dns-openai",
+      provider: "openai-compatible-rebind",
+      apiKey: "k",
+      providerSpecificData: { baseUrl: "http://rebind.example.test/v1" },
+    }],
+    ["Anthropic-compatible", {
+      id: "dns-anthropic",
+      provider: "anthropic-compatible-rebind",
+      apiKey: "k",
+      providerSpecificData: { baseUrl: "http://rebind.example.test/v1" },
+    }],
+    ["local OpenAI-compatible", {
+      id: "dns-local",
+      provider: "lm-studio",
+      apiKey: "k",
+      providerSpecificData: { baseUrl: "http://rebind.example.test/v1" },
+    }],
+    ["registry no-auth", {
+      id: "dns-noauth",
+      provider: "auggie",
+      apiKey: "k",
+      providerSpecificData: { baseUrl: "http://rebind.example.test/v1" },
+    }],
+  ])("blocks DNS rebinding in the %s health-probe sink", async (_name, connection) => {
+    rebindToMetadata();
+
+    const result = await probeConnectionHealth(connection, {
+      fetcher: undiciFetch,
+      proxyConfig: null,
+    });
+
+    expect(result).toMatchObject({ valid: false, status: null, blocked: true });
+    expect(dnsLookup).toHaveBeenCalledWith(
+      "rebind.example.test",
+      expect.objectContaining({ all: true, verbatim: true }),
+      expect.any(Function),
+    );
+  });
+
+  it.each([
+    ["saved proxy", {
+      connectionProxyEnabled: true,
+      connectionProxyUrl: "http://proxy.example.test:8080",
+    }],
+    ["relay", { vercelRelayUrl: "https://relay.example.test" }],
+  ])("fails closed before remote DNS in the proxied registry-health %s branch", async (_name, proxyConfig) => {
+    const directFetcher = vi.fn();
+    const connection = {
+      id: "dns-proxied-registry",
+      provider: "openai",
+      apiKey: "k",
+      providerSpecificData: { baseUrl: "http://rebind.example.test/v1" },
+    };
+
+    const result = await probeConnectionHealth(connection, { fetcher: directFetcher, proxyConfig });
+
+    expect(result).toMatchObject({ valid: false, status: null, blocked: true });
+    expect(directFetcher).not.toHaveBeenCalled();
   });
 
   it("returns an error result for a connection with no probe target", async () => {
@@ -183,31 +256,20 @@ describe("probeConnectionHealth", () => {
     expect(calls[0].options.headers?.Authorization).toBe("Bearer cog_token");
   });
 
-  it("Devin specialty probe uses Vercel relay when configured, leaving direct fetcher unused", async () => {
+  it("Devin specialty probe fails closed when a Vercel relay would replace its guard", async () => {
     const { __setOriginalFetchForTesting } = await import("../../open-sse/utils/proxyFetch.js");
-    const relayCalls = [];
+    const relaySpy = vi.fn();
     const directSpy = vi.fn();
-    const restore = __setOriginalFetchForTesting(async (url, options) => {
-      relayCalls.push({ url: String(url), options });
-      return { ok: true, status: 200, text: async () => "" };
-    });
+    const restore = __setOriginalFetchForTesting(relaySpy);
     try {
       const conn = { id: "dev1", provider: "devin", apiKey: "cog_token", providerSpecificData: {} };
       const result = await probeConnectionHealth(conn, {
         fetcher: directSpy,
         proxyConfig: { vercelRelayUrl: "https://relay.example.test" },
       });
-      expect(result.valid).toBe(true);
+      expect(result).toMatchObject({ valid: false, status: null, blocked: true });
       expect(directSpy).not.toHaveBeenCalled();
-      expect(relayCalls).toHaveLength(1);
-      expect(relayCalls[0].url).toBe("https://relay.example.test");
-      const headers = relayCalls[0].options.headers instanceof Headers
-        ? Object.fromEntries(relayCalls[0].options.headers.entries())
-        : relayCalls[0].options.headers;
-      expect(headers["x-relay-target"]).toBe("https://api.devin.ai");
-      expect(headers["x-relay-path"]).toBe("/v1/sessions?limit=1");
-      expect(headers.authorization).toBe("Bearer cog_token");
-      expect(relayCalls[0].options.redirect).toBe("manual");
+      expect(relaySpy).not.toHaveBeenCalled();
     } finally {
       restore();
     }

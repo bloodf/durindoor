@@ -1,3 +1,7 @@
+# Unreleased
+
+Headroom extras now install by default, and every setup failure tells the operator exactly what is wrong and how to fix it. The compression proxy used by the Token Saver dashboard previously reported "Python >= 3.10 not found" when an interpreter was present but Headroom lived in a `uv tool` venv that has no `pip`, so the `code` and `ml` extras were never requested and the operator was given no usable next step. DurinDoor now owns a managed virtual environment at `${DATA_DIR}/headroom/venv` (resolving to `/opt/cortexos/.durindoor/headroom/venv` on the deployment host), builds it from a root-visible Python 3.10 or newer, and installs `headroom-ai[proxy,code,ml]` through that venv's own `pip`; user-scoped `uv` and `pipx` installs are detected and reported but never used, and every setup diagnostic names the observed condition and the matching repair. See [docs/HEADROOM.md](docs/HEADROOM.md) for the full code table and recovery commands.
+
 # 3.17.5
 
 The pure-JS SQLite fallback can now actually start. `src/lib/db/driver.js` tries

@@ -38,7 +38,7 @@ import { getKimiTemporaryRateLimitResetAt } from "./chatCore/kimiQuotaRecovery.j
 import { detectClientTool, isNativePassthrough, isCodexOriginatedHeaders } from "../utils/clientDetector.js";
 import { checkModelLifecycle } from "./chatCore/modelLifecyclePolicy.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
-import { salvageOrphanedToolResults, fixMissingToolResponses, normalizeOpenAIToolNames } from "../translator/concerns/toolCall.js";
+import { salvageOrphanedToolResults, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames } from "../translator/concerns/toolCall.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
 import { compressMessages, resolveTokenSaverEnabled, normalizeTokenSaverEvent } from "../rtk/index.js";
@@ -472,6 +472,11 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // behind. Salvage folds orphan text into user text (non-lossy) rather than
   // deleting it, preserving Kiro's orphan-salvage semantics. Runs
   // unconditionally: salvage understands messages[] and contents[].
+  /**
+   * decolua/9router#3369: resolve missing result IDs before orphan salvage and
+   * response repair; otherwise those passes demote or replace real output.
+   */
+  ensureToolCallIds(body);
   salvageOrphanedToolResults(body);
   fixMissingToolResponses(body);
 

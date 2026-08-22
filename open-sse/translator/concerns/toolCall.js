@@ -138,9 +138,35 @@ function sanitizeToolId(id) {
   return sanitized.length > 0 ? sanitized : null;
 }
 
+function normalizeToolId(id) {
+  return typeof id === "string" && id
+    ? (TOOL_ID_PATTERN.test(id) ? id : sanitizeToolId(id))
+    : null;
+}
+
+function reservePendingToolId(rawId, pendingIds) {
+  const id = normalizeToolId(rawId);
+  const index = id ? pendingIds.indexOf(id) : -1;
+  if (index !== -1) pendingIds.splice(index, 1);
+}
+
+/**
+ * Resolve a tool result ID against the oldest unclaimed call from the latest
+ * assistant turn, preserving explicit IDs and existing sanitization.
+ */
+function resolveToolResultId(rawId, pendingIds, fallbackId) {
+  const resolved = normalizeToolId(rawId);
+
+  if (resolved) return resolved;
+
+  return pendingIds.shift() || fallbackId();
+}
+
 // Ensure all tool_calls have valid id field and arguments is string (some providers require it)
 export function ensureToolCallIds(body) {
   if (!body.messages || !Array.isArray(body.messages)) return body;
+
+  let pendingIds = [];
 
   for (let i = 0; i < body.messages.length; i++) {
     const msg = body.messages[i];
@@ -166,13 +192,8 @@ export function ensureToolCallIds(body) {
       }
     }
 
-    // Validate tool_call_id in tool messages (role: "tool")
-    if (msg.role === "tool" && msg.tool_call_id && !TOOL_ID_PATTERN.test(msg.tool_call_id)) {
-      const sanitized = sanitizeToolId(msg.tool_call_id);
-      msg.tool_call_id = sanitized || generateToolCallId(i, 0);
-    }
-
-    // Also validate tool_use blocks in content (Claude format)
+    // Validate tool_use blocks in content (Claude format) before collecting
+    // the latest assistant turn's pending IDs.
     if (Array.isArray(msg.content)) {
       for (let k = 0; k < msg.content.length; k++) {
         const block = msg.content[k];
@@ -180,10 +201,44 @@ export function ensureToolCallIds(body) {
           const sanitized = sanitizeToolId(block.id);
           block.id = sanitized || generateToolCallId(i, k, block.name);
         }
-        // Validate tool_use_id in tool_result blocks
-        if (block.type === "tool_result" && block.tool_use_id && !TOOL_ID_PATTERN.test(block.tool_use_id)) {
-          const sanitized = sanitizeToolId(block.tool_use_id);
-          block.tool_use_id = sanitized || generateToolCallId(i, k);
+      }
+    }
+
+    if (msg.role === "assistant") {
+      pendingIds = getToolCallIds(msg);
+      /**
+       * Reserve valid explicit claims in this result run before assigning
+       * missing IDs, stopping at the next assistant turn.
+       */
+      for (let j = i + 1; j < body.messages.length && body.messages[j].role !== "assistant"; j++) {
+        const result = body.messages[j];
+        if (result.role === "tool") reservePendingToolId(result.tool_call_id, pendingIds);
+        if (Array.isArray(result.content)) {
+          for (const block of result.content) {
+            if (block.type === "tool_result") reservePendingToolId(block.tool_use_id, pendingIds);
+          }
+        }
+      }
+      continue;
+    }
+
+    if (msg.role === "tool") {
+      msg.tool_call_id = resolveToolResultId(
+        msg.tool_call_id,
+        pendingIds,
+        () => generateToolCallId(i, 0)
+      );
+    }
+
+    if (Array.isArray(msg.content)) {
+      for (let k = 0; k < msg.content.length; k++) {
+        const block = msg.content[k];
+        if (block.type === "tool_result") {
+          block.tool_use_id = resolveToolResultId(
+            block.tool_use_id,
+            pendingIds,
+            () => generateToolCallId(i, k)
+          );
         }
       }
     }

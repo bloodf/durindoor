@@ -26,6 +26,10 @@ The 43 correctness and security rows from that audit were **re-verified against
 verdicts, not the audit-date ones:
 [`docs/campaigns/upstream-9router-2026-08-21-reverification.md`](campaigns/upstream-9router-2026-08-21-reverification.md).
 
+The GAP/PARTIAL rows from that shortlist were squash-merged into main on 2026-08-22
+(maintainer request). Merge SHAs and URLs:
+[`docs/campaigns/upstream-9router-2026-08-21-port-closeout.md`](campaigns/upstream-9router-2026-08-21-port-closeout.md).
+
 Full 2026-08-20 open-PR + commit-gap verdicts live in
 [`docs/campaigns/upstream-9router-2026-08-20-ledger.md`](campaigns/upstream-9router-2026-08-20-ledger.md);
 the ported 2026-08-18 shortlist and its batch gates live in

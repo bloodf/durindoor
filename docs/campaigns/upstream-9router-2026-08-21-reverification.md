@@ -15,6 +15,11 @@ WATCH list: this is a verified shortlist for when they merge, not a port queue.
 
 **Result:** 26 GAP, 7 PARTIAL, 9 DUPLICATE, 1 N-A.
 
+**Port PRs merged 2026-08-22.** Maintainer requested the GAP/PARTIAL shortlist
+be implemented, then squash-merged into main:
+[`upstream-9router-2026-08-21-port-closeout.md`](upstream-9router-2026-08-21-port-closeout.md).
+
+
 | PR | Verdict | What upstream changes | Fork evidence | Files to touch | Risk |
 |---|---|---|---|---|---|
 | [#2681](https://github.com/decolua/9router/pull/2681) | GAP | Buffers and validates completed nested tool_call wrapper payloads before forwarding them, and formats structured SSE errors for invalid ones. | Read `open-sse/executors/kiro.js:619-718`: the toolUse loop emits `toolUseEvent` payloads straight through with no buffering and no wrapper validation. `open-sse/utils/stream.js:759-870` has no `parsed.error` forwarding, so an invalid wrapper cannot surface as a structured error. | `open-sse/executors/kiro.js`, `open-sse/utils/stream.js`, `tests/unit/kiro-credit-usage.test.js` | M/M. Collides with #2688 in the same loop; land this first, since the repair gate needs the validator. |

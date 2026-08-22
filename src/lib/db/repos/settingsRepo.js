@@ -27,6 +27,8 @@ const DEFAULT_SETTINGS = {
    * Missing providers retain provider-reset or configured backoff behavior.
    */
   retryDelayByProvider: {},
+  /** Per-provider per-account RPM overrides (decolua/9router#3203); zero means unlimited. */
+  rpmByProvider: {},
   providerStrategies: {},
   quotaVisibility: {},
   comboStrategy: "fallback",

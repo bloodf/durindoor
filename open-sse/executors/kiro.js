@@ -1,6 +1,11 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
-import { KIRO_MAX_TOOL_CALL_WRAPPER_BYTES, resolveKiroModel } from "../config/kiroConstants.js";
+import {
+  KIRO_MAX_TOOL_CALL_WRAPPER_BYTES,
+  KIRO_MAX_TOOL_CALL_REPAIR_ATTEMPTS,
+  KIRO_TOOL_CALL_REPAIR_INSTRUCTION,
+  resolveKiroModel,
+} from "../config/kiroConstants.js";
 import { v4 as uuidv4 } from "uuid";
 import { refreshKiroToken } from "../services/tokenRefresh.js";
 import { enrichKiroCredentialsFromSsoCache } from "../services/kiroModels.js";
@@ -17,6 +22,11 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { resolveContinuationId, extractClientSessionId } from "../utils/sessionManager.js";
 import { getKiroUsage } from "../services/usage/kiro.js";
 import { KIRO_CREDIT_EXHAUSTION_PROBE_MS } from "../config/errorConfig.js";
+import {
+  settleProviderAttemptDispatch,
+  transferProviderAttemptDispatch,
+} from "../services/providerAttemptContext.js";
+import { MAX_PROVIDER_BODY_BYTES } from "../config/runtimeConfig.js";
 import { OPENAI_BLOCK } from "../translator/schema/index.js";
 
 // Confirmed monthly-credit exhaustion signal from CodeWhisperer's 402
@@ -128,6 +138,65 @@ async function cancelAndReleaseReader(reader, reason) {
     if (timer) clearTimeout(timer);
     releaseReader(reader);
   }
+}
+
+function concatChunks(chunks, totalBytes) {
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
+function classifyRepairGateChunk(chunk) {
+  let meaningful = false;
+  for (const line of new TextDecoder().decode(chunk).split("\n")) {
+    if (!line.startsWith("data: ")) continue;
+    const data = line.slice(6).trim();
+    if (!data || data === "[DONE]") continue;
+    meaningful = true;
+    try {
+      const parsed = JSON.parse(data);
+      if (parsed?.error?.code === "invalid_kiro_tool_call") {
+        return { invalid: parsed.error.message || "Invalid Kiro tool_call payload" };
+      }
+    } catch { /* transform output owns SSE framing; malformed data is ordinary output */ }
+  }
+  return { meaningful };
+}
+
+function replayChunksAndReader(chunks, reader) {
+  return new ReadableStream({
+    async start(controller) {
+      try {
+        for (const chunk of chunks) controller.enqueue(chunk);
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          controller.enqueue(value);
+        }
+        releaseReader(reader);
+        controller.close();
+      } catch (error) {
+        releaseReader(reader);
+        controller.error(error);
+      }
+    },
+    cancel(reason) {
+      return cancelAndReleaseReader(reader, reason);
+    },
+  });
+}
+
+/** Clone a Kiro turn and add the corrective instruction only to the retry. */
+function buildKiroToolCallRepairBody(body) {
+  const repaired = structuredClone(body);
+  const message = repaired?.conversationState?.currentMessage?.userInputMessage;
+  if (!message || typeof message.content !== "string") return repaired;
+  message.content = `${message.content}\n\n${KIRO_TOOL_CALL_REPAIR_INSTRUCTION}`;
+  return repaired;
 }
 
 function isConfirmedKiroCreditExhaustion(bodyText) {
@@ -472,12 +541,83 @@ export class KiroExecutor extends BaseExecutor {
     // Profile discovery is not the quota-bearing runtime request. Allocate a
     // fresh fencing clock immediately before BaseExecutor begins dispatch so a
     // slow discovery cannot make later 429 evidence appear older than it is.
-    const result = await super.execute({ ...args, attemptStartedAt: null });
-    if (result?.response?.ok) {
-      result.response = this.transformEventStreamToSSE(result.response, args.model);
-      result.terminalProvenance = "validated";
+    let currentResult = await super.execute({ ...args, attemptStartedAt: null });
+    if (!currentResult?.response?.ok) return currentResult;
+    if (args.stream === false) {
+      currentResult.response = this.transformEventStreamToSSE(currentResult.response, args.model);
+      currentResult.terminalProvenance = "validated";
+      return currentResult;
     }
-    return result;
+
+    for (let repairAttempts = 0; ; repairAttempts++) {
+      const gate = await this.openToolCallRepairGate(currentResult.response, args.model);
+      if (gate.kind !== "invalid" || repairAttempts >= KIRO_MAX_TOOL_CALL_REPAIR_ATTEMPTS) {
+        const originalResponse = currentResult.response;
+        currentResult.response = this.responseFromToolCallRepairGate(originalResponse, gate);
+        transferProviderAttemptDispatch(originalResponse, currentResult.response);
+        currentResult.terminalProvenance = "validated";
+        return currentResult;
+      }
+
+      await settleProviderAttemptDispatch(currentResult.response, { success: false, reason: "fallback" });
+      args.log?.warn?.("RETRY", "KIRO | malformed tool_call wrapper; retrying turn once");
+      currentResult = await BaseExecutor.prototype.execute.call(this, {
+        ...args,
+        body: buildKiroToolCallRepairBody(args.body),
+        attemptStartedAt: null,
+      });
+      if (!currentResult?.response?.ok) return currentResult;
+    }
+  }
+
+  /**
+   * Hold only the pre-output prefix so a malformed wrapper can be discarded and
+   * retried once. Once meaningful output exists, replay it immediately; retrying
+   * after client-visible bytes would duplicate the turn. MAX_PROVIDER_BODY_BYTES
+   * bounds keepalive buffering and fails open to the base validator at the limit.
+   */
+  async openToolCallRepairGate(rawResponse, model) {
+    const transformed = this.transformEventStreamToSSE(rawResponse, model);
+    const reader = transformed.body.getReader();
+    const chunks = [];
+    let totalBytes = 0;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) {
+          releaseReader(reader);
+          return { kind: "complete", bytes: concatChunks(chunks, totalBytes) };
+        }
+        chunks.push(value);
+        totalBytes += value.byteLength;
+        const classification = classifyRepairGateChunk(value);
+        if (classification.invalid) {
+          await cancelAndReleaseReader(reader, "invalid_kiro_tool_call");
+          return {
+            kind: "invalid",
+            message: classification.invalid,
+            bytes: concatChunks(chunks, totalBytes),
+          };
+        }
+        if (classification.meaningful || totalBytes >= MAX_PROVIDER_BODY_BYTES) {
+          return { kind: "stream", chunks, reader };
+        }
+      }
+    } catch (error) {
+      await cancelAndReleaseReader(reader, error);
+      throw error;
+    }
+  }
+
+  responseFromToolCallRepairGate(original, gate) {
+    const body = gate.kind === "stream"
+      ? replayChunksAndReader(gate.chunks, gate.reader)
+      : gate.bytes;
+    return new Response(body, {
+      status: original.status,
+      statusText: original.statusText,
+      headers: { ...SSE_HEADERS },
+    });
   }
 
   /**

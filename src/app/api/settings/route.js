@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { FREE_NO_AUTH_PROVIDER_IDS } from "@/shared/constants/freeNoAuthProviders";
+import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { getSettings, updateSettings, updateSettingsWithPasswordEpoch, PasswordEpochMismatchError } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation, resetComboScoring } from "open-sse/services/combo.js";
@@ -134,6 +135,20 @@ export async function PATCH(request) {
     // clients can't persist dead config.
     delete body.pxpipeAutoInstall;
 
+    /** Validate decolua/9router#2895 retry-delay overrides at the settings boundary. */
+    if (Object.prototype.hasOwnProperty.call(body, "retryDelayByProvider")) {
+      const overrides = body.retryDelayByProvider;
+      const maxSeconds = MAX_RATE_LIMIT_COOLDOWN_MS / 1000;
+      const prototype = overrides == null ? null : Object.getPrototypeOf(overrides);
+      if (!overrides || typeof overrides !== "object" || Array.isArray(overrides) || (prototype !== Object.prototype && prototype !== null)) {
+        return NextResponse.json({ error: "Invalid retryDelayByProvider" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
+      for (const [providerId, seconds] of Object.entries(overrides)) {
+        if (!providerId || (seconds !== "auto" && (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds <= 0 || seconds > maxSeconds))) {
+          return NextResponse.json({ error: "Invalid retryDelayByProvider" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+        }
+      }
+    }
     if (Object.prototype.hasOwnProperty.call(body, "disabledFreeProviders")) {
       const ids = body.disabledFreeProviders;
       if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string")) {

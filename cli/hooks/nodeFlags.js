@@ -26,15 +26,15 @@ function resolveHeapFlags(env = process.env) {
 }
 
 /**
- * Builds server child argv in one seam so additional Node flags can precede
- * heap flags without changing either CLI spawn path (upstream #3368).
+ * Builds server child argv with IPv4-first DNS ordering before optional heap
+ * flags so unreachable IPv6 results do not block undici (upstream #2699).
  *
  * @param {string} serverPath
  * @param {NodeJS.ProcessEnv} env
  * @returns {string[]}
  */
 function buildNodeArgs(serverPath, env = process.env) {
-  return [...resolveHeapFlags(env), serverPath];
+  return ["--dns-result-order=ipv4first", ...resolveHeapFlags(env), serverPath];
 }
 
 module.exports = { buildNodeArgs, resolveHeapFlags };

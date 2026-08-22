@@ -155,9 +155,13 @@ export function ensureToolCallIds(body) {
         if (!tc.type) {
           tc.type = "function";
         }
-        // Ensure arguments is JSON string, not object
-        if (tc.function?.arguments && typeof tc.function.arguments !== "string") {
-          tc.function.arguments = JSON.stringify(tc.function.arguments);
+        /** Normalize empty and structured arguments for decolua/9router#3310. */
+        if (tc.function && typeof tc.function === "object") {
+          if (tc.function.arguments == null || tc.function.arguments === "") {
+            tc.function.arguments = "{}";
+          } else if (typeof tc.function.arguments !== "string") {
+            tc.function.arguments = JSON.stringify(tc.function.arguments);
+          }
         }
       }
     }

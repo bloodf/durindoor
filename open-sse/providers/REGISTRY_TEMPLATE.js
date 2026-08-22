@@ -86,7 +86,7 @@ export default {
 
   // ── models (omit = no key; [] = explicit empty) ──────────────────────────
   models: [
-    { id: "example-large", name: "Example Large" },
+    { id: "example-large", name: "Example Large", aliases: ["saved-legacy-id"] },
     // { id: "example-img", name: "Example Image", type: "image", capabilities: ["text2img"], params: ["size"] },
     // { id: "example-emb", name: "Example Embed", type: "embedding" },
   ],

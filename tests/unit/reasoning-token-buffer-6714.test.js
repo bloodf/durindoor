@@ -93,10 +93,27 @@ describe("reasoning token buffer (#6714)", () => {
     expect(resolveReasoningBufferedMaxTokens("antigravity/claude-sonnet-4-6", 32000)).toBeNull();
   });
 
-  it("returns an exact cap regardless of reasoning support", () => {
-    expect(getExplicitModelOutputCap("nvidia/minimaxai/minimax-m2.7")).toBe(131072);
-    expect(resolveReasoningBufferedMaxTokens("nvidia/minimaxai/minimax-m2.7", 32000)).toBeNull();
+  it("honors synthetic provider reasoning denial with an explicit output cap", () => {
+    const provider = "cap-tier-provider-6714";
+    const hadProviderCaps = Object.hasOwn(PROVIDER_CAPABILITIES, provider);
+    const oldProviderCaps = PROVIDER_CAPABILITIES[provider];
+
+    try {
+      PROVIDER_CAPABILITIES[provider] = {
+        "denied-reasoning-6714": { reasoning: false, maxOutput: 131072 },
+      };
+
+      expect(resolveReasoningBufferedMaxTokens(
+        `${provider}/denied-reasoning-6714`,
+        32000,
+      )).toBeNull();
+    } finally {
+      if (hadProviderCaps) PROVIDER_CAPABILITIES[provider] = oldProviderCaps;
+      else delete PROVIDER_CAPABILITIES[provider];
+      vi.restoreAllMocks();
+    }
   });
+
 
   it("returns null when thinking support is unknown", () => {
     expect(resolveReasoningBufferedMaxTokens("unknown/totally-fictitious-6714", 32000)).toBeNull();

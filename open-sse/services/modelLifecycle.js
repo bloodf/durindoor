@@ -58,11 +58,19 @@ function openAiRecord(model, shutdownAt, replacement, kind, notes) {
   };
 }
 
+const NVIDIA_SOURCE = "https://github.com/decolua/9router/pull/3397";
+
+/** NVIDIA's 410 responses provide authoritative per-model retirement timestamps. */
+const NVIDIA_RETIREMENTS = [
+  ["minimaxai/minimax-m2.7", "2026-07-27"],
+  ["deepseek-ai/deepseek-v4-pro", "2026-08-07"],
+];
 /**
- * Unambiguous shutdowns from the official OpenAI deprecations page, verified
- * 2026-07-26. The page lists gpt-4-1106-preview with conflicting shutdown dates,
- * so that model is intentionally omitted until the upstream conflict is resolved.
+ * Source-verified shutdowns. OpenAI's page lists gpt-4-1106-preview with
+ * conflicting dates, so that model remains omitted until upstream resolves it.
+ * NVIDIA dates come from the provider's deterministic 410 responses in #3397.
  */
+
 export const MODEL_LIFECYCLE_RECORDS = Object.freeze([
   openAiRecord("computer-use-preview-2025-03-11", "2026-07-23", "gpt-5.6-terra", "computer-use"),
   openAiRecord("computer-use-preview", "2026-07-23", "gpt-5.6-terra", "computer-use"),
@@ -88,6 +96,14 @@ export const MODEL_LIFECYCLE_RECORDS = Object.freeze([
   openAiRecord("gpt-4-0314", "2026-03-26", null, "text"),
   openAiRecord("gpt-4-0125-preview", "2026-03-26", null, "text"),
   openAiRecord("gpt-4-turbo-preview", "2026-03-26", null, "text"),
+  ...NVIDIA_RETIREMENTS.map(([model, shutdownAt]) => ({
+    provider: "nvidia",
+    model,
+    shutdownAt,
+    replacement: null,
+    kind: "text",
+    source: NVIDIA_SOURCE,
+  })),
 ]);
 
 const RECORDS_BY_KEY = new Map();

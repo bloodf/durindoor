@@ -143,8 +143,7 @@ describe("getCapabilitiesForModel", () => {
   it("uses OpenAI thinking format for NVIDIA-hosted reasoning model families", () => {
     for (const model of [
       "z-ai/glm-5.2",
-      "deepseek-ai/deepseek-v4-pro",
-      "deepseek-ai/deepseek-v4-flash",
+      "deepseek-ai/deepseek-v4-flash-0731",
       "moonshotai/kimi-k2.6",
       "nvidia/nemotron-3-nano-30b-a3b",
       "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",

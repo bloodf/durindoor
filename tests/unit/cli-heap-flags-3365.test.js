@@ -65,6 +65,6 @@ describe("CLI heap flags (upstream #3368)", () => {
 
   it("builds server argv through one helper", () => {
     expect(buildNodeArgs("/app/server.js", { NINEROUTER_MAX_OLD_SPACE_SIZE: "8192" }))
-      .toEqual(["--max-old-space-size=8192", "/app/server.js"]);
+      .toEqual(["--dns-result-order=ipv4first", "--max-old-space-size=8192", "/app/server.js"]);
   });
 });

@@ -292,6 +292,15 @@ const CLOUDFLARE_CAPS = {
 
 /** Auto-routing aliases have no fixed limits; their selected target owns them. */
 const VARIABLE_TARGET_CAPS = { contextWindow: null, maxOutput: null };
+/**
+ * Token Plan's V2.5 routes are text-only; each row stays independent because
+ * the Claude alias uses Anthropic thinking fields and the others use DeepSeek.
+ */
+const XIAOMI_TOKENPLAN_CAPABILITIES = {
+  "mimo-v2.5-pro": { vision: false, audioInput: false, videoInput: false, reasoning: true, thinkingFormat: "deepseek", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 131072 },
+  "mimo-v2.5-pro-claude": { vision: false, audioInput: false, videoInput: false, reasoning: true, thinkingFormat: "claude-budget", thinkingCanDisable: true, contextWindow: 200000, maxOutput: 64000 },
+  "mimo-v2.5": { vision: false, audioInput: false, videoInput: false, reasoning: true, thinkingFormat: "deepseek", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 131072 },
+};
 
 export const PROVIDER_CAPABILITIES = {
   // Direct OpenAI GPT-5.5/5.6 family and Codex/CX aliases expose 1.05M context
@@ -301,6 +310,8 @@ export const PROVIDER_CAPABILITIES = {
   cx: CODEX_GPT_CAPS,
   "cloudflare-ai": CLOUDFLARE_CAPS,
   cf: CLOUDFLARE_CAPS,
+  "xiaomi-tokenplan": XIAOMI_TOKENPLAN_CAPABILITIES,
+  xmtp: XIAOMI_TOKENPLAN_CAPABILITIES,
   // Ollama's trained 131,072-token window is not its served window. The local
   // daemon's /api/ps reports 4,096 for llama3.2:1b; /api/tags exposes no num_ctx.
   "ollama-local": {

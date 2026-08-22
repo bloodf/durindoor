@@ -57,6 +57,14 @@ NINEROUTER_MAX_OLD_SPACE_SIZE=0 durindoor
 An existing `--max-old-space-size` setting in `NODE_OPTIONS` also suppresses
 the default CLI heap flag.
 
+## DNS resolution
+
+CLI-started server and detached tray processes pass Node's
+`--dns-result-order=ipv4first` flag so undici prefers IPv4 when a hostname also
+returns an unreachable IPv6 address. This flag is independent of the heap
+setting above and remains active when heap sizing comes from `NODE_OPTIONS` or
+when `NINEROUTER_MAX_OLD_SPACE_SIZE=0`.
+
 ## Data
 
 Native installations use these defaults when `DATA_DIR` is not set:

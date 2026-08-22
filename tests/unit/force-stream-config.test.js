@@ -68,6 +68,7 @@ vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
 }));
 
 vi.mock("../../open-sse/translator/formats/claude.js", () => ({
+  prepareClaudeRequest: vi.fn((body) => body),
   normalizeClaudePassthrough: vi.fn(),
   anchorClaudeCache: vi.fn(),
 }));
@@ -135,7 +136,7 @@ vi.mock("@/lib/usageDb.js", () => ({
   saveRequestDetail: vi.fn(() => Promise.resolve()),
 }));
 
-const FORCED = ["openai", "codex", "commandcode"];
+const FORCED = ["openai", "codex", "commandcode", "kimi-coding", "kimi-coding-apikey"];
 
 function makeOptions(bodyStream) {
   const body = {
@@ -248,6 +249,27 @@ function makeNativeCodexOptions() {
   };
 }
 
+function makeKimiOptions(provider, authType) {
+  const body = {
+    model: "kimi-k3",
+    stream: false,
+    messages: [{ role: "user", content: "hello" }],
+  };
+
+  return {
+    body,
+    modelInfo: { provider, model: "kimi-k3" },
+    credentials: { apiKey: "kimi-test", authType },
+    clientRawRequest: {
+      endpoint: "/v1/chat/completions",
+      body,
+      headers: { accept: "application/json" },
+    },
+    connectionId: "kimi-test-connection",
+    log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  };
+}
+
 function makeAgyImageOptions() {
   const body = {
     model: "gemini-3-flash-image",
@@ -302,13 +324,12 @@ describe("forceStream provider config", () => {
     translateRequestMock.mockClear();
   });
 
-  it("only openai/codex/commandcode force streaming", async () => {
+  it("forces streaming only for dedicated Kimi Code subscription providers", async () => {
     const { PROVIDERS } = await import("../../open-sse/config/providers.js");
     for (const id of FORCED) {
       expect(PROVIDERS[id]?.forceStream, `${id} forced`).toBe(true);
     }
-    // a sample of others must NOT force
-    for (const id of ["deepseek", "claude", "gemini", "openrouter"]) {
+    for (const id of ["kimi", "deepseek", "claude", "gemini", "openrouter"]) {
       expect(PROVIDERS[id]?.forceStream, `${id} not forced`).not.toBe(true);
     }
   });
@@ -325,6 +346,36 @@ describe("forceStream provider config", () => {
       expect(executeMock.mock.calls[0][0].body.stream).toBe(true);
     },
   );
+
+  it("forces a non-streaming Kimi Code subscription request to SSE upstream", async () => {
+    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+
+    await handleChatCore(makeKimiOptions("kimi-coding", "oauth"));
+
+    expect(executeMock).toHaveBeenCalledTimes(1);
+    expect(executeMock.mock.calls[0][0]).toMatchObject({
+      stream: true,
+      body: { stream: true },
+      credentials: {
+        runtimeTransport: { baseUrl: "https://api.kimi.com/coding/v1/messages" },
+      },
+    });
+  });
+
+  it("keeps the Kimi platform API-key transport non-forced", async () => {
+    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+
+    await handleChatCore(makeKimiOptions("kimi", "apikey"));
+
+    expect(executeMock).toHaveBeenCalledTimes(1);
+    expect(executeMock.mock.calls[0][0]).toMatchObject({
+      stream: false,
+      body: { stream: false },
+      credentials: {
+        runtimeTransport: { baseUrl: "https://api.moonshot.cn/v1/chat/completions" },
+      },
+    });
+  });
 
   it("syncs negotiated streaming into native Codex passthrough bodies", async () => {
     const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");

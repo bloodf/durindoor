@@ -22,6 +22,11 @@ const DEFAULT_SETTINGS = {
   tailscaleEnabled: false,
   tailscaleUrl: "",
   stickyRoundRobinLimit: 3,
+  /**
+   * Per-provider static retry delay in seconds (decolua/9router#2895).
+   * Missing providers retain provider-reset or configured backoff behavior.
+   */
+  retryDelayByProvider: {},
   providerStrategies: {},
   quotaVisibility: {},
   comboStrategy: "fallback",

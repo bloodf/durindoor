@@ -20,6 +20,8 @@ export default {
     baseUrl: "https://api.kimi.com/coding/v1/messages",
     format: "claude",
     urlSuffix: "?beta=true",
+    /** decolua/9router#3421: Kimi Code requires SSE upstream; chatCore buffers JSON clients. */
+    forceStream: true,
     headers: { ...CLAUDE_API_HEADERS },
     reasoningInject: {
       scope: "all",

@@ -11,6 +11,7 @@ import {
   convertOpenAIContentToParts,
   extractTextContent,
   tryParseJSON,
+  sanitizeFunctionResponseResult,
   generateRequestId,
   generateSessionId,
   generateProjectId,
@@ -229,7 +230,7 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
               }
 
               let resp = toolResponses[fid];
-              let parsedResp = tryParseJSON(resp);
+              let parsedResp = sanitizeFunctionResponseResult(tryParseJSON(resp));
               if (parsedResp === null) {
                 parsedResp = { result: resp };
               } else if (typeof parsedResp !== "object") {
@@ -454,7 +455,7 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
             const functionResponse = {
               id: block.tool_use_id,
               name: resolvedName,
-              response: { result: tryParseJSON(content) || content }
+              response: { result: sanitizeFunctionResponseResult(tryParseJSON(content)) || content }
             };
             if (imageParts.length > 0) functionResponse.parts = imageParts;
             parts.push({ functionResponse });

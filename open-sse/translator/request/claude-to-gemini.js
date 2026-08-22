@@ -1,6 +1,6 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
-import { DEFAULT_SAFETY_SETTINGS, tryParseJSON } from "../formats/gemini.js";
+import { DEFAULT_SAFETY_SETTINGS, tryParseJSON, sanitizeFunctionResponseResult } from "../formats/gemini.js";
 import { ROLE, GEMINI_ROLE, CLAUDE_BLOCK, DEFAULT_IMAGE_MIME } from "../schema/index.js";
 import { buildGeminiThoughtSignatureKey, resolveGeminiThoughtSignature } from "../../services/geminiThoughtSignatureStore.js";
 
@@ -70,7 +70,7 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
             parts.push({ text: historicalToolResult(name, content) });
             continue;
           }
-          let parsed = tryParseJSON(content);
+          let parsed = sanitizeFunctionResponseResult(tryParseJSON(content));
           if (parsed === null || typeof parsed !== "object") parsed = { result: parsed === null ? content : parsed };
           parts.push({ functionResponse: { ...(stripFunctionCallId ? {} : { id: block.tool_use_id }), name, response: { result: parsed } } });
         }

@@ -38,6 +38,19 @@ const AUTO_PING_SETTINGS_KEYS = {
   claude: "claudeAutoPing",
   codex: "codexAutoPing",
 };
+/** Static retry delays offered by decolua/9router#2895; Auto keeps provider reset/backoff behavior. */
+const RETRY_DELAY_OPTIONS = [
+  ["auto", "Retry: Auto"],
+  ["15", "Retry: 15s"],
+  ["30", "Retry: 30s"],
+  ["60", "Retry: 1m"],
+  ["120", "Retry: 2m"],
+  ["300", "Retry: 5m"],
+  ["600", "Retry: 10m"],
+  ["1800", "Retry: 30m"],
+  ["3600", "Retry: 1h"],
+];
+
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -102,6 +115,7 @@ export default function ProviderDetailPage() {
   const [providerStickyLimit, setProviderStickyLimit] = useState("");
   const [thinkingMode, setThinkingMode] = useState("auto");
   const [concurrencyLimit, setConcurrencyLimit] = useState("");
+  const [retryDelay, setRetryDelay] = useState("auto");
   const [autoPing, setAutoPing] = useState({ enabled: false, connections: {} });
   const [autoPingQueue] = useState(() => createLatestIntentQueue({
       write: async (_key, enabled, { connectionId }) => {
@@ -419,6 +433,8 @@ export default function ProviderDetailPage() {
       // Load per-provider concurrency limit
       const cLimit = (settingsData.providerConcurrencyLimits || {})[providerId];
       setConcurrencyLimit(cLimit != null ? String(cLimit) : "");
+      const selectedRetryDelay = (settingsData.retryDelayByProvider || {})[providerId];
+      setRetryDelay(selectedRetryDelay != null ? String(selectedRetryDelay) : "auto");
       const autoPingSettingsKey = AUTO_PING_SETTINGS_KEYS[providerId];
       const apCfg = autoPingSettingsKey ? settingsData[autoPingSettingsKey] || {} : {};
       autoPingQueue.hydrate(
@@ -563,6 +579,28 @@ export default function ProviderDetailPage() {
     setConcurrencyLimit(value);
     saveConcurrencyLimit(value);
   };
+  const saveRetryDelay = async (value) => {
+    try {
+      const settingsRes = await fetch("/api/settings", { cache: "no-store" });
+      const settingsData = settingsRes.ok ? await settingsRes.json() : {};
+      const updated = { ...(settingsData.retryDelayByProvider || {}) };
+      if (value === "auto") delete updated[providerId];
+      else updated[providerId] = Number(value);
+      await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ retryDelayByProvider: updated }),
+      });
+    } catch (error) {
+      console.log("Error saving retry delay:", error);
+    }
+  };
+
+  const handleRetryDelayChange = (value) => {
+    setRetryDelay(value);
+    saveRetryDelay(value);
+  };
+
 
   const handleAutoPingConnection = (connectionId, on) => {
     if (!AUTO_PING_SETTINGS_KEYS[providerId]) return;
@@ -1557,6 +1595,20 @@ export default function ProviderDetailPage() {
             <p className="text-text-muted">
               {connections.length} connection{connections.length === 1 ? "" : "s"}
             </p>
+          </div>
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <label htmlFor="provider-retry-delay" className="hidden text-xs text-text-muted sm:inline">Retry delay</label>
+            <select
+              id="provider-retry-delay"
+              value={retryDelay}
+              onChange={(event) => handleRetryDelayChange(event.target.value)}
+              title="Static cooldown when the provider reports no reset deadline"
+              className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none"
+            >
+              {RETRY_DELAY_OPTIONS.map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
           </div>
         </div>
       </div>

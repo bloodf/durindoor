@@ -1,3 +1,16 @@
+# 3.17.7
+
+33 upstream 9router GAP/PARTIAL ports from the 2026-08-21 #508 shortlist, plus the campaign closeout ledger.
+
+## What's included
+- Tool-call, translator, and stream fixes: Kiro nested tool_call validation and one-shot repair, Gemini turn/key sanitization, missing tool-result IDs, DeepSeek tool-name dedupe, Responses custom tools, Codex 413 overflow, CommandCode in-stream errors, and Kimi Code force-stream.
+- Quota, retry, and catalog: per-provider retry delay, per-account RPM cap (NVIDIA default 40), Qoder 112 auto-disable, DNS-pinned provider probes, NVIDIA EOL remaps, OpenCode Go usage, and usage SSE period refresh.
+- CLI and dashboard: IPv4-first DNS, operator heap flags, CodeBuddy prompt-length filter, and single-item usage group summaries.
+
+## Compatibility and verification
+- No stored-data or API-key format changes. `~/.9router/` and `X-Msh-Platform: 9router` remain accepted.
+- Each port was SHA-pinned Node-20 gated and squash-merged with required GitHub checks green. Composed `origin/main` `GATE_PASS` after the campaign.
+
 # 3.17.6
 
 Headroom extras now install by default, and every setup failure tells the operator exactly what is wrong and how to fix it. The compression proxy used by the Token Saver dashboard previously reported "Python >= 3.10 not found" when an interpreter was present but Headroom lived in a `uv tool` venv that has no `pip`, so the `code` and `ml` extras were never requested and the operator was given no usable next step. DurinDoor now owns a managed virtual environment at `${DATA_DIR}/headroom/venv` (resolving to `/opt/cortexos/.durindoor/headroom/venv` on the deployment host), builds it from a root-visible Python 3.10 or newer, and installs `headroom-ai[proxy,code,ml]` through that venv's own `pip`; user-scoped `uv` and `pipx` installs are detected and reported but never used, and every setup diagnostic names the observed condition and the matching repair. See [docs/HEADROOM.md](docs/HEADROOM.md) for the full code table and recovery commands.

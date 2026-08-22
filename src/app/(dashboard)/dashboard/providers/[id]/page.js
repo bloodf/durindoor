@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, ImportTokenModal, IFlowCookieModal, GitLabAuthModal, Toggle, Select, EditConnectionModal, NoAuthProxyCard, ConfirmModal, ProviderIcon } from "@/shared/components";
-import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
+import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, DEFAULT_PROVIDER_RPM, MAX_PROVIDER_RPM, getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
@@ -116,6 +116,7 @@ export default function ProviderDetailPage() {
   const [thinkingMode, setThinkingMode] = useState("auto");
   const [concurrencyLimit, setConcurrencyLimit] = useState("");
   const [retryDelay, setRetryDelay] = useState("auto");
+  const [rpmLimit, setRpmLimit] = useState("");
   const [autoPing, setAutoPing] = useState({ enabled: false, connections: {} });
   const [autoPingQueue] = useState(() => createLatestIntentQueue({
       write: async (_key, enabled, { connectionId }) => {
@@ -435,6 +436,8 @@ export default function ProviderDetailPage() {
       setConcurrencyLimit(cLimit != null ? String(cLimit) : "");
       const selectedRetryDelay = (settingsData.retryDelayByProvider || {})[providerId];
       setRetryDelay(selectedRetryDelay != null ? String(selectedRetryDelay) : "auto");
+      const selectedRpm = (settingsData.rpmByProvider || {})[providerId];
+      setRpmLimit(selectedRpm != null ? String(selectedRpm) : "");
       const autoPingSettingsKey = AUTO_PING_SETTINGS_KEYS[providerId];
       const apCfg = autoPingSettingsKey ? settingsData[autoPingSettingsKey] || {} : {};
       autoPingQueue.hydrate(
@@ -599,6 +602,25 @@ export default function ProviderDetailPage() {
   const handleRetryDelayChange = (value) => {
     setRetryDelay(value);
     saveRetryDelay(value);
+  };
+
+  /** Persist decolua/9router#3203 per-account RPM; blank restores provider default, zero disables. */
+  const saveRpmLimit = async (value) => {
+    try {
+      const settingsRes = await fetch("/api/settings", { cache: "no-store" });
+      const settingsData = settingsRes.ok ? await settingsRes.json() : {};
+      const updated = { ...(settingsData.rpmByProvider || {}) };
+      const trimmed = String(value ?? "").trim();
+      if (!trimmed) delete updated[providerId];
+      else updated[providerId] = Math.min(MAX_PROVIDER_RPM, Math.max(0, Number.parseInt(trimmed, 10) || 0));
+      await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rpmByProvider: updated }),
+      });
+    } catch (error) {
+      console.log("Error saving RPM limit:", error);
+    }
   };
 
 
@@ -1597,6 +1619,19 @@ export default function ProviderDetailPage() {
             </p>
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-2">
+            <label htmlFor="provider-rpm-limit" className="hidden text-xs text-text-muted sm:inline">RPM / account</label>
+            <input
+              id="provider-rpm-limit"
+              type="number"
+              min="0"
+              max={MAX_PROVIDER_RPM}
+              value={rpmLimit}
+              placeholder={String(DEFAULT_PROVIDER_RPM[providerId] || 0)}
+              onChange={(event) => setRpmLimit(event.target.value)}
+              onBlur={(event) => saveRpmLimit(event.target.value)}
+              title="Maximum requests per minute per account. Blank uses provider default; 0 is unlimited."
+              className="w-16 rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none"
+            />
             <label htmlFor="provider-retry-delay" className="hidden text-xs text-text-muted sm:inline">Retry delay</label>
             <select
               id="provider-retry-delay"
